@@ -1,10 +1,8 @@
-# Bottega
-
-[English](./README.md) · [功能](./FEATURES.zh-CN.md) · [更新日志](./CHANGELOG.zh-CN.md)
-
 <p align="center">
   <img src="./apps/desktop/src/assets/bottega-sidebar-logo.png" alt="Bottega" width="360">
 </p>
+
+[English](./README.md) · [功能](./FEATURES.zh-CN.md) · [更新日志](./CHANGELOG.zh-CN.md)
 
 Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你电脑上已经安装并登录的 Codex、Claude Code、Kimi Code 和 OpenCode CLI，再通过 Base、App、Memory、浏览器工具与多 Agent 协作，为对话补上可持续使用的工作结构。
 

@@ -1,10 +1,8 @@
-# Bottega
-
-[简体中文](./README.zh-CN.md) · [Features](./FEATURES.md) · [Changelog](./CHANGELOG.md)
-
 <p align="center">
   <img src="./apps/desktop/src/assets/bottega-sidebar-logo.png" alt="Bottega" width="360">
 </p>
+
+[简体中文](./README.zh-CN.md) · [Features](./FEATURES.md) · [Changelog](./CHANGELOG.md)
 
 Bottega is a local-first macOS workspace for AI coding agents. It connects the Codex, Claude Code, Kimi Code, and OpenCode CLIs already installed and authenticated on your machine, then gives their conversations durable structure through Base, Apps, Memory, browser tools, and multi-agent collaboration.
 
