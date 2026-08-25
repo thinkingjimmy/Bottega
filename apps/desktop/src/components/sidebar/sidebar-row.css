@@ -1,0 +1,54 @@
+/**
+ * [INPUT]: The DOM test for importing in the component will be run without a css loader, depending on the sidebar-row.tsx SidebarRowTitle DOM structure, which is written with the --sidebar-row-action-strip
+ * [OUTPUT]: .sidebar-row-title Right edge gradual closure container with.sidebar-row-title-marquee Active mode automatically left
+ * [POS]: The style of the column headings of components/sidebar;"Keep the menu moving when open" cannot be expressed elegantly with the utility, so it is a true CSS, root-level chat / Project sub-chat / external history rows shared
+ */
+
+.sidebar-row-title {
+  /* 行尾浮层动作占掉的宽度。遮罩与位移终点都从它推导，于是「两个动作按钮的
+     chat 行」与「一个动作都没有的 history 行」共用同一条规则，而不是各写一套：
+     动作数变了只改这一个数，改不出第二种滑法。0rem 时活跃遮罩恰好退回静息态，
+     「没有按钮就不该有为按钮让出的渐变」自然成立，无需一条 :not() 例外。 */
+  --sidebar-row-action-strip: 3rem;
+  container-type: inline-size;
+  overflow: hidden;
+  /* 压过 SidebarMenuButton 基类 [&>span:last-child]:truncate 的 ellipsis */
+  text-overflow: clip !important;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, black calc(100% - 1.5rem), transparent);
+}
+
+.sidebar-row-title-marquee {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/*
+ * 行活跃 = hover ∨ 键盘可见聚焦 ∨ 行内菜单展开。
+ * :focus-visible 而非 :focus-within——鼠标点击选中 chat 后焦点留在链接上，
+ * 若按 focus-within 判定，选中行会永久停在左移位（标题头被吃掉）；Tab 键盘导航不受影响。
+ * Radix 打开菜单时 body 置 pointer-events:none 使 :hover 丢失、菜单又 portal 在 li 外，
+ * 故用 :has([aria-expanded="true"]) 兜底，否则点 More 标题会滑回去。
+ * transition 只声明在活跃态：进入时平滑滑出，离开回落到默认态（无 transition）瞬间归位。
+ *
+ * 活跃态遮罩：透明区扩到整个浮层按钮区，渐变带（1.5rem）落在最左那枚按钮之前——
+ * 文字滑经按钮下方时天然隐形，无需给按钮加底色。
+ * 位移量放得下即 0，放不下则尾字停在渐变带之前（再让 0.25rem），完全清晰。
+ *
+ * `> a` 锚定行自身的链接：project 子行嵌套在展开的 project li 内，
+ * 其折叠触发器常年 aria-expanded="true"，不锚定会令子行标题永久停在左移位。
+ */
+li:is(:hover, :has(:focus-visible), :has([aria-expanded="true"])) > a .sidebar-row-title {
+  mask-image: linear-gradient(
+    to right,
+    black calc(100% - var(--sidebar-row-action-strip) - 1.5rem),
+    transparent calc(100% - var(--sidebar-row-action-strip))
+  );
+}
+
+li:is(:hover, :has(:focus-visible), :has([aria-expanded="true"])) > a .sidebar-row-title-marquee {
+  transform: translateX(
+    min(0px, calc(100cqw - 100% - var(--sidebar-row-action-strip) - 1.75rem))
+  );
+  transition: transform 2000ms ease-in-out;
+}

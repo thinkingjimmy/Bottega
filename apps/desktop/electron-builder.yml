@@ -1,0 +1,26 @@
+# [INPUT]: Depends on electron-vite output, system skills, the Base GUI SDK, and pinned react-grab browser assets
+# [OUTPUT]: Produces the Bottega macOS DMG with runtime-only resources
+# [POS]: The public electron-builder release configuration for the desktop application
+
+appId: com.jimmywong.bottega
+productName: Bottega
+directories:
+  output: release
+files:
+  - out/**
+  - "!out/renderer/.chart-module-report.json"
+extraResources:
+  - from: resources/icon.png
+    to: icon.png
+  - from: resources/skills
+    to: skills
+  - from: resources/gui-sdk
+    to: gui-sdk
+  - from: node_modules/react-grab/dist/index.global.js
+    to: react-grab/index.global.js
+  - from: node_modules/react-grab/dist/styles.css
+    to: react-grab/styles.css
+mac:
+  target: dmg
+  identity: null
+  icon: resources/icon.png

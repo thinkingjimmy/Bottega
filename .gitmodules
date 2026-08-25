@@ -1,0 +1,9 @@
+[submodule "apps/desktop/resources/apps/dev-kanban"]
+	path = apps/desktop/resources/apps/dev-kanban
+	url = https://github.com/thinkingjimmy/Bottega-app-dev-kanban.git
+[submodule "apps/desktop/resources/apps/expense-tracker"]
+	path = apps/desktop/resources/apps/expense-tracker
+	url = https://github.com/thinkingjimmy/Bottega-app-expense-tracker.git
+[submodule "apps/desktop/resources/apps/fitness-log"]
+	path = apps/desktop/resources/apps/fitness-log
+	url = https://github.com/thinkingjimmy/Bottega-app-fitness-log.git

@@ -1,0 +1,53 @@
+/**
+ * [INPUT]: Depends on the input-group / block-end addon / rich-input / input-group-control of PromptInput
+ * [OUTPUT]: Provides [data-composer-layout="inline"] Single-line form: footer to contents, tool left, editing area to a row
+ * [POS]: The geography of the chat/composer is still in the dead of dayThe layout doesn't change the DOM, so switch without re-attaching RichInput, without losing focus and lights
+ */
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * 单行不是另一套 DOM，是同一套 DOM 的另一种排布。
+ *
+ * 展开态由 input-group 自己的 has-[block-end] 规则强制 flex-col；这里用同源
+ * 但更具体的选择器把它扳回 flex-row，再让 footer 变成 contents——它的两簇
+ * 控件于是升格为输入组的直接 flex 子项，order 才管得着谁在左谁在右。
+ *
+ * 之所以不写成条件渲染：RichInput 一旦重挂，第一个字符与光标就没了。
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+[data-composer-layout="inline"] [data-slot="input-group"]:has(> [data-align="block-end"]) {
+  flex-direction: row;
+  gap: calc(var(--spacing) * 2);
+  padding-inline: calc(var(--spacing) * 2);
+}
+
+/* footer 让位：不再是自成一行的横条，只是两簇控件的语义容器 */
+[data-composer-layout="inline"] [data-align="block-end"] {
+  display: contents;
+}
+
+/* 工具簇（+ 与权限）移到编辑区之前，与截图参考同侧 */
+[data-composer-layout="inline"] [data-align="block-end"] > :first-child {
+  order: -1;
+}
+
+/* 权限档位收敛为纯图标：单行里它与占位符同为文字，并排就糊成一句话。
+   语义由图标 + aria-label + title 承载，展开态自会把文案还回来。 */
+[data-composer-layout="inline"] [data-slot="permission-label"] {
+  display: none;
+}
+
+/* 编辑区吃掉剩余宽度：外框卸掉 min-h-16/w-full，内框卸掉多行内边距 */
+[data-composer-layout="inline"] [data-slot="rich-input"] {
+  flex: 1 1 0%;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+[data-composer-layout="inline"] [data-slot="input-group-control"] {
+  min-height: calc(var(--spacing) * 11);
+  padding-block: calc(var(--spacing) * 2.5);
+  padding-inline: calc(var(--spacing) * 1);
+  /* 单行不滚动：内容一旦超出，消费方已切回展开态 */
+  overflow-y: hidden;
+}

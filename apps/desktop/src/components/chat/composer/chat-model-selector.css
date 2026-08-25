@@ -1,0 +1,30 @@
+/**
+ * [INPUT]: Depends on.model-speed-* status category and reduced-motion media queries in Codex's Fast panel
+ * [OUTPUT]: Provides Codex Fast, an orbiting star cluster animated from right to left by the wrong peaks
+ * [POS]: The exclusive dynamics of the chat/composer Codex model panel; The trigger geometry is fully backed up with flex, and this is not a statement
+ */
+
+@keyframes model-speed-flight {
+  from {
+    transform: translateX(15rem) scale(0.65);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.85;
+  }
+  to {
+    transform: translateX(-2rem) scale(1);
+    opacity: 0;
+  }
+}
+
+.model-speed-sparkle {
+  animation: model-speed-flight 1.7s linear infinite;
+  animation-delay: var(--spark-delay);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-speed-sparkle {
+    animation: none;
+  }
+}

@@ -1,0 +1,29 @@
+/**
+ * [INPUT]: Depends on assets/fonts Geist Sans variable fonts and sharing -- app-font-sans
+ * [OUTPUT]: System/Maple Mono/Geist Sans font is provided for the desktop side based on html[data-font]
+ * [POS]: renderer External style input, with only desktop edges that can switch between fonts and local resource declarations
+ */
+
+@font-face {
+  font-family: "Geist Sans";
+  src: url("./assets/fonts/Geist-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+html[data-font="system"] {
+  --app-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans CJK SC", sans-serif;
+}
+
+html[data-font="maple-mono"] {
+  --app-font-sans: "ZSFT-443", "Maple Mono NF CN", ui-sans-serif, system-ui,
+    sans-serif;
+}
+
+html[data-font="geist-sans"] {
+  --app-font-sans: "Geist Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}

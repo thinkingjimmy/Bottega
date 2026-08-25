@@ -1,0 +1,248 @@
+"use client";
+
+/**
+ * [INPUT]: Depends on AppsProvider default list/permanent AppRecord, unified AppInstallDisclosure, requirements form and surface of AppDialog
+ * [OUTPUT]: Provides a purely PresetShelf/PresetCard and a three-step protocol-based PresetInstallDialog (one upload = one probe)
+ * [POS]: Apps shared space on the shelf with the head of page + menu; Open which preset is controlled by the caller and the installation protocol remains in the bullet window
+ */
+
+import { useEffect, useRef, useState } from "react";
+import { Download } from "lucide-react";
+import { Button } from "@ai-chat/ui/components/ui/button";
+import {
+  AppDialogBody,
+  AppDialogContent,
+} from "@ai-chat/ui/components/ui/app-dialog";
+import { Card, CardDescription, CardHeader, CardTitle } from "@ai-chat/ui/components/ui/card";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@ai-chat/ui/components/ui/dialog";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
+import { useApps } from "@/components/providers/apps-provider";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { errorMessage } from "@/lib/errors";
+import type {
+  AppConfigValue,
+  AppRecord,
+  InstallPresetInput,
+  PresetAppSummary,
+  PresetProbeResult,
+} from "../../../shared/apps-ipc";
+import { AppRequirementsForm, appRequirementsSatisfied } from "./app-requirements-form";
+import { AppInstallDisclosure } from "./app-install-disclosure";
+
+const EMPTY_CONFIG: AppConfigValue = { values: {}, agentReadableKeys: [] };
+type CardStage =
+  | { kind: "idle" }
+  | { kind: "probing" }
+  | { kind: "ready"; probe: PresetProbeResult }
+  | { kind: "installing"; probe: PresetProbeResult };
+
+function pickReadme(zh: boolean, preset: PresetAppSummary, probe: PresetProbeResult) {
+  const disclosed = (path: string) => probe.disclosures.find((entry) => entry.path === path)?.content;
+  return (zh ? disclosed("README.zh-CN.md") : disclosed("README.md")) ?? disclosed("README.md") ?? (zh ? preset.readmeZhCN : preset.readme) ?? preset.readme;
+}
+
+/* ------------------------------------------------------------------------- *
+ *  货架只在「一张 App 都没有」时出现：它是开局的第一步，不是常驻陈列。
+ *  装完第一份之后，首方 App 的入口移交页头 + 菜单，页面重新只讲已安装的事。
+ * ------------------------------------------------------------------------- */
+export function PresetShelf({ onSelect }: { onSelect: (preset: PresetAppSummary) => void }) {
+  const { presets } = useApps();
+  if (presets.length === 0) return null;
+  return (
+    <div className="grid grid-cols-1 gap-4 text-left sm:grid-cols-2 lg:grid-cols-3">
+      {presets.map((preset) => (
+        <PresetCard key={preset.id} onOpen={() => onSelect(preset)} preset={preset} />
+      ))}
+    </div>
+  );
+}
+
+/* 卡片不再显示已装份数：货架只在零 App 时出现，那一刻份数恒为零——
+   一个永远走不到的分支比一个写错的分支更难发现，故连同份数一起删掉。 */
+export function PresetCard({ preset, onOpen }: {
+  preset: PresetAppSummary;
+  onOpen: () => void;
+}) {
+  const { t } = useAppTranslation();
+
+  return (
+    <Card
+      aria-label={t("apps.presetOpenDetails", { name: preset.name })}
+      className="group h-full cursor-pointer transition-colors hover:bg-muted/30"
+      data-preset-id={preset.id}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") onOpen();
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <CardHeader>
+        <span className="mb-2 text-4xl">{preset.icon}</span>
+        <CardTitle className="truncate text-base">{preset.name}</CardTitle>
+        <CardDescription className="line-clamp-2">{preset.description}</CardDescription>
+      </CardHeader>
+      <div className="px-4 pb-4">
+        <p className="flex items-center gap-1.5 font-medium text-sm text-primary" data-testid="preset-details-label"><Download className="size-4" />{t("apps.presetViewDetails")}</p>
+      </div>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------------- *
+ *  安装详情：probe → ready → install 三段协议的唯一现场。
+ *  「再看一次」由调用方换 key 表达（一次挂载 = 一次 probe），组件内因此不必
+ *  再数 attempt——epoch 交给谁掌管，谁就该持有它，两处各存一份必然对不齐。
+ * ------------------------------------------------------------------------- */
+export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, discardPresetProbe, onInstall }: {
+  preset: PresetAppSummary;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  probePreset: (presetId: string) => Promise<PresetProbeResult>;
+  discardPresetProbe: (preflightId: string) => Promise<void>;
+  onInstall: (input: InstallPresetInput) => Promise<AppRecord>;
+}) {
+  const { t, i18n } = useAppTranslation();
+  const zh = (i18n.language ?? "").toLowerCase().startsWith("zh");
+  const [config, setConfig] = useState<AppConfigValue>(EMPTY_CONFIG);
+  const [stage, setStage] = useState<CardStage>({ kind: "probing" });
+  const [error, setError] = useState("");
+  /* ── 为什么这里是世代号而不是一个布尔 ──────────────────────────────
+   * 「本次挂载还是不是 preflight 的主人」用布尔表达，前提是「一次挂载 = 一次
+   * effect」。StrictMode 下这个前提不成立：dev 会 挂载→清理→再挂载 跑两遍，
+   * 清理把布尔置 false 之后没有任何东西再把它置回来，于是第二次 probe 的结果
+   * 被当成迟到件丢弃、stage 永远停在 probing——弹窗转圈到天荒地老，而生产构建
+   * 里 StrictMode 是空操作，一测就过。
+   * 世代号没有这个盲区：每次 effect 认领一个新号，只有号还对得上的结果才收，
+   * 对不上的一律归还。关窗同样只是让号往前走一格。
+   * ──────────────────────────────────────────────────────────────── */
+  const generation = useRef(0);
+  const heldPreflight = useRef<string | null>(null);
+  const ready = appRequirementsSatisfied(preset.requirements, config);
+
+  const release = () => {
+    const preflightId = heldPreflight.current;
+    heldPreflight.current = null;
+    if (preflightId) void discardPresetProbe(preflightId).catch(() => undefined);
+  };
+
+  useEffect(() => {
+    const mine = (generation.current += 1);
+    void (async () => {
+      try {
+        const probe = await probePreset(preset.id);
+        if (mine !== generation.current) {
+          await discardPresetProbe(probe.preflightId).catch(() => undefined);
+          return;
+        }
+        heldPreflight.current = probe.preflightId;
+        setStage({ kind: "ready", probe });
+      } catch (cause) {
+        if (mine !== generation.current) return;
+        setStage({ kind: "idle" });
+        setError(errorMessage(cause, t("apps.presetProbeFailed")));
+      }
+    })();
+    return () => {
+      generation.current += 1;
+      release();
+    };
+    /* 刻意只跑一次：probePreset 每次渲染都是新函数，追依赖等于每渲染重探一遍。 */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const close = () => {
+    /* installing 的 preflight 已进入 durable intent；关窗只能隐藏，不能撤销。 */
+    if (stage.kind !== "installing") {
+      generation.current += 1;
+      release();
+    }
+    onOpenChange(false);
+  };
+
+  /* 成功才关窗：抢先关掉，失败就没有人接住那句错误——弹窗是用户点下确认的
+     地方，也该是他得知结果的地方。成功后不回 idle，让内容维持到退场动画结束。 */
+  const confirmInstall = async () => {
+    if (stage.kind !== "ready" || !ready) return;
+    const probe = stage.probe;
+    heldPreflight.current = null;
+    setStage({ kind: "installing", probe });
+    setError("");
+    try {
+      await onInstall({
+        presetId: preset.id,
+        requestId: crypto.randomUUID(),
+        preflightId: probe.preflightId,
+        digest: probe.digest,
+        ...(preset.requirements.length ? { config } : {}),
+      });
+      setConfig(EMPTY_CONFIG);
+      onOpenChange(false);
+    } catch (cause) {
+      /* preflight 已随提交转移给 main，renderer 不得重放；只能重开取新的一份。 */
+      setStage({ kind: "idle" });
+      setError(errorMessage(cause, t("apps.presetInstallFailed")));
+    }
+  };
+
+  const probe = stage.kind === "ready" || stage.kind === "installing" ? stage.probe : null;
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
+      <AppDialogContent className="sm:max-w-[36rem]" data-testid="preset-detail">
+        {/* 图标离开标题：标题只留名字，可访问名不再夹着一个读不出来的字符，
+            而那颗 emoji 单独成块反倒比塞在句首更像它自己。pr 给右上角的 × 让位。 */}
+        {/* 正文是唯一会滚的层，头尾各留一条满幅细线：没有它，长 README 会从
+            标题背后穿过去、又贴着按钮收尾，看起来像被裁掉而不是还没滚完。
+            -mx-5 是把 AppDialogContent 的内边距抵消掉——细线要横贯整个表面，
+            缩在正文列里那条线就成了装饰而非边界。 */}
+        <DialogHeader className="-mx-5 shrink-0 gap-0 border-b px-5 pr-8 pb-4 text-left">
+          <div className="flex items-start gap-3">
+            <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-2xl">{preset.icon}</span>
+            <div className="min-w-0">
+              <DialogTitle className="text-lg/6 font-semibold">{preset.name}</DialogTitle>
+              <DialogDescription className="mt-1 text-sm/5">{preset.description}</DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+        <AppDialogBody className="-mx-5 px-5 py-5">
+          {stage.kind === "probing" ? (
+            <div className="grid min-h-48 place-items-center" role="status"><Spinner className="size-5" /><span className="sr-only">{t("apps.presetProbing")}</span></div>
+          ) : probe ? (
+            <div className="flex flex-col gap-5" data-testid="preset-confirm">
+              <AppInstallDisclosure
+                cliStatuses={probe.cliStatuses}
+                extensions={probe.extensionPreflights}
+                extensionRequirements={probe.manifest.extensionRequirements}
+                readme={pickReadme(zh, preset, probe)}
+                requirements={probe.requirements}
+                source={{
+                  label: probe.channel === "release" ? t("apps.presetSourceRelease") : t("apps.presetSourceDev"),
+                  fingerprint: `${probe.repoUrl} · ${probe.resolvedPin.slice(0, 12)} · ${probe.digest.slice(0, 12)}`,
+                }}
+              />
+              {probe.requirements.length > 0 && (
+                <AppRequirementsForm disabled={stage.kind === "installing"} onChange={setConfig} requirements={probe.requirements} value={config} />
+              )}
+            </div>
+          ) : error ? (
+            <p className="rounded-lg bg-destructive/10 p-3 text-destructive text-sm" role="alert">{error}</p>
+          ) : null}
+        </AppDialogBody>
+        <DialogFooter className="-mx-5 shrink-0 flex-row justify-end gap-2 border-t px-5 pt-4">
+          <Button disabled={stage.kind === "installing"} onClick={close} variant="ghost">{t("apps.presetCancel")}</Button>
+          <Button data-testid="preset-install-action" disabled={stage.kind !== "ready" || !ready} onClick={() => void confirmInstall()}>
+            {stage.kind === "installing" ? <Spinner className="size-3" /> : <Download />}
+            {stage.kind === "installing" ? t("apps.presetInstalling") : t("apps.presetConfirm")}
+          </Button>
+        </DialogFooter>
+      </AppDialogContent>
+    </Dialog>
+  );
+}

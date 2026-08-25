@@ -1,0 +1,239 @@
+/**
+ * [INPUT]: Depends on Tailwind/shadcn, Streamdown portal, tagging, ZeoSeven Maple Mono fonts and consumer coverage -- app-font-sans
+ * [OUTPUT]: Provides @ai-chat/ui a full-scale theme, fonts, round corners, cross-pack scanning inputs, scrollbar-slim self-drawing scroll bar utility, and a Markdown full-screen Electron no-drag interaction border
+ * [POS]: Shared UI packages are universal-style root, desktop/web consumption; Browser ignored Electron exclusive app-region
+ */
+
+@import url("https://fontsapi.zeoseven.com/442/main/result.css");
+@font-face{font-family:"ZSFT-443";src:url("https://fontsapi.zeoseven.com/443/italic.woff2") format("woff2");font-style:italic;font-weight:100 900;font-display:swap;}
+@font-face{font-family:"ZSFT-443";src:url("https://fontsapi.zeoseven.com/443/main.woff2") format("woff2");font-style:normal;font-weight:100 900;font-display:swap;}
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* ============================================================
+ * 跨包类名扫描：Tailwind v4 不扫描 node_modules，
+ * @source 相对本样式文件解析，覆盖 @ai-chat/ui 全部源码。
+ * 消费方（desktop/web）自身源码由构建 cwd 自动检测。
+ * ============================================================ */
+@source "../../src";
+/* streamdown 的元素类名只存在于其 dist chunk，必须显式纳入扫描，
+ * 否则列表编号/缩进等工具类不会被编译（@streamdown/* 插件 dist 无类名，免扫）。 */
+@source "../../node_modules/streamdown/dist/*.js";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+ * scrollbar-slim —— 自绘细滚动条
+ *
+ * 只走 `::-webkit-scrollbar` 一条路，不写 `scrollbar-color`：
+ * Chromium 121 起两套并存时标准属性胜出、伪元素被整体忽略，
+ * 同时声明等于把自己写的样式关掉，是那种「看起来更周全反而失效」的写法。
+ *
+ * 轨道透明、拇指借 2px 透明边 + content-box 收成 4px 细条：
+ * 视觉宽度与占位宽度分开，才能既细又留出呼吸，而不是贴着内容边缘。
+ *
+ * 显隐规则：默认隐身，指到或正在滚才现身——**但 8px 沟槽自绘后恒定占位**。
+ * 这正是它比系统 overlay 强的地方：overlay 靠不占位换来隐身，代价是显隐
+ * 那一刻内容会横向抖一下；这里占位与显隐彻底解耦，现身只是拇指变个颜色。
+ *
+ * 边界要说清：解耦的是**拇指**的显隐，不是滚动条本身的有无。`overflow: auto`
+ * 下内容不溢出就根本没有滚动条，也就没有那 8px；一旦内容长过容器，8px 是
+ * 凭空多出来的，所有内容横向缩一次。故「布局会在交互中反复越过溢出阈值」的
+ * 容器（如拖排预览会改总行数的 chart dashboard）必须自写 `scrollbar-gutter:
+ * stable`——那 8px 恒定时没人看得见，来回时就是一阵闪。
+ *
+ * 显隐**完全不用 `:hover`**：Chromium 的 `::-webkit-scrollbar-*` 不随宿主
+ * 伪类状态变化重绘（实测宿主 `matches(":hover")` 已为真、滚动条那一帧纹丝
+ * 不动），而属性变更会触发重算。故「指针在不在」与「正在滚没」一并由
+ * use-scroll-activity 转成 data-scroll-active，此处只认这一个开关。
+ *
+ * `& *` 一并覆盖后代：弹窗里常有嵌套滚动区（Share 的文件清单、
+ * Cookie 域名表），只管住自己就会在同一个弹窗里出现两种滚动条。
+ * ============================================================ */
+@utility scrollbar-slim {
+  &::-webkit-scrollbar,
+  & *::-webkit-scrollbar {
+    width: 0.5rem;
+    height: 0.5rem;
+  }
+  &::-webkit-scrollbar-track,
+  & *::-webkit-scrollbar-track,
+  &::-webkit-scrollbar-corner,
+  & *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  /* 隐身态：沟槽照占，只是拇指透明——故现身不引起任何回流 */
+  &::-webkit-scrollbar-thumb,
+  & *::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    background-clip: content-box;
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    transition: background-color 160ms ease;
+  }
+  /* 现身态：指针在这片区域内，或刚滚过还没静置。
+     活动位由持有滚动的那一层挂，可能是自己也可能是后代，故四条都要覆盖；
+     `[data-scroll-active] *` 让它一并点亮自己肚子里的嵌套滚动条。 */
+  &[data-scroll-active]::-webkit-scrollbar-thumb,
+  &[data-scroll-active] *::-webkit-scrollbar-thumb,
+  & [data-scroll-active]::-webkit-scrollbar-thumb,
+  & [data-scroll-active] *::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+  }
+  /* 指针压在拇指上：加深，表明它可被拖 */
+  &::-webkit-scrollbar-thumb:hover,
+  & *::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--foreground) 28%, transparent);
+  }
+}
+
+/* Streamdown 全屏表格经 Portal 直挂 body，必须显式覆盖底层 Electron
+ * 页头的 drag region；按钮同时恢复明确的点击光标。 */
+[data-streamdown="table-fullscreen"],
+[data-streamdown="table-fullscreen"] button {
+  -webkit-app-region: no-drag;
+}
+
+[data-streamdown="table-fullscreen"] button {
+  cursor: pointer;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--app-font-sans);
+  --font-mono: "ZSFT-443", "Maple Mono NF CN", ui-monospace, monospace;
+  --font-heading: var(--app-font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-sunken: var(--sunken);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* 原生滚动条、input 控件、autofill 与首帧画布不看 token 只看 color-scheme；
+     缺它则深色下这些表面仍然是浅色，且没有任何 class 能救。
+     写死单值而非 `light dark`：有效主题的唯一判据是 .dark 这个类，
+     `light dark` 会让未挂类时的实际配色回落到系统偏好——用户在深色系统上
+     显式选了 Light，原生控件却仍是深的，与 token 当场对不上。 */
+  color-scheme: light;
+  /* 默认系统 sans：CJK 回落 PingFang/雅黑；Maple Mono 只保留在 --font-mono 与 data-font 可选模式 */
+  --app-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans CJK SC", sans-serif;
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --sunken: oklch(0.975 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: #e76e50;
+  --chart-2: #2a9d90;
+  --chart-3: #274754;
+  --chart-4: #e8c468;
+  --chart-5: #f4a462;
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --sunken: oklch(0.17 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: #e76e50;
+  --chart-2: #2a9d90;
+  --chart-3: #6da8bd;
+  --chart-4: #e8c468;
+  --chart-5: #f4a462;
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  html {
+    @apply font-sans;
+  }
+}

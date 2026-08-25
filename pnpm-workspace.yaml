@@ -1,0 +1,18 @@
+packages:
+  - apps/desktop
+  - packages/*
+
+allowBuilds:
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+
+patchedDependencies:
+  '@streamdown/cjk@1.0.3': patches/@streamdown__cjk@1.0.3.patch
+  '@streamdown/code@1.1.1': patches/@streamdown__code@1.1.1.patch
+  '@streamdown/math@1.0.2': patches/@streamdown__math@1.0.2.patch
+  '@streamdown/mermaid@1.0.2': patches/@streamdown__mermaid@1.0.2.patch
+  remend@1.3.0: patches/remend@1.3.0.patch
+  streamdown@2.5.0: patches/streamdown@2.5.0.patch

@@ -1,0 +1,133 @@
+/**
+ * [INPUT]: Depends on shared NoticeChatMessage canonical structure, I18n Provider, Section snapshot, React and Button
+ * [OUTPUT]: Provides instantly updated memo ChatNotice with current language; First snapshot of the suspension class before disabling and crossing the window closure
+ * [POS]: The control message sheet component of chat/transcript; The first is the "Bubble" and the "Agent" input
+ */
+
+import { memo, useEffect, useState } from "react";
+import { Button } from "@ai-chat/ui/components/ui/button";
+import type {
+  ChatNotice as ChatNoticeData,
+  NoticeChatMessage,
+} from "../../../../shared/chats-ipc";
+import type { RelayActionState } from "../../../../shared/sections-ipc";
+import {
+  continueRelay,
+  discardRelay,
+  subscribeRelayActions,
+} from "@/lib/sections-client";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
+
+/** canonical content 继续由 shared 固定；renderer 只按结构化 kind 做当前语言投影。 */
+function localizedNoticeMessageContent(
+  notice: ChatNoticeData,
+  t: ReturnType<typeof useAppTranslation>["t"]
+) {
+  if (notice.kind === "manual-recovered") return t("notice.manualRecovered");
+  if (notice.kind === "relay-failed") {
+    return t("notice.relayFailed", { relayId: notice.relayId });
+  }
+  return t(
+    notice.kind === "chain-paused"
+      ? "notice.chainPaused"
+      : "notice.chainRecovered",
+    { count: notice.pendingCount }
+  );
+}
+
+export const ChatNotice = memo(function ChatNotice({
+  message,
+}: {
+  message: NoticeChatMessage;
+}) {
+  const { t } = useAppTranslation();
+  const [result, setResult] = useState<
+    "continued" | "discarded" | "stale" | "busy" | null
+  >(null);
+  const actionNotice =
+    message.notice.kind === "chain-paused" ||
+    message.notice.kind === "startup-recovered"
+      ? message.notice
+      : null;
+  const actionable = Boolean(actionNotice);
+  const [actionState, setActionState] =
+    useState<RelayActionState | null>(null);
+  useEffect(() => {
+    if (!actionNotice) return;
+    const notice = actionNotice;
+    return subscribeRelayActions((snapshot) => {
+      const action = snapshot.actions[notice.actionId];
+      setActionState(
+        action?.pauseEpoch === notice.pauseEpoch
+          ? action.state
+          : "expired"
+      );
+    });
+  }, [actionNotice]);
+  const act = async (kind: "continue" | "discard") => {
+    if (
+      !actionNotice ||
+      result ||
+      actionState !== "active"
+    ) {
+      return;
+    }
+    const notice = actionNotice;
+    setResult("busy");
+    const input = {
+      actionId: notice.actionId,
+      expectedPauseEpoch: notice.pauseEpoch,
+    };
+    setResult(
+      kind === "continue"
+        ? await continueRelay(input)
+        : await discardRelay(input)
+    );
+  };
+  const settledState =
+    result && result !== "busy"
+      ? result
+      : actionState === "continued" || actionState === "discarded"
+        ? actionState
+        : actionState === "expired"
+          ? "stale"
+          : null;
+  return (
+    <div className="mx-auto w-full rounded-xl border border-dashed bg-muted/40 px-4 py-3 text-center text-muted-foreground text-sm">
+      <p>
+        {localizedNoticeMessageContent(message.notice, t)}
+      </p>
+      {actionable && (
+        <div className="mt-2 flex justify-center gap-2">
+          <Button
+            disabled={Boolean(result) || actionState !== "active"}
+            onClick={() => void act("continue")}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {t("common.continue")}
+          </Button>
+          <Button
+            disabled={Boolean(result) || actionState !== "active"}
+            onClick={() => void act("discard")}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            {t("common.discard")}
+          </Button>
+        </div>
+      )}
+      {settledState && (
+        <p className="mt-2 text-xs">
+          {settledState === "continued"
+            ? t("notice.continued")
+            : settledState === "discarded"
+              ? t("notice.discarded")
+              : t("notice.stale")}
+        </p>
+      )}
+    </div>
+  );
+});
