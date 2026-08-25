@@ -1,6 +1,6 @@
 # Changelog
 
-[简体中文](./CHANGELOG.zh-CN.md)
+[Documentation](../README.md) · [简体中文](./README.zh-CN.md)
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
@@ -8,6 +8,7 @@ This file records product milestones, not internal implementation iterations. Da
 
 - Published Bottega under the MIT License with a clean, public-only Git history.
 - Established a hard repository boundary: production desktop source and milestone documentation are public; tests, test data, the web application, internal evaluations, TODOs, development notes, weekly engineering logs, and repository automation remain in the development repository.
+- Organized public documentation under docs/, with second-level getting-started, features, and changelog sections while keeping the root README as the GitHub entry page.
 - Adopted **Bottega** as the product, package, window, build, ACP client, and exported-document identity.
 
 ## 2026-08-18 to 2026-08-23 — Durable collaboration

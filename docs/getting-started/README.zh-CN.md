@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="./apps/desktop/src/assets/bottega-sidebar-logo.png" alt="Bottega" width="360">
+  <img src="../../apps/desktop/src/assets/bottega-sidebar-logo.png" alt="Bottega" width="360">
 </p>
 
-[English](./README.md) · [功能](./FEATURES.zh-CN.md) · [更新日志](./CHANGELOG.zh-CN.md)
+[文档首页](../README.zh-CN.md) · [English](./README.md) · [功能](../features/README.zh-CN.md) · [更新日志](../changelog/README.zh-CN.md)
+
+# 快速开始
 
 Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你电脑上已经安装并登录的 Codex、Claude Code、Kimi Code 和 OpenCode CLI，再通过 Base、App、Memory、浏览器工具与多 Agent 协作，为对话补上可持续使用的工作结构。
 
@@ -15,7 +17,7 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 - **协调多个 Agent。** Plan、Steer、Section、Subagent 与结果提升，让并行工作可见、可接力、可复用。
 - **权限始终显式。** 文件、App、工具、Memory 与跨 Chat 访问都通过有边界的 capability 授权，而不是默认获得环境中的全部权限。
 
-产品模型与四个核心能力域见 [FEATURES.zh-CN.md](./FEATURES.zh-CN.md)。
+产品模型与四个核心能力域见[功能文档](../features/README.zh-CN.md)。
 
 ## 环境要求
 
@@ -70,4 +72,4 @@ Bug、产品反馈与功能建议，请直接提交到 [GitHub Issues](https://g
 
 ## 协议
 
-Bottega 使用 [MIT License](./LICENSE)。
+Bottega 使用 [MIT License](../../LICENSE)。

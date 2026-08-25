@@ -1,6 +1,6 @@
 # Bottega features
 
-[简体中文](./FEATURES.zh-CN.md)
+[Documentation](../README.md) · [简体中文](./README.zh-CN.md)
 
 Bottega treats an Agent conversation as the control surface for a durable local workspace. Four capability areas define the product.
 

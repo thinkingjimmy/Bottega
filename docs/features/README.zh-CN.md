@@ -1,6 +1,6 @@
 # Bottega 功能
 
-[English](./FEATURES.md)
+[文档首页](../README.zh-CN.md) · [English](./README.md)
 
 Bottega 把 Agent 对话视为一个可持续、本地工作空间的控制面。产品由四个核心能力域构成。
 
