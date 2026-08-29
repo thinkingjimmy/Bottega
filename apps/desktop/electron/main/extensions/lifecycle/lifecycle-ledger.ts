@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on DurableJson, zod, canonical Product scope, and Extension generation/source/admission contracts
- * [OUTPUT]: Provides scope-frozen Extension lifecycle receipts, atomic authorization snapshots, pre-allocated identities, and phase/App checkpoints
+ * [OUTPUT]: Provides exact-empty v1 migration, scope-frozen Extension lifecycle receipts, atomic authorization snapshots, pre-allocated identities, and phase/App checkpoints
  * [POS]: Durable single writer for Extension lifecycle; recovery trusts the frozen owner/lifecycle/scope CAS receipt rather than renderer input or filesystem guesses
  */
 
@@ -319,6 +319,18 @@ const ledgerSchema = z
     }
   });
 
+const emptyLegacyLedgerSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    operations: z.array(z.never()).length(0),
+  })
+  .strict();
+
+function migrateEmptyLegacyLedger(raw: unknown) {
+  if (!emptyLegacyLedgerSchema.safeParse(raw).success) return undefined;
+  return { schemaVersion: 3 as const, operations: [] };
+}
+
 export type ExtensionLifecycleOperation = z.infer<typeof operationSchema>;
 export type ExtensionLifecycleKind = ExtensionLifecycleOperation["kind"];
 export type ExtensionLifecyclePhase = ExtensionLifecycleOperation["phase"];
@@ -375,7 +387,7 @@ export class ExtensionLifecycleLedger {
   }
 
   initialize() {
-    return this.file.initialize();
+    return this.file.initialize(migrateEmptyLegacyLedger);
   }
 
   /** 预分配身份并 fsync：此后每一步都能按 id 幂等重放。 */

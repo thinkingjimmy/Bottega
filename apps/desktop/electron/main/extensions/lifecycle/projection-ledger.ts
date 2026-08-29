@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on DurableJson, zod, exact Extension package inventory, component-instance/generation identity, and projection owners
- * [OUTPUT]: Provides schema-v5 ambient-projection custody, exact binding session receipts, and operation-frozen holder queries
+ * [OUTPUT]: Provides schema-v5 ambient-projection custody, exact-empty legacy startup migration, exact binding session receipts, and operation-frozen holder queries
  * [POS]: Durable projection authority; component-instance identity prevents same-declared-component owners from sharing consent or lifecycle state
  */
 
@@ -15,6 +15,7 @@ import { DurableJson } from "../../persistence/durable-json";
 import type { ExtensionRegistryStore } from "../registry-store";
 import type { TurnProjectContext } from "../../../../shared/product-resource-scope";
 import {
+  migrateEmptyLegacyProjectionLedger,
   projectionLedgerSchema,
   type ExtensionBindingAuthority,
   type ExtensionProjectionBinding,
@@ -89,9 +90,9 @@ export class ExtensionProjectionLedger {
     return this.file.filePath;
   }
 
-  /** Cutover: pre-v5 ledgers fail closed; discovery authority domains are not inferred. */
+  /** Only authority-free legacy ledgers migrate; live legacy custody remains unknowable. */
   initialize() {
-    return this.file.initialize();
+    return this.file.initialize(migrateEmptyLegacyProjectionLedger);
   }
 
   /**

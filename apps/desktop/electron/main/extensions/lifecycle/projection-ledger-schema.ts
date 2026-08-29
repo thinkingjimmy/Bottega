@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod plus canonical Extension digest, generation, owner, and backend identity contracts
- * [OUTPUT]: Provides the schema-v5 Projection Ledger shape, inferred records, and fail-closed relational validation
+ * [OUTPUT]: Provides the schema-v5 Projection Ledger shape, exact-empty v1/v2 migration, inferred records, and fail-closed relational validation
  * [POS]: Persistence boundary for projection-ledger; runtime mutation stays in projection-ledger.ts while impossible durable graphs are rejected here
  */
 
@@ -102,6 +102,25 @@ const bindingAuthoritySchema = z.object({
   expiresAt: z.number().int().nonnegative(),
   consumedAt: z.number().int().nonnegative().nullable(),
 }).strict();
+
+const emptyLegacyProjectionLedgerSchema = z.union([
+  z.object({
+    schemaVersion: z.literal(1),
+    bindings: z.array(z.never()).length(0),
+  }).strict(),
+  z.object({
+    schemaVersion: z.literal(2),
+    consents: z.array(z.never()).length(0),
+    bindings: z.array(z.never()).length(0),
+  }).strict(),
+  z.object({
+    schemaVersion: z.literal(2),
+    consents: z.array(z.never()).length(0),
+    bindings: z.array(z.never()).length(0),
+    projectionAdmissions: z.array(z.never()).length(0),
+    authorities: z.array(z.never()).length(0),
+  }).strict(),
+]);
 
 export const projectionLedgerSchema = z.object({
   schemaVersion: z.literal(5),
@@ -220,6 +239,18 @@ export const projectionLedgerSchema = z.object({
     }
   }
 });
+
+export function migrateEmptyLegacyProjectionLedger(raw: unknown) {
+  if (!emptyLegacyProjectionLedgerSchema.safeParse(raw).success) return undefined;
+  return {
+    schemaVersion: 5 as const,
+    consents: [],
+    bindings: [],
+    sessionDiscoveries: [],
+    projectionAdmissions: [],
+    authorities: [],
+  };
+}
 
 export type ProjectionLedgerState = z.infer<typeof projectionLedgerSchema>;
 export type ExtensionProjectionBinding = z.infer<typeof bindingSchema>;
