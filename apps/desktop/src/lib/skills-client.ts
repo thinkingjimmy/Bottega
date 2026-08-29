@@ -1,15 +1,17 @@
 /**
- * [INPUT]: Depends on shared Skills IPC and preload window.skills; Browser environment without local catalog
- * [OUTPUT]: Provides listSkills/loadSkillCapabilities renderer boundaries
- * [POS]: The manual Skill/Plan capability client of renderer lib, hiding the Electron branch of the bridge
+ * [INPUT]: Depends on shared Skills IPC, ProductResult unwrapping, and preload window.skills
+ * [OUTPUT]: Provides structured catalog results, Plan capability, and invalidated-ref event subscription
+ * [POS]: Renderer runtime Skills boundary; callers never decode IPC envelopes or main exceptions
  */
 
 import type {
-  SkillInfo,
   SkillsBridgeApi,
+  SkillsChangedEvent,
   SkillsListInput,
+  SkillsListResult,
   SkillsScope,
 } from "../../shared/skills-ipc";
+import { unwrapProductResult } from "../../shared/product-failure";
 
 declare global {
   interface Window {
@@ -17,10 +19,23 @@ declare global {
   }
 }
 
-export function listSkills(input: SkillsListInput): Promise<SkillInfo[]> {
-  return window.skills?.list(input) ?? Promise.resolve([]);
+const emptyResult: SkillsListResult = {
+  skills: [],
+  truncated: false,
+  matchedCount: 0,
+  hiddenCount: 0,
+};
+
+export async function listSkills(input: SkillsListInput): Promise<SkillsListResult> {
+  return window.skills ? unwrapProductResult(await window.skills.list(input)) : emptyResult;
 }
 
-export function loadSkillCapabilities(scope: SkillsScope) {
-  return window.skills?.capabilities(scope) ?? Promise.resolve({ plan: false });
+export async function loadSkillCapabilities(scope: SkillsScope) {
+  return window.skills
+    ? unwrapProductResult(await window.skills.capabilities(scope))
+    : { plan: false };
+}
+
+export function onSkillsChanged(callback: (event: SkillsChangedEvent) => void) {
+  return window.skills?.onChanged(callback) ?? (() => {});
 }

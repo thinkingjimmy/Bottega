@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on BackendDescriptor headlessSpec, macOS seatbelt, Node detached spawn, process-group and per-backend process supervisor
- * [OUTPUT]: Provides unique HeadlessExecutor: pass through admission/identity review/re-analysis and sync spawn/register window deadline signal; typified preflight abort; runtime snapshot; executor/confirmed backend OS fences (with spec readOnlyRoots only); asynchronous spec; prepared with the correct release (preflight failed to be recycled and refused; finalize recycled after process group clearance); output budget; 64KiB stderr evidence loop; close-independent cleanup finalizer for register hook; doubleThe result of the cancellation and cleanup is that the hook is not re-routed
+ * [INPUT]: Depends on BackendDescriptor headlessSpec, the platform capability matrix, macOS seatbelt, Node detached spawn, process-group and per-backend process supervisor
+ * [OUTPUT]: Provides unique HeadlessExecutor: rejects unsupported platforms before lease/runtime access, then passes through admission/identity review/re-analysis and sync spawn/register window deadline signal; typified preflight abort; runtime snapshot; executor/confirmed backend OS fences (with spec readOnlyRoots only); asynchronous spec; prepared with the correct release (preflight failed to be recycled and refused; finalize recycled after process group clearance); output budget; 64KiB stderr evidence loop; close-independent cleanup finalizer for register hook; doubleThe result of the cancellation and cleanup is that the hook is not re-routed
  * [POS]: The host of the non-interactive process backends; The default unified seatbelt, only the enforcement matrix has been confirmed that the back end can declare the native OS sandbox
  */
 
@@ -41,6 +41,11 @@ import type {
   ResolvedRuntime,
 } from "./types";
 import type { BackendRuntimeSnapshot } from "./runtime-registry";
+import {
+  assertPlatformCapability,
+  resolvePlatformCapabilities,
+  type PlatformCapabilities,
+} from "../../../shared/platform-capabilities";
 
 const MAX_LINE_BYTES = 1024 * 1024;
 const MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
@@ -105,6 +110,7 @@ export class HeadlessExecutor {
         descriptor: BackendDescriptor,
         signal: AbortSignal
       ) => Promise<ResolvedRuntime>;
+      platformSupport?: PlatformCapabilities;
     } = {}
   ) {}
 
@@ -116,6 +122,12 @@ export class HeadlessExecutor {
       snapshot?: BackendRuntimeSnapshot;
     } = {}
   ): HeadlessRun {
+    if (this.dependencies.platformSupport) {
+      assertPlatformCapability(
+        this.dependencies.platformSupport,
+        "headlessSandbox"
+      );
+    }
     const controller = new AbortController();
     const signal = options.signal
       ? AbortSignal.any([controller.signal, options.signal])
@@ -601,4 +613,6 @@ export class HeadlessExecutor {
 
 }
 
-export const headlessExecutor = new HeadlessExecutor();
+export const headlessExecutor = new HeadlessExecutor({
+  platformSupport: resolvePlatformCapabilities(process.platform),
+});

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on RelayLedger, ChatService/ChatStore, SettingsStore, Agent bridge main service, Memory, start up the account, manually/notice, run the unit with the backend probe
- * [OUTPUT]: Provides artificial/relay durable FIFO, conversation thresholds, App transitions held, delivery, isTransitioning/hasDurableActiveTurn and kick; All manual owners have a universal Workspace lifecycle with a lock run runNext Run download Manual/startTurn after rigorous testing
- * [POS]: The only arbitrator of the sections/coordinator is the interconversation; The renderer/MCP only submits intent, chat append and Agent claim are both advanced in this module
+ * [INPUT]: Depends on relay/state ledgers, Chat and Settings services, Agent main bridge, memory/bootstrap ports, manual-turn helpers, and the canonical residence index
+ * [OUTPUT]: Provides durable manual/relay FIFO admission, per-conversation scheduling, delivery, transition/active-turn probes, and queue wake-up operations
+ * [POS]: Sections coordinator arbiter; renderer and MCP callers submit intents while this module alone advances Chat commits and Agent claims
  */
 
 import type {
@@ -11,18 +11,16 @@ import type {
   SteerOutboxProjection,
   TurnPersistOutcome,
 } from "../../../../shared/agent-ipc";
-import {
-  type ChatMessage,
-  type TurnCommitInput,
-} from "../../../../shared/chats-ipc";
+import type { ChatMessage } from "../../../../shared/chats-ipc";
 import type { ManualTurnReceipt, TrustedManualTurnSubmission as ManualTurnSubmission, RelayActionsSnapshot } from "../../../../shared/sections-ipc";
 import { ConversationQueue } from "./scheduler/conversation-queue";
 import {
+  blockedReceiptFor,
   isRunnableDeliverable,
   nextDeliverable,
 } from "./scheduler/deliverable";
 import type { BuiltinToolContext } from "../../tools/registry";
-import { relayExpectation } from "./coordinator-values";
+import { coordinatorResidenceIndex, relayExpectation } from "./coordinator-values";
 import {
   runManualTurn,
 } from "./manual-turns";
@@ -46,6 +44,12 @@ import {
   pendingProjectConversationIds,
   type CoordinatorDependencies,
 } from "./coordinator-runtime";
+import {
+  prepareTurnResult,
+  skillTruncationNoticeId,
+  type TurnPreparationEvent,
+} from "./turn-preparation";
+import type { PreparedManualTurn } from "./admission/prepared-manual-turn";
 export type { RelayToolStatus } from "./admission/section-tool-admission";
 
 export class ConversationCoordinator {
@@ -210,7 +214,7 @@ export class ConversationCoordinator {
           ? task()
           : this.conversations.run(conversationId, task),
       blockedReceipt: (conversationId) =>
-        this.blockedReceipt(conversationId),
+        blockedReceiptFor(this.dependencies.ledger, conversationId),
       isRunning: (conversationId) => this.running.has(conversationId),
       markRunning: (conversationId) => this.running.add(conversationId),
       releaseRunningIfIdle: (conversationId) =>
@@ -264,6 +268,23 @@ export class ConversationCoordinator {
       this.kick(current.conversationId);
     });
   }
+
+  preparedSkillSelections() {
+    return Object.values(
+      this.dependencies.ledger.snapshot().manualIntents
+    ).flatMap((intent) => {
+      if (["settled", "failed"].includes(intent.phase) || !intent.payload) {
+        return [];
+      }
+      const prepared = intent.payload as PreparedManualTurn;
+      return [{
+        requestId: intent.requestId,
+        receipt: prepared.skillSelection,
+      }];
+    });
+  }
+
+  residenceIndex() { return coordinatorResidenceIndex(this.dependencies.ledger.snapshot()); }
 
   async ackManualIntents(intentIds: readonly string[]) {
     await this.dependencies.ledger.ackManualIntents(intentIds);
@@ -375,6 +396,10 @@ export class ConversationCoordinator {
     return this.conversations.run(event.conversationId, async () => {
       try {
         await this.steerOutbox.markTurnTerminal(event.requestId);
+        await this.notices.settleDependent(
+          skillTruncationNoticeId(event.conversationId, event.requestId),
+          event.outcome === "stored"
+        );
         const manual = this.dependencies.ledger.read((state) =>
           Object.values(state.manualIntents).find(
             (candidate) =>
@@ -448,49 +473,9 @@ export class ConversationCoordinator {
     });
   }
 
-  async onTurnPrepared(event: {
-    conversationId: string;
-    requestId: string;
-    terminal: "done" | "cancelled" | "error";
-    commit: TurnCommitInput;
-  }) {
+  async onTurnPrepared(event: TurnPreparationEvent) {
     await this.conversations.run(event.conversationId, async () => {
-      const manual = Object.values(
-        this.dependencies.ledger.snapshot().manualIntents
-      ).find(
-        (candidate) =>
-          candidate.requestId === event.requestId &&
-          candidate.phase === "claimed"
-      );
-      if (manual) {
-        await this.dependencies.ledger.prepareManualResult(manual.id, {
-          terminal: event.terminal,
-          outcome: event.commit.message ? "stored" : "empty",
-          ...(event.commit.message
-            ? { assistantMessage: event.commit.message }
-            : {}),
-        });
-        return;
-      }
-      const relay = Object.values(
-        this.dependencies.ledger.snapshot().relays
-      ).find(
-        (candidate) =>
-          candidate.requestId === event.requestId &&
-          candidate.deliveryPhase === "claimed"
-      );
-      if (!relay) return;
-      await this.dependencies.ledger.transition(
-        relay.id,
-        relayExpectation(relay, "claimed"),
-        {
-          assistantOutbox: {
-            terminal: event.terminal,
-            ...(event.commit.message ? { message: event.commit.message } : {}),
-            state: "pending",
-          },
-        }
-      );
+      await prepareTurnResult(this.dependencies, event);
     });
   }
 
@@ -792,13 +777,4 @@ export class ConversationCoordinator {
     }
   }
 
-  private blockedReceipt(conversationId: string) {
-    const head = nextDeliverable(this.dependencies.ledger, conversationId);
-    if (head?.kind !== "relay") return {};
-    return {
-      blockedBy: isRunnableDeliverable(head)
-        ? "relay-queue" as const
-        : "chain-paused" as const,
-    };
-  }
 }

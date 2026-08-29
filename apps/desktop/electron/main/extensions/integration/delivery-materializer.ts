@@ -22,7 +22,7 @@ import { admitExtensionPackage, type AdmittedMcpServer } from "../manifest-adapt
 
 export type MaterializedExtensionSkill = Readonly<{
   deliveryInstanceId: string;
-  componentIdentity: string;
+  componentInstanceIdentity: string;
   name: string;
   /** 本轮私有只读副本；后端永远看不到包根原路径 */
   path: string;
@@ -35,7 +35,7 @@ export type DeliveryMaterializationFailure = Readonly<{
 
 export type MaterializedExtensionMcpServer = Readonly<{
   deliveryInstanceId: string;
-  componentIdentity: string;
+  componentInstanceIdentity: string;
   componentId: string;
   serverId: string;
   packageGenerationRef: ComponentDeliveryPlan["deliveries"][number]["packageGenerationRef"];
@@ -103,7 +103,7 @@ export async function materializeComponentDeliveries(input: {
     } catch (cause) {
       failures.push(
         failure(delivery.deliveryInstanceId, "snapshot-materialization-failed", {
-          componentIdentity: delivery.componentIdentity,
+          componentInstanceIdentity: delivery.componentInstanceIdentity,
           detail: errorMessage(cause),
         })
       );
@@ -121,14 +121,14 @@ function assertDeliveryReference(
   delivery: ComponentDeliveryPlan["deliveries"][number]
 ) {
   if (
-    input.plan.inventoryRevision !== input.inventory.revision ||
+    input.plan.visibleInventoryVersion !== input.inventory.visibleInventoryVersion ||
     input.plan.capabilitySnapshotDigest !== input.capability.snapshotDigest ||
-    input.capability.inventoryRevision !== input.inventory.revision
+    input.capability.visibleInventoryVersion !== input.inventory.visibleInventoryVersion
   ) {
     throw new Error("delivery plan/capability/inventory 快照不一致");
   }
   const capability = input.capability.entries.find((entry) =>
-    entry.componentIdentity === delivery.componentIdentity &&
+    entry.componentInstanceIdentity === delivery.componentInstanceIdentity &&
     entry.packageGenerationRef.packageGenerationId ===
       delivery.packageGenerationRef.packageGenerationId &&
     entry.packageGenerationRef.recordDigest === delivery.packageGenerationRef.recordDigest
@@ -147,7 +147,7 @@ function findComponent(
   delivery: ComponentDeliveryPlan["deliveries"][number]
 ) {
   const component = inventory.components.find(
-    (item) => item.componentIdentity === delivery.componentIdentity &&
+    (item) => item.componentInstanceIdentity === delivery.componentInstanceIdentity &&
       item.packageGenerationRef.packageGenerationId ===
         delivery.packageGenerationRef.packageGenerationId &&
       item.packageGenerationRef.recordDigest ===
@@ -204,7 +204,7 @@ async function materializeSkill(
   }
   return {
     deliveryInstanceId: delivery.deliveryInstanceId,
-    componentIdentity: delivery.componentIdentity,
+    componentInstanceIdentity: delivery.componentInstanceIdentity,
     name: parseSkillFrontmatter(trusted.toString("utf8"), directory).name,
     path,
   };
@@ -248,7 +248,7 @@ async function materializeMcp(
   }
   const identity = {
     deliveryInstanceId: delivery.deliveryInstanceId,
-    componentIdentity: delivery.componentIdentity,
+    componentInstanceIdentity: delivery.componentInstanceIdentity,
     componentId: component.componentId,
     serverId: component.serverId,
     packageGenerationRef: structuredClone(delivery.packageGenerationRef),

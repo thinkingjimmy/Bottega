@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ExtensionRegistryStore, lifecycle ledger, reservation ledger, grant store, build participant and Attach's narrow sealed-resolution/migration port
- * [OUTPUT]: Provides AppExtensionIntegration: one-time installation of registry/lifecycle/installer/ledger/grant/participant/drain provider, durable MCP custody, discontinuation of the container, physical unloading with AppExtensionGenerationPort
- * [POS]: The combination root accessories for the App×Extension; The two domains are still written in their own language, and this document is only responsible for the link and order
+ * [INPUT]: Depends on scoped Extension Registry/lifecycle stores, App reservation/grant/build ports, Project context, and retained-data custody
+ * [OUTPUT]: Provides AppExtensionIntegration with visible-inventory App binding, lifecycle recovery, exact Project cleanup, delivery custody, and uninstall ports
+ * [POS]: App×Extension composition root; each domain keeps its own ledger while this module fixes dependency order and Project cleanup ownership
  */
 
 import type { AppExtensionGenerationPort } from "../../apps/app-extension-generation";
@@ -12,6 +12,7 @@ import { ExtensionRegistryStore } from "../registry-store";
 import {
   ExtensionInstaller,
   type ExtensionInstallerFaults,
+  type ExtensionProjectInstallAuthority,
   type ExtensionSourceFetcher,
 } from "../install/installer";
 import { ExtensionDisableConvergence } from "../lifecycle/disable-convergence";
@@ -31,6 +32,8 @@ import {
   type AppGenerationMigrationCommand,
 } from "./app-migration";
 import { AppExtensionReservationLedger } from "./reservation-ledger";
+import type { TurnProjectContext } from "../../../../shared/product-resource-scope";
+import type { AgentBackendId } from "../../../../shared/agent-ipc";
 
 export type AppExtensionIntegration = Readonly<{
   registry: ExtensionRegistryStore;
@@ -45,8 +48,20 @@ export type AppExtensionIntegration = Readonly<{
   reservations: AppExtensionReservationLedger;
   grants: AppExtensionGrantStore;
   participant: AppExtensionBuildParticipant;
+  contextForApp(appId: string): TurnProjectContext;
   port: AppExtensionGenerationPort;
-  initialize(): Promise<void>;
+  cleanupProject(input: {
+    projectId: string;
+    projectLifecycleRevision: number;
+    resourceAdmissions: readonly Readonly<{
+      operationId: string;
+      installIdentity: string;
+      projectLifecycleRevision: number;
+    }>[];
+  }): Promise<void>;
+  initialize(options?: Readonly<{
+    afterRegistryInitialize?: () => void | Promise<void>;
+  }>): Promise<void>;
 }>;
 
 export function createAppExtensionIntegration(input: {
@@ -60,6 +75,9 @@ export function createAppExtensionIntegration(input: {
   fetchSource?: ExtensionSourceFetcher;
   /** 只供崩溃窗口回归；生产不装配。 */
   installerFaults?: ExtensionInstallerFaults;
+  projectContextForApp?: (appId: string) => TurnProjectContext;
+  backendForApp?: (appId: string) => AgentBackendId;
+  projectInstallAuthority?: ExtensionProjectInstallAuthority;
 }): AppExtensionIntegration {
   const registry = new ExtensionRegistryStore(input.userData);
   const lifecycle = new ExtensionLifecycleLedger(input.userData);
@@ -81,14 +99,17 @@ export function createAppExtensionIntegration(input: {
     epochs,
     VALIDATOR_FIXTURE_DIGEST,
     input.fetchSource,
-    input.installerFaults
+    input.installerFaults,
+    input.projectInstallAuthority
   );
   const reservations = new AppExtensionReservationLedger(input.userData, registry);
   const grants = new AppExtensionGrantStore(input.userData);
   const participant = new AppExtensionBuildParticipant(
     registry,
     reservations,
-    input.readSealedResolution
+    input.readSealedResolution,
+    input.projectContextForApp,
+    input.backendForApp
   );
   const uninstall = new ExtensionPackageUninstall(
     registry,
@@ -117,6 +138,62 @@ export function createAppExtensionIntegration(input: {
   input.drainProviders.register("app-extension", {
     count: async (target) => participant.generationDrainCount(target),
   });
+  const cleanupProject = async (context: {
+    projectId: string;
+    projectLifecycleRevision: number;
+    resourceAdmissions: readonly Readonly<{
+      operationId: string;
+      installIdentity: string;
+      projectLifecycleRevision: number;
+    }>[];
+  }) => {
+    const scope = { kind: "project", projectId: context.projectId } as const;
+    await installer.cancelProjectAdmissions(
+      context.projectId,
+      context.resourceAdmissions
+    );
+    for (const owner of registry.packageOwners(scope)) {
+      let packageRecord = registry.packageInventory(owner.installIdentity);
+      if (!packageRecord) continue;
+      if (packageRecord.administrativeState === "active") {
+        await convergence.beginDisable({
+          installIdentity: owner.installIdentity,
+          expectedScope: scope,
+          expectedProjectLifecycleRevision: context.projectLifecycleRevision,
+          expectedScopeRevision: registry.scopeRevision(scope),
+        });
+        const pending = convergence.convergenceOf(owner.installIdentity);
+        if (pending) {
+          throw new Error(
+            pending.blocked ?? `Extension disable 仍在收敛：${owner.installIdentity}`
+          );
+        }
+      }
+      packageRecord = registry.packageInventory(owner.installIdentity);
+      if (!packageRecord) continue;
+      await uninstall.begin({
+        installIdentity: owner.installIdentity,
+        expectedScope: scope,
+        expectedProjectLifecycleRevision: context.projectLifecycleRevision,
+        expectedScopeRevision: registry.scopeRevision(scope),
+      });
+      const pending = await uninstall.viewOf(owner.installIdentity);
+      if (pending) {
+        throw new Error(
+          pending.blocked ?? `Extension uninstall 仍在收敛：${owner.installIdentity}`
+        );
+      }
+    }
+    for (const owner of await epochs.listOwners(scope)) {
+      await uninstall.purgeInstallData({
+        installIdentity: owner.installIdentity,
+        expectedScope: scope,
+        expectedProjectLifecycleRevision: context.projectLifecycleRevision,
+        expectedScopeRevision: registry.scopeRevision(scope),
+      });
+    }
+    await registry.removeScopeTombstone(scope);
+  };
   return {
     registry,
     installer,
@@ -130,6 +207,10 @@ export function createAppExtensionIntegration(input: {
     reservations,
     grants,
     participant,
+    contextForApp:
+      input.projectContextForApp ??
+      (() => ({ projectId: null, projectLifecycleRevision: null })),
+    cleanupProject,
     port: {
       handoff: (generationBuildId) => participant.handoff(generationBuildId),
       /* 等价/缩权由 GrantStore 自己证明子集后写 derived；这里不复制那套判定。 */
@@ -185,8 +266,9 @@ export function createAppExtensionIntegration(input: {
         );
       },
     },
-    initialize: async () => {
+    initialize: async (options) => {
       await registry.initialize();
+      await options?.afterRegistryInitialize?.();
       /* writer gate 必须先从 durable custody 重建并 quarantine，再允许任何更新/
          卸载恢复检查 activeWriters；内存为空从来不是零 writer 证据。 */
       await mcpCustody.initialize();

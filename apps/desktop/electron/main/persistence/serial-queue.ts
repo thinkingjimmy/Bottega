@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the original Promise
  * [OUTPUT]: Provides anti-toxic SerialQueue, supporting sequential enqueue, shutdown, re-opening and flush barriers
- * [POS]: Electron main's general perpetuation write sequence kernel, consumed jointly by ChatStore and SettingsStore
+ * [POS]: Electron main's reusable write-order kernel, consumed by durable stores that must serialize state and side effects through shutdown
  */
 
 export class SerialQueue {

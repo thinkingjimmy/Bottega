@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/settings-ipc and preload exposed window.settings
- * [OUTPUT]: Provides revision Covered version get/set, Memory exclusive mutation, settings: changed Subscriptions, Casting valid language, Chat Home/Built-in tools with title/chat model packages and browser settings downgrade
+ * [OUTPUT]: Provides settings get/set/subscriptions, Skills-onboarding, Memory and Chat Home controls, scoped chat options with explicit session-effective reset, and browser fallbacks
  * [POS]: The main process of lib sets the IPC's only output and unifies the default model, scope, consolidation and renderer to display semantics
  */
 
@@ -116,6 +116,7 @@ let browserSettings: AppSettings = {
   lastSelectedBackend: "codex",
   autoRelayLimit: 25,
   usagePricingAutoRefresh: true,
+  skillsOnboarding: "pending",
   keyboardShortcuts: {},
   memory: {
     enabled: false,
@@ -406,9 +407,16 @@ export const resolveChatOptions = async (
 
 export const setChatOptions = async (
   scope: AgentScope,
-  options: AgentTurnOptions
+  options: AgentTurnOptions,
+  resetSessionEffective = false
 ) => {
-  if (window.settings) return window.settings.setChatOptions(scope, options);
+  if (window.settings) {
+    return window.settings.setChatOptions(
+      scope,
+      options,
+      resetSessionEffective
+    );
+  }
   const next = { ...options };
   const defaults = optionsForNextConversation(next);
   browserChatOptions.set(scopeKey(scope), next);

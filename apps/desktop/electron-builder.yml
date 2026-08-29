@@ -1,6 +1,6 @@
-# [INPUT]: Depends on electron-vite output, system skills, the Base GUI SDK, and pinned react-grab browser assets
-# [OUTPUT]: Produces the Bottega macOS DMG with runtime-only resources
-# [POS]: The public electron-builder release configuration for the desktop application
+# [INPUT]: Depends on electron-vite output, root LICENSE, system skills, the immutable Design factory payload, Base GUI SDK, icons, hardened-runtime entitlements, and pinned react-grab browser assets
+# [OUTPUT]: Produces Bottega macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage artifacts with an offline Design factory and GitHub update metadata
+# [POS]: The only desktop packaging configuration; release signing is fail-closed in release scripts while ordinary CI packaging remains unsigned
 
 appId: com.jimmywong.bottega
 productName: Bottega
@@ -10,10 +10,14 @@ files:
   - out/**
   - "!out/renderer/.chart-module-report.json"
 extraResources:
+  - from: ../../LICENSE
+    to: LICENSE
   - from: resources/icon.png
     to: icon.png
   - from: resources/skills
     to: skills
+  - from: resources/apps/Bottega-app-design-canvas
+    to: factory-apps/design-canvas
   - from: resources/gui-sdk
     to: gui-sdk
   - from: node_modules/react-grab/dist/index.global.js
@@ -21,6 +25,34 @@ extraResources:
   - from: node_modules/react-grab/dist/styles.css
     to: react-grab/styles.css
 mac:
-  target: dmg
-  identity: null
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  hardenedRuntime: true
+  notarize: true
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
   icon: resources/icon.png
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: resources/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-windows-${arch}.${ext}
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  icon: resources/icon.png
+  category: Utility
+  executableName: bottega
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
+publish:
+  provider: github
+  owner: thinkingjimmy
+  repo: Bottega

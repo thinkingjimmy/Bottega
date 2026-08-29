@@ -1,11 +1,16 @@
 /**
- * [INPUT]: Depends on React ReactNode, Lucide ChevronRight, ui/Button and Collapsible, @ai-chat/ui
- * [OUTPUT]: Provides SettingsCanvas ((includes fill: full page length does not roll) ∙ SettingsSection, SettingsAlert, SettingsSurface, SettingsList, SettingsRow, SettingsChoiceRow, SettingsNoteList, SettingsEmpty, SettingsDisclosure, SettingsButton and SettingsSwitch 12 pure display languages
- * [POS]: The settings module is a single truth source; Settings View declares only semantics, no longer handwriting, grouping headings, setting lines, blank spaces, folding triggers, button size and switch style.The interactive object is in SettingsList, and the list of several files is in SettingsChoiceRowSelect trailing, hanging the queue status, nested, allowing the content to be further shortened to express secondary, children to place the actions belonging only to the file outside the target area), clear the SettingsNoteList, none of them are SettingsEmpty, read enough instructions to set a layer of SettingsDisclosure, and fail the SettingsAlert.The content of the list that needs to be surface but not row is settings surface. Settings surface list, or settings surface + divide-y, the page can no longer hide the second set of surface
+ * [INPUT]: Depends on React useId/ReactNode, Lucide ChevronRight and ArrowUpRight, ui/Button/Collapsible/Tooltip, and @ai-chat/ui styling primitives
+ * [OUTPUT]: Provides fifteen Settings display primitives, including delayed accessible tooltips shared by SettingsIconButton and SettingsLabelAction (the icon action that defers to the title beside it), and SettingsChoiceRow with roving radio selection, legal title metadata, and a disclosure form whose full row opens the drawer while the knob alone selects
+ * [POS]: Single visual and accessibility authority for Settings surfaces, rows, links, radio choices, disclosures, buttons, and switches; domain views declare semantics instead of rebuilding control structure
  */
 
-import type { ComponentProps, ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
+import {
+  useId,
+  type ComponentProps,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
+import { ArrowUpRight, ChevronRight } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import {
@@ -13,6 +18,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@ai-chat/ui/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@ai-chat/ui/components/ui/tooltip";
 import { cn } from "@ai-chat/ui/lib/utils";
 
 /* ============================================================
@@ -171,6 +182,10 @@ export function SettingsAlert({
  *
  * overflow-hidden 焊在这里：圆角要真的裁到子元素，否则首尾行的
  * 底色会从圆角外溢出来。浮层一律走 Portal，不受它影响。
+ *
+ * 那条 ring 是外扩的（画在 border box 之外）。它会不会被裁，是裁剪层的
+ * 责任而不是表面的——滚动容器必须给子元素的描边留出余量，AppDialogBody
+ * 就是这么做的。表面不该反过来去猜谁在裁自己。
  * ============================================================ */
 
 export function SettingsSurface({
@@ -205,27 +220,41 @@ export function SettingsList({ className, ...props }: ComponentProps<"div">) {
 }
 
 /* ============================================================
- * 设置行：左侧语义（标签 + 说明），右侧控件。
+ * 设置行：左侧语义（标签 + 状态徽标 + 说明），右侧控件。
  * 说明随状态改写，禁用永远可解释。
+ *
+ * badge 贴在名字后面而不是塞进右侧控件区：状态是「这一项是什么」
+ * 的一部分，不是一个可操作的东西。名字读完立刻知道它是死是活，
+ * 眼睛不必先横穿一整行去右边找答案。
  * ============================================================ */
 
 export function SettingsRow({
   label,
   htmlFor,
+  badge,
   description,
   control,
 }: {
   label: string;
-  htmlFor: string;
+  /** 只在 control 真有可关联的表单元素时传：悬空的 htmlFor 是无障碍谎言。 */
+  htmlFor?: string;
+  badge?: ReactNode;
   description?: ReactNode;
   control: ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-6 px-4 py-3">
       <div className="min-w-0">
-        <label htmlFor={htmlFor} className="font-medium text-sm">
-          {label}
-        </label>
+        <div className="flex items-center gap-2">
+          {htmlFor ? (
+            <label htmlFor={htmlFor} className="font-medium text-sm">
+              {label}
+            </label>
+          ) : (
+            <span className="font-medium text-sm">{label}</span>
+          )}
+          {badge}
+        </div>
         {description && (
           <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
             {description}
@@ -234,6 +263,57 @@ export function SettingsRow({
       </div>
       <div className="shrink-0">{control}</div>
     </div>
+  );
+}
+
+/* ============================================================
+ * 外跳行：整行就是命中区，行尾一支箭头说清点下去会离开应用。
+ *
+ * 它的成因是 About：从前每条链接是一行文字配一颗右侧描边按钮，于是
+ * 同一行里「可读的」和「可点的」被割成两块——按钮不到 100px，行有
+ * 848px，剩下那七百多像素读起来像可以点，按下去什么也不会发生。判据
+ * 与 SettingsChoiceRow 同源：文字与动作讲的是同一件事，那它们就该共用
+ * 同一个命中区。
+ *
+ * 描述位刻意收窄语义——它说的是「点过去会看到什么」（一个域名、一句
+ * 去处），不是 SettingsRow 那种「这一项现在怎么样」的状态。状态属于
+ * 可改的设置项，而这一行没有任何东西可改。
+ *
+ * 箭头焊死不留开关：这个原语的全部承诺就是「这一下会离开应用」。哪天
+ * 真需要一个就地展开的行，那是另一种承诺，该另起一个名字，而不是给这
+ * 里加一个 boolean 让同一个名字说两件事。
+ * ============================================================ */
+
+export function SettingsLinkRow({
+  label,
+  description,
+  onSelect,
+}: {
+  label: string;
+  description?: ReactNode;
+  onSelect(): void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      /* 行高 64px 已远超 44px，故不必再借 ::after 撑命中区——
+         SettingsButton 那套触控补偿是给 32px 控件准备的。 */
+      className="flex w-full cursor-pointer touch-manipulation items-center justify-between gap-6 px-4 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset motion-reduce:transition-none"
+    >
+      <span className="min-w-0">
+        <span className="block font-medium text-sm">{label}</span>
+        {description && (
+          <span className="mt-1 block text-muted-foreground text-xs leading-relaxed">
+            {description}
+          </span>
+        )}
+      </span>
+      <ArrowUpRight
+        aria-hidden="true"
+        className="size-4 shrink-0 text-muted-foreground"
+      />
+    </button>
   );
 }
 
@@ -335,7 +415,7 @@ export function SettingsDisclosure({
   return (
     <Collapsible>
       {/* -mx-2 让文字与上下文左对齐，hover 底色仍有内边距可撑 */}
-      <CollapsibleTrigger className="group -mx-2 flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-muted-foreground text-xs transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none">
+      <CollapsibleTrigger className="group -mx-2 flex min-h-11 touch-manipulation cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-muted-foreground text-xs transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none">
         <ChevronRight className="size-3.5 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none" />
         {label}
       </CollapsibleTrigger>
@@ -369,6 +449,113 @@ export function SettingsButton({
       {...props}
       className={cn("h-8 px-3", className)}
       size="lg"
+    />
+  );
+}
+
+/* ============================================================
+ * 图标动作：与 SettingsButton 同族的方形版，只是把文字换成图标。
+ *
+ * 它的成因是 Memory 引擎抽屉：一行里主动作带文字（升级、配置），
+ * 次动作只有图标（选版本、发布说明、卸载、显示位置、重新检测）。
+ * 从前次动作是一串点线链接，与描边按钮并排——同一排里两种控件语言，
+ * 读者得先分辨「这个能点吗」再决定看不看。主次该由**有没有文字**表达，
+ * 而不是由「是不是按钮」表达：边框、高度、圆角三样必须与文字按钮同源，
+ * 否则一排读起来就是散的。
+ *
+ * label 是必填且一物二用：aria-label 播报给读屏，Tooltip 悬停/聚焦给
+ * 鼠标与键盘。图标按钮没有可读文字，少了它这颗按钮就等于不存在。
+ *
+ * 命中区沿用 pill 的做法——视觉 32px，::after 撑到 44px 高，不占版面。
+ * 横向只借 4px：调用方以 gap-2 排布时，相邻两颗的命中区恰好相接而不
+ * 重叠。重叠意味着边界上的一次点击归谁全看 DOM 次序，而这一排里正
+ * 坐着「卸载」——把破坏性动作交给栈序去仲裁，是不可接受的。
+ * ============================================================ */
+
+/** 无文字的东西必须自己报名字：aria-label 给读屏，tooltip 给鼠标。
+    两种图标按钮的层级不同，但「怎么报名字」只该有一份实现。 */
+function namedIcon(label: string, button: ReactNode) {
+  return (
+    <TooltipProvider delayDuration={350}>
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent side="top" sideOffset={6}>
+          {label}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+export function SettingsIconButton({
+  label,
+  className,
+  ...props
+}: Omit<ComponentProps<typeof Button>, "size" | "aria-label" | "title"> & {
+  /** 同时作为 aria-label 与 Tooltip 文案：图标本身不可读。 */
+  label: string;
+}) {
+  return namedIcon(
+    label,
+    <Button
+      type="button"
+      variant="outline"
+      {...props}
+      aria-label={label}
+      size="lg"
+      className={cn(
+        "relative size-8 touch-manipulation px-0 after:absolute after:-inset-x-1 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
+        className
+      )}
+    />
+  );
+}
+
+/* ============================================================
+ * 标题旁的图标动作：它必须让位给标题。
+ *
+ * 与 SettingsIconButton 是两件事，尽管两者都只有一个图标：那个住在
+ * 属性行里，自带边框与 32px 高度，一排读起来是一族；这个寄居在一行
+ * 文字中间，边框会让它读成另一个层级，而满色的图标会让一个次要入口
+ * 跟标题抢第一眼。
+ *
+ * 它的成因是漂移：外链图标曾在引擎册与初次设置里各写一份 className，
+ * 一份写了 muted 与 hover 分级，另一份只写了 variant="ghost"——于是同
+ * 一个图标在两页上一深一浅。同一个东西写到第二遍就该有名字。
+ *
+ * hover 底色锁在 (hover:hover) and (pointer:fine) 里：触屏上的 hover
+ * 按下去就粘住，一个粘住的高亮读起来像「这一项被选中了」。
+ * ============================================================ */
+
+export function SettingsLabelAction({
+  label,
+  className,
+  ...props
+}: Omit<
+  ComponentProps<typeof Button>,
+  "size" | "variant" | "aria-label" | "title"
+> & {
+  /** 同时作为 aria-label 与 Tooltip 文案：图标本身不可读。 */
+  label: string;
+}) {
+  return namedIcon(
+    label,
+    <Button
+      type="button"
+      variant="ghost"
+      {...props}
+      aria-label={label}
+      size="lg"
+      className={cn(
+        /* -ml-1 收掉图标左侧的内边距，让它贴住标题——它是标题的附注，
+           不是这一行里的下一个词。命中区横向只借 6px：紧挨着它的就是
+           标题本身，重叠意味着一次点在名字上的点击可能开了浏览器。 */
+        "-ml-1 relative size-8 touch-manipulation px-0 text-muted-foreground",
+        "after:absolute after:-inset-x-1.5 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
+        "hover:bg-transparent hover:text-muted-foreground dark:hover:bg-transparent",
+        "[@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground [@media(hover:hover)_and_(pointer:fine)]:dark:hover:bg-muted/50",
+        className
+      )}
     />
   );
 }
@@ -447,6 +634,8 @@ export function SettingsSwitch({
 
 export function SettingsChoiceRow({
   label,
+  labelMeta,
+  labelAction,
   description,
   checked,
   disabled,
@@ -454,8 +643,13 @@ export function SettingsChoiceRow({
   trailing,
   nested,
   children,
+  disclosure,
 }: {
   label: string;
+  /** 紧跟名称的短事实，如版本号；它属于 radio 的可读标题。 */
+  labelMeta?: ReactNode;
+  /** 紧跟标题但独立执行的动作；作为 radio 的兄弟节点，禁止按钮嵌套。 */
+  labelAction?: ReactNode;
   description?: ReactNode;
   checked: boolean;
   disabled?: boolean;
@@ -466,69 +660,169 @@ export function SettingsChoiceRow({
   nested?: boolean;
   /** 只属于这一档的动作。它在命中区之外——点「修复安装」不该顺手选中。 */
   children?: ReactNode;
+  /** 这一档带抽屉时的展开控制。给了它，整行命中区就归展开，圈缩回自己
+      那 44px 里去。
+
+      两个动作的代价差着量级：展开是免费的、可逆的，看完收起来什么也没
+      发生；换档要签字、回不去。把不可逆的那个铺满整行，等于让一次好奇
+      心变成一次换代——命中区的大小该按后果给，不是按控件大小给。 */
+  disclosure?: {
+    open: boolean;
+    /** 读屏念的那句话，随开合换词（「管理 X」/「收起 X」）。 */
+    label: string;
+    /** 需要处置的那一档收不起来：折叠永远藏不住一件坏掉的东西。 */
+    disabled?: boolean;
+    onToggle(): void;
+  };
 }) {
-  const row = (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={checked}
-      disabled={disabled}
-      /* 选中的那一档是这一组唯一的 Tab 落点；方向键在组内走。 */
-      tabIndex={checked ? 0 : -1}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        const forward = event.key === "ArrowDown" || event.key === "ArrowRight";
-        const backward = event.key === "ArrowUp" || event.key === "ArrowLeft";
-        if (!forward && !backward) return;
-        event.preventDefault();
-        const group = event.currentTarget.closest('[role="radiogroup"]');
-        const options = Array.from(
-          group?.querySelectorAll<HTMLButtonElement>(
-            '[role="radio"]:not(:disabled)'
-          ) ?? []
-        );
-        const index = options.indexOf(event.currentTarget);
-        if (index < 0 || options.length === 0) return;
-        const next =
-          options[
-            (index + (forward ? 1 : options.length - 1)) % options.length
-          ];
-        next?.focus();
-        next?.click();
-      }}
+  const labelId = useId();
+  const descriptionId = useId();
+  const moveWithArrow = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const forward = event.key === "ArrowDown" || event.key === "ArrowRight";
+    const backward = event.key === "ArrowUp" || event.key === "ArrowLeft";
+    if (!forward && !backward) return;
+    event.preventDefault();
+    const group = event.currentTarget.closest('[role="radiogroup"]');
+    const options = Array.from(
+      group?.querySelectorAll<HTMLButtonElement>(
+        '[role="radio"]:not(:disabled)'
+      ) ?? []
+    );
+    const index = options.indexOf(event.currentTarget);
+    if (index < 0 || options.length === 0) return;
+    const next =
+      options[(index + (forward ? 1 : options.length - 1)) % options.length];
+    next?.focus();
+    next?.click();
+  };
+  const indicator = (
+    <span
+      aria-hidden="true"
       className={cn(
-        "flex min-h-11 w-full cursor-pointer touch-manipulation items-start gap-3 py-3 pr-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:cursor-not-allowed disabled:opacity-50",
-        nested ? "pl-8" : "pl-4"
+        /* mt-px 而非 mt-0.5：圈 18px，标题一行是 20px，居中差的正是这
+           1px。行内每样东西都该按那一行文字对齐，而不是各自贴顶。 */
+        "mt-px grid size-[18px] shrink-0 place-items-center rounded-full ring-inset transition-shadow motion-reduce:transition-none",
+        checked
+          ? "ring-[1.5px] ring-foreground"
+          : "ring-[1.5px] ring-muted-foreground/40"
       )}
     >
-      {/* 与 SettingsSwitch 同一套黑白语言：选中不靠第二种强调色，
-          靠一个实心点在场。 */}
       <span
-        aria-hidden="true"
         className={cn(
-          "mt-0.5 grid size-[18px] shrink-0 place-items-center rounded-full ring-inset transition-shadow motion-reduce:transition-none",
-          checked
-            ? "ring-[1.5px] ring-foreground"
-            : "ring-[1.5px] ring-muted-foreground/40"
+          "size-[9px] rounded-full bg-foreground transition-transform motion-reduce:transition-none",
+          checked ? "scale-100" : "scale-0"
         )}
+      />
+    </span>
+  );
+  const content = (
+    <span className="min-w-0 flex-1">
+      <span
+        data-settings-choice-heading=""
+        className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
       >
-        <span
-          className={cn(
-            "size-[9px] rounded-full bg-foreground transition-transform motion-reduce:transition-none",
-            checked ? "scale-100" : "scale-0"
-          )}
-        />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-medium text-sm">{label}</span>
-        {description && (
-          <span className="mt-1 block text-muted-foreground text-xs leading-relaxed">
-            {description}
+        <span id={labelId} className="font-medium text-sm">
+          {label}
+        </span>
+        {labelMeta}
+        {labelAction && (
+          /* h-5 是 text-sm 的行高，把这个槽锁死在一行文字上：塞进来的
+             按钮通常有 32px，撑高标题行的代价是那颗单选圈当场偏上——它
+             的位置按一行文字算，而标题此刻在一个更高的盒子里居中。高度
+             归这里一处管，调用方不必各自记得写负 margin。 */
+          <span className="pointer-events-auto relative z-20 inline-flex h-5 items-center">
+            {labelAction}
           </span>
         )}
       </span>
-      {trailing && <span className="shrink-0">{trailing}</span>}
-    </button>
+      {description && (
+        <span
+          id={descriptionId}
+          className="mt-1 block text-muted-foreground text-xs leading-relaxed"
+        >
+          {description}
+        </span>
+      )}
+    </span>
+  );
+  const radioProps = {
+    type: "button" as const,
+    role: "radio" as const,
+    "aria-checked": checked,
+    "aria-labelledby": labelId,
+    "aria-describedby": description ? descriptionId : undefined,
+    disabled,
+    tabIndex: checked ? 0 : -1,
+    onClick: onSelect,
+    onKeyDown: moveWithArrow,
+  };
+  const rowClasses = cn(
+    "flex min-h-11 w-full cursor-pointer touch-manipulation items-start gap-3 py-3 text-left outline-none",
+    disclosure ? "pr-3" : "pr-4",
+    nested ? "pl-8" : "pl-4"
+  );
+  /* 一行只有一颗铺满的按钮，谁来铺由后果决定：没有抽屉时能做的只有
+     选择，它自然铺满；有抽屉时展开铺满，选择缩回圈里那 44px。展开免费
+     可逆，换档要签字回不去——命中区按后果给，不按控件大小给。 */
+  const fillProps = disclosure
+    ? {
+        type: "button" as const,
+        "aria-expanded": disclosure.open,
+        "aria-label": disclosure.label,
+        disabled: disclosure.disabled,
+        onClick: disclosure.onToggle,
+      }
+    : radioProps;
+  const row = (
+    <div
+      className={cn(
+        "relative",
+        rowClasses,
+        /* 有抽屉时 disabled 说的只是「这一档还切不过去」，抽屉照样能开
+           （里面装的正是让它能切过去的那个动作）。整行跟着变灰，等于
+           把一扇开着的门画成锁上的。 */
+        !disclosure && disabled && "cursor-not-allowed opacity-50"
+      )}
+    >
+      <button
+        {...fillProps}
+        className="absolute inset-0 z-0 cursor-pointer touch-manipulation outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:cursor-not-allowed"
+      />
+      <span className="pointer-events-none relative z-10 contents">
+        {disclosure ? (
+          <button
+            {...radioProps}
+            className={cn(
+              "pointer-events-auto relative flex shrink-0 cursor-pointer touch-manipulation items-start rounded-full outline-none",
+              /* 圈只有 18px，命中区独自撑到 44px——与 Button size="pill"
+                 同一手法：看起来多大与点得中多大是两个问题。 */
+              "after:-translate-x-1/2 after:-translate-y-1/2 after:absolute after:top-1/2 after:left-1/2 after:size-11 after:content-['']",
+              "focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-40"
+            )}
+          >
+            {indicator}
+          </button>
+        ) : (
+          indicator
+        )}
+        {content}
+        {/* 行尾状态锁在标题那一行的高度上：它的字号比标题小，贴顶会让
+            它整体上浮，读起来像浮在名字上方而不是与名字并排。 */}
+        {trailing && (
+          <span className="flex h-5 shrink-0 items-center">{trailing}</span>
+        )}
+        {disclosure && (
+          <ChevronRight
+            aria-hidden="true"
+            className={cn(
+              "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none",
+              disclosure.open && "rotate-90",
+              disclosure.disabled && "opacity-40"
+            )}
+          />
+        )}
+      </span>
+    </div>
   );
   if (!children) return row;
   /* 动作缩进到标签那条竖线上（圈 18px + gap 12px），否则它与圈左对齐，

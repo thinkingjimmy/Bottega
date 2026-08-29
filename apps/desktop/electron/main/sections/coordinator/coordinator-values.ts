@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node crypto, Agent/Chat IPC type and built-in MCP/ledger record
- * [OUTPUT]: ProvIDes coordinator canonical hash, definiteness ID, chain/ref, relay input and context-only functions that can be excluded by message ID
- * [POS]: The unstable object module of sections/coordinator, separating the testable format rules from the ConversationCoordinator scheduling
+ * [INPUT]: Depends on Node crypto plus Agent/Chat IPC, built-in MCP context, and coordinator ledger records
+ * [OUTPUT]: Provides canonical hashes, deterministic IDs, chain/ref values, relay inputs, context filtering, and request-to-conversation residence lookup
+ * [POS]: Pure value layer for sections/coordinator, keeping testable formatting and lookup rules outside ConversationCoordinator scheduling
  */
 
 import { createHash } from "node:crypto";
@@ -13,6 +13,34 @@ import type {
   RelayRecord,
   SectionRef,
 } from "./relay-ledger";
+import type { LedgerState } from "./state/ledger-schema";
+
+export function coordinatorResidenceIndex(state: LedgerState) {
+  return {
+    manualRequest: (requestId: string) =>
+      Object.values(state.manualIntents).find(
+        (candidate) => candidate.requestId === requestId
+      )?.conversationId,
+    intent: (intentId: string) =>
+      state.manualIntents[intentId]?.conversationId ??
+      state.submissionOutcomes[intentId]?.conversationId,
+    relayRequest: (requestId: string) =>
+      Object.values(state.relays).find(
+        (candidate) => candidate.requestId === requestId
+      )?.target.chatId,
+    action: (actionId: string) => {
+      const rootChainId = state.actions[actionId]?.rootChainId;
+      if (!rootChainId) return [];
+      return [...new Set(
+        Object.values(state.relays)
+          .filter((relay) => relay.rootChainId === rootChainId)
+          .flatMap((relay) => [relay.source.chatId, relay.target.chatId])
+      )];
+    },
+    steerOutbox: (outboxRef: string) =>
+      state.steerIntents[outboxRef]?.conversationId,
+  };
+}
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);

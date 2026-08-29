@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared ForeignHistoryBlock/ForeignHistoryMessage
- * [OUTPUT]: Provides user boundary turn, polymer, stable rendered row key and derivative of DOM anchor
+ * [OUTPUT]: Provides user-boundary rows plus canonical content-generation-scoped DOM anchors
  * [POS]: The source of the shared external source transcript identity; main Search locator and renderer line nodes cannot be used to calculate a set of keys
  */
 
@@ -55,4 +55,12 @@ export function groupForeignHistoryBlocks(
   return rows;
 }
 
-export const foreignHistoryAnchor = (key: string) => `foreign-${key}`;
+/**
+ * 外源 rowKey 只在一份解析结果里唯一；跨 revision/snapshot 复用它会让旧深链
+ * 命中新内容。把内容代际焊进 DOM 身份后，Transcript/Find/Outline/Plan 只能指向
+ * 同一份 canonical bytes。
+ */
+export const foreignHistoryAnchor = (
+  contentGenerationKey: string,
+  rowKey: string
+) => `foreign:${contentGenerationKey}:${rowKey}`;

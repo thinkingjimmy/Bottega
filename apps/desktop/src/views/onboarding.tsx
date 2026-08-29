@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, react-router navigation, useAppTranslation onboarding directory, SetupProvider judgments and reviews, onboarding-gate door list, brand name/side-to-side dark mark/single graphic, SetupBackendRow, settingsStore/settings bridge, lib/platform isApplePlatform (top-chrome platform split), settings-navigation of MEMORY_SETTINGS_PATH, shared AGENT_BACKEND_ORDER, ui/button/skeleton/spinner/tooltip/slim-scroller and lucide FolderOpen/ChevronLeft
- * [OUTPUT]: Provides a strict three-step, step-by-page OnboardingView (left dark branded barrel carries stepping towards stepper, right side carries current step and fixed action bars)
+ * [INPUT]: Depends on React, react-router navigation, useAppTranslation onboarding catalog, SetupProvider judgments, Library-first Skills discovery/import, settingsStore, brand assets, SetupBackendRow and Settings/UI primitives
+ * [OUTPUT]: Provides the required Chat Home/Agent onboarding followed by optional Skills discovery and Memory setup
  * [POS]: Insensible main-owned onboarding pages of views; The sequence of steps and blockages are all derived from the same judgment as the onboarding-gate, and the page itself is no longer a threshold
  */
 
@@ -27,6 +27,11 @@ import { MEMORY_SETTINGS_PATH } from "@/lib/settings-navigation";
 import { hasSettingsBridge } from "@/lib/settings-client";
 import { isApplePlatform } from "@/lib/platform";
 import { settingsStore } from "@/lib/settings-store";
+import {
+  importAllDiscoveredSkills,
+  listUnifiedSkillCandidates,
+  listUnifiedSkills,
+} from "@/lib/unified-skills-client";
 import { ONBOARDING_REQUIREMENTS } from "@/lib/onboarding-gate";
 import { AGENT_BACKEND_ORDER } from "../../shared/agent-ipc";
 
@@ -37,12 +42,12 @@ import { AGENT_BACKEND_ORDER } from "../../shared/agent-ipc";
  * 全部同源；记忆缀在末尾，它永远不进 missing，也就永远不拦人。新增一条
  * 门槛只改 onboarding-gate，这里自动多一页。
  * ============================================================ */
-const WIZARD_STEPS = [...ONBOARDING_REQUIREMENTS, "memory"] as const;
+const WIZARD_STEPS = [...ONBOARDING_REQUIREMENTS, "skills", "memory"] as const;
 type WizardStepId = (typeof WIZARD_STEPS)[number];
 
 /** 记忆是可选的，故只有前两步会拦住「继续」。 */
 const isRequired = (id: WizardStepId): id is "chat-home" | "agent" =>
-  id !== "memory";
+  id === "chat-home" || id === "agent";
 
 /* ============================================================
  * 左侧品牌栏：近黑暖调，不随主题变。
@@ -147,7 +152,7 @@ function BrandRail({ cursor }: { cursor: number }) {
                     )}
                   >
                     {t(`onboarding.step.${id}`)}
-                    {id === "memory" && (
+                    {(id === "skills" || id === "memory") && (
                       <span className="ml-2 rounded-sm bg-white/10 px-1.5 py-px font-medium text-[11px] text-white/60">
                         {t("onboarding.optional")}
                       </span>
@@ -308,6 +313,93 @@ function AgentStep() {
   );
 }
 
+function SkillsStep() {
+  const { t } = useAppTranslation();
+  const { settings, error: settingsError } = useSyncExternalStore(
+    settingsStore.subscribe,
+    settingsStore.getSnapshot
+  );
+  const [count, setCount] = useState(0);
+  const [libraryEmpty, setLibraryEmpty] = useState(true);
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    void Promise.all([listUnifiedSkills(), listUnifiedSkillCandidates("all", false)])
+      .then(([snapshot, preview]) => {
+        if (!live) return;
+        setLibraryEmpty(snapshot.personalLibraryEmpty);
+        setCount(preview.candidates.filter(
+          (candidate) => candidate.importable && candidate.status !== "current"
+        ).length);
+      })
+      .catch((cause) => live && setError(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => live && setBusy(false));
+    return () => { live = false; };
+  }, []);
+
+  const imported = settings?.skillsOnboarding === "done" || !libraryEmpty;
+  const importAll = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const snapshot = await importAllDiscoveredSkills();
+      setLibraryEmpty(snapshot.personalLibraryEmpty);
+      await settingsStore.update(
+        { skillsOnboarding: "done" },
+        t("onboarding.skillsUpdateFailed")
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const skip = () => settingsStore.update(
+    { skillsOnboarding: "skipped" },
+    t("onboarding.skillsUpdateFailed")
+  );
+
+  return (
+    <>
+      <StepHeading id="skills" optional />
+      <div className={cn(surface, "flex items-center gap-4 p-5")}>
+        <span className="grid size-10 shrink-0 place-items-center rounded-md bg-sunken text-lg">
+          $
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-sm">
+            {busy
+              ? t("onboarding.skillsScanning")
+              : imported
+                ? t("onboarding.skillsDone")
+                : t("onboarding.skillsFound", { count })}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {t("onboarding.skillsHint")}
+          </p>
+        </div>
+        {!imported && count > 0 && (
+          <Button disabled={busy} onClick={() => void importAll()} size="lg">
+            {busy && <Spinner className="size-3.5" />}
+            {t("onboarding.skillsImportAll")}
+          </Button>
+        )}
+        {!imported && settings?.skillsOnboarding === "pending" && (
+          <Button disabled={busy} onClick={() => void skip()} size="lg" variant="ghost">
+            {t("onboarding.skillsSkip")}
+          </Button>
+        )}
+      </div>
+      {(error || settingsError) && (
+        <p role="alert" className="text-destructive text-xs">{error || settingsError}</p>
+      )}
+    </>
+  );
+}
+
 function MemoryStep({ onLeave }: { onLeave: () => void }) {
   const { t } = useAppTranslation();
   const navigate = useNavigate();
@@ -354,6 +446,10 @@ export function OnboardingView() {
   const setup = useSetup();
   const [cursor, setCursor] = useState(0);
   const { facts, settled } = setup.onboarding;
+  const { settings } = useSyncExternalStore(
+    settingsStore.subscribe,
+    settingsStore.getSnapshot
+  );
 
   /* 落定后把光标停在第一个未满足的必做步：Agent 通常首启就已就绪，
      从头走一遍只是空转。只做一次——之后光标归用户，补齐某一步不该
@@ -389,6 +485,15 @@ export function OnboardingView() {
   const step = WIZARD_STEPS[cursor];
   const last = cursor === WIZARD_STEPS.length - 1;
   const blocked = isRequired(step) && facts[step] !== "satisfied";
+  const advance = async () => {
+    if (step === "skills" && settings?.skillsOnboarding === "pending") {
+      await settingsStore.update(
+        { skillsOnboarding: "skipped" },
+        t("onboarding.skillsUpdateFailed")
+      );
+    }
+    setCursor((value) => value + 1);
+  };
 
   return (
     <TooltipProvider>
@@ -405,6 +510,7 @@ export function OnboardingView() {
             <div className="my-auto flex w-full flex-col gap-6">
               {step === "chat-home" && <ChatHomeStep />}
               {step === "agent" && <AgentStep />}
+              {step === "skills" && <SkillsStep />}
               {step === "memory" && (
                 <MemoryStep onLeave={setup.leaveOnboarding} />
               )}
@@ -444,7 +550,7 @@ export function OnboardingView() {
                 onClick={
                   last
                     ? setup.leaveOnboarding
-                    : () => setCursor((value) => value + 1)
+                    : () => void advance()
                 }
               >
                 {t(last ? "onboarding.start" : "onboarding.next")}

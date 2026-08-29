@@ -1,18 +1,14 @@
 /**
- * [INPUT]: Depends on the backend registry, TurnRegistry/TurnOrigin, Gallery, Memory, Chat commit, credible input, FinalTurnProjection, adopt retry guard built-in MCP lease, main Freeze the third-party MCP planner and the backend session config provider
- * [OUTPUT]: Provides the same prompt turn to consume the same final projection and release the fresh lease at the end, execute createTurn, previously frozen backend session config, canonical facts, reject adopted retryWithoutSession, steer input, resolved capabilities, Subagent/approval/question/retry IPC and unified shutdown
- * [POS]: The multi-backend turn executor of the Electron main; The renderer sends the encrypted, manually accessed truth to the Conversation Coordinator
+ * [INPUT]: Depends on the backend registry, TurnRegistry, structured Agent input, hydrated Project Tools receipts, Chat commit, Gallery, Memory, MCP leases, frozen session configuration, and retry guards
+ * [OUTPUT]: Provides canonical turn execution with runtime-only Project policy narrowing, MCP plan/session binding guards, same-session Speed convergence, ProductFailure-preserving finalization, leases, interaction/retry IPC, and shutdown
+ * [POS]: Main-process multi-backend turn executor; the conversation coordinator supplies already-admitted manual intent
  */
 
-import { randomUUID } from "node:crypto";
 import { type BrowserWindow } from "electron";
 import {
   AGENT_BACKEND_ORDER,
-  AGENT_CHANNEL,
   type AgentBackendId,
-  type AgentEventBody,
   type AgentSendPayload,
-  type ChatActivityEvent,
   type SessionRef,
 } from "../../shared/agent-ipc";
 import { stagedInputReadRoots } from "./agent-input";
@@ -23,7 +19,6 @@ import {
   assertAgentProcessAdmission,
   clearAgentSafetyLockWhenIdle,
   reopenAgentProcessAdmission,
-  reportAgentCleanupFailure,
   shutdownAuxiliaryAgentProcesses,
   stopAllAgentProcessAdmission,
 } from "./agent-process-supervisor";
@@ -36,117 +31,54 @@ import {
   assertResolvedInputCapabilities,
 } from "./backends/capability-validation";
 import { asError, withDeadline } from "./errors";
+import { ProductFailureError } from "../../shared/product-failure";
 import { acpStartupBackstopMs } from "./backends/acp/startup/budget";
 import { createAgentBridgeIpcHandlers, registerAgentBridgeIpc } from "./agent/bridge-ipc";
 import type {
   AgentBridgeOptions,
   AgentContext,
-  AgentEventPayload,
   BridgeEntry,
   ConversationAdmission,
   TurnOrigin,
 } from "./agent/bridge-types";
+import { executableIdentity } from "./custody/identity";
 import { createTurnCallbacks } from "./agent/turn-callbacks";
 import { ensurePersistedForDrain } from "./agent/drain-guard";
-import { retryAgentWithoutSession } from "./agent/retry";
-import { cleanupAgentTurn, createBridgeFinalizer } from "./agent/bridge-finalize";
+import {
+  retryAgentSameSession,
+  retryAgentWithoutSession,
+} from "./agent/retry";
+import { createBridgeFinalizer } from "./agent/bridge-finalize";
 import { TokenizedSubscriptionBroker } from "./subscription-broker";
 import { ThreadScopeRegistry } from "./thread-scope";
-import { TurnRegistry, awaitsUserResponse, blocksNewTurn } from "./turn-registry";
+import { TurnRegistry, blocksNewTurn } from "./turn-registry";
 import { AcpTraceWriter, acpTraceEnabled } from "./backends/acp/trace";
 import type { BuiltinMcpLease } from "./tools/lease";
 import { createSubagentChannel, type SubagentChannel } from "./agent/subagent-channel";
 import { unavailableRecallProjection } from "./memory/service/memory-status";
 import { MEMORY_RECALL_TOTAL_TIMEOUT_MS } from "./memory/prompt-lane";
-import { isActiveImageOccurrence, redactImageDetails } from "./gallery/agent-image-projection";
+import { isActiveImageOccurrence } from "./gallery/agent-image-projection";
 import type { ActiveImageSourceRef } from "./gallery/agent-image-projection";
+import { assertPlatformCapability } from "../../shared/platform-capabilities";
+import { AgentActivityPublisher } from "./agent/activity-publisher";
+import { installAcpDraftTrace } from "./agent/trace-observer";
+import type { HydratedProjectTools } from "./sections/coordinator/admission/prepared-project-tools";
+import { createBridgeEventPublisher } from "./agent/bridge-event-publisher";
 
 const turns = new TurnRegistry<AgentTurn>();
-if (acpTraceEnabled()) {
-  turns.setDraftObserver((entry, observation) => {
-    const trace = (entry as BridgeEntry).trace;
-    if (!trace) return;
-    trace.recordDraft(
-      entry.generation,
-      observation.type === "item"
-        ? { type: "item", item: observation.item, draft: entry.draft }
-        : { type: "delta", itemId: observation.itemId, draft: entry.draft }
-    );
-  });
-}
+installAcpDraftTrace(turns);
 const subscriptions = new TokenizedSubscriptionBroker<BrowserWindow>();
 const requestReservations = new Set<string>();
 const threadScopes = new ThreadScopeRegistry();
-// conversationId → 该会话是否卡在用户身上；不在表中即「未在跑」
-const activityRunning = new Map<string, boolean>();
-let activityWindow: BrowserWindow | null = null;
+const activity = new AgentActivityPublisher(turns);
 let shuttingDown = false;
-
-function publish(
-  entry: BridgeEntry,
-  body: AgentEventPayload
-) {
-  const event = turns.stamp(entry.conversationId, {
-    ...body,
-    requestId: entry.requestId,
-  } as AgentEventBody);
-  // 必须早于下面的订阅者早退：审批/追问的开闭正是靠 stamp 写进 entry 的，
-  // 而后台会话没有订阅者——不在此处广播，侧边栏就永远看不到「卡在你身上」。
-  // publishActivity 自带跃迁去重，逐个 item-delta 调它也不会多发一条。
-  publishActivity(entry.conversationId);
-  const subscription = subscriptions.current(entry.conversationId);
-  if (!subscription || subscription.isDestroyed()) return event;
-  try {
-    subscription.webContents.send(
-      AGENT_CHANNEL.event,
-      redactImageDetails(event)
-    );
-  } catch (cause) {
-    console.warn("[agent] event publish failed", cause);
-  }
-  return event;
-}
-
-function publishState(entry: BridgeEntry) {
-  const turn = turns.snapshot(entry.conversationId);
-  if (turn) publish(entry, { type: "turn-state-changed", turn });
-  publishActivity(entry.conversationId);
-}
-// ─── 会话活动：窗口级广播，只在 (running, waiting) 跃迁时发一次 ───
-// tombstone 回收、重复 publishState 都不会产生跃迁，天然幂等。
-//
-// waiting 取自 turn 上未闭合的审批与追问——它们正是「agent 停下来等你回话」的
-// 协议级真相，且后台会话拿不到 agent:event，此广播是它唯一的信使。
-function publishActivity(conversationId: string) {
-  const entry = turns.byConversation(conversationId);
-  const running = blocksNewTurn(entry);
-  const waiting = running && awaitsUserResponse(entry);
-  // 「不在表中」即「未在跑」，于是复合态恰好就是 Map 的取值，
-  // 跃迁判定塌成一次相等比较——不必再分 running/not-running 两路。
-  const next = running ? waiting : undefined;
-  if (next === activityRunning.get(conversationId)) return;
-  if (next === undefined) activityRunning.delete(conversationId);
-  else activityRunning.set(conversationId, next);
-  const window = activityWindow;
-  if (!window || window.isDestroyed()) return;
-  try {
-    window.webContents.send(AGENT_CHANNEL.activity, {
-      conversationId,
-      running,
-      waiting,
-      ...(entry?.effectiveTerminal
-        ? { terminal: entry.effectiveTerminal.type }
-        : {}),
-    } satisfies ChatActivityEvent);
-  } catch (cause) {
-    console.warn("[agent] activity publish failed", cause);
-  }
-}
-
-function observe(promise: Promise<unknown>, context: string) {
-  void promise.catch((cause) => console.error(`[agent] ${context}`, cause));
-}
-const { finalizeEntry, persistEntry } = createBridgeFinalizer({
+const { publish, publishState, observe } = createBridgeEventPublisher({
+  turns,
+  subscriptions,
+  activity,
+  options: () => lastOptions,
+});
+const { finalizeEntry, handleResumeFailed, persistEntry } = createBridgeFinalizer({
   turns,
   publish,
   publishState,
@@ -226,33 +158,6 @@ export async function steerAgentTurn(
   return entry.turn.steer(resolvedInputBlocks(input));
 }
 
-async function handleResumeFailed(
-  entry: BridgeEntry,
-  turn: AgentTurn,
-  generation: number
-) {
-  if (entry.generation !== generation) return;
-  entry.memoryContribution?.release();
-  entry.memoryContribution = undefined;
-  entry.builtinMcp?.revoke();
-  entry.builtinMcp = undefined;
-  /* resume 重试复用同一个 context 与 requestId，但换一条新进程：旧 custody
-     必须在这里就地收口，否则新 attempt 的身份会盖在死者的账上。 */
-  await entry.custody?.beginRelease();
-  const result = await cleanupAgentTurn(turn);
-  entry.processLease?.release();
-  entry.processLease = undefined;
-  if (!result.ok) {
-    reportAgentCleanupFailure(entry.backend, result.error);
-    throw result.error;
-  }
-  await entry.custody?.settle();
-  entry.custody = undefined;
-  entry.cleanup = "complete";
-  turns.markResumeFailed(entry, randomUUID());
-  publishState(entry);
-}
-
 async function spawnAgent(
   entry: BridgeEntry,
   payload: AgentSendPayload,
@@ -302,7 +207,8 @@ async function spawnAgent(
         resolvedInput ??= await options.resolveInput(
           payload,
           context.workspace,
-          snapshot.capabilities
+          snapshot.capabilities,
+          context
         );
         resolvedInput =
           (await options.mergeLateInput?.(resolvedInput, payload.requestId)) ??
@@ -358,6 +264,27 @@ async function spawnAgent(
       origin: entry.origin,
       context,
     });
+    if (entry.thirdPartyMcpPlan) {
+      const preparedContext = context.preparedProjectTools?.receipt.projectContext;
+      if (
+        preparedContext &&
+        (preparedContext.projectId !== entry.thirdPartyMcpPlan.projectContext.projectId ||
+          preparedContext.projectLifecycleRevision !==
+            entry.thirdPartyMcpPlan.projectContext.projectLifecycleRevision)
+      ) {
+        throw new Error("PROJECT_TOOLS_PLAN_CONTEXT_MISMATCH");
+      }
+      if (payload.session) {
+        const binding = payload.session.toolPlan;
+        if (
+          !binding ||
+          binding.planDigest !== entry.thirdPartyMcpPlan.planDigest ||
+          binding.projectId !== entry.thirdPartyMcpPlan.projectContext.projectId
+        ) {
+          throw new Error("SESSION_TOOL_PLAN_STALE");
+        }
+      }
+    }
     /* ============================================================
      * intent 必须先于 spawn 落盘，且这条 attempt 的 dependency 集合在这里
      * 就已闭合。resume 重试走的是同一个 requestId 但不同进程，所以每次进来
@@ -385,9 +312,11 @@ async function spawnAgent(
       ? { release: () => memoryContribution.release() }
       : undefined;
     entry.backendSessionConfig ??=
-      options.freezeBackendSessionConfig?.(backend.id);
+      await options.freezeBackendSessionConfig?.(backend.id);
     const turn = backend.createTurn({
-      payload,
+      /* entry.payload keeps persisted intent. The derived wire snapshot alone
+         honors a same-session fallback until an explicit model/Speed action. */
+      payload: threadScopes.payloadForTurn(payload),
       input: resolvedInput,
       ...(context.finalTurnProjection?.productContext
         ? { productContext: context.finalTurnProjection.productContext }
@@ -408,6 +337,10 @@ async function spawnAgent(
         { entry, generation, backend, runtimeGeneration, options, context }
       ),
       runtime,
+      serverFactBinding: {
+        runtimeGeneration,
+        executableIdentity: executableIdentity(runtime.executable),
+      },
       workspace: context.workspace,
       processEnv: context.appId
         ? await options.resolveAppEnvironment?.(context.appId)
@@ -472,7 +405,17 @@ async function spawnAgent(
       return;
     }
     if (entry.generation !== generation) return;
-    if (turns.activate(entry)) publishState(entry);
+    if (turns.activate(entry)) {
+      publishState(entry);
+      await options.onTurnStarted?.({
+        conversationId: entry.conversationId,
+        requestId: entry.requestId,
+        explicitDesign: resolvedInput.input.some(
+          (item) => item.type === "skill" && item.name === "design"
+        ),
+        context,
+      });
+    }
     if (entry.startup?.cancelRequested || shuttingDown) {
       await finalizeEntry(entry, { type: "cancelled" }, options, generation);
     }
@@ -481,12 +424,10 @@ async function spawnAgent(
     entry.builtinMcp?.revoke();
     entry.builtinMcp = undefined;
     if (!entry.turn) resolvedInput?.rollback();
-    await finalizeEntry(
-      entry,
-      { type: "error", message: asError(cause).message },
-      options,
-      generation
-    );
+    const terminal = cause instanceof ProductFailureError
+      ? { type: "error" as const, failure: cause.failure }
+      : { type: "error" as const, message: asError(cause).message };
+    await finalizeEntry(entry, terminal, options, generation);
   }
 }
 
@@ -509,9 +450,13 @@ export async function startAgentPayload(
   origin?: TurnOrigin,
   reuseInput?: ResolvedAgentInput,
   reservedAssistantSeq?: number,
-  admissionHeld = false
+  admissionHeld = false,
+  preparedProjectTools?: HydratedProjectTools
 ) {
   if (!options) throw new Error("Agent bridge 尚未初始化");
+  if (options.platformSupport) {
+    assertPlatformCapability(options.platformSupport, "agentTurns");
+  }
   validateAgentPayload(rawPayload);
   const payload = rawPayload;
   const backend = backendById(payload.turnOptions.backend);
@@ -547,8 +492,12 @@ export async function startAgentPayload(
         const context = await options.resolveContext(
           payload.scope.conversationId,
           payload,
-          origin
+          origin,
+          preparedProjectTools
         );
+        if (preparedProjectTools && !context.preparedProjectTools) {
+          context.preparedProjectTools = preparedProjectTools;
+        }
         let releaseReservation: (() => void) | undefined;
         let contextRetained = false;
         try {
@@ -626,21 +575,67 @@ export function releaseThreadScopeForConversation(conversationId: string) {
   threadScopes.releaseConversation(conversationId);
 }
 
+/** Explicit model/Speed actions retry the persisted preference in this session.
+ *  三个落点必须同时清：main 的运行态 map（下一轮 payload 不再被回落覆写）、
+ *  turn entry 的 `serviceTierEffective`（attach 快照的真相源）、以及 renderer
+ *  投影（横幅读的就是它）。只清第一个，用户重开 Fast 后横幅仍挂着旧回落原因
+ *  直到下一 turn 才刷新——那正是「显式重置后投影陈旧」。 */
+export function resetThreadServiceTierEffective(conversationId: string) {
+  threadScopes.resetServiceTierEffective(conversationId);
+  const entry = turns.byConversation(conversationId) as BridgeEntry | undefined;
+  if (entry) publish(entry, { type: "service-tier-effective" });
+}
+
 export function registerAgentBridge(
   window: BrowserWindow,
   rendererUrl: string,
   options: AgentBridgeOptions
 ) {
   lastOptions = options;
-  activityWindow = window;
+  activity.bind(window);
+  const retry = (
+    mode: typeof retryAgentSameSession,
+    requestId: string,
+    retryToken: string
+  ) => mode({
+    turns,
+    requestId,
+    retryToken,
+    replaceSession: (entry, oldSession) =>
+      Promise.resolve(
+        options.replaceSession?.(entry.conversationId, oldSession, null)
+      ).then(() => {
+        threadScopes.releaseSession(oldSession, entry.conversationId);
+      }),
+    publishState: (entry) => publishState(entry as BridgeEntry),
+    onGenerationStart: (entry, generation) =>
+      (entry as BridgeEntry).trace?.recordGenerationStart(generation),
+    restart: (entry, input) => {
+      const bridgeEntry = entry as BridgeEntry;
+      const startup = spawnAgent(
+        bridgeEntry,
+        bridgeEntry.payload!,
+        bridgeEntry.context!,
+        options,
+        input
+      );
+      turns.setStartup(bridgeEntry, startup);
+      observe(startup, `resume retry requestId=${entry.requestId}`);
+    },
+  });
   const handlers = createAgentBridgeIpcHandlers({
     turns,
+    attachSnapshot: (conversationId) => {
+      const snapshot = turns.attachSnapshot(conversationId);
+      return {
+        ...snapshot,
+        turn: snapshot.turn && options.projectTurnSnapshot
+          ? options.projectTurnSnapshot(conversationId, snapshot.turn)
+          : snapshot.turn,
+      };
+    },
     subscriptions,
-    listActivity: () =>
-      [...activityRunning].map(([conversationId, waiting]) => ({
-        conversationId,
-        waiting,
-      })),
+    listActivity: () => activity.list(),
     publishState: (entry) => publishState(entry as BridgeEntry),
     clearSafetyLock: clearAgentSafetyLockWhenIdle,
     send: (rawPayload) => {
@@ -652,33 +647,10 @@ export function registerAgentBridge(
     retryWithoutSession: (requestId, retryToken) => {
       const entry = turns.byRequest(requestId);
       if (entry) options.assertRetryWithoutSession?.(entry.conversationId);
-      return retryAgentWithoutSession({
-        turns,
-        requestId,
-        retryToken,
-        replaceSession: (entry, oldSession) =>
-          options.replaceSession?.(
-            entry.conversationId,
-            oldSession,
-            null
-          ) ?? Promise.resolve(),
-        publishState: (entry) => publishState(entry as BridgeEntry),
-        onGenerationStart: (entry, generation) =>
-          (entry as BridgeEntry).trace?.recordGenerationStart(generation),
-        restart: (entry, input) => {
-          const bridgeEntry = entry as BridgeEntry;
-          const startup = spawnAgent(
-            bridgeEntry,
-            bridgeEntry.payload!,
-            bridgeEntry.context!,
-            options,
-            input
-          );
-          turns.setStartup(bridgeEntry, startup);
-          observe(startup, `resume retry requestId=${entry.requestId}`);
-        },
-      });
+      return retry(retryAgentWithoutSession, requestId, retryToken);
     },
+    retrySameSession: (requestId, retryToken) =>
+      retry(retryAgentSameSession, requestId, retryToken),
     cancel: (requestId) => cancelAgentTurn(requestId, options),
     steer: (input) => {
       if (!options.steer) throw new Error("steering 服务未配置");
@@ -690,8 +662,8 @@ export function registerAgentBridge(
     },
     ackSteerIntents: (outboxRefs) =>
       options.ackSteerIntents?.(outboxRefs) ?? Promise.resolve(),
-    steerSnapshot: (conversationId) =>
-      options.steerSnapshot?.(conversationId) ?? [],
+    steerSnapshot: (conversationId) => options.steerSnapshot?.(conversationId) ?? [],
+    conversationForOutboxRef: (outboxRef) => options.conversationForOutboxRef?.(outboxRef),
   });
   registerAgentBridgeIpc(window, rendererUrl, handlers);
 }
@@ -765,12 +737,21 @@ export async function cancelConversations(
   );
 }
 
+/** Drain only the prepared/live turns named by exact request custody. */
+export async function cancelAgentRequests(requestIds: Iterable<string>) {
+  const targets = new Set(requestIds);
+  await turns.drain(
+    (entry) => targets.has(entry.requestId),
+    (entry) => drainEntry(entry as BridgeEntry, lastOptions)
+  );
+}
+
 export function releaseConversations(conversationIds: Iterable<string>) {
   for (const conversationId of conversationIds) {
     turns.release(conversationId);
     subscriptions.release(conversationId);
     threadScopes.releaseConversation(conversationId);
-    activityRunning.delete(conversationId);
+    activity.forget(conversationId);
   }
 }
 

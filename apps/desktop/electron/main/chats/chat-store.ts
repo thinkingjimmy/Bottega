@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path, chat-schema, chat-commit, chat-summary, and the only projection and persistence/serial-queue
- * [OUTPUT]: PrOvides ChatStore's Open Schema v10 ✓ Compact ✓ Permanence ✓ Unchanging durable record + revision ✓ Quick view ✓ O ✓ 1) incarnation/title/archive metadata✓ App grant✓ Project/SessionRef CAS✓ Adoption binding/original cwd✓ Append and reviseTail ✓ Atoms are written in
- * [POS]: The canonical stability ledger IO layer of the chats module; v9 single-directional add-on fields, future versions rejected, written in strict sequence, session+origin+snapshot in create and submitted at the same time
+ * [INPUT]: Depends on Node fs/path, chat schema/commit/summary, atomic persistence, and SerialQueue
+ * [OUTPUT]: Provides canonical ChatStore v10 create/append/revise/adopt operations, metadata projections, and complete/incomplete adoption references including durable quarantine artifacts
+ * [POS]: The canonical durable Chat ledger of the chats module
  */
 
 import { randomUUID } from "node:crypto";
@@ -10,6 +10,7 @@ import {
   mkdir,
   open,
   readFile,
+  readdir,
   rm,
 } from "node:fs/promises";
 import { join } from "node:path";
@@ -61,6 +62,7 @@ import {
   persistChatRecord,
   readChatRecord,
 } from "./chat-store-support";
+import type { ReferenceProjection } from "../history-import/memory-snapshot-store";
 
 export type ChatMessageMutation = {
   record: ChatRecord;
@@ -286,6 +288,21 @@ export class ChatStore {
 
   listAdoptionSnapshotIds() {
     return new Set([...this.metadata.values()].flatMap((record) => record.importOrigin ? [record.importOrigin.adoptionSnapshotId] : []));
+  }
+
+  async adoptionReferenceProjection(): Promise<ReferenceProjection> {
+    const refs = this.listAdoptionSnapshotIds();
+    try {
+      const entries = await readdir(this.chatsRoot, { withFileTypes: true });
+      return {
+        complete: !entries.some(
+          (entry) => entry.isFile() && entry.name.includes(".corrupt-")
+        ),
+        refs,
+      };
+    } catch {
+      return { complete: false, refs };
+    }
   }
 
   /* ============================================================

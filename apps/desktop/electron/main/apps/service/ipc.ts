@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on rendererIpc, Apps shared channels/input assertions and store/runtime/grant/package operating port inserted with AppsService
- * [OUTPUT]: RegistersIPC, full registered Apps renderer IPC and package flow IPC are available for the in-house
- * [POS]: The transmission adapter for apps/services; Only particle analysis and division, no domain status
+ * [INPUT]: Depends on rendererIpc, Apps shared channels/input assertions, trusted Studio residence, generic store/runtime/grant/package ports, and the delegated Design registrar
+ * [OUTPUT]: Registers main-only Apps management channels and the minimal fixed-App Studio read/surface/chat channels
+ * [POS]: apps/service generic renderer adapter; Design command parsing and authority live in integrations/design-ipc.ts
  */
 
 import { join } from "node:path";
@@ -14,9 +14,11 @@ import {
   type AppCapabilitiesSnapshot,
   type AppExtensionStatus,
   type AppGuiInfo,
+  type AppGuiInfoInput,
   type AppInstallEvent,
   type AppRecord,
   type AppRuntimeStatus,
+  type AppOpenMode,
   type AppsListSnapshot,
   type EnsureAppChatSlotInput,
   type RemoveAppMode,
@@ -33,6 +35,7 @@ import type { AppStore } from "../app-store";
 import type { AppGrantAuthority } from "../attachments/grant-authority";
 import {
   assertAppGrantTarget,
+  assertAppGuiInfoInput,
   assertAppSurfaceAcquireInput,
   assertAvailableAppsInput,
   assertSetAppGrantInput,
@@ -58,8 +61,13 @@ import {
   normalizeGithubRepoUrl,
 } from "../support";
 import type { AppLifecycleAdmissionGate } from "../../lifecycle/app-platform-admission";
+import { surfaceWindowController } from "../../window/surfaces/surface-window-controller";
+import {
+  registerDesignIpc,
+  type DesignIpcDependencies,
+} from "./integrations/design-ipc";
 
-type AppsIpcDependencies = {
+type AppsIpcDependencies = DesignIpcDependencies & {
   store: AppStore;
   runtime: AppRuntime;
   installer: AppInstaller;
@@ -85,7 +93,9 @@ type AppsIpcDependencies = {
   resolveExtensionConsent(appId: string, granted: boolean): Promise<AppRecord>;
   resolveBaseGuiConsent(
     appId: string,
-    grantedCapabilities: import("../../../../shared/apps-ipc").BaseGuiCapability[]
+    grantedCapabilities: import("../../../../shared/apps-ipc").BaseGuiCapability[],
+    grantedHostActions: import("../../../../shared/apps-ipc").BaseGuiHostActionCapability[],
+    grantedCapabilityScopes: import("../../../../shared/apps-ipc").BaseGuiCapabilityScopes
   ): Promise<AppRecord>;
   revokeBaseGuiAccess(appId: string): Promise<AppRecord>;
   revokeExtensionGrant(appId: string): Promise<AppExtensionStatus>;
@@ -96,7 +106,8 @@ type AppsIpcDependencies = {
   setAgent(input: SetAppAgentInput): Promise<AppRecord>;
   rename(input: RenameAppInput): Promise<AppRecord>;
   ensureChatSlot(input: EnsureAppChatSlotInput): unknown;
-  guiInfo(appId: string): Promise<AppGuiInfo>;
+  guiInfo(input: AppGuiInfoInput): Promise<AppGuiInfo>;
+  releaseGuiSurface(input: AppGuiInfoInput): Promise<void>;
   resolveMaintenanceBackend(requested: AgentBackendId | "auto"): Promise<{
     id: AgentBackendId;
     version?: string;
@@ -115,16 +126,18 @@ export function registerAppsIpc(
   rendererUrl: string,
   deps: AppsIpcDependencies
 ) {
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的 Apps 请求")
-    .handle(
-      APPS_CHANNEL.list,
-      () =>
-        ({
-          apps: deps.store.list(),
-          runtimeWarning: deps.gatewayWarning(),
-        }) satisfies AppsListSnapshot
-    )
-    .handle(APPS_CHANNEL.add, async (value) => {
+  const mainIpc = rendererIpc(
+    window,
+    rendererUrl,
+    "拒绝非主窗口的 Apps 管理请求"
+  );
+  const studioIpc = rendererIpc(
+    window,
+    rendererUrl,
+    "拒绝非受信窗口的 App Studio 请求"
+  ).roles("main", "app-window");
+
+  mainIpc.handle(APPS_CHANNEL.add, async (value) => {
       const input = assertAddAppInput(value);
       const normalized = normalizeGithubRepoUrl(input.repoUrl);
       const duplicate = deps.store
@@ -162,39 +175,9 @@ export function registerAppsIpc(
         addedAt: Date.now(),
       });
       const saved = await deps.store.set(record);
-      deps.emit({ appId: id, type: "status", record: saved });
       deps.installer.enqueue(id);
       return saved;
     })
-    .handle(APPS_CHANNEL.open, async (rawId) => {
-      const appId = assertAppId(rawId);
-      const result = await deps.lifecycleGate.run(appId, () => {
-        const record = deps.requireRecord(appId);
-        if (!deps.lifecycleGate.isOpen(appId) || record.state !== "ready") {
-          throw Object.assign(new Error("App lifecycle admission 已关闭"), {
-            status: 409,
-          });
-        }
-        return deps.runtime.ensureRunning(appId);
-      });
-      const generationId =
-        deps.requireRecord(appId).generationBinding.active?.generationId;
-      return {
-        ...result,
-        ...(generationId
-          ? {
-              generationId,
-              activationId: `activation:${appId}:${generationId}`,
-            }
-          : {}),
-      };
-    })
-    .handle(APPS_CHANNEL.status, (rawId) =>
-      deps.runtimeStatus(assertAppId(rawId))
-    )
-    .handle(APPS_CHANNEL.originWithoutStart, (rawId) =>
-      deps.originWithoutStart(assertAppId(rawId))
-    )
     .handle(APPS_CHANNEL.stop, (rawId) => deps.stop(assertAppId(rawId)))
     .handle(APPS_CHANNEL.grant, (input) =>
       deps.grantAuthority().grant(assertSetAppGrantInput(input))
@@ -208,14 +191,15 @@ export function registerAppsIpc(
       deps.grantAuthority().setState(assertSetAppGrantStateInput(input))
     )
     .handle(APPS_CHANNEL.setDefaultGrant, async (input) => {
-      const saved = await deps
+      return deps
         .grantAuthority()
         .setDefaultGrant(assertSetDefaultAppGrantInput(input));
-      deps.emit({ appId: saved.id, type: "status", record: saved });
-      return saved;
     })
     .handle(APPS_CHANNEL.listGrantSources, () =>
       deps.grantAuthority().listSources()
+    )
+    .handle(APPS_CHANNEL.listAvailable, (input) =>
+      deps.grantAuthority().listAvailable(assertAvailableAppsInput(input))
     )
     .handle(APPS_CHANNEL.extensionStatus, (rawId) =>
       deps.extensionStatus(assertAppId(rawId))
@@ -230,15 +214,6 @@ export function registerAppsIpc(
     .handle(APPS_CHANNEL.capabilities, (rawId) =>
       deps.capabilities(assertAppId(rawId))
     )
-    .handle(APPS_CHANNEL.listAvailable, (input) =>
-      deps.grantAuthority().listAvailable(assertAvailableAppsInput(input))
-    )
-    .handle(APPS_CHANNEL.acquireSurface, (input) =>
-      deps.surfaceLeases().acquire(assertAppSurfaceAcquireInput(input))
-    )
-    .handle(APPS_CHANNEL.releaseSurface, (leaseId) =>
-      deps.surfaceLeases().release(assertSurfaceLeaseId(leaseId))
-    )
     .handle(APPS_CHANNEL.acquireManagementLease, (rawId) => ({
       managementLeaseId: deps.managementLeases().issue({
         appId: assertAppId(rawId),
@@ -250,37 +225,26 @@ export function registerAppsIpc(
     )
     .handle(APPS_CHANNEL.resolveExtensionConsent, async (raw) => {
       const input = assertExtensionConsentInput(raw);
-      const saved = await deps.resolveExtensionConsent(
-        input.appId,
-        input.granted
-      );
-      deps.emit({ appId: saved.id, type: "status", record: saved });
-      return saved;
+      return deps.resolveExtensionConsent(input.appId, input.granted);
     })
     .handle(APPS_CHANNEL.resolveBaseGuiConsent, async (raw) => {
       const input = assertBaseGuiConsentInput(raw);
-      const saved = await deps.resolveBaseGuiConsent(
+      return deps.resolveBaseGuiConsent(
         input.appId,
-        input.grantedCapabilities
+        input.grantedCapabilities,
+        input.grantedHostActions,
+        input.grantedCapabilityScopes
       );
-      deps.emit({ appId: saved.id, type: "status", record: saved });
-      return saved;
     })
     .handle(APPS_CHANNEL.revokeBaseGuiAccess, async (rawId) => {
       const appId = assertAppId(rawId);
       const saved = await deps.revokeBaseGuiAccess(appId);
-      deps.emit({ appId: saved.id, type: "status", record: saved });
       deps.emit({ appId: saved.id, type: "gui" });
       return saved;
     })
     .handle(APPS_CHANNEL.promoteGeneration, async (raw) => {
       const input = assertPromoteInput(raw);
-      const saved = await deps.promoteGeneration(
-        input.appId,
-        input.expectedConsentRevision
-      );
-      deps.emit({ appId: saved.id, type: "status", record: saved });
-      return saved;
+      return deps.promoteGeneration(input.appId, input.expectedConsentRevision);
     })
     .handle(APPS_CHANNEL.retry, async (rawId) => {
       const appId = assertAppId(rawId);
@@ -342,20 +306,10 @@ export function registerAppsIpc(
     .handle(APPS_CHANNEL.rename, (value) =>
       deps.rename(assertRenameInput(value))
     )
-    .handle(APPS_CHANNEL.ensureChatSlot, (value) =>
-      deps.ensureChatSlot(assertChatSlotInput(value))
-    )
     .handle(APPS_CHANNEL.retrySkill, (rawId) => {
       const service = deps.saveAsApp();
       if (!service) throw new Error("Save as App 尚未初始化");
       return service.retrySkill(assertAppId(rawId));
-    })
-    .handle(APPS_CHANNEL.guiInfo, (rawId) => {
-      const appId = assertAppId(rawId);
-      if (deps.requireRecord(appId).manifest?.kind !== "base") {
-        throw new Error("GUI 信息只对 Base App 提供");
-      }
-      return deps.guiInfo(appId);
     })
     .handle(APPS_CHANNEL.remove, (rawId, rawMode, rawRequestId) =>
       deps.remove(
@@ -365,8 +319,109 @@ export function registerAppsIpc(
       )
     );
 
+  studioIpc
+    .handleWithContext(APPS_CHANNEL.list, (context) => {
+      if (context.role !== "app-window") {
+        return {
+          apps: deps.store.list(),
+          runtimeWarning: deps.gatewayWarning(),
+        } satisfies AppsListSnapshot;
+      }
+      const appId = context.appId;
+      if (!appId) throw new Error("App window is missing its fixed App identity");
+      surfaceWindowController.assertAppStudioMutation(context, appId);
+      const record = deps.store.get(appId);
+      return {
+        apps: record ? [record] : [],
+        runtimeWarning: deps.gatewayWarning(),
+      } satisfies AppsListSnapshot;
+    })
+    .handleWithContext(APPS_CHANNEL.open, (context, rawId) => {
+      const appId = assertAppId(rawId);
+      assertFixedAppStudio(context, appId);
+      return openRuntime(deps, appId);
+    })
+    .handleWithContext(APPS_CHANNEL.status, (context, rawId) => {
+      const appId = assertAppId(rawId);
+      assertFixedAppStudio(context, appId);
+      return deps.runtimeStatus(appId);
+    })
+    .handleWithContext(APPS_CHANNEL.originWithoutStart, (context, rawId) => {
+      const appId = assertAppId(rawId);
+      assertFixedAppStudio(context, appId);
+      return deps.originWithoutStart(appId);
+    })
+    .handleWithContext(APPS_CHANNEL.listPresets, (context) =>
+      context.role === "app-window" ? [] : deps.packages.presets.list()
+    )
+    .handleWithContext(APPS_CHANNEL.readReadme, (context, rawId) => {
+      const appId = assertAppId(rawId);
+      if (context.role === "app-window") {
+        if (context.appId !== appId) throw new Error("App window README scope mismatch");
+        surfaceWindowController.assertAppStudioMutation(context, appId);
+      }
+      return deps.packages.readReadme(deps.requireRecord(appId));
+    })
+    .handleWithContext(APPS_CHANNEL.acquireSurface, (context, raw) => {
+      const input = assertAppSurfaceAcquireInput(raw);
+      if (input.mode === "studio") {
+        surfaceWindowController.assertAppStudioMutation(context, input.appId);
+      }
+      surfaceWindowController.assertConversationMutation(
+        context,
+        input.conversationId
+      );
+      return deps.surfaceLeases().acquire(input, context);
+    })
+    .handleBestEffortWithContext(APPS_CHANNEL.releaseSurface, (context, rawLeaseId) =>
+      deps.surfaceLeases().releaseFromRenderer(
+        assertSurfaceLeaseId(rawLeaseId),
+        context
+      )
+    )
+    .handleWithContext(APPS_CHANNEL.ensureChatSlot, (context, value) => {
+      const input = assertChatSlotInput(value);
+      assertFixedAppStudio(context, input.appId);
+      return deps.ensureChatSlot(input);
+    })
+    .handleWithContext(APPS_CHANNEL.guiInfo, async (context, raw) => {
+      const input = assertAppGuiInfoInput(raw);
+      if (deps.requireRecord(input.appId).manifest?.kind !== "base") {
+        throw new Error("GUI 信息只对 Base App 提供");
+      }
+      const surface = await deps.surfaceLeases().describe(
+        input.appSurfaceLeaseId
+      );
+      /* 面租约必须属于所请求的 App：驻留校验只证「同窗」，证不了「同 App」——
+         否则 A 的 origin 可拿 B 的租约铸绑定，读走 B 会话的 design 树。 */
+      if (surface.appId !== input.appId) {
+        throw new Error("Surface lease does not belong to the requested App");
+      }
+      assertSurfaceMutation(context, surface);
+      return deps.guiInfo(input);
+    })
+    .handleBestEffortWithContext(APPS_CHANNEL.releaseGuiSurface, async (context, raw) => {
+      const input = assertAppGuiInfoInput(raw);
+      const surface = deps.surfaceLeases().rendererSurfaceForRelease(
+        input.appSurfaceLeaseId,
+        context
+      );
+      if (!surface || surface.appId !== input.appId) return;
+      return deps.releaseGuiSurface(input);
+    })
+    .handleWithContext(APPS_CHANNEL.setOpenMode, async (context, raw) => {
+      const input = assertOpenModeInput(raw);
+      surfaceWindowController.assertAppStudioMutation(context, input.appId);
+      return deps.store.update(input.appId, (record) => ({
+        ...record,
+        openModeOverride: input.mode,
+      }));
+    });
+
+  registerDesignIpc(studioIpc, deps);
+
   deps.packages.register(
-    rendererIpc(window, rendererUrl, "拒绝非主窗口的 Apps 请求"),
+    mainIpc,
     {
       assertAppId,
       requireRecord: deps.requireRecord,
@@ -375,6 +430,78 @@ export function registerAppsIpc(
     }
   );
   window.once("closed", deps.onClosed);
+}
+
+async function openRuntime(deps: AppsIpcDependencies, appId: string) {
+  const result = await deps.lifecycleGate.run(appId, () => {
+    const record = deps.requireRecord(appId);
+    if (!deps.lifecycleGate.isOpen(appId) || record.state !== "ready") {
+      throw Object.assign(new Error("App lifecycle admission 已关闭"), {
+        status: 409,
+      });
+    }
+    return deps.runtime.ensureRunning(appId);
+  });
+  const generationId =
+    deps.requireRecord(appId).generationBinding.active?.generationId;
+  return {
+    ...result,
+    ...(generationId
+      ? {
+          generationId,
+          activationId: `activation:${appId}:${generationId}`,
+        }
+      : {}),
+  };
+}
+
+export function assertFixedAppStudio(
+  context: import("../../window/surfaces/trusted-renderer-context").TrustedRendererContext,
+  appId: string
+) {
+  if (context.role !== "app-window") return;
+  if (context.appId !== appId) throw new Error("App window scope mismatch");
+  surfaceWindowController.assertAppStudioMutation(context, appId);
+}
+
+function assertSurfaceMutation(
+  context: import("../../window/surfaces/trusted-renderer-context").TrustedRendererContext,
+  surface: import("../../../../shared/apps-ipc").AppAttachmentSurface
+) {
+  if (surface.mode === "studio") {
+    surfaceWindowController.assertSurfaceResidence({
+      windowId: context.windowId,
+      appId: surface.appId,
+      conversationId: surface.conversationId,
+      conversationIncarnationId: surface.conversationIncarnationId,
+    });
+    return;
+  }
+  surfaceWindowController.assertConversationSurfaceResidence({
+    windowId: context.windowId,
+    conversationId: surface.conversationId,
+    conversationIncarnationId: surface.conversationIncarnationId,
+  });
+}
+
+function assertOpenModeInput(raw: unknown): {
+  appId: string;
+  mode: AppOpenMode | null;
+} {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("App open mode 参数无效");
+  }
+  const input = raw as { appId?: unknown; mode?: unknown };
+  const allowed = input.mode === null ||
+    input.mode === "same-window" ||
+    input.mode === "new-window";
+  if (Object.keys(input).length !== 2 || !allowed) {
+    throw new Error("App open mode 参数无效");
+  }
+  return {
+    appId: assertAppId(input.appId),
+    mode: input.mode as AppOpenMode | null,
+  };
 }
 
 function assertExtensionConsentInput(raw: unknown) {
@@ -392,12 +519,18 @@ function assertBaseGuiConsentInput(raw: unknown) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("Base GUI 同意参数无效");
   }
-  const input = raw as { appId?: unknown; grantedCapabilities?: unknown };
+  const input = raw as {
+    appId?: unknown;
+    grantedCapabilities?: unknown;
+    grantedHostActions?: unknown;
+    grantedCapabilityScopes?: unknown;
+  };
   const allowed = new Set([
     "row-insert",
     "row-patch",
     "row-delete",
     "attachment-read",
+    "workspace-read",
   ]);
   if (
     typeof input.appId !== "string" ||
@@ -408,9 +541,29 @@ function assertBaseGuiConsentInput(raw: unknown) {
   ) {
     throw new Error("Base GUI 同意参数无效");
   }
+  const hostActions = input.grantedHostActions ?? [];
+  if (
+    !Array.isArray(hostActions) ||
+    hostActions.some((item) => item !== "compose-text")
+  ) {
+    throw new Error("Base GUI host action 同意参数无效");
+  }
+  const scopes = input.grantedCapabilityScopes ?? {};
+  if (
+    !scopes ||
+    typeof scopes !== "object" ||
+    Array.isArray(scopes) ||
+    Object.keys(scopes).some((key) => key !== "workspaceRead") ||
+    ("workspaceRead" in scopes &&
+      (scopes as { workspaceRead?: unknown }).workspaceRead !== "design/")
+  ) {
+    throw new Error("Base GUI capability scope 同意参数无效");
+  }
   return {
     appId: assertAppId(input.appId),
     grantedCapabilities: [...new Set(input.grantedCapabilities)] as import("../../../../shared/apps-ipc").BaseGuiCapability[],
+    grantedHostActions: [...new Set(hostActions)] as import("../../../../shared/apps-ipc").BaseGuiHostActionCapability[],
+    grantedCapabilityScopes: scopes as import("../../../../shared/apps-ipc").BaseGuiCapabilityScopes,
   };
 }
 

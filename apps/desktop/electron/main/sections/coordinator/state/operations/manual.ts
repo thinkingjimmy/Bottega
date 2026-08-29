@@ -119,13 +119,26 @@ export function putNoticeOutbox(
   const existing = state.noticeOutbox[record.id];
   const canonical = noticeOutboxSchema.parse(record);
   if (existing) {
-    if (JSON.stringify(existing) !== JSON.stringify(canonical)) {
+    if (
+      JSON.stringify({ ...existing, state: canonical.state }) !==
+      JSON.stringify(canonical)
+    ) {
       throw new Error("Notice outbox id 与既有 canonical payload 冲突");
     }
     return existing;
   }
   state.noticeOutbox[record.id] = canonical;
   return canonical;
+}
+
+export function cancelNotice(
+  state: LedgerState,
+  noticeId: string
+) {
+  const existing = state.noticeOutbox[noticeId];
+  if (!existing) return false;
+  delete state.noticeOutbox[noticeId];
+  return true;
 }
 
 export function acknowledgeNotice(state: LedgerState, noticeId: string) {

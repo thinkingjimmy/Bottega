@@ -1,14 +1,16 @@
 /**
- * [INPUT]: Depends on preload Exposed window.unifiedSkills bridge and shared Unified Skills DTO
- * [OUTPUT]: Provides library/candidate/local selection/bulk import/precise authority action/Codex session file/changed renderer Thin boundaries
- * [POS]: The only input to the renderer is Unified Skills; The view does not directly touch the window, nor does it get an absolute path or durable operation
+ * [INPUT]: Depends on the preload unifiedSkills bridge, shared intent/job DTOs, and ProductResult unwrapping
+ * [OUTPUT]: Provides renderer calls for Skills commands, import-all onboarding, full snapshot changes, and lightweight job-progress events
+ * [POS]: Thin renderer boundary for unified Skills; views never inspect IPC envelopes or touch native paths
  */
 
 import type {
   ManagedSkillAgent,
+  ManagedSkillJobProgress,
   UnifiedSkillsBridgeApi,
   UnifiedSkillsSnapshot,
 } from "../../shared/unified-skills-ipc";
+import { unwrapProductResult } from "../../shared/product-failure";
 
 declare global {
   interface Window {
@@ -17,17 +19,57 @@ declare global {
 }
 
 function bridge() {
-  if (!window.unifiedSkills) throw new Error("当前环境不支持统一 Skills 管理");
+  if (!window.unifiedSkills) throw new Error("Unified Skills management is unavailable");
   return window.unifiedSkills;
 }
 
-export const listUnifiedSkills = (forceReload = false) => bridge().list(forceReload);
-export const listUnifiedSkillCandidates = (agent: ManagedSkillAgent, forceReload = false) => bridge().candidates(agent, forceReload);
-export const importUnifiedSkills = (input: Parameters<UnifiedSkillsBridgeApi["import"]>[0]) => bridge().import(input);
-export const previewUnifiedSkillAction = (input: Parameters<UnifiedSkillsBridgeApi["previewAction"]>[0]) => bridge().previewAction(input);
-export const authorizeUnifiedSkillAction = (previewId: string) => bridge().authorizeAction(previewId);
-export const applyUnifiedSkillAction = (input: Parameters<UnifiedSkillsBridgeApi["applyAction"]>[0]) => bridge().applyAction(input);
-export const setUnifiedCodexProduct = (input: Parameters<UnifiedSkillsBridgeApi["setProduct"]>[0]) => bridge().setProduct(input);
-export const dismissUnifiedSkillsOnboarding = () => bridge().dismissOnboarding();
+export const listUnifiedSkills = async (forceReload = false) =>
+  unwrapProductResult(await bridge().list(forceReload));
+
+export const listUnifiedSkillCandidates = async (
+  agent: ManagedSkillAgent | "all",
+  forceReload = false
+) => unwrapProductResult(await bridge().candidates(agent, forceReload));
+
+export const chooseLocalSkillsFolder = async () =>
+  unwrapProductResult(await bridge().chooseLocal());
+
+export const previewUnifiedSkillIntents = async (
+  intents: Parameters<UnifiedSkillsBridgeApi["previewIntents"]>[0]
+) => unwrapProductResult(await bridge().previewIntents(intents));
+
+export const applyUnifiedSkillPlan = async (
+  input: Parameters<UnifiedSkillsBridgeApi["applyPlan"]>[0]
+) => unwrapProductResult(await bridge().applyPlan(input));
+
+export const undoUnifiedSkillPlan = async (undoToken: string) =>
+  unwrapProductResult(await bridge().undoPlan(undoToken));
+
 export const onUnifiedSkillsChanged = (listener: (snapshot: UnifiedSkillsSnapshot) => void) =>
   window.unifiedSkills?.onChanged(listener) ?? (() => {});
+
+export const onUnifiedSkillsProgress = (listener: (progress: ManagedSkillJobProgress) => void) =>
+  window.unifiedSkills?.onProgress(listener) ?? (() => {});
+
+/** Import every currently actionable discovered Skill into the personal Library. */
+export async function importAllDiscoveredSkills() {
+  const preview = await listUnifiedSkillCandidates("all", false);
+  const candidateRefs = preview.candidates
+    .filter((candidate) => candidate.importable && candidate.status !== "current")
+    .map((candidate) => candidate.ref);
+  if (!candidateRefs.length) return listUnifiedSkills();
+  const plan = await previewUnifiedSkillIntents([{
+    type: "import-and-enable",
+    previewId: preview.previewId,
+    revision: preview.revision,
+    candidateRefs,
+  }]);
+  if (plan.consent.length) {
+    throw new Error("Skills onboarding import unexpectedly requested destructive consent");
+  }
+  return applyUnifiedSkillPlan({
+    planId: plan.planId,
+    planDigest: plan.planDigest,
+    authorityToken: plan.authorityToken,
+  });
+}

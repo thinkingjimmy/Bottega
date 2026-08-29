@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node child_process/readline, backend runtime registry/headless executor, authorized App configuration env, process budget, runtime audit/event server, AppServerCustodyRuntime and AppStore/AppGateway/MaintenanceGate
- * [OUTPUT]: Provides AppRuntime, which only starts Static/Server from the sealed contentRoot of active generation and starts Server with D29 custody; In addition, he is responsible for maintenance inventory, configuration of injecting, settled, stop, monitoring audit and event awakening
+ * [INPUT]: Depends on Node child_process/readline, backend runtime registry/headless executor, authorized App config, platform server-App policy, runtime audit/events, custody, store, gateway, and maintenance gate
+ * [OUTPUT]: Provides AppRuntime for static/server generations; unsupported platform server Apps fail before custody, lsof, or spawn, and only web-runtime Apps can ever be branded start-failed
  * [POS]: The non-permanent mode of operation of the apps module is the only source of truth, and the end of its life cycle is empty; Process truth is always in the ProcessCustodyJournal, and no PID tables are created in this category
  */
 
@@ -10,13 +10,15 @@ import {
 } from "node:child_process";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import type {
-  AppGeneration,
-  AppRequirement,
-  AppInstallEvent,
-  AppRecord,
-  ServerAppManifest,
+import {
+  servesWebRuntime,
+  type AppGeneration,
+  type AppRequirement,
+  type AppInstallEvent,
+  type AppRecord,
+  type ServerAppManifest,
 } from "../../../shared/apps-ipc";
+import { platformCapabilityUnavailable } from "../../../shared/platform-capabilities";
 import { sanitizedProcessEnvironment } from "../codex-runtime";
 import { backendById, backendRuntimeRegistry } from "../backends";
 import { headlessExecutor } from "../backends/headless-executor";
@@ -43,7 +45,7 @@ import {
   type ServeLoop,
 } from "./runtime/serve-loop";
 import { asError } from "../errors";
-import { strippedShell, updateAndEmitStatus } from "./support";
+import { strippedShell } from "./support";
 import type { AppProcessCustodyEntry } from "../../../shared/app-lifecycle";
 import type {
   AppServerCustodyHandle,
@@ -90,7 +92,8 @@ export class AppRuntime {
     private readonly epochRoot: (appId: string, dataEpochId: string) => string = (
       appId,
       dataEpochId
-    ) => join(this.userData, "app-data", appId, dataEpochId)
+    ) => join(this.userData, "app-data", appId, dataEpochId),
+    private readonly serverAppsEnabled = true
   ) {}
 
   /** Settings 现检与启动校验共用 maintenance adapter 的结构化 inventory。 */
@@ -215,8 +218,12 @@ export class AppRuntime {
       this.gateway.unregister(appId);
     }
     const record = this.store.get(appId);
-    if (!intentionalStop && record && record.state === "ready") {
-      await updateAndEmitStatus(this.store, this.emit, appId, (current) => ({
+    /* 只有真的有 web runtime 的 App 才可能「启动失败」。Base App 根本没有这条
+       生命线，对它调 start 是调用方的契约违约；把违约记成 App 自身的
+       update-failed，会让一次调用错误变成永久变砖（状态非 ready 之后
+       surface/grant/Design enabled 全线关门），故此处按资格收窄。 */
+    if (!intentionalStop && record?.state === "ready" && servesWebRuntime(record.manifest)) {
+      await this.store.update(appId, (current) => ({
         ...current,
         state: "update-failed",
         lastError: { phase: "start", message: error.message },
@@ -283,7 +290,7 @@ export class AppRuntime {
       (item) => item.generationId === active?.generationId
     );
     if (!active || !generation) throw new Error("App active generation 无效");
-    if (manifest.kind === "base") {
+    if (!servesWebRuntime(manifest)) {
       throw new Error("Base App 不启动 Web runtime");
     }
     if (manifest.kind === "static") {
@@ -299,6 +306,7 @@ export class AppRuntime {
         }
       );
     } else {
+      if (!this.serverAppsEnabled) throw platformCapabilityUnavailable("serverApps");
       await this.startServer(record, manifest, generation, active, entry);
     }
 
@@ -366,7 +374,7 @@ export class AppRuntime {
     if (custody.entry.phase !== "activated") {
       throw new Error("App server custody 未到达 activated，拒绝发布 route");
     }
-    this.gateway.registerProxy(record.id, upstreamPort, {
+    await this.gateway.registerProxy(record.id, upstreamPort, {
       generationId: active.generationId,
       lifecycleRevision: record.lifecycleRevision,
     });
@@ -601,7 +609,7 @@ export class AppRuntime {
     const normalized = warning?.slice(0, 3_500) ?? null;
     const current = this.store.get(appId);
     if (!current || current.agentWarning === normalized) return;
-    await updateAndEmitStatus(this.store, this.emit, appId, (record) => ({
+    await this.store.update(appId, (record) => ({
       ...record,
       agentWarning: normalized,
     }));

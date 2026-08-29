@@ -1,11 +1,16 @@
 /**
- * [INPUT]: Depends on shared chats - ChatMessage on ipc
- * [OUTPUT]: PrOvides oUtlineEntries (user message directory) with activeOutlineIndex (for ordered entry points, do O (log U) upper-bound)
- * [POS]: The lib session directory is a pure function ((Decision 13), consumed by ChatOutline components, scrolling through the entire history of the scan
+ * [INPUT]: Depends on shared ChatMessage, content generation, foreign history blocks, and canonical foreign row grouping
+ * [OUTPUT]: Provides merged product/foreign outline entries and O(log U) active-index lookup
+ * [POS]: Pure outline projection shared by ChatOutline and transcript navigation
  */
 
 import { isFailedAssistant } from "../../shared/chat-failure";
 import type { ChatMessage } from "../../shared/chats-ipc";
+import type { ForeignHistoryBlock } from "../../shared/history-import-ipc";
+import {
+  foreignHistoryAnchor,
+  groupForeignHistoryBlocks,
+} from "../../shared/foreign-history-grouping";
 
 export type OutlineEntry = {
   id: string;
@@ -41,6 +46,25 @@ export function outlineEntries(messages: ChatMessage[]): OutlineEntry[] {
     });
   }
   return entries;
+}
+
+export function foreignOutlineEntries(
+  blocks: readonly ForeignHistoryBlock[],
+  contentGenerationKey: string
+): OutlineEntry[] {
+  const rows = groupForeignHistoryBlocks(blocks);
+  return rows.flatMap((row, index) => {
+    if (row.kind !== "user") return [];
+    const reply = rows[index + 1];
+    return [{
+      id: foreignHistoryAnchor(contentGenerationKey, row.key),
+      text: row.block.content,
+      ...(reply?.kind === "turn" && reply.final.content.trim()
+        ? { replyExcerpt: reply.final.content.trim() }
+        : {}),
+      attachments: [],
+    }];
+  });
 }
 
 /**

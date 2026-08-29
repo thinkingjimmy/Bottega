@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, SetupProvider, shared Personalization bridge/backend sequence, Agent brand native language, Settings fill Canvas with native language, lib with formatBytes/shortcut tables, InstructionsFind, Tabs/Textarea/Kbd and i18n
- * [OUTPUT]: Provides PersonalizationSettingsView/PersonalizationSettingsContent/InstructionsEditor; InstructionsEditor renders a card (header slot: tabs + path actions; premise band; textarea) plus a sibling action bar OUTSIDE the card (size metrics + save/⌘S), spanning cross-tab drafts, dirty state, CAS conflict refresh and read-only
- * [POS]: The single control surface of Settings › Personalization. One editor instance serves the active backend only; saving/error state is tagged with its owning backend so switching tabs needs no cleanup. Drafts live in the parent, file truth and concurrency verdicts stay in main, path actions only ever pass a backend id
+ * [INPUT]: Depends on React, SetupProvider, shared Personalization contracts, Agent branding, Settings primitives, format/shortcut helpers, InstructionsFind, Tabs/Textarea/Kbd, and i18n
+ * [OUTPUT]: Provides global Personalization views plus a backend-agnostic InstructionsEditor and InstructionsPathBar with independent edit/search capabilities reusable by Project Settings
+ * [POS]: Settings instruction editor surface; callers own file identity, save/reveal authority, drafts, and result normalization
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -62,6 +62,28 @@ declare global {
 
 type FileMap = Partial<Record<AgentBackendId, AgentInstructionsFile>>;
 type DraftMap = Partial<Record<AgentBackendId, string>>;
+
+export type InstructionsFileView = Omit<Pick<
+  AgentInstructionsFile,
+  | "displayPath"
+  | "linkTarget"
+  | "exists"
+  | "oversized"
+  | "size"
+  | "content"
+  | "digest"
+  | "error"
+>, "error"> & { error?: string };
+
+export type InstructionsSaveOutcome =
+  | { status: "ok"; file: InstructionsFileView }
+  | {
+      status: "conflict";
+      current:
+        | { oversized: false; content: string; digest: string | null }
+        | { oversized: true; content: null; digest: string };
+    }
+  | { status: "error"; code: string };
 
 export function PersonalizationSettingsView() {
   const { t } = useAppTranslation();
@@ -130,8 +152,9 @@ export function PersonalizationSettingsContent({
   const multi = installed.length > 1;
   const panel = activeFile && activeBackend && (
     <InstructionsEditor
-      backend={activeBackend}
-      bridge={bridge}
+      editorId={activeBackend}
+      ariaLabel={`${backendLabel(activeBackend)} ${t("settings.personalization.sectionTitle")}`}
+      advisory={ADVISORY[activeBackend]}
       draft={drafts[activeBackend] ?? ""}
       file={activeFile}
       finding={finding}
@@ -148,7 +171,7 @@ export function PersonalizationSettingsContent({
             <TabsList
               variant="line"
               aria-label={t("settings.personalization.sectionTitle")}
-              className="h-8 w-fit shrink-0 bg-transparent p-0"
+              className="w-fit shrink-0 self-stretch group-data-horizontal/tabs:h-auto"
             >
               {installed.map((backend) => (
                 <TabsTrigger className="flex-none cursor-pointer gap-2 px-2" key={backend} value={backend}>
@@ -163,17 +186,33 @@ export function PersonalizationSettingsContent({
               ))}
             </TabsList>
           )}
-          <PathBar
-            bridge={bridge}
+          <InstructionsPathBar
             file={activeFile}
             onFind={() => setFinding(true)}
             findable={activeFile.content !== null}
+            onReveal={
+              bridge ? () => void bridge.reveal(activeBackend) : undefined
+            }
           />
         </div>
       }
+      save={
+        bridge
+          ? (content, expectedDigest) =>
+              bridge.save({
+                backend: activeBackend,
+                content,
+                expectedDigest,
+              })
+          : undefined
+      }
+      errorText={(code) => errorCopy(t, code as AgentInstructionsErrorCode)}
       onFindClose={() => setFinding(false)}
       onDraft={(content) => setDrafts((current) => ({ ...current, [activeBackend]: content }))}
-      onFile={(next) => setFiles((current) => ({ ...current, [activeBackend]: next }))}
+      onFile={(next) => setFiles((current) => ({
+        ...current,
+        [activeBackend]: next as AgentInstructionsFile,
+      }))}
     />
   );
 
@@ -216,16 +255,16 @@ const isDirty = (file: AgentInstructionsFile | undefined, draft: string | undefi
  * 真身由 main 自己解析——绝对路径不穿 preload 这条约束在这里没有例外，
  * 一旦为了「点一下打开」把路径递出来，renderer 就成了路径的授权方。
  * ============================================================ */
-function PathBar({
-  bridge,
+export function InstructionsPathBar({
   file,
   findable,
   onFind,
+  onReveal,
 }: {
-  bridge: PersonalizationBridgeApi | undefined;
-  file: AgentInstructionsFile;
+  file: InstructionsFileView;
   findable: boolean;
   onFind(): void;
+  onReveal?: () => void;
 }) {
   const { t } = useAppTranslation();
   const [copied, setCopied] = useState(false);
@@ -260,8 +299,8 @@ function PathBar({
         </Button>
         <Button
           aria-label={t("settings.personalization.reveal")}
-          disabled={!bridge || !file.exists}
-          onClick={() => void bridge?.reveal(file.backend)}
+          disabled={!onReveal || !file.exists}
+          onClick={onReveal}
           size="icon-sm"
           variant="ghost"
         >
@@ -328,8 +367,9 @@ const ADVISORY = {
 >;
 
 export function InstructionsEditor({
-  backend,
-  bridge,
+  editorId,
+  ariaLabel,
+  advisory,
   draft,
   file,
   finding,
@@ -337,17 +377,29 @@ export function InstructionsEditor({
   onDraft,
   onFile,
   onFindClose,
+  save: saveFile,
+  errorText,
+  premise,
+  readOnly = false,
 }: {
-  backend: AgentBackendId;
-  bridge: PersonalizationBridgeApi | undefined;
+  editorId: string;
+  ariaLabel: string;
+  advisory: { kind: "lines" | "bytes"; value: number } | null;
   draft: string;
-  file: AgentInstructionsFile;
+  file: InstructionsFileView;
   finding: boolean;
   /** 卡片顶栏。归卡片管，不归任何一家的正文管，故由调用方给。 */
   header?: ReactNode;
   onDraft(content: string): void;
-  onFile(file: AgentInstructionsFile): void;
+  onFile(file: InstructionsFileView): void;
   onFindClose(): void;
+  save?: (
+    content: string,
+    expectedDigest: string | null
+  ) => Promise<InstructionsSaveOutcome>;
+  errorText(code: string): string;
+  premise?: ReactNode;
+  readOnly?: boolean;
 }) {
   const { t } = useAppTranslation();
   /* 「正在存」与那条红字都属于某一家的某一次保存，因此各自带上主人。切
@@ -357,35 +409,37 @@ export function InstructionsEditor({
      另一条路是给整个编辑面挂 key，靠重挂把两个字段清零。那会连顶栏的
      页签带一起重建：为了两个字段归零重来一整棵树，键盘焦点跟着一起丢。
      状态自己说清归谁，「切换时要记得清理」这件事就不存在了。 */
-  const [savingFor, setSavingFor] = useState<AgentBackendId | null>(null);
-  const [saveError, setSaveError] = useState<{ backend: AgentBackendId; text: string } | null>(null);
-  const saving = savingFor === backend;
-  const error = saveError?.backend === backend ? saveError.text : "";
+  const [savingFor, setSavingFor] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<{ editorId: string; text: string } | null>(null);
+  const saving = savingFor === editorId;
+  const error = saveError?.editorId === editorId ? saveError.text : "";
   /* 查找条要拿真实的 textarea 结点去设选区，ref 不引起重渲染，故走 state。 */
   const [field, setField] = useState<HTMLTextAreaElement | null>(null);
   const dirty = !file.oversized && file.content !== null && draft !== file.content;
-  const readOnly = file.oversized || file.content === null || !bridge;
+  const unavailable = file.oversized || file.content === null;
+  const editable = !readOnly && !unavailable && Boolean(saveFile);
+  const searchable = !unavailable;
 
   const save = async () => {
-    if (!bridge || !dirty || saving) return;
-    setSavingFor(backend);
+    if (!saveFile || !editable || !dirty || saving) return;
+    setSavingFor(editorId);
     setSaveError(null);
-    const fail = (text: string) => setSaveError({ backend, text });
+    const fail = (text: string) => setSaveError({ editorId, text });
     try {
-      const result = await bridge.save({ backend, content: draft, expectedDigest: file.digest });
+      const result = await saveFile(draft, file.digest);
       if (result.status === "ok") {
         onFile(result.file);
         onDraft(result.file.content ?? "");
       } else if (result.status === "conflict") {
         /* 只刷新基线（digest/盘面），草稿一个字不动：清掉草稿等于替用户
            销毁刚打的字。用户看过提示后再点保存，就是知情覆盖。 */
-        const current: AgentInstructionsFile = result.current.oversized
+        const current: InstructionsFileView = result.current.oversized
           ? { ...file, exists: true, oversized: true, content: null, digest: result.current.digest, error: "oversized-file" }
           : { ...file, exists: true, oversized: false, content: result.current.content, digest: result.current.digest, error: undefined };
         onFile(current);
         fail(t("settings.personalization.errors.conflict"));
       } else {
-        fail(errorCopy(t, result.code));
+        fail(errorText(result.code));
       }
     } catch {
       fail(t("settings.personalization.errors.writeFailed"));
@@ -398,18 +452,19 @@ export function InstructionsEditor({
   /* 键帽走响应式绑定：改绑换字、停用整组消失，保存按钮本身不受影响。 */
   const saveKeys = useShortcutKeys("saveInstructions");
 
-  const failure = error || (file.error && file.error !== "oversized-file" ? errorCopy(t, file.error) : "");
+  const failure = error || (file.error && file.error !== "oversized-file" ? errorText(file.error) : "");
   const band = failure
     ? { tone: "error" as const, text: failure }
     : file.oversized
       ? { tone: "warn" as const, text: t("settings.personalization.oversized") }
       : !file.exists
         ? { tone: "info" as const, text: t("settings.personalization.createHint", { path: file.displayPath }) }
-        : null;
+        : premise
+          ? { tone: "info" as const, text: premise }
+          : null;
 
   const bytes = file.oversized ? (file.size ?? 0) : new TextEncoder().encode(draft).length;
   const lines = draft ? draft.split("\n").length : 0;
-  const advisory = ADVISORY[backend];
   const budget = !advisory
     ? { text: t("settings.personalization.metrics.limit", { size: formatBytes(PERSONALIZATION_BYTE_LIMIT) }), over: false }
     : advisory.kind === "lines"
@@ -428,19 +483,20 @@ export function InstructionsEditor({
             顺手做到了这件事，正文因此每次都从头显示；少了它，切到另一家
             会带着上一份的滚动位置，而两份文件长短不同，落点是随机的。
             它只裹住正文——顶栏不在里面，页签带不会跟着重建。 */}
-        <TabsContent key={backend} value={backend} className="flex min-h-0 flex-1 flex-col">
+        <TabsContent key={editorId} value={editorId} className="flex min-h-0 flex-1 flex-col">
           {band && <EditorBand tone={band.tone}>{band.text}</EditorBand>}
           <div className="relative min-h-0 flex-1">
-            {finding && !readOnly && (
+            {finding && searchable && (
               <InstructionsFind onClose={onFindClose} textarea={field} value={draft} />
             )}
             <SlimScroller asChild>
               <Textarea
-                aria-label={`${backendLabel(backend)} ${t("settings.personalization.sectionTitle")}`}
+                aria-label={ariaLabel}
                 className="field-sizing-fixed h-full min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-5 py-3 font-mono focus-visible:border-0 focus-visible:ring-1 focus-visible:ring-ring/30 focus-visible:ring-inset"
-                disabled={readOnly}
+                disabled={unavailable}
                 onChange={(event) => onDraft(event.target.value)}
                 placeholder={t("settings.personalization.placeholder")}
+                readOnly={!editable}
                 ref={setField}
                 value={draft}
               />
@@ -456,7 +512,7 @@ export function InstructionsEditor({
           border-t），于是长得像卡片的一部分——一条本属于这一页的动作，被
           读成了内容的边框。出了卡片就不必再自带底色与横线：外围本身就是
           它的留白。 */}
-      <div className="flex h-8 shrink-0 items-center justify-between gap-4">
+      {!readOnly && <div className="flex h-8 shrink-0 items-center justify-between gap-4">
         <p className="truncate font-mono text-muted-foreground text-xs tabular-nums">
           {formatBytes(bytes)}
           {" · "}
@@ -473,7 +529,7 @@ export function InstructionsEditor({
             </KbdGroup>
           )}
         </SettingsButton>
-      </div>
+      </div>}
     </>
   );
 }

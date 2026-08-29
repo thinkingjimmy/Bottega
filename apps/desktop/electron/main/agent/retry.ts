@@ -33,6 +33,17 @@ type RetryInput = {
 };
 
 export async function retryAgentWithoutSession(input: RetryInput) {
+  return retryAgent(input, "fresh-session");
+}
+
+export async function retryAgentSameSession(input: RetryInput) {
+  return retryAgent(input, "same-session");
+}
+
+async function retryAgent(
+  input: RetryInput,
+  mode: "same-session" | "fresh-session"
+) {
   const entry = input.turns.byRequest(input.requestId) as
     | RetryEntry
     | undefined;
@@ -41,16 +52,20 @@ export async function retryAgentWithoutSession(input: RetryInput) {
   }
   const oldSession = entry.payload.session;
   const retryClaim = input.turns.claimRetry(entry, input.retryToken);
-  try {
-    await input.replaceSession(entry, oldSession);
-  } catch (cause) {
-    input.turns.restoreRetry(retryClaim);
-    throw cause;
+  if (mode === "fresh-session") {
+    try {
+      await input.replaceSession(entry, oldSession);
+    } catch (cause) {
+      input.turns.restoreRetry(retryClaim);
+      throw cause;
+    }
   }
   const resolved = entry.resolvedInput as ResolvedAgentInput;
   const generation = input.turns.beginRetry(retryClaim);
   input.onGenerationStart?.(entry, generation);
-  entry.payload = { ...entry.payload, session: undefined };
+  if (mode === "fresh-session") {
+    entry.payload = { ...entry.payload, session: undefined };
+  }
   input.publishState(entry);
   input.restart(entry, resolved);
 }

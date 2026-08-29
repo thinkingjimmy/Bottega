@@ -1,0 +1,9 @@
+# [INPUT]: Extends the production builder config and requires BOTTEGA_STAGING_FEED_URL
+# [OUTPUT]: Overrides publishing with a generic provider and the explicit staging channel
+# [POS]: Layer-2 updater test config; GitHub drafts/prereleases are never used as a staging feed
+
+extends: ./electron-builder.yml
+publish:
+  provider: generic
+  url: ${env.BOTTEGA_STAGING_FEED_URL}
+  channel: staging

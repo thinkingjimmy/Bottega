@@ -22,7 +22,7 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 ## 环境要求
 
 - macOS
-- Node.js 20.19 或更高版本（推荐 Node.js 22.12 或更高版本）
+- Node.js 22.12 或更高版本
 - pnpm 11 或更高版本
 - 至少安装一个受支持的 CLI：
   - Codex CLI 0.145.0 或更高版本
@@ -55,6 +55,8 @@ pnpm typecheck   # 校验 TypeScript
 pnpm build       # 构建 Electron 应用
 pnpm dist        # 在本地构建 macOS DMG
 ```
+
+本地 DMG 属于开发产物；首个正式签名的 GitHub Release 尚未发布。
 
 首次启动时，选择 Chat Homes 目录并等待 Bottega 检测本机 CLI。工作区与至少一个后端就绪后，即可创建任务，并在发送首条消息前选择 Agent。
 

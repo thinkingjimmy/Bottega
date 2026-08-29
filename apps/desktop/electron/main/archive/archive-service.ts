@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron IPC, Node crypto/fs, Chat/Project stores, ChatHome/Purge journals, Coordinator pending CreationIntent/conversation Critical area, ChatsService Delete the chain with the option of Memory rebuild port
+ * [INPUT]: Depends on Electron IPC, Node crypto/fs, Chat/Project stores, ChatHome/Purge journals, Coordinator pending CreationIntent/conversation critical area, ProjectsService durable cleanup, ChatsService delete chain, and optional Memory rebuild port
  * [OUTPUT]: Provides ArchiveService: explicitly archived Projection, immutable local-only/cleanup-and-rebuild purge, short Project intent/CAS, canonical+pending member snapshot and verified/record-only tokenized preview
  * [POS]: The trans-book coordinator of the archive module; The product gate only packs intent/CAS, Memory receipt/drain/network both outside the gate and hold multiple conversation locks at different times
  */
@@ -77,8 +77,6 @@ export class ArchiveService {
     private readonly now: () => number = Date.now,
     private readonly countPinnedBases: (chatIds: ReadonlySet<string>) => number =
       () => 0,
-    private readonly removeProjectBase: (projectId: string) => Promise<void> =
-      async () => undefined,
     private readonly memoryPurge?: ArchiveMemoryPurge
   ) {}
 
@@ -541,13 +539,11 @@ export class ArchiveService {
       for (const target of targets) {
         if (target.kind === "project") {
           await this.projectsService.runExclusive(async () => {
-            await this.removeProjectBase(target.id);
+            await this.projectsService.purgeProjectHeld(target.id, intentId);
             await this.purgeJournal.patch(intentId, {
               phase: "projectBaseRemoved",
               updatedAt: this.now(),
             });
-            await this.projects.remove(target.id);
-            this.projectsService.publishRemoved(target.id);
           });
         }
       }

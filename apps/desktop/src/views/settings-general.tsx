@@ -208,7 +208,7 @@ function ChatRows({
                 <SelectItem
                   key={value}
                   value={String(value)}
-
+                 
                 >
                   {value === 0
                     ? t("settings.general.unlimitedNotRecommended")
@@ -245,7 +245,7 @@ function ChatRows({
                   <SelectItem
                     key={option}
                     value={option}
-
+                   
                   >
                     <TitleAgentLabel value={option} />
                   </SelectItem>
@@ -271,7 +271,7 @@ function ChatRows({
                   <SelectItem
                     key={model.value}
                     value={model.value}
-
+                   
                   >
                     {model.label}
                   </SelectItem>
@@ -353,7 +353,7 @@ export function ThemeSelect({ theme }: { theme: ThemePreference | null }) {
           <SelectItem
             key={option.value}
             value={option.value}
-
+           
           >
             {t(option.key)}
           </SelectItem>
@@ -480,7 +480,7 @@ export function GeneralSettingsView() {
                         <SelectItem
                           key={font.value}
                           value={font.value}
-
+                         
                         >
                           {font.label}
                         </SelectItem>

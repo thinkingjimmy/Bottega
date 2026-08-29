@@ -11,7 +11,7 @@ import { systemSkillsPath } from "../../system-skills";
 import { githubLatestVersion } from "../../setup/latest-version";
 import { AcpTurn } from "../acp/acp-turn";
 import { classifyAcpFailure } from "../acp/failure";
-import { EFFORT_ID_PATTERN } from "../capability-validation";
+import { OPAQUE_CONFIG_VALUE_PATTERN } from "../capability-validation";
 import {
   builtinToolsForVersion,
   probeRuntimeCandidatesAsync,
@@ -29,6 +29,7 @@ import {
 } from "./headless";
 import { createClaudeMaintenance } from "./maintenance";
 import { isClaudeModelId, listClaudeModels } from "./models";
+import { SESSION_CAPABILITY_POLICY } from "../acp/session/client-capabilities";
 
 const PERMISSIONS = new Set(["ask-for-approval", "approve-for-me"]);
 const MINIMUM_VERSION = "2.1.216";
@@ -53,12 +54,18 @@ function validate(value: unknown): asserts value is ClaudeTurnOptions {
   if (
     options.reasoningEffort !== undefined &&
     (typeof options.reasoningEffort !== "string" ||
-      !EFFORT_ID_PATTERN.test(options.reasoningEffort))
+      !OPAQUE_CONFIG_VALUE_PATTERN.test(options.reasoningEffort))
   ) {
     throw new Error("Claude Effort 格式无效");
   }
   if (!PERMISSIONS.has(options.permissionMode ?? "")) {
     throw new Error("Claude 权限档位无效");
+  }
+  if (
+    options.serviceTier !== undefined &&
+    !OPAQUE_CONFIG_VALUE_PATTERN.test(options.serviceTier)
+  ) {
+    throw new Error("Claude Speed 格式无效");
   }
 }
 
@@ -114,19 +121,35 @@ export const claudeInteractiveSessionMeta = (turn: BackendTurnOptions) =>
                 turn.filesystemAccess,
                 turn.payload.turnOptions.permissionMode === "approve-for-me"
                   ? "approve-for-me"
-                  : "ask-for-approval"
+                  : "ask-for-approval",
+                undefined,
+                turn.backendSessionConfig?.claudeDisabledPluginIds
               )
             ),
             ...CLAUDE_INTERACTIVE_LOCKDOWN,
+            ...(turn.backendSessionConfig?.claudePluginPaths?.length
+              ? {
+                  plugins: turn.backendSessionConfig.claudePluginPaths.map(
+                    (path) => ({ type: "local" as const, path })
+                  ),
+                }
+              : {}),
           },
         },
       }
     : {};
 
+const CLAUDE_SERVICE_TIER = {
+  configOptionId: "fast",
+  values: { default: "off", priority: "on" },
+} as const;
+
 export const claudeBackend: BackendDescriptor = {
   id: "claude",
   displayName: "Claude",
   workspaceDirName: "claude-workspace",
+  sessionCapabilityPolicy: SESSION_CAPABILITY_POLICY.claude,
+  serviceTier: CLAUDE_SERVICE_TIER,
   detectRuntime: findClaudeRuntime,
   validateRuntime: (runtime) =>
     runtimeVersionAtLeast(runtime.version, MINIMUM_VERSION)
@@ -161,6 +184,8 @@ export const claudeBackend: BackendDescriptor = {
         plan: "plan",
         approveForMe: ["auto", "acceptEdits"],
       },
+      serviceTierValues: CLAUDE_SERVICE_TIER.values,
+      serviceTierConfigId: CLAUDE_SERVICE_TIER.configOptionId,
       classifyFailure: claudeBackend.classifyFailure,
       reviewResidualApprovals: true,
       sessionMeta: claudeInteractiveSessionMeta,

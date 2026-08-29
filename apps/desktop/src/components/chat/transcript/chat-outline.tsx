@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Conversation Scrolling the context, lib/chat-outline, pure functions, shared ChatMessage and skip commands in the transcript window
- * [OUTPUT]: Provides ChatOutline with an OutlineDot that can be measured independently; The first five files are closed, with a single instance preview, roving tabindex, pre-calculation focal point and first jump outside the window
- * [POS]: The chat/transcript session navigation layer; Center motion only submits the lens radius, scrolling rods only read scrollTop and 2 points, layout measurement only occurs when the entries/content size changes
+ * [INPUT]: Depends on conversation scrolling context, pure outline projection, product messages, and loaded generation-scoped HistoryPrefixProjection blocks
+ * [OUTPUT]: Provides a roving minimap whose product and foreign entries jump through the transcript's canonical anchors
+ * [POS]: The session navigation layer of chat/transcript
  */
 
 import {
@@ -20,8 +20,10 @@ import { FileTextIcon } from "lucide-react";
 import { useStickToBottomContext } from "@ai-chat/ui/components/ai-elements/conversation";
 import { cn } from "@ai-chat/ui/lib/utils";
 import type { ChatMessage } from "../../../../shared/chats-ipc";
+import type { ForeignHistoryBlock } from "../../../../shared/history-import-ipc";
 import {
   activeOutlineIndex,
+  foreignOutlineEntries,
   outlineEntries,
 } from "@/lib/chat-outline";
 
@@ -128,12 +130,24 @@ const EMPTY_MEASUREMENTS: Measurements = {
 
 export const ChatOutline = memo(function ChatOutline({
   messages,
+  historyBlocks,
+  historyContentGenerationKey,
   onJump,
 }: {
   messages: ChatMessage[];
+  historyBlocks?: readonly ForeignHistoryBlock[];
+  historyContentGenerationKey?: string;
   onJump?: (id: string) => void;
 }) {
-  const entries = useMemo(() => outlineEntries(messages), [messages]);
+  const entries = useMemo(
+    () => [
+      ...(historyBlocks && historyContentGenerationKey
+        ? foreignOutlineEntries(historyBlocks, historyContentGenerationKey)
+        : []),
+      ...outlineEntries(messages),
+    ],
+    [historyBlocks, historyContentGenerationKey, messages]
+  );
   const { scrollRef } = useStickToBottomContext();
   const [active, setActive] = useState(-1);
   const [preview, setPreview] = useState<{ id: string; top: number } | null>(

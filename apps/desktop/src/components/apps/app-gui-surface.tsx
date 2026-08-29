@@ -2,14 +2,15 @@
 
 /**
  * [INPUT]: Depends on React/zod, shared GUI path with typed host-action, renderer Effective language/host origin, App gui binding and ui button
- * [OUTPUT]: Provides AppGuiBinding and AppGuiSurface; Fixed sandbox/fragment, four-bit action, consumption, cross-rendering durable token buckets, development mode discarded counting hits, refresh and actionable failure modes
+ * [OUTPUT]: Provides AppGuiBinding and AppGuiSurface with fixed sandbox/fragment, scoped acknowledged host actions, per-surface token checks, rate limits, refresh, and actionable failure modes
  * [POS]: The basic Application GUI of the apps is the main Surface; Uploaded host actions with a narrow white list but not open to general RPC with BaseWorkbench
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import {
   BASE_GUI_ACTION_CHANNEL,
+  BASE_GUI_ACTION_RESULT_CHANNEL,
   type BaseGuiHostAction,
 } from "../../../shared/apps-ipc";
 import { AppWindowIcon, RefreshCwIcon } from "lucide-react";
@@ -23,12 +24,19 @@ const hostMessageSchema = z
   .object({
     channel: z.literal(BASE_GUI_ACTION_CHANNEL),
     token: z.string().min(1),
+    requestId: z.string().regex(/^host_[a-z0-9_]{3,96}$/),
     action: z.discriminatedUnion("type", [
       z.object({ type: z.literal("open-data") }).strict(),
       z
         .object({
           type: z.literal("open-data-view"),
           viewId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+        })
+        .strict(),
+      z
+        .object({
+          type: z.literal("compose-text"),
+          text: z.string().min(1).max(32_768),
         })
         .strict(),
     ]),
@@ -41,6 +49,8 @@ export type AppGuiBinding = {
   pages: string[];
   origin: string;
   token: string;
+  surfaceLeaseId: string;
+  hostActions: readonly import("../../../shared/apps-ipc").BaseGuiHostActionCapability[];
   loading: boolean;
   error?: string;
   refresh(): void;
@@ -67,6 +77,7 @@ function guiSource(gui: AppGuiBinding, locale: string) {
   const hostOrigin = isFileRenderer() ? "*" : window.location.origin;
   url.hash = new URLSearchParams({
     baseToken: gui.token,
+    surfaceLeaseId: gui.surfaceLeaseId,
     lang: locale,
     hostOrigin,
   }).toString();
@@ -77,10 +88,12 @@ export function AppGuiSurface({
   gui,
   onGoToData,
   onHostAction,
+  toolbar,
 }: {
   gui: AppGuiBinding;
   onGoToData(): void;
-  onHostAction?(action: BaseGuiHostAction): void;
+  onHostAction?(action: BaseGuiHostAction): boolean | Promise<boolean>;
+  toolbar?: ReactNode;
 }) {
   const { t } = useAppTranslation();
   const locale = useEffectiveLocale();
@@ -90,6 +103,7 @@ export function AppGuiSurface({
   const onHostActionRef = useRef(onHostAction);
   const bucketRef = useRef({ tokens: 10, updatedAt: 0 });
   const droppedRef = useRef(0);
+  const canCompose = gui.hostActions.includes("compose-text");
   const source = useMemo(() => guiSource(gui, locale), [gui, locale]);
   const refresh = () => {
     setLoaded(false);
@@ -113,6 +127,14 @@ export function AppGuiSurface({
         );
       }
     };
+    const acknowledge = (requestId: string, ok: boolean, error?: string) => {
+      iframeRef.current?.contentWindow?.postMessage({
+        channel: BASE_GUI_ACTION_RESULT_CHANNEL,
+        requestId,
+        ok,
+        ...(error ? { error } : {}),
+      }, gui.origin);
+    };
     const onMessage = (event: MessageEvent) => {
       if (
         event.origin !== gui.origin ||
@@ -126,20 +148,47 @@ export function AppGuiSurface({
         drop("token-or-schema");
         return;
       }
+      if (
+        parsed.data.action.type === "compose-text" &&
+        !canCompose
+      ) {
+        drop("host-action-not-granted");
+        acknowledge(parsed.data.requestId, false, "This App is not allowed to add text to chat.");
+        return;
+      }
+      if (
+        parsed.data.action.type === "compose-text" &&
+        new TextEncoder().encode(parsed.data.action.text).byteLength > 32 * 1024
+      ) {
+        drop("host-action-too-large");
+        acknowledge(parsed.data.requestId, false, "The Design anchor payload exceeds 32 KiB.");
+        return;
+      }
       const now = performance.now();
       const bucket = bucketRef.current;
       bucket.tokens = Math.min(10, bucket.tokens + ((now - bucket.updatedAt) / 1_000) * 5);
       bucket.updatedAt = now;
       if (bucket.tokens < 1) {
         drop("rate-limited");
+        acknowledge(parsed.data.requestId, false, "Too many requests. Wait a moment and try again.");
         return;
       }
       bucket.tokens -= 1;
-      onHostActionRef.current?.(parsed.data.action);
+      void Promise.resolve(onHostActionRef.current?.(parsed.data.action) ?? true)
+        .then((accepted) => acknowledge(
+          parsed.data.requestId,
+          accepted !== false,
+          accepted === false ? "The chat draft could not accept this payload." : undefined
+        ))
+        .catch((cause) => acknowledge(
+          parsed.data.requestId,
+          false,
+          cause instanceof Error ? cause.message : "The host action failed."
+        ));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [gui.origin, gui.token, source]);
+  }, [canCompose, gui.origin, gui.token, source]);
 
   return (
     <section
@@ -150,6 +199,8 @@ export function AppGuiSurface({
         <span className="truncate text-muted-foreground text-xs">
           {ENTRY}
         </span>
+        <div className="flex min-w-0 items-center gap-1">
+        {toolbar}
         <Button
           aria-label={t("bases.gui.refresh")}
           disabled={gui.loading}
@@ -160,6 +211,7 @@ export function AppGuiSurface({
         >
           <RefreshCwIcon />
         </Button>
+        </div>
       </div>
       {source && !failed && !gui.error ? (
         <div className="relative min-h-0 flex-1">

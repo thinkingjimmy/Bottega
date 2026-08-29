@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared/history-import-ipc and preload exposure window.historyImport
- * [OUTPUT]: Provides a snapshot of history, Project prepare/commit, refresh, session rename/archives, transcribe, adopt and Memory preview/commit client
- * [POS]: The platform boundaries of lib/history; The components do not read directly to the renderer Electron bridge
+ * [INPUT]: Depends on shared history-import IPC and preload `window.historyImport`
+ * [OUTPUT]: Provides snapshot, Project actions, request-id/AbortSignal paged and full-index transcripts, adoption, presentation, and Memory client calls
+ * [POS]: The renderer platform boundary for external history
  */
 
 import type {
@@ -44,8 +44,49 @@ export const renameHistorySession = (opaqueId: string, title: string) =>
   bridge().renameSession(opaqueId, title);
 export const setHistorySessionArchived = (opaqueId: string, archived: boolean) =>
   bridge().setSessionArchived(opaqueId, archived);
-export const historyTranscript = (opaqueId: string, cursor?: string) =>
-  bridge().transcript(opaqueId, cursor);
+function historyRequest<T>(
+  signal: AbortSignal | undefined,
+  invoke: (api: HistoryImportBridgeApi, requestId: string) => Promise<T>
+) {
+  const requestId = crypto.randomUUID();
+  const api = bridge();
+  const abortError = () =>
+    signal?.reason instanceof Error
+      ? signal.reason
+      : Object.assign(new Error("History transcript request aborted"), {
+          name: "AbortError",
+        });
+  if (signal?.aborted) {
+    return Promise.reject(abortError());
+  }
+  const request = invoke(api, requestId);
+  if (!signal) return request;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => {
+      api.cancelTranscript(requestId);
+      reject(abortError());
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    request.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", abort);
+    });
+  });
+}
+
+export const historyTranscript = (
+  opaqueId: string,
+  cursor?: string,
+  signal?: AbortSignal
+) => historyRequest(signal, (api, requestId) =>
+  api.transcript({ opaqueId, cursor, requestId })
+);
+export const historyTranscriptIndex = (
+  opaqueId: string,
+  expectedHistoryRevision: string,
+  signal?: AbortSignal
+) => historyRequest(signal, (api, requestId) =>
+  api.transcriptIndex({ opaqueId, expectedHistoryRevision, requestId })
+);
 export const adoptHistory = (input: Parameters<HistoryImportBridgeApi["adopt"]>[0]) =>
   bridge().adopt(input);
 export const historyAdoptionPrefix = (chatId: string) => bridge().adoptionPrefix(chatId);

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/path, zod, durable replace, product history durable intent and shared history transcript
- * [OUTPUT]: Provides content-addressed AdoptionSnapshot/MemorySourceSnapshot Unmovable; canceled Worker adoption; read/test; complete upcoming summary; foreign/product phase Grant ledger; source watermark; exit drain and adoption/memory; twin-possession orphan GC
- * [POS]: The history-import TOCTOU/crash consistency termination layer; After preview delivery only read snapshots, search pages can terminate the large snapshot CPU/I/O, a confirmed foreign/product phase and the water level in the same ledger restore the output
+ * [INPUT]: Depends on Node crypto/fs/path, zod, durable replacement, product-history intents, shared transcript DTOs, and complete reference projections
+ * [OUTPUT]: Provides immutable Memory/Adoption snapshots, schema-v2 quality freeze, deterministic digest projection, cancellable reads, Grant/watermark ledgers, drain, and fail-closed GC
+ * [POS]: The TOCTOU and crash-consistency layer of history-import
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -25,13 +25,25 @@ const sourceSchema = z.object({
   sourceKind: z.enum(HISTORY_SOURCE_KINDS), storageFingerprint: id, canonicalNativeId: id,
   aliases: z.array(id), resumeAlias: id,
 }).strict();
-const adoptionSchema = z.object({
+const adoptionSchemaV1 = z.object({
   schemaVersion: z.literal(1), kind: z.literal("adoption"), snapshotId: id, digest: z.string().regex(/^[a-f0-9]{64}$/),
   source: sourceSchema, projectId: id, cwd: z.string().min(1), title: z.string(), historyRevision: id,
   sourcePath: z.string().min(1),
   fingerprint: z.object({ size: z.number().int().nonnegative(), mtimeNs: z.string() }).strict(),
   parserVersion: z.number().int().positive(), blocks: z.array(z.unknown()), createdAt: z.number().int().nonnegative(),
 }).strict();
+const adoptionSchemaV2 = z.object({
+  schemaVersion: z.literal(2), kind: z.literal("adoption"), snapshotId: id, digest: z.string().regex(/^[a-f0-9]{64}$/),
+  source: sourceSchema, projectId: id, cwd: z.string().min(1), title: z.string(), historyRevision: id,
+  sourcePath: z.string().min(1),
+  fingerprint: z.object({ size: z.number().int().nonnegative(), mtimeNs: z.string() }).strict(),
+  parserVersion: z.number().int().positive(), blocks: z.array(z.unknown()),
+  incompleteTail: z.boolean(), createdAt: z.number().int().nonnegative(),
+}).strict();
+const adoptionSchema = z.discriminatedUnion("schemaVersion", [
+  adoptionSchemaV1,
+  adoptionSchemaV2,
+]);
 const memorySchemaV1 = z.object({
   schemaVersion: z.literal(1), kind: z.literal("memory-source"), snapshotId: id, digest: z.string().regex(/^[a-f0-9]{64}$/),
   source: sourceSchema, sourceIncarnation: id, projectId: id, cwd: z.string().min(1), parserVersion: z.number().int().positive(),
@@ -93,6 +105,10 @@ const legacyGrantLedgerSchema = z.object({
 export type AdoptionSnapshot = z.infer<typeof adoptionSchema>;
 export type MemorySourceSnapshot = z.infer<typeof memorySchema>;
 export type HistoryMemoryGrant = z.infer<typeof grantSchema>;
+export type ReferenceProjection = Readonly<{
+  complete: boolean;
+  refs: ReadonlySet<string>;
+}>;
 type HistoryMemoryGrantSource = z.infer<typeof grantSourceSchema>;
 
 export class HistorySnapshotStore {
@@ -127,15 +143,23 @@ export class HistorySnapshotStore {
     await this.hydrateLegacyGrantSources();
   }
 
-  async writeAdoption(input: { summary: Omit<ForeignHistorySummary, "productArchivedAt">; sourcePath: string; blocks: ForeignHistoryBlock[]; parserVersion: number; fingerprint: { size: number; mtimeNs: string } }) {
+  async writeAdoption(input: { summary: Omit<ForeignHistorySummary, "productArchivedAt">; sourcePath: string; blocks: ForeignHistoryBlock[]; parserVersion: number; fingerprint: { size: number; mtimeNs: string }; incompleteTail: boolean }) {
     const body = {
       source: input.summary.key, projectId: input.summary.projectId, cwd: input.summary.cwd,
       title: input.summary.title, historyRevision: input.summary.historyRevision,
       sourcePath: input.sourcePath,
-      fingerprint: input.fingerprint, parserVersion: input.parserVersion, blocks: input.blocks, createdAt: Date.now(),
+      fingerprint: input.fingerprint, parserVersion: input.parserVersion,
+      blocks: input.blocks, incompleteTail: input.incompleteTail,
     };
     const digest = hash(canonical(body));
-    const snapshot: AdoptionSnapshot = adoptionSchema.parse({ schemaVersion: 1, kind: "adoption", snapshotId: `adopt_${digest}`, digest, ...body });
+    const snapshot: AdoptionSnapshot = adoptionSchema.parse({
+      schemaVersion: 2,
+      kind: "adoption",
+      snapshotId: `adopt_${digest}`,
+      digest,
+      ...body,
+      createdAt: Date.now(),
+    });
     await writeContentAddressed(join(this.adoptionRoot, `${snapshot.snapshotId}.json`), snapshot);
     return snapshot;
   }
@@ -364,8 +388,9 @@ export class HistorySnapshotStore {
     });
   }
 
-  gcAdoptionOrphans(referenced: ReadonlySet<string>, olderThan = Date.now() - GC_GRACE_MS) {
-    return this.gcOrphans(this.adoptionRoot, referenced, olderThan);
+  gcAdoptionOrphans(projection: ReferenceProjection, olderThan = Date.now() - GC_GRACE_MS) {
+    if (!projection.complete) return Promise.resolve();
+    return this.gcOrphans(this.adoptionRoot, projection.refs, olderThan);
   }
 
   /** Memory snapshot 的引用只有 pending Grant；complete/superseded 后文件不再被读。 */
@@ -539,20 +564,51 @@ async function writeContentAddressed(path: string, value: unknown) {
     await durableReplaceFile(path, `${JSON.stringify(value)}\n`);
     return;
   }
-  /* 损坏文件的 JSON.parse 失败与内容不同构一样上浮，绝不静默覆盖既有 snapshot。 */
-  if (canonical(JSON.parse(existing)) !== canonical(value)) {
+  /* v2 adoption 的 createdAt 不属于内容身份；重试只比较 digest 投影。
+     其余快照维持全体比较，损坏与冲突一律响亮上浮。 */
+  const parsedExisting = JSON.parse(existing) as unknown;
+  const same = isAdoptionV2(value)
+    ? canonical(adoptionDigestProjection(adoptionSchemaV2.parse(parsedExisting))) ===
+      canonical(adoptionDigestProjection(adoptionSchemaV2.parse(value)))
+    : canonical(parsedExisting) === canonical(value);
+  if (!same) {
     throw new Error("content-addressed snapshot 冲突");
   }
 }
 
 function verifySnapshot<T extends { kind: string; snapshotId: string; digest: string }>(snapshot: T) {
   const { schemaVersion: _schemaVersion, kind, snapshotId, digest, ...body } = snapshot as T & { schemaVersion: number };
-  const expected = hash(canonical(body));
+  const expected = hash(canonical(
+    kind === "adoption" && _schemaVersion === 2
+      ? adoptionDigestProjection(snapshot)
+      : body
+  ));
   const prefix = kind === "adoption" ? "adopt_" : "memory_";
   if (digest !== expected || snapshotId !== `${prefix}${expected}`) {
     throw new Error("content-addressed snapshot 完整性校验失败");
   }
   return snapshot;
+}
+
+function isAdoptionV2(value: unknown): boolean {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    (value as { kind?: unknown }).kind === "adoption" &&
+    (value as { schemaVersion?: unknown }).schemaVersion === 2
+  );
+}
+
+function adoptionDigestProjection(value: unknown) {
+  const {
+    schemaVersion: _schemaVersion,
+    kind: _kind,
+    snapshotId: _snapshotId,
+    digest: _digest,
+    createdAt: _createdAt,
+    ...body
+  } = value as Record<string, unknown>;
+  return body;
 }
 
 /* JSON.parse + canonical digest 都是不可抢占的 CPU 段。搜索带 signal 时把整段
@@ -572,8 +628,11 @@ const canonical = (value) => {
 (async () => {
   const snapshot = JSON.parse(await readFile(workerData, "utf8"));
   if (!snapshot || typeof snapshot !== "object") throw new Error("快照格式无效");
-  const { schemaVersion: ignored, kind, snapshotId, digest, ...body } = snapshot;
-  const expected = createHash("sha256").update(canonical(body)).digest("hex");
+  const { schemaVersion, kind, snapshotId, digest, ...body } = snapshot;
+  const projection = kind === "adoption" && schemaVersion === 2
+    ? (({ createdAt: ignored, ...stable }) => stable)(body)
+    : body;
+  const expected = createHash("sha256").update(canonical(projection)).digest("hex");
   if (kind !== "adoption" || digest !== expected || snapshotId !== "adopt_" + expected) {
     throw new Error("content-addressed snapshot 完整性校验失败");
   }

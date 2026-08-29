@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the same directory feature catalogs; As a benchmark for structural types in the rest of the languages
- * [OUTPUT]: Provides full English directories and Catalog types
- * [POS]: The desktop i18n is a reference localeThe final fallback of the lack of keys
+ * [INPUT]: Depends on every same-directory feature catalog, including Project Settings, and defines the structural benchmark for translated locales
+ * [OUTPUT]: Provides the complete English catalog and its Catalog type
+ * [POS]: Reference and fallback locale for desktop i18n
  */
 
 import { basesEn } from "./bases/en";
@@ -18,8 +18,11 @@ import { settingsToolsEn } from "./settings/tools";
 import { settingsUsageEn } from "./settings/usage";
 import { settingsPersonalizationEn } from "./settings/personalization";
 import { settingsShortcutsEn } from "./settings/shortcuts";
+import { settingsAboutEn } from "./settings/about";
 import { historyEn } from "./history";
 import { chatRevisionEn } from "./chat-revision";
+import { projectSettingsEn } from "./project-settings";
+import { chatEn } from "./chat";
 
 export const en = {
   common: {
@@ -64,12 +67,29 @@ export const en = {
     toggleActivity: "Toggle Activity view",
     createChat: "Create chat",
     chatsEmpty: "Click + to start a chat",
+    rename: "Rename",
+    renameChatTitle: "Rename chat",
+    renameChatDescription: "Enter a new name for this chat.",
     memoryAttention: "Memory service needs attention",
     memoryAttentionOpen: "Memory service needs attention; open details",
     appInstalling: "Installing App",
     appInstallFailed: "App installation failed",
     appInstallSucceeded: "App installed",
     promoteBaseToApp: "Promote {{name}} to App",
+  },
+  windowSurface: {
+    missingIdentity: "App window launch identity is missing",
+    checkingResidence: "Checking window residence…",
+    openInWindow: "Open in a new window",
+    defaultOpen: "Default opening",
+    sameWindow: "Same window",
+    newWindow: "New window",
+    awayTitle: "Open in another window",
+    awayDescription: "An App Studio stays active in exactly one window to prevent duplicate sessions and draft writes.",
+    focusWindow: "Go to window",
+    reclaim: "Bring back",
+    draftLost: "The App window quit unexpectedly; its unsaved draft was lost",
+    draftLostDescription: "The Studio returned to the main window. Messages already held by the main process will not be resent.",
   },
   memory: memoryEn,
   archive: archiveEn,
@@ -79,7 +99,9 @@ export const en = {
   permission: permissionEn,
   history: historyEn,
   chatRevision: chatRevisionEn,
+  projectSettings: projectSettingsEn,
   settings: {
+    about: settingsAboutEn,
     personalization: settingsPersonalizationEn,
     shortcuts: settingsShortcutsEn,
     skills: settingsSkillsEn,
@@ -170,6 +192,7 @@ export const en = {
     tools: settingsToolsEn,
   },
   chat: {
+    ...chatEn,
     generatingTitle: "Generating title",
     newTask: "New Task",
     emptyPrompt: "What should we build?",
@@ -177,6 +200,88 @@ export const en = {
     emptyPromptInProject: "What should we build in {{name}}?",
     changeProject: "Change Project: {{name}}",
     openSidePanel: "Open side panel",
+    sidePanel: {
+      addPanel: "Add panel",
+      allPanelsOpen: "All panels are open",
+      authorizeAppFirst: "Authorize an App in a Chat or Project first",
+      tabsAriaLabel: "Side panel tabs",
+      closeTab: "Close tab",
+      closePanel: "Close panel",
+      resolvingBase: "Resolving Base…",
+      moreBaseActions: "More Base actions",
+      more: "More",
+      openApp: "Open App",
+      saveAsApp: "Save as App",
+      downloadCsv: "Download CSV",
+      openNamedPanel: "Open {{name}}",
+      unavailableNamedPanel: "{{name}} unavailable: {{reason}}",
+      closeNamedTab: "Close {{name}} tab",
+      newTab: "New tab",
+      webPage: "Web page",
+      baseOwnerResolveFailed: "Could not resolve the Base owner",
+      appUnavailable: "App unavailable",
+      appSlotUnavailable: "App access was revoked or the App is unavailable. The slot is preserved until access returns.",
+      catalog: {
+        base: { label: "Base", hint: "Collect structured data created by this conversation" },
+        subagents: { label: "Subagents", hint: "View subagent responsibilities and execution details" },
+        browser: { label: "Browser", hint: "Open a page that shares your signed-in session with the Agent" },
+        app: { label: "App", hint: "Open an authorized App without starting it when the tab is created" },
+        image: { label: "Image", hint: "View conversation images" },
+      },
+      eligibility: {
+        "foreign-base-unavailable": "Adopt this conversation before using Base.",
+        "foreign-app-unavailable": "Adopt this conversation before opening attached Apps.",
+        "foreign-subagents-unavailable": "Subagent details are not available in imported history.",
+        "foreign-images-unavailable": "Source images are not available before adoption.",
+      },
+    },
+    composer: {
+      add: "Add",
+      files: "Files",
+      planUnavailable: "The current Agent does not support Plan",
+      planCheck: "Check the current Agent's Plan capability again",
+      disablePlan: "Turn off Plan",
+      dismissNotice: "Dismiss notice",
+      dismissQueueNotice: "Dismiss queue notice",
+      galleryComments_one: "{{count}} comment",
+      galleryComments_other: "{{count}} comments",
+      clearGalleryComments: "Clear all image comments",
+      focusGallery: "Focus gallery",
+      modelSelector: {
+        currentModel: "Current model {{model}}, effort {{effort}}",
+        selector: "Chat model selector",
+        advanced: "Advanced",
+        model: "Model",
+        effort: "Effort",
+        speed: "Speed",
+        disableFast: "Disable Fast speed",
+        enableFast: "Enable Fast speed",
+        quickTier: "Quick model tier",
+        loadingModels: "Loading model catalog…",
+        retryModels: "Retry model catalog",
+        resetDefault: "Reset to default",
+        onlyOneModel: "Only one model is available",
+        effortUnavailable: "The current model does not support changing Effort",
+        noModels: "No available models found",
+        backendDefaultModel: "Backend default model",
+        speedDescription:
+          "About 2.5× faster on supported Opus 5/4.8 models. Costs more usage credits but does not consume the subscription rate-limit pool.",
+        /* 运行态判据的产品说法。后端自己的解释（免费计划、模型不支持…）
+           由 adapter 的 turned-off 消息原样进转录，这里不复述。 */
+        speedReason: {
+          modelUnsupported: "The current model does not offer Fast",
+          backendOff: "The backend turned Fast off for this session",
+          backendOn: "The backend enabled Fast for this session",
+        },
+      },
+    },
+    resumeFailure: {
+      title: "Saved session could not resume",
+      description: "The backend rejected the saved session. Your message and attachments remain stored; choose how to recover without writing them twice.",
+      sameSession: "Retry same session",
+      freshSession: "Start fresh session",
+      abandon: "Abandon turn",
+    },
     readOnly: "This chat is currently read-only",
     backendUnavailable: "{{backend}} is currently unavailable.",
     backendRetryHint: "Check installation and sign-in status before continuing.",
@@ -253,6 +358,25 @@ export const en = {
       "Each mutation and attachment-read capability is granted independently for this App generation.",
     settingsRevokeBaseGuiAccess: "Revoke Base GUI capabilities",
     settingsBaseGuiRevokeFailed: "Failed to revoke Base GUI access",
+    designCanvasFile: "Canvas file",
+    designImportCandidate: "Import candidate",
+    designNoImportCandidates: "No import candidates",
+    guiChecking: "Checking the App interface…",
+    baseOpening: "Opening data…",
+    surfacePreparing: "Preparing the App surface…",
+    designImport: "Import",
+    designVersions: "Versions",
+    designVersion: "Canvas version",
+    designRestore: "Restore",
+    designRestoreConfirm: "Restore this version and replace the current canvas?",
+    designDataTitle: "Design data and visibility",
+    designEnabledHint: "$design is visible and can auto-open changed canvases.",
+    designHiddenHint: "$design is hidden. Reopen it to resume automatic canvas previews.",
+    designHide: "Hide $design",
+    designReopen: "Reopen $design",
+    designDeleteData: "Delete Design data",
+    designDeleteConfirm: "Permanently delete this Design custody data and its history?",
+    designPresetReinstallHint: "You can reinstall Design. Retained custody stays available; explicitly deleted data is never revived automatically.",
     baseGuiConsent: {
       pendingTitle: "This generation needs capability approval",
       extensionPendingTitle: "This generation needs Agent extension approval",
@@ -345,6 +469,8 @@ export const en = {
   notice: {
     manualRecovered:
       "The app restarted and interrupted the reply to this message. Please send it again.",
+    skillDescriptionsTruncated:
+      "Some Skill descriptions were shortened for this turn to fit the context budget.",
     relayFailed: "Section relay failed (relay {{relayId}}).",
     chainPaused: "Automatic relay paused with {{count}} pending messages.",
     chainRecovered:
@@ -368,6 +494,7 @@ export const en = {
     resizeSidebarHint: "Drag to resize sidebar",
     addAttachments: "Add attachments",
     message: "Message",
+    askAnything: "Ask anything",
     branchOf: "of",
     submissionFailed: "Submission failed. Please try again.",
   },

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared AgentUserInput, Skills/File License, ChatRecord Reader, Section with tail boundary, snapshot projection/sharing program and main private staging root
- * [OUTPUT]: Provides files/catalogs to read snapshots only, with structured five-value data @chat/@ external source history staging, resolveAgentInput, consumption SectionSnapshotPlan: transcribed snapshots + readAttachment, internally resolved-only images and provenance lines, late extension skill merge and stagedInputReadRoots
- * [POS]: The multi-backend structured input boundary of the Electron main; Only private copies can be seen at the rear, without access to the authorized original path
+ * [INPUT]: Depends on shared AgentUserInput, fresh Skills resolution, file authorization, Chat/Section snapshot readers, and the main-private staging root
+ * [OUTPUT]: Provides resolveAgentInput with read-only staged files, fresh Skill blocks, snapshot transcripts, resolved images, provenance, and private read roots
+ * [POS]: Main-process structured-input boundary; backends receive private copies and never renderer-authorized source paths
  */
 
 import { randomUUID } from "node:crypto";
@@ -29,12 +29,14 @@ import type { AgentUserInput } from "../../shared/agent-ipc";
 import type { AgentBackendId } from "../../shared/agent-ipc";
 import { ATTACHMENT_BYTE_LIMIT } from "../../shared/agent-ipc";
 import type { ChatRecord } from "../../shared/chats-ipc";
+import { ProductFailureError, skillsRuntimeFailure } from "../../shared/product-failure";
 import type { ResolvedAgentInput } from "./backends/types";
 import type {
   FileAuthorizationStore,
   FileReservation,
 } from "./file-authorizations";
 import type { SkillsCatalog } from "./skills-catalog";
+import type { TurnProjectContext } from "../../shared/product-resource-scope";
 import { exportSectionSnapshotDraft } from "./sections/export-transcript";
 import {
   assertCopyFidelity,
@@ -76,6 +78,29 @@ export async function removeReadonlySnapshot(root: string) {
   };
   await makeDirectoriesWritable(root);
   await rm(root, { recursive: true, force: true });
+}
+
+export async function stageSkillPackageSnapshot(
+  skill: Awaited<ReturnType<SkillsCatalog["resolveSkill"]>>,
+  directory: string
+) {
+  if (skill.content.byteLength > SKILL_BYTE_LIMIT) {
+    throw new ProductFailureError(skillsRuntimeFailure("file-too-large", {
+      version: 1, kind: "limit", limit: SKILL_BYTE_LIMIT,
+    }));
+  }
+  try {
+    const snapshot = await stageDirectorySnapshot(dirname(skill.path), directory);
+    const path = join(directory, "SKILL.md");
+    const staged = await readFile(path);
+    if (!staged.equals(Buffer.from(skill.content))) {
+      throw new ProductFailureError(skillsRuntimeFailure("changed-during-read"));
+    }
+    return { path, totalBytes: snapshot.totalBytes };
+  } catch (cause) {
+    if (cause instanceof ProductFailureError) throw cause;
+    throw new ProductFailureError(skillsRuntimeFailure("staging-rejected"));
+  }
 }
 
 type ExpectedIdentity = Pick<FileReservation, "device" | "inode">;
@@ -247,7 +272,8 @@ export async function resolveAgentInput(
   skillAccess?: {
     backend: AgentBackendId;
     planMode: boolean;
-  }
+  },
+  projectContext?: TurnProjectContext
 ): Promise<ResolvedAgentInput> {
   const reservations: ReturnType<FileAuthorizationStore["reserve"]>[] = [];
   const staging = join(stagingRoot, randomUUID());
@@ -290,22 +316,17 @@ export async function resolveAgentInput(
         continue;
       }
       if (item.type === "skill") {
-        if (!skillAccess) throw new Error("Skill capability 上下文缺失");
+        if (!skillAccess) {
+          throw new ProductFailureError(skillsRuntimeFailure("invalid-request"));
+        }
         const skill = await skills.resolveSkill(
           item.skillRef,
           workspace,
-          skillAccess
+          skillAccess,
+          projectContext
         );
         const directory = join(staging, `${index}-skill`);
-        if (skill.content.byteLength > SKILL_BYTE_LIMIT) {
-          throw new Error("Skill 文件超过 128 KB");
-        }
-        await stageDirectorySnapshot(dirname(skill.path), directory);
-        const path = join(directory, "SKILL.md");
-        const stagedSkill = await readFile(path);
-        if (!stagedSkill.equals(Buffer.from(skill.content))) {
-          throw new Error("Skill 在目录快照期间发生变化");
-        }
+        const { path } = await stageSkillPackageSnapshot(skill, directory);
         input.push({ type: "skill", name: skill.name, path });
         continue;
       }

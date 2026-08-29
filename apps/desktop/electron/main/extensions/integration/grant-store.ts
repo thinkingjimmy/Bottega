@@ -298,7 +298,7 @@ function exactGrants(
             appGenerationId: set.appGenerationId,
             requirementResolutionDigest: set.resolutionDigest,
             declarationDigest: entry.declarationDigest,
-            componentIdentity: entry.componentIdentity,
+            componentInstanceIdentity: entry.componentInstanceIdentity,
             packageGenerationRef: entry.packageGenerationRef,
             resolvedConfigDigest: entry.resolvedConfigDigest,
             grantRevision: revision,
@@ -317,7 +317,7 @@ function canDerive(
     if (entry.state !== "resolved") return !entry.required;
     return source.some(
       (grant) =>
-        grant.componentIdentity === entry.componentIdentity &&
+        grant.componentInstanceIdentity === entry.componentInstanceIdentity &&
         grant.packageGenerationRef.packageGenerationId ===
           entry.packageGenerationRef.packageGenerationId &&
         grant.packageGenerationRef.recordDigest === entry.packageGenerationRef.recordDigest &&

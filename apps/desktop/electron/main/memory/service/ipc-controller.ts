@@ -56,6 +56,7 @@ export function registerMemoryServiceIpc(
   }
 ) {
   rendererIpc(window, rendererUrl, "拒绝非主窗口的 Memory 请求")
+    .roles("main")
     .handle(MEMORY_CHANNEL.providers, () =>
       structuredClone(MEMORY_PROVIDER_DESCRIPTORS)
     )

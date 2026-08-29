@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the Codex-ACP, Registry first-valid flight, native codex CLI candidates, codex quadrangular auth, ACP turn/models, authorized processEnv, frozen MCP backend-config/product Skill rules, installers and headless/maintenance
- * [OUTPUT]: Provides codexBackend: Unified ACP chat, CODEX_CONFIG Third party MCP and product-specific Skill discontinuation, with reasoned certification, approval, Plan, resume, model, resource, runtime and background expansion
- * [POS]: The only chat installation point for the Codex descriptor; Skills Manage the app-server is independent of the directory and the usage rollout reader is independent of the directory
+ * [INPUT]: Depends on the Codex-ACP, Registry first-valid flight, codex quadrangular auth, ACP turn/models, authorized processEnv, frozen MCP backend-config, installers and headless/maintenance
+ * [OUTPUT]: Provides codexBackend: Unified ACP chat, CODEX_CONFIG third-party MCP wiring, read-only Skill discovery source descriptors, reasoned certification, approval, Plan, resume, model, resource, runtime and background expansion
+ * [POS]: The only chat installation point for the Codex descriptor; Skills are Library-first product state — this backend only declares read-only discovery roots and never writes or reconciles Codex-native Skill config
  */
 
 import { homedir } from "node:os";
@@ -12,7 +12,10 @@ import { githubLatestVersion } from "../../setup/latest-version";
 import { codexEnvironment, findCodexRuntime } from "../../codex-runtime";
 import { AcpTurn } from "../acp/acp-turn";
 import { classifyAcpFailure } from "../acp/failure";
-import { MODEL_ID_PATTERN } from "../capability-validation";
+import {
+  MODEL_ID_PATTERN,
+  OPAQUE_CONFIG_VALUE_PATTERN,
+} from "../capability-validation";
 import {
   builtinToolsForVersion,
   runtimeVersionAtLeast,
@@ -26,14 +29,18 @@ import {
 import { checkCodexAuth } from "./auth";
 import { codexHeadlessSpec } from "./headless";
 import { codexMaintenance } from "./maintenance";
+import { SESSION_CAPABILITY_POLICY } from "../acp/session/client-capabilities";
 
-const OPTION_PATTERN = /^[a-z][a-z0-9_-]{0,99}$/;
 const PERMISSION_MODES = new Set([
   "ask-for-approval",
   "approve-for-me",
   "full-access",
 ]);
 const MINIMUM_VERSION = "0.145.0";
+const CODEX_SERVICE_TIER = {
+  configOptionId: "fast-mode",
+  values: { default: "off", priority: "on" },
+} as const;
 const INSTALL_COMMAND =
   "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
 /* 装与登是两种永不同时成立的状态，指令必须分开：一句「请安装
@@ -50,13 +57,13 @@ function assertCodexOptions(value: unknown): asserts value is CodexTurnOptions {
   }
   if (
     typeof options.reasoningEffort !== "string" ||
-    !OPTION_PATTERN.test(options.reasoningEffort)
+    !OPAQUE_CONFIG_VALUE_PATTERN.test(options.reasoningEffort)
   ) {
     throw new Error("Codex Effort 格式无效");
   }
   if (
     typeof options.serviceTier !== "string" ||
-    !OPTION_PATTERN.test(options.serviceTier)
+    !OPAQUE_CONFIG_VALUE_PATTERN.test(options.serviceTier)
   ) {
     throw new Error("Codex Speed 格式无效");
   }
@@ -88,6 +95,8 @@ export const codexBackend: BackendDescriptor = {
   id: "codex",
   displayName: "Codex",
   workspaceDirName: "codex-workspace",
+  sessionCapabilityPolicy: SESSION_CAPABILITY_POLICY.codex,
+  serviceTier: CODEX_SERVICE_TIER,
   detectRuntime: findCodexRuntime,
   // version 探针与 turn/headless 同政策：CODEX_HOME 随 env 漂移时，
   // 探针必须落在同一状态根，否则会在错位目录建目录、落缓存。
@@ -123,12 +132,10 @@ export const codexBackend: BackendDescriptor = {
           approveForMe: turnOptions.permissionMode === "approve-for-me",
           builtinMcp: options.builtinMcp?.server,
           thirdPartyMcpPlan: options.thirdPartyMcpPlan,
-          skillRules: options.backendSessionConfig?.codexSkillRules,
         },
       }),
       validateSessionId: validateCodexSessionId,
       resumeWithoutReplay: true,
-      elicitation: "disabled",
       modeValues: {
         default: "agent",
         plan: "read-only",
@@ -136,7 +143,8 @@ export const codexBackend: BackendDescriptor = {
         fullAccess: "agent-full-access",
       },
       collaborationValues: { default: "default", plan: "plan" },
-      serviceTierValues: { default: "off", priority: "on" },
+      serviceTierValues: CODEX_SERVICE_TIER.values,
+      serviceTierConfigId: CODEX_SERVICE_TIER.configOptionId,
       classifyFailure: codexBackend.classifyFailure,
       reviewResidualApprovals: true,
       builtinMcpTransport: "backend-config",

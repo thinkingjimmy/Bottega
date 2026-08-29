@@ -4,6 +4,14 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-08-29 — Scoped tools, Extensions, and Design Canvas source preview
+
+- Published the current production source as a normal child commit of the clean public history, while keeping tests, development automation, and internal evidence in Bottega-Dev.
+- Added exact-Project overrides for built-in tools and manual MCP servers. Each turn now freezes its effective tool plan, scoped revisions, runtime support, and sealed MCP configuration before side effects begin.
+- Unified Extensions under `global | exact Project` ownership across management, Skills, App requirements, sessions, retained data, and deletion recovery; terminal legacy MCP-plan ledgers migrate forward while live ambiguous custody remains fail closed.
+- Added the bundled Bottega Design Canvas with self-contained HTML artboards, direction and history comparison, numbered visual review anchors, a sandboxed preview, and an Agent-side render check.
+- Advanced all four bundled first-party App gitlinks to publicly reachable commits. This is a source preview, not the still-gated formal `v0.1.0` installer release.
+
 ## 2026-08-25 — Public source release
 
 - Published Bottega under the MIT License with a clean, public-only Git history.

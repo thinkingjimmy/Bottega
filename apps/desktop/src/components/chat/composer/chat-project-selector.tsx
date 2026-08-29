@@ -122,7 +122,7 @@ export function ChatProjectMenu({
                   key={project.id}
                   value={project.id}
                   data-checked={selectedProjectId === project.id}
-                  className="min-h-8 cursor-pointer rounded-lg px-2.5 py-1.5 text-sm data-[checked=true]:bg-transparent!"
+                  className="min-h-8 rounded-lg px-2.5 py-1.5 text-sm data-[checked=true]:bg-transparent!"
                   onSelect={() => select(project.id)}
                 >
                   <Folder className="size-4 text-muted-foreground" />

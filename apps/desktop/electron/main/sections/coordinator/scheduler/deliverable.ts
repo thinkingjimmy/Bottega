@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on RelayLedger conversation The index reads only selector, conversationId and durable sequence
- * [OUTPUT]: Provides nextDeliverable and isRunnableDeliverable
- * [POS]: The first selector of the pure group of sections/coordinator/scheduler; All non-terminal projects involved in FIFO, separated by execution qualification and order
+ * [OUTPUT]: Provides nextDeliverable, isRunnableDeliverable, and blockedReceiptFor
+ * [POS]: Pure sections/coordinator scheduler selector; it separates FIFO delivery eligibility from execution ordering
  */
 
 import type { RelayLedger } from "../relay-ledger";
@@ -49,4 +49,17 @@ export function isRunnableDeliverable(
         deliverable &&
         ["queued", "appended"].includes(deliverable.relay.deliveryPhase)
       );
+}
+
+export function blockedReceiptFor(
+  ledger: RelayLedger,
+  conversationId: string
+) {
+  const head = nextDeliverable(ledger, conversationId);
+  if (head?.kind !== "relay") return {};
+  return {
+    blockedBy: isRunnableDeliverable(head)
+      ? "relay-queue" as const
+      : "chain-paused" as const,
+  };
 }

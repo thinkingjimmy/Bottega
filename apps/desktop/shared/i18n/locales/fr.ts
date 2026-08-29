@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on English Catalogs with the same Catalog Settings/History feature directorys
- * [OUTPUT]: Provides French and Composition Catalogs
- * [POS]: The following table lists the functions of the desktop i18n fr locale; The compilation period must not be key or multiple keys
+ * [INPUT]: Depends on the English Catalog shape and French feature catalogs, including Project Settings
+ * [OUTPUT]: Provides the complete French catalog
+ * [POS]: French desktop locale; compile-time structure must match English exactly
  */
 
 import type { Catalog } from "./en";
@@ -19,8 +19,11 @@ import { settingsToolsFr } from "./settings/tools";
 import { settingsUsageFr } from "./settings/usage";
 import { settingsPersonalizationFr } from "./settings/personalization";
 import { settingsShortcutsFr } from "./settings/shortcuts";
+import { settingsAboutFr } from "./settings/about";
 import { historyFr } from "./history";
 import { chatRevisionFr } from "./chat-revision";
+import { projectSettingsFr } from "./project-settings";
+import { chatFr } from "./chat";
 
 export const fr: Catalog = {
   common: {
@@ -65,12 +68,29 @@ export const fr: Catalog = {
     toggleActivity: "Afficher ou masquer l’activité",
     createChat: "Créer un chat",
     chatsEmpty: "Cliquez sur + pour démarrer un chat",
+    rename: "Renommer",
+    renameChatTitle: "Renommer le chat",
+    renameChatDescription: "Saisissez un nouveau nom pour ce chat.",
     memoryAttention: "Le service de mémoire nécessite votre attention",
     memoryAttentionOpen: "Le service de mémoire nécessite votre attention ; ouvrir les détails",
     appInstalling: "Installation de l’App",
     appInstallFailed: "Échec de l’installation de l’App",
     appInstallSucceeded: "App installée",
     promoteBaseToApp: "Promouvoir {{name}} en App",
+  },
+  windowSurface: {
+    missingIdentity: "L’identité de lancement de la fenêtre App est absente",
+    checkingResidence: "Vérification de la fenêtre active…",
+    openInWindow: "Ouvrir dans une nouvelle fenêtre",
+    defaultOpen: "Ouverture par défaut",
+    sameWindow: "Même fenêtre",
+    newWindow: "Nouvelle fenêtre",
+    awayTitle: "Ouvert dans une autre fenêtre",
+    awayDescription: "Un App Studio ne reste actif que dans une fenêtre afin d’éviter les sessions et écritures de brouillon en double.",
+    focusWindow: "Accéder à la fenêtre",
+    reclaim: "Ramener ici",
+    draftLost: "La fenêtre App s’est fermée inopinément ; son brouillon non enregistré est perdu",
+    draftLostDescription: "Le Studio est revenu dans la fenêtre principale. Les messages déjà pris en charge par le processus principal ne seront pas renvoyés.",
   },
   memory: memoryFr,
   archive: archiveFr,
@@ -80,7 +100,9 @@ export const fr: Catalog = {
   permission: permissionFr,
   history: historyFr,
   chatRevision: chatRevisionFr,
+  projectSettings: projectSettingsFr,
   settings: {
+    about: settingsAboutFr,
     personalization: settingsPersonalizationFr,
     shortcuts: settingsShortcutsFr,
     skills: settingsSkillsFr,
@@ -165,12 +187,93 @@ export const fr: Catalog = {
     tools: settingsToolsFr,
   },
   chat: {
+    ...chatFr,
     generatingTitle: "Génération du titre",
     newTask: "Nouvelle tâche",
     emptyPrompt: "Que construisons-nous ?",
     emptyPromptInProject: "Que construisons-nous dans {{name}} ?",
     changeProject: "Changer de Project : {{name}}",
     openSidePanel: "Ouvrir le panneau latéral",
+    sidePanel: {
+      addPanel: "Ajouter un panneau",
+      allPanelsOpen: "Tous les panneaux sont ouverts",
+      authorizeAppFirst: "Autorisez d’abord une App dans un Chat ou Project",
+      tabsAriaLabel: "Onglets du panneau latéral",
+      closeTab: "Fermer l’onglet",
+      closePanel: "Fermer le panneau",
+      resolvingBase: "Résolution de Base…",
+      moreBaseActions: "Plus d’actions Base",
+      more: "Plus",
+      openApp: "Ouvrir l’App",
+      saveAsApp: "Enregistrer comme App",
+      downloadCsv: "Télécharger le CSV",
+      openNamedPanel: "Ouvrir {{name}}",
+      unavailableNamedPanel: "{{name}} indisponible : {{reason}}",
+      closeNamedTab: "Fermer l’onglet {{name}}",
+      newTab: "Nouvel onglet",
+      webPage: "Page web",
+      baseOwnerResolveFailed: "Impossible de déterminer le propriétaire de Base",
+      appUnavailable: "App indisponible",
+      appSlotUnavailable: "L’autorisation de l’App a été révoquée ou l’App est indisponible. L’emplacement est conservé jusqu’à sa réautorisation.",
+      catalog: {
+        base: { label: "Base", hint: "Collecter les données structurées produites par cette conversation" },
+        subagents: { label: "Sous-agents", hint: "Voir la répartition et les détails d’exécution des sous-agents" },
+        browser: { label: "Navigateur", hint: "Ouvrir une page partageant votre session connectée avec l’Agent" },
+        app: { label: "App", hint: "Ouvrir une App autorisée sans la démarrer lors de la création de l’onglet" },
+        image: { label: "Image", hint: "Voir les images de la conversation" },
+      },
+      eligibility: {
+        "foreign-base-unavailable": "Adoptez cette conversation avant d’utiliser Base.",
+        "foreign-app-unavailable": "Adoptez cette conversation avant d’ouvrir les Apps liées.",
+        "foreign-subagents-unavailable": "Les détails des Subagents ne sont pas disponibles dans l’historique importé.",
+        "foreign-images-unavailable": "Les images source ne sont pas disponibles avant l’adoption.",
+      },
+    },
+    composer: {
+      add: "Ajouter",
+      files: "Fichiers",
+      planUnavailable: "L’Agent actuel ne prend pas en charge Plan",
+      planCheck: "Revérifier la capacité Plan de l’Agent actuel",
+      disablePlan: "Désactiver Plan",
+      dismissNotice: "Fermer l’avis",
+      dismissQueueNotice: "Fermer l’avis de file d’attente",
+      galleryComments_one: "{{count}} commentaire",
+      galleryComments_other: "{{count}} commentaires",
+      clearGalleryComments: "Effacer tous les commentaires d’image",
+      focusGallery: "Centrer la galerie",
+      modelSelector: {
+        currentModel: "Modèle actuel {{model}}, effort {{effort}}",
+        selector: "Sélecteur de modèle de chat",
+        advanced: "Avancé",
+        model: "Modèle",
+        effort: "Effort",
+        speed: "Vitesse",
+        disableFast: "Désactiver la vitesse Fast",
+        enableFast: "Activer la vitesse Fast",
+        quickTier: "Niveau rapide du modèle",
+        loadingModels: "Chargement du catalogue de modèles…",
+        retryModels: "Réessayer le catalogue de modèles",
+        resetDefault: "Rétablir les valeurs par défaut",
+        onlyOneModel: "Un seul modèle est disponible",
+        effortUnavailable: "Le modèle actuel ne permet pas de modifier l’effort",
+        noModels: "Aucun modèle disponible",
+        backendDefaultModel: "Modèle par défaut du backend",
+        speedDescription:
+          "Environ 2,5 fois plus rapide sur les modèles Opus 5/4.8 compatibles. Utilise davantage de crédits d’usage, mais pas le quota de limitation de débit de l’abonnement.",
+        speedReason: {
+          modelUnsupported: "Le modèle actuel ne propose pas Fast",
+          backendOff: "Le backend a désactivé Fast pour cette session",
+          backendOn: "Le backend a activé Fast pour cette session",
+        },
+      },
+    },
+    resumeFailure: {
+      title: "Impossible de reprendre la Session enregistrée",
+      description: "Le backend a refusé la Session enregistrée. Le message et les pièces jointes restent stockés sans duplication.",
+      sameSession: "Réessayer la même Session",
+      freshSession: "Démarrer une nouvelle Session",
+      abandon: "Abandonner le tour",
+    },
     readOnly: "Ce chat est actuellement en lecture seule",
     backendUnavailable: "{{backend}} est actuellement indisponible.",
     backendRetryHint:
@@ -248,6 +351,25 @@ export const fr: Catalog = {
       "Chaque capacité de modification et de lecture des pièces jointes est accordée séparément pour cette génération de l’App.",
     settingsRevokeBaseGuiAccess: "Révoquer les capacités Base GUI",
     settingsBaseGuiRevokeFailed: "Échec de la révocation de l’accès Base GUI",
+    designCanvasFile: "Fichier de canevas",
+    designImportCandidate: "Canevas à importer",
+    designNoImportCandidates: "Aucun canevas à importer",
+    guiChecking: "Vérification de l’interface de l’App…",
+    baseOpening: "Ouverture des données…",
+    surfacePreparing: "Préparation de l’interface de l’App…",
+    designImport: "Importer",
+    designVersions: "Versions",
+    designVersion: "Version du canevas",
+    designRestore: "Restaurer",
+    designRestoreConfirm: "Restaurer cette version et remplacer le canevas actuel ?",
+    designDataTitle: "Données et visibilité de Design",
+    designEnabledHint: "$design est visible et peut ouvrir automatiquement les canevas modifiés.",
+    designHiddenHint: "$design est masqué. Rouvrez-le pour reprendre les aperçus automatiques.",
+    designHide: "Masquer $design",
+    designReopen: "Rouvrir $design",
+    designDeleteData: "Supprimer les données Design",
+    designDeleteConfirm: "Supprimer définitivement ces données Design et leur historique ?",
+    designPresetReinstallHint: "Vous pouvez réinstaller Design. La garde conservée reste disponible ; les données supprimées explicitement ne sont jamais restaurées automatiquement.",
     baseGuiConsent: {
       pendingTitle: "Cette génération nécessite votre autorisation",
       extensionPendingTitle: "Cette génération nécessite l’autorisation des extensions Agent",
@@ -339,6 +461,7 @@ export const fr: Catalog = {
   bases: basesFr,
   notice: {
     manualRecovered: "Le redémarrage de l’application a interrompu la réponse. Renvoyez le message.",
+    skillDescriptionsTruncated: "Certaines descriptions de Skills ont été raccourcies pour ce tour afin de respecter le budget de contexte.",
     relayFailed: "Échec du relais Section (relay {{relayId}}).",
     chainPaused: "Relais automatique suspendu avec {{count}} messages en attente.",
     chainRecovered: "Un relais Section inachevé a été détecté après le redémarrage avec {{count}} messages en attente.",
@@ -361,6 +484,7 @@ export const fr: Catalog = {
     resizeSidebarHint: "Faites glisser pour redimensionner la barre latérale",
     addAttachments: "Ajouter des pièces jointes",
     message: "Message",
+    askAnything: "Posez toutes vos questions",
     branchOf: "sur",
     submissionFailed: "Échec de l’envoi. Réessayez.",
   },

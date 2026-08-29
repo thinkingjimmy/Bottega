@@ -12,6 +12,7 @@ import type {
 } from "../../../../shared/memory-ipc";
 import {
   DurableJson,
+  DurableFileCorruptionError,
   quarantineDurableFile,
 } from "../../persistence/durable-json";
 
@@ -70,7 +71,8 @@ export class RecallStatsStore {
     try {
       try {
         await this.ledger.initialize(upgradeLedger);
-      } catch {
+      } catch (cause) {
+        if (!(cause instanceof DurableFileCorruptionError)) throw cause;
         await quarantineDurableFile(this.filePath);
         this.ledger = this.createLedger();
         await this.ledger.initialize();

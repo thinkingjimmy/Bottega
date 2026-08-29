@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ChatStore/ChatsService/Coordinator/BasesService/BaseStore/ProjectsService/AppsService/ArchiveService, Browser runtime and seven areas toolset factory
- * [OUTPUT]: Provides createBuiltinToolsets, centralizes all builtin handlers, archives read tags and is injected by the registry
- * [POS]: The main built-in tool is composition root; Exposure of effectiveArchived to narrow queries tied to the App to read-only tools, index only responsible for injecting initialized services
+ * [INPUT]: Depends on domain services, Browser runtime, Design screenshot runtime, frozen Skills custody, and the fail-closed Claude plugin overlay reader
+ * [OUTPUT]: Provides createBuiltinToolsets with shared subagent orchestration, incarnation-bound registered-canvas render checks, and an exact-issued `use_skill` toolset bound to one turn custody
+ * [POS]: Main built-in tool composition root; index injects initialized owners while toolsets expose only narrow ports
  */
 
 import { createSubagentToolset } from "./agent/subagent-toolset";
@@ -22,6 +22,10 @@ import { createSearchToolset } from "./search/toolset";
 import type { BrowserPanelService } from "./browser/browser-service";
 import type { CdpHarness } from "./browser/cdp-harness";
 import { createBrowserToolset } from "./browser/toolset";
+import type { AgentPluginInventory } from "./extensions/agent-plugin-inventory";
+import type { SkillsTurnCustodyStore } from "./skills-management/turn-custody";
+import { createUseSkillToolset } from "./skills-management/use-skill-toolset";
+import { createDesignToolset } from "./design/toolset";
 
 export type BuiltinToolsetDependencies = {
   chatStore: ChatStore;
@@ -34,6 +38,8 @@ export type BuiltinToolsetDependencies = {
   archiveService?: Pick<ArchiveService, "isConversationAvailable">;
   browserService: BrowserPanelService;
   browserHarness: CdpHarness;
+  agentPlugins: Pick<AgentPluginInventory, "disabledClaudePluginIds">;
+  skillsCustody: SkillsTurnCustodyStore;
 };
 
 export function createBuiltinToolsets(deps: BuiltinToolsetDependencies) {
@@ -47,10 +53,14 @@ export function createBuiltinToolsets(deps: BuiltinToolsetDependencies) {
     "appsService",
     "browserService",
     "browserHarness",
+    "agentPlugins",
+    "skillsCustody",
   ] as const) {
     if (!deps[key]) throw new Error(`builtin toolset 缺少依赖：${key}`);
   }
-  const subagentSpawn = new SubagentSpawnService();
+  const subagentSpawn = new SubagentSpawnService({
+    disabledClaudePluginIds: () => deps.agentPlugins.disabledClaudePluginIds(),
+  });
   return [
     createSectionToolset(deps.chatStore, deps.coordinator, {
       baseSummaryForSection: (chatId) =>
@@ -76,6 +86,10 @@ export function createBuiltinToolsets(deps: BuiltinToolsetDependencies) {
         Boolean(deps.projectsService.store.get(projectId)?.archivedAt)
     ),
     createBrowserToolset(deps.browserService, deps.browserHarness),
+    createDesignToolset({
+      readDesignCanvasForTool: (chatId, incarnationId, file) =>
+        deps.appsService.readDesignCanvasForTool(chatId, incarnationId, file),
+    }),
     createAppToolset({
       appRoleOf: (chatId) => deps.chatStore.getAppRole(chatId),
       projectIdOf: (chatId) => deps.chatStore.getProjectId(chatId),
@@ -86,5 +100,6 @@ export function createBuiltinToolsets(deps: BuiltinToolsetDependencies) {
       },
       appDirOf: (appId) => deps.appsService.resolveAppForBinding(appId)?.dir,
     }),
+    createUseSkillToolset(deps.skillsCustody),
   ] as const;
 }

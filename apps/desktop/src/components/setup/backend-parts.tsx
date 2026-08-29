@@ -33,7 +33,10 @@ export const backendActionFlags = (
 ): BackendActionFlags => ({
   ready: backend.status === "ready",
   canInstall: backend.runtimeStatus === "missing",
-  canLogin: needsBackendLogin(backend),
+  /* terminal-auth is an action capability, not evidence of auth state. OpenCode
+     deliberately stays `unknown` while still offering its terminal guide. */
+  canLogin:
+    needsBackendLogin(backend) || backend.capabilities.terminalAuth === true,
   canUpdate:
     backend.runtimeStatus === "unsupported" || Boolean(backend.updateAvailable),
 });

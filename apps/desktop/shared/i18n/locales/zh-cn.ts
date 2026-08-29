@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on English Catalogs with the same Catalog Settings/History feature directorys
- * [OUTPUT]: Provides a simple Chinese syntax directory
- * [POS]: zh-CN locale for desktop i18n; The compilation period must not be key or multiple keys
+ * [INPUT]: Depends on the English Catalog shape and Chinese feature catalogs, including Project Settings
+ * [OUTPUT]: Provides the complete Simplified Chinese catalog
+ * [POS]: zh-CN desktop locale; compile-time structure must match English exactly
  */
 
 import type { Catalog } from "./en";
@@ -19,8 +19,11 @@ import { settingsToolsZhCN } from "./settings/tools";
 import { settingsUsageZhCN } from "./settings/usage";
 import { settingsPersonalizationZhCN } from "./settings/personalization";
 import { settingsShortcutsZhCN } from "./settings/shortcuts";
+import { settingsAboutZhCN } from "./settings/about";
 import { historyZhCN } from "./history";
 import { chatRevisionZhCN } from "./chat-revision";
+import { projectSettingsZhCN } from "./project-settings";
+import { chatZhCN } from "./chat";
 
 export const zhCN: Catalog = {
   common: {
@@ -65,12 +68,29 @@ export const zhCN: Catalog = {
     toggleActivity: "切换活动视图",
     createChat: "新建聊天",
     chatsEmpty: "点击 + 开始聊天",
+    rename: "重命名",
+    renameChatTitle: "重命名聊天",
+    renameChatDescription: "输入聊天的新名称。",
     memoryAttention: "记忆服务需要关注",
     memoryAttentionOpen: "记忆服务需要关注，点击查看",
     appInstalling: "正在安装应用",
     appInstallFailed: "应用安装失败",
     appInstallSucceeded: "应用安装成功",
     promoteBaseToApp: "将 {{name}} 升级为应用",
+  },
+  windowSurface: {
+    missingIdentity: "App 窗口缺少启动身份",
+    checkingResidence: "正在确认窗口驻留…",
+    openInWindow: "在新窗口打开",
+    defaultOpen: "默认打开方式",
+    sameWindow: "当前窗口",
+    newWindow: "新窗口",
+    awayTitle: "已在独立窗口打开",
+    awayDescription: "同一 App 工作室只在一个窗口保持活动，避免重复会话与草稿写入。",
+    focusWindow: "转到窗口",
+    reclaim: "收回",
+    draftLost: "独立窗口意外退出，未保存的草稿已丢失",
+    draftLostDescription: "工作室已收回主窗口；已由主进程接管的消息不会重发。",
   },
   memory: memoryZhCN,
   archive: archiveZhCN,
@@ -80,7 +100,9 @@ export const zhCN: Catalog = {
   permission: permissionZhCN,
   history: historyZhCN,
   chatRevision: chatRevisionZhCN,
+  projectSettings: projectSettingsZhCN,
   settings: {
+    about: settingsAboutZhCN,
     personalization: settingsPersonalizationZhCN,
     shortcuts: settingsShortcutsZhCN,
     skills: settingsSkillsZhCN,
@@ -165,12 +187,93 @@ export const zhCN: Catalog = {
     tools: settingsToolsZhCN,
   },
   chat: {
+    ...chatZhCN,
     generatingTitle: "正在生成标题",
     newTask: "新任务",
     emptyPrompt: "我们来做点什么？",
     emptyPromptInProject: "我们在 {{name}} 里做点什么？",
     changeProject: "更换 Project：{{name}}",
     openSidePanel: "打开第三栏",
+    sidePanel: {
+      addPanel: "添加面板",
+      allPanelsOpen: "面板已全部打开",
+      authorizeAppFirst: "请先在 Chat 或 Project 授权 App",
+      tabsAriaLabel: "第三栏标签页",
+      closeTab: "关闭标签页",
+      closePanel: "关闭面板",
+      resolvingBase: "正在解析 Base…",
+      moreBaseActions: "更多 Base 操作",
+      more: "更多",
+      openApp: "打开 App",
+      saveAsApp: "保存为 App",
+      downloadCsv: "下载 CSV",
+      openNamedPanel: "打开 {{name}}",
+      unavailableNamedPanel: "{{name}}不可用：{{reason}}",
+      closeNamedTab: "关闭 {{name}} 标签页",
+      newTab: "新标签页",
+      webPage: "网页",
+      baseOwnerResolveFailed: "无法解析 Base 所有者",
+      appUnavailable: "App 不可用",
+      appSlotUnavailable: "App 授权已撤销或 App 已失效；槽位会保留，等待重新授权。",
+      catalog: {
+        base: { label: "Base", hint: "结构化收集本次对话沉淀的数据" },
+        subagents: { label: "子代理", hint: "查看子代理的分工与执行详情" },
+        browser: { label: "浏览器", hint: "新开网页，Agent 与你共用登录态" },
+        app: { label: "App", hint: "打开已授权 App；创建标签页不会启动 App" },
+        image: { label: "图片", hint: "查看会话图片" },
+      },
+      eligibility: {
+        "foreign-base-unavailable": "收养这条会话后才能使用 Base。",
+        "foreign-app-unavailable": "收养这条会话后才能打开已授权 App。",
+        "foreign-subagents-unavailable": "导入历史不包含可用的 Subagent 详情。",
+        "foreign-images-unavailable": "收养前无法使用来源图片。",
+      },
+    },
+    composer: {
+      add: "添加",
+      files: "文件",
+      planUnavailable: "当前 Agent 不支持 Plan",
+      planCheck: "重新检查当前 Agent 的 Plan 能力",
+      disablePlan: "关闭 Plan",
+      dismissNotice: "关闭提示",
+      dismissQueueNotice: "关闭排队提示",
+      galleryComments_one: "{{count}} 条评论",
+      galleryComments_other: "{{count}} 条评论",
+      clearGalleryComments: "清除所有图片评论",
+      focusGallery: "聚焦画廊",
+      modelSelector: {
+        currentModel: "当前模型 {{model}}，Effort {{effort}}",
+        selector: "聊天模型选择器",
+        advanced: "高级",
+        model: "模型",
+        effort: "Effort",
+        speed: "速度",
+        disableFast: "关闭 Fast 速度",
+        enableFast: "开启 Fast 速度",
+        quickTier: "快速模型档位",
+        loadingModels: "正在读取模型目录…",
+        retryModels: "重试模型目录",
+        resetDefault: "恢复默认设置",
+        onlyOneModel: "当前只有一个可用模型",
+        effortUnavailable: "当前模型不支持调整 Effort",
+        noModels: "未发现可用模型",
+        backendDefaultModel: "后端默认模型",
+        speedDescription:
+          "在支持的 Opus 5/4.8 模型上约快 2.5 倍。会消耗更多 usage credits，但不计入订阅速率限制池。",
+        speedReason: {
+          modelUnsupported: "当前模型不提供 Fast",
+          backendOff: "后端在本会话中关闭了 Fast",
+          backendOn: "后端在本会话中开启了 Fast",
+        },
+      },
+    },
+    resumeFailure: {
+      title: "保存的 Session 无法恢复",
+      description: "后端拒绝了保存的 Session。消息与附件仍已落盘；请选择恢复方式，用户消息不会重复写入。",
+      sameSession: "重试同一 Session",
+      freshSession: "开启新 Session",
+      abandon: "放弃本轮",
+    },
     readOnly: "此聊天当前为只读",
     backendUnavailable: "{{backend}} 当前不可用。",
     backendRetryHint: "请重新检测安装与登录状态后再继续。",
@@ -244,6 +347,25 @@ export const zhCN: Catalog = {
       "此 App generation 的每项数据变更与附件读取能力都独立授权。",
     settingsRevokeBaseGuiAccess: "撤销 Base GUI 能力",
     settingsBaseGuiRevokeFailed: "撤销 Base GUI 权限失败",
+    designCanvasFile: "画布文件",
+    designImportCandidate: "导入候选",
+    designNoImportCandidates: "没有可导入画布",
+    guiChecking: "正在检查应用界面…",
+    baseOpening: "正在打开数据…",
+    surfacePreparing: "正在准备应用界面…",
+    designImport: "导入",
+    designVersions: "版本",
+    designVersion: "画布版本",
+    designRestore: "恢复",
+    designRestoreConfirm: "恢复此版本并替换当前画布？",
+    designDataTitle: "Design 数据与可见性",
+    designEnabledHint: "$design 当前可见，画布变化时可自动打开预览。",
+    designHiddenHint: "$design 已隐藏；重新打开后才会恢复自动画布预览。",
+    designHide: "隐藏 $design",
+    designReopen: "重新打开 $design",
+    designDeleteData: "删除 Design 数据",
+    designDeleteConfirm: "永久删除此 Design custody 数据及其历史？",
+    designPresetReinstallHint: "可重新安装 Design；保留的 custody 仍在，明确删除的数据不会被自动复活。",
     baseGuiConsent: {
       pendingTitle: "这一代需要你的能力授权",
       extensionPendingTitle: "这一代需要你的 Agent 扩展授权",
@@ -331,6 +453,7 @@ export const zhCN: Catalog = {
   bases: basesZhCN,
   notice: {
     manualRecovered: "应用重启，这条消息的回复已中断，请重新发送。",
+    skillDescriptionsTruncated: "本轮部分 Skill 描述因上下文预算被截短。",
     relayFailed: "Section 接力失败（relay {{relayId}}）。",
     chainPaused: "自动接力已暂停，当前有 {{count}} 条待处理消息。",
     chainRecovered: "重启后发现未完成的 Section 接力，当前有 {{count}} 条待处理消息。",
@@ -353,6 +476,7 @@ export const zhCN: Catalog = {
     resizeSidebarHint: "拖动调整侧栏宽度",
     addAttachments: "添加附件",
     message: "消息",
+    askAnything: "有问题，尽管问",
     branchOf: "共",
     submissionFailed: "提交失败，请重试。",
   },

@@ -87,6 +87,11 @@ export function PresetCard({ preset, onOpen }: {
         <span className="mb-2 text-4xl">{preset.icon}</span>
         <CardTitle className="truncate text-base">{preset.name}</CardTitle>
         <CardDescription className="line-clamp-2">{preset.description}</CardDescription>
+        {preset.id === "design-canvas" && (
+          <p className="line-clamp-2 text-muted-foreground text-xs">
+            {t("apps.designPresetReinstallHint")}
+          </p>
+        )}
       </CardHeader>
       <div className="px-4 pb-4">
         <p className="flex items-center gap-1.5 font-medium text-sm text-primary" data-testid="preset-details-label"><Download className="size-4" />{t("apps.presetViewDetails")}</p>

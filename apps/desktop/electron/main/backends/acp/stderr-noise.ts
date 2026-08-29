@@ -19,6 +19,21 @@ const BENIGN_HEADS = [
        + 约 15 行 chokidar 栈帧与被打印的 error 对象。
      已确认进程存活、turn 正常结算（FSEvents mach 服务放行后不再自杀）。 */
   /^\[unexpected\] Error: EPERM: operation not permitted, watch /,
+  /* claude-agent-acp 0.70.0 起每次 session/new 打一行会话诊断（0.62.0 零 stderr）。
+     2026-08-27 真机原文：
+       [session/query] sessionId=7f769909-… resume=none apiType=native baseUrl=native
+     单行、无续行、与 turn 终态无关；不滤掉的话每建一个会话就吃掉一截
+     ACP_STDERR_TAIL_BYTES，真死因会被这行例行公事挤出尾巴。 */
+  /^\[session\/query\] sessionId=/,
+  /* claude-agent-acp 0.70.0 收口路径：宿主对进程组发 SIGTERM（process-group.ts），
+     CLI 以 143（128+SIGTERM）退出；SDK 0.3.232 把一切非零退出码包装成错误，
+     适配器 shutdown 又同挂 connection.closed 与 SIGTERM 两个触发器且无幂等
+     保护，同一句必打两遍。2026-08-28 真机原文：
+       Error during cleanup: Error: Claude Code process exited with code 143
+       + 约 9 行 SDK 栈帧与被打印的 error 对象（exitCode: 143）。
+     已确认发生在 turn 判决之后——预期死亡的验尸噪音。判据钉死在 143 这一种
+     死法：换个退出码的 cleanup 错误是待查线索，必须露出。 */
+  /^Error during cleanup: Error: Claude Code process exited with code 143$/,
 ] as const;
 
 /**

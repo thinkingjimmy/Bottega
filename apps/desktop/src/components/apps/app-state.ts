@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the type of AppRecord/AppOperation shared/apps-ipc
- * [OUTPUT]: Provides status document mapping, failed/working/pending-import, pronouns and leave page rules
+ * [OUTPUT]: Provides status document mapping, failed/working/pending-import/awaiting-generation predicates, the record-level badge label, pronouns and leave page rules
  * [POS]: state of apps → state of components→ Chinese text file only source, shared card with details page, eliminate three sets of maps simultaneously
  */
 
@@ -56,6 +56,17 @@ export const isWorkingState = (state: AppState) =>
   state === "installing" ||
   state === "updating" ||
   state === "deleting";
+
+/**
+ * state=ready 却还没有 active generation：包已落地，成代/授权尚未收口，
+ * manifest 投影因而仍是 null。此时说「已就绪」是在替系统撒谎——同一张卡上
+ * 的图标、描述都还停在占位形态。两个真相源打架时，以代绑定为准。
+ */
+export const isAwaitingGeneration = (record: AppRecord) =>
+  record.state === "ready" && record.generationBinding.active === null;
+
+export const appStateLabel = (record: AppRecord) =>
+  isAwaitingGeneration(record) ? "待成代" : stateLabel[record.state];
 
 export const shouldRedirectAppDetail = (state: AppState) =>
   state === "creating" || state === "installing";

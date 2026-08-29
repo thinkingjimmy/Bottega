@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on PromptInput RichValue, RichInput hosts activate feedback, candidate icons and PathLabel
- * [OUTPUT]: Provides RichInputNodes; Activate the chip, swallow the Enter/Space, focus ring and coarse-pointer 44px minimum target, static nodes without the fake button
- * [POS]: ai-elements RichInput node view layer; Edit/history/candidate matters remain with rich-input.tsx, with nodes only responsible for semantics and activating surfaces
+ * [INPUT]: Depends on PromptInput RichValue, host activation feedback, candidate icons, invalid-state metadata, and PathLabel
+ * [OUTPUT]: Provides RichInputNodes with atomic chip activation, Enter/Space handling, focus rings, invalid state, and 44px coarse-pointer targets
+ * [POS]: RichInput node view layer; editing history and candidate ownership remain in rich-input.tsx
  */
 
 import { PackageIcon } from "lucide-react";
@@ -34,6 +34,8 @@ export function RichInputNodes({
   fileClickTitle,
   workspaceFileClickTitle,
   renderSectionIcon,
+  invalidSkillRefs,
+  invalidSkillTitle,
 }: {
   value: RichValue;
   onFileClick?: (node: NodeOf<"file">) => void;
@@ -41,6 +43,8 @@ export function RichInputNodes({
   fileClickTitle?: string;
   workspaceFileClickTitle?: string;
   renderSectionIcon?: (agent: string) => ReactNode;
+  invalidSkillRefs?: readonly string[];
+  invalidSkillTitle?: string;
 }) {
   return value.map((node) => {
     if (node.type === "text") {
@@ -52,12 +56,17 @@ export function RichInputNodes({
       );
     }
     if (node.type === "skill") {
+      const invalid = invalidSkillRefs?.includes(node.ref) ?? false;
       return (
         <span
-          className="mx-0.5 inline-flex select-none items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 align-baseline text-primary"
+          aria-invalid={invalid || undefined}
+          className={invalid
+            ? "mx-0.5 inline-flex select-none items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 align-baseline text-destructive ring-1 ring-destructive/30"
+            : "mx-0.5 inline-flex select-none items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 align-baseline text-primary"}
           contentEditable={false}
           data-rich-node-id={node.id}
           key={node.id}
+          title={invalid ? invalidSkillTitle : undefined}
         >
           <PackageIcon className="size-3.5" />${node.label}
         </span>

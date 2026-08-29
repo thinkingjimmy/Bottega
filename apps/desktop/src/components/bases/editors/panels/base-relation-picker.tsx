@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, shared cellValue/context/deletedRelationText, i18n, state the BaseMutationOutcome judgment type with Popover/Input/Button; Receive the relation column, the original target row id and the Base column
- * [OUTPUT]: Provides BaseRelationPicker; Candidate project memoization, up to 200 items rendered and prompted to continue input, search/select individual targets by configuration label, and canonical reference hanging and empty
- * [POS]: The relation v1 single-valued selector for bases/editors/panels; It's not a cross-Base, it's not a layered deleted, it's not a perpetuation
+ * [INPUT]: Depends on a canonical BaseCellContext, full-row relation options, relation column metadata, i18n, and bounded popover controls
+ * [OUTPUT]: Provides searchable single-relation selection with canonical labels, 200-row rendering bounds, empty state, and true dangling-reference display
+ * [POS]: The relation v1 editor panel; it never derives lookup authority from visible rows or columns and does not implement cross-Base relations
  */
 
 import { useMemo, useState } from "react";
@@ -19,7 +19,7 @@ import {
 import {
   baseCellText,
   cellValue,
-  createBaseCellContext,
+  type BaseCellContext,
   type BaseColumn,
   type BaseRow,
 } from "../../../../../shared/bases-ipc";
@@ -32,22 +32,22 @@ const RELATION_OPTION_LIMIT = 200;
 
 export function BaseRelationPicker({
   column,
-  columns,
+  context,
   disabled,
-  rows,
+  options: optionRows,
   value,
   onCommit,
 }: {
   column: BaseColumn & { type: "relation" };
-  columns: BaseColumn[];
+  context: BaseCellContext;
   disabled?: boolean;
-  rows: BaseRow[];
+  options: BaseRow[];
   value?: string;
   onCommit(value: string | null): Promise<BaseMutationOutcome> | void;
 }) {
   const { t } = useAppTranslation();
   const [query, setQuery] = useState("");
-  const context = useMemo(() => createBaseCellContext({ columns, rows }), [columns, rows]);
+  const columns = [...context.columns.values()];
   const labelColumn =
     columns.find((candidate) => candidate.id === column.relation?.labelColumnId) ??
     columns.find((candidate) => candidate.type === "text");
@@ -55,14 +55,14 @@ export function BaseRelationPicker({
      不 memo 就等于每敲一个字母重算一遍整张表。 */
   const options = useMemo(
     () =>
-      rows.map((row) => ({
+      optionRows.map((row) => ({
         id: row.id,
         label: labelColumn
           ? baseCellText(labelColumn, cellValue(row, labelColumn, context)) ||
             row.id
           : row.id,
       })),
-    [context, labelColumn, rows]
+    [context, labelColumn, optionRows]
   );
   const current = options.find((option) => option.id === value);
   const label = current

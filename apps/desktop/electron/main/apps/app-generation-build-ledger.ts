@@ -11,7 +11,11 @@ import type {
   AppGenerationBuildOperation,
 } from "../../../shared/app-lifecycle";
 import type { AppDomainIdentity } from "../../../shared/apps-ipc";
-import { DurableJson, quarantineDurableFile } from "../persistence/durable-json";
+import {
+  DurableFileCorruptionError,
+  DurableJson,
+  quarantineDurableFile,
+} from "../persistence/durable-json";
 
 const domainSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("no-data"), appKind: z.enum(["static", "server"]) }).strict(),
@@ -26,7 +30,7 @@ const checkpointSchema = z.object({
   state: z.enum(["prepared", "committed", "aborted", "needs-attention"]),
 }).strict();
 const declarationSchema = z.object({
-  componentIdentity: z.string().min(1),
+  declaredComponentIdentity: z.string().min(1),
   packageDigest: z.string().min(1).optional(),
   versionRange: z.string().min(1).optional(),
   required: z.boolean(),
@@ -51,8 +55,13 @@ const operationSchema = z.object({
   extensionRequirements: z.array(declarationSchema).default([]),
   baseGuiCapabilityRequest: z.object({
     requestedCapabilities: z
-      .array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read"]))
-      .max(4),
+      .array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read", "workspace-read"]))
+      .max(5),
+    requestedHostActions: z.array(z.enum(["compose-text"])).max(1).default([]),
+    requestedCapabilityScopes: z
+      .object({ workspaceRead: z.literal("design/").optional() })
+      .strict()
+      .default({}),
     contentDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).transform(
       (value) => value as `sha256:${string}`
     ),
@@ -90,6 +99,7 @@ export class AppGenerationBuildLedger {
     try {
       await this.file.initialize();
     } catch (cause) {
+      if (!(cause instanceof DurableFileCorruptionError)) throw cause;
       /* 旧 schema/损坏不阻断启动：隔离原件后从空账本重走同一初始化路径
          （≡ 冷启动）。后果如实——未终结的 generation build 记录清零，对应
          App 需重装；这比让整个 main 起不来便宜得多，隔离件留证可追溯。 */

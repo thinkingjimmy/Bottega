@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the provider registry installSpec/descriptor/createProvider, ManagedRuntimeCoordinator, memoryLifecycle Orchestrator, rendererIpc and shared renderer command/capability agreement
- * [OUTPUT]: Provides ManagedRuntimeRegistry: installation provider private readiness, coordinator, owner, provider-reserved version directory/switch, configuration and renderer IPC, registrar can be inserted)
+ * [INPUT]: Depends on the provider registry installSpec/descriptor/createProvider, platform capability matrix, ManagedRuntimeCoordinator, memoryLifecycle Orchestrator, rendererIpc and shared renderer command/capability agreement
+ * [OUTPUT]: Provides platform-gated ManagedRuntimeRegistry: preview platforms create zero coordinators, while admitted platforms own provider readiness, version switching, configuration and renderer IPC
  * [POS]: The main/memory/runtime host running time boundary; The first is the renderer, which is never directed to the Coordinator
  */
 
@@ -23,6 +23,10 @@ import {
   type CoordinatorOptions,
 } from "./control/coordinator";
 import type { MemoryLifecycleOrchestrator } from "./control/lifecycle-orchestrator";
+import {
+  assertPlatformCapability,
+  type PlatformCapabilities,
+} from "../../../../shared/platform-capabilities";
 import { readProviderRuntimeHealth } from "./control/health-monitor";
 import {
   defaultDownloader,
@@ -44,17 +48,31 @@ const DESTRUCTIVE_OPERATIONS: MemoryDestructiveOperation[] = [
 
 export type ManagedRuntimeRegistryOptions =
   Omit<CoordinatorOptions, "onPublish" | "readHealth"> &
-  Pick<Partial<CoordinatorOptions>, "readHealth">;
+  Pick<Partial<CoordinatorOptions>, "readHealth"> & {
+    /* 必给：缺省只能是放行，而放行正是这道门要挡的事。 */
+    platformSupport: PlatformCapabilities;
+  };
 
 export class ManagedRuntimeRegistry {
   private readonly coordinators = new Map<string, ManagedRuntimeCoordinator>();
   private readonly publishedRevision = new Map<string, number>();
   private window: BrowserWindow | null = null;
   private lifecycle: MemoryLifecycleOrchestrator | null = null;
+  private readonly platformSupport: PlatformCapabilities;
 
-  constructor(
+  /* 构造函数里 early-return 会留下半初始化对象：今天字段恰好都有初始化器
+     所以侥幸成立，下一次加一个构造体内赋值的字段就静默变成 undefined。
+     准入判断留在构造函数，装配移进一个只在获准时才被调用的方法。 */
+  constructor(userData: string, options: ManagedRuntimeRegistryOptions) {
+    this.platformSupport = options.platformSupport;
+    if (this.platformSupport.capabilities.memory) {
+      this.installCoordinators(userData, options);
+    }
+  }
+
+  private installCoordinators(
     userData: string,
-    private readonly options: ManagedRuntimeRegistryOptions = {}
+    options: ManagedRuntimeRegistryOptions
   ) {
     const runCaptured = options.runCommandCaptured ?? defaultRunCommandCaptured();
     const toolchain =
@@ -207,6 +225,7 @@ export class ManagedRuntimeRegistry {
     rendererUrl: string,
     registrar: RendererIpcRegistrar = rendererIpc
   ) {
+    assertPlatformCapability(this.platformSupport, "memory");
     this.window = window;
     registrar(window, rendererUrl, "拒绝非主窗口的 Memory 请求")
       .handle(MEMORY_CHANNEL.runtimeGet, (raw) =>

@@ -17,13 +17,13 @@ const plugin = (extra: Record<string, unknown> = {}) =>
 export const ADMISSION_CONFORMANCE_CORPUS = [
   {
     id: "plugin-minimal",
-    adapterId: "agent-plugins-1.0.0-wd",
+    adapterId: "agent-plugins-1.0.0",
     files: { "plugin.json": plugin(), "skills/fixture/SKILL.md": skill() },
     expected: { valid: true, skills: 1, mcp: 0, reports: 0 },
   },
   {
     id: "plugin-unknown-field",
-    adapterId: "agent-plugins-1.0.0-wd",
+    adapterId: "agent-plugins-1.0.0",
     files: {
       "plugin.json": plugin({ futureField: true }),
       "skills/fixture/SKILL.md": skill(),
@@ -32,7 +32,7 @@ export const ADMISSION_CONFORMANCE_CORPUS = [
   },
   {
     id: "plugin-unsupported-version",
-    adapterId: "agent-plugins-1.0.0-wd",
+    adapterId: "agent-plugins-1.0.0",
     files: {
       "plugin.json": JSON.stringify({ $schema: "https://example.com/v2", name: "fixture-plugin" }),
     },
@@ -40,13 +40,13 @@ export const ADMISSION_CONFORMANCE_CORPUS = [
   },
   {
     id: "plugin-body-name-constraint",
-    adapterId: "agent-plugins-1.0.0-wd",
+    adapterId: "agent-plugins-1.0.0",
     files: { "plugin.json": plugin({ name: "bad--name" }) },
     expected: { valid: false, skills: 0, mcp: 0, reports: 0, errors: 1 },
   },
   {
     id: "plugin-mcp-isolated",
-    adapterId: "agent-plugins-1.0.0-wd",
+    adapterId: "agent-plugins-1.0.0",
     files: {
       "plugin.json": plugin(),
       "skills/fixture/SKILL.md": skill(),
@@ -56,7 +56,7 @@ export const ADMISSION_CONFORMANCE_CORPUS = [
   },
   {
     id: "plugin-mcp-version-isolated",
-    adapterId: "agent-plugins-1.0.0-wd",
+    adapterId: "agent-plugins-1.0.0",
     files: {
       "plugin.json": plugin(),
       "skills/fixture/SKILL.md": skill(),
@@ -66,7 +66,7 @@ export const ADMISSION_CONFORMANCE_CORPUS = [
   },
   {
     id: "plugin-mcp-server-isolated",
-    adapterId: "agent-plugins-1.0.0-wd",
+    adapterId: "agent-plugins-1.0.0",
     files: {
       "plugin.json": plugin(),
       "mcp.json": JSON.stringify({
@@ -81,7 +81,7 @@ export const ADMISSION_CONFORMANCE_CORPUS = [
   },
   {
     id: "plugin-stdio-env-isolated",
-    adapterId: "agent-plugins-1.0.0-wd",
+    adapterId: "agent-plugins-1.0.0",
     files: {
       "plugin.json": plugin(),
       "mcp.json": JSON.stringify({
@@ -96,7 +96,7 @@ export const ADMISSION_CONFORMANCE_CORPUS = [
   },
   {
     id: "plugin-cwd-containment",
-    adapterId: "agent-plugins-1.0.0-wd",
+    adapterId: "agent-plugins-1.0.0",
     files: {
       "plugin.json": plugin(),
       "mcp.json": JSON.stringify({
@@ -112,7 +112,7 @@ export const ADMISSION_CONFORMANCE_CORPUS = [
   },
   {
     id: "plugin-remote-url-header",
-    adapterId: "agent-plugins-1.0.0-wd",
+    adapterId: "agent-plugins-1.0.0",
     files: {
       "plugin.json": plugin(),
       "mcp.json": JSON.stringify({

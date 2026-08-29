@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the standard Intl.Locale, not dependent on Electron or the browser overall
- * [OUTPUT]: Provides AppLocale/LanguagePreference, listing constants, proofreading and Auto detect
+ * [OUTPUT]: Provides AppLocale/LanguagePreference constants, AppLocale validation, and automatic locale detection
  * [POS]: The desktop i18n language is a single truth source, shared with the settings, main, preload and renderer
  */
 
@@ -14,11 +14,6 @@ export const DEFAULT_APP_LOCALE: AppLocale = "en";
 
 export function isAppLocale(value: unknown): value is AppLocale {
   return APP_LOCALES.includes(value as AppLocale);
-}
-export function isLanguagePreference(
-  value: unknown
-): value is LanguagePreference {
-  return LANGUAGE_PREFERENCES.includes(value as LanguagePreference);
 }
 
 function detectedLocale(value: string): AppLocale | null {

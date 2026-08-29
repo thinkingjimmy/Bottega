@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on shared chats/agent IPC's ChatPart/AgentTurnItem vocabulary
- * [OUTPUT]: Provides sequentialized TurnDraft, streamlined Plan projection and delta/item/finalize/settle pure state machines; The subagent chip is synchronized origin/agent; Only explicitly planRequested to upgrade plan item, first remove authority and then formally cut process parts, failing to carry the real Agent name
- * [POS]: Shared turn-owned core, main authority repositories and renderer real-time projection sharing
+ * [INPUT]: Depends on shared Chat and Agent IPC turn-item vocabulary
+ * [OUTPUT]: Provides sequential TurnDraft, Plan projection, delta/item/finalize state machines, ProductFailure-preserving settle projection, and the SubagentSettleOutcome ruler that converges still-running subagents by the turn's own terminal
+ * [POS]: Shared turn-state core consumed by main persistence and renderer live projection
  */
 
-import type { AgentTurnItem } from "./agent-ipc";
+import type { AgentSubagentStatus, AgentTurnItem } from "./agent-ipc";
+import type { ProductFailure } from "./product-failure";
 import {
   MESSAGE_PART_LIMIT,
   type ChatPart,
@@ -20,6 +21,29 @@ export type DraftSubagentPart = Omit<ChatSubagentPart, "status"> & {
   status: "running" | "completed" | "failed";
 };
 export type DraftPart = ChatTextPart | DraftToolPart | DraftSubagentPart;
+
+/* ============================================================
+ * 子 agent 收敛口径：wire **只在真被打断时**才下发终态，「turn 结束时它还
+ * 是 running」在善终 turn 里等于「它跑完了」。恒判中断会把成功的子 agent
+ * 落盘成失败、UI 画红叉。收敛值因此由 **turn 终态**给出，而不是猜：
+ *   done → completed；cancelled / error → interrupted。
+ * part（completed｜failed）与 meta（completed｜interrupted）是两套词表，
+ * 但只有这一个来源，映射也只有 SUBAGENT_PART_STATUS 这一张表。
+ * ============================================================ */
+export type SubagentSettleOutcome = "completed" | "interrupted";
+
+/** 子 agent 状态 → part 展示态：applySubagent 与 finalize 共用的唯一尺子。
+ *  写成全枚举表而非分支链，是为了让 SubagentSettleOutcome 这个封闭二元子集
+ *  在类型上直接落到 `completed｜failed`，不必再补一句断言。 */
+const SUBAGENT_PART_STATUS = {
+  pendingInit: "running",
+  running: "running",
+  completed: "completed",
+  shutdown: "completed",
+  interrupted: "failed",
+  errored: "failed",
+  notFound: "failed",
+} as const satisfies Record<AgentSubagentStatus, DraftSubagentPart["status"]>;
 
 export type TurnDraft = {
   startedAt: number;
@@ -95,6 +119,10 @@ export function applyItem(draft: TurnDraft, item: AgentTurnItem): TurnDraft {
       return item.kind === "plan"
         ? {
             ...draft,
+            streaming: new Map(draft.streaming).set(
+              item.itemId,
+              item.text ?? ""
+            ),
             plan: { itemId: item.itemId, status: "editing" },
           }
         : draft;
@@ -133,6 +161,20 @@ export function applyItem(draft: TurnDraft, item: AgentTurnItem): TurnDraft {
   };
 }
 
+export function applyItemRemoved(
+  draft: TurnDraft,
+  itemId: string
+): TurnDraft {
+  const streaming = new Map(draft.streaming);
+  streaming.delete(itemId);
+  return {
+    ...draft,
+    streaming,
+    parts: draft.parts.filter((part) => part.itemId !== itemId),
+    ...(draft.plan?.itemId === itemId ? { plan: undefined } : {}),
+  };
+}
+
 export function projectDraftPlan(
   draft: TurnDraft
 ): DraftPlanProjection | null {
@@ -162,11 +204,8 @@ export function applySubagent(
     agent?: ChatSubagentPart["agent"];
   }
 ): TurnDraft {
-  const status = ["pendingInit", "running"].includes(agent.status)
-    ? "running"
-    : ["completed", "shutdown"].includes(agent.status)
-      ? "completed"
-      : "failed";
+  const status =
+    SUBAGENT_PART_STATUS[agent.status as AgentSubagentStatus] ?? "failed";
   return {
     ...draft,
     parts: upsert(draft.parts, {
@@ -192,7 +231,8 @@ export type FinalizedTurn = {
 export function finalize(
   draft: TurnDraft,
   endedAt: number,
-  planRequested = true
+  planRequested = true,
+  subagentOutcome: SubagentSettleOutcome = "interrupted"
 ): FinalizedTurn {
   const parts: DraftPart[] = [...draft.parts];
   for (const [itemId, text] of draft.streaming) {
@@ -205,8 +245,10 @@ export function finalize(
     .map((part) =>
       part.type === "tool" && part.status === "running"
         ? { ...part, status: "failed" as const }
-        : part.type === "subagent" && part.status === "running"
-          ? { ...part, status: "failed" as const }
+        : /* 工具没报完成就是失败（工具必报终态）；子 agent 不是——它的终态
+             由 turn 终态收敛，见 SubagentSettleOutcome。 */
+          part.type === "subagent" && part.status === "running"
+          ? { ...part, status: SUBAGENT_PART_STATUS[subagentOutcome] }
         : (part as ChatPart)
     );
   // 最终正文取「最后一个 plan part，否则最后一条 text」——计划是本轮权威产出，
@@ -232,28 +274,33 @@ export function finalize(
   };
 }
 
-export type SettledTurn = FinalizedTurn & { isError?: boolean };
+export type SettledTurn = FinalizedTurn & { isError?: boolean; failure?: ProductFailure };
 
 /** 失败归属与失败原因必须同行：只给 message 的旧签名让调用方无从表达"谁失败了"。 */
-export type TurnFailure = { agent: string; message: string };
+export type TurnFailure = { agent?: string; message?: string; failure?: ProductFailure };
 
 export function settle(
   draft: TurnDraft,
   endedAt: number,
   failure?: TurnFailure,
-  planRequested = true
+  planRequested = true,
+  subagentOutcome: SubagentSettleOutcome = "interrupted"
 ): SettledTurn | null {
-  const result = finalize(draft, endedAt, planRequested);
+  const result = finalize(draft, endedAt, planRequested, subagentOutcome);
   if (!failure) return result.content || result.parts ? result : null;
   const parts = [...(result.parts ?? [])];
   if (result.content) {
     parts.push({ type: "text", itemId: "partial-final", text: result.content });
   }
+  const content = failure.message
+    ? `${failure.agent ? `**${failure.agent}:** ` : ""}${failure.message}`
+    : "";
   return {
-    content: `**${failure.agent} 错误：** ${failure.message}`,
+    content,
     ...(parts.length ? { parts } : {}),
     durationMs: result.durationMs,
     isError: true as const,
+    ...(failure.failure ? { failure: failure.failure } : {}),
   };
 }
 

@@ -1,33 +1,30 @@
 /**
  * [INPUT]: Depends on shared turn reducer, Agent/chats agreement with conversation level SubagentRegistry; TurnOrigin in this file defines, agent/ just export
- * [OUTPUT]: Provides TurnRegistry owner marked as backend/planRequested/origin/recallAttempted/assistantSeq, orderly projection lane, general draft apply observer, subagent child/outcome lifecycle, boundary steering fence, complex session, credible input lease, recoverable resume retry claim, global event seq, single-flight, TTL gravestone and unified drain
+ * [OUTPUT]: Provides TurnRegistry lifecycle ownership, ordered projection, ProductFailure-aware terminals, subagent outcomes, steering fences, input leases, retry claims, event sequencing, tombstones, and drain
  * [POS]: The long lifecycle of the Electron main turns into a single truth source; No Electron dependence, only the IO and the release are responsible for bridge
  */
 
 import { randomUUID } from "node:crypto";
 import {
-  applyDelta,
-  applyItem,
-  createDraft,
-  serializeDraft,
-  type TurnDraft,
+  applyDelta, applyItem, applyItemRemoved,
+  createDraft, serializeDraft, type TurnDraft,
 } from "../../shared/chat-turn-reducer";
 import type {
   AgentBackendId,
   AgentApprovalRequest,
   AgentEvent,
   AgentEventBody,
+  AgentTurnItem,
   AgentUserInputRequest,
   FailureKind,
   UsageLimitInfo,
   SessionRef,
+  SessionServiceTierEffective,
   TurnSnapshot,
 } from "../../shared/agent-ipc";
-import type {
-  PersistedSubagent,
-  TurnCommitInput,
-} from "../../shared/chats-ipc";
+import type { PersistedSubagent, TurnCommitInput } from "../../shared/chats-ipc";
 import { SubagentRegistry } from "../../shared/subagent-registry";
+import type { ProductFailure } from "../../shared/product-failure";
 
 /**
  * turn 的发起证据：人工输入或 relay。定义在本层
@@ -48,8 +45,10 @@ export type SourceTerminal = {
   type: "done" | "cancelled" | "error";
   message?: string;
   failureKind?: FailureKind;
+  failure?: ProductFailure;
   /** 仅 failureKind==="usage-limit" 时存在，卡片据此渲染窗口与恢复时刻 */
   usageLimit?: UsageLimitInfo;
+  facts?: { skillDescriptionsTruncated?: true };
 };
 
 export type TurnCleanup = "pending" | "complete" | "failed";
@@ -68,7 +67,6 @@ export type RegistryTurn = {
   pid?: number;
   readonly steeringSupported?: boolean;
 };
-
 type Startup = {
   task: Promise<void>;
   cancelRequested: boolean;
@@ -123,6 +121,7 @@ export type TurnEntry<TTurn extends RegistryTurn = RegistryTurn> = {
   cleanup: TurnCleanup;
   persist: TurnPersist;
   session?: SessionRef;
+  serviceTierEffective?: SessionServiceTierEffective;
   resumeRetryToken?: string;
   generation: number;
   draft: TurnDraft;
@@ -163,7 +162,8 @@ export type RetryClaim<TTurn extends RegistryTurn = RegistryTurn> = {
 
 export type DraftObservation =
   | { type: "delta"; itemId: string }
-  | { type: "item"; item: import("../../shared/agent-ipc").AgentTurnItem };
+  | { type: "item"; item: AgentTurnItem }
+  | { type: "item-removed"; itemId: string };
 
 export const isTombstone = (entry: TurnEntry) =>
   Boolean(entry.effectiveTerminal) &&
@@ -635,9 +635,15 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
       persist: entry.persist,
       blocksNewTurn: blocksNewTurn(entry),
       ...(entry.session ? { session: entry.session } : {}),
+      ...(entry.serviceTierEffective ? { serviceTierEffective: entry.serviceTierEffective } : {}),
       ...(entry.resumeRetryToken
         ? { retryToken: entry.resumeRetryToken }
         : {}),
+      allowedActions: {
+        sameSession: false,
+        freshSession: false,
+        abandon: false,
+      },
       draft: serializeDraft(entry.draft),
       approvals: [...entry.approvals.values()].map((value) => structuredClone(value)),
       userInputs: [...entry.userInputs.values()]
@@ -647,12 +653,10 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
       ...(entry.effectiveTerminal
         ? {
             terminal: entry.effectiveTerminal.type,
-            ...(entry.effectiveTerminal.message
-              ? { terminalMessage: entry.effectiveTerminal.message }
-              : {}),
             ...(entry.effectiveTerminal.failureKind
               ? { failureKind: entry.effectiveTerminal.failureKind }
               : {}),
+            ...(entry.effectiveTerminal.failure ? { failure: entry.effectiveTerminal.failure } : {}),
             ...(entry.effectiveTerminal.usageLimit
               ? { usageLimit: entry.effectiveTerminal.usageLimit }
               : {}),
@@ -765,6 +769,7 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
 
   private applyBody(entry: TurnEntry<TTurn>, body: AgentEventBody) {
     if (body.type === "session") entry.session = body.session;
+    if (body.type === "service-tier-effective") entry.serviceTierEffective = body.effective;
     if (body.type === "item-delta") {
       entry.draft = applyDelta(entry.draft, body.itemId, body.text);
       this.draftObserver?.(entry, {
@@ -775,6 +780,10 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
     if (body.type === "item") {
       entry.draft = applyItem(entry.draft, body.item);
       this.draftObserver?.(entry, { type: "item", item: body.item });
+    }
+    if (body.type === "item-removed") {
+      entry.draft = applyItemRemoved(entry.draft, body.itemId);
+      this.draftObserver?.(entry, { type: "item-removed", itemId: body.itemId });
     }
     if (body.type === "approval-requested") {
       entry.approvals.set(body.approval.approvalId, body.approval);

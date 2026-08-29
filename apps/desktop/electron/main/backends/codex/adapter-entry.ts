@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on node createRequire, lock @agentclientprotocol/codex-acp, local builtin server spec, main Freeze third-party plan/product Skill rules and shared overtime authentication
- * [OUTPUT]: Provides codexAcpEntry/codexAcpArgs, a production launcher, sessionId validator and an explicit CODEX_PATH/CODEX_CONFIG environment; builtin/third-party server/Skill rules are inserted by the same config, repeated alias rejected before sequencing, and the entire package is 96KiB
+ * [INPUT]: Depends on node createRequire, locked @agentclientprotocol/codex-acp, local builtin server spec, frozen third-party plan and shared timeout contract
+ * [OUTPUT]: Provides codexAcpEntry/codexAcpArgs, production launcher, sessionId validator and explicit CODEX_PATH/CODEX_CONFIG; builtin/third-party servers share one bounded config
  * [POS]: the borders of the Codex ACP supply chain; Only parse the lockfile. The input is installed, prohibiting npx/ network back-up
  */
 
@@ -34,7 +34,6 @@ export function codexAcpEnvironment(
     approveForMe?: boolean;
     builtinMcp?: BuiltinMcpServerSpec;
     thirdPartyMcpPlan?: ThirdPartyMcpPlan;
-    skillRules?: readonly Readonly<{ path: string; enabled: false }>[];
   } = {}
 ) {
   return {
@@ -45,7 +44,6 @@ export function codexAcpEnvironment(
       approveForMe: options.approveForMe,
       builtinMcp: options.builtinMcp,
       thirdPartyMcpPlan: options.thirdPartyMcpPlan,
-      skillRules: options.skillRules,
     }),
   } satisfies NodeJS.ProcessEnv;
 }
@@ -54,7 +52,6 @@ function codexConfig(options: {
   approveForMe?: boolean;
   builtinMcp?: BuiltinMcpServerSpec;
   thirdPartyMcpPlan?: ThirdPartyMcpPlan;
-  skillRules?: readonly Readonly<{ path: string; enabled: false }>[];
 }) {
   assertUniqueMcpBackendAliases(options.thirdPartyMcpPlan?.entries ?? []);
   const thirdParty = Object.fromEntries(
@@ -77,9 +74,6 @@ function codexConfig(options: {
   );
   const serialized = JSON.stringify({
     approvals_reviewer: options.approveForMe ? "auto_review" : "user",
-    ...(options.skillRules?.length
-      ? { skills: { config: options.skillRules.map((rule) => ({ ...rule })) } }
-      : {}),
     ...(options.builtinMcp || Object.keys(thirdParty).length
       ? {
           mcp_servers: {
@@ -118,7 +112,6 @@ export const codexAcpLaunch: AcpLauncher = (runtime, overlay) => ({
       approveForMe: overlay?.session?.approveForMe,
       builtinMcp: overlay?.session?.builtinMcp,
       thirdPartyMcpPlan: overlay?.session?.thirdPartyMcpPlan,
-      skillRules: overlay?.session?.skillRules,
     }),
   },
 });

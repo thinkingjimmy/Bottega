@@ -1,15 +1,22 @@
 /**
- * [INPUT]: Depends on React useSyncExternalStore, panel-catalog static/App/Image region verification and renderer localStorage; The key conversation is made up of ID+incarnationId
- * [OUTPUT]: Provides durable PanelSlotAggregate, panelSlotStore and usePanelSlots; Open to load with id and not hold any media load
- * [POS]: The only owner of the per-incarnation slot of the chat/side-panel; Reload / renderer reload Restored, Incarnation Reloaded Natural Get Empty Aggregate
+ * [INPUT]: Depends on React useSyncExternalStore, PanelSessionContext eligibility, panel-catalog region verification and renderer localStorage
+ * [OUTPUT]: Provides durable PanelSlotAggregate, context-derived keys, explicit cross-window storage reload, foreign-slot sanitization, append-only migration and usePanelSlots
+ * [POS]: The only owner of the per-generation slot of chat/side-panel; product-only regions cannot survive a foreign restore
  */
 
 import { useSyncExternalStore } from "react";
 import {
+  isAppRegion,
   isImageRegion,
   type PanelRegion,
   type PanelTabId,
 } from "./panel-catalog";
+import {
+  panelConversationKey,
+  panelGenerationKey,
+  panelEligibility,
+  type PanelSessionContext,
+} from "../runtime/chat-session-model";
 
 export type PanelSlotAggregate = Readonly<{
   key: string;
@@ -81,8 +88,8 @@ export class PanelSlotStore {
   private aggregates: Map<string, PanelSlotAggregate> | null = null;
   private readonly listeners = new Set<() => void>();
 
-  key(conversationId: string, incarnationId: string) {
-    return `${conversationId}\u0000${incarnationId}`;
+  key(context: PanelSessionContext) {
+    return `${panelConversationKey(context)}\u0000${panelGenerationKey(context)}`;
   }
 
   get(key: string) {
@@ -95,10 +102,60 @@ export class PanelSlotStore {
     return aggregate;
   }
 
+  getFor(context: PanelSessionContext) {
+    const key = this.key(context);
+    const current = this.get(key);
+    const tabs = current.tabs.filter((region) => {
+      const capability = isImageRegion(region)
+        ? "image"
+        : isAppRegion(region)
+          ? "app"
+          : region;
+      return panelEligibility(context, capability).allowed;
+    });
+    const active = current.active === "browser"
+      ? current.active
+      : tabs.includes(current.active as PanelTabId)
+        ? current.active
+        : "";
+    if (tabs.length === current.tabs.length && active === current.active) {
+      return current;
+    }
+    const next = { ...current, tabs, active, revision: current.revision + 1 };
+    this.records().set(key, next);
+    this.persist();
+    return next;
+  }
+
+  migrate(from: PanelSessionContext, to: PanelSessionContext) {
+    const source = this.getFor(from);
+    const targetKey = this.key(to);
+    const target = this.getFor(to);
+    const tabs = [...target.tabs];
+    for (const tab of source.tabs) {
+      if (!tabs.includes(tab)) tabs.push(tab);
+    }
+    const active = source.active || target.active;
+    this.records().set(targetKey, {
+      key: targetKey,
+      revision: target.revision + 1,
+      tabs,
+      active,
+    });
+    this.persist();
+    for (const listener of this.listeners) listener();
+  }
+
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+
+  /** Same-origin windows share bytes, not module memory; migration must refresh the live cache explicitly. */
+  reloadFromStorage() {
+    this.aggregates = parseStored();
+    for (const listener of this.listeners) listener();
+  }
 
   open(key: string, region: PanelTabId) {
     this.change(key, (current) => ({
@@ -158,10 +215,10 @@ export class PanelSlotStore {
 
 export const panelSlotStore = new PanelSlotStore();
 
-export function usePanelSlots(key: string) {
+export function usePanelSlots(context: PanelSessionContext) {
   return useSyncExternalStore(
     panelSlotStore.subscribe,
-    () => panelSlotStore.get(key),
-    () => panelSlotStore.get(key)
+    () => panelSlotStore.getFor(context),
+    () => panelSlotStore.getFor(context)
   );
 }

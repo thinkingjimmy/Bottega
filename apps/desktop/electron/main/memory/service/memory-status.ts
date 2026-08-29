@@ -33,7 +33,8 @@ export function projectMemoryStatus(input: {
   epoch: { effectiveAt: number; sharingGeneration: number } | null;
 }): MemoryStatusSnapshot {
   const instanceId = input.sharingScope?.providerDataInstanceId ?? "";
-  const counts = input.sharingScope
+  const deliveryReady = input.delivery.isInitialized();
+  const counts = deliveryReady && input.sharingScope
     ? input.delivery.countsForSharingScope(instanceId, input.sharingScope)
     : { pending: 0, delivered: 0, gap: 0 };
   const versionMismatch = Boolean(
@@ -64,15 +65,15 @@ export function projectMemoryStatus(input: {
       pendingTurns: counts.pending,
       deliveredTurns: counts.delivered,
       gapTurns: counts.gap,
-      inflightBatches: input.sharingScope
+      inflightBatches: deliveryReady && input.sharingScope
         ? input.delivery.activeReservationsForSharingScope(
             instanceId,
             input.sharingScope
           ).length
         : 0,
     },
-    rebuild: input.rebuild.snapshot(instanceId),
-    attention: input.delivery.attention(),
+    rebuild: deliveryReady ? input.rebuild.snapshot(instanceId) : null,
+    attention: deliveryReady ? input.delivery.attention() : [],
   };
 }
 

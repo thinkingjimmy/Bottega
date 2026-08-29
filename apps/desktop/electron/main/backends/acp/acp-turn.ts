@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on ACP SDK client/ndJsonStream/config options, limited stdout framing, startup evidence/settlement, prompt writer handoff, descriptor spawn, freeze productContext/sensitive contribution, built-in MCP ready and frozen third-party MCP plan
- * [OUTPUT]: Provides AcpTurn/acpMcpServers, unified end-to-end protocol/session, fixed productContext→ sensitive contribution→ remaining input, real session/prompt before consumption lease, and deals with writer handoff, health observation, steering, model/mode, message cover, approval, plan-review before the original plan item is dropped, and the decision is asked again, cancellation and resume
+ * [INPUT]: Depends on ACP SDK transport/config options, framing/startup settlement, prompt handoff, frozen product/MCP inputs and runtime-bound server-fact oracle
+ * [OUTPUT]: Provides AcpTurn/acpMcpServers, end-to-end session/prompt lifecycle with pre-prompt complete and continuously frozen model/mode facts, health observation, steering, approval, cancellation and resume
  * [POS]: The agreement on ACP transport has been achieved; The acceptance/name denial of the session is evidence of MCP health, not spam; Process evidence with terminal ownership declining startup, failure first raw classification, post-defective release
  */
 
@@ -40,10 +40,7 @@ import {
   mapAcpElicitation,
   type AcpElicitationMapping,
 } from "./turn/elicitation";
-import {
-  assertAcpProtocolVersion,
-  assertAcpSessionId,
-} from "./probe";
+import { assertAcpProtocolVersion } from "./probe";
 import {
   AcpStartupTracker,
 } from "./startup/budget";
@@ -52,6 +49,8 @@ import { AcpProcessEvidence } from "./startup/evidence";
 import { AcpTurnSettlement } from "./startup/settlement";
 import {
   createAcpEventState,
+  finalizeAcpPlan,
+  finalizeAcpPlans,
   flushAcpSegments,
   mapAcpSubagentMeta,
   mapAcpUpdate,
@@ -67,22 +66,18 @@ import {
   requestAcpSteering,
   SteeringOperationGate,
 } from "./turn/acp-steering";
-import {
-  applyTurnConfiguration,
-  sessionConfigState,
-} from "./session/config";
 import { AcpTraceTee } from "./trace";
 import { AcpOutboundSink, PromptHandoffTracker } from "./turn/prompt-handoff";
 import { wrapInteractiveWithSeatbelt } from "../sandbox/seatbelt";
 import { seatbeltOwned } from "../sandbox/fences";
 import { assertUniqueMcpBackendAliases } from "../../../../shared/mcp-servers-ipc";
+import { processHostOf, promptBlocks, type AcpSpawnConfig } from "./turn/setup";
+import { establishAcpSession } from "./turn/session-establishment";
+import { NegotiatedServerFactsOracle } from "./session/server-facts";
 import {
-  acpMcpServers,
-  isResumeMissing,
-  processHostOf,
-  promptBlocks,
-  type AcpSpawnConfig,
-} from "./turn/setup";
+  buildAcpClientCapabilities,
+  SESSION_CAPABILITY_POLICY,
+} from "./session/client-capabilities";
 
 export {
   normalizeSteerOutcome,
@@ -124,6 +119,7 @@ export class AcpTurn implements AgentTurn {
   private promptSettled = false;
   private readonly steeringGate = new SteeringOperationGate();
   private readonly handoff = new PromptHandoffTracker();
+  private readonly serverFacts?: NegotiatedServerFactsOracle;
 
   constructor(
     private readonly options: BackendTurnOptions,
@@ -132,6 +128,9 @@ export class AcpTurn implements AgentTurn {
       processHostOf()
   ) {
     assertUniqueMcpBackendAliases(options.thirdPartyMcpPlan?.entries ?? []);
+    if (options.serverFactBinding) {
+      this.serverFacts = new NegotiatedServerFactsOracle(options.serverFactBinding);
+    }
     const thirdPartySecrets = (options.thirdPartyMcpPlan?.entries ?? [])
       .flatMap((entry) => Object.values(
         entry.transport === "stdio" ? entry.env : entry.headers
@@ -300,12 +299,14 @@ export class AcpTurn implements AgentTurn {
         const initialized = await stage.run("initialize", async () => {
           const value = await context.request(AGENT_METHODS.initialize, {
             protocolVersion: PROTOCOL_VERSION,
-            clientCapabilities: {
-              session: { configOptions: {} },
-              ...(this.config.elicitation === "disabled"
-                ? {}
-                : { elicitation: { form: {} } }),
-            },
+            /* 政策格是唯一来源：生产 turn、readiness 探针与深握手都按后端 id
+               取同一格，spawn config 不再复制一份——复制品与本体永远相等的
+               那天起，摘掉复制品的负向用例就只是在测它自己。 */
+            clientCapabilities: buildAcpClientCapabilities(
+              SESSION_CAPABILITY_POLICY[
+                this.options.payload.turnOptions.backend
+              ]
+            ),
             clientInfo: {
               name: "bottega",
               title: "Bottega",
@@ -341,6 +342,7 @@ export class AcpTurn implements AgentTurn {
           await stage.run("builtin-mcp", () => builtin.waitReady(startupSignal));
         }
         startupSignal.throwIfAborted();
+        this.serverFacts?.assertComplete();
         const prompt = context.request(AGENT_METHODS.session_prompt, {
           sessionId,
           prompt: promptBlocks(this.options),
@@ -378,63 +380,15 @@ export class AcpTurn implements AgentTurn {
   private async establishSession(
     context: ClientContext
   ): Promise<string | undefined> {
-    const resume = this.options.payload.session;
-    if (resume && this.options.payload.turnOptions.backend !== resume.backend) {
-      throw new Error("ACP session 与后端不匹配");
-    }
-    if (!resume) {
-      const created = await context.request(AGENT_METHODS.session_new, {
-        cwd: this.options.workspace,
-        mcpServers: acpMcpServers(this.options, this.config),
-        ...(this.config.sessionMeta
-          ? { _meta: this.config.sessionMeta(this.options) }
-          : {}),
-      });
-      const id = assertAcpSessionId(created, this.config.validateSessionId);
-      this.sessionId = id;
-      await applyTurnConfiguration(
-        context,
-        id,
-        created,
-        this.options.payload,
-        this.config
-      );
-      await this.options.callbacks.onThread({
-        backend: this.options.payload.turnOptions.backend,
-        id,
-      });
-      return id;
-    }
-    try {
-      const resumeParams = {
-        sessionId: resume.id,
-        cwd: this.options.workspace,
-        mcpServers: acpMcpServers(this.options, this.config),
-        ...(this.config.sessionMeta
-          ? { _meta: this.config.sessionMeta(this.options) }
-          : {}),
-      };
-      const resumed = await context.request(
-        this.config.resumeWithoutReplay
-          ? AGENT_METHODS.session_resume
-          : AGENT_METHODS.session_load,
-        resumeParams
-      );
-      this.sessionId = resume.id;
-      await applyTurnConfiguration(
-        context,
-        resume.id,
-        sessionConfigState(resumed),
-        this.options.payload,
-        this.config
-      );
-      return resume.id;
-    } catch (cause) {
-      if (isResumeMissing(cause, this.config.resumeMissingPolicy)) {
-        return undefined;
-      }
-      throw cause;
-    }
+    return establishAcpSession({
+      context,
+      options: this.options,
+      config: this.config,
+      serverFacts: this.serverFacts,
+      onSessionId: (sessionId) => {
+        this.sessionId = sessionId;
+      },
+    });
   }
 
   /**
@@ -597,13 +551,21 @@ export class AcpTurn implements AgentTurn {
 
   private handleUpdate(params: SessionNotification) {
     if (params.sessionId !== this.sessionId) return;
-    this.handleSubagentMeta(params.update);
+    if (params.update.sessionUpdate === "config_option_update") {
+      this.options.callbacks.onConfigOptionUpdate?.(
+        params.update.configOptions
+      );
+    }
+    const subagentThreadId = this.handleSubagentMeta(params.update);
     for (const event of mapAcpUpdate(params.update, this.state)) {
-      if (!this.emitMapped(event)) return;
+      if (!this.emitMapped(event, subagentThreadId)) return;
     }
   }
 
-  private emitMapped(event: ReturnType<typeof mapAcpUpdate>[number]) {
+  private emitMapped(
+    event: ReturnType<typeof mapAcpUpdate>[number],
+    subagentThreadId?: string
+  ) {
     this.options.trace?.recordMapped(event);
     if (event.type === "delta") {
       const bytes = Buffer.byteLength(event.text, "utf8");
@@ -611,13 +573,30 @@ export class AcpTurn implements AgentTurn {
         this.options.callbacks.onPolicyViolation?.({
           budget: "delta-bytes",
           detail: `${bytes} > ${ACP_MAX_DELTA_BYTES}`,
+          ...this.turnFacts(),
         });
         return false;
       }
-      this.options.callbacks.onItemDelta(event.itemId, event.text);
+      if (subagentThreadId) {
+        this.options.callbacks.onSubagentItemDelta?.(
+          subagentThreadId,
+          event.itemId,
+          event.text
+        );
+      } else {
+        this.options.callbacks.onItemDelta(event.itemId, event.text);
+      }
       return true;
     }
-    this.options.callbacks.onItem(event.item);
+    if (event.type === "item-removed") {
+      this.options.callbacks.onItemRemoved(event.itemId);
+      return true;
+    }
+    if (subagentThreadId) {
+      this.options.callbacks.onSubagentItem?.(subagentThreadId, event.item);
+    } else {
+      this.options.callbacks.onItem(event.item);
+    }
     return true;
   }
 
@@ -629,7 +608,7 @@ export class AcpTurn implements AgentTurn {
 
   private handleSubagentMeta(update: unknown) {
     const meta = mapAcpSubagentMeta(update, this.config.validateSessionId);
-    if (!meta) return;
+    if (!meta) return undefined;
     const now = Date.now();
     const current = this.options.subagents.get(meta.threadId);
     const agent = this.options.subagents.upsertMeta({
@@ -641,6 +620,7 @@ export class AcpTurn implements AgentTurn {
       lastActivityAt: now,
     }).meta;
     this.options.callbacks.onSubagentUpdate?.(agent);
+    return agent.agentThreadId;
   }
 
   private handlePermission(
@@ -673,18 +653,11 @@ export class AcpTurn implements AgentTurn {
        **唯一生产者**——在此之前 PlanCard/plan 消息/决策卡整条管线没有任何
        后端点得亮它（ACP 的 `sessionUpdate:"plan"` 是 TODO 清单，恒映射为
        `kind:"other"` 过程条目，见 map-events）。故本分支不生效即全无 Plan 块。 */
-    if (mapping.plan) {
+    if (mapping.planReview) {
       this.flushTerminalSegments("completed");
-      this.emitMapped({
-        type: "item",
-        item: {
-          itemId: `plan-review-${approvalId}`,
-          kind: "plan",
-          title: "Plan",
-          text: mapping.plan,
-          status: "completed",
-        },
-      });
+      const planId = mapping.planItemId ?? `plan-review-${approvalId}`;
+      const event = finalizeAcpPlan(this.state, planId, mapping.plan);
+      if (event) this.emitMapped(event);
     }
     const mode = this.options.payload.turnOptions.permissionMode;
     if (
@@ -739,6 +712,7 @@ export class AcpTurn implements AgentTurn {
     if (!this.settlement.requestTerminal()) return;
     await this.steeringGate.wait();
     if (!this.settlement.claimTerminal()) return;
+    for (const plan of finalizeAcpPlans(this.state)) this.emitMapped(plan);
     this.flushTerminalSegments(
       event.type === "done" ? "completed" : "failed"
     );
@@ -746,12 +720,23 @@ export class AcpTurn implements AgentTurn {
       event.type === "error" && event.message
         ? { ...event, message: this.evidence.redact(event.message) }
         : event;
-    this.options.callbacks.onTerminal(
-      diagnostic.type === "error"
+    this.options.callbacks.onTerminal({
+      ...(diagnostic.type === "error"
         ? { ...diagnostic, ...this.terminalFailure() }
-        : diagnostic
-    );
+        : diagnostic),
+      ...this.turnFacts(),
+    });
     this.settlement.completeTransport();
+  }
+
+  /**
+   * 轮级事实与终态类型无关：截断已经发生过，无论这一轮是善终、死于进程错误
+   * 还是撞上预算围栏。三个出口共用这一处推导，新增事实位不会只补上一半。
+   */
+  private turnFacts() {
+    return this.state.skillDescriptionsTruncated
+      ? { facts: { skillDescriptionsTruncated: true as const } }
+      : {};
   }
 
   /**
@@ -780,6 +765,7 @@ export class AcpTurn implements AgentTurn {
        里抢在 close 事件之前。让位给进程自己的死因，证据才不会丢。 */
     const cause = await this.evidence.preferExit(rawCause);
     if (!this.settlement.claimTerminal()) return;
+    for (const plan of finalizeAcpPlans(this.state)) this.emitMapped(plan);
     this.flushTerminalSegments("failed");
     const classified = this.config.classifyFailure?.(cause, {
       rateLimit: this.state.rateLimit,
@@ -790,6 +776,7 @@ export class AcpTurn implements AgentTurn {
     const failure = {
       ...classified,
       message: this.evidence.redact(classified.message),
+      ...this.turnFacts(),
     };
     /* onProcessError 是带 failureKind 的完整终态出口，必须先于 start()
        rejection 发布；否则 bridge 的通用 startup catch 会抢先把分类抹掉。 */

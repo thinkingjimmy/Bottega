@@ -67,7 +67,7 @@ export type GuiBasePort = {
 };
 
 type TokenVerifier = {
-  verify(appId: string, candidate: string): GuiTokenClaims | null;
+  verify(appId: string, surfaceId: string, candidate: string): GuiTokenClaims | null;
 };
 
 export function createBaseGuiApi(
@@ -80,8 +80,8 @@ export function createBaseGuiApi(
   return async (context, pathname, request, response) => {
     const { appId, binding } = context;
     const method = request.method ?? "GET";
-    const claims = tokens.verify(appId, bearerToken(request));
-    if (!claims || !sameBinding(claims, binding)) {
+    const claims = tokens.verify(appId, binding.surfaceId, bearerToken(request));
+    if (!claims || !sameGuiBinding(claims, binding)) {
       respondError(response, 401, "invalid_token", "Base API token 无效");
       return;
     }
@@ -182,12 +182,16 @@ function endpointFor(pathname: string) {
   return match ? { kind: "attachment" as const, attachmentId: match[1]! } : null;
 }
 
-function sameBinding(claims: GuiTokenClaims, binding: BaseGuiLiveBinding) {
+export function sameGuiBinding(claims: GuiTokenClaims, binding: BaseGuiLiveBinding) {
   return claims.appId === binding.appId &&
     claims.generationId === binding.generationId &&
     claims.contentDigest === binding.contentDigest &&
     claims.lifecycleRevision === binding.lifecycleRevision &&
     sameCapabilities(claims.baseCapabilities, binding.baseCapabilities) &&
+    sameCapabilities(claims.hostActions, binding.hostActions) &&
+    claims.workspaceReadScope === binding.workspaceReadScope &&
+    claims.surfaceId === binding.surfaceId &&
+    claims.appSurfaceLeaseId === binding.appSurfaceLeaseId &&
     claims.capabilityDecisionId === binding.capabilityDecisionId &&
     claims.capabilityRevision === binding.capabilityRevision;
 }
@@ -202,7 +206,7 @@ function parseLimit(raw: string | null) {
   return Math.min(parsed, ROWS_MAX_LIMIT);
 }
 
-function bearerToken(request: IncomingMessage) {
+export function bearerToken(request: IncomingMessage) {
   const header = request.headers.authorization ?? "";
   return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
 }

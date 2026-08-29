@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, setup-client, settingsStore(Chat Home Repeat Facts and Model Directories), onboarding-gate tri-modal judgments with shared multi-end SetupStatus
- * [OUTPUT]: Provides SetupProvider/useSetup: installed × (authenticated unknown) Gateway entry loading/onboarding/app judgment of Chat Home Agent Not set to stay in the last file, gaps exist i.e. guided and no exemption) List the terminal actions with the obvious runtime/latest retake
- * [POS]: The Providers' Agent environment is a single source of truth, consumed by chat, Settings and onboarding; Starting to be derived only from the onboarding-gate and no longer to be automatically rewritten by caching or side effects
+ * [INPUT]: Depends on React Context, setup-client, the Settings store, the narrow backend projection, onboarding-gate judgments, and shared SetupStatus
+ * [OUTPUT]: Provides full SetupProvider, residence-scoped AppRuntimeSetupProvider, and useSetup for Chat/Settings/onboarding consumers
+ * [POS]: Renderer Agent-environment context; the main window owns setup lifecycle while App windows consume only backend runtime projections for their resident chat
  */
 
 import {
@@ -37,6 +37,7 @@ import {
   type OnboardingVerdict,
 } from "@/lib/onboarding-gate";
 import { settingsStore } from "@/lib/settings-store";
+import { listBackends } from "@/lib/settings-client";
 
 /* ============================================================
  * 引导没有豁免档。
@@ -72,6 +73,54 @@ type SetupContextValue = {
 };
 
 const SetupContext = createContext<SetupContextValue | null>(null);
+
+const APP_RUNTIME_ONBOARDING: OnboardingVerdict = {
+  phase: "app",
+  facts: { "chat-home": "satisfied", agent: "satisfied" },
+  missing: [],
+  settled: true,
+};
+
+/** App windows never acquire setup/settings authority; they only refresh backend facts. */
+export function AppRuntimeSetupProvider({ children }: { children: React.ReactNode }) {
+  const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [checking, setChecking] = useState(true);
+  const [error, setError] = useState("");
+  const recheck = useCallback(async () => {
+    setChecking(true);
+    try {
+      setStatus({ backends: await listBackends() });
+      setError("");
+    } catch (cause) {
+      setError(errorMessage(cause, "Agent 检测失败"));
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void recheck(), 0);
+    return () => window.clearTimeout(timer);
+  }, [recheck]);
+  const unavailable = async () => {
+    throw new Error("请在主窗口管理 Agent 环境");
+  };
+  const value = useMemo<SetupContextValue>(() => ({
+    status,
+    checking,
+    busy: {},
+    latestChecking: {},
+    error,
+    ready: isReady(status),
+    onboarding: APP_RUNTIME_ONBOARDING,
+    openOnboarding: () => undefined,
+    leaveOnboarding: () => undefined,
+    terminalAction: unavailable,
+    recheckBackend: async () => recheck(),
+    refreshLatest: unavailable,
+    recheck,
+  }), [checking, error, recheck, status]);
+  return <SetupContext.Provider value={value}>{children}</SetupContext.Provider>;
+}
 
 export function SetupProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<SetupStatus | null>(null);

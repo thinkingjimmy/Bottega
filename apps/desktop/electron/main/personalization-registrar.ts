@@ -236,6 +236,7 @@ export function registerPersonalization(
   service = new PersonalizationService()
 ) {
   rendererIpc(window, rendererUrl, "拒绝非主窗口的个性化请求")
+    .roles("main")
     .handle(PERSONALIZATION_CHANNEL.list, () => service.list())
     .handle(PERSONALIZATION_CHANNEL.save, (input) => service.save(input as SaveInstructionsInput))
     .handle(PERSONALIZATION_CHANNEL.reveal, (backend) =>

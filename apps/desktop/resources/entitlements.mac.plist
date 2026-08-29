@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  [INPUT]: Depends on the macOS hardened runtime enforced by electron-builder and Developer ID signing
+  [OUTPUT]: Grants Electron helpers JIT execution, unsigned executable memory, and loading of signed third-party native runtime libraries
+  [POS]: Canonical macOS signing entitlement contract consumed by electron-builder for the app and inherited helper signatures
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

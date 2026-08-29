@@ -49,7 +49,17 @@ export function BrowserSettingsView() {
     if (!bridge) return;
     let live = true;
     void bridge
-      .detectProfiles()
+      .availability()
+      .then((availability) => {
+        if (!availability.available) {
+          if (live) {
+            setProfiles([]);
+            setError(t("settings.browser.platformUnavailable"));
+          }
+          return [];
+        }
+        return bridge.detectProfiles();
+      })
       .then((next) => {
         if (live) setProfiles(next);
       })

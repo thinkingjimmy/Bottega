@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the type of base-view-config, base-values and shared/bases attachment DTO; Receive chat/project owner, column/row/naming view, filter AST, chart, gallery and renderer Bases IPC data
- * [OUTPUT]: Provides BaseOwner/ownerKey, Base IPC constants and types, stabilizes XLSX issue code/structured mutation results, owner-native manual attachment bridge, filters projected pure functions and owner-fenced/migration events
- * [POS]: Bases IPC and owner authentication source; The main renderer is shared with an independent MCP server.This file is intended to be free of the zodiac scanner, and the renderer takes an owner from the FromKey that should not be attached to the back of the entire scanner when running
+ * [INPUT]: Depends on Base value/view/attachment contracts and the canonical BaseCellContext evaluation kernel
+ * [OUTPUT]: Provides Base owner/IPC DTOs, limits, mutation results, events, and context-required filter/project/group pure functions
+ * [POS]: The shared Base wire and projection authority used by main, renderer, and the builtin-tool server; projection never manufactures its own partial evaluation context
  */
 
 import {
@@ -12,7 +12,6 @@ import {
 } from "./base-values";
 import {
   cellValue,
-  createBaseCellContext,
   type BaseCellContext,
 } from "./base-cell-value";
 import type {
@@ -459,29 +458,35 @@ export function evaluateBaseFilter(
 export function projectBaseRows(
   rows: readonly BaseRow[],
   config: Pick<BaseCommonViewConfig, "filter" | "sorts">,
-  columns: readonly BaseColumn[]
+  context: BaseCellContext
 ) {
-  const context = createBaseCellContext({ columns, rows });
   const filtered = config.filter
     ? rows.filter((row) => evaluateBaseFilter(row, config.filter!, context))
     : [...rows];
   const sorts = config.sorts ?? [];
-  const sortValue = (row: BaseRow, columnId: string) => {
-    const column = context.columns.get(columnId);
-    return column ? cellValue(row, column, context) : row.values[columnId];
-  };
-  return sorts.length
-    ? filtered.sort((left, right) => {
-        for (const sort of sorts) {
-          const result = compare(
-            sortValue(left, sort.columnId),
-            sortValue(right, sort.columnId)
-          );
-          if (result) return sort.direction === "asc" ? result : -result;
-        }
-        return left.id.localeCompare(right.id);
+  if (!sorts.length) return filtered;
+
+  /* 排序键只投影一次：比较器会被调用 O(n log n) 次，但公式/relation 求值只该
+     随行数线性增长。Map 也让比较器退化成无副作用的纯查表。 */
+  const sortKeys = new Map<string, readonly (BaseCellValue | undefined)[]>();
+  for (const row of filtered) {
+    sortKeys.set(
+      row.id,
+      sorts.map((sort) => {
+        const column = context.columns.get(sort.columnId);
+        return column ? cellValue(row, column, context) : row.values[sort.columnId];
       })
-    : filtered;
+    );
+  }
+  return filtered.sort((left, right) => {
+    const leftKeys = sortKeys.get(left.id)!;
+    const rightKeys = sortKeys.get(right.id)!;
+    for (const [index, sort] of sorts.entries()) {
+      const result = compare(leftKeys[index], rightKeys[index]);
+      if (result) return sort.direction === "asc" ? result : -result;
+    }
+    return left.id.localeCompare(right.id);
+  });
 }
 
 export function filterReferencesColumn(
@@ -498,10 +503,9 @@ export function groupBaseRows(
   rows: readonly BaseRow[],
   column: Pick<BaseColumn, "id" | "options"> &
     Partial<Pick<BaseColumn, "name" | "type" | "formula">>,
-  columns: readonly BaseColumn[]
+  context: BaseCellContext
 ) {
-  const context = createBaseCellContext({ columns, rows });
-  const resolvedColumn = columns.find((candidate) => candidate.id === column.id);
+  const resolvedColumn = context.columns.get(column.id);
   const projected = rows.map((row) =>
     resolvedColumn
       ? cellValue(row, resolvedColumn, context)

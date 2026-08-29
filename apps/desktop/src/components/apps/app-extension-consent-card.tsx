@@ -104,7 +104,9 @@ function PendingGenerationConsentCard({ record }: { record: AppRecord }) {
       {resolution?.kind === "frozen" && <ul className="mt-3 space-y-1">
         {requirements.map((item) => (
           <li className="text-xs" key={item.declarationDigest}>
-            <span className="font-mono">{item.componentIdentity}</span>
+            <span className="font-mono">
+              {item.declaredComponentIdentity}
+            </span>
             <span className="ml-2 text-muted-foreground">
               {t(item.required
                 ? "apps.baseGuiConsent.extensionRequired"

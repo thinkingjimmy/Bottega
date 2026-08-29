@@ -7,13 +7,13 @@
 import { validateHeaderName, validateHeaderValue } from "node:http";
 import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { SKILL_FRONTMATTER_PATTERN } from "../skills-catalog";
+import { SKILL_FRONTMATTER_PATTERN } from "../skills-management/skill-frontmatter";
 
 export const AGENT_PLUGIN_SCHEMA_1_0_0 =
   "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 export const AGENT_PLUGIN_MCP_SCHEMA_1_0_0 =
   "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json";
-export const AGENT_PLUGIN_ADAPTER_ID = "agent-plugins-1.0.0-wd";
+export const AGENT_PLUGIN_ADAPTER_ID = "agent-plugins-1.0.0";
 
 const MANIFEST_FIELDS = new Set([
   "$schema",
@@ -46,6 +46,7 @@ export type AdmittedSkill = Readonly<{
   componentId: string;
   name: string;
   description: string;
+  requires?: string;
   skillFile: string;
 }>;
 
@@ -69,7 +70,7 @@ export type AdmittedMcpServer = Readonly<{
 }>;
 
 export type ExtensionPackageAdmission = Readonly<{
-  adapterId: string;
+  adapterId: "agent-plugins-1.0.0" | "skill-repo-1.0.0";
   pluginRoot: string;
   manifest: JsonObject;
   unknownManifestFields: readonly string[];
@@ -218,6 +219,7 @@ export async function discoverSkills(
         componentId: `skill:${entry.name}`,
         name: parsed.name,
         description: parsed.description,
+        ...(parsed.requires ? { requires: parsed.requires } : {}),
         skillFile,
       });
     } catch (cause) {
@@ -243,9 +245,10 @@ export function parseStrictSkillFrontmatter(content: string) {
   }
   const name = fields.get("name")?.trim();
   const description = fields.get("description")?.trim();
+  const requires = fields.get("requires")?.trim();
   if (!name) throw new Error("SKILL.md frontmatter 缺少 name");
   if (!description) throw new Error("SKILL.md frontmatter 缺少 description");
-  return { name, description };
+  return { name, description, ...(requires ? { requires } : {}) };
 }
 
 async function discoverMcp(

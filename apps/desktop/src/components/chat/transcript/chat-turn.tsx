@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Message, Thinking/Terminal, Plan/sourceRef Image/Subagent, Conversation Image Open the intent, Conversation Unlock the signal, Cold draft/cold turn Projection with lib/chat-format
- * [OUTPUT]: Provides TurnParts/ChatTurn/ChatTurnDraft with WorkedForRow/useFoldState for external transcripts and replications; Cold parts scan only when referring to changes, stream only processes hot text and extends the full turn chart quota
- * [POS]: The assistant filters for chat/transcript; The three turn terminals are each assigned to their renderers (Limit Flow Card/Alert Card/Conventional Message), the timing head is determined by the workingForLabel single-point decision (failed and without process means no head), the tool group adheres to the Conversation content list and includes the ability to fold feedback and feedback within the execution process area, plan and turnPlan blocks of the draft are arranged in parts time order (the implementation entry after the plan is placed below it, after the flow-through template);"Going on" is the complete turn expressed only by the end ThinkingShimmer (only in the plan Editing mode by replacing the PlanCard Editing spinner), and the toolbar/group must not attach the spinner again; The Latest turn of the Base dock is also directly rendered
+ * [INPUT]: Depends on Message, Thinking, Terminal, Plan, image, subagent, localized failure, cold-turn projection, and Chat formatting components
+ * [OUTPUT]: Provides TurnParts/ChatTurn/ChatTurnDraft with localized ProductFailure/empty-response projection, process folding, action-bar Memory status, external transcripts, and hot/cold rendering
+ * [POS]: Assistant-turn renderer for chat/transcript; terminal categories, process grouping, Plan order, and display-only fallback copy converge here
  */
 
 import {
@@ -79,9 +79,10 @@ import type { GallerySourceRef } from "../../../../shared/gallery-media-ipc";
 import type { ConversationImageSource } from "../runtime/chat-session-model";
 import { TurnErrorCard } from "./chat-error-card";
 import { UsageLimitCard } from "./chat-usage-limit-card";
-import { MemoryTurnReceipt } from "./memory-turn-receipt";
 import { projectAssistantTurn } from "./turn-projection";
 import { useDraftProjection } from "./draft-projection";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { skillFailureText } from "@/lib/skill-failure-text";
 
 // ─── 折叠开合：展开即主动脱离粘底锁，把"读旧内容"与"追新消息"区分开 ───
 // stick-to-bottom 只认高度增长，无法辨意图；展开时 stopScroll() 注入脱锁信号，
@@ -524,12 +525,17 @@ function PlanTurn({
       />
       <PlanCard
         content={message.content}
-        copyable
+        copyable={false}
         editing={false}
         isExpanded={isExpanded}
         onToggle={onToggle}
       />
-      <MemoryTurnReceipt receipt={message.contextReceipt} />
+      <ChatMessageActions
+        content={message.content}
+        contextReceipt={message.contextReceipt}
+        createdAt={message.createdAt}
+        role="assistant"
+      />
     </Message>
   );
 }
@@ -555,6 +561,10 @@ function RegularChatTurn({
   imageSourceRef?: (itemId: string) => GallerySourceRef | null;
   onOpenImage?: (source: ConversationImageSource) => void;
 }) {
+  const { t } = useAppTranslation();
+  const content = message.failure
+    ? skillFailureText(t, message.failure)
+    : message.content || t("chat.noText");
   // 额度耗尽是"等一等就好"，不是错误——它有自己的结构与动作，
   // 不该套在通用红框里；usageLimit 存在与否即是这条岔路的唯一判据。
   const usageLimit =
@@ -572,24 +582,24 @@ function RegularChatTurn({
         <UsageLimitCard
           backendDisplayName={backendDisplayName}
           limit={usageLimit}
-          message={message.content}
+          message={content}
           onRetry={onRetry}
         />
       ) : message.isError ? (
         // 「继续」交给卡片而非另起一行：canContinue 本就要求 isError
         // （use-chat-session.ts），动作与病因同框，才不会是红框下面浮着一个孤儿按钮
         <TurnErrorCard
-          content={message.content}
+          content={content}
           onContinue={showContinue ? onContinue : undefined}
         />
       ) : (
         <MessageContent>
-          <MessageResponse>{message.content}</MessageResponse>
+          <MessageResponse>{content}</MessageResponse>
         </MessageContent>
       )}
-      <MemoryTurnReceipt receipt={message.contextReceipt} />
       <ChatMessageActions
-        content={message.content}
+        content={content}
+        contextReceipt={message.contextReceipt}
         createdAt={message.createdAt}
         role="assistant"
       />

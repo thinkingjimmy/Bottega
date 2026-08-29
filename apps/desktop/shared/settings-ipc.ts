@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared/agent-ipc backend, workspace scope, model and turn-by-turn combined type
- * [OUTPUT]: Provides settings v11 ((Use price refreshment, Chat Home dual mode, chat only read, built-in toolset shutdown, automatic connection, theme/language preferences, sparse keyboard-shortcut overrides (ShortcutBinding | null) and three-level Memory sharing range), revision envelope, Memory special mutation, CHAT_HOME_NOT_READY assertion code and a special API agreement
+ * [OUTPUT]: Provides settings v11, revision envelopes, Skills-onboarding state, Memory/Chat Home APIs, model/session options, and the transient session-effective reset bridge contract
  * [POS]: The first is the shared multi-end setup of a single truth sourcemain, preload, renderer only by this contract
  */
 
@@ -81,6 +81,8 @@ export type AppSettings = {
   autoRelayLimit: number;
   /** Usage 页是否允许按 24h TTL 从 models.dev 自动刷新价格。 */
   usagePricingAutoRefresh: boolean;
+  /** One-time Skills discovery prompt; pending survives restarts until imported or skipped. */
+  skillsOnboarding: "pending" | "done" | "skipped";
   /** 稀疏覆写：缺席=默认，null=停用。id 宽松持久化（同
       disabledBuiltinTools），消费时与 renderer 的默认表求交。 */
   keyboardShortcuts: Readonly<Record<string, ShortcutBinding | null>>;
@@ -155,7 +157,6 @@ export const SETTINGS_CHANNEL = {
   mutateMemory: "settings:memory:mutate",
   getChatHomeStatus: "settings:chat-home:get-status",
   chooseChatHomesRoot: "settings:chat-home:choose-root",
-  chatHomeStatus: "settings:chat-home:status",
   acknowledgeFullAccess: "settings:full-access:acknowledge",
   listBackends: "settings:list-backends",
   listModels: "settings:list-models",
@@ -177,9 +178,6 @@ export type SettingsBridgeApi = {
   onChanged: (callback: (envelope: SettingsEnvelope) => void) => () => void;
   getChatHomeStatus: () => Promise<ChatHomeStatus>;
   chooseChatHomesRoot: () => Promise<ChatHomeStatus | null>;
-  onChatHomeStatus: (
-    callback: (status: ChatHomeStatus) => void
-  ) => () => void;
   acknowledgeFullAccess: () => Promise<SettingsEnvelope>;
   listBackends: () => Promise<BackendInfo[]>;
   listModels: (
@@ -192,13 +190,12 @@ export type SettingsBridgeApi = {
   ) => Promise<AgentTurnOptions>;
   setChatOptions: (
     scope: AgentScope,
-    options: AgentTurnOptions
+    options: AgentTurnOptions,
+    resetSessionEffective?: boolean
   ) => Promise<AgentTurnOptions>;
 };
 
-// 旧名称只保留类型源兼容；模型 DTO 已由 agent-ipc 统一。
-export type CodexReasoningEffortInfo =
-  import("./agent-ipc").BackendReasoningEffortInfo;
+// 旧模型名称仅保留有消费者的类型兼容；DTO 由 agent-ipc 统一。
 export type CodexServiceTierInfo =
   import("./agent-ipc").BackendServiceTierInfo;
 export type CodexModelInfo = BackendModelInfo & {

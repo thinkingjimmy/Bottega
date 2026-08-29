@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on React, dnd-kit ((includes DragOverlay), react-virtual, lucide/Button/DropdownMenu and baseActionButtonClass/baseMenuItemHoverClass/InlineNameInput, shared groupBaseRows, kanban-fields Projection and color tables, kanban-card card face, state of BaseMutationOutcome Judgment type
- * [OUTPUT]: Provides BaseKanbanView: Set up select option by Group by group by group, select option by lane, drag LWW patch, drag cards by DragOverlay, top rendering, lane without a border, with "color points + count + the top of the landing card" left, color points are the color menu entry, headers are the name change, and the two are sent onUpdate Option, with select option itself changed, empty lane spaces are given to the landing area, each lane is separately windows and carries the mapped slot spaceWhen a select column is missing, Add select to the column
- * [POS]: The first is the basic basic data structure of the databaseThe classed input, field visibility input and persistence are in the toolbar/workbench, so this view consists only of configuration so it contains the whole column + `visibleColumnIds`The following table lists the selected groups in the full range, rather than the constricted columnsonPatch is missing, so it's only a read-only board (activation distance pushes infinitely, and the drag never starts)
+ * [INPUT]: Depends on the canonical BaseCellContext, React refs/state, dnd-kit, react-virtual, shared grouping, Kanban field projection, card rendering, and mutation outcomes
+ * [OUTPUT]: Provides BaseKanbanView with canonical computed/relation values, virtualized lanes, option management, and LWW drag patches
+ * [POS]: The Base views Kanban renderer; workbench owns schema/context while this component owns lane presentation and interactions
  */
 
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type { BaseMutationOutcome } from "../../state/base-mutation-error";
 import { createPortal } from "react-dom";
@@ -39,7 +39,6 @@ import type {
   BaseSelectOption,
 } from "../../../../../shared/bases-ipc";
 import {
-  createBaseCellContext,
   groupBaseRows,
 } from "../../../../../shared/bases-ipc";
 import {
@@ -70,6 +69,7 @@ const CARD_WIDTH_CLASS = "w-[17.75rem]";
 
 export function BaseKanbanView({
   columns,
+  context,
   rows,
   groupByColumnId,
   visibleColumnIds,
@@ -83,6 +83,7 @@ export function BaseKanbanView({
 }: {
   /** 全量列：分组要在这里找 select，哪怕分组列本身被藏起来 */
   columns: BaseColumn[];
+  context: BaseCellContext;
   rows: BaseRow[];
   groupByColumnId?: string;
   /** 卡面显哪些字段；缺省即全显 */
@@ -116,10 +117,6 @@ export function BaseKanbanView({
     })
   );
   const [activeRowId, setActiveRowId] = useState("");
-  const cellContext = useMemo(
-    () => createBaseCellContext({ columns, rows }),
-    [columns, rows]
-  );
   if (!group) {
     return (
       <div className="grid flex-1 place-items-center p-8">
@@ -145,7 +142,7 @@ export function BaseKanbanView({
       </div>
     );
   }
-  const lanes = groupBaseRows(rows, group, columns);
+  const lanes = groupBaseRows(rows, group, context);
   const laneIds = lanes.map((lane) => lane.id);
   // 卡片投影目录整块视图只算一次：标题/封面/芯片列的划分与具体行无关
   const spec = kanbanFaceSpec(columns, group.id, visibleColumnIds);
@@ -174,7 +171,7 @@ export function BaseKanbanView({
           <KanbanLane
             key={lane.id}
             busy={busy}
-            cellContext={cellContext}
+            cellContext={context}
             lane={lane}
             onAddRow={
               onAddRow &&
@@ -213,7 +210,7 @@ export function BaseKanbanView({
               className={`${KANBAN_CARD_CLASS} ${CARD_WIDTH_CLASS} cursor-grabbing shadow-md`}
             >
               <KanbanCardBody
-                face={kanbanCardFace(activeRow, spec, cellContext)}
+                face={kanbanCardFace(activeRow, spec, context)}
                 owner={owner}
               />
             </article>

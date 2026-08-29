@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, SetupProvider shared backend directory, shared settings/models/workspace agreements, drafted default Agent, settings-client and renderer errorMessage
- * [OUTPUT]: Provides identity-stable useChatSettings: ready Select access restrictions, App drafts by default, conversation-generation options, cut back end models clear and permanent chat backend locked
+ * [OUTPUT]: Provides identity-stable useChatSettings with scoped options, explicit model/Speed session reset intent, model catalogs, backend locks, and stale-ack rejection
  * [POS]: The Agent status source for chat/runtime is set; Asynchronous regression only rewrites the conversation it started, and the model finds that it consumes a credible workspace scope
  */
 
@@ -170,7 +170,7 @@ export function useChatSettings(
   }, [captureConversation, isCurrentConversation, scope.conversationId]);
 
   const updateTurnOptions = useCallback(
-    async (next: AgentTurnOptions) => {
+    async (next: AgentTurnOptions, resetSessionEffective = false) => {
       const capture = captureConversation();
       if (lockedBackend && next.backend !== lockedBackend) {
         throw new Error("已有聊天不能切换 Agent");
@@ -185,7 +185,8 @@ export function useChatSettings(
       try {
         const stored = await setChatOptions(
           { conversationId: capture.conversationId },
-          next
+          next,
+          resetSessionEffective
         );
         if (isCurrentConversation(capture)) {
           setScopedTurnOptions({
@@ -222,7 +223,7 @@ export function useChatSettings(
       const next =
         settings.defaultChatOptionsByBackend[backend] ??
         ({ backend, permissionMode: "ask-for-approval" } as AgentTurnOptions);
-      await updateTurnOptions(next);
+      await updateTurnOptions(next, true);
     },
     [
       backends,

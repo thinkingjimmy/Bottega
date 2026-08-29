@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod; Chrome profile and cookie domain names that are explicitly selected by the user
- * [OUTPUT]: Provides Browser Import IPC channel, profile/domain schema, results combined with BrowserImportBridgeApi
+ * [OUTPUT]: Provides Browser Import IPC channel, platform availability, profile/domain schema, results, and BrowserImportBridgeApi
  * [POS]: The Chrome Login Import Agreement for shared Chrome Login is a contract for the import of shared Chrome loginsOnly select and count, without revealing Keychain keys, cookie values or machine paths
  */
 
@@ -50,12 +50,14 @@ export type BrowserImportResult = {
 };
 
 export const BROWSER_IMPORT_CHANNEL = {
+  availability: "browser-import:availability",
   detectProfiles: "browser-import:detect-profiles",
   previewCookieDomains: "browser-import:preview-cookie-domains",
   importCookies: "browser-import:import-cookies",
 } as const;
 
 export type BrowserImportBridgeApi = {
+  availability(): Promise<{ available: boolean }>;
   detectProfiles(): Promise<ChromeProfile[]>;
   previewCookieDomains(input: {
     profileDirectory: string;

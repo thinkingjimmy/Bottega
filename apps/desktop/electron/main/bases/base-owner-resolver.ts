@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node: crypto, shared ownerKey/BaseMeta, canonical chat References to database data, BaseStore, three-dimensional positioning, project
- * [OUTPUT]: Provides MutationPrincipal, BaseChatRef and BaseOwnerResolver; Unified owner key/section parsing, App target and mutation principal
+ * [OUTPUT]: Provides MutationPrincipal, BaseChatRef and BaseOwnerResolver; unifies owner parsing, App-owned Project fencing, section targets, and mutation principals
  * [POS]: The owner rule of bases is one point; IPC/toolset/sections/search not to copy the "self-prioritize, project backtrack" section
  */
 
@@ -190,6 +190,19 @@ export class BaseOwnerResolver {
     const project = this.requireAppAttachments().projectForApp(appId);
     if (!project) throw statusError(404, "App Base Project 不存在");
     return this.identityForOwnerKey(`project:${project.id}`);
+  }
+
+  assertOwnerKeyForApp(ownerKey: string, appId: string) {
+    if (ownerKey !== this.ownerKeyForApp(appId)) {
+      throw statusError(403, "App window cannot access another Base owner");
+    }
+    return ownerKey;
+  }
+
+  ownerKeyForApp(appId: string) {
+    const project = this.requireAppAttachments().projectForApp(appId);
+    if (!project) throw statusError(404, "App Base Project does not exist");
+    return `project:${project.id}`;
   }
 
   private async chatIdentity(chatId: string) {

@@ -1,15 +1,33 @@
 /**
- * [INPUT]: Depends on i18n, PageShell, built-in toolbars, manual MCP server areas and SettingsCanvas
- * [OUTPUT]: Provides ToolsPanel: Two sections are arranged according to "The capabilities of this product are in front, the outputs are in the back"
- * [POS]: The first is the "Settings" themeSkill Warehouse has been merged into views/settings-extensions.tsx, and this page no longer touches IPC extensions
+ * [INPUT]: Depends on i18n, Setup/runtime facts, global Settings owner, scoped MCP controller, shared built-in specs, PageShell, and the two scope-port Sections
+ * [OUTPUT]: Provides live-Setup-projected global Tools defaults for every Project and independent Chat without exposing Project-owned resources
+ * [POS]: Settings › Tools global-default composition root; adapters translate global owners into the same ports used by Project Settings
  */
 
 import { Wrench } from "lucide-react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { useSetup } from "@/components/providers/setup-provider";
 import { PageShell } from "@/components/page-shell";
-import { BuiltinToolsSection } from "@/components/settings/builtin-tools-section";
-import { McpServersSection } from "@/components/settings/mcp-servers-section";
+import {
+  BUILTIN_TOOL_COPY,
+  BuiltinToolsSection,
+  type BuiltinToolsSectionPort,
+} from "@/components/settings/builtin-tools-section";
+import {
+  McpServersSection,
+  type McpServersSectionPort,
+} from "@/components/settings/mcp-servers-section";
 import { SettingsCanvas } from "@/components/settings/settings-layout";
+import { settingsStore } from "@/lib/settings-store";
+import { createMcpServersController } from "@/lib/mcp-servers-client";
+import { MCP_SERVERS_BRIDGE_UNAVAILABLE } from "../../shared/mcp-servers-ipc";
+import {
+  projectEffectiveState,
+  projectManualMcpServerSupport,
+  resolveBuiltinBackendSupportMatrix,
+  toolBackendFacts,
+} from "../../shared/tool-support";
 
 /* ============================================================
  * 这一页曾有三种「工具」，只有两种能被加进来——于是「添加」在一页里
@@ -39,12 +57,97 @@ import { SettingsCanvas } from "@/components/settings/settings-layout";
 
 export function ToolsPanel() {
   const { t } = useAppTranslation();
+  const setup = useSetup();
+  const settings = useSyncExternalStore(
+    settingsStore.subscribe,
+    settingsStore.getSnapshot
+  );
+  const mcpController = useMemo(
+    () => createMcpServersController({ kind: "global" }),
+    []
+  );
+  const mcp = useSyncExternalStore(
+    mcpController.subscribe,
+    mcpController.getSnapshot
+  );
+  const backendFacts = useMemo(
+    () => (setup.status?.backends ?? []).map(toolBackendFacts),
+    [setup.status?.backends]
+  );
+  const projectedMcp = useMemo(() => mcp.value ? ({
+    ...mcp.value,
+    servers: mcp.value.servers.map((server) =>
+      projectManualMcpServerSupport(server, backendFacts)
+    ),
+  }) : null, [backendFacts, mcp.value]);
+  useEffect(() => {
+    settingsStore.ensureLoaded();
+    return () => mcpController.dispose();
+  }, [mcpController]);
+
+  const builtinPort = useMemo<BuiltinToolsSectionPort>(() => {
+    const disabled = new Set(settings.settings?.disabledBuiltinTools ?? []);
+    return {
+      kind: "global",
+      ready: Boolean(settings.settings && setup.status),
+      error: settings.error,
+      hasOverrides: false,
+      tools: Object.keys(BUILTIN_TOOL_COPY).map((toolId) => {
+        const intentEnabled = !disabled.has(toolId);
+        const backendSupport = resolveBuiltinBackendSupportMatrix(
+          toolId,
+          backendFacts
+        );
+        return {
+          toolId,
+          intentEnabled,
+          override: null,
+          source: "global-default",
+          effectiveState: projectEffectiveState(intentEnabled, backendSupport),
+          backendSupport,
+        };
+      }),
+      setEnabled: (toolId, enabled) =>
+        settingsStore.update(
+          (current) => ({
+            disabledBuiltinTools: enabled
+              ? current.disabledBuiltinTools.filter((item) => item !== toolId)
+              : [...new Set([...current.disabledBuiltinTools, toolId])],
+          }),
+          t("settings.tools.builtin.saveFailed")
+        ),
+    };
+  }, [backendFacts, settings.error, settings.settings, setup.status, t]);
+  const mcpPort = useMemo<McpServersSectionPort>(() => ({
+    kind: "global",
+    snapshot: projectedMcp,
+    loading: mcp.loading,
+    error:
+      mcp.error === MCP_SERVERS_BRIDGE_UNAVAILABLE
+        ? t("settings.tools.mcp.bridgeMissing")
+        : mcp.error,
+    bridgeAvailable: mcp.bridgeAvailable,
+    pending: mcp.pending,
+    hasPolicyOverrides: false,
+    load: mcpController.load,
+    save: async (draft, server) => {
+      const ok = await mcpController.save(draft, server);
+      return {
+        ok,
+        error: ok ? "" : mcpController.getSnapshot().error,
+      };
+    },
+    remove: mcpController.remove,
+  }), [mcp, mcpController, projectedMcp, t]);
   return (
     <PageShell icon={<Wrench />} title={t("common.tools")}>
       <SettingsCanvas>
         <div className="space-y-8">
-          <BuiltinToolsSection />
-          <McpServersSection />
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            {t("settings.tools.globalScopeNote")}
+          </p>
+          <BuiltinToolsSection port={builtinPort} />
+          <McpServersSection port={mcpPort} />
         </div>
       </SettingsCanvas>
     </PageShell>

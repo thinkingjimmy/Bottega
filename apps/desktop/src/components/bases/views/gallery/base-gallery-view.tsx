@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on row-backed Gallery model, Base owner/rows/columns/config, Chat ephemeral overlay, ledger receipt, Gallery store/focus, virtual listbox and setting bar native language
- * [OUTPUT]: Provides BaseGalleryView; Durable rows Projection, receipt-first Flashless identity migration/source clearance, column/date setting, browsing/selecting/temporary comments and scaling
- * [POS]: Base Sixth is a thin interactive root of native row-backed view; Only in the Chat host merged overlay, Project/App, and naturally only read durable rows
+ * [INPUT]: Depends on projected Base rows/columns, a canonical BaseCellContext, Gallery config/model, optional Chat overlay, receipts, focus/store, and virtualization
+ * [OUTPUT]: Provides BaseGalleryView with canonical titles, durable row tiles, date grouping, selection, comments, settings, and zoom
+ * [POS]: The sixth row-backed Base view; overlay interaction stays host-scoped while relation/formula title lookup stays snapshot-canonical
  */
 
 import {
@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@ai-chat/ui/lib/utils";
 import type {
+  BaseCellContext,
   BaseColumn,
   BaseRow,
   BaseViewConfig,
@@ -82,6 +83,7 @@ export function BaseGalleryView({
   revision,
   rows,
   columns,
+  context,
   config,
   composerChatId,
   composerIncarnationId,
@@ -94,6 +96,7 @@ export function BaseGalleryView({
   revision: number;
   rows: BaseRow[];
   columns: BaseColumn[];
+  context: BaseCellContext;
   config: GalleryConfig;
   composerChatId?: string;
   composerIncarnationId?: string;
@@ -109,9 +112,10 @@ export function BaseGalleryView({
         ownerInstanceId,
         rows,
         columns,
+        context,
         config,
       }),
-    [columns, config, ownerInstanceId, ownerKey, rows]
+    [columns, config, context, ownerInstanceId, ownerKey, rows]
   );
   const stateKey = composerChatId ?? ownerKey;
   const state = useGalleryState(stateKey);

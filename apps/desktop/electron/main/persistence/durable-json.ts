@@ -1,16 +1,40 @@
 /**
- * [INPUT]: Depends on Node fs/path, zod and SerialQueue
- * [OUTPUT]: Provides durableReplaceFile, quarantineDurableFile with DurableJson, performs 0600 + file fsync + atomic rename + directory fsync, durable replace, strict parse, single-step upgrades, sequential mutate and roll back memory failure
- * [POS]: The first is the persistence durable ledger IODurableJson itself decides whether to isolate the damage from the fail-closed and openly call the store layer to quarantine the DurableFile
+ * [INPUT]: Depends on Node fs/path, Zod schemas, and SerialQueue
+ * [OUTPUT]: Provides durable directory publication, atomic file replacement, explicit corruption errors with retained diagnostics, quarantine, strict initialization/upgrades, and serialized rollback-safe mutation
+ * [POS]: The persistence I/O boundary; DurableJson classifies unreadable content while store owners decide whether corruption may be quarantined and recovered
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readdir, readFile, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { z } from "zod";
 import { SerialQueue } from "./serial-queue";
 
 export type DurableJsonUpgrade<T> = (raw: unknown) => T | undefined;
+export type DurableReplaceFileFaults = Readonly<{
+  /** Test-only crash boundary: directory entry exists but its parent is not synced. */
+  afterDirectoryCreated?: (input: {
+    directory: string;
+    parent: string;
+  }) => void | Promise<void>;
+  /** Test-only ordering witness for a published directory entry. */
+  afterDirectoryParentSynced?: (input: {
+    directory: string;
+    parent: string;
+    created: boolean;
+  }) => void | Promise<void>;
+  /** Test-only crash boundary: target rename succeeded, parent fsync has not. */
+  afterRename?: (input: { filePath: string; content: string }) => void | Promise<void>;
+}>;
+
+/** 只表示“磁盘字节已读到，但无法信任其内容”；IO 与运行期写坏不属于此类。 */
+export class DurableFileCorruptionError extends Error {
+  constructor(readonly filePath: string, cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(`Durable file is corrupted: ${filePath}: ${detail}`, { cause });
+    this.name = "DurableFileCorruptionError";
+  }
+}
 
 /**
  * WAL、checkpoint 与普通 JSON 状态共用同一个落盘原语。rename 只保证名字切换
@@ -19,10 +43,11 @@ export type DurableJsonUpgrade<T> = (raw: unknown) => T | undefined;
 export async function durableReplaceFile(
   filePath: string,
   content: string,
-  mode = 0o600
+  mode = 0o600,
+  faults: DurableReplaceFileFaults = {}
 ) {
   const directory = dirname(filePath);
-  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await ensureDurableDirectory(directory, 0o700, faults);
   const temporary = `${filePath}.${randomUUID()}.tmp`;
   const file = await open(temporary, "wx", mode);
   try {
@@ -42,11 +67,61 @@ export async function durableReplaceFile(
     await rm(temporary, { force: true }).catch(() => undefined);
     throw cause;
   }
+  await faults.afterRename?.({ filePath, content });
   const parent = await open(directory, "r");
   try {
     await parent.sync();
   } finally {
     await parent.close();
+  }
+}
+
+/**
+ * Publish a directory from the nearest existing ancestor down. Every new child
+ * is created only after its parent entry is durable, then its own parent is
+ * synced before a later ledger may reference the child. An existing leaf also
+ * gets the parent barrier, which heals an interrupted create on replay.
+ */
+export async function ensureDurableDirectory(
+  directory: string,
+  mode = 0o700,
+  faults: DurableReplaceFileFaults = {}
+): Promise<void> {
+  const parent = dirname(directory);
+  if (parent === directory) return;
+  let created = false;
+  try {
+    const metadata = await lstat(directory);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new Error(`Durable directory 边界不是真实目录：${directory}`);
+    }
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+    await ensureDurableDirectory(parent, mode, faults);
+    try {
+      await mkdir(directory, { mode });
+      created = true;
+    } catch (mkdirCause) {
+      if ((mkdirCause as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw mkdirCause;
+      }
+      const metadata = await lstat(directory);
+      if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+        throw new Error(`Durable directory 边界不是真实目录：${directory}`);
+      }
+    }
+  }
+  if (created) await faults.afterDirectoryCreated?.({ directory, parent });
+  await syncDirectory(parent);
+  await faults.afterDirectoryParentSynced?.({ directory, parent, created });
+}
+
+async function syncDirectory(directory: string) {
+  const handle = await open(directory, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
   }
 }
 
@@ -56,10 +131,12 @@ export async function durableReplaceFile(
  * ============================================================ */
 export async function quarantineDurableFile(filePath: string) {
   const directory = dirname(filePath);
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  await rename(filePath, `${filePath}.quarantine-${Date.now()}`).catch(
-    () => undefined
-  );
+  await ensureDurableDirectory(directory);
+  try {
+    await rename(filePath, `${filePath}.quarantine-${Date.now()}`);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+  }
   const prefix = `${filePath.slice(directory.length + 1)}.quarantine-`;
   const entries = (await readdir(directory).catch(() => []))
     .filter((entry) => entry.startsWith(prefix))
@@ -72,53 +149,93 @@ export async function quarantineDurableFile(filePath: string) {
   );
 }
 
+/**
+ * 预发布断代语义：无法信任的账本「按不存在处理」——隔离留证，空态重建。
+ * 选择调用它（而非裸 initialize）就是 owner 的恢复决策；IO 错误照常上抛，
+ * 因为磁盘读写不动时空态重建同样写不进去，谎报 ready 只会把故障推迟到下一笔。
+ */
+export async function initializeDurableJsonOrQuarantine<T>(
+  file: DurableJson<T>,
+  upgrade?: DurableJsonUpgrade<T>
+) {
+  try {
+    await file.initialize(upgrade);
+  } catch (cause) {
+    if (!(cause instanceof DurableFileCorruptionError)) throw cause;
+    console.warn(
+      `[durable-json] 账本无法读取，已隔离原件后空态重建（备份至 ${file.filePath}.quarantine-*）`,
+      cause
+    );
+    await quarantineDurableFile(file.filePath);
+    await file.initialize();
+  }
+}
+
 export class DurableJson<T> {
   private state: T;
+  private ready = false;
+  private poisoned = false;
   private readonly queue = new SerialQueue();
 
   constructor(
     readonly filePath: string,
     private readonly schema: z.ZodType<T>,
-    empty: () => T
+    empty: () => T,
+    private readonly faults: DurableReplaceFileFaults = {}
   ) {
     this.state = empty();
   }
 
   async initialize(upgrade?: DurableJsonUpgrade<T>) {
+    if (this.poisoned) {
+      throw new Error(`Durable authority 已 poisoned，必须新建实例重开：${this.filePath}`);
+    }
     await this.queue.enqueue(async () => {
       const content = await this.readExisting();
       if (content === null) {
-        await this.persist(this.state);
+        await this.persistOrPoison(this.state);
+        this.ready = true;
         return;
       }
-      const raw = JSON.parse(content) as unknown;
+      let raw: unknown;
+      try {
+        raw = JSON.parse(content) as unknown;
+      } catch (cause) {
+        throw new DurableFileCorruptionError(this.filePath, cause);
+      }
       const current = this.schema.safeParse(raw);
       if (current.success) {
         this.state = current.data;
+        this.ready = true;
         return;
       }
       const migrated = upgrade?.(raw);
-      if (migrated === undefined) throw current.error;
+      if (migrated === undefined) {
+        throw new DurableFileCorruptionError(this.filePath, current.error);
+      }
       const next = this.schema.parse(migrated);
-      await this.persist(next);
+      await this.persistOrPoison(next);
       this.state = next;
+      this.ready = true;
     });
   }
 
   snapshot() {
+    this.assertReady();
     return structuredClone(this.state);
   }
 
   mutate<R>(operation: (state: T) => R | Promise<R>) {
     return this.queue.enqueue(async () => {
+      this.assertReady();
       const previous = structuredClone(this.state);
       try {
         const result = await operation(this.state);
         this.state = this.schema.parse(this.state);
-        await this.persist(this.state);
+        await this.persistOrPoison(this.state);
         return structuredClone(result);
       } catch (cause) {
-        this.state = previous;
+        if (!this.poisoned) this.state = previous;
         throw cause;
       }
     });
@@ -144,7 +261,25 @@ export class DurableJson<T> {
   private async persist(state: T) {
     await durableReplaceFile(
       this.filePath,
-      `${JSON.stringify(state, null, 2)}\n`
+      `${JSON.stringify(state, null, 2)}\n`,
+      0o600,
+      this.faults
     );
+  }
+
+  private async persistOrPoison(state: T) {
+    try {
+      await this.persist(state);
+    } catch (cause) {
+      this.ready = false;
+      this.poisoned = true;
+      throw cause;
+    }
+  }
+
+  private assertReady() {
+    if (!this.ready || this.poisoned) {
+      throw new Error(`Durable authority 未 ready 或已 poisoned：${this.filePath}`);
+    }
   }
 }

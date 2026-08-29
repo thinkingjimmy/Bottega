@@ -17,7 +17,7 @@ import type { AppStore } from "../../app-store";
 import { sanitizedProcessEnvironment } from "../../../codex-runtime";
 import { stopProcessGroup } from "../../../process-group";
 import { asError } from "../../../errors";
-import { strippedShell, updateAndEmitStatus } from "../../support";
+import { strippedShell } from "../../support";
 import {
   declineExtension,
   ExtensionInfrastructureError,
@@ -275,7 +275,7 @@ export class RepairRunner {
   }
 
   private setWorkingState(appId: string, state: "installing" | "updating") {
-    return updateAndEmitStatus(this.deps.store, this.deps.emit, appId, (record) => ({
+    return this.deps.store.update(appId, (record) => ({
       ...record,
       state,
       lastError: null,
@@ -284,7 +284,7 @@ export class RepairRunner {
   }
 
   private markReady(appId: string) {
-    return updateAndEmitStatus(this.deps.store, this.deps.emit, appId, (record) => ({
+    return this.deps.store.update(appId, (record) => ({
       ...record,
       state: "ready",
       lastError: null,
@@ -292,7 +292,7 @@ export class RepairRunner {
   }
 
   private async lockFailed(record: AppRecord, message: string) {
-    await updateAndEmitStatus(this.deps.store, this.deps.emit, record.id, (current) => ({
+    await this.deps.store.update(record.id, (current) => ({
       ...current,
       state: current.manifest ? "update-failed" : "install-failed",
       lastError: {
@@ -322,7 +322,7 @@ export class RepairRunner {
         cause instanceof SupervisedInfrastructureError
       ) throw cause;
       const message = asError(cause).message;
-      await updateAndEmitStatus(this.deps.store, this.deps.emit, context.record.id, (record) => ({
+      await this.deps.store.update(context.record.id, (record) => ({
         ...record,
         agentWarning: message.slice(0, 3_500),
       }));
@@ -406,7 +406,7 @@ export class RepairRunner {
     if (!harvested) return false;
     await rm(context.journal.workspace, { recursive: true, force: true });
     const site = repairSiteFor(context.journal.site);
-    await updateAndEmitStatus(this.deps.store, this.deps.emit, context.record.id, (record) =>
+    await this.deps.store.update(context.record.id, (record) =>
       site.failedPatch(record, context.record, error)
     );
     await this.deps.appendLog(context.record.id, `[repair:error] ${error.message}`);

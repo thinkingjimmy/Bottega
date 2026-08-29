@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared/projects-ipc and preload exposed window.projects
- * [OUTPUT]: Provides Project list/bind/rename/look/non-destructive detach/missing Rescue/sort, Git branch Inquiry/switch/create and render events and browser downgrade; Add Unification is provided by History ProjectImportCoordinator
- * [POS]: The only output of the Projects IPC in lib is that the Provider and the component are unaware of the existence of an Electron bridge
+ * [OUTPUT]: Provides Project list/bind/rename/reveal/non-destructive detach/recovery/sort, Git branch commands, events, and a lifecycle-revisioned browser fallback
+ * [POS]: Sole renderer Projects IPC adapter; providers and components remain unaware of the Electron bridge
  */
 
 import type {
@@ -51,6 +51,7 @@ export const ensureProjectForApp = async (appId: string) => {
     grants: [],
     grantRevision: 0,
     membershipRevision: 0,
+    projectLifecycleRevision: 1,
     sortIndex: browserProjects.size,
     createdAt: now,
     updatedAt: now,

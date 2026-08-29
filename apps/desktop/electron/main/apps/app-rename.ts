@@ -16,7 +16,6 @@ import type { AppStore } from "./app-store";
 
 type BaseAppRenameDependencies = {
   store: AppStore;
-  publish(record: AppRecord): void;
   syncBase(record: AppRecord, name: string): Promise<void>;
   warn?(message: string, cause: unknown): void;
 };
@@ -48,7 +47,6 @@ export class BaseAppRenamer {
         manifest,
       })
     );
-    this.dependencies.publish(saved);
 
     const projections = await Promise.allSettled([
       this.dependencies.syncBase(saved, name),

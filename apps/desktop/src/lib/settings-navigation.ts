@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Free, pure function
- * [OUTPUT]: Provides SETTINGS_ROUTE_PREFIX/MEMORY_SETTINGS_PATH, with SettingsOverlaySection/SettingsDestination (overlay ranks include General/Shortcuts/Backends/Personalization/Browser/Tools/Skills/Extensions/Usage/Archive), settingsExitTarget and settingsRouteSection/activeSettingsSection
- * [POS]: The renderer sets the only parameter for "stay" and "high brightness"; main.tsx navigate only by conclusion, sidebar only by conclusion than a value
+ * [INPUT]: Depends only on route and overlay string values
+ * [OUTPUT]: Provides canonical settings paths, overlay/destination types, exit routing, and the single active-section projection
+ * [POS]: Single renderer authority for Settings navigation and active-section state, including the Extensions-to-Packages alias
  */
 
 export const SETTINGS_ROUTE_PREFIX = "/settings/";
@@ -10,26 +10,23 @@ export const SETTINGS_ROUTE_PREFIX = "/settings/";
 export const MEMORY_SETTINGS_PATH = "/settings/memory";
 export const ARCHIVE_SETTINGS_PATH = "/settings/archive";
 export const TOOLS_SETTINGS_PATH = "/settings/tools";
-/* Skill 仓库与 Agent Plugins 曾各占一条路由。它们共享全部状态（同一份
-   snapshot、同一套 IPC、同一张卡片），拆开的唯一依据是「包里装了什么」
-   ——而那正是安装之前谁也答不上的问题。合成 /settings/extensions 一条。 */
+export const SKILLS_SETTINGS_PATH = "/settings/skills";
 export const EXTENSIONS_SETTINGS_PATH = "/settings/extensions";
 
 /** 覆盖层能承载的档位：盖在当前路由之上，关掉即回到原地。 */
 export type SettingsOverlaySection =
+  | "about"
   | "general"
   | "shortcuts"
   | "backends"
   | "personalization"
   | "browser"
   | "tools"
-  | "skills"
-  | "extensions"
   | "usage"
   | "archive";
 
 /** 设置的全部目的地：覆盖层七档 + 走真实路由的 Memory。 */
-export type SettingsDestination = SettingsOverlaySection | "memory";
+export type SettingsDestination = SettingsOverlaySection | "memory" | "skills";
 
 /* ============================================================
  * 「我在设置里吗」有两份真相：覆盖层的 settingsSection，以及路由。
@@ -59,7 +56,7 @@ export function settingsRouteSection(
   if (pathname === MEMORY_SETTINGS_PATH) return "memory";
   if (pathname === ARCHIVE_SETTINGS_PATH) return "archive";
   if (pathname === TOOLS_SETTINGS_PATH) return "tools";
-  if (pathname === EXTENSIONS_SETTINGS_PATH) return "extensions";
+  if (pathname === SKILLS_SETTINGS_PATH || pathname === EXTENSIONS_SETTINGS_PATH) return "skills";
   return null;
 }
 

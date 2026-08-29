@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on electron-Vite, vite React/Tailwind, Node path and Rollup chunk module chart
- * [OUTPUT]: Provides main/preload development, listening, production builds, CSP, and renderer module reports
+ * [OUTPUT]: Provides main/preload development, listening, three builds, producing CSP, renderer module reports, and gated four launcher dist connectivity smoke entry
  * [POS]: The project builds an input that connects the side of the Electron Node to the side of the React renderingdev main rebuilds force restarting Electron to avoid render/main version tearing
  */
 
@@ -95,6 +95,10 @@ export default defineConfig({
           "custody-guardian-entry": resolve(
             __dirname,
             "electron/main/custody/guardian-entry.ts"
+          ),
+          "connectivity-smoke-entry": resolve(
+            __dirname,
+            "electron/main/connectivity-smoke-entry.ts"
           ),
         },
       },

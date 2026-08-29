@@ -6,12 +6,21 @@
  * [POS]: The GUI port of the apps module is adapted to the leaf; token single instance semantics determines that the value point must be the only value point and is invalidated by record revision or main gui events
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppGuiBinding } from "./app-gui-surface";
-import { onAppsEvent, readAppGuiInfo } from "@/lib/apps-client";
+import {
+  onAppsEvent,
+  readAppGuiInfo,
+  releaseAppGuiSurface,
+} from "@/lib/apps-client";
 import { errorMessage } from "@/lib/errors";
 
-const EMPTY = { pages: [] as string[], origin: "", token: "" };
+const EMPTY = {
+  pages: [] as string[],
+  origin: "",
+  token: "",
+  hostActions: [] as readonly import("../../../shared/apps-ipc").BaseGuiHostActionCapability[],
+};
 
 /**
  * 每次取值都会在 main 侧重扫 gui/ 并轮换 token（旧 token 立刻作废）。
@@ -21,10 +30,12 @@ export function useAppGui({
   appId,
   enabled,
   revisionKey,
+  appSurfaceLeaseId,
 }: Readonly<{
   appId: string;
   enabled: boolean;
   revisionKey: string;
+  appSurfaceLeaseId?: string | null;
 }>): AppGuiBinding {
   const [fetched, setFetched] = useState({
     appId: "",
@@ -34,14 +45,24 @@ export function useAppGui({
     error: "",
   });
   const [nonce, setNonce] = useState(0);
+  const surfaceId = useMemo(
+    () => appSurfaceLeaseId ? crypto.randomUUID() : "",
+    [appSurfaceLeaseId]
+  );
+  const input = useMemo(
+    () => appSurfaceLeaseId && surfaceId
+      ? { appId, surfaceId, appSurfaceLeaseId }
+      : null,
+    [appId, appSurfaceLeaseId, surfaceId]
+  );
 
   // setState 只出现在异步回调里：effect 体内同步置态会触发级联渲染。
   // 「未启用」与「刷新期间保留旧页面」都由下面的派生表达，不靠再存一份状态。
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !input) return;
     let active = true;
     const requestKey = JSON.stringify([appId, revisionKey, nonce]);
-    void readAppGuiInfo(appId)
+    void readAppGuiInfo(input)
       .then((info) =>
         active && setFetched({
           appId,
@@ -68,21 +89,28 @@ export function useAppGui({
     return () => {
       active = false;
     };
-  }, [appId, enabled, nonce, revisionKey]);
+  }, [appId, enabled, input, nonce, revisionKey]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!input) return;
+    return () => {
+      void releaseAppGuiSurface(input);
+    };
+  }, [input]);
+
+  useEffect(() => {
+    if (!enabled || !input) return;
     return onAppsEvent((event) => {
       if (event.type === "gui" && event.appId === appId) {
         setNonce((current) => current + 1);
       }
     });
-  }, [appId, enabled]);
+  }, [appId, enabled, input]);
 
   const refresh = useCallback(() => setNonce((current) => current + 1), []);
   const requestKey = JSON.stringify([appId, revisionKey, nonce]);
   const current =
-    enabled &&
+    enabled && input &&
     fetched.appId === appId &&
     fetched.revisionKey === revisionKey
       ? fetched
@@ -94,6 +122,8 @@ export function useAppGui({
     pages: info.pages,
     origin: info.origin,
     token: info.token,
+    surfaceLeaseId: input?.appSurfaceLeaseId ?? "",
+    hostActions: info.hostActions,
     loading: enabled && current?.requestKey !== requestKey,
     error: current?.error ?? "",
     refresh,

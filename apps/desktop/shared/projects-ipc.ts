@@ -1,7 +1,7 @@
 /**
  * [INPUT]: No running dependence, only using type-sequence TypeScript
- * [OUTPUT]: Provides Project v4 single ordinary workspace/App binding, app grant|disabled 3D/revisions, non-destructive local detach, archiving, sorting, appearance, retain/new workspace rebind and Git branch pathway agreement
- * [POS]: The Project is the single source of truth for shared modules; workspaceBinding is the only source of App identity that authorizes non-binding members of the chat backend
+ * [OUTPUT]: Provides Project v5 lifecycle-fenced identity, workspace/App binding, app grants, local detach, archiving, sorting, appearance, Memory rebind, and Git branch contracts
+ * [POS]: Shared Project wire truth; projectLifecycleRevision is the incarnation/delete fence and workspaceBinding is the only App identity source
  */
 
 import type { AppGrantRecord } from "./apps-ipc";
@@ -29,6 +29,7 @@ export type Project = {
   grants: AppGrantRecord[];
   grantRevision: number;
   membershipRevision: number;
+  projectLifecycleRevision: number;
   archivedAt?: number;
   sortIndex: number;
   createdAt: number;

@@ -1,15 +1,16 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React contenteditable, RichInput Public type, PromptInput RichValue, share context on UI documentation with the pure document model/historical rules
- * [OUTPUT]: Provides RichInput and public type; beforeinput/IME supports atomic chips, undo/redo, multi-trigger grouping and single-flight asynchronous consume
- * [POS]: The state machine for editing the rich text of ai-elements; Type, candidate projection, node DOM and IME to fit the submerged brother modules respectively
+ * [INPUT]: Depends on React contenteditable, SlimScroller, RichInput public types, PromptInput RichValue, and the pure document/history model
+ * [OUTPUT]: Provides RichInput and public types; beforeinput/IME supports atomic chips, undo/redo, multi-trigger/multi-kind grouping, unified scrollbars and single-flight asynchronous consume
+ * [POS]: RichInput editing state machine; types, candidate projection, node DOM, and IME adaptation remain in sibling modules
  */
 
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useUiText } from "@ai-chat/ui/lib/ui-text";
 import { readRichEditor, readRichRange } from "@ai-chat/ui/lib/rich-input-dom";
 import { discardedRichNodes } from "@ai-chat/ui/lib/rich-input-history";
+import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import {
   normalizeRichValue,
   normalizeSuggestionIndex,
@@ -64,6 +65,7 @@ export type {
   RichInputHandle,
   RichInputProps,
   RichInputSuggestion,
+  RichSuggestionGroup,
   RichSuggestionCopy,
 } from "./rich-input-types";
 
@@ -75,6 +77,8 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
       onNodeDiscarded,
       onFileClick,
       onWorkspaceFileClick,
+      invalidSkillRefs,
+      invalidSkillTitle,
       onSuggestionSelect,
       onSuggestionPendingChange,
       fileClickTitle,
@@ -697,56 +701,64 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
           projection={projection}
           query={effectiveQuery}
         />
-        <div
-          key={editorEpoch}
-          ref={editorRef}
-          aria-busy={suggestionPending}
-          aria-disabled={disabled || suggestionPending}
-          aria-label={messageLabel}
-          aria-multiline="true"
-          {...suggestionEditorAria(
-            suggestionListId,
-            effectiveQuery,
-            activeOptionId
-          )}
-          className={cn(
-            "max-h-48 min-h-16 w-full whitespace-pre-wrap overflow-y-auto px-3 pt-3 pb-2 text-sm outline-none",
-            "empty:before:pointer-events-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]",
-            disabled && "cursor-not-allowed opacity-50",
-            className
-          )}
-          contentEditable={!disabled && !suggestionPending}
-          data-placeholder={resolvedPlaceholder}
+        {/* epoch 必须落在 SlimScroller 边界：编辑 DOM 每次重建时，滚动活动监听也
+            随真实节点一起重绑。data-slot 则保留给 InputGroup 的焦点与单行布局契约。 */}
+        <SlimScroller
+          asChild
           data-slot="input-group-control"
-          onBlur={() => {
-            if (editorRef.current) savedPoint.current = selectionPoint(editorRef.current);
-          }}
-          onCompositionEnd={onCompositionEnd}
-          onCompositionStart={onCompositionStart}
-          onCompositionUpdate={onCompositionUpdate}
-          onInput={(event) => {
-            if (
-              composing.current ||
-              (event.nativeEvent as InputEvent).isComposing
-            ) {
-              return;
-            }
-            adoptNativeEditor();
-          }}
-          onKeyDown={onKeyDown}
-          onPaste={(event) => pasteRichPlainText(event, insertPlainText)}
-          role="textbox"
-          suppressContentEditableWarning
+          key={editorEpoch}
         >
-          <RichInputNodes
-            fileClickTitle={fileClickTitle}
-            onFileClick={onFileClick}
-            onWorkspaceFileClick={onWorkspaceFileClick}
-            renderSectionIcon={renderSectionIcon}
-            value={value}
-            workspaceFileClickTitle={workspaceFileClickTitle}
-          />
-        </div>
+          <div
+            ref={editorRef}
+            aria-busy={suggestionPending}
+            aria-disabled={disabled || suggestionPending}
+            aria-label={messageLabel}
+            aria-multiline="true"
+            {...suggestionEditorAria(
+              suggestionListId,
+              effectiveQuery,
+              activeOptionId
+            )}
+            className={cn(
+              "max-h-48 min-h-16 w-full whitespace-pre-wrap overflow-y-auto px-3 pt-3 pb-2 text-sm outline-none",
+              "empty:before:pointer-events-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]",
+              disabled && "cursor-not-allowed opacity-50",
+              className
+            )}
+            contentEditable={!disabled && !suggestionPending}
+            data-placeholder={resolvedPlaceholder}
+            onBlur={() => {
+              if (editorRef.current) savedPoint.current = selectionPoint(editorRef.current);
+            }}
+            onCompositionEnd={onCompositionEnd}
+            onCompositionStart={onCompositionStart}
+            onCompositionUpdate={onCompositionUpdate}
+            onInput={(event) => {
+              if (
+                composing.current ||
+                (event.nativeEvent as InputEvent).isComposing
+              ) {
+                return;
+              }
+              adoptNativeEditor();
+            }}
+            onKeyDown={onKeyDown}
+            onPaste={(event) => pasteRichPlainText(event, insertPlainText)}
+            role="textbox"
+            suppressContentEditableWarning
+          >
+            <RichInputNodes
+              fileClickTitle={fileClickTitle}
+              onFileClick={onFileClick}
+              onWorkspaceFileClick={onWorkspaceFileClick}
+              invalidSkillRefs={invalidSkillRefs}
+              invalidSkillTitle={invalidSkillTitle}
+              renderSectionIcon={renderSectionIcon}
+              value={value}
+              workspaceFileClickTitle={workspaceFileClickTitle}
+            />
+          </div>
+        </SlimScroller>
         {suggestionPending ? (
           <span aria-live="polite" className="sr-only" role="status">
             {loadingLabel}

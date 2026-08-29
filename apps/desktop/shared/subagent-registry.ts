@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Codex/chats
- * [OUTPUT]: Provides conversation SubagentRegistry level, source dirty, ledger, clean settle, empty return, 128 live draft, sentry, spawn, atomic reservation, boundary hydration/shots and byte budget elimination
+ * [OUTPUT]: Provides conversation SubagentRegistry level, source dirty, ledger, terminal-driven settle (turn done → completed, cancelled/error → interrupted), empty return, 128 live draft, sentry, spawn, atomic reservation, boundary hydration/shots and byte budget elimination
  * [POS]: The shared subagent state is a single truth source, main owner and renderer projection shared consumption
  */
 
@@ -11,6 +11,7 @@ import {
   createDraft,
   serializeDraft,
   slicePartsProtected,
+  type SubagentSettleOutcome,
   type TurnDraft,
 } from "./chat-turn-reducer";
 import {
@@ -256,12 +257,16 @@ export class SubagentRegistry {
     return next;
   }
 
-  settle(now = Date.now()) {
+  /* `outcome` 是 turn 终态的投影，不是猜测：wire 只在真被打断时才下发子
+     agent 终态，所以「turn 善终而它没报终态」= 它跑完了。恒写 interrupted
+     会让成功的子 agent 落盘成失败，UI 画红叉（两家来源同病，故修在唯一的
+     收敛点，不按来源分支）。默认保守取 interrupted：没有 turn 终态可依。 */
+  settle(outcome: SubagentSettleOutcome = "interrupted", now = Date.now()) {
     for (const [id, agent] of this.agents) {
       if (!isTerminalSubagentStatus(agent.meta.status)) {
         this.agents.set(id, {
           ...agent,
-          meta: { ...agent.meta, status: "interrupted", lastActivityAt: now },
+          meta: { ...agent.meta, status: outcome, lastActivityAt: now },
         });
         this.registryDirty = true;
       }

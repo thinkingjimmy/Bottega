@@ -6,7 +6,6 @@
 
 import type {
   MemoryEffectiveTarget,
-  MemoryRuntimeSnapshot,
 } from "../../../../shared/memory-ipc";
 import type {
   MemorySharingMode,
@@ -125,15 +124,19 @@ export class MemorySettingsOwner {
     const ownershipValid = coordinator
       ? await coordinator.ownershipValid(manifest)
       : null;
-    let runtimePhase: MemoryRuntimeSnapshot["phase"] | null = null;
+    let runtime: { installed: boolean; configured: boolean } | null = null;
     if (coordinator) {
-      runtimePhase = (await coordinator.snapshot()).phase;
+      const snapshot = await coordinator.snapshot();
+      runtime = {
+        installed: snapshot.installed,
+        configured: snapshot.configured,
+      };
     }
     return resolveMemoryTarget({
       descriptor,
       manifest,
       ownershipValid,
-      runtimePhase,
+      runtime,
     });
   }
 
@@ -226,8 +229,8 @@ export class MemorySettingsOwner {
         this.assertLifecycleFree(current.provider, "启用长期记忆");
         const target = await this.resolveTarget(current);
         const runtime = this.dependencies.runtimes.get(current.provider);
-        const phase = runtime ? (await runtime.snapshot()).phase : null;
-        if (phase === "configuration-required") {
+        const snapshot = runtime ? await runtime.snapshot() : null;
+        if (snapshot?.installed && !snapshot.configured) {
           throw new Error("运行时尚未完成配置，暂不能启用长期记忆");
         }
         return {

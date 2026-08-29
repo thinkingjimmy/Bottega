@@ -1,14 +1,21 @@
 /**
- * [INPUT]: Depends on Electron ipcMain/WebFrameMain and frame-guard rendererMatches
- * [OUTPUT]: Provides rendererIpc with an injectable createRendererIpcRegistrar; Recycle by window handle, recycle by function on packaging
- * [POS]: Electron main's IPC registers the only input to the cleaning lifecycle of the same window with WeakMap;
- *        Defence failure refuses, business handler cannot get unreliable input
+ * [INPUT]: Depends on Electron ipcMain events and the window module's per-call TrustedRendererContext resolver
+ * [OUTPUT]: Provides a process-global rendererIpc registrar with replaceable channel owners, role allowlists, context-aware handlers, and silent fail-closed cleanup handlers
+ * [POS]: Electron main's sole renderer IPC admission point; window closure never removes process-global handlers
  */
 
-import { ipcMain, type WebFrameMain } from "electron";
-import { rendererMatches } from "./frame-guard";
+import { ipcMain, type WebContents, type WebFrameMain } from "electron";
+import type { ProductWindowRole } from "../../shared/window-surfaces-ipc";
+import {
+  resolveTrustedRendererContext,
+  type TrustedRendererContext,
+  type TrustedRendererEvent,
+} from "./window/surfaces/trusted-renderer-context";
 
-type RendererIpcEvent = { senderFrame: WebFrameMain | null };
+type RendererIpcEvent = {
+  sender?: WebContents;
+  senderFrame: WebFrameMain | null;
+};
 type RendererIpcHandler = (
   event: RendererIpcEvent,
   ...args: unknown[]
@@ -25,15 +32,27 @@ export type RendererIpcMain = {
   removeListener(channel: string, listener: RendererIpcListener): void;
 };
 
+/** Retained for source compatibility; the process-global dispatcher never owns a window listener. */
 export type RendererIpcWindow = {
   once(event: "closed", listener: () => void): unknown;
 };
 
 export type RendererIpc = {
-  /** invoke 通道：非可信主帧直接抛错；handler 只见业务参数。 */
+  roles(...roles: ProductWindowRole[]): RendererIpc;
   handle(channel: string, handler: (...args: unknown[]) => unknown): RendererIpc;
-  /** fire-and-forget 通道：非可信主帧静默丢弃（与历史 cancel 语义一致）。 */
+  handleWithContext(
+    channel: string,
+    handler: (context: TrustedRendererContext, ...args: unknown[]) => unknown
+  ): RendererIpc;
+  handleBestEffortWithContext(
+    channel: string,
+    handler: (context: TrustedRendererContext, ...args: unknown[]) => unknown
+  ): RendererIpc;
   on(channel: string, listener: (...args: unknown[]) => void): RendererIpc;
+  onWithContext(
+    channel: string,
+    listener: (context: TrustedRendererContext, ...args: unknown[]) => void
+  ): RendererIpc;
 };
 
 export type RendererIpcRegistrar = (
@@ -42,50 +61,85 @@ export type RendererIpcRegistrar = (
   rejectMessage: string
 ) => RendererIpc;
 
-type RendererMatcher = (
-  frame: WebFrameMain | null,
+type ContextResolver = (
+  event: RendererIpcEvent,
   rendererUrl: string
-) => boolean;
+) => TrustedRendererContext;
 
-/** 构造共享窗口账本的注册器；注入边界让生命周期可在纯 Node 中验证。 */
+/**
+ * Registrations are process-global and replace the previous owner of the same channel.
+ * Rebuilding the main window refreshes closures without duplicate ipcMain.handle failures,
+ * while closing an App window cannot tear down another window's capabilities.
+ */
 export function createRendererIpcRegistrar(
   main: RendererIpcMain,
-  matches: RendererMatcher = rendererMatches
+  resolve: ContextResolver
 ): RendererIpcRegistrar {
-  const windowCleanups = new WeakMap<RendererIpcWindow, Set<() => void>>();
+  const listeners = new Map<string, RendererIpcListener>();
 
-  const cleanupBucket = (window: RendererIpcWindow) => {
-    const existing = windowCleanups.get(window);
-    if (existing) return existing;
-
-    const cleanups = new Set<() => void>();
-    windowCleanups.set(window, cleanups);
-    window.once("closed", () => {
-      windowCleanups.delete(window);
-      for (const cleanup of cleanups) cleanup();
-      cleanups.clear();
-    });
-    return cleanups;
-  };
-
-  return (window, rendererUrl, rejectMessage) => {
-    const cleanups = cleanupBucket(window);
-    const trusted = (frame: WebFrameMain | null) => matches(frame, rendererUrl);
+  return (_window, rendererUrl, rejectMessage) => {
+    let allowedRoles: ReadonlySet<ProductWindowRole> = new Set(["main"]);
+    const context = (
+      event: RendererIpcEvent,
+      roles: ReadonlySet<ProductWindowRole>
+    ) => {
+      try {
+        const trusted = resolve(event, rendererUrl);
+        if (!roles.has(trusted.role)) throw new Error(rejectMessage);
+        return trusted;
+      } catch {
+        throw new Error(rejectMessage);
+      }
+    };
     const registrar: RendererIpc = {
+      roles(...roles) {
+        if (!roles.length) throw new Error("Renderer IPC role allowlist is empty");
+        allowedRoles = new Set(roles);
+        return registrar;
+      },
       handle(channel, handler) {
-        main.handle(channel, (event, ...args) => {
-          if (!trusted(event.senderFrame)) throw new Error(rejectMessage);
-          return handler(...args);
+        return registrar.handleWithContext(channel, (_trusted, ...args) =>
+          handler(...args)
+        );
+      },
+      handleWithContext(channel, handler) {
+        const channelRoles = allowedRoles;
+        main.removeHandler(channel);
+        main.handle(channel, (event, ...args) =>
+          handler(context(event, channelRoles), ...args)
+        );
+        return registrar;
+      },
+      handleBestEffortWithContext(channel, handler) {
+        const channelRoles = allowedRoles;
+        main.removeHandler(channel);
+        main.handle(channel, async (event, ...args) => {
+          try {
+            return await handler(context(event, channelRoles), ...args);
+          } catch {
+            return undefined;
+          }
         });
-        cleanups.add(() => main.removeHandler(channel));
         return registrar;
       },
       on(channel, listener) {
+        return registrar.onWithContext(channel, (_trusted, ...args) =>
+          listener(...args)
+        );
+      },
+      onWithContext(channel, listener) {
+        const channelRoles = allowedRoles;
+        const previous = listeners.get(channel);
+        if (previous) main.removeListener(channel, previous);
         const guarded: RendererIpcListener = (event, ...args) => {
-          if (trusted(event.senderFrame)) listener(...args);
+          try {
+            listener(context(event, channelRoles), ...args);
+          } catch {
+            /* fire-and-forget channels preserve the existing fail-closed drop semantic */
+          }
         };
+        listeners.set(channel, guarded);
         main.on(channel, guarded);
-        cleanups.add(() => main.removeListener(channel, guarded));
         return registrar;
       },
     };
@@ -97,8 +151,12 @@ const electronIpcMain: RendererIpcMain = {
   handle: (channel, handler) => ipcMain.handle(channel, handler),
   on: (channel, listener) => ipcMain.on(channel, listener),
   removeHandler: (channel) => ipcMain.removeHandler(channel),
-  removeListener: (channel, listener) =>
-    ipcMain.removeListener(channel, listener),
+  removeListener: (channel, listener) => ipcMain.removeListener(channel, listener),
 };
 
-export const rendererIpc = createRendererIpcRegistrar(electronIpcMain);
+export const rendererIpc = createRendererIpcRegistrar(
+  electronIpcMain,
+  (event, _rendererUrl) =>
+    resolveTrustedRendererContext(event as unknown as TrustedRendererEvent)
+);
+

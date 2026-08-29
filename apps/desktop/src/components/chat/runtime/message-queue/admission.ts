@@ -5,7 +5,7 @@
  */
 
 import type { AdmissionResult } from "../../../../../shared/sections-ipc";
-import { errorMessage } from "@/lib/errors";
+import { admissionReasonText } from "@/lib/skill-failure-text";
 import {
   markAmbiguous,
   resetIdentity,
@@ -24,8 +24,8 @@ export function settleAdmission(
     return setQueueError(markAmbiguous(queue, id), result.cause);
   }
   if (result.kind === "rejectedBeforeAdmission") {
-    // 拒因来自 main 的 `CODE: 人话` 断言，进队列面板前先剥掉给日志看的那半段
-    return setQueueError(resetIdentity(queue, id), errorMessage(result.reason));
+    // 结构化失败走五语目录；其余仍是 main 的 `CODE: 人话` 断言，剥掉日志半段
+    return setQueueError(resetIdentity(queue, id), admissionReasonText(result));
   }
   if (result.receipt.phase !== "failed") return settleItem(queue, id, owner);
   return result.receipt.userPersisted

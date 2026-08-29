@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Electron IPC, Project/Chat Narrow queries, Strict Agent turnOptions Testing, Claude/Codex/Kimi/OpenCode four adapters, ProjectImport/MemoryGrant coordinator, index/snapshot stores and shared history-import contracts
- * [OUTPUT]: Provides HistoryImportService: Starting detection/manual refresh, deepest root attribution, alias to load, split page transcription, adoption, SearchJob dataset through live/adoption with AbortSignal, narrow door, session presentation actions ((rename/archiving sessionPrefs, presentEntry is the only output for wire projection), coordinator IPC door, Memory backdoor delivered delivering/warning projection and index/snapshot combined drain exit
- * [POS]: the owner of the federal index of history-import; Project onboarding and the Memory authorization status machine have been removed, and the outsourced statement/Project revision/expectedHistoryRevision claim is closed here
+ * [INPUT]: Depends on Electron IPC, Project/Chat queries, strict turn options, four history adapters, Project/Memory coordinators, index/snapshot stores, and shared contracts
+ * [OUTPUT]: Provides detection/refresh, stable identity, abortable paged/revision-fenced full-index transcripts, consumer-aware bounded parse single-flight, adoption, source-quality projection, search/export, presentation, Memory, and drain APIs
+ * [POS]: The canonical federated history owner and renderer-safe authority boundary
  */
 
 import { createHash } from "node:crypto";
@@ -32,7 +32,7 @@ import {
   validateHistoryAdoptionSubmission,
 } from "../agent-payload-validation";
 import type { ProductHistoryIntent } from "../memory/orchestration/consent-controller";
-import { isWithin, sameFingerprint, sourceCount, type AdapterEntry, type AdapterScan, type HistoryAdapter, type ScanDepth } from "./adapter";
+import { isWithin, sameFingerprint, sourceCount, type AdapterEntry, type AdapterScan, type HistoryAdapter, type ParsedHistory, type ScanDepth } from "./adapter";
 import { ClaudeHistoryAdapter } from "./claude-adapter";
 import { CodexHistoryAdapter } from "./codex-adapter";
 import { KimiHistoryAdapter } from "./kimi-adapter";
@@ -49,6 +49,31 @@ import type { HistoryMemoryAuthorization } from "./memory-grant-coordinator";
 
 const PAGE_SIZE = 200;
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
+const transcriptIndexRequestSchema = z.object({
+  opaqueId: idSchema,
+  expectedHistoryRevision: z.string().min(1),
+  requestId: idSchema,
+}).strict();
+const transcriptPageRequestSchema = z.object({
+  opaqueId: idSchema,
+  cursor: z.string().optional(),
+  requestId: idSchema,
+}).strict();
+
+type ParseFlight = {
+  controller: AbortController;
+  consumers: Set<symbol>;
+  promise: Promise<ParsedHistory>;
+  settled: boolean;
+};
+
+function abortReason(signal: AbortSignal) {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : Object.assign(new Error("History transcript request aborted"), {
+        name: "AbortError",
+      });
+}
 
 type ProjectRef = Pick<Project, "id" | "dir" | "membershipRevision" | "workspaceBinding" | "archivedAt">;
 
@@ -69,7 +94,7 @@ export type HistoryImportServiceOptions = {
     request: PrepareHistoryAdoptionInput;
     entry: AdapterEntry;
     snapshot: AdoptionSnapshot;
-  }): Promise<{ chatId: string; phase: "started" | "queued" | "settled" }>;
+  }): Promise<{ chatId: string; incarnationId: string; phase: "started" | "queued" | "settled" }>;
   commitMemory?(input: {
     grantId: string;
     snapshots: MemorySourceSnapshot[];
@@ -116,6 +141,8 @@ export class HistoryImportService {
   private warning: string | null = null;
   private detecting = new Set<string>();
   private refreshing = new Set<string>();
+  private readonly parseCache = new Map<string, ParseFlight>();
+  private readonly transcriptRequests = new Map<string, AbortController>();
 
   constructor(userData: string, private readonly options: HistoryImportServiceOptions, adapters?: HistoryAdapter[]) {
     this.index = new HistoryImportIndexStore(userData);
@@ -145,7 +172,7 @@ export class HistoryImportService {
         if (!entry) throw new Error("历史会话不存在");
         const adapter = this.adapters.find((candidate) => candidate.sourceKind === entry.sourceKind);
         if (!adapter) throw new Error("历史来源 adapter 不存在");
-        return { entry, blocks: (await adapter.parse(entry)).blocks, parserVersion: adapter.parserVersion };
+        return { entry, blocks: (await this.parseEntry(entry)).blocks, parserVersion: adapter.parserVersion };
       },
       commitForeign: options.commitMemory,
       previewProduct: options.previewProductMemory,
@@ -165,7 +192,9 @@ export class HistoryImportService {
 
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
-    rendererIpc(window, rendererUrl, "拒绝非主窗口的历史导入请求")
+    const ipc = rendererIpc(window, rendererUrl, "拒绝非主窗口的历史导入请求")
+      .roles("main");
+    ipc
       .handle(HISTORY_IMPORT_CHANNEL.snapshot, () => this.snapshot())
       .handle(HISTORY_IMPORT_CHANNEL.prepareProject, () => this.prepareProject())
       .handle(HISTORY_IMPORT_CHANNEL.countProject, (token) => this.projectImports.counts(z.string().min(1).parse(token)))
@@ -174,7 +203,16 @@ export class HistoryImportService {
       .handle(HISTORY_IMPORT_CHANNEL.refreshProject, (projectId) => this.refreshProjectForUser(idSchema.parse(projectId)))
       .handle(HISTORY_IMPORT_CHANNEL.renameSession, (opaqueId, title) => this.renameSession(idSchema.parse(opaqueId), z.string().trim().min(1).max(200).parse(title)))
       .handle(HISTORY_IMPORT_CHANNEL.setSessionArchived, (opaqueId, archived) => this.setSessionArchived(idSchema.parse(opaqueId), z.boolean().parse(archived)))
-      .handle(HISTORY_IMPORT_CHANNEL.transcript, (opaqueId, cursor) => this.transcript(idSchema.parse(opaqueId), typeof cursor === "string" ? cursor : undefined))
+      .handle(HISTORY_IMPORT_CHANNEL.transcript, (raw) => {
+        const request = transcriptPageRequestSchema.parse(raw);
+        return this.withTranscriptRequest(request.requestId, (signal) =>
+          this.transcript(request.opaqueId, request.cursor, signal));
+      })
+      .handle(HISTORY_IMPORT_CHANNEL.transcriptIndex, async (raw) => {
+        const request = transcriptIndexRequestSchema.parse(raw);
+        return this.withTranscriptRequest(request.requestId, (signal) =>
+          this.transcriptIndex(request.opaqueId, request.expectedHistoryRevision, signal));
+      })
       .handle(HISTORY_IMPORT_CHANNEL.adopt, (raw) => this.adopt(parseAdopt(raw)))
       .handle(HISTORY_IMPORT_CHANNEL.adoptionPrefix, (chatId) => this.adoptionPrefix(idSchema.parse(chatId)))
       .handle(HISTORY_IMPORT_CHANNEL.memoryEligibility, (raw) => {
@@ -182,8 +220,29 @@ export class HistoryImportService {
         return this.memoryEligibility(input);
       })
       .handle(HISTORY_IMPORT_CHANNEL.memoryPreview, (raw) => this.memoryPreview(parseMemoryPreview(raw)))
-      .handle(HISTORY_IMPORT_CHANNEL.memoryCommit, (snapshotId, digest) => this.memoryCommit(idSchema.parse(snapshotId), z.string().regex(/^[a-f0-9]{64}$/).parse(digest)));
-    window.once("closed", () => { if (this.window === window) this.window = null; });
+      .handle(HISTORY_IMPORT_CHANNEL.memoryCommit, (snapshotId, digest) => this.memoryCommit(idSchema.parse(snapshotId), z.string().regex(/^[a-f0-9]{64}$/).parse(digest)))
+      .on(HISTORY_IMPORT_CHANNEL.cancelTranscript, (rawRequestId) => {
+        const requestId = idSchema.safeParse(rawRequestId);
+        if (requestId.success) this.transcriptRequests.get(requestId.data)?.abort();
+      });
+    window.once("closed", () => {
+      if (this.window === window) this.window = null;
+      for (const controller of this.transcriptRequests.values()) {
+        controller.abort();
+      }
+      this.transcriptRequests.clear();
+    });
+  }
+
+  private async withTranscriptRequest<T>(
+    requestId: string,
+    run: (signal: AbortSignal) => Promise<T>
+  ) {
+    if (this.transcriptRequests.has(requestId)) throw new Error("HISTORY_TRANSCRIPT_REQUEST_EXISTS");
+    const controller = new AbortController();
+    this.transcriptRequests.set(requestId, controller);
+    try { return await run(controller.signal); }
+    finally { this.transcriptRequests.delete(requestId); }
   }
 
   snapshot(): HistoryImportSnapshot {
@@ -242,6 +301,77 @@ export class HistoryImportService {
     );
   }
 
+  private parseEntry(
+    entry: AdapterEntry,
+    signal?: AbortSignal
+  ): Promise<ParsedHistory> {
+    const key = `${entry.sourceKind}:${entry.opaqueId}:${entry.historyRevision}`;
+    let flight = this.parseCache.get(key);
+    if (flight) {
+      this.parseCache.delete(key);
+      this.parseCache.set(key, flight);
+    } else {
+      const adapter = this.adapters.find(
+        (candidate) => candidate.sourceKind === entry.sourceKind
+      );
+      if (!adapter) return Promise.reject(new Error("历史来源 adapter 不存在"));
+      const controller = new AbortController();
+      flight = {
+        controller,
+        consumers: new Set(),
+        promise: Promise.resolve({ blocks: [], incompleteTail: false }),
+        settled: false,
+      };
+      const owner = flight;
+      owner.promise = adapter.parse(entry, controller.signal).then(
+        (parsed) => {
+          owner.settled = true;
+          return parsed;
+        },
+        (cause) => {
+          owner.settled = true;
+          if (this.parseCache.get(key) === owner) this.parseCache.delete(key);
+          throw cause;
+        }
+      );
+      this.parseCache.set(key, owner);
+    }
+    while (this.parseCache.size > 8) {
+      const oldest = this.parseCache.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.parseCache.delete(oldest);
+    }
+    const consumer = Symbol(key);
+    flight.consumers.add(consumer);
+    return new Promise<ParsedHistory>((resolve, reject) => {
+      let complete = false;
+      const release = () => {
+        signal?.removeEventListener("abort", abort);
+        flight!.consumers.delete(consumer);
+        if (!flight!.settled && flight!.consumers.size === 0) {
+          if (this.parseCache.get(key) === flight) this.parseCache.delete(key);
+          flight!.controller.abort();
+        }
+      };
+      const settle = (callback: () => void) => {
+        if (complete) return;
+        complete = true;
+        release();
+        callback();
+      };
+      const abort = () => settle(() => reject(abortReason(signal!)));
+      flight!.promise.then(
+        (parsed) => settle(() => resolve(parsed)),
+        (cause) => settle(() => reject(cause))
+      );
+      if (signal?.aborted) {
+        abort();
+        return;
+      }
+      signal?.addEventListener("abort", abort, { once: true });
+    });
+  }
+
   async parseTranscriptForSearch(
     opaqueId: string,
     expected: { fingerprint: HistoryFileFingerprint; historyRevision: string },
@@ -254,7 +384,7 @@ export class HistoryImportService {
     }
     const adapter = this.adapters.find((candidate) => candidate.sourceKind === entry.sourceKind);
     if (!adapter) throw new Error("历史来源 adapter 不存在");
-    const parsed = await adapter.parse(entry, signal);
+    const parsed = await this.parseEntry(entry, signal);
     signal.throwIfAborted();
     const current = this.findEntry(opaqueId);
     if (!current || current.historyRevision !== expected.historyRevision || !sameFingerprint(current.fingerprint, expected.fingerprint)) {
@@ -388,10 +518,11 @@ export class HistoryImportService {
     };
   }
 
-  async transcript(opaqueId: string, cursor?: string): Promise<ForeignHistoryTranscript> {
+  async transcript(opaqueId: string, cursor?: string, signal?: AbortSignal): Promise<ForeignHistoryTranscript> {
+    signal?.throwIfAborted();
     const entry = this.requireVisibleEntry(opaqueId);
-    const adapter = this.adapters.find((candidate) => candidate.sourceKind === entry.sourceKind)!;
-    const parsed = await adapter.parse(entry);
+    const parsed = await this.parseEntry(entry, signal);
+    signal?.throwIfAborted();
     const offset = decodeCursor(cursor, entry.historyRevision);
     const blocks = parsed.blocks.slice(offset, offset + PAGE_SIZE);
     const next = offset + blocks.length;
@@ -402,11 +533,31 @@ export class HistoryImportService {
     };
   }
 
+  async transcriptIndex(
+    opaqueId: string,
+    expectedHistoryRevision: string,
+    signal?: AbortSignal
+  ) {
+    signal?.throwIfAborted();
+    const entry = this.requireVisibleEntry(opaqueId);
+    if (entry.historyRevision !== expectedHistoryRevision) {
+      throw Object.assign(new Error("历史会话已变化"), {
+        code: "HISTORY_REVISION_CHANGED",
+      });
+    }
+    const parsed = await this.parseEntry(entry, signal);
+    signal?.throwIfAborted();
+    return {
+      revision: entry.historyRevision,
+      blocks: parsed.blocks,
+      incompleteTail: parsed.incompleteTail,
+    };
+  }
+
   /** @ 引用的整段转录物化：与 Section 快照同一字节预算，尾部优先保留。 */
   async exportTranscript(opaqueId: string): Promise<{ title: string; transcript: string } | null> {
     let entry; try { entry = this.requireVisibleEntry(opaqueId); } catch { return null; }
-    const adapter = this.adapters.find((candidate) => candidate.sourceKind === entry.sourceKind)!;
-    const parsed = await adapter.parse(entry);
+    const parsed = await this.parseEntry(entry);
     const summary = this.presentEntry(entry);
     return { title: summary.title, transcript: foreignTranscriptSnapshot(summary.title, parsed.blocks) };
   }
@@ -426,10 +577,11 @@ export class HistoryImportService {
     const stored = this.index.project(project.id);
     if (!stored || stored.membershipRevision !== project.membershipRevision) throw new Error("PROJECT_REVISION_CHANGED");
     const adapter = this.adapters.find((candidate) => candidate.sourceKind === entry.sourceKind)!;
-    const parsed = await adapter.parse(entry);
+    const parsed = await this.parseEntry(entry);
     const snapshot = await this.snapshots.writeAdoption({
       summary: this.presentEntry(entry), sourcePath: entry.sourcePath, blocks: parsed.blocks, parserVersion: adapter.parserVersion,
       fingerprint: { size: entry.fingerprint.size, mtimeNs: entry.fingerprint.mtimeNs },
+      incompleteTail: parsed.incompleteTail,
     });
     const receipt = await this.options.adopt({ request, entry, snapshot });
     this.publish();
@@ -441,17 +593,29 @@ export class HistoryImportService {
     if (!binding) return null;
     const snapshot = await this.snapshots.readAdoption(binding.snapshotId);
     if (snapshot.digest !== binding.digest) throw new Error("收养快照 digest 与 Chat 账本不一致");
-    let divergence = false;
+    let sourceStatus: HistoryAdoptionPrefix["sourceStatus"] = "match";
     try {
       const current = await stat(snapshot.sourcePath, { bigint: true });
-      divergence = Number(current.size) !== snapshot.fingerprint.size || String(current.mtimeNs) !== snapshot.fingerprint.mtimeNs;
-    } catch { divergence = true; }
+      if (
+        Number(current.size) !== snapshot.fingerprint.size ||
+        String(current.mtimeNs) !== snapshot.fingerprint.mtimeNs
+      ) sourceStatus = "changed";
+    } catch (cause) {
+      sourceStatus = (cause as NodeJS.ErrnoException).code === "ENOENT"
+        ? "missing"
+        : "changed";
+    }
     return {
       snapshotId: snapshot.snapshotId,
       digest: snapshot.digest,
+      contentGenerationKey: snapshot.snapshotId,
+      routeGenerationKey: snapshot.historyRevision,
       title: snapshot.title,
       blocks: snapshot.blocks as import("../../../shared/history-import-ipc").ForeignHistoryBlock[],
-      divergence,
+      incompleteTail: snapshot.schemaVersion === 2
+        ? snapshot.incompleteTail
+        : "unknown",
+      sourceStatus,
     };
   }
 
@@ -474,6 +638,10 @@ export class HistoryImportService {
   }
 
   async closeAndFlush() {
+    for (const controller of this.transcriptRequests.values()) {
+      controller.abort();
+    }
+    this.transcriptRequests.clear();
     await Promise.all([
       this.index.closeAndFlush(),
       this.snapshots.closeAndFlush(),

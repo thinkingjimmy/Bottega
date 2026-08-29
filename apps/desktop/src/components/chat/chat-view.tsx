@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React/ResizeObserver, router location, runtime controller, unchanging AdoptionPrefix, upper surface visibility, Memory state, Gallery transcript, projection, third layout, empty-state/composer and inert transcript/SidePanel
- * [OUTPUT]: Provides ChatView, a combination of external source previews, product history and query life positioning, download visibility, message-loaded transcripts and scalable third-party on-demand uploads, continuously showing the global Memory pause boundaries, and transmitting canonical+draft Gallery narrow projections to Base
- * [POS]: The chat module is a true source of the horizontal layout; The empty session and the transcript intersect the same vertical slot, with the duration preference separated from the dynamic available width, and the AppEditPanel remains openly closed for the third time
+ * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, HistoryPrefixProjection, transcript, composer, optional side panel, Gallery, and main-window Memory state
+ * [OUTPUT]: Provides ChatViewFrame and ChatView with once-per-turn Design auto-open, abortable history Find, paged deep links, and App-window suppression of global Memory IPC
+ * [POS]: The single horizontal chat layout for draft, product, foreign, and adopted sessions
  */
 
 import {
@@ -14,21 +14,24 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import type {
   AgentBackendId,
   AgentScope,
 } from "../../../shared/agent-ipc";
-import type { HistoryAdoptionPrefix } from "../../../shared/history-import-ipc";
+import type { HistoryPrefixProjection } from "@/lib/history-prefix";
 import { ChatComposer } from "./composer/chat-composer";
 import { ChatEmptyState } from "./chat-empty-state";
 import {
   useChatSession,
+  type ChatSessionController,
   type ChatProjectMode,
   type SidePanelState,
 } from "./runtime/use-chat-session";
 import {
   matchesSidePanelRequest,
+  type PanelSessionContext,
   type SidePanelRequest,
 } from "./runtime/chat-session-model";
 import {
@@ -47,6 +50,8 @@ import {
 import { memoryStore } from "@/lib/memory-store";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useLocation } from "react-router";
+import { onAppsEvent } from "@/lib/apps-client";
+import { windowContext } from "@/lib/window-surfaces-client";
 
 const SidePanel = lazy(() =>
   import("./side-panel/side-panel").then((module) => ({
@@ -69,30 +74,60 @@ type ChatViewProps = {
   focusComposer?: boolean;
   enableSidePanel?: boolean;
   draftAgent?: AgentBackendId;
+  panelContext?: PanelSessionContext;
   composerLockedReason?: string;
   sidePanelRequest?: SidePanelRequest | null;
   onConsumeSidePanelRequest?: (nonce: number) => void;
-  historyPrefix?: HistoryAdoptionPrefix | null;
+  historyPrefix?: HistoryPrefixProjection | null;
+  historyPrefixFooter?: ReactNode;
+  historyIndexLoader?: (signal: AbortSignal) => Promise<HistoryPrefixProjection>;
+  onHistoryJumpMiss?: (id: string) => Promise<void>;
   surfaceVisible?: boolean;
 };
 
 export function ChatView({
   scope,
   project,
+  panelContext,
+  draftAgent,
+  ...frameProps
+}: ChatViewProps) {
+  const controller = useChatSession({ scope, project, draftAgent, panelContext });
+  return (
+    <ChatViewFrame
+      {...frameProps}
+      controller={controller}
+      includeGlobalMemory={windowContext().role === "main"}
+    />
+  );
+}
+
+export type ChatViewFrameProps = Omit<
+  ChatViewProps,
+  "scope" | "project" | "draftAgent" | "panelContext"
+> & {
+  controller: ChatSessionController;
+  includeGlobalMemory?: boolean;
+};
+
+export function ChatViewFrame({
+  controller,
   emptyTitle,
   emptyDescription,
   focusComposer = false,
   enableSidePanel = true,
-  draftAgent,
   composerLockedReason,
   sidePanelRequest,
   onConsumeSidePanelRequest,
   historyPrefix,
+  historyPrefixFooter,
+  historyIndexLoader,
+  onHistoryJumpMiss,
   surfaceVisible = true,
-}: ChatViewProps) {
+  includeGlobalMemory = true,
+}: ChatViewFrameProps) {
   const location = useLocation();
   const { t } = useAppTranslation();
-  const controller = useChatSession({ scope, project, draftAgent });
   const memory = useSyncExternalStore(
     memoryStore.subscribe,
     memoryStore.getSnapshot,
@@ -102,7 +137,8 @@ export function ChatView({
   const [layoutWidth, setLayoutWidth] = useState(() => window.innerWidth);
   const [sidePanelLayout, setSidePanelLayout] = useState(readSidePanelLayout);
   const sidePanelLayoutRef = useRef(sidePanelLayout);
-  const conversationId = scope.conversationId;
+  const conversationId = controller.transcript.chatId;
+  const panelContext = controller.sidePanel.context;
   const openTabs = controller.sidePanel.openTabs;
 
   useLayoutEffect(() => {
@@ -124,7 +160,9 @@ export function ChatView({
       observer.disconnect();
     };
   }, []);
-  useEffect(() => memoryStore.ensureLoaded(), []);
+  useEffect(() => {
+    if (includeGlobalMemory) memoryStore.ensureLoaded();
+  }, [includeGlobalMemory]);
 
   const commitPanelWidth = useCallback((width: number) => {
     if (width < SIDE_PANEL_MIN_WIDTH) return;
@@ -132,20 +170,42 @@ export function ChatView({
     sidePanelLayoutRef.current = next;
     setSidePanelLayout(next);
   }, []);
+  const openedDesignTurns = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!enableSidePanel || !matchesSidePanelRequest(sidePanelRequest, conversationId)) {
+    if (!enableSidePanel || !matchesSidePanelRequest(sidePanelRequest, panelContext)) {
       return;
     }
-    openTabs(conversationId, sidePanelRequest.command);
+    openTabs(sidePanelRequest.command);
     onConsumeSidePanelRequest?.(sidePanelRequest.command.nonce);
   }, [
     enableSidePanel,
-    conversationId,
+    panelContext,
     onConsumeSidePanelRequest,
     openTabs,
     sidePanelRequest,
   ]);
+  useEffect(() => {
+    if (!enableSidePanel) return;
+    return onAppsEvent((event) => {
+      if (event.type !== "design-canvases-changed") return;
+      const productRef =
+        panelContext.kind === "product" || panelContext.kind === "adopted"
+          ? panelContext.productRef
+          : null;
+      if (
+        event.chatId !== productRef?.chatId ||
+        event.conversationIncarnationId !== productRef.incarnationId
+      ) return;
+      const key = `${event.chatId}\0${event.conversationIncarnationId}\0${event.turnId}`;
+      if (openedDesignTurns.current.has(key)) return;
+      openedDesignTurns.current.add(key);
+      if (openedDesignTurns.current.size > 128) {
+        openedDesignTurns.current.delete(openedDesignTurns.current.values().next().value as string);
+      }
+      openTabs({ target: "app", appId: event.appId });
+    });
+  }, [enableSidePanel, openTabs, panelContext]);
   const sidePanelState =
     enableSidePanel && controller.sidePanel.state.kind !== "none"
       ? controller.sidePanel.state
@@ -162,6 +222,19 @@ export function ChatView({
   const visibleSidePanelState = sidePanelState ?? retainedSidePanelState;
   const expandedPlanId =
     sidePanelState?.kind === "plan" ? sidePanelState.messageId : null;
+  const toggleForeignPlan = useCallback(
+    (plan: { anchorId: string; content: string }) => {
+      if (
+        controller.sidePanel.state.kind === "plan" &&
+        controller.sidePanel.state.messageId === plan.anchorId
+      ) {
+        controller.sidePanel.close();
+        return;
+      }
+      controller.sidePanel.openForeignPlan(plan);
+    },
+    [controller.sidePanel]
+  );
   const panelGeometry = resolveSidePanelGeometry(
     layoutWidth,
     sidePanelLayout.width
@@ -169,10 +242,16 @@ export function ChatView({
   /* 空会话不是「转录的一种状态」，而是另一块屏：它没有滚动、不粘底，
      内容在剩余竖直空间里居中。让两者互斥占位，居中就是布局的结果而不是
      补丁；水合未完时先什么都不判，免得一帧空态在真消息前闪出来。 */
+  /* 空态判据落在「可见」消息上:dormant app-chat 只种了一条 app-chat-ready
+     notice(ChatNotice 渲染为 null),它让 length===1 却无任何可见内容——既不
+     显空态也不显转录,面板会一片空白。every 对空数组返回 true,length===0 一并覆盖。 */
   const showEmptyState =
     !controller.transcript.loading &&
     !controller.transcript.draft &&
-    controller.transcript.messages.length === 0;
+    controller.transcript.messages.every(
+      (message) => message.notice?.kind === "app-chat-ready"
+    ) &&
+    !historyPrefix;
   const galleryDraftKey = conversationImageDraftKey(
     controller.transcript.draft
   );
@@ -222,13 +301,16 @@ export function ChatView({
               onClosePlan={controller.sidePanel.close}
               showOutline={!visibleSidePanelState}
               historyPrefix={historyPrefix}
-              memoryEnabled={Boolean(memory.status?.enabled)}
+              historyPrefixFooter={historyPrefixFooter}
+              historyIndexLoader={historyIndexLoader}
+              onHistoryJumpMiss={onHistoryJumpMiss}
+              onToggleForeignPlan={toggleForeignPlan}
               routeSearch={location.search}
               surfaceVisible={surfaceVisible}
             />
           </Suspense>
         )}
-        {memory.status?.enabled && memory.status.paused ? (
+        {includeGlobalMemory && memory.status?.enabled && memory.status.paused ? (
           <div
             role="status"
             className="mx-3 mb-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100"

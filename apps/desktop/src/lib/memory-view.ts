@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared MemoryHealth/MemoryHealthIssue/MemoryStatusSnapshot/EffectiveTarget/descriptor/rebuild/attention Agreement with MemorySharingMode
- * [OUTPUT]: Provides color tags, hosts memoryBackendState/RuntimeStance, provides a default judgment as recognized by version Source, memoryHealthView, memoryProviderStatusView, memoryMasterRow, memoryServiceNeedsAttention, rebuildOutstanding, includes a recall of the end checklist and the number of failures, and a delivery observation indicator, connects the action to the rebuild location tag
- * [POS]: Settings › Memory is a derivative of the presentation layer; Fold the main's running facts into a directly open label
+ * [INPUT]: Depends on shared Memory health/runtime/status contracts and MemorySettings sharing modes
+ * [OUTPUT]: Provides Memory presentation derivations, including the Project-level six-tier conclusion used by Project Settings
+ * [POS]: Pure Memory presentation derivations shared by global Memory Settings and Project Settings
  */
 
 import type {
@@ -17,6 +17,39 @@ import type {
   MemoryRuntimeSnapshot,
   MemoryStatusSnapshot,
 } from "../../shared/memory-ipc";
+import type { MemorySettings } from "../../shared/settings-ipc";
+
+export type ProjectMemoryConclusion = Readonly<{
+  key:
+    | "projectSettings.general.memoryDisabled"
+    | "projectSettings.general.memoryPaused"
+    | "projectSettings.general.memoryUnavailable"
+    | "projectSettings.general.memoryScoped"
+    | "projectSettings.general.memoryShared";
+  delivering: boolean;
+}>;
+
+/** Health outranks scope: a broken service must never be presented as a healthy domain. */
+export function projectMemoryConclusion(input: {
+  memorySettings: Pick<MemorySettings, "enabled" | "paused" | "sharingMode"> | null;
+  serviceStatus: Pick<MemoryStatusSnapshot, "health"> | null;
+  delivering: boolean;
+}): ProjectMemoryConclusion {
+  const { memorySettings, serviceStatus, delivering } = input;
+  if (!memorySettings?.enabled) {
+    return { key: "projectSettings.general.memoryDisabled", delivering };
+  }
+  if (memorySettings.paused) {
+    return { key: "projectSettings.general.memoryPaused", delivering };
+  }
+  if (serviceStatus?.health === "unavailable") {
+    return { key: "projectSettings.general.memoryUnavailable", delivering };
+  }
+  if (memorySettings.sharingMode === "group") {
+    return { key: "projectSettings.general.memoryScoped", delivering };
+  }
+  return { key: "projectSettings.general.memoryShared", delivering };
+}
 /* ============================================================
  * 色标：呈现层只认五种语气，组件不再各自拼颜色。
  * 语气是派生结论（"挂起 3 条"→danger），不是调用方的自由选择。
@@ -78,7 +111,6 @@ export function memoryBackendState(
     };
   }
   if (runtime?.installed) {
-    const version = runtime.installedVersion;
     if (!runtime.instanceId) {
       return {
         label: copy(translate, "memory.backend.identityRepair", "安装身份待修复"),
@@ -88,18 +120,16 @@ export function memoryBackendState(
     /* 两阶段的中间态必须在卡片上就可见：EverOS 装完没提交密钥时
        服务根本起不来，「已安装」的绿色结论会和健康卡的「暂不可启用」
        同屏打架——同一事实两处两个说法，读者只会怀疑数据坏了。 */
-    if (runtime.phase === "configuration-required") {
+    /* 版本不进这句话：引擎行上已经写着它了，行尾再说一遍就是同一个
+       事实的第二次陈述。这里只回答「它此刻处在哪一档」。 */
+    if (!runtime.configured) {
       return {
-        label: version
-          ? copy(translate, "memory.backend.installedNeedsConfigVersion", `已安装 ${version} · 待配置`, { version })
-          : copy(translate, "memory.backend.installedNeedsConfig", "已安装 · 待配置"),
+        label: copy(translate, "memory.backend.installedNeedsConfig", "已安装 · 待配置"),
         tone: "warn",
       };
     }
     return {
-      label: version
-        ? copy(translate, "memory.backend.installedVersion", `已安装 ${version}`, { version })
-        : copy(translate, "memory.backend.installed", "已安装"),
+      label: copy(translate, "memory.backend.installed", "已安装"),
       /* 失配只对「装的是当时的锁定版、如今应用锁定了新版」成立。用户
          自己在目录里挑的版本不是失配，是意图——把它染黄，等于让产品
          每次开面板都反对一次用户刚做过的决定。判据是 versionSource，
@@ -295,15 +325,25 @@ export function memoryProviderStatusView(
       detail: stalled ? notReady() : null,
     };
   }
-  /* blockedReason 压过健康结论：fail-closed 的原因比「连不上」更该先说。 */
-  const blocked = current.target?.blockedReasonCode
+  /* blockedReason 压过健康结论：fail-closed 的原因比「连不上」更该先说。
+
+     但 configuration 这一条例外：它是 runtime 的投影，而 target 走的是
+     更长的收敛路径（要等运行时操作跑完才 reapply）。密钥写完的那一刻
+     runtime 已经 configured，target 还停在旧结论——两个真相源里近的那个
+     说了算，否则用户刚提交完密钥，读到的第一句就是「尚未完成配置」，
+     产品在否定他刚做过的事。 */
+  const target =
+    current.target?.blockedReasonCode === "configuration" && runtime?.configured
+      ? null
+      : current.target;
+  const blocked = target?.blockedReasonCode
     ? copy(
         translate,
-        `memory.health.blocked.${current.target.blockedReasonCode}`,
-        current.target.blockedReason ?? "",
-        { provider: current.target.providerId }
+        `memory.health.blocked.${target.blockedReasonCode}`,
+        target.blockedReason ?? "",
+        { provider: target.providerId }
       )
-    : current.target?.blockedReason ?? null;
+    : target?.blockedReason ?? null;
   if (blocked)
     return {
       tone: "warn",
@@ -450,18 +490,25 @@ export function memoryMasterRow(
 }
 
 /* ============================================================
- * 服务档要不要自己摊开：没装、待配置、连不上，或开着却不可用。
+ * 服务档要不要自己摊开：只有「已开启却兑现不了」才算坏掉——
+ * 没装、待配置、连不上、或开着却不可用，都以 enabled 为前提。
+ *
+ * 关闭态不打扰：用户还没把开关拨上去，就没有任何承诺被违背，
+ * 「未安装」只是还没设置，不是故障。此时服务档收成一行，
+ * 状态与病因由收起的头行（及其悬停说明）自己讲，装不装由用户
+ * 自己掀开决定。
  *
  * 它与主开关的 `stuck` 共用同一个 `gateOpen`，于是「点不动」与「摊开」
- * 不可能各说各话；`unavailable` 那一档则保证主控行只说后果时，病因、
- * 地址与修复动作一定在同屏可见——折叠永远藏不住一件坏掉的东西。
+ * 不可能各说各话；enabled 之下 gate 没开或 `unavailable`，都保证主控行
+ * 只说后果时，病因、地址与修复动作一定在同屏可见——折叠藏不住一件
+ * 真正坏掉的东西。
  * ============================================================ */
 
 export const memoryServiceNeedsAttention = (
   memory: { enabled: boolean },
   status: MemoryStatusSnapshot,
   gateOpen: boolean
-) => !gateOpen || (memory.enabled && status.health === "unavailable");
+) => memory.enabled && (!gateOpen || status.health === "unavailable");
 
 /* ============================================================
  * 重建是否还占着这台机器：在跑与中断都算，只有 completed 是往事。

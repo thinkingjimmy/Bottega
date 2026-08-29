@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared preset DTO; Publishing metadata, canonical GitHub URLs and immutable commit pins are both held by product source code
- * [OUTPUT]: Provides FIRST_PARTY_PRESETS, PresetCatalog with closed lookup according to presetId
- * [POS]: The main leader provides a trust root; A table of card documents with the same release identity, and the renderer is not allowed to provide URL/pin
+ * [INPUT]: Depends on the shared preset DTO; product source owns publishing metadata, canonical GitHub URLs, immutable pins, and optional packaged factory digests
+ * [OUTPUT]: Provides FIRST_PARTY_PRESETS and PresetCatalog with stable presetId, sourceDirectory, canonical URL, immutable source/compatibility pin, and optional factory tree digest
+ * [POS]: The main process trust root for preset cards and source identity; renderer-visible summaries exclude sourceDirectory, URL, and pin
  */
 
 import type { PresetAppSummary } from "../../shared/apps-ipc";
@@ -9,9 +9,29 @@ import type { PresetAppSummary } from "../../shared/apps-ipc";
 export type PresetCatalogEntry = PresetAppSummary & {
   canonicalRepoUrl: string;
   catalogPin: string;
+  sourceDirectory: string;
+  factoryTreeDigest?: `sha256:${string}`;
 };
 
 export const FIRST_PARTY_PRESETS = [
+  {
+    id: "design-canvas",
+    name: "Bottega Design Canvas",
+    description:
+      "与 Bottega 支持的编码 Agent 创建、比较和评审自包含 HTML 画板，并把元素或区域锚点送回聊天继续迭代。",
+    icon: "✦",
+    requirements: [],
+    readme:
+      "# Bottega Design Canvas\n\nCreate, compare, and review isolated HTML design canvases with any coding Agent supported by Bottega, then return element or region anchors to chat for the next iteration.",
+    readmeZhCN:
+      "# Bottega Design Canvas\n\n与 Bottega 支持的编码 Agent 创建、比较和评审隔离 HTML 画板，再把元素或区域锚点送回聊天继续迭代。",
+    canonicalRepoUrl:
+      "https://github.com/thinkingjimmy/Bottega-app-design-canvas.git",
+    catalogPin: "54aac3f128d3b962a59b4f981fca9aae088960c7",
+    sourceDirectory: "Bottega-app-design-canvas",
+    factoryTreeDigest:
+      "sha256:0cf6d232e52703ddcde5f4ee3e06a083d74d2cf7ce8d3c5879cb1c0d81f59a63",
+  },
   {
     id: "dev-kanban",
     name: "开发看板",
@@ -26,6 +46,7 @@ export const FIRST_PARTY_PRESETS = [
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-dev-kanban.git",
     catalogPin: "2213e8983ce46c8804c96950af21bd1f3cde1200",
+    sourceDirectory: "Bottega-app-dev-kanban",
   },
   {
     id: "expense-tracker",
@@ -41,6 +62,7 @@ export const FIRST_PARTY_PRESETS = [
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-expense-tracker.git",
     catalogPin: "910eb2939d5eee9784f315b9823cc57d7cc6bea3",
+    sourceDirectory: "Bottega-app-expense-tracker",
   },
   {
     id: "fitness-log",
@@ -56,6 +78,7 @@ export const FIRST_PARTY_PRESETS = [
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-fitness-log.git",
     catalogPin: "8b95e845bdb517dfe40fa264fd02c3188eb3d2b6",
+    sourceDirectory: "Bottega-app-fitness-log",
   },
 ] as const satisfies readonly PresetCatalogEntry[];
 
@@ -66,7 +89,13 @@ export class PresetCatalog {
 
   list(): PresetAppSummary[] {
     return [...this.entries.values()].map(
-      ({ canonicalRepoUrl: _url, catalogPin: _pin, ...summary }) =>
+      ({
+        canonicalRepoUrl: _url,
+        catalogPin: _pin,
+        sourceDirectory: _directory,
+        factoryTreeDigest: _factoryDigest,
+        ...summary
+      }) =>
         structuredClone(summary)
     );
   }

@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on React state/callback, createSessionRevisionSubmit and the factories that read the latest SessionSubmitInput by call
- * [OUTPUT]: Provides useSessionRevision, closing revision of submissions, successful disclosure and regular submission disclosure
- * [POS]: Modified interaction status of chat/runtime/session; use-chat-session only combines access blocks with controllers, without modifying transaction details
+ * [INPUT]: Depends on React callback identity, createSessionRevisionSubmit, and a factory that reads the latest SessionSubmitInput per call
+ * [OUTPUT]: Provides the stable useSessionRevision submission callback without transient presentation state
+ * [POS]: The chat/runtime/session revision submission adapter; durable replacement remains owned by create-session-submit
  */
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
   createSessionRevisionSubmit,
   type SessionSubmitInput,
@@ -13,20 +13,9 @@ import {
 export function useSessionRevision(
   buildSubmissionInput: () => SessionSubmitInput
 ) {
-  const [revisionDisclosure, setRevisionDisclosure] = useState(false);
-  const submitRevision = useCallback(
-    async (messageId: string, content: string) => {
-      await createSessionRevisionSubmit(buildSubmissionInput())(
-        messageId,
-        content
-      );
-      setRevisionDisclosure(true);
-    },
+  return useCallback(
+    (messageId: string, content: string) =>
+      createSessionRevisionSubmit(buildSubmissionInput())(messageId, content),
     [buildSubmissionInput]
   );
-  const clearRevisionDisclosure = useCallback(
-    () => setRevisionDisclosure(false),
-    []
-  );
-  return { clearRevisionDisclosure, revisionDisclosure, submitRevision };
 }

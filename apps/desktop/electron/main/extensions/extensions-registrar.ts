@@ -1,18 +1,32 @@
 /**
- * [INPUT]: Depends on rendererIpc, ExtensionRegistryStore/ExtensionInstaller/ExtensionDisableConvergence/ExtensionPackageUninstall and shared renderer-safe extension DTO
- * [OUTPUT]: Provides registerExtensions: installing, component symmetry activation, packing, packing/unloading 11 IPCs and changing the broadcast
- * [POS]: The extension of the renderer boundary; The real path and the internal structure of admission are projected here and never come off
+ * [INPUT]: Depends on rendererIpc, Project lifecycle authority, scoped Extension owners, and diagnostic AgentPluginInventory
+ * [OUTPUT]: Provides scope-aware Extension IPC v2, exact-owner CAS validation, renderer-safe owned snapshots, and independently isolated revision-only invalidation fan-out
+ * [POS]: Main-only renderer boundary; scope filtering and Project incarnation checks finish before any lifecycle mutation or DTO projection
  */
 
 import type { BrowserWindow } from "electron";
 import {
+  assertExtensionDigestIdentity,
   EXTENSIONS_CHANNEL,
+  type ExtensionComponentRecord,
   type ExtensionPreflightView,
+  type ExtensionScopeMutation,
+  type ExtensionScopeQuery,
+  type ExtensionsChangedEvent,
   type ExtensionsSnapshot,
   type Sha256Digest,
 } from "../../../shared/extensions-ipc";
+import {
+  assertProductResourceScope,
+  type ProductResourceScope,
+} from "../../../shared/product-resource-scope";
+import type { AgentBackendId } from "../../../shared/agent-ipc";
 import { rendererIpc } from "../ipc-registrar";
-import type { ExtensionInstaller, ExtensionInstallPreflight } from "./install/installer";
+import type { ProjectsService } from "../projects/projects-service";
+import type {
+  ExtensionInstaller,
+  ExtensionInstallPreflight,
+} from "./install/installer";
 import type { ExtensionDisableConvergence } from "./lifecycle/disable-convergence";
 import type { ExtensionPackageUninstall } from "./lifecycle/package-uninstall";
 import type { ExtensionRegistryStore } from "./registry-store";
@@ -21,7 +35,7 @@ import {
   backendExtensionProbe,
   EXTENSION_PRODUCT_POLICY,
 } from "./product-policy";
-import type { AgentBackendId } from "../../../shared/agent-ipc";
+import type { AgentPluginInventory } from "./agent-plugin-inventory";
 
 const SETTINGS_BACKENDS: readonly AgentBackendId[] = [
   "codex",
@@ -30,13 +44,20 @@ const SETTINGS_BACKENDS: readonly AgentBackendId[] = [
   "opencode",
 ];
 
+export function isRendererVisibleExtensionComponent(
+  component: Pick<ExtensionComponentRecord, "kind">
+) {
+  return component.kind === "skill" || component.kind === "mcp-server";
+}
+
 export type ExtensionsRegistrarDependencies = {
   registry: ExtensionRegistryStore;
   installer: ExtensionInstaller;
   convergence: ExtensionDisableConvergence;
   uninstall: ExtensionPackageUninstall;
-  /* 启用/停用/安装都会改变 `$` 面板候选集；不失效就要等 TTL 才看得见。 */
-  onChanged: () => void;
+  agentPlugins: AgentPluginInventory;
+  projects: Pick<ProjectsService, "store" | "getProjectLifecycleRevision">;
+  onChanged: (scope: ProductResourceScope) => void;
 };
 
 export function registerExtensions(
@@ -44,69 +65,138 @@ export function registerExtensions(
   rendererUrl: string,
   deps: ExtensionsRegistrarDependencies
 ) {
-  const publish = async () => {
-    deps.onChanged();
-    const value = await projectSnapshot(deps);
-    window.webContents.send(EXTENSIONS_CHANNEL.changed, value);
-    return value;
+  const sendInvalidation = (event: {
+    scope: ProductResourceScope;
+    scopeRevision: number;
+  }) => {
+    publishExtensionInvalidation(event, {
+      onChanged: deps.onChanged,
+      projectLifecycleRevision: (projectId) =>
+        deps.projects.getProjectLifecycleRevision(projectId) ?? null,
+      send: (value) =>
+        window.webContents.send(EXTENSIONS_CHANNEL.changed, value),
+    });
   };
+  const unsubscribe = deps.registry.onInventoryChanged(sendInvalidation);
+  window.once("closed", unsubscribe);
+
+  const snapshot = (query: ExtensionScopeQuery) => projectSnapshot(deps, query);
   rendererIpc(window, rendererUrl, "拒绝非主窗口的扩展请求")
-    .handle(EXTENSIONS_CHANNEL.list, () => projectSnapshot(deps))
-    .handle(EXTENSIONS_CHANNEL.preflight, async (raw) =>
-      projectPreflight(await deps.installer.preflight(assertPreflightInput(raw)))
+    .roles("main")
+    .handle(EXTENSIONS_CHANNEL.list, (raw) =>
+      snapshot(assertExtensionQuery(raw, deps))
     )
+    .handle(EXTENSIONS_CHANNEL.preflight, async (raw) => {
+      const input = assertExtensionPreflightInput(raw, deps);
+      return projectPreflight(await deps.installer.preflight(input));
+    })
     .handle(EXTENSIONS_CHANNEL.confirm, async (raw) => {
-      await deps.installer.confirm(assertConfirmInput(raw));
-      return publish();
+      const input = assertExtensionConfirmInput(raw);
+      const held = deps.installer.heldAuthorization(input.preflightId);
+      if (!held) throw conflict("扩展预检已失效");
+      assertAuthority(
+        {
+          scope: held.scope,
+          expectedProjectLifecycleRevision: held.projectLifecycleRevision,
+        },
+        deps
+      );
+      await deps.installer.confirm(input);
+      return snapshot({
+        scope: held.scope,
+        expectedProjectLifecycleRevision: held.projectLifecycleRevision,
+      });
     })
     .handle(EXTENSIONS_CHANNEL.discard, (raw) =>
       deps.installer.discard(assertString(raw, "preflightId"))
     )
-    .handle(EXTENSIONS_CHANNEL.enableComponent, async (raw) => {
-      await deps.registry.enableComponent(assertString(raw, "componentIdentity"));
-      return publish();
-    })
-    .handle(EXTENSIONS_CHANNEL.disableComponent, async (raw) => {
-      await deps.registry.disableComponent(assertString(raw, "componentIdentity"));
-      return publish();
-    })
-    /* deny 与三道闸（新计划 / 新 projection binding / 新产品会话）在提交这一刻
-       生效，随后才是可重试的四步收敛。收敛没走完就停在 disable-pending——
-       状态里那句话是真的，不是占位。 */
     .handle(EXTENSIONS_CHANNEL.beginDisable, async (raw) => {
-      await deps.convergence.beginDisable(assertString(raw, "installIdentity"));
-      return publish();
+      const input = assertExtensionMutation(raw, deps);
+      await deps.convergence.beginDisable(input);
+      return snapshot(queryOf(input));
     })
-    /* 卸载的第一次调用只做两件事：关闸、把还欠着的 durable 引用摆出来。真正
-       的删除要等用户把那些引用解决掉，所以这里从不「顺便就删了」。 */
     .handle(EXTENSIONS_CHANNEL.beginUninstall, async (raw) => {
-      await deps.uninstall.begin(assertString(raw, "installIdentity"));
-      return publish();
+      const input = assertExtensionMutation(raw, deps);
+      await deps.uninstall.begin(input);
+      return snapshot(queryOf(input));
     })
     .handle(EXTENSIONS_CHANNEL.resolveUninstall, async (raw) => {
-      const input = assertObject(raw, "扩展卸载参数");
+      const object = assertObject(raw, "扩展卸载参数");
+      const input = assertExtensionMutation(object, deps, ["migrateAppIds"]);
       await deps.uninstall.resolve({
-        installIdentity: assertString(input.installIdentity, "installIdentity"),
-        migrateAppIds: assertStringArray(input.migrateAppIds, "migrateAppIds"),
+        ...input,
+        migrateAppIds: assertStringArray(object.migrateAppIds, "migrateAppIds"),
       });
-      return publish();
+      return snapshot(queryOf(input));
     })
     .handle(EXTENSIONS_CHANNEL.cancelUninstall, async (raw) => {
-      await deps.uninstall.cancel(assertString(raw, "installIdentity"));
-      return publish();
+      const input = assertExtensionMutation(raw, deps);
+      await deps.uninstall.cancel(input);
+      return snapshot(queryOf(input));
     })
-    /* 数据删除单独一条命令，且永远不由卸载顺手调用：package 代码回收与「丢掉
-       这个安装的全部历史」不该共用一个按钮。 */
     .handle(EXTENSIONS_CHANNEL.purgeInstallData, async (raw) => {
-      await deps.uninstall.purgeInstallData(assertString(raw, "installIdentity"));
-      return publish();
+      const input = assertExtensionMutation(raw, deps);
+      await deps.uninstall.purgeInstallData(input);
+      return snapshot(queryOf(input));
+    })
+    /* Diagnostic/L1-only data plane. The renderer bridge exposes no control and
+       the primary Extensions UI never consumes agentPlugins. */
+    .handle(EXTENSIONS_CHANNEL.setAgentPluginEnabled, async (raw) => {
+      const input = assertObject(raw, "Agent Plugin 参数");
+      if (input.backendId !== "claude" || typeof input.enabled !== "boolean") {
+        throw new Error("仅 Claude 支持产品内逐项启停");
+      }
+      await deps.agentPlugins.setClaudeEnabled(
+        assertString(input.pluginId, "pluginId"),
+        input.enabled
+      );
+      const query = {
+        scope: { kind: "global" } as const,
+        expectedProjectLifecycleRevision: null,
+      };
+      return snapshot(query);
     });
 }
 
+export function publishExtensionInvalidation(
+  event: Readonly<{ scope: ProductResourceScope; scopeRevision: number }>,
+  consumers: Readonly<{
+    onChanged(scope: ProductResourceScope): void;
+    projectLifecycleRevision(projectId: string): number | null;
+    send(value: ExtensionsChangedEvent): void;
+  }>
+) {
+  try {
+    consumers.onChanged(event.scope);
+  } catch (cause) {
+    console.warn("[extensions] internal invalidation consumer failed", cause);
+  }
+  let projectLifecycleRevision: number | null = null;
+  if (event.scope.kind === "project") {
+    try {
+      projectLifecycleRevision = consumers.projectLifecycleRevision(
+        event.scope.projectId
+      );
+    } catch (cause) {
+      console.warn("[extensions] Project invalidation authority failed", cause);
+    }
+  }
+  try {
+    consumers.send({ ...event, projectLifecycleRevision });
+  } catch (cause) {
+    console.warn("[extensions] renderer invalidation delivery failed", cause);
+  }
+}
+
 async function projectSnapshot(
-  deps: ExtensionsRegistrarDependencies
+  deps: ExtensionsRegistrarDependencies,
+  query: ExtensionScopeQuery
 ): Promise<ExtensionsSnapshot> {
-  const inventory = deps.registry.snapshot();
+  assertAuthority(query, deps);
+  const inventory = deps.registry.ownedInventory(
+    query.scope,
+    query.expectedProjectLifecycleRevision
+  );
   const capability = SETTINGS_BACKENDS.map((backendId) =>
     buildExtensionCapabilitySnapshot({
       inventory,
@@ -120,13 +210,15 @@ async function projectSnapshot(
   );
   const packages = [];
   for (const item of inventory.packages) {
-    const enabled = new Set(item.enabledComponentIdentities);
+    const enabled = new Set(item.enabledComponentInstanceIdentities);
     const activeId = item.activeGenerationRef?.packageGenerationId;
     const activeGeneration = item.generations.find(
       (generation) => generation.packageGenerationId === activeId
     );
     packages.push({
       installIdentity: item.installIdentity,
+      scope: item.scope,
+      sourceIdentity: item.sourceIdentity,
       adapterId: activeGeneration?.admissionEvidence.adapterId ?? "unknown",
       displayName:
         activeGeneration?.displayName ??
@@ -145,34 +237,47 @@ async function projectSnapshot(
       components: inventory.components
         .filter(
           (component) =>
+            isRendererVisibleExtensionComponent(component) &&
             component.packageGenerationRef.packageGenerationId === activeId
         )
         .map((component) => ({
-          componentIdentity: component.componentIdentity,
+          declaredComponentIdentity: component.declaredComponentIdentity,
+          componentInstanceIdentity: component.componentInstanceIdentity,
           componentId: component.componentId,
           kind: component.kind,
           transport: component.transport,
-          enabled: enabled.has(component.componentIdentity),
-          eligibility: capability.map((snapshot) => {
-            const entry = snapshot.entries.find(
-              (value) => value.componentIdentity === component.componentIdentity
-            )!;
+          enabled: enabled.has(component.componentInstanceIdentity),
+          eligibility: capability.map((capabilitySnapshot) => {
+            const entry = capabilitySnapshot.entries.find(
+              (value) =>
+                value.componentInstanceIdentity ===
+                component.componentInstanceIdentity
+            );
+            if (!entry) {
+              return {
+                backendId: capabilitySnapshot.backendId,
+                channel: component.transport,
+                eligible: false,
+                strength: "unsupported-by-policy" as const,
+                exclusionCode: "transport-unsupported" as const,
+              };
+            }
             return {
-              backendId: snapshot.backendId,
+              backendId: capabilitySnapshot.backendId,
               channel: component.transport,
               eligible: entry.eligible,
               strength: entry.deliveryStrength,
-              ...(entry.exclusion ? { exclusionCode: entry.exclusion.code } : {}),
+              ...(entry.exclusion
+                ? { exclusionCode: entry.exclusion.code }
+                : {}),
             };
           }),
-          /* M3 健康账本未供给前，无观察只能是 unknown。 */
           deliveryHealth: SETTINGS_BACKENDS.map((backendId) => ({
             backendId,
             channel: component.transport,
             status: "unknown" as const,
           })),
         })),
-      /* 旧代不是垃圾：仍被精确绑定时保持不可变可寻址，UI 必须能看见它们。 */
       retainedGenerations: item.generations
         .filter((generation) => generation.packageGenerationId !== activeId)
         .map((generation) => ({
@@ -192,12 +297,24 @@ async function projectSnapshot(
       uninstall: await deps.uninstall.viewOf(item.installIdentity),
     });
   }
+  const turnContext = query.scope.kind === "project"
+    ? {
+        projectId: query.scope.projectId,
+        projectLifecycleRevision: query.expectedProjectLifecycleRevision,
+      }
+    : { projectId: null, projectLifecycleRevision: null };
   return {
+    version: inventory.version,
     packages,
-    productSessionAdmissionClosed: deps.convergence.productSessionAdmissionClosed(),
-    /* 包没了、数据还在，是必须一直看得见的状态：藏起来就等于宣称卸载已经
-       「什么都没剩下」，而下次装同一个仓库时那份旧数据会原样回来。 */
-    retainedInstallData: await deps.uninstall.retainedInstallData(),
+    /* Diagnostic/L1 only: Project snapshots keep the stable shape but no CLI
+       backend inventory crosses the Project owner boundary. */
+    agentPlugins:
+      query.scope.kind === "global"
+        ? await deps.agentPlugins.snapshot(inventory)
+        : [],
+    productSessionAdmissionClosed:
+      deps.convergence.productSessionAdmissionClosed(turnContext),
+    retainedInstallData: await deps.uninstall.retainedInstallData(query.scope),
   };
 }
 
@@ -209,6 +326,10 @@ function projectPreflight(
     contentDigest: preflight.contentDigest,
     componentNamespace: preflight.componentNamespace,
     installIdentity: preflight.installIdentity,
+    scope: preflight.scope,
+    sourceIdentity: preflight.sourceIdentity,
+    projectLifecycleRevision: preflight.projectLifecycleRevision,
+    scopeRevision: preflight.scopeRevision,
     adapterId: preflight.adapterId,
     source: {
       normalizedUrl: preflight.source.normalizedUrl,
@@ -227,8 +348,28 @@ function projectPreflight(
   };
 }
 
-function assertPreflightInput(raw: unknown) {
+export function assertExtensionPreflightInput(
+  raw: unknown,
+  deps: ExtensionsRegistrarDependencies
+) {
   const input = assertObject(raw, "扩展预检参数");
+  assertExactKeys(input, [
+    "repoUrl",
+    "requestedRef",
+    "subdirectory",
+    "scope",
+    "expectedProjectLifecycleRevision",
+    "expectedScopeRevision",
+  ]);
+  const authority = assertAuthority(
+    {
+      scope: assertProductResourceScope(input.scope),
+      expectedProjectLifecycleRevision: assertNullableRevision(
+        input.expectedProjectLifecycleRevision
+      ),
+    },
+    deps
+  );
   return {
     repoUrl: assertString(input.repoUrl, "repoUrl"),
     ...(input.requestedRef === undefined
@@ -237,13 +378,31 @@ function assertPreflightInput(raw: unknown) {
     ...(input.subdirectory === undefined
       ? {}
       : { subdirectory: assertString(input.subdirectory, "subdirectory") }),
+    scope: authority.scope,
+    expectedProjectLifecycleRevision:
+      authority.expectedProjectLifecycleRevision,
+    expectedScopeRevision: assertRevision(
+      input.expectedScopeRevision,
+      "expectedScopeRevision"
+    ),
   };
 }
 
-function assertConfirmInput(raw: unknown) {
+export function assertExtensionConfirmInput(raw: unknown) {
   const input = assertObject(raw, "扩展确认参数");
-  const digest = assertString(input.expectedContentDigest, "expectedContentDigest");
-  if (!/^sha256:[a-f0-9]{64}$/.test(digest)) throw new Error("contentDigest 格式无效");
+  assertExactKeys(input, [
+    "preflightId",
+    "expectedContentDigest",
+    "expectedResolvedCommit",
+    "migrateAppIds",
+  ]);
+  const digest = assertString(
+    input.expectedContentDigest,
+    "expectedContentDigest"
+  );
+  if (!/^sha256:[a-f0-9]{64}$/.test(digest)) {
+    throw new Error("contentDigest 格式无效");
+  }
   return {
     preflightId: assertString(input.preflightId, "preflightId"),
     expectedContentDigest: digest as Sha256Digest,
@@ -255,6 +414,83 @@ function assertConfirmInput(raw: unknown) {
   };
 }
 
+export function assertExtensionQuery(
+  raw: unknown,
+  deps: ExtensionsRegistrarDependencies
+): ExtensionScopeQuery {
+  const input = assertObject(raw, "Extension scope query");
+  assertExactKeys(input, ["scope", "expectedProjectLifecycleRevision"]);
+  return assertAuthority(
+    {
+      scope: assertProductResourceScope(input.scope),
+      expectedProjectLifecycleRevision: assertNullableRevision(
+        input.expectedProjectLifecycleRevision
+      ),
+    },
+    deps
+  );
+}
+
+export function assertExtensionMutation(
+  raw: unknown,
+  deps: ExtensionsRegistrarDependencies,
+  extraKeys: readonly string[] = []
+): ExtensionScopeMutation {
+  const input = assertObject(raw, "Extension scope mutation");
+  assertExactKeys(input, [
+    "installIdentity",
+    "expectedScope",
+    "expectedProjectLifecycleRevision",
+    "expectedScopeRevision",
+    ...extraKeys,
+  ]);
+  const authority = assertAuthority(
+    {
+      scope: assertProductResourceScope(input.expectedScope),
+      expectedProjectLifecycleRevision: assertNullableRevision(
+        input.expectedProjectLifecycleRevision
+      ),
+    },
+    deps
+  );
+  return {
+    installIdentity: assertExtensionDigestIdentity(
+      input.installIdentity,
+      "installIdentity"
+    ),
+    expectedScope: authority.scope,
+    expectedProjectLifecycleRevision:
+      authority.expectedProjectLifecycleRevision,
+    expectedScopeRevision: assertRevision(
+      input.expectedScopeRevision,
+      "expectedScopeRevision"
+    ),
+  };
+}
+
+function assertAuthority(
+  query: ExtensionScopeQuery,
+  deps: ExtensionsRegistrarDependencies
+): ExtensionScopeQuery {
+  if (query.scope.kind === "global") {
+    if (query.expectedProjectLifecycleRevision !== null) {
+      throw conflict("Global scope 不接受 Project lifecycle revision");
+    }
+    return query;
+  }
+  const expected = query.expectedProjectLifecycleRevision;
+  if (expected === null) throw conflict("Project scope 缺少 lifecycle revision");
+  deps.projects.store.assertProjectLifecycle(query.scope.projectId, expected);
+  return query;
+}
+
+function queryOf(input: ExtensionScopeMutation): ExtensionScopeQuery {
+  return {
+    scope: input.expectedScope,
+    expectedProjectLifecycleRevision: input.expectedProjectLifecycleRevision,
+  };
+}
+
 function assertObject(raw: unknown, label: string) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error(`${label}无效`);
@@ -262,8 +498,21 @@ function assertObject(raw: unknown, label: string) {
   return raw as Record<string, unknown>;
 }
 
+function assertExactKeys(
+  input: Record<string, unknown>,
+  allowed: readonly string[]
+) {
+  const allow = new Set(allowed);
+  const unexpected = Object.keys(input).filter((key) => !allow.has(key));
+  if (unexpected.length) {
+    throw new Error(`Extension IPC 含未声明字段：${unexpected.join("、")}`);
+  }
+}
+
 function assertString(raw: unknown, field: string) {
-  if (typeof raw !== "string" || !raw.trim()) throw new Error(`${field} 无效`);
+  if (typeof raw !== "string" || !raw.trim()) {
+    throw new Error(`${field} 无效`);
+  }
   return raw;
 }
 
@@ -271,4 +520,24 @@ function assertStringArray(raw: unknown, field: string) {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) throw new Error(`${field} 无效`);
   return raw.map((item) => assertString(item, field));
+}
+
+function assertNullableRevision(raw: unknown) {
+  if (raw === null) return null;
+  return assertRevision(raw, "projectLifecycleRevision");
+}
+
+function assertRevision(raw: unknown, field: string) {
+  if (
+    typeof raw !== "number" ||
+    !Number.isSafeInteger(raw) ||
+    raw < 0
+  ) {
+    throw new Error(`${field} 无效`);
+  }
+  return raw;
+}
+
+function conflict(message: string) {
+  return Object.assign(new Error(message), { status: 409 });
 }

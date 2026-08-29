@@ -1,10 +1,15 @@
 /**
- * [INPUT]: Depends on the SidePanelState discrimination of the chat-session-model
- * [OUTPUT]: Provides retainable SidePanel to determine the boundary between the LRU recall/rememberSidePanel and the incarnation fence
- * [POS]: The third row of the chat/runtime/session is the cross-attached registry; Each chat only retains the latest known generation, and the unknown identity does not fit into the global memory
+ * [INPUT]: Depends on PanelSessionContext identity helpers and SidePanelState
+ * [OUTPUT]: Provides bounded generation-fenced recall/remember operations for self-attesting panel state
+ * [POS]: Cross-mount side-panel memory for chat/runtime/session; empty draft generations never enter global storage
  */
 
-import type { SidePanelState } from "../chat-session-model";
+import {
+  panelConversationKey,
+  panelGenerationKey,
+  type PanelSessionContext,
+  type SidePanelState,
+} from "../chat-session-model";
 
 const CLOSED: SidePanelState = { kind: "none" };
 const MAX_OPENED_PANELS = 64;
@@ -19,7 +24,7 @@ export function retainableSidePanel(state: SidePanelState) {
 }
 
 type RememberedSidePanel = {
-  incarnationId: string;
+  generationKey: string;
   state: SidePanelState;
 };
 
@@ -40,26 +45,32 @@ function evictOldest() {
 
 /** 未知世代不得覆盖已知记忆；已知新世代则取代旧世代。 */
 export function rememberSidePanel(
-  chatId: string,
-  incarnationId: string | null,
+  context: PanelSessionContext,
   state: SidePanelState
 ) {
-  if (incarnationId === null) return;
+  const conversationKey = panelConversationKey(context);
+  const generationKey = panelGenerationKey(context);
+  // draft 没有可验证代际，不能覆盖同 conversation key 的已知产品记忆。
+  if (!generationKey) return;
   if (!retainableSidePanel(state)) {
-    opened.delete(chatId);
+    opened.delete(conversationKey);
     return;
   }
-  touch(chatId, { incarnationId, state });
+  touch(conversationKey, { generationKey, state });
   evictOldest();
 }
 
 export function recallSidePanel(
-  chatId: string,
-  incarnationId: string | null
+  context: PanelSessionContext
 ): SidePanelState {
-  if (incarnationId === null) return CLOSED;
-  const remembered = opened.get(chatId);
-  if (!remembered || remembered.incarnationId !== incarnationId) return CLOSED;
-  touch(chatId, remembered);
+  const conversationKey = panelConversationKey(context);
+  const remembered = opened.get(conversationKey);
+  if (
+    !remembered ||
+    remembered.generationKey !== panelGenerationKey(context)
+  ) {
+    return CLOSED;
+  }
+  touch(conversationKey, remembered);
   return remembered.state;
 }

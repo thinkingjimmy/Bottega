@@ -1,39 +1,23 @@
 /**
- * [INPUT]: Depends on Node fs/path, zod, install/manifest-schema contractsheet, shared Apps Record contracts, Base GUI grant/build participant, app-extension-generation narrow ports/build participant registry with AppServerCutoverPort
- * [OUTPUT]: Provides AppStore v12 generation single writer, fsync-checkpointed v11 restage, interrupt/damaged backup isolation after an empty cold start, pure metadata update, explicit publish/cutover, immutable artifact root, active/pending/draining binding, zero capability, without consent and participant-first Base GUI decline/abort tasks
- * [POS]: The only source of truth for the enduring application modules; Generations are based on three abstract bindings of the release bytes and manifests, DTO dir is a variable workspace and not an execution root, and runtime root is derived only from a sealed receipt
+ * [INPUT]: Depends on App store schema/recovery, generation planning/building, shared App contracts, participant ledgers, Base GUI grants, and server cutover ports
+ * [OUTPUT]: Provides the AppStore v12 single-writer facade, public generation commands, durable record commits, immutable artifact roots, and a `watch` subscription for every committed record
+ * [POS]: Canonical App record and broadcast authority; schema, recovery, and generation sagas live in focused siblings while this facade serializes mutations and prevents stale renderer projections
  */
 
 import {
   copyFile,
   mkdir,
   readFile,
-  readdir,
-  rename,
-  rm,
 } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative } from "node:path";
-import { createHash, randomUUID } from "node:crypto";
-import { z } from "zod";
-import { agentBackendIdSchema } from "../../../shared/agent-schema";
+import { randomUUID } from "node:crypto";
 import type {
-  AppDomainIdentity,
-  AppExtensionResolutionBinding,
-  AppGeneration,
-  AppGenerationRuntimeBinding,
-  AppManifest,
   AppRecord,
-  BaseGuiCapabilityDecision,
   BaseGuiCapability,
+  BaseGuiCapabilityScopes,
+  BaseGuiHostActionCapability,
 } from "../../../shared/apps-ipc";
-import { requestedBaseGuiCapabilities } from "../../../shared/apps-ipc";
-import type {
-  AppExtensionRequirementDeclaration,
-  Sha256Digest,
-} from "../../../shared/extensions-ipc";
-import type { AppGenerationBuildOperation } from "../../../shared/app-lifecycle";
 import { errorMessage } from "../errors";
-import { appManifestSchema } from "./install/manifest-schema";
 import { SerialQueue } from "../persistence/serial-queue";
 import { durableReplaceFile } from "../persistence/durable-json";
 import type { AppGenerationBuildLedger } from "./app-generation-build-ledger";
@@ -41,468 +25,21 @@ import type {
   AppServerCutoverPort,
   PreparedServerCutover,
 } from "./app-server-cutover";
-import type {
-  AppExtensionGenerationConsent,
-  AppExtensionGenerationHandoff,
-  AppExtensionGenerationPort,
-} from "./app-extension-generation";
+import type { AppExtensionGenerationPort } from "./app-extension-generation";
 import type { AppGenerationBuildParticipantRegistry } from "../lifecycle/app-generation-build-participants";
 import type { BaseGuiGrantStore } from "./base-gui/grant-store";
 import { BaseGuiBuildParticipant } from "./base-gui/build-participant";
+import { AppGenerationBuilder } from "./app-generation-builder";
+import { AppStoreRecovery } from "./app-store-recovery";
 import {
-  inspectPackageDigests,
-  removePackageArtifact,
-  sealPackageArtifact,
-  verifyPackageArtifact,
-  type PackageDigestSet,
-} from "./share/package-contract";
-
-const SCHEMA_VERSION = 12;
-const APP_ID_PATTERN = /^[a-z0-9]{10}$/;
-const REPO_PATTERN =
-  /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
-const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
-const digestSchema = z
-  .string()
-  .regex(DIGEST_PATTERN)
-  .transform((value) => value as `sha256:${string}`);
-
-const packageGenerationRefSchema = z
-  .object({
-    packageGenerationId: z.string().min(1),
-    recordDigest: digestSchema,
-  })
-  .strict();
-const frozenReasonSchema = z
-  .object({
-    taxonomyVersion: z.literal(1),
-    code: z.enum([
-      "package-not-installed",
-      "no-matching-generation",
-      "generation-not-admitted",
-      "generation-removal-pending",
-      "component-not-found",
-      "identity-conflict",
-      "invalid-app-config",
-    ]),
-    parameters: z.record(z.string(), z.string()),
-    evidenceDigest: digestSchema,
-  })
-  .strict();
-const frozenRequirementSchema = z.discriminatedUnion("state", [
-  z
-    .object({
-      state: z.literal("resolved"),
-      componentIdentity: z.string().min(1),
-      packageGenerationRef: packageGenerationRefSchema,
-      required: z.boolean(),
-      declarationDigest: digestSchema,
-      resolvedConfigDigest: digestSchema,
-      capabilitySetDigest: digestSchema,
-    })
-    .strict(),
-  z
-    .object({
-      state: z.literal("unresolved"),
-      componentIdentity: z.string().min(1),
-      required: z.boolean(),
-      declarationDigest: digestSchema,
-      reason: frozenReasonSchema,
-    })
-    .strict(),
-]);
-const frozenSetSchema = z
-  .object({
-    resolutionId: z.string().min(1),
-    appGenerationId: z.string().min(1),
-    registryRevision: z.string().min(1),
-    inventorySnapshotDigest: digestSchema,
-    graphDigest: digestSchema,
-    resolutionDigest: digestSchema,
-    status: z.enum(["ready", "degraded", "blocked"]),
-    extensionRequirements: z.array(frozenRequirementSchema),
-  })
-  .strict();
-const extensionResolutionSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("none") }).strict(),
-  z
-    .object({
-      kind: z.literal("frozen"),
-      frozenSet: frozenSetSchema,
-      packageGenerationReservationId: z.string().min(1),
-    })
-    .strict(),
-]);
-const runtimeBindingSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("none") }).strict(),
-  z
-    .object({ kind: z.literal("server"), dataEpochId: z.string().min(1) })
-    .strict(),
-]);
-const legacyGenerationSchema = z
-  .object({
-    generationId: z.string().min(1),
-    generationBuildId: z.string().min(1),
-    contentDigest: digestSchema,
-    manifest: appManifestSchema,
-    extensionRequirementResolution: extensionResolutionSchema,
-    contentLayoutVersion: z.literal(1),
-    createdAt: z.number().int().nonnegative(),
-  })
-  .strict()
-  .superRefine(
-  (generation, context) => {
-    if (generation.contentDigest !== digest({ manifest: generation.manifest })) {
-      context.addIssue({
-        code: "custom",
-        path: ["contentDigest"],
-        message: "App generation sealed manifest digest 不匹配",
-      });
-    }
-  }
-);
-const generationV2Schema = z
-  .object({
-    generationId: z.string().min(1),
-    generationBuildId: z.string().min(1),
-    manifestDigest: digestSchema,
-    sourcePackageDigest: digestSchema,
-    contentDigest: digestSchema,
-    manifest: appManifestSchema,
-    extensionRequirementResolution: extensionResolutionSchema,
-    contentLayoutVersion: z.literal(2),
-    createdAt: z.number().int().nonnegative(),
-  })
-  .strict();
-/* v1 只允许 load 后立刻 restage；所有 commit 都由 commitRecord 的 v2 guard 拦住。 */
-const generationSchema = z.union([legacyGenerationSchema, generationV2Schema]);
-const domainIdentitySchema = z.discriminatedUnion("kind", [
-  z
-    .object({ kind: z.literal("no-data"), appKind: z.enum(["static", "server"]) })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("base"),
-      domain: z.object({ kind: z.literal("ordinary") }).strict(),
-    })
-    .strict(),
-]);
-const generationBindingSchema = z
-  .object({
-    bindingRevision: z.number().int().nonnegative(),
-    active: z
-      .object({ generationId: z.string().min(1), runtime: runtimeBindingSchema })
-      .strict()
-      .nullable(),
-    pending: z
-      .object({
-        generationId: z.string().min(1),
-        expectedActiveGenerationId: z.string().min(1).nullable(),
-        resolutionDigest: digestSchema,
-        packageGenerationReservationId: z.string().min(1),
-        runtime: runtimeBindingSchema,
-        consentDecisionId: z.string().min(1),
-        expectedConsentRevision: z.number().int().nonnegative(),
-        baseGuiDecision: z
-          .object({
-            decisionId: z.string().uuid(),
-            expectedRevision: z.number().int().positive(),
-            requestedCapabilities: z.array(
-              z.enum(["row-insert", "row-patch", "row-delete", "attachment-read"])
-            ).max(4),
-            state: z.enum(["consent-required", "approved", "declined"]),
-          })
-          .strict()
-          .optional(),
-        extensionState: z
-          .enum(["consent-required", "ready-to-promote"])
-          .optional(),
-        state: z.enum(["consent-required", "ready-to-promote"]),
-      })
-      .strict()
-      .optional(),
-    drainingGenerationIds: z.array(z.string().min(1)),
-  })
-  .strict();
-
-const appRecordSchema = z
-  .object({
-    id: z.string().regex(APP_ID_PATTERN),
-    sourceRepoUrl: z.string().regex(REPO_PATTERN).nullable(),
-    publishedRepoUrl: z.string().regex(REPO_PATTERN).nullable(),
-    origin: z.enum(["github", "local", "preset"]),
-    presetId: z.string().regex(/^[a-z][a-z0-9-]{1,38}$/).optional(),
-    installedPresetPin: z.string().regex(/^[0-9a-f]{40}$/).optional(),
-    displayName: z.string().trim().min(1).max(250),
-    dir: z.string().min(1),
-    state: z.enum([
-      "creating",
-      "installing",
-      "ready",
-      "install-failed",
-      "updating",
-      "update-failed",
-      "deleting",
-      "delete-failed",
-      "quarantined",
-    ]),
-    lastError: z
-      .object({
-        phase: z.enum([
-          "clone",
-          "manifest",
-          "install",
-          "build",
-          "start",
-          "update",
-          "delete",
-        ]),
-        message: z.string().min(1).max(4_000),
-      })
-      .strict()
-      .nullable(),
-    agentWarning: z.string().min(1).max(4_000).nullable(),
-    agent: agentBackendIdSchema,
-    maintenanceAgent: z.union([
-      agentBackendIdSchema,
-      z.literal("auto"),
-    ]),
-    headlessConsent: z
-      .object({
-        backend: agentBackendIdSchema,
-        version: z.string().min(1).max(200).optional(),
-        consentAt: z.number().int().nonnegative().optional(),
-        inherited: z.boolean().optional(),
-      })
-      .strict()
-      .nullable(),
-    bindingRevision: z.number().int().nonnegative(),
-    lifecycleRevision: z.number().int().nonnegative(),
-    defaultGrant: z
-      .object({
-        appId: z.string().regex(APP_ID_PATTERN),
-        data: z
-          .object({ kind: z.literal("base"), level: z.enum(["read", "row-write"]) })
-          .strict()
-          .optional(),
-        agentDelegation: z
-          .object({ fileRead: z.boolean(), useData: z.boolean() })
-          .strict(),
-        grantedAt: z.number().int().nonnegative(),
-      })
-      .strict()
-      .nullable()
-      .default(null),
-    defaultGrantRevision: z.number().int().nonnegative().default(0),
-    domainIdentity: domainIdentitySchema.nullable(),
-    generations: z.array(generationSchema),
-    generationBinding: generationBindingSchema,
-    manifest: appManifestSchema.nullable(),
-    editChatSlot: z
-      .object({
-        id: z.string().min(1).max(128),
-        state: z.enum(["draft", "canonical"]),
-      })
-      .strict()
-      .nullable(),
-    activeUseChatSlot: z
-      .object({
-        id: z.string().min(1).max(128),
-        state: z.enum(["draft", "canonical"]),
-      })
-      .strict()
-      .nullable(),
-    skillStatus: z
-      .object({
-        state: z.enum(["pending", "done", "failed"]),
-        turnIntentId: z.string().min(1).max(256),
-      })
-      .strict()
-      .nullable(),
-    addedAt: z.number().int().nonnegative(),
-  })
-  .strict()
-  .superRefine((record, context) => {
-    /* 来源与来源仓库是同一件事的两面：github 必有、其余必无，双向断言消灭中间态。 */
-    if (record.origin === "github" && !record.sourceRepoUrl) {
-      context.addIssue({
-        code: "custom",
-        path: ["sourceRepoUrl"],
-        message: "GitHub App 必须保留导入来源",
-      });
-    }
-    if (record.origin !== "github" && record.sourceRepoUrl) {
-      context.addIssue({
-        code: "custom",
-        path: ["sourceRepoUrl"],
-        message: `${record.origin} App 不应携带导入来源`,
-      });
-    }
-    if (
-      record.origin === "preset" &&
-      (!record.presetId || !record.installedPresetPin)
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["presetId"],
-        message: "Preset App 必须保留 presetId 与 installedPresetPin",
-      });
-    }
-    if (
-      record.origin !== "preset" &&
-      (record.presetId || record.installedPresetPin)
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["presetId"],
-        message: "非 Preset App 不应携带 preset provenance",
-      });
-    }
-    const generationIds = record.generations.map(
-      (generation) => generation.generationId
-    );
-    const ids = new Set(generationIds);
-    if (ids.size !== generationIds.length) {
-      context.addIssue({
-        code: "custom",
-        path: ["generations"],
-        message: "generationId 不可重复",
-      });
-    }
-    const activeId = record.generationBinding.active?.generationId;
-    const active = record.generations.find(
-      (generation) => generation.generationId === activeId
-    );
-    if (activeId && !active) {
-      context.addIssue({
-        code: "custom",
-        path: ["generationBinding", "active"],
-        message: "active generation 不存在",
-      });
-    }
-    if (
-      record.generationBinding.pending &&
-      !ids.has(record.generationBinding.pending.generationId)
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["generationBinding", "pending"],
-        message: "pending generation 不存在",
-      });
-    }
-    if (
-      active &&
-      JSON.stringify(active.manifest) !== JSON.stringify(record.manifest)
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["manifest"],
-        message: "manifest projection 与 active generation 不一致",
-      });
-    }
-    if (!active && record.manifest !== null) {
-      context.addIssue({
-        code: "custom",
-        path: ["manifest"],
-        message: "无 active generation 时 manifest 必须为空",
-      });
-    }
-  });
-
-const storeSchema = z
-  .object({
-    schemaVersion: z.literal(SCHEMA_VERSION),
-    apps: z.array(appRecordSchema).max(100),
-    retiredIds: z
-      .array(z.string().regex(APP_ID_PATTERN))
-      .max(10_000)
-      .default([]),
-  })
-  .strict()
-  .superRefine((file, context) => {
-    for (const [appIndex, app] of file.apps.entries()) {
-      for (const [generationIndex, generation] of app.generations.entries()) {
-        if (generation.contentLayoutVersion === 2) continue;
-        context.addIssue({
-          code: "custom",
-          path: ["apps", appIndex, "generations", generationIndex],
-          message: "apps.json v12 不得包含 legacy generation",
-        });
-      }
-    }
-  });
-
-type StoreFile = z.infer<typeof storeSchema>;
-
-const legacyStoreSchema = z
-  .object({
-    schemaVersion: z.literal(11),
-    apps: z.array(appRecordSchema).max(100),
-    retiredIds: z.array(z.string().regex(APP_ID_PATTERN)).max(10_000).default([]),
-  })
-  .strict();
-
-const legacyMigrationCheckpointSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    pendingAppIds: z.array(z.string().regex(APP_ID_PATTERN)).max(100),
-  })
-  .strict();
-type LegacyMigrationCheckpoint = z.infer<
-  typeof legacyMigrationCheckpointSchema
->;
-
-/** v11 是唯一迁移入口；其 shape 先完整验真，再由 load 备份并 restage。
- *  其它旧版/未来版一律抛错，不猜逐版本语义——由 load 备份 `.bak` 后隔离，
- *  按空态冷启动继续（启动不崩，App 重装即可）。 */
-function parseStore(raw: unknown): { file: StoreFile; legacy: boolean } {
-  const version = (raw as { schemaVersion?: unknown } | null)?.schemaVersion;
-  if (version === SCHEMA_VERSION) {
-    return { file: storeSchema.parse(raw), legacy: false };
-  }
-  if (version === 11) {
-    const legacy = legacyStoreSchema.parse(raw);
-    return {
-      file: { ...legacy, schemaVersion: SCHEMA_VERSION },
-      legacy: true,
-    };
-  }
-  throw new Error(`不支持的 apps.json schemaVersion：${String(version)}`);
-}
-
-function digest(value: unknown): `sha256:${string}` {
-  const hash = createHash("sha256").update(canonicalJson(value)).digest("hex");
-  return `sha256:${hash}`;
-}
-
-/**
- * seal 时的 content digest 唯一计算点。测试播种 generation 必须调它而不是抄一份：
- * 抄出来的 digest 只证明抄得对，证明不了被测代码认的是同一个值。
- */
-export function sealedContentDigest(manifest: AppManifest) {
-  return digest({ manifest });
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    return `{${Object.entries(value)
-      .filter(([, item]) => item !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
-function domainIdentity(manifest: AppManifest) {
-  if (manifest.kind === "static" || manifest.kind === "server") {
-    return { kind: "no-data" as const, appKind: manifest.kind };
-  }
-  return { kind: "base" as const, domain: { kind: "ordinary" as const } };
-}
+  APP_ID_PATTERN,
+  SCHEMA_VERSION,
+  appRecordSchema,
+  legacyStoreSchema,
+  parseStore,
+  type StoreFile,
+} from "./app-store-schema";
+export { sealedContentDigest } from "./app-store-schema";
 
 export class AppStore {
   readonly appsRoot: string;
@@ -511,6 +48,10 @@ export class AppStore {
   readonly legacyMigrationPath: string;
   private records = new Map<string, AppRecord>();
   private retiredIds = new Set<string>();
+  /* appId → 上次广播出去的序列化记录；`persist()` 用它做差分，谁也不必记得
+     「我这次改完要不要发一条」。 */
+  private published = new Map<string, string>();
+  private readonly watchers = new Set<(record: AppRecord) => void>();
   private readonly queue = new SerialQueue();
   private buildLedger: AppGenerationBuildLedger | null = null;
   private serverCutover: AppServerCutoverPort | null = null;
@@ -521,12 +62,42 @@ export class AppStore {
   private generationCutover:
     | (<T>(appId: string, operation: () => Promise<T>) => Promise<T>)
     | null = null;
+  private readonly generationBuilder: AppGenerationBuilder;
+  private readonly recovery: AppStoreRecovery;
 
-  constructor(private readonly userData: string) {
+  constructor(userData: string) {
     this.appsRoot = join(userData, "apps");
     this.artifactsRoot = join(userData, "app-generation-artifacts");
     this.filePath = join(userData, "apps.json");
     this.legacyMigrationPath = join(userData, "apps-v11-migration.json");
+    this.generationBuilder = new AppGenerationBuilder({
+      artifactsRoot: this.artifactsRoot,
+      get: (appId) => this.records.get(appId),
+      artifactRoot: (appId, generationId) => this.artifactRoot(appId, generationId),
+      commitRecord: (record, appId, previous) =>
+        this.commitRecord(record, appId, previous),
+      buildLedger: () => this.buildLedger,
+      serverCutover: () => this.serverCutover,
+      participants: () => this.participants,
+      extensions: () => this.extensions,
+      baseGuiGrants: () => this.baseGuiGrants,
+      baseGuiParticipant: () => this.baseGuiParticipant,
+    });
+    this.recovery = new AppStoreRecovery({
+      records: this.records,
+      artifactsRoot: this.artifactsRoot,
+      filePath: this.filePath,
+      legacyMigrationPath: this.legacyMigrationPath,
+      buildLedger: () => this.buildLedger,
+      baseGuiGrants: () => this.baseGuiGrants,
+      get: (appId) => this.records.get(appId),
+      artifactRoot: (appId, generationId) => this.artifactRoot(appId, generationId),
+      assertDerivedPaths: (records) => this.assertDerivedPaths(records),
+      persist: () => this.persist(),
+      commitRecord: (record, appId, previous) => this.commitRecord(record, appId, previous),
+      withServerCutover: (appId, compute) => this.withServerCutover(appId, compute),
+      enqueue: (operation) => this.queue.enqueue(operation),
+    });
   }
 
   configureGenerationLifecycle(
@@ -575,7 +146,11 @@ export class AppStore {
 
   async initialize() {
     await this.load();
-    await this.normalizeInterrupted();
+    await this.normalizeStartupStates();
+  }
+
+  normalizeStartupStates() {
+    return this.recovery.normalizeStartupStates();
   }
 
   async load() {
@@ -605,27 +180,45 @@ export class AppStore {
 
     for (const record of parsed.apps) {
       this.records.set(record.id, structuredClone(record));
+      /* 读盘是「采纳既有真相」而非变更：先记入快照，启动期的迁移/归一化才只
+         广播它们真正改动的那几条，而不是把整张表当成新闻重播一遍。 */
+      this.published.set(record.id, JSON.stringify(record));
     }
     this.retiredIds = new Set([
       ...parsed.retiredIds,
       ...parsed.apps.map((record) => record.id),
     ]);
-    const checkpoint = await this.readLegacyMigrationCheckpoint();
+    const checkpoint = await this.recovery.readLegacyMigrationCheckpoint();
     if (legacy) {
       await durableReplaceFile(
         `${this.filePath}.v11.bak`,
         await readFile(this.filePath, "utf8")
       );
-      await this.migrateLegacyV11(parsed.apps);
+      await this.recovery.migrateLegacyV11(parsed.apps);
     } else if (checkpoint) {
       const backup = legacyStoreSchema.parse(
         JSON.parse(await readFile(`${this.filePath}.v11.bak`, "utf8"))
       );
       this.assertDerivedPaths(backup.apps);
-      await this.migrateLegacyV11(backup.apps, checkpoint);
+      await this.recovery.migrateLegacyV11(backup.apps, checkpoint);
     } else {
-      await this.reconcileArtifacts();
+      await this.recovery.reconcileArtifacts();
     }
+  }
+
+  /**
+   * 记录变更的唯一订阅面。返回退订函数。
+   *
+   * 曾经每条写入都要在 IPC 层手写配一条 `emit({type:"status"})`，于是任何绕过
+   * IPC 的写入路径（工厂 provisioning、installer、runtime、启动自愈）都在重造
+   * 同一个 bug：记录已经换代，renderer 还停在成代前那一帧投影。广播资格不该由
+   * 调用点的记性决定——它属于写入本身。
+   */
+  watch(listener: (record: AppRecord) => void) {
+    this.watchers.add(listener);
+    return () => {
+      this.watchers.delete(listener);
+    };
   }
 
   /** active route 只消费此派生路径；workspace `record.dir` 永远不是 generation root。 */
@@ -633,221 +226,20 @@ export class AppStore {
     return join(this.artifactRoot(appId, generationId), "runtime");
   }
 
-  private artifactRoot(appId: string, generationId: string) {
+  artifactRoot(appId: string, generationId: string) {
     return join(this.artifactsRoot, appId, generationId);
   }
 
-  async normalizeInterrupted() {
-    let recovered = false;
-    for (const [appId, record] of this.records) {
-      if (record.state !== "installing" && record.state !== "updating") continue;
-      const installing = record.state === "installing";
-      this.records.set(appId, {
-        ...record,
-        state: installing ? "install-failed" : "update-failed",
-        lastError: {
-          phase: installing ? "install" : "update",
-          message: "上次操作被中断",
-        },
-      });
-      recovered = true;
-    }
-    if (recovered) await this.persist();
-  }
-
   /**
-   * v11 只证明 manifest，不能继续当 active。checkpoint 必须先于 v12 失效提交；
-   * 此后每个 App 都以「v2 AppRecord 已提交 → 从 pending 移除」为 WAL 顺序。
-   * 进程死在任意两步之间，下一次启动都从 `.v11.bak` 找回输入并幂等续跑。
+   * 启动期归一化两类「本不该存在」的状态，一次遍历、一次落盘：
+   *
+   * 1. 上次进程死在 installing/updating 中途 → 定格为对应失败终态，让用户看得见。
+   * 2. 幻影 start 失败：只有 static/server 才有 web runtime，因而只有它们能在
+   *    `start` 阶段失败。Base App 上的 `phase:"start"` 是调用方越界（曾经由
+   *    manifest 缺席时的反向 kind 判据造成）留下的伤疤，不是 App 的健康事实。
+   *    字节与代绑定从未变动，故这里原样恢复 ready——不是复活，是抹掉一条不可能
+   *    成立的记录，否则 App 会因状态非 ready 而永久失去 surface/授权/Design 资格。
    */
-  private async migrateLegacyV11(
-    legacy: readonly AppRecord[],
-    existingCheckpoint?: LegacyMigrationCheckpoint
-  ) {
-    let checkpoint =
-      existingCheckpoint ?? {
-        schemaVersion: 1 as const,
-        pendingAppIds: legacy.map((record) => record.id),
-      };
-    if (!existingCheckpoint) {
-      await this.writeLegacyMigrationCheckpoint(checkpoint);
-      this.records.clear();
-      for (const record of legacy) {
-        this.records.set(record.id, {
-          ...record,
-          lifecycleRevision: record.lifecycleRevision + 1,
-          generations: [],
-          generationBinding: {
-            bindingRevision: record.generationBinding.bindingRevision + 1,
-            active: null,
-            drainingGenerationIds: [],
-          },
-          manifest: null,
-        });
-      }
-      await this.persist();
-    }
-
-    const byId = new Map(legacy.map((record) => [record.id, record]));
-    for (const appId of [...checkpoint.pendingAppIds]) {
-      const old = byId.get(appId);
-      if (!old) {
-        checkpoint = await this.completeLegacyMigrationApp(checkpoint, appId);
-        continue;
-      }
-      const alreadyRestaged = this.records
-        .get(appId)
-        ?.generations.some((generation) => generation.contentLayoutVersion === 2);
-      if (alreadyRestaged) {
-        checkpoint = await this.completeLegacyMigrationApp(checkpoint, appId);
-        continue;
-      }
-      try {
-        const manifest = appManifestSchema.parse(
-          JSON.parse(await readFile(join(old.dir, "app.json"), "utf8"))
-        );
-        await this.withServerCutover(old.id, () => ({
-          ...this.get(old.id)!,
-          manifest,
-        }));
-      } catch (cause) {
-        await this.queue.enqueue(async () => {
-          const current = this.records.get(old.id);
-          if (!current) return;
-          await this.commitRecord(
-            {
-              ...current,
-              state: "quarantined",
-              manifest: null,
-              lastError: {
-                phase: "manifest",
-                message: `v11 restage 失败：${errorMessage(cause)}`,
-              },
-            },
-            old.id,
-            current
-          );
-        });
-      }
-      checkpoint = await this.completeLegacyMigrationApp(checkpoint, appId);
-    }
-    await rm(this.legacyMigrationPath, { force: true });
-    await this.sweepArtifacts();
-  }
-
-  private async readLegacyMigrationCheckpoint() {
-    try {
-      return legacyMigrationCheckpointSchema.parse(
-        JSON.parse(await readFile(this.legacyMigrationPath, "utf8"))
-      );
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw new Error(`Apps v11 迁移 checkpoint 无效：${errorMessage(cause)}`, {
-        cause,
-      });
-    }
-  }
-
-  private async completeLegacyMigrationApp(
-    checkpoint: LegacyMigrationCheckpoint,
-    appId: string
-  ) {
-    const next = {
-      ...checkpoint,
-      pendingAppIds: checkpoint.pendingAppIds.filter((id) => id !== appId),
-    };
-    await this.writeLegacyMigrationCheckpoint(next);
-    return next;
-  }
-
-  private async writeLegacyMigrationCheckpoint(
-    checkpoint: LegacyMigrationCheckpoint
-  ) {
-    await durableReplaceFile(
-      this.legacyMigrationPath,
-      `${JSON.stringify(checkpoint, null, 2)}\n`
-    );
-  }
-
-  /** Zod 只验记录 shape；active/pending 的真实磁盘字节在启动期异步复验。 */
-  private async reconcileArtifacts() {
-    let changed = false;
-    for (const [appId, record] of this.records) {
-      const liveIds = new Set(
-        [
-          record.generationBinding.active?.generationId,
-          record.generationBinding.pending?.generationId,
-        ].filter((value): value is string => Boolean(value))
-      );
-      try {
-        for (const generation of record.generations) {
-          if (!liveIds.has(generation.generationId)) continue;
-          if (
-            generation.contentLayoutVersion !== 2 ||
-            !generation.manifestDigest ||
-            !generation.sourcePackageDigest
-          ) {
-            throw new Error("active generation 不是 v2 sealed artifact");
-          }
-          await verifyPackageArtifact({
-            root: this.artifactRoot(appId, generation.generationId),
-            manifest: generation.manifest,
-            expected: generationDigests(generation),
-          });
-        }
-      } catch (cause) {
-        this.records.set(appId, {
-          ...record,
-          state: "quarantined",
-          lifecycleRevision: record.lifecycleRevision + 1,
-          manifest: null,
-          lastError: {
-            phase: "manifest",
-            message: `generation artifact 复验失败：${errorMessage(cause)}`,
-          },
-          generationBinding: {
-            ...record.generationBinding,
-            bindingRevision: record.generationBinding.bindingRevision + 1,
-            active: null,
-            pending: undefined,
-          },
-        });
-        changed = true;
-      }
-    }
-    if (changed) await this.persist();
-    await this.sweepArtifacts();
-  }
-
-  private async sweepArtifacts() {
-    const reachable = new Set<string>();
-    for (const record of this.records.values()) {
-      for (const generation of record.generations) {
-        reachable.add(`${record.id}/${generation.generationId}`);
-      }
-    }
-    for (const operation of this.buildLedger?.listNonTerminal() ?? []) {
-      reachable.add(`${operation.appId}/${operation.appGenerationId}`);
-    }
-    for (const appId of await readdir(this.artifactsRoot).catch(() => [])) {
-      const appRoot = join(this.artifactsRoot, appId);
-      for (const generationId of await readdir(appRoot).catch(() => [])) {
-        const path = join(appRoot, generationId);
-        if (generationId.startsWith(".")) {
-          await removePackageArtifact(path);
-          continue;
-        }
-        if (reachable.has(`${appId}/${generationId}`)) continue;
-        const target = join(appRoot, `.trash-${randomUUID()}`);
-        const moved = await rename(path, target).then(
-          () => true,
-          () => false
-        );
-        if (moved) await removePackageArtifact(target);
-      }
-    }
-  }
-
   list() {
     return [...this.records.values()]
       .sort((left, right) => left.addedAt - right.addedAt)
@@ -1015,7 +407,7 @@ export class AppStore {
         : null;
     try {
       const committed = await this.queue.enqueue(() =>
-        this.setUnlocked(compute(), prepared, plannedOptions)
+        this.generationBuilder.set(compute(), prepared, plannedOptions)
       );
       await prepared?.commit();
       return committed;
@@ -1070,7 +462,9 @@ export class AppStore {
 
   async resolvePendingBaseGuiConsent(
     appId: string,
-    grantedCapabilities: readonly BaseGuiCapability[]
+    grantedCapabilities: readonly BaseGuiCapability[],
+    grantedHostActions: readonly BaseGuiHostActionCapability[] = [],
+    grantedCapabilityScopes: BaseGuiCapabilityScopes = {}
   ) {
     return this.queue.enqueue(async () => {
       const current = this.get(appId);
@@ -1089,11 +483,13 @@ export class AppStore {
         expectedRevision: pointer.expectedRevision,
         contentDigest: generation.contentDigest,
         grantedCapabilities,
+        grantedHostActions,
+        grantedCapabilityScopes,
       });
       if (decision.state === "declined") {
         // participant tombstone 是资源释放的提交点；AppRecord 只能在它之后删 pending。
         // 反过来会让崩溃后的 ledger 失去可重试的 generation 定位信息。
-        await this.abortGenerationBuild(appId, generation);
+        await this.generationBuilder.abortGenerationBuild(appId, generation);
         const declined = {
           ...current,
           lifecycleRevision: current.lifecycleRevision + 1,
@@ -1107,7 +503,7 @@ export class AppStore {
           },
         };
         const committed = await this.commitRecord(declined, appId, current);
-        await this.discardArtifact(appId, pending.generationId);
+        await this.generationBuilder.discardArtifact(appId, pending.generationId);
         return committed;
       }
       const nextPending = {
@@ -1134,6 +530,39 @@ export class AppStore {
         appId,
         current
       );
+    });
+  }
+
+  /** Main-owned maintenance rollback before promotion; active bytes never move. */
+  async abortPendingGeneration(appId: string, generationId: string) {
+    return this.queue.enqueue(async () => {
+      const current = this.get(appId);
+      const pending = current?.generationBinding.pending;
+      const generation = current?.generations.find(
+        (item) => item.generationId === generationId
+      );
+      if (!current || pending?.generationId !== generationId || !generation) {
+        throw conflict("App pending generation 已变化");
+      }
+      await this.generationBuilder.abortGenerationBuild(appId, generation);
+      const saved = await this.commitRecord(
+        {
+          ...current,
+          lifecycleRevision: current.lifecycleRevision + 1,
+          generations: current.generations.filter(
+            (item) => item.generationId !== generationId
+          ),
+          generationBinding: {
+            ...current.generationBinding,
+            bindingRevision: current.generationBinding.bindingRevision + 1,
+            pending: undefined,
+          },
+        },
+        appId,
+        current
+      );
+      await this.generationBuilder.discardArtifact(appId, generationId).catch(() => undefined);
+      return saved;
     });
   }
 
@@ -1253,7 +682,7 @@ export class AppStore {
         throw cause;
       }
       for (const generation of current.generations) {
-        await this.discardArtifact(appId, generation.generationId).catch(() => {});
+        await this.generationBuilder.discardArtifact(appId, generation.generationId).catch(() => {});
       }
     });
   }
@@ -1267,159 +696,7 @@ export class AppStore {
     this.queue.reopen();
   }
 
-  private async setUnlocked(
-    record: AppRecord,
-    prepared: PreparedServerCutover | null = null,
-    options: GenerationPlanOptions = {}
-  ) {
-    const previous = this.records.get(record.id);
-    const plan = await planGeneration(record, previous, options);
-    if (!plan) return this.commitRecord(record, record.id, previous);
-    await sealPackageArtifact({
-      source: plan.sourceDir,
-      finalRoot: this.artifactRoot(record.id, plan.generationId),
-      manifest: plan.manifest,
-      expected: plan.digests,
-    });
-    let operation: AppGenerationBuildOperation | null = null;
-    let committed = false;
-    try {
-      operation = await this.beginBuild(plan);
-      /* 有声明就必须先拿到 participant 的 prepared handoff：pending 代只引用
-         committed reservation 与 decision，永不直接 CAS active。 */
-      const staged = plan.declarations.length
-        ? await this.stageExtension(plan, operation)
-        : {
-            record: bindActive(plan, sealGeneration(plan, { kind: "none" })),
-            operation: null,
-          };
-      if (staged.operation) operation = staged.operation;
-      const capabilityBound = await this.bindBaseGuiCapability(
-        plan,
-        staged.record,
-        operation
-      );
-      operation = capabilityBound.operation;
-      const bound = this.bindPreparedEpoch(capabilityBound.record, plan, prepared);
-      await this.commitRecord(bound, record.id, previous);
-      committed = true;
-      await this.settleBuild(plan, operation);
-      return this.get(record.id)!;
-    } catch (cause) {
-      if (!committed) {
-        try {
-          await this.rollbackBuild(plan, operation);
-        } catch (rollbackCause) {
-          throw new AggregateError(
-            [cause, rollbackCause],
-            "generation build 失败且 participant abort 未完全收口"
-          );
-        }
-      }
-      throw cause;
-    }
-  }
-
-  private async bindBaseGuiCapability(
-    plan: NewGenerationPlan,
-    record: AppRecord,
-    operation: AppGenerationBuildOperation | null
-  ) {
-    if (plan.manifest.kind !== "base") return { record, operation };
-    if (plan.requestedBaseGuiCapabilities.length === 0) {
-      return { record, operation };
-    }
-    if (!this.baseGuiGrants) {
-      throw new Error("Base GUI capability generation 需要已初始化的 grant store");
-    }
-    const generation = record.generations.find(
-      (item) => item.generationId === plan.generationId
-    );
-    if (!generation) throw new Error("Base GUI capability generation 尚未 sealed");
-    let decision: BaseGuiCapabilityDecision;
-    if (operation && this.baseGuiParticipant && this.buildLedger) {
-      const prepared = await this.baseGuiParticipant.prepare(operation);
-      const checkpointed = await this.buildLedger.checkpoint(
-        operation.generationBuildId,
-        operation.revision,
-        prepared
-      );
-      operation = checkpointed;
-      const durable = this.baseGuiGrants.decision(prepared.operationId);
-      if (prepared.state !== "prepared" || !durable) {
-        await this.buildLedger.advance(
-          checkpointed.generationBuildId,
-          checkpointed.revision,
-          "needs-attention"
-        );
-        throw new Error("Base GUI capability participant 未就绪");
-      }
-      decision = durable;
-    } else {
-      decision = await this.baseGuiGrants.createDecision({
-        appId: plan.base.id,
-        generationId: generation.generationId,
-        contentDigest: generation.contentDigest,
-        expectedActiveGenerationId: plan.previousActiveId,
-        requestedCapabilities: plan.requestedBaseGuiCapabilities,
-      });
-    }
-    if (!record.generationBinding.pending && decision.state === "approved") {
-      return { record, operation };
-    }
-    const pending = record.generationBinding.pending ?? {
-      generationId: generation.generationId,
-      expectedActiveGenerationId: plan.previousActiveId,
-      resolutionDigest: generation.contentDigest,
-      packageGenerationReservationId: `base-gui:${generation.generationId}`,
-      runtime: runtimeBinding(plan),
-      consentDecisionId: decision.decisionId,
-      expectedConsentRevision: decision.revision,
-      state: "consent-required" as const,
-    };
-    const nextPending = {
-      ...pending,
-      baseGuiDecision: decisionPointer(decision),
-      ...(record.generationBinding.pending
-        ? { extensionState: record.generationBinding.pending.state }
-        : {}),
-    };
-    nextPending.state = allParticipantsPromotable(nextPending)
-      ? "ready-to-promote"
-      : "consent-required";
-    return {
-      record: bindCapabilityPending(plan, generation, record, nextPending),
-      operation,
-    };
-  }
-
-  /**
-   * 队列内重验：队列外预判过的那一代必须逐字段仍然成立，才允许把 target
-   * epoch 整体 CAS 进 active binding。世界在等待期间变了就当场失败——
-   * 让 cutover 走 abort，而不是把新代 binary 绑到一个别人的 epoch 上。
-   */
-  private bindPreparedEpoch(
-    record: AppRecord,
-    plan: NewGenerationPlan,
-    prepared: PreparedServerCutover | null
-  ): AppRecord {
-    if (!needsServerEpoch(plan) || !this.serverCutover) return record;
-    if (!prepared || prepared.generationId !== plan.generationId) {
-      throw conflict("server data cutover 与本次 generation 不匹配");
-    }
-    return {
-      ...record,
-      generationBinding: {
-        ...record.generationBinding,
-        active: {
-          generationId: plan.generationId,
-          runtime: { kind: "server", dataEpochId: prepared.dataEpochId },
-        },
-      },
-    };
-  }
-
-  private async commitRecord(
+  async commitRecord(
     next: AppRecord,
     appId: string,
     previous: AppRecord | undefined
@@ -1440,216 +717,6 @@ export class AppStore {
     return this.get(appId)!;
   }
 
-  private async beginBuild(plan: NewGenerationPlan) {
-    if (!this.buildLedger) return null;
-    return this.buildLedger.begin({
-      generationBuildId: plan.generationBuildId,
-      appId: plan.base.id,
-      appGenerationId: plan.generationId,
-      expectedActiveGenerationId: plan.previousActiveId,
-      domainIdentity: plan.domainIdentity,
-      runtime: runtimeBinding(plan),
-      extensionRequirements: plan.declarations,
-      ...(plan.manifest.kind === "base" &&
-        this.baseGuiParticipant &&
-        plan.requestedBaseGuiCapabilities.length > 0
-        ? {
-            baseGuiCapabilityRequest: {
-              requestedCapabilities: plan.requestedBaseGuiCapabilities,
-              contentDigest: plan.contentDigest,
-            },
-          }
-        : {}),
-    });
-  }
-
-  private async stageExtension(
-    plan: NewGenerationPlan,
-    operation: AppGenerationBuildOperation | null
-  ) {
-    const participant = this.participants?.require("app-extension");
-    const extensions = this.extensions;
-    if (!participant || !extensions || !operation || !this.buildLedger) {
-      throw new Error(
-        "含 extensionRequirements 的 generation 需要已注册的 App×Extension participant"
-      );
-    }
-    const prepared = await participant.prepare(operation);
-    let next = await this.buildLedger.checkpoint(
-      operation.generationBuildId,
-      operation.revision,
-      prepared
-    );
-    const handoff =
-      prepared.state === "prepared"
-        ? extensions.handoff(operation.generationBuildId)
-        : null;
-    if (!handoff) {
-      next = await this.buildLedger.advance(
-        operation.generationBuildId,
-        next.revision,
-        "needs-attention"
-      );
-      throw new Error("App extension reservation 未就绪，build 保持 needs-attention");
-    }
-    const consent = await extensions.decide({
-      appId: plan.base.id,
-      frozenSet: handoff.frozenSet,
-      deriveFromGenerationId: plan.previousActiveId,
-    });
-    const generation = sealGeneration(plan, {
-      kind: "frozen",
-      frozenSet: handoff.frozenSet,
-      packageGenerationReservationId: handoff.reservationId,
-    });
-    return {
-      record: bindPending(plan, generation, handoff, consent),
-      operation: next,
-    };
-  }
-
-  private async rollbackBuild(
-    plan: NewGenerationPlan,
-    operation: AppGenerationBuildOperation | null
-  ) {
-    if (operation) {
-      await this.abortOperation(operation);
-    } else if (plan.manifest.kind === "base" && this.baseGuiGrants) {
-      await this.baseGuiGrants.revoke(plan.base.id, plan.generationId);
-    }
-    await this.discardArtifact(plan.base.id, plan.generationId);
-  }
-
-  private async abortGenerationBuild(
-    appId: string,
-    generation: AppGeneration
-  ) {
-    const operation = this.buildLedger
-      ?.listNonTerminal(appId)
-      .find(
-        (item) => item.generationBuildId === generation.generationBuildId
-      );
-    if (!operation) {
-      await this.baseGuiGrants?.revoke(appId, generation.generationId);
-      return;
-    }
-    await this.abortOperation(operation);
-  }
-
-  /** 所有 participant 的 aborted checkpoint 都 durable 后，build 才能进入终态。 */
-  private async abortOperation(operation: AppGenerationBuildOperation) {
-    if (!this.buildLedger) throw new Error("generation build ledger 未配置");
-    let next = operation;
-    try {
-      if (next.extensionRequirements.length > 0) {
-        const aborted = await this.participants!
-          .require("app-extension")
-          .abort(next);
-        next = await this.buildLedger.checkpoint(
-          next.generationBuildId,
-          next.revision,
-          aborted
-        );
-      }
-      if (next.baseGuiCapabilityRequest) {
-        if (!this.baseGuiParticipant) {
-          throw new Error("Base GUI participant 未配置");
-        }
-        const aborted = await this.baseGuiParticipant.abort(next);
-        next = await this.buildLedger.checkpoint(
-          next.generationBuildId,
-          next.revision,
-          aborted
-        );
-      }
-      await this.buildLedger.advance(
-        next.generationBuildId,
-        next.revision,
-        "aborted"
-      );
-    } catch (cause) {
-      await this.buildLedger
-        .advance(next.generationBuildId, next.revision, "needs-attention")
-        .catch(() => {});
-      throw cause;
-    }
-  }
-
-  private async discardArtifact(appId: string, generationId: string) {
-    const root = this.artifactRoot(appId, generationId);
-    const trash = join(this.artifactsRoot, appId, `.trash-${randomUUID()}`);
-    const moved = await rename(root, trash).then(
-      () => true,
-      (cause: NodeJS.ErrnoException) => {
-        if (cause.code === "ENOENT") return false;
-        throw cause;
-      }
-    );
-    if (moved) await removePackageArtifact(trash);
-  }
-
-  /* 无待授权的新代 build 一路走到 promoted；Extension/Base GUI 任一仍 pending，
-     就停在 ready-to-promote，等独立 promote 命令复核全部 decision 后才切 active。 */
-  private async settleBuild(
-    plan: NewGenerationPlan,
-    operation: AppGenerationBuildOperation | null
-  ) {
-    if (operation && this.buildLedger) {
-      let next = await this.buildLedger.advance(
-        operation.generationBuildId,
-        operation.revision,
-        "generation-committed"
-      );
-      const pending = this.get(plan.base.id)?.generationBinding.pending;
-      if (plan.declarations.length) {
-        const committed = await this.participants!.require(
-          "app-extension"
-        ).finalize(next);
-        next = await this.buildLedger.checkpoint(
-          next.generationBuildId,
-          next.revision,
-          committed
-        );
-        if (committed.state !== "committed") {
-          await this.buildLedger.advance(
-            next.generationBuildId,
-            next.revision,
-            "needs-attention"
-          );
-          throw new Error("App extension reservation commit 未通过逐字节复核");
-        }
-      }
-      if (next.baseGuiCapabilityRequest) {
-        const committed = await this.baseGuiParticipant!.finalize(next);
-        next = await this.buildLedger.checkpoint(
-          next.generationBuildId,
-          next.revision,
-          committed
-        );
-        if (committed.state !== "committed") {
-          await this.buildLedger.advance(
-            next.generationBuildId,
-            next.revision,
-            "needs-attention"
-          );
-          throw new Error("Base GUI capability decision commit 未通过 exact 复核");
-        }
-      }
-      next = await this.buildLedger.advance(
-        next.generationBuildId,
-        next.revision,
-        "ready-to-promote"
-      );
-      if (!pending) {
-        await this.buildLedger.advance(
-          next.generationBuildId,
-          next.revision,
-          "promoted"
-        );
-      }
-    }
-  }
-
   private assertDerivedPaths(records: AppRecord[]) {
     for (const record of records) {
       const expected = normalize(join(this.appsRoot, record.id));
@@ -1664,286 +731,55 @@ export class AppStore {
   }
 
   private async persist() {
+    const apps = this.list();
     const content = JSON.stringify(
       {
         schemaVersion: SCHEMA_VERSION,
-        apps: this.list(),
+        apps,
         retiredIds: [...this.retiredIds].sort(),
       },
       null,
       2
     );
     await durableReplaceFile(this.filePath, `${content}\n`);
+    this.announce(apps);
+  }
+
+  /**
+   * 落盘之后才广播：订阅者见到的每一帧都已经是 durable 的真相，回滚路径（persist
+   * 抛错 → 内存还原）天然一条都发不出去。
+   *
+   * 差分而非「谁改谁喊」：只要一次写入进了 apps.json，它就必然经过这里，广播资格
+   * 与写入路径彻底解耦——这是让「忘记 emit」这个分支消失，而不是让它更容易写对。
+   * 删除只从快照里除名，`removed` 是另一条语义、由 delete 域自己负责。
+   */
+  private announce(apps: readonly AppRecord[]) {
+    const alive = new Set(apps.map((record) => record.id));
+    for (const id of [...this.published.keys()]) {
+      if (!alive.has(id)) this.published.delete(id);
+    }
+    for (const record of apps) {
+      const serialized = JSON.stringify(record);
+      if (this.published.get(record.id) === serialized) continue;
+      this.published.set(record.id, serialized);
+      for (const watcher of this.watchers) {
+        /* 一个订阅者炸了不能连累落盘已成事实的其余广播。 */
+        try {
+          watcher(structuredClone(record));
+        } catch (cause) {
+          console.warn(`[apps] AppRecord 广播失败：${errorMessage(cause)}`);
+        }
+      }
+    }
   }
 }
 
-/* ── generation 三步：先算身份，再按有无声明分别封 active / pending ────────── */
-
-type NewGenerationPlan = Readonly<{
-  base: AppRecord;
-  manifest: AppManifest;
-  domainIdentity: AppDomainIdentity;
-  contentDigest: Sha256Digest;
-  manifestDigest: Sha256Digest;
-  sourcePackageDigest: Sha256Digest;
-  digests: PackageDigestSet;
-  generationId: string;
-  generationBuildId: string;
-  declarations: readonly AppExtensionRequirementDeclaration[];
-  requestedBaseGuiCapabilities: readonly BaseGuiCapability[];
-  previousActiveId: string | null;
-  previousManifest: AppManifest | null;
-  sourceDir: string;
-}>;
-
-/** `migrationId` = Extension 换代的 durable 幂等身份。 */
-type GenerationPlanOptions = Readonly<{
-  migrationId?: string;
-  sourceDir?: string;
-  identitySuffix?: string;
-}>;
-
-function generationDigests(generation: AppGeneration): PackageDigestSet {
-  if (!generation.manifestDigest || !generation.sourcePackageDigest) {
-    throw new Error("generation v2 digest 不完整");
-  }
-  return {
-    manifestDigest: generation.manifestDigest,
-    sourcePackageDigest: generation.sourcePackageDigest,
-    contentDigest: generation.contentDigest,
-  };
-}
-
-async function planGeneration(
-  record: AppRecord,
-  previous: AppRecord | undefined,
-  options: GenerationPlanOptions = {}
-): Promise<NewGenerationPlan | null> {
-  if (!record.manifest) return null;
-  const migrationSuffix = options.migrationId
-    ? digest(options.migrationId).slice(-16)
-    : null;
-  const migrationBuildId = migrationSuffix
-    ? `build-${record.id}-extension-${migrationSuffix}`
-    : null;
-  /* App 已经落下这次迁移的 generation：重放直接返回当前
-     record，绝不因「通知账本 checkpoint 晚了一拍」再生一代。 */
-  if (
-    migrationBuildId &&
-    record.generations.some(
-      (generation) => generation.generationBuildId === migrationBuildId
-    )
-  ) {
-    return null;
-  }
-  const active = record.generations.find(
-    (generation) =>
-      generation.generationId === record.generationBinding.active?.generationId
-  );
-  const nextDomainIdentity = domainIdentity(record.manifest);
-  if (
-    previous?.domainIdentity &&
-    JSON.stringify(previous.domainIdentity) !== JSON.stringify(nextDomainIdentity)
-  ) {
-    throw new Error("APP_DOMAIN_IDENTITY_CHANGE_REQUIRES_NEW_ID");
-  }
-  const sourceDir = options.sourceDir ?? record.dir;
-  const digests = await inspectPackageDigests(sourceDir, record.manifest);
-  if (
-    !options.migrationId &&
-    active?.manifestDigest === digests.manifestDigest &&
-    active.contentDigest === digests.contentDigest
-  ) {
-    return null;
-  }
-  const contentDigest = digests.contentDigest;
-  const generationOrdinal = record.lifecycleRevision + 1;
-  const identitySuffix = options.identitySuffix
-    ? `-a${options.identitySuffix}`
-    : "";
-  return {
-    base: record,
-    manifest: record.manifest,
-    domainIdentity: nextDomainIdentity,
-    contentDigest,
-    manifestDigest: digests.manifestDigest,
-    sourcePackageDigest: digests.sourcePackageDigest,
-    digests,
-    /* 迁移代的身份必须与内容摘要脱钩：内容没变正是迁移最常见的形态，
-       沿用 digest 派生的 id 会撞上同一代，从而变成「原地换绑」。 */
-    generationId: migrationSuffix
-      ? `${record.id}-g${generationOrdinal}-${contentDigest.slice(-12)}-m${migrationSuffix}`
-      : `${record.id}-g${generationOrdinal}-${contentDigest.slice(-12)}${identitySuffix}`,
-    generationBuildId:
-      migrationBuildId ??
-      `build-${record.id}-${record.lifecycleRevision + 1}${identitySuffix}`,
-    declarations: record.manifest.extensionRequirements ?? [],
-    requestedBaseGuiCapabilities: requestedBaseGuiCapabilities(record.manifest),
-    previousActiveId: previous?.generationBinding.active?.generationId ?? null,
-    previousManifest: previous?.manifest ?? null,
-    sourceDir,
-  };
-}
-
-function sealGeneration(
-  plan: NewGenerationPlan,
-  extensionRequirementResolution: AppExtensionResolutionBinding
-): AppGeneration {
-  return {
-    generationId: plan.generationId,
-    generationBuildId: plan.generationBuildId,
-    manifestDigest: plan.manifestDigest,
-    sourcePackageDigest: plan.sourcePackageDigest,
-    contentDigest: plan.contentDigest,
-    manifest: structuredClone(plan.manifest),
-    extensionRequirementResolution,
-    contentLayoutVersion: 2,
-    createdAt: Date.now(),
-  };
-}
-
-function runtimeBinding(plan: NewGenerationPlan): AppGenerationRuntimeBinding {
-  /* pending 分支上的这个 id 是占位而非写根：只有 cutover 现造的 epoch 才会
-     进入 active binding（见 bindPreparedEpoch / promoteBinding）。 */
-  return plan.manifest.kind === "server"
-    ? { kind: "server", dataEpochId: `data-${plan.generationId}` }
-    : { kind: "none" };
-}
-
-/** 只有「这一代马上就要成为 active server writer」才需要 data epoch 切换。 */
-function needsServerEpoch(plan: NewGenerationPlan) {
-  return plan.manifest.kind === "server" && plan.declarations.length === 0;
-}
-
-function bindActive(plan: NewGenerationPlan, generation: AppGeneration): AppRecord {
-  const binding = plan.base.generationBinding;
-  return {
-    ...plan.base,
-    lifecycleRevision: plan.base.lifecycleRevision + 1,
-    domainIdentity: plan.domainIdentity,
-    generations: [...plan.base.generations, generation],
-    generationBinding: {
-      bindingRevision: binding.bindingRevision + 1,
-      active: { generationId: generation.generationId, runtime: runtimeBinding(plan) },
-      drainingGenerationIds: plan.previousActiveId
-        ? [...new Set([...binding.drainingGenerationIds, plan.previousActiveId])]
-        : binding.drainingGenerationIds,
-    },
-  };
-}
-
-function promoteBinding(
-  record: AppRecord,
-  generation: AppGeneration,
-  pending: NonNullable<AppRecord["generationBinding"]["pending"]>,
-  dataEpochId?: string
-): AppRecord {
-  const previousActiveId = record.generationBinding.active?.generationId;
-  /* pending 上那条 `dataEpochId` 只是占位：真正的写根由本次 cutover 现造，
-     promote 这一刻才第一次成为可写事实。 */
-  const runtime =
-    pending.runtime.kind === "server" && dataEpochId
-      ? ({ kind: "server", dataEpochId } as const)
-      : pending.runtime;
-  return {
-    ...record,
-    lifecycleRevision: record.lifecycleRevision + 1,
-    manifest: structuredClone(generation.manifest),
-    generationBinding: {
-      bindingRevision: record.generationBinding.bindingRevision + 1,
-      active: { generationId: generation.generationId, runtime },
-      drainingGenerationIds: previousActiveId
-        ? [
-            ...new Set([
-              ...record.generationBinding.drainingGenerationIds,
-              previousActiveId,
-            ]),
-          ]
-        : record.generationBinding.drainingGenerationIds,
-    },
-  };
-}
-
-function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
-}
-
-/* pending 代不是 active：manifest 投影必须停在旧代，否则 DTO 会宣称尚未授权的字节
-   已经生效。首装因此是 active=null + manifest=null，直到 promote。 */
-function bindPending(
-  plan: NewGenerationPlan,
-  generation: AppGeneration,
-  handoff: AppExtensionGenerationHandoff,
-  consent: AppExtensionGenerationConsent
-): AppRecord {
-  const binding = plan.base.generationBinding;
-  return {
-    ...plan.base,
-    lifecycleRevision: plan.base.lifecycleRevision + 1,
-    domainIdentity: plan.domainIdentity,
-    manifest: plan.previousManifest,
-    generations: [...plan.base.generations, generation],
-    generationBinding: {
-      bindingRevision: binding.bindingRevision + 1,
-      active: binding.active,
-      pending: {
-        generationId: generation.generationId,
-        expectedActiveGenerationId: plan.previousActiveId,
-        resolutionDigest: handoff.frozenSet.resolutionDigest,
-        packageGenerationReservationId: handoff.reservationId,
-        runtime: runtimeBinding(plan),
-        ...consent,
-      },
-      drainingGenerationIds: binding.drainingGenerationIds,
-    },
-  };
-}
-
-type PendingGeneration = NonNullable<
-  AppRecord["generationBinding"]["pending"]
->;
-
-function decisionPointer(decision: BaseGuiCapabilityDecision) {
-  return {
-    decisionId: decision.decisionId,
-    expectedRevision: decision.revision,
-    requestedCapabilities: decision.requestedCapabilities,
-    state: decision.state,
-  } as const;
-}
-
-function allParticipantsPromotable(pending: PendingGeneration) {
-  const extensionReady =
-    !pending.extensionState || pending.extensionState === "ready-to-promote";
-  const baseGuiReady =
-    !pending.baseGuiDecision || pending.baseGuiDecision.state === "approved";
-  return extensionReady && baseGuiReady;
-}
-
-function bindCapabilityPending(
-  plan: NewGenerationPlan,
-  generation: AppGeneration,
-  staged: AppRecord,
-  pending: PendingGeneration
-): AppRecord {
-  if (staged.generationBinding.pending) {
-    return {
-      ...staged,
-      generationBinding: { ...staged.generationBinding, pending },
-    };
-  }
-  const binding = plan.base.generationBinding;
-  return {
-    ...plan.base,
-    lifecycleRevision: plan.base.lifecycleRevision + 1,
-    domainIdentity: plan.domainIdentity,
-    manifest: plan.previousManifest,
-    generations: [...plan.base.generations, generation],
-    generationBinding: {
-      bindingRevision: binding.bindingRevision + 1,
-      active: binding.active,
-      pending,
-      drainingGenerationIds: binding.drainingGenerationIds,
-    },
-  };
-}
+import {
+  allParticipantsPromotable,
+  conflict,
+  decisionPointer,
+  needsServerEpoch,
+  planGeneration,
+  promoteBinding,
+  type GenerationPlanOptions,
+} from "./app-generation-plan";

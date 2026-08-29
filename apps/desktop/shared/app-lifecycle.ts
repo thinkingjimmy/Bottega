@@ -8,6 +8,8 @@ import type {
   AppDomainIdentity,
   AppGenerationRuntimeBinding,
   BaseGuiCapability,
+  BaseGuiCapabilityScopes,
+  BaseGuiHostActionCapability,
 } from "./apps-ipc";
 import type {
   AppExtensionRequirementDeclaration,
@@ -40,6 +42,8 @@ export type AppGenerationBuildOperation = Readonly<{
   /** Base generation 的 GUI 请求与 sealed content 同时冻结；非 Base 不带此字段。 */
   baseGuiCapabilityRequest?: Readonly<{
     requestedCapabilities: readonly BaseGuiCapability[];
+    requestedHostActions: readonly BaseGuiHostActionCapability[];
+    requestedCapabilityScopes: BaseGuiCapabilityScopes;
     contentDigest: Sha256Digest;
   }>;
   checkpoints: readonly AppGenerationBuildCheckpoint[];

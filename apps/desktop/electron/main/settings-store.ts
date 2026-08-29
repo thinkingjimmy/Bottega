@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path, zod, shared Agent/Settings IPC, Memory provider registry and persistence/serial-queue
- * [OUTPUT]: Provides SettingsStore v11: single-mode revision Letter enclosure, three-level Memory sharing range, v10 Memory full domain switching, theme/language/disabledBuiltinTools/keyboardShortcuts additive-default archiving (shortcut ids lenient, binding values strict), other versions and corrupt fail-closed initialization
- * [POS]: The multi-back end of the Electron main sets a single truth source; Memory domain only accepted setMemoryTrusted, renderer General patch No touch
+ * [INPUT]: Depends on Node fs/path, zod, shared Agent/Settings IPC, Memory registry, durable persistence, and SerialQueue
+ * [OUTPUT]: Provides SettingsStore v11, strict per-scope options, scope-only CAS adoption seeding, global defaults, locale/theme/tools/shortcuts, Skills-onboarding state, Memory control, and fail-closed recovery
+ * [POS]: The canonical multi-backend settings owner in Electron main
  */
 
 import {
@@ -34,6 +34,7 @@ import {
   MEMORY_PROVIDER_IDS,
 } from "./memory/providers/registry";
 import { SerialQueue } from "./persistence/serial-queue";
+import { OPAQUE_CONFIG_VALUE_PATTERN } from "./backends/capability-validation";
 
 const SCHEMA_VERSION = 11;
 export const DEFAULT_CHAT_OPTIONS: CodexTurnOptions = {
@@ -63,6 +64,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   lastSelectedBackend: "codex",
   autoRelayLimit: 25,
   usagePricingAutoRefresh: true,
+  skillsOnboarding: "pending",
   keyboardShortcuts: {},
   memory: {
     enabled: false,
@@ -75,6 +77,13 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const optionValue = z.string().trim().min(1).max(200);
+/* Opaque backend config values are never normalized: persistence must preserve
+   the exact catalog value, including leading/trailing printable spaces. */
+const opaqueConfigValue = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(OPAQUE_CONFIG_VALUE_PATTERN);
 const permissionMode = z.enum([
   "ask-for-approval",
   "approve-for-me",
@@ -84,8 +93,8 @@ const codexOptionsSchema = z
   .object({
     backend: z.literal("codex"),
     model: optionValue,
-    reasoningEffort: optionValue,
-    serviceTier: optionValue,
+    reasoningEffort: opaqueConfigValue,
+    serviceTier: opaqueConfigValue,
     permissionMode,
   })
   .strict();
@@ -93,7 +102,8 @@ const claudeOptionsSchema = z
   .object({
     backend: z.literal("claude"),
     model: optionValue.optional(),
-    reasoningEffort: optionValue.optional(),
+    reasoningEffort: opaqueConfigValue.optional(),
+    serviceTier: opaqueConfigValue.optional(),
     permissionMode,
   })
   .strict();
@@ -101,7 +111,7 @@ const kimiOptionsSchema = z
   .object({
     backend: z.literal("kimi"),
     model: optionValue.optional(),
-    reasoningEffort: optionValue.optional(),
+    reasoningEffort: opaqueConfigValue.optional(),
     permissionMode,
   })
   .strict();
@@ -111,7 +121,7 @@ const opencodeOptionsSchema = z
   .object({
     backend: z.literal("opencode"),
     model: optionValue.optional(),
-    reasoningEffort: optionValue.optional(),
+    reasoningEffort: opaqueConfigValue.optional(),
     permissionMode,
   })
   .strict();
@@ -200,6 +210,8 @@ const settingsSchema = z
     lastSelectedBackend: backendSchema,
     autoRelayLimit: z.number().int().min(0).max(1_000),
     usagePricingAutoRefresh: z.boolean(),
+    /* Additive default keeps existing strict settings files readable. */
+    skillsOnboarding: z.enum(["pending", "done", "skipped"]).default("pending"),
     /* 快捷键覆写刻意不对称：id 键宽松（同 disabledBuiltinTools——删除/
        改名快捷键不把旧档变炸弹，消费侧与默认表求交），binding 值仍
        strict——畸形 value 与其它字段一样 fail-closed，别「修」掉这一半。
@@ -393,6 +405,35 @@ export class SettingsStore {
         },
       });
       return structuredClone(options);
+    });
+  }
+
+  /**
+   * 收养换名只转移这一条 scope 的所有权。CAS 保留目标 scope 上已经发生的
+   * 用户写入；与 setChatOptions 不同，本事务绝不回灌全局默认或 last backend。
+   */
+  seedChatOptions(scope: AgentScope, value: AgentTurnOptions) {
+    return this.queue.enqueue(async () => {
+      const key = chatScopeKey(scope);
+      const options = turnOptionsSchema.parse(value);
+      if (
+        options.permissionMode === "full-access" &&
+        this.state.settings.fullAccessAcknowledgedAt === null
+      ) {
+        throw new Error("FULL_ACCESS_ACK_REQUIRED: 必须先确认 Full Access 风险");
+      }
+      const current = this.state.chatOptionsByScope[key];
+      if (current) {
+        return { seeded: false, options: structuredClone(current) } as const;
+      }
+      await this.commit({
+        ...this.state,
+        chatOptionsByScope: {
+          ...this.state.chatOptionsByScope,
+          [key]: options,
+        },
+      });
+      return { seeded: true, options: structuredClone(options) } as const;
     });
   }
 

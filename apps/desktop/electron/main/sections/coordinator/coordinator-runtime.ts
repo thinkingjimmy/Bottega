@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Agent/Chat/Settings/Relay ledger Narrow ports, Notice outbox and stable ID/expectation pure function
- * [OUTPUT]: Provides CoordinatorDependencies ((commanded universal Workspace lifecycle gate, Workspace snapshot with canonical manual, synchronized void after unloading, derivative loop)
+ * [INPUT]: Depends on Agent/Chat/Settings/Relay ledger narrow ports, Project Tools runtime-identity resolution, Notice outbox, and stable ID/expectation pure functions
+ * [OUTPUT]: Provides CoordinatorDependencies including workspace lifecycle, canonical runtime-aware manual hydration, session rebuild, and derived-loop ports
  * [POS]: the running time of sections/coordinator; Remove the main arbitrator from the combination root port and the derivative side effects of the response relay
  */
 
@@ -27,6 +27,10 @@ import type {
 } from "./relay-ledger";
 import type { ProjectWorkspaceSnapshot } from "./admission/workspace-precondition";
 import { steerDerivedIntentId } from "./admission/steer-projection";
+import type { HydratedProjectTools } from "./admission/prepared-project-tools";
+import type { SessionRef } from "../../../../shared/agent-ipc";
+import type { TurnProjectContext } from "../../../../shared/resource-scope";
+import type { ProjectToolsRuntimeIdentityResolver } from "./admission/prepared/hydration";
 
 type ConversationAvailability = "open" | "blocked" | "archived";
 
@@ -59,8 +63,17 @@ export type CoordinatorDependencies = {
     origin: TurnOrigin,
     resolvedInput?: ResolvedAgentInput,
     assistantSeq?: number,
-    admissionHeld?: boolean
+    admissionHeld?: boolean,
+    projectTools?: HydratedProjectTools
   ): Promise<void>;
+  /** Clears the exact stale native session and its in-memory resume authority. */
+  rebuildSessionForTools?: (
+    conversationId: string,
+    expected: SessionRef
+  ) => Promise<void>;
+  /** Testable seam; production omission awaits the canonical runtime registry. */
+  resolveProjectToolsRuntimeIdentity?: ProjectToolsRuntimeIdentityResolver;
+  assertProjectToolsContext?: (context: TurnProjectContext) => void;
   cancelTurn(requestId: string): void;
   hasActivity(conversationIds: Iterable<string>): boolean;
   reconcileMemory?: (ledger: RelayLedger) => Promise<void>;

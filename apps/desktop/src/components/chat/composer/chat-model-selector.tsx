@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on React, Lucide icons, UI Button/Popover/Slider/SlimScroller, Fast Star Wars style, Shared model directory and chat model selection
- * [OUTPUT]: Provides full capability ChatModelSelector, which includes five-tiered fast sliders with Model/Effort/Speed high-level configuration; The size of the trigger only varies with the content and width of the trigger, with the geometry unchanged, the model name omitted and the Effort preserved, while the panel follows the trigger width between 18 and 24 rem; Only the model setup submits to show local loading, session streaming reverts back to Sidebar
+ * [OUTPUT]: Provides full-capability ChatModelSelector with Effort controls, explicit Speed reset, F22 disclosure, and visible preference/effective fallback state
  * [POS]: The Codex model controller for chat/composer; list-only Back end is carried by independent chat-model-list-selector
  */
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Check,
   Circle,
@@ -32,22 +33,20 @@ import {
   DEFAULT_QUICK_CHAT_OPTIONS,
   effortLabel,
   findModel,
-  modelSupportsTier,
   optionsForModel,
-  quickPresetIndex,
-  QUICK_CHAT_PRESETS,
+  quickEffortIndex,
+  speedReasonKey,
 } from "@/lib/chat-model-selection";
 import type { CodexTurnOptions } from "../../../../shared/agent-ipc";
-import type {
-  CodexModelInfo,
-  CodexServiceTierInfo,
-} from "../../../../shared/settings-ipc";
+import type { SessionServiceTierEffective } from "../../../../shared/agent-ipc";
+import type { CodexModelInfo } from "../../../../shared/settings-ipc";
 import "./chat-model-selector.css";
 
 type SelectorView = "quick" | "advanced" | "model" | "effort" | "speed";
 
 type ChatModelSelectorProps = {
   value: CodexTurnOptions;
+  effectiveServiceTier?: SessionServiceTierEffective;
   models: CodexModelInfo[];
   modelsLoading: boolean;
   modelsError: string;
@@ -55,24 +54,17 @@ type ChatModelSelectorProps = {
   disabled?: boolean;
   streaming?: boolean;
   saving?: boolean;
-  onChange: (options: CodexTurnOptions) => Promise<void>;
+  onChange: (
+    options: CodexTurnOptions,
+    resetSessionEffective?: boolean
+  ) => Promise<void>;
   onRetryModels: () => void;
 };
 
-const FALLBACK_SPEEDS: CodexServiceTierInfo[] = [
-  { id: "default", displayName: "Standard" },
-  { id: "priority", displayName: "Fast" },
-];
-
 const sparkleStyles = ["-0.1s", "-0.45s", "-0.8s", "-1.15s", "-1.5s"];
 
-// fallback 词表与 FALLBACK_SPEEDS 同源，避免两份 id→displayName 映射漂移
 function speedLabel(tier: string, model?: CodexModelInfo) {
-  return (
-    model?.serviceTiers?.find((entry) => entry.id === tier)?.displayName ??
-    FALLBACK_SPEEDS.find((entry) => entry.id === tier)?.displayName ??
-    tier
-  );
+  return model?.serviceTiers?.find((entry) => entry.id === tier)?.displayName ?? tier;
 }
 
 function OptionButton({
@@ -110,6 +102,7 @@ function OptionButton({
 
 export function ChatModelSelector({
   value,
+  effectiveServiceTier,
   models,
   modelsLoading,
   modelsError,
@@ -120,33 +113,42 @@ export function ChatModelSelector({
   onChange,
   onRetryModels,
 }: ChatModelSelectorProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<SelectorView>("quick");
-  const [draftIndex, setDraftIndex] = useState(() =>
-    Math.max(0, quickPresetIndex(value))
-  );
+  const [draftIndex, setDraftIndex] = useState(0);
   const [localBusy, setLocalBusy] = useState(false);
   const busy = disabled || saving || localBusy;
   const triggerLoading = saving || localBusy || (disabled && !streaming);
   const currentModel = findModel(models, value.model);
-  const quickIndex = quickPresetIndex(value);
-  const fast = value.serviceTier === "priority";
-
-  const efforts = useMemo(
-    () => currentModel?.supportedReasoningEfforts ?? [],
-    [currentModel]
+  const sliderEfforts = (currentModel?.supportedReasoningEfforts ?? []).filter(
+    (entry) => !entry.hidden
   );
-  const speeds = currentModel?.serviceTiers?.length
-    ? [
-        FALLBACK_SPEEDS[0],
-        ...currentModel.serviceTiers.filter((tier) => tier.id !== "default"),
-      ]
-    : FALLBACK_SPEEDS;
+  const quickIndex = quickEffortIndex(value, currentModel);
+  const preferredTier = value.serviceTier;
+  const fast = preferredTier !== "default";
+  const effectiveTier = effectiveServiceTier?.value ?? preferredTier;
+  const speedDiverged = effectiveTier !== preferredTier;
+  const speedSummary = speedDiverged
+    ? `${speedLabel(preferredTier, currentModel)} → ${speedLabel(effectiveTier, currentModel)}`
+    : speedLabel(preferredTier, currentModel);
+  /* 原因只在意图与实际分叉时才是信息；没分叉时它只是噪音。 */
+  const speedReason =
+    speedDiverged && effectiveServiceTier
+      ? t(speedReasonKey(effectiveServiceTier.reason))
+      : undefined;
 
-  const commit = async (next: CodexTurnOptions) => {
+  const efforts = currentModel?.supportedReasoningEfforts ?? [];
+  const speeds = currentModel?.serviceTiers ?? [];
+  const supportsSpeed = speeds.some((tier) => tier.id !== "default");
+
+  const commit = async (
+    next: CodexTurnOptions,
+    resetSessionEffective = false
+  ) => {
     setLocalBusy(true);
     try {
-      await onChange(next);
+      await onChange(next, resetSessionEffective);
       return true;
     } catch {
       return false;
@@ -155,23 +157,20 @@ export function ChatModelSelector({
     }
   };
 
-  const changePreset = async (index: number) => {
-    const preset = QUICK_CHAT_PRESETS[index];
-    if (!preset) return;
-    const serviceTier = modelSupportsTier(
-      models,
-      preset.model,
-      value.serviceTier
-    )
-      ? value.serviceTier
-      : "default";
-    await commit({ ...preset, serviceTier, permissionMode: value.permissionMode });
+  const changeEffort = async (index: number) => {
+    const effort = sliderEfforts[index]?.effort;
+    if (!effort) return;
+    await commit({ ...value, reasoningEffort: effort });
   };
 
   const toggleFast = async () => {
-    const nextTier = fast ? "default" : "priority";
-    if (!modelSupportsTier(models, value.model, nextTier)) return;
-    await commit({ ...value, serviceTier: nextTier });
+    /* 档位只从当前模型自己广告的目录里取——能力检查就是这一句 find，
+       产品侧不再养第二张会漂移的模型能力表。 */
+    const nextTier = fast
+      ? "default"
+      : speeds.find((tier) => tier.id !== "default")?.id;
+    if (!nextTier) return;
+    await commit({ ...value, serviceTier: nextTier }, true);
   };
 
   const returnToQuick = () => {
@@ -179,12 +178,17 @@ export function ChatModelSelector({
   };
 
   const resetToDefault = async () => {
-    const ok = await commit({
-      ...DEFAULT_QUICK_CHAT_OPTIONS,
-      permissionMode: value.permissionMode,
-    });
+    const ok = await commit(
+      {
+        ...DEFAULT_QUICK_CHAT_OPTIONS,
+        permissionMode: value.permissionMode,
+      },
+      true
+    );
     if (!ok) return;
-    setDraftIndex(quickPresetIndex(DEFAULT_QUICK_CHAT_OPTIONS));
+    setDraftIndex(
+      Math.max(0, quickEffortIndex(DEFAULT_QUICK_CHAT_OPTIONS, currentModel))
+    );
     setView("quick");
   };
 
@@ -210,7 +214,10 @@ export function ChatModelSelector({
         <button
           type="button"
           disabled={busy}
-          aria-label={`当前模型 ${triggerModel}，Effort ${effortLabel(value.reasoningEffort)}`}
+          aria-label={t("chat.composer.modelSelector.currentModel", {
+            model: triggerModel,
+            effort: effortLabel(value.reasoningEffort),
+          })}
           title={`${triggerModel} · ${effortLabel(value.reasoningEffort)}`}
           aria-expanded={open}
           aria-haspopup="dialog"
@@ -246,7 +253,7 @@ export function ChatModelSelector({
         side="top"
         align="end"
         className="w-(--radix-popover-trigger-width) min-w-72 max-w-[min(24rem,100vw-2rem)] p-3 [&_button:not(:disabled)]:cursor-pointer"
-        aria-label="聊天模型选择器"
+        aria-label={t("chat.composer.modelSelector.selector")}
       >
         {view === "quick" ? (
           <div>
@@ -256,15 +263,20 @@ export function ChatModelSelector({
                 onClick={() => setView("advanced")}
                 className="flex items-center gap-1 rounded-md px-1 py-1 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
               >
-                Advanced <ChevronRight className="size-4" aria-hidden="true" />
+                {t("chat.composer.modelSelector.advanced")} <ChevronRight className="size-4" aria-hidden="true" />
               </button>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                disabled={busy || (!fast && !modelSupportsTier(models, value.model, "priority"))}
-                aria-label={fast ? "关闭 Fast speed" : "开启 Fast speed"}
+                disabled={busy || !supportsSpeed}
+                aria-label={t(
+                  fast
+                    ? "chat.composer.modelSelector.disableFast"
+                    : "chat.composer.modelSelector.enableFast"
+                )}
                 aria-pressed={fast}
+                title={speedReason}
                 onClick={() => void toggleFast()}
                 className={cn(fast && "text-[#3598f6] hover:text-[#3598f6]")}
               >
@@ -273,9 +285,9 @@ export function ChatModelSelector({
             </div>
             <div className="relative mt-3 overflow-hidden rounded-full">
               <div className="pointer-events-none absolute inset-x-3.5 top-1/2 z-10 flex -translate-y-1/2 justify-between" aria-hidden="true">
-                {QUICK_CHAT_PRESETS.map((preset, index) => (
+                {sliderEfforts.map((effort, index) => (
                   <Circle
-                    key={`${preset.model}-${preset.reasoningEffort}`}
+                    key={effort.effort}
                     className={cn(
                       "size-1.5 fill-current",
                       index <= draftIndex
@@ -287,14 +299,14 @@ export function ChatModelSelector({
               </div>
               <Slider
                 min={0}
-                max={4}
+                max={Math.max(0, sliderEfforts.length - 1)}
                 step={1}
                 value={[draftIndex]}
-                disabled={busy}
+                disabled={busy || sliderEfforts.length <= 1}
                 onValueChange={([index]) => setDraftIndex(index ?? 0)}
-                onValueCommit={([index]) => void changePreset(index ?? 0)}
-                aria-label="快速模型档位"
-                aria-valuetext={`${compactModelLabel(QUICK_CHAT_PRESETS[draftIndex]?.model ?? value.model)} ${effortLabel(QUICK_CHAT_PRESETS[draftIndex]?.reasoningEffort ?? value.reasoningEffort)}`}
+                onValueCommit={([index]) => void changeEffort(index ?? 0)}
+                aria-label={t("chat.composer.modelSelector.quickTier")}
+                aria-valuetext={`${compactModelLabel(currentModel?.displayName ?? value.model)} ${effortLabel(sliderEfforts[draftIndex]?.effort ?? value.reasoningEffort)}`}
                 className="h-7 cursor-pointer data-[disabled]:cursor-not-allowed data-[disabled]:opacity-100 [&_[data-slot=slider-range]]:bg-[#3598f6] [&_[data-slot=slider-track]]:h-7 [&_[data-slot=slider-thumb]]:size-7"
               />
               {fast && (
@@ -314,6 +326,15 @@ export function ChatModelSelector({
                 </div>
               )}
             </div>
+            {speedDiverged && (
+              <p
+                role="status"
+                className="mt-2 text-xs text-muted-foreground"
+              >
+                <span className="font-medium text-foreground">{speedSummary}</span>
+                {speedReason && ` · ${speedReason}`}
+              </p>
+            )}
           </div>
         ) : (
           <div>
@@ -325,7 +346,7 @@ export function ChatModelSelector({
                   disabled={busy}
                   className="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
                 >
-                  <span className="font-medium">Model</span>
+                  <span className="font-medium">{t("chat.composer.modelSelector.model")}</span>
                   <span className="ml-auto truncate text-muted-foreground">{triggerModel}</span>
                   <ChevronRight className="size-4 text-muted-foreground" />
                 </button>
@@ -335,20 +356,27 @@ export function ChatModelSelector({
                   disabled={busy || !currentModel}
                   className="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
                 >
-                  <span className="font-medium">Effort</span>
+                  <span className="font-medium">{t("chat.composer.modelSelector.effort")}</span>
                   <span className="ml-auto truncate text-muted-foreground">{effortLabel(value.reasoningEffort)}</span>
                   <ChevronRight className="size-4 text-muted-foreground" />
                 </button>
-                <button
+                {supportsSpeed && <button
                   type="button"
                   onClick={() => setView("speed")}
                   disabled={busy || !currentModel}
                   className="flex w-full items-center gap-2 rounded-lg px-1.5 py-2 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
                 >
-                  <span className="font-medium">Speed</span>
-                  <span className="ml-auto truncate text-muted-foreground">{speedLabel(value.serviceTier, currentModel)}</span>
+                  <span className="font-medium">{t("chat.composer.modelSelector.speed")}</span>
+                  <span className="ml-auto min-w-0 text-right text-muted-foreground">
+                    <span className="block truncate">{speedSummary}</span>
+                    {speedReason && (
+                      <span className="block truncate text-xs">
+                        {speedReason}
+                      </span>
+                    )}
+                  </span>
                   <ChevronRight className="size-4 text-muted-foreground" />
-                </button>
+                </button>}
               </div>
             )}
 
@@ -360,7 +388,11 @@ export function ChatModelSelector({
                   className="mb-1 flex items-center gap-1 rounded-md px-1 py-1 text-sm font-medium outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/40"
                 >
                   <ChevronLeft className="size-4" aria-hidden="true" />
-                  {view === "model" ? "Model" : view === "effort" ? "Effort" : "Speed"}
+                  {view === "model"
+                    ? t("chat.composer.modelSelector.model")
+                    : view === "effort"
+                      ? t("chat.composer.modelSelector.effort")
+                      : t("chat.composer.modelSelector.speed")}
                 </button>
                 <SlimScroller className="max-h-64 overflow-y-auto">
                   {view === "model" &&
@@ -370,7 +402,7 @@ export function ChatModelSelector({
                         label={compactModelLabel(model.displayName)}
                         selected={model.slug === value.model}
                         disabled={busy}
-                        onClick={() => void commit(optionsForModel(value, model)).then((ok) => ok && setView("advanced"))}
+                        onClick={() => void commit(optionsForModel(value, model), true).then((ok) => ok && setView("advanced"))}
                       />
                     ))}
                   {view === "effort" &&
@@ -389,24 +421,35 @@ export function ChatModelSelector({
                       <OptionButton
                         key={speed.id}
                         label={speed.displayName}
-                        selected={speed.id === value.serviceTier}
+                        selected={speed.id === preferredTier}
                         disabled={busy}
-                        onClick={() => void commit({ ...value, serviceTier: speed.id }).then((ok) => ok && setView("advanced"))}
+                        onClick={() => void commit({ ...value, serviceTier: speed.id }, true).then((ok) => ok && setView("advanced"))}
                       />
                     ))}
                 </SlimScroller>
+                {view === "speed" && (
+                  <div className="mt-2 space-y-1 border-t pt-2 text-xs text-muted-foreground">
+                    <p>{t("chat.composer.modelSelector.speedDescription")}</p>
+                    {speedDiverged && (
+                      <p role="status">
+                        <span className="font-medium text-foreground">{speedSummary}</span>
+                        {speedReason && ` · ${speedReason}`}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
             {modelsLoading && (
               <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <LoaderCircle className="size-3.5 animate-spin" /> 正在读取模型目录…
+                <LoaderCircle className="size-3.5 animate-spin" /> {t("chat.composer.modelSelector.loadingModels")}
               </p>
             )}
             {modelsError && (
               <div role="alert" className="mt-2 flex items-center gap-2 rounded-lg bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
                 <span className="min-w-0 flex-1">{modelsError}</span>
-                <Button variant="ghost" size="icon-sm" onClick={onRetryModels} aria-label="重试模型目录">
+                <Button variant="ghost" size="icon-sm" onClick={onRetryModels} aria-label={t("chat.composer.modelSelector.retryModels")}>
                   <RotateCw className="size-3" />
                 </Button>
               </div>
@@ -428,7 +471,7 @@ export function ChatModelSelector({
               onClick={() => void resetToDefault()}
               className="flex w-full items-center justify-between rounded-md px-1 py-1 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
             >
-              <span>Reset to default</span>
+              <span>{t("chat.composer.modelSelector.resetDefault")}</span>
               <RotateCcw className="size-4" aria-hidden="true" />
             </button>
           </div>
@@ -441,7 +484,7 @@ export function ChatModelSelector({
               onClick={returnToQuick}
               className="flex items-center gap-1 rounded-md px-1 py-1 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
             >
-              Advanced <ChevronUp className="size-4" aria-hidden="true" />
+              {t("chat.composer.modelSelector.advanced")} <ChevronUp className="size-4" aria-hidden="true" />
             </button>
           </div>
         )}

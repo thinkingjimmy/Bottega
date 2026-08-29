@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on lucide icons, UI Button/DropdownMenu, Base-tab-chrome action style, Base App operation, conversation, image source and shared web tab Projection
- * [OUTPUT]: Provides PanelTabId/PanelRegion/ImageRegionId/TabItem, word, image region, decoding,
- * [POS]: The tabs of the chat/side-panel are the source of identity truth; This is the boundary between manually open directories and dynamic Image regions that can only be opened from conversation
+ * [INPUT]: Depends on i18n, icons, UI menu primitives, Base/App actions, panel eligibility, image identity, and Browser tab projections
+ * [OUTPUT]: Provides canonical panel tab/region types, parsers, i18n-keyed catalog descriptors, and keyboard-readable disabled-with-reason directory UI
+ * [POS]: The tab identity and add-menu truth source for chat/side-panel
  */
 
 import { useState, type ReactNode } from "react";
@@ -38,6 +38,7 @@ import { SaveAsAppDialog } from "@/components/apps/save-as-app-dialog";
 import type { BrowserTabProjection } from "../../../../shared/browser-ipc";
 import type { AvailableAttachedApp } from "../../../../shared/apps-ipc";
 import type { ConversationImageSource } from "../runtime/chat-session-model";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 /* ── 区域与身份：为何 browser 不在 PanelTabId 里 ────────────────────
  * base/subagents 是面板——一个 id 对应一个实例，开与关归本组件。
@@ -104,10 +105,10 @@ export const isImageRegion = (region: string): region is ImageRegionId =>
  * ─────────────────────────────────────────────────────────── */
 type PanelTabSpec<Id extends string = PanelCatalogId> = {
   id: Id;
-  label: string;
+  labelKey: `chat.sidePanel.catalog.${Id}.label`;
   icon: LucideIcon;
   /** 空白页卡片副标题：一句话说清这个面板给你什么 */
-  hint: string;
+  hintKey: `chat.sidePanel.catalog.${Id}.hint`;
   /** tab 内联动作（如 Base 的 ⋯ 菜单）；没有就没有 */
   renderTabActions?: (ownerKey: string, chatId: string) => ReactNode;
   /** 该 tab 激活时的头部右簇；缺省则只给「关闭面板」 */
@@ -121,9 +122,9 @@ type PanelTabSpec<Id extends string = PanelCatalogId> = {
 export const PANEL_TAB_SPECS: readonly PanelTabSpec[] = [
   {
     id: "base",
-    label: "Base",
+    labelKey: "chat.sidePanel.catalog.base.label",
     icon: DatabaseIcon,
-    hint: "结构化收集本次对话沉淀的数据",
+    hintKey: "chat.sidePanel.catalog.base.hint",
     renderTabActions: (ownerKey, chatId) => (
       <BaseTabMenu chatId={chatId} ownerKey={ownerKey} />
     ),
@@ -138,21 +139,21 @@ export const PANEL_TAB_SPECS: readonly PanelTabSpec[] = [
   },
   {
     id: "subagents",
-    label: "Subagents",
+    labelKey: "chat.sidePanel.catalog.subagents.label",
     icon: BotIcon,
-    hint: "查看子代理的分工与执行详情",
+    hintKey: "chat.sidePanel.catalog.subagents.hint",
   },
   {
     id: "browser",
-    label: "Browser",
+    labelKey: "chat.sidePanel.catalog.browser.label",
     icon: GlobeIcon,
-    hint: "新开网页，Agent 与你共用登录态",
+    hintKey: "chat.sidePanel.catalog.browser.hint",
   },
   {
     id: "app",
-    label: "App",
+    labelKey: "chat.sidePanel.catalog.app.label",
     icon: PanelsTopLeftIcon,
-    hint: "打开已授权 App；建 tab 不会启动 App",
+    hintKey: "chat.sidePanel.catalog.app.hint",
   },
 ];
 
@@ -162,9 +163,9 @@ export const PANEL_TAB_SPEC = Object.fromEntries(
 
 const IMAGE_TAB_SPEC: PanelTabSpec<"image"> = {
   id: "image",
-  label: "Image",
+  labelKey: "chat.sidePanel.catalog.image.label",
   icon: ImageIcon,
-  hint: "查看 conversation 图片",
+  hintKey: "chat.sidePanel.catalog.image.hint",
 };
 
 export function specForRegion(region: PanelRegion) {
@@ -202,6 +203,7 @@ function BaseTabMenu({
   ownerKey: string;
   chatId: string;
 }) {
+  const { t } = useAppTranslation();
   const {
     app,
     busy,
@@ -216,10 +218,10 @@ function BaseTabMenu({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            aria-label="More Base actions"
+            aria-label={t("chat.sidePanel.moreBaseActions")}
             className={baseTabActionButtonClass}
             onClick={(event) => event.stopPropagation()}
-            title="More"
+            title={t("chat.sidePanel.more")}
             type="button"
           >
             <MoreHorizontal className="size-3" />
@@ -230,7 +232,7 @@ function BaseTabMenu({
             <DropdownMenuItem asChild>
               <Link to={`/apps/${app.id}`}>
                 <ExternalLinkIcon />
-                Open App
+                {t("chat.sidePanel.openApp")}
               </Link>
             </DropdownMenuItem>
           ) : saveChatId ? (
@@ -239,7 +241,7 @@ function BaseTabMenu({
               onSelect={() => setSaveOpen(true)}
             >
               <PackagePlusIcon />
-              Save as App
+              {t("chat.sidePanel.saveAsApp")}
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem
@@ -247,7 +249,7 @@ function BaseTabMenu({
             onSelect={() => void exportCsv()}
           >
             <DownloadIcon />
-            Download CSV
+            {t("chat.sidePanel.downloadCsv")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -295,33 +297,43 @@ export function WebTabIcon({ tab }: { tab: BrowserTabProjection }) {
 /** tab 条右端的 add：清单全部不可开则整枚置灰，否则逐项判定 */
 export function AddPanelMenu({
   disabledFor,
+  disabledReasonFor,
   onOpen,
   availableApps = [],
   appsDisabled = false,
 }: {
   disabledFor: (id: PanelRegion) => boolean;
+  disabledReasonFor?: (id: PanelRegion) => string | undefined;
   onOpen: (id: PanelRegion) => void;
   availableApps?: readonly AvailableAttachedApp[];
   appsDisabled?: boolean;
 }) {
+  const { t } = useAppTranslation();
   const full = PANEL_TAB_SPECS.every((spec) =>
     spec.id === "app"
       ? appsDisabled ||
         !availableApps.some((app) => !disabledFor(`app:${app.appId}`))
       : disabledFor(spec.id)
+  ) && !PANEL_TAB_SPECS.some((spec) =>
+    spec.id === "app"
+      ? Boolean(disabledReasonFor?.("app:catalog")) ||
+        availableApps.some((app) =>
+          Boolean(disabledReasonFor?.(`app:${app.appId}`))
+        )
+      : Boolean(disabledReasonFor?.(spec.id))
   );
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          aria-label="添加面板"
+          aria-label={t("chat.sidePanel.addPanel")}
           className={cn(
             "shrink-0 cursor-pointer text-muted-foreground",
             panelChromeClassName
           )}
           disabled={full}
           size="icon-lg"
-          title={full ? "面板已全部打开" : "添加面板"}
+          title={full ? t("chat.sidePanel.allPanelsOpen") : t("chat.sidePanel.addPanel")}
           type="button"
           variant="ghost"
         >
@@ -331,34 +343,75 @@ export function AddPanelMenu({
       <DropdownMenuContent align="start" className="min-w-40">
         {PANEL_TAB_SPECS.map((spec) => {
           const Icon = spec.icon;
+          const label = t(spec.labelKey);
           if (spec.id === "app") {
             return availableApps.length ? (
-              availableApps.map((app) => (
-                <DropdownMenuItem
-                  disabled={appsDisabled || disabledFor(`app:${app.appId}`)}
-                  key={`app:${app.appId}`}
-                  onSelect={() => onOpen(`app:${app.appId}`)}
-                >
-                  <Icon />
-                  {app.name}
-                </DropdownMenuItem>
-              ))
+              availableApps.map((app) => {
+                const region = `app:${app.appId}` as AppRegionId;
+                const disabled = appsDisabled || disabledFor(region);
+                const reason = disabledReasonFor?.(region);
+                return (
+                  <DropdownMenuItem
+                    aria-disabled={disabled || undefined}
+                    className={disabled ? "cursor-not-allowed opacity-55" : undefined}
+                    key={region}
+                    onSelect={(event) => {
+                      if (disabled) {
+                        event.preventDefault();
+                        return;
+                      }
+                      onOpen(region);
+                    }}
+                  >
+                    <Icon />
+                    <span className="min-w-0">
+                      <span className="block">{app.name}</span>
+                      {reason && (
+                        <span className="block text-muted-foreground text-xs">
+                          {reason}
+                        </span>
+                      )}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })
             ) : (
-              <DropdownMenuItem disabled key="app-empty">
+              <DropdownMenuItem
+                aria-disabled="true"
+                className="cursor-not-allowed opacity-55"
+                key="app-empty"
+                onSelect={(event) => event.preventDefault()}
+              >
                 <Icon />
-                先在 Chat 或 Project 授权 App
+                {disabledReasonFor?.("app:catalog") ?? t("chat.sidePanel.authorizeAppFirst")}
               </DropdownMenuItem>
             );
           }
           const region = spec.id as PanelRegion;
+          const disabled = disabledFor(region);
+          const reason = disabledReasonFor?.(region);
           return (
             <DropdownMenuItem
-              disabled={disabledFor(region)}
+              aria-disabled={disabled || undefined}
+              className={disabled ? "cursor-not-allowed opacity-55" : undefined}
               key={region}
-              onSelect={() => onOpen(region)}
+              onSelect={(event) => {
+                if (disabled) {
+                  event.preventDefault();
+                  return;
+                }
+                onOpen(region);
+              }}
             >
               <Icon />
-              {spec.label}
+              <span className="min-w-0">
+                <span className="block">{label}</span>
+                {reason && (
+                  <span className="block text-muted-foreground text-xs">
+                    {reason}
+                  </span>
+                )}
+              </span>
             </DropdownMenuItem>
           );
         })}
@@ -371,41 +424,114 @@ export function AddPanelMenu({
 export function PanelTabsEmpty({
   onOpen,
   availableApps = [],
+  disabledFor = () => false,
+  disabledReasonFor,
+  extraDisabled = [],
 }: {
   onOpen: (id: PanelRegion) => void;
   availableApps?: readonly AvailableAttachedApp[];
+  disabledFor?: (id: PanelRegion) => boolean;
+  disabledReasonFor?: (id: PanelRegion) => string | undefined;
+  extraDisabled?: readonly Readonly<{
+    label: string;
+    hint: string;
+    reason: string;
+  }>[];
 }) {
+  const { t } = useAppTranslation();
   return (
     <div className="grid min-h-0 flex-1 place-items-center px-5 py-6">
       <div className="flex w-full max-w-72 flex-col gap-1.5">
         {PANEL_TAB_SPECS.map((spec) => {
           const Icon = spec.icon;
+          const label = t(spec.labelKey);
+          const hint = t(spec.hintKey);
           if (spec.id === "app") {
-            return availableApps.map((app) => (
+            const appRows = availableApps.map((app) => {
+              const region = `app:${app.appId}` as AppRegionId;
+              const disabled = disabledFor(region);
+              const reason = disabledReasonFor?.(region);
+              return (
+                <button
+                  aria-disabled={disabled || undefined}
+                  aria-label={disabled && reason
+                    ? t("chat.sidePanel.unavailableNamedPanel", {
+                        name: app.name,
+                        reason,
+                      })
+                    : t("chat.sidePanel.openNamedPanel", { name: app.name })}
+                  className={cn(
+                    "group/panel-card flex w-full cursor-pointer items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-foreground/15 hover:bg-accent",
+                    disabled && "cursor-not-allowed opacity-55"
+                  )}
+                  key={region}
+                  onClick={() => {
+                    if (!disabled) onOpen(region);
+                  }}
+                  type="button"
+                >
+                  <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                    <Icon className="size-3.5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-sm">
+                      {app.name}
+                    </span>
+                    {reason && (
+                      <span className="block text-muted-foreground text-xs">
+                        {reason}
+                      </span>
+                    )}
+                  </span>
+                  <PlusIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                </button>
+              );
+            });
+            if (appRows.length) return appRows;
+            const genericApp = "app:catalog" as AppRegionId;
+            const reason = disabledReasonFor?.(genericApp);
+            if (!reason) return null;
+            return (
               <button
-                aria-label={`打开 ${app.name}`}
-                className="group/panel-card flex w-full cursor-pointer items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-foreground/15 hover:bg-accent"
-                key={`app:${app.appId}`}
-                onClick={() => onOpen(`app:${app.appId}`)}
+                aria-disabled="true"
+                aria-label={t("chat.sidePanel.unavailableNamedPanel", {
+                  name: label,
+                  reason,
+                })}
+                className="flex w-full cursor-not-allowed items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left opacity-55"
+                key="app-disabled"
                 type="button"
               >
                 <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
                   <Icon className="size-3.5" />
                 </span>
-                <span className="min-w-0 flex-1 truncate font-medium text-sm">
-                  {app.name}
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-sm">{label}</span>
+                  <span className="block text-muted-foreground text-xs">{reason}</span>
                 </span>
-                <PlusIcon className="size-3.5 shrink-0 text-muted-foreground" />
               </button>
-            ));
+            );
           }
           const region = spec.id as PanelRegion;
+          const reason = disabledReasonFor?.(region);
+          const disabled = disabledFor(region);
           return (
             <button
-              aria-label={`打开 ${spec.label}`}
-              className="group/panel-card flex w-full cursor-pointer items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-foreground/15 hover:bg-accent"
+              aria-disabled={disabled || undefined}
+              aria-label={disabled && reason
+                ? t("chat.sidePanel.unavailableNamedPanel", {
+                    name: label,
+                    reason,
+                  })
+                : t("chat.sidePanel.openNamedPanel", { name: label })}
+              className={cn(
+                "group/panel-card flex w-full cursor-pointer items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-foreground/15 hover:bg-accent",
+                disabled && "cursor-not-allowed opacity-55"
+              )}
               key={region}
-              onClick={() => onOpen(region)}
+              onClick={() => {
+                if (!disabled) onOpen(region);
+              }}
               type="button"
             >
               <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground transition-colors group-hover/panel-card:text-foreground">
@@ -413,16 +539,36 @@ export function PanelTabsEmpty({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium text-sm">
-                  {spec.label}
+                  {label}
                 </span>
                 <span className="block truncate text-muted-foreground text-xs">
-                  {spec.hint}
+                  {reason ?? hint}
                 </span>
               </span>
               <PlusIcon className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/panel-card:opacity-100" />
             </button>
           );
         })}
+        {extraDisabled.map((item) => (
+          <button
+            aria-disabled="true"
+            aria-label={t("chat.sidePanel.unavailableNamedPanel", {
+              name: item.label,
+              reason: item.reason,
+            })}
+            className="flex w-full cursor-not-allowed items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left opacity-55"
+            key={item.label}
+            type="button"
+          >
+            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+              <ImageIcon className="size-3.5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium text-sm">{item.label}</span>
+              <span className="block text-muted-foreground text-xs">{item.reason || item.hint}</span>
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );

@@ -1,9 +1,12 @@
-[submodule "apps/desktop/resources/apps/dev-kanban"]
-	path = apps/desktop/resources/apps/dev-kanban
+[submodule "apps/desktop/resources/apps/Bottega-app-dev-kanban"]
+	path = apps/desktop/resources/apps/Bottega-app-dev-kanban
 	url = https://github.com/thinkingjimmy/Bottega-app-dev-kanban.git
-[submodule "apps/desktop/resources/apps/expense-tracker"]
-	path = apps/desktop/resources/apps/expense-tracker
+[submodule "apps/desktop/resources/apps/Bottega-app-expense-tracker"]
+	path = apps/desktop/resources/apps/Bottega-app-expense-tracker
 	url = https://github.com/thinkingjimmy/Bottega-app-expense-tracker.git
-[submodule "apps/desktop/resources/apps/fitness-log"]
-	path = apps/desktop/resources/apps/fitness-log
+[submodule "apps/desktop/resources/apps/Bottega-app-fitness-log"]
+	path = apps/desktop/resources/apps/Bottega-app-fitness-log
 	url = https://github.com/thinkingjimmy/Bottega-app-fitness-log.git
+[submodule "apps/desktop/resources/apps/Bottega-app-design-canvas"]
+	path = apps/desktop/resources/apps/Bottega-app-design-canvas
+	url = https://github.com/thinkingjimmy/Bottega-app-design-canvas.git

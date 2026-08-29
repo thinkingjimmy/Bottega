@@ -1,19 +1,35 @@
 /**
- * [INPUT]: Depends on persistence of the DurableJson, zod, administrative/removal of the ExtensionRegistryStore Truth and shared generation ref, projection owner
- * [OUTPUT]: Provides ExtensionProjectionLedger: owner-specific workspace consent, independent projection admission, precise action authority, single binding release, lease/owner/artifact refcount
- * [POS]: The project durable single writer of extensions/lifecycle; enable catalog and separate projection access, authority to accurately bind agent/component/target/digest/action
+ * [INPUT]: Depends on DurableJson, zod, exact Extension package inventory, component-instance/generation identity, and projection owners
+ * [OUTPUT]: Provides schema-v5 ambient-projection custody, exact binding session receipts, and operation-frozen holder queries
+ * [POS]: Durable projection authority; component-instance identity prevents same-declared-component owners from sharing consent or lifecycle state
  */
 
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { z } from "zod";
-import type {
-  ExtensionPackageGenerationRef,
-  ExtensionProjectionOwner,
-  Sha256Digest,
+import {
+  type ExtensionPackageGenerationRef,
+  type ExtensionProjectionOwner,
+  type Sha256Digest,
 } from "../../../../shared/extensions-ipc";
 import { DurableJson } from "../../persistence/durable-json";
 import type { ExtensionRegistryStore } from "../registry-store";
+import type { TurnProjectContext } from "../../../../shared/product-resource-scope";
+import {
+  projectionLedgerSchema,
+  type ExtensionBindingAuthority,
+  type ExtensionProjectionBinding,
+  type ExtensionProjectionLease,
+  type ExtensionWorkspaceConsent,
+  type ProjectionAdmission,
+  type ProjectionDelivery,
+  type ProjectionLedgerState,
+} from "./projection-ledger-schema";
+export type {
+  ExtensionBindingAuthority,
+  ExtensionProjectionBinding,
+  ExtensionProjectionLease,
+  ExtensionWorkspaceConsent,
+} from "./projection-ledger-schema";
 
 /* ============================================================
  * 投影有两层引用计数，混成一层就一定错。
@@ -30,95 +46,6 @@ import type { ExtensionRegistryStore } from "../registry-store";
  * 另一个 owner 仍指着的同一份字节。
  * ============================================================ */
 
-const digestSchema = z
-  .string()
-  .regex(/^sha256:[a-f0-9]{64}$/)
-  .transform((value) => value as Sha256Digest);
-
-const ownerSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("user") }).strict(),
-  z.object({ kind: z.literal("app"), appId: z.string().min(1) }).strict(),
-]);
-
-const consentSchema = z
-  .object({
-    consentId: z.string().min(1),
-    owner: ownerSchema,
-    workspaceKey: z.string().min(1),
-    /** workspace 所有权凭据：同意针对的是这一个 workspace 身份，不是一个路径 */
-    workspaceCapabilityId: z.string().min(1),
-    canonicalIdentityDigest: digestSchema,
-    grantedAt: z.number().int().nonnegative(),
-    revokedAt: z.number().int().nonnegative().nullable(),
-  })
-  .strict();
-
-const leaseSchema = z
-  .object({
-    leaseId: z.string().min(1),
-    owner: ownerSchema,
-    /** 签发依据；consent 被撤后旧 lease 仍需归还，但不会再签发新的 */
-    workspaceConsentId: z.string().min(1),
-    acquiredAt: z.number().int().nonnegative(),
-  })
-  .strict();
-
-const bindingSchema = z
-  .object({
-    bindingId: z.string().min(1),
-    installIdentity: z.string().min(1),
-    packageGenerationRef: z
-      .object({ packageGenerationId: z.string().min(1), recordDigest: digestSchema })
-      .strict(),
-    componentIdentity: z.string().min(1),
-    /** canonical 目标身份：同一目标只允许一条 binding，同名冲突必须显式解决 */
-    projectionId: z.string().min(1),
-    workspaceKey: z.string().min(1),
-    targetPath: z.string().min(1),
-    /** 共享产物的内容身份；refcount 按它算，跨 package 也算 */
-    artifactDigest: digestSchema,
-    /** 仍同意这份投影存在的主体；空集即失去存在理由 */
-    owners: z.array(ownerSchema),
-    leases: z.array(leaseSchema),
-    state: z.enum(["active", "revoke-pending", "revoked", "foreign"]),
-    /** 哪一次收敛把它拽下来的；受影响 workspace 按这个 id 收窄 */
-    revokedByOperationId: z.string().min(1).nullable(),
-  })
-  .strict();
-
-const projectionAdmissionSchema = z.object({
-  installIdentity: z.string().min(1),
-  packageGenerationRef: z.object({ packageGenerationId: z.string().min(1), recordDigest: digestSchema }).strict(),
-  componentIdentity: z.string().min(1),
-  admittedAt: z.number().int().nonnegative(),
-}).strict();
-
-const bindingAuthoritySchema = z.object({
-  authorityToken: z.string().min(1),
-  agent: z.enum(["codex", "claude", "kimi", "opencode"]),
-  component: z.string().min(1),
-  target: z.string().min(1),
-  digest: digestSchema,
-  action: z.enum(["project", "takeover", "remove"]),
-  expiresAt: z.number().int().nonnegative(),
-  consumedAt: z.number().int().nonnegative().nullable(),
-}).strict();
-
-const ledgerSchema = z
-  .object({
-    schemaVersion: z.literal(2),
-    consents: z.array(consentSchema),
-    bindings: z.array(bindingSchema),
-    projectionAdmissions: z.array(projectionAdmissionSchema).default([]),
-    authorities: z.array(bindingAuthoritySchema).default([]),
-  })
-  .strict();
-
-export type ExtensionProjectionBinding = z.infer<typeof bindingSchema>;
-export type ExtensionWorkspaceConsent = z.infer<typeof consentSchema>;
-export type ExtensionProjectionLease = z.infer<typeof leaseSchema>;
-export type ExtensionBindingAuthority = z.infer<typeof bindingAuthoritySchema>;
-
 export type GrantWorkspaceConsentInput = Readonly<{
   owner: ExtensionProjectionOwner;
   workspaceKey: string;
@@ -130,7 +57,8 @@ export type AcquireProjectionInput = Readonly<{
   owner: ExtensionProjectionOwner;
   installIdentity: string;
   packageGenerationRef: ExtensionPackageGenerationRef;
-  componentIdentity: string;
+  componentInstanceIdentity: string;
+  delivery: ProjectionDelivery;
   projectionId: string;
   workspaceKey: string;
   targetPath: string;
@@ -144,7 +72,7 @@ const HOLDING: readonly ExtensionProjectionBinding["state"][] = [
 ];
 
 export class ExtensionProjectionLedger {
-  private readonly file: DurableJson<z.infer<typeof ledgerSchema>>;
+  private readonly file: DurableJson<ProjectionLedgerState>;
 
   constructor(
     userData: string,
@@ -152,8 +80,8 @@ export class ExtensionProjectionLedger {
   ) {
     this.file = new DurableJson(
       join(userData, "agent-extensions", "projections.json"),
-      ledgerSchema,
-      () => ({ schemaVersion: 2 as const, consents: [], bindings: [], projectionAdmissions: [], authorities: [] })
+      projectionLedgerSchema,
+      () => ({ schemaVersion: 5 as const, consents: [], bindings: [], sessionDiscoveries: [], projectionAdmissions: [], authorities: [] })
     );
   }
 
@@ -161,7 +89,7 @@ export class ExtensionProjectionLedger {
     return this.file.filePath;
   }
 
-  /** 断代：非 v2 账本由 DurableJson strict parse 直接抛错 fail closed，无迁移。 */
+  /** Cutover: pre-v5 ledgers fail closed; discovery authority domains are not inferred. */
   initialize() {
     return this.file.initialize();
   }
@@ -244,13 +172,13 @@ export class ExtensionProjectionLedger {
   }
 
   /** 投影准入是独立安全位，不借 `$` catalog 的候选开关表达另一件事。 */
-  admitProjectionComponent(input: Omit<z.infer<typeof projectionAdmissionSchema>, "admittedAt">, now = Date.now()) {
+  admitProjectionComponent(input: Omit<ProjectionAdmission, "admittedAt">, now = Date.now()) {
     return this.file.mutate((state) => {
       const existing = state.projectionAdmissions.find((item) =>
         item.installIdentity === input.installIdentity &&
         item.packageGenerationRef.packageGenerationId === input.packageGenerationRef.packageGenerationId &&
         item.packageGenerationRef.recordDigest === input.packageGenerationRef.recordDigest &&
-        item.componentIdentity === input.componentIdentity
+        item.componentInstanceIdentity === input.componentInstanceIdentity
       );
       if (existing) return existing;
       const admission = { ...structuredClone(input), admittedAt: now };
@@ -259,10 +187,10 @@ export class ExtensionProjectionLedger {
     });
   }
 
-  revokeProjectionComponent(componentIdentity: string) {
+  revokeProjectionComponent(componentInstanceIdentity: string) {
     return this.file.mutate((state) => {
       state.projectionAdmissions = state.projectionAdmissions.filter(
-        (item) => item.componentIdentity !== componentIdentity
+        (item) => item.componentInstanceIdentity !== componentInstanceIdentity
       );
     });
   }
@@ -313,6 +241,130 @@ export class ExtensionProjectionLedger {
   }
 
   /**
+   * A backend session discovers only bindings active when that session is
+   * bound. Later bindings do not retroactively make an old session a holder.
+   */
+  recordSessionDiscovery(input: {
+    conversationId: string;
+    requestId: string;
+    backendRuntimeIdentity: string;
+    projectContext: TurnProjectContext;
+    session: { backend: "codex" | "claude" | "kimi" | "opencode"; id: string };
+    discoveries: readonly Readonly<{
+      kind: "ambient-projection";
+      authorityId: string;
+      packageGenerationRef: ExtensionPackageGenerationRef;
+      componentInstanceIdentity: string;
+      deliveryIdentity: Sha256Digest;
+    }>[];
+  }, now = Date.now()) {
+    return this.file.mutate((state) => {
+      for (const receipt of state.sessionDiscoveries) {
+        if (
+          receipt.conversationId === input.conversationId &&
+          receipt.releasedAt === null &&
+          (receipt.backend !== input.session.backend ||
+            receipt.sessionId !== input.session.id)
+        ) {
+          receipt.releasedAt = now;
+        }
+      }
+      for (const discovery of input.discoveries) {
+        const binding = state.bindings.find(
+          (candidate) => candidate.bindingId === discovery.authorityId
+        );
+        if (!binding) throw conflict("ambient discovery 找不到 projection binding");
+        const projection = this.validateProjectionDiscovery(binding, discovery, input);
+        const exists = state.sessionDiscoveries.some(
+          (receipt) =>
+            receipt.releasedAt === null &&
+            receipt.conversationId === input.conversationId &&
+            receipt.backend === input.session.backend &&
+            receipt.sessionId === input.session.id &&
+            receipt.bindingId === discovery.authorityId
+        );
+        if (exists) continue;
+        state.sessionDiscoveries.push({
+          kind: "ambient-projection",
+          receiptId: randomUUID(),
+          conversationId: input.conversationId,
+          backend: input.session.backend,
+          backendRuntimeIdentity: input.backendRuntimeIdentity,
+          sessionId: input.session.id,
+          workspaceKey: projection.workspaceKey,
+          bindingId: discovery.authorityId,
+          installIdentity: projection.installIdentity,
+          packageGenerationRef: structuredClone(discovery.packageGenerationRef),
+          componentInstanceIdentity: discovery.componentInstanceIdentity,
+          deliveryIdentity: discovery.deliveryIdentity,
+          acquiredAt: now,
+          releasedAt: null,
+          revokedByOperationId: null,
+        });
+      }
+      state.sessionDiscoveries = state.sessionDiscoveries.filter(
+        (receipt) => receipt.releasedAt === null
+      );
+      return state.sessionDiscoveries.filter(
+        (receipt) =>
+          receipt.conversationId === input.conversationId &&
+          receipt.backend === input.session.backend &&
+          receipt.sessionId === input.session.id &&
+          receipt.releasedAt === null
+      );
+    });
+  }
+
+  releaseSessionDiscovery(
+    conversationId: string,
+    session?: { backend: string; id: string },
+    now = Date.now()
+  ) {
+    return this.file.mutate((state) => {
+      for (const receipt of state.sessionDiscoveries) {
+        if (
+          receipt.conversationId === conversationId &&
+          receipt.releasedAt === null &&
+          (!session ||
+            (receipt.backend === session.backend &&
+              receipt.sessionId === session.id))
+        ) {
+          receipt.releasedAt = now;
+        }
+      }
+      state.sessionDiscoveries = state.sessionDiscoveries.filter(
+        (receipt) => receipt.releasedAt === null
+      );
+    });
+  }
+
+  sessionsAffected(operationId: string) {
+    const state = this.file.snapshot();
+    const sessions = new Map<string, {
+      conversationId: string;
+      backend: "codex" | "claude" | "kimi" | "opencode";
+      sessionId: string;
+    }>();
+    for (const receipt of state.sessionDiscoveries) {
+      if (
+        receipt.releasedAt !== null ||
+        receipt.revokedByOperationId !== operationId
+      ) continue;
+      const key = `${receipt.conversationId}\0${receipt.backend}\0${receipt.sessionId}`;
+      sessions.set(key, {
+        conversationId: receipt.conversationId,
+        backend: receipt.backend,
+        sessionId: receipt.sessionId,
+      });
+    }
+    return [...sessions.values()];
+  }
+
+  installIdentityOfGeneration(ref: ExtensionPackageGenerationRef) {
+    return this.registry.generationProjection(ref)?.installIdentity ?? null;
+  }
+
+  /**
    * 单 binding release：只撤一个 owner 在这一条目标上的存在理由，不再按
    * owner×workspace 整批退出。remove authority 在同一 mutate 内先消费，
    * 即使随后物理收敛失败也不能重放同一份授权。
@@ -329,7 +381,7 @@ export class ExtensionProjectionLedger {
       this.consumeAuthority(state, {
         authorityToken: input.authorityToken,
         agent: input.agent,
-        component: binding.componentIdentity,
+        component: binding.componentInstanceIdentity,
         target: binding.targetPath,
         digest: binding.artifactDigest,
         action: "remove",
@@ -361,8 +413,54 @@ export class ExtensionProjectionLedger {
         binding.state = "revoke-pending";
         binding.revokedByOperationId = operationId;
       }
+      for (const receipt of state.sessionDiscoveries) {
+        if (
+          receipt.installIdentity === installIdentity &&
+          receipt.releasedAt === null
+        ) {
+          receipt.revokedByOperationId = operationId;
+        }
+      }
       return structuredClone(affected);
     });
+  }
+
+  private validateProjectionDiscovery(
+    binding: ExtensionProjectionBinding,
+    discovery: {
+      kind: "ambient-projection";
+      authorityId: string;
+      packageGenerationRef: ExtensionPackageGenerationRef;
+      componentInstanceIdentity: string;
+      deliveryIdentity: Sha256Digest;
+    },
+    input: {
+      session: { backend: "codex" | "claude" | "kimi" | "opencode" };
+      backendRuntimeIdentity: string;
+      projectContext: TurnProjectContext;
+    }
+  ) {
+    const owner = this.registry.generationProjection(
+      discovery.packageGenerationRef
+    );
+    const scopeMatches = owner?.scope.kind === "global" ||
+      (owner?.scope.kind === "project" &&
+        owner.scope.projectId === input.projectContext.projectId);
+    if (
+      binding.state !== "active" ||
+      binding.delivery.backend !== input.session.backend ||
+      binding.delivery.runtimeIdentity !== input.backendRuntimeIdentity ||
+      binding.delivery.deliveryIdentity !== discovery.deliveryIdentity ||
+      binding.componentInstanceIdentity !== discovery.componentInstanceIdentity ||
+      binding.packageGenerationRef.packageGenerationId !==
+        discovery.packageGenerationRef.packageGenerationId ||
+      binding.packageGenerationRef.recordDigest !==
+        discovery.packageGenerationRef.recordDigest ||
+      !scopeMatches
+    ) {
+      throw conflict("session discovery 与 exact materialized binding 不一致");
+    }
+    return { installIdentity: binding.installIdentity, workspaceKey: binding.workspaceKey };
   }
 
   /**
@@ -374,6 +472,14 @@ export class ExtensionProjectionLedger {
       const binding = requireBinding(state.bindings, bindingId);
       if (binding.leases.length) {
         throw conflict("binding 仍有未归还的 lease");
+      }
+      if (
+        state.sessionDiscoveries.some(
+          (receipt) =>
+            receipt.bindingId === bindingId && receipt.releasedAt === null
+        )
+      ) {
+        throw conflict("binding 仍被 backend session discovery 持有");
       }
       binding.state = outcome;
       binding.owners = [];
@@ -467,12 +573,10 @@ export class ExtensionProjectionLedger {
   /* 新 binding 同时读取 Registry 行政/removal 真相与独立 projection admission。
      `$` catalog enable 故意不在此处：候选展示与写 HOME 是两份授权。 */
   private assertPackageAdmits(
-    state: z.infer<typeof ledgerSchema>,
+    state: ProjectionLedgerState,
     input: AcquireProjectionInput
   ) {
-    const owner = this.registry
-      .snapshot()
-      .packages.find((item) => item.installIdentity === input.installIdentity);
+    const owner = this.registry.packageInventory(input.installIdentity);
     if (owner?.administrativeState !== "active") {
       throw conflict("package 已提交停用，不接受新的 projection binding");
     }
@@ -480,7 +584,11 @@ export class ExtensionProjectionLedger {
       item.installIdentity === input.installIdentity &&
       item.packageGenerationRef.packageGenerationId === input.packageGenerationRef.packageGenerationId &&
       item.packageGenerationRef.recordDigest === input.packageGenerationRef.recordDigest &&
-      item.componentIdentity === input.componentIdentity
+      item.componentInstanceIdentity === input.componentInstanceIdentity
+      && item.delivery.backend === input.delivery.backend
+      && item.delivery.transport === input.delivery.transport
+      && item.delivery.runtimeIdentity === input.delivery.runtimeIdentity
+      && item.delivery.deliveryIdentity === input.delivery.deliveryIdentity
     );
     if (!admitted) {
       throw conflict("component 尚未获得独立 projection admission");
@@ -495,7 +603,7 @@ export class ExtensionProjectionLedger {
   }
 
   private consumeAuthority(
-    state: z.infer<typeof ledgerSchema>,
+    state: ProjectionLedgerState,
     expected: Omit<ExtensionBindingAuthority, "expiresAt" | "consumedAt">,
     now: number
   ) {
@@ -528,7 +636,8 @@ export class ExtensionProjectionLedger {
       /* 同一目标、同一份字节 = 共享；内容不同才是同名冲突，必须显式解决。 */
       if (
         existing.artifactDigest !== input.artifactDigest ||
-        existing.componentIdentity !== input.componentIdentity
+        existing.componentInstanceIdentity !== input.componentInstanceIdentity ||
+        existing.delivery.deliveryIdentity !== input.delivery.deliveryIdentity
       ) {
         throw conflict("同一投影目标已被占用");
       }

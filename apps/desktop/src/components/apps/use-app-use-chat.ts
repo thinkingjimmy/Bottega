@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the Apps Provider's ensureChatSlot, Chats/Projects Provider and AppRecord are available
- * [OUTPUT]: Provides useAppUseChat: durable use Slopes analysis, list of historical use chat of the App, delete self-creation and open re-creation
- * [POS]: The apps module is a single source of "chat identity"; The two types of dock and the co-host present the same identity, changing form without changing session
+ * [INPUT]: Depends on Apps ensureChatSlot, optional Chats/Projects providers, AppRecord, and canonical Chat lookup
+ * [OUTPUT]: Provides useAppUseChat with one durable canonical use-chat identity, incarnation hydration, and explicit recovery after deletion
+ * [POS]: Apps renderer identity adapter shared by the main-page dock and App-window dock; moving the surface never creates a second conversation
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import { useApps } from "@/components/providers/apps-provider";
 import { useOptionalChats } from "@/components/providers/chats-provider";
 import { useOptionalProjects } from "@/components/providers/projects-provider";
 import { errorMessage } from "@/lib/errors";
+import { getChat } from "@/lib/chats-client";
 import type { AppRecord } from "../../../shared/apps-ipc";
 
 /* active = 这个 App 此刻要不要一个使用会话，而不是"哪一栏开着"。
@@ -22,6 +23,7 @@ export function useAppUseChat(record: AppRecord, active: boolean) {
   const chatsLoading = chatsContext?.loading ?? false;
   const projects = projectsContext?.projects ?? [];
   const [chatId, setChatId] = useState(record.activeUseChatSlot?.id ?? "");
+  const [incarnation, setIncarnation] = useState({ chatId: "", value: "" });
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -53,6 +55,17 @@ export function useAppUseChat(record: AppRecord, active: boolean) {
   );
   const hasCurrent = useChats.some((chat) => chat.id === chatId);
   const persistedChatRef = useRef("");
+
+  useEffect(() => {
+    if (!chatId) return;
+    let alive = true;
+    void getChat(chatId).then((chat) => {
+      if (alive) setIncarnation({ chatId, value: chat?.incarnationId ?? "" });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [chatId, hasCurrent]);
 
   useEffect(() => {
     if (!active || chatsLoading || !chatId) return;
@@ -87,7 +100,15 @@ export function useAppUseChat(record: AppRecord, active: boolean) {
       .catch((cause) => setError(errorMessage(cause, "使用 chat 创建失败")));
   };
 
-  return { chatId, error, chats: useChats, hasCurrent, createNew, select: setChatId };
+  return {
+    chatId,
+    incarnationId: incarnation.chatId === chatId ? incarnation.value : "",
+    error,
+    chats: useChats,
+    hasCurrent,
+    createNew,
+    select: setChatId,
+  };
 }
 
 export type AppUseChat = ReturnType<typeof useAppUseChat>;

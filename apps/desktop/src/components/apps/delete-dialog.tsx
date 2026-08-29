@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ui dialog/button/spinner, cn style tool, shared/apps-ipc RemoveAppMode
- * [OUTPUT]: Provides AppDeleteDialog, the deleting range of Base App selections and single-action confirmation of Web App
+ * [OUTPUT]: Provides AppDeleteDialog, Base retention choices, and ordinary-App cascade confirmation that discloses Project chat deletion
  * [POS]: The only source of the removal of the app component pop-up windows, along with repair-dialog, is consumed by the app-card
  */
 
@@ -98,7 +98,7 @@ export function AppDeleteDialog({
             <DialogTitle>删除 {name}？</DialogTitle>
             <DialogDescription>
               此操作会停止 App，删除本地仓库文件、专用 Agent 环境以及该 origin
-              的本地数据，无法恢复。
+              的本地数据；若此 App 已创建 Project，其聊天也会一并删除，无法恢复。
             </DialogDescription>
           </DialogHeader>
           <DeleteError message={error} />

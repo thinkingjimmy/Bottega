@@ -85,7 +85,6 @@ export type SaveAsAppDependencies = {
     prompt: string;
     projectLifecycleHeld: true;
   }): Promise<void>;
-  onStatus(record: AppRecord): void;
   now?: () => number;
   allocate?: () => SaveIdentity;
 };
@@ -184,7 +183,6 @@ export class SaveAsAppService {
         return pending;
       })
     );
-    this.dependencies.onStatus(saved);
     this.dependencies.coordinator.kickConversation(chatId);
     return saved;
   }
@@ -199,16 +197,12 @@ export class SaveAsAppService {
         continue;
       }
       if (await hasGeneratedSkill(record)) {
-        const done = await this.dependencies.store.update(
-          record.id,
-          (current) => ({
-            ...current,
-            skillStatus: current.skillStatus
-              ? { ...current.skillStatus, state: "done" }
-              : null,
-          })
-        );
-        this.dependencies.onStatus(done);
+        await this.dependencies.store.update(record.id, (current) => ({
+          ...current,
+          skillStatus: current.skillStatus
+            ? { ...current.skillStatus, state: "done" }
+            : null,
+        }));
         continue;
       }
       const project = this.dependencies.projects.store.findByAppId(record.id);
@@ -421,7 +415,6 @@ export class SaveAsAppService {
         },
       })
     );
-    this.dependencies.onStatus(ready);
     return {
       status: "done",
       receipt: { appId: identity.appId },
@@ -491,7 +484,7 @@ export class SaveAsAppService {
           },
           addedAt: this.now(),
         };
-        this.dependencies.onStatus(await this.dependencies.store.set(record));
+        await this.dependencies.store.set(record);
       }
       intent = await this.dependencies.intents.advance(
         intent.intentId,
@@ -697,13 +690,12 @@ export class SaveAsAppService {
   }
 
   private async markSkillFailed(appId: string) {
-    const failed = await this.dependencies.store.update(appId, (current) => ({
+    await this.dependencies.store.update(appId, (current) => ({
       ...current,
       skillStatus: current.skillStatus
         ? { ...current.skillStatus, state: "failed" }
         : null,
     }));
-    this.dependencies.onStatus(failed);
   }
 }
 

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Base column/ChartItem, strict date/select to weigh, filter with existing polymers, ChartPayload schema
- * [OUTPUT]: Provides buildChartPayload, which generates payload/incomplete/empty/error by card
- * [POS]: The following is a list of the main sources of information about the project: Not dependent on React or ECharts
+ * [INPUT]: Depends on projected Base rows, chart-visible columns, a canonical BaseCellContext, ChartItem filters/aggregations, and ChartPayload limits
+ * [OUTPUT]: Provides buildChartPayload and uniqueDisplayNames with payload/incomplete/empty/error outcomes
+ * [POS]: The pure Chart projection model; view membership is filtered without replacing the caller's full-snapshot evaluation context
  */
 
 import {
@@ -9,6 +9,7 @@ import {
   dedupeSelectOptions,
   parseBaseDate,
   projectBaseRows,
+  type BaseCellContext,
   type BaseColumn,
   type BaseRow,
   type ChartItem,
@@ -33,7 +34,8 @@ type RowBuckets = Map<string, Map<string, BaseRow[]>>;
 export function buildChartPayload(
   rows: readonly BaseRow[],
   columns: readonly BaseColumn[],
-  item: ChartItem
+  item: ChartItem,
+  context: BaseCellContext
 ): ChartModelResult {
   if (item.filterScrubbed) {
     return { incomplete: "筛选已因删列失效，请重新设置" };
@@ -79,7 +81,7 @@ export function buildChartPayload(
     return { incomplete: "使用次维度时只能选择一个数值列" };
   }
 
-  const filtered = projectBaseRows(rows, { filter: item.filter }, columns);
+  const filtered = projectBaseRows(rows, { filter: item.filter }, context);
   const aggregation = item.aggregation ?? "sum";
   const valueColumn = values[0]!;
   const dimensionKeys = new Map<string, Group>();
@@ -159,7 +161,7 @@ export function buildChartPayload(
             .get(dimensionGroup.key)
             ?.get(seriesColumn ? seriesGroup.key : "");
           return bucket?.length
-            ? calculateBaseAggregations(bucket, column, columns)[aggregation]
+            ? calculateBaseAggregations(bucket, column, context)[aggregation]
             : null;
         }),
       };

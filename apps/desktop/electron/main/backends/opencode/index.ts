@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on OpenCode CLI native ACP, Registry first-valid flight, directory home/models, frozen MCP config overlay, general AcpTurn and ACP failure classification
- * [OUTPUT]: Provides opencodeBackend: locking the listening surface/random Basic Auth/unimpaired MCP overlay of ACP chats, two-tier permissions with Plan, model directories, provider-scoped auth proofs with runtime candidates
- * [POS]: The only installation point for the OpenCode descriptor; No pre-checking, no reading, no copying of any user credentials (auth.json)
+ * [INPUT]: Depends on OpenCode CLI native ACP, external-override existence gate, model catalog, frozen third-party plus turn-leased built-in MCP overlay, AcpTurn and ACP failure classification
+ * [OUTPUT]: Provides opencodeBackend with turn-start override fail-close, locked listening/random Basic Auth, two-tier permissions with Plan, read-only built-in tools, model catalog and provider-scoped auth proofs
+ * [POS]: The only installation point for the OpenCode descriptor; it stats but never reads or copies user/agent override configuration or credentials
  */
 
 import { homedir } from "node:os";
@@ -15,9 +15,11 @@ import {
   runtimeVersionAtLeast,
 } from "../runtime-probe";
 import type { BackendDescriptor, BackendTurnOptions } from "../types";
+import { SESSION_CAPABILITY_POLICY } from "../acp/session/client-capabilities";
 import { createOpencodeAuthCheck } from "./auth";
 import { opencodeClassifyFailure } from "./failure";
 import {
+  assertNoExternalOpencodeOverrides,
   opencodeAcpLaunch,
   opencodeEnvironment,
   validateOpencodeSessionId,
@@ -110,6 +112,7 @@ export function opencodeSpawnConfig(
           options.payload.turnOptions.permissionMode === "approve-for-me",
         planMode: options.payload.planMode === true,
         thirdPartyMcpPlan: options.thirdPartyMcpPlan,
+        builtinMcp: options.builtinMcp?.server,
       },
     }),
     validateSessionId: validateOpencodeSessionId,
@@ -122,6 +125,7 @@ export function opencodeSpawnConfig(
        每 turn 一进程 ⇒ 它兑现不了「本会话总是允许」，于是不给这个选项。 */
     suppressAlwaysApprovalOptions: true,
     thirdPartyMcpTransport: "backend-config",
+    builtinMcpTransport: "backend-config",
     classifyFailure: opencodeBackend.classifyFailure,
     /* ============================================================
      * Plan = 切 agent。上游把 primary agent 直接摆在 ACP 的 `mode`
@@ -146,6 +150,7 @@ export const opencodeBackend: BackendDescriptor = {
   id: "opencode",
   displayName: "OpenCode",
   workspaceDirName: "opencode-workspace",
+  sessionCapabilityPolicy: SESSION_CAPABILITY_POLICY.opencode,
   detectRuntime: findOpencodeRuntime,
   // version 探针与 models/turn 同政策：CLI 模块加载即按 XDG 建目录，
   // 探针若用错位的环境，就会在另一处建目录、落缓存，与真实 turn 各说各话。
@@ -162,7 +167,7 @@ export const opencodeBackend: BackendDescriptor = {
     resume: true,
     /* 两档。approve-for-me 的 UI 承诺是"放行安全动作、敏感请求仍然询问"，
        而上游的权限模型（逐键 allow/ask/deny + findLast）足以逐字兑现它：
-       映射表在 home.ts，真机矩阵见 dev/agent-cli-docs.md。 */
+       映射表在 home.ts，真机矩阵见 DEV/agents/docs/agent-cli-docs.md。 */
     permissionModes: ["ask-for-approval", "approve-for-me"],
     modelOptions: "list-only",
     imageInput: true,
@@ -172,13 +177,15 @@ export const opencodeBackend: BackendDescriptor = {
     planMode: true,
     headless: [],
     maintenance: false,
-    builtinTools: "none",
+    // OpenCode receives the product-owned read-only MCP through the same isolated
+    // backend-config overlay already used for frozen third-party servers.
+    builtinTools: "read",
   }),
   classifyFailure: opencodeClassifyFailure,
   // readiness 只证明 ACP 健康，单个 provider/model turn 也证明不了整个后端；
   // `turnEvidence:"provider"` 让 Registry 拒绝用最后一轮结果污染全局状态。
   validateTurnOptions: validate,
-    validateSessionId: validateOpencodeSessionId,
+  validateSessionId: validateOpencodeSessionId,
   models: {
     list: (runtime, _workspace, signal) =>
       listOpencodeModels(runtime, signal),
@@ -186,6 +193,7 @@ export const opencodeBackend: BackendDescriptor = {
   },
   createTurn: (options) => {
     validate(options.payload.turnOptions);
+    assertNoExternalOpencodeOverrides();
     return new AcpTurn(options, opencodeSpawnConfig(options));
   },
   setup: {

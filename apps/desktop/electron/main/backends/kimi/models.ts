@@ -7,8 +7,8 @@
 import type { BackendModelInfo } from "../../../../shared/agent-ipc";
 import type { ResolvedRuntime } from "../types";
 import {
-  EFFORT_ID_PATTERN,
   MODEL_ID_PATTERN,
+  OPAQUE_CONFIG_VALUE_PATTERN,
 } from "../capability-validation";
 import { createModelCatalog } from "../model-catalog";
 import { runSupervisedCommand } from "../supervised-command";
@@ -37,7 +37,7 @@ function fixedThinkingEffort(
     capabilities.some(
       (capability) =>
         typeof capability !== "string" ||
-        !EFFORT_ID_PATTERN.test(capability)
+        !OPAQUE_CONFIG_VALUE_PATTERN.test(capability)
     )
   ) {
     return undefined;
@@ -64,7 +64,7 @@ function reasoningEfforts(record: Record<string, unknown> | undefined) {
     record.supportEfforts.length > EFFORT_LIMIT ||
     record.supportEfforts.some(
       (effort) =>
-        typeof effort !== "string" || !EFFORT_ID_PATTERN.test(effort)
+        typeof effort !== "string" || !OPAQUE_CONFIG_VALUE_PATTERN.test(effort)
     ) ||
     typeof record.defaultEffort !== "string" ||
     !record.supportEfforts.includes(record.defaultEffort)

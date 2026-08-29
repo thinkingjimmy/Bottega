@@ -32,6 +32,10 @@ import {
   detectChromeProfiles,
   resolveChromeProfilePath,
 } from "./chrome-import/profiles";
+import {
+  assertPlatformCapability,
+  resolvePlatformCapabilities,
+} from "../../../shared/platform-capabilities";
 
 export type BrowserRuntime = ReturnType<typeof installBrowserPanel>;
 
@@ -67,17 +71,27 @@ function registerChromeImport(
   chromeRoot: string,
   browserSession: Session
 ) {
+  const support = resolvePlatformCapabilities(process.platform);
+  const requireChromeImport = () =>
+    assertPlatformCapability(support, "chromeImport");
   rendererIpc(window, rendererUrl, "拒绝非主窗口的浏览器导入请求")
-    .handle(BROWSER_IMPORT_CHANNEL.detectProfiles, () =>
-      detectChromeProfiles(chromeRoot)
-    )
+    .roles("main")
+    .handle(BROWSER_IMPORT_CHANNEL.availability, () => ({
+      available: support.capabilities.chromeImport,
+    }))
+    .handle(BROWSER_IMPORT_CHANNEL.detectProfiles, () => {
+      requireChromeImport();
+      return detectChromeProfiles(chromeRoot);
+    })
     .handle(BROWSER_IMPORT_CHANNEL.previewCookieDomains, (raw) => {
+      requireChromeImport();
       const { profileDirectory } = previewCookieDomainsSchema.parse(raw);
       return previewChromeCookieDomains(
         resolveChromeProfilePath(chromeRoot, profileDirectory)
       );
     })
     .handle(BROWSER_IMPORT_CHANNEL.importCookies, (raw) => {
+      requireChromeImport();
       const input = importChromeCookiesSchema.parse(raw);
       return importChromeCookies({
         profilePath: resolveChromeProfilePath(
@@ -90,5 +104,14 @@ function registerChromeImport(
     });
 }
 
-export const defaultChromeRoot = (homeDirectory: string) =>
-  join(homeDirectory, "Library", "Application Support", "Google", "Chrome");
+export const defaultChromeRoot = (
+  homeDirectory: string,
+  platform: NodeJS.Platform = process.platform
+) => {
+  const suffixes: Partial<Record<NodeJS.Platform, string[]>> = {
+    darwin: ["Library", "Application Support", "Google", "Chrome"],
+    win32: ["AppData", "Local", "Google", "Chrome", "User Data"],
+    linux: [".config", "google-chrome"],
+  };
+  return join(homeDirectory, ...(suffixes[platform] ?? [".chrome-unavailable"]));
+};

@@ -1,14 +1,16 @@
 /**
  * [INPUT]: Depends on authoritative inventory, content addresses package roots and catalog frontmatter analysis
- * [OUTPUT]: Provides collectExtensionSkillCandidates: Only the manual-snapshot skill that is administrative active + global catalog enabled + component enabled becomes a candidate
+ * [OUTPUT]: Provides collectExtensionSkillCandidates: only scope-visible Skills with active administration, enabled catalog and component state become candidates, each carrying its full trusted identity
  * [POS]: Extensions to SkillsCatalog are read-only projections; The candidates are not the ledger, the catalog is still just a filtered list (F25)
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { join, relative, isAbsolute } from "node:path";
 import type { ExtensionInventorySnapshot } from "../../../shared/extensions-ipc";
 import { parseSkillFrontmatter, type CatalogSkill } from "../skills-catalog";
+
+type ExtensionSkillComponent = ExtensionInventorySnapshot["components"][number];
 
 const SKILL_FILE_LIMIT = 128 * 1024;
 
@@ -48,11 +50,13 @@ export async function collectExtensionSkillCandidates(input: {
         component.transport !== "manual-snapshot" ||
         component.packageGenerationRef.packageGenerationId !==
           generation.packageGenerationId ||
-        !owner.enabledComponentIdentities.includes(component.componentIdentity)
+        !owner.enabledComponentInstanceIdentities.includes(
+          component.componentInstanceIdentity
+        )
       ) {
         continue;
       }
-      const skill = await readCandidate(root, component.componentId);
+      const skill = await readCandidate(root, component);
       if (skill) candidates.push(skill);
     }
   }
@@ -60,12 +64,15 @@ export async function collectExtensionSkillCandidates(input: {
 }
 
 /* `componentId` 形如 `skill:<name>`，目录即 `<root>/skills/<name>`。读不出来就
-   不产出候选——宁可少一条，也不让 catalog 指向一个解析不了的路径。 */
+   不产出候选——宁可少一条，也不让 catalog 指向一个解析不了的路径。
+   身份三元组（sourceKind/generationRef/digest）在此一次补齐：缺了它们，
+   快照会把 extension 误判成 system、custody 校验永远撞 changed-during-read、
+   包 generation 强引用整个失效——这正是兜底分支掩盖过的一组事故。 */
 async function readCandidate(
   root: string,
-  componentId: string
+  component: ExtensionSkillComponent
 ): Promise<CatalogSkill | null> {
-  const name = componentId.replace(/^skill:/, "");
+  const name = component.componentId.replace(/^skill:/, "");
   if (!name || name.includes("/") || name.includes("..")) return null;
   const file = join(root, "skills", name, "SKILL.md");
   try {
@@ -81,11 +88,21 @@ async function readCandidate(
     const canonical = await realpath(file);
     const location = relative(await realpath(root), canonical);
     if (location.startsWith("..") || isAbsolute(location)) return null;
+    const content = await readFile(canonical, "utf8");
     return {
-      ref: randomUUID(),
+      ref: component.componentInstanceIdentity,
+      ownerRef: component.componentInstanceIdentity,
       path: canonical,
       scope: "extension",
-      ...parseSkillFrontmatter(await readFile(canonical, "utf8"), name),
+      sourceKind: "extension",
+      generationRef: {
+        kind: "extension",
+        componentInstanceIdentity: component.componentInstanceIdentity,
+        package: component.packageGenerationRef,
+      },
+      digest: `sha256:${createHash("sha256").update(content).digest("hex")}`,
+      enabled: true,
+      ...parseSkillFrontmatter(content, name),
     };
   } catch {
     return null;

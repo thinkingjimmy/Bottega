@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Agent/Codex/Chat/Project/Submission contract, shared PromptInput structure, lib/rich-input-serialize and folding recovery of chat-transcript
- * [OUTPUT]: Provides session status/committing access/composer threads, canonical Workspace owner, Markdown preview boundary/metrical information text, threads combined with input assembly
- * [POS]: The React-free model of chat/runtime; use-chat-session focus on lifecycle sorting rather than data declaration
+ * [INPUT]: Depends on shared Agent/Chat/Project/Submission contracts, PromptInput, rich-input serialization, and transcript recovery helpers
+ * [OUTPUT]: Provides the React-free session controller model, strict PanelSessionContext, derived identity keys, eligibility reasons, open commands, resume actions, and composer/transcript contracts
+ * [POS]: The canonical type and pure-policy layer for chat/runtime
  */
 
 import type {
@@ -33,12 +33,88 @@ export type ChatProjectMode =
   | { kind: "selectable" }
   | { kind: "fixed-app"; appId: string; appRole: AppChatRole };
 
+/* ============================================================
+ * 第三栏身份：一份上下文，三个派生问题
+ *
+ * conversationKey 回答“是哪段会话”，generationKey 回答“是哪一代”，
+ * productRef 回答“能否触碰产品所有权”。后两者都从判别联合派生，不再让
+ * opaqueId/incarnationId/revision 在调用点互相冒充。
+ * ============================================================ */
+export type PanelSessionContext =
+  | {
+      kind: "foreign";
+      foreignRef: { opaqueId: string; historyRevision: string };
+      productRef?: never;
+    }
+  | { kind: "draft"; draftKey: string; productRef?: never }
+  | {
+      kind: "product" | "adopted";
+      productRef: { chatId: string; incarnationId: string };
+    };
+
+export const panelConversationKey = (context: PanelSessionContext) =>
+  context.kind === "foreign"
+    ? context.foreignRef.opaqueId
+    : context.kind === "draft"
+      ? context.draftKey
+      : context.productRef.chatId;
+
+export const panelGenerationKey = (context: PanelSessionContext) =>
+  context.kind === "foreign"
+    ? context.foreignRef.historyRevision
+    : context.kind === "draft"
+      ? ""
+      : context.productRef.incarnationId;
+
+export type PanelCapability =
+  | "base"
+  | "app"
+  | "subagents"
+  | "browser"
+  | "image";
+
+export type PanelEligibilityReason =
+  | "foreign-base-unavailable"
+  | "foreign-app-unavailable"
+  | "foreign-subagents-unavailable"
+  | "foreign-images-unavailable";
+
+export type PanelEligibility =
+  | { allowed: true }
+  | { allowed: false; reason: PanelEligibilityReason };
+
+export function panelEligibility(
+  context: PanelSessionContext,
+  capability: PanelCapability
+): PanelEligibility {
+  if (context.kind !== "foreign" || capability === "browser") {
+    return { allowed: true };
+  }
+  if (capability === "subagents") {
+    return { allowed: false, reason: "foreign-subagents-unavailable" };
+  }
+  if (capability === "image") {
+    return { allowed: false, reason: "foreign-images-unavailable" };
+  }
+  return {
+    allowed: false,
+    reason: capability === "base"
+      ? "foreign-base-unavailable"
+      : "foreign-app-unavailable",
+  };
+}
+
 export type SidePanelState =
   | { kind: "none" }
-  | { kind: "tabs"; chatId: string; command?: SidePanelTabCommand }
+  | {
+      kind: "tabs";
+      context: PanelSessionContext;
+      command?: SidePanelTabCommand;
+    }
   | {
       kind: "plan";
       messageId: string;
+      anchorId?: string;
       planItemId?: string;
       content: string;
       title: string;
@@ -77,7 +153,8 @@ export type ConversationImageSource =
     };
 
 export type SidePanelTabCommand =
-  | { target: "base" | "browser"; nonce: number }
+  | { target: "openShell" | "base" | "browser"; nonce: number }
+  | { target: "app"; appId: string; nonce: number }
   | { target: "subagents"; agentThreadId?: string; nonce: number }
   | { target: "image"; source: ConversationImageSource; nonce: number };
 
@@ -88,7 +165,7 @@ export type SidePanelTabCommandInput = SidePanelTabCommand extends infer Command
   : never;
 
 export type SidePanelRequest = {
-  chatId: string;
+  conversationKey: string;
   command: SidePanelTabCommand;
 };
 
@@ -185,9 +262,9 @@ export const nextSidePanelCommandNonce = () => ++sidePanelCommandNonce;
 
 export function matchesSidePanelRequest(
   request: SidePanelRequest | null | undefined,
-  conversationId: string
+  context: PanelSessionContext
 ): request is SidePanelRequest {
-  return request?.chatId === conversationId;
+  return request?.conversationKey === panelConversationKey(context);
 }
 
 export function consumeSidePanelRequest(
@@ -270,6 +347,24 @@ export type SubmitGate = {
   planChecking: boolean;
   hasActiveRequest: boolean;
 };
+
+export type RevisionUnavailableReason =
+  | "busy"
+  | "queued"
+  | "adopted-history";
+
+export function revisionUnavailableReason(input: Readonly<{
+  persisted: boolean;
+  inputDisabled: boolean;
+  status: string;
+  queued: boolean;
+  adopted: boolean;
+}>): RevisionUnavailableReason | undefined {
+  if (!input.persisted || input.inputDisabled) return undefined;
+  if (input.status !== "ready") return "busy";
+  if (input.queued) return "queued";
+  return input.adopted ? "adopted-history" : undefined;
+}
 
 /** 提交门禁：任一条件不满足即拒绝发送（对应"当前不能发送消息"） */
 export const submitBlocked = (gate: SubmitGate) =>

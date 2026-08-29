@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, Browser, Chat, Stream, Subagent Projections, rich file resources, Workspace readRef client, session, pure model and side-panel memory
- * [OUTPUT]: Provides identity-stable useSessionSidePanel, unified tabs/Plan/File/Workspace preview; Subagent Navigation through ref Read the latest projections, Workspace Read the scope + incarnation generation fence
- * [POS]: The third-party status owner of chat/runtime/session; Workspace content is read only through main capability, use-chat-session consume only stable controller
+ * [INPUT]: Depends on React, PanelSessionContext, panel memory, Browser/Plan/Subagent projections, Workspace readRef, and file preview resources
+ * [OUTPUT]: Provides identity-stable side-panel state, draft-to-product context rebinding, eligibility, openShell/foreign Plan commands, and context-generation fenced asynchronous previews
+ * [POS]: The sole side-panel state owner in chat/runtime/session
  */
 
 import {
@@ -35,7 +35,11 @@ import {
   MARKDOWN_PATTERN,
   MARKDOWN_PREVIEW_LIMIT,
   nextSidePanelCommandNonce,
+  panelConversationKey,
+  panelEligibility,
+  panelGenerationKey,
   type ConversationImageSource,
+  type PanelSessionContext,
   type SidePanelTabCommand,
   type SidePanelTabCommandInput,
   type SidePanelState,
@@ -54,7 +58,7 @@ declare global {
 
 type SidePanelInput = {
   conversationId: string;
-  incarnationId: string | null;
+  panelContext: PanelSessionContext;
   draft: TurnDraft | null;
   messages: ChatMessage[];
   status: ChatStatus;
@@ -99,7 +103,7 @@ export function reconcilePlanPanel(
 
 export function useSessionSidePanel({
   conversationId,
-  incarnationId,
+  panelContext,
   draft,
   messages,
   status,
@@ -108,10 +112,33 @@ export function useSessionSidePanel({
   workspaceScope,
   workspaceScopeKey,
 }: SidePanelInput) {
+  const conversationKey = panelConversationKey(panelContext);
+  const generationKey = panelGenerationKey(panelContext);
+  const context = useMemo<PanelSessionContext>(
+    () => panelContext.kind === "foreign"
+      ? {
+          kind: "foreign",
+          foreignRef: {
+            opaqueId: conversationKey,
+            historyRevision: generationKey,
+          },
+        }
+      : panelContext.kind === "draft"
+        ? { kind: "draft", draftKey: conversationKey }
+        : {
+            kind: panelContext.kind,
+            productRef: {
+              chatId: conversationKey,
+              incarnationId: generationKey,
+            },
+          },
+    [conversationKey, generationKey, panelContext.kind]
+  );
   const [scopedState, setScopedState] = useState(() => ({
-    conversationId,
-    incarnationId,
-    state: recallSidePanel(conversationId, incarnationId),
+    conversationKey,
+    generationKey,
+    context,
+    state: recallSidePanel(context),
   }));
   const state = scopedState.state;
   const setState = useCallback((next: SetStateAction<SidePanelState>) => {
@@ -125,31 +152,35 @@ export function useSessionSidePanel({
     subagentsRef.current = subagents;
   }, [subagents]);
   const workspaceGeneration = useRef(0);
-  const workspaceFence = `${conversationId}\u0000${incarnationId ?? ""}\u0000${workspaceScopeKey}`;
+  const workspaceFence = `${conversationKey}\u0000${generationKey}\u0000${workspaceScopeKey}`;
   const workspaceFenceRef = useRef(workspaceFence);
 
   useLayoutEffect(() => {
     setScopedState((current) => {
-      if (current.conversationId !== conversationId) {
+      if (current.conversationKey !== conversationKey) {
         return {
-          conversationId,
-          incarnationId,
-          state: recallSidePanel(conversationId, incarnationId),
+          conversationKey,
+          generationKey,
+          context,
+          state: recallSidePanel(context),
         };
       }
-      if (!incarnationId || current.incarnationId === incarnationId) {
+      if (current.generationKey === generationKey) {
         return current;
       }
       return {
-        conversationId,
-        incarnationId,
+        conversationKey,
+        generationKey,
+        context,
         state:
-          current.incarnationId === null && current.state.kind !== "none"
-            ? current.state
-            : recallSidePanel(conversationId, incarnationId),
+          current.generationKey === "" && current.state.kind !== "none"
+            ? current.state.kind === "tabs"
+              ? { ...current.state, context }
+              : current.state
+            : recallSidePanel(context),
       };
     });
-  }, [conversationId, incarnationId]);
+  }, [context, conversationKey, generationKey]);
 
   useLayoutEffect(() => {
     if (workspaceFenceRef.current === workspaceFence) return;
@@ -163,11 +194,7 @@ export function useSessionSidePanel({
   // ChatView 按 chatId 重挂载，第三栏的开合便不能只活在挂载里：
   // 存在挂载之外，侧边栏切走再切回才不等于替用户按了一次关闭。
   useEffect(() => {
-    rememberSidePanel(
-      scopedState.conversationId,
-      scopedState.incarnationId,
-      scopedState.state
-    );
+    rememberSidePanel(scopedState.context, scopedState.state);
   }, [scopedState]);
 
   useEffect(() => {
@@ -188,36 +215,46 @@ export function useSessionSidePanel({
       if (!created) return;
       setState({
         kind: "tabs",
-        chatId: conversationId,
+        context,
         command: {
           target: "browser",
           nonce: nextSidePanelCommandNonce(),
         },
       });
     });
-  }, [conversationId, setState]);
+  }, [context, conversationId, setState]);
 
   const close = useCallback(() => {
     workspaceGeneration.current += 1;
     setState({ kind: "none" });
   }, [setState]);
   const openTabs = useCallback(
-    (
-      chatId: string,
-      input: SidePanelTabCommandInput | SidePanelTabCommand
-    ) => {
+    (input: SidePanelTabCommandInput | SidePanelTabCommand) => {
       const command = "nonce" in input
         ? input
         : { ...input, nonce: nextSidePanelCommandNonce() };
-      setState({ kind: "tabs", chatId, command });
+      if (command.target === "openShell") {
+        setState({ kind: "tabs", context });
+        return;
+      }
+      const capability = command.target === "image"
+        ? "image"
+        : command.target;
+      const eligibility = panelEligibility(context, capability);
+      setState(
+        eligibility.allowed
+          ? { kind: "tabs", context, command }
+          : { kind: "tabs", context }
+      );
     },
-    [setState]
+    [context, setState]
   );
   const openImage = useCallback(
     (source: ConversationImageSource) => {
+      if (!panelEligibility(context, "image").allowed) return;
       setState({
         kind: "tabs",
-        chatId: conversationId,
+        context,
         command: {
           target: "image",
           source,
@@ -225,14 +262,17 @@ export function useSessionSidePanel({
         },
       });
     },
-    [conversationId, setState]
+    [context, setState]
   );
   const openSubagent = useCallback(
     (agentThreadId: string) => {
-      if (subagentsRef.current[agentThreadId]) {
+      if (
+        panelEligibility(context, "subagents").allowed &&
+        subagentsRef.current[agentThreadId]
+      ) {
         setState({
           kind: "tabs",
-          chatId: conversationId,
+          context,
           command: {
             target: "subagents",
             agentThreadId,
@@ -241,7 +281,7 @@ export function useSessionSidePanel({
         });
       }
     },
-    [conversationId, setState]
+    [context, setState]
   );
   const openPlan = useCallback((message: ChatMessage) => {
     if (message.role !== "assistant" || message.kind !== "plan") return;
@@ -259,6 +299,18 @@ export function useSessionSidePanel({
       planItemId: plan.itemId,
       content: plan.content,
       title: plan.editing ? "Editing" : "Plan",
+    });
+  }, [setState]);
+  const openForeignPlan = useCallback((plan: {
+    anchorId: string;
+    content: string;
+  }) => {
+    setState({
+      kind: "plan",
+      messageId: plan.anchorId,
+      anchorId: plan.anchorId,
+      content: plan.content,
+      title: "Plan",
     });
   }, [setState]);
   const reconcileRichValue = useCallback((value: RichValue) => {
@@ -371,6 +423,7 @@ export function useSessionSidePanel({
     closeFile,
     openTabs,
     openDraftPlan,
+    openForeignPlan,
     openFile,
     openWorkspaceFile,
     openImage,
@@ -381,6 +434,7 @@ export function useSessionSidePanel({
     close,
     closeFile,
     openDraftPlan,
+    openForeignPlan,
     openFile,
     openImage,
     openPlan,

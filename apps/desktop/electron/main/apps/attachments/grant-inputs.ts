@@ -7,6 +7,7 @@
 import { z } from "zod";
 import type {
   AppGrantTarget,
+  AppGuiInfoInput,
   AppSurfaceAcquireInput,
   AvailableAppsInput,
   SetAppGrantInput,
@@ -59,7 +60,17 @@ const available = z
     conversationIncarnationId: z.string().min(1).max(128),
   })
   .strict();
-const surface = available.extend({ appId });
+const surface = available.extend({
+  appId,
+  mode: z.enum(["chat-tab", "studio"]),
+});
+const guiSurface = z
+  .object({
+    appId,
+    surfaceId: z.string().uuid(),
+    appSurfaceLeaseId: z.string().uuid(),
+  })
+  .strict();
 
 export const assertSetAppGrantInput = (value: unknown) =>
   setGrant.parse(value) as SetAppGrantInput;
@@ -73,4 +84,6 @@ export const assertAvailableAppsInput = (value: unknown) =>
   available.parse(value) as AvailableAppsInput;
 export const assertAppSurfaceAcquireInput = (value: unknown) =>
   surface.parse(value) as AppSurfaceAcquireInput;
+export const assertAppGuiInfoInput = (value: unknown) =>
+  guiSurface.parse(value) as AppGuiInfoInput;
 export const assertSurfaceLeaseId = (value: unknown) => z.string().uuid().parse(value);

@@ -65,7 +65,7 @@ function BranchRow({
 }) {
   return (
     <CommandItem
-      className={`min-h-11 cursor-pointer px-3 py-2 text-sm ${branch.current ? "data-selected:bg-transparent" : ""}`}
+      className={`min-h-11 px-3 py-2 text-sm ${branch.current ? "data-selected:bg-transparent" : ""}`}
       disabled={busy}
       value={branch.name}
       onSelect={() => onSelect(branch)}

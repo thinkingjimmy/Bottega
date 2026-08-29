@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * [INPUT]: Depends on shared ForeignHistoryBlock/ForeignHistoryMessage with unified foreign grouping, i18n runtime, Conversation Message/Collapsible original language, chat-turn with TurnParts/WorkedForRow/useFoldState, UserMessageFold and ChatMessageActions
- * [OUTPUT]: Provides ForeignHistoryTranscriptRows; The last line of the assistant is in the original language, the middle text is folded with all the tools in the only timesheet, and the product is "one turn one", the source code is codex task_complete/kimi turn.ended/opencode time.completed, no account is required for the general codex `<proposed_plan>` The user version 12 line is folded, hover time and replicate the actionThe source block that cannot be solved is not present
- * [POS]: The external source of chat/transcript only reads the projections; The only person responsible for the content of the session is the user, who has no separate pages, adoption or product history status
+ * [INPUT]: Depends on content generation, shared foreign blocks/grouping, i18n, Conversation/Collapsible primitives, turn folding, user-message folding, and shared message actions
+ * [OUTPUT]: Provides generation-scoped canonical foreign rows with controlled Plan toggles, turn/tool folding, worked-time display, and copy actions
+ * [POS]: The immutable prefix row renderer for chat/transcript; panel state is owned by the parent session
  */
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type {
   ForeignHistoryBlock,
   ForeignHistoryMessage,
@@ -128,9 +128,19 @@ function ForeignTurnProcess({ process, workedForMs }: {
   );
 }
 
-function ForeignAssistantTurn({ row }: { row: ForeignRow & { kind: "turn" } }) {
+function ForeignAssistantTurn({
+  contentGenerationKey,
+  row,
+  expandedPlanKey,
+  onTogglePlan,
+}: {
+  contentGenerationKey: string;
+  row: ForeignRow & { kind: "turn" };
+  expandedPlanKey?: string | null;
+  onTogglePlan?: (plan: { anchorId: string; content: string }) => void;
+}) {
   const { prose, plan } = useMemo(() => splitPlan(row.final.content), [row.final.content]);
-  const [planExpanded, setPlanExpanded] = useState(false);
+  const anchorId = foreignHistoryAnchor(contentGenerationKey, row.key);
   return (
     <Message from="assistant">
       <ForeignTurnProcess process={row.process} workedForMs={row.workedForMs} />
@@ -144,8 +154,10 @@ function ForeignAssistantTurn({ row }: { row: ForeignRow & { kind: "turn" } }) {
           content={plan}
           copyable
           editing={false}
-          isExpanded={planExpanded}
-          onToggle={() => setPlanExpanded((current) => !current)}
+          isExpanded={expandedPlanKey === anchorId}
+          onToggle={onTogglePlan
+            ? () => onTogglePlan({ anchorId, content: plan })
+            : undefined}
         />
       )}
       <ChatMessageActions
@@ -176,18 +188,33 @@ function ForeignUserRow({ block }: { block: ForeignHistoryMessage }) {
 
 export function ForeignHistoryTranscriptRows({
   blocks,
+  contentGenerationKey,
+  expandedPlanKey,
+  onTogglePlan,
 }: {
   blocks: ForeignHistoryBlock[];
+  contentGenerationKey: string;
+  expandedPlanKey?: string | null;
+  onTogglePlan?: (plan: { anchorId: string; content: string }) => void;
 }) {
   const rows = useMemo(() => groupTurns(blocks), [blocks]);
   return rows.map((row) => (
     <div
       className="w-full min-w-0 max-w-full"
-      data-message-id={foreignHistoryAnchor(row.key)}
-      key={row.key}
+      data-message-id={foreignHistoryAnchor(contentGenerationKey, row.key)}
+      key={foreignHistoryAnchor(contentGenerationKey, row.key)}
       tabIndex={-1}
     >
-      {row.kind === "user" ? <ForeignUserRow block={row.block} /> : <ForeignAssistantTurn row={row} />}
+      {row.kind === "user" ? (
+        <ForeignUserRow block={row.block} />
+      ) : (
+        <ForeignAssistantTurn
+          contentGenerationKey={contentGenerationKey}
+          expandedPlanKey={expandedPlanKey}
+          onTogglePlan={onTogglePlan}
+          row={row}
+        />
+      )}
     </div>
   ));
 }

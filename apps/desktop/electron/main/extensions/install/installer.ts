@@ -1,25 +1,28 @@
 /**
- * [INPUT]: Depends on the installation/source, the measurement is staged bytes, admission registry/disclosure, lifecycle ledger/epoch store, ExtensionRegistryStore and App migration narrow ports
- * [OUTPUT]: Provides ExtensionInstaller: First install and update the same ledger Chemical flow waterline: Pre-check→ Atomic Authorization Quick Shots→ Plug and Replace→ Cut Points→ App by App Migration Checkpoint)
- * [POS]: Installation ordering and source policy**** layer of extensions/install; Admission only answers "Can it be safe to enter the library?" and enabling and delivering does not happen
+ * [INPUT]: Depends on source staging, admission/disclosure, scoped Registry CAS, durable Project resource admission, lifecycle/owner receipts, epoch storage, and App migration ports
+ * [OUTPUT]: Provides scope-frozen preflight→Project claim→authorization→seal→activate→migration with crash-released durable admission
+ * [POS]: Extension install ordering and trust boundary; confirm accepts only the frozen preflight identity/content receipt and never accepts scope
  */
 
 import { randomUUID } from "node:crypto";
-import { access, mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { normalizeGithubRepoUrl } from "../../../../shared/github-repo";
 import type {
   ExtensionPackageGenerationRef,
-  PackageGenerationDataBinding,
   Sha256Digest,
 } from "../../../../shared/extensions-ipc";
+import {
+  productResourceScopeKey,
+  type ProductResourceScope,
+} from "../../../../shared/product-resource-scope";
 import {
   admitAnyExtensionPackage,
   type ExtensionAdapterId,
   type ExtensionAdmission,
 } from "../admission";
+import { extensionContentStore } from "../content-store";
 import type { ExtensionPackageAdmission } from "../manifest-adapter";
-import { digestCanonical, type ExtensionRegistryStore } from "../registry-store";
+import type { ExtensionRegistryStore } from "../registry-store";
 import type {
   AuthorizedExtensionInstall,
   ExtensionLifecycleLedger,
@@ -39,8 +42,24 @@ import {
   type ExtensionSourceRequest,
   type StagedExtensionSource,
 } from "./source";
+import {
+  asAdapterId,
+  displayNameOf,
+  installIdentityOf,
+  migrationId,
+  namespaceOf,
+  sourceIdentityOf,
+} from "./install-identity";
+import {
+  ExtensionInstallResources,
+  missingProjectInstallAuthority,
+  type ExtensionInstallerFaults,
+  type ExtensionProjectInstallAuthority,
+} from "./install-resources";
 
 export type { ExtensionCapabilityDisclosure } from "./disclosure";
+export type { ExtensionInstallerFaults, ExtensionProjectInstallAuthority } from "./install-resources";
+export { installIdentityOf, sourceIdentityOf } from "./install-identity";
 
 /** 取源机制的注入面：回归用真 git 本地仓库换掉远端地址，其余判据一律照走 */
 export type ExtensionSourceFetcher = typeof fetchExtensionSource;
@@ -66,15 +85,6 @@ export type ExtensionAppMigrationPort = Readonly<{
 }>;
 
 /** 只供崩溃窗口回归注入；生产组合根不传即为空。 */
-export type ExtensionInstallerFaults = Readonly<{
-  afterAuthorized?: (operationId: string) => void | Promise<void>;
-  afterSealed?: (operationId: string) => void | Promise<void>;
-  afterAppMigrated?: (
-    operationId: string,
-    appId: string
-  ) => void | Promise<void>;
-}>;
-
 export type ExtensionCapabilityDiff = Readonly<{
   previousGenerationId: string;
   added: readonly string[];
@@ -86,6 +96,10 @@ export type ExtensionInstallPreflight = Readonly<{
   preflightId: string;
   contentDigest: Sha256Digest;
   installIdentity: string;
+  scope: ProductResourceScope;
+  sourceIdentity: string;
+  projectLifecycleRevision: number | null;
+  scopeRevision: number;
   componentNamespace: string;
   adapterId: ExtensionAdapterId;
   source: StagedExtensionSource["provenance"];
@@ -104,11 +118,20 @@ type HeldPreflight = ExtensionInstallPreflight & {
   expectedActiveGenerationRef: ExtensionPackageGenerationRef | null;
 };
 
+export type ExtensionInstallRequest = ExtensionSourceRequest & Readonly<{
+  scope: ProductResourceScope;
+  expectedProjectLifecycleRevision: number | null;
+  expectedScopeRevision: number;
+}>;
+
 export class ExtensionInstaller {
   private readonly stagingRoot: string;
   /** 内容寻址的包字节根；卸载的字节回收从同一处取，绝不各拼一份路径 */
   readonly packagesRoot: string;
+  private readonly contentStore: ReturnType<typeof extensionContentStore>;
+  private readonly resources: ExtensionInstallResources;
   private readonly held = new Map<string, HeldPreflight>();
+  private readonly lifecycleOwnershipTransfers = new Set<string>();
   private migrations: ExtensionAppMigrationPort | null = null;
 
   constructor(
@@ -119,26 +142,58 @@ export class ExtensionInstaller {
     _legacyValidatorFixtureDigest: Sha256Digest,
     /* 取源是机制、可注入；来源白名单是政策，恒在下面那一行执行。 */
     private readonly fetchSource = fetchExtensionSource,
-    private readonly faults: ExtensionInstallerFaults = {}
+    private readonly faults: ExtensionInstallerFaults = {},
+    private readonly projectAuthority: ExtensionProjectInstallAuthority =
+      missingProjectInstallAuthority
   ) {
     void _legacyValidatorFixtureDigest;
     this.stagingRoot = join(userData, "agent-extensions", "staging");
     this.packagesRoot = join(userData, "agent-extensions", "packages");
+    this.contentStore = extensionContentStore(this.packagesRoot);
+    this.resources = new ExtensionInstallResources(
+      registry,
+      ledger,
+      epochs,
+      this.contentStore,
+      faults,
+      projectAuthority
+    );
   }
 
   configureMigrations(port: ExtensionAppMigrationPort) {
     this.migrations = port;
   }
 
+  scopeRevision(scope: ProductResourceScope) {
+    return this.registry.scopeRevision(scope);
+  }
+
+  heldAuthorization(preflightId: string) {
+    const held = this.held.get(preflightId);
+    return held
+      ? {
+          scope: structuredClone(held.scope),
+          projectLifecycleRevision: held.projectLifecycleRevision,
+          scopeRevision: held.scopeRevision,
+        }
+      : null;
+  }
+
   isInstalled(input: {
-    componentIdentity: string;
+    declaredComponentIdentity: string;
+    scope: ProductResourceScope;
+    projectLifecycleRevision: number | null;
     repoUrl: string;
     resolvedCommit: string;
     contentDigest: Sha256Digest;
   }) {
-    const inventory = this.registry.snapshot();
+    const inventory = this.registry.ownedInventory(
+      input.scope,
+      input.projectLifecycleRevision
+    );
     const component = inventory.components.find(
-      (item) => item.componentIdentity === input.componentIdentity
+      (item) =>
+        item.declaredComponentIdentity === input.declaredComponentIdentity
     );
     const owner = inventory.packages.find(
       (item) =>
@@ -164,9 +219,34 @@ export class ExtensionInstaller {
    * `staged` 一律丢弃——用户从未确认。
    */
   async recover() {
+    await this.contentStore.reconcile(this.resources.retainedContentDigests());
+    /* Aborted preflights still name their content digest. GC is replayed because
+       a crash after unlink but before packagesRoot fsync may roll the entry back. */
+    for (const operation of this.ledger.snapshot()) {
+      if (
+        (operation.kind === "install" || operation.kind === "update") &&
+        operation.phase === "aborted"
+      ) {
+        await this.resources.collectStagedContent(operation.contentDigest);
+      }
+    }
+    /* completed 是「不会再写 Registry/Data」的 durable checkpoint；若崩在
+       completed→release 之间，启动只释放 Project claim，绝不重放安装。 */
+    for (const operation of this.ledger.snapshot()) {
+      if (
+        (operation.kind === "install" || operation.kind === "update") &&
+        operation.phase === "completed"
+      ) {
+        await this.registry.releaseInstallReservation(operation.operationId);
+        await this.resources.releaseProjectAdmission(operation);
+      }
+    }
     for (const kind of ["install", "update"] as const) {
       for (const operation of this.ledger.nonTerminal(kind)) {
-        if (operation.authorizedInstall) {
+        if (
+          operation.authorizedInstall &&
+          operation.installAuthorizationState === "committed"
+        ) {
           await this.resumeAuthorized(operation.operationId).catch(async (cause) => {
             await this.ledger.block(operation.operationId, {
               code: "seal-incomplete",
@@ -179,9 +259,23 @@ export class ExtensionInstaller {
           });
           continue;
         }
+        if (
+          operation.authorizedInstall &&
+          operation.installAuthorizationState === "prepared"
+        ) {
+          await this.resumePreparedAuthorization(operation).catch(async (cause) => {
+            if (this.registry.installReservation(operation.operationId)) {
+              await this.ledger.block(operation.operationId, {
+                code: "authorization-incomplete",
+                message: cause instanceof Error ? cause.message : String(cause),
+              });
+            }
+          });
+          continue;
+        }
         /* 旧账本没有 replay payload：若 generation 已落盘，只能沿用
            旧版的保守收口；没落盘则无事实可重放，必须丢弃。 */
-        const sealed = this.generationRef(operation.identities.packageGenerationId);
+        const sealed = this.resources.generationRef(operation.identities.packageGenerationId);
         if (operation.phase === "sealing" && sealed) {
           /* 恢复拿不到那次预检的能力 diff，所以只走最保守的一档：新代回到
              inert，用户重新逐项启用。少启用永远比多启用安全。 */
@@ -192,36 +286,96 @@ export class ExtensionInstaller {
             current.revision,
             "completed"
           );
+          await this.registry.releaseInstallReservation(operation.operationId);
+          await this.resources.releaseProjectAdmission(operation);
           continue;
         }
+        await this.registry.releaseInstallReservation(operation.operationId);
         await this.ledger.abort(operation.operationId);
-        await this.collectStagedContent(operation.contentDigest);
+        await this.resources.collectStagedContent(operation.contentDigest);
+        await this.resources.releaseProjectAdmission(operation);
       }
+    }
+  }
+
+  /**
+   * A Project deletion fence freezes pre-existing install claims. Cleanup may
+   * abort those exact operations even when ordinary recovery is blocked by the
+   * fence; partially sealed generations remain Registry-owned and are removed
+   * by the normal disable/uninstall participant that follows.
+   */
+  async cancelProjectAdmissions(
+    projectId: string,
+    admissions: readonly Readonly<{
+      operationId: string;
+      installIdentity: string;
+      projectLifecycleRevision: number;
+    }>[]
+  ) {
+    for (const admission of admissions) {
+      const operation = this.ledger.find(admission.operationId);
+      if (!operation) {
+        throw new Error(
+          `Project deletion admission 缺少 Extension ledger operation：${admission.operationId}`
+        );
+      }
+      if (
+        operation.scope.kind !== "project" ||
+        operation.scope.projectId !== projectId ||
+        operation.installIdentity !== admission.installIdentity ||
+        operation.expectedProjectLifecycleRevision !==
+          admission.projectLifecycleRevision
+      ) {
+        throw new Error("Project deletion admission 与 Extension ledger 不一致");
+      }
+      for (const [preflightId, held] of this.held) {
+        if (held.operationId === operation.operationId) {
+          this.held.delete(preflightId);
+        }
+      }
+      if (operation.phase !== "completed" && operation.phase !== "aborted") {
+        await this.ledger.abort(operation.operationId);
+      }
+      await this.registry.releaseInstallReservation(operation.operationId);
+      if (operation.phase !== "completed") {
+        await this.resources.collectStagedContent(operation.contentDigest);
+      }
+      await this.projectAuthority.release({
+        projectId,
+        projectLifecycleRevision: admission.projectLifecycleRevision,
+        operationId: admission.operationId,
+        installIdentity: admission.installIdentity,
+      });
     }
   }
 
   /* 取源与入库都发生在用户确认之前——admission 必须针对**最终位置**的字节，
      否则 pluginRoot 会指向随后被删除的 staging 目录。启用与交付都不在这里。 */
-  async preflight(request: ExtensionSourceRequest): Promise<ExtensionInstallPreflight> {
+  async preflight(request: ExtensionInstallRequest): Promise<ExtensionInstallPreflight> {
     const staged = await this.fetchSource(this.stagingRoot, {
       ...request,
       repoUrl: normalizeGithubRepoUrl(request.repoUrl).repoUrl,
     });
     let operationId: string | null = null;
-    let adopted = false;
+    let contentClaimId: string | null = null;
     try {
-      const installIdentity = installIdentityOf(staged.provenance);
-      const owner = this.registry
-        .snapshot()
-        .packages.find((item) => item.installIdentity === installIdentity);
+      const sourceIdentity = sourceIdentityOf(staged.provenance);
+      const installIdentity = installIdentityOf(request.scope, staged.provenance);
+      const owner = this.registry.packageInventory(installIdentity);
       const expectedActiveGenerationRef = owner?.activeGenerationRef ?? null;
       this.registry.assertInstallCas(
         installIdentity,
         expectedActiveGenerationRef,
-        staged.adapterId
+        staged.adapterId,
+        request.scope,
+        request.expectedScopeRevision
       );
-      const packageRoot = await this.adoptContent(staged);
-      adopted = true;
+      contentClaimId = await this.contentStore.claim(staged.contentDigest);
+      const packageRoot = await this.contentStore.adopt(
+        contentClaimId,
+        staged.packageRoot,
+        staged.contentDigest
+      );
       const evidence = await admitAnyExtensionPackage(
         packageRoot,
         staged.provenance,
@@ -252,7 +406,7 @@ export class ExtensionInstaller {
             previousGenerationId: previous.packageGenerationId,
             ...diffCapabilities(
               await discloseInstalledGeneration({
-                packageRoot: this.contentRoot(previous.contentDigest),
+                packageRoot: this.resources.contentRoot(previous.contentDigest),
                 adapterId: asAdapterId(previous.admissionEvidence.adapterId),
                 source: this.registry.generationSource(
                   previous.packageGenerationId
@@ -266,6 +420,11 @@ export class ExtensionInstaller {
       const operation = await this.ledger.stage({
         kind: previous ? "update" : "install",
         installIdentity,
+        scope: request.scope,
+        sourceIdentity,
+        expectedProjectLifecycleRevision:
+          request.expectedProjectLifecycleRevision,
+        expectedScopeRevision: request.expectedScopeRevision,
         contentDigest: staged.contentDigest,
         ...(admission.containsStdio ? { pluginDataEpochId: randomUUID() } : {}),
         ...(previous?.dataBinding.kind === "stdio"
@@ -273,11 +432,17 @@ export class ExtensionInstaller {
           : {}),
       });
       operationId = operation.operationId;
+      await this.contentStore.releaseClaim(contentClaimId);
+      contentClaimId = null;
       const preflight: HeldPreflight = {
         preflightId: randomUUID(),
         operationId: operation.operationId,
         contentDigest: staged.contentDigest,
         installIdentity,
+        scope: structuredClone(request.scope),
+        sourceIdentity,
+        projectLifecycleRevision: request.expectedProjectLifecycleRevision,
+        scopeRevision: request.expectedScopeRevision,
         componentNamespace: namespaceOf(staged.provenance),
         adapterId: staged.adapterId,
         source: staged.provenance,
@@ -301,8 +466,24 @@ export class ExtensionInstaller {
       this.held.set(preflight.preflightId, preflight);
       return preflight;
     } catch (cause) {
-      if (operationId) await this.ledger.abort(operationId);
-      if (adopted) await this.collectStagedContent(staged.contentDigest);
+      let ledgerOutcomeKnown = true;
+      try {
+        this.ledger.snapshot();
+      } catch {
+        ledgerOutcomeKnown = false;
+      }
+      if (operationId && ledgerOutcomeKnown) {
+        try {
+          await this.ledger.abort(operationId);
+        } catch {
+          ledgerOutcomeKnown = false;
+        }
+      }
+      if (contentClaimId && ledgerOutcomeKnown) {
+        await this.contentStore.releaseClaim(contentClaimId);
+        contentClaimId = null;
+        await this.resources.collectStagedContent(staged.contentDigest);
+      }
       throw cause;
     } finally {
       await discardStagedSource(staged);
@@ -332,30 +513,80 @@ export class ExtensionInstaller {
     if (migrate.some((appId) => !known.has(appId))) {
       throw new Error("迁移名单包含未受本次更新影响的 App");
     }
-    this.registry.assertInstallCas(
-      held.installIdentity,
-      held.expectedActiveGenerationRef,
-      held.adapterId
-    );
-    const staged = this.ledger.find(held.operationId)!;
-    await this.ledger.authorizeInstall(held.operationId, staged.revision, {
-      adapterId: held.adapterId,
-      componentNamespace: held.componentNamespace,
-      source: held.source,
-      admission: held.admission,
-      evidence: {
-        schemaDigest: held.evidence.schemaDigest,
-        validatorFixtureDigest: held.evidence.validatorFixtureDigest,
-      },
-      displayName: displayNameOf(held.admission, held.source),
-      expectedActiveGenerationRef: held.expectedActiveGenerationRef,
-      preserveEnabled: Boolean(
-        held.capabilityDiff && !held.capabilityDiff.requiresReauthorization
-      ),
-      migrateAppIds: migrate,
-    });
-    /* 授权快照已 fsync，从此不再依赖 renderer 或这份内存 preflight。 */
+    /* Claim ownership synchronously, before the first await. The local held
+       token can no longer race Project admission or a durable ledger fsync. */
+    this.lifecycleOwnershipTransfers.add(input.preflightId);
     this.held.delete(input.preflightId);
+    let projectAdmissionAcquired = held.scope.kind === "global";
+    try {
+      await this.resources.acquireProjectAdmission(held);
+      projectAdmissionAcquired = true;
+      const staged = this.ledger.find(held.operationId)!;
+      const prepared = await this.ledger.prepareInstallAuthorization(
+        held.operationId,
+        staged.revision,
+        {
+          adapterId: held.adapterId,
+          componentNamespace: held.componentNamespace,
+          scope: held.scope,
+          sourceIdentity: held.sourceIdentity,
+          expectedProjectLifecycleRevision: held.projectLifecycleRevision,
+          expectedScopeRevision: held.scopeRevision,
+          source: held.source,
+          admission: held.admission,
+          evidence: {
+            schemaDigest: held.evidence.schemaDigest,
+            validatorFixtureDigest: held.evidence.validatorFixtureDigest,
+          },
+          displayName: displayNameOf(held.admission, held.source),
+          expectedActiveGenerationRef: held.expectedActiveGenerationRef,
+          preserveEnabled: Boolean(
+            held.capabilityDiff && !held.capabilityDiff.requiresReauthorization
+          ),
+          migrateAppIds: migrate,
+        }
+      );
+      this.lifecycleOwnershipTransfers.delete(input.preflightId);
+      await this.faults.beforeReservation?.(held.operationId);
+      await this.registry.reserveInstall({
+        operationId: held.operationId,
+        packageGenerationId: prepared.identities.packageGenerationId,
+        installIdentity: held.installIdentity,
+        sourceIdentity: held.sourceIdentity,
+        scope: held.scope,
+        adapterId: held.adapterId,
+        expectedScopeRevision: held.scopeRevision,
+        expectedActiveGenerationRef: held.expectedActiveGenerationRef,
+      });
+      await this.faults.afterReserved?.(held.operationId);
+      await this.ledger.authorizeInstall(
+        held.operationId,
+        prepared.revision
+      );
+    } catch (cause) {
+      this.lifecycleOwnershipTransfers.delete(input.preflightId);
+      /* A rejected durable write is not proof that its rename did not commit.
+         Only a domain conflict is known to happen before Registry persistence;
+         I/O failures retain the prepared intent, Project claim, and bytes so a
+         fresh process can reconcile the two ledgers. */
+      if (
+        (cause as { status?: number }).status === 409 &&
+        !this.registry.installReservation(held.operationId)
+      ) {
+        try {
+          await this.ledger.abort(held.operationId);
+          await this.resources.collectStagedContent(held.contentDigest);
+          if (projectAdmissionAcquired) {
+            await this.resources.releaseProjectAdmission(held);
+          }
+        } catch {
+          /* Commit outcome is uncertain: keep the Project claim fail-closed.
+             Startup reconciliation rereads both durable stores. */
+        }
+      }
+      throw cause;
+    }
+    /* 授权快照已 fsync，从此不再依赖 renderer 或这份内存 preflight。 */
     try {
       await this.faults.afterAuthorized?.(held.operationId);
       return await this.resumeAuthorized(held.operationId);
@@ -375,6 +606,8 @@ export class ExtensionInstaller {
     if (!operation?.authorizedInstall || !operation.contentDigest) {
       throw new Error("已授权扩展操作缺少可重放快照");
     }
+    this.resources.assertProjectAdmission(operation);
+    await this.ensureInstallReservation(operation, operation.authorizedInstall);
     const generation = await this.seal(operation, operation.authorizedInstall);
     await this.faults.afterSealed?.(operationId);
     operation = this.ledger.find(operationId)!;
@@ -389,14 +622,74 @@ export class ExtensionInstaller {
     }
     const settled = this.ledger.find(operationId)!;
     await this.ledger.advance(operationId, settled.revision, "completed");
+    await this.registry.releaseInstallReservation(operationId);
+    await this.resources.releaseProjectAdmission(operation);
     return generation;
+  }
+
+  private async resumePreparedAuthorization(
+    operation: ExtensionLifecycleOperation
+  ) {
+    const replay = operation.authorizedInstall;
+    if (!replay || operation.installAuthorizationState !== "prepared") {
+      throw new Error("Extension install authorization 未 prepared");
+    }
+    this.resources.assertProjectAdmission(operation);
+    try {
+      await this.ensureInstallReservation(operation, replay);
+    } catch (cause) {
+      if (
+        (cause as { status?: number }).status === 409 &&
+        !this.registry.installReservation(operation.operationId)
+      ) {
+        await this.ledger.abort(operation.operationId);
+        await this.resources.collectStagedContent(operation.contentDigest);
+        await this.resources.releaseProjectAdmission(operation);
+      }
+      throw cause;
+    }
+    const current = this.ledger.find(operation.operationId)!;
+    await this.ledger.authorizeInstall(operation.operationId, current.revision);
+    return this.resumeAuthorized(operation.operationId);
+  }
+
+  private ensureInstallReservation(
+    operation: ExtensionLifecycleOperation,
+    replay: AuthorizedExtensionInstall
+  ) {
+    return this.registry.reserveInstall({
+      operationId: operation.operationId,
+      packageGenerationId: operation.identities.packageGenerationId,
+      installIdentity: operation.installIdentity,
+      sourceIdentity: operation.sourceIdentity,
+      scope: operation.scope,
+      adapterId: replay.adapterId,
+      expectedScopeRevision: replay.expectedScopeRevision,
+      expectedActiveGenerationRef: replay.expectedActiveGenerationRef,
+    });
   }
 
   private async seal(
     operation: ExtensionLifecycleOperation,
     replay: NonNullable<ExtensionLifecycleOperation["authorizedInstall"]>
   ) {
-    const existing = this.generationRecord(
+    if (
+      productResourceScopeKey(operation.scope) !==
+        productResourceScopeKey(replay.scope) ||
+      operation.sourceIdentity !== replay.sourceIdentity ||
+      operation.expectedProjectLifecycleRevision !==
+        replay.expectedProjectLifecycleRevision
+    ) {
+      throw new Error("Extension lifecycle owner receipt 与授权快照不一致");
+    }
+    await this.epochs.ensureOwner({
+      installIdentity: operation.installIdentity,
+      scope: replay.scope,
+      sourceIdentity: replay.sourceIdentity,
+      displayLabel: replay.displayName,
+      sourceLabel: replay.source.normalizedUrl,
+    });
+    const existing = this.resources.generationRecord(
       operation.identities.packageGenerationId
     );
     if (
@@ -411,6 +704,9 @@ export class ExtensionInstaller {
       (await this.registry.sealGeneration({
         packageGenerationId: operation.identities.packageGenerationId,
         installIdentity: operation.installIdentity,
+        scope: replay.scope,
+        sourceIdentity: replay.sourceIdentity,
+        expectedScopeRevision: replay.expectedScopeRevision,
         componentNamespace: replay.componentNamespace,
         contentDigest: operation.contentDigest!,
         source: replay.source,
@@ -419,8 +715,9 @@ export class ExtensionInstaller {
         validatorFixtureDigest: replay.evidence.validatorFixtureDigest,
         displayName: replay.displayName,
         expectedActiveGenerationRef: replay.expectedActiveGenerationRef,
+        installReservationOperationId: operation.operationId,
         /* 数据绑定必须在 seal 之前闭合，绝不退回 `none` 抢先发布。 */
-        dataBinding: await this.bindData(operation, replay),
+        dataBinding: await this.resources.bindData(operation, replay),
       }));
     /* active generation 与 enabled 是两件事：前者回答「这个安装当前指向哪一代」，
        后者才是启用。不 activate 的话 inventory 里连 component 都列不出来，用户
@@ -433,147 +730,34 @@ export class ExtensionInstaller {
       },
       {
         preserveEnabled: replay.preserveEnabled,
+        enableAll: replay.expectedActiveGenerationRef === null,
+        installReservationOperationId: operation.operationId,
       }
     );
     return generation;
   }
 
   async discard(preflightId: string) {
+    if (this.lifecycleOwnershipTransfers.has(preflightId)) return;
     const held = this.held.get(preflightId);
     if (!held) return;
+    const operation = this.ledger.find(held.operationId);
+    if (
+      !operation ||
+      operation.phase !== "staged" ||
+      operation.installAuthorizationState !== "none" ||
+      operation.authorizedInstall ||
+      this.registry.installReservation(operation.operationId)
+    ) {
+      /* Prepared/committed/uncertain operations belong to startup recovery.
+         Dropping renderer state is not evidence that either durable store did
+         not commit. */
+      this.held.delete(preflightId);
+      return;
+    }
     this.held.delete(preflightId);
     await this.ledger.abort(held.operationId);
-    await this.collectStagedContent(held.contentDigest);
+    await this.resources.collectStagedContent(held.contentDigest);
   }
 
-  /**
-   * 含 stdio 的代在 seal 前必须拿到独立 epoch：更新走「暂停源 epoch 新 writer →
-   * drain 已签发 lease → fsync 快照建新代 → 恢复源 epoch」，两代此后明确分叉。
-   */
-  private async bindData(
-    operation: ExtensionLifecycleOperation,
-    replay: AuthorizedExtensionInstall
-  ): Promise<PackageGenerationDataBinding> {
-    const epochId = operation.identities.pluginDataEpochId;
-    if (!replay.admission.containsStdio || !epochId) return { kind: "none" };
-    const sourceEpochId = operation.identities.sourceEpochId;
-    if (!sourceEpochId) {
-      await this.epochs.ensureEpoch(operation.installIdentity, epochId);
-      return { kind: "stdio", pluginDataEpochId: epochId };
-    }
-    if (await this.epochs.hasEpoch(operation.installIdentity, epochId)) {
-      return { kind: "stdio", pluginDataEpochId: epochId };
-    }
-    this.epochs.pauseWriters(operation.installIdentity, sourceEpochId);
-    try {
-      await this.epochs.snapshotEpoch({
-        installIdentity: operation.installIdentity,
-        fromEpochId: sourceEpochId,
-        toEpochId: epochId,
-      });
-    } finally {
-      /* 源 epoch 必须恢复：新代能不能发布是新代的事，旧代不该被这次失败连坐。 */
-      this.epochs.resumeWriters(operation.installIdentity, sourceEpochId);
-    }
-    return { kind: "stdio", pluginDataEpochId: epochId };
-  }
-
-  /** 内容寻址：同一份字节重复预检天然幂等，中断留下的目录也不会变成脏状态。 */
-  private async adoptContent(staged: StagedExtensionSource) {
-    const target = this.contentRoot(staged.contentDigest);
-    await mkdir(this.packagesRoot, { recursive: true, mode: 0o700 });
-    /* 同一份字节已经在受管 store 里（很可能正被某一代引用）：留下它，丢掉
-       staged 那份。删掉再 rename 会在那个瞬间把一个活着的包根挖空。 */
-    if (await exists(target)) return target;
-    await rename(staged.packageRoot, target);
-    return target;
-  }
-
-  /**
-   * 无人引用的 staged 内容才回收。两类引用都算数：已 seal 的代，以及**另一条
-   * 还没走完的操作**——同一份字节被预检两次时，放弃其中一次不能把另一次正
-   * 指着的包根删掉。
-   */
-  private async collectStagedContent(contentDigest: Sha256Digest | null) {
-    if (!contentDigest) return;
-    const sealed = this.registry
-      .snapshot()
-      .packages.some((item) =>
-        item.generations.some((entry) => entry.contentDigest === contentDigest)
-      );
-    const pending = this.ledger
-      .nonTerminal()
-      .some((item) => item.contentDigest === contentDigest);
-    if (!sealed && !pending) {
-      await rm(this.contentRoot(contentDigest), { recursive: true, force: true });
-    }
-  }
-
-  private contentRoot(contentDigest: string) {
-    return join(this.packagesRoot, contentDigest.replace("sha256:", ""));
-  }
-
-  private generationRef(
-    packageGenerationId: string
-  ): ExtensionPackageGenerationRef | null {
-    for (const item of this.registry.snapshot().packages) {
-      const found = item.generations.find(
-        (entry) => entry.packageGenerationId === packageGenerationId
-      );
-      if (found) {
-        return {
-          packageGenerationId: found.packageGenerationId,
-          recordDigest: found.recordDigest,
-        };
-      }
-    }
-    return null;
-  }
-
-  private generationRecord(packageGenerationId: string) {
-    return this.registry
-      .snapshot()
-      .packages.flatMap((item) => item.generations)
-      .find((item) => item.packageGenerationId === packageGenerationId) ?? null;
-  }
-}
-
-function migrationId(operationId: string, appId: string) {
-  return `extension-migration:${operationId}:${appId}`;
-}
-
-function asAdapterId(value: string): ExtensionAdapterId {
-  if (value === "agent-plugins-1.0.0-wd" || value === "skill-repo-1.0.0") {
-    return value;
-  }
-  throw new Error(`未知 extension adapter：${value}`);
-}
-
-function displayNameOf(
-  admission: ExtensionPackageAdmission,
-  source: StagedExtensionSource["provenance"]
-) {
-  const manifestName = admission.manifest.name;
-  if (typeof manifestName === "string" && manifestName.trim()) return manifestName;
-  const skill = admission.components.find((item) => item.kind === "skill");
-  if (skill?.kind === "skill") return skill.name;
-  return source.normalizedUrl.replace(/\/$/, "").split("/").at(-1)!.replace(/\.git$/, "");
-}
-
-async function exists(path: string) {
-  return await access(path).then(
-    () => true,
-    () => false
-  );
-}
-
-/* install identity 绑定「来源 + 子目录」而不是内容：同一仓库的新 commit 是同一个
-   安装的新一代，不是第二个安装。 */
-function installIdentityOf(source: StagedExtensionSource["provenance"]) {
-  return digestCanonical([source.normalizedUrl, source.subdirectory]);
-}
-
-function namespaceOf(source: StagedExtensionSource["provenance"]) {
-  const path = source.normalizedUrl.replace(/^https:\/\//, "");
-  return source.subdirectory ? `${path}/${source.subdirectory}` : path;
 }

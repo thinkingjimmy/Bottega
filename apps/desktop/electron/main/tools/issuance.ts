@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared buildtin-tools Access to projection/backend white lists, AgentBackendId and Agent TurnOrigin
- * [OUTPUT]: Provides builtinToolAccess, turnKindForOrigin, projectBuiltinTools and issueBuiltinMcpWhenAllowed; The final issuer can be frozen and then leased
- * [POS]: The tools are a purely combined layer of authorization strategies; None, back-end exclusion and missing origin all fail-closed before the lease was created
+ * [INPUT]: Depends on shared builtin-tool access/backend allowlists, AgentBackendId, Agent TurnOrigin, and frozen Skills capability facts
+ * [OUTPUT]: Provides ambient access projection, exact `use_skill` issuance for capable turns, turn-kind mapping, and fail-closed MCP issuance
+ * [POS]: Pure authorization composition; backend exclusions, missing origins, and missing Skills capability fail closed before a lease exists
  */
 
 import type { AgentBackendId } from "../../../shared/agent-ipc";
@@ -42,6 +42,8 @@ export type BuiltinIssuanceInput = {
   origin: TurnOrigin | undefined;
   /** 本轮 resolveContext 时冻结的用户偏好；只过滤 ambient 工具。 */
   disabledTools?: readonly string[];
+  /** Proven capable Skills custody exists for this exact turn. */
+  useSkill?: boolean;
 };
 
 export function issueBuiltinMcpWhenAllowed<T>(
@@ -59,7 +61,8 @@ export function projectBuiltinTools(
 ): BuiltinToolName[] {
   const access = builtinToolAccess(input);
   if (access === "none") return [];
-  return admittedTools(input).filter((name) => {
+  const exact = input.useSkill ? (["use_skill"] as BuiltinToolName[]) : [];
+  return [...admittedTools(input), ...exact].filter((name) => {
     const allowlist = builtinToolSpec(name)?.backendAllowlist;
     return !allowlist || allowlist.includes(input.backend);
   });

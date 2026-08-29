@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow/session/frame API, shared i18n, Apps origin Whitelist and renderer URLs protected
- * [OUTPUT]: Provides navigation locks, WebRTC exit blocks, minimum authorization policies and ReactGrab entry in base-gui, double-double zero exceptions), https is the only external link to the output
- * [POS]: The main/window browsing context security boundaries; Business entrance shall not be allowed to free up navigation or authorization on its own
+ * [INPUT]: Depends on Electron BrowserWindow/session/frame APIs, shared i18n, Apps origin policy, and renderer URL guards
+ * [OUTPUT]: Provides navigation locks, testable fixed preview/srcdoc ancestry, minimum permission policy, controlled ReactGrab injection, and confirmed HTTPS external links
+ * [POS]: Main/window browsing-context security boundary; product entry points cannot widen navigation, RTC, or permission authority
  */
 
 import {
@@ -18,8 +18,7 @@ import type { AppLocale } from "../../../shared/i18n/locale";
 import { translate } from "../../../shared/i18n/runtime";
 
 const TRUSTED_EXTERNAL_HOSTS = new Set(["github.com", "learn.chatgpt.com"]);
-const iframeOrigins = new WeakMap<WebFrameMain, string>();
-
+const iframeDocuments = new WeakMap<WebFrameMain, string>();
 function isAllowedAppOrigin(apps: AppsService, value: string) {
   try {
     return apps.isAllowedOrigin(new URL(value).origin);
@@ -39,14 +38,31 @@ function isBaseGuiFrameUrl(apps: AppsService, value: string) {
   }
 }
 
-function inheritedIframeOrigin(frame: WebFrameMain) {
+export function hasAllowedPreviewAncestor<
+  T extends { parent: T | null; top: T | null; url: string },
+>(
+  frame: T,
+  fixedDocument: (ancestor: T) => string | undefined,
+  isPreview: (document: string) => boolean
+) {
   let ancestor = frame.parent;
   while (ancestor && ancestor !== ancestor.top) {
-    const origin = iframeOrigins.get(ancestor);
-    if (origin) return origin;
+    if (isPreview(fixedDocument(ancestor) ?? ancestor.url)) return true;
     ancestor = ancestor.parent;
   }
-  return undefined;
+  return false;
+}
+
+function inheritsPreviewDocument(apps: AppsService, frame: WebFrameMain) {
+  return hasAllowedPreviewAncestor(
+    frame,
+    (ancestor) => iframeDocuments.get(ancestor),
+    (document) => isPreviewDocument(apps, document)
+  );
+}
+
+function isPreviewDocument(apps: AppsService, value: string) {
+  return apps.isAllowedBaseGuiDocumentUrl(value) && value.includes("/_preview/");
 }
 
 export function lockNavigation(
@@ -56,7 +72,7 @@ export function lockNavigation(
   locale: () => AppLocale = () => "en"
 ) {
   // base-gui 是 Agent 写的代码，CSP 的 connect-src 管不到 WebRTC 数据通道
-  // （Chromium 150 不认 CSP3 `webrtc 'block'`，实测见 dev/base-gui-csp-probe.cjs）。
+  // （Chromium 150 不认 CSP3 `webrtc 'block'`，实测见 DEV/apps/probes/base-gui-csp.cjs）。
   // 收紧到 disable_non_proxied_udp 后 ICE 候选实测清零；产品 renderer 本就不用 WebRTC。
   window.webContents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
   window.webContents.on("will-navigate", (event) => {
@@ -74,19 +90,70 @@ export function lockNavigation(
         return "";
       }
     })();
-    if (!event.frame || !isAllowedAppOrigin(apps, nextOrigin)) {
+    if (!event.frame) {
       event.preventDefault();
       return;
     }
-    const fixedOrigin =
-      iframeOrigins.get(event.frame) ?? inheritedIframeOrigin(event.frame);
-    if (fixedOrigin && fixedOrigin !== nextOrigin) {
+    if (
+      event.url === "about:srcdoc" &&
+      inheritsPreviewDocument(apps, event.frame)
+    ) {
+      iframeDocuments.set(event.frame, event.url);
+      return;
+    }
+    if (!isAllowedAppOrigin(apps, nextOrigin)) {
       event.preventDefault();
       return;
     }
-    iframeOrigins.set(event.frame, fixedOrigin ?? nextOrigin);
+    if (
+      isBaseGuiFrameUrl(apps, event.url) &&
+      !apps.isAllowedBaseGuiDocumentUrl(event.url)
+    ) {
+      event.preventDefault();
+      return;
+    }
+    /* 钉 origin 而非整 URL：预览帧复用同一 iframe 切画板是合法同源导航（且
+       WebFrameMain 是否跨导航存活由渲染进程分配决定，整 URL 钉不具确定性）；
+       要拦的是跨面/跨 App 的 origin 切换。 */
+    const fixed = iframeDocuments.get(event.frame);
+    if (fixed && fixed !== nextOrigin) {
+      event.preventDefault();
+      return;
+    }
+    iframeDocuments.set(event.frame, nextOrigin);
   });
-  window.webContents.setWindowOpenHandler(({ url }) => {
+  window.webContents.on(
+    "will-redirect",
+    (event, url, _isInPlace, isMainFrame, frameProcessId, frameRoutingId) => {
+      if (isMainFrame) {
+        if (!urlMatchesRenderer(url, rendererUrl)) event.preventDefault();
+        return;
+      }
+      const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+      const redirectOrigin = (() => {
+        try {
+          return new URL(url).origin;
+        } catch {
+          return null;
+        }
+      })();
+      if (
+        !frame ||
+        !redirectOrigin ||
+        !isAllowedAppOrigin(apps, url) ||
+        (isBaseGuiFrameUrl(apps, url) &&
+          !apps.isAllowedBaseGuiDocumentUrl(url)) ||
+        (iframeDocuments.get(frame) &&
+          iframeDocuments.get(frame) !== redirectOrigin)
+      ) {
+        event.preventDefault();
+      }
+    }
+  );
+  window.webContents.setWindowOpenHandler(({ url, referrer }) => {
+    if (referrer?.url && isAllowedAppOrigin(apps, referrer.url)) {
+      return { action: "deny" };
+    }
     void openExternalSafely(window, url, locale()).catch((error) =>
       console.warn("[external] window.open 被拒绝", error)
     );

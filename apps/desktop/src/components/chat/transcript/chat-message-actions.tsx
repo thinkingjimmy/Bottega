@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AI Elements MessageActions/MessageAction, and licide icons and lib/chat-format/agent-client
- * [OUTPUT]: Provides ChatMessageActions, hover time to appear + copy/ option to modify the action line
- * [POS]: The message action of chat/transcript is consumed by ChatTranscript (user) and ChatTurn (assistant)
+ * [INPUT]: Depends on message action primitives, icons, formatting, clipboard, optional revision eligibility, and request-bound Memory receipts
+ * [OUTPUT]: Provides copy/revision actions followed by time and an optional icon-free Memory status
+ * [POS]: Shared action row for user and assistant transcript messages
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -14,19 +14,25 @@ import { cn } from "@ai-chat/ui/lib/utils";
 import { formatMessageTime } from "@/lib/chat-format";
 import { writeClipboardText } from "@/lib/agent-client";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import type { TurnContextReceipt } from "../../../../shared/memory-ipc";
+import { MemoryReceiptText } from "./memory-turn-receipt";
 
 type ChatMessageActionsProps = {
   role: "user" | "assistant";
   content: string;
   createdAt: number;
+  contextReceipt?: TurnContextReceipt;
   onEdit?: () => void;
+  editDisabledReason?: string;
 };
 
 export function ChatMessageActions({
   role,
   content,
   createdAt,
+  contextReceipt,
   onEdit,
+  editDisabledReason,
 }: ChatMessageActionsProps) {
   const { t } = useAppTranslation();
   const [copied, setCopied] = useState(false);
@@ -63,11 +69,12 @@ export function ChatMessageActions({
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
       </MessageAction>
-      {onEdit && (
+      {(onEdit || editDisabledReason) && (
         <MessageAction
-          className="cursor-pointer"
-          label={t("chatRevision.edit")}
-          tooltip={t("chatRevision.edit")}
+          className={editDisabledReason ? "cursor-not-allowed opacity-50" : "cursor-pointer"}
+          disabled={Boolean(editDisabledReason)}
+          label={editDisabledReason ?? t("chatRevision.edit")}
+          tooltip={editDisabledReason ?? t("chatRevision.edit")}
           onClick={onEdit}
         >
           <PencilIcon />
@@ -76,6 +83,7 @@ export function ChatMessageActions({
       <span className="text-muted-foreground text-xs">
         {formatMessageTime(createdAt)}
       </span>
+      <MemoryReceiptText receipt={contextReceipt} />
     </MessageActions>
   );
 }

@@ -83,12 +83,7 @@ export function UsageSourceRail({
                 key={source.target}
                 value={source.target}
                 data-testid={`usage-tab-${source.target}`}
-                className={
-                  /* line 变体自带那条 after 下划线，只是默认吊在 -5px（为
-                     分离式页签留的空隙）。这里页签紧贴分界线，故拉回 -1px
-                     正压在它上面：选中的那一页把下面那道线接管过去。 */
-                  "h-auto flex-none cursor-pointer justify-start gap-2 rounded-none px-4 py-3 text-sm group-data-horizontal/tabs:after:bottom-[-1px]"
-                }
+                className="h-auto flex-none cursor-pointer justify-start gap-2 rounded-none px-4 py-3 text-sm"
               >
                 {source.icon ? (
                   <AgentBackendIcon backend={source.icon} className="size-4" />

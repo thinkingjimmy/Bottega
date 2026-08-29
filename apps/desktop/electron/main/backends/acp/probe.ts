@@ -20,6 +20,10 @@ import {
 import { asError } from "../../errors";
 import { cleanProcessGroup } from "../../process-group";
 import { AcpProcessEvidence } from "./startup/evidence";
+import {
+  buildAcpClientCapabilities,
+  SESSION_CAPABILITY_POLICY,
+} from "./session/client-capabilities";
 
 export class AcpRequestError extends Error {
   readonly code: number | undefined;
@@ -238,7 +242,7 @@ export async function inspectAcpSession<T>(
     }
     /* ACP 双向 JSON-RPC 的 id 空间独立：带 method 的是 agent→client 请求，
        它的 id 撞上未决 client 请求 id 时，按 id 匹配会把请求误吞成响应
-       （dev/mcp-timeout-harness 2026-07-29 真机踩坑）。 */
+       （DEV/platform/mcp/timeout-harness 2026-07-29 真机踩坑）。 */
     if (message.method !== undefined) return;
     if (typeof message.id !== "number") return;
     const request = pending.get(message.id);
@@ -342,9 +346,9 @@ export async function inspectAcpSession<T>(
   try {
     initialized = await request("initialize", {
       protocolVersion: PROTOCOL_VERSION,
-      clientCapabilities: {
-        session: { configOptions: {} },
-      },
+      clientCapabilities: buildAcpClientCapabilities(
+        SESSION_CAPABILITY_POLICY[options.backend]
+      ),
       clientInfo: {
         name: "ai-chat-readiness-probe",
         title: "Bottega Readiness Probe",

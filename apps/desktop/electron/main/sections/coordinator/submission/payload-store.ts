@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node Private atomic files IO, shared image budget, manual turnsubmission and canonical hash
- * [OUTPUT]: Provides raw submission to reset storage, opaque reference, complete hydration, ledger before crash recovery and release marker
- * [POS]: The coordinator's submission of the large payload custody; The atomic manifest itself is also a reservation
+ * [INPUT]: Depends on private atomic file IO, shared attachment budgets, manual submissions, and canonical hashing
+ * [OUTPUT]: Provides raw payload custody, opaque references, hydration/recovery/release markers, and recursive complete/incomplete adoption-reference projection across manifests and temp state
+ * [POS]: The large-payload custody owner of coordinator submission
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -29,6 +29,7 @@ import {
 import { canonicalHash } from "../coordinator-values";
 import type { LedgerState } from "../state/ledger-schema";
 import { reserveSubmission } from "../submission-outcome";
+import type { ReferenceProjection } from "../../../history-import/memory-snapshot-store";
 
 const pathSegmentSchema = z.union([
   z.string().min(1).max(512),
@@ -329,6 +330,26 @@ export class SubmissionPayloadStore {
     };
   }
 
+  async adoptionReferenceProjection(): Promise<ReferenceProjection> {
+    const refs = new Set<string>();
+    let complete = true;
+    try {
+      for (const entry of await readdir(this.root, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        if (entry.name.includes(".tmp")) complete = false;
+        try {
+          const manifest = await this.readManifest(join(this.root, entry.name));
+          collectAdoptionSnapshotIds(manifest.value, refs);
+        } catch {
+          complete = false;
+        }
+      }
+    } catch {
+      complete = false;
+    }
+    return { complete, refs };
+  }
+
   private async recoverableReservations() {
     const recovered: Array<{
       submission: ManualTurnSubmission;
@@ -384,6 +405,22 @@ export class SubmissionPayloadStore {
     return manifestSchema.parse(
       JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"))
     );
+  }
+}
+
+export function collectAdoptionSnapshotIds(value: unknown, refs: Set<string>) {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectAdoptionSnapshotIds(item, refs);
+    return;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    if (
+      key === "adoptionSnapshotId" &&
+      typeof item === "string" &&
+      /^adopt_[a-f0-9]{64}$/.test(item)
+    ) refs.add(item);
+    else collectAdoptionSnapshotIds(item, refs);
   }
 }
 

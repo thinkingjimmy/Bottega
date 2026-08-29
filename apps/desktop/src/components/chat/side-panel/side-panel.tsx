@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, horizontal scaling hook, Gallery transcript projection, PageShell geometry, PanelTabs, Markdown and Workspace preview
- * [OUTPUT]: Provides SidePanel; Markdown is only used for md/mdx/markdown, common Workspace source code pre/code, and rendering metadata/error, 44px rail with reduced-motion
- * [POS]: chat third-party visualize, drag, move and tabs code sharing host; Rail covers content at an independent level, with the width persistence/dynamic limit still owned by ChatView; The document is a text-sm reference with a single point in the scrolling container, with the respective spelling of the respective letters with the chat stream and the branches of the scrolling
+ * [INPUT]: Depends on React, PanelSessionContext, horizontal resize, PanelTabs, Plan/file/Workspace previews, and Gallery projection
+ * [OUTPUT]: Provides the resizable tabs/plan/file side-panel host and forwards the canonical context to every tab consumer
+ * [POS]: The visual shell of chat/side-panel; ChatView owns width and visibility
  */
 
 import { LoaderCircleIcon, XIcon } from "lucide-react";
@@ -19,6 +19,8 @@ import type { ProjectedSubagent } from "@/lib/chat-turn-attach";
 import type { SidePanelState } from "../runtime/use-chat-session";
 import {
   MARKDOWN_PATTERN,
+  panelConversationKey,
+  panelGenerationKey,
   workspacePreviewMetadataMessage,
 } from "../runtime/chat-session-model";
 import { capMarkdown } from "@/lib/charts/chart-markdown";
@@ -118,8 +120,10 @@ export const SidePanel = memo(function SidePanel({
           <Suspense fallback={<BasePanelLoading />}>
             <GalleryOverlayProvider projection={galleryProjection}>
               <PanelTabs
-                key={state.chatId}
-                chatId={state.chatId}
+                /* 会话 + 代际的复合身份：单独的代际位（如 foreign 的
+                   historyRevision）不保证跨会话唯一，丢了会话位就可能不重挂。 */
+                key={`${panelConversationKey(state.context)}\u0000${panelGenerationKey(state.context)}`}
+                context={state.context}
                 command={state.command}
                 onClose={onClose}
                 subagents={subagents}

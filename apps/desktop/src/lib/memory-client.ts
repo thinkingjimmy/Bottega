@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/memory-ipc and preload exposure window.memory
- * [OUTPUT]: Provides descriptor/state/source observation, a version directory with provider/revision fence, running switches, configuration and destructive capabilities IPC packaging and packed with mandatory codes read-only downgrades
+ * [OUTPUT]: Provides renderer calls for Memory descriptors, status/source observation, provider/revision-fenced version operations, configuration, destructive actions, and mandatory-code read-only downgrades
  * [POS]: The only output of the renderer's Memory IPC; Business view not directly reading window
  */
 
@@ -64,6 +64,7 @@ const browserRuntime = (providerId: string): MemoryRuntimeSnapshot => ({
   supported: false,
   installed: false,
   serviceReachable: false,
+  configured: false,
   phase: "idle",
   operation: null,
   operationId: null,
@@ -162,10 +163,6 @@ export const requestMemoryConsentAuthority = (
 export const subscribeMemoryStatus = (
   listener: (status: MemoryStatusSnapshot) => void
 ) => window.memory?.onStatus(listener) ?? (() => {});
-
-export const getMemoryRuntimeState = (providerId: string) =>
-  window.memory?.getRuntimeState(providerId) ??
-  Promise.resolve(browserRuntime(providerId));
 
 export const runMemoryRuntimeOperation = (
   providerId: string,

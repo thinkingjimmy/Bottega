@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React layout lifecycle, submitting transaction status setter, session refs, routing, message projection and attachment preview combinator
+ * [INPUT]: Depends on React layout lifecycle, submitting transaction status setter, session refs, message projection and attachment preview combinator
  * [OUTPUT]: Provides keyed mount-aware useSessionViewFence with generation-scoped createSessionSubmitLifecycle
- * [POS]: The renderer lifecycle adapter for chat/runtime/session; The naked setter is isolated and blocks the old Chat that has been transferred to the main from re-infesting the current view
+ * [POS]: The renderer lifecycle adapter for chat/runtime/session; The naked setter is isolated and blocks the old Chat that has been transferred to the main from re-infesting the current view. Post-send navigation is deliberately absent: the fence rightly voids late receipts after a keyed remount, so page switching belongs to the route's draft-residence observation, never to receipts
  */
 
 import {
@@ -13,7 +13,6 @@ import {
   type SetStateAction,
 } from "react";
 import type { ChatStatus } from "ai";
-import type { NavigateFunction } from "react-router";
 import type {
   SessionRef,
 } from "../../../../../shared/agent-ipc";
@@ -33,7 +32,6 @@ import {
   appendLivePreviews,
   type LiveAttachmentPreview,
 } from "../chat-attachments";
-import type { ChatProjectMode } from "../chat-session-model";
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
 
@@ -62,10 +60,7 @@ export function useSessionViewFence(chatId: string) {
 }
 
 type SessionSubmitLifecycleInput = {
-  chatId: string;
-  project: ChatProjectMode;
   isCurrent: () => boolean;
-  navigate: NavigateFunction;
   appendProjected: (message: ChatMessage) => void;
   appendLocalAssistant: (content: string, isError?: boolean) => void;
   refs: {
@@ -108,10 +103,7 @@ export type SessionSubmitLifecycle = {
 };
 
 export function createSessionSubmitLifecycle({
-  chatId,
-  project,
   isCurrent,
-  navigate,
   appendProjected,
   appendLocalAssistant,
   refs,
@@ -134,11 +126,12 @@ export function createSessionSubmitLifecycle({
       appendLivePreviews(current, messageId, previews)
     );
   };
+  /* 只翻事实位，不导航：切页由路由观察「草稿 id 已入列表」独立完成。
+     受理回执经不起换槽重挂——fence 会如实作废它，导航挂在这儿就是竞态。 */
   const markPersisted = () => {
     if (refs.recordExists.current) return;
     refs.recordExists.current = true;
     set.persisted(true);
-    if (project.kind === "selectable") navigate(`/chat/${chatId}`);
   };
 
   return {

@@ -85,7 +85,6 @@ export class ClaudeHistoryAdapter implements HistoryAdapter {
             canResume: true,
             archived: false,
             incompleteTail: meta.incompleteTail,
-            divergence: false,
             sourceIncarnation: initialSourceIncarnation(key, value),
             sourcePath: path,
             fingerprint: value,

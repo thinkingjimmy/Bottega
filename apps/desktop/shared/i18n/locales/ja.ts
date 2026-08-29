@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on English Catalogs with the same Catalog Settings/History feature directorys
- * [OUTPUT]: Provides a Japanese language and composition directory
- * [POS]: The following table shows the location of the desktop i18n: The compilation period must not be key or multiple keys
+ * [INPUT]: Depends on the English Catalog shape and Japanese feature catalogs, including Project Settings
+ * [OUTPUT]: Provides the complete Japanese catalog
+ * [POS]: Japanese desktop locale; compile-time structure must match English exactly
  */
 
 import type { Catalog } from "./en";
@@ -19,8 +19,11 @@ import { settingsToolsJa } from "./settings/tools";
 import { settingsUsageJa } from "./settings/usage";
 import { settingsPersonalizationJa } from "./settings/personalization";
 import { settingsShortcutsJa } from "./settings/shortcuts";
+import { settingsAboutJa } from "./settings/about";
 import { historyJa } from "./history";
 import { chatRevisionJa } from "./chat-revision";
+import { projectSettingsJa } from "./project-settings";
+import { chatJa } from "./chat";
 
 export const ja: Catalog = {
   common: {
@@ -65,12 +68,29 @@ export const ja: Catalog = {
     toggleActivity: "アクティビティ表示を切り替え",
     createChat: "チャットを作成",
     chatsEmpty: "+ を押してチャットを開始",
+    rename: "名前を変更",
+    renameChatTitle: "チャットの名前を変更",
+    renameChatDescription: "このチャットの新しい名前を入力してください。",
     memoryAttention: "メモリサービスに確認が必要です",
     memoryAttentionOpen: "メモリサービスに確認が必要です。詳細を開く",
     appInstalling: "アプリをインストール中",
     appInstallFailed: "アプリのインストールに失敗しました",
     appInstallSucceeded: "アプリをインストールしました",
     promoteBaseToApp: "{{name}} をアプリに昇格",
+  },
+  windowSurface: {
+    missingIdentity: "App ウインドウの起動情報がありません",
+    checkingResidence: "ウインドウの配置を確認しています…",
+    openInWindow: "新しいウインドウで開く",
+    defaultOpen: "既定の開き方",
+    sameWindow: "同じウインドウ",
+    newWindow: "新しいウインドウ",
+    awayTitle: "別のウインドウで開いています",
+    awayDescription: "重複するセッションや下書きの書き込みを防ぐため、App Studio は一つのウインドウだけで動作します。",
+    focusWindow: "ウインドウへ移動",
+    reclaim: "このウインドウに戻す",
+    draftLost: "App ウインドウが予期せず終了し、未保存の下書きが失われました",
+    draftLostDescription: "Studio はメインウインドウに戻りました。メインプロセスが保持済みのメッセージは再送されません。",
   },
   memory: memoryJa,
   archive: archiveJa,
@@ -80,7 +100,9 @@ export const ja: Catalog = {
   permission: permissionJa,
   history: historyJa,
   chatRevision: chatRevisionJa,
+  projectSettings: projectSettingsJa,
   settings: {
+    about: settingsAboutJa,
     personalization: settingsPersonalizationJa,
     shortcuts: settingsShortcutsJa,
     skills: settingsSkillsJa,
@@ -165,12 +187,93 @@ export const ja: Catalog = {
     tools: settingsToolsJa,
   },
   chat: {
+    ...chatJa,
     generatingTitle: "タイトルを生成中",
     newTask: "新しいタスク",
     emptyPrompt: "何を作りましょうか？",
     emptyPromptInProject: "{{name}} で何を作りましょうか？",
     changeProject: "Project を変更：{{name}}",
     openSidePanel: "サイドパネルを開く",
+    sidePanel: {
+      addPanel: "パネルを追加",
+      allPanelsOpen: "すべてのパネルが開いています",
+      authorizeAppFirst: "先に Chat または Project で App を許可してください",
+      tabsAriaLabel: "サイドパネルのタブ",
+      closeTab: "タブを閉じる",
+      closePanel: "パネルを閉じる",
+      resolvingBase: "Base を解決中…",
+      moreBaseActions: "その他の Base 操作",
+      more: "その他",
+      openApp: "App を開く",
+      saveAsApp: "App として保存",
+      downloadCsv: "CSV をダウンロード",
+      openNamedPanel: "{{name}} を開く",
+      unavailableNamedPanel: "{{name}} は利用できません: {{reason}}",
+      closeNamedTab: "{{name}} タブを閉じる",
+      newTab: "新しいタブ",
+      webPage: "ウェブページ",
+      baseOwnerResolveFailed: "Base の所有者を特定できませんでした",
+      appUnavailable: "App を利用できません",
+      appSlotUnavailable: "App の許可が取り消されたか利用できません。再許可されるまでスロットを保持します。",
+      catalog: {
+        base: { label: "Base", hint: "この会話で生まれた構造化データを収集" },
+        subagents: { label: "サブエージェント", hint: "サブエージェントの分担と実行詳細を表示" },
+        browser: { label: "ブラウザ", hint: "Agent とログイン状態を共有するページを開く" },
+        app: { label: "App", hint: "タブ作成時に起動せず、許可済み App を開く" },
+        image: { label: "画像", hint: "会話の画像を表示" },
+      },
+      eligibility: {
+        "foreign-base-unavailable": "Base を使うにはこの会話を取り込んでください。",
+        "foreign-app-unavailable": "連携 App を開くにはこの会話を取り込んでください。",
+        "foreign-subagents-unavailable": "取り込み履歴では Subagent の詳細を利用できません。",
+        "foreign-images-unavailable": "取り込み前は元画像を利用できません。",
+      },
+    },
+    composer: {
+      add: "追加",
+      files: "ファイル",
+      planUnavailable: "現在の Agent は Plan に対応していません",
+      planCheck: "現在の Agent の Plan 機能を再確認",
+      disablePlan: "Plan をオフ",
+      dismissNotice: "通知を閉じる",
+      dismissQueueNotice: "キュー通知を閉じる",
+      galleryComments_one: "{{count}} 件のコメント",
+      galleryComments_other: "{{count}} 件のコメント",
+      clearGalleryComments: "画像コメントをすべて消去",
+      focusGallery: "ギャラリーにフォーカス",
+      modelSelector: {
+        currentModel: "現在のモデル {{model}}、Effort {{effort}}",
+        selector: "チャットモデルセレクター",
+        advanced: "詳細",
+        model: "モデル",
+        effort: "Effort",
+        speed: "速度",
+        disableFast: "Fast 速度を無効にする",
+        enableFast: "Fast 速度を有効にする",
+        quickTier: "クイックモデル段階",
+        loadingModels: "モデルカタログを読み込み中…",
+        retryModels: "モデルカタログを再試行",
+        resetDefault: "既定値に戻す",
+        onlyOneModel: "利用可能なモデルは 1 つだけです",
+        effortUnavailable: "現在のモデルでは Effort を変更できません",
+        noModels: "利用可能なモデルが見つかりません",
+        backendDefaultModel: "バックエンドの既定モデル",
+        speedDescription:
+          "対応する Opus 5/4.8 モデルでは約 2.5 倍高速です。usage credits の消費は増えますが、サブスクリプションのレート制限枠は消費しません。",
+        speedReason: {
+          modelUnsupported: "現在のモデルは Fast を提供していません",
+          backendOff: "バックエンドがこのセッションで Fast を無効にしました",
+          backendOn: "バックエンドがこのセッションで Fast を有効にしました",
+        },
+      },
+    },
+    resumeFailure: {
+      title: "保存済み Session を再開できません",
+      description: "バックエンドが保存済み Session を拒否しました。メッセージと添付は保存済みで、重複して書き込まれません。",
+      sameSession: "同じ Session を再試行",
+      freshSession: "新しい Session を開始",
+      abandon: "このターンを破棄",
+    },
     readOnly: "このチャットは現在読み取り専用です",
     backendUnavailable: "{{backend}} は現在利用できません。",
     backendRetryHint: "続行する前にインストールとサインイン状態を確認してください。",
@@ -247,6 +350,25 @@ export const ja: Catalog = {
       "この App 世代では、各変更機能と添付読み取り機能が個別に許可されます。",
     settingsRevokeBaseGuiAccess: "Base GUI 機能を取消",
     settingsBaseGuiRevokeFailed: "Base GUI 権限を取り消せませんでした",
+    designCanvasFile: "キャンバスファイル",
+    designImportCandidate: "インポート候補",
+    designNoImportCandidates: "インポート候補はありません",
+    guiChecking: "アプリ画面を確認しています…",
+    baseOpening: "データを開いています…",
+    surfacePreparing: "アプリ画面を準備しています…",
+    designImport: "インポート",
+    designVersions: "バージョン",
+    designVersion: "キャンバスのバージョン",
+    designRestore: "復元",
+    designRestoreConfirm: "このバージョンを復元して現在のキャンバスを置き換えますか？",
+    designDataTitle: "Design データと表示設定",
+    designEnabledHint: "$design は表示中で、変更されたキャンバスを自動的に開けます。",
+    designHiddenHint: "$design は非表示です。再度開くと自動プレビューが再開します。",
+    designHide: "$design を非表示",
+    designReopen: "$design を再度開く",
+    designDeleteData: "Design データを削除",
+    designDeleteConfirm: "この Design custody データと履歴を完全に削除しますか？",
+    designPresetReinstallHint: "Design は再インストールできます。保持された custody は残り、明示的に削除したデータが自動復活することはありません。",
     baseGuiConsent: {
       pendingTitle: "この世代には機能の承認が必要です",
       extensionPendingTitle: "この世代には Agent 拡張の承認が必要です",
@@ -338,6 +460,7 @@ export const ja: Catalog = {
   bases: basesJa,
   notice: {
     manualRecovered: "アプリの再起動で返信が中断されました。もう一度送信してください。",
+    skillDescriptionsTruncated: "コンテキスト予算に収めるため、このターンでは一部の Skill 説明が短縮されました。",
     relayFailed: "Section リレーに失敗しました（relay {{relayId}}）。",
     chainPaused: "自動リレーを一時停止しました。保留中のメッセージは {{count}} 件です。",
     chainRecovered: "再起動後に未完了の Section リレーを検出しました。保留中は {{count}} 件です。",
@@ -360,6 +483,7 @@ export const ja: Catalog = {
     resizeSidebarHint: "ドラッグしてサイドバーの幅を変更",
     addAttachments: "添付ファイルを追加",
     message: "メッセージ",
+    askAnything: "何でも聞いてください",
     branchOf: "/",
     submissionFailed: "送信に失敗しました。もう一度お試しください。",
   },

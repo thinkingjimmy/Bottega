@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on react Context, shared AppRecord/PresetAppSummary and apps-client
- * [OUTPUT]: Provides AppsProvider/useApps/useOptionalApps, presets list with one-click installation, Saves as App/ renames/durable chat slots, double-character re-binding, rejects old revision Agent visibility and three warnings
- * [POS]: The Apps of providers are a single source of truth, with a combined record, operation, mode and monotonous visibility according to appId; The fact that the new turn is not covered by the late attempt
+ * [INPUT]: Depends on React Context, shared AppRecord/PresetAppSummary, apps-client, and an optional fixed App-window identity
+ * [OUTPUT]: Provides AppsProvider/useApps/useOptionalApps with full main-window operations or a fixed-App snapshot/event projection that never requests presets
+ * [POS]: Renderer Apps state owner; fixed App windows retain one exact record while the main product owns global catalogs and management projections
  */
 
 import {
@@ -141,7 +141,13 @@ export function normalizeGithubRepoUrl(value: string) {
   return sharedNormalizeGithubRepoUrl(value).repoUrl;
 }
 
-export function AppsProvider({ children }: { children: React.ReactNode }) {
+export function AppsProvider({
+  children,
+  fixedAppId,
+}: {
+  children: React.ReactNode;
+  fixedAppId?: string;
+}) {
   const [records, setRecords] = useState<AppRecord[]>([]);
   const [presets, setPresets] = useState<PresetAppSummary[]>([]);
   const recordStates = useRef(new Map<string, AppState>());
@@ -167,6 +173,9 @@ export function AppsProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     const unsubscribe = onAppsEvent((event) => {
       if (!active) return;
+      if (fixedAppId && (!("appId" in event) || event.appId !== fixedAppId)) {
+        return;
+      }
       if (event.type === "runtime-warning") {
         setRuntimeWarning(event.message);
       } else if (event.type === "agent-visibility") {
@@ -223,10 +232,13 @@ export function AppsProvider({ children }: { children: React.ReactNode }) {
     void listApps()
       .then((snapshot) => {
         if (!active) return;
+        const records = fixedAppId
+          ? snapshot.apps.filter((record) => record.id === fixedAppId)
+          : snapshot.apps;
         recordStates.current = new Map(
-          snapshot.apps.map((record) => [record.id, record.state])
+          records.map((record) => [record.id, record.state])
         );
-        setRecords(snapshot.apps);
+        setRecords(records);
         setRuntimeWarning(snapshot.runtimeWarning ?? "");
       })
       .catch((cause) => {
@@ -241,18 +253,20 @@ export function AppsProvider({ children }: { children: React.ReactNode }) {
       .finally(() => active && setLoading(false));
     /* 预设目录是 main 内的编译期常量，唯一失败面是 IPC 桥缺席——与 listApps
      * 同一故障类，页面级告警由它承担，这里降级记录即可。 */
-    void listPresetApps()
-      .then((summaries) => active && setPresets(summaries))
-      .catch((cause) => {
-        console.warn(
-          `[apps] ${errorMessage(cause, "预设 App 清单读取失败")}`
-        );
-      });
+    if (!fixedAppId) {
+      void listPresetApps()
+        .then((summaries) => active && setPresets(summaries))
+        .catch((cause) => {
+          console.warn(
+            `[apps] ${errorMessage(cause, "预设 App 清单读取失败")}`
+          );
+        });
+    }
     return () => {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [fixedAppId]);
 
   const addApp = useCallback(async (input: AddAppInput) => {
     const repoUrl = normalizeGithubRepoUrl(input.repoUrl);

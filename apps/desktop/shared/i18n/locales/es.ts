@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on English Catalogs with the same Catalog Settings/History feature directorys
- * [OUTPUT]: Provides Spanish language and composition directories
- * [POS]: The following is a list of the most commonly used methods for calculating the number of times a computer can be used: The compilation period must not be key or multiple keys
+ * [INPUT]: Depends on the English Catalog shape and Spanish feature catalogs, including Project Settings
+ * [OUTPUT]: Provides the complete Spanish catalog
+ * [POS]: Spanish desktop locale; compile-time structure must match English exactly
  */
 
 import type { Catalog } from "./en";
@@ -19,8 +19,11 @@ import { settingsToolsEs } from "./settings/tools";
 import { settingsUsageEs } from "./settings/usage";
 import { settingsPersonalizationEs } from "./settings/personalization";
 import { settingsShortcutsEs } from "./settings/shortcuts";
+import { settingsAboutEs } from "./settings/about";
 import { historyEs } from "./history";
 import { chatRevisionEs } from "./chat-revision";
+import { projectSettingsEs } from "./project-settings";
+import { chatEs } from "./chat";
 
 export const es: Catalog = {
   common: {
@@ -65,12 +68,29 @@ export const es: Catalog = {
     toggleActivity: "Alternar vista de actividad",
     createChat: "Crear chat",
     chatsEmpty: "Pulsa + para iniciar un chat",
+    rename: "Cambiar nombre",
+    renameChatTitle: "Cambiar el nombre del chat",
+    renameChatDescription: "Introduce un nombre nuevo para este chat.",
     memoryAttention: "El servicio de memoria requiere atención",
     memoryAttentionOpen: "El servicio de memoria requiere atención; abrir detalles",
     appInstalling: "Instalando App",
     appInstallFailed: "Falló la instalación de la App",
     appInstallSucceeded: "App instalada",
     promoteBaseToApp: "Convertir {{name}} en App",
+  },
+  windowSurface: {
+    missingIdentity: "Falta la identidad de inicio de la ventana de la App",
+    checkingResidence: "Comprobando la ventana activa…",
+    openInWindow: "Abrir en una ventana nueva",
+    defaultOpen: "Apertura predeterminada",
+    sameWindow: "Misma ventana",
+    newWindow: "Ventana nueva",
+    awayTitle: "Abierto en otra ventana",
+    awayDescription: "Un App Studio solo permanece activo en una ventana para evitar sesiones y escrituras de borradores duplicadas.",
+    focusWindow: "Ir a la ventana",
+    reclaim: "Traer aquí",
+    draftLost: "La ventana de la App se cerró inesperadamente y se perdió su borrador sin guardar",
+    draftLostDescription: "El Studio volvió a la ventana principal. Los mensajes que ya custodia el proceso principal no se reenviarán.",
   },
   memory: memoryEs,
   archive: archiveEs,
@@ -80,7 +100,9 @@ export const es: Catalog = {
   permission: permissionEs,
   history: historyEs,
   chatRevision: chatRevisionEs,
+  projectSettings: projectSettingsEs,
   settings: {
+    about: settingsAboutEs,
     personalization: settingsPersonalizationEs,
     shortcuts: settingsShortcutsEs,
     skills: settingsSkillsEs,
@@ -165,12 +187,93 @@ export const es: Catalog = {
     tools: settingsToolsEs,
   },
   chat: {
+    ...chatEs,
     generatingTitle: "Generando título",
     newTask: "Nueva tarea",
     emptyPrompt: "¿Qué vamos a construir?",
     emptyPromptInProject: "¿Qué vamos a construir en {{name}}?",
     changeProject: "Cambiar de Project: {{name}}",
     openSidePanel: "Abrir el panel lateral",
+    sidePanel: {
+      addPanel: "Añadir panel",
+      allPanelsOpen: "Todos los paneles están abiertos",
+      authorizeAppFirst: "Autoriza primero una App en un Chat o Project",
+      tabsAriaLabel: "Pestañas del panel lateral",
+      closeTab: "Cerrar pestaña",
+      closePanel: "Cerrar panel",
+      resolvingBase: "Resolviendo Base…",
+      moreBaseActions: "Más acciones de Base",
+      more: "Más",
+      openApp: "Abrir App",
+      saveAsApp: "Guardar como App",
+      downloadCsv: "Descargar CSV",
+      openNamedPanel: "Abrir {{name}}",
+      unavailableNamedPanel: "{{name}} no disponible: {{reason}}",
+      closeNamedTab: "Cerrar pestaña {{name}}",
+      newTab: "Nueva pestaña",
+      webPage: "Página web",
+      baseOwnerResolveFailed: "No se pudo resolver el propietario de Base",
+      appUnavailable: "App no disponible",
+      appSlotUnavailable: "El acceso a la App fue revocado o no está disponible. La ranura se conserva hasta recuperar el acceso.",
+      catalog: {
+        base: { label: "Base", hint: "Recopila los datos estructurados creados por esta conversación" },
+        subagents: { label: "Subagentes", hint: "Consulta el reparto y los detalles de ejecución de los subagentes" },
+        browser: { label: "Navegador", hint: "Abre una página que comparte tu sesión iniciada con el Agent" },
+        app: { label: "App", hint: "Abre una App autorizada sin iniciarla al crear la pestaña" },
+        image: { label: "Imagen", hint: "Ver imágenes de la conversación" },
+      },
+      eligibility: {
+        "foreign-base-unavailable": "Adopta esta conversación antes de usar Base.",
+        "foreign-app-unavailable": "Adopta esta conversación antes de abrir Apps vinculadas.",
+        "foreign-subagents-unavailable": "Los detalles de Subagents no están disponibles en el historial importado.",
+        "foreign-images-unavailable": "Las imágenes de origen no están disponibles antes de adoptar.",
+      },
+    },
+    composer: {
+      add: "Añadir",
+      files: "Archivos",
+      planUnavailable: "El Agent actual no admite Plan",
+      planCheck: "Volver a comprobar la capacidad Plan del Agent actual",
+      disablePlan: "Desactivar Plan",
+      dismissNotice: "Cerrar aviso",
+      dismissQueueNotice: "Cerrar aviso de cola",
+      galleryComments_one: "{{count}} comentario",
+      galleryComments_other: "{{count}} comentarios",
+      clearGalleryComments: "Borrar todos los comentarios de imagen",
+      focusGallery: "Enfocar galería",
+      modelSelector: {
+        currentModel: "Modelo actual {{model}}, esfuerzo {{effort}}",
+        selector: "Selector de modelo del chat",
+        advanced: "Avanzado",
+        model: "Modelo",
+        effort: "Esfuerzo",
+        speed: "Velocidad",
+        disableFast: "Desactivar velocidad Fast",
+        enableFast: "Activar velocidad Fast",
+        quickTier: "Nivel rápido del modelo",
+        loadingModels: "Cargando catálogo de modelos…",
+        retryModels: "Reintentar catálogo de modelos",
+        resetDefault: "Restablecer valores predeterminados",
+        onlyOneModel: "Solo hay un modelo disponible",
+        effortUnavailable: "El modelo actual no permite cambiar el esfuerzo",
+        noModels: "No se encontraron modelos disponibles",
+        backendDefaultModel: "Modelo predeterminado del backend",
+        speedDescription:
+          "Aproximadamente 2,5 veces más rápido en modelos Opus 5/4.8 compatibles. Consume más créditos de uso, pero no el límite de velocidad de la suscripción.",
+        speedReason: {
+          modelUnsupported: "El modelo actual no ofrece Fast",
+          backendOff: "El backend desactivó Fast en esta sesión",
+          backendOn: "El backend activó Fast en esta sesión",
+        },
+      },
+    },
+    resumeFailure: {
+      title: "No se pudo reanudar la Session guardada",
+      description: "El backend rechazó la Session guardada. El mensaje y los adjuntos siguen almacenados sin duplicarse.",
+      sameSession: "Reintentar la misma Session",
+      freshSession: "Iniciar una Session nueva",
+      abandon: "Abandonar turno",
+    },
     readOnly: "Este chat está actualmente en modo de solo lectura",
     backendUnavailable: "{{backend}} no está disponible actualmente.",
     backendRetryHint:
@@ -248,6 +351,25 @@ export const es: Catalog = {
       "Cada capacidad de modificación y lectura de adjuntos se concede por separado para esta generación de la App.",
     settingsRevokeBaseGuiAccess: "Revocar capacidades de Base GUI",
     settingsBaseGuiRevokeFailed: "No se pudo revocar el acceso de Base GUI",
+    designCanvasFile: "Archivo de lienzo",
+    designImportCandidate: "Lienzo para importar",
+    designNoImportCandidates: "No hay lienzos para importar",
+    guiChecking: "Comprobando la interfaz de la App…",
+    baseOpening: "Abriendo los datos…",
+    surfacePreparing: "Preparando la interfaz de la App…",
+    designImport: "Importar",
+    designVersions: "Versiones",
+    designVersion: "Versión del lienzo",
+    designRestore: "Restaurar",
+    designRestoreConfirm: "¿Restaurar esta versión y reemplazar el lienzo actual?",
+    designDataTitle: "Datos y visibilidad de Design",
+    designEnabledHint: "$design está visible y puede abrir automáticamente los lienzos modificados.",
+    designHiddenHint: "$design está oculto. Vuelve a abrirlo para reanudar las vistas previas automáticas.",
+    designHide: "Ocultar $design",
+    designReopen: "Reabrir $design",
+    designDeleteData: "Eliminar datos de Design",
+    designDeleteConfirm: "¿Eliminar permanentemente estos datos de Design y su historial?",
+    designPresetReinstallHint: "Puedes reinstalar Design. La custodia retenida se conserva; los datos eliminados explícitamente nunca se reactivan automáticamente.",
     baseGuiConsent: {
       pendingTitle: "Esta generación necesita tu autorización de capacidades",
       extensionPendingTitle: "Esta generación necesita autorización para extensiones del Agent",
@@ -339,6 +461,7 @@ export const es: Catalog = {
   bases: basesEs,
   notice: {
     manualRecovered: "El reinicio de la aplicación interrumpió la respuesta. Vuelve a enviar el mensaje.",
+    skillDescriptionsTruncated: "Algunas descripciones de Skills se acortaron en este turno para ajustarse al presupuesto de contexto.",
     relayFailed: "Falló el relevo de Section (relay {{relayId}}).",
     chainPaused: "Relevo automático pausado con {{count}} mensajes pendientes.",
     chainRecovered: "Se encontró un relevo de Section sin terminar tras el reinicio con {{count}} mensajes pendientes.",
@@ -361,6 +484,7 @@ export const es: Catalog = {
     resizeSidebarHint: "Arrastra para cambiar el tamaño de la barra lateral",
     addAttachments: "Añadir archivos adjuntos",
     message: "Mensaje",
+    askAnything: "Pregunta lo que quieras",
     branchOf: "de",
     submissionFailed: "Error al enviar. Inténtalo de nuevo.",
   },

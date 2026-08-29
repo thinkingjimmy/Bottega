@@ -316,6 +316,54 @@ export type MemoryRuntimeOperation =
   /** 反向三步：bootout → 删 plist → 删整个托管根（含数据）；授权账本不动。 */
   | "uninstall";
 
+/* ============================================================
+ * 运行时步骤：main 只发身份，语言归 renderer。
+ *
+ * 从前 coordinator 同时持有 stepKind（机器）与 step（人话），后者
+ * 一路烤进快照直送界面——于是主进程里躺着二十条中文，五语言目录管
+ * 不到它们，英文用户在安装时读到「准备锁版 uv」。两个字段说的是同
+ * 一件事，能消失的那个是人话：文案本就该由读它的那一层选。
+ * ============================================================ */
+
+/* 值而非纯类型：目录覆盖率要被测试遍历。一个联合类型没法回答
+   「有哪几档」，于是漏写文案只能等用户在界面上读到裸 key 才发现。 */
+export const MEMORY_RUNTIME_STEP_KINDS = [
+  "refresh-version-catalog",
+  "remove-plist",
+  "remove-venv",
+  "prepare-toolchain",
+  "ensure-venv",
+  "fetch-artifacts",
+  "install-packages",
+  "register-manifest",
+  "initialize",
+  "model-assets",
+  "config-converge",
+  "install-plist",
+  "bootstrap",
+  "await-ready",
+  "config-write",
+  "config-regenerate",
+  "config-adopt-manual",
+  "bootout",
+  "wipe-data",
+  "remove-root",
+] as const;
+
+export type MemoryRuntimeStepKind = (typeof MEMORY_RUNTIME_STEP_KINDS)[number];
+
+export type MemoryRuntimeStep = {
+  kind: MemoryRuntimeStepKind;
+  /**
+   * 同一步骤的不同处境，走 i18next context：`<kind>_<context>` 命中就用
+   * 它，缺席自动回落到 `<kind>`——于是「有没有变体」不必两处各记一遍。
+   * deferred = 等配置而空转；selected = 装的是用户自选版本而非锁定版。
+   */
+  context?: "deferred" | "selected";
+  /** 步骤文案要报的版本号（Python 环境版本、待装的服务版本）。 */
+  version?: string;
+};
+
 /** renderer 只能发起用户可见的非破坏性维护；私有原语与卸载不越 preload。 */
 export type MemoryRuntimeRendererCommand =
   | "install"
@@ -339,11 +387,15 @@ export type MemoryRuntimeSnapshot = {
   supported: boolean;
   installed: boolean;
   serviceReachable: boolean;
+  /** 必填配置是否齐备。它与 phase 是两件事：configured 说「配置齐没齐」，
+      phase 说「此刻在干什么」。提交密钥的那一刻 phase 是 running，若让
+      phase 兼职回答前一个问题，「正在写配置」就会被读成「配置已完成」。 */
+  configured: boolean;
   /** configuration-required：静态 env 已就位、密钥未提交，禁止启用 Memory。 */
   phase: "idle" | "running" | "failed" | "configuration-required";
   operation: MemoryRuntimeOperation | null;
   operationId: string | null;
-  step: string | null;
+  step: MemoryRuntimeStep | null;
   stepIndex: number;
   stepTotal: number;
   operationStartedAt: number | null;
@@ -363,6 +415,8 @@ export type MemoryRuntimeSnapshot = {
     targetVersion: string;
     phase: "intent" | "installing" | "candidate-installed";
   } | null;
+  /** candidate-installed 尚未得到 /ready 晋升证明；服务仍可达，但不是 LKG。 */
+  unverifiedVersion?: string | null;
   lockedVersion: string | null;
   latestVersion: string | null;
   latestCheckedAt: number | null;

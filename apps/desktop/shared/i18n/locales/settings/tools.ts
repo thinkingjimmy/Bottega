@@ -1,16 +1,34 @@
 /**
- * [INPUT]: dependence when not in operation; The first is the installation of five local directories
- * [OUTPUT]: Provides five languages of syntax Settings › Tools
- * [POS]: The Tools feature catalog of shared/i18n/locales/settings; Tool/MCP identifier not translated with third party diagnostics
+ * [INPUT]: No runtime dependencies; defines five isomorphic Settings Tools locale objects
+ * [OUTPUT]: Provides global-default/Project scope, source/effective/support, localizable runtime constraints, owner group, reset, conflict, form, and bridge-unavailable copy in five languages
+ * [POS]: Settings Tools feature catalog; Tool/MCP identifiers, commands, transports, and external runtime diagnostics remain untranslated
  */
 
 export const settingsToolsEn = {
+  globalScopeNote: "These settings apply globally. Project settings may override them without changing this page.",
+  supportReason: {
+    "runtime-unavailable": "Runtime unavailable",
+    "builtin-tools-unsupported": "Built-in tools unsupported",
+    "transport-unsupported": "Transport unsupported",
+    "turn-origin-unsupported": "Unavailable for this turn origin",
+    "plan-mode-unsupported": "Unavailable in Plan turns",
+    "security-policy": "Blocked by security policy",
+    unknown: "Backend unavailable",
+    minimumRuntimeVersion: "Requires runtime {{minimumVersion}} or later (detected {{detectedVersion}})",
+    unknownVersion: "unknown version",
+  },
   builtin: {
     title: "Built-in tools",
     description:
       "Changes take effect on the next turn. The OpenCode backend does not use built-in tools.",
+    globalDescription: "Global defaults take effect on the next turn. Projects can override each tool independently.",
+    projectDescription: "Choose this Project's intent for each tool. Resetting an override restores the global default.",
     saveFailed: "Failed to save the built-in tool setting",
     disabledCount: "{{count}} disabled",
+    resetAll: "Reset all Project tool overrides",
+    resetOne: "Reset {{name}} to the global default",
+    source: { "global-default": "Global default", "project-override": "Project override" },
+    effective: { enabled: "Enabled", disabled: "Disabled", unavailable: "Intent enabled; backend unavailable" },
     domain: {
       sections: "Sections",
       subagents: "Subagents",
@@ -18,6 +36,7 @@ export const settingsToolsEn = {
       bases: "Bases",
       search: "Search",
       browser: "Browser",
+      design: "Design",
       apps: "Apps",
     },
     items: {
@@ -46,6 +65,7 @@ export const settingsToolsEn = {
       browser_act: { label: "Act on webpage", hint: "Run a batch of webpage actions; not issued in Plan turns." },
       browser_tabs: { label: "List webpage tabs", hint: "View visible tabs and tabs owned by this Section; not issued in Plan turns." },
       browser_close: { label: "Close webpage tab", hint: "Close a webpage tab owned by this Section; not issued in Plan turns." },
+      design_render_check: { label: "Check Design render", hint: "Render the current Design canvas and return a screenshot plus anti-slop advisories." },
       validate_app: { label: "Validate App", hint: "Validate the current package in an App editing session." },
     },
   },
@@ -53,10 +73,23 @@ export const settingsToolsEn = {
     title: "MCP Servers",
     description:
       "Servers are injected as a whole (server-inclusion-only); tool discovery and calls are delegated to the backend. A broken OpenCode server can block a new session for about 30 seconds.",
+    globalDescription: "Manage global MCP servers. Projects may inherit or override them without changing this list.",
+    projectDescription: "Project servers are private to this Project. Inherited global servers can be overridden here.",
+    globalEmptyHint: "Add a global server here. Project-owned servers never appear on this page.",
+    bridgeMissing: "MCP server settings are unavailable in this environment.",
+    projectGroup: "Project servers",
+    projectGroupEmpty: "No Project-owned servers",
+    inheritedGroup: "Inherited global servers",
+    inheritedGroupEmpty: "No global servers are available to inherit",
+    allInherited: "This Project currently uses only inherited global server settings.",
+    editGlobally: "Edit global MCP servers in Settings",
+    resetOne: "Reset {{name}} to the global default",
+    conflict: "The server changed elsewhere. The latest state was loaded and your draft was preserved.",
+    source: { "global-default": "Global default", "project-override": "Project override", "project-owned": "Project owned" },
+    effective: { enabled: "Enabled", disabled: "Disabled", unavailable: "Intent enabled; backend unavailable" },
     add: "Add server",
     edit: "Edit",
     delete: "Delete {{name}}",
-    packageBadge: "Package",
     emptyTitle: "No MCP servers yet",
     emptyHint:
       "Use “Add server” above to enter an absolute stdio command. Only enabled servers are injected into human, non-Plan turns.",
@@ -83,9 +116,6 @@ export const settingsToolsEn = {
       "remote-policy-unsupported": "Remote channels are not enabled yet",
       "authenticated-remote-unsupported": "Authenticated remote with static headers is unsupported",
       "query-remote-unsupported": "Remote URLs with query parameters are unsupported",
-      "transport-unsupported": "Package transport prerequisites are incomplete",
-      "package-disabled": "Package is disabled",
-      "component-disabled": "Component is disabled",
     },
     health: {
       unobserved: "Health not observed",
@@ -99,12 +129,24 @@ export const settingsToolsEn = {
 type SettingsToolsCatalog = typeof settingsToolsEn;
 
 export const settingsToolsZhCN: SettingsToolsCatalog = {
+  globalScopeNote: "这里的设置全局生效；Project 可单独覆盖，且不会改写本页默认值。",
+  supportReason: {
+    "runtime-unavailable": "运行时不可用", "builtin-tools-unsupported": "不支持内置工具", "transport-unsupported": "不支持此传输方式",
+    "turn-origin-unsupported": "当前回合来源不可用", "plan-mode-unsupported": "Plan 回合不可用", "security-policy": "被安全策略阻止", unknown: "Backend 不可用",
+    minimumRuntimeVersion: "需要运行时 {{minimumVersion}} 或更高版本（检测到 {{detectedVersion}}）", unknownVersion: "未知版本",
+  },
   builtin: {
     title: "内置工具",
     description: "关闭后自下一轮生效；OpenCode 后端不使用内置工具。",
+    globalDescription: "全局默认值从下一轮生效；各 Project 可独立覆盖每项工具。",
+    projectDescription: "为本 Project 选择各工具的使用意图；重置覆盖后恢复全局默认值。",
     saveFailed: "内置工具设置保存失败",
     disabledCount: "{{count}} 项已关闭",
-    domain: { sections: "Sections", subagents: "Subagents", projects: "Projects", bases: "Bases", search: "搜索", browser: "浏览器", apps: "应用" },
+    resetAll: "重置全部 Project 工具覆盖",
+    resetOne: "将 {{name}} 重置为全局默认值",
+    source: { "global-default": "全局默认", "project-override": "Project 覆盖" },
+    effective: { enabled: "已启用", disabled: "已停用", unavailable: "意图已启用；Backend 不可用" },
+    domain: { sections: "Sections", subagents: "Subagents", projects: "Projects", bases: "Bases", search: "搜索", browser: "浏览器", design: "设计", apps: "应用" },
     items: {
       list_sections: { label: "列出 Sections", hint: "查看全部持久聊天及其 Base 摘要。" },
       read_section: { label: "读取 Section", hint: "读取另一条聊天已落盘的转录。" },
@@ -131,13 +173,26 @@ export const settingsToolsZhCN: SettingsToolsCatalog = {
       browser_act: { label: "操作网页", hint: "批量执行网页动作；Plan 轮不签发。" },
       browser_tabs: { label: "列出网页标签", hint: "查看当前可见与本 Section 拥有的标签；Plan 轮不签发。" },
       browser_close: { label: "关闭网页标签", hint: "关闭本 Section 拥有的网页标签；Plan 轮不签发。" },
+      design_render_check: { label: "检查设计渲染", hint: "渲染当前 Design 画布，并返回截图与 anti-slop 提示。" },
       validate_app: { label: "验证 App", hint: "在 App 编辑会话中校验当前包。" },
     },
   },
   mcp: {
     title: "MCP Servers",
     description: "按整台 server 注入（server-inclusion-only），工具发现与调用由 backend 代理。OpenCode 的坏 server 可能让新会话阻塞约 30 秒。",
-    add: "添加 server", edit: "编辑", delete: "删除 {{name}}", packageBadge: "规范包",
+    globalDescription: "管理全局 MCP server；Project 可继承或覆盖，且不会改写本清单。",
+    projectDescription: "Project server 仅归本 Project 所有；继承的全局 server 可在此覆盖。",
+    globalEmptyHint: "在此添加全局 server。Project 自有 server 永远不会出现在本页。",
+    bridgeMissing: "当前环境无法使用 MCP server 设置。",
+    projectGroup: "Project servers", projectGroupEmpty: "没有 Project 自有 server",
+    inheritedGroup: "继承的全局 servers", inheritedGroupEmpty: "没有可继承的全局 server",
+    allInherited: "此 Project 当前仅使用继承的全局 server 设置。",
+    editGlobally: "前往 Settings 编辑全局 MCP servers",
+    resetOne: "将 {{name}} 重置为全局默认值",
+    conflict: "该 server 已在别处更新。已加载最新状态，并保留你的草稿。",
+    source: { "global-default": "全局默认", "project-override": "Project 覆盖", "project-owned": "Project 自有" },
+    effective: { enabled: "已启用", disabled: "已停用", unavailable: "意图已启用；Backend 不可用" },
+    add: "添加 server", edit: "编辑", delete: "删除 {{name}}",
     emptyTitle: "还没有 MCP server",
     emptyHint: "用上方“添加 server”填一条绝对路径 stdio command。只有启用的 server 会注入人工非 Plan 回合。",
     addTitle: "添加 MCP server", editTitle: "编辑 MCP server",
@@ -147,16 +202,27 @@ export const settingsToolsZhCN: SettingsToolsCatalog = {
     envNameRequired: "环境变量名不能为空", envValueRequired: "请为 {{name}} 输入新值",
     descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
     eligibility: {
-      eligible: "下一次人工非 Plan 回合生效", "remote-policy-unsupported": "Remote 通道尚未开放", "authenticated-remote-unsupported": "带静态 Header 的 authenticated remote 不受支持", "query-remote-unsupported": "带 query 的 remote URL 不受支持", "transport-unsupported": "规范包 transport 前置尚未闭合", "package-disabled": "规范包已停用", "component-disabled": "组件未启用",
+      eligible: "下一次人工非 Plan 回合生效", "remote-policy-unsupported": "Remote 通道尚未开放", "authenticated-remote-unsupported": "带静态 Header 的 authenticated remote 不受支持", "query-remote-unsupported": "带 query 的 remote URL 不受支持",
     },
     health: { unobserved: "健康未观察", healthy: "协议已成功", degraded: "协议失败，等待重试", quarantined: "进程状态不明，已隔离" },
   },
 };
 
 export const settingsToolsJa: SettingsToolsCatalog = {
+  globalScopeNote: "ここでの設定はグローバルに適用されます。Project はこの既定値を変更せず個別に上書きできます。",
+  supportReason: {
+    "runtime-unavailable": "ランタイムを利用できません", "builtin-tools-unsupported": "組み込みツールは未対応です", "transport-unsupported": "この転送方式は未対応です",
+    "turn-origin-unsupported": "このターンの起点では利用できません", "plan-mode-unsupported": "Plan ターンでは利用できません", "security-policy": "セキュリティポリシーによりブロックされています", unknown: "Backend を利用できません",
+    minimumRuntimeVersion: "ランタイム {{minimumVersion}} 以降が必要です（検出: {{detectedVersion}}）", unknownVersion: "不明なバージョン",
+  },
   builtin: {
     title: "組み込みツール", description: "変更は次のターンから反映されます。OpenCode バックエンドは組み込みツールを使用しません。", saveFailed: "組み込みツール設定を保存できませんでした", disabledCount: "{{count}} 件オフ",
-    domain: { sections: "Sections", subagents: "Subagents", projects: "Projects", bases: "Bases", search: "検索", browser: "ブラウザ", apps: "アプリ" },
+    globalDescription: "グローバル既定値は次のターンから反映され、Project ごとに各ツールを上書きできます。",
+    projectDescription: "この Project のツール使用意図を選びます。上書きをリセットするとグローバル既定値に戻ります。",
+    resetAll: "Project のツール上書きをすべてリセット", resetOne: "{{name}} をグローバル既定値に戻す",
+    source: { "global-default": "グローバル既定", "project-override": "Project 上書き" },
+    effective: { enabled: "有効", disabled: "無効", unavailable: "使用意図は有効ですが Backend を利用できません" },
+    domain: { sections: "Sections", subagents: "Subagents", projects: "Projects", bases: "Bases", search: "検索", browser: "ブラウザ", design: "デザイン", apps: "アプリ" },
     items: {
       list_sections: { label: "Sections を一覧表示", hint: "すべての永続チャットと Base の概要を表示します。" },
       read_section: { label: "Section を読む", hint: "別のチャットの保存済みトランスクリプトを読みます。" },
@@ -183,23 +249,46 @@ export const settingsToolsJa: SettingsToolsCatalog = {
       browser_act: { label: "Web ページを操作", hint: "Web ページ操作をまとめて実行します。Plan ターンでは利用できません。" },
       browser_tabs: { label: "Web タブを一覧表示", hint: "表示中とこの Section 所有のタブを表示します。Plan ターンでは利用できません。" },
       browser_close: { label: "Web タブを閉じる", hint: "この Section が所有するタブを閉じます。Plan ターンでは利用できません。" },
+      design_render_check: { label: "Design の描画を確認", hint: "現在の Design キャンバスを描画し、スクリーンショットと anti-slop の指摘を返します。" },
       validate_app: { label: "App を検証", hint: "App 編集セッションで現在のパッケージを検証します。" },
     },
   },
   mcp: {
     title: "MCP Servers", description: "server 全体を注入し（server-inclusion-only）、ツール検出と呼び出しはバックエンドに委任します。壊れた OpenCode server は新規セッションを約 30 秒止める場合があります。",
-    add: "server を追加", edit: "編集", delete: "{{name}} を削除", packageBadge: "パッケージ", emptyTitle: "MCP server はまだありません", emptyHint: "上の「server を追加」から絶対パスの stdio command を入力します。有効な server だけが人間の非 Plan ターンに注入されます。",
+    globalDescription: "グローバル MCP server を管理します。Project はこの一覧を変更せず継承または上書きできます。",
+    projectDescription: "Project server はこの Project 専用です。継承したグローバル server はここで上書きできます。",
+    globalEmptyHint: "ここにグローバル server を追加します。Project 所有 server はこのページに表示されません。",
+    bridgeMissing: "この環境では MCP server 設定を利用できません。",
+    projectGroup: "Project servers", projectGroupEmpty: "Project 所有 server はありません",
+    inheritedGroup: "継承したグローバル servers", inheritedGroupEmpty: "継承できるグローバル server はありません",
+    allInherited: "この Project は現在、継承したグローバル server 設定のみを使用しています。",
+    editGlobally: "Settings でグローバル MCP servers を編集", resetOne: "{{name}} をグローバル既定値に戻す",
+    conflict: "server が別の場所で更新されました。最新状態を読み込み、下書きは保持しました。",
+    source: { "global-default": "グローバル既定", "project-override": "Project 上書き", "project-owned": "Project 所有" },
+    effective: { enabled: "有効", disabled: "無効", unavailable: "使用意図は有効ですが Backend を利用できません" },
+    add: "server を追加", edit: "編集", delete: "{{name}} を削除", emptyTitle: "MCP server はまだありません", emptyHint: "上の「server を追加」から絶対パスの stdio command を入力します。有効な server だけが人間の非 Plan ターンに注入されます。",
     addTitle: "MCP server を追加", editTitle: "MCP server を編集", dialogDescription: "stdio のみ対応し、command は絶対パスが必要です。保存後、次の人間の非 Plan ターンに server 全体を注入します。",
     name: "名前", command: "command の絶対パス", args: "引数（1 行に 1 つ）", environment: "環境変数", addVariable: "変数を追加", envName: "環境変数名", envNewValue: "{{name}} の新しい値", envFallbackName: "環境変数", retainValue: "空欄なら現在の値を保持", value: "値", removeVariable: "{{name}} を削除", envNameRequired: "環境変数名は空にできません", envValueRequired: "{{name}} の新しい値を入力してください", descriptionLine: "{{transport}}・{{target}}・{{eligibility}}・{{health}}",
-    eligibility: { eligible: "次の人間の非 Plan ターンで有効", "remote-policy-unsupported": "Remote チャネルはまだ利用できません", "authenticated-remote-unsupported": "静的 Header 付き authenticated remote は未対応", "query-remote-unsupported": "query 付き remote URL は未対応", "transport-unsupported": "パッケージ transport の前提が未完了", "package-disabled": "パッケージは無効", "component-disabled": "コンポーネントは無効" },
+    eligibility: { eligible: "次の人間の非 Plan ターンで有効", "remote-policy-unsupported": "Remote チャネルはまだ利用できません", "authenticated-remote-unsupported": "静的 Header 付き authenticated remote は未対応", "query-remote-unsupported": "query 付き remote URL は未対応" },
     health: { unobserved: "状態未確認", healthy: "プロトコル成功", degraded: "プロトコル失敗、再試行待ち", quarantined: "プロセス状態不明、隔離済み" },
   },
 };
 
 export const settingsToolsFr: SettingsToolsCatalog = {
+  globalScopeNote: "Ces réglages sont globaux. Chaque Project peut les remplacer sans modifier cette page.",
+  supportReason: {
+    "runtime-unavailable": "Runtime indisponible", "builtin-tools-unsupported": "Outils intégrés non pris en charge", "transport-unsupported": "Transport non pris en charge",
+    "turn-origin-unsupported": "Indisponible pour cette origine de tour", "plan-mode-unsupported": "Indisponible dans les tours Plan", "security-policy": "Bloqué par la politique de sécurité", unknown: "Backend indisponible",
+    minimumRuntimeVersion: "Nécessite le runtime {{minimumVersion}} ou ultérieur (détecté : {{detectedVersion}})", unknownVersion: "version inconnue",
+  },
   builtin: {
     title: "Outils intégrés", description: "Les changements s’appliquent au tour suivant. Le backend OpenCode n’utilise pas les outils intégrés.", saveFailed: "Impossible d’enregistrer le réglage de l’outil intégré", disabledCount: "{{count}} désactivés",
-    domain: { sections: "Sections", subagents: "Sous-agents", projects: "Projects", bases: "Bases", search: "Recherche", browser: "Browser", apps: "Apps" },
+    globalDescription: "Les valeurs globales s’appliquent au prochain tour ; chaque Project peut remplacer chaque outil.",
+    projectDescription: "Choisissez l’intention de ce Project pour chaque outil. Réinitialiser restaure la valeur globale.",
+    resetAll: "Réinitialiser tous les remplacements du Project", resetOne: "Réinitialiser {{name}} à la valeur globale",
+    source: { "global-default": "Valeur globale", "project-override": "Remplacement du Project" },
+    effective: { enabled: "Activé", disabled: "Désactivé", unavailable: "Intention activée ; Backend indisponible" },
+    domain: { sections: "Sections", subagents: "Sous-agents", projects: "Projects", bases: "Bases", search: "Recherche", browser: "Browser", design: "Design", apps: "Apps" },
     items: {
       list_sections: { label: "Lister les Sections", hint: "Afficher tous les Chats persistants et leur résumé Base." },
       read_section: { label: "Lire une Section", hint: "Lire la transcription enregistrée d’un autre Chat." },
@@ -226,20 +315,43 @@ export const settingsToolsFr: SettingsToolsCatalog = {
       browser_act: { label: "Agir sur une page web", hint: "Exécuter un lot d’actions web ; indisponible dans les tours Plan." },
       browser_tabs: { label: "Lister les onglets web", hint: "Afficher les onglets visibles et ceux de cette Section ; indisponible dans les tours Plan." },
       browser_close: { label: "Fermer un onglet web", hint: "Fermer un onglet appartenant à cette Section ; indisponible dans les tours Plan." },
+      design_render_check: { label: "Vérifier le rendu Design", hint: "Rendre le canevas Design actuel et renvoyer une capture avec les avertissements anti-slop." },
       validate_app: { label: "Valider l’App", hint: "Valider le package actuel dans une session d’édition d’App." },
     },
   },
   mcp: {
-    title: "Serveurs MCP", description: "Les serveurs sont injectés en bloc (server-inclusion-only) ; la découverte et les appels sont délégués au backend. Un serveur OpenCode défaillant peut bloquer une nouvelle session environ 30 secondes.", add: "Ajouter un serveur", edit: "Modifier", delete: "Supprimer {{name}}", packageBadge: "Package", emptyTitle: "Aucun serveur MCP", emptyHint: "Utilisez « Ajouter un serveur » ci-dessus pour saisir une commande stdio absolue. Seuls les serveurs activés sont injectés dans les tours humains non Plan.", addTitle: "Ajouter un serveur MCP", editTitle: "Modifier le serveur MCP", dialogDescription: "Seul stdio est pris en charge et la commande doit être un chemin absolu. Après enregistrement, le serveur entier est injecté au prochain tour humain non Plan.", name: "Nom", command: "Chemin absolu de la commande", args: "Arguments (un par ligne)", environment: "Variables d’environnement", addVariable: "Ajouter une variable", envName: "Nom de variable d’environnement", envNewValue: "Nouvelle valeur de {{name}}", envFallbackName: "variable d’environnement", retainValue: "Laisser vide pour conserver la valeur", value: "Valeur", removeVariable: "Supprimer {{name}}", envNameRequired: "Le nom de la variable ne peut pas être vide", envValueRequired: "Saisissez une nouvelle valeur pour {{name}}", descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
-    eligibility: { eligible: "Actif au prochain tour humain non Plan", "remote-policy-unsupported": "Les canaux Remote ne sont pas encore disponibles", "authenticated-remote-unsupported": "Remote authentifié avec headers statiques non pris en charge", "query-remote-unsupported": "URL remote avec paramètres query non prise en charge", "transport-unsupported": "Prérequis du transport du package incomplets", "package-disabled": "Package désactivé", "component-disabled": "Composant désactivé" },
+    title: "Serveurs MCP", description: "Les serveurs sont injectés en bloc (server-inclusion-only) ; la découverte et les appels sont délégués au backend. Un serveur OpenCode défaillant peut bloquer une nouvelle session environ 30 secondes.", add: "Ajouter un serveur", edit: "Modifier", delete: "Supprimer {{name}}", emptyTitle: "Aucun serveur MCP", emptyHint: "Utilisez « Ajouter un serveur » ci-dessus pour saisir une commande stdio absolue. Seuls les serveurs activés sont injectés dans les tours humains non Plan.", addTitle: "Ajouter un serveur MCP", editTitle: "Modifier le serveur MCP", dialogDescription: "Seul stdio est pris en charge et la commande doit être un chemin absolu. Après enregistrement, le serveur entier est injecté au prochain tour humain non Plan.", name: "Nom", command: "Chemin absolu de la commande", args: "Arguments (un par ligne)", environment: "Variables d’environnement", addVariable: "Ajouter une variable", envName: "Nom de variable d’environnement", envNewValue: "Nouvelle valeur de {{name}}", envFallbackName: "variable d’environnement", retainValue: "Laisser vide pour conserver la valeur", value: "Valeur", removeVariable: "Supprimer {{name}}", envNameRequired: "Le nom de la variable ne peut pas être vide", envValueRequired: "Saisissez une nouvelle valeur pour {{name}}", descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
+    globalDescription: "Gérez les serveurs MCP globaux. Les Projects peuvent les hériter ou les remplacer sans modifier cette liste.",
+    projectDescription: "Les serveurs du Project lui sont privés. Les serveurs globaux hérités peuvent être remplacés ici.",
+    globalEmptyHint: "Ajoutez ici un serveur global. Les serveurs propres aux Projects n’apparaissent jamais sur cette page.",
+    bridgeMissing: "Les réglages des serveurs MCP sont indisponibles dans cet environnement.",
+    projectGroup: "Serveurs du Project", projectGroupEmpty: "Aucun serveur propre au Project",
+    inheritedGroup: "Serveurs globaux hérités", inheritedGroupEmpty: "Aucun serveur global à hériter",
+    allInherited: "Ce Project utilise actuellement uniquement les réglages globaux hérités.",
+    editGlobally: "Modifier les serveurs MCP globaux dans Settings", resetOne: "Réinitialiser {{name}} à la valeur globale",
+    conflict: "Le serveur a changé ailleurs. Le dernier état a été chargé et votre brouillon est conservé.",
+    source: { "global-default": "Valeur globale", "project-override": "Remplacement du Project", "project-owned": "Propre au Project" },
+    effective: { enabled: "Activé", disabled: "Désactivé", unavailable: "Intention activée ; Backend indisponible" },
+    eligibility: { eligible: "Actif au prochain tour humain non Plan", "remote-policy-unsupported": "Les canaux Remote ne sont pas encore disponibles", "authenticated-remote-unsupported": "Remote authentifié avec headers statiques non pris en charge", "query-remote-unsupported": "URL remote avec paramètres query non prise en charge" },
     health: { unobserved: "État non observé", healthy: "Protocole réussi", degraded: "Échec du protocole, nouvelle tentative en attente", quarantined: "État du processus inconnu, mis en quarantaine" },
   },
 };
 
 export const settingsToolsEs: SettingsToolsCatalog = {
+  globalScopeNote: "Estos ajustes son globales. Cada Project puede sustituirlos sin cambiar esta página.",
+  supportReason: {
+    "runtime-unavailable": "Runtime no disponible", "builtin-tools-unsupported": "Herramientas integradas no compatibles", "transport-unsupported": "Transporte no compatible",
+    "turn-origin-unsupported": "No disponible para este origen de turno", "plan-mode-unsupported": "No disponible en turnos Plan", "security-policy": "Bloqueado por la política de seguridad", unknown: "Backend no disponible",
+    minimumRuntimeVersion: "Requiere runtime {{minimumVersion}} o posterior (detectado: {{detectedVersion}})", unknownVersion: "versión desconocida",
+  },
   builtin: {
     title: "Herramientas integradas", description: "Los cambios se aplican en el siguiente turno. El backend OpenCode no usa herramientas integradas.", saveFailed: "No se pudo guardar el ajuste de la herramienta integrada", disabledCount: "{{count}} desactivadas",
-    domain: { sections: "Sections", subagents: "Subagentes", projects: "Projects", bases: "Bases", search: "Búsqueda", browser: "Browser", apps: "Apps" },
+    globalDescription: "Los valores globales se aplican en el siguiente turno; cada Project puede sustituir cada herramienta.",
+    projectDescription: "Elige la intención de este Project para cada herramienta. Restablecer recupera el valor global.",
+    resetAll: "Restablecer todas las sustituciones del Project", resetOne: "Restablecer {{name}} al valor global",
+    source: { "global-default": "Valor global", "project-override": "Sustitución del Project" },
+    effective: { enabled: "Activado", disabled: "Desactivado", unavailable: "Intención activada; Backend no disponible" },
+    domain: { sections: "Sections", subagents: "Subagentes", projects: "Projects", bases: "Bases", search: "Búsqueda", browser: "Browser", design: "Diseño", apps: "Apps" },
     items: {
       list_sections: { label: "Listar Sections", hint: "Ver todos los Chats persistentes y el resumen de sus Bases." },
       read_section: { label: "Leer Section", hint: "Leer la transcripción guardada de otro Chat." },
@@ -266,12 +378,24 @@ export const settingsToolsEs: SettingsToolsCatalog = {
       browser_act: { label: "Actuar en página web", hint: "Ejecutar acciones web por lotes; no se emite en turnos Plan." },
       browser_tabs: { label: "Listar pestañas web", hint: "Ver pestañas visibles y de esta Section; no se emite en turnos Plan." },
       browser_close: { label: "Cerrar pestaña web", hint: "Cerrar una pestaña de esta Section; no se emite en turnos Plan." },
+      design_render_check: { label: "Comprobar renderizado Design", hint: "Renderizar el lienzo Design actual y devolver una captura con avisos anti-slop." },
       validate_app: { label: "Validar App", hint: "Validar el paquete actual en una sesión de edición de App." },
     },
   },
   mcp: {
-    title: "Servidores MCP", description: "Los servidores se inyectan completos (server-inclusion-only); el descubrimiento y las llamadas se delegan al backend. Un servidor OpenCode defectuoso puede bloquear una sesión nueva unos 30 segundos.", add: "Añadir servidor", edit: "Editar", delete: "Eliminar {{name}}", packageBadge: "Paquete", emptyTitle: "Aún no hay servidores MCP", emptyHint: "Usa «Añadir servidor» para indicar un comando stdio absoluto. Solo los servidores activados se inyectan en turnos humanos no Plan.", addTitle: "Añadir servidor MCP", editTitle: "Editar servidor MCP", dialogDescription: "Solo se admite stdio y el comando debe ser una ruta absoluta. Al guardar, el servidor completo se inyecta en el siguiente turno humano no Plan.", name: "Nombre", command: "Ruta absoluta del comando", args: "Argumentos (uno por línea)", environment: "Variables de entorno", addVariable: "Añadir variable", envName: "Nombre de variable de entorno", envNewValue: "Nuevo valor de {{name}}", envFallbackName: "variable de entorno", retainValue: "Déjalo vacío para conservar el valor", value: "Valor", removeVariable: "Eliminar {{name}}", envNameRequired: "El nombre de la variable no puede estar vacío", envValueRequired: "Introduce un valor nuevo para {{name}}", descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
-    eligibility: { eligible: "Activo en el siguiente turno humano no Plan", "remote-policy-unsupported": "Los canales Remote aún no están disponibles", "authenticated-remote-unsupported": "Remote autenticado con headers estáticos no compatible", "query-remote-unsupported": "URL remote con parámetros query no compatible", "transport-unsupported": "Faltan requisitos del transport del paquete", "package-disabled": "Paquete desactivado", "component-disabled": "Componente desactivado" },
+    title: "Servidores MCP", description: "Los servidores se inyectan completos (server-inclusion-only); el descubrimiento y las llamadas se delegan al backend. Un servidor OpenCode defectuoso puede bloquear una sesión nueva unos 30 segundos.", add: "Añadir servidor", edit: "Editar", delete: "Eliminar {{name}}", emptyTitle: "Aún no hay servidores MCP", emptyHint: "Usa «Añadir servidor» para indicar un comando stdio absoluto. Solo los servidores activados se inyectan en turnos humanos no Plan.", addTitle: "Añadir servidor MCP", editTitle: "Editar servidor MCP", dialogDescription: "Solo se admite stdio y el comando debe ser una ruta absoluta. Al guardar, el servidor completo se inyecta en el siguiente turno humano no Plan.", name: "Nombre", command: "Ruta absoluta del comando", args: "Argumentos (uno por línea)", environment: "Variables de entorno", addVariable: "Añadir variable", envName: "Nombre de variable de entorno", envNewValue: "Nuevo valor de {{name}}", envFallbackName: "variable de entorno", retainValue: "Déjalo vacío para conservar el valor", value: "Valor", removeVariable: "Eliminar {{name}}", envNameRequired: "El nombre de la variable no puede estar vacío", envValueRequired: "Introduce un valor nuevo para {{name}}", descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
+    globalDescription: "Gestiona los servidores MCP globales. Los Projects pueden heredarlos o sustituirlos sin cambiar esta lista.",
+    projectDescription: "Los servidores del Project son privados. Los servidores globales heredados se pueden sustituir aquí.",
+    globalEmptyHint: "Añade aquí un servidor global. Los servidores propios de Projects nunca aparecen en esta página.",
+    bridgeMissing: "Los ajustes de servidores MCP no están disponibles en este entorno.",
+    projectGroup: "Servidores del Project", projectGroupEmpty: "No hay servidores propios del Project",
+    inheritedGroup: "Servidores globales heredados", inheritedGroupEmpty: "No hay servidores globales para heredar",
+    allInherited: "Este Project usa actualmente solo los ajustes globales heredados.",
+    editGlobally: "Editar servidores MCP globales en Settings", resetOne: "Restablecer {{name}} al valor global",
+    conflict: "El servidor cambió en otro lugar. Se cargó el estado más reciente y se conservó tu borrador.",
+    source: { "global-default": "Valor global", "project-override": "Sustitución del Project", "project-owned": "Propio del Project" },
+    effective: { enabled: "Activado", disabled: "Desactivado", unavailable: "Intención activada; Backend no disponible" },
+    eligibility: { eligible: "Activo en el siguiente turno humano no Plan", "remote-policy-unsupported": "Los canales Remote aún no están disponibles", "authenticated-remote-unsupported": "Remote autenticado con headers estáticos no compatible", "query-remote-unsupported": "URL remote con parámetros query no compatible" },
     health: { unobserved: "Estado no observado", healthy: "Protocolo correcto", degraded: "Falló el protocolo; esperando reintento", quarantined: "Estado del proceso desconocido; en cuarentena" },
   },
 };

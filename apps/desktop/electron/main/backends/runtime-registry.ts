@@ -595,7 +595,10 @@ export class BackendRuntimeRegistry {
     const inspected: CandidateRuntime = {
       runtime,
       identity: identityAfter,
-      capabilities: descriptor.capabilitiesFor(runtime),
+      capabilities: {
+        ...descriptor.capabilitiesFor(runtime),
+        terminalAuth: descriptor.sessionCapabilityPolicy.terminalAuth,
+      },
     };
     return validation.status === "unsupported"
       ? {

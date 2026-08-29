@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React tabs, panel-directory directory/Image identity and tab projections, BasesProvider section owner analysis, use BrowserTabs Web page projections, BrowserPanel, BaseWorkbench/Gallery transcript projections, Image/Subagent/App panel and runtime command
- * [OUTPUT]: Provides PanelTabs; Static panels, dynamic Images/apps and web tabs are merged into a single tablist, with images only being stored from the current conversation, projected and analyzed and media held when activated
- * [POS]: The tabs pattern combination root of the chat/side-panel; owner Resolve, image fail-closed Restore, activate/closes/focus the semantics and regional ownership in this unique enclosure, tab identity to panel-catalog.Base drop-offs are determined by resolveForSection: only absent is given to blank pages, corrupt/parallel fails to fail-open, and the Base tab opens the table to create a database
+ * [INPUT]: Depends on React tabs, PanelSessionContext/eligibility, slot store, Browser tabs, and product-only Base/App/Image/Subagent panels
+ * [OUTPUT]: Provides one tablist with eligibility-aware commands, fully localized catalog/foreign Image disclosure, restore sanitization, neutral shell opening, and product-query short circuits
+ * [POS]: The side-panel tab composition root and sole renderer of panel regions
  */
 
 import {
@@ -28,7 +28,13 @@ import { useBases } from "@/components/providers/bases-provider";
 import type { ProjectedSubagent } from "@/lib/chat-turn-attach";
 import type { ConversationImageProjection } from "./image/image-projection";
 import { BROWSER_TAB_LIMIT } from "../../../../shared/browser-ipc";
-import type { SidePanelTabCommand } from "../runtime/chat-session-model";
+import {
+  panelConversationKey,
+  panelEligibility,
+  type PanelCapability,
+  type PanelSessionContext,
+  type SidePanelTabCommand,
+} from "../runtime/chat-session-model";
 import { SubagentList } from "../subagent/subagent-list";
 import { BrowserPanel } from "../browser/browser-panel";
 import { useBrowserTabs } from "../browser/use-browser-tabs";
@@ -46,13 +52,17 @@ import {
   type TabItem,
 } from "./panel-catalog";
 import { panelSlotStore, usePanelSlots } from "./panel-slot-store";
-import { listAvailableApps } from "@/lib/apps-client";
+import {
+  listAvailableApps,
+  setDesignAutoOpen,
+} from "@/lib/apps-client";
 import type { AvailableAttachedApp } from "../../../../shared/apps-ipc";
 import { AppTabPanel } from "./app-tab-panel";
 import {
   ImageTabPanel,
   resolveConversationImage,
 } from "./image/image-tab-panel";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 const SubagentPanel = lazy(() =>
   import("../subagent/subagent-panel").then((module) => ({
@@ -97,37 +107,44 @@ async function loadAvailableApps(
 }
 
 export function PanelTabs({
-  chatId,
+  context,
   subagents,
   command,
   onClose,
   galleryProjection,
 }: {
-  chatId: string;
+  context: PanelSessionContext;
   subagents: Record<string, ProjectedSubagent>;
   command?: SidePanelTabCommand;
   onClose: () => void;
   galleryProjection?: ConversationImageProjection;
 }) {
+  const { t } = useAppTranslation();
   const { movedOwners, resolveForSection, snapshots } = useBases();
-  const incarnationId = galleryProjection?.incarnationId ?? "";
-  const slotKey = panelSlotStore.key(chatId, incarnationId);
-  const slots = usePanelSlots(slotKey);
+  const productRef = context.kind === "product" || context.kind === "adopted"
+    ? context.productRef
+    : null;
+  const chatId = productRef?.chatId ?? panelConversationKey(context);
+  const incarnationId = productRef?.incarnationId ?? "";
+  const slotKey = panelSlotStore.key(context);
+  const slots = usePanelSlots(context);
   const tabs = useMemo(() => [...slots.tabs], [slots.tabs]);
   const activeTabId = slots.active;
   const [availableApps, setAvailableApps] = useState<AvailableAttachedApp[]>([]);
   const refreshApps = useCallback(() => {
-    void loadAvailableApps(chatId, incarnationId).then(setAvailableApps);
-  }, [chatId, incarnationId]);
+    if (!productRef) return;
+    void loadAvailableApps(productRef.chatId, productRef.incarnationId).then(setAvailableApps);
+  }, [productRef]);
   useEffect(() => {
+    if (!productRef) return;
     let active = true;
-    void loadAvailableApps(chatId, incarnationId).then((apps) => {
+    void loadAvailableApps(productRef.chatId, productRef.incarnationId).then((apps) => {
       if (active) setAvailableApps(apps);
     });
     return () => {
       active = false;
     };
-  }, [chatId, incarnationId]);
+  }, [productRef]);
   const [selectedAgentThreadId, setSelectedAgentThreadId] = useState(() =>
     command?.target === "subagents" ? command.agentThreadId ?? "" : ""
   );
@@ -155,8 +172,9 @@ export function PanelTabs({
   );
 
   useEffect(() => {
+    if (!productRef) return;
     let active = true;
-    void resolveForSection(chatId)
+    void resolveForSection(productRef.chatId)
       .then((target) => {
         if (active) {
           setBaseOwnerResult({
@@ -176,17 +194,18 @@ export function PanelTabs({
             error:
               cause instanceof Error
                 ? cause.message
-                : "Base owner 解析失败",
+                : t("chat.sidePanel.baseOwnerResolveFailed"),
           });
         }
       });
     return () => {
       active = false;
     };
-  }, [chatId, resolveForSection]);
-  const baseResolved = baseOwnerResult.sectionId === chatId;
-  const baseOwnerKey = baseResolved ? baseOwnerResult.ownerKey : "";
-  const baseOwnerError = baseResolved ? baseOwnerResult.error : "";
+  }, [chatId, productRef, resolveForSection, t]);
+  const visibleApps = productRef ? availableApps : [];
+  const baseResolved = !productRef || baseOwnerResult.sectionId === chatId;
+  const baseOwnerKey = productRef && baseResolved ? baseOwnerResult.ownerKey : "";
+  const baseOwnerError = productRef && baseResolved ? baseOwnerResult.error : "";
   const effectiveBaseOwnerKey =
     movedOwners[baseOwnerKey] ?? baseOwnerKey;
   /* ── 「这条 chat 有没有 Base」──────────────────────────────────────
@@ -202,23 +221,70 @@ export function PanelTabs({
    * 本组件，这一项零额外开销、零额外 IPC。
    * ─────────────────────────────────────────────────────────── */
   const baseExists =
+    Boolean(productRef) &&
     baseResolved &&
     (!baseOwnerResult.absent || Boolean(snapshots[effectiveBaseOwnerKey]));
 
   const openPanel = (id: PanelTabId) => {
+    const capability: PanelCapability = isImageRegion(id)
+      ? "image"
+      : isAppRegion(id)
+        ? "app"
+        : id;
+    if (!panelEligibility(context, capability).allowed) return;
     panelSlotStore.open(slotKey, id);
+    if (isAppRegion(id) && productRef) {
+      void setDesignAutoOpen({
+        appId: appIdOf(id),
+        conversationId: productRef.chatId,
+        conversationIncarnationId: productRef.incarnationId,
+        suppressed: false,
+      });
+    }
     if (id === "subagents") setSelectedAgentThreadId("");
   };
   // 目录里唯一的分叉，只此一处：面板是单例，Browser 是工厂。
   const openFromCatalog = (id: PanelRegion) => {
+    const capability: PanelCapability = id === "browser"
+      ? "browser"
+      : isImageRegion(id)
+        ? "image"
+      : isAppRegion(id)
+        ? "app"
+        : id;
+    if (!panelEligibility(context, capability).allowed) return;
     if (id !== "browser") return openPanel(id);
     browser.createTab();
     panelSlotStore.activate(slotKey, "browser");
   };
-  const catalogDisabled = (id: PanelRegion) =>
-    id === "browser"
+  const catalogDisabled = (id: PanelRegion) => {
+    const capability: PanelCapability = id === "browser"
+      ? "browser"
+      : isImageRegion(id)
+        ? "image"
+      : isAppRegion(id)
+        ? "app"
+        : id;
+    if (!panelEligibility(context, capability).allowed) return true;
+    return id === "browser"
       ? browser.snapshot.tabs.length >= BROWSER_TAB_LIMIT
       : tabs.includes(id);
+  };
+  const eligibilityReason = (capability: PanelCapability) => {
+    const result = panelEligibility(context, capability);
+    if (result.allowed) return undefined;
+    return t(`chat.sidePanel.eligibility.${result.reason}`);
+  };
+  const catalogDisabledReason = (id: PanelRegion) =>
+    eligibilityReason(
+      id === "browser"
+        ? "browser"
+        : isImageRegion(id)
+          ? "image"
+          : isAppRegion(id)
+            ? "app"
+            : id
+    );
 
   /* 处女 slot 的默认落点。写在派生之后而非组件顶部：dep 数组是 render 期
      求值的普通数组，baseExists 在它上面才声明，放回顶部就是 TDZ 崩。 */
@@ -240,7 +306,15 @@ export function PanelTabs({
   useEffect(() => {
     if (!command || handledNonce.current === command.nonce) return;
     const target = command.target;
+    if (target === "openShell") {
+      handledNonce.current = command.nonce;
+      return;
+    }
     if (target === "image") {
+      if (!panelEligibility(context, "image").allowed) {
+        handledNonce.current = command.nonce;
+        return;
+      }
       if (!galleryProjection?.hydrated) return;
       handledNonce.current = command.nonce;
       const source = command.source;
@@ -252,8 +326,9 @@ export function PanelTabs({
           : source.incarnationId;
       const region = imageRegionFor(source);
       if (
-        sourceChatId !== chatId ||
-        sourceIncarnationId !== incarnationId ||
+        !productRef ||
+        sourceChatId !== productRef.chatId ||
+        sourceIncarnationId !== productRef.incarnationId ||
         !resolveConversationImage(region, galleryProjection)
       ) {
         return;
@@ -267,15 +342,27 @@ export function PanelTabs({
        这一次点击就永远没有人处理。没有 Base 就什么都不动：面板照常展开，
        落点交给空白页，用户自己开过的 tab 不该被一次点击踢掉。 */
     if (target === "base") {
+      if (!panelEligibility(context, "base").allowed) {
+        handledNonce.current = command.nonce;
+        return;
+      }
       if (!baseResolved) return;
       handledNonce.current = command.nonce;
       if (baseExists) panelSlotStore.open(slotKey, "base");
       return;
     }
+    if (target === "app") {
+      handledNonce.current = command.nonce;
+      refreshApps();
+      panelSlotStore.open(slotKey, `app:${command.appId}`);
+      return;
+    }
     handledNonce.current = command.nonce;
     // browser 不占面板席位——它是区域不是面板，命令只把激活态挪过去。
     if (target === "browser") panelSlotStore.activate(slotKey, target);
-    else panelSlotStore.open(slotKey, target);
+    else if (panelEligibility(context, "subagents").allowed) {
+      panelSlotStore.open(slotKey, target);
+    }
     if (target === "subagents") {
       // command 是父级递增 nonce 表达的外部事件；此处与 ensure/activate 同批落地。
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -286,8 +373,11 @@ export function PanelTabs({
     baseResolved,
     chatId,
     command,
+    context,
     galleryProjection,
     incarnationId,
+    productRef,
+    refreshApps,
     slotKey,
   ]);
 
@@ -313,10 +403,10 @@ export function PanelTabs({
     ? subagents[selectedAgentThreadId]
     : undefined;
   const activeHeaderActions = activeTabId
-    ? effectiveBaseOwnerKey
+    ? effectiveBaseOwnerKey && productRef
       ? specForRegion(activeTabId).renderHeaderActions?.(
           effectiveBaseOwnerKey,
-          chatId,
+          productRef.chatId,
           onClose
         )
       : undefined
@@ -326,12 +416,13 @@ export function PanelTabs({
     ...tabs.map((id): TabItem => {
       const spec = specForRegion(id);
       const Icon = spec.icon;
+      const catalogLabel = t(spec.labelKey);
       const label = isAppRegion(id)
-        ? availableApps.find((app) => app.appId === appIdOf(id))?.name ??
-          "App"
+        ? visibleApps.find((app) => app.appId === appIdOf(id))?.name ??
+          catalogLabel
         : isImageRegion(id)
-          ? resolvedImages.get(id)?.label ?? spec.label
-          : spec.label;
+          ? resolvedImages.get(id)?.label ?? catalogLabel
+          : catalogLabel;
       return {
         key: id,
         region: id,
@@ -340,13 +431,21 @@ export function PanelTabs({
         selected: activeTabId === id,
         panelId: `panel-tab-${id}`,
         widthClass: "min-w-0",
-        closeLabel: `关闭 ${isImageRegion(id) ? label : spec.label} tab`,
-        actions: effectiveBaseOwnerKey
-          ? spec.renderTabActions?.(effectiveBaseOwnerKey, chatId)
+        closeLabel: t("chat.sidePanel.closeNamedTab", { name: label }),
+        actions: effectiveBaseOwnerKey && productRef
+          ? spec.renderTabActions?.(effectiveBaseOwnerKey, productRef.chatId)
           : undefined,
         select: () => panelSlotStore.activate(slotKey, id),
         close: () => {
           panelSlotStore.close(slotKey, id);
+          if (isAppRegion(id) && productRef) {
+            void setDesignAutoOpen({
+              appId: appIdOf(id),
+              conversationId: productRef.chatId,
+              conversationIncarnationId: productRef.incarnationId,
+              suppressed: true,
+            });
+          }
           if (id === "subagents") setSelectedAgentThreadId("");
         },
       };
@@ -354,14 +453,16 @@ export function PanelTabs({
     ...browser.snapshot.tabs.map((tab): TabItem => ({
       key: tab.tabId,
       region: "browser",
-      label: tab.title || "New tab",
+      label: tab.title || t("chat.sidePanel.newTab"),
       icon: <WebTabIcon tab={tab} />,
       selected:
         activeTabId === "browser" &&
         tab.tabId === browser.snapshot.selectedTabId,
       panelId: "panel-tab-browser",
       widthClass: "min-w-24",
-      closeLabel: `关闭 ${tab.title || "网页"} tab`,
+      closeLabel: t("chat.sidePanel.closeNamedTab", {
+        name: tab.title || t("chat.sidePanel.webPage"),
+      }),
       select: () => {
         panelSlotStore.activate(slotKey, "browser");
         // 已选中就别再喊一遍：activateTab 会让 main 重挂 WebContentsView，
@@ -420,7 +521,7 @@ export function PanelTabs({
       <header className="flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-1 border-b px-2 [-webkit-app-region:drag]">
         <div className="flex min-w-0 flex-1 items-center gap-1 [-webkit-app-region:no-drag]">
           <div
-            aria-label="第三栏 tabs"
+            aria-label={t("chat.sidePanel.tabsAriaLabel")}
             className="flex min-w-0 items-center gap-1 overflow-x-auto"
             role="tablist"
           >
@@ -456,7 +557,7 @@ export function PanelTabs({
                     event.stopPropagation();
                     closeAt(index);
                   }}
-                  title="关闭 tab"
+                  title={t("chat.sidePanel.closeTab")}
                   type="button"
                 >
                   <XIcon className="size-3" />
@@ -465,19 +566,20 @@ export function PanelTabs({
             ))}
           </div>
           <AddPanelMenu
-            availableApps={availableApps}
+            availableApps={visibleApps}
             disabledFor={catalogDisabled}
+            disabledReasonFor={catalogDisabledReason}
             onOpen={openFromCatalog}
           />
         </div>
         <div className="[-webkit-app-region:no-drag]">
           {activeHeaderActions ?? (
             <Button
-              aria-label="关闭面板"
+              aria-label={t("chat.sidePanel.closePanel")}
               className={cn("cursor-pointer", panelChromeClassName)}
               onClick={onClose}
               size="icon-lg"
-              title="关闭面板"
+              title={t("chat.sidePanel.closePanel")}
               type="button"
               variant="ghost"
             >
@@ -486,7 +588,7 @@ export function PanelTabs({
           )}
         </div>
       </header>
-      {tabs.includes("base") && (
+      {productRef && tabs.includes("base") && (
         <TabPanel active={activeTabId === "base"} id="base">
           {effectiveBaseOwnerKey ? (
             <BaseWorkbench
@@ -496,20 +598,20 @@ export function PanelTabs({
               attachmentOwner={
                 galleryProjection?.incarnationId
                   ? {
-                      chatId,
-                      incarnationId: galleryProjection.incarnationId,
+                      chatId: productRef.chatId,
+                      incarnationId: productRef.incarnationId,
                     }
                   : undefined
               }
             />
           ) : (
             <div className="grid min-h-0 flex-1 place-items-center px-6 text-center text-muted-foreground text-sm">
-              {baseOwnerError || "Resolving Base…"}
+              {baseOwnerError || t("chat.sidePanel.resolvingBase")}
             </div>
           )}
         </TabPanel>
       )}
-      {tabs.includes("subagents") && (
+      {productRef && tabs.includes("subagents") && (
         <TabPanel active={activeTabId === "subagents"} id="subagents">
           {selectedAgent ? (
             <Suspense fallback={null}>
@@ -528,21 +630,21 @@ export function PanelTabs({
           )}
         </TabPanel>
       )}
-      {tabs.filter(isAppRegion).map((region) => {
-        const app = availableApps.find((item) => item.appId === appIdOf(region));
+      {productRef && tabs.filter(isAppRegion).map((region) => {
+        const app = visibleApps.find((item) => item.appId === appIdOf(region));
         return (
           <TabPanel active={activeTabId === region} id={region} key={region}>
             {app ? (
               <AppTabPanel
                 app={app}
-                chatId={chatId}
-                incarnationId={incarnationId}
+                chatId={productRef.chatId}
+                incarnationId={productRef.incarnationId}
                 onRefresh={refreshApps}
                 visible={activeTabId === region}
               />
             ) : (
               <div className="grid min-h-0 flex-1 place-items-center px-6 text-center text-muted-foreground text-sm">
-                App 授权已撤销或 App 已失效；slot 保留，等待重新授权。
+                {t("chat.sidePanel.appSlotUnavailable")}
               </div>
             )}
           </TabPanel>
@@ -576,7 +678,19 @@ export function PanelTabs({
       {/* 栅栏用 baseResolved 而非 baseExists：只抑制首帧那一下「空白页→Base」
           的闪现，此后任何重渲染都不会把已经端出去的空白页再闪掉。 */}
       {!items.length && !activeTabId && baseResolved && (
-        <PanelTabsEmpty availableApps={availableApps} onOpen={openFromCatalog} />
+        <PanelTabsEmpty
+          availableApps={visibleApps}
+          disabledFor={catalogDisabled}
+          disabledReasonFor={catalogDisabledReason}
+          extraDisabled={context.kind === "foreign"
+            ? [{
+                label: t("chat.sidePanel.catalog.image.label"),
+                hint: t("chat.sidePanel.catalog.image.hint"),
+                reason: eligibilityReason("image") ?? "",
+              }]
+            : []}
+          onOpen={openFromCatalog}
+        />
       )}
     </div>
   );

@@ -80,8 +80,8 @@ async function linkIfPresent(sourceRoot: string, targetRoot: string, name: strin
 /**
  * Kimi CLI 把 sessions 写死在 `join(home, "sessions")`，且没有 no-persist/
  * ignore-config flag。0.34.0 ACP 已广播 session/delete 并真删 session 目录
- * （2026-08-23 真机 dev/kimi-session-delete-probe.mjs，结论行在
- * dev/agent-cli-docs.md；acp/probe.ts 的清理已按能力位消费它），但补偿
+ * （2026-08-23 真机 DEV/agents/probes/kimi/session-delete.mjs，结论行在
+ * DEV/agents/docs/agent-cli-docs.md；acp/probe.ts 的清理已按能力位消费它），但补偿
  * 替代不了换根：headless `-p` 路径没有 ACP 通道；probe 清理在超时/
  * transport 死亡/取消时如实跳过；且 session/new 零 prompt 即落盘，delete
  * 后 session_index.jsonl 仍留 created+tombstone 两条记录（含 cwd 全路径），

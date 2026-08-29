@@ -231,7 +231,7 @@ export class EverOSProvider implements MemoryProvider {
 
   /* method=keyword 是 Tier-1 能力：只要服务在跑（LLM 硬依赖已满足）
      它就可用。hybrid 需要 embedding 配置，当前配置面不提供——解锁
-     记录在 dev/memory-deferred-boundaries.md。 */
+     记录在 DEV/memory/docs/deferred-boundaries.md。 */
   async recall(
     input: ProviderCall & {
       query: string;

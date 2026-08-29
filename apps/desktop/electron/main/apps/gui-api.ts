@@ -23,7 +23,7 @@ const GUI_SCAN_DEPTH = 4;
 export type GuiTokenClaims = BaseGuiLiveBinding & Readonly<{ expiresAt: number }>;
 
 // ============================================================================
-// token：per-app 单实例内存态，本机扫端口的进程拿不到即读不到 Base
+// token：per-surface 内存态，本机扫端口的进程拿不到即读不到 Base
 // ============================================================================
 
 export class GuiTokenRegistry {
@@ -34,31 +34,43 @@ export class GuiTokenRegistry {
 
   constructor(private readonly now: () => number = Date.now) {}
 
-  /** 单实例语义：mint 即撤销旧值，旧 iframe 的下一次请求必然 401。 */
+  /** 单 surface 语义：mint 只撤销本面旧值，同 App 其它面不受影响。 */
   mint(binding: BaseGuiLiveBinding) {
     const value = randomBytes(32).toString("base64url");
-    this.issued.set(binding.appId, {
+    this.issued.set(tokenKey(binding.appId, binding.surfaceId), {
       value,
       claims: { ...binding, expiresAt: this.now() + TOKEN_TTL_MS },
     });
     return value;
   }
 
-  verify(appId: string, candidate: string) {
-    const current = this.issued.get(appId);
+  verify(appId: string, surfaceId: string, candidate: string) {
+    const key = tokenKey(appId, surfaceId);
+    const current = this.issued.get(key);
     if (!current) return null;
     if (current.claims.expiresAt <= this.now()) {
-      this.issued.delete(appId);
+      this.issued.delete(key);
       return null;
     }
-    return constantTimeEquals(current.value, candidate)
+    return current.claims.appId === appId &&
+      constantTimeEquals(current.value, candidate)
       ? structuredClone(current.claims)
       : null;
   }
 
-  revoke(appId: string) {
-    this.issued.delete(appId);
+  revokeSurface(appId: string, surfaceId: string) {
+    this.issued.delete(tokenKey(appId, surfaceId));
   }
+
+  revokeApp(appId: string) {
+    for (const [surfaceId, issued] of this.issued) {
+      if (issued.claims.appId === appId) this.issued.delete(surfaceId);
+    }
+  }
+}
+
+function tokenKey(appId: string, surfaceId: string) {
+  return `${appId}:${surfaceId}`;
 }
 
 function constantTimeEquals(left: string, right: string) {
@@ -80,7 +92,7 @@ export async function collectGuiPages(root: string) {
     );
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (pages.length >= GUI_PAGE_LIMIT) return;
-      if (!prefix && ["_api", "_sdk"].includes(entry.name.toLowerCase())) continue;
+      if (!prefix && ["_api", "_sdk", "_preview"].includes(entry.name.toLowerCase())) continue;
       const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (!isValidGuiPage(relative)) continue;
       if (entry.isDirectory()) {

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared built-in tool wire Budget/tool name; The result of the single logical return of the bridge
- * [OUTPUT]: Provides toBuiltinCallToolResult, which is validated by the initiator cap after the final MCP CallToolResult is sequentialised, and only adapts to the secure text field to the default termination
- * [POS]: The final gateway to the tools platform; Avoid content/structuredContent Dual data and packaging conversion that cause budget penetration
+ * [OUTPUT]: Provides toBuiltinCallToolResult, which validates the initiator cap after final MCP serialization and adapts either one text payload or one text-plus-image payload without structuredContent duplication
+ * [POS]: The final gateway to the tools platform; prevents content/structuredContent duplication and keeps image base64 out of the text copy
  */
 
 import {
@@ -9,9 +9,32 @@ import {
   type BuiltinToolName,
 } from "../../../shared/builtin-tools";
 
-const resultOf = (value: unknown) => ({
-  content: [{ type: "text" as const, text: JSON.stringify(value) }],
-});
+type BuiltinImageResult = Readonly<{
+  type: "builtin-image";
+  mimeType: "image/jpeg" | "image/png";
+  data: string;
+  metadata: unknown;
+}>;
+
+const isImageResult = (value: unknown): value is BuiltinImageResult => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return record.type === "builtin-image" &&
+    (record.mimeType === "image/jpeg" || record.mimeType === "image/png") &&
+    typeof record.data === "string" &&
+    record.data.length > 0 &&
+    record.data.length % 4 === 0 &&
+    /^[A-Za-z0-9+/]+={0,2}$/.test(record.data);
+};
+
+const resultOf = (value: unknown) => isImageResult(value)
+  ? {
+      content: [
+        { type: "text" as const, text: JSON.stringify(value.metadata) },
+        { type: "image" as const, data: value.data, mimeType: value.mimeType },
+      ],
+    }
+  : { content: [{ type: "text" as const, text: JSON.stringify(value) }] };
 
 export const builtinCallToolResultBytes = (value: unknown) =>
   Buffer.byteLength(JSON.stringify(resultOf(value)), "utf8");

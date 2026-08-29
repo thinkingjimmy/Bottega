@@ -1,16 +1,18 @@
 /**
- * [INPUT]: Depends on seven areas Spec and no-combining platform Public
- * [OUTPUT]: External aggregate static BuiltinToolSpec registry, precise tool names, wires schema, Base tool quadrants, product context clips and access projections
- * [POS]: The only public access to shared builtin-tools; Declare the order of the settings for sections → subagents → projects → bases → search → browser → apps
+ * [INPUT]: Depends on nine domain specs and the aggregation-free platform contract
+ * [OUTPUT]: Exposes the aggregate BuiltinToolSpec registry, exact tool names, wire schemas, Base capability projection, product-context fragments, and access projection
+ * [POS]: The only public access to shared builtin-tools; declaration order is sections → subagents → projects → bases → search → browser → design → apps → skills
  */
 
 import { APP_TOOL_SPECS } from "./apps";
 import { BASE_TOOL_SPECS } from "./bases";
 import { BROWSER_TOOL_SPECS } from "./browser";
+import { DESIGN_TOOL_SPECS } from "./design";
 import { type BuiltinToolAccess, type BuiltinToolSpec } from "./platform";
 import { PROJECT_TOOL_SPECS } from "./projects";
 import { SECTION_TOOL_SPECS } from "./sections";
 import { SEARCH_TOOL_SPECS } from "./search";
+import { SKILL_TOOL_SPECS } from "./skills";
 import { SUBAGENT_TOOL_SPECS } from "./subagents";
 
 export const BUILTIN_TOOL_SPECS = [
@@ -20,7 +22,9 @@ export const BUILTIN_TOOL_SPECS = [
   ...BASE_TOOL_SPECS,
   ...SEARCH_TOOL_SPECS,
   ...BROWSER_TOOL_SPECS,
+  ...DESIGN_TOOL_SPECS,
   ...APP_TOOL_SPECS,
+  ...SKILL_TOOL_SPECS,
 ] as const satisfies readonly BuiltinToolSpec[];
 
 export type BuiltinToolSpecEntry = (typeof BUILTIN_TOOL_SPECS)[number];
@@ -84,12 +88,6 @@ export function baseToolsAvailability(
   return writable ? "write-only" : "none";
 }
 
-export const baseReadsAvailable = (allowed: readonly string[]) =>
-  BASE_READ_TOOLS.some((name) => allowed.includes(name));
-
-export const baseRowMutationsAvailable = (allowed: readonly string[]) =>
-  BASE_ROW_MUTATION_TOOLS.some((name) => allowed.includes(name));
-
 export type BuiltinTurnKind = "manual" | "relay";
 
 export function allowedToolsFor(
@@ -104,16 +102,19 @@ export function allowedToolsFor(
       (turnKind === "manual" || !("manualTurnOnly" in spec)) &&
       (!planMode ||
         !("planExcluded" in spec) ||
-        spec.planExcluded !== true)
+        spec.planExcluded !== true) &&
+      (!("exactIssued" in spec) || spec.exactIssued !== true)
   ).map((spec) => spec.name);
 }
 
 export * from "./apps";
 export * from "./bases";
 export * from "./browser";
+export * from "./design";
 export * from "./instructions";
 export * from "./platform";
 export * from "./projects";
 export * from "./sections";
 export * from "./search";
+export * from "./skills";
 export * from "./subagents";

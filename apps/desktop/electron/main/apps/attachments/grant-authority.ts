@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Appstore, ChatStore, ProjectStore, AppAttachmentFence, grant-resolver and shared Apps grant DTO
- * [OUTPUT]: Provides AppGrantAuthority to implement the same grant fence|disabled|clear, default global authorization, three-source projection, unified effective authorization and deletion clearance
- * [POS]: The authorization of apps/attachments is the sole authority; The only intention is to endure, not start runtime, not issue surface/reference lease
+ * [INPUT]: Depends on AppStore, ChatStore, ProjectStore, AppAttachmentFence, the ProjectsService publish boundary, grant-resolver, and shared Apps grant DTO
+ * [OUTPUT]: Provides AppGrantAuthority with fenced grant/disable/clear, ordinary three-source projection, exact App Studio project/default projection, and Project mutation publication
+ * [POS]: Sole durable App grant authority; ordinary AppRole chats stay excluded while the resident Studio lease consumes a separate exact-use projection
  */
 
 import {
@@ -32,7 +32,8 @@ export class AppGrantAuthority {
     private readonly apps: AppStore,
     private readonly chats: ChatStore,
     private readonly projects: ProjectStore,
-    private readonly fence: AppAttachmentFence
+    private readonly fence: AppAttachmentFence,
+    private readonly publishProject: (projectId: string) => void = () => undefined
   ) {}
 
   grant(input: SetAppGrantInput) {
@@ -84,7 +85,9 @@ export class AppGrantAuthority {
         const record = await this.chats.revokeAppGrant(target.chatId, appId);
         return { target, revision: record.grantRevision, grants: record.grants };
       }
-      const project = await this.projects.revokeAppGrant(target.projectId, appId);
+      const project = await this.commitProjectGrant(target.projectId, () =>
+        this.projects.revokeAppGrant(target.projectId, appId)
+      );
       return { target, revision: project.grantRevision, grants: project.grants };
     });
   }
@@ -234,6 +237,65 @@ export class AppGrantAuthority {
     return (await this.effectiveGrants(chatId)).find((item) => item.appId === appId);
   }
 
+  /**
+   * Studio 的 use chat 属于 App 自己的数据面，不是“在 chat 上附加 App”。
+   * 因此这里只消费 exact App Project + project/default grant，绝不把 AppRole
+   * 放进 ordinary effectiveGrants，也不接受 renderer 选择另一个 App。
+   */
+  async studioSurfaceGrant(chatId: string, appId: string) {
+    const chat = await this.chats.get(chatId);
+    if (!chat || chat.appRole !== "use" || !chat.projectId) return undefined;
+    const project = this.projects.get(chat.projectId);
+    if (
+      !project ||
+      project.workspaceBinding.kind !== "app" ||
+      project.workspaceBinding.appId !== appId
+    ) {
+      return undefined;
+    }
+    const app = this.apps.get(appId);
+    const binding = app?.generationBinding.active;
+    const generation = app?.generations.find(
+      (item) => item.generationId === binding?.generationId
+    );
+    const resolved = resolveAppGrant({
+      appId,
+      project: byApp(project.grants).get(appId),
+      global: app?.defaultGrant,
+    });
+    if (
+      !resolved.effective ||
+      !app ||
+      app.state !== "ready" ||
+      !binding ||
+      !generation
+    ) {
+      return undefined;
+    }
+    return {
+      appId,
+      grant: resolved.effective,
+      provenance: {
+        winner: resolved.provenance.winner!,
+        contributors: resolved.provenance.contributors,
+        suppressedBy: resolved.provenance.suppressedBy,
+      },
+      snapshot: {
+        conversationId: chat.id,
+        conversationIncarnationId: chat.incarnationId,
+        chatGrantRevision: chat.grantRevision,
+        projectId: project.id,
+        projectGrantRevision: project.grantRevision,
+        membershipRevision: project.membershipRevision,
+        defaultGrantRevision: app.defaultGrantRevision ?? 0,
+        appId,
+        appLifecycleRevision: app.lifecycleRevision,
+        appGenerationId: generation.generationId,
+        appContentDigest: generation.contentDigest,
+      },
+    } satisfies EffectiveAppGrant;
+  }
+
   async revokeEverywhere(appId: string) {
     for (const chat of this.chats.list()) {
       if (chat.grants.some((record) => record.appId === appId)) {
@@ -242,7 +304,9 @@ export class AppGrantAuthority {
     }
     for (const project of this.projects.list()) {
       if (project.grants.some((record) => record.appId === appId)) {
-        await this.projects.revokeAppGrant(project.id, appId);
+        await this.commitProjectGrant(project.id, () =>
+          this.projects.revokeAppGrant(project.id, appId)
+        );
       }
     }
   }
@@ -264,8 +328,20 @@ export class AppGrantAuthority {
       const chat = await this.chats.setAppGrantRecord(target.chatId, record);
       return { target, revision: chat.grantRevision, grants: chat.grants };
     }
-    const project = await this.projects.setAppGrantRecord(target.projectId, record);
+    const project = await this.commitProjectGrant(target.projectId, () =>
+      this.projects.setAppGrantRecord(target.projectId, record)
+    );
     return { target, revision: project.grantRevision, grants: project.grants };
+  }
+
+  /** Store mutation and renderer publication are one commit boundary. */
+  private async commitProjectGrant<T>(
+    projectId: string,
+    mutate: () => Promise<T>
+  ): Promise<T> {
+    const result = await mutate();
+    this.publishProject(projectId);
+    return result;
   }
 
   private source(

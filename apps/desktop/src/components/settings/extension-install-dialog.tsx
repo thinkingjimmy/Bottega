@@ -34,6 +34,10 @@ import type {
   ExtensionPreflightView,
   ExtensionsSnapshot,
 } from "../../../shared/extensions-ipc";
+import {
+  GLOBAL_PRODUCT_RESOURCE_SCOPE,
+  type ScopedResourceVersion,
+} from "../../../shared/product-resource-scope";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 /* ── 一颗种子分开两个入口 ────────────────────────────────────────
@@ -51,13 +55,21 @@ type Stage = "source" | "install" | "update";
 
 export function ExtensionInstallDialog({
   source,
+  authority = {
+    scope: GLOBAL_PRODUCT_RESOURCE_SCOPE,
+    projectLifecycleRevision: null,
+    scopeRevision: 0,
+  },
+  authorityEpoch = 0,
   onOpenChange,
   onInstalled,
 }: {
   /** null 即关闭；非 null 时 repoUrl 为空是新装、非空是带来源的更新检查 */
   source: ExtensionInstallSource | null;
+  authority?: ScopedResourceVersion;
   onOpenChange: (next: boolean) => void;
-  onInstalled: (snapshot: ExtensionsSnapshot) => void;
+  onInstalled: (snapshot: ExtensionsSnapshot, authorityEpoch: number) => void;
+  authorityEpoch?: number;
 }) {
   return (
     <Dialog onOpenChange={onOpenChange} open={source !== null}>
@@ -68,6 +80,8 @@ export function ExtensionInstallDialog({
           <InstallPanel
             onClose={() => onOpenChange(false)}
             onInstalled={onInstalled}
+            authority={authority}
+            authorityEpoch={authorityEpoch}
             source={source}
           />
         )}
@@ -78,12 +92,16 @@ export function ExtensionInstallDialog({
 
 function InstallPanel({
   source,
+  authority,
+  authorityEpoch,
   onClose,
   onInstalled,
 }: {
   source: ExtensionInstallSource;
+  authority: ScopedResourceVersion;
+  authorityEpoch: number;
   onClose: () => void;
-  onInstalled: (snapshot: ExtensionsSnapshot) => void;
+  onInstalled: (snapshot: ExtensionsSnapshot, authorityEpoch: number) => void;
 }) {
   const { t } = useAppTranslation();
   const [repoUrl, setRepoUrl] = useState(source.repoUrl);
@@ -93,6 +111,11 @@ function InstallPanel({
   const [migrating, setMigrating] = useState<readonly string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const authorityEpochRef = useRef(authorityEpoch);
+  useEffect(() => {
+    authorityEpochRef.current = authorityEpoch;
+  }, [authorityEpoch]);
+  const operationEpoch = useRef(0);
 
   /* ── 未确认的预检只归这一处管 ──────────────────────────────────
    * 预检在 main 侧留着实体（解析出的 commit 与 staging），确认之前它不属于
@@ -117,24 +140,44 @@ function InstallPanel({
   /* 解析期间输入框一并禁用，于是「在飞」这件事只由禁用态守住，
      resolve 不必自带重入判断，也就没有依赖可漂移。 */
   const resolve = useCallback(async (input: ExtensionInstallSource) => {
+    const operation = ++operationEpoch.current;
+    const authorityReceipt = authorityEpoch;
     setBusy(true);
     setError("");
     try {
-      const next = await preflightExtension(input);
-      if (!pending.current.alive) {
+      const next = await preflightExtension({
+        ...input,
+        scope: authority.scope,
+        expectedProjectLifecycleRevision:
+          authority.projectLifecycleRevision,
+        expectedScopeRevision: authority.scopeRevision,
+      });
+      if (
+        !pending.current.alive ||
+        operation !== operationEpoch.current ||
+        authorityReceipt !== authorityEpochRef.current
+      ) {
         void discardExtensionPreflight(next.preflightId);
         return;
       }
       pending.current.preflightId = next.preflightId;
       setPreflight(next);
     } catch (cause) {
-      setError(
-        errorMessage(cause, t("settings.extensions.install.resolveFailed"))
-      );
+      if (
+        operation === operationEpoch.current &&
+        authorityReceipt === authorityEpochRef.current
+      ) {
+        setError(
+          errorMessage(cause, t("settings.extensions.install.resolveFailed"))
+        );
+      }
     } finally {
-      setBusy(false);
+      if (
+        operation === operationEpoch.current &&
+        authorityReceipt === authorityEpochRef.current
+      ) setBusy(false);
     }
-  }, [t]);
+  }, [authority, authorityEpoch, t]);
 
   /* 带着来源打开就直接解析：用户点的是「检查更新」，不是「再填一次地址」。
      种子是打开这一刻的事实，故只在挂载时读一次。 */
@@ -149,8 +192,14 @@ function InstallPanel({
 
   const commit = async () => {
     if (!preflight) return;
+    const operation = ++operationEpoch.current;
+    const authorityReceipt = authorityEpoch;
     setBusy(true);
     setError("");
+    /* confirm transfers byte/claim ownership to the durable operation before
+       its first awaited commit. This renderer token must never call discard
+       again, even when the outcome is uncertain. */
+    pending.current.preflightId = "";
     try {
       const snapshot = await confirmExtension({
         preflightId: preflight.preflightId,
@@ -158,15 +207,30 @@ function InstallPanel({
         expectedResolvedCommit: preflight.source.resolvedCommit,
         migrateAppIds: migrating,
       });
-      pending.current.preflightId = "";
-      onInstalled(snapshot);
-      onClose();
+      if (
+        pending.current.alive &&
+        operation === operationEpoch.current &&
+        authorityReceipt === authorityEpochRef.current
+      ) {
+        onInstalled(snapshot, authorityReceipt);
+        onClose();
+      }
     } catch (cause) {
-      setError(
-        errorMessage(cause, t("settings.extensions.install.installFailed"))
-      );
+      if (
+        operation === operationEpoch.current &&
+        authorityReceipt === authorityEpochRef.current
+      ) {
+        setPreflight(null);
+        setMigrating([]);
+        setError(
+          errorMessage(cause, t("settings.extensions.install.installFailed"))
+        );
+      }
     } finally {
-      setBusy(false);
+      if (
+        operation === operationEpoch.current &&
+        authorityReceipt === authorityEpochRef.current
+      ) setBusy(false);
     }
   };
 
@@ -304,7 +368,7 @@ function DisclosureBody({
                ——两族已在同一页，这里说的是它落在哪一段。 */
             term: t("settings.extensions.install.disclosure.format"),
             detail:
-              preflight.adapterId === "agent-plugins-1.0.0-wd"
+              preflight.adapterId === "agent-plugins-1.0.0"
                 ? t("settings.extensions.install.disclosure.pluginFormat")
                 : t("settings.extensions.install.disclosure.skillFormat"),
           },
@@ -369,7 +433,7 @@ function DisclosureBody({
               ? diff.requiresReauthorization
                 ? t("settings.extensions.install.disclosure.reauthorize")
                 : t("settings.extensions.install.disclosure.retainAuthorization")
-              : t("settings.extensions.install.disclosure.defaultDisabled"),
+              : t("settings.extensions.install.disclosure.defaultEnabled"),
           },
         ]}
       />

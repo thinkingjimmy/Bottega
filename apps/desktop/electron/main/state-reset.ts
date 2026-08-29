@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the obvious AI_CHAT_STATE_RESET_V3/V4 flag, user data, ChatHome ownership book and Node atomic file operation
- * [OUTPUT]: Provides runStateResetV3 and runStateResetV4; v4 first ensure the full v3 and then compensate for clearing the real app-data epoch roots and submitting their respective atomic markers
+ * [INPUT]: Depends on the explicit AI_CHAT_STATE_RESET_V3/V4/V5 flags, user data, ChatHome ownership ledger, and Node atomic filesystem operations
+ * [OUTPUT]: Provides versioned reset passes through v5 and one ordered startup wrapper; each newer pass first completes its predecessor, then compensates newly-owned state with an independent atomic marker
  * [POS]: Electron main cold-started versioned data cross-border; By default, the marker does not execute, the marker does not restart the task, and the old marker does not cover up the new clearance
  */
 
@@ -20,6 +20,7 @@ import { chatHomeLedgerSchema } from "./chat-home/ledger-values";
 
 export const STATE_RESET_MARKER = "state-reset.v3";
 export const STATE_RESET_V4_MARKER = "state-reset.v4";
+export const STATE_RESET_V5_MARKER = "state-reset.v5";
 
 /**
  * 通道 A 的业务状态全集。这里刻意枚举相对路径，不递归删除 userData 根：
@@ -58,6 +59,11 @@ export const STATE_RESET_TARGETS = [
   "lifecycle",
   "lifecycle.seed",
   "agent-extensions",
+  /* 投影根里躺着扩展包字节的副本，overlay 里躺着「哪些 Claude 插件被产品
+     停用」——两者都是产品自管状态，都不随 `agent-extensions` 一起消失。漏掉
+     它们，清空之后既留着本该删的字节，又留着一条解释不了的停用记录。 */
+  "agent-plugin-projections",
+  "agent-plugin-overlays",
   "plugin-marketplaces",
   "memory",
   "memory-tools",
@@ -86,6 +92,21 @@ export const STATE_RESET_TARGETS = [
 
 /** v3 已经提交过的真实用户只需补偿这一个遗漏根。 */
 export const STATE_RESET_V4_TARGETS = ["app-data"] as const;
+
+/** v5 owns Project-scoped tool policy, scoped MCP recovery copies, and sealed turn candidates. */
+export const STATE_RESET_V5_TARGETS = [
+  "project-tool-policies.json",
+  "project-tool-policies.json.bak",
+  "mcp-servers.json",
+  "mcp-servers.json.bak",
+  "mcp-servers.v1.bak",
+  "agent-input-staging",
+] as const;
+
+export const STATE_RESET_V5_PREFIXES = [
+  "project-tool-policies.json.",
+  "mcp-servers.json.",
+] as const;
 
 /** 原子 Store 产生的同目录备份/隔离文件；旧 strict schema 不能留旁路副本。 */
 export const STATE_RESET_PREFIXES = [
@@ -162,6 +183,40 @@ export async function runStateResetV4(
     },
     dependencies
   );
+}
+
+/**
+ * v5 is the Project Tools compensation pass. A previously committed v3/v4
+ * marker cannot hide stores introduced later, so v5 has its own marker and
+ * repeats only the newly-owned exact roots and recovery siblings.
+ */
+export async function runStateResetV5(
+  userData: string,
+  dependencies: ResetDependencies = {}
+) {
+  const enabled =
+    dependencies.enabled ?? process.env.AI_CHAT_STATE_RESET_V5 === "1";
+  if (!enabled) return false;
+  const exists = dependencies.exists ?? pathExists;
+  if (await exists(join(userData, STATE_RESET_V5_MARKER))) return false;
+  await runStateResetV4(userData, { ...dependencies, enabled: true });
+  return runResetPass(
+    userData,
+    {
+      version: 5,
+      markerName: STATE_RESET_V5_MARKER,
+      targets: STATE_RESET_V5_TARGETS,
+      prefixes: STATE_RESET_V5_PREFIXES,
+      removeHomes: false,
+    },
+    dependencies
+  );
+}
+
+export async function runStateResetsThroughV5(userData: string) {
+  await runStateResetV3(userData);
+  await runStateResetV4(userData);
+  await runStateResetV5(userData);
 }
 
 async function runResetPass(

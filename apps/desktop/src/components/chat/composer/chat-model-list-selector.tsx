@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on React, lucide Icons, ui DropdownMenu(Sub/RadioGroup/Portal) /Skeleton/SlimScroller, shared list-only Model directory and chat-model-selection Pure rules
- * [OUTPUT]: Provides ChatModelListSelector; The size of the trigger is only variable with content and width (unchanged geometry, model name omitted), the panel is divided into two lines of Model/Effort abstract, with the secondary menu, which is not configurable and is read-onlyThe directory unarrived triggers with the abstract walk the skeleton screen instead of the text formatting, only the model set submits to show local loading, session streaming feedback back to the Sidebar
+ * [OUTPUT]: Provides ChatModelListSelector with Model/Effort controls and an optional Speed row that preserves preference while showing effective fallback and reason
  * [POS]: The list-only model controller for chat/composer; Separated from the Codex Rapid Panel, but using its trigger formatting and dual-column option visual language
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, LoaderCircle, RotateCw } from "lucide-react";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
@@ -23,15 +24,19 @@ import {
 import { cn } from "@ai-chat/ui/lib/utils";
 import {
   listModelEffortState,
+  listModelSpeedState,
   optionsForListModel,
+  speedReasonKey,
 } from "@/lib/chat-model-selection";
 import type {
   AgentTurnOptions,
   BackendModelInfo,
+  SessionServiceTierEffective,
 } from "../../../../shared/agent-ipc";
 
 type ChatModelListSelectorProps = {
   value: AgentTurnOptions;
+  effectiveServiceTier?: SessionServiceTierEffective;
   models: BackendModelInfo[];
   modelsLoading: boolean;
   modelsError: string;
@@ -39,7 +44,10 @@ type ChatModelListSelectorProps = {
   disabled?: boolean;
   streaming?: boolean;
   saving?: boolean;
-  onChange: (options: AgentTurnOptions) => Promise<void>;
+  onChange: (
+    options: AgentTurnOptions,
+    resetSessionEffective?: boolean
+  ) => Promise<void>;
   onRetryModels: () => void;
 };
 
@@ -68,10 +76,12 @@ const VIEWPORT_MARGIN = 12;
 function SummaryFace({
   label,
   value,
+  detail,
   pending,
 }: {
   label: string;
   value: string;
+  detail?: string;
   pending: boolean;
 }) {
   return (
@@ -80,7 +90,10 @@ function SummaryFace({
       {pending ? (
         <Skeleton className="h-3.5 w-20 rounded-full" />
       ) : (
-        <span className="min-w-0 truncate text-muted-foreground">{value}</span>
+        <span className="min-w-0 text-right text-muted-foreground">
+          <span className="block truncate">{value}</span>
+          {detail && <span className="block truncate text-xs">{detail}</span>}
+        </span>
       )}
     </>
   );
@@ -92,17 +105,19 @@ function ReadOnlySummaryRow({
   value,
   pending,
   reason,
+  detail,
 }: {
   label: string;
   value: string;
   pending: boolean;
   reason?: string;
+  detail?: string;
 }) {
   /* 只读不等于次要：值仍然是用户此刻要读的事实，故标签与值的对比度与可下钻
      那行完全同构，两行的差别只有一个——箭头在不在。 */
   return (
     <div title={reason} className={cn("flex items-center px-2", summaryRowClass)}>
-      <SummaryFace label={label} value={value} pending={pending} />
+      <SummaryFace label={label} value={value} detail={detail} pending={pending} />
       {/* 箭头缺席，但它占的位置要留着，否则两行的值列错开一格 */}
       <span className="size-3.5 shrink-0" aria-hidden="true" />
     </div>
@@ -144,6 +159,7 @@ function ChoiceItem({
 
 export function ChatModelListSelector({
   value,
+  effectiveServiceTier,
   models,
   modelsLoading,
   modelsError,
@@ -154,32 +170,47 @@ export function ChatModelListSelector({
   onChange,
   onRetryModels,
 }: ChatModelListSelectorProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [localBusy, setLocalBusy] = useState(false);
   const current =
     models.find((model) => model.slug === value.model) ??
     models.find((model) => model.isDefault);
   const effort = listModelEffortState(value, current);
+  const speed = listModelSpeedState(value, current, effectiveServiceTier);
   const busy = disabled || saving || localBusy;
   const triggerLoading = saving || localBusy || (disabled && !streaming);
   const modelAdjustable = !busy && models.length > 1;
   const effortAdjustable = !busy && effort.adjustable;
+  const speedAdjustable = !busy && speed.adjustable;
   /* 目录未到之前，这一行没有任何依据：模型名无处可取，effort 更是
      listModelEffortState 在空目录上编出来的 "Default"。骨架屏是"还不知道"
      唯一诚实的形状——而 `未知` 与 `已知的默认` 是两件事，后者（目录已到、
      后端确实自选模型）仍旧照实说出"默认模型"。 */
   const pending = modelsLoading && !current;
   const modelName = current?.displayName ?? value.model;
-  const modelText = modelName ?? "默认模型";
+  const modelText =
+    modelName ?? t("chat.composer.modelSelector.backendDefaultModel");
   const triggerText = pending
-    ? "正在读取模型目录"
-    : `当前模型 ${modelText}，Effort ${effort.label}`;
+    ? t("chat.composer.modelSelector.loadingModels")
+    : t("chat.composer.modelSelector.currentModel", {
+        model: modelText,
+        effort: effort.label,
+      });
+  /* 原因只在意图与实际分叉时才是信息（listModelSpeedState 已经把这条判据
+     收在 speed.reason 里），文案则永远从目录取。 */
+  const speedReason = speed.reason
+    ? t(speedReasonKey(speed.reason))
+    : undefined;
 
   /* 成功即退场，失败才留下：菜单选完就关是菜单的常态，但设置提交是会失败的，
      而错误只在这块面板上有地方说。关得太早等于把回执连同重试一起吞掉。 */
-  const commitAndClose = (next: AgentTurnOptions) => {
+  const commitAndClose = (
+    next: AgentTurnOptions,
+    resetSessionEffective = false
+  ) => {
     setLocalBusy(true);
-    void onChange(next)
+    void onChange(next, resetSessionEffective)
       .then(() => setOpen(false))
       .catch(() => {})
       .finally(() => setLocalBusy(false));
@@ -248,12 +279,12 @@ export function ChatModelListSelector({
         align="end"
         collisionPadding={VIEWPORT_MARGIN}
         className="min-w-60 max-w-[min(24rem,100vw-2rem)]"
-        aria-label="聊天模型选择器"
+        aria-label={t("chat.composer.modelSelector.selector")}
       >
         {modelAdjustable ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className={summaryRowClass}>
-              <SummaryFace label="Model" value={modelText} pending={pending} />
+              <SummaryFace label={t("chat.composer.modelSelector.model")} value={modelText} pending={pending} />
             </DropdownMenuSubTrigger>
             {/* 必须过 Portal：父面板自带 `overflow-y-auto`，留在原地的二级菜单
                 会被它裁掉一截。 */}
@@ -270,7 +301,9 @@ export function ChatModelListSelector({
                     value={current?.slug ?? ""}
                     onValueChange={(slug) => {
                       const model = models.find((item) => item.slug === slug);
-                      if (model) commitAndClose(optionsForListModel(value, model));
+                      if (model) {
+                        commitAndClose(optionsForListModel(value, model), true);
+                      }
                     }}
                   >
                     {models.map((model) => (
@@ -289,7 +322,7 @@ export function ChatModelListSelector({
                       className="size-3.5 animate-spin"
                       aria-hidden="true"
                     />
-                    正在读取模型目录…
+                    {t("chat.composer.modelSelector.loadingModels")}
                   </p>
                 )}
               </DropdownMenuSubContent>
@@ -297,16 +330,16 @@ export function ChatModelListSelector({
           </DropdownMenuSub>
         ) : (
           <ReadOnlySummaryRow
-            label="Model"
+            label={t("chat.composer.modelSelector.model")}
             value={modelText}
             pending={pending}
-            reason={models.length <= 1 ? "当前只有一个可用模型" : undefined}
+            reason={models.length <= 1 ? t("chat.composer.modelSelector.onlyOneModel") : undefined}
           />
         )}
         {effortAdjustable ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className={summaryRowClass}>
-              <SummaryFace label="Effort" value={effort.label} pending={pending} />
+              <SummaryFace label={t("chat.composer.modelSelector.effort")} value={effort.label} pending={pending} />
             </DropdownMenuSubTrigger>
             <DropdownMenuPortal>
               <DropdownMenuSubContent
@@ -340,19 +373,74 @@ export function ChatModelListSelector({
           </DropdownMenuSub>
         ) : (
           <ReadOnlySummaryRow
-            label="Effort"
+            label={t("chat.composer.modelSelector.effort")}
             value={effort.label}
             pending={pending}
             reason={
               effort.options.length <= 1
-                ? "当前模型不支持调整 Effort"
+                ? t("chat.composer.modelSelector.effortUnavailable")
                 : undefined
             }
           />
         )}
+        {speed.adjustable && (speedAdjustable ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className={summaryRowClass}>
+              <SummaryFace
+                label={t("chat.composer.modelSelector.speed")}
+                value={speed.label}
+                detail={speedReason}
+                pending={pending}
+              />
+            </DropdownMenuSubTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuSubContent
+                sideOffset={MENU_PADDING + LEVEL_GAP}
+                collisionPadding={VIEWPORT_MARGIN}
+                className="max-w-[min(20rem,100vw-2rem)]"
+              >
+                <DropdownMenuRadioGroup
+                  value={speed.value ?? ""}
+                  onValueChange={(serviceTier) =>
+                    commitAndClose(
+                      { ...value, serviceTier } as AgentTurnOptions,
+                      true
+                    )
+                  }
+                >
+                  {speed.options.map((option) => (
+                    <ChoiceItem
+                      key={option.id}
+                      value={option.id}
+                      label={option.displayName}
+                      disabled={busy}
+                    />
+                  ))}
+                </DropdownMenuRadioGroup>
+                <p className="px-2 py-1 text-xs text-muted-foreground">
+                  {t("chat.composer.modelSelector.speedDescription")}
+                </p>
+                {speedReason && (
+                  <p role="status" className="px-2 pb-1 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">{speed.label}</span>
+                    {` · ${speedReason}`}
+                  </p>
+                )}
+              </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
+        ) : (
+          <ReadOnlySummaryRow
+            label={t("chat.composer.modelSelector.speed")}
+            value={speed.label}
+            pending={pending}
+            reason={speedReason}
+            detail={speedReason}
+          />
+        ))}
         {!modelsLoading && !modelsError && models.length === 0 && (
           <p className="px-2 py-2 text-xs text-muted-foreground">
-            未发现可用模型
+            {t("chat.composer.modelSelector.noModels")}
           </p>
         )}
         {modelsError && (
@@ -373,7 +461,7 @@ export function ChatModelListSelector({
               className="mt-1 py-1.5 text-xs"
             >
               <RotateCw className="size-3.5" aria-hidden="true" />
-              重试模型目录
+              {t("chat.composer.modelSelector.retryModels")}
             </DropdownMenuItem>
           </>
         )}

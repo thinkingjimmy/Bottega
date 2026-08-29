@@ -1,11 +1,21 @@
 /**
  * [INPUT]: type-only AgentBackendId that relies on agent-ipc
- * [OUTPUT]: Provides three types of sealed manifests, Base GUI v2 mutation/attachment-read capability, ordinary App domain/generation/tri-mode grant/reference/custody, AppRecord, including default global authorization revision, App-scoped Extension, seven-mode projection, capability current testing, GUI info/failure detectable, durable edit/use chat slots, single-mode alternate identity Agent visibility, running mode preload API agreement
+ * [OUTPUT]: Provides sealed App manifests, surface-scoped Base GUI capabilities/host actions, App generation/grant/reference records, the positive servesWebRuntime runtime-eligibility predicate, Bottega Design Canvas events, and the renderer bridge contract
  * [POS]: Apps for shared modules are the single source of truth; Navigation, authorization, generation, operation and Agent custody are not mutually exclusive in type
  */
 
 import type { AgentBackendId } from "./agent-ipc";
+export * from "./apps-bridge-ipc";
+import type {
+  AppOpenMode,
+  BaseGuiCapability,
+  BaseGuiCapabilityScopes,
+  BaseGuiHostActionCapability,
+  BaseGuiManifest,
+} from "./apps-surface-ipc";
+export * from "./apps-surface-ipc";
 import type { AppChatRole } from "./chats-ipc";
+import type { ProductResourceScope } from "./product-resource-scope";
 import type {
   AppExtensionRequirementManifestField,
   ExtensionBackendEligibilityView,
@@ -35,6 +45,8 @@ type AppManifestBase = {
   description: string;
   icon: string;
   requirements: AppRequirements | null;
+  /** Package default only; a durable per-install override remains user-owned. */
+  defaultOpenMode?: AppOpenMode;
 };
 
 export type StaticAppManifest = AppManifestBase & {
@@ -65,39 +77,6 @@ export type ServerAppManifest = AppManifestBase & {
   } | null;
 } & AppExtensionRequirementManifestField & { domain?: never };
 
-/** ordinary Base GUI 的 read 面恒可用；每项 mutation/attachment 能力独立 opt-in。 */
-export type BaseGuiCapability =
-  | "row-insert"
-  | "row-patch"
-  | "row-delete"
-  | "attachment-read";
-
-export type BaseGuiManifest = Readonly<{
-  capabilities: readonly BaseGuiCapability[];
-}>;
-
-export type BaseGuiCapabilityDecision = Readonly<{
-  decisionId: string;
-  revision: number;
-  appId: string;
-  generationId: string;
-  contentDigest: Sha256Digest;
-  expectedActiveGenerationId: string | null;
-  requestedCapabilities: readonly BaseGuiCapability[];
-  grantedCapabilities: readonly BaseGuiCapability[];
-  state: "consent-required" | "approved" | "declined";
-}>;
-
-export type BaseGuiLiveBinding = Readonly<{
-  appId: string;
-  generationId: string;
-  contentDigest: Sha256Digest;
-  lifecycleRevision: number;
-  baseCapabilities: readonly BaseGuiCapability[];
-  capabilityDecisionId: string | null;
-  capabilityRevision: number;
-}>;
-
 export type BaseAppManifest = AppManifestBase & {
   kind: "base";
   packageSchemaVersion: 2;
@@ -109,23 +88,6 @@ export type AppManifest =
   | ServerAppManifest
   | BaseAppManifest;
 
-export function requestedBaseGuiCapabilities(
-  manifest: AppManifest | null | undefined
-): readonly BaseGuiCapability[] {
-  return manifest?.kind === "base"
-    ? [...new Set(manifest.gui?.capabilities ?? [])]
-    : [];
-}
-
-export const BASE_GUI_ACTION_CHANNEL = "ai-chat:base-gui-host-action";
-export type BaseGuiHostAction =
-  | { type: "open-data" }
-  | { type: "open-data-view"; viewId: string };
-export type BaseGuiHostMessage = {
-  channel: typeof BASE_GUI_ACTION_CHANNEL;
-  token: string;
-  action: BaseGuiHostAction;
-};
 
 export type AppDomainIdentity =
   | { kind: "no-data"; appKind: "static" | "server" }
@@ -200,6 +162,8 @@ export type AppGenerationBinding = {
       decisionId: string;
       expectedRevision: number;
       requestedCapabilities: readonly BaseGuiCapability[];
+      requestedHostActions: readonly BaseGuiHostActionCapability[];
+      requestedCapabilityScopes: BaseGuiCapabilityScopes;
       state: "consent-required" | "approved" | "declined";
     }>;
     extensionState?: "consent-required" | "ready-to-promote";
@@ -213,7 +177,8 @@ export type AppGenerationBinding = {
  * installed / grant / enabled 互不隐含，renderer 不再拿全局快照猜。
  */
 export type AppExtensionRequirementStatus = Readonly<{
-  componentIdentity: string;
+  declaredComponentIdentity: string;
+  componentInstanceIdentity?: string;
   required: boolean;
   requestedConfig?: Readonly<Record<string, unknown>>;
   resolution:
@@ -339,6 +304,8 @@ export type AppRecord = {
   /** 缺席/null 都表示默认关闭；字段 optional 仅为同版老档与测试 fixture 平滑读取。 */
   defaultGrant?: AppCapabilityGrant | null;
   defaultGrantRevision?: number;
+  /** null/absent follows the active manifest default; otherwise this is the durable user choice. */
+  openModeOverride?: AppOpenMode | null;
   domainIdentity: AppDomainIdentity | null;
   generations: AppGeneration[];
   generationBinding: AppGenerationBinding;
@@ -352,8 +319,24 @@ export type AppRecord = {
   addedAt: number;
 };
 
+
 export type AppRuntimeState = "running" | "stopped" | "crashed";
 export type AppOperation = "install" | "repair" | "update";
+
+/* ============================================================================
+ * Web runtime 资格：正面判据，不是「不是 base」
+ * ---------------------------------------------------------------------------
+ * manifest 是 active generation 的投影：没有 active 代时它必须为 null（见
+ * AppStore 的 record 不变量）。于是 `manifest?.kind !== "base"` 这种反向写法
+ * 在 manifest 缺席时会失守——「还不知道是什么」被读成「不是 Base」，随后
+ * 有人替 Base App 去启 web runtime。判据只能正着写：只有确知是 static/server
+ * 才起 runtime，未知一律不起。
+ * ========================================================================= */
+export function servesWebRuntime(
+  manifest: AppManifest | null | undefined
+): manifest is StaticAppManifest | ServerAppManifest {
+  return manifest?.kind === "static" || manifest?.kind === "server";
+}
 
 export function repairSite(
   record: AppRecord
@@ -377,7 +360,7 @@ export type AppAgentOmission = Readonly<{
     | "reference-limit"
     /** instructions 放不下 2KB 预算 */
     | "instruction-budget"
-    /** 该 backend 本轮没有 instructions/tool 通道（如 OpenCode 的 builtinTools=none） */
+    /** This backend/turn has no product tool channel. */
     | "backend-unsupported"
     /** ordinary Base 的读写工具均被关闭，故 App 整体不进入 Agent instructions。 */
     | "base-tools-disabled";
@@ -402,14 +385,14 @@ export type AppAgentVisibility = Readonly<{
   /** App 已注入，但这些扩展 component 本轮未交付 */
   excludedComponents: readonly Readonly<{
     appId: string;
-    componentIdentity: string;
+    declaredComponentIdentity: string;
     required: boolean;
     code: string;
   }>[];
   /** 只有本轮已物化并签发的 component 才在此。 */
   activeComponents: readonly Readonly<{
     appId: string;
-    componentIdentity: string;
+    componentInstanceIdentity: string;
   }>[];
 }>;
 
@@ -424,6 +407,15 @@ export type AppInstallEvent =
   | { appId: string; type: "log"; line: string }
   | { appId: string; type: "runtime"; state: AppRuntimeState }
   | { appId: string; type: "gui" }
+  | {
+      type: "design-canvases-changed";
+      appId: string;
+      chatId: string;
+      conversationIncarnationId: string;
+      turnId: string;
+      files: readonly string[];
+      drafting: boolean;
+    }
   | { appId: string; type: "removed" }
   | { type: "agent-visibility"; visibility: AppAgentVisibility }
   | { type: "runtime-warning"; message: string };
@@ -472,7 +464,10 @@ export type AppRepoProbeResult =
     };
 
 export type AppExtensionInstallPreflight = Readonly<{
-  componentIdentity: string;
+  declaredComponentIdentity: string;
+  scope: ProductResourceScope;
+  projectLifecycleRevision: number | null;
+  scopeRevision: number;
   repoUrl: string;
   requestedRef: string;
   resolvedCommit: string;
@@ -661,78 +656,12 @@ export type AvailableAppsInput = {
   conversationIncarnationId: string;
 };
 
-export type AppSurfaceAcquireInput = AvailableAppsInput & { appId: string };
-export type AppAttachmentSurface = Readonly<{
-  surfaceLeaseId: string;
-  conversationId: string;
-  conversationIncarnationId: string;
-  appId: string;
-  generationId: string;
-  contentDigest: Sha256Digest;
-  lifecycleRevision: number;
-  domainIdentity: AppDomainIdentity;
-  dataGrant: AppCapabilityGrant["data"] | null;
-  ownerKey: string | null;
-}>;
 
 /**
  * renderer 只拿一个 opaque id：管理会话的闭合 scope（generation/digest/lifecycle
  * 与 webContents/session 绑定）是 main-only，绝不做成可回传的 DTO。
  */
 export type AppManagementLeaseRef = Readonly<{ managementLeaseId: string }>;
-
-export const APPS_CHANNEL = {
-  add: "apps:add",
-  remove: "apps:remove",
-  list: "apps:list",
-  open: "apps:open",
-  status: "apps:status",
-  originWithoutStart: "apps:origin-without-start",
-  stop: "apps:stop",
-  grant: "apps:grant",
-  revokeGrant: "apps:grant:revoke",
-  setGrantState: "apps:grant:state",
-  setDefaultGrant: "apps:grant:default",
-  listGrantSources: "apps:grant:sources",
-  listAvailable: "apps:available",
-  acquireSurface: "apps:surface:acquire",
-  releaseSurface: "apps:surface:release",
-  acquireManagementLease: "apps:management-lease:acquire",
-  releaseManagementLease: "apps:management-lease:release",
-  event: "apps:event",
-  reveal: "apps:reveal",
-  cancelInstall: "apps:cancel-install",
-  readLog: "apps:read-log",
-  retry: "apps:retry",
-  repair: "apps:repair",
-  setAgent: "apps:set-agent",
-  saveAsApp: "apps:save-as-app",
-  rename: "apps:rename",
-  ensureChatSlot: "apps:ensure-chat-slot",
-  retrySkill: "apps:retry-skill",
-  resolveExtensionConsent: "apps:extension-consent",
-  resolveBaseGuiConsent: "apps:base-gui-consent",
-  revokeBaseGuiAccess: "apps:base-gui-access:revoke",
-  promoteGeneration: "apps:promote-generation",
-  extensionStatus: "apps:extension-status",
-  revokeExtensionGrant: "apps:extension-grant:revoke",
-  rebuildExtensionGeneration: "apps:extension-generation:rebuild",
-  capabilities: "apps:capabilities",
-  guiInfo: "apps:gui-info",
-  readReadme: "apps:read-readme",
-  probeRepo: "apps:probe-repo",
-  discardProbe: "apps:discard-probe",
-  listPresets: "apps:list-presets",
-  probePreset: "apps:probe-preset",
-  discardPresetProbe: "apps:discard-preset-probe",
-  installPreset: "apps:install-preset",
-  ghStatus: "apps:gh-status",
-  readConfig: "apps:read-config",
-  writeConfig: "apps:write-config",
-  sharePreview: "apps:share-preview",
-  sharePublish: "apps:share-publish",
-  shareDiscard: "apps:share-discard",
-} as const;
 
 export type AddAppInput = {
   repoUrl: string;
@@ -780,94 +709,10 @@ export type EnsureAppChatSlotResult = AppChatSlot;
  * Base App 的 `gui/` 现状快照。pages 空即「没有 GUI」——不另设 hasGui 布尔，
  * 派生字段是第二真相源，会与 pages 各自漂移。
  */
-export type AppGuiInfo = {
-  /** gui/ 内可伺服的 html 相对路径；宿主入口固定 index.html */
-  pages: string[];
-  /** 该 App 的固定 gateway origin；pages 为空时仍返回，供空态文案自证 */
-  origin: string;
-  /** 单实例 short-lived token：每次签发即撤销上一枚，App 停止/GUI 撤销时清除 */
-  token: string;
-  /** 只来自 active generation 与 durable decision 的求交，App 不从 manifest 猜权限。 */
-  baseCapabilities: readonly BaseGuiCapability[];
-  /** GUI 准备失败仍保留 pages，让显式“应用”路由能原地给出可行动错误。 */
-  error?: string;
-};
 
 export type RemoveAppMode = "cascade" | "retain-data";
 export type RemoveAppInput = {
   appId: string;
   mode: RemoveAppMode;
   requestId: string;
-};
-
-export type AppsBridgeApi = {
-  add: (input: AddAppInput) => Promise<AppRecord>;
-  remove: (
-    appId: string,
-    mode?: RemoveAppMode,
-    requestId?: string
-  ) => Promise<void>;
-  list: () => Promise<AppsListSnapshot>;
-  open: (appId: string) => Promise<AppOpenResult>;
-  status: (appId: string) => Promise<AppRuntimeStatus>;
-  originWithoutStart: (appId: string) => Promise<AppOpenResult | null>;
-  stop: (appId: string) => Promise<void>;
-  grant: (input: SetAppGrantInput) => Promise<AppGrantSnapshot>;
-  revokeGrant: (target: AppGrantTarget, appId: string) => Promise<AppGrantSnapshot>;
-  setGrantState: (input: SetAppGrantStateInput) => Promise<AppGrantSnapshot>;
-  setDefaultGrant: (input: SetDefaultAppGrantInput) => Promise<AppRecord>;
-  listGrantSources: () => Promise<AppGrantSourcesSnapshot>;
-  listAvailable: (input: AvailableAppsInput) => Promise<AvailableAttachedApp[]>;
-  acquireSurface: (input: AppSurfaceAcquireInput) => Promise<AppAttachmentSurface>;
-  releaseSurface: (surfaceLeaseId: string) => Promise<void>;
-  /** App 详情页的 main-owned 管理会话 */
-  acquireManagementLease: (appId: string) => Promise<AppManagementLeaseRef>;
-  releaseManagementLease: (managementLeaseId: string) => Promise<void>;
-  reveal: (appId: string) => Promise<void>;
-  cancelInstall: (appId: string) => Promise<void>;
-  readLog: (appId: string) => Promise<string>;
-  retry: (appId: string) => Promise<void>;
-  repair: (appId: string) => Promise<void>;
-  setAgent: (input: SetAppAgentInput) => Promise<AppRecord>;
-  saveAsApp: (input: SaveAsAppInput) => Promise<SaveAsAppResult>;
-  rename: (input: RenameAppInput) => Promise<AppRecord>;
-  ensureChatSlot: (
-    input: EnsureAppChatSlotInput
-  ) => Promise<EnsureAppChatSlotResult>;
-  retrySkill: (appId: string) => Promise<AppRecord>;
-  /* 同意/拒绝都是终态：拒绝让该代零 grant 地 promote，扩展逐条以
-     scoped-grant-missing 被排除，而不是把 App 永远卡在 pending。 */
-  resolveExtensionConsent: (input: {
-    appId: string;
-    granted: boolean;
-  }) => Promise<AppRecord>;
-  resolveBaseGuiConsent: (input: {
-    appId: string;
-    grantedCapabilities: BaseGuiCapability[];
-  }) => Promise<AppRecord>;
-  revokeBaseGuiAccess: (appId: string) => Promise<AppRecord>;
-  promoteGeneration: (input: {
-    appId: string;
-    expectedConsentRevision: number;
-  }) => Promise<AppRecord>;
-  /** 按 active App generation 与其 frozen package refs 返回 scoped 状态。 */
-  extensionStatus: (appId: string) => Promise<AppExtensionStatus>;
-  revokeExtensionGrant: (appId: string) => Promise<AppExtensionStatus>;
-  rebuildExtensionGeneration: (appId: string) => Promise<AppRecord>;
-  capabilities: (appId: string) => Promise<AppCapabilitiesSnapshot>;
-  guiInfo: (appId: string) => Promise<AppGuiInfo>;
-  readReadme: (appId: string) => Promise<string | null>;
-  probeRepo: (repoUrl: string) => Promise<AppRepoProbeResult>;
-  discardProbe: (preflightId: string) => Promise<void>;
-  listPresets: () => Promise<PresetAppSummary[]>;
-  probePreset: (presetId: string) => Promise<PresetProbeResult>;
-  discardPresetProbe: (preflightId: string) => Promise<void>;
-  installPreset: (input: InstallPresetInput) => Promise<AppRecord>;
-  ghStatus: () => Promise<GhStatus>;
-  readConfig: (appId: string) => Promise<AppConfigValue>;
-  writeConfig: (appId: string, config: AppConfigValue) => Promise<AppConfigValue>;
-  sharePreview: (input: SharePreviewInput) => Promise<SharePreview>;
-  sharePublish: (input: SharePublishInput) => Promise<AppRecord>;
-  shareDiscard: (previewId: string) => Promise<void>;
-  onEvent: (callback: (event: AppInstallEvent) => void) => () => void;
 };

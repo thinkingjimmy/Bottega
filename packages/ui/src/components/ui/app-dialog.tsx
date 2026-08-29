@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Focus control, Share Dialog/Button/SlimScroller is a tool for combining native language and cn class names
- * [OUTPUT]: Provides AppDialogContent Unified pop-up window surface, AppDialogBody single scrolling layer, and the ConfirmationDialog standard double operation with the option to close the button/surface size to confirm pop-up window ((cancelLabel missing the host ui.cancel directory; description is down <div> It's not <p>(Including the first two volumes, the first volume is available in English)
- * [POS]: The UI standard entry for the application pop-up window in the original language layer; Complex bulkheads replicate two sets of "surface + official" and simply confirm the flow directly to replicate the entire component
+ * [INPUT]: Depends on React focus control, shared Dialog/Button/SlimScroller primitives, host UI text, and class merging
+ * [OUTPUT]: Provides AppDialogContent, AppDialogBody — the sole scroller, and therefore the sole clipping box, so it carries the headroom its children's rings and shadows are painted into — and ConfirmationDialog with explicit focus/dismiss policies plus responsive cancel, secondary, destructive, and primary actions
+ * [POS]: The shared accessible dialog shell and confirmation surface for packages/ui consumers
  */
 
 import {
@@ -81,7 +81,23 @@ export function AppDialogBody({
   return (
     <SlimScroller
       data-slot="app-dialog-body"
-      className={cn("min-h-0 flex-1 overflow-y-auto", className)}
+      /* 这四个边距不是留白，是给子元素的描边留活路。
+         ring/shadow 画在 border box 之外，而 overflow-y-auto 会连带把
+         overflow-x 也变成 auto——这一层于是成了裁剪盒。正文子元素天然与它
+         左右齐平（本层无横向内边距），那几列像素正好落在裁剪边界外面被吃掉：
+         卡片只剩上下两条横线，输入框的焦点环缺左右两段。
+         负外边距把自己向外撑开，内边距再把内容推回原位——子元素一像素没动，
+         而裁剪盒多出了一圈刚好够描边站的地方。
+
+         两个轴的余量不同，因为代价不同：
+         横向 4px = 这套设计里画得最远的焦点指示器（ring-2 + ring-offset-2，
+         SettingsSwitch 就是），而横向不滚动，这圈余量不产生任何副作用；
+         纵向只给 1px = 够细线活命即可。纵向是滚动轴，余量给多了，滚动的
+         内容会越过裁剪线渗进标题与页脚的缝里——那比一条被裁的阴影更难看。
+
+         修在裁剪盒这一层，而不是逐个给子元素补 ring-inset：后者要求每个
+         调用方都记得，而漏掉的地方永远比记得的地方多。 */
+      className={cn("-mx-1 -my-px min-h-0 flex-1 overflow-y-auto px-1 py-px", className)}
       {...props}
     />
   );
@@ -93,13 +109,22 @@ export type ConfirmationDialogProps = {
   description: ReactNode;
   confirmLabel: ReactNode;
   cancelLabel?: ReactNode;
+  secondaryLabel?: ReactNode;
+  destructiveLabel?: ReactNode;
   confirmTone?: "default" | "destructive";
+  initialFocus?: "cancel" | "secondary" | "destructive" | "confirm";
   busy?: boolean;
   confirmDisabled?: boolean;
+  secondaryDisabled?: boolean;
+  destructiveDisabled?: boolean;
+  dismissible?: boolean;
+  showCancel?: boolean;
   showCloseButton?: boolean;
   contentClassName?: string;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
+  onSecondary?: () => void;
+  onDestructive?: () => void;
 };
 
 export function ConfirmationDialog({
@@ -108,18 +133,30 @@ export function ConfirmationDialog({
   description,
   confirmLabel,
   cancelLabel,
+  secondaryLabel,
+  destructiveLabel,
   confirmTone = "default",
+  initialFocus = "cancel",
   busy = false,
   confirmDisabled = false,
+  secondaryDisabled = false,
+  destructiveDisabled = false,
+  dismissible = true,
+  showCancel = true,
   showCloseButton = false,
   contentClassName,
   onOpenChange,
   onConfirm,
+  onSecondary,
+  onDestructive,
 }: ConfirmationDialogProps) {
   /* 「取消」是这颗原语自带的那半句话，不是调用方每次都要重说一遍的参数：
      默认值走宿主目录，于是全应用的确认弹窗一次性跟着语言走。 */
   const fallbackCancel = useUiText("cancel", "Cancel");
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const secondaryRef = useRef<HTMLButtonElement>(null);
+  const destructiveRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
   const close = () => {
     if (!busy) onOpenChange(false);
   };
@@ -128,7 +165,7 @@ export function ConfirmationDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!busy) onOpenChange(next);
+        if (!busy && (next || dismissible)) onOpenChange(next);
       }}
     >
       <AppDialogContent
@@ -138,14 +175,23 @@ export function ConfirmationDialog({
            Cancel 就是那个明确的退出动作，再挂一个 × 是同一条出路的第二块牌子。 */
         showCloseButton={showCloseButton}
         onEscapeKeyDown={(event) => {
-          if (busy) event.preventDefault();
+          if (busy || !dismissible) event.preventDefault();
         }}
         onPointerDownOutside={(event) => {
-          if (busy) event.preventDefault();
+          if (busy || !dismissible) event.preventDefault();
         }}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
-          cancelRef.current?.focus();
+          const targets = {
+            cancel: cancelRef,
+            secondary: secondaryRef,
+            destructive: destructiveRef,
+            confirm: confirmRef,
+          };
+          const preferred = targets[initialFocus];
+          [preferred, cancelRef, secondaryRef, confirmRef, destructiveRef]
+            .find((target) => target.current && !target.current.disabled)
+            ?.current?.focus();
         }}
       >
         {/* 表面已 overflow-hidden，故这里要自带退路：min-h-0 + auto 让超长
@@ -172,25 +218,54 @@ export function ConfirmationDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <DialogFooter className="mt-3 shrink-0 flex-row justify-end gap-3">
+        <DialogFooter className="mt-3 shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-x-3 sm:gap-y-2">
+          {showCancel && (
+            <Button
+              ref={cancelRef}
+              type="button"
+              variant="ghost"
+              size="pill"
+              disabled={busy}
+              className="w-full cursor-pointer text-muted-foreground hover:text-foreground disabled:cursor-not-allowed sm:w-auto"
+              onClick={close}
+            >
+              {cancelLabel ?? fallbackCancel}
+            </Button>
+          )}
+          {secondaryLabel && onSecondary && (
+            <Button
+              ref={secondaryRef}
+              type="button"
+              variant="outline"
+              size="pill"
+              disabled={busy || secondaryDisabled}
+              className="w-full cursor-pointer disabled:cursor-not-allowed sm:w-auto"
+              onClick={onSecondary}
+            >
+              {secondaryLabel}
+            </Button>
+          )}
+          {destructiveLabel && onDestructive && (
+            <Button
+              ref={destructiveRef}
+              type="button"
+              variant="destructive"
+              size="pill"
+              disabled={busy || destructiveDisabled}
+              className="w-full cursor-pointer border-destructive/15 disabled:cursor-not-allowed sm:w-auto"
+              onClick={onDestructive}
+            >
+              {destructiveLabel}
+            </Button>
+          )}
           <Button
-            ref={cancelRef}
-            type="button"
-            variant="ghost"
-            size="pill"
-            disabled={busy}
-            className="cursor-pointer text-muted-foreground hover:text-foreground disabled:cursor-not-allowed"
-            onClick={close}
-          >
-            {cancelLabel ?? fallbackCancel}
-          </Button>
-          <Button
+            ref={confirmRef}
             type="button"
             variant={confirmTone}
             size="pill"
             disabled={busy || confirmDisabled}
             className={cn(
-              "cursor-pointer disabled:cursor-not-allowed",
+              "w-full cursor-pointer disabled:cursor-not-allowed sm:w-auto",
               confirmTone === "destructive" && "border-destructive/15"
             )}
             onClick={onConfirm}

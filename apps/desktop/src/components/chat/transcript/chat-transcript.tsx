@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Conversation/Message, unchanged AdoptionPrefix, visible surface visibility, user-generated folding units, runtime transcript with chat/incarnation/Image intent, side panel and turn/outline/attachment components
- * [OUTPUT]: Provides ChatTranscript with an independent measurement of ChatAssistantRow; External forwarding and canonical/draft products are presented in domain order, the transcript container can be programmed to focus, end-user support non-optimistic pure text revision, and a third Image intent, which is subject to session scope, is constructed for Agent graphics and canonical user attachments
- * [POS]: The top layer of the chat/transcript view; Unified session width and vertical rhythm, outsourced forwarding does not participate in product seq convergence, only holds discarded history windows, rolling compensation and unobstructed batch processing status
+ * [INPUT]: Depends on Conversation primitives, HistoryPrefixProjection, canonical messages/turns, Find, Outline, foreign rows, attachments, revision actions, and side-panel Plan/Image commands
+ * [OUTPUT]: Provides the unified transcript ordering immutable prefix before product history, hides dormant App identity notices structurally, and exposes generation-fenced route anchors, quality/source dividers, controlled Plan expansion, and Find/Outline
+ * [POS]: The top-level chat/transcript projection; foreign rows never participate in product sequence convergence
  */
 
 import {
@@ -32,7 +32,10 @@ import type {
   NoticeChatMessage,
   UserChatMessage as UserMessage,
 } from "../../../../shared/chats-ipc";
-import type { HistoryAdoptionPrefix } from "../../../../shared/history-import-ipc";
+import {
+  historyRouteAnchor,
+  type HistoryPrefixProjection,
+} from "@/lib/history-prefix";
 import type { ChatSessionController } from "../runtime/use-chat-session";
 import type { ConversationImageSource } from "../runtime/chat-session-model";
 import type {
@@ -97,6 +100,7 @@ const ChatUserMessage = memo(function ChatUserMessage({
   incarnationId,
   onOpenImage,
   onEdit,
+  editDisabledReason,
 }: {
   message: UserMessage;
   live?: LiveAttachmentPreview[];
@@ -104,6 +108,7 @@ const ChatUserMessage = memo(function ChatUserMessage({
   incarnationId: string | null;
   onOpenImage?: (source: ConversationImageSource) => void;
   onEdit?: () => void;
+  editDisabledReason?: string;
 }) {
   return (
     <MessageShell id={message.id}>
@@ -128,6 +133,7 @@ const ChatUserMessage = memo(function ChatUserMessage({
           content={message.content}
           createdAt={message.createdAt}
           onEdit={onEdit}
+          editDisabledReason={editDisabledReason}
           role="user"
         />
       </Message>
@@ -140,22 +146,13 @@ const ChatNoticeRow = memo(function ChatNoticeRow({
 }: {
   message: NoticeChatMessage;
 }) {
+  if (message.notice.kind === "app-chat-ready") return null;
   return (
     <MessageShell id={message.id}>
       <ChatNotice message={message} />
     </MessageShell>
   );
 });
-
-function RevisionDisclosure({ memoryEnabled }: { memoryEnabled: boolean }) {
-  const { t } = useAppTranslation();
-  return (
-    <div className="mx-auto w-full rounded-md border border-border/70 bg-muted/35 px-3 py-2 text-muted-foreground text-xs" role="note">
-      <p>{t("chatRevision.newSession")}</p>
-      {memoryEnabled && <p className="mt-1">{t("chatRevision.memoryWarning")}</p>}
-    </div>
-  );
-}
 
 export const ChatAssistantRow = memo(function ChatAssistantRow({
   message,
@@ -220,7 +217,10 @@ function TranscriptRows({
   showOutline,
   setHistoryBatch,
   historyPrefix,
-  memoryEnabled = false,
+  historyPrefixFooter,
+  historyIndexLoader,
+  onHistoryJumpMiss,
+  onToggleForeignPlan,
   routeSearch,
   surfaceVisible = true,
 }: {
@@ -230,8 +230,11 @@ function TranscriptRows({
   onClosePlan: () => void;
   showOutline: boolean;
   setHistoryBatch: (active: boolean) => void;
-  historyPrefix?: HistoryAdoptionPrefix | null;
-  memoryEnabled?: boolean;
+  historyPrefix?: HistoryPrefixProjection | null;
+  historyPrefixFooter?: ReactNode;
+  historyIndexLoader?: (signal: AbortSignal) => Promise<HistoryPrefixProjection>;
+  onHistoryJumpMiss?: (id: string) => Promise<void>;
+  onToggleForeignPlan?: (plan: { anchorId: string; content: string }) => void;
   routeSearch?: string;
   surfaceVisible?: boolean;
 }) {
@@ -260,7 +263,7 @@ function TranscriptRows({
     openImage,
     canRevise,
     submitRevision,
-    revisionDisclosure,
+    revisionUnavailableReason,
   } = controller;
   const { scrollRef } = useStickToBottomContext();
   const releaseScrollLock = useScrollLockRelease();
@@ -268,6 +271,8 @@ function TranscriptRows({
     initialTranscriptAnchor(messages)
   );
   const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
+  const consumedRouteKeyRef = useRef<string | null>(null);
+  const pendingRouteRef = useRef<{ key: string; id: string } | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState<{
     generation: number;
@@ -347,6 +352,11 @@ function TranscriptRows({
         scroller.scrollTo({ top: Math.max(0, top - 16), behavior: "auto" });
         setPendingJumpId(null);
         highlightTranscriptTarget(node);
+        const route = pendingRouteRef.current;
+        if (route?.id === pendingJumpId) {
+          consumedRouteKeyRef.current = route.key;
+          pendingRouteRef.current = null;
+        }
       }
     }
     const frame = requestAnimationFrame(() => setHistoryBatch(false));
@@ -401,7 +411,7 @@ function TranscriptRows({
 
   const jumpTo = useCallback((id: string) => {
     const scroller = scrollRef.current;
-    if (!scroller) return;
+    if (!scroller) return false;
     releaseScrollLock();
     const node = scroller.querySelector(
       `[data-message-id="${CSS.escape(id)}"]`
@@ -413,23 +423,41 @@ function TranscriptRows({
         scroller.scrollTop;
       scroller.scrollTo({ top: Math.max(0, top - 16), behavior: "smooth" });
       highlightTranscriptTarget(node);
-      return;
+      return true;
     }
     setHistoryBatch(true);
     setPendingJumpId(id);
     setAnchor((current) => includeTranscriptTarget(messages, current, id));
-  }, [messages, releaseScrollLock, scrollRef, setHistoryBatch]);
+    if (id.startsWith("foreign:")) {
+      void onHistoryJumpMiss?.(id).catch(() => undefined);
+    }
+    return false;
+  }, [messages, onHistoryJumpMiss, releaseScrollLock, scrollRef, setHistoryBatch]);
 
   useLayoutEffect(() => {
+    const routeKey = JSON.stringify([
+      routeSearch ?? "",
+      historyPrefix?.source.routeGenerationKey ?? "",
+      historyPrefix?.source.contentGenerationKey ?? "",
+    ]);
+    if (consumedRouteKeyRef.current === routeKey) return;
     const searchParams = new URLSearchParams(routeSearch ?? "");
     const id = searchParams.get("m") ?? (() => {
       const value = searchParams.get("b");
-      if (!value) return null;
-      const split = value.indexOf(":");
-      return split < 0 ? null : `foreign-${value.slice(split + 1)}`;
+      return value && historyPrefix
+        ? historyRouteAnchor(historyPrefix, value)
+        : null;
     })();
-    if (id) jumpTo(id);
-  }, [jumpTo, routeSearch]);
+    if (!id) {
+      pendingRouteRef.current = null;
+      return;
+    }
+    pendingRouteRef.current = { key: routeKey, id };
+    if (jumpTo(id)) {
+      consumedRouteKeyRef.current = routeKey;
+      pendingRouteRef.current = null;
+    }
+  }, [historyPrefix, jumpTo, routeSearch]);
 
   const draftPlan = draft ? projectDraftPlan(draft) : null;
   const draftIndex =
@@ -443,15 +471,6 @@ function TranscriptRows({
   const afterDraft =
     draftIndex < 0 ? [] : visibleMessages.slice(draftIndex);
   const lastUserId = messages.findLast((message) => message.role === "user")?.id;
-  const revisionUser = revisionDisclosure
-    ? messages.findLast((message) => message.role === "user")
-    : undefined;
-  const revisionAssistantId = revisionUser
-    ? messages.find(
-        (message) =>
-          message.role === "assistant" && message.seq > revisionUser.seq
-      )?.id
-    : undefined;
   const renderMessage = (
     message: (typeof messages)[number]
   ) => {
@@ -482,6 +501,11 @@ function TranscriptRows({
               ? () => setEditingMessageId(message.id)
               : undefined
           }
+          editDisabledReason={
+            message.id === lastUserId && revisionUnavailableReason
+              ? t(`chatRevision.unavailable.${revisionUnavailableReason}`)
+              : undefined
+          }
           onOpenImage={enableSidePanel ? openImage : undefined}
         />
       );
@@ -504,14 +528,7 @@ function TranscriptRows({
         subagents={subagentsByMessage.get(message.id) ?? EMPTY_SUBAGENTS}
       />
     );
-    return message.id === revisionAssistantId ? (
-      <div className="contents" key={message.id}>
-        <RevisionDisclosure memoryEnabled={memoryEnabled} />
-        {row}
-      </div>
-    ) : (
-      <div className="contents" key={message.id}>{row}</div>
-    );
+    return <div className="contents" key={message.id}>{row}</div>;
   };
 
   return (
@@ -523,6 +540,7 @@ function TranscriptRows({
         >
           <TranscriptFind
             historyPrefix={historyPrefix}
+            historyIndexLoader={historyIndexLoader}
             jumpTo={jumpTo}
             messages={messages}
             surfaceVisible={surfaceVisible}
@@ -541,20 +559,25 @@ function TranscriptRows({
           )}
           {historyPrefix && (
             <section className="space-y-5" aria-label={t("history.importedHistoryLabel")}>
-              <ForeignHistoryTranscriptRows blocks={historyPrefix.blocks} />
+              <ForeignHistoryTranscriptRows
+                blocks={historyPrefix.blocks}
+                contentGenerationKey={historyPrefix.source.contentGenerationKey}
+                expandedPlanKey={expandedPlanId}
+                onTogglePlan={enableSidePanel ? onToggleForeignPlan : undefined}
+              />
+              {historyPrefixFooter}
               <div className="flex items-center gap-3 py-2 text-muted-foreground text-xs" role="separator">
                 <span className="h-px flex-1 bg-border" />
-                <span>{historyPrefix.divergence
-                  ? t("history.divergedDivider")
-                  : t("history.importedDivider")}</span>
+                <span>{historyPrefix.quality.sourceStatus === "missing"
+                  ? t("history.sourceMissingDivider")
+                  : historyPrefix.quality.sourceStatus === "changed"
+                    ? t("history.divergedDivider")
+                    : t("history.importedDivider")}</span>
                 <span className="h-px flex-1 bg-border" />
               </div>
             </section>
           )}
           {beforeDraft.map(renderMessage)}
-          {draft && revisionDisclosure && !revisionAssistantId && (
-            <RevisionDisclosure memoryEnabled={memoryEnabled} />
-          )}
           {draft && (
             <ChatTurnDraft
               chatId={chatId}
@@ -617,7 +640,14 @@ function TranscriptRows({
             </span>
           )}
         </div>
-        {showOutline && <ChatOutline messages={messages} onJump={jumpTo} />}
+        {showOutline && (
+          <ChatOutline
+            historyBlocks={historyPrefix?.blocks}
+            historyContentGenerationKey={historyPrefix?.source.contentGenerationKey}
+            messages={messages}
+            onJump={jumpTo}
+          />
+        )}
         <ConversationScrollButton />
       </ChartConversationBoundary>
   );
@@ -629,8 +659,11 @@ export const ChatTranscript = memo(function ChatTranscript(props: {
   expandedPlanId: string | null;
   onClosePlan: () => void;
   showOutline: boolean;
-  historyPrefix?: HistoryAdoptionPrefix | null;
-  memoryEnabled?: boolean;
+  historyPrefix?: HistoryPrefixProjection | null;
+  historyPrefixFooter?: ReactNode;
+  historyIndexLoader?: (signal: AbortSignal) => Promise<HistoryPrefixProjection>;
+  onHistoryJumpMiss?: (id: string) => Promise<void>;
+  onToggleForeignPlan?: (plan: { anchorId: string; content: string }) => void;
   routeSearch?: string;
   surfaceVisible?: boolean;
 }) {

@@ -22,7 +22,7 @@ See the [features guide](../features/README.md) for the product model and its fo
 ## Requirements
 
 - macOS
-- Node.js 20.19 or newer (Node.js 22.12 or newer recommended)
+- Node.js 22.12 or newer
 - pnpm 11 or newer
 - At least one supported CLI:
   - Codex CLI 0.145.0 or newer
@@ -55,6 +55,8 @@ pnpm typecheck   # Validate TypeScript
 pnpm build       # Build the Electron application
 pnpm dist        # Build a local macOS DMG
 ```
+
+The local DMG is a development artifact. The first formal, signed GitHub Release has not been published yet.
 
 On first launch, choose a Chat Homes directory and let Bottega detect the supported CLIs. Once the workspace and at least one backend are ready, create a task and select its Agent before sending the first message.
 

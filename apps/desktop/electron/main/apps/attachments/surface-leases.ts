@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AppStore, ProjectStore, AppGrantAuthority and shared surface DTO
- * [OUTPUT]: Provides AppAttachmentSurfaceLeaseRegistry; The same drift determination is used to describe the area adapter by the conversation/incarnation/generation/digest/lifecycle/grant, and to describe the area adapter
- * [POS]: The main-only UI capability registry of apps/attachments; slot/grant not equal to surface, generation promote/revoke
+ * [INPUT]: Depends on AppStore, ProjectStore, AppGrantAuthority ordinary/Studio projections, the canonical effective-workspace resolver, trusted renderer residence, and shared surface DTOs
+ * [OUTPUT]: Provides AppAttachmentSurfaceLeaseRegistry with exact chat-tab/Studio authorization, renderer ownership, idempotent foreign-cleanup rejection, drift revalidation, bounded tombstones, and row-mutation admission
+ * [POS]: Main-only UI capability registry for apps/attachments; a slot or grant never substitutes for a live surface lease
  */
 
 import { randomUUID } from "node:crypto";
@@ -13,18 +13,33 @@ import type { BaseMutationOperation } from "../../../../shared/bases-ipc";
 import type { ProjectStore } from "../../projects/project-store";
 import type { AppStore } from "../app-store";
 import type { AppGrantAuthority } from "./grant-authority";
+import type { TrustedRendererContext } from "../../window/surfaces/trusted-renderer-context";
+import { surfaceWindowController } from "../../window/surfaces/surface-window-controller";
+import type { EffectiveWorkspaceResolver } from "../../workspace-resolver";
 
 /* 这个 registry 只需要「这条 conversation 对这个 App 的有效 grant」与「App 的
    Base Project 是谁」两件事。把依赖收窄成端口而不是整个 Store：边界显式，
    fence 的每一条漂移也才能被单独驱动。 */
-export type SurfaceGrantSource = Pick<AppGrantAuthority, "effectiveGrant">;
+export type SurfaceGrantSource = Pick<
+  AppGrantAuthority,
+  "effectiveGrant" | "studioSurfaceGrant"
+>;
 export type SurfaceProjectSource = Pick<ProjectStore, "findByAppId">;
 
 export class AppAttachmentSurfaceLeaseRegistry {
   private readonly leases = new Map<string, {
     surface: AppAttachmentSurface;
     grantRevisionKey: string;
+    renderer: Readonly<{
+      windowId: string;
+      webContentsId: number;
+      rendererIncarnation: string;
+    }> | null;
   }>();
+  private readonly tombstones = new Map<string, number>();
+  private resolveEffectiveWorkspace: EffectiveWorkspaceResolver | null = null;
+  private static readonly TOMBSTONE_TTL_MS = 15 * 60_000;
+  private static readonly TOMBSTONE_LIMIT = 2_048;
 
   constructor(
     private readonly apps: AppStore,
@@ -32,11 +47,18 @@ export class AppAttachmentSurfaceLeaseRegistry {
     private readonly grants: SurfaceGrantSource
   ) {}
 
-  async acquire(input: AppSurfaceAcquireInput) {
-    const effective = await this.grants.effectiveGrant(
-      input.conversationId,
-      input.appId
-    );
+  configureWorkspaceAuthority(resolve: EffectiveWorkspaceResolver) {
+    if (this.resolveEffectiveWorkspace) {
+      throw new Error("App surface workspace authority 已配置");
+    }
+    this.resolveEffectiveWorkspace = resolve;
+  }
+
+  async acquire(
+    input: AppSurfaceAcquireInput,
+    context?: TrustedRendererContext
+  ) {
+    const effective = await this.surfaceGrant(input);
     if (
       !effective ||
       effective.snapshot.conversationIncarnationId !==
@@ -58,6 +80,10 @@ export class AppAttachmentSurfaceLeaseRegistry {
     ) {
       throw statusError(409, "App generation 当前不可签发 surface");
     }
+    const workspaceAuthorityIdentity = this.workspaceAuthority(
+      input.conversationId,
+      409
+    );
     const ownerKey = app.domainIdentity.kind === "base" &&
       app.domainIdentity.domain.kind === "ordinary"
       ? this.ownerKey(input.appId)
@@ -67,9 +93,11 @@ export class AppAttachmentSurfaceLeaseRegistry {
       conversationId: input.conversationId,
       conversationIncarnationId: input.conversationIncarnationId,
       appId: input.appId,
+      mode: input.mode,
       generationId: generation.generationId,
       contentDigest: generation.contentDigest,
       lifecycleRevision: app.lifecycleRevision,
+      workspaceAuthorityIdentity,
       domainIdentity: structuredClone(app.domainIdentity),
       dataGrant: structuredClone(effective.grant.data ?? null),
       ownerKey,
@@ -77,12 +105,45 @@ export class AppAttachmentSurfaceLeaseRegistry {
     this.leases.set(surface.surfaceLeaseId, {
       surface,
       grantRevisionKey: revisionKey(effective.snapshot),
+      renderer: context
+        ? {
+            windowId: context.windowId,
+            webContentsId: context.webContentsId,
+            rendererIncarnation: context.rendererIncarnation,
+          }
+        : null,
     });
     return structuredClone(surface);
   }
 
   release(surfaceLeaseId: string) {
-    this.leases.delete(surfaceLeaseId);
+    if (this.leases.delete(surfaceLeaseId)) this.rememberGone(surfaceLeaseId);
+  }
+
+  releaseFromRenderer(
+    surfaceLeaseId: string,
+    context: TrustedRendererContext
+  ) {
+    const stored = this.leases.get(surfaceLeaseId);
+    if (!stored || !this.rendererMatches(stored.renderer, context)) return false;
+    this.release(surfaceLeaseId);
+    return true;
+  }
+
+  rendererSurfaceForRelease(
+    surfaceLeaseId: string,
+    context: TrustedRendererContext
+  ) {
+    const stored = this.leases.get(surfaceLeaseId);
+    return stored && this.rendererMatches(stored.renderer, context)
+      ? structuredClone(stored.surface)
+      : null;
+  }
+
+  revokeWindow(windowId: string) {
+    for (const [leaseId, stored] of this.leases) {
+      if (stored.renderer?.windowId === windowId) this.release(leaseId);
+    }
   }
 
   /** 逐请求复核入口；UI 与 mutation 共用同一条 generation/grant 漂移判据。 */
@@ -92,7 +153,10 @@ export class AppAttachmentSurfaceLeaseRegistry {
 
   revokeApp(appId: string) {
     for (const [leaseId, lease] of this.leases) {
-      if (lease.surface.appId === appId) this.leases.delete(leaseId);
+      if (lease.surface.appId === appId) {
+        this.leases.delete(leaseId);
+        this.rememberGone(leaseId);
+      }
     }
   }
 
@@ -126,16 +190,46 @@ export class AppAttachmentSurfaceLeaseRegistry {
 
   private async requireLive(surfaceLeaseId: string) {
     const stored = this.leases.get(surfaceLeaseId);
-    if (!stored) throw statusError(403, "App surface lease 无效");
+    if (!stored) {
+      this.pruneTombstones();
+      throw statusError(
+        this.tombstones.has(surfaceLeaseId) ? 410 : 401,
+        this.tombstones.has(surfaceLeaseId)
+          ? "App surface lease 已撤销"
+          : "App surface lease 无效"
+      );
+    }
     const lease = stored.surface;
+    if (stored.renderer) {
+      try {
+        const residence = {
+          windowId: stored.renderer.windowId,
+          conversationId: lease.conversationId,
+          conversationIncarnationId: lease.conversationIncarnationId,
+        };
+        if (lease.mode === "studio") {
+          surfaceWindowController.assertSurfaceResidence({
+            ...residence,
+            appId: lease.appId,
+          });
+        } else {
+          surfaceWindowController.assertConversationSurfaceResidence(residence);
+        }
+      } catch {
+        this.leases.delete(surfaceLeaseId);
+        this.rememberGone(surfaceLeaseId);
+        throw statusError(410, "App surface lease 已因 surface residence 变化失效");
+      }
+    }
     const app = this.apps.get(lease.appId);
     const active = app?.generationBinding.active;
     const generation = app?.generations.find(
       (item) => item.generationId === active?.generationId
     );
-    const effective = await this.grants.effectiveGrant(
+    const effective = await this.surfaceGrant(lease);
+    const workspaceAuthorityIdentity = this.workspaceAuthority(
       lease.conversationId,
-      lease.appId
+      410
     );
     if (
       !app ||
@@ -146,12 +240,73 @@ export class AppAttachmentSurfaceLeaseRegistry {
       effective?.snapshot.conversationIncarnationId !==
         lease.conversationIncarnationId ||
       !effective ||
-      revisionKey(effective.snapshot) !== stored.grantRevisionKey
+      revisionKey(effective.snapshot) !== stored.grantRevisionKey ||
+      workspaceAuthorityIdentity !== lease.workspaceAuthorityIdentity
     ) {
       this.leases.delete(surfaceLeaseId);
-      throw statusError(409, "App surface lease 已因 grant/incarnation/generation 变化失效");
+      this.rememberGone(surfaceLeaseId);
+      throw statusError(410, "App surface lease 已因 grant/incarnation/generation 变化失效");
     }
     return structuredClone(lease);
+  }
+
+  private rememberGone(surfaceLeaseId: string) {
+    this.pruneTombstones();
+    this.tombstones.set(
+      surfaceLeaseId,
+      Date.now() + AppAttachmentSurfaceLeaseRegistry.TOMBSTONE_TTL_MS
+    );
+    while (
+      this.tombstones.size >
+      AppAttachmentSurfaceLeaseRegistry.TOMBSTONE_LIMIT
+    ) {
+      const oldest = this.tombstones.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.tombstones.delete(oldest);
+    }
+  }
+
+  private rendererMatches(
+    renderer: Readonly<{
+      windowId: string;
+      webContentsId: number;
+      rendererIncarnation: string;
+    }> | null,
+    context: TrustedRendererContext
+  ) {
+    return Boolean(
+      renderer &&
+      renderer.windowId === context.windowId &&
+      renderer.webContentsId === context.webContentsId &&
+      renderer.rendererIncarnation === context.rendererIncarnation
+    );
+  }
+
+  private pruneTombstones(now = Date.now()) {
+    for (const [leaseId, expiresAt] of this.tombstones) {
+      if (expiresAt <= now) this.tombstones.delete(leaseId);
+    }
+  }
+
+  private workspaceAuthority(conversationId: string, failureStatus: 409 | 410) {
+    const resolver = this.resolveEffectiveWorkspace;
+    if (!resolver) {
+      throw statusError(503, "App surface workspace authority 尚未配置");
+    }
+    const workspace = resolver({ kind: "conversation", conversationId });
+    if (workspace.kind !== "ready") {
+      throw statusError(failureStatus, workspace.message);
+    }
+    return workspace.authorityIdentity;
+  }
+
+  private surfaceGrant(input: Pick<
+    AppSurfaceAcquireInput,
+    "mode" | "conversationId" | "appId"
+  >) {
+    return input.mode === "studio"
+      ? this.grants.studioSurfaceGrant(input.conversationId, input.appId)
+      : this.grants.effectiveGrant(input.conversationId, input.appId);
   }
 
   private ownerKey(appId: string) {

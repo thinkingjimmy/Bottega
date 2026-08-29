@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared usage-calendar and usage-ipc
- * [OUTPUT]: Provides four barrels of event/file types, barrel caps, Codex requests, absorption weights, cost return dates, combinations with stats pure functions
+ * [OUTPUT]: Provides normalized usage event/file types, bucket limits, Codex request roots, merge precedence, pricing cutoffs, and pure aggregation functions
  * [POS]: The use module's accuracy is the nucleus of the cluster; Parser only the facts, scope, dispute settlement, date and cost calibre are completed at this time
  * [NOTE]: mergeKey is a constant-belt source advantage, cross-source never collides with a combine MergeResults are therefore an exact equivalent rather than approximate
  */
@@ -158,10 +158,6 @@ export function resolveRootScopes(
     roots.set(startPath, resolved);
   }
   return { roots, degraded };
-}
-
-export function resolveRoots(metas: Map<string, CodexMeta>) {
-  return resolveRootScopes(metas).roots;
 }
 
 function mergeKey(

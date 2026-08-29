@@ -66,7 +66,7 @@ function parseEventLine(
  *     provider/endpoint 配置无法运行），只兑现「不落回写、code-home
  *     skills 不可见」，用户 config/hooks 照常生效；
  *   - outputSchema: 只能靠 prompt 约定 + 尽力 JSON.parse。
- * 见 dev/multi-backend-deferred-boundaries.md 与 dev/agent-cli-docs.md。
+ * 见 DEV/agents/deferred/multi-backend.md 与 DEV/agents/docs/agent-cli-docs.md。
  * ============================================================ */
 export async function kimiHeadlessSpec(
   job: HeadlessJob,
@@ -82,7 +82,22 @@ export async function kimiHeadlessSpec(
     /* 一次性根压轴：ephemeral 是诚实性承诺，任何授权 env 都不得把它改回
        持久根。cache 同步隔离，SEA native cache 不落用户目录。 */
     ...(home
-      ? { KIMI_CODE_HOME: home.path, KIMI_CODE_CACHE_DIR: home.cachePath }
+      ? {
+          KIMI_CODE_HOME: home.path,
+          KIMI_CODE_CACHE_DIR: home.cachePath,
+          /* 上游官方 opt-out（`resolveLockTarget` 首行即
+             `if (process.env["KIMI_DISABLE_OAUTH_LOCK"] === "1") return void 0`）。
+             跑 prompt 前 kimi 会在 `<configDir>/oauth/<provider>` 抢一把跨进程
+             刷新锁；而 `oauth` 正是 SHARED_STATE_ENTRIES 里按 symlink 共享、
+             源根声明为**只读**的一项 ⇒ 围栏内必得 EPERM 且致命。
+             关掉锁 = 凭据目录维持只读，与 ephemeral 的「不落回写」同向；
+             代价是失去跨进程刷新互斥，而 ephemeral headless 本就是一次性
+             单进程、不共享刷新窗口，这个代价不存在。
+             **非版本行为**：0.34–0.39 该开关逐字节同源，不是为 0.39 打的补丁。
+             只在 ephemeral 注入：交互 turn 走用户真实 HOME，锁合法且无害。
+             取证见真值账 §一 kimi oauth 锁行。 */
+          KIMI_DISABLE_OAUTH_LOCK: "1",
+        }
       : {}),
   };
   return {

@@ -12,7 +12,6 @@ import { APP_SKILL_PLACEHOLDER } from "./templates";
 
 type SkillStatusDependencies = {
   store: AppStore;
-  publish(record: AppRecord): void;
   invalidate?(): void;
 };
 
@@ -85,11 +84,10 @@ async function updateState(
   state: "done" | "failed",
   dependencies: SkillStatusDependencies
 ) {
-  const saved = await dependencies.store.update(appId, (record) => ({
+  await dependencies.store.update(appId, (record) => ({
     ...record,
     skillStatus: record.skillStatus
       ? { ...record.skillStatus, state }
       : null,
   }));
-  dependencies.publish(saved);
 }

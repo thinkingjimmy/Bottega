@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on package/manual subject, protocol level evidence digest and authoritative inventory
- * [OUTPUT]: Provides ComponentHealthAuthority: single-mode observation, index backoff, server-by-server isolation and package/manual authoritative UI projection
+ * [INPUT]: Depends on package/manual subjects with neutral resource scope, protocol-level evidence digests, and authoritative inventory
+ * [OUTPUT]: Provides ComponentHealthAuthority single-writer observation, indexed backoff, exact-Project cleanup, server-by-server isolation, and authoritative manual UI projection
  * [POS]: The MCP runtime-health single-writer of extensions; The spawn event is not in the API and therefore cannot be disguised as observed-success
  */
 
@@ -13,7 +13,6 @@ import type {
 import type {
   ManualMcpServerView,
   McpServerHealthView,
-  PackageMcpServerView,
 } from "../../../shared/mcp-servers-ipc";
 import { digestCanonical } from "./registry-store";
 
@@ -77,12 +76,26 @@ export class ComponentHealthAuthority {
       .map((record) => structuredClone(record));
   }
 
+  clearProject(projectId: string) {
+    let removed = 0;
+    for (const [key, record] of this.records) {
+      if (
+        record.subject.kind === "manual" &&
+        record.subject.scope.kind === "project" &&
+        record.subject.scope.projectId === projectId
+      ) {
+        this.records.delete(key);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
   inventory(snapshot: ExtensionInventorySnapshot): ExtensionInventorySnapshot {
     const health = this.snapshot().filter((record) => record.subject.kind === "package");
+    const { digest: _digest, ...inventory } = snapshot;
     const payload = {
-      revision: snapshot.revision,
-      packages: snapshot.packages,
-      components: snapshot.components,
+      ...inventory,
       health,
     };
     return { ...structuredClone(payload), digest: digestCanonical(payload) };
@@ -111,54 +124,6 @@ export function subjectKey(subject: McpComponentHealthSubject) {
   return digestCanonical(subject);
 }
 
-export function projectPackageMcpServerViews(
-  inventory: ExtensionInventorySnapshot
-): PackageMcpServerView[] {
-  return inventory.components.flatMap((component) => {
-    if (component.kind !== "mcp-server" || !component.serverId) return [];
-    if (
-      component.transport !== "stdio" &&
-      component.transport !== "streamable-http" &&
-      component.transport !== "sse"
-    ) return [];
-    const owner = inventory.packages.find((item) =>
-      item.generations.some((generation) =>
-        generation.packageGenerationId === component.packageGenerationRef.packageGenerationId &&
-        generation.recordDigest === component.packageGenerationRef.recordDigest
-      )
-    );
-    if (!owner) return [];
-    const enabled = owner.administrativeState === "active" &&
-      owner.globalCatalogEnabled &&
-      owner.enabledComponentIdentities.includes(component.componentIdentity);
-    const eligibility = owner.administrativeState !== "active" ||
-      !owner.globalCatalogEnabled
-      ? "package-disabled" as const
-      : !owner.enabledComponentIdentities.includes(component.componentIdentity)
-        ? "component-disabled" as const
-        : "transport-unsupported" as const;
-    const observations = (inventory.health ?? []).filter((record) =>
-      record.subject.kind === "package" &&
-      record.subject.componentId === component.componentId &&
-      record.subject.serverId === component.serverId &&
-      record.subject.generationRef.packageGenerationId ===
-        component.packageGenerationRef.packageGenerationId &&
-      record.subject.generationRef.recordDigest === component.packageGenerationRef.recordDigest
-    );
-    return [{
-      serverId: `pkg:${component.packageGenerationRef.packageGenerationId}:${component.serverId}` as const,
-      source: "package" as const,
-      displayName: `${owner.installIdentity} / ${component.serverId}`,
-      enabled,
-      eligibility,
-      configDigest: component.declaredConfigDigest,
-      health: aggregateHealth(observations),
-      transport: component.transport,
-      target: "sealed mcp.json" as const,
-    }];
-  });
-}
-
 export function projectManualMcpServerViews(
   servers: readonly ManualMcpServerView[],
   records: readonly McpComponentHealthRecord[]
@@ -168,10 +133,20 @@ export function projectManualMcpServerViews(
     health: aggregateHealth(records.filter((record) =>
       record.subject.kind === "manual" &&
       record.subject.serverId === server.serverId &&
+      sameScope(record.subject.scope, server.owner) &&
       record.subject.configDigest === server.configDigest &&
       record.subject.transport === server.transport
     )),
   }));
+}
+
+function sameScope(
+  left: ManualMcpServerView["owner"],
+  right: ManualMcpServerView["owner"]
+) {
+  return left.kind === right.kind &&
+    (left.kind === "global" ||
+      (right.kind === "project" && left.projectId === right.projectId));
 }
 
 function aggregateHealth(

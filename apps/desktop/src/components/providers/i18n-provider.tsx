@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, react-i18next, shared i18n runtime/catalogs/locale, renderer locale
- * [OUTPUT]: Provides AppI18nProvider with useAppTranslation; When the default English, settings or system language changes outside the Provider, upload the directory and update React with html lang immediately
- * [POS]: The language lifecycle of the renderer is the sole owner, first establishing an independent rendering English baseline, then taking over from the preloaded headset with the permanent settings
+ * [INPUT]: Depends on React, react-i18next, shared i18n runtime/catalogs/locale, renderer locale, and an optional main-window Settings subscription
+ * [OUTPUT]: Provides AppI18nProvider/useAppTranslation with preload-first locale and opt-in durable Settings synchronization
+ * [POS]: Renderer language lifecycle owner; App windows keep their preload locale without acquiring the global Settings envelope
  */
 
 import {
@@ -33,9 +33,11 @@ const preferredLanguages = () => [...(navigator.languages ?? [navigator.language
 export function AppI18nProvider({
   children,
   initialLanguage,
+  syncSettings = true,
 }: {
   children: ReactNode;
   initialLanguage: AppLocale;
+  syncSettings?: boolean;
 }) {
   const instance = useMemo(
     () => createAppI18n(initialLanguage),
@@ -51,8 +53,8 @@ export function AppI18nProvider({
     : initialLanguage;
 
   useEffect(() => {
-    settingsStore.ensureLoaded();
-  }, []);
+    if (syncSettings) settingsStore.ensureLoaded();
+  }, [syncSettings]);
 
   useEffect(() => {
     const update = () => setSystemLanguages(preferredLanguages());

@@ -1,19 +1,22 @@
 /**
- * [INPUT]: Depends on Extension integration with Registry, Codex Skills service, UnifiedSkillsService and the obvious userData/home/env/folder chooser
- * [OUTPUT]: Provides createUnifiedSkillsService, only synchronously initializing durable libraries/saga; HOME candidate found to be executed by service after readiness
- * [POS]: The company is a leading provider of united Skills and stateless combined plants for startupsindex determines the order of resources, window only consumes service ready
+ * [INPUT]: Depends on initialized Extension integration, BackendRuntimeRegistry, SkillsCatalog, UnifiedSkillsService, and userData/home/env/folder chooser
+ * [OUTPUT]: Provides createUnifiedSkillsService with durable Library-first initialization, installed-runtime authority, and catalog invalidation wiring
+ * [POS]: Post-cutover startup composition for Unified Skills; it contains no Codex-native or projection bridge
  */
 
 import type { AppExtensionIntegration } from "../extensions/integration/app-extension-composition";
-import type { CodexSkillsService } from "../backends/codex/skills-service";
 import { UnifiedSkillsService } from "../skills-management/service";
+import type { SkillsCatalog } from "../skills-catalog";
+import { backendRuntimeRegistry } from "../backends";
+import type { LibraryCustodyProbe } from "../skills-management/library-store";
 
 export async function createUnifiedSkillsService(input: Readonly<{
   userData: string;
   userHome: string;
   env: NodeJS.ProcessEnv;
   extensions: AppExtensionIntegration;
-  codex: CodexSkillsService;
+  catalog: SkillsCatalog;
+  custodyReferenced?: LibraryCustodyProbe;
   chooseLocalFolder(): Promise<string | null>;
 }>) {
   const service = new UnifiedSkillsService({
@@ -21,7 +24,9 @@ export async function createUnifiedSkillsService(input: Readonly<{
     userHome: input.userHome,
     env: input.env,
     registry: input.extensions.registry,
-    codex: input.codex,
+    runtimeRegistry: backendRuntimeRegistry,
+    invalidateCatalog: () => input.catalog.invalidate(),
+    custodyReferenced: input.custodyReferenced,
     chooseLocalFolder: input.chooseLocalFolder,
   });
   await service.initialize();

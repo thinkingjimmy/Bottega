@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow, Shared Bases IPC/schema, BasesService Open business front and one-time renderer authority Feedback
- * [OUTPUT]: Provides registerBasesRendererIpc, completes the main window channel registration, input wire, fail branch structured error and migration event release
- * [POS]: The IPC boundary of the renderer of bases/service; Only parse the wire and commission BasesService, not implement Base business rules
+ * [INPUT]: Depends on Electron BrowserWindow, shared Bases schemas, TrustedRendererContext, SurfaceWindowController, BasesService, and one-time renderer authority
+ * [OUTPUT]: Provides registerBasesRendererIpc with per-channel roles, App-owned ownerKey/chat-residence fences, wire parsing, and structured mutation errors
+ * [POS]: Bases renderer security boundary; global management remains main-only while App windows see only their resident Studio/use-chat projection
  */
 
 import type { BrowserWindow } from "electron";
@@ -39,6 +39,8 @@ import {
   readAttachmentThumbnailResultSchema,
 } from "../../../../shared/bases/gallery-attachments";
 import { rendererIpc } from "../../ipc-registrar";
+import type { TrustedRendererContext } from "../../window/surfaces/trusted-renderer-context";
+import { surfaceWindowController } from "../../window/surfaces/surface-window-controller";
 import { errorMessage } from "../../errors";
 import type { BaseCommitAuthority } from "../base-commit-authority";
 import type { BasesService } from "../bases-service";
@@ -57,34 +59,68 @@ export function registerBasesRendererIpc(
   service: BasesService,
   authority: RendererIpcAuthority
 ) {
-  /* 读面对投影 sink 开放；写面仍必须通过 authority 与 principal。 */
   const readOwnerKey = (input: unknown) =>
     baseGetInputSchema.parse(input).ownerKey;
-  const mutationOwnerKey = (input: unknown) =>
-    service.assertRendererOwnerKey(readOwnerKey(input));
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的 Bases 请求")
-    .handle(BASES_CHANNEL.get, (input) => service.get(readOwnerKey(input)))
-    .handle(BASES_CHANNEL.ensure, (input) => service.ensure(readOwnerKey(input)))
-    .handle(BASES_CHANNEL.discardCorrupt, (input) =>
-      service.discardCorrupt(mutationOwnerKey(input))
+  const appId = (context: TrustedRendererContext) => {
+    if (context.role !== "app-window") return null;
+    if (!context.appId) throw new Error("App window identity is missing");
+    surfaceWindowController.assertAppStudioMutation(context, context.appId);
+    return context.appId;
+  };
+  const ownerKey = (context: TrustedRendererContext, value: string) => {
+    const currentAppId = appId(context);
+    return currentAppId
+      ? service.assertAppRendererOwnerKey(value, currentAppId)
+      : service.assertRendererOwnerKey(value);
+  };
+  const visibleBases = <T extends { ownerKey: string }>(
+    context: TrustedRendererContext,
+    bases: T[]
+  ) => {
+    const currentAppId = appId(context);
+    const visible = currentAppId
+      ? bases.filter((base) => base.ownerKey === service.appRendererOwnerKey(currentAppId))
+      : bases;
+    return service.navigationBases(visible);
+  };
+  const assertChat = (
+    context: TrustedRendererContext,
+    input: { chatId: string; incarnationId: string }
+  ) => surfaceWindowController.assertConversationSurfaceResidence({
+    windowId: context.windowId,
+    conversationId: input.chatId,
+    conversationIncarnationId: input.incarnationId,
+  });
+  const ipc = rendererIpc(window, rendererUrl, "Rejected unauthorized Bases request");
+  ipc
+    .roles("main", "app-window")
+    .handleWithContext(BASES_CHANNEL.get, (context, input) =>
+      service.get(ownerKey(context, readOwnerKey(input))))
+    .handleWithContext(BASES_CHANNEL.ensure, (context, input) =>
+      service.ensure(ownerKey(context, readOwnerKey(input))))
+    .handleWithContext(BASES_CHANNEL.discardCorrupt, (context, input) =>
+      service.discardCorrupt(ownerKey(context, readOwnerKey(input)))
     )
-    .handle(BASES_CHANNEL.listPinned, () => ({
-      bases: service.navigationBases(service.store.listPinned()),
+    .handleWithContext(BASES_CHANNEL.listPinned, (context) => ({
+      bases: visibleBases(context, service.store.listPinned()),
       ...(service.store.getWarning()
         ? { warning: service.store.getWarning() }
         : {}),
     }))
-    .handle(BASES_CHANNEL.listProject, () => ({
-      bases: service.navigationBases(service.store.listProjectBases()),
+    .handleWithContext(BASES_CHANNEL.listProject, (context) => ({
+      bases: visibleBases(context, service.store.listProjectBases()),
       ...(service.store.getWarning()
         ? { warning: service.store.getWarning() }
         : {}),
     }))
-    .handle(BASES_CHANNEL.authorizeMutation, (input) =>
-      authority.authorize(baseAuthorizeMutationInputSchema.parse(input))
-    )
-    .handle(BASES_CHANNEL.updateMeta, async (input) => {
+    .handleWithContext(BASES_CHANNEL.authorizeMutation, (context, input) => {
+      const parsed = baseAuthorizeMutationInputSchema.parse(input);
+      ownerKey(context, parsed.ownerKey);
+      return authority.authorize(parsed);
+    })
+    .handleWithContext(BASES_CHANNEL.updateMeta, async (context, input) => {
       const { authorityLeaseId, ...mutation } = baseUpdateMetaInputSchema.parse(input);
+      ownerKey(context, mutation.ownerKey);
       try {
         const snapshot = await service.updateMeta({
           ...mutation,
@@ -95,22 +131,25 @@ export function registerBasesRendererIpc(
         return snapshotErrorResult(cause);
       }
     })
-    .handle(BASES_CHANNEL.insertRows, (input) => {
+    .handleWithContext(BASES_CHANNEL.insertRows, (context, input) => {
       const { authorityLeaseId, ...mutation } = baseInsertRowsInputSchema.parse(input);
+      ownerKey(context, mutation.ownerKey);
       return service.insertRows({
         ...mutation,
         authority: authority.consume(authorityLeaseId),
       });
     })
-    .handle(BASES_CHANNEL.patchRow, (input) => {
+    .handleWithContext(BASES_CHANNEL.patchRow, (context, input) => {
       const { authorityLeaseId, ...mutation } = basePatchRowInputSchema.parse(input);
+      ownerKey(context, mutation.ownerKey);
       return service.patchRow({
         ...mutation,
         authority: authority.consume(authorityLeaseId),
       });
     })
-    .handle(BASES_CHANNEL.deleteRows, async (input) => {
+    .handleWithContext(BASES_CHANNEL.deleteRows, async (context, input) => {
       const { authorityLeaseId, ...mutation } = baseDeleteRowsInputSchema.parse(input);
+      ownerKey(context, mutation.ownerKey);
       try {
         const snapshot = await service.deleteRows({
           ...mutation,
@@ -121,14 +160,17 @@ export function registerBasesRendererIpc(
         return snapshotErrorResult(cause);
       }
     })
-    .handle(BASES_CHANNEL.exportCsv, (input) =>
-      service.exportForRenderer(baseExportCsvInputSchema.parse(input).ownerKey)
-    )
-    .handle(BASES_CHANNEL.exportJson, (input) =>
-      service.exportJsonForRenderer(baseExportJsonInputSchema.parse(input).ownerKey)
-    )
-    .handle(BASES_CHANNEL.importJson, async (input) => {
+    .handleWithContext(BASES_CHANNEL.exportCsv, (context, input) => {
+      const parsed = baseExportCsvInputSchema.parse(input);
+      return service.exportForRenderer(ownerKey(context, parsed.ownerKey));
+    })
+    .handleWithContext(BASES_CHANNEL.exportJson, (context, input) => {
+      const parsed = baseExportJsonInputSchema.parse(input);
+      return service.exportJsonForRenderer(ownerKey(context, parsed.ownerKey));
+    })
+    .handleWithContext(BASES_CHANNEL.importJson, async (context, input) => {
       const parsed = baseImportJsonInputSchema.parse(input);
+      ownerKey(context, parsed.ownerKey);
       try {
         const result = await service.importJsonForRenderer(
           parsed.ownerKey,
@@ -140,13 +182,13 @@ export function registerBasesRendererIpc(
         return importErrorResult(cause);
       }
     })
-    .handle(BASES_CHANNEL.exportXlsx, (input) =>
-      service.exportXlsxForRenderer(
-        baseExportXlsxInputSchema.parse(input).ownerKey
-      )
-    )
-    .handle(BASES_CHANNEL.importXlsx, async (input) => {
+    .handleWithContext(BASES_CHANNEL.exportXlsx, (context, input) => {
+      const parsed = baseExportXlsxInputSchema.parse(input);
+      return service.exportXlsxForRenderer(ownerKey(context, parsed.ownerKey));
+    })
+    .handleWithContext(BASES_CHANNEL.importXlsx, async (context, input) => {
       const parsed = baseImportXlsxInputSchema.parse(input);
+      ownerKey(context, parsed.ownerKey);
       try {
         const result = await service.importXlsxForRenderer(
           parsed.ownerKey,
@@ -158,39 +200,56 @@ export function registerBasesRendererIpc(
         return importErrorResult(cause);
       }
     })
-    .handle(BASES_CHANNEL.rowHistory, async (input) => {
+    .handleWithContext(BASES_CHANNEL.rowHistory, async (context, input) => {
       const parsed = baseRowHistoryInputSchema.parse(input);
+      ownerKey(context, parsed.ownerKey);
       return {
         entries: await service.rowHistory(parsed.ownerKey, parsed.rowId),
       };
     })
-    .handle(BASES_CHANNEL.putAttachment, async (input) =>
+    .handleWithContext(BASES_CHANNEL.putAttachment, async (context, input) => {
+      const parsed = putAttachmentRequestSchema.parse(input);
+      ownerKey(context, parsed.ownerKey);
+      return (
       putAttachmentResultSchema.parse(
-        await authority.putAttachment(putAttachmentRequestSchema.parse(input))
+        await authority.putAttachment(parsed)
       )
-    )
-    .handle(BASES_CHANNEL.readAttachment, async (input) =>
+      );
+    })
+    .handleWithContext(BASES_CHANNEL.readAttachment, async (context, input) => {
+      const parsed = readAttachmentInputSchema.parse(input);
+      assertChat(context, parsed);
+      return (
       readAttachmentResultSchema.parse(
-        await service.readAttachment(readAttachmentInputSchema.parse(input))
+        await service.readAttachment(parsed)
       )
-    )
-    .handle(BASES_CHANNEL.readAttachmentThumbnail, async (input) =>
+      );
+    })
+    .handleWithContext(BASES_CHANNEL.readAttachmentThumbnail, async (context, input) => {
+      const parsed = readAttachmentThumbnailInputSchema.parse(input);
+      assertChat(context, parsed);
+      return (
       readAttachmentThumbnailResultSchema.parse(
-        await service.readAttachmentThumbnail(
-          readAttachmentThumbnailInputSchema.parse(input)
-        )
+        await service.readAttachmentThumbnail(parsed)
       )
-    )
-    .handle(BASES_CHANNEL.listGalleryEntries, async (input) =>
+      );
+    })
+    .handleWithContext(BASES_CHANNEL.listGalleryEntries, async (context, input) => {
+      const parsed = listGalleryEntriesInputSchema.parse(input);
+      assertChat(context, parsed);
+      return (
       listGalleryEntriesResultSchema.parse(
-        await service.listGalleryEntries(listGalleryEntriesInputSchema.parse(input))
+        await service.listGalleryEntries(parsed)
       )
-    )
-    .handle(BASES_CHANNEL.resolveForSection, (input) =>
-      service.resolveForSection(
-        baseResolveForSectionInputSchema.parse(input).sectionId
-      )
-    )
+      );
+    })
+    .handleWithContext(BASES_CHANNEL.resolveForSection, (context, input) => {
+      const sectionId = baseResolveForSectionInputSchema.parse(input).sectionId;
+      surfaceWindowController.assertConversationMutation(context, sectionId);
+      return service.resolveForSection(sectionId);
+    });
+
+  ipc.roles("main")
     .handle(BASES_CHANNEL.promoteToProject, (input) =>
       authority.promote(basePromoteToProjectInputSchema.parse(input))
     );

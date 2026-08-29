@@ -177,7 +177,6 @@ export function ProjectImportDialog({ prepared, onComplete }: {
      扫描失败时 counts 是空数组，那是「不知道」而不是「没有」——绝不能把一次
      失败说成「这里没有历史」的结论。故 scanFailed 与 emptyFound 分开取词。 */
   const scanning = counts === null;
-  const scanFailed = counts !== null && counts.length === 0;
   const total = counts && counts.length > 0 ? counts.reduce((sum, item) => sum + item.count, 0) : 0;
   const foundAny = counts !== null && counts.length > 0 && total > 0;
   const emptyFound = counts !== null && counts.length > 0 && total === 0;

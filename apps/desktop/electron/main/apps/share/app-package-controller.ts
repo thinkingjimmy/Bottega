@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Apps package IPC, RepoProbe/main-owned PresetCatalog/SourceResolver/AppConfig/gh Detection, Base importer, ShareFlow and canonical AppRecord query port
- * [OUTPUT]: Provides AppPackageController; Concentrated warehouse/default probe, Base import retry/cancel, configure/README/share IPC, and configure the installation and import environment while running
+ * [INPUT]: Depends on Apps package IPC, RepoProbe/main-owned PresetCatalog/SourceResolver/AppConfig/gh Detection, Base importer, optional immutable factory flow, ShareFlow, and canonical AppRecord query port
+ * [OUTPUT]: Provides AppPackageController; concentrated repo/preset/factory probe, Base import retry/cancel, config/share IPC, README reads, and install environment
  * [POS]: The package app front for apps/share; AppsService only retains the general app lifecycle, and the details of the package distribution are not reversed
  */
 
@@ -26,7 +26,10 @@ import {
 } from "./app-config-store";
 import { detectGhStatus } from "./gh-detect";
 import { RepoProbeService } from "./repo-probe";
-import { PresetInstallService } from "./preset-install-service";
+import {
+  PresetInstallService,
+  type PresetFactoryFlow,
+} from "./preset-install-service";
 import { PresetSourceResolver } from "./preset-source";
 import type { ShareFlow } from "./share-flow";
 import type { AppExtensionIntegration } from "../../extensions/integration/app-extension-composition";
@@ -63,6 +66,10 @@ export class AppPackageController {
     if (this.importer || this.shareFlow) throw new Error("App package flows 已配置");
     this.importer = importer;
     this.shareFlow = shareFlow;
+  }
+
+  configureFactoryPreset(factory: PresetFactoryFlow) {
+    this.presetInstaller.configureFactory(factory);
   }
 
   configureExtensions(integration: AppExtensionIntegration) {
@@ -125,17 +132,12 @@ export class AppPackageController {
 
   register(ipc: RendererIpc, ports: ControllerPorts) {
     ipc
-      .handle(APPS_CHANNEL.readReadme, (rawId) => {
-        const appId = ports.assertAppId(rawId);
-        return this.readReadme(ports.requireRecord(appId));
-      })
       .handle(APPS_CHANNEL.probeRepo, (rawUrl) =>
         this.probes.probe(ports.normalizeRepo(String(rawUrl)).repoUrl)
       )
       .handle(APPS_CHANNEL.discardProbe, (rawPreflightId) =>
         this.probes.discard(String(rawPreflightId))
       )
-      .handle(APPS_CHANNEL.listPresets, () => this.presets.list())
       .handle(APPS_CHANNEL.probePreset, (rawPresetId) =>
         this.presetInstaller.probePreset(assertPresetId(rawPresetId))
       )

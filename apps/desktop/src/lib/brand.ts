@@ -13,7 +13,12 @@ export const PRODUCT_MARK_URL = new URL(
   import.meta.url
 ).href;
 
-export const PRODUCT_MARK_SIZE = { width: 1254, height: 1254 } as const;
+// 画布贴着墨迹裁，这是硬约束而非顺手为之：留白一旦烘焙进 PNG，它就成了每个
+// 消费点都看不见、却都要跟它较劲的偏移量——单图曾在 1254² 画布里只占
+// 817×880，于是 Settings › About 里 size-20 的盒子左缘与下方卡片对齐、可见
+// 徽标却右移 14px；min-h-20 说等高，眼睛看到的却是 56px。补偿改不动根因：
+// 换一次导出，所有补偿数就集体作废。留白是排版的职责，不是资产的。
+export const PRODUCT_MARK_SIZE = { width: 817, height: 880 } as const;
 
 export const PRODUCT_LOGO_URLS = {
   light: new URL("../assets/bottega-sidebar-logo.png", import.meta.url).href,

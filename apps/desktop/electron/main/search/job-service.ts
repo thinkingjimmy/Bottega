@@ -99,6 +99,7 @@ export class GlobalSearchService {
 
   register(window: BrowserWindow, rendererUrl: string) {
     rendererIpc(window, rendererUrl, "拒绝非主窗口的全局搜索请求")
+      .roles("main")
       .handle(SEARCH_JOB_CHANNEL.start, (raw) =>
         this.start(inputSchema.parse(raw).query)
       )

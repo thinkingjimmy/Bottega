@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, Agent backend identity and shared Bases schema/budget
- * [OUTPUT]: Provides built-in tool platform types, seven-domain budgets, Plan exclusion, cross-referencing, overtime, general id/query schema and annotations constants
+ * [OUTPUT]: Provides built-in tool platform types, nine-domain budgets, Plan exclusion, cross-referencing, timeouts, common id/query schemas, and annotation constants
  * [POS]: The building of public buildings without assembly tools; The domain spec is only down-dependent on this document and does not depend on index reverse
  */
 
@@ -8,7 +8,6 @@ import { z } from "zod";
 import type { AgentBackendId } from "../agent-ipc";
 import {
   BASE_COLUMN_LIMIT,
-  BASE_FILTER_NODE_LIMIT,
   BASE_WIRE_BYTE_LIMIT,
 } from "../bases-ipc";
 
@@ -22,7 +21,9 @@ export type BuiltinToolDomainSpec = {
     | "projects"
     | "search"
     | "browser"
-    | "apps";
+    | "design"
+    | "apps"
+    | "skills";
   rateLimit: number;
   rateWindowMs: number;
   logicalResultByteLimit: number;
@@ -65,12 +66,24 @@ export const BUILTIN_TOOL_DOMAINS = {
     rateWindowMs: 60_000,
     logicalResultByteLimit: 512 * 1024,
   },
+  design: {
+    id: "design",
+    rateLimit: 4,
+    rateWindowMs: 60_000,
+    logicalResultByteLimit: BASE_WIRE_BYTE_LIMIT,
+  },
   /* 自检是编辑循环里的低频动作：改一批文件跑一次，不是逐文件轮询。 */
   apps: {
     id: "apps",
     rateLimit: 10,
     rateWindowMs: 60_000,
     logicalResultByteLimit: 64 * 1024,
+  },
+  skills: {
+    id: "skills",
+    rateLimit: 16,
+    rateWindowMs: 60_000,
+    logicalResultByteLimit: 40 * 1024,
   },
 } as const satisfies Record<string, BuiltinToolDomainSpec>;
 
@@ -79,8 +92,8 @@ export const BUILTIN_WIRE_BYTE_LIMITS: Record<AgentBackendId, number> = {
   codex: BASE_WIRE_BYTE_LIMIT,
   claude: BASE_WIRE_BYTE_LIMIT,
   kimi: 80 * 1024,
-  /* OpenCode v1 的 builtinTools 恒为 "none"，这条预算是占位；
-     解锁（延后账本 L7）时须以真机截断线实测取代基准值。 */
+  /* OpenCode uses the isolated backend-config MCP overlay; retain the common
+     limit until its backend-specific truncation line has a narrower measurement. */
   opencode: BASE_WIRE_BYTE_LIMIT,
 };
 export const BUILTIN_TOOL_TIMEOUT_MS = 600_000;
@@ -129,6 +142,8 @@ export type BuiltinToolSpec = {
   manualTurnOnly?: true;
   /** 即便 annotations 为 read，也不能进入无外向副作用的 Plan 环境。 */
   planExcluded?: true;
+  /** Product infrastructure tool: absent from Settings and ambient policy; only an exact turn issuer may add it. */
+  exactIssued?: true;
   inputSchema: z.ZodObject;
   wireInputSchema?: z.ZodObject;
   annotations: ToolAnnotations;
@@ -176,4 +191,3 @@ export const baseQueryShape = (filter: z.ZodType) =>
     .strict();
 
 export const BUILTIN_WIRE_BYTE_LIMIT = BASE_WIRE_BYTE_LIMIT;
-export const BUILTIN_FILTER_NODE_LIMIT = BASE_FILTER_NODE_LIMIT;

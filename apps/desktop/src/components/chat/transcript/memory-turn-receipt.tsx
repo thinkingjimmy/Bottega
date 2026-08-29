@@ -1,10 +1,9 @@
 /**
  * [INPUT]: Depends on the assistant message on optional/versioned TurnContextReceipt
- * [OUTPUT]: Provides a rotating long-term memory fact badge with a single document projection in five languages; The government has been trying to stop the violence
- * [POS]: The request-bound Memory status filter for chat/transcript; Not reading the lastRecall, not deducting the absence receipt
+ * [OUTPUT]: Provides five-language request-bound Memory copy and an icon-free inline MemoryReceiptText status
+ * [POS]: The Memory status projection for the transcript message action bar; it never infers state from lastRecall or a missing receipt
  */
 
-import { BrainIcon } from "lucide-react";
 import type { TurnContextReceipt } from "../../../../shared/memory-ipc";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type { MemoryTranslate } from "@/lib/memory-view";
@@ -85,7 +84,7 @@ export function memoryReceiptCopy(
   return null;
 }
 
-export function MemoryTurnReceipt({ receipt }: { receipt?: TurnContextReceipt }) {
+export function MemoryReceiptText({ receipt }: { receipt?: TurnContextReceipt }) {
   const { t } = useAppTranslation();
   const copy = memoryReceiptCopy(
     receipt,
@@ -93,16 +92,13 @@ export function MemoryTurnReceipt({ receipt }: { receipt?: TurnContextReceipt })
   );
   if (!copy) return null;
   return (
-    <div
-      className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground"
+    <span
+      className="min-w-0 truncate text-muted-foreground text-xs"
       data-testid="memory-turn-receipt"
       title={copy.title ?? undefined}
     >
-      <BrainIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-      <span>
-        {copy.label}
-        {copy.detail ? <span className="ml-1 opacity-75">· {copy.detail}</span> : null}
-      </span>
-    </div>
+      {copy.label}
+      {copy.detail ? <span className="ml-1 opacity-75">· {copy.detail}</span> : null}
+    </span>
   );
 }

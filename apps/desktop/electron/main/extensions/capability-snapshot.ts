@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared authoritative inventory (health as generation/component/declared-config attribution) ✓ backend/runtime identity and obvious product policy/probe
- * [OUTPUT]: Provides buildExtensionCapabilitySnapshot with entry-by-entry closed eligibility/reason; App/global: two-channel shared management security denied, only global consumer directories preferred
- * [POS]: The three-axis delivery eligibility of extensions; The ability to snapshot driven planner/UI/badge without reversing package admission
+ * [OUTPUT]: Provides diagnostic capability snapshots, D13 effective owner selection after backend eligibility is known, and an exact inventory projection for frozen consumers
+ * [POS]: The three-axis delivery eligibility authority; planners use effective selection while Settings keeps diagnostic exclusions
  */
 
 import { randomUUID } from "node:crypto";
@@ -59,22 +59,31 @@ export function buildExtensionCapabilitySnapshot(input: {
   policy: ExtensionProductPolicy;
   now?: number;
   deliveryScope?: "global-catalog" | "app";
+  selection?: "diagnostic" | "effective";
 }): ExtensionCapabilitySnapshot {
   const snapshotId = randomUUID();
-  const entries = input.inventory.components.map((component) =>
-    capabilityEntry(
-      snapshotId,
-      component,
-      input.inventory.packages,
-      input.probe,
-      input.policy,
-      input.inventory.health ?? [],
-      input.deliveryScope ?? "global-catalog"
-    )
-  );
+  const candidates = input.inventory.components
+    .filter((component) => component.kind !== "mcp-server")
+    .map((component) =>
+      ({
+        component,
+        entry: capabilityEntry(
+          snapshotId,
+          component,
+          input.inventory.packages,
+          input.probe,
+          input.policy,
+          input.inventory.health ?? [],
+          input.deliveryScope ?? "global-catalog"
+        ),
+      })
+    );
+  const entries = input.selection === "effective"
+    ? selectEffectiveEntries(candidates, input.inventory.packages)
+    : candidates.map((item) => item.entry);
   const base = {
     snapshotId,
-    inventoryRevision: input.inventory.revision,
+    visibleInventoryVersion: input.inventory.visibleInventoryVersion,
     backendId: input.probe.backendId,
     backendRuntimeIdentity: input.probe.backendRuntimeIdentity,
     productPolicyRevision: input.policy.revision,
@@ -82,6 +91,96 @@ export function buildExtensionCapabilitySnapshot(input: {
     entries,
   };
   return { ...base, snapshotDigest: digestCanonical(base) };
+}
+
+export function buildEffectiveExtensionProjection(input: {
+  inventory: ExtensionInventorySnapshot;
+  probe: ExtensionBackendProbe;
+  policy: ExtensionProductPolicy;
+  now?: number;
+  deliveryScope?: "global-catalog" | "app";
+}) {
+  const capability = buildExtensionCapabilitySnapshot({
+    ...input,
+    selection: "effective",
+  });
+  const selected = new Set(
+    capability.entries.map((entry) =>
+      componentKey(
+        entry.componentInstanceIdentity,
+        entry.packageGenerationRef.packageGenerationId,
+        entry.packageGenerationRef.recordDigest
+      )
+    )
+  );
+  const { digest: _digest, ...base } = input.inventory;
+  const payload = {
+    ...base,
+    components: input.inventory.components.filter((component) =>
+      selected.has(
+        componentKey(
+          component.componentInstanceIdentity,
+          component.packageGenerationRef.packageGenerationId,
+          component.packageGenerationRef.recordDigest
+        )
+      )
+    ),
+  };
+  return {
+    inventory: { ...structuredClone(payload), digest: digestCanonical(payload) },
+    capability,
+  };
+}
+
+function componentKey(
+  componentInstanceIdentity: string,
+  packageGenerationId: string,
+  recordDigest: string
+) {
+  return `${componentInstanceIdentity}\0${packageGenerationId}\0${recordDigest}`;
+}
+
+function selectEffectiveEntries(
+  candidates: readonly Readonly<{
+    component: ExtensionComponentRecord;
+    entry: ExtensionCapabilityEntry;
+  }>[],
+  packages: readonly ExtensionInventoryPackage[]
+) {
+  const eligible = candidates.filter((item) => item.entry.eligible);
+  const grouped = new Map<string, typeof eligible>();
+  for (const candidate of eligible) {
+    const values = grouped.get(candidate.component.declaredComponentIdentity) ?? [];
+    values.push(candidate);
+    grouped.set(candidate.component.declaredComponentIdentity, values);
+  }
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .flatMap(([, values]) => {
+      const project = values.filter(
+        (item) => ownerScope(item.component, packages) === "project"
+      );
+      const global = values.filter(
+        (item) => ownerScope(item.component, packages) === "global"
+      );
+      if (project.length === 1) return [project[0]!.entry];
+      if (project.length > 1 || global.length !== 1) return [];
+      return [global[0]!.entry];
+    });
+}
+
+function ownerScope(
+  component: ExtensionComponentRecord,
+  packages: readonly ExtensionInventoryPackage[]
+) {
+  return packages.find((owner) =>
+    owner.generations.some(
+      (generation) =>
+        generation.packageGenerationId ===
+          component.packageGenerationRef.packageGenerationId &&
+        generation.recordDigest === component.packageGenerationRef.recordDigest
+    )
+  )?.scope.kind;
 }
 
 function capabilityEntry(
@@ -105,7 +204,7 @@ function capabilityEntry(
   const exclusion = exclusionFor(component, owner, probe, policy, health, deliveryScope);
   const deliveryStrength = strengthFor(component, probe, policy);
   const base = {
-    componentIdentity: component.componentIdentity,
+    componentInstanceIdentity: component.componentInstanceIdentity,
     packageGenerationRef: component.packageGenerationRef,
     backendId: probe.backendId,
     backendRuntimeIdentity: probe.backendRuntimeIdentity,
@@ -138,11 +237,11 @@ function exclusionFor(
   deliveryScope: "global-catalog" | "app"
 ): FrozenExtensionDeliveryEligibilityReason | undefined {
   if (!owner || owner.admission !== "valid") {
-    return reason("backend-capability-mismatch", { component: component.componentIdentity });
+    return reason("backend-capability-mismatch", { component: component.componentInstanceIdentity });
   }
   if (health?.state === "degraded" || health?.state === "quarantined") {
     return reason("runtime-health-failed", {
-      component: component.componentIdentity,
+      component: component.componentInstanceIdentity,
       health: health.state,
       evidenceDigest: health.evidenceDigest,
     });
@@ -161,9 +260,13 @@ function exclusionFor(
   if (
     deliveryScope === "global-catalog" &&
     (!owner.globalCatalogEnabled ||
-      !owner.enabledComponentIdentities.includes(component.componentIdentity))
+      !owner.enabledComponentInstanceIdentities.includes(
+        component.componentInstanceIdentity
+      ))
   ) {
-    return reason("component-disabled", { component: component.componentIdentity });
+    return reason("component-disabled", {
+      component: component.componentInstanceIdentity,
+    });
   }
   if (component.kind === "skill") {
     if (

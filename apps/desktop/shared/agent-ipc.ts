@@ -1,11 +1,14 @@
 /**
- * [INPUT]: Depends on the persistence project type of chat-turn-reducer with chats-ipc and references the codex-ipc CodexTurnOptions exclusive member
- * [OUTPUT]: Provides multi-backend DTO, runtime/auth status with probe reason, structured failure, Agent turn lifecycle, general sensitive contribution, proofreading/PromptHandoff, content/workspace CAS with derived manual custody, Steer contract, SessionRef, structured input and unified budget
- * [POS]: IPC of shared modules, single truth source, connecting Electron main, preload and renderer
+ * [INPUT]: Depends on chat-turn/chats/codex contracts, canonical Project scope, Extension generation identities, and Project Tools session receipts
+ * [OUTPUT]: Provides multi-backend DTOs, ProductFailure-aware turn lifecycle, MCP-plan-bound SessionRef, durable Skill selection receipts, runtime/auth/Steer contracts, structured input, CAS, and budgets
+ * [POS]: Shared Agent wire truth connecting Electron main, preload, and renderer without exposing mutable scope authority
  */
 
 import type { CodexTurnOptions } from "./codex-ipc";
 import type { SerializedTurnDraft } from "./chat-turn-reducer";
+import type { ProductFailure } from "./product-failure";
+import type { ExtensionPackageGenerationRef } from "./extensions-ipc";
+import type { TurnProjectContext } from "./product-resource-scope";
 import type {
   ChatAttachmentPayload,
   ChatMessage,
@@ -126,6 +129,8 @@ export type BackendCapabilities = {
   headless: HeadlessPurpose[];
   maintenance: boolean;
   builtinTools: "none" | "read" | "mutate";
+  /** Login is an explicit terminal action even when auth status is unknowable. */
+  terminalAuth?: boolean;
 };
 
 export type BackendReasoningEffortInfo = {
@@ -169,13 +174,25 @@ export type BackendInfo = {
   reason?: string;
 };
 
-export type SessionRef = { backend: AgentBackendId; id: string };
+export type SessionToolPlanBinding = Readonly<{
+  planDigest: string;
+  projectId: string | null;
+}>;
+
+export type SessionRef = {
+  backend: AgentBackendId;
+  id: string;
+  /** Product-owned MCP plan identity; legacy/imported sessions omit it and rebuild fail-closed. */
+  toolPlan?: SessionToolPlanBinding;
+};
 export const SESSION_ID_BYTE_LIMIT = 128;
 
 export type ClaudeTurnOptions = {
   backend: "claude";
   model?: string;
   reasoningEffort?: string;
+  /** Persisted user preference; runtime capability/effective state remain separate. */
+  serviceTier?: string;
   permissionMode: AgentPermissionMode;
 };
 
@@ -384,6 +401,39 @@ export type AgentUserInputResponse = {
 
 export type AgentUserInputAnswers = Record<string, { answers: string[] }>;
 
+export type PreparedSkillGenerationRef =
+  | Readonly<{ kind: "library"; libraryId: string; generationId: string }>
+  | Readonly<{
+      kind: "extension";
+      componentInstanceIdentity: string;
+      package: ExtensionPackageGenerationRef;
+    }>
+  | Readonly<{ kind: "filesystem"; path: string }>;
+
+/**
+ * Main-owned durable receipt. Renderer input can never authorize this field:
+ * the manual coordinator overwrites it after canonical Project resolution.
+ */
+export type PreparedSkillSelectionReceipt = Readonly<{
+  /** Stable Registry ref owner shared by durable prepare and live custody. */
+  refOwnerId: string;
+  projectContext: TurnProjectContext;
+  visibleInventoryVersion: string;
+  backend: AgentBackendId;
+  planMode: boolean;
+  candidates: readonly Readonly<{
+    name: string;
+    sourceKind: "library" | "extension" | "project" | "system";
+    generationRef: PreparedSkillGenerationRef;
+    digest: `sha256:${string}`;
+    enabled: boolean;
+    requires?: string;
+    metadata: Readonly<{ description: string; displayName?: string }>;
+    path: string;
+    ownerRef: string;
+  }>[];
+}>;
+
 export type AgentSendPayload = {
   requestId: string;
   session?: SessionRef;
@@ -391,6 +441,8 @@ export type AgentSendPayload = {
   turnOptions: AgentTurnOptions;
   planMode?: boolean;
   input: AgentUserInput[];
+  /** Main-owned; accepted only for a canonical manual-turn origin. */
+  preparedSkillSelection?: PreparedSkillSelectionReceipt;
 };
 
 export type SteerAdmission = {
@@ -464,6 +516,23 @@ export type TurnPersistOutcome =
   | "retryable"
   | "fatal";
 
+/**
+ * 会话运行态的 Speed 判据。**只能是机器事实，不能是产品句子**——main 一旦
+ * 在这里拼一句英文，五语言目录就永远够不着它（与 BackendInfo.reason 同一条
+ * 接缝：呈现层自己取键）。后端自己的解释（free / model_not_allowed …）由
+ * adapter 的 turned-off 消息原样进转录，不在这里复述第二遍。
+ */
+export type SessionServiceTierReason =
+  | "modelUnsupported"
+  | "backendOff"
+  | "backendOn";
+
+export type SessionServiceTierEffective = Readonly<{
+  value: string;
+  reason: SessionServiceTierReason;
+  at: number;
+}>;
+
 export type TurnSnapshot = {
   requestId: string;
   /** root assistant 在 turn admission 时预留的 canonical 会话序号。 */
@@ -481,14 +550,22 @@ export type TurnSnapshot = {
     | "fatal";
   blocksNewTurn: boolean;
   session?: SessionRef;
+  serviceTierEffective?: SessionServiceTierEffective;
   retryToken?: string;
+  allowedActions?: Readonly<{
+    sameSession: boolean;
+    freshSession: boolean;
+    abandon: boolean;
+  }>;
   draft: SerializedTurnDraft;
   approvals: AgentApprovalRequest[];
   userInputs: AgentUserInputRequest[];
   liveSubagents: Record<string, AgentLiveSubagent>;
   terminal?: "done" | "cancelled" | "error";
-  terminalMessage?: string;
   failureKind?: FailureKind;
+  /* live 终态的结构化失败：持久化后的权威在 assistantMessage.failure，
+     这里只服务 persist 落地前的实时窗口。 */
+  failure?: ProductFailure;
   usageLimit?: UsageLimitInfo;
 };
 
@@ -500,8 +577,17 @@ export type TurnAttachResult = {
 
 export type AgentEventBody =
   | { requestId: string; type: "session"; session: SessionRef }
+  /* `effective` 缺席 = 清空语义：用户显式重开 Speed 后，本会话的回落事实必须
+     当场作废。用「新增一个 cleared 事件」会让 registry 与 renderer 各多一条
+     分支去合流两种事实；让同一条事件的负载可空，两侧都是一次直接赋值。 */
+  | {
+      requestId: string;
+      type: "service-tier-effective";
+      effective?: SessionServiceTierEffective;
+    }
   | { requestId: string; type: "item-delta"; itemId: string; text: string }
   | { requestId: string; type: "item"; item: AgentTurnItem }
+  | { requestId: string; type: "item-removed"; itemId: string }
   | {
       requestId: string;
       type: "approval-requested";
@@ -584,6 +670,7 @@ export const AGENT_CHANNEL = {
   abandonFatalTurn: "agent:abandon-fatal-turn",
   acknowledgeCleanupFailure: "agent:acknowledge-cleanup-failure",
   retryWithoutSession: "agent:retry-without-session",
+  retrySameSession: "agent:retry-same-session",
   activity: "agent:activity",
   activityList: "agent:activity-list",
   steer: "agent:steer",
@@ -604,6 +691,7 @@ export type AgentBridgeApi = {
   abandonFatalTurn: (conversationId: string) => Promise<void>;
   acknowledgeCleanupFailure: (conversationId: string) => Promise<void>;
   retryWithoutSession: (requestId: string, retryToken: string) => Promise<void>;
+  retrySameSession?: (requestId: string, retryToken: string) => Promise<void>;
   onEvent: (callback: (event: AgentEvent) => void) => () => void;
   onActivity: (callback: (event: ChatActivityEvent) => void) => () => void;
   listActivity: () => Promise<ChatActivitySnapshot[]>;

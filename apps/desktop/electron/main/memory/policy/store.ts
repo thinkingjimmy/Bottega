@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, DurableJson/quarantineDurableFile, MemorySpaceGate, core domain/scope and stable canonical digest
- * [OUTPUT]: Provides Policy v4 durable Store, installation-level scope owner/shared generation, binding three-level Consents, recently valid Consent, viewing queries, Chat|ForeignSnapshot BackfillGrant, disable, withdraw side, immutable snapshot with OwnerEffectReceipt
+ * [OUTPUT]: Provides the Policy v4 durable store, installation-scoped owner/shared generations, consent bindings, queries, backfill grants, disable/revoke mutations, and immutable owner-effect receipts
  * [POS]: The only permanent source of truth for main/memory/policy; Delivery only consume quick photos and receipts and prohibits reverse reading authorizations
  */
 
@@ -13,6 +13,7 @@ import {
 } from "../../../../shared/settings-ipc";
 import {
   DurableJson,
+  DurableFileCorruptionError,
   quarantineDurableFile,
 } from "../../persistence/durable-json";
 import {
@@ -22,7 +23,6 @@ import {
   type MemorySpaceRef,
 } from "../core/domain";
 import { memorySpaceForSubject } from "../core/memory-scope";
-import { memorySpaceGate } from "../space-gate";
 
 const id = z.string().min(1).max(256);
 const revision = z.number().int().nonnegative();
@@ -221,7 +221,8 @@ export class MemoryPolicyStore {
       );
       await this.compactLedger();
       this.publish(this.ledger.snapshot(), null);
-    } catch {
+    } catch (cause) {
+      if (!(cause instanceof DurableFileCorruptionError)) throw cause;
       await quarantineDurableFile(this.filePath);
       this.publish(emptyPolicyState(), "policy-store");
     }
@@ -715,11 +716,4 @@ export class MemoryPolicyStore {
       state: freezeMemoryValue(state) as Readonly<MemoryPolicyState>,
     });
   }
-}
-
-export async function withPolicySpaceEffect<T>(
-  memorySpaceIdValue: string,
-  task: () => Promise<T>
-) {
-  return memorySpaceGate.run(memorySpaceIdValue, task);
 }

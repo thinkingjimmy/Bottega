@@ -21,6 +21,12 @@ import {
 } from "@/lib/apps-client";
 import { AppGrantCard } from "./app-grant-card";
 import { BaseWorkbench } from "@/components/bases/base-workbench";
+import { AppGuiSurface } from "@/components/apps/app-gui-surface";
+import { useAppGui } from "@/components/apps/use-app-gui";
+import { appendComposerText } from "@/lib/chat-composer-store";
+import { focusComposer } from "@/lib/gallery/focus-controller";
+import { DesignHistoryControls } from "@/components/apps/design/design-history-controls";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 async function loadAppPanelState(appId: string) {
   const [snapshot, live] = await Promise.all([
@@ -46,10 +52,23 @@ export function AppTabPanel({
   visible: boolean;
   onRefresh: () => void;
 }) {
+  const { t } = useAppTranslation();
   const [record, setRecord] = useState<AppRecord | null>(null);
   const [origin, setOrigin] = useState("");
   const [error, setError] = useState("");
   const [surface, setSurface] = useState<AppAttachmentSurface | null>(null);
+  const designGui = Boolean(
+    record?.manifest?.kind === "base" &&
+    record.manifest.gui?.capabilities.includes("workspace-read")
+  );
+  const gui = useAppGui({
+    appId: app.appId,
+    appSurfaceLeaseId: surface?.surfaceLeaseId,
+    enabled: designGui && Boolean(surface),
+    revisionKey: record?.generationBinding.active
+      ? `${record.generationBinding.active.generationId}:${record.lifecycleRevision}`
+      : "",
+  });
   const granted = app.effectiveGrant !== null;
   const refresh = useCallback(async () => {
     const next = await loadAppPanelState(app.appId);
@@ -79,6 +98,7 @@ export function AppTabPanel({
     let leaseId = "";
     void acquireAppSurface({
       appId: app.appId,
+      mode: "chat-tab",
       conversationId: chatId,
       conversationIncarnationId: incarnationId,
     })
@@ -155,7 +175,25 @@ export function AppTabPanel({
       ) : (
         /* no-data App（static/server）没有 Base 面：数据形态分流就地判定，
            不再经由已退化的 AppDomainSurface 壳。 */
-        !record.domainIdentity || record.domainIdentity.kind === "no-data" ? null : surface?.ownerKey &&
+        designGui && surface ? (
+          <AppGuiSurface
+            gui={gui}
+            onGoToData={() => undefined}
+            toolbar={<DesignHistoryControls
+              appId={record.id}
+              appSurfaceLeaseId={surface.surfaceLeaseId}
+              onRestored={gui.refresh}
+            />}
+            onHostAction={(action) => {
+              if (action.type === "compose-text") {
+                const accepted = appendComposerText(chatId, action.text);
+                if (accepted) focusComposer(chatId);
+                return accepted;
+              }
+              return false;
+            }}
+          />
+        ) : !record.domainIdentity || record.domainIdentity.kind === "no-data" ? null : surface?.ownerKey &&
           surface.dataGrant?.kind === "base" ? (
           surface.dataGrant.level === "row-write" ? (
             <BaseWorkbench
@@ -173,7 +211,7 @@ export function AppTabPanel({
           )
         ) : (
           <div className="grid min-h-0 flex-1 place-items-center px-6 text-center text-muted-foreground text-sm">
-            正在签发 generation-bound App surface…
+            {t("apps.surfacePreparing")}
           </div>
         )
       )}

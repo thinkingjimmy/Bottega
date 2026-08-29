@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on nanoid, AbortSignal, shared Structured agent/app IPC, preload window.agent/window.app and the browser bridge degradation of the agent-client-mock
- * [OUTPUT]: Provides tokenized attach Level reset, quick ack send, window-level session activity subscription/shots, explicitly cancel/abandon/cleanup confirmation
- * [POS]: The IPC boundary of the rendering side of lib; The real bridge is unified by bridge, with no window.agent branchDispose only detach/stop local timer, never cancel the main-owned turn
+ * [INPUT]: Depends on nanoid, AbortSignal, shared Agent/App IPC, preload bridges, and browser mocks
+ * [OUTPUT]: Provides attach/event subscriptions, send/steer/decision commands, same-session and fresh-session retry, abandon, cancel, and cleanup confirmation
+ * [POS]: The renderer's narrow Agent IPC facade; local disposal never cancels a main-owned turn
  */
 
 import { nanoid } from "nanoid";
@@ -163,6 +163,14 @@ export const retryAgentWithoutSession = (
   conversationId: string,
   retryToken: string
 ) => bridge().retryWithoutSession(conversationId, retryToken);
+export const retryAgentSameSession = (
+  requestId: string,
+  retryToken: string
+) => {
+  const retry = bridge().retrySameSession;
+  if (!retry) throw new Error("same-session retry is unavailable");
+  return retry(requestId, retryToken);
+};
 
 export const cancelAgentRequest = (requestId: string) =>
   bridge().cancel(requestId);

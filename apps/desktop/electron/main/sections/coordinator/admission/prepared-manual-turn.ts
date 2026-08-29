@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/crypto, shared manual/legacy Gallery submission, Skills/File License, Section record/tail snapshot plan/annex reading, canonical Modify annex reading and agent-input Secure copying
- * [OUTPUT]: Provides create/create-app/app/append/adopt(hash-verified PreparedManualTurn with revised annex reconstruction and resolved-only Section images; Workspace CAS; intent staging/hydrate; release and quota/reconcile etc
- * [POS]: The manual/steer sharing of the coordinator's boundaries with the attachment; The first is the database database database, which is not a database
+ * [INPUT]: Depends on Node filesystem/crypto, manual submission contracts, canonical Project context, frozen Project Tools and Skill selections, fresh input resolution, Section snapshots, and workspace preconditions
+ * [OUTPUT]: Provides hash-sealed PreparedManualTurn staging with exact Project/Tools/Skill receipts plus hydration, release, quota accounting, and reconciliation
+ * [POS]: Coordinator admission boundary; durable workspace, Project tool policy, and Extension generation identity precede every manual backend turn
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -12,11 +12,12 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import type {
   AgentSendPayload,
   AgentUserInput,
   AgentWorkspaceScope,
+  PreparedSkillSelectionReceipt,
 } from "../../../../../shared/agent-ipc";
 import type {
   ChatAttachmentPayload,
@@ -27,15 +28,13 @@ import type {
   TrustedManualTurnSubmission as ManualTurnSubmission,
 } from "../../../../../shared/sections-ipc";
 import {
-  incarnationPreconditionSchema,
-  submissionContentV1Schema,
   workspacePreconditionSchema,
   type IncarnationPrecondition,
   type SubmissionContentV1,
   type WorkspacePrecondition,
 } from "../../../../../shared/submission";
-import { preparedSubmissionV1Schema } from "../../../../../shared/gallery-submission";
 import type { ResolvedAgentInput } from "../../../backends/types";
+import { backendRuntimeRegistry } from "../../../backends";
 import type {
   FileAuthorizationStore,
   FileReservation,
@@ -43,8 +42,8 @@ import type {
 import type { SkillsCatalog } from "../../../skills-catalog";
 import {
   removeReadonlySnapshot,
-  stageDirectorySnapshot,
   stageFileSnapshot,
+  stageSkillPackageSnapshot,
 } from "../../../agent-input";
 import { exportSectionSnapshotDraft } from "../../export-transcript";
 import {
@@ -53,6 +52,33 @@ import {
   type SectionSnapshotPlan,
 } from "../../../../../shared/section-attachments";
 import { canonicalHash } from "../coordinator-values";
+import type { TurnProjectContext } from "../../../../../shared/product-resource-scope";
+import { skillsTurnOwnerId } from "../../../skills-management/turn-custody";
+import {
+  acquirePreparedSkillReferences,
+  assertPreparedSkillReferences,
+  releasePreparedSkillReferences,
+} from "./prepared-skill-reference-custody";
+import {
+  assertPreparedContentHash,
+  binaryFreeSubmissionContent,
+  emptyPreparedSkillSelection,
+  normalizeManualSubmission,
+} from "./prepared-manual-legacy";
+import {
+  emptyProjectToolsSnapshot,
+  hydrateProjectToolsReceipt,
+  stageProjectToolsReceipt,
+  type ExplicitSkillRequirementReceipt,
+  type FrozenProjectToolsReceipt,
+  type ProjectToolsPreparationSnapshot,
+} from "./prepared-project-tools";
+
+export { configurePreparedSkillReferenceCustody } from "./prepared-skill-reference-custody";
+export {
+  assertPreparedContentHash,
+  prepareTextOnlyManualTurn,
+} from "./prepared-manual-legacy";
 
 const STAGED_BLOB_QUOTA = 2 * 1024 * 1024 * 1024;
 
@@ -66,7 +92,7 @@ type StagedBlobRef = {
   sha256: string;
 };
 
-type PreparedInputItem =
+export type PreparedInputItem =
   | {
       type: "text";
       text: string;
@@ -94,7 +120,7 @@ type PreparedAdopt = Omit<
   "attachmentPayloads"
 > & { attachmentPayloads?: StagedBlobRef[] };
 
-type PreparedPersistence =
+export type PreparedPersistence =
   | { kind: "create"; input: PreparedCreate }
   | { kind: "create-app"; input: PreparedCreateApp }
   | { kind: "adopt"; input: PreparedAdopt }
@@ -108,6 +134,9 @@ export type PreparedManualTurn = {
   precondition: IncarnationPrecondition;
   workspacePrecondition: WorkspacePrecondition;
   lifecycleProjectId: string | null;
+  projectContext: TurnProjectContext;
+  projectTools: FrozenProjectToolsReceipt;
+  skillSelection: PreparedSkillSelectionReceipt;
   input: PreparedInputItem[];
   stagingDir: string;
   contentHash: string;
@@ -119,7 +148,7 @@ export type PreparedManualLease = {
   rollback(): Promise<void>;
 };
 
-type PreparationDependencies = {
+export type PreparationDependencies = {
   workspace: string;
   workspaceScope: AgentWorkspaceScope;
   backend: AgentSendPayload["turnOptions"]["backend"];
@@ -128,6 +157,15 @@ type PreparationDependencies = {
   skills: SkillsCatalog;
   files: FileAuthorizationStore;
   lifecycleProjectId: string | null;
+  projectContext?: TurnProjectContext;
+  projectTools?: ProjectToolsPreparationSnapshot;
+  freezeSkillSelection?: (input: Readonly<{
+    refOwnerId: string;
+    workspace: string;
+    backend: AgentSendPayload["turnOptions"]["backend"];
+    planMode: boolean;
+    projectContext: TurnProjectContext;
+  }>) => Promise<PreparedSkillSelectionReceipt>;
   sections: {
     conversationId: string;
     get(chatId: string): Promise<ChatRecord | null>;
@@ -299,18 +337,11 @@ async function stageSkill(
   let byteSize = 0;
   let reserved = false;
   try {
-    const staged = await stageDirectorySnapshot(
-      dirname(skill.path),
-      packageRoot
-    );
+    const staged = await stageSkillPackageSnapshot(skill, packageRoot);
+    const path = staged.path;
     byteSize = staged.totalBytes;
     await reserveBytes(byteSize);
     reserved = true;
-    const path = join(packageRoot, "SKILL.md");
-    const content = await readFile(path);
-    if (!content.equals(Buffer.from(skill.content))) {
-      throw new Error("Skill 在目录快照期间发生变化");
-    }
     return {
       blobId,
       kind: "skill",
@@ -318,7 +349,7 @@ async function stageSkill(
       filename: "SKILL.md",
       mediaType: "text/markdown",
       byteSize,
-      sha256: digest(content),
+      sha256: digest(await readFile(path)),
     } satisfies StagedBlobRef;
   } catch (cause) {
     await removeReadonlySnapshot(packageRoot);
@@ -332,7 +363,8 @@ async function stageInput(
   directory: string,
   dependencies: PreparationDependencies,
   reservations: FileReservation[],
-  reusableBlobs: readonly StagedBlobRef[]
+  reusableBlobs: readonly StagedBlobRef[],
+  explicitSkills: ExplicitSkillRequirementReceipt[]
 ) {
   const result: PreparedInputItem[] = [];
   const sectionPlans = new Map<number, SectionSnapshotPlan>();
@@ -393,8 +425,30 @@ async function stageInput(
         {
           backend: dependencies.backend,
           planMode: dependencies.planMode,
-        }
+          ...(dependencies.projectTools
+            ? {
+                toolPolicy: {
+                  allowedTools: dependencies.projectTools.allowedTools,
+                  policyDigest: canonicalHash({
+                    projectContext: dependencies.projectTools.projectContext,
+                    resourceVersion: dependencies.projectTools.resourceVersion,
+                    policyRevisions: dependencies.projectTools.policyRevisions,
+                    builtinIntent: dependencies.projectTools.builtinIntent,
+                    allowedTools: dependencies.projectTools.allowedTools,
+                  }),
+                },
+              }
+            : {}),
+        },
+        dependencies.projectContext ?? fallbackProjectContext(dependencies)
       );
+      explicitSkills.push({
+        ref: item.skillRef,
+        name: skill.name,
+        requirement: skill.requirementReceipt?.requirement ?? null,
+        allowedToolsDigest:
+          skill.requirementReceipt?.policyDigest ?? "legacy-live",
+      });
       result.push({
         type: "skill",
         name: skill.name,
@@ -473,6 +527,7 @@ export async function prepareManualTurn(
   const submission = await normalizeManualSubmission(input, dependencies);
   const stagingDir = join(dependencies.stagingRoot, submission.intentId);
   const reservations: FileReservation[] = [];
+  const explicitSkills: ExplicitSkillRequirementReceipt[] = [];
   await mkdir(stagingDir, { recursive: false, mode: 0o700 });
   try {
     const persistence = await stagePersistence(
@@ -485,7 +540,8 @@ export async function prepareManualTurn(
       stagingDir,
       dependencies,
       reservations,
-      persistence.input.attachmentPayloads ?? []
+      persistence.input.attachmentPayloads ?? [],
+      explicitSkills
     );
     const input =
       persistence.kind === "append" && persistence.input.revise
@@ -498,6 +554,33 @@ export async function prepareManualTurn(
           ]
         : stagedInput;
     const { input: _input, ...turn } = submission.turn;
+    const projectContext =
+      dependencies.projectContext ??
+      dependencies.projectTools?.projectContext ??
+      fallbackProjectContext(dependencies);
+    const projectTools = await stageProjectToolsReceipt({
+      stagingDir,
+      snapshot:
+        dependencies.projectTools ??
+        emptyProjectToolsSnapshot(projectContext),
+      explicitSkills,
+      quota: { reserve: reserveBytes, release: releaseBytes },
+    });
+    const skillSelection = dependencies.freezeSkillSelection
+      ? await dependencies.freezeSkillSelection({
+          refOwnerId: skillsTurnOwnerId(submission.turn.requestId),
+          workspace: dependencies.workspace,
+          backend: dependencies.backend,
+          planMode: dependencies.planMode,
+          projectContext,
+        })
+      : emptyPreparedSkillSelection(
+          submission.turn.requestId,
+          dependencies.backend,
+          dependencies.planMode,
+          projectContext
+        );
+    await acquirePreparedSkillReferences(skillSelection);
     const body = {
       intentId: submission.intentId,
       persistence,
@@ -507,6 +590,9 @@ export async function prepareManualTurn(
       precondition: submission.precondition,
       workspacePrecondition: submission.workspacePrecondition,
       lifecycleProjectId: dependencies.lifecycleProjectId,
+      projectContext,
+      projectTools,
+      skillSelection,
       stagingDir,
     };
     const prepared = { ...body, contentHash: canonicalHash(body) };
@@ -534,166 +620,6 @@ export async function prepareManualTurn(
   }
 }
 
-type LegacyManualTurnSubmission = Omit<
-  ManualTurnSubmission,
-  "content" | "precondition" | "workspacePrecondition"
-> & {
-  content?: unknown;
-  precondition?: unknown;
-  workspacePrecondition?: unknown;
-  gallery?: unknown;
-};
-
-async function normalizeManualSubmission(
-  input: ManualTurnSubmission,
-  dependencies: Pick<PreparationDependencies, "sections">
-): Promise<ManualTurnSubmission> {
-  const legacy = input as unknown as LegacyManualTurnSubmission;
-  const content =
-    legacy.content === undefined
-      ? legacySubmissionContent(legacy)
-      : submissionContentV1Schema.parse(legacy.content);
-  const precondition =
-    legacy.precondition === undefined
-      ? await legacyPrecondition(legacy, dependencies)
-      : incarnationPreconditionSchema.parse(legacy.precondition);
-  const workspacePrecondition = workspacePreconditionSchema.parse(
-    legacy.workspacePrecondition
-  );
-  const persistence =
-    legacy.persistence.kind === "append"
-      ? {
-          ...legacy.persistence,
-          input: { ...legacy.persistence.input, precondition },
-        }
-      : legacy.persistence;
-  const { gallery: _legacyGallery, ...submission } = legacy;
-  return {
-    ...submission,
-    persistence,
-    content,
-    precondition,
-    workspacePrecondition,
-  } as ManualTurnSubmission;
-}
-
-function legacySubmissionContent(
-  submission: LegacyManualTurnSubmission
-): SubmissionContentV1 {
-  const gallery =
-    submission.gallery === undefined
-      ? undefined
-      : preparedSubmissionV1Schema.parse(submission.gallery);
-  const displayText =
-    gallery?.message.displayText ??
-    ("firstMessage" in submission.persistence.input
-      ? submission.persistence.input.firstMessage.content
-      : submission.persistence.input.message.content);
-  return submissionContentV1Schema.parse({
-    schemaVersion: 1,
-    content: {
-      richValue:
-        gallery?.message.richValue ?? [
-          {
-            id: `legacy_${submission.intentId}`,
-            type: "text",
-            value: displayText,
-          },
-        ],
-      displayText,
-      files: gallery?.message.files ?? [],
-    },
-    origin: "composer",
-    capabilityEpoch: gallery?.capabilityEpoch ?? 0,
-    backendEpoch: gallery?.backendEpoch ?? 0,
-    ...(gallery
-      ? {
-          gallery: {
-            schemaVersion: 1,
-            attachments: gallery.galleryAttachments,
-          },
-        }
-      : {}),
-  });
-}
-
-async function legacyPrecondition(
-  submission: LegacyManualTurnSubmission,
-  dependencies: Pick<PreparationDependencies, "sections">
-): Promise<IncarnationPrecondition> {
-  if (submission.persistence.kind === "append") {
-    const record = await dependencies.sections.get(
-      submission.persistence.input.chatId
-    );
-    if (!record) throw new Error("INCARNATION_MISMATCH");
-    return {
-      kind: "existing",
-      incarnationId: record.incarnationId,
-    };
-  }
-  const proposedIncarnationId = submission.persistence.input.incarnationId;
-  if (!proposedIncarnationId) {
-    throw new Error("旧提交缺少 proposedIncarnationId，迁移保持只读");
-  }
-  return { kind: "absent", proposedIncarnationId };
-}
-
-export function prepareTextOnlyManualTurn(
-  submission: ManualTurnSubmission,
-  lifecycleProjectId = inferredLifecycleProjectId(submission)
-): PreparedManualTurn {
-  const { input: raw, ...turn } = submission.turn;
-  if (raw.some((item) => item.type !== "text")) {
-    throw new Error("测试/降级 preparation 只接受文本输入");
-  }
-  const body = {
-    intentId: submission.intentId,
-    persistence: submission.persistence as PreparedPersistence,
-    turn,
-    input: raw as PreparedInputItem[],
-    content: binaryFreeSubmissionContent(submission.content),
-    precondition: submission.precondition,
-    workspacePrecondition: workspacePreconditionSchema.parse(
-      submission.workspacePrecondition
-    ),
-    lifecycleProjectId,
-    stagingDir: "",
-  };
-  return { ...body, contentHash: canonicalHash(body) };
-}
-
-function inferredLifecycleProjectId(submission: ManualTurnSubmission) {
-  if (submission.persistence.kind !== "append") {
-    return submission.persistence.input.projectId ?? null;
-  }
-  return submission.workspacePrecondition.kind === "project"
-    ? submission.workspacePrecondition.projectId
-    : null;
-}
-
-function binaryFreeSubmissionContent(
-  content: SubmissionContentV1
-): SubmissionContentV1 {
-  return submissionContentV1Schema.parse({
-    ...content,
-    content: {
-      ...content.content,
-      files: content.content.files.map((file) => {
-        const { url: _url, nativeFile: _nativeFile, ...metadata } = file as
-          typeof file & { nativeFile?: unknown };
-        return metadata;
-      }),
-    },
-  });
-}
-
-export function assertPreparedContentHash(prepared: PreparedManualTurn) {
-  const { contentHash, ...body } = prepared;
-  if (contentHash !== canonicalHash(body)) {
-    throw new Error("PreparedManualTurn content hash 冲突");
-  }
-}
-
 export async function hydratePreparedTurn(prepared: PreparedManualTurn) {
   assertPreparedContentHash(prepared);
   if (
@@ -702,6 +628,49 @@ export async function hydratePreparedTurn(prepared: PreparedManualTurn) {
       !/^[A-Za-z0-9_-]{1,128}$/.test(prepared.lifecycleProjectId))
   ) {
     throw new Error("PreparedManualTurn 缺少合法 lifecycle Project 身份");
+  }
+  if (
+    !prepared.projectContext ||
+    prepared.projectContext.projectId !== prepared.lifecycleProjectId ||
+    (prepared.projectContext.projectId === null
+      ? prepared.projectContext.projectLifecycleRevision !== null
+      : !Number.isSafeInteger(
+          prepared.projectContext.projectLifecycleRevision
+        ) || prepared.projectContext.projectLifecycleRevision! <= 0)
+  ) {
+    throw new Error("PreparedManualTurn 缺少合法 Project lifecycle receipt");
+  }
+  if (
+    !prepared.skillSelection ||
+    prepared.skillSelection.backend !== prepared.turn.turnOptions.backend ||
+    prepared.skillSelection.planMode !== Boolean(prepared.turn.planMode) ||
+    prepared.skillSelection.projectContext.projectId !==
+      prepared.projectContext.projectId ||
+    prepared.skillSelection.projectContext.projectLifecycleRevision !==
+      prepared.projectContext.projectLifecycleRevision
+  ) {
+    throw new Error("PreparedManualTurn 缺少合法 Skills selection receipt");
+  }
+  await assertPreparedSkillReferences(prepared.skillSelection);
+  const backendId = prepared.turn.turnOptions.backend;
+  const runtime = await backendRuntimeRegistry.resolve(backendId);
+  const backendRuntimeIdentity = runtime.runtimeStatus === "installed"
+    ? `${backendId}@${runtime.runtime.version}`
+    : undefined;
+  const projectTools = await hydrateProjectToolsReceipt(
+    prepared.projectTools,
+    backendId,
+    Boolean(prepared.turn.planMode),
+    backendRuntimeIdentity,
+    prepared.stagingDir === ""
+  );
+  if (
+    projectTools.receipt.projectContext.projectId !==
+      prepared.projectContext.projectId ||
+    projectTools.receipt.projectContext.projectLifecycleRevision !==
+      prepared.projectContext.projectLifecycleRevision
+  ) {
+    throw new Error("PROJECT_TOOLS_LIFECYCLE_MISMATCH");
   }
   const workspacePrecondition = workspacePreconditionSchema.parse(
     prepared.workspacePrecondition
@@ -750,7 +719,19 @@ export async function hydratePreparedTurn(prepared: PreparedManualTurn) {
       rollback() {},
       release: () => releasePreparedStaging(prepared),
     } satisfies ResolvedAgentInput,
+    projectTools,
   };
+}
+
+function fallbackProjectContext(
+  dependencies: Pick<PreparationDependencies, "lifecycleProjectId">
+): TurnProjectContext {
+  return dependencies.lifecycleProjectId
+    ? {
+        projectId: dependencies.lifecycleProjectId,
+        projectLifecycleRevision: 1,
+      }
+    : { projectId: null, projectLifecycleRevision: null };
 }
 
 async function hydratePersistence(
@@ -804,6 +785,7 @@ const directoryBytes = async (directory: string): Promise<number> => {
 
 export async function releasePreparedStaging(prepared: PreparedManualTurn) {
   assertPreparedContentHash(prepared);
+  await releasePreparedSkillReferences(prepared.skillSelection);
   if (!prepared.stagingDir) return;
   await withQuotaLock(async () => {
     const bytes = await directoryBytes(prepared.stagingDir);

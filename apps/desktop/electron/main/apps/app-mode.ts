@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Apps/Projects/Chats/Bases Services, lifecycle, baseline, SkillsCatalog, Settings, Archive availability, packet import/sharing with the Agent chat control port
- * [OUTPUT]: Provides configureAppMode, install attachment fence, chat slots/promotion/Save/Delete/Base import/GitHub share, system skill turn with canonical Workspace owner/held gate, App×Extension integration and fully boot recovery handler
- * [POS]: The App Mode of the apps module is the combination root; The network is comprised of a SessionRef, a thread scope, an App chat slot, an App shell, a single D17/D26 fence, a shared drain provider and a package saga recoveryThe app-delete recovery failed to return to record, and the "permanent card death" was silent on the interface
+ * [INPUT]: Depends on Apps/Projects/Chats/Bases services, lifecycle, SkillsCatalog, settings/archive, package import/share, and Agent turn control
+ * [OUTPUT]: Provides configureAppMode with canonical use-chat slots, grants, promotion, save/delete, Base import, sharing, Skills turns, Extensions, and recovery
+ * [POS]: Apps-domain composition root; wires Project grant commits to durable Project publication
  */
 
 import type { SessionRef } from "../../../shared/agent-ipc";
@@ -20,6 +20,9 @@ import type { ProjectsService } from "../projects/projects-service";
 import type { ConversationCoordinator } from "../sections/coordinator/conversation-coordinator";
 import type { SettingsStore } from "../settings-store";
 import type { SkillsCatalog } from "../skills-catalog";
+import type { SkillsTurnCustodyStore } from "../skills-management/turn-custody";
+import type { ExtensionRuntimeHolder } from "../extensions/lifecycle/disable-convergence";
+import type { ExtensionProjectionLedger } from "../extensions/lifecycle/projection-ledger";
 import { AppDeleteService } from "./app-delete";
 import { AppChatSlots } from "./app-chat-slots";
 import { AppAttachmentFence } from "./attachments/attachment-fence";
@@ -34,7 +37,6 @@ import { AppGenerationDrainProviderRegistry } from "../lifecycle/app-generation-
 import { AppGenerationBuildParticipantRegistry } from "../lifecycle/app-generation-build-participants";
 import { AppGenerationRetirementCoordinator } from "../lifecycle/app-generation-retirement";
 import { createAppExtensionIntegration } from "../extensions/integration/app-extension-composition";
-import { resolveConversationContext } from "../workspace-resolver";
 
 type AppModeDependencies = {
   apps: AppsService;
@@ -51,6 +53,8 @@ type AppModeDependencies = {
   hasConversationActivity(ids: Iterable<string>): boolean;
   isConversationAvailable(chatId: string): boolean;
   cancelConversations(ids: Iterable<string>): Promise<void>;
+  cancelAgentRequests(ids: Iterable<string>): Promise<void>;
+  skillsTurnCustody(): SkillsTurnCustodyStore | null;
   bindThreadScope(session: SessionRef, chatId: string): void;
   releaseThreadScope(chatId: string): void;
 };
@@ -66,7 +70,11 @@ export function configureAppMode(dependencies: AppModeDependencies) {
     chats: dependencies.chatStore,
     projects: dependencies.projectStore,
     gate,
-    publish: (record) => dependencies.apps.publishStatus(record),
+    canonicalizeUse: (input) =>
+      dependencies.chats.createDormantAppChat({
+        ...input,
+        appRole: "use",
+      }),
   });
   dependencies.apps.configureChatSlots(chatSlots);
   /* fence 先于 grant authority：两个方向共用同一批 gate 与同一条 D17 判定，
@@ -84,7 +92,8 @@ export function configureAppMode(dependencies: AppModeDependencies) {
     dependencies.apps.store,
     dependencies.chatStore,
     dependencies.projectStore,
-    fence
+    fence,
+    (projectId) => dependencies.projects.publishStored(projectId)
   );
   dependencies.apps.configureGrantAuthority(grantAuthority);
   const surfaceLeases = new AppAttachmentSurfaceLeaseRegistry(
@@ -149,58 +158,163 @@ function configureExtensionIntegration(
     migrateAppGeneration: async (appId, migrationId) => {
       await dependencies.apps.store.migrateGeneration(appId, migrationId);
     },
+    projectContextForApp: (appId) => {
+      const project = dependencies.projectStore.findByAppId(appId);
+      if (!project || project.deletionCheckpoint) {
+        throw new Error("App Project 不存在或正在删除");
+      }
+      return {
+        projectId: project.id,
+        projectLifecycleRevision: project.projectLifecycleRevision,
+      };
+    },
+    backendForApp: (appId) => {
+      const app = dependencies.apps.store.get(appId);
+      if (!app) throw new Error("App 不存在");
+      return app.agent;
+    },
+    projectInstallAuthority: {
+      acquire: async (receipt) => {
+        await dependencies.projectStore.acquireResourceAdmission(
+          receipt.projectId,
+          {
+            kind: "extension-install",
+            operationId: receipt.operationId,
+            installIdentity: receipt.installIdentity,
+            projectLifecycleRevision: receipt.projectLifecycleRevision,
+          }
+        );
+      },
+      assert: (receipt) => {
+        dependencies.projectStore.assertResourceAdmission(
+          receipt.projectId,
+          receipt.operationId,
+          receipt.installIdentity,
+          receipt.projectLifecycleRevision
+        );
+      },
+      release: (receipt) =>
+        dependencies.projectStore.releaseResourceAdmission(
+          receipt.projectId,
+          receipt.operationId,
+          receipt.installIdentity,
+          receipt.projectLifecycleRevision
+        ),
+    },
   });
   /* 停用收敛的两个外部面在这里装配：撤销面缺席（产品尚未开放 fixed
      projection，因此从不产生 binding），一旦真有 binding 就 fail closed 而不是
      冒充已撤销；会话面用既有的 cancel + rotate，不另造一套会话生命周期。 */
   integration.convergence.configure({
     custody: {
-      list: async (workspaceKeys) => sessionsIn(workspaceKeys, dependencies),
-      drain: async (chatIds) => {
-        await dependencies.cancelConversations(chatIds);
+      list: async (input) =>
+        exactHolders(input, dependencies, integration.projections),
+      drain: async (holders) => {
+        const requestIds = holders.flatMap((holder) =>
+          holder.kind === "request" ? [holder.requestId] : []
+        );
+        const preparedRequestIds = holders.flatMap((holder) =>
+          holder.kind === "prepared-request" ? [holder.requestId] : []
+        );
+        const chatIds = holders.flatMap((holder) =>
+          holder.kind === "conversation" ? [holder.conversationId] : []
+        );
+        if (requestIds.length) await dependencies.cancelAgentRequests(requestIds);
+        for (const requestId of preparedRequestIds) {
+          await dependencies.coordinator.cancelManualTurn(requestId);
+        }
+        if (chatIds.length) await dependencies.cancelConversations(chatIds);
         for (const chatId of chatIds) {
           const chat = await dependencies.chatStore.get(chatId);
           if (chat) await rotateSession(chat, dependencies);
         }
+        for (const holder of holders) {
+          if (holder.kind !== "conversation") continue;
+          await Promise.all([
+            integration.projections.releaseSessionDiscovery(
+              holder.conversationId,
+              holder.session
+            ),
+            dependencies.apps.thirdPartyMcpPlans.releaseSessionDiscovery(
+              holder.conversationId,
+              holder.session
+            ),
+          ]);
+        }
       },
-      invalidateDiscoveryCache: () => dependencies.skills.invalidate(),
+      invalidateDiscoveryCache: (scope) =>
+        dependencies.skills.invalidateProject(
+          scope.kind === "project" ? scope.projectId : null
+        ),
     },
   });
+  dependencies.projects.resourceCleanup.register({
+    id: "extensions",
+    cleanup: (context) => integration.cleanupProject(context),
+  });
+  dependencies.projects.resourceCleanup.assertRequiredParticipantsRegistered();
   dependencies.apps.configureExtensions(integration, participants);
   return integration;
 }
 
-/* 只有 ambient 投影会进入会话的 discovery snapshot，所以受影响面精确到
-   「有过 binding 的 workspace」；已绑定后端 session 的聊天才算「持有快照」。 */
-async function sessionsIn(
-  workspaceKeys: readonly string[],
-  dependencies: AppModeDependencies
-) {
-  const targets = new Set(workspaceKeys);
-  const held: string[] = [];
-  for (const summary of dependencies.chatStore.list()) {
-    const chat = await dependencies.chatStore.get(summary.id);
-    if (!chat?.session) continue;
-    const workspace = conversationWorkspace(summary.id, dependencies);
-    if (workspace && targets.has(workspace)) held.push(summary.id);
+async function exactHolders(
+  input: {
+    operationId: string;
+    installIdentity: string;
+    componentInstanceIdentities: readonly string[];
+    workspaceKeys: readonly string[];
+    scope: import("../../../shared/product-resource-scope").ProductResourceScope;
+  },
+  dependencies: AppModeDependencies,
+  projections: ExtensionProjectionLedger
+): Promise<ExtensionRuntimeHolder[]> {
+  const ambient = projections.sessionsAffected(input.operationId);
+  const manual = dependencies.skillsTurnCustody()?.holdersOfInstall(
+    input.installIdentity
+  ) ?? [];
+  const componentIdentities = new Set(input.componentInstanceIdentities);
+  await dependencies.apps.thirdPartyMcpPlans.beginSessionRevoke(
+    input.operationId,
+    componentIdentities
+  );
+  const delivered = dependencies.apps.thirdPartyMcpPlans.sessionsAffected(
+    input.operationId
+  );
+  const plans = dependencies.apps.thirdPartyMcpPlans
+    .requestIdsHoldingComponents(componentIdentities);
+  const prepared = dependencies.coordinator
+    .preparedSkillSelections()
+    .filter(({ receipt }) =>
+      receipt.candidates.some(
+        (candidate) =>
+          candidate.generationRef.kind === "extension" &&
+          projections.installIdentityOfGeneration(
+            candidate.generationRef.package
+          ) === input.installIdentity
+      )
+    )
+    .map((item) => item.requestId);
+  const holders = new Map<string, ExtensionRuntimeHolder>();
+  for (const item of [...ambient, ...delivered]) {
+    holders.set(`conversation:${item.conversationId}:${item.backend}:${item.sessionId}`, {
+      kind: "conversation",
+      conversationId: item.conversationId,
+      session: { backend: item.backend, id: item.sessionId },
+    });
   }
-  return held;
-}
-
-function conversationWorkspace(
-  conversationId: string,
-  dependencies: AppModeDependencies
-) {
-  try {
-    return resolveConversationContext(
-      conversationId,
-      dependencies.projects,
-      dependencies.chatStore
-    ).workspace;
-  } catch {
-    /* 解析不出 workspace 的聊天不可能持有该投影的 discovery snapshot。 */
-    return null;
+  for (const { requestId } of manual) {
+    holders.set(`request:${requestId}`, { kind: "request", requestId });
   }
+  for (const requestId of plans) {
+    holders.set(`request:${requestId}`, { kind: "request", requestId });
+  }
+  for (const requestId of prepared) {
+    holders.set(`prepared:${requestId}`, {
+      kind: "prepared-request",
+      requestId,
+    });
+  }
+  return [...holders.values()];
 }
 
 function configurePackageFlows(
@@ -216,8 +330,7 @@ function configurePackageFlows(
     dependencies.baseStore,
     dependencies.apps.configs,
     dependencies.intents,
-    gate,
-    (record) => dependencies.apps.publishStatus(record)
+    gate
   );
   importer.configureExtensions(extensions.installer);
   const share = new ShareFlow(
@@ -226,8 +339,7 @@ function configurePackageFlows(
     dependencies.projectStore,
     dependencies.baseStore,
     dependencies.intents,
-    gate,
-    (record) => dependencies.apps.publishStatus(record)
+    gate
   );
   dependencies.apps.configurePackageFlows(importer, share);
   /* 两个 kind 同一条流水线：来源分家只为恢复面互不污染，恢复实现不复制。 */
@@ -293,7 +405,6 @@ function configureSave(
       restoreSession(chat, session, dependencies),
     removeShell: (record) => dependencies.apps.removeBaseShell(record),
     enqueueSkillTurnHeld: (input) => enqueueSkillTurn(input, dependencies),
-    onStatus: (record) => dependencies.apps.publishStatus(record),
   });
   dependencies.apps.configureSaveAsApp(saveAsApp, {
     renameBase: (record, name) =>

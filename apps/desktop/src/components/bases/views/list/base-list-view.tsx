@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, react-virtual, lucide, shadcn Button/Confirmation Dialog, cn, shared Base column/line/group pure functions with the same directory line/attributes projection, state BaseMutationOutcome judgment type
- * [OUTPUT]: Provides BaseListView: A window-like path along the group head and record line, with the group folded, newly constructed lines with the group value, read high, and edit open locally; onPatch/onDelete/onCreateRow All options are available, and in absentia, the list is read only
- * [POS]: Projection of lists of bases/views/lists; Sharing the same rows/grouping semantics with the table but not copying the state, removing/rebuilding the workbench with the intention of
+ * [INPUT]: Depends on projected rows/columns, the canonical BaseCellContext, full relation options, virtualization, grouping, mutation outcomes, and record editors
+ * [OUTPUT]: Provides BaseListView with canonical cell rendering, grouped virtual rows, folding, create/edit/delete actions, and a read-only fallback
+ * [POS]: The Base List renderer; workbench owns snapshot/context and this view owns list presentation without rebuilding lookup authority
  */
 
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
@@ -14,12 +14,12 @@ import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { cn } from "@ai-chat/ui/lib/utils";
 import type {
+  BaseCellContext,
   BaseColumn,
   BaseRow,
   BaseRowPatch,
 } from "../../../../../shared/bases-ipc";
 import { groupBaseRows } from "../../../../../shared/bases-ipc";
-import { createBaseCellContext } from "../../../../../shared/bases-ipc";
 import { BaseListRow } from "./list-row";
 import {
   ListSelectDot,
@@ -59,10 +59,12 @@ export function BaseListView({
   busy,
   chatId,
   columns,
+  context,
   groupByColumnId,
   incarnationId,
   ownerKey,
   rows,
+  relationOptions,
   onCreateRow,
   onDelete,
   onPatch,
@@ -70,10 +72,12 @@ export function BaseListView({
   busy?: boolean;
   chatId?: string;
   columns: BaseColumn[];
+  context: BaseCellContext;
   groupByColumnId?: string;
   incarnationId?: string;
   ownerKey?: string;
   rows: BaseRow[];
+  relationOptions: BaseRow[];
   /* intent 一律来自 workbench 的收口出口：判决即返回值，永不 reject。 */
   onCreateRow?(values: BaseRow["values"]): Promise<BaseMutationOutcome>;
   onDelete?(rowIds: string[]): Promise<BaseMutationOutcome>;
@@ -94,13 +98,9 @@ export function BaseListView({
     () => projectListColumns(columns, groupColumn?.id),
     [columns, groupColumn?.id]
   );
-  const cellContext = useMemo(
-    () => createBaseCellContext({ columns, rows }),
-    [columns, rows]
-  );
   const items = useMemo<ListItem[]>(() => {
     if (!groupColumn) return rows.map((row) => ({ kind: "row", row }));
-    return groupBaseRows(rows, groupColumn, columns)
+    return groupBaseRows(rows, groupColumn, context)
       // 空的 Unassigned 不是一个分组，只是「没人落在这儿」；
       // 真实 option 即使为空也留着，那枚 + 是它唯一的入口。
       .filter((lane) => lane.rows.length > 0 || lane.id !== "__none__")
@@ -117,7 +117,7 @@ export function BaseListView({
           ? []
           : lane.rows.map((row) => ({ kind: "row" as const, row }))),
       ]);
-  }, [collapsed, columns, groupColumn, rows]);
+  }, [collapsed, context, groupColumn, rows]);
   // 估值只决定首帧滚动条长度，measureElement 落地后即被真值取代；
   // 读态行恒为 ROW_HEIGHT，只有编辑态展开才需要重测。
   // eslint-disable-next-line react-hooks/incompatible-library -- 10k 行必须使用 TanStack 窗口化
@@ -218,7 +218,7 @@ export function BaseListView({
             >
               <BaseListRow
                 busy={busy}
-                cellContext={cellContext}
+                cellContext={context}
                 columns={columns}
                 editing={editing}
                 onDelete={onDelete && setDeleteRowId}
@@ -229,7 +229,7 @@ export function BaseListView({
                 owner={attachmentOwner}
                 ownerKey={ownerKey}
                 projection={projection}
-                relationRows={rows}
+                relationOptions={relationOptions}
                 row={entry.row}
               />
             </article>

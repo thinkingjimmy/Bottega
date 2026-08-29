@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, runtime controller, workspace, candidate/image transaction hooks, Gallery store/freeze/focus, type PromptInputProvider and RichInput
- * [OUTPUT]: Provides ChatComposer; The list `$`/`@`Access to the atomic image attachments, Gallery freeze, each Section/full round of image budget disclosure and sending gate; The add-on menu and each of them appears only when it is actually available (Files acknowledge imageInputAvailable, Plan acknowledge planSupported, both are empty and do not provide any input)
- * [POS]: The view of the chat/composer is linked to the command; Candidate projections and images read down workspace/, draft/ annex/ Gallery still held by per-chat store
+ * [OUTPUT]: Provides ChatComposer with rich submission, capability-aware controls, Gallery/Section image gates, and the explicit safe Resume Failure decision surface
+ * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
 
 import {
@@ -30,7 +30,6 @@ import {
 } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { PromptInputAttachments } from "@ai-chat/ui/components/ai-elements/prompt-input-attachments";
 import { Separator } from "@ai-chat/ui/components/ui/separator";
-import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import {
   RichInput,
   type RichInputHandle,
@@ -61,6 +60,7 @@ import { ChatPlanDecision } from "./chat-plan-decision";
 import { ChatPermissionSelector } from "./chat-permission-selector";
 import { ChatProjectSelector } from "./chat-project-selector";
 import { ChatUserInputSelector } from "./chat-user-input-selector";
+import { ResumeFailureDialog } from "./resume-failure-dialog";
 import { FileAuthorizationQueue } from "./file-authorization-queue";
 import { MessageQueuePanel } from "./queue/message-queue-panel";
 import {
@@ -97,6 +97,7 @@ function ChatAddMenu({
   disabled: boolean;
   turnControlsDisabled: boolean;
 }) {
+  const { t } = useAppTranslation();
   const attachments = usePromptInputAttachments();
   const planUnavailable =
     !controller.planSupported ||
@@ -104,7 +105,7 @@ function ChatAddMenu({
   return (
     <PromptInputActionMenu>
       <PromptInputActionMenuTrigger
-        aria-label="Add"
+        aria-label={t("chat.composer.add")}
         className="rounded-full"
         disabled={disabled}
       >
@@ -119,7 +120,7 @@ function ChatAddMenu({
             }}
           >
             <FileUpIcon className="size-4" />
-            Files
+            {t("chat.composer.files")}
           </PromptInputActionMenuItem>
         )}
         <PromptInputActionMenuItem
@@ -132,13 +133,13 @@ function ChatAddMenu({
           title={
             planUnavailable
               ? !controller.planSupported
-                ? "当前 Agent 不支持 Plan"
-                : controller.skillsError || "点击重新检查当前 Agent 的 Plan 能力"
+                ? t("chat.composer.planUnavailable")
+                : controller.skillsError || t("chat.composer.planCheck")
               : undefined
           }
         >
           <LightbulbIcon className="size-4" />
-          {controller.planMode ? "关闭 Plan" : "Plan"}
+          {controller.planMode ? t("chat.composer.disablePlan") : "Plan"}
         </PromptInputActionMenuItem>
       </PromptInputActionMenuContent>
     </PromptInputActionMenu>
@@ -371,27 +372,16 @@ function ChatComposerContent({
   });
   const modelCapability =
     controller.selectedBackend?.capabilities.modelOptions ?? "none";
+  /* `backend === "codex"` 已把联合收窄到 CodexTurnOptions，而 reasoningEffort /
+     serviceTier 是它的必填字段——再补两个 `in` 检查是同一判定写第二遍。 */
   const fullModelOptions =
-    modelCapability === "full" &&
-    "reasoningEffort" in controller.turnOptions &&
-    "serviceTier" in controller.turnOptions
+    modelCapability === "full" && controller.turnOptions.backend === "codex"
       ? controller.turnOptions
       : null;
 
   return (
     <div className="mx-auto w-full max-w-3xl p-4 pt-0">
-      <ConfirmationDialog
-        open={Boolean(controller.resumeFailure)}
-        title="保存的会话已失效"
-        description="后端拒绝恢复旧 session。原消息与附件仍保留；你可以用同一输入开启新会话，且不会重复写入用户消息。"
-        confirmLabel="以新会话继续"
-        cancelLabel="重新检测后端"
-        busy={controller.settingsSaving}
-        onOpenChange={(open) => {
-          if (!open) void controller.retryBackends();
-        }}
-        onConfirm={() => void controller.retryWithoutSession()}
-      />
+      <ResumeFailureDialog controller={controller} />
       {/* plan-review 是完整的决策时刻，占据输入框槽位（见下方三元链）；
           只有普通命令/文件/权限审批才叠在输入框上方——它们放行后 turn
           立即继续，输入框留着正是为了排队下一句 */}
@@ -410,7 +400,7 @@ function ChatComposerContent({
         <div className="mb-2 flex items-start gap-2 text-destructive text-xs">
           <p className="min-w-0 flex-1">{controller.attachmentNotice}</p>
           <button
-            aria-label="关闭提示"
+            aria-label={t("chat.composer.dismissNotice")}
             className="shrink-0 text-muted-foreground hover:text-foreground"
             onClick={() => controller.setAttachmentNotice("")}
             type="button"
@@ -423,7 +413,7 @@ function ChatComposerContent({
         <div className="mb-2 flex items-start gap-2 text-muted-foreground text-xs">
           <p className="min-w-0 flex-1">{controller.queueNotice}</p>
           <button
-            aria-label="关闭排队提示"
+            aria-label={t("chat.composer.dismissQueueNotice")}
             className="shrink-0 hover:text-foreground"
             onClick={() => controller.setQueueNotice("")}
             type="button"
@@ -454,10 +444,9 @@ function ChatComposerContent({
         <div className="mb-2 flex flex-wrap items-center gap-2">
           {galleryCommentCount > 0 && (
             <span className="inline-flex min-h-11 items-center rounded-full border bg-background pl-3 text-xs">
-              ⊕ {galleryCommentCount} comment
-              {galleryCommentCount === 1 ? "" : "s"}
+              ⊕ {t("chat.composer.galleryComments", { count: galleryCommentCount })}
               <button
-                aria-label="清除所有图片评论"
+                aria-label={t("chat.composer.clearGalleryComments")}
                 className="grid size-11 place-items-center rounded-full text-muted-foreground hover:text-foreground"
                 onClick={() => clearGalleryComments(controller.chatId)}
                 type="button"
@@ -472,7 +461,7 @@ function ChatComposerContent({
             type="button"
           >
             <ImagesIcon className="size-3.5" />
-            聚焦画廊
+            {t("chat.composer.focusGallery")}
           </button>
         </div>
       )}
@@ -581,6 +570,9 @@ function ChatComposerContent({
           <RichInput
             ref={inputRef}
             disabled={editingDisabled}
+            placeholder={t("ui.askAnything")}
+            invalidSkillRefs={controller.invalidatedSkillRefs}
+            invalidSkillTitle={t("chat.skillControl.invalidated")}
             fileClickTitle={
               enableSidePanel ? "预览 Markdown" : undefined
             }
@@ -680,6 +672,7 @@ function ChatComposerContent({
             {fullModelOptions && (
               <ChatModelSelector
                 value={fullModelOptions}
+                effectiveServiceTier={controller.serviceTierEffective}
                 models={controller.models.filter(
                   (model): model is typeof model & {
                     defaultReasoningEffort: string;
@@ -707,6 +700,7 @@ function ChatComposerContent({
             {modelCapability === "list-only" && (
               <ChatModelListSelector
                 value={controller.turnOptions}
+                effectiveServiceTier={controller.serviceTierEffective}
                 models={controller.models}
                 modelsLoading={controller.modelsLoading}
                 modelsError={controller.modelsError}

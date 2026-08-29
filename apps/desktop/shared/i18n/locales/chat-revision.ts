@@ -11,8 +11,11 @@ export const chatRevisionEn = {
   cancel: "Cancel",
   send: "Send revision",
   editing: "Edit last message",
-  newSession: "A new Agent session started with a limited recap of the earlier conversation.",
-  memoryWarning: "If Memory is enabled, superseded content may still be recalled.",
+  unavailable: {
+    busy: "Wait for the active turn to finish before editing.",
+    queued: "Clear or finish queued messages before editing.",
+    "adopted-history": "Imported conversations keep their adopted session lineage and cannot be revised.",
+  },
 };
 
 export const chatRevisionZhCN = {
@@ -22,8 +25,11 @@ export const chatRevisionZhCN = {
   cancel: "取消",
   send: "发送修订",
   editing: "编辑最后一条消息",
-  newSession: "已开启新 Agent 会话，并携带此前对话回顾（有限预算）。",
-  memoryWarning: "若已开启记忆，被替代的旧内容仍可能被召回。",
+  unavailable: {
+    busy: "当前轮次结束后才能编辑。",
+    queued: "请先处理完排队消息再编辑。",
+    "adopted-history": "收养会话必须保留原生 Session 血缘，暂不支持修订。",
+  },
 };
 
 export const chatRevisionJa = {
@@ -33,8 +39,11 @@ export const chatRevisionJa = {
   cancel: "キャンセル",
   send: "修正版を送信",
   editing: "最後のメッセージを編集",
-  newSession: "以前の会話の限定的な要約を引き継ぎ、新しい Agent セッションを開始しました。",
-  memoryWarning: "メモリーが有効な場合、置き換え前の内容が想起されることがあります。",
+  unavailable: {
+    busy: "実行中のターンが終了してから編集してください。",
+    queued: "キューのメッセージを完了または削除してから編集してください。",
+    "adopted-history": "取り込んだ会話は元の Session 系譜を保持するため編集できません。",
+  },
 };
 
 export const chatRevisionFr = {
@@ -44,8 +53,11 @@ export const chatRevisionFr = {
   cancel: "Annuler",
   send: "Envoyer la révision",
   editing: "Modifier le dernier message",
-  newSession: "Une nouvelle session Agent a démarré avec un récapitulatif limité de la conversation.",
-  memoryWarning: "Si la mémoire est active, l’ancien contenu peut encore être rappelé.",
+  unavailable: {
+    busy: "Attendez la fin du tour actif avant de modifier.",
+    queued: "Terminez ou retirez les messages en file avant de modifier.",
+    "adopted-history": "Les conversations importées conservent leur lignée de Session et ne peuvent pas être révisées.",
+  },
 };
 
 export const chatRevisionEs = {
@@ -55,6 +67,9 @@ export const chatRevisionEs = {
   cancel: "Cancelar",
   send: "Enviar revisión",
   editing: "Editar el último mensaje",
-  newSession: "Se inició una nueva sesión del Agent con un resumen limitado de la conversación anterior.",
-  memoryWarning: "Si Memory está activa, el contenido sustituido aún podría recordarse.",
+  unavailable: {
+    busy: "Espera a que termine el turno activo antes de editar.",
+    queued: "Completa o elimina los mensajes en cola antes de editar.",
+    "adopted-history": "Las conversaciones importadas conservan su linaje de Session y no se pueden revisar.",
+  },
 };

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on PromptInput RichNode/RichValue and ReactNode
- * [OUTPUT]: Provides RichQuery/group/suggestion/copy/handle/props Public type
- * [POS]: The boundary of the stable type of ai-elements RichInput; The state-machine, pure model and candidate view are consumable in a one-way contract to avoid type cycles
+ * [OUTPUT]: Provides public RichQuery, multi-kind group, suggestion, structured footer action, invalid-state, copy, handle, and props types
+ * [POS]: Stable RichInput type boundary shared one-way by the state machine, pure model, and candidate view
  */
 
 import type { ReactNode } from "react";
@@ -55,10 +55,13 @@ export type RichSuggestionCopy = {
   noMatch: string;
   groups: readonly RichSuggestionGroup[];
   footer?: string;
+  footerAction?: Readonly<{ label: string; onSelect: () => void }>;
 };
 
 export type RichSuggestionGroup = {
   kind: RichInputSuggestion["kind"];
+  /** 多个候选身份可共享一个视觉组；kind 仍是该组稳定的渲染身份。 */
+  kinds?: readonly RichInputSuggestion["kind"][];
   label: string;
   /** 在过滤与排序之后裁剪，避免空 query 渲染无界列表且不牺牲后段命中。 */
   limit?: number;
@@ -87,6 +90,8 @@ export type RichInputProps = {
   onSuggestionPendingChange?: (pending: boolean) => void;
   fileClickTitle?: string;
   workspaceFileClickTitle?: string;
+  invalidSkillRefs?: readonly string[];
+  invalidSkillTitle?: string;
   suggestions?: RichInputSuggestion[];
   suggestionCopy?: Partial<
     Record<RichQuery["kind"], Partial<RichSuggestionCopy>>

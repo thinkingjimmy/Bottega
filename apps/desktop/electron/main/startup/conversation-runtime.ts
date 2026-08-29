@@ -1,11 +1,13 @@
 /**
- * [INPUT]: Depends on Chat/Project/App/Memory/Gallery/Browser services, manual staging authority, main-only adopt trust, RelayLedger and back end bridge
- * [OUTPUT]: Provides ChatsService, lifecycle Project identity and canonical revision of attachments rebuilt by the common/adopt manual prepare, Workspace owner snapshot, or general lifecycle gate, Conversation Coordinator and ArchiveService's independent combination functions
- * [POS]: The conversation composition module for startup; Only assembled dependent, not holding lifecycle universal status
+ * [INPUT]: Depends on Chat/Project/App/Memory/Gallery/Browser/History services, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, manual staging, RelayLedger, and backend bridge
+ * [OUTPUT]: Provides conversation services and manual preparation that freezes canonical Project lifecycle, Project Tools policy, and exact Skill selection before durable admission
+ * [POS]: The conversation-domain startup composition module; assembles dependencies without holding global lifecycle state
  */
 
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { AgentWorkspaceScope } from "../../../shared/agent-ipc";
+import type { TurnProjectContext } from "../../../shared/product-resource-scope";
 import { ownerFromKey } from "../../../shared/bases-ipc";
 import { PROJECT_UNAVAILABLE } from "../../../shared/projects-ipc";
 import type { TrustedManualTurnSubmission as ManualTurnSubmission } from "../../../shared/sections-ipc";
@@ -15,6 +17,7 @@ import {
   hasConversationActivity,
   registerAgentSteerOperation,
   releaseConversations,
+  releaseThreadScopeForConversation,
   seedThreadScope,
   startAgentPayload,
   steerAgentTurn,
@@ -33,6 +36,7 @@ import { generateTitle } from "../chats/title-generator";
 import type { ConversationDeletionCoordinator } from "../deletion/conversation-deletion-coordinator";
 import type { FileAuthorizationStore } from "../file-authorizations";
 import type { GalleryRuntime } from "../gallery/bootstrap";
+import { HistoryImportService } from "../history-import/service";
 import { assertTrustedGallerySubmission } from "../gallery/submission-authority";
 import type { LifecycleIntentStore } from "../lifecycle/intent-store";
 import type { MemoryLifecycleOrchestrator } from "../memory/runtime/control/lifecycle-orchestrator";
@@ -45,6 +49,7 @@ import {
   releasePreparedStaging,
   type PreparedManualTurn,
 } from "../sections/coordinator/admission/prepared-manual-turn";
+import type { ProjectToolsPreparationSnapshot } from "../sections/coordinator/admission/prepared-project-tools";
 import { ConversationCoordinator } from "../sections/coordinator/conversation-coordinator";
 import type { RelayLedger } from "../sections/coordinator/relay-ledger";
 import type { SettingsStore } from "../settings-store";
@@ -226,6 +231,142 @@ export function createChatsService({
   });
 }
 
+type HistoryImportRuntimeDependencies = Readonly<{
+  userData: string;
+  home: string;
+  projects: ProjectsService;
+  projectStore: ProjectStore;
+  chats: ChatStore;
+  settings: SettingsStore;
+  memory: MemoryService;
+  getCoordinator: () => ConversationCoordinator | null;
+}>;
+
+export async function initializeHistoryImportService({
+  userData,
+  home,
+  projects,
+  projectStore,
+  chats,
+  settings,
+  memory,
+  getCoordinator,
+}: HistoryImportRuntimeDependencies) {
+  const service = new HistoryImportService(userData, {
+    home,
+    listProjects: () => projectStore.list(),
+    getProject: (projectId) => projectStore.get(projectId),
+    prepareProject: () => projects.prepareExternalProject(),
+    commitProject: (input) => projects.commitExternalProject(input),
+    listSessionBindings: () => chats.listBindings(),
+    getAdoptionBinding: (chatId) => chats.getAdoptionBinding(chatId),
+    memoryState: () => {
+      const memorySettings = settings.get().memory;
+      const status = memory.status();
+      const consent = memory.policy.activeConsent();
+      return {
+        enabled: memorySettings.enabled,
+        ready: status.health === "ready" || status.health === "compat",
+        sharingMode: memorySettings.sharingMode,
+        providerId: status.target?.providerId ?? null,
+        providerDataInstanceId:
+          status.target?.providerDataInstanceId ?? null,
+        consentEpochId: consent?.id ?? null,
+      };
+    },
+    commitMemory: ({ grantId, snapshots, authorization }) =>
+      memory.importForeignHistory({ grantId, snapshots, authorization }),
+    previewProductMemory: () => memory.previewExistingProductHistory(),
+    commitProductMemory: (grantId, intent) =>
+      memory.commitExistingProductHistory(grantId, intent),
+    productMemoryCommitted: (grantId) =>
+      memory.existingProductHistoryCommitted(grantId),
+    adopt: async ({ request, entry, snapshot }) => {
+      const coordinator = getCoordinator();
+      const project = projectStore.get(entry.projectId);
+      if (!coordinator || !project) throw new Error("收养运行时尚未就绪");
+      if (request.turnOptions.backend !== entry.sourceKind) {
+        throw new Error("续聊 Agent 必须与外源会话同源");
+      }
+      const chatId = `chat_${randomUUID().replaceAll("-", "")}`;
+      const incarnationId = randomUUID().replaceAll("-", "");
+      const messageId = `user_${randomUUID().replaceAll("-", "")}`;
+      const requestId = `request_${randomUUID().replaceAll("-", "")}`;
+      const { submission } = request;
+      const turnOptions = await settings.resolveChatOptions(
+        { conversationId: request.opaqueId },
+        entry.sourceKind
+      );
+      const content = submission.displayText.trim();
+      const session = {
+        backend: entry.sourceKind,
+        id: entry.key.resumeAlias,
+      } as const;
+      const receipt = await coordinator.submitManualTurn({
+        intentId: `adopt_${randomUUID().replaceAll("-", "")}`,
+        persistence: {
+          kind: "adopt",
+          input: {
+            id: chatId,
+            title: entry.title || "Imported conversation",
+            agent: entry.sourceKind,
+            projectId: entry.projectId,
+            incarnationId,
+            session,
+            snapshotDigest: snapshot.digest,
+            importOrigin: {
+              sourceKind: entry.sourceKind,
+              storageFingerprint: entry.key.storageFingerprint,
+              canonicalNativeId: entry.key.canonicalNativeId,
+              aliases: entry.key.aliases,
+              resumeAlias: entry.key.resumeAlias,
+              originalCwd: entry.cwd,
+              historyRevision: entry.historyRevision,
+              adoptionSnapshotId: snapshot.snapshotId,
+              sourceSize: entry.fingerprint.size,
+              sourceMtimeNs: entry.fingerprint.mtimeNs,
+            },
+            firstMessage: {
+              id: messageId,
+              role: "user",
+              content,
+              createdAt: Date.now(),
+            },
+            ...(submission.attachmentPayloads?.length
+              ? { attachmentPayloads: submission.attachmentPayloads }
+              : {}),
+          },
+        },
+        turn: {
+          requestId,
+          scope: { conversationId: chatId },
+          session,
+          turnOptions,
+          ...(submission.planMode ? { planMode: true } : {}),
+          input: submission.input,
+        },
+        content: submission.content,
+        precondition: {
+          kind: "absent",
+          proposedIncarnationId: incarnationId,
+        },
+        workspacePrecondition: {
+          kind: "project",
+          projectId: project.id,
+          membershipRevision: project.membershipRevision,
+        },
+      });
+      if (receipt.phase === "failed") {
+        throw new Error("续聊启动失败，未静默创建空会话");
+      }
+      return { chatId, incarnationId, phase: receipt.phase };
+    },
+  });
+  await service.initialize();
+  await service.snapshots.gcMemoryOrphans();
+  return service;
+}
+
 type ManualPrepareDependencies = {
   stagingRoot: string;
   chatHomes: ChatHomeService;
@@ -235,7 +376,16 @@ type ManualPrepareDependencies = {
   readSectionAttachment?(sectionId: string, attachmentId: string): Promise<string>;
   resolveWorkspace: WorkspaceResolver;
   skills: SkillsCatalog;
+  extensionInventoryVersion(projectContext: TurnProjectContext): string;
   files: FileAuthorizationStore;
+  /** Main composition freezes canonical Project/global policy before any staging. */
+  resolveProjectTools?: (input: Readonly<{
+    projectId: string | null;
+    workspace: string;
+    backend: ManualTurnSubmission["turn"]["turnOptions"]["backend"];
+    builtinTools: "none" | "read" | "mutate";
+    planMode: boolean;
+  }>) => Promise<ProjectToolsPreparationSnapshot> | ProjectToolsPreparationSnapshot;
   histories?: {
     export(opaqueId: string): Promise<{ title: string; transcript: string } | null>;
   };
@@ -250,7 +400,9 @@ export function createManualTurnPreparer({
   readSectionAttachment,
   resolveWorkspace,
   skills,
+  extensionInventoryVersion,
   files,
+  resolveProjectTools,
   histories,
 }: ManualPrepareDependencies) {
   return async (submission: ManualTurnSubmission) => {
@@ -281,12 +433,37 @@ export function createManualTurnPreparer({
       persistence.kind === "append"
         ? (await chatStore.get(persistence.input.chatId))?.projectId ?? null
         : projectId ?? null;
-    const { workspace } = creationIdentity
+    const resolved = creationIdentity
       ? resolveConversationContext(creationChatId!, projects, chatStore, {
           homeDir: creationIdentity.homeDir,
           projectId,
         })
       : resolveWorkspace(stagingScope);
+    const workspace = resolved.workspace;
+    const projectContext = lifecycleProjectId
+      ? {
+          projectId: lifecycleProjectId,
+          projectLifecycleRevision: requireProjectLifecycleRevision(
+            projects,
+            lifecycleProjectId
+          ),
+        }
+      : { projectId: null, projectLifecycleRevision: null };
+    const projectTools = await resolveProjectTools?.({
+      projectId: lifecycleProjectId,
+      workspace,
+      backend: submission.turn.turnOptions.backend,
+      builtinTools: runtime.capabilities.builtinTools,
+      planMode: Boolean(submission.turn.planMode),
+    });
+    if (
+      projectTools &&
+      (projectTools.projectContext.projectId !== projectContext.projectId ||
+        projectTools.projectContext.projectLifecycleRevision !==
+          projectContext.projectLifecycleRevision)
+    ) {
+      throw new Error("PROJECT_TOOLS_CANONICAL_CONTEXT_MISMATCH");
+    }
     return prepareManualTurn(submission, {
       workspace,
       workspaceScope: stagingScope,
@@ -296,6 +473,23 @@ export function createManualTurnPreparer({
       skills,
       files,
       lifecycleProjectId,
+      ...(projectTools ? { projectTools } : {}),
+      projectContext,
+      freezeSkillSelection: async (input) => {
+        const before = extensionInventoryVersion(input.projectContext);
+        const receipt = await skills.prepareSelectionReceipt({
+          ...input,
+          visibleInventoryVersion: before,
+        });
+        const after = extensionInventoryVersion(input.projectContext);
+        if (before !== after) {
+          throw Object.assign(
+            new Error("Extension inventory changed during manual turn preparation"),
+            { status: 409 }
+          );
+        }
+        return receipt;
+      },
       sections: {
         conversationId: submission.turn.scope.conversationId,
         get: (chatId) => chatStore.get(chatId),
@@ -309,6 +503,15 @@ export function createManualTurnPreparer({
       },
     });
   };
+}
+
+function requireProjectLifecycleRevision(
+  projects: ProjectsService,
+  projectId: string
+) {
+  const revision = projects.getProjectLifecycleRevision(projectId);
+  if (!revision) throw new Error("Project lifecycle 记录不存在");
+  return revision;
 }
 
 type CoordinatorRuntimeDependencies = {
@@ -357,7 +560,8 @@ export function createConversationCoordinator({
       origin,
       resolvedInput,
       assistantSeq,
-      admissionHeld
+      admissionHeld,
+      projectTools
     ) =>
       startAgentPayload(
         payload,
@@ -366,8 +570,32 @@ export function createConversationCoordinator({
         origin,
         resolvedInput,
         assistantSeq,
-        admissionHeld
+        admissionHeld,
+        projectTools
       ),
+    rebuildSessionForTools: async (conversationId, expected) => {
+      await chats.replaceSession(
+        { conversationId },
+        expected,
+        null
+      );
+      releaseThreadScopeForConversation(conversationId);
+    },
+    assertProjectToolsContext: (context) => {
+      if (context.projectId === null) {
+        if (context.projectLifecycleRevision !== null) {
+          throw new Error("PROJECT_TOOLS_LIFECYCLE_MISMATCH");
+        }
+        return;
+      }
+      if (context.projectLifecycleRevision === null) {
+        throw new Error("PROJECT_TOOLS_LIFECYCLE_MISMATCH");
+      }
+      projectStore.assertLifecycle(
+        context.projectId,
+        context.projectLifecycleRevision
+      );
+    },
     cancelTurn: (requestId) => cancelAgentTurn(requestId),
     registerSteerOperation: (requestId) =>
       registerAgentSteerOperation(requestId),
@@ -412,7 +640,6 @@ type ArchiveRuntimeDependencies = {
   chats: ChatsService;
   projects: ProjectsService;
   baseStore: BaseStore;
-  bases: BasesService;
   memory: MemoryService;
   memoryLifecycle: MemoryLifecycleOrchestrator;
   settings: SettingsStore;
@@ -427,7 +654,6 @@ export function createArchiveService({
   chats,
   projects,
   baseStore,
-  bases,
   memory,
   memoryLifecycle,
   settings,
@@ -448,9 +674,6 @@ export function createArchiveService({
           const owner = ownerFromKey(ownerKey);
           return owner.kind === "chat" && chatIds.has(owner.chatId);
         }).length,
-    async (projectId) => {
-      await bases.removeForProject(projectId);
-    },
     {
       preview: async (excludedChatIds) => {
         const preview = await memory.previewRebuild(

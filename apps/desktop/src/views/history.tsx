@@ -1,63 +1,108 @@
 "use client";
 
 /**
- * [INPUT]: Depends on the router, I18n, HistoryProvider/client, PageShell, AgentBackendIcon for agent-backends, share ForeignHistoryTranscriptRows, and useChatSession + ChatComposer + assembleFirstTurnPayload for the product itself
- * [OUTPUT]: Provides HistoryRoute: Page headers, transcripts and input boxes are all from the same source as the product chat: the same ChatComposer is installed with the same first round, the back end is locked at the source, the model/permission/image attachment/Plan is actually used to continue the first round of the chat), only read the transcripts, split the page, uncontested reason disclosure and explicitly "continue this conversation" input
- * [POS]: The following pages link to the history of the views: The video is from ChatTranscript, and the input box is directly copied from ChatComposer and simply changed to "where to after sending"Not creating Product Chat or exposing Chat management action before adoption
+ * [INPUT]: Depends on router, i18n, HistoryProvider/client, PageShell, panel-slot store, useChatSession, ChatViewFrame, and first-turn payload assembly
+ * [OUTPUT]: Provides HistoryRoute with the shared chat frame, independently abortable paged/full-index immutable prefix, adopt-only composer, explicit panel eligibility, identity-transfer hold, and post-adoption panel continuity
+ * [POS]: The foreign-session route adapter in views; it changes persistence/navigation semantics while reusing the complete product chat surface
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useNavigate, useParams, useSearchParams } from "react-router";
+import { Navigate, useNavigate, useParams } from "react-router";
 import {
   historyBackend,
   type ForeignHistoryBlock,
   type ForeignHistorySummary,
 } from "../../shared/history-import-ipc";
 import { useHistory } from "@/components/providers/history/history-provider";
-import { adoptHistory, historyTranscript } from "@/lib/history/client";
-import { PageShell } from "@/components/page-shell";
+import {
+  adoptHistory,
+  historyTranscript,
+  historyTranscriptIndex,
+} from "@/lib/history/client";
+import { PageShell, panelChromeClassName } from "@/components/page-shell";
 import { AgentBackendIcon } from "@/lib/agent-backends";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { errorMessage } from "@/lib/errors";
-import {
-  Conversation,
-  ConversationContent,
-  ConversationScrollButton,
-} from "@ai-chat/ui/components/ai-elements/conversation";
-import { ForeignHistoryTranscriptRows } from "@/components/chat/transcript/foreign-history-transcript";
-import { ChatComposer } from "@/components/chat/composer/chat-composer";
+import { ChatViewFrame } from "@/components/chat/chat-view";
 import { useChatSession } from "@/components/chat/runtime/use-chat-session";
 import { assembleFirstTurnPayload } from "@/components/chat/runtime/session/create-session-submit";
 import type { PromptInputMessage } from "@ai-chat/ui/components/ai-elements/prompt-input";
-import { foreignHistoryAnchor } from "../../shared/foreign-history-grouping";
 import {
-  findTranscriptTarget,
-  highlightTranscriptTarget,
-} from "@/components/chat/transcript/transcript-highlight";
+  foreignHistoryAnchor,
+  groupForeignHistoryBlocks,
+} from "../../shared/foreign-history-grouping";
+import {
+  consumeSidePanelRequest,
+  nextSidePanelCommandNonce,
+  type PanelSessionContext,
+  type SidePanelRequest,
+} from "@/components/chat/runtime/chat-session-model";
+import { panelSlotStore } from "@/components/chat/side-panel/panel-slot-store";
+import { PanelRightIcon } from "lucide-react";
+import type { HistoryPrefixProjection } from "@/lib/history-prefix";
+
+const isAbortError = (cause: unknown) =>
+  cause instanceof Error && cause.name === "AbortError";
 
 export function HistoryRoute() {
   const { t } = useAppTranslation();
   const { id = "" } = useParams();
   const { snapshot, loading } = useHistory();
-  const summary = snapshot.entries.find((entry) => entry.opaqueId === id);
+  const [pendingSummary, setPendingSummary] =
+    useState<ForeignHistorySummary | null>(null);
+  const current = snapshot.entries.find((entry) => entry.opaqueId === id);
+  const summary = current ?? pendingSummary;
 
   if (loading) return <PageShell title={t("history.loading")}><div /></PageShell>;
   if (!summary) return <Navigate to="/" replace />;
   /* revision 换代即整体重挂：旧转录、旧 cursor 与在途请求随旧实例一起作废，
      无需代际计数器对账。 */
-  return <HistoryTranscript key={`${summary.opaqueId}:${summary.historyRevision}`} summary={summary} />;
+  return (
+    <HistoryTranscript
+      key={`${summary.opaqueId}:${summary.historyRevision}`}
+      onAdoptionPendingChange={(pending) =>
+        setPendingSummary(pending ? summary : null)
+      }
+      summary={summary}
+    />
+  );
 }
 
-function HistoryTranscript({ summary }: { summary: ForeignHistorySummary }) {
+function HistoryTranscript({
+  onAdoptionPendingChange,
+  summary,
+}: {
+  onAdoptionPendingChange: (pending: boolean) => void;
+  summary: ForeignHistorySummary;
+}) {
   const { t } = useAppTranslation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [blocks, setBlocks] = useState<ForeignHistoryBlock[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
+  const [sidePanelRequest, setSidePanelRequest] =
+    useState<SidePanelRequest | null>(null);
+  const loadGenerationRef = useRef(0);
+  const blocksRef = useRef<ForeignHistoryBlock[]>([]);
+  const cursorRef = useRef<string | null>(null);
+  const initialFlightRef = useRef<AbortController | null>(null);
+  const pageFlightRef = useRef<{
+    cursor: string;
+    generation: number;
+    controller: AbortController;
+    promise: Promise<boolean>;
+  } | null>(null);
   const backend = historyBackend(summary.sourceKind);
+  const panelContext = useMemo<PanelSessionContext>(() => ({
+    kind: "foreign",
+    foreignRef: {
+      opaqueId: summary.opaqueId,
+      historyRevision: summary.historyRevision,
+    },
+  }), [summary.historyRevision, summary.opaqueId]);
 
   /* ── 输入框就是产品那一个 ──────────────────────────────────────
    * 会话以 opaqueId 为 scope 起一个正常的 chat session：这不是为了拼出一个
@@ -70,6 +115,7 @@ function HistoryTranscript({ summary }: { summary: ForeignHistorySummary }) {
     scope: { conversationId: summary.opaqueId },
     project: { kind: "selectable" },
     draftAgent: backend,
+    panelContext,
   });
   const { lockBackend, selectProject } = session.composer;
 
@@ -82,47 +128,129 @@ function HistoryTranscript({ summary }: { summary: ForeignHistorySummary }) {
     selectProject(summary.projectId);
   }, [backend, lockBackend, selectProject, summary.projectId]);
 
-  useEffect(() => {
-    let stale = false;
-    void historyTranscript(summary.opaqueId)
+  const loadInitial = useCallback(() => {
+    const generation = ++loadGenerationRef.current;
+    initialFlightRef.current?.abort();
+    pageFlightRef.current?.controller.abort();
+    const controller = new AbortController();
+    initialFlightRef.current = controller;
+    blocksRef.current = [];
+    cursorRef.current = null;
+    pageFlightRef.current = null;
+    setBlocks([]);
+    setCursor(null);
+    setBusy(true);
+    setError("");
+    void historyTranscript(summary.opaqueId, undefined, controller.signal)
       .then((page) => {
-        if (stale) return;
+        if (generation !== loadGenerationRef.current) return;
+        if (page.revision !== summary.historyRevision) {
+          throw new Error("HISTORY_REVISION_CHANGED");
+        }
+        blocksRef.current = page.blocks;
+        cursorRef.current = page.nextCursor;
         setBlocks(page.blocks);
         setCursor(page.nextCursor);
       })
-      .catch((cause) => { if (!stale) setError(errorMessage(cause)); })
-      .finally(() => { if (!stale) setBusy(false); });
-    return () => { stale = true; };
-  }, [summary.opaqueId]);
+      .catch((cause) => {
+        if (!isAbortError(cause) && generation === loadGenerationRef.current) {
+          setError(errorMessage(cause));
+        }
+      })
+      .finally(() => {
+        if (initialFlightRef.current === controller) {
+          initialFlightRef.current = null;
+        }
+        if (generation === loadGenerationRef.current) setBusy(false);
+      });
+  }, [summary.historyRevision, summary.opaqueId]);
 
-  const loadMore = useCallback(async () => {
-    if (!cursor || busy) return;
-    setBusy(true);
-    try {
-      const page = await historyTranscript(summary.opaqueId, cursor);
-      setBlocks((current) => [...current, ...page.blocks]);
-      setCursor(page.nextCursor);
-    } catch (cause) { setError(errorMessage(cause)); }
-    finally { setBusy(false); }
-  }, [busy, cursor, summary.opaqueId]);
-
-  /* 深链是一次性指令：命中即消费。不设消费位的话，之后每次 loadMore 都会
-     把视口拽回同一目标再闪一次高亮。 */
-  const consumedTargetRef = useRef("");
   useEffect(() => {
-    const target = searchParams.get("b");
-    if (!target || busy || consumedTargetRef.current === target) return;
-    const split = target.indexOf(":");
-    if (split < 0 || target.slice(0, split) !== summary.historyRevision) return;
-    const node = findTranscriptTarget(foreignHistoryAnchor(target.slice(split + 1)));
-    if (node) {
-      consumedTargetRef.current = target;
-      node.scrollIntoView({ block: "center", behavior: "smooth" });
-      highlightTranscriptTarget(node);
-      return;
+    let active = true;
+    queueMicrotask(() => {
+      if (active) loadInitial();
+    });
+    return () => {
+      active = false;
+      loadGenerationRef.current += 1;
+      initialFlightRef.current?.abort();
+      pageFlightRef.current?.controller.abort();
+    };
+  }, [loadInitial, reloadToken]);
+
+  const retryInitialLoad = useCallback(() => {
+    setReloadToken((current) => current + 1);
+  }, []);
+
+  /* loadMore 与深链共用同一条 cursor 单飞；正文页永远只按当前 cursor 追加一次。
+     Find 的全量索引走另一份只读投影，不再有资格改写这里的 blocks/cursor。 */
+  const loadNextPage = useCallback((): Promise<boolean> => {
+    const nextCursor = cursorRef.current;
+    if (!nextCursor) return Promise.resolve(false);
+    const generation = loadGenerationRef.current;
+    const existing = pageFlightRef.current;
+    if (existing?.cursor === nextCursor && existing.generation === generation) {
+      return existing.promise;
     }
-    if (cursor) queueMicrotask(() => { void loadMore(); });
-  }, [blocks, busy, cursor, loadMore, searchParams, summary.historyRevision]);
+    setBusy(true);
+    setError("");
+    const controller = new AbortController();
+    const request = historyTranscript(summary.opaqueId, nextCursor, controller.signal)
+      .then((page) => {
+        if (generation !== loadGenerationRef.current) return false;
+        if (page.revision !== summary.historyRevision) {
+          throw new Error("HISTORY_REVISION_CHANGED");
+        }
+        if (cursorRef.current !== nextCursor) return false;
+        const seen = new Set(
+          blocksRef.current.map(
+            (block) => `${block.kind}:${block.id}:${block.deliverySeq}`
+          )
+        );
+        const additions = page.blocks.filter(
+          (block) => !seen.has(`${block.kind}:${block.id}:${block.deliverySeq}`)
+        );
+        blocksRef.current = [...blocksRef.current, ...additions];
+        cursorRef.current = page.nextCursor;
+        setBlocks(blocksRef.current);
+        setCursor(page.nextCursor);
+        return additions.length > 0 || page.nextCursor !== nextCursor;
+      })
+      .catch((cause) => {
+        if (!isAbortError(cause) && generation === loadGenerationRef.current) {
+          setError(errorMessage(cause));
+        }
+        throw cause;
+      })
+      .finally(() => {
+        if (pageFlightRef.current?.controller === controller) {
+          pageFlightRef.current = null;
+        }
+        if (generation === loadGenerationRef.current) setBusy(false);
+      });
+    pageFlightRef.current = {
+      cursor: nextCursor,
+      generation,
+      controller,
+      promise: request,
+    };
+    return request;
+  }, [summary.historyRevision, summary.opaqueId]);
+
+  const loadMore = useCallback(() => {
+    void loadNextPage().catch(() => undefined);
+  }, [loadNextPage]);
+
+  const materializeHistoryTarget = useCallback(async (anchorId: string) => {
+    const hasTarget = () => groupForeignHistoryBlocks(blocksRef.current).some(
+      (row) =>
+        foreignHistoryAnchor(summary.historyRevision, row.key) === anchorId
+    );
+    while (!hasTarget() && cursorRef.current) {
+      const advanced = await loadNextPage();
+      if (!advanced) break;
+    }
+  }, [loadNextPage, summary.historyRevision]);
 
   /* 整条复用里唯一被改写的一句：按下发送之后去哪。产品 chat 在这里创建
      Chat 并发起 turn，外源会话则走 durable adopt——它自己会创建 Chat、导入
@@ -137,17 +265,33 @@ function HistoryTranscript({ summary }: { summary: ForeignHistorySummary }) {
         selectedBackend,
         planMode,
       });
-      if (!submission.displayText) return;
+      if (!submission.displayText && !submission.attachmentPayloads?.length) return;
       /* 失败原样抛回 PromptInput：它会保住草稿并把病因交给 composer 自己的
          准入提示——那正是产品 chat 里「这条发不出去」的落点。这里再写一份
          页面级错误，就成了同一件事说两遍。页面级 error 只留给转录加载。 */
+      onAdoptionPendingChange(true);
       const receipt = await adoptHistory({
-        opaqueId: summary.opaqueId,
-        expectedHistoryRevision: summary.historyRevision,
-        submission,
-        turnOptions,
+          opaqueId: summary.opaqueId,
+          expectedHistoryRevision: summary.historyRevision,
+          submission,
+          turnOptions,
+        }).catch((cause) => {
+          onAdoptionPendingChange(false);
+          throw cause;
+        });
+      const active = panelSlotStore.getFor(panelContext).active;
+      const target = active === "browser" ? "browser" : "openShell";
+      panelSlotStore.migrate(panelContext, {
+        kind: "adopted",
+        productRef: {
+          chatId: receipt.chatId,
+          incarnationId: receipt.incarnationId,
+        },
       });
-      void navigate(`/chat/${receipt.chatId}`, { replace: true });
+      void navigate(`/chat/${receipt.chatId}`, {
+        replace: true,
+        state: { openSidePanel: target },
+      });
     },
     [
       navigate,
@@ -156,30 +300,60 @@ function HistoryTranscript({ summary }: { summary: ForeignHistorySummary }) {
       summary.historyRevision,
       summary.opaqueId,
       turnOptions,
+      panelContext,
+      onAdoptionPendingChange,
     ]
   );
 
-  /* ── 只关掉这条路上确实到不了的两样 ──────────────────────────
-   * 图片附件与 Plan 现在都随 adopt 契约过桥，故加号菜单原样保留。留下的
-   * 两个空位是 `$` 技能与 `@` section：它们投影成 skill/section 两种非文本
-   * 项，而 skill 要 backend 的技能目录、section 要一条产品 Chat 的链——
-   * 收养发生之前两者都还不存在，不是契约窄，是所指之物尚未诞生。
-   * `persisted` 说的是「这条会话的身份已经定了」——外源会话确实如此：
-   * 它在 Agent 那边早已存在，Project 与后端都不由这个输入框决定。composer
-   * 认这一位来收起 Project 选择条并锁死 Agent 选择器，语义正好对上。
+  /* ── 覆写只改「提交去哪」，能力面与产品 composer 一字不差 ──────────
+   * 附件、Plan、`$` 技能与 `@` section 全部随 adopt 契约过桥（skills 目录按
+   * 锁定 backend + Project 解析，section 指向别的产品 Chat——收养前皆已存在），
+   * 于是这里不再清空任何清单。真正的差异只有三件：handleSubmit/handleQueueOrSubmit
+   * 改道 durable adopt；canResume=false 时禁用输入并披露；`persisted` 置真——
+   * 它说的是「这条会话的身份已经定了」：外源会话在 Agent 那边早已存在，
+   * Project 与后端都不由这个输入框决定，composer 认这一位来收起 Project
+   * 选择条并锁死 Agent 选择器，语义正好对上。
    * ────────────────────────────────────────────────────────── */
   const composer = useMemo(
     () => ({
       ...session.composer,
       persisted: true,
       inputDisabled: session.composer.inputDisabled || !summary.canResume,
-      skills: [],
-      sections: [],
       handleSubmit: adopt,
       handleQueueOrSubmit: adopt,
     }),
     [adopt, session.composer, summary.canResume]
   );
+
+  const controller = useMemo(
+    () => ({ ...session, composer }),
+    [composer, session]
+  );
+  const historyPrefix = useMemo<HistoryPrefixProjection>(
+    () => ({
+      ...makeHistoryPrefixBase(summary, blocks, cursor),
+      loadState: busy
+        ? { kind: "loading" }
+        : error
+          ? { kind: "error", message: error, retry: retryInitialLoad }
+          : { kind: "ready" },
+    }),
+    [blocks, busy, cursor, error, retryInitialLoad, summary]
+  );
+  const loadFullIndex = useCallback(async (signal: AbortSignal) => {
+    const index = await historyTranscriptIndex(
+      summary.opaqueId,
+      summary.historyRevision,
+      signal
+    );
+    if (index.revision !== summary.historyRevision) {
+      throw new Error("HISTORY_REVISION_CHANGED");
+    }
+    return {
+      ...makeHistoryPrefixBase(summary, index.blocks, null),
+      loadState: { kind: "ready" } as const,
+    };
+  }, [summary]);
 
   /* 页头与产品 chat 同构：行首 Agent logo + 标题。不给返回键——产品 chat 页
      也没有，而这一页同样是从侧栏一行点进来的，「返回」只会把人送去一张与此处
@@ -188,35 +362,83 @@ function HistoryTranscript({ summary }: { summary: ForeignHistorySummary }) {
     <PageShell
       title={summary.title}
       icon={<AgentBackendIcon backend={historyBackend(summary.sourceKind)} className="size-4" />}
+      actions={
+        <Button
+          aria-label={t("chat.openSidePanel")}
+          className={panelChromeClassName}
+          onClick={() => setSidePanelRequest({
+            conversationKey: summary.opaqueId,
+            command: {
+              target: "openShell",
+              nonce: nextSidePanelCommandNonce(),
+            },
+          })}
+          size="icon-lg"
+          type="button"
+          variant="ghost"
+        >
+          <PanelRightIcon />
+        </Button>
+      }
     >
-      <div className="flex h-full min-h-0 flex-col">
-        <Conversation className="min-h-0 min-w-0 flex-1" initial="instant" resize="instant" role="log">
-          <ConversationContent className="mx-auto w-full min-w-0 max-w-3xl gap-6">
-            {summary.incompleteTail && <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">{t("history.incompleteTail")}</p>}
-            <ForeignHistoryTranscriptRows blocks={blocks} />
-            {cursor && <Button className="w-full" variant="outline" disabled={busy} onClick={() => void loadMore()}>{t("history.loadMore")}</Button>}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
-        {/* 内容列的几何归 ChatComposer 自己（`mx-auto max-w-3xl p-4 pt-0`），
-            这里只负责把错误对齐到同一列——再包一层 max-w-3xl 会双重收窄。 */}
-        <div className="shrink-0 pt-4">
-          {!summary.canResume && (
-            <p className="mx-auto w-full max-w-3xl px-4 pb-2 text-muted-foreground text-sm">
-              {t("history.resumeUnavailable")}
-            </p>
-          )}
-          <ChatComposer controller={composer} enableSidePanel={false} />
-          {error && (
-            <p
-              className="mx-auto w-full max-w-3xl px-4 pb-4 text-destructive text-sm"
-              role="alert"
-            >
-              {error}
-            </p>
-          )}
-        </div>
-      </div>
+      <ChatViewFrame
+        controller={controller}
+        enableSidePanel
+        historyPrefix={historyPrefix}
+        historyIndexLoader={loadFullIndex}
+        onHistoryJumpMiss={materializeHistoryTarget}
+        historyPrefixFooter={
+          <>
+            {historyPrefix.quality.incompleteTail === true && (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+                {t("history.incompleteTail")}
+              </p>
+            )}
+            {historyPrefix.nextCursor && (
+              <Button className="w-full" variant="outline" disabled={busy} onClick={loadMore}>
+                {t("history.loadMore")}
+              </Button>
+            )}
+            {!historyPrefix.capabilities.canResume && (
+              <p className="text-muted-foreground text-sm">{t("history.resumeUnavailable")}</p>
+            )}
+            {historyPrefix.loadState.kind === "error" && (
+              <div className="flex items-center justify-between gap-3" role="alert">
+                <p className="text-destructive text-sm">{historyPrefix.loadState.message}</p>
+                <Button onClick={historyPrefix.loadState.retry} size="sm" variant="outline">
+                  {t("common.retry")}
+                </Button>
+              </div>
+            )}
+          </>
+        }
+        sidePanelRequest={sidePanelRequest}
+        onConsumeSidePanelRequest={(nonce) =>
+          setSidePanelRequest((current) => consumeSidePanelRequest(current, nonce))
+        }
+      />
     </PageShell>
   );
+}
+
+function makeHistoryPrefixBase(
+  summary: ForeignHistorySummary,
+  blocks: ForeignHistoryBlock[],
+  cursor: string | null
+): Omit<HistoryPrefixProjection, "loadState"> {
+  return {
+    source: {
+      kind: "foreign",
+      contentGenerationKey: summary.historyRevision,
+      routeGenerationKey: summary.historyRevision,
+    },
+    title: summary.title,
+    blocks,
+    nextCursor: cursor,
+    quality: {
+      incompleteTail: summary.incompleteTail,
+      sourceStatus: "match",
+    },
+    capabilities: { canResume: summary.canResume },
+  };
 }

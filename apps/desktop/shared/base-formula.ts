@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on BaseColumn The field value parsing function provided by the caller
- * [OUTPUT]: Provides Base formula tokenizer/parser/ evaluator with IF inert branches, depending on collection, static result type, field name mapping and column ring detection
- * [POS]: The shared read-only formula is the kernel of the pure function; No access to directory storage, DOM or platform API, main/renderer sharing the same meaning
+ * [INPUT]: Depends on Base column metadata and caller-provided dependency value resolution
+ * [OUTPUT]: Provides bounded formula parse/evaluate/dependency/cycle APIs plus quote-aware display/storage field-reference mapping
+ * [POS]: The shared read-only formula kernel; main and renderer consume identical pure semantics without filesystem, DOM, or platform access
  */
 
 import type { BaseCellValue, BaseColumn } from "./base-values";
@@ -147,9 +147,7 @@ export function formulaExpressionForDisplay(
   columns: readonly BaseColumn[]
 ) {
   const names = new Map(columns.map((column) => [column.id, column.name]));
-  return expression.replace(/\{([^{}]+)\}/g, (_, id: string) =>
-    `{${names.get(id) ?? id}}`
-  );
+  return rewriteFieldRefs(expression, (id) => names.get(id) ?? id);
 }
 
 export function formulaExpressionForStorage(
@@ -162,12 +160,54 @@ export function formulaExpressionForStorage(
     matches.push(column.id);
     byName.set(column.name, matches);
   }
-  return expression.replace(/\{([^{}]+)\}/g, (_, name: string) => {
+  return rewriteFieldRefs(expression, (name) => {
     const ids = byName.get(name);
-    if (!ids) return `{${name}}`;
+    if (!ids) return name;
     if (ids.length !== 1) throw fault("#REF!", `列名 ${name} 不唯一`);
-    return `{${ids[0]}}`;
+    return ids[0]!;
   });
+}
+
+/* 只在字符串字面量之外重写 {…}。tokenizer 会解码转义，拿它重序列化会
+   改写用户原文；这里直接沿原始字符前进，字符串段连同转义逐字节搬运。 */
+function rewriteFieldRefs(
+  expression: string,
+  map: (inner: string) => string
+): string {
+  let output = "";
+  let index = 0;
+  while (index < expression.length) {
+    const char = expression[index]!;
+    if (char === '"') {
+      const start = index;
+      index += 1;
+      while (index < expression.length) {
+        const next = expression[index]!;
+        index += 1;
+        if (next === "\\") {
+          index += 1;
+          continue;
+        }
+        if (next === '"') break;
+      }
+      output += expression.slice(start, index);
+      continue;
+    }
+    if (char === "{") {
+      const end = expression.indexOf("}", index + 1);
+      if (end < 0) {
+        output += expression.slice(index);
+        break;
+      }
+      const inner = expression.slice(index + 1, end).trim();
+      output += `{${map(inner)}}`;
+      index = end + 1;
+      continue;
+    }
+    output += char;
+    index += 1;
+  }
+  return output;
 }
 
 function tokenize(expression: string): Token[] {

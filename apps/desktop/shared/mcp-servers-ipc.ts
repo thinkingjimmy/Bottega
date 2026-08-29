@@ -1,11 +1,22 @@
 /**
- * [INPUT]: Depends on Agent backend identity and Extension MCP health subject; Configure writing to accept only explicit secret edit, not renderer, and return old text
- * [OUTPUT]: Provides a manual MCP server with masked renderer DTO, three IPC contracts, no-collision backend alias, coding/unique claims and main-only frozen third-party plan types
- * [POS]: The MCP configuring borders of shared; The disk drives and backend are not allowed to pass through the renderer bridge at the moment
+ * [INPUT]: Depends on Agent backend identity, neutral Product resource scope, Project override intent, and Extension MCP health subject
+ * [OUTPUT]: Provides exact-scope masked manual MCP snapshots, scope-fenced mutations/events, no-collision aliases, and main-only frozen third-party plan types
+ * [POS]: Shared MCP boundary; renderer sees only global or exact-Project manual servers while package Extension MCP and secret values remain absent
  */
 
 import type { AgentBackendId } from "./agent-ipc";
 import type { McpComponentHealthSubject } from "./extensions-ipc";
+import type { ToolOverride } from "./project-tools-ipc";
+import type {
+  EffectiveResourceState,
+  ProductResourceScope,
+  ResourceBackendSupportView,
+  ScopedResourceVersion,
+  TurnProjectContext,
+} from "./resource-scope";
+
+export const MCP_SERVERS_BRIDGE_UNAVAILABLE =
+  "MCP_SERVERS_BRIDGE_UNAVAILABLE";
 
 export const MCP_SERVERS_CHANNEL = {
   list: "mcp-servers:list",
@@ -32,11 +43,24 @@ export type McpServerHealthView = Readonly<{
   detail: string;
 }>;
 
+export type McpServerEffectiveSource =
+  | "global-default"
+  | "project-override"
+  | "project-owned";
+
 type McpServerViewBase = Readonly<{
   serverId: `manual:${string}`;
   source: "manual";
+  owner: ProductResourceScope;
   displayName: string;
+  /** Persisted owner value before an exact Project override is applied. */
+  configuredEnabled: boolean;
+  /** User intent in the queried scope; hard backend limits are separate. */
   enabled: boolean;
+  override: ToolOverride | null;
+  effectiveState: EffectiveResourceState;
+  effectiveSource: McpServerEffectiveSource;
+  backendSupport: readonly ResourceBackendSupportView[];
   eligibility: ManualMcpEligibility;
   configDigest: string;
   health: McpServerHealthView;
@@ -57,24 +81,15 @@ export type ManualMcpServerView =
         headers: readonly McpSecretView[];
       }>);
 
-export type PackageMcpServerView = Readonly<{
-  serverId: `pkg:${string}`;
-  source: "package";
-  displayName: string;
-  enabled: boolean;
-  eligibility: "transport-unsupported" | "package-disabled" | "component-disabled";
-  configDigest: string;
-  health: McpServerHealthView;
-  transport: "stdio" | "streamable-http" | "sse";
-  target: "sealed mcp.json";
-}>;
-
-export type McpServerView = ManualMcpServerView | PackageMcpServerView;
-
+/* 包 Extension MCP 不在这份契约里，也不是"暂时没投影"：renderer 面只认
+   manual server，让"零暴露"由类型系统承担，而不是由某个投影函数的纪律。 */
 export type McpServersSnapshot = Readonly<{
-  revision: number;
-  inventoryRevision?: string;
-  servers: readonly McpServerView[];
+  queryScope: ProductResourceScope;
+  storeRevision: number;
+  globalScopeRevision: number;
+  projectScopeRevision: number | null;
+  projectLifecycleRevision: number | null;
+  servers: readonly ManualMcpServerView[];
 }>;
 
 export type McpSecretEdit =
@@ -99,26 +114,45 @@ export type ManualMcpServerDraft = Readonly<{
       }>;
 }>;
 
-export type SaveManualMcpServerInput = Readonly<{
-  expectedRevision: number;
+type ManualMcpMutationFence =
+  | Readonly<{
+      scope: Readonly<{ kind: "global" }>;
+      expectedScopeRevision: number;
+      expectedProjectLifecycleRevision: null;
+    }>
+  | Readonly<{
+      scope: Readonly<{ kind: "project"; projectId: string }>;
+      expectedScopeRevision: number;
+      expectedProjectLifecycleRevision: number;
+    }>;
+
+export type SaveManualMcpServerInput = ManualMcpMutationFence & Readonly<{
   serverId?: `manual:${string}`;
   draft: ManualMcpServerDraft;
 }>;
 
-export type RemoveManualMcpServerInput = Readonly<{
-  expectedRevision: number;
+export type RemoveManualMcpServerInput = ManualMcpMutationFence & Readonly<{
   serverId: `manual:${string}`;
 }>;
 
+export type McpServersQuery = Readonly<{
+  scope: ProductResourceScope;
+}>;
+
+export type McpServersChangedEvent = Readonly<{
+  version: ScopedResourceVersion;
+  storeRevision: number;
+}>;
+
 export type McpServersBridgeApi = Readonly<{
-  list(): Promise<McpServersSnapshot>;
+  list(input: McpServersQuery): Promise<McpServersSnapshot>;
   save(input: SaveManualMcpServerInput): Promise<McpServersSnapshot>;
   remove(input: RemoveManualMcpServerInput): Promise<McpServersSnapshot>;
-  onChanged(listener: (snapshot: McpServersSnapshot) => void): () => void;
+  onChanged(listener: (event: McpServersChangedEvent) => void): () => void;
 }>;
 
 export type ThirdPartyMcpPlanSource =
-  | Readonly<{ kind: "manual" }>
+  | Readonly<{ kind: "manual"; scope: ProductResourceScope }>
   | Readonly<{ kind: "package-global"; generationRef: string }>
   | Readonly<{
       kind: "app-requirement";
@@ -154,6 +188,7 @@ export type ThirdPartyMcpPlanEntry = ThirdPartyMcpPlanEntryBase & (
 export type ThirdPartyMcpPlan = Readonly<{
   planInstanceId: string;
   backendId: AgentBackendId;
+  projectContext: TurnProjectContext;
   entries: readonly ThirdPartyMcpPlanEntry[];
   planDigest: string;
 }>;

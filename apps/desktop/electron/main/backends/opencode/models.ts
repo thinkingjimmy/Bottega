@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BackendModelInfo } from "../../../../shared/agent-ipc";
 import type { ResolvedRuntime } from "../types";
-import { EFFORT_ID_PATTERN } from "../capability-validation";
+import { OPAQUE_CONFIG_VALUE_PATTERN } from "../capability-validation";
 import { createModelCatalog } from "../model-catalog";
 import { runSupervisedCommand } from "../supervised-command";
 import { opencodeEnvironment } from "./home";
@@ -43,7 +43,7 @@ export function isOpencodeModelSlug(value: string) {
 /* 「什么是一个合法的 effort」只有一处定义：解析器与 turn 选项校验共用它，
    二者才不会在同一个值上给出相反的结论。 */
 export const isOpencodeEffort = (value: string) =>
-  EFFORT_ID_PATTERN.test(value);
+  OPAQUE_CONFIG_VALUE_PATTERN.test(value);
 
 /**
  * 探针 cwd 必须是 app 自己的空目录：workspace 里可能躺着项目级 opencode

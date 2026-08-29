@@ -1,13 +1,12 @@
 /**
- * [INPUT]: Depends on shared Memory descriptor/effectiveTarget/runtime Type of ManagedManifest that is compatible with runtime/managed/manifest type (type-only)
- * [OUTPUT]: Provides resolveMemoryTarget(enable/rebuild with blocker fail-closed) and memory Fingerprint single point
- * [POS]: The main/memory/core target is the sole authority for parsing; The renderer only shows the conclusion, and the Delivery/Runtime owner only consumes the same target
+ * [INPUT]: Depends on shared Memory configuration/runtime contracts and the managed manifest version facts
+ * [OUTPUT]: Provides candidate-first resolveMemoryTarget plus the canonical Memory fingerprint
+ * [POS]: The Memory target authority; renderer, delivery, and runtime consume one fail-closed effective-version decision
  */
 
 import type {
   MemoryEffectiveTarget,
   MemoryProviderDescriptor,
-  MemoryRuntimeSnapshot,
 } from "../../../../shared/memory-ipc";
 /* manifest 的形状由写它的人定义（zod schema 推导），这里只读。
    曾经在这里放过一份手抄影子，代价是它悄悄少了 versionChange。 */
@@ -19,7 +18,9 @@ export type TargetInput = {
   manifest: ManagedManifest | null;
   /** dataRoot marker token 与 manifest 是否一致；null = 尚未安装。 */
   ownershipValid: boolean | null;
-  runtimePhase: MemoryRuntimeSnapshot["phase"] | null;
+  /* 判据是 configured 而不是 phase：phase 在写配置的那几秒是 running，
+     拿它反推「配置齐没齐」，会在用户刚提交完密钥时答出「尚未配置」。 */
+  runtime: { installed: boolean; configured: boolean } | null;
 };
 
 /* ============================================================
@@ -45,7 +46,8 @@ export function resolveMemoryTarget(
     providerDataInstanceId: manifest
       ? `${manifest.providerId}:${manifest.instanceId}:${manifest.dataEpoch}`
       : null,
-    expectedVersion: manifest?.installedVersion ?? null,
+    expectedVersion:
+      manifest?.versionChange?.targetVersion ?? manifest?.installedVersion ?? null,
     canConfigure: descriptor.configPanelId !== null && manifest !== null,
     canRebuild:
       blockedReason === null &&
@@ -54,7 +56,7 @@ export function resolveMemoryTarget(
     blockedReasonCode:
       input.ownershipValid === false
         ? "ownership"
-        : input.runtimePhase === "configuration-required"
+        : needsConfiguration(input)
           ? "configuration"
           : descriptor.managed && !manifest
             ? "not-installed"
@@ -63,12 +65,17 @@ export function resolveMemoryTarget(
   };
 }
 
+/** 装好了却还缺必填配置——未安装不算，那是另一条更靠后的病因。 */
+function needsConfiguration(input: TargetInput) {
+  return Boolean(input.runtime?.installed && !input.runtime.configured);
+}
+
 function firstBlocker(input: TargetInput): string | null {
   const { descriptor, manifest } = input;
   if (input.ownershipValid === false) {
     return "托管数据目录的归属校验失败（可能被外部替换），已停用记忆以免写入陌生数据根。";
   }
-  if (input.runtimePhase === "configuration-required") {
+  if (needsConfiguration(input)) {
     return `${descriptor.displayName} 尚未完成配置，提交密钥后才能启用。`;
   }
   if (descriptor.managed && !manifest) {

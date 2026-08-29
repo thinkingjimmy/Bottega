@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on PreparedManualTurn hydration, ManualTurnIntent, ChatsService and CoordinatorDependencies Start/Derive ports
- * [OUTPUT]: Provides binary-free manual intent Workspace CAS repositioning, canonical perpetuation, Project gate-held create/append/adopt/revise and hydrated claim/start in line with final payload→resolvedInput
- * [POS]: sections/coordinator The durable journal execution unit of the artificial input; Conversation Coordinator is solely responsible for FIFO selection and awakening
+ * [INPUT]: Depends on hash-verified prepared Project/Tools/Skill receipts, durable ManualTurnIntent, ChatsService, SettingsStore, session-plan rebuild, and Agent start ports
+ * [OUTPUT]: Provides workspace-fenced append/create/revise/adopt replay, stale MCP session replacement, and exact frozen Tools/Skill dispatch
+ * [POS]: The durable manual-intent executor of sections/coordinator
  */
 
 import {
@@ -46,6 +46,9 @@ type ManualTurnDependencies = Pick<
   | "onManualPersisted"
   | "startTurn"
   | "getProjectWorkspaceSnapshot"
+  | "rebuildSessionForTools"
+  | "resolveProjectToolsRuntimeIdentity"
+  | "assertProjectToolsContext"
 >;
 
 export function manualConversationId(persistence: ManualTurnPersistence) {
@@ -274,7 +277,6 @@ function manualAttachmentsMatch(
 }
 
 function durableTurnOrigin(
-  intent: DeepReadonly<ManualTurnIntent>,
   userMessage: { id: string; content: string }
 ): TurnOrigin {
   return {
@@ -360,6 +362,9 @@ export async function runManualTurn(
     chats: dependencies.chats,
     getProjectWorkspaceSnapshot: dependencies.getProjectWorkspaceSnapshot,
   });
+  dependencies.assertProjectToolsContext?.(
+    hydrated.projectTools.receipt.projectContext
+  );
   if (intent.userSeq === undefined || intent.assistantSeq === undefined) {
     throw new Error("ManualTurnIntent 缺少持久消息序号");
   }
@@ -369,6 +374,12 @@ export async function runManualTurn(
       dependencies.ledger,
       dependencies.chats
     );
+    if (submission.persistence.kind === "adopt") {
+      await dependencies.settings.seedChatOptions(
+        submission.turn.scope,
+        submission.turn.turnOptions
+      );
+    }
     await persistManual(
       dependencies.chats,
       submission.persistence,
@@ -406,14 +417,41 @@ export async function runManualTurn(
     throw new Error("ManualTurnIntent 与 canonical user 冲突");
   }
   notifyManualPersisted(dependencies, submission, record, stored);
-  const turnOptions = await dependencies.settings.resolveChatOptions(
-    submission.turn.scope,
-    record.agent
-  );
+  const turnOptions = submission.persistence.kind === "adopt"
+    ? submission.turn.turnOptions
+    : await dependencies.settings.resolveChatOptions(
+        submission.turn.scope,
+        record.agent
+      );
+  let session = record.session;
+  if (
+    session &&
+    (!session.toolPlan ||
+      session.toolPlan.planDigest !== hydrated.projectTools.sessionPlanDigest ||
+      session.toolPlan.projectId !==
+        hydrated.projectTools.receipt.projectContext.projectId)
+  ) {
+    if (record.importOrigin) {
+      throw new Error(
+        "SESSION_TOOL_PLAN_REBUILD_FAILED: adopted session cannot be replaced safely"
+      );
+    }
+    if (dependencies.rebuildSessionForTools) {
+      await dependencies.rebuildSessionForTools(record.id, session);
+    } else {
+      await dependencies.chats.replaceSession(
+        submission.turn.scope,
+        session,
+        null
+      );
+    }
+    session = null;
+  }
   const payload: AgentSendPayload = {
     ...submission.turn,
-    ...(record.session ? { session: record.session } : { session: undefined }),
-    input: record.session
+    preparedSkillSelection: prepared.skillSelection,
+    ...(session ? { session } : { session: undefined }),
+    input: session
       ? submission.turn.input
       : recoveryInput(
           record.messages,
@@ -442,10 +480,11 @@ export async function runManualTurn(
     await dependencies.startTurn(
       payload,
       stableId("assistant", intent.id),
-      durableTurnOrigin(intent, expected),
+      durableTurnOrigin(expected),
       resolvedInput,
       intent.assistantSeq,
-      projectLifecycleHeld
+      projectLifecycleHeld,
+      hydrated.projectTools
     );
     await dependencies.ledger.markManualDispatched(intent.id);
   } catch (cause) {

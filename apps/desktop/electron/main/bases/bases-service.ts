@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow, shared owner-aware Bases/base.json schema, canonical Chat/Project, BaseStore/owner resolver, service line mutatIOn, core and IO front, promotion, attachment and system file dialog box
- * [OUTPUT]: Provides ownerKey CRUD/CAS/LWW, replay-aware App GUI line commands and attachments reading, Project Base probes, Section target analysis, promotion IPC, authority-bound attachments, events and CSV/JSON/XLSX commissioned
- * [POS]: The IPC/Common Business of the bases; Owner rules are resolved, format IO is service/base-io-facade, and promotion service is upgraded across Store
+ * [INPUT]: Depends on Electron BrowserWindow, owner-aware Bases schemas, canonical Chat/Project records, BaseStore/owner resolution, row mutation, IO, promotion, attachment, and file-dialog ports
+ * [OUTPUT]: Provides ownerKey CRUD/CAS/LWW, replay-aware App GUI row commands, exact App-renderer owner fences, Project probes, Section resolution, promotion, attachment events, and CSV/JSON/XLSX operations
+ * [POS]: Bases application service; owner and trusted App-renderer boundaries are resolved here while format IO and cross-store promotion remain delegated
  */
 
 import type { BrowserWindow } from "electron";
+import { rendererEventBus } from "../window/surfaces/renderer-event-bus";
 import {
   BASE_EVENT_BYTE_LIMIT,
   BASES_CHANNEL,
@@ -29,7 +30,6 @@ import type { BaseSnapshotFile } from "../../../shared/base-snapshot";
 import type { AppBaseDataMigrationFile } from "../../../shared/app-data-migration";
 import type { BaseGuiLiveBinding } from "../../../shared/apps-ipc";
 import type { ChatRecord } from "../../../shared/chats-ipc";
-import { errorMessage } from "../errors";
 import { BaseStore, type BaseIdentity } from "./base-store";
 import type { CompletedImageEventV1 } from "../gallery/turn-events-broker";
 import type { GalleryMediaSourceRef } from "../../../shared/gallery-media-ipc";
@@ -324,6 +324,14 @@ export class BasesService {
 
   assertRendererOwnerKey(ownerKey: string) {
     return ownerKey;
+  }
+
+  assertAppRendererOwnerKey(ownerKey: string, appId: string) {
+    return this.ownerResolver.assertOwnerKeyForApp(ownerKey, appId);
+  }
+
+  appRendererOwnerKey(appId: string) {
+    return this.ownerResolver.ownerKeyForApp(appId);
   }
 
   navigationBases<T extends { ownerKey: string }>(bases: T[]) {
@@ -771,20 +779,13 @@ export class BasesService {
 
   private emit(event: BasesEvent) {
     this.options.onEvent?.(clone(event));
-    const window = this.window;
-    if (!window || window.isDestroyed()) return;
-    try {
-      window.webContents.send(BASES_CHANNEL.event, event);
-    } catch (cause) {
-      console.warn("[bases] event publish failed", cause);
+    const delivered = rendererEventBus.broadcast(BASES_CHANNEL.event, event);
+    if (!delivered && this.window && !this.window.isDestroyed()) {
+      this.window.webContents.send(BASES_CHANNEL.event, event);
     }
   }
 }
 
 function httpError(status: number, message: string) {
   return Object.assign(new Error(message), { status });
-}
-
-export function basesErrorMessage(cause: unknown) {
-  return errorMessage(cause);
 }

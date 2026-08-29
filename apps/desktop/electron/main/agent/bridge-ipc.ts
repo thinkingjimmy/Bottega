@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow, Agent IPC DTO/approval decision wording, shared plan-review decision to be made, payload/user-input testing and renderer IPc
- * [OUTPUT]: Provides registerAgentBridgeIpc, which assigns the renderer to the main-owned turn handler after the channel is validated; attach snapshot first unify root/live-sub-bagent image detail and then renderer
- * [POS]: The renderer of the agent sub-module is thin; No turn status, no involvement in coordinator/Agent execution
+ * [OUTPUT]: Provides registerAgentBridgeIpc with actual-sender subscription routing and residence checks for approval/user-input mutation
+ * [POS]: Thin Agent renderer IPC; TrustedRendererContext proves the window and SurfaceWindowController proves conversation residency
  */
 
 import type { BrowserWindow } from "electron";
@@ -30,6 +30,8 @@ import type {
   TurnEntry,
   TurnRegistry,
 } from "../turn-registry";
+import { surfaceWindowController } from "../window/surfaces/surface-window-controller";
+import type { TrustedRendererContext } from "../window/surfaces/trusted-renderer-context";
 
 export type AgentBridgeIpcHandlers = {
   attach(
@@ -40,8 +42,11 @@ export type AgentBridgeIpcHandlers = {
   abandonFatalTurn(conversationId: string): void;
   acknowledgeCleanupFailure(conversationId: string): void;
   listActivity(): ChatActivitySnapshot[];
+  conversationForRequest(requestId: string): string | undefined;
+  conversationForOutboxRef(outboxRef: string): string | undefined;
   send(payload: unknown): Promise<void>;
   retryWithoutSession(requestId: string, retryToken: string): Promise<void>;
+  retrySameSession(requestId: string, retryToken: string): Promise<void>;
   respondApproval(response: AgentApprovalResponse): Promise<void>;
   pendingUserInputQuestionIds(
     requestId: string,
@@ -58,12 +63,14 @@ export type AgentBridgeIpcHandlers = {
 
 type AgentBridgeIpcRuntime = {
   turns: TurnRegistry<AgentTurn>;
+  attachSnapshot(conversationId: string): ReturnType<TurnRegistry<AgentTurn>["attachSnapshot"]>;
   subscriptions: TokenizedSubscriptionBroker<BrowserWindow>;
   listActivity(): ChatActivitySnapshot[];
   publishState(entry: TurnEntry<AgentTurn>): void;
   clearSafetyLock(backend: TurnEntry<AgentTurn>["backend"]): void;
   send(payload: unknown): Promise<void>;
   retryWithoutSession(requestId: string, retryToken: string): Promise<void>;
+  retrySameSession(requestId: string, retryToken: string): Promise<void>;
   cancel(requestId: string): void;
   steer(input: SteerAdmission): Promise<SteerIpcReceipt>;
   decideSteer(input: SteerDecision): Promise<SteerIpcReceipt>;
@@ -73,6 +80,7 @@ type AgentBridgeIpcRuntime = {
   ):
     | Promise<import("../../../shared/agent-ipc").SteerOutboxProjection[]>
     | import("../../../shared/agent-ipc").SteerOutboxProjection[];
+  conversationForOutboxRef(outboxRef: string): string | undefined;
 };
 
 export function createAgentBridgeIpcHandlers(
@@ -82,7 +90,7 @@ export function createAgentBridgeIpcHandlers(
     attach: async (conversationId, attachmentId, window) => {
       runtime.subscriptions.attach(conversationId, attachmentId, window);
       return redactImageDetails({
-        ...runtime.turns.attachSnapshot(conversationId),
+        ...runtime.attachSnapshot(conversationId),
         steerIntents: await runtime.steerSnapshot(conversationId),
       });
     },
@@ -97,8 +105,12 @@ export function createAgentBridgeIpcHandlers(
       runtime.publishState(entry);
     },
     listActivity: runtime.listActivity,
+    conversationForRequest: (requestId) =>
+      runtime.turns.byRequest(requestId)?.conversationId,
+    conversationForOutboxRef: runtime.conversationForOutboxRef,
     send: runtime.send,
     retryWithoutSession: runtime.retryWithoutSession,
+    retrySameSession: runtime.retrySameSession,
     respondApproval: async (response) => {
       const entry = runtime.turns.byRequest(response.requestId);
       if (!entry?.turn) throw new Error("审批请求已结束");
@@ -141,10 +153,30 @@ export function registerAgentBridgeIpc(
   rendererUrl: string,
   handlers: AgentBridgeIpcHandlers
 ) {
+  const assertConversation = (
+    context: TrustedRendererContext,
+    conversationId: string
+  ) => {
+    surfaceWindowController.assertConversationMutation(context, conversationId);
+    return conversationId;
+  };
+  const assertRequest = (context: TrustedRendererContext, requestId: unknown) => {
+    if (typeof requestId !== "string") throw new Error("requestId 格式无效");
+    const conversationId = handlers.conversationForRequest(requestId);
+    if (!conversationId) throw new Error("请求已结束");
+    assertConversation(context, conversationId);
+    return requestId;
+  };
+  const assertOutbox = (context: TrustedRendererContext, outboxRef: string) => {
+    const conversationId = handlers.conversationForOutboxRef(outboxRef);
+    if (!conversationId) throw new Error("steer outbox 不存在");
+    assertConversation(context, conversationId);
+  };
   rendererIpc(window, rendererUrl, "拒绝非主窗口的 Agent 请求")
-    .handle(
+    .roles("main", "app-window")
+    .handleWithContext(
       AGENT_CHANNEL.turnAttach,
-      (rawConversationId, rawAttachmentId) => {
+      (context, rawConversationId, rawAttachmentId) => {
         const conversationId = assertConversationId(rawConversationId);
         if (
           typeof rawAttachmentId !== "string" ||
@@ -152,26 +184,42 @@ export function registerAgentBridgeIpc(
         ) {
           throw new Error("attachmentId 格式无效");
         }
-        return handlers.attach(conversationId, rawAttachmentId, window);
+        surfaceWindowController.bindConversation(context, conversationId);
+        return handlers.attach(
+          conversationId,
+          rawAttachmentId,
+          context.window as BrowserWindow
+        );
       }
     )
-    .handle(AGENT_CHANNEL.abandonFatalTurn, (rawConversationId) =>
-      handlers.abandonFatalTurn(assertConversationId(rawConversationId))
+    .handleWithContext(AGENT_CHANNEL.abandonFatalTurn, (context, rawConversationId) =>
+      handlers.abandonFatalTurn(
+        assertConversation(context, assertConversationId(rawConversationId))
+      )
     )
-    .handle(
+    .handleWithContext(
       AGENT_CHANNEL.acknowledgeCleanupFailure,
-      (rawConversationId) =>
+      (context, rawConversationId) =>
         handlers.acknowledgeCleanupFailure(
-          assertConversationId(rawConversationId)
+          assertConversation(context, assertConversationId(rawConversationId))
         )
     )
+    .roles("main")
     .handle(AGENT_CHANNEL.activityList, () => handlers.listActivity())
-    .handle(AGENT_CHANNEL.send, (payload) => handlers.send(payload))
-    .handle(AGENT_CHANNEL.steer, (input) => {
+    .roles("main", "app-window")
+    .handleWithContext(AGENT_CHANNEL.send, (context, payload) => {
+      const conversationId = (payload as {
+        scope?: { conversationId?: unknown };
+      } | null)?.scope?.conversationId;
+      assertConversation(context, assertConversationId(conversationId));
+      return handlers.send(payload);
+    })
+    .handleWithContext(AGENT_CHANNEL.steer, (context, input) => {
       validateSteerInput(input);
+      assertRequest(context, input.requestId);
       return handlers.steer(input);
     })
-    .handle(AGENT_CHANNEL.decideSteer, (input) => {
+    .handleWithContext(AGENT_CHANNEL.decideSteer, (context, input) => {
       const value = input as Partial<SteerDecision> | null;
       if (
         !value ||
@@ -180,27 +228,40 @@ export function registerAgentBridgeIpc(
       ) {
         throw new Error("steer 裁决格式无效");
       }
+      assertOutbox(context, value.outboxRef);
       return handlers.decideSteer(value as SteerDecision);
     })
-    .handle(AGENT_CHANNEL.ackSteerIntents, (outboxRefs) => {
+    .handleWithContext(AGENT_CHANNEL.ackSteerIntents, (context, outboxRefs) => {
       if (
         !Array.isArray(outboxRefs) ||
         outboxRefs.some((ref) => typeof ref !== "string")
       ) {
         throw new Error("steer ack 格式无效");
       }
+      for (const outboxRef of outboxRefs) assertOutbox(context, outboxRef);
       return handlers.ackSteerIntents(outboxRefs);
     })
-    .handle(
+    .handleWithContext(
       AGENT_CHANNEL.retryWithoutSession,
-      (requestId, retryToken) => {
+      (context, requestId, retryToken) => {
         if (typeof requestId !== "string" || typeof retryToken !== "string") {
           throw new Error("resume retry 请求格式无效");
         }
+        assertRequest(context, requestId);
         return handlers.retryWithoutSession(requestId, retryToken);
       }
     )
-    .handle(AGENT_CHANNEL.respondApproval, (value) => {
+    .handleWithContext(
+      AGENT_CHANNEL.retrySameSession,
+      (context, requestId, retryToken) => {
+        if (typeof requestId !== "string" || typeof retryToken !== "string") {
+          throw new Error("resume retry 请求格式无效");
+        }
+        assertRequest(context, requestId);
+        return handlers.retrySameSession(requestId, retryToken);
+      }
+    )
+    .handleWithContext(AGENT_CHANNEL.respondApproval, (context, value) => {
       const response = value as Partial<AgentApprovalResponse> | null;
       if (
         !response ||
@@ -210,9 +271,12 @@ export function registerAgentBridgeIpc(
       ) {
         throw new Error("审批响应格式无效");
       }
+      const conversationId = handlers.conversationForRequest(response.requestId);
+      if (!conversationId) throw new Error("审批请求已结束");
+      surfaceWindowController.assertConversationMutation(context, conversationId);
       return handlers.respondApproval(response as AgentApprovalResponse);
     })
-    .handle(AGENT_CHANNEL.respondUserInput, (value) => {
+    .handleWithContext(AGENT_CHANNEL.respondUserInput, (context, value) => {
       const response = value as Partial<AgentUserInputResponse> | null;
       if (
         !response ||
@@ -221,6 +285,9 @@ export function registerAgentBridgeIpc(
       ) {
         throw new Error("用户输入响应格式无效");
       }
+      const conversationId = handlers.conversationForRequest(response.requestId);
+      if (!conversationId) throw new Error("用户输入请求已过期或不存在");
+      surfaceWindowController.assertConversationMutation(context, conversationId);
       const questionIds = handlers.pendingUserInputQuestionIds(
         response.requestId,
         response.userInputId
@@ -229,13 +296,21 @@ export function registerAgentBridgeIpc(
       validateUserInputResponse(value, questionIds);
       handlers.respondUserInput(value as AgentUserInputResponse);
     })
-    .on(AGENT_CHANNEL.turnDetach, (conversationId, attachmentId) => {
+    .onWithContext(AGENT_CHANNEL.turnDetach, (context, conversationId, attachmentId) => {
       if (typeof conversationId === "string" && typeof attachmentId === "string") {
-        handlers.detach(conversationId, attachmentId, window);
+        assertConversation(context, assertConversationId(conversationId));
+        handlers.detach(
+          conversationId,
+          attachmentId,
+          context.window as BrowserWindow
+        );
       }
     })
-    .on(AGENT_CHANNEL.cancel, (requestId) => {
-      if (typeof requestId === "string") handlers.cancel(requestId);
+    .onWithContext(AGENT_CHANNEL.cancel, (context, requestId) => {
+      if (typeof requestId === "string") {
+        assertRequest(context, requestId);
+        handlers.cancel(requestId);
+      }
     });
 
   window.once("closed", () => handlers.removeSubscriber(window));

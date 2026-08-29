@@ -75,7 +75,7 @@ export class KimiHistoryAdapter implements HistoryAdapter {
           historyRevision: fingerprintRevision(value),
           /* canResume：产品同款 session/resume 已对 TUI 家族会话真机实测通过
            * （dev 记录见 todo/08-22-kimi-opencode-history-import.md D2'）*/
-          canResume: true, archived: false, incompleteTail: false, divergence: false,
+          canResume: true, archived: false, incompleteTail: false,
           sourceIncarnation: initialSourceIncarnation(key, value),
           sourcePath: wire, fingerprint: value,
         });

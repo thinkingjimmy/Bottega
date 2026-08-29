@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The sequencing type of shared Agent/Settings only
- * [OUTPUT]: Provides external session identity, file-by-file fingerprint, read-only transcripts, session presentation of actions, rename/archiving, Project import status, adoption of IPC agreement with Memory snapshot
+ * [OUTPUT]: Provides external session identity, fingerprints, request-id/abortable paged and full-index transcripts, presentation actions, Project state, adoption, and Memory snapshot contracts
  * [POS]: The history-import of shared single wire truth source; The renderer never gets an external source, absolute file path or can be counterfeited with SessionRef
  */
 
@@ -58,7 +58,6 @@ export type ForeignHistorySummary = Readonly<{
   /** 产品侧归档时刻；null 即未经产品归档（源生归档不可从产品恢复）。 */
   productArchivedAt: number | null;
   incompleteTail: boolean;
-  divergence: boolean;
 }>;
 
 export type ForeignToolEvent = Readonly<{
@@ -99,6 +98,24 @@ export type ForeignHistoryTranscript = Readonly<{
   blocks: ForeignHistoryBlock[];
   revision: string;
   nextCursor: string | null;
+}>;
+
+export type ForeignHistoryIndex = Readonly<{
+  revision: string;
+  blocks: ForeignHistoryBlock[];
+  incompleteTail: boolean;
+}>;
+
+export type HistoryTranscriptIndexRequest = Readonly<{
+  opaqueId: string;
+  expectedHistoryRevision: string;
+  requestId: string;
+}>;
+
+export type HistoryTranscriptPageRequest = Readonly<{
+  opaqueId: string;
+  cursor?: string;
+  requestId: string;
 }>;
 
 export type HistorySourceCount = Readonly<{
@@ -172,15 +189,19 @@ export type PrepareHistoryAdoptionInput = Readonly<{
 
 export type HistoryAdoptionReceipt = Readonly<{
   chatId: string;
+  incarnationId: string;
   phase: "started" | "queued" | "settled";
 }>;
 
 export type HistoryAdoptionPrefix = Readonly<{
   snapshotId: string;
   digest: string;
+  contentGenerationKey: string;
+  routeGenerationKey: string;
   title: string;
   blocks: ForeignHistoryBlock[];
-  divergence: boolean;
+  incompleteTail: boolean | "unknown";
+  sourceStatus: "match" | "changed" | "missing";
 }>;
 
 export type HistoryMemoryPreview = Readonly<{
@@ -219,6 +240,8 @@ export const HISTORY_IMPORT_CHANNEL = {
   renameSession: "history-import:session:rename",
   setSessionArchived: "history-import:session:set-archived",
   transcript: "history-import:transcript",
+  transcriptIndex: "history-import:transcript-index",
+  cancelTranscript: "history-import:transcript:cancel",
   adopt: "history-import:adopt",
   adoptionPrefix: "history-import:adoption-prefix",
   memoryEligibility: "history-import:memory:eligibility",
@@ -240,10 +263,9 @@ export type HistoryImportBridgeApi = {
   refreshProject(projectId: string): Promise<ProjectHistoryRefreshResult>;
   renameSession(opaqueId: string, title: string): Promise<void>;
   setSessionArchived(opaqueId: string, archived: boolean): Promise<void>;
-  transcript(
-    opaqueId: string,
-    cursor?: string
-  ): Promise<ForeignHistoryTranscript>;
+  transcript(input: HistoryTranscriptPageRequest): Promise<ForeignHistoryTranscript>;
+  transcriptIndex(input: HistoryTranscriptIndexRequest): Promise<ForeignHistoryIndex>;
+  cancelTranscript(requestId: string): void;
   adopt(input: PrepareHistoryAdoptionInput): Promise<HistoryAdoptionReceipt>;
   adoptionPrefix(chatId: string): Promise<HistoryAdoptionPrefix | null>;
   memoryEligibility(input: {

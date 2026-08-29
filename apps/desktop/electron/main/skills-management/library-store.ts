@@ -1,15 +1,19 @@
 /**
- * [INPUT]: Depends on DurableJson, copy/limited copy of the package, Node fs/path/crypto and shared digest/agent type
- * [OUTPUT]: Provides ManagedSkillsLibraryStore: name cannot be changed|Adopted provenance, revised content address generations, indefinite binding, authentication and onboarding
- * [POS]: The author of the book, "Skilled Management" and "Durable Single Writer"The name change creates new entries, source paths and copy failures are left only in the main
+ * [INPUT]: Depends on DurableJson upgrade hooks, SerialQueue, package copy/verify helpers, Node fs/path/crypto, and shared agent/import-outcome types
+ * [OUTPUT]: Provides one serialized schema-v3 ManagedSkillsLibraryStore boundary for import/delete/GC filesystem effects, enabled/requires facts, immutable content generations, tombstone recovery, and idempotent imports
+ * [POS]: Sole durable authority for adopted/local Skill bytes and user enablement; Agent home directories never receive library writes
  */
 
 import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import type { ManagedSkillAgent } from "../../../shared/unified-skills-ipc";
-import { DurableJson } from "../persistence/durable-json";
+import type {
+  ManagedSkillAgent,
+  ManagedSkillImportOutcome,
+} from "../../../shared/unified-skills-ipc";
+import { DurableJson, initializeDurableJsonOrQuarantine } from "../persistence/durable-json";
+import { SerialQueue } from "../persistence/serial-queue";
 import {
   copySkillDirectory,
   digestSkillFolder,
@@ -27,29 +31,35 @@ const generationSchema = z.object({
   digest: digestSchema,
   packageDirectory: z.string().regex(/^[a-f0-9]{64}$/),
   importedAt: z.number().int().nonnegative(),
+  /* 导入复核那一刻的来源 revision：候选超预算未哈希（digest=null）时，
+     「已是最新还是有更新」只能靠它比。可选是为了旧库文件——缺席条目在
+     一次同内容 no-op 导入时回填愈合，不必升 schemaVersion。 */
+  sourceRevision: z.string().min(1).optional(),
 }).strict();
 const originSchema = z.object({
   agent: z.enum(["codex", "claude", "kimi", "opencode"]),
   sourcePath: z.string().min(1),
   sourceIdentity: z.string().min(1),
   digest: digestSchema,
-  state: z.enum(["imported-source", "managed-projection"]),
-  bindingId: z.string().min(1).nullable(),
 }).strict();
 const entrySchema = z.object({
   libraryId: z.string().min(1),
   name: z.string().min(1),
   displayName: z.string().min(1),
   description: z.string().min(1),
+  requires: z.string().min(1).optional(),
+  enabled: z.boolean(),
+  tombstoneAt: z.number().int().nonnegative().nullable(),
   provenance: provenanceSchema,
   generations: z.array(generationSchema).min(1),
   activeGenerationId: z.string().min(1),
   origin: originSchema.nullable(),
 }).strict();
 const storeSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(3),
   revision: z.number().int().nonnegative(),
-  onboardingDismissed: z.boolean(),
+  /* 已废除的引导标记：旧档可能还带着，容忍读入、永不再写。 */
+  onboardingDismissed: z.boolean().optional(),
   entries: z.array(entrySchema),
 }).strict();
 
@@ -65,13 +75,20 @@ export type ImportLibraryCandidate = Readonly<{
 
 export type ManagedSkillsLibraryFaults = Readonly<{
   afterCandidateCopied?: (sourcePath: string, stagedSkillPath: string) => void | Promise<void>;
+  afterTombstone?: (libraryId: string) => void | Promise<void>;
+  afterGc?: (libraryId: string) => void | Promise<void>;
 }>;
+
+export type LibraryCustodyProbe = (
+  packageDirectory: string
+) => boolean | Promise<boolean>;
 
 export class ManagedSkillsLibraryStore {
   readonly root: string;
   readonly packagesRoot: string;
   private readonly stagingRoot: string;
   private readonly file: DurableJson<Store>;
+  private readonly queue = new SerialQueue();
 
   constructor(
     userData: string,
@@ -81,17 +98,21 @@ export class ManagedSkillsLibraryStore {
     this.packagesRoot = join(this.root, "packages");
     this.stagingRoot = join(this.root, "staging");
     this.file = new DurableJson(join(this.root, "library.json"), storeSchema, () => ({
-      schemaVersion: 1,
+      schemaVersion: 3,
       revision: 0,
-      onboardingDismissed: false,
       entries: [],
     }));
   }
 
-  async initialize() {
-    await mkdir(this.packagesRoot, { recursive: true, mode: 0o700 });
-    await mkdir(this.stagingRoot, { recursive: true, mode: 0o700 });
-    await this.file.initialize();
+  async initialize(custody: LibraryCustodyProbe = () => false) {
+    await this.queue.enqueue(async () => {
+      await mkdir(this.packagesRoot, { recursive: true, mode: 0o700 });
+      await mkdir(this.stagingRoot, { recursive: true, mode: 0o700 });
+      /* 旧代/损坏账本按不存在处理（预发布断代裁决）。packages/ 是内容寻址目录，
+         孤儿代价只是磁盘字节；重导入同内容会校验后原地复用，不必随账本清扫。 */
+      await initializeDurableJsonOrQuarantine(this.file, upgradeLibraryStore);
+      await this.resumeDeletionsSerial(custody);
+    });
   }
 
   snapshot() {
@@ -99,6 +120,12 @@ export class ManagedSkillsLibraryStore {
   }
 
   entry(libraryId: string) {
+    return this.file.snapshot().entries.find((item) =>
+      item.libraryId === libraryId && item.tombstoneAt === null
+    ) ?? null;
+  }
+
+  entryIncludingTombstone(libraryId: string) {
     return this.file.snapshot().entries.find((item) => item.libraryId === libraryId) ?? null;
   }
 
@@ -108,7 +135,21 @@ export class ManagedSkillsLibraryStore {
     return join(this.packagesRoot, generation.packageDirectory, "skills", entry.name);
   }
 
-  async importCandidates(candidates: readonly ImportLibraryCandidate[], now = Date.now()) {
+  generationPath(libraryId: string, digest: string) {
+    const entry = this.entry(libraryId);
+    const generation = entry?.generations.find((item) => item.digest === digest);
+    if (!entry || !generation) return null;
+    return join(this.packagesRoot, generation.packageDirectory, "skills", entry.name);
+  }
+
+  importCandidates(candidates: readonly ImportLibraryCandidate[], now = Date.now()) {
+    return this.queue.enqueue(() => this.importCandidatesSerial(candidates, now));
+  }
+
+  private async importCandidatesSerial(
+    candidates: readonly ImportLibraryCandidate[],
+    now: number
+  ) {
     if (!candidates.length) throw new Error("至少选择一个可导入的 Skill");
     const verified = await Promise.all(candidates.map(async (candidate) => ({
       ...candidate,
@@ -159,8 +200,10 @@ export class ManagedSkillsLibraryStore {
         await rename(item.temporary, item.destination);
         await assertStoredDigest(item.destination, item.name, item.digest);
       }
+      /* 结局在事实发生的这一行分类：建条目 / 追一代 / 什么也没做。
+         renderer 的结果条只做把这份清单数一数的算术。 */
       return await this.file.mutate((state) => {
-        const changed: ManagedSkillsLibraryEntry[] = [];
+        const outcomes: Array<{ libraryId: string; name: string; outcome: ManagedSkillImportOutcome }> = [];
         for (const candidate of verified) {
           const sourceIdentity = privateSourceIdentity(candidate.source.sourcePath);
           /* name 是 Skill 身份的一部分：来源改名产生新条目，旧 binding 仍由旧条目管理。 */
@@ -170,28 +213,45 @@ export class ManagedSkillsLibraryStore {
           if (existing) {
             const active = existing.generations.find((item) => item.generationId === existing.activeGenerationId)!;
             if (active.digest === candidate.skill.digest) {
-              changed.push(existing);
+              active.sourceRevision = candidate.skill.revision;
+              /* tombstone 是删除进度，不是内容身份。同内容重导必须先复活
+                 条目，再让延迟 GC 看见 tombstone 已撤销。 */
+              if (existing.tombstoneAt !== null) {
+                refreshImportedFacts(
+                  existing,
+                  candidate,
+                  candidate.skill.digest,
+                  sourceIdentity,
+                  now
+                );
+                outcomes.push({ libraryId: existing.libraryId, name: existing.name, outcome: "updated" });
+              } else {
+                outcomes.push({ libraryId: existing.libraryId, name: existing.name, outcome: "unchanged" });
+              }
               continue;
             }
-            const generation = generationOf(candidate.skill.digest, now);
+            const generation = generationOf(candidate.skill.digest, now, candidate.skill.revision);
             existing.generations.push(generation);
             existing.activeGenerationId = generation.generationId;
-            existing.displayName = candidate.skill.displayName;
-            existing.description = candidate.skill.description;
-            existing.provenance = provenanceOf(candidate.source, sourceIdentity, now);
-            /* 未撤销 binding 的 origin 是恢复入口，重新导入只能增加 generation，不能换掉它。 */
-            if (candidate.source.kind === "adopted" && !existing.origin?.bindingId) {
-              existing.origin = originOf(candidate.source, sourceIdentity, candidate.skill.digest);
-            }
-            changed.push(existing);
+            refreshImportedFacts(
+              existing,
+              candidate,
+              candidate.skill.digest,
+              sourceIdentity,
+              now
+            );
+            outcomes.push({ libraryId: existing.libraryId, name: existing.name, outcome: "updated" });
             continue;
           }
-          const generation = generationOf(candidate.skill.digest, now);
+          const generation = generationOf(candidate.skill.digest, now, candidate.skill.revision);
           const entry: ManagedSkillsLibraryEntry = {
             libraryId: randomUUID(),
             name: candidate.skill.name,
             displayName: candidate.skill.displayName,
             description: candidate.skill.description,
+            ...(candidate.skill.requires ? { requires: candidate.skill.requires } : {}),
+            enabled: true,
+            tombstoneAt: null,
             provenance: provenanceOf(candidate.source, sourceIdentity, now),
             generations: [generation],
             activeGenerationId: generation.generationId,
@@ -200,54 +260,157 @@ export class ManagedSkillsLibraryStore {
               : null,
           };
           state.entries.push(entry);
-          changed.push(entry);
+          outcomes.push({ libraryId: entry.libraryId, name: entry.name, outcome: "created" });
         }
         state.revision += 1;
-        return changed;
+        return outcomes;
       });
     } finally {
       await Promise.all(staged.map((item) => rm(item.temporary, { recursive: true, force: true })));
     }
   }
 
-  markOriginManaged(libraryId: string, bindingId: string) {
-    return this.file.mutate((state) => {
-      const entry = requireEntry(state, libraryId);
-      if (!entry.origin) throw new Error("只有收编来源可以接管原路径");
-      entry.origin.state = "managed-projection";
-      entry.origin.bindingId = bindingId;
+  setEnabled(libraryId: string, enabled: boolean) {
+    return this.queue.enqueue(() => this.file.mutate((state) => {
+      const entry = requireLiveEntry(state, libraryId);
+      entry.enabled = enabled;
       state.revision += 1;
-    });
+      return entry;
+    }));
   }
 
-  markOriginRestored(libraryId: string) {
-    return this.file.mutate((state) => {
-      const entry = requireEntry(state, libraryId);
-      if (!entry.origin) return;
-      entry.origin.state = "imported-source";
-      entry.origin.bindingId = null;
-      state.revision += 1;
-    });
+  async delete(
+    libraryId: string,
+    custodyReferenced: LibraryCustodyProbe = () => false,
+    now = Date.now()
+  ) {
+    return this.queue.enqueue(() =>
+      this.deleteSerial(libraryId, custodyReferenced, now)
+    );
   }
 
-  dismissOnboarding() {
-    return this.file.mutate((state) => {
-      state.onboardingDismissed = true;
+  private async deleteSerial(
+    libraryId: string,
+    custodyReferenced: LibraryCustodyProbe,
+    now: number
+  ) {
+    const tombstone = await this.file.mutate((state) => {
+      const entry = requireLiveEntry(state, libraryId);
+      entry.enabled = false;
+      entry.tombstoneAt = now;
       state.revision += 1;
+      return entry;
     });
+    await this.faults.afterTombstone?.(libraryId);
+    await this.collectTombstone(tombstone.libraryId, custodyReferenced);
   }
 
-  closeAndFlush() {
-    return this.file.closeAndFlush();
+  resumeDeletions(
+    custodyReferenced: LibraryCustodyProbe = () => false
+  ) {
+    return this.queue.enqueue(() => this.resumeDeletionsSerial(custodyReferenced));
+  }
+
+  private async resumeDeletionsSerial(
+    custodyReferenced: LibraryCustodyProbe
+  ) {
+    for (const entry of this.file.snapshot().entries) {
+      if (entry.tombstoneAt !== null) {
+        await this.collectTombstone(entry.libraryId, custodyReferenced);
+      }
+    }
+  }
+
+  async closeAndFlush() {
+    this.queue.close();
+    await this.queue.flush();
+    await this.file.closeAndFlush();
+  }
+
+  private async collectTombstone(
+    libraryId: string,
+    custodyReferenced: LibraryCustodyProbe
+  ) {
+    const state = this.file.snapshot();
+    const entry = state.entries.find((item) => item.libraryId === libraryId);
+    if (!entry || entry.tombstoneAt === null) return;
+    const directories = new Set(
+      entry.generations.map((generation) => generation.packageDirectory)
+    );
+    let custodyBlocked = false;
+    for (const directory of directories) {
+      const shared = state.entries.some((candidate) =>
+        candidate.libraryId !== libraryId &&
+        candidate.generations.some(
+          (generation) => generation.packageDirectory === directory
+        )
+      );
+      const heldByCustody = !shared && (await custodyReferenced(directory));
+      if (heldByCustody) {
+        custodyBlocked = true;
+        continue;
+      }
+      if (!shared) {
+        await rm(join(this.packagesRoot, directory), {
+          recursive: true,
+          force: true,
+        });
+      }
+    }
+    if (custodyBlocked) return;
+    await this.faults.afterGc?.(libraryId);
+    await this.file.mutate((current) => {
+      const tombstone = current.entries.find(
+        (item) => item.libraryId === libraryId
+      );
+      if (!tombstone || tombstone.tombstoneAt === null) return;
+      current.entries = current.entries.filter(
+        (item) => item.libraryId !== libraryId
+      );
+      current.revision += 1;
+    });
   }
 }
 
-function generationOf(digest: string, importedAt: number) {
+function upgradeLibraryStore(raw: unknown): Store | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const value = raw as { schemaVersion?: unknown; revision?: unknown; entries?: unknown };
+  if (value.schemaVersion !== 2 || !Array.isArray(value.entries)) return undefined;
+  return {
+    schemaVersion: 3,
+    revision: typeof value.revision === "number" ? value.revision : 0,
+    entries: value.entries.map((candidate) => {
+      if (!candidate || typeof candidate !== "object") return candidate;
+      const entry = candidate as Record<string, unknown>;
+      const { onboardingDismissed: _retired, ...rest } = entry;
+      return {
+        ...rest,
+        enabled: true,
+        tombstoneAt: null,
+      };
+    }) as Store["entries"],
+  };
+}
+
+function requireLiveEntry(state: Store, libraryId: string) {
+  const entry = state.entries.find(
+    (item) => item.libraryId === libraryId && item.tombstoneAt === null
+  );
+  if (!entry) {
+    throw Object.assign(new Error("Skill library entry 不存在"), {
+      status: 409,
+    });
+  }
+  return entry;
+}
+
+function generationOf(digest: string, importedAt: number, sourceRevision: string) {
   return {
     generationId: randomUUID(),
     digest,
     packageDirectory: digest.slice("sha256:".length),
     importedAt,
+    sourceRevision,
   };
 }
 
@@ -255,6 +418,26 @@ function provenanceOf(source: ImportLibraryCandidate["source"], sourceIdentity: 
   return source.kind === "adopted"
     ? { kind: "adopted" as const, agent: source.agent, sourcePath: source.sourcePath, sourceIdentity, importedAt }
     : { kind: "local-folder" as const, sourcePath: source.sourcePath, sourceIdentity, importedAt };
+}
+
+function refreshImportedFacts(
+  entry: ManagedSkillsLibraryEntry,
+  candidate: ImportLibraryCandidate,
+  digest: `sha256:${string}`,
+  sourceIdentity: string,
+  importedAt: number
+) {
+  entry.displayName = candidate.skill.displayName;
+  entry.description = candidate.skill.description;
+  entry.requires = candidate.skill.requires;
+  entry.enabled = true;
+  entry.tombstoneAt = null;
+  entry.provenance = provenanceOf(candidate.source, sourceIdentity, importedAt);
+  /* Origin records acquisition identity only. Projection custody was retired
+     and must never leak back into a restored Library entry. */
+  entry.origin = candidate.source.kind === "adopted"
+    ? originOf(candidate.source, sourceIdentity, digest)
+    : null;
 }
 
 function originOf(
@@ -267,8 +450,6 @@ function originOf(
     sourcePath: source.sourcePath,
     sourceIdentity,
     digest,
-    state: "imported-source" as const,
-    bindingId: null,
   };
 }
 
@@ -289,12 +470,6 @@ function assertNamesDoNotConflict(
 
 function privateSourceIdentity(path: string) {
   return createHash("sha256").update(path).digest("hex");
-}
-
-function requireEntry(state: Store, libraryId: string) {
-  const entry = state.entries.find((item) => item.libraryId === libraryId);
-  if (!entry) throw new Error("Skill 库条目不存在");
-  return entry;
 }
 
 async function exists(path: string) {

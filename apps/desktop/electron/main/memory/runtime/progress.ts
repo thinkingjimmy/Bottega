@@ -1,32 +1,17 @@
 /**
- * [INPUT]: Depends on shared MemoryRuntimeOperation
- * [OUTPUT]: Provides StepKind, operationSteps and operationStepTotal; The type/order of steps for each type of host operation is only this true value
+ * [INPUT]: Depends on shared MemoryRuntimeOperation and MemoryRuntimeStepKind
+ * [OUTPUT]: Re-exports StepKind from shared and provides operationSteps/operationStepTotal; the order of steps per managed operation is only this true value, while which kinds exist belongs to shared
  * [POS]: The main/memory/runtime purely progressive specification; Coordinator progresses by table and verifies completeness at the end
  */
 
-import type { MemoryRuntimeOperation } from "../../../../shared/memory-ipc";
+import type {
+  MemoryRuntimeOperation,
+  MemoryRuntimeStepKind,
+} from "../../../../shared/memory-ipc";
 
-export type StepKind =
-  | "refresh-version-catalog"
-  | "remove-plist"
-  | "remove-venv"
-  | "prepare-toolchain"
-  | "ensure-venv"
-  | "fetch-artifacts"
-  | "install-packages"
-  | "register-manifest"
-  | "initialize"
-  | "model-assets"
-  | "config-converge"
-  | "install-plist"
-  | "bootstrap"
-  | "await-ready"
-  | "config-write"
-  | "config-regenerate"
-  | "config-adopt-manual"
-  | "bootout"
-  | "wipe-data"
-  | "remove-root";
+/* 步骤身份住在 shared：renderer 要按它取文案，两处各写一份枚举迟早
+   长出只有一边认得的档。这里只排顺序，不再定义有哪些档。 */
+export type StepKind = MemoryRuntimeStepKind;
 
 const INSTALL_STEPS = [
   "prepare-toolchain",

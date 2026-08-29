@@ -58,6 +58,7 @@ import {
   queuedPrompt,
 } from "@/lib/message-queue-model";
 import { errorMessage, reportedFailure } from "@/lib/errors";
+import { admissionReasonText } from "@/lib/skill-failure-text";
 import {
   ackManualIntents,
   ackSubmissionOutcome,
@@ -577,7 +578,7 @@ export function createSessionRevisionSubmit(
     const result = await ports.admitSubmission(envelope);
     if (result.kind === "ambiguous") throw new Error(result.cause);
     if (result.kind === "rejectedBeforeAdmission") {
-      throw new Error(result.reason);
+      throw new Error(admissionReasonText(result));
     }
     const receipt = result.receipt;
     if (receipt.phase === "queued") throw new Error(REVISION_NOT_IDLE);
@@ -735,7 +736,7 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
       return;
     }
     if (result.kind === "rejectedBeforeAdmission") {
-      input.lifecycle.rejectBeforeAdmission(errorMessage(result.reason));
+      input.lifecycle.rejectBeforeAdmission(admissionReasonText(result));
       throw reportedFailure(new Error(result.reason));
     }
     const receipt = result.receipt;

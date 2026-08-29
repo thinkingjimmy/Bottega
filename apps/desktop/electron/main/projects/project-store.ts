@@ -1,125 +1,44 @@
 /**
- * [INPUT]: Depends on Node fs/path, nanoid, zod, shared/projects-ipc, main/errors and persistence/serial-queue
- * [OUTPUT]: Provides ProjectStore v4 with projectAppearanceSchema to implement workspaceBinding, grant|disabled 3 modes/revisions, only authorizing and App binding, mutually exclusive, archiving and double-archiving atoms submitted
- * [POS]: The canonical perpetuation ledger of the projects module; App identity only reads workspaceBinding, authorizes intent and member changes to independent revision sequencing, looks to loosen up field presentation without any involvement in any judgments
+ * [INPUT]: Depends on Node fs/path, nanoid, shared Project/App contracts, project-store-schema, main/errors, and persistence/serial-queue
+ * [OUTPUT]: Provides ProjectStore v5 mutations with mirrored monotonic commits, global lifecycle sequence, durable resource admissions, intent-bound deletion fences/checkpoints/receipts, workspace binding, grants, appearance, and archival atoms
+ * [POS]: Canonical Project persistence and lifecycle authority; scoped resources may trust only its projectLifecycleRevision and deletion fence
  */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { basename } from "node:path";
 import { nanoid } from "nanoid";
-import { z } from "zod";
 import {
-  PROJECT_ID_PATTERN,
   workspaceCapabilityId,
-  type Project,
   type ProjectAppearance,
   type ProjectWorkspaceBinding,
   type ProjectsSortMode,
 } from "../../../shared/projects-ipc";
-import {
-  isPositiveAppGrant,
-  type AppCapabilityGrant,
-  type AppGrantRecord,
-} from "../../../shared/apps-ipc";
+import type { TurnProjectContext } from "../../../shared/resource-scope";
+import type { AppCapabilityGrant, AppGrantRecord } from "../../../shared/apps-ipc";
 import { errorMessage } from "../errors";
 import { SerialQueue } from "../persistence/serial-queue";
+import {
+  projectFileSchema,
+  projectSortModeSchema,
+  storedProjectSchema,
+  type ProjectDeletionCheckpoint,
+  type ProjectFile,
+  type ProjectRemovalOperation,
+  type ProjectResourceAdmission,
+  type StoredProject,
+} from "./project-store-schema";
+import {
+  emptyProjectFile,
+  ProjectStorePersistence,
+} from "./project-store-persistence";
+import { assertNoPositiveAppGrants, planWorkspaceRebind } from "./project-workspace-policy";
 
-const SCHEMA_VERSION = 4;
-const sortModeSchema = z.enum(["last-updated", "manual"]);
-const projectIdentityFields = {
-  id: z.string().regex(PROJECT_ID_PATTERN),
-  name: z.string().trim().min(1).max(100),
-  dir: z.union([
-    z.literal(""),
-    z.string().min(1).refine(isAbsolute, "Project dir 必须是绝对路径"),
-  ]),
-  sortIndex: z.number().int().nonnegative(),
-  createdAt: z.number().int().nonnegative(),
-  updatedAt: z.number().int().nonnegative(),
-};
-/* 外观是渲染端目录表的键，账本只当它是两个短字符串：长度设界防止写坏，
-   语义一概不认。认不出的 id 由渲染端回落，永远不该让整档解析失败。 */
-export const projectAppearanceSchema = z
-  .object({ color: z.string().max(32), icon: z.string().max(64) })
-  .strict();
-const appCapabilityGrantSchema = z
-  .object({
-    appId: z.string().regex(/^[a-z0-9]{10}$/),
-    data: z
-      .object({ kind: z.literal("base"), level: z.enum(["read", "row-write"]) })
-      .strict()
-      .optional(),
-    agentDelegation: z
-      .object({ fileRead: z.boolean(), useData: z.boolean() })
-      .strict(),
-    grantedAt: z.number().int().nonnegative(),
-  })
-  .strict();
-const appDisabledGrantSchema = z
-  .object({
-    appId: z.string().regex(/^[a-z0-9]{10}$/),
-    state: z.literal("disabled"),
-    disabledAt: z.number().int().nonnegative(),
-  })
-  .strict();
-const capabilityIdSchema = z.string().regex(/^[A-Za-z0-9_-]{10,64}$/);
-const workspaceBindingSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("none") }).strict(),
-  z
-    .object({
-      kind: z.literal("external"),
-      capabilityId: capabilityIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("app"),
-      appId: z.string().regex(/^[a-z0-9]{10}$/),
-    })
-    .strict(),
-]);
-const storedProjectSchema = z
-  .object({
-    ...projectIdentityFields,
-    /* 不进 projectIdentityFields：那组字段是身份，外观只是呈现。
-       optional 也让老档（无此键）与新档（有此键）在同一 SCHEMA_VERSION 下共存。 */
-    appearance: projectAppearanceSchema.optional(),
-    workspaceBinding: workspaceBindingSchema,
-    grants: z.array(z.union([appCapabilityGrantSchema, appDisabledGrantSchema])),
-    grantRevision: z.number().int().nonnegative(),
-    membershipRevision: z.number().int().nonnegative(),
-    archivedAt: z.number().int().nonnegative().optional(),
-  })
-  .strict()
-  .superRefine((project, context) => {
-    if (project.workspaceBinding.kind === "none" && project.dir !== "") {
-      context.addIssue({
-        code: "custom",
-        path: ["dir"],
-        message: "none binding 不保存目录",
-      });
-    }
-    if (workspaceCapabilityId(project.workspaceBinding) && project.dir === "") {
-      context.addIssue({
-        code: "custom",
-        path: ["dir"],
-        message: `${project.workspaceBinding.kind} binding 缺少目录投影`,
-      });
-    }
-  });
-const projectFileSchema = z
-  .object({
-    schemaVersion: z.literal(SCHEMA_VERSION),
-    sortMode: sortModeSchema.default("manual"),
-    projects: z.array(storedProjectSchema),
-    workspaceCapabilities: z.record(
-      z.string().regex(/^[A-Za-z0-9_-]{10,64}$/),
-      z.string().min(1).refine(isAbsolute, "Workspace capability 必须指向绝对路径")
-    ),
-  })
-  .strict();
-export type StoredProject = Omit<Project, "missing">;
-type ProjectFile = z.infer<typeof projectFileSchema>;
+export {
+  projectAppearanceSchema,
+  type ProjectDeletionCheckpoint,
+  type ProjectRemovalOperation,
+  type ProjectResourceAdmission,
+  type StoredProject,
+} from "./project-store-schema";
 
 export type ProjectStoreDependencies = {
   atomicWrite?: (filePath: string, content: string) => Promise<void>;
@@ -129,101 +48,245 @@ export type ProjectStoreDependencies = {
 };
 
 const clone = <T>(value: T): T => structuredClone(value);
-const emptyFile = (): ProjectFile => ({
-  schemaVersion: SCHEMA_VERSION,
-  sortMode: "manual",
-  projects: [],
-  workspaceCapabilities: {},
-});
-
-/**
- * D17 的写侧最后一道：绑定 App 与写 grant 都在本 store 的同一条队列上，两个方向
- * 于是不可能各写一份。静默清空是明令禁止的——用户会毫不知情地失去授权。
- */
-function assertNoPositiveAppGrants(project: StoredProject) {
-  const positive = project.grants.filter(isPositiveAppGrant);
-  if (!positive.length) return;
-  throw Object.assign(
-    new Error(
-      `Project 仍持有 App 授权，请先撤销：${positive
-        .map((grant) => grant.appId)
-        .join("、")}`
-    ),
-    { status: 409 }
-  );
-}
-
 export class ProjectStore {
   readonly filePath: string;
   readonly backupPath: string;
+  readonly failurePath: string;
   private readonly queue = new SerialQueue();
-  private state: ProjectFile = emptyFile();
-  private previousValidated: ProjectFile | undefined;
+  private state: ProjectFile = emptyProjectFile();
+  private ready = false;
   private warning: string | undefined;
   private readonly now: () => number;
   private readonly createId: () => string;
-  private readonly readText: (filePath: string) => Promise<string>;
+  private readonly persistence: ProjectStorePersistence;
 
   constructor(
     userData: string,
     private readonly dependencies: ProjectStoreDependencies = {}
   ) {
-    this.filePath = join(userData, "projects.json");
-    this.backupPath = `${this.filePath}.bak`;
+    this.persistence = new ProjectStorePersistence(userData, dependencies);
+    this.filePath = this.persistence.filePath;
+    this.backupPath = this.persistence.backupPath;
+    this.failurePath = this.persistence.failurePath;
     this.now = dependencies.now ?? Date.now;
     this.createId = dependencies.createId ?? nanoid;
-    this.readText = dependencies.readText ?? ((path) => readFile(path, "utf8"));
   }
 
   async initialize() {
     await this.queue.enqueue(async () => {
+      this.ready = false;
       this.warning = undefined;
+      await this.persistence.assertNoFailureSentinel();
+      const { main, backup } = await this.persistence.candidates();
+      let selected;
       try {
-        const main = await this.readValidated(this.filePath);
-        this.state = main;
-        this.previousValidated = clone(main);
-        return;
-      } catch (mainCause) {
-        const mainMissing = (mainCause as NodeJS.ErrnoException).code === "ENOENT";
-        if (!mainMissing) await this.isolate(this.filePath);
-        try {
-          const backup = await this.readValidated(this.backupPath);
-          await this.atomicWrite(this.filePath, this.serialize(backup));
-          this.state = backup;
-          this.previousValidated = clone(backup);
-          this.warning = "Projects 已从备份恢复，最近一次变更可能丢失。";
-          return;
-        } catch (backupCause) {
-          const backupMissing =
-            (backupCause as NodeJS.ErrnoException).code === "ENOENT";
-          if (!backupMissing) await this.isolate(this.backupPath);
-          const next = emptyFile();
-          await this.atomicWrite(this.filePath, this.serialize(next));
-          this.state = next;
-          this.previousValidated = clone(next);
-          if (!mainMissing || !backupMissing) {
-            this.warning = `Projects 主档与备份均无法读取，已建立空档案。主档：${errorMessage(mainCause)}；备份：${errorMessage(backupCause)}`;
-          }
+        selected = this.persistence.select(main, backup);
+      } catch (cause) {
+        await this.persistence.writeFailureSentinel(cause);
+        throw cause;
+      }
+      if (!selected) {
+        if (!main.missing || !backup.missing) {
+          await this.persistence.writeFailureSentinel(main.cause ?? backup.cause);
+          await this.persistence.isolateInvalid(main, backup);
+          throw new Error(
+            `Projects 主档与镜像均无法验证，已隔离并 fail closed。主档：${errorMessage(main.cause)}；镜像：${errorMessage(backup.cause)}`
+          );
         }
+        const next = emptyProjectFile();
+        await this.persistence.publishMirror(next);
+        this.state = next;
+        this.ready = true;
+        return;
+      }
+      await this.persistence.isolateInvalid(main, backup);
+      await this.persistence.publishMirror(selected.file);
+      this.state = selected.file;
+      this.ready = true;
+      if (selected.source === "backup" || !main.file) {
+        this.warning = "Projects 已从同代持久镜像恢复。";
       }
     });
   }
 
   list(): StoredProject[] {
+    this.assertReady();
     return clone(this.state.projects);
   }
 
   get(projectId: string) {
+    this.assertReady();
     const project = this.state.projects.find((item) => item.id === projectId);
     return project ? clone(project) : undefined;
   }
 
+  isDeleting(projectId: string) {
+    this.assertReady();
+    return Boolean(
+      this.state.projects.find((item) => item.id === projectId)
+        ?.deletionCheckpoint
+    );
+  }
+
+  turnContext(projectId: string | null): TurnProjectContext {
+    if (projectId === null) {
+      return { projectId: null, projectLifecycleRevision: null };
+    }
+    const project = this.require(projectId);
+    if (project.deletionCheckpoint) {
+      throw lifecycleError("project-deleting", "Project 正在删除");
+    }
+    return {
+      projectId,
+      projectLifecycleRevision: project.projectLifecycleRevision,
+    };
+  }
+
+  assertLifecycle(projectId: string, expectedRevision: number) {
+    const project = this.require(projectId);
+    if (project.deletionCheckpoint) {
+      throw lifecycleError("project-deleting", "Project 正在删除");
+    }
+    if (project.projectLifecycleRevision !== expectedRevision) {
+      throw lifecycleError(
+        "project-lifecycle-conflict",
+        "Project lifecycle 已变化，请刷新后重试"
+      );
+    }
+    return clone(project);
+  }
+
+  runWithLifecycle<T>(
+    projectId: string,
+    expectedRevision: number,
+    operation: () => Promise<T>
+  ) {
+    return this.queue.enqueue(async () => {
+      this.assertLifecycle(projectId, expectedRevision);
+      return operation();
+    });
+  }
+
+  projectLifecycleRevision(projectId: string) {
+    this.assertReady();
+    return this.state.projects.find((item) => item.id === projectId)
+      ?.projectLifecycleRevision;
+  }
+
+  assertProjectLifecycle(projectId: string, expectedRevision: number) {
+    this.assertReady();
+    const project = this.require(projectId);
+    if (project.deletionCheckpoint) throw conflict("Project 正在删除");
+    if (project.projectLifecycleRevision !== expectedRevision) {
+      throw conflict("Project lifecycle 已变更");
+    }
+    return clone(project);
+  }
+
+  acquireResourceAdmission(
+    projectId: string,
+    input: ProjectResourceAdmission
+  ) {
+    return this.queue.enqueue(async () => {
+      const current = this.require(projectId);
+      if (current.deletionCheckpoint) throw conflict("Project 正在删除");
+      if (current.projectLifecycleRevision !== input.projectLifecycleRevision) {
+        throw conflict("Project lifecycle 已变更");
+      }
+      const existing = current.resourceAdmissions.find(
+        (item) => item.operationId === input.operationId
+      );
+      if (existing) {
+        if (
+          existing.kind !== input.kind ||
+          existing.installIdentity !== input.installIdentity ||
+          existing.projectLifecycleRevision !== input.projectLifecycleRevision
+        ) {
+          throw conflict("Project resource admission identity 已漂移");
+        }
+        return clone(existing);
+      }
+      const admission: ProjectResourceAdmission = structuredClone(input);
+      const project = storedProjectSchema.parse({
+        ...current,
+        resourceAdmissions: [...current.resourceAdmissions, admission],
+      });
+      await this.replace(project);
+      return clone(admission);
+    });
+  }
+
+  assertResourceAdmission(
+    projectId: string,
+    operationId: string,
+    installIdentity: string,
+    expectedProjectLifecycleRevision: number
+  ) {
+    this.assertReady();
+    const project = this.require(projectId);
+    const admission = project.resourceAdmissions.find(
+      (item) => item.operationId === operationId
+    );
+    if (
+      !admission ||
+      admission.installIdentity !== installIdentity ||
+      admission.projectLifecycleRevision !== expectedProjectLifecycleRevision ||
+      project.projectLifecycleRevision !== expectedProjectLifecycleRevision ||
+      project.deletionCheckpoint
+    ) {
+      throw conflict("Project resource admission 已失效");
+    }
+    return clone(admission);
+  }
+
+  releaseResourceAdmission(
+    projectId: string,
+    operationId: string,
+    installIdentity: string,
+    expectedProjectLifecycleRevision: number
+  ) {
+    return this.queue.enqueue(async () => {
+      const current = this.require(projectId);
+      const frozen = current.deletionCheckpoint?.frozenResourceAdmissions.some(
+        (item) =>
+          item.operationId === operationId &&
+          item.installIdentity === installIdentity &&
+          item.projectLifecycleRevision === expectedProjectLifecycleRevision
+      );
+      if (
+        current.projectLifecycleRevision !== expectedProjectLifecycleRevision &&
+        !frozen
+      ) {
+        throw conflict("Project lifecycle 已变更");
+      }
+      const admission = current.resourceAdmissions.find(
+        (item) => item.operationId === operationId
+      );
+      if (!admission) return;
+      if (
+        admission.installIdentity !== installIdentity ||
+        admission.projectLifecycleRevision !== expectedProjectLifecycleRevision
+      ) {
+        throw conflict("Project resource admission identity 已漂移");
+      }
+      const project = storedProjectSchema.parse({
+        ...current,
+        resourceAdmissions: current.resourceAdmissions.filter(
+          (item) => item.operationId !== operationId
+        ),
+      });
+      await this.replace(project);
+    });
+  }
+
   findByDir(dir: string) {
+    this.assertReady();
     const project = this.state.projects.find((item) => item.dir === dir);
     return project ? clone(project) : undefined;
   }
 
   findByAppId(appId: string) {
+    this.assertReady();
     const project = this.state.projects.find(
       (item) =>
         item.workspaceBinding.kind === "app" &&
@@ -233,6 +296,7 @@ export class ProjectStore {
   }
 
   listDirs() {
+    this.assertReady();
     return new Set(
       Object.values(this.state.workspaceCapabilities)
     );
@@ -263,6 +327,7 @@ export class ProjectStore {
         grants: [],
         grantRevision: 0,
         membershipRevision: 0,
+        projectLifecycleRevision: this.state.lifecycleSequence + 1,
       });
       const capabilities = { ...this.state.workspaceCapabilities };
       if (project.workspaceBinding.kind === "external") {
@@ -270,6 +335,7 @@ export class ProjectStore {
       }
       await this.commit({
         ...this.state,
+        lifecycleSequence: project.projectLifecycleRevision,
         projects: [...this.state.projects, project],
         workspaceCapabilities: capabilities,
       });
@@ -304,9 +370,11 @@ export class ProjectStore {
         grants: [],
         grantRevision: 0,
         membershipRevision: 0,
+        projectLifecycleRevision: this.state.lifecycleSequence + 1,
       });
       await this.commit({
         ...this.state,
+        lifecycleSequence: project.projectLifecycleRevision,
         projects: [...this.state.projects, project],
       });
       return clone(project);
@@ -382,28 +450,204 @@ export class ProjectStore {
     });
   }
 
-  remove(projectId: string) {
+  beginDeletion(
+    projectId: string,
+    operation: ProjectRemovalOperation,
+    plan: Readonly<{
+      planVersion: 1;
+      requiredParticipants: readonly string[];
+      operationIntentId?: string | null;
+    }>
+  ) {
     return this.queue.enqueue(async () => {
-      if (!this.state.projects.some((item) => item.id === projectId)) return;
-      const removed = this.state.projects.find((item) => item.id === projectId);
+      const current = this.require(projectId);
+      if (current.deletionCheckpoint) {
+        if (
+          current.deletionCheckpoint.operation !== operation ||
+          current.deletionCheckpoint.operationIntentId !==
+            (plan.operationIntentId ?? null)
+        ) {
+          throw conflict(
+            `Project cleanup operation 已冻结为 ${current.deletionCheckpoint.operation}`
+          );
+        }
+        return clone(current);
+      }
+      const projectLifecycleRevision = this.state.lifecycleSequence + 1;
+      const project = storedProjectSchema.parse({
+        ...current,
+        projectLifecycleRevision,
+        deletionCheckpoint: {
+          projectLifecycleRevision,
+          operation,
+          operationIntentId: plan.operationIntentId ?? null,
+          planVersion: plan.planVersion,
+          requiredParticipants: [...plan.requiredParticipants],
+          phase: "closing-admission",
+          completedParticipants: [],
+          frozenResourceAdmissions: clone(current.resourceAdmissions),
+          blocked: null,
+        },
+      });
+      await this.commit({
+        ...this.state,
+        lifecycleSequence: projectLifecycleRevision,
+        projects: this.state.projects.map((item) =>
+          item.id === projectId ? project : item
+        ),
+      });
+      return clone(project);
+    });
+  }
+
+  recordDeletionProgress(
+    projectId: string,
+    expectedRevision: number,
+    update: Pick<ProjectDeletionCheckpoint, "phase" | "completedParticipants" | "blocked">
+  ) {
+    return this.queue.enqueue(async () => {
+      const current = this.require(projectId);
+      const checkpoint = current.deletionCheckpoint;
+      if (!checkpoint || current.projectLifecycleRevision !== expectedRevision) {
+        throw conflict("Project cleanup fence 已变更");
+      }
+      const phases = [
+        "closing-admission",
+        "cleaning-resources",
+        "ready-to-remove",
+      ] as const;
+      const currentPhase = phases.indexOf(checkpoint.phase);
+      const nextPhase = phases.indexOf(update.phase);
+      const priorCompleted = new Set(checkpoint.completedParticipants);
+      const nextCompleted = new Set(update.completedParticipants);
+      if (
+        nextCompleted.size !== update.completedParticipants.length ||
+        [...priorCompleted].some((id) => !nextCompleted.has(id)) ||
+        nextPhase < currentPhase ||
+        nextPhase > currentPhase + 1
+      ) {
+        throw conflict("Project cleanup progress 必须单调推进");
+      }
+      if (
+        update.phase === "ready-to-remove" &&
+        (update.blocked !== null ||
+          checkpoint.requiredParticipants.some((id) => !nextCompleted.has(id)) ||
+          nextCompleted.size !== checkpoint.requiredParticipants.length)
+      ) {
+        throw conflict("Project cleanup 冻结 plan 尚未精确完成");
+      }
+      const project = storedProjectSchema.parse({
+        ...current,
+        deletionCheckpoint: {
+          projectLifecycleRevision: expectedRevision,
+          operation: checkpoint.operation,
+          operationIntentId: checkpoint.operationIntentId,
+          planVersion: checkpoint.planVersion,
+          requiredParticipants: checkpoint.requiredParticipants,
+          frozenResourceAdmissions: checkpoint.frozenResourceAdmissions,
+          ...update,
+        },
+      });
+      await this.replace(project);
+      return clone(project);
+    });
+  }
+
+  cancelDeletion(projectId: string, expectedRevision: number) {
+    return this.queue.enqueue(async () => {
+      const current = this.require(projectId);
+      if (
+        !current.deletionCheckpoint ||
+        current.projectLifecycleRevision !== expectedRevision
+      ) {
+        throw conflict("Project cleanup fence 已变更");
+      }
+      if (current.resourceAdmissions.length) {
+        throw conflict("Project cleanup 已冻结资源写入，不能在 admission 未收敛时取消");
+      }
+      if (
+        current.deletionCheckpoint.phase !== "closing-admission" ||
+        current.deletionCheckpoint.completedParticipants.length > 0 ||
+        current.deletionCheckpoint.frozenResourceAdmissions.length > 0
+      ) {
+        throw conflict("Project cleanup 已产生不可逆进度，不能取消删除");
+      }
+      const projectLifecycleRevision = this.state.lifecycleSequence + 1;
+      const { deletionCheckpoint: _checkpoint, ...rest } = current;
+      const project = storedProjectSchema.parse({
+        ...rest,
+        projectLifecycleRevision,
+      });
+      await this.commit({
+        ...this.state,
+        lifecycleSequence: projectLifecycleRevision,
+        projects: this.state.projects.map((item) =>
+          item.id === projectId ? project : item
+        ),
+      });
+      return clone(project);
+    });
+  }
+
+  finalizeDeletion(projectId: string, expectedRevision: number) {
+    return this.queue.enqueue(async () => {
+      const current = this.require(projectId);
+      if (
+        current.projectLifecycleRevision !== expectedRevision ||
+        current.deletionCheckpoint?.phase !== "ready-to-remove" ||
+        current.resourceAdmissions.length > 0 ||
+        current.deletionCheckpoint.blocked !== null ||
+        current.deletionCheckpoint.requiredParticipants.some(
+          (id) => !current.deletionCheckpoint!.completedParticipants.includes(id)
+        ) ||
+        current.deletionCheckpoint.completedParticipants.length !==
+          current.deletionCheckpoint.requiredParticipants.length
+      ) {
+        throw conflict("Project cleanup 尚未完成");
+      }
       const workspaceCapabilities = { ...this.state.workspaceCapabilities };
-      const capabilityId = removed && workspaceCapabilityId(removed.workspaceBinding);
+      const capabilityId = workspaceCapabilityId(current.workspaceBinding);
       if (capabilityId) delete workspaceCapabilities[capabilityId];
       await this.commit({
         ...this.state,
         projects: this.state.projects.filter((item) => item.id !== projectId),
+        deletionReceipts: [
+          ...this.state.deletionReceipts,
+          {
+            projectId,
+            projectLifecycleRevision: expectedRevision,
+            operation: current.deletionCheckpoint.operation,
+            operationIntentId: current.deletionCheckpoint.operationIntentId,
+            completedAt: this.now(),
+          },
+        ],
         workspaceCapabilities,
       });
     });
   }
 
+  wasDeletedBy(
+    projectId: string,
+    operation: ProjectRemovalOperation,
+    operationIntentId: string | null
+  ) {
+    this.assertReady();
+    return this.state.deletionReceipts.some(
+      (receipt) =>
+        receipt.projectId === projectId &&
+        receipt.operation === operation &&
+        receipt.operationIntentId === operationIntentId
+    );
+  }
+
   getSortMode() {
+    this.assertReady();
     return this.state.sortMode;
   }
 
   setSortMode(sortMode: ProjectsSortMode) {
     return this.queue.enqueue(async () => {
-      const value = sortModeSchema.parse(sortMode);
+      const value = projectSortModeSchema.parse(sortMode);
       if (value === this.state.sortMode) return value;
       await this.commit({ ...this.state, sortMode: value });
       return value;
@@ -450,6 +694,7 @@ export class ProjectStore {
       grants: [],
       grantRevision: 0,
       membershipRevision: 0,
+      projectLifecycleRevision: this.state.lifecycleSequence + 1,
     });
     const workspaceCapabilities = { ...this.state.workspaceCapabilities };
     if (project.workspaceBinding.kind === "external") {
@@ -457,6 +702,7 @@ export class ProjectStore {
     }
     await this.commit({
       ...this.state,
+      lifecycleSequence: project.projectLifecycleRevision,
       projects: [...this.state.projects, project],
       workspaceCapabilities,
     });
@@ -479,19 +725,24 @@ export class ProjectStore {
   }
 
   private async commit(next: ProjectFile) {
-    const validated = projectFileSchema.parse(next);
-    if (this.previousValidated) {
-      await this.atomicWrite(
-        this.backupPath,
-        this.serialize(this.previousValidated)
-      );
+    if (!this.ready) throw new Error("ProjectStore 尚未通过持久化 authority 初始化");
+    const validated = projectFileSchema.parse({
+      ...next,
+      commitGeneration: this.state.commitGeneration + 1,
+    });
+    try {
+      await this.persistence.publishMirror(validated);
+    } catch (cause) {
+      /* A rejected fsync does not prove the preceding rename was absent. Keep
+         this instance poisoned until initialize rereads both generations. */
+      this.ready = false;
+      throw cause;
     }
-    await this.atomicWrite(this.filePath, this.serialize(validated));
     this.state = validated;
-    this.previousValidated = clone(validated);
   }
 
   resolveWorkspace(binding: ProjectWorkspaceBinding) {
+    this.assertReady();
     const capabilityId = workspaceCapabilityId(binding);
     return capabilityId
       ? this.state.workspaceCapabilities[capabilityId]
@@ -505,25 +756,12 @@ export class ProjectStore {
   ) {
     return this.queue.enqueue(async () => {
       const current = this.require(projectId);
-      if (binding.kind === "app") assertNoPositiveAppGrants(current);
-      const workspaceCapabilities = { ...this.state.workspaceCapabilities };
-      const previousCapability = workspaceCapabilityId(current.workspaceBinding);
-      if (previousCapability) delete workspaceCapabilities[previousCapability];
-      const nextCapability = workspaceCapabilityId(binding);
-      if (nextCapability) {
-        if (!externalDir) throw new Error(`${binding.kind} binding 缺少受信目录`);
-        workspaceCapabilities[nextCapability] = externalDir;
-      }
-      const project = storedProjectSchema.parse({
-        ...current,
-        workspaceBinding: binding,
-        membershipRevision: current.membershipRevision + 1,
-        dir: nextCapability
-          ? externalDir
-          : binding.kind === "app"
-            ? current.dir
-            : "",
-        updatedAt: this.now(),
+      const { project, workspaceCapabilities } = planWorkspaceRebind({
+        project: current,
+        binding,
+        externalDir,
+        workspaceCapabilities: this.state.workspaceCapabilities,
+        now: this.now(),
       });
       await this.commit({
         ...this.state,
@@ -593,33 +831,18 @@ export class ProjectStore {
     });
   }
 
-  /* 断代：v3 是唯一可读版本。非 v3（含一切历史版本）解析即抛，
-     由 initialize 的既有损坏路径隔离原文件——绝不静默升格。 */
-  private async readValidated(filePath: string) {
-    return projectFileSchema.parse(JSON.parse(await this.readText(filePath)));
-  }
-
-  private serialize(state: ProjectFile) {
-    return `${JSON.stringify(state, null, 2)}\n`;
-  }
-
-  private async atomicWrite(filePath: string, content: string) {
-    if (this.dependencies.atomicWrite) {
-      await this.dependencies.atomicWrite(filePath, content);
-      return;
-    }
-    await mkdir(dirname(filePath), { recursive: true });
-    const temporary = `${filePath}.tmp`;
-    await writeFile(temporary, content, { mode: 0o600 });
-    await rename(temporary, filePath);
-  }
-
-  private async isolate(filePath: string) {
-    const corruptPath = `${filePath}.corrupt-${this.now()}`;
-    try {
-      await rename(filePath, corruptPath);
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+  private assertReady() {
+    if (!this.ready) {
+      throw new Error("ProjectStore 尚未通过持久化 authority 初始化");
     }
   }
+
+}
+
+function conflict(message: string) {
+  return Object.assign(new Error(message), { status: 409 });
+}
+
+function lifecycleError(code: string, message: string) {
+  return Object.assign(new Error(message), { code, status: 409 });
 }

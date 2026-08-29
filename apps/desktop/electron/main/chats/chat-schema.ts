@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the zod, shared/agent-ipc and the limiting constant for chats-ipc, shared/projects-ipc PROJECT_ID_PATTERN
- * [OUTPUT]: Provides chat schema v10 ((canonical user, main-private, revision of branch files, external importOrigin+snapshotDigest, durable App grant/subagent, interrupted fact)
- * [POS]: The schema of the chats module is the single source of truth; v10 makes the external source frontend synchronized with the product backend but different domains, forcing the App Project role to be completely homeDir
+ * [OUTPUT]: Provides strict chat schema v11 with ProductFailure-aware assistant messages, MCP-plan-bound sessions, canonical users, dormant App-chat identity notices, branches, external snapshots, App grants, subagents, and interrupted facts
+ * [POS]: Single durable chat schema authority; older and future versions fail closed with no compatibility reader
  */
 
 import { z } from "zod";
@@ -27,6 +27,7 @@ import {
 } from "../../../shared/chats-ipc";
 import { PROJECT_ID_PATTERN } from "../../../shared/projects-ipc";
 import { HISTORY_SOURCE_KINDS } from "../../../shared/history-import-ipc";
+import { productFailureSchema } from "../../../shared/product-failure";
 
 const MESSAGE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -61,7 +62,7 @@ const contextReceiptSchema = z
   })
   .strict();
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 export const CHAT_MESSAGE_LIMIT = 1_000;
 export const CHAT_BYTE_LIMIT = 2 * 1024 * 1024;
 export const CHAT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -286,7 +287,7 @@ const userMessageSchema = z
 
 const assistantMessageSchema = z
   .object({
-    ...nonEmptyMessageBaseFields,
+    ...messageBaseFields,
     role: z.literal("assistant"),
     kind: z.literal("plan").optional(),
     parts: z.array(chatPartSchema).min(1).max(MESSAGE_PART_LIMIT).optional(),
@@ -295,11 +296,19 @@ const assistantMessageSchema = z
     failureKind: z
       .enum(["auth-required", "usage-limit", "unknown"])
       .optional(),
+    failure: productFailureSchema.optional(),
     usageLimit: usageLimitSchema.optional(),
     contextReceipt: contextReceiptSchema.optional(),
   })
   .strict()
   .superRefine((message, context) => {
+    if (!message.content.trim() && !message.parts?.length && !message.failure) {
+      context.addIssue({
+        code: "custom",
+        path: ["content"],
+        message: "Assistant message requires content, parts, or ProductFailure",
+      });
+    }
     if (messageBytes(message) > MESSAGE_BYTE_LIMIT) {
       context.addIssue({
         code: "custom",
@@ -334,6 +343,21 @@ const manualRecoveredNoticeSchema = z
   })
   .strict();
 
+const skillDescriptionsTruncatedNoticeSchema = z
+  .object({
+    kind: z.literal("skill-descriptions-truncated"),
+    turnId: z.string().min(1).max(128),
+  })
+  .strict();
+
+const appChatReadyNoticeSchema = z
+  .object({
+    kind: z.literal("app-chat-ready"),
+    appId: z.string().regex(/^[a-z0-9]{10}$/),
+    appRole: z.enum(["edit", "use"]),
+  })
+  .strict();
+
 const noticeMessageSchema = z
   .object({
     ...nonEmptyMessageBaseFields,
@@ -342,6 +366,8 @@ const noticeMessageSchema = z
       actionableNoticeSchema,
       failedNoticeSchema,
       manualRecoveredNoticeSchema,
+      skillDescriptionsTruncatedNoticeSchema,
+      appChatReadyNoticeSchema,
     ]),
   })
   .strict()
@@ -530,6 +556,13 @@ export const chatRecordSchema = z
           (value) => utf8Length(value) <= SESSION_ID_BYTE_LIMIT,
           "session id 过长"
         ),
+        toolPlan: z
+          .object({
+            planDigest: z.string().regex(/^[a-f0-9]{64}$/),
+            projectId: z.string().regex(PROJECT_ID_PATTERN).nullable(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .nullable(),
@@ -600,22 +633,13 @@ export class UnsupportedChatSchemaError extends Error {
 }
 
 export function parseChatFile(value: unknown): ChatRecord {
-  let candidate = value;
   if (value && typeof value === "object") {
     const version = (value as { schemaVersion?: unknown }).schemaVersion;
-    if (version === 9) {
-      const record = (value as { record?: unknown }).record;
-      candidate = {
-        schemaVersion: SCHEMA_VERSION,
-        record: record && typeof record === "object" && !Array.isArray(record)
-          ? { ...record, importOrigin: null, snapshotDigest: null }
-          : record,
-      };
-    } else if (typeof version === "number" && version !== SCHEMA_VERSION) {
+    if (typeof version === "number" && version !== SCHEMA_VERSION) {
       throw new UnsupportedChatSchemaError(version);
     }
   }
-  const record = chatFileSchema.parse(candidate).record;
+  const record = chatFileSchema.parse(value).record;
   assertSubagentBudget(record.subagents);
   return record;
 }

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on agent-bridge freeze channels, backend runtime snapshot, only HeadlessExecutor with shared Agent/Chat budget contract
- * [OUTPUT]: Provides SubagentSpawnService; Complete child sorting, barrier sorting, explicit attempt restarting, preflight/admission type, process cabinet, total deadline, permission reduction, draft reservation, endpoint item, successfully executed outcome tombstone, and wire/LRU/durable results of explicitly cutting facts
- * [POS]: The single-use trans-backend assigned coder of the agent module; Do not penetrate TurnEntry, do not inject a headless child with built-in MCP
+ * [INPUT]: Depends on agent-bridge channels, backend runtime snapshot, HeadlessExecutor, and a fail-closed Claude ambient-plugin overlay resolver
+ * [OUTPUT]: Provides SubagentSpawnService with frozen child policy, deadlines, draft/barrier custody, terminal tombstones, and bounded wire/LRU/durable results
+ * [POS]: Agent module's cross-backend delegated worker; it cannot penetrate TurnEntry or inject built-in MCP into a child
  */
 
 import { createHash } from "node:crypto";
@@ -79,6 +79,7 @@ type SpawnDependencies = {
   executor: HeadlessExecutor;
   backendFor(id: AgentBackendId): BackendDescriptor;
   openChannel(context: BuiltinToolContext): SubagentChannel | undefined;
+  disabledClaudePluginIds(): Promise<readonly string[]>;
 };
 
 const EMPTY_RESULT = "(子任务无文本输出)";
@@ -123,14 +124,18 @@ export class SubagentSpawnService {
   private readonly results = new Map<string, CachedResult>();
   private resultCacheBytes = 0;
 
-  constructor(
-    private readonly dependencies: SpawnDependencies = {
+  private readonly dependencies: SpawnDependencies;
+
+  constructor(dependencies: Partial<SpawnDependencies> = {}) {
+    this.dependencies = {
       runtimeRegistry: backendRuntimeRegistry,
       executor: headlessExecutor,
       backendFor: backendById,
       openChannel: (context) => openSubagentChannel(context.lease),
-    }
-  ) {}
+      disabledClaudePluginIds: async () => [],
+      ...dependencies,
+    };
+  }
 
   spawn(input: SpawnSubagentInput, context: BuiltinToolContext) {
     const channel = this.dependencies.openChannel(context);
@@ -170,6 +175,9 @@ export class SubagentSpawnService {
         signal
       );
       assertReady(input.agent, snapshot);
+      const disabledClaudePluginIds = input.agent === "claude"
+        ? await abortable(this.dependencies.disabledClaudePluginIds(), signal)
+        : [];
       if (deadline.remaining() === 0) throw queueTimeout();
       if (!channel.reserveDraftSlot(id)) {
         throw statusError(429, "Subagent 实时详情容量已满，请稍后重试");
@@ -184,7 +192,8 @@ export class SubagentSpawnService {
         signal,
         deadline,
         meta,
-        context.lease.resultByteBudget
+        context.lease.resultByteBudget,
+        disabledClaudePluginIds
       );
     } catch (cause) {
       if (deadline.timedOut && !channel.getOutcome(id)) throw queueTimeout();
@@ -202,12 +211,18 @@ export class SubagentSpawnService {
     signal: AbortSignal,
     deadline: TotalDeadline,
     meta: AgentSubagentMeta,
-    resultByteBudget: number
+    resultByteBudget: number,
+    disabledClaudePluginIds: readonly string[]
   ) {
     const descriptor = this.dependencies.backendFor(input.agent);
     const run = this.dependencies.executor.run(
       descriptor,
-      spawnJob(input.prompt, channel, deadline.remaining()),
+      spawnJob(
+        input.prompt,
+        channel,
+        deadline.remaining(),
+        disabledClaudePluginIds
+      ),
       { signal, snapshot }
     );
     const orchestration = this.completeRun(
@@ -432,7 +447,8 @@ function runningMeta(id: string, input: SpawnSubagentInput): AgentSubagentMeta {
 function spawnJob(
   prompt: string,
   channel: SubagentChannel,
-  timeoutMs: number
+  timeoutMs: number,
+  claudeDisabledPluginIds: readonly string[]
 ): HeadlessJob {
   const writable = channel.snapshot.permissionMode !== "ask-for-approval";
   return {
@@ -448,6 +464,7 @@ function spawnJob(
     approvalPolicy: "never",
     env: "user-default",
     ignoreUserConfig: false,
+    ...(claudeDisabledPluginIds.length ? { claudeDisabledPluginIds } : {}),
     timeoutMs: Math.max(1, timeoutMs),
   };
 }

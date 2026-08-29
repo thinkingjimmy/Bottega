@@ -7,7 +7,7 @@
 import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import type { BackendModelInfo } from "../../../../shared/agent-ipc";
 import { inspectAcpSession } from "../acp/probe";
-import { EFFORT_ID_PATTERN } from "../capability-validation";
+import { OPAQUE_CONFIG_VALUE_PATTERN } from "../capability-validation";
 import { createModelCatalog } from "../model-catalog";
 import type { ResolvedRuntime } from "../types";
 import { claudeAdapterArgs } from "./adapter-entry";
@@ -98,12 +98,19 @@ function configState(value: unknown): ConfigState {
 
 function selectConfig(
   state: ConfigState,
-  id: "model" | "effort"
+  id: "model" | "effort" | "fast"
 ): SelectConfig | undefined {
   const option = state.configOptions?.find(
     (item) => item.type === "select" && item.id === id
   );
   return option?.type === "select" ? option : undefined;
+}
+
+function serviceTiers(state: ConfigState) {
+  const standard = { id: "default", displayName: "Standard" };
+  return selectConfig(state, "fast")
+    ? [standard, { id: "priority", displayName: "Fast" }]
+    : [standard];
 }
 
 function selectEntries(config: SelectConfig) {
@@ -139,10 +146,15 @@ function modelDisplayName(entry: SelectEntry) {
   return (versioned ?? entry.name) || entry.value;
 }
 
+/* slug 是协议里唯一稳定的身份位——`[1m]` 后缀本身就是身份的一部分，
+   直接小写比较即可，不能再过 modelIdentity（那会把后缀叠成 `[1m][1m]`）。 */
+const slugIdentity = (value: string) => value.toLowerCase();
+
+const defaultEntry = (entries: SelectEntry[]) =>
+  entries.find((entry) => entry.value === DEFAULT_MODEL_VALUE);
+
 function resolvedDefaultName(entries: SelectEntry[]) {
-  const entry = entries.find(
-    (entry) => entry.value === DEFAULT_MODEL_VALUE
-  );
+  const entry = defaultEntry(entries);
   const description = entry?.description;
   const explicit = description
     ?.match(/\(currently\s+(.+)\)\s*(?:·|$)/i)?.[1]
@@ -150,16 +162,39 @@ function resolvedDefaultName(entries: SelectEntry[]) {
   return explicit ?? (entry ? descriptionHeadline(entry) : undefined);
 }
 
-function resolvedDefaultSlug(
-  entries: SelectEntry[],
-  currentValue: string
+/* ============================================================
+ * 判据①（主）：default 条目的 headline 身份直接撞可见条目的 **slug**。
+ *
+ * 教训（2026-08-27 adapter 0.62.0→0.70.0 真机）：**description 是上游随时
+ * 会改的展示文案，不是 identity 源**。0.70.0 把 default 条目的 description
+ * 从 "Use the default model (currently Opus 5 (1M context)) · $5/$25 per Mtok"
+ * 改成了 "Opus (1M context)"，判据②的 `(currently X)` 正则当场失配，而它的
+ * headline 兜底又因为可见条目的 headline 带版本号（"Opus 5 with 1M context"
+ * ⇒ `opus 5[1m]`）而对不上——整份 Claude 目录当场抛错、模型选择器全灭。
+ * slug 是协议里稳定的那一位，先撞它，文案匹配退为回落。
+ * ============================================================ */
+function defaultSlugByIdentity(
+  entry: SelectEntry | undefined,
+  visible: SelectEntry[]
 ) {
-  if (currentValue !== DEFAULT_MODEL_VALUE) return currentValue;
+  const headline = entry ? descriptionHeadline(entry) : undefined;
+  if (!headline) return undefined;
+  const identity = modelIdentity(headline);
+  /* slug 唯一性已在 readClaudeModels 里断言 ⇒ 命中至多一条，无歧义分支。 */
+  return visible.find(
+    (candidate) => slugIdentity(candidate.value) === identity
+  )?.value;
+}
+
+/* 判据②（回落）：0.62.0 时代的展示文案匹配——先认 `(currently X)`，再拿
+   headline 撞 headline，最后剥掉 1M 标签做同名撞。歧义（多条同名）与失配
+   都返回 undefined，由调用方响亮抛错：宁可拒绝目录，也不暴露 `default` 哨兵。 */
+function defaultSlugByDescription(
+  entries: SelectEntry[],
+  visible: SelectEntry[]
+) {
   const currentName = resolvedDefaultName(entries);
   if (!currentName) return undefined;
-  const visible = entries.filter(
-    (entry) => entry.value !== DEFAULT_MODEL_VALUE
-  );
   const exact = visible.filter(
     (entry) =>
       modelIdentity(
@@ -177,6 +212,20 @@ function resolvedDefaultSlug(
       ).toLowerCase() === base
   );
   return matches.length === 1 ? matches[0]!.value : undefined;
+}
+
+function resolvedDefaultSlug(
+  entries: SelectEntry[],
+  currentValue: string
+) {
+  if (currentValue !== DEFAULT_MODEL_VALUE) return currentValue;
+  const visible = entries.filter(
+    (entry) => entry.value !== DEFAULT_MODEL_VALUE
+  );
+  return (
+    defaultSlugByIdentity(defaultEntry(entries), visible) ??
+    defaultSlugByDescription(entries, visible)
+  );
 }
 
 function projectVisibleModels(
@@ -218,7 +267,7 @@ function effortInfo(state: ConfigState) {
   if (
     values.length === 0 ||
     values.length > EFFORT_LIMIT ||
-    values.some((value) => !EFFORT_ID_PATTERN.test(value)) ||
+    values.some((value) => !OPAQUE_CONFIG_VALUE_PATTERN.test(value)) ||
     new Set(values).size !== values.length
   ) {
     throw new Error("Claude ACP Effort 目录格式无效");
@@ -313,6 +362,7 @@ async function readClaudeModels(
           displayName: entry.name || entry.value,
           isDefault: false,
           ...effortInfo(state),
+          serviceTiers: serviceTiers(state),
         });
       }
       return projectVisibleModels(entries, models, defaultModel);

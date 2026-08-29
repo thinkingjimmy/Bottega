@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: Depends on React useState, I18n, ProjectAppearance of shared, lib/project-appearance of two directories with the analyzer, popover/button original, cn and usePointerOpenedMenu
- * [OUTPUT]: Provides ProjectAppearancePicker ((line of alphabetic chips + 8 colors/30 icons Popover + Done submitted)
- * [POS]: The Project line of components/sidebar/project is the first external input, and is attached to the boundary of the line by the project-item with absolute positioning
+ * [OUTPUT]: Provides the Sidebar-specific ProjectAppearancePicker trigger and reusable ProjectAppearancePanel grid/commit body
+ * [POS]: Project appearance surface shared by the Sidebar row and Project Settings while each consumer owns its appropriate trigger
  */
 
 import { useState } from "react";
@@ -64,28 +64,12 @@ export function ProjectAppearancePicker({
 }) {
   const { t } = useAppTranslation();
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(() =>
-    normalizeProjectAppearance(appearance)
-  );
   const menu = usePointerOpenedMenu();
   const glyph = resolveProjectGlyph(appearance?.icon, expanded);
-  const draftTint = resolveProjectColor(draft.color).text;
-
-  const done = () => {
-    const current = normalizeProjectAppearance(appearance);
-    /* 没改动就只是关闭：外观写入要过串行队列落盘，空转一次不值得。 */
-    if (draft.color !== current.color || draft.icon !== current.icon) {
-      onCommit(draft);
-    }
-    setOpen(false);
-  };
 
   return (
     <Popover
       onOpenChange={(next) => {
-        /* 草稿在开启这一刻取初值，而非用 effect 追 appearance：
-           Escape 与点击外部于是「什么都不做」即等于放弃，不需要一条撤销路径。 */
-        if (next) setDraft(normalizeProjectAppearance(appearance));
         setOpen(next);
       }}
       open={open}
@@ -106,67 +90,96 @@ export function ProjectAppearancePicker({
         onCloseAutoFocus={menu.onCloseAutoFocus}
         side="bottom"
       >
-        {/* role=group 而非 radiogroup：radiogroup 的 ARIA 契约承诺方向键导航，
-            38 颗控件不打算实现它——那是在撒谎，Tab 逐个走过去更诚实。 */}
-        <div
-          aria-label={t("projects.appearance.colorGroup")}
-          className={gridClass}
-          role="group"
-        >
-          {PROJECT_COLORS.map((color) => (
-            <button
-              aria-label={t(`projects.appearance.color.${color.id}`)}
-              aria-pressed={draft.color === color.id}
-              className={cellClass}
-              key={color.id}
-              onClick={() => setDraft((current) => ({ ...current, color: color.id }))}
-              title={t(`projects.appearance.color.${color.id}`)}
-              type="button"
-            >
-              <span
-                className={cn(
-                  "size-6 rounded-full",
-                  color.swatch,
-                  draft.color === color.id &&
-                    "ring-2 ring-foreground ring-offset-2 ring-offset-popover"
-                )}
-              />
-            </button>
-          ))}
-        </div>
-
-        <div className="my-3 border-t" />
-
-        {/* 整片按草稿颜色染色：选色即刻重绘 30 枚预览，所见即所得。 */}
-        <div
-          aria-label={t("projects.appearance.iconGroup")}
-          className={cn(gridClass, draftTint)}
-          role="group"
-        >
-          {PROJECT_ICONS.map((icon) => (
-            <button
-              aria-label={t(`projects.appearance.icon.${icon.id}`)}
-              aria-pressed={draft.icon === icon.id}
-              className={cn(
-                cellClass,
-                draft.icon === icon.id ? "bg-muted" : "hover:bg-muted/60"
-              )}
-              key={icon.id}
-              onClick={() => setDraft((current) => ({ ...current, icon: icon.id }))}
-              title={t(`projects.appearance.icon.${icon.id}`)}
-              type="button"
-            >
-              <icon.Icon className="size-[1.125rem] [stroke-width:1.5]" />
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-3 flex justify-end">
-          <Button onClick={done} size="lg" type="button" variant="secondary">
-            {t("projects.appearance.done")}
-          </Button>
-        </div>
+        <ProjectAppearancePanel
+          appearance={appearance}
+          onCommit={onCommit}
+          onDone={() => setOpen(false)}
+        />
       </PopoverContent>
     </Popover>
+  );
+}
+
+export function ProjectAppearancePanel({
+  appearance,
+  onCommit,
+  onDone,
+}: {
+  appearance: ProjectAppearance | undefined;
+  onCommit: (appearance: ProjectAppearance) => void;
+  onDone: () => void;
+}) {
+  const { t } = useAppTranslation();
+  const [draft, setDraft] = useState(() => normalizeProjectAppearance(appearance));
+  const draftTint = resolveProjectColor(draft.color).text;
+  const done = () => {
+    const current = normalizeProjectAppearance(appearance);
+    if (draft.color !== current.color || draft.icon !== current.icon) {
+      onCommit(draft);
+    }
+    onDone();
+  };
+  return (
+    <>
+      {/* role=group rather than radiogroup: the grid intentionally uses normal Tab navigation. */}
+      <div
+        aria-label={t("projects.appearance.colorGroup")}
+        className={gridClass}
+        role="group"
+      >
+        {PROJECT_COLORS.map((color) => (
+          <button
+            aria-label={t(`projects.appearance.color.${color.id}`)}
+            aria-pressed={draft.color === color.id}
+            className={cellClass}
+            key={color.id}
+            onClick={() => setDraft((current) => ({ ...current, color: color.id }))}
+            title={t(`projects.appearance.color.${color.id}`)}
+            type="button"
+          >
+            <span
+              className={cn(
+                "size-6 rounded-full",
+                color.swatch,
+                draft.color === color.id &&
+                  "ring-2 ring-foreground ring-offset-2 ring-offset-popover"
+              )}
+            />
+          </button>
+        ))}
+      </div>
+
+      <div className="my-3 border-t" />
+
+      {/* 整片按草稿颜色染色：选色即刻重绘 30 枚预览，所见即所得。 */}
+      <div
+        aria-label={t("projects.appearance.iconGroup")}
+        className={cn(gridClass, draftTint)}
+        role="group"
+      >
+        {PROJECT_ICONS.map((icon) => (
+          <button
+            aria-label={t(`projects.appearance.icon.${icon.id}`)}
+            aria-pressed={draft.icon === icon.id}
+            className={cn(
+              cellClass,
+              draft.icon === icon.id ? "bg-muted" : "hover:bg-muted/60"
+            )}
+            key={icon.id}
+            onClick={() => setDraft((current) => ({ ...current, icon: icon.id }))}
+            title={t(`projects.appearance.icon.${icon.id}`)}
+            type="button"
+          >
+            <icon.Icon className="size-[1.125rem] [stroke-width:1.5]" />
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 flex justify-end">
+        <Button onClick={done} size="lg" type="button" variant="secondary">
+          {t("projects.appearance.done")}
+        </Button>
+      </div>
+    </>
   );
 }

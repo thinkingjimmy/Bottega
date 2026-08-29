@@ -1,19 +1,12 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow, business services, workspace/Browser/Gallery, Agent/App/Skills, history import/searchjob, settings/personalization/use/mcp IPC and security
- * [OUTPUT]: Provides createMainWindow, installed Workspace/Browser/Gallery/MCP/Memory/History/Search/Skills/Personalization IPC; The canonical user issues Memory admission and combines Skill with prompt contribution
- * [POS]: The boundary of the window module; index only manages the application lifecycle, and this file manages only the single main window and its renderer capabilities
+ * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, domain services, Apps, Update, MCP, and window security
+ * [OUTPUT]: Provides createMainWindow, exact-Project Tools/MCP and scoped Extension IPC, canonical turn validation, post-CAS projection, and App-window creation
+ * [POS]: Interactive main-window authority boundary; renderer identities are routing hints and main re-derives every Project lifecycle fact
  */
 
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { app, BrowserWindow, clipboard, nativeTheme } from "electron";
-import { APP_CHANNEL } from "../../../shared/app-ipc";
-import type {
-  AgentBackendId,
-  AgentSendPayload,
-  AgentWorkspaceScope,
-} from "../../../shared/agent-ipc";
-import { baseToolsAvailability } from "../../../shared/builtin-tools";
+import { app, BrowserWindow, nativeTheme } from "electron";
 import {
   INITIAL_DARK_ARGUMENT,
   INITIAL_LANGUAGE_ARGUMENT,
@@ -21,26 +14,27 @@ import {
 } from "../../../shared/settings-ipc";
 import { resolveAppLocale } from "../../../shared/i18n/locale";
 import { USAGE_CHANNEL } from "../../../shared/usage-ipc";
-import { registerAgentBridge } from "../agent-bridge";
+import {
+  registerAgentBridge,
+  resetThreadServiceTierEffective,
+} from "../agent-bridge";
 import type {
   AgentContext,
   BuiltinTurnToolPolicy,
-  TurnProjectionInput,
-  TurnOrigin,
 } from "../agent/bridge-types";
-import type { SkillInventoryIndex } from "../agent/skill-inventory";
-import { createFinalTurnProjection } from "../agent/product-context";
+import { projectTurnAllowedActions } from "../agent/turn-actions";
 import {
   mergeMaterializedExtensionSkills,
   resolveAgentInput,
 } from "../agent-input";
 import type { AppsService } from "../apps/apps-service";
-import type { CodexSkillsService } from "../backends/codex/skills-service";
 import { registerUnifiedSkills } from "../skills-management/registrar";
 import type { UnifiedSkillsService } from "../skills-management/service";
+import type { SkillsTurnCustodyStore } from "../skills-management/turn-custody";
 import type { AppExtensionIntegration } from "../extensions/integration/app-extension-composition";
+import { ClaudePluginProjection } from "../extensions/claude-plugin-projection";
+import { AgentPluginInventory } from "../extensions/agent-plugin-inventory";
 import { registerExtensions } from "../extensions/extensions-registrar";
-import { backendRuntimeRegistry } from "../backends";
 import type { BasesService } from "../bases/bases-service";
 import type { ChatHomeService } from "../chat-home/chat-home-service";
 import type { ChatsService } from "../chats/chats-service";
@@ -51,11 +45,13 @@ import type { MemoryService } from "../memory/service/memory-service";
 import type { ManagedRuntimeRegistry } from "../memory/runtime/managed-registry";
 import type { MemorySettingsOwner } from "../memory/service/settings-owner";
 import type { ProjectsService } from "../projects/projects-service";
+import type { ProjectStore } from "../projects/project-store";
 import { registerCoordinatorIpc } from "../sections/coordinator/coordinator-ipc";
 import type { ConversationCoordinator } from "../sections/coordinator/conversation-coordinator";
 import type { SettingsStore } from "../settings-store";
 import { registerSettings } from "../settings-registrar";
 import { registerPersonalization } from "../personalization-registrar";
+import { registerProjectPersonalization } from "../project-personalization";
 import type { BackendSetupService } from "../setup/backend-setup";
 import type { SkillsCatalog, WorkspaceResolver } from "../skills-catalog";
 import type { WorkspaceFileCatalog } from "../workspace-files";
@@ -63,12 +59,6 @@ import {
   initiatorResultByteBudget,
   type BuiltinMcpLeaseStore,
 } from "../tools/lease";
-import {
-  admittedAmbientTools,
-  builtinToolAccess,
-  projectBuiltinTools,
-  turnKindForOrigin,
-} from "../tools/issuance";
 import type { UsageService } from "../usage/usage-service";
 import { assertUsageRequest } from "../usage/usage-service";
 import type { GalleryMediaService } from "../gallery/media-service";
@@ -76,23 +66,44 @@ import type { TurnEventsBroker } from "../gallery/turn-events-broker";
 import { resolveConversationContext } from "../workspace-resolver";
 import {
   lockNavigation,
-  openExternalSafely,
 } from "./security";
 import type { AgentTurnCustodyRuntime } from "../backends/agent-turn-custody-runtime";
 import { windowBackgroundColor } from "./native-theme";
-import { bindRendererIdentity } from "./renderer-identity";
 import type { BrowserRuntime } from "../browser/bootstrap";
 import type { ManualMcpServersStore } from "../tools/mcp/store";
 import type { HistoryImportService } from "../history-import/service";
 import type { GlobalSearchService } from "../search/job-service";
 import { registerManualMcpServers } from "../tools/mcp/registrar";
 import { buildManualMcpPlan } from "../tools/mcp/planner";
+import { registerProjectTools } from "../tools/project/registrar";
+import {
+  projectBuiltinInventory,
+} from "../tools/project/resolver";
+import type { ProjectToolPolicyStore } from "../tools/project/store";
 import {
   projectManualMcpServerViews,
-  projectPackageMcpServerViews,
 } from "../extensions/component-health";
 import { digestCanonical } from "../extensions/registry-store";
 import { resolveAppIconPath } from "./app-icon";
+import type { UpdateService } from "../update/service";
+import { resolvePlatformCapabilities } from "../../../shared/platform-capabilities";
+import {
+  WINDOW_ID_ARGUMENT,
+  WINDOW_ROLE_ARGUMENT,
+} from "../../../shared/window-surfaces-ipc";
+import { configureWindowSurfaces } from "./surfaces/bootstrap";
+import { registerAppBridge } from "./surfaces/app-bridge";
+import { finalizeSkillsTurnProjection } from "./skills-turn-projection";
+import {
+  projectBuiltinBackendSupport,
+  projectManualMcpBackendSupport,
+} from "./project-tools-runtime";
+import { createExtensionSessionHandoff } from "./extension-session-handoff";
+import {
+  acquireTurnAppsForPolicy,
+  freezeBuiltinPolicy,
+  turnProjectionInput,
+} from "./turn-policy";
 
 type MainWindowDependencies = {
   mainDirectory: string;
@@ -100,6 +111,8 @@ type MainWindowDependencies = {
   extensions: AppExtensionIntegration;
   setup: BackendSetupService;
   projects: ProjectsService;
+  projectStore: ProjectStore;
+  projectToolPolicies: ProjectToolPolicyStore;
   chats: ChatsService;
   bases: BasesService;
   settings: SettingsStore;
@@ -107,9 +120,8 @@ type MainWindowDependencies = {
   traceDirectory: string;
   agentInputStagingRoot: string;
   skills: SkillsCatalog;
-  codexSkills: CodexSkillsService;
   unifiedSkills: UnifiedSkillsService;
-  skillInventory: SkillInventoryIndex;
+  skillsCustody: SkillsTurnCustodyStore;
   files: FileAuthorizationStore;
   workspaceFiles: WorkspaceFileCatalog;
   resolveWorkspace: WorkspaceResolver;
@@ -127,53 +139,8 @@ type MainWindowDependencies = {
   browser: BrowserRuntime;
   historyImport: HistoryImportService;
   globalSearch: GlobalSearchService;
+  update: UpdateService;
 };
-
-function registerAppBridge(
-  window: BrowserWindow,
-  rendererUrl: string,
-  files: FileAuthorizationStore,
-  resolveWorkspace: WorkspaceResolver,
-  locale: () => ReturnType<typeof resolveAppLocale>
-) {
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的应用级请求")
-    .handle(APP_CHANNEL.openExternal, async (rawUrl) => {
-      if (typeof rawUrl !== "string") throw new Error("外链格式无效");
-      await openExternalSafely(window, rawUrl, locale());
-    })
-    .handle(APP_CHANNEL.writeClipboard, (text) => {
-      if (typeof text !== "string") throw new Error("剪贴板内容格式无效");
-      clipboard.writeText(text);
-    })
-    .handle(APP_CHANNEL.authorizeFile, async (raw) => {
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        throw new Error("文件授权参数无效");
-      }
-      const input = raw as {
-        path?: unknown;
-        name?: unknown;
-        mediaType?: unknown;
-        scope?: unknown;
-      };
-      if (
-        typeof input.path !== "string" ||
-        typeof input.name !== "string" ||
-        typeof input.mediaType !== "string"
-      ) {
-        throw new Error("文件授权参数无效");
-      }
-      const scope = input.scope as AgentWorkspaceScope;
-      const { workspace } = resolveWorkspace(scope);
-      return files.authorize(
-        { path: input.path, name: input.name, mediaType: input.mediaType, scope },
-        workspace
-      );
-    })
-    .handle(APP_CHANNEL.releaseFile, (fileRef) => {
-      if (typeof fileRef !== "string") throw new Error("文件授权引用无效");
-      files.release(fileRef);
-    });
-}
 
 function registerUsage(
   window: BrowserWindow,
@@ -198,6 +165,8 @@ export function createMainWindow({
   extensions,
   setup,
   projects,
+  projectStore,
+  projectToolPolicies,
   chats,
   bases,
   settings,
@@ -205,9 +174,8 @@ export function createMainWindow({
   traceDirectory,
   agentInputStagingRoot,
   skills,
-  codexSkills,
   unifiedSkills,
-  skillInventory,
+  skillsCustody,
   files,
   workspaceFiles,
   resolveWorkspace,
@@ -225,11 +193,13 @@ export function createMainWindow({
   browser,
   historyImport,
   globalSearch,
+  update,
 }: MainWindowDependencies) {
   const preload = join(mainDirectory, "../preload/index.js");
   const productionEntry = join(mainDirectory, "../renderer/index.html");
   const rendererUrl =
     process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(productionEntry).href;
+  const platformSupport = resolvePlatformCapabilities(process.platform);
   const window = new BrowserWindow({
     icon: resolveAppIconPath(),
     width: 1280,
@@ -247,6 +217,7 @@ export function createMainWindow({
       preload,
       contextIsolation: true,
       sandbox: true,
+      nodeIntegrationInSubFrames: true,
       /* 首帧主题必须同步到达 renderer：任何 IPC 都晚于第一次绘制，
          建窗参数是唯一「preload 未跑一行业务代码就能读」的通道。 */
       additionalArguments: [
@@ -255,6 +226,8 @@ export function createMainWindow({
           settings.get().language,
           app.getPreferredSystemLanguages()
         )}`,
+        `${WINDOW_ROLE_ARGUMENT}main`,
+        `${WINDOW_ID_ARGUMENT}main`,
       ],
     },
   });
@@ -264,8 +237,17 @@ export function createMainWindow({
   // ---------------------------------------------------------------------------
   window.setMaxListeners(25);
 
-  /* renderer 会话身份由窗口模块拥有，随窗口生命周期无条件绑定。 */
-  bindRendererIdentity(window.webContents);
+  configureWindowSurfaces({
+    window,
+    rendererUrl,
+    mainDirectory,
+    apps,
+    chats,
+    projects,
+    settings,
+    files,
+    resolveWorkspace,
+  });
 
   /* 一条监听同时覆盖「用户切主题」与「系统外观变化」两路：两者都以
      nativeTheme updated 到达，底色与 renderer 因此都不需要第二个分支。
@@ -298,10 +280,22 @@ export function createMainWindow({
   apps.register(window, rendererUrl);
   setup.register(window, rendererUrl);
   projects.register(window, rendererUrl);
+  registerProjectTools(
+    window,
+    rendererUrl,
+    projectStore,
+    projectToolPolicies,
+    (policy) => projectBuiltinInventory({
+      globalDisabledTools: settings.get().disabledBuiltinTools,
+      policy,
+      backendSupport: projectBuiltinBackendSupport,
+    })
+  );
   chats.register(window, rendererUrl);
   bases.register(window, rendererUrl);
   historyImport.register(window, rendererUrl);
   globalSearch.register(window, rendererUrl);
+  update.register(window, rendererUrl);
   galleryMedia.register(window, rendererUrl);
   registerSettings(
     window,
@@ -309,38 +303,51 @@ export function createMainWindow({
     settings,
     resolveWorkspace,
     memorySettingsOwner,
-    chatHomes
+    chatHomes,
+    platformSupport,
+    resetThreadServiceTierEffective
   );
   registerPersonalization(window, rendererUrl);
+  registerProjectPersonalization(window, rendererUrl, projects);
   const publishMcpServers = registerManualMcpServers(
     window,
     rendererUrl,
     manualMcpServers,
-    () => {
-      const inventory = extensions.health.inventory(
-        extensions.registry.snapshot()
-      );
-      return {
-        inventoryRevision: inventory.revision,
-        servers: projectPackageMcpServerViews(inventory),
-      };
-    },
     (servers) =>
-      projectManualMcpServerViews(servers, extensions.health.snapshot())
+      projectManualMcpServerViews(
+        servers.map(projectManualMcpBackendSupport),
+        extensions.health.snapshot()
+      ),
+    { projects: projectStore, policies: projectToolPolicies }
   );
+  const agentPluginInventory = new AgentPluginInventory(app.getPath("userData"));
   registerExtensions(window, rendererUrl, {
     registry: extensions.registry,
     installer: extensions.installer,
     convergence: extensions.convergence,
     uninstall: extensions.uninstall,
-    onChanged: () => {
-      skills.invalidate();
-      publishMcpServers();
+    agentPlugins: agentPluginInventory,
+    projects,
+    onChanged: (scope) => {
+      try {
+        skills.invalidateProject(
+          scope.kind === "project" ? scope.projectId : null
+        );
+      } catch (cause) {
+        console.warn("[extensions] Skills invalidation failed", cause);
+      }
+      try {
+        publishMcpServers();
+      } catch (cause) {
+        console.warn("[extensions] MCP projection invalidation failed", cause);
+      }
     },
   });
   registerUsage(window, rendererUrl, usage);
-  memory.register(window, rendererUrl);
-  memoryRuntimes.register(window, rendererUrl);
+  if (platformSupport.capabilities.memory) {
+    memory.register(window, rendererUrl);
+    memoryRuntimes.register(window, rendererUrl);
+  }
   archive.register(window, rendererUrl);
   skills.register(window, rendererUrl);
   registerUnifiedSkills(window, rendererUrl, unifiedSkills);
@@ -351,65 +358,43 @@ export function createMainWindow({
     window.off("focus", invalidateWorkspaceFiles)
   );
   registerCoordinatorIpc(window, rendererUrl, coordinator);
-  const freezeBuiltinPolicy = (
-    backend: AgentBackendId,
-    disabledTools: readonly string[]
-  ): BuiltinTurnToolPolicy => ({
-    disabledTools: [...disabledTools],
-    builtinTools: runtimeBuiltinTools(backend),
-    backendRuntimeIdentity: backendRuntimeIdentity(backend),
-  });
-
-  const acquireTurnAppsForPolicy = (
-    acquisition: TurnProjectionInput,
-    policy: BuiltinTurnToolPolicy
-  ) => {
-    const issuance = {
-      builtinTools: policy.builtinTools,
-      backend: acquisition.backendId,
-      planMode: acquisition.planMode,
-      origin: acquisition.origin,
-      disabledTools: policy.disabledTools,
-    };
-    return apps.acquireTurnApps({
-      conversationId: acquisition.conversationId,
-      requestId: acquisition.requestId,
-      backendId: acquisition.backendId,
-      backendRuntimeIdentity: policy.backendRuntimeIdentity,
-      turnClass: acquisition.origin?.kind ?? "headless",
-      planMode: acquisition.planMode,
-      toolAccess: builtinToolAccess(issuance),
-      baseToolsAvailability: baseToolsAvailability(
-        admittedAmbientTools(issuance)
-      ),
-    });
-  };
-
-  const turnProjectionInput = (
-    conversationId: string,
-    payload: AgentSendPayload,
-    origin: TurnOrigin | undefined
-  ): TurnProjectionInput => ({
-    conversationId,
-    requestId: payload.requestId,
-    backendId: payload.turnOptions.backend,
-    origin,
-    planMode: Boolean(payload.planMode),
-  });
+  const claudePluginProjection = new ClaudePluginProjection(app.getPath("userData"));
 
   registerAgentBridge(window, rendererUrl, {
+    platformSupport,
     acceptRendererSend: false,
     traceDirectory,
-    freezeBackendSessionConfig: (backend) =>
-      backend === "codex"
-        ? { codexSkillRules: codexSkills.freezeRules() }
-        : undefined,
+    freezeBackendSessionConfig: async (backend) => {
+      if (backend !== "claude") return undefined;
+      const projection = await claudePluginProjection.build(
+        extensions.registry.snapshot()
+      );
+      try {
+        const claudeDisabledPluginIds =
+          await agentPluginInventory.disabledClaudePluginIds();
+        return projection.paths.length || claudeDisabledPluginIds.length
+          ? {
+              claudePluginPaths: projection.paths,
+              claudeDisabledPluginIds,
+              releaseClaudePluginProjection: projection.release,
+            }
+          : undefined;
+      } catch (cause) {
+        await projection.release();
+        throw cause;
+      }
+    },
     onTurnItem: (_conversationId, item) => {
       if (item.kind === "file-change") workspaceFiles.invalidateAll();
     },
     withConversationAdmission: (_conversationId, register) =>
       projects.runExclusive(register),
-    resolveContext: async (conversationId, payload, origin) => {
+    resolveContext: async (
+      conversationId,
+      payload,
+      origin,
+      preparedProjectTools
+    ) => {
       if (!chats.store.has(conversationId)) {
         throw new Error("聊天不存在，无法启动 Agent");
       }
@@ -420,12 +405,22 @@ export function createMainWindow({
          ambient 投影里重新发现该包，并把它留到会话结束。已绑定 session 的
          续轮不受影响——它们由收敛自己的 drain/restart 负责。 */
       if (!(await chats.store.get(conversationId))?.session) {
-        extensions.convergence.assertProductSessionAdmission();
+        const projectId = chats.store.getProjectId(conversationId) ?? null;
+        extensions.convergence.assertProductSessionAdmission(
+          projectId
+            ? {
+                projectId,
+                projectLifecycleRevision:
+                  projects.getProjectLifecycleRevision(projectId) ?? null,
+              }
+            : { projectId: null, projectLifecycleRevision: null }
+        );
       }
       const builtinToolPolicy = payload
         ? freezeBuiltinPolicy(
             payload.turnOptions.backend,
-            settings.get().disabledBuiltinTools
+            preparedProjectTools?.receipt.builtinIntent.disabledTools ??
+              settings.get().disabledBuiltinTools
           )
         : undefined;
       const projectionInput = payload
@@ -436,7 +431,32 @@ export function createMainWindow({
         projects,
         chats.store
       );
+      const preparedSkillSelection = payload?.preparedSkillSelection;
+      if (preparedSkillSelection) {
+        const canonicalProjectContext = context.projectContext ?? {
+          projectId: null,
+          projectLifecycleRevision: null,
+        };
+        if (
+          origin?.kind !== "manual" ||
+          preparedSkillSelection.backend !== payload?.turnOptions.backend ||
+          preparedSkillSelection.planMode !== Boolean(payload?.planMode) ||
+          preparedSkillSelection.projectContext.projectId !==
+            canonicalProjectContext.projectId ||
+          preparedSkillSelection.projectContext.projectLifecycleRevision !==
+            canonicalProjectContext.projectLifecycleRevision
+        ) {
+          throw new Error("Prepared Skills selection receipt 与 canonical turn 冲突");
+        }
+      }
       const canonicalChat = await chats.store.get(conversationId);
+      if (
+        preparedProjectTools &&
+        preparedProjectTools.receipt.projectContext.projectId !==
+          canonicalChat?.projectId
+      ) {
+        throw new Error("PROJECT_TOOLS_CANONICAL_CONTEXT_MISMATCH");
+      }
       const canonicalUser =
         origin?.kind === "manual"
           ? canonicalChat?.messages.find(
@@ -464,20 +484,32 @@ export function createMainWindow({
          按已知证据收窄，不能按方便放宽。 */
       const acquisition = projectionInput;
       const attached = acquisition && builtinToolPolicy
-        ? await acquireTurnAppsForPolicy(acquisition, builtinToolPolicy)
+        ? await acquireTurnAppsForPolicy(
+            apps,
+            acquisition,
+            builtinToolPolicy,
+            context.projectContext ?? {
+              projectId: null,
+              projectLifecycleRevision: null,
+            }
+          )
         : {
             referenceEntryIds: [],
             readOnlyRoots: [],
             instructions: "",
             extensionExclusions: [],
             mcpServers: [],
+            extensionDiscoveryBindings: [],
           };
       return {
         ...context,
+        ...(preparedSkillSelection ? { preparedSkillSelection } : {}),
         ...(builtinToolPolicy ? { builtinToolPolicy } : {}),
+        ...(preparedProjectTools ? { preparedProjectTools } : {}),
         ...(projectionInput ? { turnProjectionInput: projectionInput } : {}),
         ...(acquisition ? { turnAppAcquisition: acquisition } : {}),
         packageMcpEntries: attached.mcpServers,
+        extensionDiscoveryBindings: attached.extensionDiscoveryBindings,
         ...(memoryAdmission ? { memory: memoryAdmission } : {}),
         baseReadOnlyRoots: chatReadOnlyRoots,
         ...(attached.referenceEntryIds.length
@@ -521,12 +553,21 @@ export function createMainWindow({
       const acquisition = context.turnAppAcquisition;
       if (capabilityChanged && acquisition) {
         await apps.releaseTurnApps(acquisition.requestId);
-        const attached = await acquireTurnAppsForPolicy(acquisition, next);
+        const attached = await acquireTurnAppsForPolicy(
+          apps,
+          acquisition,
+          next,
+          context.projectContext ?? {
+            projectId: null,
+            projectLifecycleRevision: null,
+          }
+        );
         const {
           appReferenceRequestId: _requestId,
           appReferenceEntryIds: _entryIds,
           attachedAppInstructions: _instructions,
           packageMcpEntries: _mcpEntries,
+          extensionDiscoveryBindings: _discoveryBindings,
           finalTurnProjection: _projection,
           ...base
         } = context;
@@ -534,6 +575,7 @@ export function createMainWindow({
           ...base,
           builtinToolPolicy: next,
           packageMcpEntries: attached.mcpServers,
+          extensionDiscoveryBindings: attached.extensionDiscoveryBindings,
           ...(attached.referenceEntryIds.length
             ? {
                 appReferenceRequestId: acquisition.requestId,
@@ -555,29 +597,21 @@ export function createMainWindow({
             : undefined,
         };
       }
-      const input = projected.turnProjectionInput;
-      if (!input) return projected;
-      const allowedTools = projectBuiltinTools({
-        builtinTools: next.builtinTools,
-        backend: input.backendId,
-        planMode: input.planMode,
-        origin: input.origin,
-        disabledTools: next.disabledTools,
+      return finalizeSkillsTurnProjection({
+        context: projected,
+        policy: next,
+        catalog: skills,
+        custody: skillsCustody,
       });
-      return {
-        ...projected,
-        finalTurnProjection: createFinalTurnProjection({
-          turnKind: turnKindForOrigin(input.origin),
-          allowedTools,
-          appInstructions: projected.attachedAppInstructions ?? "",
-          skills: skillInventory.snapshot(allowedTools),
-        }),
-      };
     },
-    releaseContext: (context) =>
-      context.appReferenceRequestId
-        ? apps.releaseTurnApps(context.appReferenceRequestId)
-        : undefined,
+    releaseContext: async (context) => {
+      await Promise.all([
+        context.appReferenceRequestId
+          ? apps.releaseTurnApps(context.appReferenceRequestId)
+          : undefined,
+        skillsCustody.release(context.skillsCustodyId),
+      ]);
+    },
     beginTurnCustody: (input) => turnCustody.begin(input),
     resolveAppEnvironment: (appId) =>
       apps.resolveAgentEnvironment(appId),
@@ -603,16 +637,20 @@ export function createMainWindow({
       coordinator.ackSteerIntents(outboxRefs),
     steerSnapshot: (conversationId) =>
       coordinator.steerSnapshot(conversationId),
-    onSessionBound: (conversationId, value) =>
-      chats.handleSessionBound({ conversationId }, value),
-    replaceSession: (conversationId, expected, next) =>
-      chats.replaceSession({ conversationId }, expected, next),
+    conversationForOutboxRef: (outboxRef) =>
+      coordinator.residenceIndex().steerOutbox(outboxRef),
+    ...createExtensionSessionHandoff({ apps, extensions, chats }),
     assertRetryWithoutSession: (conversationId) => {
       if (chats.store.getImportOrigin(conversationId)) {
         throw new Error("IMPORTED_RESUME_REQUIRED: 收养会话不能丢弃原生 Session 后重试；请修复来源 CLI 登录或恢复能力后再试");
       }
     },
-    resolveInput: (payload, workspace, capabilities) =>
+    projectTurnSnapshot: (conversationId, snapshot) =>
+      projectTurnAllowedActions(
+        { importOrigin: chats.store.getImportOrigin(conversationId) },
+        snapshot
+      ),
+    resolveInput: (payload, workspace, capabilities, context) =>
       resolveAgentInput(
         payload.input,
         workspace,
@@ -632,7 +670,8 @@ export function createMainWindow({
         {
           backend: payload.turnOptions.backend,
           planMode: Boolean(payload.planMode),
-        }
+        },
+        context.projectContext
       ),
     mergeLateInput: (resolved, requestId) =>
       mergeMaterializedExtensionSkills(
@@ -667,6 +706,7 @@ export function createMainWindow({
         resultByteBudget: initiatorResultByteBudget(
           payload.turnOptions.backend
         ),
+        skillsCustodyId: context.skillsCustodyId,
       });
     },
     resolveThirdPartyMcpPlan: ({
@@ -677,7 +717,12 @@ export function createMainWindow({
       context,
     }) =>
       buildManualMcpPlan({
-        store: manualMcpServers,
+        candidates: context.preparedProjectTools?.candidates ?? [],
+        projectContext:
+          context.preparedProjectTools?.receipt.projectContext ?? {
+            projectId: null,
+            projectLifecycleRevision: null,
+          },
         backendId,
         backendRuntimeIdentity,
         planMode,
@@ -705,7 +750,35 @@ export function createMainWindow({
     /* App reference/plan lease 的释放归 finalizer 的 custody 收口那一步，
        不在这里：dependency 早于进程退出被释放，等于允许一个还活着的 backend
        读到已经被 GC 的 generation 字节。 */
+    onTurnStarted: async (event) => {
+      const conversationIncarnationId = chats.store.getIncarnationId(
+        event.conversationId
+      );
+      if (!conversationIncarnationId) return;
+      await apps.armDesignTurn({
+        chatId: event.conversationId,
+        conversationIncarnationId,
+        turnId: event.requestId,
+        explicitDesign: event.explicitDesign,
+      }).catch((cause) =>
+        console.warn("[design] turn watcher arm failed", cause)
+      );
+    },
     onTurnSettled: async (event) => {
+      const conversationIncarnationId = chats.store.getIncarnationId(
+        event.conversationId
+      );
+      if (conversationIncarnationId) {
+        await apps
+          .settleDesignTurn(
+            event.conversationId,
+            conversationIncarnationId,
+            event.requestId
+          )
+          .catch((cause) =>
+            console.warn("[design] turn watcher settle failed", cause)
+          );
+      }
       const memoryAuthorized = await coordinator.onTurnSettled(event);
       /* Memory 是 degraded subsystem：任何 store/provider 异常都不能改写
          Chat persist/trace 终态，也不能阻断下一轮。 */
@@ -738,22 +811,5 @@ export function createMainWindow({
   } else {
     void window.loadFile(productionEntry);
   }
-}
-
-/* App instructions 与 tool lease 必须读同一份 runtime capability，否则会出现
-   「工具只读、文案说可写」的自相矛盾授权叙述。 */
-function runtimeBuiltinTools(backend: AgentBackendId) {
-  const snapshot = backendRuntimeRegistry.current(backend);
-  return snapshot?.runtimeStatus === "installed"
-    ? snapshot.capabilities.builtinTools
-    : ("none" as const);
-}
-
-/* capability snapshot 必须绑定具体 runtime 版本；未安装/未探测时给 unknown，
-   让 planner 以 backend-capability-mismatch 排除，而不是假装同一台运行时。 */
-function backendRuntimeIdentity(backend: AgentBackendId) {
-  const snapshot = backendRuntimeRegistry.current(backend);
-  return snapshot?.runtimeStatus === "installed"
-    ? `${backend}@${snapshot.runtime.version}`
-    : `${backend}@unknown`;
+  return window;
 }

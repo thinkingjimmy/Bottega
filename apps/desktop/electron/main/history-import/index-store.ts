@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, Durable Json, shared history-import
- * [OUTPUT]: Provides history-index v1: Project visibility/Memory intent, single-mode eligibility revision, per-source revision, file manifest, detection mode and atom generation release, and sessionPrefs overlay ((per-opaqueId title override and product side archivedAt)
+ * [OUTPUT]: Provides history-index v1: Project visibility/Memory intent, single-mode eligibility revision, per-source revision, file manifest, detection mode and atom generation release, sessionPrefs overlay (per-opaqueId title override and product-side archivedAt), and the one-step legacy-divergence entry migration on initialize
  * [POS]: The history-import side of the product reads only index ledgers; Save only external source projections and fingerprints, not to transcribe CLI files or ChatStore
  */
 
@@ -20,7 +20,7 @@ const keySchema = z.object({
 const entrySchema = z.object({
   opaqueId: z.string().min(1), projectId: z.string(), sourceKind: z.enum(HISTORY_SOURCE_KINDS), key: keySchema,
   title: z.string(), cwd: z.string(), createdAt: z.number().nonnegative(), updatedAt: z.number().nonnegative(),
-  historyRevision: z.string().min(1), canResume: z.boolean(), archived: z.boolean(), incompleteTail: z.boolean(), divergence: z.boolean(),
+  historyRevision: z.string().min(1), canResume: z.boolean(), archived: z.boolean(), incompleteTail: z.boolean(),
   sourceIncarnation: z.string().min(1), sourcePath: z.string().min(1), fingerprint: fingerprintSchema,
 }).strict();
 const countSchema = z.object({ sourceKind: z.enum(HISTORY_SOURCE_KINDS), installed: z.boolean(), count: z.number().int().nonnegative() }).strict();
@@ -59,7 +59,25 @@ export class HistoryImportIndexStore {
     this.ledger = new DurableJson(join(userData, "history-import", "index-v1.json"), stateSchema, empty);
   }
 
-  initialize() { return this.ledger.initialize(); }
+  /* 单步迁移：旧 v1 档案的 entry 带恒为 false 的死字段 divergence（四家
+   * adapter 从未产出过其他值，亦无任何消费方）。strict schema 收紧后旧档
+   * 解析必失败，此处剥字段重发布一次即自愈；结构陌生的真损坏返回
+   * undefined，维持 DurableJson 的 fail-closed 上抛。 */
+  initialize() {
+    return this.ledger.initialize((raw) => {
+      if (!raw || typeof raw !== "object") return undefined;
+      const cloned = structuredClone(raw) as {
+        projects?: Record<string, { entries?: Array<Record<string, unknown>> }>;
+      };
+      if (!cloned.projects || typeof cloned.projects !== "object") return undefined;
+      for (const project of Object.values(cloned.projects)) {
+        if (!Array.isArray(project?.entries)) return undefined;
+        for (const entry of project.entries) delete entry.divergence;
+      }
+      const migrated = stateSchema.safeParse(cloned);
+      return migrated.success ? migrated.data : undefined;
+    });
+  }
   snapshot() { return this.ledger.snapshot(); }
 
   project(projectId: string): StoredHistoryProject | undefined {

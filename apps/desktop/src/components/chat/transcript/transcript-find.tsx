@@ -1,15 +1,15 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, visible surface visibility, shared search-text/foreign grouping, full Chat messages/History prefix, unified jumpTo, lib/shortcuts' matchShortcut(findInChat) and ui Input/Button
- * [OUTPUT]: Provides TranscriptFind; Only visible chat surface: Intercept the central findInChat shortcut (rebindable, default Cmd/Ctrl-F), complete data matching, loop navigation, complete toolbar Esc, and prioritize returning the focus to the previous focus
- * [POS]: The full text search bar on the data side of chat/transcript; The positioning is given to the only jumpTo without relying on the current progressive rendering window
+ * [INPUT]: Depends on React, surface visibility, generation-scoped canonical grouping, product messages, abortable HistoryPrefixProjection full-index loader, jumpTo, shortcut matching, and UI controls
+ * [OUTPUT]: Provides Cmd/Ctrl-F with truly abortable single-flight imported indexing, loading/error/retry states, complete-domain matching, loop navigation, and focus restoration
+ * [POS]: The full-data text search controller for chat/transcript
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import type { ChatMessage } from "../../../../shared/chats-ipc";
-import type { HistoryAdoptionPrefix } from "../../../../shared/history-import-ipc";
+import type { HistoryPrefixProjection } from "@/lib/history-prefix";
 import {
   foreignHistoryAnchor,
   groupForeignHistoryBlocks,
@@ -29,20 +29,73 @@ export function TranscriptFind({
   historyPrefix,
   jumpTo,
   surfaceVisible,
+  historyIndexLoader,
 }: {
   messages: ChatMessage[];
-  historyPrefix?: HistoryAdoptionPrefix | null;
+  historyPrefix?: HistoryPrefixProjection | null;
   jumpTo(id: string): void;
   surfaceVisible: boolean;
+  historyIndexLoader?: (signal: AbortSignal) => Promise<HistoryPrefixProjection>;
 }) {
   const { t } = useAppTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [index, setIndex] = useState(0);
+  const [fullPrefix, setFullPrefix] = useState<HistoryPrefixProjection | null>(null);
+  const [indexStatus, setIndexStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    historyIndexLoader ? "idle" : "ready"
+  );
   const input = useRef<HTMLInputElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
+  const indexGeneration = useRef(0);
+  const indexAbort = useRef<AbortController | null>(null);
+
+  const loadIndex = useCallback(() => {
+    if (!historyIndexLoader || indexStatus === "loading") return;
+    const generation = ++indexGeneration.current;
+    indexAbort.current?.abort();
+    const controller = new AbortController();
+    indexAbort.current = controller;
+    setIndexStatus("loading");
+    void historyIndexLoader(controller.signal)
+      .then((prefix) => {
+        if (generation !== indexGeneration.current) return;
+        setFullPrefix(prefix);
+        setIndexStatus("ready");
+      })
+      .catch((cause) => {
+        if (generation !== indexGeneration.current) return;
+        setIndexStatus(controller.signal.aborted ? "idle" : "error");
+        if (!controller.signal.aborted) console.error(cause);
+      })
+      .finally(() => {
+        if (indexAbort.current === controller) indexAbort.current = null;
+      });
+  }, [historyIndexLoader, indexStatus]);
+
+  useEffect(() => {
+    if (!open || indexStatus !== "idle") return;
+    queueMicrotask(loadIndex);
+  }, [indexStatus, loadIndex, open]);
+
+  useEffect(() => () => {
+    indexGeneration.current += 1;
+    indexAbort.current?.abort();
+  }, []);
+
+  const contentGenerationKey = historyPrefix?.source.contentGenerationKey;
+  useEffect(() => {
+    const generation = ++indexGeneration.current;
+    indexAbort.current?.abort();
+    indexAbort.current = null;
+    queueMicrotask(() => {
+      if (generation !== indexGeneration.current) return;
+      setFullPrefix(null);
+      setIndexStatus(historyIndexLoader ? "idle" : "ready");
+    });
+  }, [contentGenerationKey, historyIndexLoader]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query), 120);
@@ -70,9 +123,16 @@ export function TranscriptFind({
   }, [open, surfaceVisible]);
 
   const corpus = useMemo(() => {
-    const prefix = historyPrefix
-      ? groupForeignHistoryBlocks(historyPrefix.blocks).map((row) => ({
-          id: foreignHistoryAnchor(row.key),
+    const prefixValue =
+      fullPrefix?.source.contentGenerationKey === contentGenerationKey
+        ? fullPrefix
+        : historyPrefix;
+    const prefix = prefixValue
+      ? groupForeignHistoryBlocks(prefixValue.blocks).map((row) => ({
+          id: foreignHistoryAnchor(
+            prefixValue.source.contentGenerationKey,
+            row.key
+          ),
           text: row.kind === "user"
             ? row.block.content
             : row.messages.map((message) => message.content).join("\n"),
@@ -84,7 +144,7 @@ export function TranscriptFind({
         .filter((message) => message.role !== "notice")
         .map((message) => ({ id: message.id, text: message.content })),
     ];
-  }, [historyPrefix, messages]);
+  }, [contentGenerationKey, fullPrefix, historyPrefix, messages]);
 
   const matches = useMemo(() => {
     if (!debounced.trim()) return [];
@@ -113,6 +173,12 @@ export function TranscriptFind({
       : transcript;
     setOpen(false);
     setQuery("");
+    if (indexStatus === "loading") {
+      indexGeneration.current += 1;
+      indexAbort.current?.abort();
+      indexAbort.current = null;
+      setIndexStatus("idle");
+    }
     previousFocus.current = null;
     queueMicrotask(() => target?.focus({ preventScroll: true }));
   };
@@ -142,10 +208,19 @@ export function TranscriptFind({
         value={query}
       />
       <span className="min-w-16 text-center text-muted-foreground text-xs tabular-nums">
-        {matches.length
+        {indexStatus === "loading"
+          ? t("history.findLoading")
+          : indexStatus === "error"
+            ? t("history.findFailed")
+            : matches.length
           ? t("history.findCount", { current: activeIndex + 1, total: matches.length })
           : t("history.findNoMatches")}
       </span>
+      {indexStatus === "error" && (
+        <Button onClick={loadIndex} size="sm" type="button" variant="ghost">
+          {t("history.findRetry")}
+        </Button>
+      )}
       <Button aria-label={t("history.findPrevious")} onClick={() => move(-1)} size="icon-sm" variant="ghost"><ChevronUp /></Button>
       <Button aria-label={t("history.findNext")} onClick={() => move(1)} size="icon-sm" variant="ghost"><ChevronDown /></Button>
       <Button aria-label={t("history.findClose")} onClick={close} size="icon-sm" variant="ghost"><X /></Button>

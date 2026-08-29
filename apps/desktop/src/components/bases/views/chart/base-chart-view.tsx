@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React/ResizeObserver, dnd-kit, portal, shared Base/ChartItem/CHART_ITEM_LIMIT, strict-order packer, ChartOp, ChartCard and Tooltip
- * [OUTPUT]: Provides BaseChartView, guessChartItem and AddChartButton, and the tool master button + info count); Carrying a 4/2 column read-only dashboard, detecting grid resize, drag and reset, resize previews and two-level alerts
- * [POS]: The host of the dashboard of bases/views/chart; DOM is rendered in a persistent array sequence, the location only listens to the packer (and drag previews: just change gridArea, never move DOM); The tractor target is stuck to the last valid value, and the canvas groove is permanently positioned, thus predicting zero re-hunting, zero spin; Added new input to BaseToolbar, empty input remaining component
+ * [INPUT]: Depends on projected Base rows/columns, the canonical BaseCellContext, ChartItem limits, dnd-kit, ResizeObserver, packing, and ChartCard
+ * [OUTPUT]: Provides BaseChartView with context-aware cards, 4/2-column packing, add/drag/resize/reset actions, and bounded dashboard states
+ * [POS]: The Base Chart dashboard host; it owns layout interactions while ChartCard/model own canonical value projection
  */
 
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
@@ -27,6 +27,7 @@ import {
 } from "@ai-chat/ui/components/ui/tooltip";
 import {
   CHART_ITEM_LIMIT,
+  type BaseCellContext,
   type BaseColumn,
   type BaseRow,
   type ChartItem,
@@ -98,6 +99,7 @@ export function guessChartItem(columns: readonly BaseColumn[]): ChartItem {
 export function BaseChartView({
   busy,
   columns,
+  context,
   charts,
   rows,
   compact,
@@ -107,6 +109,7 @@ export function BaseChartView({
 }: {
   busy: boolean;
   columns: BaseColumn[];
+  context: BaseCellContext;
   charts: ChartItem[];
   rows: BaseRow[];
   compact: boolean;
@@ -271,6 +274,7 @@ export function BaseChartView({
                       canMoveDown={index < charts.length - 1}
                       canMoveUp={index > 0}
                       columns={columns}
+                      context={context}
                       dragHandleProps={editable ? dragHandleProps : undefined}
                       item={item}
                       maxColSpan={columnsCount}

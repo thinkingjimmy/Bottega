@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Apps/Chats stores, Sections pending CreateIntent, shared AppLocale/local detachment causes, Agent conversation lifecycle, Memory rebind fence, ProjectStore and ProjectsService
- * [OUTPUT]: Provides composeProjectsService, which cuts the callbacks across modules ((Project-gate-held transmission, non-destructive detachment, D17 conversion/Section pending fence and security default new Memory generation) into inert combination roots that contain the App cascade
+ * [INPUT]: Depends on Apps/Chats stores, Sections pending CreateIntent, shared AppLocale/local detachment causes, Agent conversation lifecycle, Memory rebind fence, Design rebind observer, ProjectStore, ProjectResourceCleanupCoordinator, and ProjectsService
+ * [OUTPUT]: Provides composeProjectsService, which wires Project-held lifecycle callbacks, unified record cleanup, stale-session release, and main-owned rebind evidence into Memory and Design convergence
  * [POS]: The main composition of the projects module; ProjectsService maintains a domain-specific index that is only responsible for lifecycle and instance order
  */
 
@@ -8,6 +8,7 @@ import type { AppsService } from "../apps/apps-service";
 import {
   cancelConversations,
   hasConversationActivity,
+  releaseThreadScopeForConversation,
 } from "../agent-bridge";
 import type { ChatStore } from "../chats/chat-store";
 import type { ChatsService } from "../chats/chats-service";
@@ -19,6 +20,7 @@ import { ProjectsService } from "./projects-service";
 import { ProjectRebindJournal } from "./rebind-journal";
 import type { AppLocale } from "../../../shared/i18n/locale";
 import type { ProjectLocalDetachReason } from "../../../shared/projects-ipc";
+import type { ProjectResourceCleanupCoordinator } from "./resource-cleanup/coordinator";
 
 export function composeProjectsService(input: {
   store: ProjectStore;
@@ -33,8 +35,10 @@ export function composeProjectsService(input: {
   isProjectOpen?: (projectId: string) => boolean;
   localDetachReasons?: (projectId: string) => ProjectLocalDetachReason[];
   locale?: () => AppLocale;
+  resourceCleanup: ProjectResourceCleanupCoordinator;
 }) {
   return new ProjectsService(input.store, {
+    resourceCleanup: input.resourceCleanup,
     rebindJournal: new ProjectRebindJournal(input.userData),
     locale: input.locale,
     resolveApp: (appId) => input.apps()?.resolveApp(appId),
@@ -74,8 +78,20 @@ export function composeProjectsService(input: {
       input.chatStore()?.listByProject(projectId) ?? [],
     hasPendingProjectCreation: input.hasPendingProjectCreation,
     localDetachReasons: input.localDetachReasons,
-    releaseChatProject: (chatId) =>
-      input.chats()!.releaseProject(chatId),
+    releaseChatProject: async (chatId) => {
+      const chats = input.chats();
+      const record = await input.chatStore()?.get(chatId);
+      if (!chats) throw new Error("ChatsService 尚未初始化");
+      if (record?.session) {
+        await chats.replaceSession(
+          { conversationId: chatId },
+          record.session,
+          null
+        );
+        releaseThreadScopeForConversation(chatId);
+      }
+      return chats.releaseProject(chatId);
+    },
     listManagedRoots: () => [
       input.userData,
       ...(input.apps()?.listAppDirs() ?? []),
@@ -90,6 +106,14 @@ export function composeProjectsService(input: {
       (input.chatStore()?.listByProject(projectId) ?? []).some((chatId) =>
         input.deletions?.()?.hasActive(chatId) ?? false
       ),
+    onWorkspaceRebound: async (capsule) => {
+      await input.apps()?.migrateDesignProjectWorkspace({
+        operationId: capsule.operationId,
+        projectId: capsule.projectId,
+        sourceBinding: capsule.sourceBinding,
+        targetBinding: capsule.targetBinding,
+      });
+    },
     /* fence 缺席时 fail closed：宁可拒绝一次转换，也不能在没有 D17 复核的情况下
        把一个可能仍持有授权的 Project 变成 App workspace。 */
     admitAppConversion: (projectId, work) => {

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, i18n, BasesProvider, BaseOwner, six classes of row-backed views, owner-native record uploads, selected Composer identity, chart op and Base chrome
- * [OUTPUT]: Provides ownerKey BaseWorkbench (full/read with a mandatory surface lease row-write triad); Six view shared row projection/toolbar/latest CAS, cold start host view requests consumed after targeting is ready, Gallery without Chat can also Add row; The mutation intent of the module is to be folded into the never-rejected Promise<BaseMutationOutcome>(Except for the two error pipes in record editor onSave and gallery onConfigPatch)
- * [POS]: The state combination root of components/bases; The native Base view narrows down the projection only, and the GUI Surface does not enter the module; The error in the closing of the banner file and the rejection folding) only occurs here
+ * [INPUT]: Depends on BasesProvider snapshots/mutations, i18n, the six row-backed views, owner-native uploads, chart operations, and Base chrome
+ * [OUTPUT]: Provides BaseWorkbench with one snapshot-scoped canonical BaseCellContext, view-only row/column projection, CAS mutations, and full relation options
+ * [POS]: The renderer Base composition root; it owns the canonical-versus-visible boundary and passes explicit context to every view/editor pipeline
  */
 
 import {
@@ -17,6 +17,7 @@ import {
 import { LoaderCircleIcon } from "lucide-react";
 import type {
   BaseAggregation,
+  BaseCellContext,
   BaseColumn,
   BaseColumnType,
   BaseFilter,
@@ -29,6 +30,7 @@ import type {
   BaseViewConfig,
 } from "../../../shared/bases-ipc";
 import {
+  createBaseCellContext,
   isColumnScopedView,
   projectBaseRows,
 } from "../../../shared/bases-ipc";
@@ -171,14 +173,25 @@ export function BaseWorkbench({
        翻转本身共用 flipViewLocal，两处不再各写一份 ref+state。 */
     queueMicrotask(() => flipViewLocal(requestedView.id));
   }, [flipViewLocal, requestedViewId, snapshot?.meta.views]);
+  /* snapshot 是唯一数据事实：视图只决定候选行/显示列，永远不能反过来重建
+     relation/formula 的求值宇宙。上下文身份随 snapshot 变化，六类视图共用。 */
+  const cellContext: BaseCellContext | null = useMemo(
+    () => snapshot
+      ? createBaseCellContext({
+          columns: snapshot.meta.columns,
+          rows: snapshot.rows,
+        })
+      : null,
+    [snapshot]
+  );
   const rows = useMemo(() => {
-    if (!snapshot || !activeView) return [];
+    if (!snapshot || !activeView || !cellContext) return [];
     return projectBaseRows(
       snapshot.rows,
       stripChartSorts(activeView.config),
-      snapshot.meta.columns
+      cellContext
     );
-  }, [activeView, snapshot]);
+  }, [activeView, cellContext, snapshot]);
 
   // 头部 chrome 归宿主：第三栏 tab 条 / 全屏 PageShell，workbench 只有内容
   const shell = (children: ReactNode) => (
@@ -194,7 +207,7 @@ export function BaseWorkbench({
     );
   }
 
-  if (loading || !snapshot || !activeView) {
+  if (loading || !snapshot || !activeView || !cellContext) {
     return shell(
       <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground text-sm">
         {error ? (
@@ -621,6 +634,7 @@ export function BaseWorkbench({
       {activeView.config.type === "gallery" ? (
         <BaseGalleryView
           busy={busy}
+          context={cellContext}
           columns={snapshot.meta.columns}
           composerChatId={attachmentOwner?.chatId}
           composerIncarnationId={attachmentOwner?.incarnationId}
@@ -652,6 +666,7 @@ export function BaseWorkbench({
           columnAggregations={activeView.config.columnAggregations}
           columnWidths={activeView.config.columnWidths}
           columns={visibleColumns(snapshot.meta.columns, activeView)}
+          context={cellContext}
           incarnationId={attachmentOwner?.incarnationId}
           compact={compact}
           groupByColumnId={activeView.config.groupByColumnId}
@@ -671,6 +686,7 @@ export function BaseWorkbench({
           onPatch={canMutateRows ? intent(patch) : undefined}
           onRenameColumn={canStructure ? intent(renameColumn) : undefined}
           ownerKey={ownerKey}
+          relationOptions={snapshot.rows}
           onSortsChange={
             canStructure
               ? intent((sorts: BaseSort[]) =>
@@ -689,9 +705,11 @@ export function BaseWorkbench({
           busy={busy}
           chatId={attachmentOwner?.chatId}
           columns={visibleColumns(snapshot.meta.columns, activeView)}
+          context={cellContext}
           groupByColumnId={activeView.config.groupByColumnId}
           incarnationId={attachmentOwner?.incarnationId}
           ownerKey={ownerKey}
+          relationOptions={snapshot.rows}
           onCreateRow={canMutateRows ? intent(addRow) : undefined}
           onDelete={canMutateRows ? intent(remove) : undefined}
           onPatch={canMutateRows ? intent(patch) : undefined}
@@ -702,6 +720,7 @@ export function BaseWorkbench({
           busy={busy}
           chatId={attachmentOwner?.chatId}
           columns={snapshot.meta.columns}
+          context={cellContext}
           groupByColumnId={activeView.config.groupByColumnId}
           incarnationId={attachmentOwner?.incarnationId}
           onAddColumn={
@@ -729,6 +748,7 @@ export function BaseWorkbench({
           <BaseMapView
             busy={busy}
             columns={snapshot.meta.columns}
+            context={cellContext}
             labelColumnId={activeView.config.labelColumnId}
             locationColumnId={activeView.config.locationColumnId}
             onAddColumn={
@@ -758,6 +778,7 @@ export function BaseWorkbench({
           busy={busy}
           charts={activeView.config.charts}
           columns={snapshot.meta.columns}
+          context={cellContext}
           compact={compact}
           onOp={canStructure ? (op) => void chartOp(op) : undefined}
           rows={rows}

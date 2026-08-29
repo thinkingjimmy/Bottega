@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, TanStack Table, react-virtual, shared Base column, row, persistent sorts, column width, column statistical budget and grouping pure functions, BaseTable Sumary Cells, directory ColumnResizeHandle, Confirmation Dialog, button, dropdown menu, BaseCellEditor, BaseRowHistory Dialog,./.././chrome/base-toolbar Addumn menu and state of BaseMutationOutcome judgment type
- * [OUTPUT]: Provides BaseTableView, window-coded dynamic columns, Group by group head/data/terminal statistics, synchronously horizontal rolling global statistics, digital columns that are default to Sum/manifestly closed search switches, sequencing/column width/column management, synchronous column selection and action listing, a row history in the table, a Dialogue) cell, edit, delete, add and add to the table head "+" columns; mutation Revocation is all-optional and closed intent (reverse intent, never reject), absence is the corresponding affordance (select column/edit/headline operation/resize) is not rendered, ownerKey absence is the default history entry
- * [POS]: The only projection of the base/views/table with an anatomical structure is the one in the quadratic projection of the base/views/table with a total of one window-shaped path along the base/line/tail); The truth of the ranking/column width/grouping/column statistics belongs to the named table view config, statistics consume only rows after filtering, 10k rows only mounted on the viewport near the DOM
+ * [INPUT]: Depends on projected rows/columns, the canonical BaseCellContext, full relation options, TanStack Table, virtualization, grouping, summaries, editors, and mutations
+ * [OUTPUT]: Provides BaseTableView with canonical cell values, virtual rows, grouping/summaries, sorting/width/column controls, history, and optional edit actions
+ * [POS]: The Base Table renderer; visible membership follows the named view while formula/relation evaluation follows the full snapshot context
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -36,6 +36,7 @@ import {
 import type {
   BaseAggregation,
   BaseAggregationSetting,
+  BaseCellContext,
   BaseColumn,
   BaseColumnType,
   BaseRow,
@@ -44,7 +45,6 @@ import type {
 } from "../../../../../shared/bases-ipc";
 import {
   cellValue,
-  createBaseCellContext,
   groupBaseRows,
 } from "../../../../../shared/bases-ipc";
 import type { BaseMutationOutcome } from "../../state/base-mutation-error";
@@ -77,7 +77,9 @@ export function BaseTableView({
   chatId,
   incarnationId,
   columns,
+  context,
   rows,
+  relationOptions,
   compact,
   busy,
   sorts,
@@ -97,7 +99,9 @@ export function BaseTableView({
   chatId?: string;
   incarnationId?: string;
   columns: BaseColumn[];
+  context: BaseCellContext;
   rows: BaseRow[];
+  relationOptions: BaseRow[];
   compact?: boolean;
   busy?: boolean;
   sorts: BaseSort[];
@@ -153,10 +157,6 @@ export function BaseTableView({
         ])
       ),
     [columns, draftWidths]
-  );
-  const cellContext = useMemo(
-    () => createBaseCellContext({ columns, rows }),
-    [columns, rows]
   );
   const tableColumns = useMemo(
     () => [
@@ -221,7 +221,7 @@ export function BaseTableView({
           ]
         : []),
       ...columns.map((column) =>
-        columnHelper.accessor((row) => cellValue(row, column, cellContext), {
+        columnHelper.accessor((row) => cellValue(row, column, context), {
           id: column.id,
           header: column.name,
           size: resolvedWidths[column.id],
@@ -232,11 +232,11 @@ export function BaseTableView({
               }
               column={column}
               disabled={busy || !onPatch}
-              relationColumns={columns}
-              relationRows={rows}
+              relationContext={context}
+              relationOptions={relationOptions}
               storedValue={row.original.values[column.id]}
               surface="cell"
-              value={cellValue(row.original, column, cellContext)}
+              value={cellValue(row.original, column, context)}
               onCommit={(value) =>
                 onPatch?.(row.original.id, { [column.id]: value })
               }
@@ -249,7 +249,7 @@ export function BaseTableView({
        漏掉它，切语言后整张表的列定义仍拿着上一门语言——文案不会更新，且只有
        读屏用户撞得见。代价是零：react-i18next 的 t 由 useSyncExternalStore
        快照缓存，普通重渲染同一身份，只有真的换语言才换——那正是该重建的一刻。 */
-    [busy, cellContext, chatId, columnHelper, columns, incarnationId, onDelete, onPatch, ownerKey, resolvedWidths, rows, t]
+    [busy, chatId, columnHelper, columns, context, incarnationId, onDelete, onPatch, ownerKey, relationOptions, resolvedWidths, t]
   );
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table 是本视图的显式状态引擎
   const table = useReactTable({
@@ -275,7 +275,7 @@ export function BaseTableView({
       return visibleRows.map((row) => ({ kind: "row", row }));
     }
     const rowById = new Map(visibleRows.map((row) => [row.original.id, row]));
-    return groupBaseRows(rows, groupColumn, columns).flatMap((lane) => [
+    return groupBaseRows(rows, groupColumn, context).flatMap((lane) => [
       {
         kind: "group" as const,
         id: lane.id,
@@ -292,7 +292,7 @@ export function BaseTableView({
         rows: lane.rows,
       },
     ]);
-  }, [columns, groupColumn, rows, visibleRows]);
+  }, [context, groupColumn, rows, visibleRows]);
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
@@ -565,6 +565,7 @@ export function BaseTableView({
                     aggregations={columnAggregations}
                     busy={busy}
                     columns={columns}
+                    context={context}
                     onAggregationChange={onAggregationChange}
                     rows={item.rows}
                     scope={`group-${item.id}`}
@@ -627,6 +628,7 @@ export function BaseTableView({
             aggregations={columnAggregations}
             busy={busy}
             columns={columns}
+            context={context}
             onAggregationChange={onAggregationChange}
             rows={rows}
             scope="total"

@@ -2,7 +2,7 @@
 
 [Documentation](../README.md) · [简体中文](./README.zh-CN.md)
 
-Bottega treats an Agent conversation as the control surface for a durable local workspace. Four capability areas define the product.
+Bottega treats an Agent conversation as the control surface for a durable local workspace. The following capability areas define the product.
 
 ## Multi-agent
 
@@ -23,10 +23,18 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 ## App
 
 - Install static, server, or Base-backed Apps from immutable Git revisions.
+- Use the bundled Bottega Design Canvas to create self-contained HTML directions, compare live and historical versions, and send numbered visual anchors back to the Agent without granting the preview network or storage access.
 - Bind Apps to Chats and Projects while keeping use, editing, and authorization separate.
 - Expose an App GUI next to its structured data surface through a constrained product SDK.
 - Grant read, insert, patch, delete, and attachment access independently for an exact App generation.
 - Package and share reusable workflows without copying local credentials or private workspace state.
+
+## Tools and Extensions
+
+- Treat Settings › Tools as the global default, then override built-in tools and manual MCP servers for one exact Project.
+- Freeze the effective tool and MCP plan before a turn starts so retries and resumed sessions cannot silently adopt newer permissions.
+- Install Extensions globally or for one exact Project; Skills, App requirements, sessions, retained data, and deletion cleanup follow the same scoped owner.
+- Keep MCP secrets in main-process-only sealed storage and fail closed when durable ownership evidence is incomplete.
 
 ## Memory
 
@@ -38,4 +46,4 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 
 ## Product foundations
 
-These four areas share the same design rules: local CLI credential sovereignty, capability-bounded file access, durable main-process ownership, explicit archive and deletion flows, and honest degradation when a backend cannot support a feature.
+These areas share the same design rules: local CLI credential sovereignty, capability-bounded file access, durable main-process ownership, explicit archive and deletion flows, and honest degradation when a backend cannot support a feature.

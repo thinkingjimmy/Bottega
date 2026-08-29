@@ -7,6 +7,7 @@
 import {
   applyDelta,
   applyItem,
+  applyItemRemoved,
   applySubagent,
   hydrateDraft,
   type TurnDraft,
@@ -17,6 +18,7 @@ import type {
   AgentLiveSubagent,
   AgentSubagentMeta,
   AgentUserInputRequest,
+  SessionServiceTierEffective,
   SessionRef,
   TurnSnapshot,
 } from "../../shared/agent-ipc";
@@ -30,6 +32,7 @@ import { displaySubagentName } from "../../shared/subagent-name";
 export type ChatTurnProjection = {
   messages: ChatMessage[];
   session?: SessionRef;
+  serviceTierEffective?: SessionServiceTierEffective;
   requestId?: string;
   draft: TurnDraft | null;
   approvals: AgentApprovalRequest[];
@@ -41,6 +44,7 @@ export type ChatTurnProjection = {
   terminal?: TurnSnapshot["terminal"];
   phase?: TurnSnapshot["phase"];
   retryToken?: string;
+  allowedActions?: TurnSnapshot["allowedActions"];
   assistantSeq?: number;
   steeringSupported: boolean;
 };
@@ -69,8 +73,10 @@ export type ChatProjectionStatus = Partial<
     | "phase"
     | "requestId"
     | "retryToken"
+    | "allowedActions"
     | "assistantSeq"
     | "steeringSupported"
+    | "serviceTierEffective"
   >
 >;
 
@@ -82,8 +88,10 @@ export const projectionStatusOf = (
   phase: projection.phase,
   requestId: projection.requestId,
   retryToken: projection.retryToken,
+  allowedActions: projection.allowedActions,
   assistantSeq: projection.assistantSeq,
   steeringSupported: projection.steeringSupported,
+  serviceTierEffective: projection.serviceTierEffective,
 });
 
 export const sameProjectionStatus = (
@@ -95,8 +103,13 @@ export const sameProjectionStatus = (
   left.phase === right.phase &&
   left.requestId === right.requestId &&
   left.retryToken === right.retryToken &&
+  left.allowedActions?.sameSession === right.allowedActions?.sameSession &&
+  left.allowedActions?.freshSession === right.allowedActions?.freshSession &&
+  left.allowedActions?.abandon === right.allowedActions?.abandon &&
   left.assistantSeq === right.assistantSeq &&
-  left.steeringSupported === right.steeringSupported;
+  left.steeringSupported === right.steeringSupported &&
+  left.serviceTierEffective?.value === right.serviceTierEffective?.value &&
+  left.serviceTierEffective?.reason === right.serviceTierEffective?.reason;
 
 const projectSubagentMeta = (meta: AgentSubagentMeta): AgentSubagentMeta => ({
   ...meta,
@@ -240,6 +253,7 @@ export function projectionFromSnapshot(
   return {
     messages,
     session: turn.session ?? record?.session ?? undefined,
+    serviceTierEffective: turn.serviceTierEffective,
     requestId: turn.requestId,
     draft: turn.blocksNewTurn ? hydrateDraft(turn.draft) : null,
     approvals: turn.approvals,
@@ -254,6 +268,7 @@ export function projectionFromSnapshot(
     terminal: turn.terminal,
     phase: turn.phase,
     retryToken: turn.retryToken,
+    allowedActions: turn.allowedActions,
     assistantSeq: turn.assistantSeq,
     steeringSupported: turn.steeringSupported,
   };
@@ -268,6 +283,7 @@ export function applyTurnEvent(
       ...projection,
       requestId: event.turn.requestId,
       session: event.turn.session ?? projection.session,
+      serviceTierEffective: event.turn.serviceTierEffective,
       draft: event.turn.blocksNewTurn
         ? hydrateDraft(event.turn.draft)
         : null,
@@ -283,6 +299,7 @@ export function applyTurnEvent(
       terminal: event.turn.terminal,
       phase: event.turn.phase,
       retryToken: event.turn.retryToken,
+      allowedActions: event.turn.allowedActions,
       assistantSeq: event.turn.assistantSeq,
       steeringSupported: event.turn.steeringSupported,
     };
@@ -290,11 +307,20 @@ export function applyTurnEvent(
   if (event.type === "session") {
     return { ...projection, session: event.session };
   }
+  if (event.type === "service-tier-effective") {
+    return { ...projection, serviceTierEffective: event.effective };
+  }
   if (event.type === "item-delta" && projection.draft) {
     return { ...projection, draft: applyDelta(projection.draft, event.itemId, event.text) };
   }
   if (event.type === "item" && projection.draft) {
     return { ...projection, draft: applyItem(projection.draft, event.item) };
+  }
+  if (event.type === "item-removed" && projection.draft) {
+    return {
+      ...projection,
+      draft: applyItemRemoved(projection.draft, event.itemId),
+    };
   }
   if (event.type === "approval-requested") {
     return {

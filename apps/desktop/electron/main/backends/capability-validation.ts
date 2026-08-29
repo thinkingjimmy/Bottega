@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BackendDescriptor, AgentSendPayload, runtime, AbortSignal and a credible model directory
- * [OUTPUT]: Provides assertBackendCapabilities, assertsResolvedInputCapabilities by the resolvedOnly distribution factor, can cancel assertModelCapabilities with the shared model/effort terminology
+ * [OUTPUT]: Provides capability gates plus separate model-identity and opaque-config value contracts
  * [POS]: The backends of the Unified Access Screener; Remove permissions, input, session and model combination examples before transport starts
  */
 
@@ -11,9 +11,13 @@ import type {
   ResolvedRuntime,
 } from "./types";
 
-/** 跨后端共享的 model/effort 标识词法；claude 的 [1m] 后缀词法归其目录自管。 */
+/** 模型 id 是产品用于目录身份匹配的键，因此保留稳定的 ASCII 词法。 */
 export const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
-export const EFFORT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/**
+ * ACP 配置值是后端拥有的开放枚举。产品不解释其形状，只限制预算并拒绝
+ * 控制字符；Unicode、空格和可打印符号都必须逐字透传。
+ */
+export const OPAQUE_CONFIG_VALUE_PATTERN = /^[^\p{Cc}\p{Cf}]{1,200}$/u;
 
 export function assertBackendCapabilities(
   backend: BackendDescriptor,

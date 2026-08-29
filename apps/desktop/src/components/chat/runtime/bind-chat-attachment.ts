@@ -46,6 +46,7 @@ export type BufferedProjectionEvent = Extract<
     type:
       | "item"
       | "item-delta"
+      | "item-removed"
       | "subagent-item"
       | "subagent-item-delta";
   }
@@ -54,6 +55,7 @@ export type BufferedProjectionEvent = Extract<
 function projectionEventKey(event: BufferedProjectionEvent) {
   if (event.type === "item") return `item:${event.item.itemId}`;
   if (event.type === "item-delta") return `delta:${event.itemId}`;
+  if (event.type === "item-removed") return `remove:${event.itemId}`;
   if (event.type === "subagent-item") {
     return `subagent-item:${event.agentThreadId}:${event.item.itemId}`;
   }
@@ -241,6 +243,7 @@ export function bindChatAttachment(binding: ChatAttachmentBinding) {
     if (
       event.type === "item" ||
       event.type === "item-delta" ||
+      event.type === "item-removed" ||
       event.type === "subagent-item" ||
       event.type === "subagent-item-delta"
     ) {

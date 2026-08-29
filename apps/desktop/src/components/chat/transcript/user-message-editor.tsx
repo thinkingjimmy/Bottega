@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on React, AI Elements Message/UI Button/Textarea, i18n and renderer error are combined
- * [OUTPUT]: Provides UserMessageEditor; The following is a list of the most commonly used methods for the analysis of the data:
- * [POS]: The edit of the revised chat/transcript sheet; The canonical replacement was successfully overturned by the main event
+ * [INPUT]: Depends on React layout effects/refs, AI Elements Message/UI Button/Textarea, i18n, and renderer error normalization
+ * [OUTPUT]: Provides a full-row UserMessageEditor focused at the text end, with a distinct cancel hover surface and stable submit, busy, and error behavior
+ * [POS]: The chat/transcript revision editor; main confirms canonical replacement before the editor exits
  */
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   Message,
   MessageContent,
@@ -32,6 +32,15 @@ export function UserMessageEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submittingRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const end = textarea.value.length;
+    textarea.focus();
+    textarea.setSelectionRange(end, end);
+  }, []);
 
   const submit = async () => {
     if (submittingRef.current) return;
@@ -57,11 +66,10 @@ export function UserMessageEditor({
   };
 
   return (
-    <Message from="user">
-      <MessageContent className="w-full gap-3">
+    <Message className="max-w-none" from="user">
+      <MessageContent className="w-full gap-3 group-[.is-user]:w-full">
         <Textarea
           aria-label={t("chatRevision.editing")}
-          autoFocus
           className="max-h-64 min-h-28 resize-y overflow-auto font-mono"
           disabled={busy}
           onChange={(event) => setDraft(event.target.value)}
@@ -70,11 +78,19 @@ export function UserMessageEditor({
             event.preventDefault();
             onCancel();
           }}
+          ref={textareaRef}
           value={draft}
         />
         {error && <p className="text-destructive text-xs">{error}</p>}
         <div className="flex justify-end gap-2">
-          <Button disabled={busy} onClick={onCancel} size="sm" type="button" variant="ghost">
+          <Button
+            className="hover:bg-background dark:hover:bg-background"
+            disabled={busy}
+            onClick={onCancel}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
             {t("chatRevision.cancel")}
           </Button>
           <Button disabled={busy} onClick={() => void submit()} size="sm" type="button">

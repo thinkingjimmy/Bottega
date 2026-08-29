@@ -1,13 +1,19 @@
 /**
- * [INPUT]: Depends on ExtensionRegistryStore's administrativeState Truth, projection ledger, lifecycle ledger with the combination of root-injected withdrawal/session two narrow ports
- * [OUTPUT]: Provides ExtensionDisableConvergence: deny is effective immediately, four steps to restore convergence, product sessions are accessed with foreign and digital access
- * [POS]: The execution of the extensions/lifecycle is done by the execution of the extensions/lifecycleBefore the full green, administrativeState can only be stopped in disable-pending
+ * [INPUT]: Depends on scoped Registry administrative state, projection/lifecycle ledgers, exact-holder revocation, session drain, and cache invalidation ports
+ * [OUTPUT]: Provides scope-aware ExtensionDisableConvergence with immediate deny, durable recovery, qualified session admission, and exact-holder drain
+ * [POS]: Extension disable coordinator; Project operations affect only that Project while global admission remains conservatively universal
  */
 
 import type {
   ExtensionConvergenceStep,
+  ExtensionScopeMutation,
   Sha256Digest,
 } from "../../../../shared/extensions-ipc";
+import {
+  sameProductResourceScope,
+  type ProductResourceScope,
+  type TurnProjectContext,
+} from "../../../../shared/product-resource-scope";
 import type { ExtensionRegistryStore } from "../registry-store";
 import type { ExtensionLifecycleLedger } from "./lifecycle-ledger";
 import type {
@@ -41,9 +47,32 @@ export type ExtensionProjectionRevoker = Readonly<{
 
 /** 产品会话面；「退出/重启」由组合根用既有的 rotate/cancel 能力实现 */
 export type ExtensionSessionCustody = Readonly<{
-  list(workspaceKeys: readonly string[]): Promise<readonly string[]>;
-  drain(sessionIds: readonly string[]): Promise<void>;
-  invalidateDiscoveryCache(): void | Promise<void>;
+  list(input: {
+    operationId: string;
+    installIdentity: string;
+    componentInstanceIdentities: readonly string[];
+    workspaceKeys: readonly string[];
+    scope: ProductResourceScope;
+  }): Promise<readonly ExtensionRuntimeHolder[]>;
+  drain(holders: readonly ExtensionRuntimeHolder[]): Promise<void>;
+  invalidateDiscoveryCache(scope: ProductResourceScope): void | Promise<void>;
+}>;
+
+export type ExtensionRuntimeHolder =
+  | Readonly<{
+      kind: "conversation";
+      conversationId: string;
+      session: {
+        backend: "codex" | "claude" | "kimi" | "opencode";
+        id: string;
+      };
+    }>
+  | Readonly<{ kind: "request"; requestId: string }>
+  | Readonly<{ kind: "prepared-request"; requestId: string }>;
+
+export type ExtensionDisableConvergenceFaults = Readonly<{
+  afterInitialValidation?: () => void | Promise<void>;
+  afterRegistryCommit?: (operationId: string) => void | Promise<void>;
 }>;
 
 const STEPS = {
@@ -60,7 +89,8 @@ export class ExtensionDisableConvergence {
   constructor(
     private readonly registry: ExtensionRegistryStore,
     private readonly projections: ExtensionProjectionLedger,
-    private readonly ledger: ExtensionLifecycleLedger
+    private readonly ledger: ExtensionLifecycleLedger,
+    private readonly faults: ExtensionDisableConvergenceFaults = {}
   ) {}
 
   /* 撤销面可以缺席——产品未开放 fixed projection 时本就不产生 binding。缺席
@@ -77,8 +107,8 @@ export class ExtensionDisableConvergence {
    * 收敛未完成前不得启动新的产品会话：新会话会从尚未撤干净的 ambient 投影里
    * 重新发现该包，然后把它留在自己的 discovery snapshot 里活到会话结束。
    */
-  assertProductSessionAdmission() {
-    const pending = this.ledger.nonTerminal("disable");
+  assertProductSessionAdmission(context: TurnProjectContext) {
+    const pending = this.pendingForTurn(context);
     if (!pending.length) return;
     throw Object.assign(
       new Error(
@@ -90,8 +120,8 @@ export class ExtensionDisableConvergence {
     );
   }
 
-  productSessionAdmissionClosed() {
-    return this.ledger.nonTerminal("disable").length > 0;
+  productSessionAdmissionClosed(context: TurnProjectContext) {
+    return this.pendingForTurn(context).length > 0;
   }
 
   convergenceOf(installIdentity: string) {
@@ -110,7 +140,7 @@ export class ExtensionDisableConvergence {
   foreignOccupanciesOf(installIdentity: string) {
     return this.projections.foreignOccupancies(installIdentity).map((item) => ({
       projectionId: item.projectionId,
-      componentIdentity: item.componentIdentity,
+      componentInstanceIdentity: item.componentInstanceIdentity,
       strength: "backend-delegated" as const,
     }));
   }
@@ -128,25 +158,36 @@ export class ExtensionDisableConvergence {
   }
 
   /* deny 与三道闸在同一次提交里生效，之后才是可重试的收敛。 */
-  async beginDisable(installIdentity: string) {
+  async beginDisable(input: ExtensionScopeMutation) {
+    const { installIdentity } = input;
+    this.registry.assertScopeMutation(input);
+    await this.faults.afterInitialValidation?.();
     const existing = this.ledger
       .nonTerminal("disable")
       .find((item) => item.installIdentity === installIdentity);
-    const operation =
-      existing ?? (await this.ledger.stage({ kind: "disable", installIdentity }));
-    if (!existing) {
-      try {
-        await this.registry.beginDisable(installIdentity);
-        await this.projections.beginRevoke(installIdentity, operation.operationId);
-        await this.ledger.advance(operation.operationId, operation.revision, "converging");
-      } catch (cause) {
-        /* deny 都没提交成功（比如根本没这个包），这条操作就不该存在——留着它
-           会让「收敛未完成」这道会话闸永久关死在一次输入错误上。 */
-        await this.ledger.abort(operation.operationId);
-        throw cause;
-      }
+    if (existing) {
+      await this.registry.runScopeMutation(input, async () => undefined);
+      return this.converge(existing.operationId);
     }
-    await this.converge(operation.operationId);
+    let operation: ReturnType<ExtensionLifecycleLedger["find"]> = null;
+    await this.registry.beginDisable(input, async (authorizedOwner) => {
+        const staged = await this.ledger.stage({
+          kind: "disable",
+          installIdentity,
+          scope: authorizedOwner.scope,
+          sourceIdentity: authorizedOwner.sourceIdentity,
+          expectedProjectLifecycleRevision: input.expectedProjectLifecycleRevision,
+          expectedScopeRevision: input.expectedScopeRevision,
+        });
+        operation = staged;
+        return { operationId: staged.operationId };
+      });
+    const committed = operation as ReturnType<ExtensionLifecycleLedger["find"]>;
+    if (!committed) throw new Error("Extension disable 缺少 durable operation");
+    await this.faults.afterRegistryCommit?.(committed.operationId);
+    await this.projections.beginRevoke(installIdentity, committed.operationId);
+    await this.ledger.advance(committed.operationId, committed.revision, "converging");
+    await this.converge(committed.operationId);
   }
 
   private async converge(operationId: string) {
@@ -157,16 +198,23 @@ export class ExtensionDisableConvergence {
     const installIdentity = started.installIdentity;
     /* 恢复路径可能停在 staged：deny 与 binding 撤销都要幂等地补上。 */
     if (this.administrativeState(installIdentity) === "active") {
-      await this.registry.beginDisable(installIdentity);
-      await this.projections.beginRevoke(installIdentity, operationId);
+      await this.registry.resumeBeginDisable({
+        operationId,
+        installIdentity,
+        scope: started.scope,
+        sourceIdentity: started.sourceIdentity,
+      });
     }
+    /* Registry gate 与 projection ledger 是两本 durable 账；无论 gate 是否已写，
+       都按同一 operationId 幂等补 revoke，不能从 disable-pending 猜它已完成。 */
+    await this.projections.beginRevoke(installIdentity, operationId);
     if (started.phase === "staged") {
       await this.ledger.advance(operationId, started.revision, "converging");
     }
     try {
+      await this.drainSessions(operationId);
       await this.revokeBindings(operationId);
       await this.releaseArtifacts(operationId);
-      await this.drainSessions(operationId);
       await this.invalidateCaches(operationId);
     } catch (cause) {
       /* 收敛卡住就停在 disable-pending 并把原因说出口——绝不跳到 disabled。 */
@@ -176,7 +224,7 @@ export class ExtensionDisableConvergence {
       });
       return;
     }
-    await this.registry.completeDisable(installIdentity);
+    await this.registry.completeDisable(operationId, installIdentity);
     const settled = this.ledger.find(operationId)!;
     await this.ledger.advance(operationId, settled.revision, "completed");
   }
@@ -216,18 +264,27 @@ export class ExtensionDisableConvergence {
     await this.ledger.recordStep(operationId, STEPS.artifacts);
   }
 
-  /* 只有 ambient 投影会进入会话的 discovery snapshot；manual snapshot 是逐轮
-     注入，随本轮结束而结束，因此受影响面精确到「有过 binding 的 workspace」。 */
+  /* ambient binding、manual Skill custody 与 App plan 都是独立 owner。统一读面
+     按 exact install/component 汇总，不能把「没有 workspace binding」当作零持有者。 */
   private async drainSessions(operationId: string) {
     if (this.hasStep(operationId, STEPS.sessions)) return;
-    const workspaces = this.projections.affectedWorkspaces(operationId);
-    if (workspaces.length) {
-      if (!this.custody) {
-        throw new Error("存在受影响 workspace 但未装配会话面，拒绝冒充已收敛");
-      }
-      const sessions = await this.custody.list(workspaces);
-      if (sessions.length) await this.custody.drain(sessions);
+    if (!this.custody) {
+      throw new Error("未装配 exact-holder 会话面，拒绝冒充已收敛");
     }
+    const operation = this.ledger.find(operationId)!;
+    const workspaces = this.projections.affectedWorkspaces(operationId);
+    const owner = this.registry.packageInventory(operation.installIdentity);
+    if (!owner) throw new Error("停用收敛找不到 exact package owner");
+    const holders = await this.custody.list({
+      operationId,
+      installIdentity: operation.installIdentity,
+      componentInstanceIdentities: owner.components.map(
+        (component) => component.componentInstanceIdentity
+      ),
+      workspaceKeys: workspaces,
+      scope: operation.scope,
+    });
+    if (holders.length) await this.custody.drain(holders);
     await this.ledger.recordStep(operationId, STEPS.sessions);
   }
 
@@ -236,7 +293,8 @@ export class ExtensionDisableConvergence {
     if (!this.custody) {
       throw new Error("未装配会话面，无法证明 discovery cache 已失效");
     }
-    await this.custody.invalidateDiscoveryCache();
+    const operation = this.ledger.find(operationId)!;
+    await this.custody.invalidateDiscoveryCache(operation.scope);
     await this.ledger.recordStep(operationId, STEPS.cache);
   }
 
@@ -245,9 +303,19 @@ export class ExtensionDisableConvergence {
   }
 
   private administrativeState(installIdentity: string) {
-    return this.registry
-      .snapshot()
-      .packages.find((item) => item.installIdentity === installIdentity)
-      ?.administrativeState;
+    return this.registry.packageInventory(installIdentity)?.administrativeState;
+  }
+
+  private pendingForTurn(context: TurnProjectContext) {
+    return this.ledger.nonTerminal("disable").filter((operation) => {
+      if (operation.scope.kind === "global") return true;
+      return Boolean(
+        context.projectId &&
+          sameProductResourceScope(operation.scope, {
+            kind: "project",
+            projectId: context.projectId,
+          })
+      );
+    });
   }
 }

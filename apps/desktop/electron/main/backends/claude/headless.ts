@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Claude Cloud routing white lists, user credential root, authorized processEnv, sandbox canonical paths, original language, Node fs/os/path and General HeadlessJob/ExecutionSpec
- * [OUTPUT]: Provides inline sandbox settings with no tool title, common interaction settings, authorization environment integration, user-default command translation and structured_output resolution
- * [POS]: The authorized translation layer of Claude descriptor; No replacement of HOME/CLAUDE_CONFIG_DIR, no copying of credentials
+ * [INPUT]: Depends on Claude cloud routing allowlists, user credential root, frozen product plugin overlay, authorized processEnv, sandbox paths, and HeadlessJob/ExecutionSpec
+ * [OUTPUT]: Provides sandbox and flag-layer settings for interactive/headless Claude, user-default command translation, and structured_output resolution
+ * [POS]: Claude authorization translator; it preserves login HOME while applying the same per-plugin product deny layer to chat and subagent processes
  */
 
 import { readFileSync } from "node:fs";
@@ -64,7 +64,7 @@ export function claudeHeadlessSettings(
         ]
       : [];
   const hasTools = job.toolPolicy === "workspace";
-  return {
+  const settings = {
     permissions: {
       defaultMode: "dontAsk",
       allow: hasTools ? ["Bash", ...readRules, ...writeRules] : [],
@@ -126,7 +126,39 @@ export function claudeHeadlessSettings(
         strictAllowlist: !job.network,
       },
     },
+  } as {
+    permissions: {
+      defaultMode: string;
+      allow: string[];
+      deny: string[];
+    };
+    sandbox: {
+      enabled: boolean;
+      failIfUnavailable: boolean;
+      autoAllowBashIfSandboxed: boolean;
+      excludedCommands: string[];
+      allowUnsandboxedCommands: boolean;
+      filesystem: {
+        disabled: boolean;
+        allowWrite: string[];
+        denyWrite: string[];
+        denyRead: string[];
+        allowRead: string[];
+      };
+      credentials: {
+        files: Array<{ path: string; mode: string }>;
+        envVars: Array<{ name: string; mode: string }>;
+      };
+      network: { allowedDomains: string[]; strictAllowlist: boolean };
+    };
+    enabledPlugins?: Record<string, false>;
   };
+  if (job.claudeDisabledPluginIds?.length) {
+    settings.enabledPlugins = Object.fromEntries(
+      job.claudeDisabledPluginIds.map((id) => [id, false] as const)
+    );
+  }
+  return settings;
 }
 
 /**
@@ -140,7 +172,8 @@ const MAX_SETTINGS_BYTES = 256 * 1024;
 export function claudeInteractiveSettings(
   access: NonNullable<BackendTurnOptions["filesystemAccess"]>,
   permissionMode: "ask-for-approval" | "approve-for-me",
-  userHome = homedir()
+  userHome = homedir(),
+  disabledPluginIds: readonly string[] = []
 ) {
   const settings = claudeHeadlessSettings(
     {
@@ -160,6 +193,13 @@ export function claudeInteractiveSettings(
     },
     userHome
   );
+  /* `disableSideloadFlags` only works in managed settings, which the product
+     cannot author. Per-plugin flag-layer false is the narrow controllable gate. */
+  if (disabledPluginIds.length) {
+    settings.enabledPlugins = Object.fromEntries(
+      disabledPluginIds.map((id) => [id, false])
+    );
+  }
   const writeProtected = [access.controlRoot, ...access.readOnlyRoots];
   settings.sandbox.filesystem.denyWrite = writeProtected;
   settings.sandbox.filesystem.allowRead = [

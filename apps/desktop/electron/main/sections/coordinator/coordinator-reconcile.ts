@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on RelayLedger, Chat Service, raw submission resume/failed outcome, notice outbox, CreateIntent saga and answered relay
- * [OUTPUT]: Provides reconcileCoordinator, first upgrades prepared/replaces raw reservation, and returns the determined failed column to recoverable terminal mode, then restores the other saga
- * [POS]: The restore unit of sections/coordinator starts; To reduce the collapse point to a durable state that can be reset or operated
+ * [INPUT]: Depends on RelayLedger, ChatsService, submission/create/relay recovery, and the dependency-aware notice outbox
+ * [OUTPUT]: Provides reconcileCoordinator with producer-ordered recovery plus dependent-notice flush or cancellation for stored and empty/error results
+ * [POS]: Coordinator startup recovery unit; every durable producer phase is followed by the projection needed to make its facts visible in the same boot
  */
 
 import type { ChatMessage } from "../../../../shared/chats-ipc";
@@ -13,6 +13,7 @@ import {
 } from "./coordinator-values";
 import type { SectionNoticeOutbox } from "./notice-outbox";
 import type { RelayLedger, RelayRecord } from "./relay-ledger";
+import { skillTruncationNoticeId } from "./turn-preparation";
 
 type ReconcileInput = {
   ledger: RelayLedger;
@@ -43,14 +44,22 @@ export async function reconcileCoordinator(input: ReconcileInput) {
   }
   await input.ledger.ensurePausedActions();
   await input.notices.reconcile();
-  await reconcileManual(input.ledger, input.chats);
+  await reconcileManual(input.ledger, input.chats, input.notices);
+  /* Dependency-aware notices fail closed in the first pass. Re-running the
+     same predicate after assistant recovery preserves assistant-before-notice. */
+  await input.notices.reconcile();
   await reconcileRelays(input);
+  /* relay recovery may append the assistant dependency or enqueue a failure
+     notice. Flush once after that producer phase so recovery never needs a
+     second process restart to make its dependent notice visible. */
+  await input.notices.reconcile();
   await reconcileCreateIntents(input);
 }
 
 async function reconcileManual(
   ledger: RelayLedger,
-  chats: ChatsService
+  chats: ChatsService,
+  notices: SectionNoticeOutbox
 ) {
   for (const intent of Object.values(ledger.snapshot().manualIntents)) {
     if (intent.phase !== "claimed") continue;
@@ -77,6 +86,10 @@ async function reconcileManual(
       if (message) {
         await chats.appendCanonical(intent.conversationId, message);
       }
+      await notices.settleDependent(
+        skillTruncationNoticeId(intent.conversationId, intent.requestId),
+        Boolean(message)
+      );
       await ledger.persistManualResult(intent.id, true);
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : String(cause);
@@ -126,6 +139,10 @@ async function reconcileClaimed(
   const message = assistantMessage(outbox?.message);
   if (outbox?.terminal === "done" && message) {
     await input.chats.appendCanonical(relay.target.chatId, message);
+    await input.notices.settleDependent(
+      skillTruncationNoticeId(relay.target.chatId, relay.requestId),
+      true
+    );
     const answered = await input.ledger.transition(
       relay.id,
       relayExpectation(relay, "claimed"),
@@ -139,6 +156,10 @@ async function reconcileClaimed(
     return;
   }
   if (outbox) {
+    await input.notices.settleDependent(
+      skillTruncationNoticeId(relay.target.chatId, relay.requestId),
+      false
+    );
     const settled = await input.ledger.transition(
       relay.id,
       relayExpectation(relay, "claimed"),

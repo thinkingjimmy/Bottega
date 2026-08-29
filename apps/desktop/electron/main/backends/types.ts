@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared agent/MCP DTO, AbortSignal and Node subprocess environment type
- * [OUTPUT]: Provides descriptor/runtime/failure, AgentTurn, prompt, first productContext, release sensitive contribution, frozen third-party MCP/backend session config, Plan decision cards, synthesized static tables and protocol health observation callback, trusted input/sandbox/maintenance contracts; ACP launch overlay with builtin and backend-config plan
+ * [OUTPUT]: Provides descriptor/runtime/failure, turn-level facts carried by every terminal exit, AgentTurn, prompt, productContext, sensitive contribution, frozen MCP/session config, the negotiated server-fact binding and trusted sandbox/maintenance contracts
  * [POS]: The module's behavior limits are backends; The name of the registry combination is expanded, transport and business organization are recognized only through this document
  */
 
@@ -24,6 +24,7 @@ import type {
   UsageLimitInfo,
   TurnFilesystemAccess,
 } from "../../../shared/agent-ipc";
+import type { ServerFactBinding } from "./acp/session/server-facts";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import type { CleanupResult } from "../process-group";
 import type {
@@ -32,10 +33,13 @@ import type {
 } from "../tools/lease";
 import type { SubagentRegistry } from "../../../shared/subagent-registry";
 import type { McpComponentHealthSubject } from "../../../shared/extensions-ipc";
+import type { SessionCapabilityPolicy } from "./acp/session/client-capabilities";
 
 /**
- * OpenCode 1.18.14 的 ACP builtins 尚未移植 plan_exit，无法产出原生
- * plan-review 事件；但产品的下一 turn 决策链完整，故只在 commit 期合成。
+ * OpenCode 的上游 ACP 路径不可达：effect 内置表尚未移植 plan_exit，三态
+ * 真机工具表均无该工具；registry 注册不代表 wire 可达。产品又因宿主拥有
+ * Plan 状态显式 deny，作为叠加保险，故不伪造中途 wire 审批。下一 turn
+ * 决策链完整，所以只在 commit 期合成。
  * 其余后端 fail-closed，继续消费各自的原生 planMessageKind 通道。
  */
 export const PLAN_DECISION_SYNTHESIS: Record<AgentBackendId, boolean> = {
@@ -70,6 +74,13 @@ export type BackendFailure =
   | { kind: "usage-limit"; message: string; limit: UsageLimitInfo };
 
 /**
+ * 轮级事实：由 turn 观察得来，与失败分类正交，所以不进 BackendFailure 的判别
+ * 联合而是与它并列。**三个终态出口（done/error/policy-violation）必须一律携带**
+ * ——只挂在成功那条上，等于让「中途死掉的那一轮」把已经发生的事实吞掉。
+ */
+export type AgentTurnFacts = { skillDescriptionsTruncated?: true };
+
+/**
  * 分类线索：限流窗口在 ACP 上是带外到达的（Claude 走 usage_update notification，
  * 不在 error 里），所以判据只能由 turn 把最近快照喂回分类器。
  */
@@ -96,6 +107,10 @@ export type AgentTurnCallbacks = {
   onThread: (session: SessionRef) => Promise<void>;
   onItemDelta: (itemId: string, text: string) => void;
   onItem: (item: AgentTurnItem) => void;
+  onItemRemoved: (itemId: string) => void;
+  onConfigOptionUpdate?: (
+    options: readonly import("@agentclientprotocol/sdk").SessionConfigOption[]
+  ) => void;
   onApproval: (approval: import("../../../shared/agent-ipc").AgentApprovalRequest) => void;
   onApprovalClosed: (approvalId: string) => void;
   onTerminal: (event: {
@@ -103,9 +118,14 @@ export type AgentTurnCallbacks = {
     message?: string;
     failureKind?: FailureKind;
     usageLimit?: UsageLimitInfo;
+    facts?: AgentTurnFacts;
   }) => void;
-  onProcessError: (failure: BackendFailure) => void;
-  onPolicyViolation?: (violation: { budget: string; detail: string }) => void;
+  onProcessError: (failure: BackendFailure & { facts?: AgentTurnFacts }) => void;
+  onPolicyViolation?: (violation: {
+    budget: string;
+    detail: string;
+    facts?: AgentTurnFacts;
+  }) => void;
   onUserInput?: (request: AgentUserInputRequest) => void;
   onUserInputClosed?: (userInputId: string) => void;
   onSubagentUpdate?: (agent: AgentSubagentMeta) => void;
@@ -126,6 +146,7 @@ export type AgentTurnTrace = {
     event:
       | { type: "delta"; itemId: string; text: string }
       | { type: "item"; item: AgentTurnItem }
+      | { type: "item-removed"; itemId: string }
   ): void;
 };
 
@@ -202,7 +223,12 @@ export type BackendTurnOptions = {
   processEnv?: NodeJS.ProcessEnv;
   /** 第一次 createTurn 前冻结；同一 request 的 resume/retry 复用，不回读 live Settings。 */
   backendSessionConfig?: Readonly<{
-    codexSkillRules?: readonly Readonly<{ path: string; enabled: false }>[];
+    /** Concrete immutable roots resolved once at turn creation; never `current`. */
+    claudePluginPaths?: readonly string[];
+    /** Product-owned flag-layer overlay; user ~/.claude/settings.json stays untouched. */
+    claudeDisabledPluginIds?: readonly string[];
+    /** Main-only turn lease; released only after process custody is safely closed. */
+    releaseClaudePluginProjection?: () => Promise<void>;
   }>;
   filesystemAccess?: TurnFilesystemAccess & { controlRoot: string };
   subagents: SubagentRegistry;
@@ -214,6 +240,8 @@ export type BackendTurnOptions = {
   };
   /** main/bridge 冻结的整 server inclusion 计划；backend 只负责协议翻译。 */
   thirdPartyMcpPlan?: import("../../../shared/mcp-servers-ipc").ThirdPartyMcpPlan;
+  /** runtime CAS 后冻结；ACP oracle 将它与服务端返回的 session facts 同章。 */
+  serverFactBinding?: ServerFactBinding;
   /** main 在 runtime CAS 后冻结的产品上下文；逐 spawn 作为 prompt 首块下发。 */
   productContext?: string;
   /** 通用敏感 prompt contribution；backend 只消费 lease，不理解其业务来源。 */
@@ -282,7 +310,7 @@ export type AcpLaunchOverlay = {
   /**
    * 审批档（Codex 经 CODEX_CONFIG、OpenCode 经 OPENCODE_PERMISSION）、Plan 档
    * （仅 OpenCode：它的 plan 由 agent 切换**加**权限收紧两半构成，后一半在
-   * env 里，赶不上 `session/set_config_option`）、内置 MCP 与产品 Skill 规则（仅 Codex）。
+   * env 里，赶不上 `session/set_config_option`）与内置 MCP。
    * readiness 恒缺席——握手不跑 turn、不带内置工具。这不是分支，是这一格
    * 数据本来就没有；缺席即按最严档位落地。
    */
@@ -291,7 +319,6 @@ export type AcpLaunchOverlay = {
     planMode?: boolean;
     builtinMcp?: BuiltinMcpServerSpec;
     thirdPartyMcpPlan?: import("../../../shared/mcp-servers-ipc").ThirdPartyMcpPlan;
-    skillRules?: readonly Readonly<{ path: string; enabled: false }>[];
   };
 };
 
@@ -335,6 +362,8 @@ export type HeadlessJob = {
   processEnv?: NodeJS.ProcessEnv;
   homeDir?: string;
   ignoreUserConfig: boolean;
+  /** Frozen product flag-layer policy for Claude ambient user plugins. */
+  claudeDisabledPluginIds?: readonly string[];
   outputSchema?: string;
   timeoutMs: number;
   onProcessGroup?: (pid: number) => Promise<void> | void;
@@ -468,6 +497,17 @@ export type BackendDescriptor =
   & CapabilityProvider
   & FailureClassifier
   & {
+  /**
+   * ACP initialize policy. 唯一政策格是 `SESSION_CAPABILITY_POLICY`：本字段只
+   * 按后端 id 取出那一格转发给 registry 与深握手，生产 turn 与 readiness 探针
+   * 各自直接索引同一张表——四条读法一个来源，改一格四处同时变色。
+   */
+  sessionCapabilityPolicy: SessionCapabilityPolicy;
+  /** Descriptor-owned tier policy; the option id is a lookup key, not wire configId. */
+  serviceTier?: Readonly<{
+    configOptionId: string;
+    values: Readonly<Record<string, string>>;
+  }>;
   setup?: SetupExtension;
   auth?: AuthExtension;
   models?: ModelsExtension;

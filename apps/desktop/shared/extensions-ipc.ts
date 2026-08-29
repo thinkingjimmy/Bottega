@@ -1,12 +1,34 @@
 /**
- * [INPUT]: The type-only AgentBackendId that relies on agent-ipc; Side effects of no platform
- * [OUTPUT]: Provides Agent Extension package/component tri-axis status, with source App requirement, declared/resolved config, backend/runtime eligibility/health, scoped grant, round delivery and installation/update/deactivation/unloading contract
- * [POS]: The Extension line protocol shared with the pure state truth source; The global capability matrix and the turn-scoped active fact is that the separation, installation, authorization, and delivery triad are not mutually exclusive in type
+ * [INPUT]: Depends on AgentBackendId and the canonical Product resource scope vocabulary; has no platform side effects
+ * [OUTPUT]: Provides scope-aware Extension inventory, dual component identity, App requirements, capability eligibility, grants, lifecycle, delivery, and IPC v2 contracts
+ * [POS]: Shared Extension wire truth; renderer and runtime receive only main-owned exact-scope projections and revision invalidations
  */
 
 import type { AgentBackendId } from "./agent-ipc";
+import type {
+  ProductResourceScope,
+  ScopedResourceVersion,
+  TurnProjectContext,
+} from "./product-resource-scope";
 
 export type Sha256Digest = `sha256:${string}`;
+export const SHA256_DIGEST_IDENTITY_PATTERN = /^sha256:[a-f0-9]{64}$/;
+
+export function assertExtensionDigestIdentity(
+  value: unknown,
+  label = "Extension digest identity"
+): Sha256Digest {
+  if (
+    typeof value !== "string" ||
+    !SHA256_DIGEST_IDENTITY_PATTERN.test(value)
+  ) {
+    throw Object.assign(
+      new Error(`${label} 必须是 sha256:<64 lowercase hex>`),
+      { status: 400 }
+    );
+  }
+  return value as Sha256Digest;
+}
 
 export type PackageGenerationDataBinding =
   | Readonly<{ kind: "none" }>
@@ -89,6 +111,7 @@ export type McpComponentHealthSubject =
   | Readonly<{
       kind: "package";
       generationRef: ExtensionPackageGenerationRef;
+      componentInstanceIdentity: string;
       componentId: string;
       serverId: string;
       declaredConfigDigest: Sha256Digest;
@@ -100,6 +123,7 @@ export type McpComponentHealthSubject =
   | Readonly<{
       kind: "manual";
       serverId: string;
+      scope: ProductResourceScope;
       configDigest: Sha256Digest;
       backend: AgentBackendId;
       runtimeVersion: string;
@@ -119,7 +143,8 @@ export type McpComponentHealthRecord = Readonly<{
 }>;
 
 export type ExtensionComponentRecord = Readonly<{
-  componentIdentity: string;
+  declaredComponentIdentity: string;
+  componentInstanceIdentity: string;
   packageGenerationRef: ExtensionPackageGenerationRef;
   componentId: string;
   kind: ExtensionComponentKind;
@@ -142,7 +167,7 @@ export type ExtensionDeliveryReference = Readonly<{
 }>;
 
 export type ExtensionCapabilityEntry = Readonly<{
-  componentIdentity: string;
+  componentInstanceIdentity: string;
   packageGenerationRef: ExtensionPackageGenerationRef;
   backendId: AgentBackendId;
   backendRuntimeIdentity: string;
@@ -158,7 +183,7 @@ export type ExtensionCapabilityEntry = Readonly<{
 export type ExtensionCapabilitySnapshot = Readonly<{
   snapshotId: string;
   snapshotDigest: Sha256Digest;
-  inventoryRevision: string;
+  visibleInventoryVersion: string;
   backendId: AgentBackendId;
   backendRuntimeIdentity: string;
   productPolicyRevision: string;
@@ -168,6 +193,8 @@ export type ExtensionCapabilitySnapshot = Readonly<{
 
 export type ExtensionInventoryPackage = Readonly<{
   installIdentity: string;
+  scope: ProductResourceScope;
+  sourceIdentity: string;
   source: Readonly<{
     normalizedUrl: string;
     requestedRef: string;
@@ -182,12 +209,13 @@ export type ExtensionInventoryPackage = Readonly<{
   administrativeState: ExtensionAdministrativeState;
   globalCatalogEnabled: boolean;
   enabled: ExtensionEnableState;
-  enabledComponentIdentities: readonly string[];
+  enabledComponentInstanceIdentities: readonly string[];
   removalPendingGenerationIds: readonly string[];
 }>;
 
 export type ExtensionInventorySnapshot = Readonly<{
-  revision: string;
+  version: ScopedResourceVersion;
+  visibleInventoryVersion: string;
   digest: Sha256Digest;
   packages: readonly ExtensionInventoryPackage[];
   components: readonly ExtensionComponentRecord[];
@@ -196,7 +224,7 @@ export type ExtensionInventorySnapshot = Readonly<{
 }>;
 
 export type AppExtensionRequirementDeclaration = Readonly<{
-  componentIdentity: string;
+  declaredComponentIdentity: string;
   packageDigest?: string;
   versionRange?: string;
   required: boolean;
@@ -211,7 +239,8 @@ export type AppExtensionRequirementManifestField = Readonly<{
 export type FrozenAppExtensionRequirement =
   | Readonly<{
       state: "resolved";
-      componentIdentity: string;
+      declaredComponentIdentity: string;
+      componentInstanceIdentity: string;
       packageGenerationRef: ExtensionPackageGenerationRef;
       required: boolean;
       declarationDigest: Sha256Digest;
@@ -220,7 +249,7 @@ export type FrozenAppExtensionRequirement =
     }>
   | Readonly<{
       state: "unresolved";
-      componentIdentity: string;
+      declaredComponentIdentity: string;
       required: boolean;
       declarationDigest: Sha256Digest;
       reason: FrozenExtensionInventoryReason;
@@ -229,7 +258,7 @@ export type FrozenAppExtensionRequirement =
 export type FrozenAppExtensionRequirementSetV1 = Readonly<{
   resolutionId: string;
   appGenerationId: string;
-  registryRevision: string;
+  visibleInventoryVersion: string;
   inventorySnapshotDigest: Sha256Digest;
   graphDigest: Sha256Digest;
   resolutionDigest: Sha256Digest;
@@ -242,7 +271,7 @@ export type ScopedComponentGrant = Readonly<{
   appGenerationId: string;
   requirementResolutionDigest: Sha256Digest;
   declarationDigest: Sha256Digest;
-  componentIdentity: string;
+  componentInstanceIdentity: string;
   packageGenerationRef: ExtensionPackageGenerationRef;
   resolvedConfigDigest: Sha256Digest;
   grantRevision: number;
@@ -278,6 +307,8 @@ export type ExtensionTurnIdentity = Readonly<{
   planMode: boolean;
   backendId: AgentBackendId;
   backendRuntimeIdentity: string;
+  projectContext: TurnProjectContext;
+  visibleInventoryVersion: string;
   workspace:
     | { kind: "none" }
     | {
@@ -291,7 +322,7 @@ export type ExtensionTurnIdentity = Readonly<{
 export type ComponentDeliveryPlan = Readonly<{
   planInstanceId: string;
   planDigest: Sha256Digest;
-  inventoryRevision: string;
+  visibleInventoryVersion: string;
   capabilitySnapshotDigest: Sha256Digest;
   turnIdentity: ExtensionTurnIdentity;
   appBindings: readonly Readonly<{
@@ -302,7 +333,8 @@ export type ComponentDeliveryPlan = Readonly<{
     appGrantAggregateRevision: number;
     requirementBindings: readonly Readonly<{
       declarationDigest: Sha256Digest;
-      componentIdentity: string;
+      declaredComponentIdentity: string;
+      componentInstanceIdentity: string;
       packageGenerationRef: ExtensionPackageGenerationRef;
       resolvedConfigDigest: Sha256Digest;
       required: boolean;
@@ -312,7 +344,7 @@ export type ComponentDeliveryPlan = Readonly<{
   }>[];
   deliveries: readonly Readonly<{
     deliveryInstanceId: string;
-    componentIdentity: string;
+    componentInstanceIdentity: string;
     packageGenerationRef: ExtensionPackageGenerationRef;
     resolvedConfigDigest: Sha256Digest;
     componentPlanLeaseId: string;
@@ -352,7 +384,7 @@ export type ComponentDeliveryExclusion = Readonly<{
   appGenerationId: string;
   requirementResolutionDigest: Sha256Digest;
   declarationDigest: Sha256Digest;
-  componentIdentity: string;
+  declaredComponentIdentity: string;
   required: boolean;
   reason: FrozenComponentDeliveryExclusionReason;
 }>;
@@ -420,6 +452,10 @@ export type ExtensionPreflightView = Readonly<{
   contentDigest: Sha256Digest;
   componentNamespace: string;
   installIdentity: string;
+  scope: ProductResourceScope;
+  sourceIdentity: string;
+  projectLifecycleRevision: number | null;
+  scopeRevision: number;
   adapterId: string;
   source: Readonly<{
     normalizedUrl: string;
@@ -458,7 +494,8 @@ export type ExtensionBackendHealthView = Readonly<{
 }>;
 
 export type ExtensionComponentView = Readonly<{
-  componentIdentity: string;
+  declaredComponentIdentity: string;
+  componentInstanceIdentity: string;
   componentId: string;
   kind: ExtensionComponentKind;
   transport: ExtensionTransport;
@@ -502,7 +539,7 @@ export type ExtensionProjectionOwner =
 /** 产品没写过、也无权撤销的副本：只能如实标 backend-delegated 并交回用户处置 */
 export type ExtensionForeignOccupancyView = Readonly<{
   projectionId: string;
-  componentIdentity: string;
+  componentInstanceIdentity: string;
   strength: Extract<ExtensionDeliveryStrength, "backend-delegated">;
 }>;
 
@@ -547,6 +584,11 @@ export type ExtensionUninstallView = Readonly<{
  */
 export type ExtensionRetainedInstallDataView = Readonly<{
   installIdentity: string;
+  scope: ProductResourceScope;
+  sourceIdentity: string;
+  /** Human-readable metadata only; never participates in purge authority. */
+  displayLabel: string;
+  sourceLabel: string | null;
   epochIds: readonly string[];
   /** 非空即还不能删 */
   custody: readonly string[];
@@ -554,6 +596,8 @@ export type ExtensionRetainedInstallDataView = Readonly<{
 
 export type ExtensionPackageView = Readonly<{
   installIdentity: string;
+  scope: ProductResourceScope;
+  sourceIdentity: string;
   adapterId: string;
   displayName: string;
   admission: ExtensionAdmissionState;
@@ -577,8 +621,41 @@ export type ExtensionPackageView = Readonly<{
   uninstall: ExtensionUninstallView | null;
 }>;
 
+export type AgentPluginInventoryEntry = Readonly<{
+  id: string;
+  displayName: string;
+  source: string;
+  origin: "product" | "user";
+  enabled: boolean;
+  state: "ready" | "error";
+}>;
+
+export type AgentPluginBackendView =
+  | Readonly<{
+      backendId: "codex" | "claude";
+      policy: "managed";
+      inventoryState: "ready" | "error";
+      plugins: readonly AgentPluginInventoryEntry[];
+    }>
+  | Readonly<{
+      backendId: "kimi";
+      policy: "read-only";
+      inventoryState: "ready" | "error";
+      plugins: readonly AgentPluginInventoryEntry[];
+      guidance: "kimi-tui-plugins";
+    }>
+  | Readonly<{
+      backendId: "opencode";
+      policy: "blocked";
+      reason: "arbitrary-code-outside-product-fence";
+      unlock: "safe-inventory-oracle-and-fenced-execution";
+    }>;
+
 export type ExtensionsSnapshot = Readonly<{
+  version: ScopedResourceVersion;
   packages: readonly ExtensionPackageView[];
+  /** CLI-side reality. OpenCode intentionally has no `plugins` member or count. */
+  agentPlugins: readonly AgentPluginBackendView[];
   /** 收敛未完成期间不得启动新的产品会话；UI 照实说明这道闸 */
   productSessionAdmissionClosed: boolean;
   /** package 已回收但数据仍在的安装；删除数据是独立、显式的动作 */
@@ -590,22 +667,38 @@ export const EXTENSIONS_CHANNEL = {
   preflight: "extensions:preflight",
   confirm: "extensions:confirm",
   discard: "extensions:discard",
-  enableComponent: "extensions:enable-component",
-  disableComponent: "extensions:disable-component",
   beginDisable: "extensions:begin-disable",
   beginUninstall: "extensions:begin-uninstall",
   resolveUninstall: "extensions:resolve-uninstall",
   cancelUninstall: "extensions:cancel-uninstall",
   purgeInstallData: "extensions:purge-install-data",
+  setAgentPluginEnabled: "extensions:set-agent-plugin-enabled",
   changed: "extensions:changed",
 } as const;
 
+export type ExtensionScopeQuery = Readonly<{
+  scope: ProductResourceScope;
+  expectedProjectLifecycleRevision: number | null;
+}>;
+
+export type ExtensionScopeMutation = Readonly<{
+  installIdentity: string;
+  expectedScope: ProductResourceScope;
+  expectedProjectLifecycleRevision: number | null;
+  expectedScopeRevision: number;
+}>;
+
+export type ExtensionsChangedEvent = ScopedResourceVersion;
+
 export type ExtensionsBridgeApi = {
-  list(): Promise<ExtensionsSnapshot>;
+  list(input: ExtensionScopeQuery): Promise<ExtensionsSnapshot>;
   preflight(input: {
     repoUrl: string;
     requestedRef?: string;
     subdirectory?: string;
+    scope: ProductResourceScope;
+    expectedProjectLifecycleRevision: number | null;
+    expectedScopeRevision: number;
   }): Promise<ExtensionPreflightView>;
   confirm(input: {
     preflightId: string;
@@ -615,19 +708,16 @@ export type ExtensionsBridgeApi = {
     migrateAppIds?: readonly string[];
   }): Promise<ExtensionsSnapshot>;
   discard(preflightId: string): Promise<void>;
-  enableComponent(componentIdentity: string): Promise<ExtensionsSnapshot>;
-  disableComponent(componentIdentity: string): Promise<ExtensionsSnapshot>;
-  beginDisable(installIdentity: string): Promise<ExtensionsSnapshot>;
+  beginDisable(input: ExtensionScopeMutation): Promise<ExtensionsSnapshot>;
   /** 关闭该包全部代的新 reservation/plan/projection 准入，并列出待解决的引用 */
-  beginUninstall(installIdentity: string): Promise<ExtensionsSnapshot>;
+  beginUninstall(input: ExtensionScopeMutation): Promise<ExtensionsSnapshot>;
   /** 只有这里点名的 App 才起新的 pending 代；随后再试着把卸载推进一步 */
-  resolveUninstall(input: {
-    installIdentity: string;
+  resolveUninstall(input: ExtensionScopeMutation & {
     migrateAppIds?: readonly string[];
   }): Promise<ExtensionsSnapshot>;
   /** 放弃卸载：重开准入，包保持「已停用但仍安装」 */
-  cancelUninstall(installIdentity: string): Promise<ExtensionsSnapshot>;
+  cancelUninstall(input: ExtensionScopeMutation): Promise<ExtensionsSnapshot>;
   /** 独立、显式的最终数据删除；package 未回收干净时拒绝 */
-  purgeInstallData(installIdentity: string): Promise<ExtensionsSnapshot>;
-  onChanged(listener: (snapshot: ExtensionsSnapshot) => void): () => void;
+  purgeInstallData(input: ExtensionScopeMutation): Promise<ExtensionsSnapshot>;
+  onChanged(listener: (event: ExtensionsChangedEvent) => void): () => void;
 };

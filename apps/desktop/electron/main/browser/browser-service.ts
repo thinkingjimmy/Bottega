@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared Browser IPC, can be injected into WebContentsView/BrowserWindow seam and browser/security
  * [OUTPUT]: Provides BrowserPanelService: Universal tab pool, only active view, project event, chat release, single tab, only Agent batch and security destruction
- * [POS]: The main/browser lifecycle truth source; Both the renderer and the tool side must be accessed through this service
+ * [POS]: Main/browser lifecycle truth source shared by renderer and tool callers
  */
 
 import { randomUUID } from "node:crypto";
@@ -156,6 +156,7 @@ export class BrowserPanelService {
     this.removeAttachedView();
     this.window = window;
     rendererIpc(window, rendererUrl, "拒绝非主窗口的浏览器请求")
+      .roles("main")
       .handle(BROWSER_CHANNEL.createTab, (raw) => {
         const input = browserCreateTabSchema.parse(raw ?? {});
         return this.createTab({ url: input.url, ownerChatId: null });

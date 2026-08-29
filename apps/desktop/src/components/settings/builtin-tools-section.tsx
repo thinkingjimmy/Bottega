@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on React external-store, i18n, settingsStore, ui/Tabs and settings-layout
- * [OUTPUT]: Provides 26 ambient built-in tools for seven-domain page switches and renderer data sets
- * [POS]: The built-in tool controls for Settings › Tools; No import zod-backed spec, lists synchronized by Node testing
+ * [INPUT]: Depends on React state, i18n, an explicit global/Project scope port, ui/Tabs, and Settings primitives
+ * [OUTPUT]: Provides the shared 27-tool renderer with effective/source/backend facts, Project reset actions, and eight-domain navigation
+ * [POS]: Scope-agnostic built-in tool controls for Settings › Tools; controllers own persistence and this component only renders snapshots and mutations
  */
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState } from "react";
+import { RotateCcw } from "lucide-react";
 import {
   Tabs,
   TabsContent,
@@ -13,15 +14,24 @@ import {
 } from "@ai-chat/ui/components/ui/tabs";
 import {
   SettingsRow,
+  SettingsButton,
+  SettingsLabelAction,
   SettingsSection,
   SettingsSurface,
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
-import { settingsStore } from "@/lib/settings-store";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import type {
+  EffectiveResourceState,
+  ResourceBackendSupportView,
+} from "../../../shared/resource-scope";
+import type {
+  BuiltinToolEffectiveSource,
+  ToolOverride,
+} from "../../../shared/project-tools-ipc";
 
 export type BuiltinToolCopy = Readonly<{
-  domain: "Sections" | "Subagents" | "Projects" | "Bases" | "Search" | "Browser" | "Apps";
+  domain: "Sections" | "Subagents" | "Projects" | "Bases" | "Search" | "Browser" | "Design" | "Apps";
 }>;
 
 export const BUILTIN_TOOL_COPY = {
@@ -50,6 +60,7 @@ export const BUILTIN_TOOL_COPY = {
   browser_act: { domain: "Browser" },
   browser_tabs: { domain: "Browser" },
   browser_close: { domain: "Browser" },
+  design_render_check: { domain: "Design" },
   validate_app: { domain: "Apps" },
 } as const satisfies Record<string, BuiltinToolCopy>;
 
@@ -60,6 +71,7 @@ const DOMAIN_ORDER: readonly BuiltinToolCopy["domain"][] = [
   "Bases",
   "Search",
   "Browser",
+  "Design",
   "Apps",
 ];
 
@@ -70,11 +82,12 @@ const DOMAIN_KEYS: Record<BuiltinToolCopy["domain"], string> = {
   Bases: "bases",
   Search: "search",
   Browser: "browser",
+  Design: "design",
   Apps: "apps",
 };
 
 /* 分域只是清单的一种读法，与设置状态无关：索引在模块求值时建一次，
-   渲染期就没有「每帧把 26 项过七遍」这回事，也不必在 JSX 里嵌 filter。 */
+   渲染期就没有「每帧把 27 项过八遍」这回事，也不必在 JSX 里嵌 filter。 */
 const DOMAINS = DOMAIN_ORDER.map((domain) => ({
   domain,
   tools: Object.entries(BUILTIN_TOOL_COPY).filter(
@@ -82,40 +95,98 @@ const DOMAINS = DOMAIN_ORDER.map((domain) => ({
   ),
 }));
 
-export function BuiltinToolsSection() {
+export type BuiltinToolRowSnapshot = Readonly<{
+  toolId: string;
+  intentEnabled: boolean;
+  effectiveState: EffectiveResourceState;
+  source: BuiltinToolEffectiveSource;
+  override: ToolOverride | null;
+  backendSupport: readonly ResourceBackendSupportView[];
+}>;
+
+export type BuiltinToolsSectionPort = Readonly<{
+  kind: "global" | "project";
+  ready: boolean;
+  error: string;
+  tools: readonly BuiltinToolRowSnapshot[];
+  hasOverrides: boolean;
+  setEnabled(toolId: string, enabled: boolean): Promise<unknown>;
+  resetTool?(toolId: string): Promise<unknown>;
+  resetAll?(): Promise<unknown>;
+}>;
+
+export function BuiltinToolsSection({
+  port,
+}: {
+  port: BuiltinToolsSectionPort;
+}) {
   const { t } = useAppTranslation();
-  const snapshot = useSyncExternalStore(
-    settingsStore.subscribe,
-    settingsStore.getSnapshot
-  );
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
-  useEffect(() => settingsStore.ensureLoaded(), []);
-  const disabled = new Set(snapshot.settings?.disabledBuiltinTools ?? []);
+  const byId = new Map(port.tools.map((tool) => [tool.toolId, tool]));
+  const disabled = new Set(
+    port.tools.filter((tool) => !tool.intentEnabled).map((tool) => tool.toolId)
+  );
 
   const toggle = async (name: string, enabled: boolean) => {
     setPending((current) => new Set(current).add(name));
-    await settingsStore.update(
-      (current) => ({
-        disabledBuiltinTools: enabled
-          ? current.disabledBuiltinTools.filter((item) => item !== name)
-          : [...new Set([...current.disabledBuiltinTools, name])],
-      }),
-      t("settings.tools.builtin.saveFailed")
-    );
-    setPending((current) => {
-      const next = new Set(current);
-      next.delete(name);
-      return next;
-    });
+    try {
+      await port.setEnabled(name, enabled);
+    } finally {
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete(name);
+        return next;
+      });
+    }
+  };
+
+  const reset = async (name: string) => {
+    if (!port.resetTool) return;
+    setPending((current) => new Set(current).add(name));
+    try {
+      await port.resetTool(name);
+    } finally {
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete(name);
+        return next;
+      });
+    }
   };
 
   return (
     <SettingsSection
       title={t("settings.tools.builtin.title")}
-      description={t("settings.tools.builtin.description")}
+      description={t(
+        port.kind === "global"
+          ? "settings.tools.builtin.globalDescription"
+          : "settings.tools.builtin.projectDescription"
+      )}
+      action={
+        port.kind === "project" && port.hasOverrides && port.resetAll ? (
+          <SettingsButton
+            disabled={pending.has("reset-all")}
+            onClick={() => {
+              setPending((current) => new Set(current).add("reset-all"));
+              void port.resetAll?.().finally(() =>
+                setPending((current) => {
+                  const next = new Set(current);
+                  next.delete("reset-all");
+                  return next;
+                })
+              );
+            }}
+            variant="outline"
+          >
+            <RotateCcw className="size-4" />
+            {t("settings.tools.builtin.resetAll")}
+          </SettingsButton>
+        ) : undefined
+      }
+      alert={port.error || undefined}
     >
-      {/* ── 七域从平铺改成页签 ──────────────────────────────────────
-          26 项 7 组平铺约 2.4 屏，是这一页唯一「读到底才算读完」的长尾：
+      {/* ── 八域从平铺改成页签 ──────────────────────────────────────
+          27 项 8 组平铺约 2.4 屏，是这一页唯一「读到底才算读完」的长尾：
           它把同页另外那段挤到折叠线以下，而它自己也没因此好读——没人
           真的从 Sections 一路滚到 Apps，人只想看自己此刻关心的那一域。
 
@@ -138,7 +209,7 @@ export function BuiltinToolsSection() {
                 <TabsTrigger
                   key={domain}
                   value={domain}
-                  className="h-auto flex-none cursor-pointer gap-1.5 rounded-none px-3.5 py-2.5 text-sm group-data-horizontal/tabs:after:bottom-[-1px]"
+                  className="h-auto flex-none cursor-pointer gap-1.5 rounded-none px-3.5 py-2.5 text-sm"
                 >
                 {t(`settings.tools.builtin.domain.${DOMAIN_KEYS[domain]}`)}
                 {off > 0 && (
@@ -166,6 +237,7 @@ export function BuiltinToolsSection() {
           <TabsContent key={domain} value={domain}>
             <div className="divide-y divide-border">
               {tools.map(([name]) => {
+                const tool = byId.get(name);
                 const label = t(
                   `settings.tools.builtin.items.${name}.label`
                 );
@@ -173,8 +245,8 @@ export function BuiltinToolsSection() {
                 <SettingsRow
                   control={
                     <SettingsSwitch
-                      checked={!disabled.has(name)}
-                      disabled={!snapshot.settings || pending.has(name)}
+                      checked={tool?.intentEnabled ?? false}
+                      disabled={!port.ready || pending.has(name)}
                       id={`builtin-tool-${name}`}
                       /* 状态由 aria-checked 播报，标签再说一次「已开启」
                          就成了「列出 Sections 已开启, 开关, 开」。 */
@@ -182,16 +254,43 @@ export function BuiltinToolsSection() {
                       onToggle={(enabled) => void toggle(name, enabled)}
                     />
                   }
-                  description={
+                  badge={
+                    tool ? (
+                      <>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground text-[11px]">
+                          {t(
+                            `settings.tools.builtin.source.${tool.source}`
+                          )}
+                        </span>
+                        {tool.override && port.resetTool && (
+                          <SettingsLabelAction
+                            disabled={pending.has(name)}
+                            label={t("settings.tools.builtin.resetOne", {
+                              name: label,
+                            })}
+                            onClick={() => void reset(name)}
+                          >
+                            <RotateCcw className="size-3.5" />
+                          </SettingsLabelAction>
+                        )}
+                      </>
+                    ) : undefined
+                  }
+                  description={tool ? (
                     <>
+                      {t(
+                        `settings.tools.builtin.effective.${tool.effectiveState}`
+                      )}
+                      {" · "}
                       {t(`settings.tools.builtin.items.${name}.hint`)}{" "}
                       {/* 工具名是标识符不是散文：同字号同色排在句末，
                           想按名字找一个工具就只能逐句读过去。 */}
                       <code className="font-mono text-[11px] text-muted-foreground/70">
                         {name}
                       </code>
+                      <BackendSupport support={tool.backendSupport} />
                     </>
-                  }
+                  ) : t("common.loading")}
                   htmlFor={`builtin-tool-${name}`}
                   key={name}
                   label={label}
@@ -204,5 +303,34 @@ export function BuiltinToolsSection() {
         </SettingsSurface>
       </Tabs>
     </SettingsSection>
+  );
+}
+
+function BackendSupport({
+  support,
+}: {
+  support: readonly ResourceBackendSupportView[];
+}) {
+  const { t } = useAppTranslation();
+  const unsupported = support.filter((item) => !item.supported);
+  if (!unsupported.length) return null;
+  return (
+    <span className="mt-1 block" role="note">
+      {unsupported.map((item) => (
+        <span className="block" key={item.backendId}>
+          {item.backendId}: {t(
+            `settings.tools.supportReason.${item.reason ?? "unknown"}`
+          )}
+          {item.detail ? ` · ${item.detail}` : ""}
+          {item.constraint?.kind === "minimum-runtime-version"
+            ? ` · ${t("settings.tools.supportReason.minimumRuntimeVersion", {
+                minimumVersion: item.constraint.minimumVersion,
+                detectedVersion: item.constraint.detectedVersion ??
+                  t("settings.tools.supportReason.unknownVersion"),
+              })}`
+            : ""}
+        </span>
+      ))}
+    </span>
   );
 }

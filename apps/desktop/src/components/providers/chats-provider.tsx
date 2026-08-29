@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React Context, shared chats, contracts, chats-client, archive-client, composer/messages stores, agent activity and sonner toast
- * [OUTPUT]: Provides ChatsProvider/useChats; chats are always in the createdAt reverse order (Sidebar location is constant, Activity order is exclusive to the Activity view); The event chat is synchronous with the transfer of messages, projection, composer incarnation/delete clearing and activity store; mutation failed to get out toast, warning only to carry the main process
+ * [OUTPUT]: Provides ChatsProvider/useChats with optional global-activity hydration; chat events synchronize messages, composer cleanup, and scoped activity state
  * [POS]: The only source of truth is the chat summary of the providers; Draft Resource Cleaning at the provider level subscribe to one-time connections
  */
 
@@ -82,7 +82,13 @@ function applyEvents(base: ChatSummary[], events: ChatsEvent[]) {
   return sortChats([...summaries.values()]);
 }
 
-export function ChatsProvider({ children }: { children: React.ReactNode }) {
+export function ChatsProvider({
+  children,
+  includeActivity = true,
+}: {
+  children: React.ReactNode;
+  includeActivity?: boolean;
+}) {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [warning, setWarning] = useState("");
   const [loading, setLoading] = useState(true);
@@ -140,6 +146,7 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
 
   // 会话活动：先订阅再补齐初始运行集，prime 只填空，不覆盖订阅期内收到的跃迁。
   useEffect(() => {
+    if (!includeActivity) return;
     let active = true;
     const unsubscribe = onAgentActivity(receiveChatActivity);
     void listAgentActivity()
@@ -151,7 +158,7 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [includeActivity]);
 
   /* 一次性操作失败走 toast；setWarning 只留给主进程事件流的持久告警，
      两种寿命不同的消息不共用同一条侧栏横幅。 */

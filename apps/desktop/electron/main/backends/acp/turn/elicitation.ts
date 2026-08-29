@@ -53,6 +53,13 @@ type SupportedProperty = {
   title?: string | null;
   description?: string | null;
   entries: EnumEntry[];
+  isSecret: boolean;
+};
+
+type CodexPropertyMeta = {
+  questionId?: string;
+  isOtherAnswer: boolean;
+  isSecret: boolean;
 };
 
 export type AcpElicitationMapping = {
@@ -82,6 +89,23 @@ function enumEntries(value: unknown): EnumEntry[] | undefined {
     }];
   });
   return entries.length === value.length ? entries : undefined;
+}
+
+function codexPropertyMeta(value: Record<string, unknown>): CodexPropertyMeta {
+  const meta = value._meta;
+  const codex = meta && typeof meta === "object"
+    ? (meta as Record<string, unknown>).codex
+    : undefined;
+  const record = codex && typeof codex === "object"
+    ? codex as Record<string, unknown>
+    : undefined;
+  return {
+    ...(typeof record?.questionId === "string"
+      ? { questionId: record.questionId }
+      : {}),
+    isOtherAnswer: record?.isOtherAnswer === true,
+    isSecret: record?.isSecret === true,
+  };
 }
 
 function parseProperty(value: unknown): SupportedProperty | undefined {
@@ -131,6 +155,7 @@ function parseProperty(value: unknown): SupportedProperty | undefined {
     title: stringValue(property.title),
     description: stringValue(property.description),
     entries,
+    isSecret: codexPropertyMeta(property).isSecret,
   };
 }
 
@@ -211,6 +236,7 @@ function fieldQuestion(
     ...(property.type === "array" ? { multiSelect: true } : {}),
     ...(required ? { required: true } : {}),
     ...(customKey ? { isOther: true } : {}),
+    ...(property.isSecret ? { isSecret: true } : {}),
   };
   return {
     question,
@@ -230,21 +256,52 @@ export function mapAcpElicitation(
   const form = formRequest(request);
   if (!form?.sessionId) return undefined;
   const properties = form.requestedSchema.properties ?? {};
+  const protocolOther = new Map<string, string>();
+  for (const [key, value] of Object.entries(properties)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const meta = codexPropertyMeta(value as Record<string, unknown>);
+    if (meta.isOtherAnswer && meta.questionId) {
+      protocolOther.set(meta.questionId, key);
+    }
+  }
+  /* Codex collision-resolves `<id>__other` to `__other1`, `__other2`, ….
+     The protocol metadata is therefore authoritative; lexical matching exists
+     only for older payloads whose metadata is entirely absent. */
+  const lexicalOther = new Set<string>();
+  if (protocolOther.size === 0) {
+    for (const key of Object.keys(properties)) {
+      const customOwner = key.endsWith("_custom")
+        ? key.slice(0, -"_custom".length)
+        : undefined;
+      const codexOwner = key.match(/^(.*)__other\d*$/)?.[1];
+      if (
+        (customOwner && customOwner in properties) ||
+        (codexOwner && codexOwner in properties)
+      ) {
+        lexicalOther.add(key);
+      }
+    }
+  }
   const entries = Object.entries(properties).filter(
-    ([key]) => !key.endsWith("_custom")
+    ([key]) => ![...protocolOther.values()].includes(key) && !lexicalOther.has(key)
   );
   if (entries.length === 0) return undefined;
   const mapped = entries.flatMap(([key, value]) => {
     const property = parseProperty(value);
     if (!property) return [];
+    const protocolCustomKey = protocolOther.get(key);
+    const lexicalCustomKey = protocolOther.size === 0
+      ? Object.keys(properties).find((candidate) =>
+          (candidate === `${key}_custom` || candidate.startsWith(`${key}__other`)) &&
+          parseProperty(properties[candidate])?.type === "string"
+        )
+      : undefined;
     return [fieldQuestion(
       form,
       key,
       property,
       entries.length,
-      parseProperty(properties[`${key}_custom`])?.type === "string"
-        ? `${key}_custom`
-        : undefined
+      protocolCustomKey ?? lexicalCustomKey
     )];
   });
   if (mapped.length !== entries.length) return undefined;

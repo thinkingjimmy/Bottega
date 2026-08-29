@@ -91,7 +91,16 @@ const importInputFields = {
   packageRoot: z.string().min(1),
   agent: z.enum(["codex", "claude", "kimi", "opencode"]),
   extensionFulfillment: z.array(z.object({
-    componentIdentity: z.string().min(1),
+    declaredComponentIdentity: z.string().min(1),
+    scope: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("global") }).strict(),
+      z.object({
+        kind: z.literal("project"),
+        projectId: z.string().min(1),
+      }).strict(),
+    ]),
+    projectLifecycleRevision: z.number().int().positive().nullable(),
+    scopeRevision: z.number().int().nonnegative(),
     repoUrl: z.string().min(1),
     requestedRef: z.string(),
     resolvedCommit: z.string().min(1),

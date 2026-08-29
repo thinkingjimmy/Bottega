@@ -11,8 +11,13 @@ import { z } from "zod";
 import type {
   BaseGuiCapability,
   BaseGuiCapabilityDecision,
+  BaseGuiCapabilityScopes,
+  BaseGuiHostActionCapability,
 } from "../../../../shared/apps-ipc";
-import { quarantineDurableFile } from "../../persistence/durable-json";
+import {
+  DurableFileCorruptionError,
+  quarantineDurableFile,
+} from "../../persistence/durable-json";
 
 const digestSchema = z
   .string()
@@ -27,21 +32,45 @@ const decisionSchema: z.ZodType<BaseGuiCapabilityDecision> = z
     generationId: z.string().min(1),
     contentDigest: digestSchema,
     expectedActiveGenerationId: z.string().min(1).nullable(),
-    requestedCapabilities: z.array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read"])).max(4),
-    grantedCapabilities: z.array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read"])).max(4),
+    requestedCapabilities: z.array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read", "workspace-read"])).max(5),
+    grantedCapabilities: z.array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read", "workspace-read"])).max(5),
+    requestedHostActions: z.array(z.enum(["compose-text"])).max(1).default([]),
+    grantedHostActions: z.array(z.enum(["compose-text"])).max(1).default([]),
+    requestedCapabilityScopes: z
+      .object({ workspaceRead: z.literal("design/").optional() })
+      .strict()
+      .default({}),
+    grantedCapabilityScopes: z
+      .object({ workspaceRead: z.literal("design/").optional() })
+      .strict()
+      .default({}),
     state: z.enum(["consent-required", "approved", "declined"]),
   })
   .strict()
   .superRefine((decision, context) => {
     const requested = new Set(decision.requestedCapabilities);
+    const requestedHostActions = new Set(decision.requestedHostActions);
     if (decision.grantedCapabilities.some((capability) => !requested.has(capability))) {
       context.addIssue({ code: "custom", message: "Base GUI grant 必须是 requested capability 的子集" });
     }
-    if (decision.state === "approved" && decision.grantedCapabilities.length === 0) {
-      context.addIssue({ code: "custom", message: "Base GUI approved decision 不能是空 capability" });
+    if (decision.grantedHostActions.some((action) => !requestedHostActions.has(action))) {
+      context.addIssue({ code: "custom", message: "Base GUI host action grant 必须是 requested host action 的子集" });
     }
-    if (decision.state !== "approved" && decision.grantedCapabilities.length > 0) {
-      context.addIssue({ code: "custom", message: "Base GUI 未批准 decision 不能携带 capability" });
+    const workspaceScopeGranted = decision.grantedCapabilityScopes.workspaceRead === "design/";
+    if (workspaceScopeGranted && (
+      decision.requestedCapabilityScopes.workspaceRead !== "design/" ||
+      !decision.grantedCapabilities.includes("workspace-read")
+    )) {
+      context.addIssue({ code: "custom", message: "workspace-read scope 必须与已授予 capability 同时存在" });
+    }
+    const grantCount = decision.grantedCapabilities.length +
+      decision.grantedHostActions.length +
+      (workspaceScopeGranted ? 1 : 0);
+    if (decision.state === "approved" && grantCount === 0) {
+      context.addIssue({ code: "custom", message: "Base GUI approved decision 不能是空 grant" });
+    }
+    if (decision.state !== "approved" && grantCount > 0) {
+      context.addIssue({ code: "custom", message: "Base GUI 未批准 decision 不能携带 grant" });
     }
   });
 
@@ -83,15 +112,19 @@ export class BaseGuiGrantStore {
 
   async initialize() {
     try {
-      this.state = fileSchema.parse(
-        JSON.parse(await readFile(this.filePath, "utf8"))
-      );
+      const content = await readFile(this.filePath, "utf8");
+      try {
+        this.state = fileSchema.parse(JSON.parse(content));
+      } catch (cause) {
+        throw new DurableFileCorruptionError(this.filePath, cause);
+      }
       return;
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
         await this.persist();
         return;
       }
+      if (!(cause instanceof DurableFileCorruptionError)) throw cause;
       /* 旧 schema/损坏不阻断启动：隔离原件后以空账本冷启动（照
          memory/delivery/maintenance-store 的既有隔离惯例）。后果如实——
          全部 generation 的 grant 归空，Base App 重装后重新逐项授权。 */
@@ -111,6 +144,8 @@ export class BaseGuiGrantStore {
     contentDigest: `sha256:${string}`;
     expectedActiveGenerationId: string | null;
     requestedCapabilities: readonly BaseGuiCapability[];
+    requestedHostActions: readonly BaseGuiHostActionCapability[];
+    requestedCapabilityScopes: BaseGuiCapabilityScopes;
   }) {
     return this.mutate(() => {
       const existing = this.state.decisions.find(
@@ -122,16 +157,31 @@ export class BaseGuiGrantStore {
         ? this.projection(input.appId, input.expectedActiveGenerationId)
         : null;
       const requestedCapabilities = uniqueCapabilities(input.requestedCapabilities);
-      const derived = requestedCapabilities.length > 0 &&
+      const requestedHostActions = uniqueHostActions(input.requestedHostActions);
+      const requestedCapabilityScopes = normalizeScopes(
+        input.requestedCapabilityScopes,
+        requestedCapabilities
+      );
+      const hasRequest = requestedCapabilities.length > 0 || requestedHostActions.length > 0;
+      const derived = hasRequest &&
         requestedCapabilities.every((capability) =>
           source?.capabilities.includes(capability)
-        );
+        ) &&
+        requestedHostActions.every((action) =>
+          source?.hostActions.includes(action)
+        ) &&
+        requestedCapabilityScopes.workspaceRead ===
+          source?.capabilityScopes.workspaceRead;
       const decision: BaseGuiCapabilityDecision = {
         decisionId: randomUUID(),
         revision: this.nextRevision(),
         ...input,
         requestedCapabilities,
+        requestedHostActions,
+        requestedCapabilityScopes,
         grantedCapabilities: derived ? requestedCapabilities : [],
+        grantedHostActions: derived ? requestedHostActions : [],
+        grantedCapabilityScopes: derived ? requestedCapabilityScopes : {},
         state: derived ? "approved" : "consent-required",
       };
       this.state.decisions.push(decision);
@@ -146,6 +196,8 @@ export class BaseGuiGrantStore {
     expectedRevision: number;
     contentDigest: `sha256:${string}`;
     grantedCapabilities: readonly BaseGuiCapability[];
+    grantedHostActions?: readonly BaseGuiHostActionCapability[];
+    grantedCapabilityScopes?: BaseGuiCapabilityScopes;
   }) {
     return this.mutate(() => {
       const index = this.state.decisions.findIndex(
@@ -165,11 +217,26 @@ export class BaseGuiGrantStore {
       const grantedCapabilities = uniqueCapabilities(input.grantedCapabilities).filter(
         (capability) => current.requestedCapabilities.includes(capability)
       );
+      const grantedHostActions = uniqueHostActions(input.grantedHostActions ?? []).filter(
+        (action) => current.requestedHostActions.includes(action)
+      );
+      const requestedScopeGrant = normalizeScopes(
+        input.grantedCapabilityScopes ?? {},
+        grantedCapabilities
+      );
+      const grantedCapabilityScopes =
+        current.requestedCapabilityScopes.workspaceRead === "design/" &&
+        requestedScopeGrant.workspaceRead === "design/"
+          ? { workspaceRead: "design/" as const }
+          : {};
+      const approved = grantedCapabilities.length > 0 || grantedHostActions.length > 0;
       const decision: BaseGuiCapabilityDecision = {
         ...current,
         revision: this.nextRevision(),
         grantedCapabilities,
-        state: grantedCapabilities.length ? "approved" : "declined",
+        grantedHostActions,
+        grantedCapabilityScopes,
+        state: approved ? "approved" : "declined",
       };
       this.state.decisions[index] = decision;
       return decision;
@@ -217,6 +284,14 @@ export class BaseGuiGrantStore {
         !revoked && decision?.state === "approved"
           ? [...decision.grantedCapabilities]
           : [],
+      hostActions:
+        !revoked && decision?.state === "approved"
+          ? [...decision.grantedHostActions]
+          : [],
+      capabilityScopes:
+        !revoked && decision?.state === "approved"
+          ? structuredClone(decision.grantedCapabilityScopes)
+          : {},
     };
   }
 
@@ -274,6 +349,19 @@ export class BaseGuiGrantStore {
 
 function uniqueCapabilities(values: readonly BaseGuiCapability[]) {
   return [...new Set(values)];
+}
+
+function uniqueHostActions(values: readonly BaseGuiHostActionCapability[]) {
+  return [...new Set(values)];
+}
+
+function normalizeScopes(
+  scopes: BaseGuiCapabilityScopes,
+  capabilities: readonly BaseGuiCapability[]
+): BaseGuiCapabilityScopes {
+  return scopes.workspaceRead === "design/" && capabilities.includes("workspace-read")
+    ? { workspaceRead: "design/" }
+    : {};
 }
 
 function conflict(message: string) {

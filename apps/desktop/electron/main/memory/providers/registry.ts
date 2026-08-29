@@ -53,7 +53,7 @@ const openviking: MemoryProviderModule = {
       },
     ],
     pypiPackage: "openviking",
-    /* 与 dev/openviking-e2e.lock 的复现指令同源：运行时关键包精确锁版。
+    /* 与 DEV/memory/openviking/e2e.lock 的复现指令同源：运行时关键包精确锁版。
        OpenViking 0.4.11 把 str 直接交给 xxhash；4.0.0 改为只收 bytes，
        会让每次向量主键 partial update 失败，因此它不是可漂移的实现细节。 */
     pinnedPackages: [

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on PromptInput RichNode/RichValue type and browser UTF-16 selection zone deviation syntax
- * [OUTPUT]: Provides RichInput Specification/Range/Caret, skill/mention Queries, Filter by group limit, Multi-Trigger Projection, including the unified identity of entryKind
+ * [INPUT]: Depends on PromptInput RichNode/RichValue type, multi-kind suggestion groups and browser UTF-16 selection zone deviation syntax
+ * [OUTPUT]: Provides RichInput Specification/Range/Caret, skill/mention Queries, Filter by group limit, Multi-Trigger/Multi-Kind Projection, including the unified identity of entryKind
  * [POS]: The RichInput documentation of ui/lib and the candidate's single truth; DOM adapters are responsible for selecting zone translations and pure projection rendering only
  */
 
@@ -157,6 +157,9 @@ export type SuggestionProjection = {
 const groupTriggers = (group: RichSuggestionGroup) =>
   group.triggers ?? [group.kind === "skill" ? "skill" : "mention"];
 
+const groupKinds = (group: RichSuggestionGroup) =>
+  group.kinds ?? [group.kind];
+
 export function projectRichSuggestions({
   query,
   suggestions,
@@ -169,9 +172,10 @@ export function projectRichSuggestions({
   if (!query) return { groups: [], flat: [] };
   const projected = groups.flatMap((group) => {
     if (!groupTriggers(group).includes(query.kind)) return [];
-    const source = suggestions.filter((item) => item.kind === group.kind);
+    const kinds = groupKinds(group);
+    const source = suggestions.filter((item) => kinds.includes(item.kind));
     const matches =
-      group.kind === "workspace-file"
+      kinds.length === 1 && kinds[0] === "workspace-file"
         ? source
         : searchRichSuggestions(source, query.value);
     const items =

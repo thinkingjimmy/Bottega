@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto/timers and shared history-import contracts
- * [OUTPUT]: Provides HistoryAdapter port ((identity/full, two-phase scan)), head read kernel, nanosecond fingerprint, containment, limiting conversion, humanTitle headline holomorphism, AbortSignal through the stable JSONL reading/incomplete-tail retest and CPU/sectional page resolution yield
+ * [OUTPUT]: Provides HistoryAdapter port ((identity/full, two-phase scan)), head read kernel, nanosecond fingerprint, containment, limiting conversion, humanTitle headline holomorphism, AbortSignal through bounded active-revision/incomplete-tail JSONL retries and CPU/sectional page resolution yield
  * [POS]: The history-import purely mechanistic layer; Claude/Codex adapter does not separate the invention of boundaries and abstractions
  */
 
@@ -191,16 +191,26 @@ export async function readStableJsonl(
   expected?: HistoryFileFingerprint,
   signal?: AbortSignal
 ) {
-  let stable = await readStableText(path, expected, signal);
-  let source = jsonl(stable.body);
-  for (const waitMs of INCOMPLETE_TAIL_RETRY_MS) {
-    if (!source.incompleteTail) break;
-    if (signal) await delay(waitMs, undefined, { signal });
-    else await delay(waitMs);
-    stable = await readStableText(path, expected, signal);
-    source = jsonl(stable.body);
+  let latest: (Awaited<ReturnType<typeof readStableText>> & ReturnType<typeof jsonl>) | null = null;
+  let lastFailure: unknown;
+  for (const waitMs of [0, ...INCOMPLETE_TAIL_RETRY_MS]) {
+    if (waitMs && signal) await delay(waitMs, undefined, { signal });
+    else if (waitMs) await delay(waitMs);
+    try {
+      const stable = await readStableText(path, expected, signal);
+      latest = { ...stable, ...jsonl(stable.body) };
+      if (!latest.incompleteTail) return latest;
+    } catch (cause) {
+      lastFailure = cause;
+      if (expected || !isHistoryRevisionChange(cause)) throw cause;
+    }
   }
-  return { ...stable, ...source };
+  if (latest) return latest;
+  throw lastFailure;
+}
+
+function isHistoryRevisionChange(cause: unknown) {
+  return (cause as { code?: unknown })?.code === "HISTORY_REVISION_CHANGED";
 }
 
 /** 搜索解析每 256 行把控制权交还 main loop，使 cancel/页截止能中止 CPU 扫描。 */

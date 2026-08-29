@@ -276,6 +276,7 @@ export const noticeOutboxSchema = z
     id: z.string().min(1).max(128),
     chatId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
     message: z.unknown(),
+    dependsOnMessageId: z.string().min(1).max(128).optional(),
     state: z.enum(["pending", "appended"]),
   })
   .strict();

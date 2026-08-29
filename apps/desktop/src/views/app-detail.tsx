@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on react-router, Apps Provider, base app detail, README adornment, unified app settings panel, apps client, Web app frame/edit/repair
- * [OUTPUT]: Provides AppDetailView, distributes Base/Web according to manifest.kind, and accepts Base import retry/cancel, README, third-party settings, and isolates from the App id status
- * [POS]: The App details the views of the routes; rightSurface states that set/log/edit are mutually exclusive, and that boundaries prevent Base App from triggering Web runtime
+ * [OUTPUT]: Provides AppDetailView, residence-gated Base Studio rendering, Base/Web distribution, retry/cancel, README, and third-party settings
+ * [POS]: App detail route; web runtime start is gated by the positive servesWebRuntime predicate, and a nonresident main route renders a transfer card before any Base Studio hook or mutation surface mounts
  */
 
 import { useEffect, useState } from "react";
@@ -50,12 +50,38 @@ import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { errorMessage } from "@/lib/errors";
+import { appStudioSurface } from "../../shared/window-surfaces-ipc";
+import {
+  isCurrentResidence,
+  useSurfaceResidence,
+} from "@/lib/window-surfaces-client";
+import { SurfaceAwayCard } from "@/components/apps/surface-away-card";
+import { servesWebRuntime, type AppRecord } from "../../shared/apps-ipc";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 type FrameState =
   | { type: "idle" | "loading" | "stopped"; message?: string }
   | { type: "online"; origin: string }
   | { type: "error"; message: string };
 type RightSurface = "none" | "settings" | "log" | "edit";
+
+function ResidentBaseAppDetail({ record }: { record: AppRecord }) {
+  const { t } = useAppTranslation();
+  const surface = appStudioSurface(record.id);
+  const residence = useSurfaceResidence(surface);
+  const route = `/apps/${record.id}/app`;
+  if (!residence && window.windowSurfaces) {
+    return (
+      <div className="grid size-full place-items-center text-muted-foreground text-sm">
+        {t("windowSurface.checkingResidence")}
+      </div>
+    );
+  }
+  if (residence && !isCurrentResidence(residence)) {
+    return <SurfaceAwayCard residence={residence} route={route} />;
+  }
+  return <BaseAppDetail key={record.id} record={record} />;
+}
 
 export function AppDetailView() {
   const { id } = useParams();
@@ -72,13 +98,16 @@ export function AppDetailView() {
   const record = app?.kind === "installed" ? app.record : null;
   const recordId = record?.id;
   const recordState = record?.state;
-  const recordKind = record?.manifest?.kind;
+  /* 启 runtime 的资格必须正着问：manifest 是 active generation 的投影，成代前
+     它是 null，反向的 `kind !== "base"` 会把「还不知道」读成「是 Web App」，
+     于是这条 effect 会替 Base App 去开 web runtime，把它打成 update-failed。 */
+  const webRuntime = servesWebRuntime(record?.manifest);
   const name =
     record?.manifest?.name ??
     (app?.kind === "placeholder" ? app.name : record?.displayName ?? "App");
 
   useEffect(() => {
-    if (!recordId || recordState !== "ready" || recordKind === "base") return;
+    if (!recordId || recordState !== "ready" || !webRuntime) return;
     let active = true;
     const timer = window.setTimeout(() => {
       if (!active) return;
@@ -102,7 +131,7 @@ export function AppDetailView() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [recordId, recordKind, recordState]);
+  }, [recordId, recordState, webRuntime]);
 
   useEffect(() => {
     if (rightSurface !== "log" || !recordId) return;
@@ -154,7 +183,7 @@ export function AppDetailView() {
     return <Navigate to="/apps" replace />;
   }
   if (record.manifest?.kind === "base") {
-    return <BaseAppDetail key={record.id} record={record} />;
+    return <ResidentBaseAppDetail record={record} />;
   }
 
   const effectiveFrame =

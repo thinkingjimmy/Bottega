@@ -1,8 +1,8 @@
 "use client";
 /**
- * [INPUT]: Depends on React, I18n, ui/Sidebar, lib/brand, the dark product identifier, the valid theme for the lib/theme, the sidebar History/Search sub-module, the global shortcut for the lib/shortcuts, the apps/cats/bases/history Provider, the memory/settings navigation with Tools/Skills/extensions, shared ChatSummary and router
- * [OUTPUT]: Provides the same handler as the Quick action in the dashboard with the History Federal line, Activity neighboring Search and the K-K command panel, with the same handle as the Quick action in the dashboard, the central toggleSidebar shortcut handler (Cmd/Ctrl+B absorbed from packages/ui, rebindable) and the Settings-group Keyboard-shortcuts nav item, with the effective theme switching and the left-handed horizontal brand Logo aligned with the menu icon optics, with the alert/running dual entry of Memory, and with the instantly updated AppSidebar in the current language; Busy animation follows reduced-motion, with bottom movements keeping 44px to the true semantics; Application and setup panels remain attached while inactive but hidden from layout/barrier-free trees; Top window decoration by platform: macOS keeps red and green lights 40px, leaves white with floating folding tabs, Windows removes white and folds the tabs and inserts them into the logo on the right side (with the Search/Activity button)
- * [POS]: The inset left navigation can be scaled up globally and consumed by main.tsx; The single Sidebar lifecycle avoids local interactions such as the destruction of the Settings or Activity line by the Project lineThe covered panel shall not be allowed to claim to be illuminated, so illumination shall be deemed to have a value therein; Root Chats are filtered and not rearranged, and the ranking quality is unique to the ChatsProvider's createdAt rearrangement
+ * [INPUT]: Depends on React, I18n, ui/Sidebar, lib/brand/theme/update-client, History/Search/shortcuts, Apps/Chats/Bases providers, Memory/Settings navigation, shared ChatSummary, external-link IPC, and router
+ * [OUTPUT]: Provides persistent application/settings navigation, About entry, Memory attention, and a conditional 44px blue update action with progress and platform-specific install behavior
+ * [POS]: Sole persistent navigation surface; main.tsx owns its lifetime while active-section facts remain centralized in settings-navigation
  */
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
@@ -13,6 +13,8 @@ import {
   Bell,
   ChartNoAxesColumnIncreasing,
   Database,
+  Download,
+  Info,
   Keyboard,
   LayoutGrid,
   Loader2,
@@ -24,7 +26,6 @@ import {
   Server,
   SlidersHorizontal,
   BrainCircuit,
-  Blocks,
   Globe,
   SquarePen,
   TriangleAlert,
@@ -89,6 +90,8 @@ import {
   type SettingsDestination,
   type SettingsOverlaySection,
 } from "@/lib/settings-navigation";
+import { openExternal } from "@/lib/agent-client";
+import { RELEASE_URL, updateStore } from "@/lib/update-client";
 type AppSidebarProps = {
   /* 当前亮着的那一档，覆盖层与路由已在 main.tsx 折成一个值：侧栏不需要
      知道谁走路由、谁走覆盖层，五个档位一律只比这一个值。 */
@@ -101,6 +104,7 @@ type AppSidebarProps = {
   onViewChange: (view: SidebarView) => void;
   onOpenSettings: () => void;
   onSelectSettings: (section: SettingsOverlaySection) => void;
+  onOpenSkillsSettings: () => void;
   /* Memory 是真实路由而非覆盖层档位，故与 onSelectSettings 并列而非其一档。 */
   onOpenMemorySettings: () => void;
   onCloseSettings: () => void;
@@ -267,6 +271,7 @@ export function AppSidebar({
   onViewChange,
   onOpenSettings,
   onSelectSettings,
+  onOpenSkillsSettings,
   onOpenMemorySettings,
   onCloseSettings,
 }: AppSidebarProps) {
@@ -290,8 +295,13 @@ export function AppSidebar({
     memoryStore.getSnapshot
   );
   const memoryStatus = memorySnapshot.status;
+  const updateSnapshot = useSyncExternalStore(
+    updateStore.subscribe,
+    updateStore.getSnapshot
+  );
   useEffect(() => {
     memoryStore.ensureLoaded();
+    updateStore.ensureLoaded();
   }, []);
   const memoryAttention = memoryNeedsAttention(memoryStatus);
   const memoryBusy = Object.values(memorySnapshot.runtimes).some(
@@ -374,6 +384,16 @@ export function AppSidebar({
                   <span>{t("common.keyboardShortcuts")}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="cursor-pointer"
+                  isActive={activeSettings === "about"}
+                  onClick={() => onSelectSettings("about")}
+                >
+                  <Info />
+                  <span>{t("settings.about.title")}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -447,25 +467,10 @@ export function AppSidebar({
                 <SidebarMenuButton
                   className="cursor-pointer"
                   isActive={activeSettings === "skills"}
-                  onClick={() => onSelectSettings("skills")}
+                  onClick={onOpenSkillsSettings}
                 >
                   <SlidersHorizontal />
                   <span>{t("common.skills")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {/* Skills 把库、四家投影与 Codex 会话档从 Tools 与扩展之间显式分层。
-                  扩展这里曾是两条——Skill 仓库
-                  与 Agent Plugins 各占一行，而包属于哪一族要等字节冻结后
-                  才知道，于是侧栏在问一个用户答不上的问题。合成一条之后，
-                  「我装的东西在哪」在整个产品里只有一个答案。 */}
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "extensions"}
-                  onClick={() => onSelectSettings("extensions")}
-                >
-                  <Blocks />
-                  <span>{t("common.extensions")}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -668,6 +673,51 @@ export function AppSidebar({
                     {memoryAttention
                       ? <TriangleAlert className="size-4" />
                       : <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />}
+                  </button>
+                )}
+                {["available", "downloading", "installing"].includes(
+                  updateSnapshot.phase
+                ) && (
+                  <button
+                    type="button"
+                    aria-label={
+                      updateSnapshot.phase === "available"
+                        ? updateSnapshot.automaticInstall
+                          ? t("settings.about.upgrade")
+                          : t("settings.about.manualUpgrade")
+                        : updateSnapshot.phase === "downloading"
+                          ? t("settings.about.downloading", {
+                              version:
+                                updateSnapshot.availableVersion ??
+                                updateSnapshot.currentVersion,
+                              percent: Math.round(
+                                updateSnapshot.progress?.percent ?? 0
+                              ),
+                            })
+                          : t("settings.about.installing")
+                    }
+                    disabled={updateSnapshot.phase !== "available"}
+                    className="ml-1 flex size-11 shrink-0 touch-manipulation cursor-pointer items-center justify-center rounded-md bg-blue-600 text-white outline-none transition-colors hover:bg-blue-500 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar disabled:cursor-wait disabled:opacity-80 motion-reduce:transition-none dark:bg-blue-500 dark:hover:bg-blue-400"
+                    onClick={() => {
+                      if (updateSnapshot.automaticInstall) {
+                        void updateStore.downloadAndInstall();
+                      } else {
+                        void openExternal(RELEASE_URL);
+                      }
+                    }}
+                  >
+                    {updateSnapshot.phase === "available" ? (
+                      <Download aria-hidden className="size-4" />
+                    ) : updateSnapshot.phase === "downloading" ? (
+                      <span className="text-[10px] font-semibold tabular-nums">
+                        {Math.round(updateSnapshot.progress?.percent ?? 0)}%
+                      </span>
+                    ) : (
+                      <Loader2
+                        aria-hidden
+                        className="size-4 motion-safe:animate-spin"
+                      />
+                    )}
                   </button>
                 )}
               </SidebarMenuItem>

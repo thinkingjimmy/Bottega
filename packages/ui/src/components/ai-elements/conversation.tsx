@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * [INPUT]: Depends on use-stick-to-bottom, ui Button Original language and AI SDK UIMessage type
- * [OUTPUT]: Provides Conversation fixed horizontal boundary, sticky bottom scrolling container, empty bottom, back-end button, optional unlocking signal useScrollLockRelease and messagesToMarkdown to download
+ * [INPUT]: Depends on use-stick-to-bottom, ui Button/SlimScroller Original language and AI SDK UIMessage type
+ * [OUTPUT]: Provides Conversation fixed horizontal boundary, unified-scrollbar sticky bottom container, empty bottom, back-end button, optional unlocking signal useScrollLockRelease and messagesToMarkdown to download
  * [POS]: The meeting of ai-elements rolled the skeleton; Unified prohibits whole sessions from rolling horizontally, and broad content from local containers within messages
  */
 
 import { Button } from "@ai-chat/ui/components/ui/button";
+import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { cn } from "@ai-chat/ui/lib/utils";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
@@ -56,21 +57,44 @@ export const Conversation = ({
   </StickToBottom>
 );
 
-export type ConversationContentProps = ComponentProps<
-  typeof StickToBottom.Content
->;
+export type ConversationContentProps = Omit<
+  ComponentProps<typeof StickToBottom.Content>,
+  "children"
+> & { children?: ReactNode };
 
 export const ConversationContent = ({
+  children,
   className,
   scrollClassName,
   ...props
-}: ConversationContentProps) => (
-  <StickToBottom.Content
-    className={cn("flex w-full min-w-0 max-w-full flex-col gap-8 p-4", className)}
-    scrollClassName={cn("overflow-x-hidden", scrollClassName)}
-    {...props}
-  />
-);
+}: ConversationContentProps) => {
+  const {
+    scrollRef: setScrollElement,
+    contentRef: setContentElement,
+  } = useStickToBottomContext();
+  return (
+    <SlimScroller
+      className={cn("overflow-x-hidden overflow-y-auto", scrollClassName)}
+      ref={setScrollElement}
+      style={{
+        height: "100%",
+        width: "100%",
+        scrollbarGutter: "stable both-edges",
+      }}
+    >
+      <div
+        className={cn(
+          "flex w-full min-w-0 max-w-full flex-col gap-8 p-4",
+          className
+        )}
+        ref={setContentElement}
+        {...props}
+      >
+        {children}
+      </div>
+    </SlimScroller>
+  );
+};
 
 export type ConversationEmptyStateProps = ComponentProps<"div"> & {
   title?: string;

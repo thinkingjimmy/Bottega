@@ -1,13 +1,12 @@
 /**
- * [INPUT]: Depends on the AppStore, ChatStore, ProjectStore and the lifecycle AdmissionGate/IntentStore
- * [OUTPUT]: Provides AppChatSlots, distributes durable edit/use draft as requested by the ID box, and canonical closes slots after creating or initiating a check
- * [POS]: The app module is a single-writer session slot; Just assign conversation ID, without creating canonical chat in advance
+ * [INPUT]: Depends on AppStore, ChatStore, ProjectStore, lifecycle AdmissionGate/IntentStore, and the ChatsService canonical App-chat creation port
+ * [OUTPUT]: Provides AppChatSlots; edit may retain a durable draft, while use is materialized as a canonical ChatRecord before the slot transaction settles
+ * [POS]: App module's single-writer session-slot saga; it never exposes a use conversation id without a durable incarnation
  */
 
 import { customAlphabet } from "nanoid";
 import {
   type AppChatSlot,
-  type AppRecord,
   type EnsureAppChatSlotInput,
 } from "../../../shared/apps-ipc";
 import type { AppChatRole } from "../../../shared/chats-ipc";
@@ -27,7 +26,13 @@ type Dependencies = {
   chats: ChatStore;
   projects: ProjectStore;
   gate: AdmissionGate;
-  publish(record: AppRecord): void;
+  canonicalizeUse(input: {
+    intentId: string;
+    id: string;
+    appId: string;
+    projectId: string;
+    title: string;
+  }): Promise<{ id: string; incarnationId: string }>;
   createId?: () => string;
 };
 
@@ -52,6 +57,9 @@ export class AppChatSlots {
         kind: "chat-slot",
         requestId: input.requestId,
         input: { appId: input.appId, role: input.role, mode },
+        allocate: () => ({
+          chatId: this.proposedChatId(input.appId, input.role, mode),
+        }),
       },
       (intent) => this.run(intent)
     );
@@ -96,11 +104,10 @@ export class AppChatSlots {
     if (record[key]?.id !== chatId || record[key]?.state === "canonical") {
       return;
     }
-    const saved = await this.dependencies.apps.update(appId, (current) => ({
+    await this.dependencies.apps.update(appId, (current) => ({
       ...current,
       [key]: { id: chatId, state: "canonical" },
     }));
-    this.dependencies.publish(saved);
   }
 
   roleOf(chatId: string) {
@@ -128,12 +135,11 @@ export class AppChatSlots {
       ) {
         continue;
       }
-      const saved = await this.dependencies.apps.update(app.id, (current) => ({
+      await this.dependencies.apps.update(app.id, (current) => ({
         ...current,
         editChatSlot,
         activeUseChatSlot,
       }));
-      this.dependencies.publish(saved);
     }
   }
 
@@ -174,13 +180,42 @@ export class AppChatSlots {
       input.mode === "reuse" && current
         ? this.refreshState(current, input.role)
         : null;
-    const slot = reusable ?? { id: this.createId(), state: "draft" as const };
+    const allocatedChatId = intent.allocated.chatId;
+    if (!reusable && typeof allocatedChatId !== "string") {
+      throw new Error("App chat 槽位 intent 缺少冻结 chatId");
+    }
+    let slot = reusable ?? {
+      id: allocatedChatId as string,
+      state: "draft" as const,
+    };
+    if (input.role === "use" && slot.state === "draft") {
+      const project = this.dependencies.projects.findByAppId(input.appId);
+      if (!project) {
+        return {
+          status: "business-rejected",
+          error: {
+            code: "APP_PROJECT_MISSING",
+            message: "App 使用 chat 缺少绑定 Project",
+          },
+        };
+      }
+      const chat = await this.dependencies.canonicalizeUse({
+        intentId: intent.intentId,
+        id: slot.id,
+        appId: input.appId,
+        projectId: project.id,
+        title: record.displayName,
+      });
+      if (chat.id !== slot.id || !chat.incarnationId) {
+        throw new Error("App use chat canonical identity 与槽位不一致");
+      }
+      slot = { id: chat.id, state: "canonical" };
+    }
     if (sameSlot(slot, current)) return { status: "done", receipt: slot };
-    const saved = await this.dependencies.apps.update(input.appId, (value) => ({
+    await this.dependencies.apps.update(input.appId, (value) => ({
       ...value,
       [key]: slot,
     }));
-    this.dependencies.publish(saved);
     return { status: "done", receipt: slot };
   }
 
@@ -191,6 +226,18 @@ export class AppChatSlots {
     const actual = this.dependencies.chats.getAppRole(slot.id);
     if (actual === undefined) return slot.state === "draft" ? slot : null;
     return actual === role ? { id: slot.id, state: "canonical" } : null;
+  }
+
+  private proposedChatId(
+    appId: string,
+    role: AppChatRole,
+    mode: "reuse" | "new"
+  ) {
+    const current = this.dependencies.apps.get(appId)?.[slotKey(role)] ?? null;
+    const reusable = mode === "reuse" && current
+      ? this.refreshState(current, role)
+      : null;
+    return reusable?.id ?? this.createId();
   }
 
   private reconciledSlot(

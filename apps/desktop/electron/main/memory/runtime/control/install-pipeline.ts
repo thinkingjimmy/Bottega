@@ -1,12 +1,16 @@
 /**
- * [INPUT]: Depends on InstallSpec/ManagedRoots, lock version toolchain, model/product authentication native language, configuration controller and call linear step/publish ports
- * [OUTPUT]: Provides runManagedInstallPipeline, recoverManagedManifest and commitReadyVersion: to move the installation data pipeline forward by intent/installing/candidate-installed, conservative marker, recovery and last-known-good atom promotion performed by just testing the same version results
- * [POS]: The main/memory/runtime/control installation data pipeline; Coordinator maintains a standby, ready for affirmations and operational arbitration
+ * [INPUT]: Depends on InstallSpec/ManagedRoots, the locked toolchain, configuration controller, manifest store, and coordinator-supplied readiness proof
+ * [OUTPUT]: Provides install/recovery pipelines and commitReadyVersion for intent → installing → candidate-installed → ready promotion
+ * [POS]: The managed installation state machine; it records candidate facts while the coordinator owns live readiness arbitration
  */
 
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { MemoryProviderDescriptor, MemoryRuntimeSnapshot } from "../../../../../shared/memory-ipc";
+import type {
+  MemoryProviderDescriptor,
+  MemoryRuntimeSnapshot,
+  MemoryRuntimeStep,
+} from "../../../../../shared/memory-ipc";
 import type { InstallSpec } from "../../core/provider";
 import type { ManagedRuntimeConfigController } from "./config-controller";
 import {
@@ -22,7 +26,6 @@ import {
 } from "../managed/manifest";
 import type { ManagedToolchain } from "../managed/toolchain";
 import type { ManagedInstallTarget } from "../managed/install-target";
-import type { StepKind } from "../progress";
 
 type SnapshotOverrides = Partial<
   Omit<MemoryRuntimeSnapshot, "providerId" | "revision">
@@ -75,7 +78,7 @@ export async function runManagedInstallPipeline(input: {
   fetcher: typeof fetch;
   config: Pick<ManagedRuntimeConfigController, "convergeManagedConfigs" | "installPlist">;
   initialize(): Promise<{ kind: string }>;
-  beginStep<T>(kind: StepKind, label: string, action: () => Promise<T>): Promise<T>;
+  beginStep<T>(step: MemoryRuntimeStep, action: () => Promise<T>): Promise<T>;
   exec(
     command: string,
     args: string[],
@@ -86,14 +89,12 @@ export async function runManagedInstallPipeline(input: {
 }) {
   await input.roots.ensure();
   const uv = await input.beginStep(
-    "prepare-toolchain",
-    "准备锁版 uv",
+    { kind: "prepare-toolchain" },
     () => input.toolchain.resolve()
   );
   const venv = join(input.roots.installRoot, "venv");
   await input.beginStep(
-    "ensure-venv",
-    `创建 Python ${input.spec.pythonVersion} 环境`,
+    { kind: "ensure-venv", version: input.spec.pythonVersion },
     async () => {
       if (await exists(join(venv, "pyvenv.cfg"))) return;
       await input.exec(
@@ -104,8 +105,7 @@ export async function runManagedInstallPipeline(input: {
     }
   );
   const verified = await input.beginStep(
-    "fetch-artifacts",
-    "下载并校验安装包",
+    { kind: "fetch-artifacts" },
     () => fetchVerifiedArtifacts(
       input.spec,
       input.roots,
@@ -115,8 +115,15 @@ export async function runManagedInstallPipeline(input: {
   );
   const packages = [...verified, ...input.target.uvPackages];
   await input.beginStep(
-    "install-packages",
-    `${input.target.stepLabel}（可能需数分钟）`,
+    {
+      kind: "install-packages",
+      version: input.target.version,
+      /* 自选版本与锁定版本要说成两句话：前者是用户刚做的决定，后者是
+         产品的默认——同一句「安装 X」抹掉了这个区别。 */
+      ...(input.target.version === input.spec.lockedVersion
+        ? {}
+        : { context: "selected" as const }),
+    },
     async () => {
       if (!packages.length) return;
       await input.exec(
@@ -149,7 +156,7 @@ export async function runManagedInstallPipeline(input: {
     dataRoot: input.roots.dataRoot,
     baseUrl: input.descriptor.defaultBaseUrl,
     installedVersion: previous?.installedVersion ?? input.target.version,
-    versionChange: previous && previous.installedVersion !== input.target.version
+    versionChange: !previous || previous.installedVersion !== input.target.version
       ? {
           targetVersion: input.target.version,
           phase: "candidate-installed",
@@ -162,13 +169,12 @@ export async function runManagedInstallPipeline(input: {
     installedAt: Date.now(),
     files: previous?.files ?? {},
   };
-  await input.beginStep("register-manifest", "登记托管安装", async () => {
+  await input.beginStep({ kind: "register-manifest" }, async () => {
     await input.roots.writeManifest(manifest);
     await input.roots.writeMarker(manifest);
   });
   const initialized = await input.beginStep(
-    "initialize",
-    "初始化数据根",
+    { kind: "initialize" },
     input.initialize
   );
   /* 字节口径整体归 ensureModelAssets：这里只把它给的帧按 300ms 节流
@@ -176,8 +182,7 @@ export async function runManagedInstallPipeline(input: {
   let lastTransferPublish = 0;
   let recoveredModel = false;
   const models = await input.beginStep(
-    "model-assets",
-    "下载 embedding 模型",
+    { kind: "model-assets" },
     async () => {
       const outcome = await ensureModelAssets(input.roots, input.spec, {
         fetcher: input.fetcher,
@@ -202,14 +207,13 @@ export async function runManagedInstallPipeline(input: {
     }
   );
   const convergence = await input.beginStep(
-    "config-converge",
-    "收敛托管配置",
+    { kind: "config-converge" },
     () => input.config.convergeManagedConfigs()
   );
   if (convergence.state === "converged") {
     await Promise.all(models.legacySources.map((path) => rm(path, { force: true })));
   }
-  await input.beginStep("install-plist", "写入登录自启", async () => {
+  await input.beginStep({ kind: "install-plist" }, async () => {
     if (!input.startAfter || initialized.kind === "awaiting-secrets") {
       await rm(input.launchAgentPath, { force: true });
       input.appendLog("提交密钥后将注册登录自启并启动服务");
@@ -225,7 +229,9 @@ export async function commitReadyVersion(input: {
   spec: InstallSpec;
   target: ManagedInstallTarget;
   measuredVersion: string | null;
+  ready: boolean;
 }) {
+  if (!input.ready) return { promoted: false as const };
   const manifest = await input.roots.readManifest();
   if (!manifest) throw new Error("就绪后托管 manifest 缺失");
   const measured = input.measuredVersion;
@@ -249,4 +255,5 @@ export async function commitReadyVersion(input: {
     versionSource: measured === input.spec.lockedVersion ? "locked" : "selected",
     versionHistory,
   });
+  return { promoted: true as const };
 }

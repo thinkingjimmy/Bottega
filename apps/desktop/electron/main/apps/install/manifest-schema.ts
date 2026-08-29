@@ -73,11 +73,12 @@ const common = {
   description: z.string().trim().min(1).max(500),
   icon: z.string().trim().min(1).max(16),
   requirements: requirementsSchema.nullable(),
+  defaultOpenMode: z.enum(["same-window", "new-window"]).optional(),
   extensionRequirements: z
     .array(
       z
         .object({
-          componentIdentity: z.string().trim().min(3).max(300),
+          declaredComponentIdentity: z.string().trim().min(3).max(300),
           packageDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
           versionRange: z.string().trim().min(1).max(120).optional(),
           required: z.boolean(),
@@ -108,14 +109,14 @@ const common = {
     .superRefine((requirements, context) => {
       const seen = new Set<string>();
       requirements.forEach((requirement, index) => {
-        if (seen.has(requirement.componentIdentity)) {
+        if (seen.has(requirement.declaredComponentIdentity)) {
           context.addIssue({
             code: "custom",
-            path: [index, "componentIdentity"],
-            message: `extension componentIdentity 重复：${requirement.componentIdentity}`,
+            path: [index, "declaredComponentIdentity"],
+            message: `extension declaredComponentIdentity 重复：${requirement.declaredComponentIdentity}`,
           });
         }
-        seen.add(requirement.componentIdentity);
+        seen.add(requirement.declaredComponentIdentity);
       });
     })
     .optional(),
@@ -205,11 +206,29 @@ const baseManifestSchema = z
     gui: z
       .object({
         capabilities: z
-          .array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read"]))
-          .max(4)
+          .array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read", "workspace-read"]))
+          .max(5)
           .refine((values) => new Set(values).size === values.length),
+        hostActions: z
+          .array(z.enum(["compose-text"]))
+          .max(1)
+          .refine((values) => new Set(values).size === values.length)
+          .optional(),
+        capabilityScopes: z
+          .object({ workspaceRead: z.literal("design/").optional() })
+          .strict()
+          .optional(),
       })
       .strict()
+      .superRefine((gui, context) => {
+        const requested = gui.capabilities.includes("workspace-read");
+        if (requested !== (gui.capabilityScopes?.workspaceRead === "design/")) {
+          context.addIssue({
+            code: "custom",
+            message: "workspace-read capability and design/ scope must be declared together",
+          });
+        }
+      })
       .optional(),
   })
   .strict();
@@ -224,6 +243,7 @@ const commonJsonProperties = {
   name: { type: "string", minLength: 1, maxLength: 120 },
   description: { type: "string", minLength: 1, maxLength: 500 },
   icon: { type: "string", minLength: 1, maxLength: 16 },
+  defaultOpenMode: { type: "string", enum: ["same-window", "new-window"] },
   requirements: {
     anyOf: [
       { type: "null" },
@@ -270,9 +290,9 @@ const commonJsonProperties = {
     items: {
       type: "object",
       additionalProperties: false,
-      required: ["componentIdentity", "required"],
+      required: ["declaredComponentIdentity", "required"],
       properties: {
-        componentIdentity: { type: "string", minLength: 3, maxLength: 300 },
+        declaredComponentIdentity: { type: "string", minLength: 3, maxLength: 300 },
         packageDigest: {
           type: "string",
           pattern: "^sha256:[a-f0-9]{64}$",
@@ -424,10 +444,21 @@ export const APP_MANIFEST_JSON_SCHEMA = {
             capabilities: {
               type: "array",
               uniqueItems: true,
-              maxItems: 4,
+              maxItems: 5,
               items: {
-                enum: ["row-insert", "row-patch", "row-delete", "attachment-read"],
+                enum: ["row-insert", "row-patch", "row-delete", "attachment-read", "workspace-read"],
               },
+            },
+            hostActions: {
+              type: "array",
+              uniqueItems: true,
+              maxItems: 1,
+              items: { enum: ["compose-text"] },
+            },
+            capabilityScopes: {
+              type: "object",
+              additionalProperties: false,
+              properties: { workspaceRead: { const: "design/" } },
             },
           },
         },

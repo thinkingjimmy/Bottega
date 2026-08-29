@@ -111,7 +111,7 @@ export class AppExtensionReservationLedger {
         await this.registry.acquireGenerationRef(ref, refOwner(reservation));
       }
       return structuredClone(reservation);
-    }, false);
+    });
   }
 
   commit(input: {
@@ -171,7 +171,7 @@ export class AppExtensionReservationLedger {
       fence.disposition = "aborted";
       this.retire(generationBuildId);
       return structuredClone(fence);
-    }, false);
+    });
   }
 
   release(generationBuildId: string, expectedRevision: number) {
@@ -256,7 +256,7 @@ export class AppExtensionReservationLedger {
     }
   }
 
-  private async mutate<T>(operation: () => T | Promise<T>, persist = true) {
+  private async mutate<T>(operation: () => T | Promise<T>) {
     const wait = this.serial;
     let release!: () => void;
     this.serial = new Promise<void>((resolve) => {
@@ -266,8 +266,7 @@ export class AppExtensionReservationLedger {
     const previous = structuredClone(this.state);
     try {
       const value = await operation();
-      if (persist) await this.persist();
-      else await this.persist();
+      await this.persist();
       return value;
     } catch (cause) {
       this.state = previous;

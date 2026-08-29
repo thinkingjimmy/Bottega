@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, shared Memory/AppSettings Compatibility with MEMORY_SHARING_MODES, application Intl locale, view-local Consent/history importing state machine, settings/memory stores, memoryMasterRow derived from memoryServiceNeedsAttention, running configuration/destructive capability with Settings
- * [OUTPUT]: Provides MemorySettingsView: A card loads "remember not" with a secondary "where to save" below it, sharing the range, explicit historical import, application language age dates, observing and hanging; All changes confirmed, suspended, restored, failed to maintain configuration and rebuilt unloaded as of
- * [POS]: Settings › Memory product control panel; In the order of the order in which it is decided, the user intends to go only through Memory, specifically mutation, and execute the fact only read main-owned snapshots
+ * [INPUT]: Depends on React, shared Memory/AppSettings contracts with MEMORY_SHARING_MODES, app Intl locale, view-local consent/history-import/setup modules, settings/memory components, memoryMasterRow, and memory-store authority flows
+ * [OUTPUT]: Provides MemorySettingsView: a provider-bound, backtrackable install-first setup followed by the settled product switch, engine roster, sharing scope, activity, and attention surfaces; the activity header hosts both corpus actions — history import fills those numbers, rebuild clears them
+ * [POS]: Settings › Memory product console; this layer declares user intent and dialog orchestration while all durable facts come from main-owned snapshots
  */
 
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -11,6 +11,7 @@ import { PageShell } from "@/components/page-shell";
 import { MemoryActivityGrid } from "@/components/settings/memory/memory-activity-grid";
 import { MemoryAttentionList } from "@/components/settings/memory/memory-attention-list";
 import { MemoryDisclosureDialog } from "@/components/settings/memory/memory-disclosure-dialog";
+import { MemoryEngineList } from "@/components/settings/memory/memory-engine-list";
 import {
   MemoryRebuildButton,
   MemoryRebuildDialog,
@@ -22,13 +23,12 @@ import {
   MemoryRuntimePanel,
   MemoryUninstallDialog,
 } from "@/components/settings/memory/memory-runtime-panel";
-import { MemoryServicePicker } from "@/components/settings/memory/memory-service-picker";
 import { MemorySupplyList } from "@/components/settings/memory/memory-supply-list";
 import {
   SettingsCanvas,
   SettingsChoiceRow,
+  SettingsIconButton,
   SettingsList,
-  SettingsRow,
   SettingsSection,
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
@@ -56,7 +56,8 @@ import type {
   MemoryRuntimeConfigPreview,
 } from "../../shared/memory-ipc";
 import { MEMORY_SHARING_MODES } from "../../shared/settings-ipc";
-import { HistoryMemoryImportAction } from "./settings-memory/history-import-action";
+import { useHistoryMemoryImport } from "./settings-memory/history-import-action";
+import { MemorySetup } from "./settings-memory/memory-setup";
 import { useMemoryConsent } from "./settings-memory/use-memory-consent";
 
 /** 相对时间要自己走动，否则「刚刚」会在页面上凝固一整天。 */
@@ -86,10 +87,11 @@ export function MemorySettingsView() {
   } =
     useSyncExternalStore(memoryStore.subscribe, memoryStore.getSnapshot);
   const consent = useMemoryConsent(settings);
-  /* 服务档摊开与否，只有「用户自己掀开的」这一个自由度。要不要强制
-     摊开由 memoryServiceNeedsAttention 说了算，两者 or 在一起——于是
-     不存在「用户收起了一件坏掉的东西」这种状态可言。 */
-  const [serviceOpened, setServiceOpened] = useState(false);
+  /* 哪一档引擎的抽屉摊开着。要不要强制摊开由 memoryServiceNeedsAttention
+     说了算，两者 or 在一起——于是不存在「用户收起了一件坏掉的东西」。 */
+  const [openEngineId, setOpenEngineId] = useState<string | null>(null);
+  /* 首次设置的显式目标；null 才允许 MemorySetup 按 runtime 事实恢复。 */
+  const [setupEngineId, setSetupEngineId] = useState<string | null>(null);
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [uninstallOpen, setUninstallOpen] = useState(false);
   const [uninstallTarget, setUninstallTarget] = useState<string | null>(null);
@@ -110,7 +112,7 @@ export function MemorySettingsView() {
       }
   ) | null>(null);
   const [runtimeConfigBusy, setRuntimeConfigBusy] = useState(false);
-  /* 配置弹窗开给谁：每一档服务都有自己的配置入口，main 本来就允许配置
+  /* 配置弹窗开给谁：每一档引擎都有自己的配置入口，main 本来就允许配置
      一个非当前后端（buildConfigPreview 专门区分了两种情形）。 */
   const [configOpenFor, setConfigOpenFor] = useState<string | null>(null);
   const [runtimeConfigError, setRuntimeConfigError] = useState("");
@@ -120,6 +122,11 @@ export function MemorySettingsView() {
   } | null>(null);
   const [pauseConfirmOpen, setPauseConfirmOpen] = useState(false);
   const now = useNow(30_000);
+  /* 历史导入不再自立分节，它的三个节点由「运行观测」就地安放；因此这个
+     hook 必须在任何提前 return 之前跑完，键里的字段此刻都已可读。 */
+  const historyImport = useHistoryMemoryImport(
+    `${settings?.memory.enabled}:${settings?.memory.sharingMode}:${status?.health}`
+  );
 
   useEffect(() => {
     settingsStore.ensureLoaded();
@@ -153,7 +160,7 @@ export function MemorySettingsView() {
   const gateOpen = Boolean(
     runtime?.installed && runtime.phase === "idle" && runtime.serviceReachable
   );
-  /* 一档服务能不能被选中，只看它自己：装好、空闲、握手可达。三条不满足
+  /* 一档引擎能不能被选中，只看它自己：装好、空闲、握手可达。三条不满足
      哪一条，那一档的状态与语气会自己说，圈不必再兼职解释。 */
   const selectable = (id: string) => {
     const snapshot = runtimes[id] ?? null;
@@ -168,6 +175,49 @@ export function MemorySettingsView() {
     return (
       panels.find((item) => item.panelId === provider?.configPanelId) ?? null
     );
+  };
+  const valuesFor = (id: string) => ({
+    ...blankMemoryConfigValues(panelOf(id)),
+    ...(runtimeConfigDraft?.providerId === id ? runtimeConfigDraft.values : {}),
+  });
+
+  /* ── 这一页此刻是设置还是初次设置 ───────────────────────────────
+     判据是磁盘事实，不是本地游标：只要还没有任何一档「装好且过了配置关」，
+     这一页就只有三步。装到一半关掉 App 再回来，快照说到哪就还在哪。 */
+  const setupDone = providers.some((item) => {
+    const snapshot = runtimes[item.id];
+    return Boolean(snapshot?.installed && snapshot.configured);
+  });
+
+  const submitRuntimeConfig = (id: string) => {
+    const values = valuesFor(id);
+    setRuntimeConfigBusy(true);
+    setRuntimeConfigError("");
+    void memoryStore
+      .previewRuntimeConfig(id, values)
+      .then(async (preview) => {
+        if (preview.requiresConfirmation) {
+          setPendingRuntimeConfig({ kind: "write", values, preview });
+          setConfigOpenFor(null);
+          return;
+        }
+        const ok = await memoryStore.writeRuntimeConfig(id, values);
+        if (ok) {
+          setRuntimeConfigDraft(null);
+          setConfigOpenFor(null);
+          return;
+        }
+        setRuntimeConfigError(
+          memoryStore.getSnapshot().error ||
+            t("memory.runtime.configSaveFailed")
+        );
+      })
+      .catch((cause) =>
+        setRuntimeConfigError(
+          errorMessage(cause, t("memory.runtime.configSaveFailed"))
+        )
+      )
+      .finally(() => setRuntimeConfigBusy(false));
   };
 
   const setEnabled = () => {
@@ -184,7 +234,7 @@ export function MemorySettingsView() {
     }
     consent.openProvider(settings.memory.provider);
   };
-  /* 顶部摘要与服务档的结论同源：两处各判一次健康，迟早各说各话。 */
+  /* 顶部摘要与引擎行的结论同源：两处各判一次健康，迟早各说各话。 */
   const master = memoryMasterRow(settings.memory, status, gateOpen, (key, options) =>
     t(key, options)
   );
@@ -193,7 +243,6 @@ export function MemorySettingsView() {
     status,
     gateOpen
   );
-  const serviceOpen = serviceOpened || needsAttention;
   const sharingAvailable = Boolean(
     settings.memory.enabled && status.target?.canEnable && gateOpen && !loading
   );
@@ -213,11 +262,61 @@ export function MemorySettingsView() {
   };
 
   const configPanel = configOpenFor ? panelOf(configOpenFor) : null;
-  const runtimeConfigValues = {
-    ...blankMemoryConfigValues(configPanel),
-    ...(runtimeConfigDraft?.providerId === configOpenFor
-      ? runtimeConfigDraft.values
-      : {}),
+  const runtimeConfigValues = configOpenFor ? valuesFor(configOpenFor) : {};
+
+  const renderManage = (id: string) => {
+    const snapshot = runtimes[id] ?? null;
+    const provider = providers.find((item) => item.id === id);
+    if (!snapshot || !provider) return null;
+    return (
+      <MemoryRuntimePanel
+        key={`${id}:${provider.configPanelId ?? "none"}`}
+        descriptor={provider}
+        runtime={snapshot}
+        stance={memoryRuntimeStance(snapshot)}
+        panel={panelOf(id)}
+        target={id === descriptor.id ? status.target : null}
+        onInstall={() => memoryStore.runRuntimeOperation(id, "install")}
+        onRepair={() => memoryStore.runRuntimeOperation(id, "repair")}
+        onUpgrade={() => memoryStore.runRuntimeOperation(id, "upgrade")}
+        onListVersions={() => memoryStore.listVersions(id)}
+        onSwitchVersion={(version) =>
+          memoryStore.runRuntimeOperation(id, "switch-version", version)
+        }
+        onUninstall={() => openUninstall(id)}
+        onConfigure={() => {
+          if (runtimeConfigDraft?.providerId !== id) {
+            setRuntimeConfigError("");
+          }
+          setRuntimeConfigDraft((current) =>
+            current?.providerId === id
+              ? current
+              : { providerId: id, values: blankMemoryConfigValues(panelOf(id)) }
+          );
+          setConfigOpenFor(id);
+        }}
+        onResolveConfigIssue={(issue, action) => {
+          setRuntimeConfigBusy(true);
+          void memoryStore
+            .previewConfigIssue(issue, action)
+            .then((preview) => {
+              if (preview.requiresConfirmation) {
+                setPendingRuntimeConfig({
+                  kind: "issue",
+                  issue,
+                  action,
+                  preview,
+                });
+                return;
+              }
+              return memoryStore.resolveConfigIssue(issue, action);
+            })
+            .catch(() => undefined)
+            .finally(() => setRuntimeConfigBusy(false));
+        }}
+        onRecheck={() => void memoryStore.recheckRuntime(id)}
+      />
+    );
   };
 
   return (
@@ -225,138 +324,60 @@ export function MemorySettingsView() {
       title={t("common.memory")}
       icon={<BrainCircuit />}
       actions={
-        <Button
-          type="button"
-          size="icon-sm"
+        <SettingsIconButton
           variant="ghost"
-          aria-label={t("memory.page.refreshHealth")}
+          label={t("memory.page.refreshHealth")}
           disabled={loading || !runtime?.installed || !settings.memory.enabled}
           onClick={memoryStore.refresh}
         >
           <RefreshCw className={loading ? "motion-safe:animate-spin" : ""} />
-        </Button>
+        </SettingsIconButton>
       }
     >
       <SettingsCanvas>
-        {/* 纵向秩序 = 决定的顺序：要不要记 → 存哪儿 → 记的东西谁能召回
-            → 它在干什么。前两件同处一张卡，因为它们是父子而不是兄弟：
-            provider 在 settings.memory 里就是 enabled 隔壁的一个字段，
-            画成两张并排的卡，视觉语言就把父子说成了兄弟。 */}
-        <div className="space-y-8">
-          <SettingsSection
-            title={t("memory.page.title")}
-            description={t("memory.page.description")}
-            alert={settingsError || error || status.warning}
-          >
-            <div className="space-y-3">
-              <SettingsList>
-                {/* 一级：整页唯一的产品级开关。它只说记不记——用哪个后端
-                    是下面那个子项自己的事，同一个名词不在一张卡里说两次。 */}
-                <SettingsRow
-                  label={master.label}
-                  htmlFor="memory-enabled"
-                  description={master.detail}
-                  control={
-                    <SettingsSwitch
-                      id="memory-enabled"
-                      label={master.switchLabel}
-                      checked={master.switchChecked}
-                      disabled={loading || master.switchDisabled}
-                      onToggle={setEnabled}
-                    />
-                  }
+        {!setupDone ? (
+          <MemorySetup
+            descriptors={providers}
+            runtimes={runtimes}
+            panels={panels}
+            selectedId={setupEngineId}
+            onSelectEngine={setSetupEngineId}
+            onInstall={(id) => {
+              setSetupEngineId(id);
+              void memoryStore.runRuntimeOperation(id, "install");
+            }}
+            getConfigValues={valuesFor}
+            configBusy={runtimeConfigBusy}
+            configError={runtimeConfigError}
+            onConfigChange={(providerId, values) => {
+              setRuntimeConfigError("");
+              setRuntimeConfigDraft({
+                providerId,
+                values,
+              });
+            }}
+            onConfigSubmit={submitRuntimeConfig}
+          />
+        ) : (
+          /* 纵向秩序 = 决定的顺序：要不要记 → 用哪个引擎、怎么管它
+             → 记的东西谁能召回 → 它在干什么。 */
+          <div className="space-y-8">
+            {/* 一级：整页唯一的产品级开关。它只说记不记——用哪个引擎是
+                下面那一段自己的事，同一批引擎不在一页里列两遍。 */}
+            <SettingsSection
+              title={t("memory.page.title")}
+              description={master.detail ?? t("memory.page.description")}
+              alert={settingsError || error || status.warning}
+              action={
+                <SettingsSwitch
+                  id="memory-enabled"
+                  label={master.switchLabel}
+                  checked={master.switchChecked}
+                  disabled={loading || master.switchDisabled}
+                  onToggle={setEnabled}
                 />
-                {/* 二级：存哪儿。二态枚举画成二选一而不是页签——页签点一下
-                    免费且可逆，换服务点一下要签字且回不去。 */}
-                <MemoryServicePicker
-                  descriptors={providers}
-                  runtimes={runtimes}
-                  currentId={descriptor.id}
-                  currentFacts={{
-                    enabled: settings.memory.enabled,
-                    health: status.health,
-                    healthIssue: status.healthIssue,
-                    target: status.target,
-                    runningVersion: status.runningVersion,
-                  }}
-                  open={serviceOpen}
-                  locked={needsAttention}
-                  onOpenChange={setServiceOpened}
-                  onSelect={consent.openProvider}
-                  canSelect={selectable}
-                  renderRuntime={(id) => {
-                    const snapshot = runtimes[id] ?? null;
-                    const provider = providers.find((item) => item.id === id);
-                    if (!snapshot || !provider) return null;
-                    return (
-                      <MemoryRuntimePanel
-                        key={`${id}:${provider.configPanelId ?? "none"}`}
-                        descriptor={provider}
-                        runtime={snapshot}
-                        stance={memoryRuntimeStance(snapshot)}
-                        panel={panelOf(id)}
-                        onInstall={() =>
-                          memoryStore.runRuntimeOperation(id, "install")
-                        }
-                        onRepair={() =>
-                          memoryStore.runRuntimeOperation(id, "repair")
-                        }
-                        onUpgrade={() =>
-                          memoryStore.runRuntimeOperation(id, "upgrade")
-                        }
-                        onCheckUpdates={() => {
-                          void memoryStore.checkUpdates(id, true);
-                        }}
-                        onListVersions={() => memoryStore.listVersions(id)}
-                        onSwitchVersion={(version) =>
-                          memoryStore.runRuntimeOperation(
-                            id,
-                            "switch-version",
-                            version
-                          )
-                        }
-                        checkingUpdates={Boolean(checkingUpdates[id])}
-                        onUninstall={() => openUninstall(id)}
-                        onConfigure={() => {
-                          if (runtimeConfigDraft?.providerId !== id) {
-                            setRuntimeConfigError("");
-                          }
-                          setRuntimeConfigDraft((current) =>
-                            current?.providerId === id
-                              ? current
-                              : {
-                                  providerId: id,
-                                  values: blankMemoryConfigValues(panelOf(id)),
-                                }
-                          );
-                          setConfigOpenFor(id);
-                        }}
-                        onResolveConfigIssue={(issue, action) => {
-                          setRuntimeConfigBusy(true);
-                          void memoryStore
-                            .previewConfigIssue(issue, action)
-                            .then((preview) => {
-                              if (preview.requiresConfirmation) {
-                                setPendingRuntimeConfig({
-                                  kind: "issue",
-                                  issue,
-                                  action,
-                                  preview,
-                                });
-                                return;
-                              }
-                              return memoryStore.resolveConfigIssue(issue, action);
-                            })
-                            .catch(() => undefined)
-                            .finally(() => setRuntimeConfigBusy(false));
-                        }}
-                        onRecheck={() => void memoryStore.recheckRuntime(id)}
-                      />
-                    );
-                  }}
-                />
-              </SettingsList>
-
+              }
+            >
               {/* apply 失败不是一次性 toast：磁盘新、runtime 旧的窗口必须
                   一直可见，直到前向重试把它收敛掉。 */}
               {status.applyStatus?.state === "failed" && (
@@ -377,129 +398,181 @@ export function MemorySettingsView() {
                   </p>
                 </div>
               )}
-            </div>
-          </SettingsSection>
+            </SettingsSection>
 
-          {/* 三态就画三选一：后端存的本来就是一个枚举（main 的
-              assertMemoryMutation 只收 sharingMode），两个联动开关是界面
-              自己发明的。禁用原因归段描述说一次，不逐行复述。 */}
-          <SettingsSection
-            title={t("memory.sharing.title")}
-            description={
-              sharingAvailable
-                ? t("memory.sharing.description")
-                : sharingDisabledReason
-            }
-          >
-            <SettingsList
-              role="radiogroup"
-              aria-label={t("memory.sharing.title")}
-            >
-              {MEMORY_SHARING_MODES.map((mode) => (
-                <SettingsChoiceRow
-                  key={mode}
-                  label={t(`memory.sharing.mode.${mode}`)}
-                  description={t(`memory.sharing.isolation.${mode}`)}
-                  checked={settings.memory.sharingMode === mode}
-                  disabled={!sharingAvailable}
-                  onSelect={() => {
-                    /* 选中当前档不是一次变更：确认弹窗只为真的换代而开。 */
-                    if (mode !== settings.memory.sharingMode)
-                      consent.openSharing(mode);
-                  }}
-                />
-              ))}
-            </SettingsList>
-          </SettingsSection>
-
-          <HistoryMemoryImportAction
-            refreshKey={`${settings.memory.enabled}:${settings.memory.sharingMode}:${status.health}`}
-          />
-
-          {/* 重建入口挂在它所清空的那片数字的段头上，而不是另立一节
-              「标题 + 描述 + 一个按钮」的门户；进度也就地接替按钮。 */}
-          {(gateOpen || settings.memory.enabled) && (
+            {/* 二级：引擎册。选哪个在用、升级、配置、装另一个，全在这一处。 */}
             <SettingsSection
-              title={t("memory.page.observability")}
-              description={status.epoch
-                ? t("memory.page.observabilityEpoch", {
-                    date: new Date(status.epoch.effectiveAt).toLocaleDateString(
-                      intlLocale()
-                    ),
-                    generation: status.epoch.sharingGeneration,
-                  })
-                : t("memory.page.observabilityDescription")}
+              title={t("memory.engines.title")}
+              description={t("memory.engines.description")}
               action={
-                status.target?.canRebuild ? (
-                  <MemoryRebuildButton
-                    running={rebuildOutstanding(status.rebuild)}
-                    onClick={() => {
-                      void Promise.all([
-                        memoryStore.requestDestructiveAuthority(
-                          descriptor.id,
-                          "rebuild"
-                        ),
-                        memoryStore.previewConsent(
-                          descriptor.id,
-                          true,
-                          "rebuild",
-                          settings.memory.sharingMode
-                        ),
-                      ])
-                        .then(([authority, preview]) => {
-                          if (!authority) return;
-                          setRebuildAuthority(authority);
-                          setRebuildPreview(preview);
-                          setRebuildOpen(true);
-                        })
-                        .catch(() => undefined);
-                    }}
+                <Button
+                  type="button"
+                  size="pill"
+                  variant="ghost"
+                  disabled={providers.some((item) => checkingUpdates[item.id])}
+                  onClick={() => {
+                    for (const item of providers) {
+                      if (runtimes[item.id]?.installed)
+                        void memoryStore.checkUpdates(item.id, true);
+                    }
+                  }}
+                >
+                  <RefreshCw
+                    className={
+                      providers.some((item) => checkingUpdates[item.id])
+                        ? "motion-safe:animate-spin"
+                        : ""
+                    }
                   />
-                ) : undefined
+                  {t("memory.version.check")}
+                </Button>
               }
             >
-              {/* 完成的重建不再留着一张卡：做完的事退回观测格成为一条带
-                  时刻的往事，只有还在跑或已中断的才配继续占着这块表面。 */}
-              <div className="space-y-2">
-                {status.recallWarning && (
-                  <div
-                    role="alert"
-                    className={cn(
-                      "rounded-lg px-4 py-3 text-xs ring-1",
-                      TONE_SURFACE.warn
-                    )}
-                  >
-                    <p className={cn("font-medium", TONE_TEXT.warn)}>
-                      {t("memory.page.recallWarningTitle")}
-                    </p>
-                    <p className="mt-1 text-muted-foreground">
-                      {status.recallWarning}
-                    </p>
-                  </div>
-                )}
-                <MemoryActivityGrid status={status} now={now} />
-                <MemorySupplyList status={status} />
-                {rebuildOutstanding(status.rebuild) && status.rebuild && (
-                  <MemoryRebuildProgress rebuild={status.rebuild} />
-                )}
-              </div>
+              <SettingsList>
+                <MemoryEngineList
+                  descriptors={providers}
+                  runtimes={runtimes}
+                  currentId={descriptor.id}
+                  currentFacts={{
+                    enabled: settings.memory.enabled,
+                    health: status.health,
+                    healthIssue: status.healthIssue,
+                    target: status.target,
+                    runningVersion: status.runningVersion,
+                  }}
+                  openId={openEngineId}
+                  lockedId={needsAttention ? descriptor.id : null}
+                  onOpenChange={setOpenEngineId}
+                  onSelect={consent.openProvider}
+                  canSelect={selectable}
+                  renderManage={renderManage}
+                />
+              </SettingsList>
             </SettingsSection>
-          )}
 
-          {/* attention 有货必须可见（M4-06）：徽标点进来不许是空白页。 */}
-          {status.attention.length > 0 && (
+            {/* 三态就画三选一：后端存的本来就是一个枚举（main 的
+                assertMemoryMutation 只收 sharingMode）。禁用原因归段描述
+                说一次，不逐行复述。 */}
             <SettingsSection
-              title={t("memory.page.attentionTitle")}
-              description={t("memory.page.attentionDescription")}
+              title={t("memory.sharing.title")}
+              description={
+                sharingAvailable
+                  ? t("memory.sharing.description")
+                  : sharingDisabledReason
+              }
             >
-              <MemoryAttentionList
-                items={status.attention}
-                now={now}
-                onResolve={memoryStore.resolve}
-              />
+              <SettingsList
+                role="radiogroup"
+                aria-label={t("memory.sharing.title")}
+              >
+                {MEMORY_SHARING_MODES.map((mode) => (
+                  <SettingsChoiceRow
+                    key={mode}
+                    label={t(`memory.sharing.mode.${mode}`)}
+                    description={t(`memory.sharing.isolation.${mode}`)}
+                    checked={settings.memory.sharingMode === mode}
+                    disabled={!sharingAvailable}
+                    onSelect={() => {
+                      /* 选中当前档不是一次变更：确认弹窗只为真的换代而开。 */
+                      if (mode !== settings.memory.sharingMode)
+                        consent.openSharing(mode);
+                    }}
+                  />
+                ))}
+              </SettingsList>
             </SettingsSection>
-          )}
-        </div>
+
+            {/* 两个入口都挂在它们所改变的那片数字的段头上，而不是各自另立
+                一节「标题 + 描述 + 一个按钮」的门户；进度也就地接替按钮。
+                导入填充这片数字，重建清空它——一对反向动作，排序按后果给：
+                不可逆的那个在右。 */}
+            {(gateOpen || settings.memory.enabled) && (
+              <SettingsSection
+                title={t("memory.page.observability")}
+                description={status.epoch
+                  ? t("memory.page.observabilityEpoch", {
+                      date: new Date(status.epoch.effectiveAt).toLocaleDateString(
+                        intlLocale()
+                      ),
+                      generation: status.epoch.sharingGeneration,
+                    })
+                  : t("memory.page.observabilityDescription")}
+                alert={historyImport.alert}
+                action={
+                  <div className="flex items-center gap-2">
+                    {historyImport.action}
+                    {status.target?.canRebuild ? (
+                      <MemoryRebuildButton
+                        running={rebuildOutstanding(status.rebuild)}
+                        onClick={() => {
+                          void Promise.all([
+                            memoryStore.requestDestructiveAuthority(
+                              descriptor.id,
+                              "rebuild"
+                            ),
+                            memoryStore.previewConsent(
+                              descriptor.id,
+                              true,
+                              "rebuild",
+                              settings.memory.sharingMode
+                            ),
+                          ])
+                            .then(([authority, preview]) => {
+                              if (!authority) return;
+                              setRebuildAuthority(authority);
+                              setRebuildPreview(preview);
+                              setRebuildOpen(true);
+                            })
+                            .catch(() => undefined);
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                }
+              >
+                {/* 完成的重建不再留着一张卡：做完的事退回观测格成为一条带
+                    时刻的往事，只有还在跑或已中断的才配继续占着这块表面。 */}
+                <div className="space-y-2">
+                  {status.recallWarning && (
+                    <div
+                      role="alert"
+                      className={cn(
+                        "rounded-lg px-4 py-3 text-xs ring-1",
+                        TONE_SURFACE.warn
+                      )}
+                    >
+                      <p className={cn("font-medium", TONE_TEXT.warn)}>
+                        {t("memory.page.recallWarningTitle")}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        {status.recallWarning}
+                      </p>
+                    </div>
+                  )}
+                  <MemoryActivityGrid status={status} now={now} />
+                  <MemorySupplyList status={status} />
+                  {rebuildOutstanding(status.rebuild) && status.rebuild && (
+                    <MemoryRebuildProgress rebuild={status.rebuild} />
+                  )}
+                </div>
+              </SettingsSection>
+            )}
+
+            {/* attention 有货必须可见（M4-06）：徽标点进来不许是空白页。 */}
+            {status.attention.length > 0 && (
+              <SettingsSection
+                title={t("memory.page.attentionTitle")}
+                description={t("memory.page.attentionDescription")}
+              >
+                <MemoryAttentionList
+                  items={status.attention}
+                  now={now}
+                  onResolve={memoryStore.resolve}
+                />
+              </SettingsSection>
+            )}
+          </div>
+        )}
       </SettingsCanvas>
 
       <MemoryDisclosureDialog
@@ -524,9 +597,13 @@ export function MemorySettingsView() {
         error={consent.error}
         onAccept={() => {
           /* 换代成功即收起：选完了，这一档就该退回一行结论。 */
-          void consent.accept().then(() => setServiceOpened(false));
+          void consent.accept().then(() => setOpenEngineId(null));
         }}
       />
+
+      {/* 导入的确认弹窗与它的按钮隔着一整棵树，但 Portal 让位置无关紧要；
+          它与「重建记忆」的弹窗并排，因为两者是同一族的不可逆动作。 */}
+      {historyImport.dialog}
 
       <MemoryRebuildDialog
         open={rebuildOpen}
@@ -590,47 +667,16 @@ export function MemorySettingsView() {
           values={runtimeConfigValues}
           busy={runtimeConfigBusy}
           error={runtimeConfigError}
-          requireMissingValues={
-            runtimes[configOpenFor]?.phase === "configuration-required"
-          }
+          requireMissingValues={Boolean(
+            runtimes[configOpenFor]?.installed &&
+              !runtimes[configOpenFor]?.configured
+          )}
           onOpenChange={(next) => setConfigOpenFor(next ? configOpenFor : null)}
           onChange={(values) => {
             setRuntimeConfigError("");
             setRuntimeConfigDraft({ providerId: configOpenFor, values });
           }}
-          onSubmit={() => {
-            const values = runtimeConfigValues;
-            setRuntimeConfigBusy(true);
-            setRuntimeConfigError("");
-            void memoryStore
-              .previewRuntimeConfig(configOpenFor, values)
-              .then(async (preview) => {
-                if (preview.requiresConfirmation) {
-                  setPendingRuntimeConfig({ kind: "write", values, preview });
-                  setConfigOpenFor(null);
-                  return;
-                }
-                const ok = await memoryStore.writeRuntimeConfig(
-                  configOpenFor,
-                  values
-                );
-                if (ok) {
-                  setRuntimeConfigDraft(null);
-                  setConfigOpenFor(null);
-                  return;
-                }
-                setRuntimeConfigError(
-                  memoryStore.getSnapshot().error ||
-                    t("memory.runtime.configSaveFailed")
-                );
-              })
-              .catch((cause) =>
-                setRuntimeConfigError(
-                  errorMessage(cause, t("memory.runtime.configSaveFailed"))
-                )
-              )
-              .finally(() => setRuntimeConfigBusy(false));
-          }}
+          onSubmit={() => submitRuntimeConfig(configOpenFor)}
         />
       )}
 

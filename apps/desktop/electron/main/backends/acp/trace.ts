@@ -398,6 +398,7 @@ export class AcpTraceWriter {
     input:
       | { type: "item"; item: AgentTurnItem; draft: TurnDraft }
       | { type: "delta"; itemId: string; draft: TurnDraft }
+      | { type: "item-removed"; itemId: string; draft: TurnDraft }
   ) {
     this.append(
       "draft",
@@ -405,14 +406,16 @@ export class AcpTraceWriter {
         event:
           input.type === "item"
             ? { type: "item", itemId: input.item.itemId }
-            : {
-                type: "delta",
-                itemId: input.itemId,
-                streamingBytes: Buffer.byteLength(
-                  input.draft.streaming.get(input.itemId) ?? "",
-                  "utf8"
-                ),
-              },
+            : input.type === "delta"
+              ? {
+                  type: "delta",
+                  itemId: input.itemId,
+                  streamingBytes: Buffer.byteLength(
+                    input.draft.streaming.get(input.itemId) ?? "",
+                    "utf8"
+                  ),
+                }
+              : { type: "item-removed", itemId: input.itemId },
         parts: traceParts(input.draft.parts),
       },
       generation

@@ -1,10 +1,14 @@
 /**
- * [INPUT]: Depends on turn draft, planRequested, effective terminal, subagent registry, backend descriptor, display name, Memory This outline summarizes the facts and admission Reserved certainty assistant messageId/seq
- * [OUTPUT]: Provides prepareTurnCommit and OpenCode Plan decision making to combine pure judgments, bringing the activity projection with the only deriveMemoryTurnOutcome to the optional receipt, with the canonical TurnCommitInput of subagentsDelta when dirty
- * [POS]: The projected end-to-end projection of the agent sub-module; Delete the default default assistant, Plan and the wrong metadata (real back-end names with failed attribution) in this slot
+ * [INPUT]: Depends on turn draft, Plan request state, effective terminal, subagent registry, backend identity, Memory outcome, and reserved assistant identity
+ * [OUTPUT]: Provides prepareTurnCommit with ProductFailure structure, Plan synthesis, Memory outcome, the single subagent-convergence derivation shared by part and meta, and canonical message/subagent deltas without persistence-time fallback copy
+ * [POS]: Pure final projection for the agent module; persistence receives structure and never display fallback text
  */
 
-import { settle, type TurnFailure } from "../../../shared/chat-turn-reducer";
+import {
+  settle,
+  type SubagentSettleOutcome,
+  type TurnFailure,
+} from "../../../shared/chat-turn-reducer";
 import { planMessageKind } from "../../../shared/chat-plan-kind";
 import type {
   ChatMessage,
@@ -27,11 +31,18 @@ function turnFailure(
   terminal: SourceTerminal
 ): TurnFailure | undefined {
   if (terminal.type !== "error") return undefined;
-  return {
-    agent: backendById(backend).displayName,
-    message: terminal.message ?? "Agent 执行失败",
-  };
+  return terminal.failure
+    ? { failure: terminal.failure }
+    : { agent: backendById(backend).displayName, message: terminal.message };
 }
+
+/* 子 agent 收敛的唯一判据是 turn 终态，不是「有没有报终态」——两家来源
+   （codex.subagent 全量源 / claudeCode 归属源）都只在真被打断时才下发
+   interrupted。判据取终态而非猜测，真中断因此不会被误标成功。 */
+const subagentOutcomeOf = (
+  terminal: SourceTerminal
+): SubagentSettleOutcome =>
+  terminal.type === "done" ? "completed" : "interrupted";
 
 export function synthesizedPlanMessageKind(input: {
   backend: AgentBackendId;
@@ -51,17 +62,20 @@ export function prepareTurnCommit(
   entry: TurnEntry,
   memoryFacts?: Omit<MemoryTurnFacts, "assistantMessagePresent">
 ): TurnCommitInput {
-  const terminal = entry.effectiveTerminal ?? {
-    type: "error" as const,
-    message: "Agent 未返回完成事件",
-  };
+  const terminal = entry.effectiveTerminal;
+  if (!terminal) {
+    const subagentsDelta = entry.subagents.settle();
+    return subagentsDelta && Object.keys(subagentsDelta).length ? { subagentsDelta } : {};
+  }
+  const subagentOutcome = subagentOutcomeOf(terminal);
   const result = settle(
     entry.draft,
     Date.now(),
     turnFailure(entry.backend, terminal),
-    entry.planRequested
+    entry.planRequested,
+    subagentOutcome
   );
-  const subagentsDelta = entry.subagents.settle();
+  const subagentsDelta = entry.subagents.settle(subagentOutcome);
   const assistantMessagePresent = Boolean(
     result && terminal.type !== "cancelled"
   );
@@ -86,11 +100,12 @@ export function prepareTurnCommit(
       id: entry.messageId,
       seq: entry.assistantSeq,
       role: "assistant",
-      content: result.content || "（本轮无文本回复）",
+      content: result.content,
       ...(result.parts ? { parts: result.parts } : {}),
       durationMs: result.durationMs,
       ...(result.isError ? { isError: true } : {}),
       ...(terminal.failureKind ? { failureKind: terminal.failureKind } : {}),
+      ...(terminal.failure ? { failure: terminal.failure } : {}),
       ...(terminal.usageLimit ? { usageLimit: terminal.usageLimit } : {}),
       ...(messageKind ? { kind: messageKind } : {}),
       ...(memoryOutcome

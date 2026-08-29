@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on Node Atomic files write, zod, SerialQueue, externally submit payload store, ledger compaction/operations and Section chat/incarnation
- * [OUTPUT]: Provides close/flush relay ledger v6, atom seed, parameter conflict detection, excludes raw/prepared reservation, starts failure outcome, manual attempt/capsule, steer/ack mutation, non-v6 wire, breakdown isolation fail-closed, index and revision snapshot
- * [POS]: The durable journal of sections/coordinator; The fact that the Section has external side effects must be left here before it can be re-posted
+ * [INPUT]: Depends on atomic file IO, zod, SerialQueue, submission custody, ledger operations, and Section/chat identities
+ * [OUTPUT]: Provides relay ledger v6 mutations, recovery, reservations/intents/attempts, and fail-closed adoption-reference projection aggregated with custody manifests and persistent quarantine evidence
+ * [POS]: The durable side-effect journal of sections/coordinator
  */
 
-import { readFile, rename } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, readdir, rename } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import type { RelayActionsSnapshot } from "../../../../shared/sections-ipc";
 import type { SubmissionAck, SubmissionOutcome } from "../../../../shared/submission";
 import { SerialQueue } from "../../persistence/serial-queue";
@@ -24,25 +24,19 @@ import {
   type RelayRecord, type SectionRef, type SteerIntent,
 } from "./state/ledger-schema";
 import {
-  acknowledgeSubmission,
-  failRawSubmissionRecovery,
-  installSubmissionCustody,
-  markDispatchUnknown,
-  persistManualResult,
-  prepareManualResult,
-  querySubmissionOutcome,
-  recoverBeforeDispatch,
-  releaseSubmissionReservation,
-  releaseRawSubmissionReservation,
-  promoteSubmissionReservation,
-  prepareSubmissionReservation,
-  pendingSubmissionReservations,
-  recoverSubmissionReservations,
+  acknowledgeSubmission, failRawSubmissionRecovery,
+  installSubmissionCustody, markDispatchUnknown,
+  persistManualResult, prepareManualResult,
+  querySubmissionOutcome, recoverBeforeDispatch,
+  releaseSubmissionReservation, releaseRawSubmissionReservation,
+  promoteSubmissionReservation, prepareSubmissionReservation,
+  pendingSubmissionReservations, recoverSubmissionReservations,
   reserveSubmission,
   tombstoneConversation as writeConversationTombstone,
   transitionAttempt,
 } from "./submission-outcome";
-import { isSubmissionPayloadReference, submissionConversationId, SubmissionPayloadStore } from "./submission/payload-store";
+import { collectAdoptionSnapshotIds, isSubmissionPayloadReference, submissionConversationId, SubmissionPayloadStore } from "./submission/payload-store";
+import type { ReferenceProjection } from "../../history-import/memory-snapshot-store";
 import {
   admitRelay,
   completeAnsweredRelay as completeRelay,
@@ -65,26 +59,19 @@ import {
 } from "./state/operations/outbox";
 import {
   acknowledgeNotice as acknowledgeNoticeRecord,
+  cancelNotice as cancelNoticeRecord,
   failArchived as failArchivedConversation,
   putNoticeOutbox as putNoticeRecord,
   releaseConversationResources as releaseConversationState,
   transitionCreateIntent as transitionCreate,
   transitionManual as transitionManualIntent,
 } from "./state/operations/manual";
-
 export type {
-  CreateIntent,
-  ManualTurnIntent,
-  ManualTurnIntentInput,
-  NoticeOutboxRecord,
-  RelayAdmissionInput,
-  RelayExpectation,
-  RelayRecord,
-  SectionRef,
-  SteerIntent,
+  CreateIntent, ManualTurnIntent, ManualTurnIntentInput,
+  NoticeOutboxRecord, RelayAdmissionInput, RelayExpectation,
+  RelayRecord, SectionRef, SteerIntent,
 } from "./state/ledger-schema";
 export type { DeepReadonly } from "./state/readonly-ledger";
-
 export class RelayLedger {
   readonly filePath: string;
   readonly submissionPayloadRoot: string;
@@ -154,6 +141,30 @@ export class RelayLedger {
 
   snapshot() {
     return structuredClone(this.state);
+  }
+
+  async adoptionReferenceProjection(): Promise<ReferenceProjection> {
+    const refs = new Set<string>();
+    collectAdoptionSnapshotIds(this.state, refs);
+    const payloads = await this.submissionPayloads.adoptionReferenceProjection();
+    for (const ref of payloads.refs) refs.add(ref);
+    return {
+      complete:
+        !this.frozen &&
+        !(await this.hasQuarantinedLedger()) &&
+        payloads.complete,
+      refs,
+    };
+  }
+
+  private async hasQuarantinedLedger() {
+    try {
+      const prefix = `${basename(this.filePath, ".json")}.corrupt-`;
+      return (await readdir(dirname(this.filePath))).some((name) =>
+        name.startsWith(prefix) && name.endsWith(".json"));
+    } catch {
+      return true;
+    }
   }
 
   read<T>(selector: (state: DeepReadonly<LedgerState>) => T): T {
@@ -528,11 +539,14 @@ export class RelayLedger {
       terminal: "done" | "cancelled" | "error";
       outcome: "stored" | "empty" | "missing" | "failed";
       assistantMessage?: unknown;
-    }
+    },
+    notice?: NoticeOutboxRecord
   ) {
-    return this.mutate((state, now) =>
-      prepareManualResult(state, intentId, input, now)
-    );
+    return this.mutate((state, now) => {
+      const result = prepareManualResult(state, intentId, input, now);
+      if (notice) putNoticeRecord(state, notice);
+      return result;
+    });
   }
 
   persistManualResult(intentId: string, successful: boolean) {
@@ -559,6 +573,10 @@ export class RelayLedger {
     return this.mutate((state) =>
       acknowledgeNoticeRecord(state, noticeId)
     );
+  }
+
+  cancelNotice(noticeId: string) {
+    return this.mutate((state) => cancelNoticeRecord(state, noticeId));
   }
 
   tombstoneConversation(ref: SectionRef, deletedAt = this.now()) {
@@ -620,11 +638,14 @@ export class RelayLedger {
         | "attempts"
         | "assistantOutbox"
       >
-    >
+    >,
+    notice?: NoticeOutboxRecord
   ) {
-    return this.mutate((state, now) =>
-      transitionRelay(state, relayId, expected, patch, now)
-    );
+    return this.mutate((state, now) => {
+      const result = transitionRelay(state, relayId, expected, patch, now);
+      if (result && notice) putNoticeRecord(state, notice);
+      return result;
+    });
   }
 
   releaseRelay(

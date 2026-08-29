@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on RichInput Candidate/text type, rich-input model, single projection/identity, Command, and the icon of the file type
- * [OUTPUT]: Provides the suggestion menu of the real listbox/option id of cmdk, the textbox combobox ARIA projection, the directory tail slider PathLabel and the type icon
+ * [OUTPUT]: Provides the suggestion menu with real listbox/option ids, a focusable fixed footer action, textbox combobox ARIA projection, PathLabel and file-type icons
  * [POS]: ai-elements the candidate view layer of RichInput; No query/preview/selected status, all selection facts are fed by parent level
  */
 
@@ -206,6 +206,16 @@ export function SuggestionMenu({
             <div className="border-t px-3 py-2 text-xs text-muted-foreground">
               {copy.footer}
             </div>
+          ) : null}
+          {copy.footerAction ? (
+            <button
+              className="sticky bottom-0 flex w-full items-center border-t bg-popover px-3 py-2 text-left font-medium text-primary text-xs hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={copy.footerAction.onSelect}
+              type="button"
+            >
+              {copy.footerAction.label}
+            </button>
           ) : null}
         </CommandList>
       </Command>

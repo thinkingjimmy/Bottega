@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, shared Base value/attachment, strict date/select first-id-wins, bases-client, abbreviation diagram, relation selector for../panels, state of BaseMutationOutcome judgment type and shadcn template language
- * [OUTPUT]: Provides BaseCellEditor, read-only BaseAttachmentPreview and useBaseAttachmentThumbnail ((maxEdge adjustable, the cover of the sign reads the same path); attachment with a focus shortening and a regularly deleted key presentation of ≥44px, relationship only read directly spit canonical base CellText ((the hanging statement is not an alternative sentence here), the rest of the type shares already edited truth
- * [POS]: The only type of editor for bases/editors/cells; table replicate the cell surface without the internal frame, list replicate the independent field surface
+ * [INPUT]: Depends on Base value/attachment contracts, thumbnail loading, mutation outcomes, and relation context plus canonical row options
+ * [OUTPUT]: Provides BaseCellEditor, attachment preview/thumbnail helpers, typed editors, and relation editing without rebuilding evaluation context
+ * [POS]: The single cell-editor dispatcher shared by Table and List; view layout stays outside while canonical relation semantics enter explicitly
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -30,6 +30,7 @@ import {
 } from "@ai-chat/ui/components/ui/select";
 import { cn } from "@ai-chat/ui/lib/utils";
 import type {
+  BaseCellContext,
   BaseCellValue,
   BaseColumn,
   BaseLocation,
@@ -53,8 +54,8 @@ export function BaseCellEditor({
   disabled,
   surface = "field",
   attachmentOwner,
-  relationColumns,
-  relationRows,
+  relationContext,
+  relationOptions,
   storedValue,
   onCommit,
 }: {
@@ -63,20 +64,20 @@ export function BaseCellEditor({
   disabled?: boolean;
   surface?: "field" | "cell";
   attachmentOwner?: { chatId: string; incarnationId: string };
-  relationColumns?: BaseColumn[];
-  relationRows?: BaseRow[];
+  relationContext?: BaseCellContext;
+  relationOptions?: BaseRow[];
   storedValue?: BaseCellValue;
   onCommit(value: BaseCellValue | null): Promise<BaseMutationOutcome> | void;
 }) {
   if (column.type === "relation") {
-    if (relationColumns && relationRows) {
+    if (relationContext && relationOptions) {
       return (
         <BaseRelationPicker
           column={column as BaseColumn & { type: "relation" }}
-          columns={relationColumns}
+          context={relationContext}
           disabled={disabled}
           onCommit={onCommit}
-          rows={relationRows}
+          options={relationOptions}
           value={typeof storedValue === "string" ? storedValue : undefined}
         />
       );

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Electron context Bridge/ipcRenderer/webUtils and shared Agent/Chat/Base/Browser/Gallery/Project/History/Search/Workspace/Settings/Personalization/MCP/Usage/Memory/Skills contracts
- * [OUTPUT]: The user can use the user interface to display the user's History, and the user can use the user interface to view the user's history
- * [POS]: Electron security boundaries, isolate Node capabilities, deprive IpcRendererEvent, satisfies compulsory contract alignment
+ * [INPUT]: Depends on Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, and all shared renderer IPC contracts
+ * [OUTPUT]: Denies WebRTC in every frame main world, then exposes sandboxed typed product bridges, including exact-Project Tools and scoped MCP APIs, only in the top frame
+ * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge
  */
 
 import {
@@ -85,7 +85,7 @@ import {
 import {
   EXTENSIONS_CHANNEL,
   type ExtensionsBridgeApi,
-  type ExtensionsSnapshot,
+  type ExtensionsChangedEvent,
 } from "../../shared/extensions-ipc";
 import {
   ARCHIVE_CHANNEL,
@@ -103,8 +103,13 @@ import {
 import {
   MCP_SERVERS_CHANNEL,
   type McpServersBridgeApi,
-  type McpServersSnapshot,
+  type McpServersChangedEvent,
 } from "../../shared/mcp-servers-ipc";
+import {
+  PROJECT_TOOLS_CHANNEL,
+  type ProjectToolsBridgeApi,
+  type ProjectToolsChangedEvent,
+} from "../../shared/project-tools-ipc";
 import {
   HISTORY_IMPORT_CHANNEL,
   type HistoryImportBridgeApi,
@@ -116,8 +121,36 @@ import {
 } from "../../shared/search-ipc";
 import {
   PERSONALIZATION_CHANNEL,
+  PROJECT_PERSONALIZATION_CHANNEL,
   type PersonalizationBridgeApi,
+  type ProjectPersonalizationBridgeApi,
 } from "../../shared/personalization-ipc";
+import {
+  UPDATE_CHANNEL,
+  type UpdateBridgeApi,
+} from "../../shared/update-ipc";
+import {
+  WINDOW_APP_ID_ARGUMENT,
+  WINDOW_ID_ARGUMENT,
+  WINDOW_ROLE_ARGUMENT,
+  WINDOW_SURFACES_CHANNEL,
+  type ProductWindowRole,
+  type SurfaceMigrationCommand,
+  type WindowSurfacesBridgeApi,
+} from "../../shared/window-surfaces-ipc";
+import { initializePreloadFrame } from "../main/window/rtc-lockdown";
+
+const exposeProductBridge = initializePreloadFrame(
+  (script) => contextBridge.executeInMainWorld(script),
+  process.isMainFrame,
+  (error) => {
+    console.error("[security] WebRTC main-world lockdown failed", error);
+    process.crash();
+    throw error;
+  }
+);
+
+if (exposeProductBridge) {
 
 // ─── 事件订阅统一剥离 IpcRendererEvent，只透传业务值 ───
 const subscribe =
@@ -134,6 +167,37 @@ const initialLanguageValue = process.argv
 const initialLanguage = isAppLocale(initialLanguageValue)
   ? initialLanguageValue
   : DEFAULT_APP_LOCALE;
+
+const startupArgument = (prefix: string) =>
+  process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
+const roleValue = startupArgument(WINDOW_ROLE_ARGUMENT);
+const windowRole: ProductWindowRole =
+  roleValue === "app-window" ? "app-window" : "main";
+const windowContext = Object.freeze({
+  windowId: startupArgument(WINDOW_ID_ARGUMENT) || "main",
+  role: windowRole,
+  appId:
+    windowRole === "app-window"
+      ? startupArgument(WINDOW_APP_ID_ARGUMENT) || null
+      : null,
+});
+
+contextBridge.exposeInMainWorld("windowSurfaces", {
+  context: windowContext,
+  residence: (surface) =>
+    ipcRenderer.invoke(WINDOW_SURFACES_CHANNEL.residence, surface),
+  showSurface: (input) =>
+    ipcRenderer.invoke(WINDOW_SURFACES_CHANNEL.show, input),
+  openInWindow: (input) =>
+    ipcRenderer.invoke(WINDOW_SURFACES_CHANNEL.openInWindow, input),
+  reclaim: (input) =>
+    ipcRenderer.invoke(WINDOW_SURFACES_CHANNEL.reclaim, input),
+  syncUseChat: (input) =>
+    ipcRenderer.invoke(WINDOW_SURFACES_CHANNEL.syncUseChat, input),
+  reply: (input) =>
+    ipcRenderer.send(WINDOW_SURFACES_CHANNEL.migrationReply, input),
+  onCommand: subscribe<SurfaceMigrationCommand>(WINDOW_SURFACES_CHANNEL.command),
+} satisfies WindowSurfacesBridgeApi);
 
 contextBridge.exposeInMainWorld("browser", {
   createTab: (input = {}) =>
@@ -155,6 +219,7 @@ contextBridge.exposeInMainWorld("browser", {
 } satisfies BrowserBridgeApi);
 
 contextBridge.exposeInMainWorld("browserImport", {
+  availability: () => ipcRenderer.invoke(BROWSER_IMPORT_CHANNEL.availability),
   detectProfiles: () =>
     ipcRenderer.invoke(BROWSER_IMPORT_CHANNEL.detectProfiles),
   previewCookieDomains: (input) =>
@@ -168,6 +233,19 @@ contextBridge.exposeInMainWorld("personalization", {
   save: (input) => ipcRenderer.invoke(PERSONALIZATION_CHANNEL.save, input),
   reveal: (backend) => ipcRenderer.invoke(PERSONALIZATION_CHANNEL.reveal, backend),
 } satisfies PersonalizationBridgeApi);
+
+contextBridge.exposeInMainWorld("projectPersonalization", {
+  list: (projectId) =>
+    ipcRenderer.invoke(PROJECT_PERSONALIZATION_CHANNEL.list, projectId),
+  save: (input) =>
+    ipcRenderer.invoke(PROJECT_PERSONALIZATION_CHANNEL.save, input),
+  reveal: (projectId, fileId) =>
+    ipcRenderer.invoke(
+      PROJECT_PERSONALIZATION_CHANNEL.reveal,
+      projectId,
+      fileId
+    ),
+} satisfies ProjectPersonalizationBridgeApi);
 
 contextBridge.exposeInMainWorld("agent", {
   send: (payload: AgentSendPayload) =>
@@ -188,6 +266,8 @@ contextBridge.exposeInMainWorld("agent", {
     ipcRenderer.invoke(AGENT_CHANNEL.acknowledgeCleanupFailure, conversationId),
   retryWithoutSession: (requestId, retryToken) =>
     ipcRenderer.invoke(AGENT_CHANNEL.retryWithoutSession, requestId, retryToken),
+  retrySameSession: (requestId, retryToken) =>
+    ipcRenderer.invoke(AGENT_CHANNEL.retrySameSession, requestId, retryToken),
   onEvent: subscribe(AGENT_CHANNEL.event),
   onActivity: subscribe(AGENT_CHANNEL.activity),
   listActivity: () => ipcRenderer.invoke(AGENT_CHANNEL.activityList),
@@ -216,6 +296,15 @@ contextBridge.exposeInMainWorld("app", {
     ipcRenderer.invoke(APP_CHANNEL.releaseFile, fileRef),
 } satisfies AppBridgeApi);
 
+contextBridge.exposeInMainWorld("update", {
+  snapshot: () => ipcRenderer.invoke(UPDATE_CHANNEL.snapshot),
+  check: () => ipcRenderer.invoke(UPDATE_CHANNEL.check),
+  downloadAndInstall: () =>
+    ipcRenderer.invoke(UPDATE_CHANNEL.downloadAndInstall),
+  appInfo: () => ipcRenderer.invoke(UPDATE_CHANNEL.appInfo),
+  onChanged: subscribe(UPDATE_CHANNEL.subscribe),
+} satisfies UpdateBridgeApi);
+
 contextBridge.exposeInMainWorld("skills", {
   list: (input) => ipcRenderer.invoke(SKILLS_CHANNEL.list, input),
   capabilities: (scope) =>
@@ -226,13 +315,12 @@ contextBridge.exposeInMainWorld("skills", {
 contextBridge.exposeInMainWorld("unifiedSkills", {
   list: (forceReload) => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.list, forceReload),
   candidates: (agent, forceReload) => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.candidates, agent, forceReload),
-  import: (input) => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.import, input),
-  previewAction: (input) => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.previewAction, input),
-  authorizeAction: (previewId) => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.authorizeAction, previewId),
-  applyAction: (input) => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.applyAction, input),
-  setProduct: (input) => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.setProduct, input),
-  dismissOnboarding: () => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.dismissOnboarding),
+  chooseLocal: () => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.chooseLocal),
+  previewIntents: (intents) => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.previewIntents, intents),
+  applyPlan: (input) => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.applyPlan, input),
+  undoPlan: (undoToken) => ipcRenderer.invoke(UNIFIED_SKILLS_CHANNEL.undoPlan, undoToken),
   onChanged: subscribe<UnifiedSkillsSnapshot>(UNIFIED_SKILLS_CHANNEL.changed),
+  onProgress: subscribe(UNIFIED_SKILLS_CHANNEL.progress),
 } satisfies UnifiedSkillsBridgeApi);
 
 contextBridge.exposeInMainWorld("workspaceFiles", {
@@ -324,7 +412,28 @@ contextBridge.exposeInMainWorld("apps", {
     ipcRenderer.invoke(APPS_CHANNEL.rebuildExtensionGeneration, appId),
   capabilities: (appId) =>
     ipcRenderer.invoke(APPS_CHANNEL.capabilities, appId),
-  guiInfo: (appId) => ipcRenderer.invoke(APPS_CHANNEL.guiInfo, appId),
+  guiInfo: (input) => ipcRenderer.invoke(APPS_CHANNEL.guiInfo, input),
+  releaseGuiSurface: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.releaseGuiSurface, input),
+  setOpenMode: (input) => ipcRenderer.invoke(APPS_CHANNEL.setOpenMode, input),
+  importDesignCanvas: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.importDesignCanvas, input),
+  listDesignImportCandidates: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.listDesignImportCandidates, input),
+  listDesignFiles: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.listDesignFiles, input),
+  listDesignVersions: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.listDesignVersions, input),
+  restoreDesignVersion: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.restoreDesignVersion, input),
+  setDesignAutoOpen: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.setDesignAutoOpen, input),
+  designDataStatus: (appId) =>
+    ipcRenderer.invoke(APPS_CHANNEL.designDataStatus, appId),
+  deleteDesignData: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.deleteDesignData, input),
+  setDesignEnabled: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.setDesignEnabled, input),
   readReadme: (appId) =>
     ipcRenderer.invoke(APPS_CHANNEL.readReadme, appId),
   probeRepo: (repoUrl) =>
@@ -454,8 +563,12 @@ contextBridge.exposeInMainWorld("historyImport", {
     ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.renameSession, opaqueId, title),
   setSessionArchived: (opaqueId, archived) =>
     ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.setSessionArchived, opaqueId, archived),
-  transcript: (opaqueId, cursor) =>
-    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.transcript, opaqueId, cursor),
+  transcript: (input) =>
+    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.transcript, input),
+  transcriptIndex: (input) =>
+    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.transcriptIndex, input),
+  cancelTranscript: (requestId) =>
+    ipcRenderer.send(HISTORY_IMPORT_CHANNEL.cancelTranscript, requestId),
   adopt: (input) => ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.adopt, input),
   adoptionPrefix: (chatId) => ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.adoptionPrefix, chatId),
   memoryEligibility: (input) =>
@@ -490,7 +603,6 @@ contextBridge.exposeInMainWorld("settings", {
     ipcRenderer.invoke(SETTINGS_CHANNEL.getChatHomeStatus),
   chooseChatHomesRoot: () =>
     ipcRenderer.invoke(SETTINGS_CHANNEL.chooseChatHomesRoot),
-  onChatHomeStatus: subscribe(SETTINGS_CHANNEL.chatHomeStatus),
   acknowledgeFullAccess: () =>
     ipcRenderer.invoke(SETTINGS_CHANNEL.acknowledgeFullAccess),
   listBackends: () => ipcRenderer.invoke(SETTINGS_CHANNEL.listBackends),
@@ -498,15 +610,35 @@ contextBridge.exposeInMainWorld("settings", {
     ipcRenderer.invoke(SETTINGS_CHANNEL.listModels, backend, scope),
   resolveChatOptions: (scope, backend) =>
     ipcRenderer.invoke(SETTINGS_CHANNEL.resolveChatOptions, scope, backend),
-  setChatOptions: (scope, options) =>
-    ipcRenderer.invoke(SETTINGS_CHANNEL.setChatOptions, scope, options),
+  setChatOptions: (scope, options, resetSessionEffective) =>
+    ipcRenderer.invoke(
+      SETTINGS_CHANNEL.setChatOptions,
+      scope,
+      options,
+      resetSessionEffective
+    ),
 } satisfies SettingsBridgeApi);
 
+contextBridge.exposeInMainWorld("projectTools", {
+  get: (input) => ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.get, input),
+  setBuiltinOverride: (input) =>
+    ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.setBuiltinOverride, input),
+  resetBuiltinOverride: (input) =>
+    ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.resetBuiltinOverride, input),
+  setGlobalMcpOverride: (input) =>
+    ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.setGlobalMcpOverride, input),
+  resetGlobalMcpOverride: (input) =>
+    ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.resetGlobalMcpOverride, input),
+  resetAll: (input) =>
+    ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.resetAll, input),
+  onChanged: subscribe<ProjectToolsChangedEvent>(PROJECT_TOOLS_CHANNEL.changed),
+} satisfies ProjectToolsBridgeApi);
+
 contextBridge.exposeInMainWorld("mcpServers", {
-  list: () => ipcRenderer.invoke(MCP_SERVERS_CHANNEL.list),
+  list: (input) => ipcRenderer.invoke(MCP_SERVERS_CHANNEL.list, input),
   save: (input) => ipcRenderer.invoke(MCP_SERVERS_CHANNEL.save, input),
   remove: (input) => ipcRenderer.invoke(MCP_SERVERS_CHANNEL.remove, input),
-  onChanged: subscribe<McpServersSnapshot>(MCP_SERVERS_CHANNEL.changed),
+  onChanged: subscribe<McpServersChangedEvent>(MCP_SERVERS_CHANNEL.changed),
 } satisfies McpServersBridgeApi);
 
 contextBridge.exposeInMainWorld("archive", {
@@ -549,26 +681,22 @@ contextBridge.exposeInMainWorld("usage", {
 } satisfies UsageBridgeApi);
 
 contextBridge.exposeInMainWorld("extensions", {
-  list: () => ipcRenderer.invoke(EXTENSIONS_CHANNEL.list),
+  list: (input) => ipcRenderer.invoke(EXTENSIONS_CHANNEL.list, input),
   preflight: (input) => ipcRenderer.invoke(EXTENSIONS_CHANNEL.preflight, input),
   confirm: (input) => ipcRenderer.invoke(EXTENSIONS_CHANNEL.confirm, input),
   discard: (preflightId) =>
     ipcRenderer.invoke(EXTENSIONS_CHANNEL.discard, preflightId),
-  enableComponent: (componentIdentity) =>
-    ipcRenderer.invoke(EXTENSIONS_CHANNEL.enableComponent, componentIdentity),
-  disableComponent: (componentIdentity) =>
-    ipcRenderer.invoke(EXTENSIONS_CHANNEL.disableComponent, componentIdentity),
-  beginDisable: (installIdentity) =>
-    ipcRenderer.invoke(EXTENSIONS_CHANNEL.beginDisable, installIdentity),
-  beginUninstall: (installIdentity) =>
-    ipcRenderer.invoke(EXTENSIONS_CHANNEL.beginUninstall, installIdentity),
+  beginDisable: (input) =>
+    ipcRenderer.invoke(EXTENSIONS_CHANNEL.beginDisable, input),
+  beginUninstall: (input) =>
+    ipcRenderer.invoke(EXTENSIONS_CHANNEL.beginUninstall, input),
   resolveUninstall: (input) =>
     ipcRenderer.invoke(EXTENSIONS_CHANNEL.resolveUninstall, input),
-  cancelUninstall: (installIdentity) =>
-    ipcRenderer.invoke(EXTENSIONS_CHANNEL.cancelUninstall, installIdentity),
-  purgeInstallData: (installIdentity) =>
-    ipcRenderer.invoke(EXTENSIONS_CHANNEL.purgeInstallData, installIdentity),
-  onChanged: subscribe<ExtensionsSnapshot>(EXTENSIONS_CHANNEL.changed),
+  cancelUninstall: (input) =>
+    ipcRenderer.invoke(EXTENSIONS_CHANNEL.cancelUninstall, input),
+  purgeInstallData: (input) =>
+    ipcRenderer.invoke(EXTENSIONS_CHANNEL.purgeInstallData, input),
+  onChanged: subscribe<ExtensionsChangedEvent>(EXTENSIONS_CHANNEL.changed),
 } satisfies ExtensionsBridgeApi);
 
 contextBridge.exposeInMainWorld("memory", {
@@ -610,3 +738,4 @@ contextBridge.exposeInMainWorld("memory", {
   consumeDestructiveAuthority: (token) =>
     ipcRenderer.invoke(MEMORY_CHANNEL.consumeDestructiveAuthority, token),
 } satisfies MemoryBridgeApi);
+}

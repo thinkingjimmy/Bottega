@@ -83,8 +83,8 @@ export class OpencodeHistoryAdapter implements HistoryAdapter {
             /* 库级 mtime 拼 per-session time_updated：别的会话写库不轮换本行 revision */
             historyRevision: digest(`${id}:${String(row.time_updated)}`),
             /* 产品同径 session/resume 已对非 ACP 家族会话真机闭环：
-             * dev/opencode-resume-probe.mjs + verified-capabilities 2026-08-23。 */
-            canResume: true, archived: row.time_archived != null, incompleteTail: false, divergence: false,
+             * DEV/agents/probes/opencode/resume.mjs + verified-capabilities 2026-08-23。 */
+            canResume: true, archived: row.time_archived != null, incompleteTail: false,
             sourceIncarnation: initialSourceIncarnation(key, value),
             sourcePath: this.databasePath, fingerprint: value,
           });

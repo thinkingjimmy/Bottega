@@ -144,12 +144,13 @@ export function AppInstallDisclosure({
               {extensionRequirements.map((requirement) => {
                 const extension = extensions.find(
                   (item) =>
-                    item.componentIdentity === requirement.componentIdentity
+                    item.declaredComponentIdentity ===
+                    requirement.declaredComponentIdentity
                 );
                 return (
-                  <li key={requirement.componentIdentity}>
+                  <li key={requirement.declaredComponentIdentity}>
                     <span className="font-mono text-xs">
-                      {requirement.componentIdentity}
+                      {requirement.declaredComponentIdentity}
                     </span>
                     <p className="text-muted-foreground text-xs">
                       {extension

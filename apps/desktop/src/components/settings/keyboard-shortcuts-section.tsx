@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, lucide TriangleAlert/RotateCcw/Trash2, lib/shortcuts (truth table, resolver, capture, conflicts, glyphs), lib/settings-store (overrides persistence), lib/platform, settings-layout primitives, ui Button/Kbd/Tooltip and i18n
- * [OUTPUT]: Provides KeyboardShortcutsSection (7 rebindable rows: record/disable/reset/restore-defaults, conflict warning tips) and EditorKeysSection (read-only composer keys via SettingsNoteList)
+ * [INPUT]: Depends on React, lucide TriangleAlert/Pencil/RotateCcw/Trash2, lib/shortcuts (truth table, resolver, capture, conflicts, glyphs), lib/settings-store (overrides persistence), lib/platform, settings-layout primitives, ui Button/Kbd/Tooltip, cn and i18n
+ * [OUTPUT]: Provides KeyboardShortcutsSection (7 rows: read-only keycap display, pencil recorder, disabled pill beside the name, always-present disable button, reset/restore-defaults, conflict warning tips)
  * [POS]: The Settings › Keyboard shortcuts control surface; owns recorder interaction state only — bindings truth lives in lib/shortcuts defaults ⊕ settings.json overrides, writes go through settingsStore functional mutations
  */
 
@@ -11,9 +11,10 @@ import {
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { RotateCcw, Trash2, TriangleAlert } from "lucide-react";
+import { Pencil, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Kbd, KbdGroup } from "@ai-chat/ui/components/ui/kbd";
+import { cn } from "@ai-chat/ui/lib/utils";
 import {
   Tooltip,
   TooltipContent,
@@ -23,7 +24,6 @@ import { useAppTranslation } from "@/components/providers/i18n-provider";
 import {
   SettingsButton,
   SettingsList,
-  SettingsNoteList,
   SettingsRow,
   SettingsSection,
 } from "@/components/settings/settings-layout";
@@ -114,6 +114,7 @@ function ShortcutRow({
   const label = t(`settings.shortcuts.labels.${id}`);
   const [busy, setBusy] = useState(false);
   const [rejected, setRejected] = useState<RejectReason | null>(null);
+  const [recording, setRecording] = useState(false);
 
   /* undefined=清覆写（回默认），null=停用，binding=改绑。函数式 mutation
      让并发改绑在 revision 队列上合并，而不是互相覆盖。 */
@@ -141,6 +142,7 @@ function ShortcutRow({
     <SettingsRow
       label={label}
       htmlFor={`shortcut-${id}`}
+      badge={binding ? undefined : <DisabledPill />}
       description={
         SCOPE_HINT_IDS.has(id) || rejectionCopy ? (
           <>
@@ -164,17 +166,7 @@ function ShortcutRow({
               })}
             />
           )}
-          <RecorderButton
-            id={id}
-            label={label}
-            binding={binding}
-            busy={busy}
-            onReject={setRejected}
-            onCapture={(next) => {
-              setRejected(null);
-              void persist(next);
-            }}
-          />
+          <BindingDisplay id={id} binding={binding} recording={recording} />
           {overridden && (
             <Button
               variant="ghost"
@@ -189,20 +181,33 @@ function ShortcutRow({
               <RotateCcw />
             </Button>
           )}
-          {binding && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("settings.shortcuts.disableAria", { name: label })}
-              disabled={busy}
-              onClick={() => {
-                setRejected(null);
-                void persist(null);
-              }}
-            >
-              <Trash2 />
-            </Button>
-          )}
+          <RecorderButton
+            id={id}
+            label={label}
+            busy={busy}
+            recording={recording}
+            onRecordingChange={setRecording}
+            onReject={setRejected}
+            onCapture={(next) => {
+              setRejected(null);
+              void persist(next);
+            }}
+          />
+          {/* 停用钮常驻，无绑定时置灰而不是消失：可做与不可做用
+              disabled 说，用「有没有」说的代价是尾部图标列随状态
+              左右横跳，相邻行的同一个动作落不到同一条竖线上。 */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("settings.shortcuts.disableAria", { name: label })}
+            disabled={busy || !binding}
+            onClick={() => {
+              setRejected(null);
+              void persist(null);
+            }}
+          >
+            <Trash2 />
+          </Button>
         </div>
       }
     />
@@ -210,33 +215,95 @@ function ShortcutRow({
 }
 
 /* ============================================================
- * 录制器是一颗会变身的按钮：静止态展示键帽（或「已停用」），点击进入
- * 录制态吃下一切 keydown——preventDefault + stopPropagation 双保险，
- * window 级分派器（useGlobalShortcuts、聊天查找）在录制期一个键也
- * 收不到。两个例外：Escape 取消（仍吞掉），Tab 取消但放行——键盘
- * 用户得能离开这颗按钮。失焦即取消：录制态不允许在视野外滞留。
+ * 键帽是只读的事实陈述：显示当前绑定，不接受点击，静止态连边框
+ * 都不留。可点的形状全部让给右边那两颗图标钮——界面因此不再暗示
+ * 一个不存在的输入框，也不必再解释「为什么这里点了也能改」。
+ *
+ * 唯一的例外是录制态：这时它套上一圈 ring 与底色。边框只在它携带
+ * 信息时出现——「我正在听键」——而不是常年挂在那里冒充控件。
+ *
+ * 停用档这里是空的：没有键就没有键帽。判词交给名字旁的徽标去说，
+ * min-w-24 只留住列宽，好让七行的键帽落在同一条竖线上。
+ * ============================================================ */
+function BindingDisplay({
+  id,
+  binding,
+  recording,
+}: {
+  id: ShortcutId;
+  binding: ShortcutBinding | null;
+  recording: boolean;
+}) {
+  const { t } = useAppTranslation();
+  return (
+    <span
+      data-testid={`shortcut-keys-${id}`}
+      className={cn(
+        "flex h-8 min-w-24 items-center justify-center rounded-md px-2.5 text-xs",
+        recording && "bg-muted/60 ring-1 ring-ring/40"
+      )}
+    >
+      {recording ? (
+        <span className="text-muted-foreground">
+          {t("settings.shortcuts.recordingPlaceholder")}
+          <span className="ml-1.5 text-muted-foreground/60">
+            {t("settings.shortcuts.recordingHint")}
+          </span>
+        </span>
+      ) : binding ? (
+        <KbdGroup>
+          {bindingGlyphs(binding).map((glyph) => (
+            <Kbd key={glyph}>{glyph}</Kbd>
+          ))}
+        </KbdGroup>
+      ) : null}
+    </span>
+  );
+}
+
+/* 停用是用户按下的一个决定，不是错误：实心中性药丸，读得见但不报警。
+   琥珀色在这一页已被冲突占用，一色两义会把两种状态搅成一种噪音。 */
+function DisabledPill() {
+  const { t } = useAppTranslation();
+  return (
+    <span className="inline-flex h-[22px] shrink-0 items-center rounded-full bg-foreground/10 px-2 font-medium text-[11px] text-foreground leading-none">
+      {t("settings.shortcuts.disabled")}
+    </span>
+  );
+}
+
+/* ============================================================
+ * 录制器就是那颗铅笔：点击进入录制态，随后吃下一切 keydown——
+ * preventDefault + stopPropagation 双保险，window 级分派器
+ * （useGlobalShortcuts、聊天查找）在录制期一个键也收不到。
+ * 两个例外：Escape 取消（仍吞掉），Tab 取消但放行——键盘用户
+ * 得能离开这颗按钮。失焦即取消：录制态不允许在视野外滞留。
  * 录制中按 ⌘Q 会退出应用：隐式菜单在 renderer 之前吃键，无菜单
  * 手术不可避免，保留键表只能拦住到得了这里的组合。
+ *
+ * aria-pressed 把它说成一个开关：键帽的变身只对眼睛说话，读屏
+ * 用户得从按钮本身听见自己进没进录制态。
  * ============================================================ */
 function RecorderButton({
   id,
   label,
-  binding,
   busy,
+  recording,
+  onRecordingChange,
   onReject,
   onCapture,
 }: {
   id: ShortcutId;
   label: string;
-  binding: ShortcutBinding | null;
   busy: boolean;
+  recording: boolean;
+  onRecordingChange: (recording: boolean) => void;
   onReject: (reason: RejectReason | null) => void;
   onCapture: (binding: ShortcutBinding) => void;
 }) {
   const { t } = useAppTranslation();
-  const [recording, setRecording] = useState(false);
 
-  const stop = () => setRecording(false);
+  const stop = () => onRecordingChange(false);
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (!recording) return;
@@ -264,36 +331,20 @@ function RecorderButton({
     <Button
       id={`shortcut-${id}`}
       type="button"
-      variant="outline"
-      size="lg"
+      variant="ghost"
+      size="icon-sm"
       aria-label={t("settings.shortcuts.editAria", { name: label })}
+      aria-pressed={recording}
       disabled={busy}
-      className="min-w-24 cursor-pointer justify-center px-2.5"
+      className={cn(recording && "bg-muted text-foreground")}
       onClick={() => {
         if (!recording) onReject(null);
-        setRecording((value) => !value);
+        onRecordingChange(!recording);
       }}
       onKeyDown={onKeyDown}
       onBlur={stop}
     >
-      {recording ? (
-        <span className="text-muted-foreground text-xs">
-          {t("settings.shortcuts.recordingPlaceholder")}
-          <span className="ml-1.5 text-muted-foreground/60">
-            {t("settings.shortcuts.recordingHint")}
-          </span>
-        </span>
-      ) : binding ? (
-        <KbdGroup>
-          {bindingGlyphs(binding).map((glyph) => (
-            <Kbd key={glyph}>{glyph}</Kbd>
-          ))}
-        </KbdGroup>
-      ) : (
-        <span className="text-muted-foreground">
-          {t("settings.shortcuts.disabled")}
-        </span>
-      )}
+      <Pencil />
     </Button>
   );
 }
@@ -317,34 +368,5 @@ function ConflictTip({ text }: { text: string }) {
         {text}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-/* ============================================================
- * 编辑器按键是只读事实：没有东西可点，按房规走 SettingsNoteList
- * 而不是右侧空着的 SettingsRow。键名是平台字形不是文案，由代码
- * 按惯例拼（mac 无连接号、其余用 +），不进 i18n 目录。
- * ============================================================ */
-export function EditorKeysSection() {
-  const { t } = useAppTranslation();
-  const apple = isApplePlatform();
-  const items = [
-    { term: "Enter", detail: t("settings.shortcuts.editor.send") },
-    {
-      term: apple ? "⇧ Enter" : "Shift + Enter",
-      detail: t("settings.shortcuts.editor.newline"),
-    },
-    {
-      term: apple ? "⌘ Z · ⇧ ⌘ Z · ⌘ Y" : "Ctrl + Z · Ctrl + Shift + Z · Ctrl + Y",
-      detail: t("settings.shortcuts.editor.undo"),
-    },
-  ];
-  return (
-    <SettingsSection
-      title={t("settings.shortcuts.editorTitle")}
-      description={t("settings.shortcuts.editorDescription")}
-    >
-      <SettingsNoteList items={items} />
-    </SettingsSection>
   );
 }

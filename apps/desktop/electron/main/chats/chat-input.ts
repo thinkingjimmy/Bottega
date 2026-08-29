@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, shared chat/agent/project Limit, renderer ManualTurn and main-only Trusted adopt
- * [OUTPUT]: Provides with an App edit/use/adopt role, append, modified CAS, formal or annex unified block, attachment MIME/header, equivalent renderer/coordinator chat, write schema, reusable user envelope schema and sorted attachment load type
+ * [OUTPUT]: Provides App edit/use/adopt inputs with optional MCP tool-plan session binding, append/revision CAS, attachment validation, reusable user envelopes, and sorted attachment load types
  * [POS]: The input boundary of the chats module; renderer cannot construct an adopt, main trusted path to parse without performing perpetuation or lifecycle side effects
  */
 
@@ -150,7 +150,14 @@ export const adoptInputSchema = z
     firstMessage: userMessageInputSchema,
     projectId: z.string().regex(PROJECT_ID_PATTERN),
     incarnationId: z.string().regex(/^[a-f0-9]{32}$/),
-    session: z.object({ backend: agentBackendIdSchema, id: z.string().min(1).max(512) }).strict(),
+    session: z.object({
+      backend: agentBackendIdSchema,
+      id: z.string().min(1).max(512),
+      toolPlan: z.object({
+        planDigest: z.string().regex(/^[a-f0-9]{64}$/),
+        projectId: z.string().regex(PROJECT_ID_PATTERN).nullable(),
+      }).strict().optional(),
+    }).strict(),
     importOrigin: z.object({
       sourceKind: z.enum(HISTORY_SOURCE_KINDS), storageFingerprint: z.string().min(1).max(512),
       canonicalNativeId: z.string().min(1).max(512), aliases: z.array(z.string().min(1).max(512)).max(64),

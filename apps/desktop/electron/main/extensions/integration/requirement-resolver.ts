@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on App extensionRequirements, authoritative inventory and component-owned config resolver
- * [OUTPUT]: Provides freezeAppExtensionRequirements, generating complete resolved/unresolved graphs and canonical digests
- * [POS]: The generation seal of the AppXExtension; Old generation never re-parsled with live Registry
+ * [INPUT]: Depends on declared App Extension requirements, one authoritative visible inventory snapshot, and component-owned config resolution
+ * [OUTPUT]: Provides freezeAppExtensionRequirements with declared identity, exact instance/generation binding, unresolved reasons, and canonical graph digests
+ * [POS]: App×Extension generation seal; old App generations never reparse live Registry scope or precedence
  */
 
 import { randomUUID } from "node:crypto";
@@ -33,7 +33,9 @@ export function freezeAppExtensionRequirements(input: {
     (declaration): FrozenAppExtensionRequirement => {
       const declarationDigest = digestCanonical(declaration);
       const matches = input.inventory.components.filter(
-        (component) => component.componentIdentity === declaration.componentIdentity
+        (component) =>
+          component.declaredComponentIdentity ===
+          declaration.declaredComponentIdentity
       );
       if (matches.length !== 1) {
         return unresolved(
@@ -94,7 +96,8 @@ export function freezeAppExtensionRequirements(input: {
         });
         return {
           state: "resolved",
-          componentIdentity: declaration.componentIdentity,
+          declaredComponentIdentity: declaration.declaredComponentIdentity,
+          componentInstanceIdentity: component.componentInstanceIdentity,
           packageGenerationRef: component.packageGenerationRef,
           required: declaration.required,
           declarationDigest,
@@ -118,7 +121,7 @@ export function freezeAppExtensionRequirements(input: {
   const base = {
     resolutionId: randomUUID(),
     appGenerationId: input.appGenerationId,
-    registryRevision: input.inventory.revision,
+    visibleInventoryVersion: input.inventory.visibleInventoryVersion,
     inventorySnapshotDigest: input.inventory.digest,
     graphDigest,
     status,
@@ -152,12 +155,15 @@ function unresolved(
   const reason: FrozenExtensionInventoryReason = {
     taxonomyVersion: 1,
     code,
-    parameters: { componentIdentity: declaration.componentIdentity, ...parameters },
+    parameters: {
+      declaredComponentIdentity: declaration.declaredComponentIdentity,
+      ...parameters,
+    },
     evidenceDigest: digestCanonical({ code, parameters, declarationDigest }),
   };
   return {
     state: "unresolved",
-    componentIdentity: declaration.componentIdentity,
+    declaredComponentIdentity: declaration.declaredComponentIdentity,
     required: declaration.required,
     declarationDigest,
     reason,
@@ -167,9 +173,11 @@ function unresolved(
 function assertUnique(declarations: readonly AppExtensionRequirementDeclaration[]) {
   const seen = new Set<string>();
   for (const declaration of declarations) {
-    if (seen.has(declaration.componentIdentity)) {
-      throw new Error(`App extension requirement 重复：${declaration.componentIdentity}`);
+    if (seen.has(declaration.declaredComponentIdentity)) {
+      throw new Error(
+        `App extension requirement 重复：${declaration.declaredComponentIdentity}`
+      );
     }
-    seen.add(declaration.componentIdentity);
+    seen.add(declaration.declaredComponentIdentity);
   }
 }

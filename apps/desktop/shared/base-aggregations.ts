@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the column/row/unit value of base-values and attachment differentiation, depending on the type of aggregation of base-view-config
- * [OUTPUT]: Provides aggregation enumeration, column available aggregation, numerical aggregation calculation and stable formatting
- * [POS]: The Base of the shared polynomial kernel of the pure function; bases-ipc only redirects the protocol side, using the main and renderer algorithms
+ * [INPUT]: Depends on projected Base rows, aggregation configuration, and a caller-owned canonical BaseCellContext
+ * [OUTPUT]: Provides aggregation catalogs, type eligibility, canonical-value calculations, and stable result formatting
+ * [POS]: The shared aggregation kernel; row membership follows the view projection while cell evaluation follows the full snapshot context
  */
 
 import {
@@ -11,7 +11,7 @@ import {
   type BaseColumnType,
   type BaseRow,
 } from "./base-values";
-import { cellValue, createBaseCellContext } from "./base-cell-value";
+import { cellValue, type BaseCellContext } from "./base-cell-value";
 import type {
   BaseAggregation,
   BaseAggregationValues,
@@ -51,14 +51,13 @@ export function baseAggregationsForColumn(
   return numeric ? ALL_AGGREGATIONS : GENERIC_AGGREGATIONS;
 }
 
-/** columns 必填：少了它，公式/relation 列的聚合会静默按空值算。 */
+/** context 必填：列目录与完整行目录只有这一份，公式/relation 不再随视图裁剪失真。 */
 export function calculateBaseAggregations(
   rows: readonly BaseRow[],
   column: Pick<BaseColumn, "id" | "type" | "formula">,
-  columns: readonly BaseColumn[]
+  context: BaseCellContext
 ): BaseAggregationValues {
-  const context = createBaseCellContext({ columns, rows });
-  const resolvedColumn = columns.find((candidate) => candidate.id === column.id);
+  const resolvedColumn = context.columns.get(column.id);
   const present = rows
     .map((row) =>
       resolvedColumn

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: type-only depending on agent-ipc/submission
- * [OUTPUT]: Provides schema v10 strong sequence messages, main-private, modified branch files, external importOrigin+snapshotDigest, notice canonical, App grant|disabled 3D/revision, explicit subagent durable, interrupted fact, turn commit, relay/incarnation and Chats bridge
- * [POS]: The shared modules are a single source of truth that perpetuates the chatApp licensing is backend-independent durable intent, not to be confused with slot/runtime
+ * [INPUT]: Depends only on shared Agent, ProductFailure, project, and submission contracts
+ * [OUTPUT]: Provides schema v11 messages with ProductFailure, branches, import snapshots, hidden App-chat identity notices, App grants, subagents, turn commits, relay/incarnation, and Chats bridge
+ * [POS]: Backend-independent durable Chat wire authority shared by main, preload, and renderer
  */
 
 import type {
@@ -14,6 +14,7 @@ import type {
 import type { IncarnationPrecondition } from "./submission";
 import type { AppGrantRecord } from "./apps-ipc";
 import type { TurnContextReceipt } from "./memory-ipc";
+import type { ProductFailure } from "./product-failure";
 
 export const MESSAGE_BYTE_LIMIT = 32 * 1024;
 /** 单条消息过程条目上限：reducer 产出、IPC 校验与存储 schema 共用同一真相 */
@@ -115,6 +116,11 @@ export type ChatRelayMeta = {
 
 export type ChatNotice =
   | {
+      kind: "app-chat-ready";
+      appId: string;
+      appRole: AppChatRole;
+    }
+  | {
       kind: "chain-paused" | "startup-recovered";
       rootChainId: string;
       pauseEpoch: number;
@@ -129,6 +135,10 @@ export type ChatNotice =
   | {
       kind: "manual-recovered";
       intentId: string;
+    }
+  | {
+      kind: "skill-descriptions-truncated";
+      turnId: string;
     }
   ;
 
@@ -148,8 +158,12 @@ export const isActionableNotice = (
   notice?.kind === "chain-paused" || notice?.kind === "startup-recovered";
 
 export function noticeMessageContent(notice: ChatNotice) {
+  if (notice.kind === "app-chat-ready") return "App Studio session is ready.";
   if (notice.kind === "manual-recovered") {
     return "应用重启，这条消息的回复已中断，请重新发送。";
+  }
+  if (notice.kind === "skill-descriptions-truncated") {
+    return "本轮部分 Skill 描述因上下文预算被截短。";
   }
   if (notice.kind === "relay-failed") {
     return `Section 接力失败（relay ${notice.relayId}）。`;
@@ -170,6 +184,7 @@ export type UserChatMessage = ChatMessageBase & {
   durationMs?: never;
   isError?: never;
   failureKind?: never;
+  failure?: never;
   notice?: never;
 };
 
@@ -184,6 +199,8 @@ export type AssistantChatMessage = ChatMessageBase & {
   isError?: boolean;
   /** descriptor 对原始错误作出的稳定机器分类。 */
   failureKind?: FailureKind;
+  /** Product-owned failure; translated when rendered, never persisted as copy. */
+  failure?: ProductFailure;
   /** 仅 failureKind==="usage-limit"：额度窗口与恢复时刻，驱动限流卡片。 */
   usageLimit?: UsageLimitInfo;
   /** optional/versioned；旧消息缺席表示 legacy/unknown，不反推状态。 */
@@ -203,6 +220,7 @@ export type NoticeChatMessage = ChatMessageBase & {
   durationMs?: never;
   isError?: never;
   failureKind?: never;
+  failure?: never;
   contextReceipt?: never;
 };
 

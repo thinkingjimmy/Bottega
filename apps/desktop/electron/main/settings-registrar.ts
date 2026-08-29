@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Electron dialog/BrowserWindow, Node fs/path, shared Settings, ChatHomeService, backend runtime registry, memory service, workspace resolver and rendererIpc
- * [OUTPUT]: Provides registerSettings, unified settings IPC identification, Chat Home exclusive status API, across Chat/built-in tools/Usage/themes/language/keyboardShortcuts white lists and model/session options
- * [POS]: The Settings of the main are the boundaries of the combinations; The renderer can never directly write the Chat Home control field, and directory changes are only submitted by the chooser
+ * [INPUT]: Depends on Electron dialog/BrowserWindow, Node fs/path, shared Settings, platform capabilities, ChatHomeService, backend runtime registry, memory service, workspace resolver, trusted renderer IPC, and surface residence
+ * [OUTPUT]: Provides registerSettings, validated Skills-onboarding preference, main-only global controls, residence-gated chat options, and explicit session-effective reset dispatch
+ * [POS]: Main Settings admission boundary; App windows receive no global settings envelope and only the backend/session projections required by their resident use chat
  */
 
 import { mkdtemp, realpath, rmdir } from "node:fs/promises";
@@ -31,6 +31,11 @@ import type { WorkspaceResolver } from "./skills-catalog";
 import type { ChatHomeService } from "./chat-home/chat-home-service";
 import { resolveAppLocale } from "../../shared/i18n/locale";
 import { translate } from "../../shared/i18n/runtime";
+import {
+  assertPlatformCapability,
+  type PlatformCapabilities,
+} from "../../shared/platform-capabilities";
+import { surfaceWindowController } from "./window/surfaces/surface-window-controller";
 
 /* memory 不在册：它有自己的 discriminated mutation 出口。
    类型层已 Omit，这里是运行时的第二道门——一个域只有一个入口，
@@ -44,6 +49,7 @@ const RENDERER_SETTINGS_KEYS = new Set([
   "allowCrossChatRead",
   "disabledBuiltinTools",
   "usagePricingAutoRefresh",
+  "skillsOnboarding",
   "theme",
   "language",
   "keyboardShortcuts",
@@ -111,18 +117,42 @@ export function registerSettings(
   store: SettingsStore,
   resolveWorkspace: WorkspaceResolver,
   memoryOwner: MemorySettingsOwner,
-  chatHomes: ChatHomeService
+  chatHomes: ChatHomeService,
+  platformSupport?: PlatformCapabilities,
+  resetSessionEffective?: (conversationId: string) => void
 ) {
   const assertBackend = (value: unknown): AgentBackendId =>
     backendById(value as AgentBackendId).id;
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的设置请求")
+  const ipc = rendererIpc(window, rendererUrl, "拒绝非驻留窗口的设置请求");
+  const assertStudioRead = (context: Parameters<typeof surfaceWindowController.assertAppStudioMutation>[0]) => {
+    if (context.role === "main") return;
+    if (!context.appId) throw new Error("App window identity is missing");
+    surfaceWindowController.assertAppStudioMutation(context, context.appId);
+  };
+  const assertConversationScope = (
+    context: Parameters<typeof surfaceWindowController.assertConversationMutation>[0],
+    value: unknown
+  ) => {
+    const scope = assertScope(value);
+    if (context.role === "app-window") {
+      surfaceWindowController.assertConversationMutation(
+        context,
+        scope.conversationId
+      );
+    }
+    return scope;
+  };
+  ipc
     .handle(SETTINGS_CHANNEL.get, () => store.envelope())
     .handle(SETTINGS_CHANNEL.set, (rawPatch) =>
       store.set(assertRendererSettingsPatch(rawPatch))
     )
-    .handle(SETTINGS_CHANNEL.mutateMemory, (raw) =>
-      memoryOwner.mutate(assertMemoryMutation(raw))
-    )
+    .handle(SETTINGS_CHANNEL.mutateMemory, (raw) => {
+      if (platformSupport) {
+        assertPlatformCapability(platformSupport, "memory");
+      }
+      return memoryOwner.mutate(assertMemoryMutation(raw));
+    })
     .handle(SETTINGS_CHANNEL.getChatHomeStatus, () => chatHomes.status())
     .handle(SETTINGS_CHANNEL.chooseChatHomesRoot, () =>
       chooseChatHomesRoot(window, chatHomes, store)
@@ -130,7 +160,9 @@ export function registerSettings(
     .handle(SETTINGS_CHANNEL.acknowledgeFullAccess, () =>
       store.acknowledgeFullAccess()
     )
-    .handle(SETTINGS_CHANNEL.listBackends, async () => {
+    .roles("main", "app-window")
+    .handleWithContext(SETTINGS_CHANNEL.listBackends, async (context) => {
+      assertStudioRead(context);
       return Promise.all(
         orderedBackends().map(async (descriptor) => {
           const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
@@ -141,7 +173,7 @@ export function registerSettings(
         })
       );
     })
-    .handle(SETTINGS_CHANNEL.listModels, async (rawBackend, rawScope) => {
+    .handleWithContext(SETTINGS_CHANNEL.listModels, async (context, rawBackend, rawScope) => {
       const descriptor = backendById(assertBackend(rawBackend));
       if (
         !rawScope ||
@@ -149,6 +181,16 @@ export function registerSettings(
         Array.isArray(rawScope)
       ) {
         throw new Error("模型 workspace scope 格式无效");
+      }
+      if (context.role === "app-window") {
+        const scope = rawScope as Partial<AgentWorkspaceScope>;
+        if (scope.kind === "conversation") {
+          assertConversationScope(context, { conversationId: scope.conversationId });
+        } else if (scope.kind === "app" && scope.appId === context.appId) {
+          assertStudioRead(context);
+        } else {
+          throw new Error("App window model scope must match its resident App or conversation");
+        }
       }
       const { workspace } = resolveWorkspace(
         rawScope as AgentWorkspaceScope
@@ -173,23 +215,32 @@ export function registerSettings(
         lease.release();
       }
     })
-    .handle(SETTINGS_CHANNEL.resolveChatOptions, (scope, rawBackend) =>
+    .handleWithContext(SETTINGS_CHANNEL.resolveChatOptions, (context, scope, rawBackend) =>
       store.resolveChatOptions(
-        assertScope(scope),
+        assertConversationScope(context, scope),
         rawBackend === undefined ? undefined : assertBackend(rawBackend)
       )
     )
-    .handle(SETTINGS_CHANNEL.setChatOptions, (rawScope, options) =>
-      store.setChatOptions(
-        assertScope(rawScope),
-        options as AgentTurnOptions
-      )
+    .handleWithContext(
+      SETTINGS_CHANNEL.setChatOptions,
+      async (context, rawScope, options, rawResetSessionEffective) => {
+        if (
+          rawResetSessionEffective !== undefined &&
+          typeof rawResetSessionEffective !== "boolean"
+        ) {
+          throw new Error("Speed session reset 标记无效");
+        }
+        const scope = assertConversationScope(context, rawScope);
+        const stored = await store.setChatOptions(
+          scope,
+          options as AgentTurnOptions
+        );
+        if (rawResetSessionEffective === true) {
+          resetSessionEffective?.(scope.conversationId);
+        }
+        return stored;
+      }
     );
-  const unsubscribe = chatHomes.onStatus((status) => {
-    if (!window.isDestroyed()) {
-      window.webContents.send(SETTINGS_CHANNEL.chatHomeStatus, status);
-    }
-  });
   /* 变更广播是 renderer rebase 的前提：没有它，外部写入永远到不了
      renderer，后续 patch 全部基于陈旧基线计算。 */
   const unwatch = store.onChanged((envelope) => {
@@ -198,7 +249,6 @@ export function registerSettings(
     }
   });
   window.once("closed", () => {
-    unsubscribe();
     unwatch();
   });
 }

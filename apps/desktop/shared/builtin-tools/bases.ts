@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on zod, shared Bases schema and builtin-tools/platform queries/annotations/spec
- * [OUTPUT]: Provides three-mode cross-Section read_base cross-sectional scrutiny with registration phase, six row-backed views, Gallery/Chart configuration and batch updates, and 10 static specs and `$ref`-free wire schema
- * [POS]: The truth about the Bases field of builtin-tools; The platform is down to the shared IPC
+ * [INPUT]: Depends on Zod, shared Base schemas, and builtin-tools platform queries/annotations/spec contracts
+ * [OUTPUT]: Provides Base read/mutation/export specs, six row-backed view schemas, Gallery/Chart configuration, and `$ref`-free wire schemas; disk export is explicitly side-effecting and Plan-excluded
+ * [POS]: The builtin-tools Base-domain authority; it maps Base permissions separately from environmental side-effect annotations
  */
 
 import { z } from "zod";
@@ -215,7 +215,12 @@ export const BASE_TOOL_SPECS = [
     description:
       "把当前 Base 完整导出到应用私有 exports 目录，返回 path/bytes/rowCount 元数据，不内联文件正文。",
     inputSchema: z.object({ target: appTarget }).strict(),
-    annotations: read,
+    planExcluded: true,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+    },
   },
   {
     name: "base_set_view",

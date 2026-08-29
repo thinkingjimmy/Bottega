@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the lifecycle of the closed build participant agreement, Registry inventory snapshot, reservation ledger and AppStore narrow read only sealed resolution port
- * [OUTPUT]: Provides AppExtensionBuildParticipant: prepare/finalize/abort Three commands, handoff Read port and generation Reference count
- * [POS]: The generationBuildId-level single writer for App×Extension; Just return the checkpoint and don't touch the AppStore build phase
+ * [INPUT]: Depends on App build contracts, authoritative candidate inventory, canonical App Project/backend context, capability policy, reservation ledger, and sealed-resolution reader
+ * [OUTPUT]: Provides AppExtensionBuildParticipant prepare/finalize/abort, frozen exact-instance handoff, and generation drain counts
+ * [POS]: App×Extension build single writer; live precedence is resolved once at prepare and old App generations retain their frozen binding
  */
 
 import type {
@@ -13,6 +13,13 @@ import type {
   ExtensionInventorySnapshot,
   FrozenAppExtensionRequirementSetV1,
 } from "../../../../shared/extensions-ipc";
+import type { TurnProjectContext } from "../../../../shared/product-resource-scope";
+import type { AgentBackendId } from "../../../../shared/agent-ipc";
+import { buildEffectiveExtensionProjection } from "../capability-snapshot";
+import {
+  EXTENSION_PRODUCT_POLICY,
+  backendExtensionProbe,
+} from "../product-policy";
 import { canonicalJson } from "../registry-store";
 import { freezeAppExtensionRequirements } from "./requirement-resolver";
 import type { AppExtensionReservationLedger } from "./reservation-ledger";
@@ -20,7 +27,7 @@ import type { AppExtensionReservationLedger } from "./reservation-ledger";
 /* ── 窄端口：participant 既不 import AppStore，也不回查 live Registry ────── */
 
 export type AppExtensionInventorySource = Readonly<{
-  snapshot(): ExtensionInventorySnapshot;
+  visibleInventory(context: TurnProjectContext): ExtensionInventorySnapshot;
 }>;
 
 export type SealedAppExtensionResolution = Readonly<{
@@ -42,7 +49,15 @@ export class AppExtensionBuildParticipant {
   constructor(
     private readonly inventory: AppExtensionInventorySource,
     private readonly reservations: AppExtensionReservationLedger,
-    private readonly readSealed: SealedAppResolutionReader
+    private readonly readSealed: SealedAppResolutionReader,
+    private readonly projectContextForApp: (
+      appId: string
+    ) => TurnProjectContext = () => ({
+      projectId: null,
+      projectLifecycleRevision: null,
+    }),
+    private readonly backendForApp: (appId: string) => AgentBackendId = () =>
+      "codex"
   ) {}
 
   /* ① 在自身 gate 内用同一份 inventory snapshot 冻结整张图，并与 prepared
@@ -54,6 +69,19 @@ export class AppExtensionBuildParticipant {
       return this.attention(operation, "build 无 extensionRequirements，不应触发 participant");
     }
     try {
+      const backend = this.backendForApp(operation.appId);
+      const effective = buildEffectiveExtensionProjection({
+        inventory: this.inventory.visibleInventory(
+          this.projectContextForApp(operation.appId)
+        ),
+        probe: backendExtensionProbe(
+          backend,
+          `${backend}:app-build`,
+          "app-build"
+        ),
+        policy: EXTENSION_PRODUCT_POLICY,
+        deliveryScope: "app",
+      });
       const reservation = await this.reservations.prepare({
         generationBuildId: operation.generationBuildId,
         expectedRevision: this.fenceRevision(operation.generationBuildId),
@@ -61,7 +89,7 @@ export class AppExtensionBuildParticipant {
         frozenSet: freezeAppExtensionRequirements({
           appGenerationId: operation.appGenerationId,
           declarations: operation.extensionRequirements,
-          inventory: this.inventory.snapshot(),
+          inventory: effective.inventory,
         }),
       });
       return {

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on node fs/crypto and strict frontmatter analyzer of extensions
- * [OUTPUT]: Provides Skill directory strict exploration (`.DS_Store` excluded from listing/digest/copy), quadratic digest observation, root SKILL.md reconciliation, imported pre-review (digest-first, revision only as no-digest fallback) and delayed hashing; copySkillDirectory/digestSkillFolder always hashAll — targeted reconciliation never inherits the discovery budget
+ * [INPUT]: Depends on node fs/crypto, strict frontmatter parsing, and the shared SkillSlug admission gate
+ * [OUTPUT]: Provides strict Skill directory inspection with admitted slug/requires metadata, deterministic filtered digesting/copying, candidate discovery, and stable digest observation
  * [POS]: The unreliable directory of skills-management is reading the boundaries; The volume is just not deciding, hard failure is just left to symlink/cross-border/bad name things that are really unsafe
  */
 
@@ -21,6 +21,7 @@ import type {
   ManagedSkillReasonCode,
 } from "../../../shared/unified-skills-ipc";
 import { parseStrictSkillFrontmatter } from "../extensions/manifest-adapter";
+import { admitSkillSlug } from "./skill-slug";
 
 /* ── 体积是信息，不是裁决 ────────────────────────────────────────
  * 从前这里有 MAX_FILES / MAX_TOTAL_BYTES 两条上限，撞上就整个否掉。
@@ -38,13 +39,12 @@ const MAX_PREVIEW_BYTES = 128 * 1024;
 const MAX_DIGEST_BYTES = 16 * 1024 * 1024;
 const MAX_DIRECTORIES = 50_000;
 const MAX_DEPTH = 32;
-const SKILL_NAME = /^[A-Za-z0-9._-]{1,100}$/;
-
 export type InspectedSkillFolder = Readonly<{
   canonicalPath: string;
   name: string;
   displayName: string;
   description: string;
+  requires?: string;
   /* 超过 MAX_DIGEST_BYTES 时为 null：内容还没被读过，不是「没有内容」。
      verifyInspectedSkill 会在导入那一刻把它补齐。 */
   digest: `sha256:${string}` | null;
@@ -236,7 +236,7 @@ async function inspectSkillFolderStrict(path: string, hashAll = false): Promise<
   if (skillFile.bytes > MAX_PREVIEW_BYTES) throw invalid("skill-md-too-large");
   const content = await readFile(join(canonicalPath, "SKILL.md"), "utf8");
   const parsed = parseFrontmatter(content);
-  if (!SKILL_NAME.test(parsed.name)) {
+  if (!admitSkillSlug(parsed.name).ok) {
     throw invalid("invalid-name");
   }
   const digest = hashAll || total <= MAX_DIGEST_BYTES ? await digestWalk(canonicalPath, walked) : null;
@@ -245,6 +245,7 @@ async function inspectSkillFolderStrict(path: string, hashAll = false): Promise<
     name: parsed.name,
     displayName: parsed.name,
     description: parsed.description,
+    ...(parsed.requires ? { requires: parsed.requires } : {}),
     digest,
     revision: revisionOf(rootStat, walked, total, digest),
     preview: content,
@@ -257,6 +258,29 @@ function inspectionName(inspection: SkillFolderInspection) {
   return inspection.importable ? inspection.skill.name : inspection.name;
 }
 
+/* ── 机器态不是 Skill 的内容 ────────────────────────────────────
+ * 这一格从前只挡 `.DS_Store`，理由是：Finder 写的元数据让 digest 在
+ * 「打开过文件夹」与「没打开过」之间漂移，而那是同一个 Skill。
+ *
+ * 同一条理由适用于整张单子。`.venv` 里烤死的是本机绝对路径，
+ * `node_modules` 是一次 install 的产物，`__pycache__` 是上次解释器的心情——
+ * 它们既不是 Skill 的身份，也不该被复制到另一家的目录里去（复制过去
+ * 本来就是坏的：路径对不上，谁也用不了）。
+ *
+ * 这一行同时管三件事，因为它们本就共用这一次遍历的产物：
+ *   清单（files/bytes）· 摘要（digestWalk）· 复制（copySkillDirectory）
+ * 三者同源，才谈得上「写进去的和算过的是同一份」。
+ *
+ * 实测代价：一个装了 680MB `.venv` 的 Skill，一次目录摘要 1991ms；
+ * 而 Skills 页每次打开要对 (Skill × Agent) 全表做这件事。
+ * 名单保持保守——只收机器毫无争议自己生成的那几个，
+ * `dist` / `build` 这类可能真是 Skill 内容的名字一律不收。
+ * ────────────────────────────────────────────────────────────── */
+const EXCLUDED_ENTRIES = new Set([
+  ".DS_Store", ".git", "node_modules", "__pycache__",
+  ".venv", "venv", ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+]);
+
 async function walkSafe(root: string) {
   const files: Array<{ path: string; bytes: number }> = [];
   let total = 0;
@@ -268,9 +292,7 @@ async function walkSafe(root: string) {
     }
     const handle = await opendir(directory);
     for await (const entry of handle) {
-      /* Finder 随手写的元数据不是 Skill 的内容：让它进清单，digest 就会
-         在「打开过文件夹」与「没打开过」之间漂移，而两者是同一个 Skill。 */
-      if (entry.name === ".DS_Store") continue;
+      if (EXCLUDED_ENTRIES.has(entry.name)) continue;
       const path = join(directory, entry.name);
       const metadata = await lstat(path);
       if (metadata.isSymbolicLink()) throw invalid("symlink", relative(root, path));

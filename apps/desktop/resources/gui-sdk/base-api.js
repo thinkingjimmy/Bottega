@@ -1,12 +1,16 @@
 /**
  * [INPUT]: Depends on browser fetch/location/history/visibility, FileReader, AbortController, host inserted parent origin and synchronous source /_api/base
- * [OUTPUT]: The globalThis.BottegaBase provides fragmentation, consumption, injectable Client, atomic split page, line mutation, attachment raw materials/data: URL reading, health queries and a white list of targeted hosts hostAction
+ * [OUTPUT]: The globalThis.BottegaBase provides fragment consumption, Base operations, attachment reads, scoped read-only Design list/history/source-line/preview URLs, and acknowledged allowlisted host actions
  * [POS]: The only product of resources/GUI-sdk is the Base GUI client; The App page does not contain token, split page, CAS or routing protocol details
  */
 (function installBaseGuiSdk(global) {
   "use strict";
 
   var CHANNEL = "ai-chat:base-gui-host-action";
+  var RESULT_CHANNEL = "ai-chat:base-gui-host-action-result";
+  var HOST_ACTION_BYTE_LIMIT = 32 * 1024;
+  var pendingActions = new Map();
+  var requestSequence = 0;
 
   class BaseApiError extends Error {
     constructor(status, message, details) {
@@ -23,6 +27,7 @@
       token: params.get("baseToken") || params.get("token") || "",
       lang: params.get("lang") || "",
       hostOrigin: params.get("hostOrigin") || "",
+      surfaceLeaseId: params.get("surfaceLeaseId") || "",
     };
     historyLike.replaceState(null, "", String(locationLike.pathname || "") + String(locationLike.search || ""));
     return fragment;
@@ -66,7 +71,8 @@
         if (response.status === 409 && path !== "/_api/base/meta") {
           details.latestMeta = await this.meta(signal).catch(() => null);
         }
-        throw new BaseApiError(response.status, details.message || body.error || "Base API " + response.status, {
+        var fallback = typeof body.error === "string" ? body.error : "Base API " + response.status;
+        throw new BaseApiError(response.status, details.message || fallback, {
           code: details.code || "unknown_error",
           outcome: details.outcome || (response.status >= 500 ? "unknown" : "not-committed"),
           issues: details.issues || [],
@@ -241,15 +247,61 @@
       client.deleteRows(expectedBaseInstanceId, expectedRevision, rowIds, signal),
     getAttachment: (attachmentId, signal) => client.getAttachment(attachmentId, signal),
     getAttachmentDataUrl: (attachmentId, signal) => client.getAttachmentDataUrl(attachmentId, signal),
+    workspaceFiles: (signal) => client.request("/_api/workspace/files", signal),
+    workspaceVersions: (file, signal) =>
+      client.request("/_api/workspace/versions?file=" + encodeURIComponent(file), signal),
+    workspaceSourceLine: (file, htmlHint, signal) =>
+      client.request("/_api/workspace/source-line?file=" + encodeURIComponent(file) +
+        "&hint=" + encodeURIComponent(htmlHint), signal),
+    previewUrl: (file) => {
+      if (!fragment.surfaceLeaseId) throw new Error("Workspace preview surface missing");
+      var canonical = String(file || "").replace(/^design\//, "");
+      if (!canonical || canonical.includes("\\") || canonical.split("/").some((part) => !part || part === "." || part === "..")) {
+        throw new Error("Workspace preview path invalid");
+      }
+      return "/_preview/" + fragment.surfaceLeaseId + "/design/" + canonical.split("/").map(encodeURIComponent).join("/");
+    },
+    workspaceVersionUrl: (versionId) => {
+      if (!fragment.surfaceLeaseId) throw new Error("Workspace preview surface missing");
+      if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(String(versionId || ""))) {
+        throw new Error("Workspace version identity invalid");
+      }
+      return "/_preview/" + fragment.surfaceLeaseId + "/versions/" + versionId + ".html";
+    },
     startPolling: (onSnapshot, onError, interval) => client.startPolling(onSnapshot, onError, interval),
     stopPolling: () => client.stopPolling(),
     hostAction: (action) => {
       if (!fragment.hostOrigin) throw new Error("Base GUI host origin missing");
-      global.parent.postMessage(
-        { channel: CHANNEL, token: fragment.token, action },
-        fragment.hostOrigin
-      );
+      var requestId = "host_" + Date.now().toString(36) + "_" + (++requestSequence).toString(36);
+      return new Promise(function (resolve, reject) {
+        var timer = global.setTimeout(function () {
+          pendingActions.delete(requestId);
+          reject(new Error("Host action acknowledgement timed out"));
+        }, 5_000);
+        pendingActions.set(requestId, { resolve: resolve, reject: reject, timer: timer });
+        global.parent.postMessage(
+          { channel: CHANNEL, token: fragment.token, requestId: requestId, action: action },
+          fragment.hostOrigin
+        );
+      });
+    },
+    composeText: (text) => {
+      if (typeof text !== "string" || !text || new global.TextEncoder().encode(text).byteLength > HOST_ACTION_BYTE_LIMIT) {
+        throw new Error("compose-text exceeds the 32 KiB limit");
+      }
+      return api.hostAction({ type: "compose-text", text });
     },
   };
+  global.addEventListener("message", function (event) {
+    if (event.source !== global.parent || (fragment.hostOrigin !== "*" && event.origin !== fragment.hostOrigin)) return;
+    var result = event.data;
+    if (!result || result.channel !== RESULT_CHANNEL || typeof result.requestId !== "string" || typeof result.ok !== "boolean") return;
+    var pending = pendingActions.get(result.requestId);
+    if (!pending) return;
+    pendingActions.delete(result.requestId);
+    global.clearTimeout(pending.timer);
+    if (result.ok) pending.resolve(true);
+    else pending.reject(new Error(typeof result.error === "string" && result.error ? result.error : "Host action was rejected"));
+  });
   Object.defineProperty(global, "BottegaBase", { value: Object.freeze(api), configurable: false, writable: false });
 })(globalThis);

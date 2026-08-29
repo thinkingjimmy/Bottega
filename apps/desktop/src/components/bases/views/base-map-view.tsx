@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, MapLibre Local CSS/worker, lucide/Button, ViewConfigBar, shared Base location/url column/line with HTTPS-only openExternal, state
- * [OUTPUT]: Provides BaseMapView: Location/Label setting bar, OSM raster attribution, GeoJSON cluster/hit-test, textContent popup and back-up of the disconnected list; When missing, Add the location column to the list
- * [POS]: The map projecting of bases/views; No setHTML, no extra zoom, and the external links always return to the main security output, with column options for permanently and back-to-workbench CAS
+ * [INPUT]: Depends on MapLibre, projected Base rows/columns, the canonical BaseCellContext, view configuration, and main-owned HTTPS external opening
+ * [OUTPUT]: Provides BaseMapView with canonical labels/URLs, location configuration, OSM attribution, clusters, safe text popups, and an unlocated-row fallback
+ * [POS]: The Base Map renderer; visible geography follows projection while computed/relation values always follow the full snapshot context
  */
 
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
@@ -18,7 +18,6 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { MapPinIcon, PlusIcon } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
-  createBaseCellContext,
   type BaseCellContext,
   type BaseColumn,
   type BaseColumnType,
@@ -36,6 +35,7 @@ import { ViewConfigBar, ViewConfigSelect } from "./view-config-bar";
 
 export function BaseMapView({
   columns,
+  context,
   rows,
   locationColumnId,
   labelColumnId,
@@ -45,6 +45,7 @@ export function BaseMapView({
   onAddColumn,
 }: {
   columns: BaseColumn[];
+  context: BaseCellContext;
   rows: BaseRow[];
   locationColumnId?: string;
   labelColumnId?: string;
@@ -72,11 +73,6 @@ export function BaseMapView({
   const urlColumn = useMemo(
     () => columns.find((column) => column.type === "url"),
     [columns]
-  );
-  /* 标签/外链一律经读时投影取值，relation 才会显示 label 而不是 row id。 */
-  const cellContext = useMemo(
-    () => createBaseCellContext({ columns, rows }),
-    [columns, rows]
   );
   const points = useMemo(
     () =>
@@ -109,7 +105,7 @@ export function BaseMapView({
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     const geojson = createBaseMapGeoJson(
       points,
-      cellContext,
+      context,
       labelColumn,
       urlColumn
     );
@@ -192,7 +188,7 @@ export function BaseMapView({
     });
     map.on("error", () => setError("Map tiles are unavailable — showing the location list."));
     return () => map.remove();
-  }, [cellContext, labelColumn, locationColumn, points, urlColumn]);
+  }, [context, labelColumn, locationColumn, points, urlColumn]);
 
   if (!locationColumn) {
     return (
@@ -254,7 +250,7 @@ export function BaseMapView({
             {error || "No rows have coordinates yet."}
           </p>
           <LocationList
-            cellContext={cellContext}
+            cellContext={context}
             labelColumn={labelColumn}
             locationColumn={locationColumn}
             points={points}

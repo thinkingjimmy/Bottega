@@ -1,13 +1,13 @@
 /**
  * [INPUT]: No runtime dependencies; consumed by the five root locale catalogs
- * [OUTPUT]: Provides five languages for Settings › Keyboard shortcuts (labels/hints per ShortcutId, recorder copy, capture errors, conflict tooltip, editor-keys notes)
+ * [OUTPUT]: Provides five languages for Settings › Keyboard shortcuts (labels/hints per ShortcutId, recorder copy, the disabled pill, edit/disable/reset aria labels, capture errors, conflict tooltip)
  * [POS]: Keyboard-shortcuts feature catalog of shared/i18n/locales/settings; key glyphs (⌘/Ctrl) are rendered by code, not translated here
  */
 
 export const settingsShortcutsEn = {
   title: "Product shortcuts",
   description:
-    "Click a shortcut to record a new key combination. Shortcuts sharing the same keys show a warning; scoped shortcuts may legitimately share keys.",
+    "Click a row's edit icon to record a new key combination. Shortcuts sharing the same keys show a warning; scoped shortcuts may legitimately share keys.",
   labels: {
     search: "Open command palette",
     newChat: "New chat",
@@ -38,14 +38,6 @@ export const settingsShortcutsEn = {
   },
   saveFailed: "Failed to save the shortcut",
   restoreFailed: "Failed to restore default shortcuts",
-  editorTitle: "Editor keys",
-  editorDescription:
-    "Fixed keys in the message composer. They follow platform conventions and cannot be rebound.",
-  editor: {
-    send: "Send message",
-    newline: "Insert a newline",
-    undo: "Undo and redo in the composer",
-  },
 };
 
 type SettingsShortcutsCatalog = typeof settingsShortcutsEn;
@@ -53,7 +45,7 @@ type SettingsShortcutsCatalog = typeof settingsShortcutsEn;
 export const settingsShortcutsZhCN: SettingsShortcutsCatalog = {
   title: "产品快捷键",
   description:
-    "点击快捷键即可录制新的组合键。相同组合键的快捷键会显示警告；分属不同作用域的快捷键允许共用按键。",
+    "点击行内的编辑按钮即可录制新的组合键。相同组合键的快捷键会显示警告；分属不同作用域的快捷键允许共用按键。",
   labels: {
     search: "打开命令面板",
     newChat: "新建会话",
@@ -84,19 +76,12 @@ export const settingsShortcutsZhCN: SettingsShortcutsCatalog = {
   },
   saveFailed: "快捷键保存失败",
   restoreFailed: "恢复默认快捷键失败",
-  editorTitle: "编辑器按键",
-  editorDescription: "输入框内的固定按键。它们遵循平台惯例，不可改绑。",
-  editor: {
-    send: "发送消息",
-    newline: "插入换行",
-    undo: "在输入框中撤销与重做",
-  },
 };
 
 export const settingsShortcutsJa: SettingsShortcutsCatalog = {
   title: "プロダクトショートカット",
   description:
-    "ショートカットをクリックすると新しいキーの組み合わせを記録できます。同じキーを共有するショートカットには警告が表示されます。スコープが異なるショートカットはキーを共有できます。",
+    "各行の編集アイコンをクリックすると新しいキーの組み合わせを記録できます。同じキーを共有するショートカットには警告が表示されます。スコープが異なるショートカットはキーを共有できます。",
   labels: {
     search: "コマンドパレットを開く",
     newChat: "新しいチャット",
@@ -127,20 +112,12 @@ export const settingsShortcutsJa: SettingsShortcutsCatalog = {
   },
   saveFailed: "ショートカットの保存に失敗しました",
   restoreFailed: "既定のショートカットへの復元に失敗しました",
-  editorTitle: "エディターキー",
-  editorDescription:
-    "メッセージ入力欄の固定キーです。プラットフォームの慣例に従い、変更できません。",
-  editor: {
-    send: "メッセージを送信",
-    newline: "改行を挿入",
-    undo: "入力欄で元に戻す・やり直す",
-  },
 };
 
 export const settingsShortcutsFr: SettingsShortcutsCatalog = {
   title: "Raccourcis du produit",
   description:
-    "Cliquez sur un raccourci pour enregistrer une nouvelle combinaison. Les raccourcis partageant les mêmes touches affichent un avertissement ; des raccourcis à portées différentes peuvent légitimement partager des touches.",
+    "Cliquez sur l’icône de modification d’une ligne pour enregistrer une nouvelle combinaison. Les raccourcis partageant les mêmes touches affichent un avertissement ; des raccourcis à portées différentes peuvent légitimement partager des touches.",
   labels: {
     search: "Ouvrir la palette de commandes",
     newChat: "Nouvelle discussion",
@@ -171,20 +148,12 @@ export const settingsShortcutsFr: SettingsShortcutsCatalog = {
   },
   saveFailed: "Échec de l’enregistrement du raccourci",
   restoreFailed: "Échec du rétablissement des raccourcis par défaut",
-  editorTitle: "Touches de l’éditeur",
-  editorDescription:
-    "Touches fixes du compositeur de messages. Elles suivent les conventions de la plateforme et ne peuvent pas être réaffectées.",
-  editor: {
-    send: "Envoyer le message",
-    newline: "Insérer un saut de ligne",
-    undo: "Annuler et rétablir dans le compositeur",
-  },
 };
 
 export const settingsShortcutsEs: SettingsShortcutsCatalog = {
   title: "Atajos del producto",
   description:
-    "Haz clic en un atajo para grabar una nueva combinación de teclas. Los atajos que comparten las mismas teclas muestran una advertencia; atajos de distintos ámbitos pueden compartir teclas legítimamente.",
+    "Haz clic en el icono de edición de una fila para grabar una nueva combinación de teclas. Los atajos que comparten las mismas teclas muestran una advertencia; atajos de distintos ámbitos pueden compartir teclas legítimamente.",
   labels: {
     search: "Abrir la paleta de comandos",
     newChat: "Nuevo chat",
@@ -215,12 +184,4 @@ export const settingsShortcutsEs: SettingsShortcutsCatalog = {
   },
   saveFailed: "No se pudo guardar el atajo",
   restoreFailed: "No se pudieron restablecer los atajos predeterminados",
-  editorTitle: "Teclas del editor",
-  editorDescription:
-    "Teclas fijas del compositor de mensajes. Siguen las convenciones de la plataforma y no se pueden reasignar.",
-  editor: {
-    send: "Enviar mensaje",
-    newline: "Insertar un salto de línea",
-    undo: "Deshacer y rehacer en el compositor",
-  },
 };

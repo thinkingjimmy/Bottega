@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, shared ChartItem/Base column, chart-model/snapSpan, dashboard, test resize unit, viewConfigHitAreaClass, ChartViewport and ChartEditor
- * [OUTPUT]: Provides ChartCard, read-only/editable quad-mode rendering, single-card unobstructed color projection, pointer resize intent and 28px visual / 44px live card operation
- * [POS]: The single-card rendering/gesture boundaries of bases/views/chart; The edit status belongs to ChartEditor, and the persistence only throws the id-level ChartOp; The lower right corner is exclusive to Benchcard, and the viewport is moved to cornerReserved
+ * [INPUT]: Depends on projected Base rows/columns, a canonical BaseCellContext, ChartItem/model, viewport/editor, resize snapping, and dashboard actions
+ * [OUTPUT]: Provides ChartCard with context-aware payload projection, read/edit states, accessible controls, and pointer resize intent
+ * [POS]: The per-card render/gesture boundary; persistence remains an id-scoped ChartOp and canonical filtering/aggregation remains in chart-model
  */
 
 import {
@@ -14,6 +14,7 @@ import {
 import { GripVerticalIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type {
+  BaseCellContext,
   BaseColumn,
   BaseRow,
   ChartItem,
@@ -33,6 +34,7 @@ export function ChartCard({
   item,
   rows,
   columns,
+  context,
   busy,
   canMoveUp,
   canMoveDown,
@@ -47,6 +49,7 @@ export function ChartCard({
   item: ChartItem;
   rows: BaseRow[];
   columns: BaseColumn[];
+  context: BaseCellContext;
   busy: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
@@ -63,8 +66,8 @@ export function ChartCard({
   const typeLabel = t(chartTypeLabelKey(item.chartType));
   const cardName = item.name ?? typeLabel;
   const result = useMemo(
-    () => buildChartPayload(rows, columns, item),
-    [columns, item, rows]
+    () => buildChartPayload(rows, columns, item, context),
+    [columns, context, item, rows]
   );
   const gesture = useRef<{
     pointerId: number;

@@ -200,16 +200,18 @@ function ExtensionRequirementStatus({
         const active = visibility?.activeComponents.some(
           (item) =>
             item.appId === status.appId &&
-            item.componentIdentity === requirement.componentIdentity
+            item.componentInstanceIdentity ===
+            requirement.componentInstanceIdentity
         );
         const excluded = visibility?.excludedComponents.find(
           (item) =>
             item.appId === status.appId &&
-            item.componentIdentity === requirement.componentIdentity
+            item.declaredComponentIdentity ===
+            requirement.declaredComponentIdentity
         );
         return (
-          <div className="space-y-1" key={requirement.componentIdentity}>
-            <p className="font-mono">{requirement.componentIdentity}</p>
+          <div className="space-y-1" key={requirement.declaredComponentIdentity}>
+            <p className="font-mono">{requirement.declaredComponentIdentity}</p>
             <p>
               requirement：{requirement.required ? "required" : "optional"}；
               installed：{requirement.installed ? "yes" : "no"}；admission：
@@ -297,7 +299,7 @@ function AgentVisibilityNotice({
           {excluded
             .map(
               (item) =>
-                `${item.componentIdentity}（${item.code}${item.required ? "，required" : ""}）`
+                `${item.declaredComponentIdentity}（${item.code}${item.required ? "，required" : ""}）`
             )
             .join("、")}
         </p>

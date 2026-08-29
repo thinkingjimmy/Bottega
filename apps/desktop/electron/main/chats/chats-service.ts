@@ -1,10 +1,12 @@
 /**
- * [INPUT]: Depends on Electron, shared chat, contracts, ChatHomeService, ChatStore/AttachmentStore, ChatTitleJobs, pure guards, Gallery image detail, cleaning and removing the core
- * [OUTPUT]: Provides the renderer/coordinator chat front; Includes gate-held Normal/App/adopt creation, Atom tail modification replace broadCASting, Project clear binding, SessionRef CAS and durable deletion; Only accept main trusted input
+ * [INPUT]: Depends on Electron, shared chat contracts, ChatHomeService, ChatStore/AttachmentStore, ChatTitleJobs, window surface scope, pure guards, Gallery image projection, and deletion core
+ * [OUTPUT]: Provides the renderer/coordinator chat facade; durable turn commits remain successful when best-effort renderer projection fails, and App windows receive only their resident Studio's active use chat and referenced attachments
  * [POS]: The main process of the chats module is stored on the front door; All new Chats must be owned by Chat Home creation saga
  */
 
 import { dirname, join } from "node:path";
+import { rendererEventBus } from "../window/surfaces/renderer-event-bus";
+import { surfaceWindowController } from "../window/surfaces/surface-window-controller";
 import { type BrowserWindow } from "electron";
 import type {
   AgentBackendId,
@@ -69,6 +71,10 @@ import {
   renameInputSchema,
   type ParsedAttachmentPayload,
 } from "./chat-input";
+import {
+  createDormantAppChat,
+  type DormantAppChatInput,
+} from "./lifecycle/dormant-app-chat";
 export { rejectLegacyRendererWrite } from "./chats-service-guards";
 
 type ChatHomeCreationPort = Pick<ChatHomeService,
@@ -143,8 +149,14 @@ export class ChatsService {
     };
 
     rendererIpc(window, rendererUrl, "拒绝非主窗口的聊天请求")
-      .handle(CHATS_CHANNEL.list, () => ({
-        chats: this.store.list().map((chat) => ({
+      .roles("main", "app-window")
+      .handleWithContext(CHATS_CHANNEL.list, (context) => {
+        const scoped = surfaceWindowController.appWindowUseChat(context);
+        const chats = context.role === "main"
+          ? this.store.list()
+          : this.store.list().filter((chat) => chat.id === scoped?.chatId);
+        return {
+          chats: chats.map((chat) => ({
           ...chat,
           effectiveArchived:
             Boolean(chat.archivedAt) ||
@@ -152,19 +164,27 @@ export class ChatsService {
               chat.projectId &&
                 this.options.isProjectArchived?.(chat.projectId)
             ),
-        })),
-        warning: this.store.getWarning(),
-      }))
-      .handle(CHATS_CHANNEL.get, async (chatId) =>
+          })),
+          ...(context.role === "main" && this.store.getWarning()
+            ? { warning: this.store.getWarning() }
+            : {}),
+        };
+      })
+      .handleWithContext(CHATS_CHANNEL.get, async (context, chatId) => {
+        const id = assertChatId(chatId);
+        surfaceWindowController.assertAppConversationRead(context, id);
+        return (
         redactImageDetails(
-          rendererRecordOf(await this.store.get(assertChatId(chatId)))
+          rendererRecordOf(await this.store.get(id))
         )
-      )
-      .handle(CHATS_CHANNEL.messagesSnapshot, async (chatId) =>
-        redactImageDetails(
-          await this.store.messagesSnapshot(assertChatId(chatId))
-        )
-      )
+        );
+      })
+      .handleWithContext(CHATS_CHANNEL.messagesSnapshot, async (context, chatId) => {
+        const id = assertChatId(chatId);
+        surfaceWindowController.assertAppConversationRead(context, id);
+        return redactImageDetails(await this.store.messagesSnapshot(id));
+      })
+      .roles("main")
       .handle(CHATS_CHANNEL.create, rejectLegacyRendererWrite)
       .handle(CHATS_CHANNEL.createForApp, rejectLegacyRendererWrite)
       .handle(CHATS_CHANNEL.append, rejectLegacyRendererWrite)
@@ -181,12 +201,21 @@ export class ChatsService {
         const id = assertChatId(chatId);
         await this.remove(id);
       })
-      .handle(CHATS_CHANNEL.readAttachment, (attachmentId) => {
+      .roles("main", "app-window")
+      .handleWithContext(CHATS_CHANNEL.readAttachment, async (context, attachmentId) => {
         if (
           typeof attachmentId !== "string" ||
           !ATTACHMENT_ID_PATTERN.test(attachmentId)
         ) {
           throw new Error("附件 id 格式无效");
+        }
+        if (context.role === "app-window") {
+          const scoped = surfaceWindowController.appWindowUseChat(context);
+          const record = scoped ? await this.store.get(scoped.chatId) : null;
+          const referenced = record?.messages.some((message) =>
+            message.attachments?.some((attachment) => attachment.id === attachmentId)
+          );
+          if (!referenced) throw new Error("App window attachment read rejected");
         }
         return this.attachments.read(attachmentId);
       });
@@ -292,6 +321,23 @@ export class ChatsService {
     this.emitMutation(mutation);
     this.scheduleTitle(record, value.firstMessage.content);
     return record;
+  }
+
+  /**
+   * App Studio 不能把一个尚不存在的 draft id 当成 conversation identity。
+   * use slot 在返回 renderer 前，经同一 Chat Home CreationIntent 建成 dormant
+   * canonical chat；首条真人输入随后只是 append，不会再次铸造 incarnation。
+   */
+  createDormantAppChat(input: DormantAppChatInput) {
+    this.assertAdmission();
+    return createDormantAppChat({
+      store: this.store,
+      chatHomes: this.options.chatHomes,
+      resolveAgent: (appId, projectId) =>
+        this.options.resolveAppAgent?.(appId, projectId),
+      withProject: (projectId, task) => this.withProject(projectId, task),
+      publish: (mutation) => this.emitMutation(mutation),
+    }, input);
   }
 
   async createAdoptedChat(
@@ -528,14 +574,9 @@ export class ChatsService {
     if (!input.message && !Object.keys(input.subagentsDelta ?? {}).length) {
       return { outcome: "empty" };
     }
+    let result: ChatMessageMutation;
     try {
-      const result = await this.store.appendTurnResult(conversationId, input);
-      this.emitMutation(result);
-      return {
-        outcome: "stored",
-        ...(result.storedMessage ? { storedMessage: result.storedMessage } : {}),
-        subagents: result.record.subagents ?? {},
-      };
+      result = await this.store.appendTurnResult(conversationId, input);
     } catch (cause) {
       if (cause instanceof ChatNotFoundError) return { outcome: "missing", error: cause };
       if (
@@ -552,6 +593,16 @@ export class ChatsService {
         error: cause instanceof Error ? cause : new Error(String(cause)),
       };
     }
+    try {
+      this.emitMutation(result);
+    } catch {
+      // ─── durable commit 已完成；renderer 消失不能改写账本结果 ───
+    }
+    return {
+      outcome: "stored",
+      ...(result.storedMessage ? { storedMessage: result.storedMessage } : {}),
+      subagents: result.record.subagents ?? {},
+    };
   }
 
   async appendCanonical(
@@ -868,16 +919,14 @@ export class ChatsService {
   }
 
   private emit(event: ChatsEvent) {
-    const window = this.window;
-    if (window && !window.isDestroyed()) {
-      try {
-        window.webContents.send(
-          CHATS_CHANNEL.event,
-          redactImageDetails(event)
-        );
-      } catch (cause) {
-        console.warn("[chats] event publish failed", cause);
-      }
+    const projected = redactImageDetails(event);
+    let delivered = rendererEventBus.toRole("main", CHATS_CHANNEL.event, projected);
+    const chatId = event.type === "upserted" ? event.summary.id
+      : event.type === "warning" ? null : event.chatId;
+    const appId = chatId && surfaceWindowController.appIdForActiveUseChat(chatId);
+    if (appId) delivered += rendererEventBus.toApp(appId, CHATS_CHANNEL.event, projected);
+    if (!delivered && this.window && !this.window.isDestroyed()) {
+      this.window.webContents.send(CHATS_CHANNEL.event, projected);
     }
   }
 

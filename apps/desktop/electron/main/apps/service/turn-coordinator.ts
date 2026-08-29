@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AppStore, grant authority, lifecycle/usage gate, reference/plan durable ledger, Extension integration and delivery materializer
- * [OUTPUT]: AppTurnCoordinator is provided for the user, and the user can access/release the app's turn reference, Agent visibility, Extension delivery and custody dependency
- * [POS]: The turnover of apps/services is organized by the turnover of apps/servicesAppsService is only here to keep the door open and to be here
+ * [INPUT]: Depends on AppStore, Project-scoped Extension integration, grant authority, lifecycle/usage gates, reference/plan ledgers, and delivery materializer
+ * [OUTPUT]: Provides AppTurnCoordinator for exact Project-aware reference acquisition, Extension delivery/health, Agent visibility, custody, and release
+ * [POS]: App service turn authority; frozen App generation bindings are projected once and never re-resolved against live Extension precedence
  */
 
 import { join } from "node:path";
@@ -15,6 +15,7 @@ import type {
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import type { BaseToolsAvailability } from "../../../../shared/builtin-tools";
 import type { AgentTurnCustodyDependency } from "../../../../shared/app-lifecycle";
+import type { TurnProjectContext } from "../../../../shared/product-resource-scope";
 import type {
   ComponentDeliveryExclusion,
   ComponentDeliveryPlan,
@@ -53,6 +54,7 @@ import type { AppReferenceJournal } from "../app-reference-journal";
 import type { AppStore } from "../app-store";
 import { selectAppReferences } from "../grant-budget";
 import type { ThirdPartyMcpPlanLedger } from "../../extensions/lifecycle/third-party-mcp-plan-ledger";
+import type { AgentContext } from "../../agent/bridge-types";
 import { appDigest } from "./digest";
 
 type TurnInput = {
@@ -62,6 +64,7 @@ type TurnInput = {
   backendRuntimeIdentity: string;
   turnClass: ExtensionTurnIdentity["turnClass"];
   planMode: boolean;
+  projectContext: TurnProjectContext;
   /** 与 tool lease 同源的本轮访问档；none 表示该 backend 没有 instructions 通道 */
   toolAccess: "none" | "read" | "mutate";
   baseToolsAvailability?: BaseToolsAvailability;
@@ -154,6 +157,7 @@ export class AppTurnCoordinator {
         instructions: "",
         extensionExclusions: [],
         mcpServers: [],
+        extensionDiscoveryBindings: [],
       };
     }
     try {
@@ -251,6 +255,7 @@ export class AppTurnCoordinator {
         instructions: unsupported.length ? "" : projected.instructions,
         extensionExclusions: delivery.exclusions,
         mcpServers: delivery.mcpServers,
+        extensionDiscoveryBindings: delivery.discoveryBindings,
       };
     } catch (cause) {
       /* durable entry 可能已落盘，失败必须走统一释放路径，否则 generation 永不归零。 */
@@ -271,7 +276,7 @@ export class AppTurnCoordinator {
     exclusions: readonly ComponentDeliveryExclusion[],
     activeComponents: readonly Readonly<{
       appId: string;
-      componentIdentity: string;
+      componentInstanceIdentity: string;
     }>[]
   ) {
     const revision =
@@ -289,7 +294,7 @@ export class AppTurnCoordinator {
         degradedApps: [...degradedApps],
         excludedComponents: exclusions.map((item) => ({
           appId: item.appId,
-          componentIdentity: item.componentIdentity,
+          declaredComponentIdentity: item.declaredComponentIdentity,
           required: item.required,
           code:
             item.reason.kind === "inventory" ||
@@ -310,6 +315,7 @@ export class AppTurnCoordinator {
       | "backendRuntimeIdentity"
       | "turnClass"
       | "planMode"
+      | "projectContext"
     >,
     input: {
       apps: readonly {
@@ -327,8 +333,11 @@ export class AppTurnCoordinator {
     planInstanceId: string | null;
     activeComponents: readonly Readonly<{
       appId: string;
-      componentIdentity: string;
+      componentInstanceIdentity: string;
     }>[];
+    discoveryBindings: NonNullable<
+      AgentContext["extensionDiscoveryBindings"]
+    >;
   }> {
     const extensions = this.deps.extensions();
     const bindings = input.apps.flatMap((app) =>
@@ -355,10 +364,11 @@ export class AppTurnCoordinator {
         mcpServers: [],
         planInstanceId: null,
         activeComponents: [],
+        discoveryBindings: [],
       };
     }
     const inventory = extensions.health.inventory(
-      extensions.registry.snapshot()
+      extensions.registry.visibleInventory(turn.projectContext)
     );
     const capability = buildExtensionCapabilitySnapshot({
       inventory,
@@ -369,6 +379,7 @@ export class AppTurnCoordinator {
       ),
       policy: EXTENSION_PRODUCT_POLICY,
       deliveryScope: "app",
+      selection: "effective",
     });
     const decision = buildComponentDeliveryDecision({
       apps: bindings,
@@ -379,6 +390,8 @@ export class AppTurnCoordinator {
         planMode: turn.planMode,
         backendId: turn.backendId,
         backendRuntimeIdentity: turn.backendRuntimeIdentity,
+        projectContext: turn.projectContext,
+        visibleInventoryVersion: inventory.visibleInventoryVersion,
         workspace: { kind: "none" },
       },
     });
@@ -389,6 +402,7 @@ export class AppTurnCoordinator {
         mcpServers: [],
         planInstanceId: null,
         activeComponents: [],
+        discoveryBindings: [],
       };
     }
     await this.deps.thirdPartyMcpPlans.hold(turn.requestId, decision.plan);
@@ -432,6 +446,7 @@ export class AppTurnCoordinator {
         mcpServers: [],
         planInstanceId: decision.plan.planInstanceId,
         activeComponents: [],
+        discoveryBindings: [],
       };
     }
     const mcpServers = packageMcpPlanEntries(
@@ -447,10 +462,12 @@ export class AppTurnCoordinator {
     });
     const activeIds = new Set([
       ...materialized.skills.map((item) => item.deliveryInstanceId),
-      ...materialized.mcpServers
-        .filter((item) => item.config.transport === "stdio")
-        .map((item) => item.deliveryInstanceId),
+      ...materialized.mcpServers.map((item) => item.deliveryInstanceId),
     ]);
+    await this.deps.thirdPartyMcpPlans.sealMaterializedDeliveries(
+      turn.requestId,
+      [...activeIds]
+    );
     return {
       exclusions: converged.exclusions,
       skills: materialized.skills,
@@ -463,9 +480,22 @@ export class AppTurnCoordinator {
           )
           .map((requirement) => ({
             appId: binding.appId,
-            componentIdentity: requirement.componentIdentity,
+            componentInstanceIdentity:
+              requirement.componentInstanceIdentity,
           }))
       ),
+      discoveryBindings: decision.plan.deliveries
+        .filter((delivery) => activeIds.has(delivery.deliveryInstanceId))
+        .map((delivery) => ({
+          kind: "app-delivery" as const,
+          authorityId: delivery.deliveryInstanceId,
+          planInstanceId: decision.plan.planInstanceId,
+          packageGenerationRef: structuredClone(
+            delivery.packageGenerationRef
+          ),
+          componentInstanceIdentity: delivery.componentInstanceIdentity,
+          deliveryIdentity: delivery.deliveryRef.entryDigest,
+        })),
     };
   }
 
@@ -547,6 +577,7 @@ function packageMcpPlanEntries(
         healthSubject: {
           kind: "package" as const,
           generationRef: structuredClone(server.packageGenerationRef),
+          componentInstanceIdentity: server.componentInstanceIdentity,
           componentId: server.componentId,
           serverId: server.serverId,
           declaredConfigDigest: server.declaredConfigDigest,

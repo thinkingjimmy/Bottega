@@ -1,31 +1,26 @@
 "use client";
 
 /**
- * [INPUT]: Depends on the UI sidebar/dropdown-menu/app-dialog/button/input/skeleton/spinner originals, lucide icons, Chats/Bases/Projects/Setup Provider, chat-activity-store, draft-route blank landing pages, react-router, sidebar-row sub-line geometry/headline slots (and size decision) / sliding headers/tail tags, localStorage First archived confirm memory marquee style in sidebar-row.css, introduced by main.tsx)
- * [OUTPUT]: Provides ChatThreadItem with subMenuActionClass/archiveAcknowledged/rememberArchiveAcknowledged shared with the external source history row; Unified title row (s) icon + title + selectable tag) / selectable zero to two rows of previews/activities/menus/renaming/archiving, hover floating layer not occupying horizontal space
+ * [INPUT]: Depends on Sidebar/dropdown/skeleton/spinner primitives, shared Sidebar rename dialog, lucide icons, Chats/Projects/Setup Providers, i18n, chat activity, routing, and sidebar-row geometry
+ * [OUTPUT]: Provides ChatThreadItem plus shared hover helpers; title, preview, activity, menu, modal rename, and direct archive actions keep the row mounted as one navigation surface
  * [POS]: The shared chat line unit of components/sidebar/chat, consumed by the Chats, Activity and Project sublists, unifies the two levels of hover/focus feedback and does not embed li
  */
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
-  Check,
   Archive,
   CircleQuestionMark,
   MoreHorizontal,
   Pencil,
   TriangleAlert,
-  X,
 } from "lucide-react";
-import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
-import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@ai-chat/ui/components/ui/dropdown-menu";
-import { Input } from "@ai-chat/ui/components/ui/input";
 import {
   SidebarMenuAction,
   SidebarMenuButton,
@@ -35,18 +30,21 @@ import {
 } from "@ai-chat/ui/components/ui/sidebar";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
-import { usePointerOpenedMenu } from "@ai-chat/ui/hooks/use-pointer-opened-menu";
 import {
   SidebarRowMark,
   SidebarRowTag,
   SidebarRowTitle,
   sidebarSubRowClass,
 } from "../sidebar-row";
+import {
+  SidebarRenameDialog,
+  useSidebarRenameMenu,
+} from "../rename/sidebar-rename-dialog";
 import type { ChatSummary } from "../../../../shared/chats-ipc";
 import { useChats } from "@/components/providers/chats-provider";
-import { useBases } from "@/components/providers/bases-provider";
 import { useProjects } from "@/components/providers/projects-provider";
 import { useSetup } from "@/components/providers/setup-provider";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { AgentBackendIcon, backendLabel } from "@/lib/agent-backends";
 import { projectDraftRoute } from "@/lib/draft-route";
 import {
@@ -82,26 +80,6 @@ const rootMenuActionClass =
 /** history 行与 chat 行共用同一 hover 显隐法则；导出以免两处各抄一份漂移。 */
 export const subMenuActionClass =
   `pointer-events-none opacity-0 ${menuActionToneClass} group-has-[:focus-visible]/menu-sub-item:pointer-events-auto group-has-[:focus-visible]/menu-sub-item:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 aria-expanded:pointer-events-auto aria-expanded:opacity-100`;
-
-// ─── 归档确认只教育一次：确认成功后记入 localStorage，此后一键直达（Settings › Archive 可恢复）
-//     chat 与导入历史行共用同一把钥匙——同一个「归档去了哪」的心智模型只教一次 ───
-const ARCHIVE_ACK_KEY = "ai-chat.archive-acknowledged.v1";
-
-export const archiveAcknowledged = () => {
-  try {
-    return localStorage.getItem(ARCHIVE_ACK_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
-
-export const rememberArchiveAcknowledged = () => {
-  try {
-    localStorage.setItem(ARCHIVE_ACK_KEY, "1");
-  } catch {
-    // 存储不可用则退回每次确认，不阻断归档
-  }
-};
 
 /* ── 行首那一格只说一件事：这个会话此刻要你知道什么 ────────────────
  * 四种活动态各自占满行首等宽槽，缺省才落回 Agent logo——
@@ -179,19 +157,15 @@ export function ChatThreadItem({
   badge,
   preview,
 }: ChatThreadItemProps) {
+  const { t } = useAppTranslation();
   const { renameChat, archiveChat } = useChats();
   const { projects } = useProjects();
-  const { pinned } = useBases();
   const setup = useSetup();
   const navigate = useNavigate();
   const activity = useChatActivity(chat.id);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  // Radix 菜单关闭时会抢回焦点，进入编辑态需阻止其打断输入框 autoFocus
-  const enteringEdit = useRef(false);
-  const menu = usePointerOpenedMenu();
+  const renameMenu = useSidebarRenameMenu(() => setRenameOpen(true));
   const Item = variant === "sub" ? SidebarMenuSubItem : SidebarMenuItem;
   const MenuButton =
     variant === "sub" ? SidebarMenuSubButton : SidebarMenuButton;
@@ -200,37 +174,10 @@ export function ChatThreadItem({
   )?.status;
   const backendUnavailable =
     backendStatus !== undefined && backendStatus !== "ready";
-  const pinnedBase = pinned.some(
-    (base) => base.ownerKey === `chat:${chat.id}`
-  );
-
-  const startEdit = () => {
-    enteringEdit.current = true;
-    setDraft(chat.title ?? "");
-    setEditing(true);
-  };
-
-  const handleConfirm = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const title = draft.trim();
-    if (!title || busy) return;
-    if (title === (chat.title ?? "")) return setEditing(false);
-    setBusy(true);
-    try {
-      await renameChat({ chatId: chat.id, title });
-      setEditing(false);
-    } catch {
-      // 失败保留编辑态供重试，warning 由 provider 呈现
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleArchive = async () => {
     setBusy(true);
     try {
       await archiveChat(chat.id);
-      rememberArchiveAcknowledged();
       /* 归档的是这条 chat 而不是它所在的 Project：把用户留在原 Project 的
          空白页上，下一句话仍在同一个上下文里说。路由守卫是同一判据的另一
          半，两处必须给出同一个落点，否则谁先落地就成了行为的定义者。 */
@@ -239,57 +186,12 @@ export function ChatThreadItem({
       // 失败文案由 ChatsProvider 弹 toast，此处只收敛状态
     } finally {
       setBusy(false);
-      setConfirmOpen(false);
     }
   };
 
   const requestArchive = () => {
-    if (busy) return;
-    if (archiveAcknowledged()) void handleArchive();
-    else setConfirmOpen(true);
+    if (!busy) void handleArchive();
   };
-
-  // ─── 编辑态：整行换成输入框，导航与菜单彻底退场 ───
-  if (editing) {
-    return (
-      <Item className={variant === "sub" ? "w-full" : undefined}>
-        <form
-          className="flex items-center gap-1 px-1 py-0.5"
-          onSubmit={handleConfirm}
-        >
-          <Input
-            autoFocus
-            value={draft}
-            maxLength={200}
-            aria-label="聊天标题"
-            className="h-7 flex-1 text-sm"
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setEditing(false);
-            }}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="取消"
-            onClick={() => setEditing(false)}
-          >
-            <X />
-          </Button>
-          <Button
-            type="submit"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="确认"
-            disabled={busy || draft.trim().length === 0}
-          >
-            <Check />
-          </Button>
-        </form>
-      </Item>
-    );
-  }
 
   const titleNode =
     chat.title === null ? (
@@ -361,7 +263,7 @@ export function ChatThreadItem({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <SidebarMenuAction
-            {...menu.triggerProps}
+            {...renameMenu.triggerProps}
             showOnHover={variant === "root"}
             className={`right-7 ${
               variant === "sub" ? subMenuActionClass : rootMenuActionClass
@@ -375,25 +277,18 @@ export function ChatThreadItem({
           side="bottom"
           align="start"
           className="w-max min-w-0"
-          onCloseAutoFocus={(event) => {
-            if (enteringEdit.current) {
-              enteringEdit.current = false;
-              event.preventDefault();
-              return;
-            }
-            menu.onCloseAutoFocus(event);
-          }}
+          onCloseAutoFocus={renameMenu.onMenuCloseAutoFocus}
         >
           <DropdownMenuItem
-            className="cursor-pointer whitespace-nowrap"
-            onSelect={startEdit}
+            className="whitespace-nowrap"
+            onSelect={renameMenu.requestOpen}
           >
             <Pencil />
-            重命名
+            {t("common.rename")}
           </DropdownMenuItem>
+          {/* 归档可回收，故用常规色：红留给不可撤销的动作。 */}
           <DropdownMenuItem
-            variant="destructive"
-            className="cursor-pointer whitespace-nowrap"
+            className="whitespace-nowrap"
             onSelect={requestArchive}
           >
             <Archive />
@@ -402,19 +297,15 @@ export function ChatThreadItem({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <ConfirmationDialog
-        open={confirmOpen}
-        title="Archive chat?"
-        description={
-          pinnedBase
-            ? "The chat and its pinned Base will leave the sidebar. You can restore or permanently delete them from Settings › Archive."
-            : "The chat will leave the sidebar. You can restore or permanently delete it from Settings › Archive."
-        }
-        confirmLabel="Archive"
-        confirmTone="default"
-        busy={busy}
-        onOpenChange={setConfirmOpen}
-        onConfirm={() => void handleArchive()}
+      <SidebarRenameDialog
+        open={renameOpen}
+        currentName={chat.title ?? ""}
+        title={t("common.renameChatTitle")}
+        description={t("common.renameChatDescription")}
+        maxLength={200}
+        onOpenChange={setRenameOpen}
+        onRename={(title) => renameChat({ chatId: chat.id, title })}
+        onCloseAutoFocus={renameMenu.onDialogCloseAutoFocus}
       />
     </Item>
   );

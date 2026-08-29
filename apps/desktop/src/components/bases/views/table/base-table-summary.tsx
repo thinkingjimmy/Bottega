@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, shared Base column statistics/calculation/formatting pure functions, Command/Popover and base mutation outcome judgment type of a project with a Lucide icon, state
- * [OUTPUT]: Provides BaseTableSummaryCells, a statistical trigger that is widely aligned with the table, a numerical column that is the default Sum, a blank statistical hover/focus that shows Calculate, and results that fix the right-to-right searchable preview menu and clear the operation; onAggregationChange Absence is read only static statistics, leadingWidths, and non-data columns are left blank by the table
- * [POS]: The statistical surface of bases/views/tables, divided in half by the same directory table; columnId + Aggregation Intent, persistence and error closure by BaseWorkbench
+ * [INPUT]: Depends on projected table rows, the canonical BaseCellContext, aggregation kernels, column widths, and optional configuration mutations
+ * [OUTPUT]: Provides aligned summary cells whose membership follows the view and whose computed/relation values follow the full snapshot
+ * [POS]: The Table aggregation surface; BaseWorkbench persists aggregation intent while this component owns selection and formatted results
  */
 
 import { useMemo, useState } from "react";
@@ -32,6 +32,7 @@ import {
   formatBaseAggregationValue,
   type BaseAggregation,
   type BaseAggregationSetting,
+  type BaseCellContext,
   type BaseColumn,
   type BaseRow,
 } from "../../../../../shared/bases-ipc";
@@ -42,6 +43,7 @@ const aggregationLabelKey = (aggregation: BaseAggregation) =>
 
 export function BaseTableSummaryCells({
   columns,
+  context,
   rows,
   widths,
   aggregations,
@@ -51,6 +53,7 @@ export function BaseTableSummaryCells({
   onAggregationChange,
 }: {
   columns: BaseColumn[];
+  context: BaseCellContext;
   rows: readonly BaseRow[];
   widths: Record<string, number>;
   aggregations?: Record<string, BaseAggregationSetting>;
@@ -81,7 +84,7 @@ export function BaseTableSummaryCells({
           aggregationSetting={aggregations?.[column.id]}
           busy={busy}
           column={column}
-          columns={columns}
+          context={context}
           onAggregationChange={onAggregationChange}
           rows={rows}
           scope={scope}
@@ -94,7 +97,7 @@ export function BaseTableSummaryCells({
 
 function SummaryCell({
   column,
-  columns,
+  context,
   rows,
   width,
   aggregationSetting,
@@ -103,7 +106,7 @@ function SummaryCell({
   onAggregationChange,
 }: {
   column: BaseColumn;
-  columns: BaseColumn[];
+  context: BaseCellContext;
   rows: readonly BaseRow[];
   width: number;
   aggregationSetting?: BaseAggregationSetting;
@@ -123,9 +126,9 @@ function SummaryCell({
   const values = useMemo(
     () =>
       aggregation || open
-        ? calculateBaseAggregations(rows, column, columns)
+        ? calculateBaseAggregations(rows, column, context)
         : null,
-    [aggregation, column, columns, open, rows]
+    [aggregation, column, context, open, rows]
   );
   const select = (next?: BaseAggregation) => {
     setOpen(false);

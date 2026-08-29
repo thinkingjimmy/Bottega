@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node: child_process execFile, node: fs/os/path, backends/sandbox/SBPL with main/errors
- * [OUTPUT]: Provides the only Git to run border buffered `runGit`There are boundaries `runGitNulRecords` The first step is to create a new network of networks that can be used to connect to the network`listGitConfig` Config and audit
+ * [OUTPUT]: Provides the sole bounded Git execution border, including an explicit pre-spawn platform gate for owned mutations
  * [POS]: The Git single spawn point for projects; git-branches From here, do not create execFile or spell shell
  */
 
@@ -436,11 +436,27 @@ export async function runOwnedGitMutation(
   sandbox: GitSandboxSpec,
   options: Omit<GitRunOptions, "sandbox"> = {}
 ) {
+  assertOwnedGitMutationPlatform(process.platform, { argv: args, cwd: workspace });
   const cwd = requireAbsolute(workspace, "Git cwd");
   const commonDir = canonicalPath(sandbox.commonDir, "Git common dir");
   return mutationGate.run(commonDir, () =>
     spawnGit(cwd, args, { ...options, sandbox: { ...sandbox, commonDir } })
   );
+}
+
+/* 拒绝要带上是谁被拒的。此前入口门用空 argv/cwd 抛错、真正带上下文的那份
+   永远排在它后面，于是非 darwin 上的每一条报错都长得一模一样、无从定位。 */
+export function assertOwnedGitMutationPlatform(
+  platform: NodeJS.Platform,
+  detail: Readonly<{ argv: readonly string[]; cwd: string }> = { argv: [], cwd: "" }
+) {
+  if (platform !== "darwin") {
+    throw new GitCommandError(
+      "GIT_SANDBOX_UNAVAILABLE",
+      "受管 worktree 的 Git mutation 当前仅支持 macOS seatbelt",
+      detail
+    );
+  }
 }
 
 function requireAbsolute(path: string, label: string) {
@@ -643,13 +659,7 @@ async function sandboxedInvocation(
   sandbox: GitSandboxSpec,
   cwd: string
 ) {
-  if (process.platform !== "darwin") {
-    throw new GitCommandError(
-      "GIT_SANDBOX_UNAVAILABLE",
-      "受管 worktree 的 Git mutation 当前仅支持 macOS seatbelt",
-      { argv: [...gitArgs], cwd }
-    );
-  }
+  assertOwnedGitMutationPlatform(process.platform, { argv: gitArgs, cwd });
   const resolved = await resolveGitToolchain();
   const profile = buildGitMutationProfile({
     toolchain: resolved,
@@ -781,6 +791,3 @@ export async function resolveGitTopLevel(workspace: string) {
   const raw = (await runGit(workspace, ["rev-parse", "--show-toplevel"])).trim();
   return canonicalPath(raw, "Git 仓库根");
 }
-
-/** 空 hooks 目录的所有者是本模块；preflight 与围栏回归都从这里取，不各建一份。 */
-export const gitHooksDirectory = ownedEmptyHooksDir;

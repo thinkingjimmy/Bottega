@@ -1,31 +1,38 @@
 /**
- * [INPUT]: Depends on React/router/Providers, Draft Agent, Skills/Workspace Files, Rich Files, Set Hooks, Session Sub-Controller, Agent attach and Stream Projection
- * [OUTPUT]: Provides field-by-field Object.is stable and includes renderer view-generation, Project revision/canonical Workspace fence, authoritative modification replace, workspace candidate, Gallery identity and third-party intent ChatSessionController
- * [POS]: The roots of the thin session combination of chat/runtime; Input-in-connected scope/project first by calibration, main custody separated from the current view, old Chat delayed to return cannot write new generation refs/state
+ * [INPUT]: Depends on React providers, canonical chat/turn snapshots, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
+ * [OUTPUT]: Provides the stable ChatSessionController with main-derived resume actions, revision eligibility/submission, injectable panel identity, canonical submission, and side-panel state
+ * [POS]: The thin composition root of chat/runtime; durable authority remains in main while renderer owns view generation. Routing stays outside: post-send navigation is the chat route's draft-residence observation, not a session concern
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatStatus } from "ai";
-import { useNavigate } from "react-router";
 import { richValueDisplayText, type RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import type { AgentBackendId, AgentScope, SessionRef, SteerOutboxProjection } from "../../../../shared/agent-ipc";
 import type { AppChatRole, ChatMessage } from "../../../../shared/chats-ipc";
 import { isFailedAssistant } from "../../../../shared/chat-failure";
 import { useChats } from "@/components/providers/chats-provider";
 import { useProjects } from "@/components/providers/projects-provider";
-import { useSetup } from "@/components/providers/setup-provider";
-import { abandonFatalTurn, acknowledgeCleanupFailure, retryAgentWithoutSession, type CodexRequest } from "@/lib/agent-client";
+import {
+  abandonFatalTurn,
+  acknowledgeCleanupFailure,
+  cancelAgentRequest,
+  retryAgentSameSession,
+  retryAgentWithoutSession,
+  type CodexRequest,
+} from "@/lib/agent-client";
 import { errorMessage } from "@/lib/errors";
 import { mergeChatMessages, sameProjectionStatus, type ChatProjectionStatus, type ChatTurnProjection, type ProjectedSubagent } from "@/lib/chat-turn-attach";
-import { useChatMessages } from "@/lib/chat-messages-store";
-import { bindComposerWorkspaceIdentity, primeComposer, reconcileComposerProject, replaceDraftFiles, retainComposerResources, setComposerProject, updateComposer, useComposerState } from "@/lib/chat-composer-store";
-import { backendAvailability, createChatHydration, hydrationReady } from "@/lib/chat-hydration";
+import { bindComposerWorkspaceIdentity, reconcileComposerProject, replaceDraftFiles, retainComposerResources, setComposerProject, updateComposer, useComposerState } from "@/lib/chat-composer-store";
+import { createChatHydration, hydrationReady } from "@/lib/chat-hydration";
 import type { TurnDraft } from "../../../../shared/chat-turn-reducer";
 import { type LiveAttachmentPreview } from "./chat-attachments";
-import { composerGates, messageId, type ChatProjectMode } from "./chat-session-model";
-import { useChatSettings } from "./use-chat-settings";
-import { useChatSkills } from "./use-chat-skills";
-import { useWorkspaceFiles } from "./use-workspace-files";
+import {
+  composerGates,
+  messageId,
+  revisionUnavailableReason as resolveRevisionUnavailableReason,
+  type ChatProjectMode,
+  type PanelSessionContext,
+} from "./chat-session-model";
 import { useWorkspaceLifecycle } from "./use-workspace-lifecycle";
 import { useRichFileResources } from "./use-rich-file-resources";
 import { useMessageQueue } from "./use-message-queue";
@@ -42,16 +49,19 @@ import {
   useSessionQueuePorts,
   useSessionSubmissionPorts,
 } from "./session/use-session-submission-ports";
+import { useSessionMessageProjection, useSessionRuntimeCatalogs } from "./session/use-session-runtime-projections";
 export type { ChatProjectMode, PendingPlanDecisionState, PendingUserInputState, SidePanelState } from "./chat-session-model";
 
 export function useChatSession({
   scope: inputScope,
   project: inputProject,
   draftAgent,
+  panelContext: inputPanelContext,
 }: {
   scope: AgentScope;
   project: ChatProjectMode;
   draftAgent?: AgentBackendId;
+  panelContext?: PanelSessionContext;
 }) {
   const chatId = inputScope.conversationId;
   const projectKind = inputProject.kind;
@@ -69,8 +79,6 @@ export function useChatSession({
         : { kind: "selectable" },
     [fixedAppId, fixedAppRole, projectKind]
   );
-  const setup = useSetup();
-  const navigate = useNavigate();
   const { chats, loading: chatsLoading, createChat, createAppChat, appendMessage, getChat } = useChats();
   const { projects, loading: projectsLoading, addProject, ensureForApp, listBranches, checkoutBranch, createBranch } = useProjects();
   const captureView = useSessionViewFence(chatId);
@@ -142,36 +150,9 @@ export function useChatSession({
       }),
     [appendProjected]
   );
-  const messageSnapshot = useChatMessages(chatId);
-  useEffect(() => {
-    // 世代未知时什么都不做：「不知道」不是一个可以拿去比较的值。快照还没到、
-    // 或已被消息 store 的 LRU 淘汰，都会给出空——递进去就是一条清空草稿指令。
-    const incarnationId = messageSnapshot?.incarnationId;
-    if (incarnationId) primeComposer(chatId, incarnationId);
-  }, [chatId, messageSnapshot?.incarnationId]);
-  const consumedReplaceRef = useRef("");
-  useEffect(() => {
-    if (!messageSnapshot || hydratedChatId !== chatId) return;
-    /* replace 是一次性指令：同一 revision 只整体替换一次。effect 因
-       hydration/rebind 复跑时若重复替换，会丢掉替换之后本地追加的
-       投影行（排队占位、失败 notice）。 */
-    const replaceKey = `${chatId}:${messageSnapshot.incarnationId}:${messageSnapshot.revision}`;
-    const replace =
-      messageSnapshot.mode === "replace" &&
-      consumedReplaceRef.current !== replaceKey;
-    if (replace) consumedReplaceRef.current = replaceKey;
-    projectionRef.current = {
-      ...projectionRef.current,
-      messages: replace
-        ? messageSnapshot.messages
-        : mergeChatMessages(
-            projectionRef.current.messages,
-            messageSnapshot.messages
-          ),
-    };
-    messagesRef.current = projectionRef.current.messages;
-    setMessages(messagesRef.current);
-  }, [chatId, hydratedChatId, messageSnapshot]);
+  const messageSnapshot = useSessionMessageProjection({
+    chatId, hydratedChatId, projectionRef, messagesRef, setMessages,
+  });
   const {
     workspaceIdentityKey,
     workspacePrecondition,
@@ -195,49 +176,15 @@ export function useChatSession({
       workspaceScopeKeyRef.current = "";
     };
   }, [workspaceScopeKey]);
-  const settings = useChatSettings(
-    scope,
-    loading || hydratedChatId !== chatId ? null : workspaceScope,
-    setup.status?.backends ?? [],
-    setup.recheck,
-    draftAgent
-  );
+  const catalogs = useSessionRuntimeCatalogs({
+    scope, sessionReady: !loading && hydratedChatId === chatId,
+    workspaceScope, workspaceScopeKey, draftAgent,
+  });
+  const { setup, settings, selectedBackend, backendState, planSupported, workspaceFileSearch } = catalogs;
   const { lockBackend } = settings;
-  const selectedBackend = settings.backends.find(
-    (backend) => backend.id === settings.turnOptions.backend
-  );
-  const backendState = backendAvailability(selectedBackend, setup.checking);
-  const planSupported = selectedBackend?.capabilities.planMode ?? false;
-  const {
-    isPlanCapabilityChecking,
-    planAvailable,
-    planCapabilityChecking,
-    planMode,
-    requirePlanCapability,
-    setPlanMode,
-    skills,
-    skillsError,
-    skillsLoading,
-    togglePlanMode,
-  } = useChatSkills({
-    ready:
-      !loading &&
-      hydratedChatId === chatId &&
-      selectedBackend?.runtimeStatus === "installed",
-    workspaceScope,
-    workspaceScopeKey,
-    backend: settings.turnOptions.backend,
-    planSupported,
-  });
-  const workspaceFileSearch = useWorkspaceFiles({
-    ready:
-      !loading &&
-      hydratedChatId === chatId &&
-      selectedBackend?.runtimeStatus === "installed",
-    workspaceScope,
-    workspaceScopeKey,
-    chatId,
-  });
+  const { isPlanCapabilityChecking, planAvailable, planCapabilityChecking, planMode,
+    requirePlanCapability, setPlanMode, skills, skillsError, skillsHiddenCount,
+    invalidatedSkillRefs, skillsLoading, togglePlanMode } = catalogs.skills;
   const {
     authorize: authorizeRichFile,
     discard: discardRichNode,
@@ -258,9 +205,18 @@ export function useChatSession({
     setPlanMode,
     reportStopError,
   });
+  const panelContext = useMemo<PanelSessionContext>(() => {
+    if (inputPanelContext) return inputPanelContext;
+    const incarnationId = messageSnapshot?.incarnationId;
+    if (!incarnationId) return { kind: "draft", draftKey: chatId };
+    return {
+      kind: adopted ? "adopted" : "product",
+      productRef: { chatId, incarnationId },
+    };
+  }, [adopted, chatId, inputPanelContext, messageSnapshot?.incarnationId]);
   const sidePanel = useSessionSidePanel({
     conversationId: chatId,
-    incarnationId: messageSnapshot?.incarnationId ?? null,
+    panelContext,
     draft,
     messages,
     status,
@@ -297,6 +253,7 @@ export function useChatSession({
     openWorkspaceFile: openWorkspaceFilePanel,
     openImage,
     openPlan: openPlanPanel,
+    openForeignPlan,
     openSubagent,
     openTabs,
     reconcileRichValue: reconcileSidePanelRichValue,
@@ -416,12 +373,9 @@ export function useChatSession({
     const submitGeneration = attachGenerationRef.current;
     const isViewCurrent = captureView();
     const lifecycle = createSessionSubmitLifecycle({
-      chatId,
-      project,
       isCurrent: () =>
         isViewCurrent() &&
         attachGenerationRef.current === submitGeneration,
-      navigate,
       appendProjected,
       appendLocalAssistant,
       refs: {
@@ -489,7 +443,6 @@ export function useChatSession({
     isPlanCapabilityChecking,
     loading,
     messages,
-    navigate,
     planMode,
     project,
     requirePlanCapability,
@@ -504,17 +457,11 @@ export function useChatSession({
   ]);
   // ports 每次调用取当刻快照；缓存会发陈货。
   const submissionPorts = useSessionSubmissionPorts(buildSubmissionInput);
-  const {
-    clearRevisionDisclosure,
-    revisionDisclosure,
-    submitRevision,
-  } = useSessionRevision(buildSubmissionInput);
+  const submitRevision = useSessionRevision(buildSubmissionInput);
   const handleSubmit = useCallback<SessionSubmit>(
-    (message, options) => {
-      clearRevisionDisclosure();
-      return createSessionSubmit(buildSubmissionInput())(message, options);
-    },
-    [buildSubmissionInput, clearRevisionDisclosure]
+    (message, options) =>
+      createSessionSubmit(buildSubmissionInput())(message, options),
+    [buildSubmissionInput]
   );
   useEffect(() => {
     submitRef.current = handleSubmit;
@@ -580,13 +527,17 @@ export function useChatSession({
     pendingQueue.items.length === 0 &&
     !pendingQueue.paused;
   const enqueuePending = pendingQueue.enqueue;
+  const revisionUnavailableReason = resolveRevisionUnavailableReason({
+    persisted,
+    inputDisabled,
+    status,
+    queued: pendingQueue.items.length > 0 || pendingQueue.paused,
+    adopted,
+  });
   const canRevise =
     persisted &&
-    !adopted &&
     !inputDisabled &&
-    status === "ready" &&
-    pendingQueue.items.length === 0 &&
-    !pendingQueue.paused;
+    !revisionUnavailableReason;
   const handleQueueOrSubmit = useCallback<SessionSubmit>(
     (message, options) => {
       if (sendDirectly) return handleSubmit(message, options);
@@ -608,15 +559,21 @@ export function useChatSession({
       projectionStatus.phase === "resume-failed" &&
       projectionStatus.requestId &&
       projectionStatus.retryToken
-        ? {
+          ? {
             requestId: projectionStatus.requestId,
             retryToken: projectionStatus.retryToken,
+            allowedActions: projectionStatus.allowedActions ?? {
+              sameSession: false,
+              freshSession: false,
+              abandon: false,
+            },
           }
         : null,
     [
       projectionStatus.phase,
       projectionStatus.requestId,
       projectionStatus.retryToken,
+      projectionStatus.allowedActions,
     ]
   );
   const reportActionFailure = useCallback(
@@ -643,11 +600,22 @@ export function useChatSession({
     [canAcknowledgeCleanup, chatId, reportActionFailure]
   );
   const retryWithoutSession = useCallback(async () => {
-    if (!resumeFailure) return;
+    if (!resumeFailure?.allowedActions.freshSession) return;
     await retryAgentWithoutSession(
       resumeFailure.requestId,
       resumeFailure.retryToken
     );
+  }, [resumeFailure]);
+  const retrySameSession = useCallback(async () => {
+    if (!resumeFailure?.allowedActions.sameSession) return;
+    await retryAgentSameSession(
+      resumeFailure.requestId,
+      resumeFailure.retryToken
+    );
+  }, [resumeFailure]);
+  const abandonResumeFailure = useCallback(() => {
+    if (!resumeFailure?.allowedActions.abandon) return;
+    cancelAgentRequest(resumeFailure.requestId);
   }, [resumeFailure]);
   const createProject = useCallback(async () => {
     const next = await addProject();
@@ -706,14 +674,16 @@ export function useChatSession({
       canAcknowledgeCleanup,
       acknowledgeCleanup,
       canRevise,
+      revisionUnavailableReason,
       submitRevision,
-      revisionDisclosure,
     });
   const sidePanelController = useStableController({
       state: sidePanelState,
+      context: panelContext,
       subagents,
       openTabs,
       openSubagent,
+      openForeignPlan,
       close: closeSidePanel,
     });
   const composerController = useStableController({
@@ -763,6 +733,8 @@ export function useChatSession({
       skills,
       skillsLoading,
       skillsError,
+      skillsHiddenCount,
+      invalidatedSkillRefs,
       workspaceFiles: workspaceFileSearch.state,
       setWorkspaceFileQuery: workspaceFileSearch.setQuery,
       sections,
@@ -790,6 +762,7 @@ export function useChatSession({
       checkoutBranch,
       createBranch,
       ...settings,
+      serviceTierEffective: projectionStatus.serviceTierEffective,
       selectedBackend,
       backendState,
       imageInputAvailable:
@@ -797,6 +770,8 @@ export function useChatSession({
       openSetup: setup.openOnboarding,
       resumeFailure,
       retryWithoutSession,
+      retrySameSession,
+      abandonResumeFailure,
     });
   return useStableController({
     transcript: transcriptController,

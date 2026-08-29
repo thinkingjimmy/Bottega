@@ -1,13 +1,12 @@
 /**
- * [INPUT]: Depends on Electron lifecycle, startup, factory, workspace/readRef, Skills, Browser/Gallery, Deletion, Memory Policy, authorized identity, history, search job, Project, App/Extension, MCP and Usage
- * [OUTPUT]: The main process combination root; Installed with canonical manual, durable adopt, separate external source Memory, historical intent recovery, archiving SearchJob, other product services and security shutdowns
- * [POS]: The root node of the desktop lifecycle; The main-owned Chat Home gate is a key pathway for the slow Provider to never take over the window before any Agent admission is completed
+ * [INPUT]: Depends on Electron lifecycle, Node filesystem, and every main-owned service, including scoped Extensions, Project cleanup/Tools, Agent policy, chats/coordinator/custody, Apps, Design, browser, and usage
+ * [OUTPUT]: Provides the desktop composition root, scoped inventory and Project Tools wiring, cleanup participant registration, recovery order, windows, and two-phase shutdown
+ * [POS]: The root lifecycle owner of the desktop main process
  */
 
-import { randomUUID } from "node:crypto";
 import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
-import { app, BrowserWindow, dialog, type FileFilter } from "electron";
+import { app, dialog, type FileFilter } from "electron";
 import { AppsService } from "./apps/apps-service";
 import { ChatStore } from "./chats/chat-store";
 import type { ChatsService } from "./chats/chats-service";
@@ -18,6 +17,7 @@ import {
 } from "./chats/title-generator";
 import {
   cancelConversations,
+  cancelAgentRequests,
   hasConversationActivity,
   hasActiveImageOccurrence,
   recoverAfterFailedShutdown,
@@ -30,11 +30,8 @@ import { FileAuthorizationStore } from "./file-authorizations";
 import { initializeAgentInputStaging } from "./agent-input";
 import {
   SkillsCatalog,
-  scanSkillRoots,
   type WorkspaceResolver,
 } from "./skills-catalog";
-import { SkillInventoryIndex } from "./agent/skill-inventory";
-import { systemSkillsPath } from "./system-skills";
 import {
   createEffectiveWorkspaceResolver,
   createWorkspaceResolver,
@@ -42,8 +39,9 @@ import {
 import { WorkspaceFileCatalog } from "./workspace-files";
 import { SettingsStore } from "./settings-store";
 import { resolveAppLocale } from "../../shared/i18n/locale";
+import { resolvePlatformCapabilities } from "../../shared/platform-capabilities";
 import { BackendSetupService } from "./setup/backend-setup";
-import { runStateResetV3, runStateResetV4 } from "./state-reset";
+import { runStateResetsThroughV5 } from "./state-reset";
 import { ProjectStore } from "./projects/project-store";
 import { ProjectsService } from "./projects/projects-service";
 import { composeProjectsService } from "./projects/composition";
@@ -53,50 +51,67 @@ import { BaseStore } from "./bases/base-store";
 import { BasesService } from "./bases/bases-service";
 import { LifecycleIntentStore } from "./lifecycle/intent-store";
 import { configureAppMode } from "./apps/app-mode";
-import type { AppExtensionIntegration } from "./extensions/integration/app-extension-composition";
-import { collectExtensionSkillCandidates } from "./extensions/skill-candidates";
+import { AgentPluginInventory } from "./extensions/agent-plugin-inventory";
 import { sweepAppStaging } from "./apps/staging-sweep";
 import { createBuiltinToolsets } from "./builtin-toolsets";
 import { BuiltinMcpBridge } from "./tools/bridge";
-import { AgentTurnCustodyJournal } from "./backends/agent-turn-custody-journal";
-import { AgentTurnCustodyRuntime } from "./backends/agent-turn-custody-runtime";
+import type { AgentTurnCustodyJournal } from "./backends/agent-turn-custody-journal";
+import type { AgentTurnCustodyRuntime } from "./backends/agent-turn-custody-runtime";
 import { BuiltinMcpLeaseStore } from "./tools/lease";
 import { BuiltinToolRegistry } from "./tools/registry";
-import { ManualMcpServersStore } from "./tools/mcp/store";
 import { UsageService } from "./usage/usage-service";
-import { MemoryService } from "./memory/service/memory-service";
-import { ManagedRuntimeRegistry } from "./memory/runtime/managed-registry";
-import { MemorySettingsOwner } from "./memory/service/settings-owner";
-import { MemoryLifecycleOrchestrator } from "./memory/runtime/control/lifecycle-orchestrator";
+import type { MemoryService } from "./memory/service/memory-service";
+import type { ManagedRuntimeRegistry } from "./memory/runtime/managed-registry";
+import type { MemorySettingsOwner } from "./memory/service/settings-owner";
+import type { MemoryLifecycleOrchestrator } from "./memory/runtime/control/lifecycle-orchestrator";
 import { rotateAcpTraces } from "./backends/acp/trace";
 import { configurePermissions } from "./window/security";
 import { applyThemeSource } from "./window/native-theme";
 import { applyDevelopmentDockIcon } from "./window/app-icon";
 import { ChatHomeLedger } from "./chat-home/chat-home-ledger";
 import { ChatHomeService } from "./chat-home/chat-home-service";
+import { liveChatHomeIntentIds } from "./chat-home/recovery-live-intents";
 import type { ArchiveService } from "./archive/archive-service";
 import { initializeGalleryRuntime, type GalleryRuntime } from "./gallery/bootstrap";
 import { ConversationDeletionCoordinator } from "./deletion/conversation-deletion-coordinator";
 import { defaultChromeRoot, installBrowserPanel, type BrowserRuntime } from "./browser/bootstrap";
-import { HistoryImportService } from "./history-import/service";
+import type { HistoryImportService } from "./history-import/service";
 import { GlobalSearchService } from "./search/job-service";
 import { registerAllCatalogs } from "../../shared/i18n/resources";
-import type { CodexSkillsService } from "./backends/codex/skills-service";
 import {
   createArchiveService,
   createChatsService,
   createConversationCoordinator,
   createManualTurnPreparer,
+  initializeHistoryImportService,
 } from "./startup/conversation-runtime";
-import { createCodexSkillsService } from "./startup/codex-skills-runtime";
 import { createUnifiedSkillsService } from "./startup/unified-skills-runtime";
 import type { UnifiedSkillsService } from "./skills-management/service";
+import { runSkillsCutover } from "./skills-management/cutover";
+import { SkillsTurnCustodyStore } from "./skills-management/turn-custody";
+import { PreparedSkillReferenceLedger } from "./skills-management/prepared-reference-ledger";
+import { configurePreparedSkillReferenceCustody } from "./sections/coordinator/admission/prepared-manual-turn";
+import type { ExtensionRegistryStore } from "./extensions/registry-store";
 import {
   createMainWindowLauncher,
   installAppGuiE2eDriver,
   installBrowserE2eDriver,
+  installDesignE2eDriver,
 } from "./startup/main-window-runtime";
 import { reopenStoppedChatDependencies, ShutdownRecoveryGate } from "./startup/shutdown-recovery";
+import { createDesktopUpdateService } from "./update/composition";
+import type { UpdateService } from "./update/service";
+import { installApplicationQuit } from "./startup/application-quit";
+import { closeTerminalOwnerSequence } from "./startup/terminal-owner-sequence";
+import { windowRegistry } from "./window/surfaces/window-registry";
+import { surfaceWindowController } from "./window/surfaces/surface-window-controller";
+import {
+  continueMemoryRebuildRecovery,
+  initializeMemoryRuntime,
+  recoverAgentTurnCustody,
+  reportLifecycleReconciliation,
+} from "./startup/recovery-runtime";
+import { ProjectToolsRuntime } from "./startup/project-tools-runtime";
 
 /* main 无首包预算，故一次性投喂全部五语言，`translate()` 保持同步。
    放在组合根的模块作用域：晚于它的任何 translate 都已有母语目录，早于
@@ -111,12 +126,12 @@ let baseStore: BaseStore | null = null;
 let basesService: BasesService | null = null;
 let projectStore: ProjectStore | null = null;
 let projectsService: ProjectsService | null = null;
+let projectToolsRuntime: ProjectToolsRuntime | null = null;
 let settingsStore: SettingsStore | null = null;
-let manualMcpServersStore: ManualMcpServersStore | null = null;
 let skillsCatalog: SkillsCatalog | null = null;
-let codexSkillsService: CodexSkillsService | null = null;
 let unifiedSkillsService: UnifiedSkillsService | null = null;
-let skillInventory: SkillInventoryIndex | null = null;
+let extensionRegistry: ExtensionRegistryStore | null = null;
+let skillsTurnCustody: SkillsTurnCustodyStore | null = null;
 let fileAuthorizations: FileAuthorizationStore | null = null;
 let workspaceResolver: WorkspaceResolver | null = null;
 let workspaceFiles: WorkspaceFileCatalog | null = null;
@@ -140,40 +155,20 @@ let galleryMediaService: GalleryRuntime["media"] | null = null;
 let deletionCoordinator: ConversationDeletionCoordinator | null = null;
 let browserRuntime: BrowserRuntime | null = null;
 let lifecycleIntents: LifecycleIntentStore | null = null;
-let appExtensions: AppExtensionIntegration | null = null;
 let historyImport: HistoryImportService | null = null;
 let globalSearch: GlobalSearchService | null = null;
+let updateService: UpdateService | null = null;
 const currentLocale = () => resolveAppLocale(
-  settingsStore?.get().language ?? "auto",
-  app.getPreferredSystemLanguages()
+  settingsStore?.get().language ?? "auto", app.getPreferredSystemLanguages()
 );
 const setupService = new BackendSetupService(currentLocale);
-
-function continueMemoryRebuildRecovery(memory: MemoryService) {
-  setImmediate(() => {
-    void memory
-      .recoverRebuilds()
-      .then((failures) => {
-        for (const failure of failures) {
-          console.warn(
-            `[memory] rebuild ${failure.operationId} 启动恢复失败（${failure.failureKind}/${failure.phase}）：${failure.detail}`
-          );
-        }
-      })
-      .catch((cause) => {
-        console.warn("[memory] rebuild 后台恢复任务异常", asError(cause));
-      });
-  });
-}
 
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (!window) return;
-    if (window.isMinimized()) window.restore();
-    window.focus();
+    const main = windowRegistry.main();
+    if (main) windowRegistry.focus(main.windowId);
   });
 
   void app
@@ -181,18 +176,19 @@ if (!hasSingleInstanceLock) {
     .then(async () => {
       applyDevelopmentDockIcon();
       const userData = app.getPath("userData");
+      const platformSupport = resolvePlatformCapabilities(process.platform);
       const traceDirectory = join(userData, "debug", "acp-trace");
       try {
         rotateAcpTraces(traceDirectory);
       } catch (cause) {
         console.warn("[acp-trace] startup cleanup unavailable", cause);
       }
-      await runStateResetV3(userData);
-      await runStateResetV4(userData);
+      await runStateResetsThroughV5(userData);
       const titleWorkspace = join(userData, "codex-workspace");
       const agentInputStagingRoot = join(userData, "agent-input-staging");
       await mkdir(titleWorkspace, { recursive: true });
       const canonicalUserData = await realpath(userData);
+      updateService = createDesktopUpdateService(app, () => safeQuit.prepare("update"));
       browserRuntime = installBrowserPanel(
         defaultChromeRoot(app.getPath("home"))
       );
@@ -204,11 +200,11 @@ if (!hasSingleInstanceLock) {
           settingsStore?.get().usagePricingAutoRefresh ?? true,
       });
       settingsStore = new SettingsStore(userData);
-      manualMcpServersStore = new ManualMcpServersStore(userData);
-      await manualMcpServersStore.initialize();
       projectStore = new ProjectStore(userData);
+      projectToolsRuntime = await ProjectToolsRuntime.create(userData, projectStore);
       projectsService = composeProjectsService({
         store: projectStore,
+        resourceCleanup: projectToolsRuntime.resourceCleanup,
         userData: canonicalUserData,
         apps: () => appsService,
         chats: () => chatsService,
@@ -240,48 +236,17 @@ if (!hasSingleInstanceLock) {
           projectStore?.get(projectId)?.workspaceBinding.kind === "app",
       });
       await appsService.initialize();
-      /* ============================================================
-       * 上一条命的 backend 进程先收敛，才轮到 App/Extension lifecycle。
-       *
-       * 顺序不能反：内存 BridgeEntry/TurnRegistry 此刻是空的，而空不构成
-       * release 证据。先跑 App 恢复就等于用「没人引用」这个假象，把某个
-       * 还活着的 backend 正在读的 generation 字节 GC 掉。
-       * ============================================================ */
-      turnCustodyJournal = new AgentTurnCustodyJournal(userData);
-      turnCustody = new AgentTurnCustodyRuntime(turnCustodyJournal, {
-        controlRoot: join(userData, "agent-custody"),
-        guardianArgs: [join(__dirname, "custody-guardian-entry.js")],
+      /* 上一条命的 backend 必须先收敛；否则空的内存引用会误导
+         App/Extension 回收仍被活进程使用的 generation。 */
+      const recoveredCustody = await recoverAgentTurnCustody({
+        userData,
+        mainDirectory: __dirname,
+        apps: appsService,
+        chats: chatStore,
       });
-      turnCustody.registerDependencyProbe("app-reference", (dependency) =>
-        dependency.kind === "app-reference" &&
-        appsService!.isTurnReferenceActive(dependency.journalEntryId)
-      );
-      turnCustody.registerDependencyProbe("extension-plan", (dependency) =>
-        dependency.kind === "extension-plan" &&
-        appsService!.isTurnPlanActive(dependency.planInstanceId)
-      );
-      turnCustody.setOwnerProbe(
-        (owner) =>
-          owner.kind === "chat-turn"
-            ? chatStore!.has(owner.ownerId)
-            : owner.kind === "app-internal-turn"
-      );
-      await turnCustody.initialize();
-      const custodyReport = await turnCustody.reconcile();
-      /* 只有拿到「进程确已退出」的证据，dependency 才允许释放；quarantine
-         的那几条继续钉住 generation，等恢复面收敛。 */
-      for (const settled of [
-        ...custodyReport.released,
-        ...custodyReport.aborted,
-      ]) {
-        await appsService.releaseTurnApps(settled.turnRequestId);
-      }
-      for (const held of custodyReport.quarantined) {
-        console.error(
-          `[custody] ${held.custodyId} 进程状态无法确认，关联能力保持 quarantine（turn ${held.turnRequestId}）`
-        );
-      }
-      turnCustody.openAdmission();
+      turnCustodyJournal = recoveredCustody.journal;
+      turnCustody = recoveredCustody.runtime;
+      const custodyReport = recoveredCustody.report;
       await settingsStore.initialize();
       /* 必须先于建窗：renderer 首个同步脚本读的 matchMedia 就是这里投影的
          结果，先设 themeSource 才有「深色启动不闪白」。 */
@@ -297,6 +262,7 @@ if (!hasSingleInstanceLock) {
         skillsCatalog?.invalidate();
       });
       await projectStore.initialize();
+      await projectToolsRuntime.initialize(settingsStore);
       await projectsService.initialize();
       await chatStore.initialize();
       lifecycleIntents = new LifecycleIntentStore(userData);
@@ -319,163 +285,27 @@ if (!hasSingleInstanceLock) {
         chatHomeLedger
       );
       await chatHomeService.initialize();
-      /* 三个 owner 的组装顺序即它们的依赖顺序：
-         Managed Runtime（安装事实）→ Delivery（交付事实）→ Settings
-         （用户意图）。Settings Owner 拿到 apply 回调后才闭环。 */
-      memoryRuntimes = new ManagedRuntimeRegistry(userData);
-      memoryService = new MemoryService(userData, {
-        readChat: (chatId) => chatStore!.get(chatId),
-        readChatRef: (chatId) => chatStore!.getChatRef(chatId),
-        listChatSummaries: () => chatStore!.listChatSummaries(),
-        runtimes: memoryRuntimes,
-      });
-      memorySettingsOwner = new MemorySettingsOwner({
+      const memoryRuntime = await initializeMemoryRuntime({
+        userData,
+        platformSupport,
+        chats: chatStore,
         settings: settingsStore,
-        runtimes: memoryRuntimes,
-        apply: (target, memory) =>
-          memoryService!.applyMemoryConfig(target, memory),
-        consumeConsentAuthority: (token, target, purpose) =>
-          memoryService!
-            .consumeConsentAuthority(token, target, purpose)
-            .then(() => undefined),
-        pause: () => memoryService!.pause(),
-        resume: (target, sharingMode) =>
-          memoryService!.resume(target, sharingMode),
-        revokeConsentForDisable: (providerId) =>
-          memoryService!.revokeConsentForDisable(providerId),
-        rebuildActive: () => memoryService?.rebuildActive() ?? false,
-        lifecycleHeld: (providerId) =>
-          memoryLifecycle?.isHeld(providerId) ?? false,
+        projects: projectsService,
       });
-      memoryLifecycle = new MemoryLifecycleOrchestrator({
-        runtimes: memoryRuntimes,
-        settings: memorySettingsOwner,
-        activeProvider: () => settingsStore!.get().memory.provider,
-        activeMemory: () => settingsStore!.get().memory,
-        consentDestination: (providerId, providerDataInstanceId) =>
-          memoryService!.consentDestination(providerId, providerDataInstanceId),
-        quiesce: () => memoryService!.quiesce(),
-        reopen: () => memoryService!.reopen(),
-        authorizeRebuild: (providerId) =>
-          memoryService!.authorizeRebuild(providerId),
-        rebuild: (providerId) =>
-          memoryService!.rebuildWithinLifecycle(providerId),
-        reconcileRuntimeConfig: (preview, confirmed) =>
-          memoryService!.reconcileRuntimeConfig(preview, confirmed),
-        terminalPublish: () => memoryService!.terminalPublish(),
-      });
-      memoryRuntimes.setLifecycleOrchestrator(memoryLifecycle);
-      memoryService.setLifecycleOrchestrator(memoryLifecycle);
-      memoryService.setTargetResolver((providerId) =>
-        memorySettingsOwner!.resolveTarget({
-          ...settingsStore!.get().memory,
-          provider: providerId,
-        })
-      );
-      await memoryService.initialize(
-        await memorySettingsOwner.resolveTarget(),
-        settingsStore.get().memory
-      );
-      /* 只恢复 Delivery durable fence，使未完成 rebuild 在开放 Memory admission
-         前保持 fail-closed；Provider 清理/回灌必须等主窗口创建后再后台续跑。 */
-      await memoryService.prepareRebuildRecovery();
-      await projectsService.recoverMemoryRebinds();
-      historyImport = new HistoryImportService(userData, {
+      memoryRuntimes = memoryRuntime.runtimes;
+      memoryService = memoryRuntime.service;
+      memorySettingsOwner = memoryRuntime.settingsOwner;
+      memoryLifecycle = memoryRuntime.lifecycle;
+      historyImport = await initializeHistoryImportService({
+        userData,
         home: app.getPath("home"),
-        listProjects: () => projectStore!.list(),
-        getProject: (projectId) => projectStore!.get(projectId),
-        prepareProject: () => projectsService!.prepareExternalProject(),
-        commitProject: (input) => projectsService!.commitExternalProject(input),
-        listSessionBindings: () => chatStore!.listBindings(),
-        getAdoptionBinding: (chatId) => chatStore!.getAdoptionBinding(chatId),
-        memoryState: () => {
-          const memory = settingsStore!.get().memory;
-          const status = memoryService!.status();
-          const consent = memoryService!.policy.activeConsent();
-          return {
-            enabled: memory.enabled,
-            ready: status.health === "ready" || status.health === "compat",
-            sharingMode: memory.sharingMode,
-            providerId: status.target?.providerId ?? null,
-            providerDataInstanceId: status.target?.providerDataInstanceId ?? null,
-            consentEpochId: consent?.id ?? null,
-          };
-        },
-        commitMemory: ({ grantId, snapshots, authorization }) =>
-          memoryService!.importForeignHistory({ grantId, snapshots, authorization }),
-        previewProductMemory: () => memoryService!.previewExistingProductHistory(),
-        commitProductMemory: (grantId, intent) =>
-          memoryService!.commitExistingProductHistory(grantId, intent),
-        productMemoryCommitted: (grantId) =>
-          memoryService!.existingProductHistoryCommitted(grantId),
-        adopt: async ({ request, entry, snapshot }) => {
-          const coordinator = sectionCoordinator;
-          const project = projectStore!.get(entry.projectId);
-          if (!coordinator || !project) throw new Error("收养运行时尚未就绪");
-          if (request.turnOptions.backend !== entry.sourceKind) {
-            throw new Error("续聊 Agent 必须与外源会话同源");
-          }
-          const id = randomUUID().replaceAll("-", "");
-          const chatId = `chat_${id}`;
-          const incarnationId = randomUUID().replaceAll("-", "");
-          const messageId = `user_${randomUUID().replaceAll("-", "")}`;
-          const requestId = `request_${randomUUID().replaceAll("-", "")}`;
-          const { submission } = request;
-          const content = submission.displayText.trim();
-          const session = { backend: entry.sourceKind, id: entry.key.resumeAlias } as const;
-          const receipt = await coordinator.submitManualTurn({
-            intentId: `adopt_${randomUUID().replaceAll("-", "")}`,
-            persistence: {
-              kind: "adopt",
-              input: {
-                id: chatId,
-                title: entry.title || "Imported conversation",
-                agent: entry.sourceKind,
-                projectId: entry.projectId,
-                incarnationId,
-                session,
-                snapshotDigest: snapshot.digest,
-                importOrigin: {
-                  sourceKind: entry.sourceKind,
-                  storageFingerprint: entry.key.storageFingerprint,
-                  canonicalNativeId: entry.key.canonicalNativeId,
-                  aliases: entry.key.aliases,
-                  resumeAlias: entry.key.resumeAlias,
-                  originalCwd: entry.cwd,
-                  historyRevision: entry.historyRevision,
-                  adoptionSnapshotId: snapshot.snapshotId,
-                  sourceSize: entry.fingerprint.size,
-                  sourceMtimeNs: entry.fingerprint.mtimeNs,
-                },
-                firstMessage: { id: messageId, role: "user", content, createdAt: Date.now() },
-                ...(submission.attachmentPayloads?.length
-                  ? { attachmentPayloads: submission.attachmentPayloads }
-                  : {}),
-              },
-            },
-            /* 与产品首轮同一张脸：结构化 input、附件与 Plan 都按 renderer 装配的
-               原样过桥。这里曾把它们拍平成一条 text——续聊于是天生比产品少一截。 */
-            turn: {
-              requestId,
-              scope: { conversationId: chatId },
-              session,
-              turnOptions: request.turnOptions,
-              ...(submission.planMode ? { planMode: true } : {}),
-              input: submission.input,
-            },
-            content: submission.content,
-            precondition: { kind: "absent", proposedIncarnationId: incarnationId },
-            workspacePrecondition: { kind: "project", projectId: project.id, membershipRevision: project.membershipRevision },
-          });
-          if (receipt.phase === "failed") throw new Error("续聊启动失败，未静默创建空会话");
-          return { chatId, phase: receipt.phase };
-        },
+        projects: projectsService,
+        projectStore,
+        chats: chatStore,
+        settings: settingsStore,
+        memory: memoryService,
+        getCoordinator: () => sectionCoordinator,
       });
-      await historyImport.initialize();
-      await historyImport.snapshots.gcAdoptionOrphans(
-        new Set(chatStore.listAdoptionSnapshotIds())
-      );
-      await historyImport.snapshots.gcMemoryOrphans();
       baseStore = new BaseStore(userData);
       await baseStore.initialize(
         new Map(
@@ -584,6 +414,10 @@ if (!hasSingleInstanceLock) {
         chatStore,
         titleWorkspace
       );
+      appsService.configureDesignWorkspace(
+        resolveEffectiveWorkspace,
+        (chatId) => chatStore!.getIncarnationId(chatId)
+      );
       workspaceResolver = createWorkspaceResolver(resolveEffectiveWorkspace);
       workspaceFiles = new WorkspaceFileCatalog(resolveEffectiveWorkspace, {
         getChatIncarnation: (chatId) => chatStore!.getIncarnationId(chatId),
@@ -593,20 +427,15 @@ if (!hasSingleInstanceLock) {
          认识 Registry，Registry 也不反向持有 catalog。 */
       skillsCatalog = new SkillsCatalog(workspaceResolver, {
         disabledTools: () => settingsStore!.get().disabledBuiltinTools,
-        extensionSkills: async () =>
-          appExtensions
-            ? collectExtensionSkillCandidates({
-                userData,
-                inventory: appExtensions.registry.snapshot(),
-              })
-            : [],
+        managedSkills: (projectContext) =>
+          unifiedSkillsService?.effectiveCandidates(projectContext) ??
+          Promise.resolve([]),
+        toolPolicyForScope: projectToolsRuntime.skillPolicy(chatStore),
       });
-      codexSkillsService = await createCodexSkillsService({
-        userData,
-        userHome: app.getPath("home"),
-        workspace: titleWorkspace,
-        catalog: skillsCatalog,
-      });
+      projectToolsRuntime.connectSkills(skillsCatalog);
+      skillsCatalog.setProductSkillGateResolver((path) =>
+        appsService!.design.skillEnabledForPath(path)
+      );
       chatsService = createChatsService({
         userData,
         titleWorkspace,
@@ -635,7 +464,15 @@ if (!hasSingleInstanceLock) {
           chatsService!.readSectionAttachment(sectionId, attachmentId),
         resolveWorkspace: workspaceResolver,
         skills: skillsCatalog,
+        extensionInventoryVersion: (projectContext) => {
+          if (!extensionRegistry) {
+            throw new Error("Extension Registry 尚未初始化");
+          }
+          return extensionRegistry.visibleInventory(projectContext)
+            .visibleInventoryVersion;
+        },
         files: fileAuthorizations,
+        resolveProjectTools: (input) => projectToolsRuntime!.resolver.resolve(input),
         histories: {
           export: (opaqueId) => historyImport!.exportTranscript(opaqueId),
         },
@@ -656,6 +493,14 @@ if (!hasSingleInstanceLock) {
         getArchive: () => archiveService,
       });
       await sectionCoordinator.initialize(false);
+      const [chatReferences, custodyReferences] = await Promise.all([
+        chatStore.adoptionReferenceProjection(),
+        relayLedger.adoptionReferenceProjection(),
+      ]);
+      await historyImport.snapshots.gcAdoptionOrphans({
+        complete: chatReferences.complete && custodyReferences.complete,
+        refs: new Set([...chatReferences.refs, ...custodyReferences.refs]),
+      });
       const appMode = configureAppMode({
         apps: appsService,
         projects: projectsService,
@@ -672,50 +517,76 @@ if (!hasSingleInstanceLock) {
         isConversationAvailable: (chatId) =>
           archiveService?.isConversationAvailable(chatId) ?? true,
         cancelConversations,
+        cancelAgentRequests,
+        skillsTurnCustody: () => skillsTurnCustody,
         bindThreadScope: seedThreadScope,
         releaseThreadScope: releaseThreadScopeForConversation,
       });
+      const preparedSkillRefs = new PreparedSkillReferenceLedger(
+        userData,
+        appMode.extensions.registry
+      );
+      configurePreparedSkillReferenceCustody({
+        acquire: (ownerId, refs) => preparedSkillRefs.prepare(ownerId, refs),
+        release: (ownerId, refs) => preparedSkillRefs.release(ownerId, refs),
+        assertReady: (ownerId, refs) => preparedSkillRefs.assertReady(ownerId, refs),
+      });
       /* Registry/reservation/grant 三本账必须在任何 build、plan 或 lifecycle 恢复
          之前就绪：reconcileRefs 要重新拿住仍被引用的 package generation。 */
-      appExtensions = appMode.extensions;
-      await appMode.extensions.initialize();
+      await appMode.extensions.initialize({
+        afterRegistryInitialize: async () => {
+          await preparedSkillRefs.initialize();
+          await preparedSkillRefs.reconcile(
+            new Set(
+              sectionCoordinator!
+                .preparedSkillSelections()
+                .map(({ receipt }) => receipt.refOwnerId)
+            )
+          );
+        },
+      });
+      extensionRegistry = appMode.extensions.registry;
+      await projectsService.recoverResourceCleanup();
+      await runSkillsCutover({
+        userData,
+        registry: appMode.extensions.registry,
+      });
       unifiedSkillsService = await createUnifiedSkillsService({
         userData,
         userHome: app.getPath("home"),
         env: process.env,
         extensions: appMode.extensions,
-        codex: codexSkillsService,
+        catalog: skillsCatalog,
+        custodyReferenced: (packageDirectory) =>
+          skillsTurnCustody?.referencesPackageDirectory(packageDirectory) ?? false,
         chooseLocalFolder: async () => {
           const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
           return result.canceled ? null : result.filePaths[0] ?? null;
         },
       });
-      skillInventory = new SkillInventoryIndex({
-        loadSystemSkills: () =>
-          scanSkillRoots([{ root: systemSkillsPath(), scope: "system" }]),
-        loadExtensionSkills: () =>
-          collectExtensionSkillCandidates({
-            userData,
-            inventory: appMode.extensions.registry.snapshot(),
-          }),
-        subscribeExtensionChanges: (listener) =>
-          appMode.extensions.registry.onInventoryChanged(() => listener()),
-        debug: (message) => console.debug(message),
-      });
-      await skillInventory.initialize();
+      skillsTurnCustody = new SkillsTurnCustodyStore(
+        userData,
+        unifiedSkillsService.library,
+        appMode.extensions.registry
+      );
+      await skillsTurnCustody.initialize();
       await appsService.reconcileThirdPartyMcpPlans(
         new Set(custodyReport.quarantined.map((entry) => entry.turnRequestId))
       );
       /* 启动只等待 journal 扫描与 fence 发布；网络/drain/资源 saga 在后台续跑。
          一个慢 provider 不再把主窗口建成删除任务的进度条。 */
       await chatsService.recoverDeletions(false);
+      const liveManualIntentIds = Object.values(
+        relayLedger.snapshot().manualIntents
+      )
+        .filter((intent) =>
+          ["queued", "appended", "claimed"].includes(intent.phase)
+        )
+        .map((intent) => intent.id);
       await chatHomeService.recoverCreations(
-        new Set(
-          Object.values(relayLedger.snapshot().manualIntents)
-            .filter((intent) =>
-              ["queued", "appended", "claimed"].includes(intent.phase)
-            )
-            .map((intent) => intent.id)
+        liveChatHomeIntentIds(
+          liveManualIntentIds,
+          await lifecycleIntents.listPending()
         )
       );
       archiveService = createArchiveService({
@@ -727,53 +598,33 @@ if (!hasSingleInstanceLock) {
         chats: chatsService,
         projects: projectsService,
         baseStore,
-        bases: basesService,
         memory: memoryService,
         memoryLifecycle,
         settings: settingsStore,
       });
       await archiveService.initialize();
-      const lifecycleReport = await appMode.reconciliation.run();
-      if (lifecycleReport.unhandled.length) {
-        throw new Error(
-          `存在未注册的 lifecycle intent：${lifecycleReport.unhandled
-            .map((item) => item.kind)
-            .join(", ")}`
-        );
-      }
-      for (const failure of lifecycleReport.projectionFailures) {
-        console.warn(
-          `[lifecycle] projection ${failure.name} 对账失败，待下次启动重试：${failure.message}`
-        );
-      }
-      // 恢复失败的 saga 会留 pending 下次重试；静默会把「永久卡死」伪装成正常启动
-      for (const failure of lifecycleReport.failed) {
+      /* 所有 Project runtime handler 与 retained-resource participant 都已在此刻
+         重建；现在自动续跑删除 checkpoint，不等待 renderer 再点一次删除。 */
+      for (const failure of await projectsService.recoverResourceCleanup()) {
         console.error(
-          `[lifecycle] intent ${failure.kind}(${failure.intentId}) 恢复失败：${failure.message}`
+          `[projects] cleanup ${failure.operation}(${failure.projectId}) 启动恢复失败：${failure.message}`
         );
       }
-      /* skipped 从前一行不打——于是「本轮没消费掉」有两种结局（失败/跳过），
-         只有一种留下痕迹。stale-settled 是正常收尾，superseded 却意味着这条
-         intent 被同资源的对手仲裁掉、本轮没人推进它；一声不吭就等于把「还卡
-         着」伪装成「已处理」，事后连该往哪儿查都无从判断。 */
-      for (const item of lifecycleReport.skipped) {
-        console.warn(
-          `[lifecycle] intent ${item.kind}(${item.intentId}) 本轮跳过：${item.why}`
-        );
-      }
-      // consumed 的计数也留一行：全 0 与「根本没 pending」在日志上不该长得一样
-      console.info(
-        `[lifecycle] 开机对账：恢复 ${lifecycleReport.consumed.length}、跳过 ${lifecycleReport.skipped.length}、失败 ${lifecycleReport.failed.length}、压缩终态 ${lifecycleReport.compactedTerminals}`
-      );
+      const lifecycleReport = await appMode.reconciliation.run();
+      reportLifecycleReconciliation(lifecycleReport);
       await appMode.saveAsApp.recoverPendingSkills();
       // probe/share/preset staging 的内存映射不跨进程：pending intent 之外的
       // 一律孤儿（pending 配置副本含 secret），失败只警告不阻断启动
       await sweepAppStaging(userData, lifecycleIntents).catch((cause) =>
         console.warn("[apps] staging 孤儿清扫失败，待下次启动重试", cause)
       );
+      await appsService.ensureDesignFactory().catch((cause) =>
+        console.error("[design] factory provisioning 未完成，将保持禁用并于下次启动重试", cause)
+      );
       sectionCoordinator.reopenAdmission();
       memoryService.completeStartup();
       const activeCoordinator = sectionCoordinator;
+      const agentPluginInventory = new AgentPluginInventory(userData);
       const toolRegistry = new BuiltinToolRegistry(
         ...createBuiltinToolsets({
           chatStore,
@@ -786,12 +637,20 @@ if (!hasSingleInstanceLock) {
           archiveService,
           browserService: browserRuntime.service,
           browserHarness: browserRuntime.harness,
+          agentPlugins: agentPluginInventory,
+          skillsCustody: skillsTurnCustody,
         })
       );
       installBrowserE2eDriver(toolRegistry, (chatId) =>
         chatStore?.getIncarnationId(chatId)
       );
       installAppGuiE2eDriver(appsService);
+      installDesignE2eDriver(
+        appsService,
+        resolveEffectiveWorkspace,
+        toolRegistry,
+        (chatId) => chatStore?.getIncarnationId(chatId)
+      );
       builtinBridge = new BuiltinMcpBridge(
         builtinSocket,
         builtinLeases,
@@ -813,16 +672,17 @@ if (!hasSingleInstanceLock) {
         extensions: appMode.extensions,
         setup: setupService,
         projects: projectsService,
+        projectStore,
+        projectToolPolicies: projectToolsRuntime.policies,
         chats: chatsService,
         bases: basesService,
         settings: settingsStore,
-        manualMcpServers: manualMcpServersStore,
+        manualMcpServers: projectToolsRuntime.manualMcpServers,
         traceDirectory,
         agentInputStagingRoot,
         skills: skillsCatalog,
-        codexSkills: codexSkillsService,
         unifiedSkills: unifiedSkillsService,
-        skillInventory,
+        skillsCustody: skillsTurnCustody,
         files: fileAuthorizations,
         workspaceFiles,
         resolveWorkspace: workspaceResolver,
@@ -840,22 +700,25 @@ if (!hasSingleInstanceLock) {
         browser: browserRuntime,
         historyImport,
         globalSearch,
+        update: updateService,
       });
       openMainWindow();
-      continueMemoryRebuildRecovery(memoryService);
+      updateService.start();
+      if (platformSupport.capabilities.memory) {
+        continueMemoryRebuildRecovery(memoryService);
+      }
       app.on("activate", () => {
         if (
-          BrowserWindow.getAllWindows().length === 0 &&
+          !windowRegistry.main() &&
           appsService &&
           projectsService &&
           chatsService &&
           basesService &&
           settingsStore &&
-          manualMcpServersStore &&
+          projectToolsRuntime &&
           skillsCatalog &&
-          codexSkillsService &&
           unifiedSkillsService &&
-          skillInventory &&
+          skillsTurnCustody &&
           fileAuthorizations &&
           workspaceFiles &&
           workspaceResolver &&
@@ -863,7 +726,8 @@ if (!hasSingleInstanceLock) {
           memoryService &&
           archiveService &&
           galleryMediaService &&
-          galleryEvents
+          galleryEvents &&
+          updateService
         ) {
           openMainWindow();
         }
@@ -881,7 +745,6 @@ if (!hasSingleInstanceLock) {
 }
 
 const shutdownRecovery = new ShutdownRecoveryGate();
-let quitRequested = false, shutdownFinished = false;
 
 function stopChatAdmission() {
   /* 先关准入再 flush：退出链里绝不能再产生新的 dispatch，否则 flush 完成之后
@@ -894,6 +757,7 @@ function stopChatAdmission() {
   stopTitleGeneratorAdmission();
   memoryService?.stopAdmission();
   turnCustody?.closeAdmission();
+  surfaceWindowController.stopAdmission();
 }
 
 async function reopenChatDependencies() {
@@ -906,69 +770,37 @@ async function reopenChatDependencies() {
   );
 }
 
-app.on("before-quit", (event) => {
-  if (shutdownFinished) return;
-  event.preventDefault();
-  if (quitRequested) return;
-  quitRequested = true;
-  stopChatAdmission();
-  void shutdownAllAgents()
-    .then(() =>
-      shutdownRecovery.runIrreversible(() => {
-        chatsService?.closeAdmission();
-        basesService?.closeAdmission();
-        skillInventory?.close();
-        skillsCatalog?.clear();
-        workspaceFiles?.clear();
-        fileAuthorizations?.clear();
-      })
-    )
-    .then(() => memoryService?.shutdown())
-    .then(() => unifiedSkillsService?.shutdown())
-    .then(() => codexSkillsService?.shutdown())
-    .then(() => projectsService?.closeAndFlush())
-    .then(() => historyImport?.closeAndFlush())
-    .then(() => shutdownTitleGenerators())
-    .then(() => chatsService?.awaitTitleJobs())
-    .then(() => browserRuntime?.shutdown())
-    .then(() => basesService?.closeAndFlush())
-    .then(() => relayLedger?.closeAndFlush())
-    .then(() => memoryService?.closeAndFlush())
-    .then(() => archiveService?.closeAndFlush())
-    .then(() => lifecycleIntents?.closeAndFlush())
-    .then(() => chatStore?.closeAndFlush())
-    .then(() => chatHomeLedger?.closeAndFlush())
-    .then(() => projectStore?.closeAndFlush())
-    .then(() => settingsStore?.closeAndFlush())
-    .then(() => usageService?.shutdown())
-    .then(() => setupService.shutdown())
-    .then(() => appsService?.shutdown())
-    .then(() => turnCustody?.close())
-    .then(() => turnCustodyJournal?.closeAndFlush())
-    .then(() => builtinBridge?.close())
-    .then(() => {
-      shutdownFinished = true;
-      app.quit();
-    })
-    .catch(async (error) => {
-      quitRequested = false;
-      console.error("[codex] shutdown failed", error);
-      const recovered = await shutdownRecovery.recover(
-        reopenChatDependencies,
-        recoverAfterFailedShutdown,
-        () => sectionCoordinator?.reopenAdmission(),
-        (cause) => console.error("[shutdown] recovery failed", cause)
-      );
-      if (!recovered) stopChatAdmission();
-      dialog.showErrorBox(
-        "无法安全退出",
-        recovered
-          ? "退出流程发生错误，应用已恢复运行，聊天功能仍可使用。请稍后重试退出。"
-          : "退出链未能安全恢复。应用保持运行，但为避免产生未落盘会话或更多残留进程，聊天与标题生成已禁用；请处理残留 Codex 进程后重试退出，必要时手动强制退出应用。"
-      );
-    });
-});
+async function closeTerminalOwners() {
+  await closeTerminalOwnerSequence({
+    irreversible: () => shutdownRecovery.runIrreversible(() => {
+      chatsService?.closeAdmission(); basesService?.closeAdmission();
+      skillsCatalog?.clear(); workspaceFiles?.clear(); fileAuthorizations?.clear();
+    }),
+    memory: memoryService, skillsTurnCustody, unifiedSkills: unifiedSkillsService,
+    projects: projectsService, historyImport, shutdownTitles: shutdownTitleGenerators,
+    chats: chatsService, browser: browserRuntime, bases: basesService,
+    relay: relayLedger, archive: archiveService, lifecycleIntents,
+    chatStore, chatHome: chatHomeLedger, projectStore, settings: settingsStore,
+    usage: usageService, setup: setupService, apps: appsService, turnCustody,
+    turnCustodyJournal, builtinBridge, update: updateService,
+  });
+}
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+const safeQuit = installApplicationQuit(app, dialog, {
+  stopAdmission: stopChatAdmission,
+  settleWindows: () => surfaceWindowController.settleAll(),
+  quiesceAgents: () => shutdownAllAgents(),
+  closeOwners: closeTerminalOwners,
+  recover: (reason) =>
+    shutdownRecovery.recover(
+      reopenChatDependencies,
+      recoverAfterFailedShutdown,
+      () => {
+        sectionCoordinator?.reopenAdmission();
+        surfaceWindowController.reopenAdmission();
+      },
+      (cause) => console.error(`[shutdown:${reason}] recovery failed`, cause)
+    ),
+  report: (reason, phase, cause) =>
+    console.error(`[shutdown:${reason}] ${phase} phase failed`, cause),
 });

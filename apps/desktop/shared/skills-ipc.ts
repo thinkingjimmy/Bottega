@@ -1,13 +1,12 @@
 /**
- * [INPUT]: Depends on shared/agent-ipc's AgentWorkspaceScope, does not accept cwd/path
- * [OUTPUT]: Provides skills catalog, Plan capability, generation changed Events and preload bridge contracts
- * [POS]: The manual Skill of shared modules is to discover the truth source, the renderer only holds the main opaque ref that is issued
+ * [INPUT]: Depends on shared Agent workspace/backend identity, Product resource owner scope, and ProductResult envelopes
+ * [OUTPUT]: Provides pathless Skills catalog results with explicit owner scope, truncation counts, Plan capability, invalidated-ref events, and preload bridge contracts
+ * [POS]: Shared runtime Skills wire truth; listing may be stale, sending revalidates in main, and failures cross IPC as structured data
  */
 
-import type {
-  AgentBackendId,
-  AgentWorkspaceScope,
-} from "./agent-ipc";
+import type { AgentBackendId, AgentWorkspaceScope } from "./agent-ipc";
+import type { ProductResult } from "./product-failure";
+import type { ProductResourceScope } from "./product-resource-scope";
 
 export type SkillsScope = AgentWorkspaceScope;
 
@@ -15,11 +14,12 @@ export type SkillInfo = {
   ref: string;
   name: string;
   description: string;
-  /* extension = 产品受管扩展包里被逐项启用的 skill；它排在 user 之下，
-     用户自己 `~/.agents/skills` 的同名件永远压过装进来的包。 */
   scope: "user" | "repo" | "system" | "admin" | "extension";
+  /** Authoritative resource owner; renderer grouping must never infer this from source kind. */
+  ownerScope: ProductResourceScope;
+  /** Exact package owner for Extension Skills; absent for filesystem/library Skills. */
+  extensionInstallIdentity?: string;
   displayName?: string;
-  /** 未知原子要求也保留，由 catalog 两个出口 fail-closed 排除。 */
   requires?: string;
 };
 
@@ -27,7 +27,15 @@ export type SkillsListInput = {
   scope: SkillsScope;
   backend: AgentBackendId;
   planMode: boolean;
+  forceReload?: boolean;
 };
+
+export type SkillsListResult = Readonly<{
+  skills: readonly SkillInfo[];
+  truncated: boolean;
+  matchedCount: number;
+  hiddenCount: number;
+}>;
 
 export const SKILLS_CHANNEL = {
   list: "skills:list",
@@ -35,10 +43,13 @@ export const SKILLS_CHANNEL = {
   changed: "skills:changed",
 } as const;
 
-export type SkillsChangedEvent = { generation: number };
+export type SkillsChangedEvent = Readonly<{
+  generation: number;
+  invalidatedRefs: readonly string[];
+}>;
 
 export type SkillsBridgeApi = {
-  list: (input: SkillsListInput) => Promise<SkillInfo[]>;
-  capabilities: (scope: SkillsScope) => Promise<{ plan: boolean }>;
-  onChanged: (callback: (event: SkillsChangedEvent) => void) => () => void;
+  list(input: SkillsListInput): Promise<ProductResult<SkillsListResult>>;
+  capabilities(scope: SkillsScope): Promise<ProductResult<{ plan: boolean }>>;
+  onChanged(callback: (event: SkillsChangedEvent) => void): () => void;
 };

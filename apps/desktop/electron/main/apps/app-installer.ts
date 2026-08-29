@@ -18,6 +18,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import {
   repairSite,
+  servesWebRuntime,
   type AppFailurePhase,
   type AppInstallEvent,
   type AppManifest,
@@ -56,11 +57,7 @@ import { RepairAdapter } from "./install/repair/adapter";
 import { type RepairContext, RepairRunner } from "./install/repair/runner";
 import { MaintenanceGate } from "./maintenance-gate";
 import { asError } from "../errors";
-import {
-  isContained,
-  strippedShell,
-  updateAndEmitStatus,
-} from "./support";
+import { isContained, strippedShell } from "./support";
 import { inspectPackage, packageDigest } from "./share/package-contract";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
@@ -101,7 +98,7 @@ export class AppInstaller {
       details: string[]
     ) => Promise<boolean>,
     private readonly maintenanceGate: MaintenanceGate,
-    private readonly readLogTail: (appId: string) => Promise<string>
+    readLogTail: (appId: string) => Promise<string>
   ) {
     this.schemaPath = join(userData, "manifest-schema.json");
     this.repositoryState = new RepositoryState(userData);
@@ -184,7 +181,7 @@ export class AppInstaller {
         if (record?.state === "installing") {
           await this.markInstallFailed(appId, "clone", error);
         } else if (record?.state === "updating") {
-          await updateAndEmitStatus(this.store, this.emit, appId, (current) => ({
+          await this.store.update(appId, (current) => ({
             ...current,
             state: "update-failed",
             lastError: { phase: "update", message: "用户取消" },
@@ -202,7 +199,7 @@ export class AppInstaller {
     if (!record || record.state !== "install-failed") {
       throw new Error("当前状态不能干净重装");
     }
-    await updateAndEmitStatus(this.store, this.emit, appId, (current) => ({
+    await this.store.update(appId, (current) => ({
       ...current,
       state: "installing",
       lastError: null,
@@ -243,7 +240,7 @@ export class AppInstaller {
         throw new Error("编辑不能改变 App kind");
       }
 
-      await updateAndEmitStatus(this.store, this.emit, appId, (current) => ({
+      await this.store.update(appId, (current) => ({
         ...current,
         state: "updating",
         lastError: null,
@@ -252,10 +249,7 @@ export class AppInstaller {
       await this.appendLog(appId, "\n===== 编辑后更新 =====");
       await this.runtime.stop(appId);
 
-      if (
-        editedManifest.kind !== "base" &&
-        editedManifest.buildCmd
-      ) {
+      if (servesWebRuntime(editedManifest) && editedManifest.buildCmd) {
         await this.runShell(
           appId,
           editedManifest.buildCmd,
@@ -284,15 +278,14 @@ export class AppInstaller {
         state: "ready",
         lastError: null,
       }));
-      if (ready.manifest?.kind !== "base") {
+      if (servesWebRuntime(ready.manifest)) {
         await this.runtime.ensureRunning(appId);
       }
       const applied = await this.changedPaths(ready, task);
       await this.repositoryState.write(appId, applied.fingerprint);
-      this.emit({ appId, type: "status", record: ready });
     } catch (cause) {
       const error = asError(cause);
-      await updateAndEmitStatus(this.store, this.emit, appId, (current) => ({
+      await this.store.update(appId, (current) => ({
         ...current,
         state: "update-failed",
         lastError: { phase: "update", message: error.message },
@@ -400,13 +393,12 @@ export class AppInstaller {
       const delivered = { ...record, dir: finalDir };
       const baseline = await this.changedPaths(delivered, task);
       await this.repositoryState.write(appId, baseline.fingerprint);
-      const ready = await this.store.publishGeneration(appId, (current) => ({
+      await this.store.publishGeneration(appId, (current) => ({
         ...current,
         state: "ready",
         lastError: null,
         manifest: deliveredManifest,
       }), { generationSourceDir: finalDir });
-      this.emit({ appId, type: "status", record: ready });
       this.emit({ appId, type: "progress", step: "安装完成", operation: "install" });
     } catch (cause) {
       const signalReason = task.controller.signal.reason;
@@ -601,7 +593,7 @@ export class AppInstaller {
     error: Error
   ) {
     if (!this.store.get(appId)) return;
-    await updateAndEmitStatus(this.store, this.emit, appId, (current) => ({
+    await this.store.update(appId, (current) => ({
       ...current,
       state: "install-failed",
       lastError: { phase, message: error.message },

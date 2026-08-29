@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Agent/Chat/MCP DTO, backend session config, Gallery completed item, credible input, App authorization environment, adopt retry guard and origin-aware built-in MCP lease
- * [OUTPUT]: Provides with adopted retryWithoutSession judgments, synchronized void turn item, observe, runtime-finalize/context-rebuild/MCP planner/backend session freezer/runtime identity/protocol health observation/sensitive lease release AgentBridgeOptions, BridgeEntry, TurnOrigin, freeze BuiltinTurnToolPolicy/FinalTurnProjection, AgentContext and the port of submission/Steer
- * [POS]: The bridge port definition of the agent module; The lifecycle of the executor and the Electron is only known through these narrow types of
+ * [INPUT]: Depends on shared Agent/Chat/MCP/platform DTOs, canonical Project context, hydrated Project Tools and durable Skill receipts, backend session config, App authorization, and built-in MCP leases
+ * [OUTPUT]: Provides AgentBridgeOptions, BridgeEntry, TurnOrigin, exact Project/Tools/Skill projection context, and submission/Steer ports
+ * [POS]: Narrow Agent bridge contract; Electron composition and executors exchange frozen authority without importing one another
  */
 
 import type {
@@ -9,6 +9,7 @@ import type {
   BackendCapabilities,
   AgentEventBody,
   AgentSendPayload,
+  PreparedSkillSelectionReceipt,
   AgentTurnItem,
   SessionRef,
   SteerAdmission,
@@ -17,6 +18,7 @@ import type {
   SteerOutboxProjection,
   TurnPersistOutcome,
   TurnFilesystemAccess,
+  TurnSnapshot,
 } from "../../../shared/agent-ipc";
 import type {
   ChatMessage,
@@ -41,6 +43,13 @@ import type {
 import type { BackendRuntimeSnapshot } from "../backends/runtime-registry";
 import type { ThirdPartyMcpPlan } from "../../../shared/mcp-servers-ipc";
 import type { FinalTurnProjection } from "./product-context";
+import type { PlatformCapabilities } from "../../../shared/platform-capabilities";
+import type { HydratedProjectTools } from "../sections/coordinator/admission/prepared-project-tools";
+import type { TurnProjectContext } from "../../../shared/product-resource-scope";
+import type {
+  ExtensionPackageGenerationRef,
+  Sha256Digest,
+} from "../../../shared/extensions-ipc";
 import type {
   FrozenTurnMemoryAdmission,
   MemoryPrePromptValidation,
@@ -66,6 +75,9 @@ export type TurnProjectionInput = Readonly<{
 
 export type AgentContext = {
   workspace: string;
+  projectContext?: TurnProjectContext;
+  /** Durable main-owned manual selection; runtime capability may narrow channels but never reselect owners. */
+  preparedSkillSelection?: PreparedSkillSelectionReceipt;
   appId?: string;
   filesystemAccess?: TurnFilesystemAccess & { controlRoot: string };
   appReferenceRequestId?: string;
@@ -74,6 +86,9 @@ export type AgentContext = {
   attachedAppInstructions?: string;
   /** runtime CAS 后唯一冻结的工具/skill/prompt 投影；lease 与 backend 共用。 */
   finalTurnProjection?: FinalTurnProjection;
+  /** Exact frozen Skills identity/ref/root owner for this turn. */
+  skillsCustodyId?: string;
+  skillsRuntimeRoot?: string;
   /** 本轮完整 closed logical lease 集合；custody intent 逐条复验后才交付能力 */
   custodyDependencies?: readonly AgentTurnCustodyDependency[];
   /**
@@ -83,6 +98,8 @@ export type AgentContext = {
    */
   custodyOwner?: AgentTurnCustodyOwner;
   builtinToolPolicy?: BuiltinTurnToolPolicy;
+  /** Durable manual receipt plus hash-verified candidates; never reconstructed from live stores. */
+  preparedProjectTools?: HydratedProjectTools;
   /** runtime CAS 改变 capability 时重建 App refs/instructions 所需的冻结输入。 */
   turnProjectionInput?: TurnProjectionInput;
   /** runtime capability 变更时据此重签 App refs。 */
@@ -91,6 +108,15 @@ export type AgentContext = {
   baseReadOnlyRoots?: readonly string[];
   /** sealed package MCP 的瞬时 resolved config；只在 main 内存穿过，不进 IPC/ledger。 */
   packageMcpEntries?: readonly ThirdPartyMcpPlan["entries"][number][];
+  /** Exact delivery facts actually materialized for this turn/session. */
+  extensionDiscoveryBindings?: readonly Readonly<{
+    kind: "ambient-projection" | "app-delivery";
+    authorityId: string;
+    planInstanceId?: string;
+    packageGenerationRef: ExtensionPackageGenerationRef;
+    componentInstanceIdentity: string;
+    deliveryIdentity: Sha256Digest;
+  }>[];
   /** request 级隐私身份能力；不进入 FinalTurnProjection，resume 只能原样透传。 */
   memory?: FrozenTurnMemoryAdmission;
 };
@@ -138,13 +164,16 @@ export type BridgeEntry = TurnEntry<AgentTurn> & {
 };
 
 export type AgentBridgeOptions = {
+  /** Product composition injects the current OS matrix; tests omit it unless exercising the gate. */
+  platformSupport?: PlatformCapabilities;
   /** 默认 true 供独立测试；产品主窗口设 false，人工 turn 只能经 coordinator。 */
   acceptRendererSend?: boolean;
   traceDirectory?: string;
   resolveContext: (
     conversationId: string,
     payload?: AgentSendPayload,
-    origin?: TurnOrigin
+    origin?: TurnOrigin,
+    preparedProjectTools?: HydratedProjectTools
   ) => Promise<AgentContext> | AgentContext;
   releaseContext?: (context: AgentContext) => Promise<void> | void;
   /** runtime identity CAS 后、input/lease 物化前的唯一 context 重投影口。 */
@@ -156,7 +185,9 @@ export type AgentBridgeOptions = {
   /** spawn 前最后一刻冻结 backend 私有 session config；返回值只在 main 内存穿过。 */
   freezeBackendSessionConfig?: (
     backend: AgentBackendId
-  ) => BackendTurnOptions["backendSessionConfig"];
+  ) =>
+    | BackendTurnOptions["backendSessionConfig"]
+    | Promise<BackendTurnOptions["backendSessionConfig"]>;
   withConversationAdmission: ConversationAdmission;
   onAppTurnCompleted: (
     appId: string,
@@ -182,9 +213,11 @@ export type AgentBridgeOptions = {
   steerSnapshot?: (
     conversationId: string
   ) => Promise<SteerOutboxProjection[]> | SteerOutboxProjection[];
+  conversationForOutboxRef?: (outboxRef: string) => string | undefined;
   onSessionBound?: (
     conversationId: string,
-    session: SessionRef
+    session: SessionRef,
+    context: AgentContext | undefined
   ) => Promise<void>;
   replaceSession?: (
     conversationId: string,
@@ -193,10 +226,15 @@ export type AgentBridgeOptions = {
   ) => Promise<void>;
   /** 收养会话禁止把 resume 失败偷换成新 session；拒绝必须对用户可见。 */
   assertRetryWithoutSession?: (conversationId: string) => void;
+  projectTurnSnapshot?: (
+    conversationId: string,
+    snapshot: TurnSnapshot
+  ) => TurnSnapshot;
   resolveInput: (
     payload: AgentSendPayload,
     workspace: string,
-    capabilities: BackendCapabilities
+    capabilities: BackendCapabilities,
+    context: AgentContext
   ) => Promise<ResolvedAgentInput> | ResolvedAgentInput;
   /** runtime finalization 后唯一 late-context merge；fresh/reuse/resume 同路。 */
   mergeLateInput?: (
@@ -262,6 +300,13 @@ export type AgentBridgeOptions = {
     backendRuntimeIdentity: string;
     dependencies: readonly AgentTurnCustodyDependency[];
   }) => Promise<AgentTurnCustodyHandle>;
+  /** Fires only after the backend has entered the active turn state. */
+  onTurnStarted?: (event: {
+    conversationId: string;
+    requestId: string;
+    explicitDesign: boolean;
+    context: AgentContext;
+  }) => Promise<void> | void;
   onTurnSettled?: (event: {
     conversationId: string;
     requestId: string;
@@ -281,6 +326,7 @@ export type AgentBridgeOptions = {
     origin?: TurnOrigin;
     context?: AgentContext;
     terminal: "done" | "cancelled" | "error";
+    facts?: { skillDescriptionsTruncated?: true };
     commit: TurnCommitInput;
   }) => Promise<void> | void;
   onSteerFenceTimeout?: (event: {

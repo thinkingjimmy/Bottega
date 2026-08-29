@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, routing, Universal Memory sharing Mode, Projects/Bases/History Provider, Project/ProductChat/ForeignHistory/App agreement and sidebar/ConfirmationDialog
- * [OUTPUT]: Provides ProjectItem, read-only History createdAt of Product Chat, history refresh/switch, non-destructive local detach/condition archive confirmation, Memory re-binding, Project App authorization, split page with Base fixed first row
- * [POS]: Project line units in components/sidebar/project, consumed by ProjectSection; Project Base is the same legal sidebar menu sub as the Unified Subject, and the external source line does not receive rename/archive/Base product action
+ * [INPUT]: Depends on React/routing, Memory settings, Projects/Bases/History Providers, Project/Chat/History contracts, shared rename/grants/lifecycle modules, and Sidebar primitives
+ * [OUTPUT]: Provides ProjectItem plus sorting, pagination, Project Settings navigation, workspace, and Memory rebind helpers; lifecycle, rename, and grants delegate to focused submodules
+ * [POS]: Project row coordinator consumed by ProjectSection; reusable state machines live in sibling modules
  */
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import {
@@ -20,6 +20,7 @@ import {
   PanelsTopLeft,
   Plus,
   RefreshCw,
+  Settings,
   TriangleAlert,
   Undo2,
 } from "lucide-react";
@@ -27,22 +28,21 @@ import type { ChatSummary } from "../../../../shared/chats-ipc";
 import type { ForeignHistorySummary, ProjectHistoryImportState } from "../../../../shared/history-import-ipc";
 import type {
   Project,
-  ProjectLocalDetachReason,
   ProjectMemoryRebindMode,
 } from "../../../../shared/projects-ipc";
-import {
-  isPositiveAppGrant,
-  type AppCapabilityGrant,
-  type AppRecord,
-} from "../../../../shared/apps-ipc";
 import { ChatThreadItem } from "../chat/chat-thread-item";
 import { HistoryThreadItem } from "../history/history-thread-item";
+import {
+  SidebarRenameDialog,
+  useSidebarRenameMenu,
+} from "../rename/sidebar-rename-dialog";
 import { useSidebarActivePath } from "../sidebar-active-path";
 import { ProjectAppearancePicker } from "./project-appearance-picker";
+import { ProjectAppGrantsDialog } from "./grants/project-app-grants-dialog";
 import { SidebarRowMark, SidebarRowTag, sidebarSubRowClass } from "../sidebar-row";
 import { useProjects } from "../../providers/projects-provider";
 import { useBases } from "../../providers/bases-provider";
-import { draftRoute } from "@/lib/draft-route";
+import { draftRoute, projectSettingsRoute } from "@/lib/draft-route";
 import { settingsStore } from "@/lib/settings-store";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
@@ -50,11 +50,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@ai-chat/ui/components/ui/collapsible";
-import {
-  AppDialogBody,
-  AppDialogContent,
-  ConfirmationDialog,
-} from "@ai-chat/ui/components/ui/app-dialog";
 import {
   Dialog,
   DialogContent,
@@ -70,7 +65,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@ai-chat/ui/components/ui/dropdown-menu";
-import { Input } from "@ai-chat/ui/components/ui/input";
 import {
   SidebarMenuAction,
   SidebarMenuButton,
@@ -84,11 +78,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@ai-chat/ui/components/ui/tooltip";
-import { usePointerOpenedMenu } from "@ai-chat/ui/hooks/use-pointer-opened-menu";
-import { archiveTargets } from "@/lib/archive-client";
-import { grantApp, listApps, revokeAppGrant, setAppGrantState } from "@/lib/apps-client";
-import { errorMessage } from "@/lib/errors";
 import { useOptionalHistory } from "../../providers/history/history-provider";
+import {
+  ProjectLifecycleDialogs,
+  useProjectLifecycle,
+} from "./project-lifecycle";
+
+export { localDetachArchiveReasons } from "./project-lifecycle";
 
 /* 显现通道用 :has(:focus-visible) 而非 focus-within：鼠标点过折叠触发器或行内按钮后
    focus 就留在那儿，focus-within 会让浮层永久钉住——那说明的是「点过」而非「正在看」。 */
@@ -110,16 +106,6 @@ export const canDetachLocalProject = (
 ) =>
   project.workspaceBinding.kind !== "app" &&
   !canReleaseMissingProject(project);
-
-export function localDetachArchiveReasons(input: {
-  hasProjectBase: boolean;
-  groupMemory: boolean;
-}): ProjectLocalDetachReason[] {
-  return [
-    ...(input.hasProjectBase ? (["project-base"] as const) : []),
-    ...(input.groupMemory ? (["group-memory"] as const) : []),
-  ];
-}
 
 /* ── Project 子列表按创建序，不按活动序 ────────────────────────────
  * Project 里的 chat 是这个项目下的工作清单，位置该是钉死的。按 updatedAt
@@ -308,7 +294,6 @@ export function ProjectItem({
     renameProject,
     setProjectAppearance,
     chooseWorkspaceBinding,
-    detachLocalProject,
     releaseMissingProject,
   } = useProjects();
   const { pinned, projectBases } = useBases();
@@ -329,26 +314,20 @@ export function ProjectItem({
      这个数活在折叠区之外，收起带不走它，归零只能在 onOpenChange 上显式说出来。 */
   const [chatLimit, setChatLimit] = useState(PROJECT_CHAT_PAGE_SIZE);
   const [renameOpen, setRenameOpen] = useState(false);
-  const [archiveOpen, setArchiveOpen] = useState(false);
-  const [localDetachOpen, setLocalDetachOpen] = useState(false);
-  const [localDetachReasons, setLocalDetachReasons] = useState<
-    ProjectLocalDetachReason[]
-  >([]);
-  const [operationError, setOperationError] = useState("");
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   /* 安全默认 = 开始新的 Project Memory（PRD §4.2）：误点确认时旧记忆
      不会被带进一个完全不同的 workspace；沿用须显式选择。 */
   const [workspaceMode, setWorkspaceMode] =
     useState<ProjectMemoryRebindMode>("new");
   const [appsOpen, setAppsOpen] = useState(false);
-  const [name, setName] = useState(project.name);
-  const [busy, setBusy] = useState(false);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const memoryUsesProjectScope = settings?.memory.sharingMode === "group";
-  const menu = usePointerOpenedMenu();
+  const renameMenu = useSidebarRenameMenu(() => setRenameOpen(true));
   /* 展开事实收成一处：折叠区与行首字形读同一个值，不各算一遍。 */
   const expanded = open && !project.missing;
   const active =
-    activePath === "/" && searchParams.get("projectId") === project.id;
+    (activePath === "/" && searchParams.get("projectId") === project.id) ||
+    activePath === projectSettingsRoute(project.id);
   const missingRecord = project.dir === "";
   const tooltip = missingRecord
     ? t("projects.missingRecord")
@@ -369,18 +348,6 @@ export function ProjectItem({
   const listedRows = sortedRows.slice(0, chatLimit);
   const restChats = sortedRows.length - listedRows.length;
 
-  const rename = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!name.trim() || busy) return;
-    setBusy(true);
-    try {
-      await renameProject(project.id, name.trim());
-      setRenameOpen(false);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const leaveProjectSurface = (archiveMembers: boolean) => {
     const projectBaseRoute = pathname === `/bases/project/${project.id}`;
     const memberChatRoute = chats.some(
@@ -391,53 +358,14 @@ export function ProjectItem({
     }
   };
 
-  const archive = async () => {
-    setBusy(true);
-    setOperationError("");
-    try {
-      await archiveTargets([{ kind: "project", id: project.id }]);
-      leaveProjectSurface(true);
-      setArchiveOpen(false);
-      setLocalDetachOpen(false);
-    } catch (cause) {
-      setOperationError(errorMessage(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const detachLocal = async () => {
-    if (localDetachReasons.length) {
-      await archive();
-      return;
-    }
-    setBusy(true);
-    setOperationError("");
-    try {
-      const result = await detachLocalProject(project.id);
-      if (result.status === "archive-required") {
-        setLocalDetachReasons(result.reasons);
-        return;
-      }
-      leaveProjectSurface(false);
-      setLocalDetachOpen(false);
-    } catch (cause) {
-      setOperationError(errorMessage(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const requestLocalDetach = () => {
-    setOperationError("");
-    setLocalDetachReasons(
-      localDetachArchiveReasons({
-        hasProjectBase: Boolean(projectBase),
-        groupMemory: memoryUsesProjectScope,
-      })
-    );
-    setLocalDetachOpen(true);
-  };
+  const lifecycle = useProjectLifecycle(project, {
+    chats,
+    pinnedBaseCount,
+    hasProjectBase: Boolean(projectBase),
+    groupMemory: memoryUsesProjectScope,
+    onLeave: leaveProjectSurface,
+  });
+  const busy = workspaceBusy || lifecycle.busy;
 
   return (
     <Collapsible
@@ -488,7 +416,7 @@ export function ProjectItem({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <SidebarMenuAction
-                {...menu.triggerProps}
+                {...renameMenu.triggerProps}
                 className={`${projectRowActionClass} ${project.missing ? "" : "right-7"}`}
                 aria-label={t("projects.moreActions", { name: project.name })}
               >
@@ -499,28 +427,29 @@ export function ProjectItem({
               side="bottom"
               align="start"
               className="w-max min-w-0"
-              onCloseAutoFocus={menu.onCloseAutoFocus}
+              onCloseAutoFocus={renameMenu.onMenuCloseAutoFocus}
             >
               {!project.missing && (
-                <DropdownMenuItem
-                  onSelect={() => {
-                    setName(project.name);
-                    setRenameOpen(true);
-                  }}
-                >
-                  <Pencil />
-                  {t("projects.rename")}
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem onSelect={renameMenu.requestOpen}>
+                    <Pencil />
+                    {t("projects.rename")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => navigate(projectSettingsRoute(project.id))}>
+                    <Settings />
+                    {t("projectSettings.entry")}
+                  </DropdownMenuItem>
+                </>
               )}
               <ProjectWorkspaceMenuEntry
                 project={project}
                 busy={busy}
                 onChoose={() => {
                   if (!memoryUsesProjectScope) {
-                    setBusy(true);
+                    setWorkspaceBusy(true);
                     void settleWorkspaceChoice(
                       () => chooseWorkspaceBinding(project.id, "retain"),
-                      () => setBusy(false)
+                      () => setWorkspaceBusy(false)
                     );
                     return;
                   }
@@ -528,7 +457,7 @@ export function ProjectItem({
                   setWorkspaceOpen(true);
                 }}
               />
-              {project.workspaceBinding.kind !== "app" && !project.missing && (
+              {project.workspaceBinding.kind === "external" && !project.missing && (
                 <DropdownMenuItem
                   onSelect={() => void history?.setEnabled(project.id, !historyState?.enabled)}
                 >
@@ -546,10 +475,10 @@ export function ProjectItem({
                 <DropdownMenuItem
                   disabled={busy}
                   onSelect={() => {
-                    setBusy(true);
+                    setWorkspaceBusy(true);
                     void settleMissingProjectRelease(
                       () => releaseMissingProject(project.id),
-                      () => setBusy(false)
+                      () => setWorkspaceBusy(false)
                     );
                   }}
                 >
@@ -557,28 +486,39 @@ export function ProjectItem({
                   {t("projects.moveChatsToRoot")}
                 </DropdownMenuItem>
               )}
-              <DropdownMenuSeparator />
-              {canDetachLocalProject(project) && (
-                <DropdownMenuItem
-                  variant="destructive"
-                  disabled={busy}
-                  onSelect={requestLocalDetach}
-                >
-                  <FolderX />
-                  {t("projects.removeLocal")}
-                </DropdownMenuItem>
+              {/* ── 收尾两格：分割线是条目的影子，不是独立的一行 ──────
+                  谁渲染，谁头上就跟着一条线。从前那条线硬写在外面，于是
+                  App Project（两格都不渲染）的菜单尾巴上吊着一条没有下文
+                  的分割线——那是把「线」当成了位置而不是关系。
+
+                  归档可回收，用常规色；移除本机记录不可撤销，红只给它，
+                  并且坐末位：菜单越往下越重，与 Project 设置的危险区同一
+                  把尺子。 */}
+              {project.workspaceBinding.kind !== "app" && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={busy}
+                    onSelect={lifecycle.requestArchive}
+                  >
+                    <Archive />
+                    {t("projects.archive")}
+                  </DropdownMenuItem>
+                </>
               )}
-              <DropdownMenuItem
-                variant="destructive"
-                disabled={busy}
-                onSelect={() => {
-                  setOperationError("");
-                  setArchiveOpen(true);
-                }}
-              >
-                <Archive />
-                {t("projects.archive")}
-              </DropdownMenuItem>
+              {canDetachLocalProject(project) && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    disabled={busy}
+                    onSelect={lifecycle.requestLocalDetach}
+                  >
+                    <FolderX />
+                    {t("projects.removeLocal")}
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -668,107 +608,18 @@ export function ProjectItem({
           </SidebarMenuSub>
         </CollapsibleContent>
 
-        <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
-          <DialogContent>
-            <form onSubmit={rename}>
-              <DialogHeader>
-                <DialogTitle>{t("projects.renameTitle")}</DialogTitle>
-                <DialogDescription>
-                  {t("projects.renameDescription")}
-                </DialogDescription>
-              </DialogHeader>
-              <Input
-                autoFocus
-                className="my-4"
-                value={name}
-                maxLength={100}
-                onChange={(event) => setName(event.target.value)}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setRenameOpen(false)}>
-                  {t("common.cancel")}
-                </Button>
-                <Button type="submit" disabled={busy || !name.trim()}>
-                  {t("common.save")}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("projects.archiveTitle")}</DialogTitle>
-              <DialogDescription>
-                {t("projects.archiveDescription", {
-                  name: project.name,
-                  chats: chats.length,
-                })}
-                {pinnedBaseCount > 0 &&
-                  ` ${t("projects.archivePinned", { bases: pinnedBaseCount })}`}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setArchiveOpen(false)}>
-                {t("common.cancel")}
-              </Button>
-              <Button disabled={busy} onClick={() => void archive()}>
-                {t("projects.archive")}
-              </Button>
-            </DialogFooter>
-            {operationError && (
-              <p className="mt-3 text-destructive text-sm" role="alert">
-                {operationError}
-              </p>
-            )}
-          </DialogContent>
-        </Dialog>
-        {/* main 若在确认瞬间才发现 Base/共享 Memory，必须结束旧的 Remove
-            语义再开一张 Archive 问句。key 强制重挂，焦点随之回到 Cancel；
-            只换文案会让焦点停在红按钮上，按一次 Enter 就把二次确认吃掉。 */}
-        <ConfirmationDialog
-          key={localDetachReasons.length ? "archive-instead" : "remove-local"}
-          open={localDetachOpen}
-          title={t(
-            localDetachReasons.length
-              ? "projects.archiveInsteadTitle"
-              : "projects.removeLocalTitle",
-            { name: project.name }
-          )}
-          description={
-            <>
-              {t(
-                localDetachReasons.length === 2
-                  ? "projects.archiveInsteadBoth"
-                  : localDetachReasons[0] === "project-base"
-                    ? "projects.archiveInsteadBase"
-                    : localDetachReasons[0] === "group-memory"
-                      ? "projects.archiveInsteadMemory"
-                      : "projects.removeLocalDescription"
-              )}
-              {operationError && (
-                <span className="mt-3 block text-destructive" role="alert">
-                  {operationError}
-                </span>
-              )}
-            </>
-          }
-          confirmLabel={t(
-            localDetachReasons.length
-              ? "projects.archiveInsteadConfirm"
-              : "projects.removeLocal"
-          )}
-          confirmTone="destructive"
-          busy={busy}
-          showCloseButton
-          contentClassName="sm:max-w-[26.25rem] [&_[data-slot=dialog-close]]:top-3 [&_[data-slot=dialog-close]]:right-4 [&_[data-slot=dialog-close]]:text-muted-foreground [&_[data-slot=dialog-description]]:mt-1 [&_[data-slot=dialog-footer]>button:last-child]:px-4"
-          onOpenChange={(next) => {
-            setLocalDetachOpen(next);
-            if (!next) setOperationError("");
-          }}
-          onConfirm={() => void detachLocal()}
+        <SidebarRenameDialog
+          open={renameOpen}
+          currentName={project.name}
+          title={t("projects.renameTitle")}
+          description={t("projects.renameDescription")}
+          maxLength={100}
+          onOpenChange={setRenameOpen}
+          onRename={(name) => renameProject(project.id, name)}
+          onCloseAutoFocus={renameMenu.onDialogCloseAutoFocus}
         />
+
+        <ProjectLifecycleDialogs controller={lifecycle} />
         <Dialog open={workspaceOpen} onOpenChange={setWorkspaceOpen}>
           <DialogContent>
             <DialogHeader>
@@ -792,11 +643,11 @@ export function ProjectItem({
               <Button
                 disabled={busy}
                 onClick={() => {
-                  setBusy(true);
+                  setWorkspaceBusy(true);
                   setWorkspaceOpen(false);
                   void settleWorkspaceChoice(
                     () => chooseWorkspaceBinding(project.id, workspaceMode),
-                    () => setBusy(false)
+                    () => setWorkspaceBusy(false)
                   );
                 }}
               >
@@ -813,230 +664,5 @@ export function ProjectItem({
         />
       </SidebarMenuItem>
     </Collapsible>
-  );
-}
-
-function ProjectAppGrantsDialog({
-  project,
-  open,
-  onOpenChange,
-}: {
-  project: Project;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { t } = useAppTranslation();
-  const [apps, setApps] = useState<AppRecord[]>([]);
-  const [grants, setGrants] = useState(project.grants);
-  const [error, setError] = useState("");
-  const [busyId, setBusyId] = useState("");
-  useEffect(() => {
-    if (!open) return;
-    void listApps()
-      .then((snapshot) =>
-        setApps(
-          snapshot.apps.filter(
-            (app) => app.state === "ready" && app.generationBinding.active
-          )
-        )
-      )
-      .catch((cause) =>
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : t("projects.grants.listFailed")
-        )
-      );
-  }, [open, t]);
-
-  const commit = async (
-    app: AppRecord,
-    data: "none" | "read" | "row-write",
-    agentDelegation: AppCapabilityGrant["agentDelegation"]
-  ) => {
-    setBusyId(app.id);
-    setError("");
-    try {
-      const result = await grantApp({
-        target: { kind: "project", projectId: project.id },
-        appId: app.id,
-        requestedDataLevel: data,
-        requestedAgentDelegation: agentDelegation,
-      });
-      setGrants(result.grants);
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : t("projects.grants.grantFailed")
-      );
-    } finally {
-      setBusyId("");
-    }
-  };
-
-  const revoke = async (appId: string) => {
-    setBusyId(appId);
-    setError("");
-    try {
-      const result = await revokeAppGrant(
-        { kind: "project", projectId: project.id },
-        appId
-      );
-      setGrants(result.grants);
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : t("projects.grants.revokeFailed")
-      );
-    } finally {
-      setBusyId("");
-    }
-  };
-
-  const disable = async (appId: string) => {
-    setBusyId(appId);
-    setError("");
-    try {
-      const result = await setAppGrantState({
-        appId,
-        target: { kind: "project", projectId: project.id },
-        state: "disabled",
-      });
-      setGrants(result.grants);
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : t("projects.grants.disableFailed")
-      );
-    } finally {
-      setBusyId("");
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* 表面/正文分工照 AppDialog 解剖：曾是 DialogContent 自己 `max-h-[80vh]
-          overflow-y-auto`——一个盒子同时当「有形状的边界」和「能滚的窗口」，
-          于是系统滚动条骑在 1.35rem 圆角上，像挂在弹窗外面。表面只当形状，
-          滚动归 AppDialogBody 这唯一的主人。 */}
-      <AppDialogContent className="sm:max-w-xl">
-        <DialogHeader className="shrink-0 gap-0 text-left">
-          <DialogTitle>{t("projects.grants.title")}</DialogTitle>
-          <DialogDescription className="mt-2">
-            {t("projects.grants.description")}
-          </DialogDescription>
-        </DialogHeader>
-        {error && (
-          <p className="mt-4 shrink-0 text-destructive text-sm">{error}</p>
-        )}
-        <AppDialogBody className="mt-4 space-y-3">
-          {apps.map((app) => {
-            const record = grants.find((item) => item.appId === app.id);
-            const grant = record && isPositiveAppGrant(record) ? record : undefined;
-            const disabled = Boolean(record && !isPositiveAppGrant(record));
-            const busy = busyId === app.id;
-            const noData = app.domainIdentity?.kind === "no-data";
-            return (
-              <section className="rounded-lg border p-3" key={app.id}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-sm">{app.manifest?.name ?? app.displayName}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {disabled
-                        ? t("projects.grants.disabledInherit")
-                        : t("projects.grants.summary", {
-                            level:
-                              grant?.data?.level ??
-                              t("projects.grants.dataNone"),
-                            delegation: t(
-                              grant?.agentDelegation.fileRead ||
-                                grant?.agentDelegation.useData
-                                ? "projects.grants.delegationOn"
-                                : "projects.grants.delegationOff"
-                            ),
-                          })}
-                    </p>
-                  </div>
-                  {grant && (
-                    <Button disabled={busy} onClick={() => void revoke(app.id)} size="sm" variant="ghost">
-                      {t("projects.grants.revoke")}
-                    </Button>
-                  )}
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {!noData && (
-                    <Button
-                      disabled={busy}
-                      onClick={() =>
-                        void commit(app, "read", grant?.agentDelegation ?? { fileRead: false, useData: false })
-                      }
-                      size="sm"
-                      variant="outline"
-                    >
-                      {t("projects.grants.allowRead")}
-                    </Button>
-                  )}
-                  {!noData && (
-                    <Button
-                      disabled={busy}
-                      onClick={() =>
-                        void commit(
-                          app,
-                          "row-write",
-                          grant?.agentDelegation ?? { fileRead: false, useData: false }
-                        )
-                      }
-                      size="sm"
-                      variant="outline"
-                    >
-                      {t("projects.grants.allowRowWrite")}
-                    </Button>
-                  )}
-                  <Button
-                    disabled={busy}
-                    onClick={() =>
-                      void commit(
-                        app,
-                        grant?.data?.level ?? "none",
-                        grant?.agentDelegation.fileRead || grant?.agentDelegation.useData
-                          ? { fileRead: false, useData: false }
-                          : { fileRead: true, useData: Boolean(grant?.data) }
-                      )
-                    }
-                    size="sm"
-                    variant="outline"
-                  >
-                    {t(
-                      grant?.agentDelegation.fileRead ||
-                        grant?.agentDelegation.useData
-                        ? "projects.grants.delegationDisable"
-                        : "projects.grants.delegationEnable"
-                    )}
-                  </Button>
-                  <Button
-                    disabled={busy}
-                    onClick={() => void disable(app.id)}
-                    size="sm"
-                    variant={disabled ? "destructive" : "outline"}
-                  >
-                    {t(
-                      disabled
-                        ? "projects.grants.disabledExplicit"
-                        : "projects.grants.disableInherit"
-                    )}
-                  </Button>
-                </div>
-              </section>
-            );
-          })}
-          {!apps.length && (
-            <p className="py-6 text-center text-muted-foreground text-sm">
-              {t("projects.grants.empty")}
-            </p>
-          )}
-        </AppDialogBody>
-      </AppDialogContent>
-    </Dialog>
   );
 }

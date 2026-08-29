@@ -83,7 +83,7 @@ export function ChatEmptyState({
     >
       <img
         alt={PRODUCT_NAME}
-        className="pointer-events-none size-20 select-none object-contain"
+        className="pointer-events-none h-14 w-auto select-none"
         draggable={false}
         height={PRODUCT_MARK_SIZE.height}
         src={PRODUCT_MARK_URL}

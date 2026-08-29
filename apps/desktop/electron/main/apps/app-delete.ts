@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on lifecycle Gate/Intent, App/Project/Chat stores, generation build/retirement/data/grant port, conversation Critical area and App clean port
- * [OUTPUT]: Provides all App types of AppDeleteService.remove/retry/recover/residual with the pure judgment shouldMarkDeleteFailed, persistent repeat requestId/mode
- * [POS]: The apps module unified the saga; App record is finally deleted, UI retesting and restarting only the original intent; The only qualification for "dead remains without card" is to avoid journal and record records
+ * [INPUT]: Depends on lifecycle admission/intents, App/Project/Chat stores, generation/build/data/grant settlement ports, conversation exclusion, and App shell cleanup
+ * [OUTPUT]: Provides AppDeleteService remove/retry/recover/residual; every App kind settles its bound Project, while retain-data remains Base-only
+ * [POS]: Durable App deletion saga; retries and recovery resume the original intent instead of inventing a second transaction
  */
 
 import type {
@@ -147,10 +147,19 @@ export class AppDeleteService {
     if (!record) {
       return { status: "done", receipt: { appId: input.appId } };
     }
-    const baseApp = record.domainIdentity?.kind === "base";
-    const project = baseApp
-      ? this.dependencies.projects.store.findByAppId(input.appId)
-      : undefined;
+    const baseApp = record.manifest?.kind === "base";
+    if (!baseApp && input.mode === "retain-data") {
+      return {
+        status: "business-rejected",
+        error: {
+          code: "RETAIN_DATA_REQUIRES_BASE_APP",
+          message: "只有 Base App 支持保留 Project 数据",
+        },
+      };
+    }
+    /* 普通 App 同样会懒建 Project。删除若只结算 Base App，普通 App 的
+       binding 会永久指向已不存在的 App，留下既不能使用也不能退出的孤儿。 */
+    const project = this.dependencies.projects.store.findByAppId(input.appId);
 
     record = await this.dependencies.closeAdmission(input.appId);
     if (!reached(intent, "admission-closed")) {

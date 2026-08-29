@@ -8,20 +8,24 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { z } from "zod";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
-import type { ExtensionPackageGenerationRef } from "../../../../shared/extensions-ipc";
+import {
+  SHA256_DIGEST_IDENTITY_PATTERN,
+  type ExtensionPackageGenerationRef,
+} from "../../../../shared/extensions-ipc";
 import { DurableJson } from "../../persistence/durable-json";
 import type { PluginDataEpochStore } from "./plugin-data-epochs";
 
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const identity = z.string().regex(SHA256_DIGEST_IDENTITY_PATTERN);
 const entrySchema = z.object({
   custodyId: z.string().uuid(),
   planInstanceId: z.string().min(1),
-  sourceIdentity: z.string().min(1),
+  sourceIdentity: identity,
   generationRef: z.object({
     packageGenerationId: z.string().min(1),
     recordDigest: digest,
   }).strict(),
-  installIdentity: z.string().min(1),
+  installIdentity: identity,
   pluginDataEpochId: z.string().min(1),
   resolvedConfigDigest: digest,
   backend: z.enum(["codex", "claude", "kimi", "opencode"]),

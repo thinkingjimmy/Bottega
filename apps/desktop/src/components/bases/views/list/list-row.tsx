@@ -88,7 +88,7 @@ export function BaseListRow({
   owner,
   ownerKey,
   projection,
-  relationRows,
+  relationOptions,
   row,
   onDelete,
   onEditingChange,
@@ -101,7 +101,7 @@ export function BaseListRow({
   owner?: { chatId: string; incarnationId: string };
   ownerKey?: string;
   projection: ListColumnProjection;
-  relationRows: BaseRow[];
+  relationOptions: BaseRow[];
   row: BaseRow;
   onDelete?(rowId: string): void;
   onEditingChange(editing: boolean): void;
@@ -202,8 +202,8 @@ export function BaseListRow({
                 attachmentOwner={owner}
                 column={titleColumn}
                 disabled={busy}
-                relationColumns={columns}
-                relationRows={relationRows}
+                relationContext={cellContext}
+                relationOptions={relationOptions}
                 storedValue={row.values[titleColumn.id]}
                 onCommit={(value) =>
                   onPatch?.(row.id, { [titleColumn.id]: value })
@@ -234,8 +234,8 @@ export function BaseListRow({
                   attachmentOwner={owner}
                   column={column}
                   disabled={busy}
-                  relationColumns={columns}
-                  relationRows={relationRows}
+                  relationContext={cellContext}
+                  relationOptions={relationOptions}
                   storedValue={row.values[column.id]}
                   onCommit={(value) => onPatch?.(row.id, { [column.id]: value })}
                   value={valueOf(column)}

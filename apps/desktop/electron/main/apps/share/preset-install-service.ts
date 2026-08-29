@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on the main-owned PresetCatalog/SourceResolver, RepoProbeService is a one-time freeze package with BaseAppImporter
- * [OUTPUT]: Provides probePreset/discard/install; When you install, restore the source identity and bind the presetId, pin, channel, digest
- * [POS]: The first remote installation protocol for apps/share; renderer only has opaque preflight and digest, can't select URL or commit
+ * [INPUT]: Depends on the main-owned PresetCatalog/SourceResolver, RepoProbeService, BaseAppImporter, and an optional immutable local-factory flow
+ * [OUTPUT]: Provides probePreset/discard/install with frozen preset identity, plus an explicit product-factory branch that never falls through to Git
+ * [POS]: apps/share preset installation boundary; renderer holds only opaque preflight/digest evidence and cannot choose a URL or pin
  */
 
 import type {
   AppConfigValue,
+  AppRecord,
   InstallPresetInput,
   PresetProbeResult,
 } from "../../../../shared/apps-ipc";
@@ -22,8 +23,20 @@ type FrozenPresetProbe = {
   digest: string;
 };
 
+export type PresetFactoryFlow = Readonly<{
+  handles(presetId: string): boolean;
+  probePreset(presetId: string): Promise<PresetProbeResult>;
+  discard(preflightId: string): Promise<boolean>;
+  install(
+    input: InstallPresetInput,
+    agent: AgentBackendId,
+    config: AppConfigValue
+  ): Promise<AppRecord>;
+}>;
+
 export class PresetInstallService {
   private readonly frozen = new Map<string, FrozenPresetProbe>();
+  private factory: PresetFactoryFlow | null = null;
 
   constructor(
     private readonly resolver: Pick<PresetSourceResolver, "resolve">,
@@ -31,7 +44,15 @@ export class PresetInstallService {
     private readonly importer: () => BaseAppImporter
   ) {}
 
+  configureFactory(factory: PresetFactoryFlow) {
+    if (this.factory) throw new Error("Factory preset flow 已配置");
+    this.factory = factory;
+  }
+
   async probePreset(presetId: string): Promise<PresetProbeResult> {
+    if (this.factory?.handles(presetId)) {
+      return this.factory.probePreset(presetId);
+    }
     const source = await this.resolver.resolve(presetId);
     const result = await this.probes.probe(
       source.cloneLocator,
@@ -52,6 +73,7 @@ export class PresetInstallService {
   }
 
   async discard(preflightId: string) {
+    if (await this.factory?.discard(preflightId)) return;
     this.frozen.delete(preflightId);
     await this.probes.discard(preflightId);
   }
@@ -61,6 +83,9 @@ export class PresetInstallService {
     agent: AgentBackendId,
     config: AppConfigValue
   ) {
+    if (this.factory?.handles(input.presetId)) {
+      return this.factory.install(input, agent, config);
+    }
     const known = this.frozen.get(input.preflightId);
     const current = await this.resolver.resolve(input.presetId);
     if (

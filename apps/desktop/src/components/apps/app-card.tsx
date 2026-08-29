@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AppListItem/AppsProvider, upper level progress, open playback, app-state, text mapping, AppDeleteDialog/RepairConfirmDialog, ui card/dropdown, react-router and security outlet IPC
- * [OUTPUT]: Provides AppCard, rendering Base badge, durable import, exclusive continuation/cancellation, Web working mode, common failure repair and deletion of input,
- * [POS]: The app module listing units, the normal mode enters the details, the working mode goes back to the progress bounce window, the recoverability and the de-configuration are directly from AppRecord/operation
+ * [INPUT]: Depends on AppListItem/AppsProvider, progress, app-state, dialogs, UI card/dropdown, router, surface residence intents, and external/reveal IPC
+ * [OUTPUT]: Provides AppCard with single-path surface navigation, Design-default App-window opening, explicit new-window action, repair, retry, and deletion
+ * [POS]: App listing unit; the badge follows the generation binding rather than state alone, and ready App navigation is main-owned so an already-resident Studio is focused instead of rendered twice
  */
 
 import { useState } from "react";
@@ -9,11 +9,12 @@ import {
   ExternalLink,
   FolderOpen,
   MoreHorizontal,
+  PanelsTopLeft,
   RefreshCw,
   Wrench,
   Trash2,
 } from "lucide-react";
-import { Link } from "react-router";
+import { useNavigate } from "react-router";
 import type { AppListItem } from "@/components/providers/apps-provider";
 import { useApps } from "@/components/providers/apps-provider";
 import { Button } from "@ai-chat/ui/components/ui/button";
@@ -33,18 +34,28 @@ import {
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { openExternal } from "@/lib/agent-client";
-import { repairSite } from "../../../shared/apps-ipc";
 import {
+  effectiveAppOpenMode,
+  repairSite,
+} from "../../../shared/apps-ipc";
+import {
+  appStateLabel,
   cancelOperationLabel,
+  isAwaitingGeneration,
   isFailedState,
   isPendingBaseImport,
   isWorkingState,
   retryLabel,
-  stateLabel,
 } from "./app-state";
 import { AppDeleteDialog } from "./delete-dialog";
 import { RepairConfirmDialog } from "./repair-dialog";
 import { errorMessage } from "@/lib/errors";
+import { appStudioSurface } from "../../../shared/window-surfaces-ipc";
+import {
+  openSurfaceInWindow,
+  showSurface,
+} from "@/lib/window-surfaces-client";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 type AppCardProps = {
   app: AppListItem;
@@ -52,6 +63,8 @@ type AppCardProps = {
 };
 
 export function AppCard({ app, onOpenProgress }: AppCardProps) {
+  const { t } = useAppTranslation();
+  const navigate = useNavigate();
   const { highlightedId, removeApp, retryApp, repairApp, cancelInstall, revealApp } =
     useApps();
   const [openError, setOpenError] = useState("");
@@ -81,6 +94,12 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
   const icon = record.manifest?.icon ?? "📦";
   const failed = isFailedState(record.state);
   const working = isWorkingState(record.state);
+  /* 徽标只在真的成了代时才敢说绿：否则它会和同一张卡上的占位图标、
+     「正在准备…」描述当面对质。 */
+  const awaitingGeneration = isAwaitingGeneration(record);
+  const detailRoute = `/apps/${record.id}/app`;
+  const surface = appStudioSurface(record.id);
+  const opensInWindowByDefault = effectiveAppOpenMode(record) === "new-window";
 
   const act = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -94,6 +113,13 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const openDetail = async (forceWindow = opensInWindowByDefault) => {
+    const result = forceWindow
+      ? await openSurfaceInWindow(surface, record.id, detailRoute)
+      : await showSurface(surface, detailRoute);
+    if (!result) navigate(detailRoute);
   };
 
   return (
@@ -115,13 +141,14 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
             <span className="sr-only">查看 {name} 的安装过程</span>
           </button>
         ) : (
-          <Link
-            to={`/apps/${record.id}`}
+          <button
+            type="button"
             aria-label={`查看 ${name} 详情`}
             className="absolute inset-0 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            onClick={() => void act(() => openDetail())}
           >
             <span className="sr-only">查看 {name} 详情</span>
-          </Link>
+          </button>
         )}
 
         {/* CardHeader 自己就是那条横排：外面再套一层 flex 容器，卡片就有了
@@ -137,13 +164,15 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 className={cn(
                   "rounded-full px-2 py-0.5 text-[11px]",
                   failed && "bg-destructive/10 text-destructive",
-                  working && "bg-amber-500/10 text-amber-700",
+                  (working || awaitingGeneration) &&
+                    "bg-amber-500/10 text-amber-700",
                   record.state === "ready" &&
+                    !awaitingGeneration &&
                     "bg-emerald-500/10 text-emerald-700"
                 )}
               >
                 {working && <Spinner className="mr-1 inline size-3" />}
-                {stateLabel[record.state]}
+                {appStateLabel(record)}
               </span>
             </div>
             <CardTitle className="truncate text-base transition-colors group-hover/card:text-primary">
@@ -205,9 +234,18 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-max min-w-0">
+                {record.state === "ready" && (
+                  <DropdownMenuItem
+                    className="whitespace-nowrap"
+                    onSelect={() => void act(() => openDetail(true))}
+                  >
+                    <PanelsTopLeft />
+                    {t("windowSurface.openInWindow")}
+                  </DropdownMenuItem>
+                )}
                 {record.state !== "installing" && (
                   <DropdownMenuItem
-                    className="cursor-pointer whitespace-nowrap"
+                    className="whitespace-nowrap"
                     onSelect={() => void act(() => revealApp(record.id))}
                   >
                     <FolderOpen />
@@ -216,7 +254,7 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 )}
                 {isFailedState(record.state) && (
                   <DropdownMenuItem
-                    className="cursor-pointer whitespace-nowrap"
+                    className="whitespace-nowrap"
                     onSelect={() => void act(() => retryApp(record.id))}
                   >
                     <RefreshCw />
@@ -228,7 +266,7 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 {isPendingBaseImport(record) && (
                   <DropdownMenuItem
                     variant="destructive"
-                    className="cursor-pointer whitespace-nowrap"
+                    className="whitespace-nowrap"
                     onSelect={() => void act(() => cancelInstall(record.id))}
                   >
                     <Trash2 />
@@ -237,7 +275,7 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 )}
                 {!isPendingBaseImport(record) && repairSite(record) && (
                   <DropdownMenuItem
-                    className="cursor-pointer whitespace-nowrap"
+                    className="whitespace-nowrap"
                     onSelect={() => setRepairOpen(true)}
                   >
                     <Wrench />
@@ -247,7 +285,7 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 {working && (
                   <DropdownMenuItem
                     variant="destructive"
-                    className="cursor-pointer whitespace-nowrap"
+                    className="whitespace-nowrap"
                     onSelect={() => void act(() => cancelInstall(record.id))}
                   >
                     <Trash2 />
@@ -257,7 +295,7 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
-                  className="cursor-pointer whitespace-nowrap"
+                  className="whitespace-nowrap"
                   // openError 是整张卡共用的：不清一次，上一个动作的失败会
                   // 换个上下文重新出现在删除弹窗里，冤枉了这次操作。
                   onSelect={() => {

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on InstallSpec, ManagedRoots v3 manifest, ManagedToolchain, ConfigController, model preview/PyPI directory, Snapshot Publisher, typed health and SerialQueue
- * [OUTPUT]: Provides ManagedRuntime Coordinator: single sample readiness proof, submit pre-identity checks, three-phase version switching, refusal to pre-install the same upgrades, queue-only directories, checkUpdates/versions, full-action compensation, marker, recovery and table-driven lifecycle
- * [POS]: The lifecycle organizer for main/memory/runtime/control; Configuration and decoding of the snapshot sequence separately
+ * [INPUT]: Depends on managed install/configuration ports, typed health samples, candidate manifests, version catalogs, snapshot publication, and a serial action queue
+ * [OUTPUT]: Provides the managed runtime lifecycle with identity-bracketed readiness proof, candidate switching/recovery, update discovery, and compensated actions
+ * [POS]: The Memory runtime orchestration owner; it is the only layer allowed to convert a current ready sample into promotion authority
  */
 
 import { randomUUID } from "node:crypto";
@@ -14,6 +14,7 @@ import type {
   MemoryProviderDescriptor,
   MemoryRuntimeOperation,
   MemoryRuntimeSnapshot,
+  MemoryRuntimeStep,
 } from "../../../../../shared/memory-ipc";
 import { SerialQueue } from "../../../persistence/serial-queue";
 import { renderRuntimeArgs, type InstallSpec } from "../../core/provider";
@@ -43,12 +44,12 @@ import { ManagedToolchain } from "../managed/toolchain";
 import {
   operationSteps,
   operationStepTotal,
-  type StepKind,
 } from "../progress";
 import { MemoryRuntimeSnapshotPublisher } from "../snapshot-publisher";
 import {
   defaultRuntimeProbe,
   type RuntimeHealth,
+  type RuntimeReadinessProof,
   waitForRuntimeReadiness,
 } from "./health-monitor";
 import { resolveInstallTarget } from "../managed/install-target";
@@ -110,14 +111,15 @@ export class ManagedRuntimeCoordinator {
   private readonly identity: LaunchdIdentityController;
   private operation: MemoryRuntimeOperation | null = null;
   private operationId: string | null = null;
-  private step: string | null = null;
+  /* 一个字段，不是两个：从前 step（人话）与 stepKind（身份）并存，
+     人话那份一路烤进快照直送界面，把中文钉死在了主进程里。 */
+  private step: MemoryRuntimeStep | null = null;
   private stepIndex = 0;
   private stepTotal = 0;
   private operationStartedAt: number | null = null;
   private log: string[] = [];
   private error: string | null = null;
-  private stepKind: StepKind | null = null;
-  private lastReadyVersion: string | null = null;
+  private lastReadyProof: RuntimeReadinessProof | null = null;
   private reachable = false;
   private reachabilityGeneration = 0;
 
@@ -203,6 +205,7 @@ export class ManagedRuntimeCoordinator {
       supported: this.platform === "darwin",
       installed,
       serviceReachable: this.reachable,
+      configured,
       phase: this.operation
         ? "running"
         : this.error
@@ -225,6 +228,10 @@ export class ManagedRuntimeCoordinator {
       ),
       installedVersion: manifest?.installedVersion ?? null,
       versionChange: manifest?.versionChange ?? null,
+      unverifiedVersion:
+        manifest?.versionChange?.phase === "candidate-installed"
+          ? manifest.versionChange.targetVersion
+          : null,
       lockedVersion: this.spec.lockedVersion,
       ...this.versionsOwner.facts(manifest?.installedVersion ?? null),
       versionSource: manifest?.versionSource ?? null,
@@ -319,7 +326,51 @@ export class ManagedRuntimeCoordinator {
       : false;
     if (generation !== this.reachabilityGeneration) return this.snapshot();
     this.reachable = reachable;
+    const candidate =
+      manifest?.versionChange?.phase === "candidate-installed"
+        ? manifest.versionChange.targetVersion
+        : null;
+    if (reachable && manifest && candidate && !this.operation) {
+      const proof = await this.readOwnedCandidateProof(
+        manifest.baseUrl,
+        candidate
+      );
+      if (
+        generation === this.reachabilityGeneration &&
+        !this.operation &&
+        proof
+      ) {
+        this.lastReadyProof = proof;
+        await commitReadyVersion({
+          roots: this.roots,
+          spec: this.spec,
+          target: resolveInstallTarget(this.spec, candidate),
+          measuredVersion: proof.version,
+          ready: true,
+        });
+      }
+    }
     return this.publish();
+  }
+
+  private async readOwnedCandidateProof(
+    baseUrl: string,
+    candidate: string
+  ): Promise<RuntimeReadinessProof | null> {
+    const ownedBefore = await this.identity
+      .isOwnedServiceLive(baseUrl)
+      .catch(() => false);
+    if (!ownedBefore) return null;
+
+    const health = await this.readHealth(baseUrl).catch(() => null);
+    if (!health?.healthy || !health.ready || health.version !== candidate) {
+      return null;
+    }
+
+    const ownedAfter = await this.identity
+      .isOwnedServiceLive(baseUrl)
+      .catch(() => false);
+    return ownedAfter ? { version: health.version, ready: true } : null;
   }
 
   async assertOwnedOrAbsent(baseUrl = this.descriptor.defaultBaseUrl) {
@@ -348,10 +399,9 @@ export class ManagedRuntimeCoordinator {
       this.error = null;
       this.log = [];
       this.step = null;
-      this.stepKind = null;
       this.stepIndex = 0;
       this.stepTotal = operationStepTotal(operation);
-      this.lastReadyVersion = null;
+      this.lastReadyProof = null;
       this.operationStartedAt = Date.now();
       await this.publish({ transfer: null });
       try {
@@ -370,7 +420,6 @@ export class ManagedRuntimeCoordinator {
       } finally {
         this.operation = null;
         this.step = null;
-        this.stepKind = null;
         this.stepIndex = 0;
         this.stepTotal = 0;
         this.operationStartedAt = null;
@@ -406,30 +455,28 @@ export class ManagedRuntimeCoordinator {
           assertSwitchVersion(
             version,
             (await this.beginStep(
-              "refresh-version-catalog",
-              "刷新可信版本目录",
+              { kind: "refresh-version-catalog" },
               () => this.versionsOwner.versions(true)
             )).versions
           )
         ));
       case "config-write":
-        return this.beginStep("config-write", "写入运行时配置", () =>
+        return this.beginStep({ kind: "config-write" }, () =>
           this.config.write(values ?? {})
         );
       case "config-regenerate":
-        return this.beginStep("config-regenerate", "重生成运行时配置", () =>
+        return this.beginStep({ kind: "config-regenerate" }, () =>
           this.config.resolveIssue("regenerate")
         );
       case "config-adopt-manual":
         return this.beginStep(
-          "config-adopt-manual",
-          "接管手工配置",
+          { kind: "config-adopt-manual" },
           () => this.config.resolveIssue("adopt-manual")
         );
       case "bootstrap":
-        return this.beginStep("bootstrap", "启动服务", () => this.bootstrap());
+        return this.beginStep({ kind: "bootstrap" }, () => this.bootstrap());
       case "bootout":
-        return this.beginStep("bootout", "停止服务", () => this.bootout());
+        return this.beginStep({ kind: "bootout" }, () => this.bootout());
       case "runtime-reset":
         return this.runtimeReset();
       case "uninstall":
@@ -475,7 +522,7 @@ export class ManagedRuntimeCoordinator {
       fetcher: this.fetcher,
       config: this.config,
       initialize: () => this.initialize(),
-      beginStep: (kind, label, action) => this.beginStep(kind, label, action),
+      beginStep: (step, action) => this.beginStep(step, action),
       exec: (command, args, options) =>
         this.exec(command, args, options.timeoutMs, options.env),
       appendLog: (line) => this.appendLog(line),
@@ -497,11 +544,11 @@ export class ManagedRuntimeCoordinator {
     const startAfter = await this.config.hasRequiredConfiguration();
     const result = await this.withOwnedServiceStopped(
       async () => {
-        await this.beginStep("remove-plist", "移除旧登录自启", async () => {
+        await this.beginStep({ kind: "remove-plist" }, async () => {
           await this.stageVersionChange(target.version, "intent");
           await rm(this.launchAgentPath, { force: true });
         });
-        await this.beginStep("remove-venv", "移除候选运行环境", async () => {
+        await this.beginStep({ kind: "remove-venv" }, async () => {
           await this.stageVersionChange(target.version, "installing");
           await rm(join(this.roots.installRoot, "venv"), {
             recursive: true,
@@ -561,8 +608,14 @@ export class ManagedRuntimeCoordinator {
     });
   }
   private async completeSkippedStartupSteps() {
-    await this.beginStep("bootstrap", "等待配置后启动服务", async () => undefined);
-    await this.beginStep("await-ready", "等待配置后检查服务", async () => undefined);
+    await this.beginStep(
+      { kind: "bootstrap", context: "deferred" },
+      async () => undefined
+    );
+    await this.beginStep(
+      { kind: "await-ready", context: "deferred" },
+      async () => undefined
+    );
   }
   private async initialize() {
     const resolved = await this.config.resolvedValues();
@@ -628,30 +681,30 @@ export class ManagedRuntimeCoordinator {
     const manifest = await this.roots.readManifest();
     if (!manifest) throw new Error("未找到托管安装，无法执行运行时重置");
     return this.withOwnedServiceStopped(async () => {
-      const operationId = await this.beginStep("wipe-data", "清理运行时数据", async () => {
+      const operationId = await this.beginStep({ kind: "wipe-data" }, async () => {
         const nextManifest = rotateDataEpoch(manifest);
         const id = await wipeDataRoot(this.roots, nextManifest);
         await this.roots.writeManifest({ ...nextManifest, files: {} });
         return id;
       });
-      await this.beginStep("initialize", "初始化数据根", () => this.initialize());
-      await this.beginStep("config-converge", "收敛托管配置", () =>
+      await this.beginStep({ kind: "initialize" }, () => this.initialize());
+      await this.beginStep({ kind: "config-converge" }, () =>
         this.config.convergeManagedConfigs()
       );
-      await this.beginStep("install-plist", "写入登录自启", () =>
+      await this.beginStep({ kind: "install-plist" }, () =>
         this.config.installPlist()
       );
       return operationId;
-    }, true, manifest.installedVersion);
+    }, true);
   }
 
   // 卸载删除托管根；provider 无关的授权账本仍留在 outbox。
   private async uninstall() {
     await this.withOwnedServiceStopped(async () => {
-      await this.beginStep("remove-plist", "移除登录自启", () =>
+      await this.beginStep({ kind: "remove-plist" }, () =>
         rm(this.launchAgentPath, { force: true })
       );
-      await this.beginStep("remove-root", "删除运行时与数据", () =>
+      await this.beginStep({ kind: "remove-root" }, () =>
         removeManagedRoot(this.roots)
       );
       this.setReachable(false);
@@ -659,7 +712,7 @@ export class ManagedRuntimeCoordinator {
   }
 
   private async awaitReady(baseUrl: string, expectedVersion: string | null) {
-    this.lastReadyVersion = null;
+    this.lastReadyProof = null;
     const proof = await waitForRuntimeReadiness({
       read: () => this.readHealth(baseUrl),
       expectedVersion,
@@ -671,7 +724,7 @@ export class ManagedRuntimeCoordinator {
     } else {
       this.appendLog("服务已就绪");
     }
-    this.lastReadyVersion = proof.version;
+    this.lastReadyProof = proof;
     this.setReachable(true);
   }
   private async withOwnedServiceStopped<T>(
@@ -694,12 +747,12 @@ export class ManagedRuntimeCoordinator {
       bootoutWaitStopped: () => this.bootout(baseUrl),
       mutateWhileStopped,
       startAfter,
-      bootstrap: () => this.beginStep("bootstrap", "启动服务", async () => {
+      bootstrap: () => this.beginStep({ kind: "bootstrap" }, async () => {
         if (startAfter) await this.bootstrap();
       }),
       assertServiceIdentity: () => this.assertServiceIdentity(baseUrl),
       awaitHealthy: () =>
-        this.beginStep("await-ready", "等待服务就绪", async () => {
+        this.beginStep({ kind: "await-ready" }, async () => {
           if (startAfter) {
             await this.awaitReady(
               baseUrl,
@@ -711,12 +764,18 @@ export class ManagedRuntimeCoordinator {
       afterHealthy: async () => {
         if (startAfter) await this.assertServiceIdentity(baseUrl);
         if (!promotionTarget) return;
-        await commitReadyVersion({
+        const promotion = await commitReadyVersion({
           roots: this.roots,
           spec: this.spec,
           target: promotionTarget,
-          measuredVersion: this.lastReadyVersion,
+          measuredVersion: this.lastReadyProof?.version ?? null,
+          ready: this.lastReadyProof?.ready ?? false,
         });
+        if (!promotion.promoted) {
+          this.appendLog(
+            `候选版本 ${promotionTarget.version} 尚未通过 /ready，保留未验证状态`
+          );
+        }
       },
       /* 清理候选安装只由制造候选的动作显式传入（upgrade/switch-version）。
          配置写入、重生成与 runtime-reset 也会经过这里，它们的失败与候选
@@ -726,20 +785,19 @@ export class ManagedRuntimeCoordinator {
     });
     return result;
   }
-  private async beginStep<T>(
-    kind: StepKind,
-    label: string,
-    action: () => Promise<T>
-  ) {
+  private async beginStep<T>(step: MemoryRuntimeStep, action: () => Promise<T>) {
     if (!this.operation) throw new Error("运行时步骤缺少活动操作");
     const expected = operationSteps(this.operation)[this.stepIndex];
-    if (expected !== kind) {
-      throw new Error(`运行时步骤顺序错误：期望 ${expected ?? "结束"}，实得 ${kind}`);
+    if (expected !== step.kind) {
+      throw new Error(
+        `运行时步骤顺序错误：期望 ${expected ?? "结束"}，实得 ${step.kind}`
+      );
     }
-    this.stepKind = kind;
-    this.step = label;
+    this.step = step;
     this.stepIndex += 1;
-    this.appendLog(`— ${label}`);
+    /* 日志是技术流水，记身份而非译文：它要能被 grep、能跨语言比对，
+       与界面上那句读给人听的话本就不是同一种东西。 */
+    this.appendLog(`— ${step.kind}`);
     await this.publish();
     return action();
   }
@@ -785,10 +843,13 @@ export class ManagedRuntimeCoordinator {
     const message = await this.config
       .redactDiagnostic(rawMessage)
       .catch(() => "运行时操作失败");
-    this.error = `${this.step ? `${this.step}失败：` : ""}${message}`;
-    this.appendLog(`× ${this.error}`);
+    /* 只留原因，不拼「某步失败：」——那句前缀 renderer 已按 step 身份
+       翻译着加了一遍（memory.runtime.stepFailed），两处各加一次，界面上
+       读到的是「X failed: X失败：真正的原因」。 */
+    this.error = message;
+    this.appendLog(`× ${this.step?.kind ?? "operation"}: ${message}`);
 
-    if (this.stepKind !== "bootstrap" && this.stepKind !== "await-ready") return;
+    if (this.step?.kind !== "bootstrap" && this.step?.kind !== "await-ready") return;
     const logRoot = join(this.roots.root, "logs");
     for (const file of ["server.err.log", "server.log"]) {
       const tail = await readDiagnosticTail(join(logRoot, file), DIAGNOSTIC_TAIL_BYTES);

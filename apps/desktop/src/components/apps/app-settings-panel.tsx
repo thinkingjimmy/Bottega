@@ -31,6 +31,7 @@ import {
   revokeAppBaseGuiAccess,
   revokeAppExtensionGrant,
   writeAppConfig,
+  setAppOpenMode,
 } from "@/lib/apps-client";
 import type {
   AppCapabilitiesSnapshot,
@@ -38,12 +39,15 @@ import type {
   AppExtensionStatus,
   AppGrantSource,
   AppRecord,
+  AppOpenMode,
 } from "../../../shared/apps-ipc";
+import { effectiveAppOpenMode } from "../../../shared/apps-ipc";
 import type { AgentBackendId } from "../../../shared/agent-ipc";
 import { AgentSelect } from "./agent-select";
 import { AppGrantsPanel } from "./app-grants-panel";
 import { AppRequirementsForm, appRequirementsSatisfied } from "./app-requirements-form";
 import { AppSidePanel } from "./app-side-panel";
+import { DesignDataSettings } from "./design/design-data-settings";
 
 const EMPTY_CONFIG: AppConfigValue = { values: {}, agentReadableKeys: [] };
 
@@ -87,6 +91,9 @@ function AppSettingsBody({ record, onClose }: {
   const { projects } = useProjects();
   const requirements = record.manifest?.requirements?.tools ?? [];
   const [name, setName] = useState(record.displayName);
+  const [openMode, setOpenMode] = useState<AppOpenMode>(() =>
+    effectiveAppOpenMode(record)
+  );
   const [config, setConfig] = useState<AppConfigValue>(EMPTY_CONFIG);
   const [capabilities, setCapabilities] = useState<AppCapabilitiesSnapshot | null>(null);
   const [extensions, setExtensions] = useState<AppExtensionStatus | null>(null);
@@ -106,6 +113,7 @@ function AppSettingsBody({ record, onClose }: {
     ]).then(([nextConfig, nextCapabilities, nextExtensions, nextSources]) => {
       if (!active) return;
       setName(record.displayName);
+      setOpenMode(effectiveAppOpenMode(record));
       setConfig(nextConfig);
       setCapabilities(nextCapabilities);
       setExtensions(nextExtensions);
@@ -113,7 +121,11 @@ function AppSettingsBody({ record, onClose }: {
       setError("");
     }).catch((cause) => active && setError(errorMessage(cause, t("apps.settingsReadFailed"))));
     return () => { active = false; };
-  }, [record.id, record.displayName, revision, t]);
+    /* 依赖收敛到实际读取的原始字段,而非整个 record:apps-provider 每来一条 status
+       事件就换 record 对象引用,若以 record 为依赖,本 effect 会重发 4 条 IPC,并把
+       用户 Save 前正在编辑的 name/openMode 回落成旧值。 */
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 刻意按字段收窄,见上
+  }, [record.id, record.displayName, record.openModeOverride, revision, t]);
 
   const saveGeneral = async () => {
     setBusy(true);
@@ -122,6 +134,7 @@ function AppSettingsBody({ record, onClose }: {
       await Promise.all([
         renameApp({ appId: record.id, name: name.trim() }),
         writeAppConfig(record.id, config),
+        setAppOpenMode(record.id, openMode),
       ]);
     } catch (cause) {
       setError(errorMessage(cause, t("apps.settingsSaveFailed")));
@@ -168,6 +181,27 @@ function AppSettingsBody({ record, onClose }: {
               <label className="block font-medium text-sm" htmlFor="app-settings-name">{t("apps.settingsName")}</label>
               <Input disabled={busy} id="app-settings-name" maxLength={120} onChange={(event) => setName(event.target.value)} value={name} />
             </div>
+            {record.presetId === "design-canvas" && (
+              <DesignDataSettings record={record} />
+            )}
+            <div className="space-y-2">
+              <span className="block font-medium text-sm">{t("windowSurface.defaultOpen")}</span>
+              <div className="flex gap-2" role="group" aria-label={t("windowSurface.defaultOpen")}>
+                {(["same-window", "new-window"] as const).map((mode) => (
+                  <SettingsButton
+                    aria-pressed={openMode === mode}
+                    disabled={busy}
+                    key={mode}
+                    onClick={() => setOpenMode(mode)}
+                    variant={openMode === mode ? "default" : "outline"}
+                  >
+                    {t(mode === "same-window"
+                      ? "windowSurface.sameWindow"
+                      : "windowSurface.newWindow")}
+                  </SettingsButton>
+                ))}
+              </div>
+            </div>
             {requirements.length > 0 && <AppRequirementsForm disabled={busy} onChange={setConfig} requirements={requirements} value={config} />}
             <div className="space-y-2">
               <span className="block font-medium text-sm" id="settings-interactive-agent">{t("apps.settingsInteractiveAgent")}</span>
@@ -209,7 +243,7 @@ function AppSettingsBody({ record, onClose }: {
               <SettingsEmpty hint={t("apps.settingsNoPluginsHint")} icon={<Blocks />} title={t("apps.settingsNoPlugins")} />
             ) : (
               <>
-                {extensions?.requirements.map((item) => <div className="rounded-lg border p-3 text-sm" key={item.componentIdentity}><p className="font-mono text-xs">{item.componentIdentity}</p><p className="mt-1 text-muted-foreground text-xs">{t("apps.settingsPluginState", { installed: String(item.installed), enabled: item.enabled, grant: item.grant.state, generation: item.generationState })}</p></div>)}
+                {extensions?.requirements.map((item) => <div className="rounded-lg border p-3 text-sm" key={item.declaredComponentIdentity}><p className="font-mono text-xs">{item.declaredComponentIdentity}</p><p className="mt-1 text-muted-foreground text-xs">{t("apps.settingsPluginState", { installed: String(item.installed), enabled: item.enabled, grant: item.grant.state, generation: item.generationState })}</p></div>)}
                 {extensions && extensions.requirements.length > 0 && <div className="flex flex-wrap justify-end gap-2"><SettingsButton disabled={busy} onClick={() => { setBusy(true); void revokeAppExtensionGrant(record.id).then(setExtensions).catch((cause) => setError(errorMessage(cause, t("apps.settingsPluginRevokeFailed")))).finally(() => setBusy(false)); }} variant="outline"><ShieldOff />{t("apps.settingsRevokeGeneration")}</SettingsButton><SettingsButton disabled={busy || Boolean(record.generationBinding.pending)} onClick={() => { setBusy(true); void rebuildAppExtensionGeneration(record.id).then(onClose).catch((cause) => setError(errorMessage(cause, t("apps.settingsPluginRebuildFailed")))).finally(() => setBusy(false)); }}><RefreshCw />{t("apps.settingsRebuildGeneration")}</SettingsButton></div>}
               </>
             )}

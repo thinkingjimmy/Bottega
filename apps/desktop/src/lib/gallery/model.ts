@@ -1,15 +1,15 @@
 /**
- * [INPUT]: Depends on shared Base row/column/Gallery config and Gallery occurrence/logical identity helper
- * [OUTPUT]: Provides durable row tile, stable owner identity, date bucket, visual line and virtualized pin, pure function
- * [POS]: The renderer Gallery is a pure projection model; The durable tile is from the Base attachment cell and does not read the transcript
+ * [INPUT]: Depends on projected Base rows, Gallery config, a canonical BaseCellContext, and stable media occurrence/identity helpers
+ * [OUTPUT]: Provides context-aware Gallery tile projection, date groups, visual rows, pinned identities, and virtual-row lookup
+ * [POS]: The pure Gallery model; durable tiles come from Base attachment cells while relation/formula titles resolve against the full snapshot
  */
 
 import {
   baseCellText,
   cellValue,
-  createBaseCellContext,
   isBaseAttachmentValue,
   parseBaseDate,
+  type BaseCellContext,
   type BaseColumn,
   type BaseRow,
   type BaseViewConfig,
@@ -56,6 +56,7 @@ export type GalleryRowsProjection = {
   ownerInstanceId: string;
   rows: readonly BaseRow[];
   columns: readonly BaseColumn[];
+  context: BaseCellContext;
   config: Extract<BaseViewConfig, { type: "gallery" }>;
 };
 
@@ -80,11 +81,6 @@ export function projectGalleryRows(
           column.type === "date"
       )
     : undefined;
-  /* 标题经读时投影：relation 标题要显示 label，公式标题要显示算出来的值。 */
-  const context = createBaseCellContext({
-    columns: projection.columns,
-    rows: projection.rows,
-  });
   const items = projection.rows.flatMap((row): GalleryItem[] => {
     const attachment = row.values[attachmentColumn.id];
     if (!isBaseAttachmentValue(attachment)) return [];
@@ -101,7 +97,10 @@ export function projectGalleryRows(
       sourceRevision: attachment.revision,
     };
     const title = titleColumn
-      ? baseCellText(titleColumn, cellValue(row, titleColumn, context)).trim()
+      ? baseCellText(
+          titleColumn,
+          cellValue(row, titleColumn, projection.context)
+        ).trim()
       : "";
     return [{
       phase: "ready",

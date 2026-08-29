@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared generation build closed operation/checkpoint with BaseGuiGrantStore durable exact decision/revoke
  * [OUTPUT]: Provides BaseGuiBuildParticipant; prepare freeze exact decision, finalize phase review, abort write generation revoke tombstone
- * [POS]: The first step is to create a new user interface for apps/base-guiJust write the authorized ledger and return the checkpoint, without touching the AppStore phase/pointer
+ * [POS]: apps/base-gui build participant; it records authorized GUI build state and returns a checkpoint without owning AppStore phase or pointers
  */
 
 import type {
@@ -24,6 +24,8 @@ export class BaseGuiBuildParticipant {
       contentDigest: request.contentDigest,
       expectedActiveGenerationId: operation.expectedActiveGenerationId,
       requestedCapabilities: request.requestedCapabilities,
+      requestedHostActions: request.requestedHostActions,
+      requestedCapabilityScopes: request.requestedCapabilityScopes,
     });
     return exact(operation, decision)
       ? { kind: "base-gui", operationId: decision.decisionId, state: "prepared" }
@@ -71,7 +73,10 @@ function exact(
       decision.generationId === operation.appGenerationId &&
       decision.contentDigest === request.contentDigest &&
       decision.expectedActiveGenerationId === operation.expectedActiveGenerationId &&
-      sameSet(decision.requestedCapabilities, request.requestedCapabilities)
+      sameSet(decision.requestedCapabilities, request.requestedCapabilities) &&
+      sameSet(decision.requestedHostActions, request.requestedHostActions) &&
+      decision.requestedCapabilityScopes.workspaceRead ===
+        request.requestedCapabilityScopes.workspaceRead
   );
 }
 

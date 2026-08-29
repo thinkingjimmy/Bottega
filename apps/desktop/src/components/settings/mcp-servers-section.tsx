@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on React, i18n, Settings, UI AppDialog with Dialog, shared masked MCP DTO and mcp-servers-client
- * [OUTPUT]: Provides McpServersSection: list manager activate/delete, add and edit a shared pop-up window (masked env replacement/delete) with honest inclusion alerts
- * [POS]: The manual MCP control panel for Settings › Tools; Only edit stdio, remote recording only show fail-closed eligibility
+ * [INPUT]: Depends on React, i18n, an explicit global/Project MCP scope port, Settings primitives, AppDialog, and shared masked MCP DTOs
+ * [OUTPUT]: Provides one MCP renderer for global defaults and exact Projects, including owner grouping, inherited overrides, masked-secret editing, and conflict-safe drafts
+ * [POS]: Scope-agnostic manual MCP controls for Settings › Tools; controllers own IPC/CAS/fencing and this component only renders snapshots and mutations
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { Plus, Server, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, RotateCcw, Server, Trash2 } from "lucide-react";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { Textarea } from "@ai-chat/ui/components/ui/textarea";
 import {
@@ -21,7 +21,6 @@ import {
 } from "@ai-chat/ui/components/ui/dialog";
 import type {
   ManualMcpServerView,
-  McpServerView,
   McpSecretEdit,
   McpServersSnapshot,
   SaveManualMcpServerInput,
@@ -30,23 +29,39 @@ import {
   SettingsAlert,
   SettingsButton,
   SettingsEmpty,
+  SettingsIconButton,
   SettingsList,
   SettingsRow,
   SettingsSection,
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
-import {
-  hasMcpServersBridge,
-  listManualMcpServers,
-  onManualMcpServersChanged,
-  removeManualMcpServer,
-  saveManualMcpServer,
-} from "@/lib/mcp-servers-client";
 import { errorMessage } from "@/lib/errors";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type { TFunction } from "i18next";
+import { Link } from "react-router";
 
-const EMPTY: McpServersSnapshot = { revision: 0, servers: [] };
+type McpMutationResult = Readonly<{ ok: boolean; error: string }>;
+
+export type McpServersSectionPort = Readonly<{
+  kind: "global" | "project";
+  snapshot: McpServersSnapshot | null;
+  loading: boolean;
+  error: string;
+  bridgeAvailable: boolean;
+  pending: ReadonlySet<string>;
+  hasPolicyOverrides: boolean;
+  load(): Promise<unknown>;
+  save(
+    draft: SaveManualMcpServerInput["draft"],
+    server?: ManualMcpServerView
+  ): Promise<McpMutationResult>;
+  remove(server: ManualMcpServerView): Promise<unknown>;
+  setInheritedEnabled?(
+    serverId: `manual:${string}`,
+    enabled: boolean
+  ): Promise<unknown>;
+  resetInherited?(serverId: `manual:${string}`): Promise<unknown>;
+}>;
 
 type EnvRow = {
   rowId: number;
@@ -56,7 +71,7 @@ type EnvRow = {
 };
 
 type FormState = {
-  serverId?: `manual:${string}`;
+  server?: ManualMcpServerView;
   displayName: string;
   enabled: boolean;
   command: string;
@@ -74,58 +89,56 @@ const blankForm = (): FormState => ({
   env: [],
 });
 
-export function McpServersSection() {
+export function McpServersSection({ port }: { port: McpServersSectionPort }) {
   const { t } = useAppTranslation();
-  const [snapshot, setSnapshot] = useState<McpServersSnapshot>(EMPTY);
   const [draft, setDraft] = useState<FormState | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const { load } = port;
 
   useEffect(() => {
-    if (!hasMcpServersBridge()) return;
-    let active = true;
-    void listManualMcpServers()
-      .then((value) => active && setSnapshot(value))
-      .catch((cause: unknown) => active && setError(errorMessage(cause)));
-    const stop = onManualMcpServersChanged(
-      (value) => active && setSnapshot(value)
-    );
-    return () => {
-      active = false;
-      stop();
-    };
-  }, []);
+    void load();
+  }, [load]);
 
-  const run = useCallback(async (task: () => Promise<McpServersSnapshot>) => {
-    setBusy(true);
-    setError("");
-    try {
-      setSnapshot(await task());
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setBusy(false);
+  const snapshot = port.snapshot;
+  const servers = snapshot?.servers ?? [];
+  const projectServers = servers.filter(
+    (server) => server.owner.kind === "project"
+  );
+  const inheritedServers = servers.filter(
+    (server) => server.owner.kind === "global"
+  );
+  const toggle = (server: ManualMcpServerView, enabled: boolean) => {
+    if (port.kind === "project" && server.owner.kind === "global") {
+      return port.setInheritedEnabled?.(server.serverId, enabled);
     }
-  }, []);
-
-  const toggle = (server: ManualMcpServerView, enabled: boolean) =>
-    run(() =>
-      saveManualMcpServer({
-        expectedRevision: snapshot.revision,
-        serverId: server.serverId,
-        draft: viewDraft(server, enabled),
-      })
-    );
+    return port.save(viewDraft(server, enabled), server);
+  };
+  const rows = (items: readonly ManualMcpServerView[]) => (
+    <SettingsList>
+      {items.map((server) => (
+        <McpServerRow
+          key={`${server.owner.kind}:${server.serverId}`}
+          port={port}
+          server={server}
+          setDraft={setDraft}
+          toggle={toggle}
+        />
+      ))}
+    </SettingsList>
+  );
 
   return (
     <SettingsSection
       title={t("settings.tools.mcp.title")}
-      description={t("settings.tools.mcp.description")}
+      description={t(
+        port.kind === "global"
+          ? "settings.tools.mcp.globalDescription"
+          : "settings.tools.mcp.projectDescription"
+      )}
       action={
         /* 表单搬进弹窗后，「已经在填一张表」不再需要在这里防守：
            模态遮罩替这颗按钮挡住了那次点击，一个分支就此消失。 */
         <SettingsButton
-          disabled={busy || !hasMcpServersBridge()}
+          disabled={port.loading || !port.bridgeAvailable}
           onClick={() => setDraft(blankForm())}
           variant="outline"
         >
@@ -133,76 +146,147 @@ export function McpServersSection() {
           {t("settings.tools.mcp.add")}
         </SettingsButton>
       }
-      alert={error || undefined}
+      alert={port.error || undefined}
     >
-      {snapshot.servers.length ? (
-        <SettingsList>
-          {snapshot.servers.map((server) => (
-            <SettingsRow
-              control={
-                <div className="flex items-center gap-1">
-                  {server.source === "manual" && server.transport === "stdio" && (
-                    <SettingsButton
-                      disabled={busy}
-                      onClick={() => setDraft(formFrom(server))}
-                      variant="ghost"
-                    >
-                      {t("settings.tools.mcp.edit")}
-                    </SettingsButton>
-                  )}
-                  {server.source === "manual" && <button
-                    aria-label={t("settings.tools.mcp.delete", {
-                      name: server.displayName,
-                    })}
-                    className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(() =>
-                        removeManualMcpServer({
-                          expectedRevision: snapshot.revision,
-                          serverId: server.serverId,
-                        })
-                      )
-                    }
-                    type="button"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>}
-                  {server.source === "manual" ? <SettingsSwitch
-                    checked={server.enabled}
-                    disabled={busy || (!server.enabled && server.eligibility !== "eligible")}
-                    id={`mcp-server-${server.serverId}`}
-                    /* 状态归 aria-checked，标签只说这是谁 */
-                    label={server.displayName}
-                    onToggle={(enabled) => void toggle(server, enabled)}
-                  /> : <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">{t("settings.tools.mcp.packageBadge")}</span>}
-                </div>
-              }
-              description={serverDescription(server, t)}
-              htmlFor={`mcp-server-${server.serverId}`}
-              key={server.serverId}
-              label={server.displayName}
-            />
-          ))}
-        </SettingsList>
-      ) : (
+      {port.kind === "project" ? (
+        <div className="space-y-5">
+          <McpGroup
+            label={t("settings.tools.mcp.projectGroup")}
+            empty={t("settings.tools.mcp.projectGroupEmpty")}
+          >
+            {projectServers.length ? rows(projectServers) : null}
+          </McpGroup>
+          <McpGroup
+            label={t("settings.tools.mcp.inheritedGroup")}
+            empty={t("settings.tools.mcp.inheritedGroupEmpty")}
+          >
+            {inheritedServers.length ? rows(inheritedServers) : null}
+          </McpGroup>
+          {!projectServers.length && !port.hasPolicyOverrides && (
+            <p className="text-muted-foreground text-xs" role="status">
+              {t("settings.tools.mcp.allInherited")}
+            </p>
+          )}
+        </div>
+      ) : servers.length ? rows(servers) : (
         <SettingsEmpty
-          hint={t("settings.tools.mcp.emptyHint")}
+          hint={t("settings.tools.mcp.globalEmptyHint")}
           icon={<Server />}
           title={t("settings.tools.mcp.emptyTitle")}
         />
       )}
 
       <McpServerDialog
-        expectedRevision={snapshot.revision}
         onOpenChange={(next) => !next && setDraft(null)}
-        onSaved={(next) => {
-          setSnapshot(next);
-          setDraft(null);
-        }}
+        onSaved={() => setDraft(null)}
+        save={port.save}
         seed={draft}
       />
     </SettingsSection>
+  );
+}
+
+function McpGroup({
+  label,
+  empty,
+  children,
+}: {
+  label: string;
+  empty: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <h3 className="font-medium text-xs">{label}</h3>
+      {children ?? (
+        <p className="rounded-lg bg-muted/40 px-4 py-3 text-muted-foreground text-xs">
+          {empty}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function McpServerRow({
+  port,
+  server,
+  setDraft,
+  toggle,
+}: {
+  port: McpServersSectionPort;
+  server: ManualMcpServerView;
+  setDraft: (value: FormState) => void;
+  toggle: (server: ManualMcpServerView, enabled: boolean) => unknown;
+}) {
+  const { t } = useAppTranslation();
+  const inherited = port.kind === "project" && server.owner.kind === "global";
+  const editable = !inherited;
+  const pending =
+    port.pending.has(`server:${server.serverId}`) ||
+    port.pending.has(`mcp:${server.serverId}`);
+  return (
+    <SettingsRow
+      badge={
+        <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground text-[11px]">
+          {t(`settings.tools.mcp.source.${server.effectiveSource}`)}
+        </span>
+      }
+      control={
+        <div className="flex items-center gap-1">
+          {editable && server.transport === "stdio" && (
+            <SettingsButton
+              disabled={pending}
+              onClick={() => setDraft(formFrom(server))}
+              variant="ghost"
+            >
+              {t("settings.tools.mcp.edit")}
+            </SettingsButton>
+          )}
+          {editable && (
+            <SettingsIconButton
+              disabled={pending}
+              label={t("settings.tools.mcp.delete", {
+                name: server.displayName,
+              })}
+              onClick={() => void port.remove(server)}
+              variant="ghost"
+            >
+              <Trash2 className="size-4" />
+            </SettingsIconButton>
+          )}
+          {inherited && (
+            <Link
+              className="inline-flex min-h-11 items-center rounded-md px-3 text-xs ring-1 ring-foreground/10 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              to="/settings/tools"
+            >
+              {t("settings.tools.mcp.editGlobally")}
+            </Link>
+          )}
+          {inherited && server.override && port.resetInherited && (
+            <SettingsIconButton
+              disabled={pending}
+              label={t("settings.tools.mcp.resetOne", {
+                name: server.displayName,
+              })}
+              onClick={() => void port.resetInherited?.(server.serverId)}
+              variant="ghost"
+            >
+              <RotateCcw className="size-4" />
+            </SettingsIconButton>
+          )}
+          <SettingsSwitch
+            checked={server.enabled}
+            disabled={pending || !port.bridgeAvailable}
+            id={`mcp-server-${server.serverId}`}
+            label={server.displayName}
+            onToggle={(enabled) => void toggle(server, enabled)}
+          />
+        </div>
+      }
+      description={serverDescription(server, t)}
+      htmlFor={`mcp-server-${server.serverId}`}
+      label={server.displayName}
+    />
   );
 }
 
@@ -223,24 +307,24 @@ export function McpServersSection() {
 
 function McpServerDialog({
   seed,
-  expectedRevision,
   onOpenChange,
   onSaved,
+  save,
 }: {
   /** null 即关闭；serverId 为空是新增，非空是编辑那一台 */
   seed: FormState | null;
-  expectedRevision: number;
   onOpenChange: (next: boolean) => void;
-  onSaved: (snapshot: McpServersSnapshot) => void;
+  onSaved: () => void;
+  save: McpServersSectionPort["save"];
 }) {
   return (
     <Dialog onOpenChange={onOpenChange} open={seed !== null}>
       <AppDialogContent className="sm:max-w-[34rem]">
         {seed && (
           <McpServerPanel
-            expectedRevision={expectedRevision}
             onCancel={() => onOpenChange(false)}
             onSaved={onSaved}
+            saveServer={save}
             seed={seed}
           />
         )}
@@ -251,14 +335,14 @@ function McpServerDialog({
 
 function McpServerPanel({
   seed,
-  expectedRevision,
   onCancel,
   onSaved,
+  saveServer,
 }: {
   seed: FormState;
-  expectedRevision: number;
   onCancel: () => void;
-  onSaved: (snapshot: McpServersSnapshot) => void;
+  onSaved: () => void;
+  saveServer: McpServersSectionPort["save"];
 }) {
   const { t } = useAppTranslation();
   /* 表单状态住在面板里，不再上抛给页面：敲一个字符只重渲染这张表，
@@ -280,22 +364,25 @@ function McpServerPanel({
     setBusy(true);
     setError("");
     try {
-      onSaved(
-        await saveManualMcpServer({
-          expectedRevision,
-          ...(form.serverId ? { serverId: form.serverId } : {}),
-          draft: {
-            displayName: form.displayName,
-            enabled: form.enabled,
-            config: {
-              transport: "stdio",
-              command: form.command,
-              args: form.args.split("\n").filter((value) => value.length > 0),
-              env,
-            },
+      const result = await saveServer(
+        {
+          displayName: form.displayName,
+          enabled: form.enabled,
+          config: {
+            transport: "stdio",
+            command: form.command,
+            args: form.args.split("\n").filter((value) => value.length > 0),
+            env,
           },
-        })
+        },
+        form.server
       );
+      if (!result.ok) {
+        setError(result.error || t("settings.tools.mcp.conflict"));
+        setBusy(false);
+        return;
+      }
+      onSaved();
     } catch (cause) {
       /* 失败的结论必须留在人眼睛所在的那一层：页面此刻在遮罩后面，
          错误若还上抛给段头，就说给了一个没人看的地方。
@@ -309,7 +396,7 @@ function McpServerPanel({
     <>
       <DialogHeader className="shrink-0 gap-0 text-left">
         <DialogTitle className="font-semibold text-lg">
-          {seed.serverId
+          {seed.server
             ? t("settings.tools.mcp.editTitle")
             : t("settings.tools.mcp.addTitle")}
         </DialogTitle>
@@ -386,17 +473,16 @@ function McpServerPanel({
                 type="password"
                 value={row.value}
               />
-              <button
-                aria-label={t("settings.tools.mcp.removeVariable", {
+              <SettingsIconButton
+                label={t("settings.tools.mcp.removeVariable", {
                   name: row.name || t("settings.tools.mcp.envFallbackName"),
                 })}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 disabled={busy}
                 onClick={() => patch({ env: form.env.filter((item) => item.rowId !== row.rowId) })}
-                type="button"
+                variant="ghost"
               >
                 <Trash2 className="size-3.5" />
-              </button>
+              </SettingsIconButton>
             </div>
           ))}
         </div>
@@ -458,7 +544,7 @@ function envEdits(rows: EnvRow[], t: TFunction): McpSecretEdit[] {
 
 function formFrom(server: Extract<ManualMcpServerView, { transport: "stdio" }>): FormState {
   return {
-    serverId: server.serverId,
+    server,
     displayName: server.displayName,
     enabled: server.enabled,
     command: server.command,
@@ -499,16 +585,40 @@ function viewDraft(
   };
 }
 
-function serverDescription(server: McpServerView, t: TFunction) {
-  const target = server.source === "package"
-    ? server.target
-    : server.transport === "stdio" ? server.command : server.url;
-  return t("settings.tools.mcp.descriptionLine", {
-    transport: server.transport,
-    target,
-    eligibility: t(
-      `settings.tools.mcp.eligibility.${server.eligibility}`
-    ),
-    health: t(`settings.tools.mcp.health.${server.health.state}`),
-  });
+function serverDescription(server: ManualMcpServerView, t: TFunction) {
+  const target = server.transport === "stdio" ? server.command : server.url;
+  const unsupported = server.backendSupport.filter((item) => !item.supported);
+  return (
+    <>
+      {t(`settings.tools.mcp.effective.${server.effectiveState}`)}
+      {" · "}
+      {t("settings.tools.mcp.descriptionLine", {
+        transport: server.transport,
+        target,
+        eligibility: t(
+          `settings.tools.mcp.eligibility.${server.eligibility}`
+        ),
+        health: t(`settings.tools.mcp.health.${server.health.state}`),
+      })}
+      {unsupported.length > 0 && (
+        <span className="mt-1 block" role="note">
+          {unsupported.map((item) => (
+            <span className="block" key={item.backendId}>
+              {item.backendId}: {t(
+                `settings.tools.supportReason.${item.reason ?? "unknown"}`
+              )}
+              {item.detail ? ` · ${item.detail}` : ""}
+              {item.constraint?.kind === "minimum-runtime-version"
+                ? ` · ${t("settings.tools.supportReason.minimumRuntimeVersion", {
+                    minimumVersion: item.constraint.minimumVersion,
+                    detectedVersion: item.constraint.detectedVersion ??
+                      t("settings.tools.supportReason.unknownVersion"),
+                  })}`
+                : ""}
+            </span>
+          ))}
+        </span>
+      )}
+    </>
+  );
 }

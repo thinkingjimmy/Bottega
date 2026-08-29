@@ -5,6 +5,7 @@
  */
 
 import type { AgentSendPayload } from "./agent-ipc";
+import type { ProductFailure } from "./product-failure";
 import type {
   AppendChatMessageInput,
   AdoptChatInput,
@@ -85,7 +86,7 @@ export type ManualTurnReceipt =
 
 export type AdmissionResult =
   | { kind: "accepted"; receipt: ManualTurnReceipt }
-  | { kind: "rejectedBeforeAdmission"; reason: string }
+  | { kind: "rejectedBeforeAdmission"; reason: string; failure?: ProductFailure }
   | { kind: "ambiguous"; cause: string };
 
 export const SECTIONS_CHANNEL = {

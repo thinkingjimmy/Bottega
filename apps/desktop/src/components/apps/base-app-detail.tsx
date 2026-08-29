@@ -1,16 +1,17 @@
 "use client";
 
 /**
- * [INPUT]: Depends on the lifecycle/active-generation identity of the Base AppRecord, BaseWorkbench/AppGuiSurface, routing gui|The following is a list of the most commonly used names in the English language:
- * [OUTPUT]: Provides BaseAppDetail; There is a GUI with default plug-in application, a Use Dock, a chatId re-hunting, a dual tabpanel, a permanent and rightSurface, and a subject state
- * [POS]: The basic App details of apps; Use chat switches to React key, and the default setting is to share the settings surface with the user Base, Web App
+ * [INPUT]: Depends on Base App lifecycle/generation, BaseWorkbench/AppGuiSurface, use-chat, routing, and window surface capsule checkpoints
+ * [OUTPUT]: Provides BaseAppDetail with GUI/data tabs, use panel/dock, edit/settings surfaces, and normal-close checkpoint state
+ * [POS]: Resident Base App Studio; the App-window shell removes global chrome while this component keeps the same main and third-panel product structure
  */
 
-import { lazy, Suspense, useState, type KeyboardEvent } from "react";
+import { lazy, Suspense, useRef, useState, type KeyboardEvent } from "react";
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
   PanelRightIcon,
+  PanelsTopLeftIcon,
   PencilLineIcon,
   Settings2Icon,
   SnowflakeIcon,
@@ -19,7 +20,11 @@ import { Button } from "@ai-chat/ui/components/ui/button";
 import { BaseWorkbench } from "@/components/bases/base-workbench";
 import { PageShell, panelChromeClassName } from "@/components/page-shell";
 import { useApps } from "@/components/providers/apps-provider";
-import type { AppRecord, BaseGuiHostAction } from "../../../shared/apps-ipc";
+import type {
+  AppAttachmentSurface,
+  AppRecord,
+  BaseGuiHostAction,
+} from "../../../shared/apps-ipc";
 import { AppUsePanel } from "./app-use-panel";
 import { useAppUseChat } from "./use-app-use-chat";
 import { AppReadmeAdornment } from "./app-readme-adornment";
@@ -31,6 +36,22 @@ import { AppEditPanel } from "./app-edit-panel";
 import { AppSettingsPanel } from "./app-settings-panel";
 import { AppGuiSurface } from "./app-gui-surface";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { appStudioSurface } from "../../../shared/window-surfaces-ipc";
+import {
+  acquireAppSurface,
+  releaseAppSurface,
+  setDesignEnabled,
+} from "@/lib/apps-client";
+import { appendComposerText } from "@/lib/chat-composer-store";
+import { focusComposer } from "@/lib/gallery/focus-controller";
+import {
+  checkpointSurface,
+  readSurfaceCheckpoint,
+  openSurfaceInWindow,
+  syncUseChatResidence,
+  windowContext,
+} from "@/lib/window-surfaces-client";
+import { DesignHistoryControls } from "./design/design-history-controls";
 
 const AppUseDock = lazy(() =>
   import("./app-use-dock").then((module) => ({ default: module.AppUseDock }))
@@ -43,23 +64,63 @@ export function BaseAppDetail({ record }: { record: AppRecord }) {
   const { t } = useAppTranslation();
   const { retrySkill } = useApps();
   const { loading, ownerKey, error } = useAppBase(record);
-  const gui = useAppGui({
-    appId: record.id,
-    enabled: Boolean(ownerKey),
-    revisionKey: JSON.stringify([
-      record.lifecycleRevision,
-      record.generationBinding.active?.generationId ?? null,
-    ]),
-  });
   const navigate = useNavigate();
   const { surface } = useParams<{ surface?: string }>();
-  const [rightSurface, setRightSurface] = useState<RightSurface>("none");
-  const [useDocked, setUseDocked] = useState(false);
+  const residenceSurface = appStudioSurface(record.id);
+  const checkpoint = readSurfaceCheckpoint(residenceSurface).route;
+  const initialRightSurface = checkpoint.rightSurface;
+  const [rightSurface, setRightSurface] = useState<RightSurface>(
+    initialRightSurface === "settings" ||
+      initialRightSurface === "edit" ||
+      initialRightSurface === "use"
+      ? initialRightSurface
+      : "none"
+  );
+  const [useDocked, setUseDocked] = useState(Boolean(checkpoint.useDocked));
   const [requestedView, setRequestedView] = useState<{
     viewId: string;
     nonce: number;
   }>();
-  const useChat = useAppUseChat(record, rightSurface === "use" || useDocked);
+  const studioNeedsChat = Boolean(
+    record.manifest?.kind === "base" && record.manifest.gui
+  );
+  const useChat = useAppUseChat(
+    record,
+    studioNeedsChat || rightSurface === "use" || useDocked
+  );
+  const [residentUseChat, setResidentUseChat] = useState<
+    Readonly<{ chatId: string; incarnationId: string }> | undefined
+  >();
+  const surfaceIdentity = ownerKey && residentUseChat &&
+    residentUseChat.chatId === useChat.chatId &&
+    residentUseChat.incarnationId === useChat.incarnationId
+    ? `${ownerKey}:${residentUseChat.chatId}:${residentUseChat.incarnationId}`
+    : "";
+  const [surfaceState, setSurfaceState] = useState<{
+    identity: string;
+    surface: AppAttachmentSurface;
+  }>();
+  const [surfaceFailure, setSurfaceFailure] = useState({ identity: "", error: "" });
+  const appSurface = surfaceState?.identity === surfaceIdentity
+    ? surfaceState.surface
+    : null;
+  const appSurfaceError = surfaceFailure.identity === surfaceIdentity
+    ? surfaceFailure.error
+    : "";
+  const gui = useAppGui({
+    appId: record.id,
+    appSurfaceLeaseId: appSurface?.surfaceLeaseId,
+    enabled: Boolean(ownerKey && appSurface),
+    revisionKey: JSON.stringify([
+      record.lifecycleRevision,
+      record.generationBinding.active?.generationId ?? null,
+      useChat.chatId || null,
+      useChat.incarnationId || null,
+    ]),
+  });
+  const syncedUseChat = useRef<
+    Readonly<{ chatId: string; incarnationId: string }> | undefined
+  >(undefined);
   const editOpen = rightSurface === "edit";
   const settingsOpen = rightSurface === "settings";
   const hasGui = gui.pages.includes("index.html");
@@ -67,10 +128,22 @@ export function BaseAppDetail({ record }: { record: AppRecord }) {
   const showSurfaceTabs = !gui.loading && hasAppSurface;
   const mainSurface: MainSurface =
     surface === "data" ? "data" : surface === "app" ? "app" : hasGui ? "app" : "data";
-  const waitingForGui = gui.loading && !hasAppSurface && surface !== "data";
+  const waitingForStudioSurface = studioNeedsChat &&
+    (!surfaceIdentity || !appSurface) &&
+    !appSurfaceError;
+  const waitingForGui = (gui.loading || waitingForStudioSurface) &&
+    !hasAppSurface &&
+    surface !== "data";
+  const standalone = windowContext().role === "app-window";
   const selectMainSurface = (next: MainSurface) =>
     navigate(`/apps/${record.id}/${next}`, { replace: true });
   const handleHostAction = (action: BaseGuiHostAction) => {
+    if (action.type === "compose-text") {
+      if (!useChat.chatId) return false;
+      const accepted = appendComposerText(useChat.chatId, action.text);
+      if (accepted) focusComposer(useChat.chatId);
+      return accepted;
+    }
     if (action.type === "open-data-view") {
       setRequestedView((current) => ({
         viewId: action.viewId,
@@ -78,10 +151,11 @@ export function BaseAppDetail({ record }: { record: AppRecord }) {
       }));
     }
     selectMainSurface("data");
+    return true;
   };
 
   useEffect(() => {
-    if (loading || !ownerKey || gui.loading) return;
+    if (loading || !ownerKey || gui.loading || waitingForStudioSurface) return;
     const target = surface === "app" && !hasGui && !gui.error
       ? "data"
       : surface === "app" || surface === "data"
@@ -91,7 +165,70 @@ export function BaseAppDetail({ record }: { record: AppRecord }) {
     navigate(`/apps/${record.id}/${target}`, {
       replace: true,
     });
-  }, [gui.error, gui.loading, hasGui, loading, navigate, ownerKey, record.id, surface]);
+  }, [gui.error, gui.loading, hasGui, loading, navigate, ownerKey, record.id, surface, waitingForStudioSurface]);
+
+  useEffect(() => {
+    checkpointSurface(residenceSurface, {
+      pathname: `/apps/${record.id}/${mainSurface}`,
+      mainSurface,
+      rightSurface,
+      useDocked,
+      useChatId: useChat.chatId,
+    });
+  }, [mainSurface, record.id, residenceSurface, rightSurface, useChat.chatId, useDocked]);
+
+  useEffect(() => {
+    const next = useChat.chatId && useChat.incarnationId
+      ? { chatId: useChat.chatId, incarnationId: useChat.incarnationId }
+      : undefined;
+    const previous = syncedUseChat.current;
+    if (
+      previous?.chatId === next?.chatId &&
+      previous?.incarnationId === next?.incarnationId
+    ) return;
+    let alive = true;
+    void syncUseChatResidence(record.id, previous, next)
+      .then(() => {
+        if (!alive) return;
+        syncedUseChat.current = next;
+        setResidentUseChat(next);
+      })
+      .catch(() => {
+        if (alive) setResidentUseChat(undefined);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [record.id, useChat.chatId, useChat.incarnationId]);
+
+  useEffect(() => {
+    if (!surfaceIdentity || !residentUseChat) return;
+    let active = true;
+    let leaseId = "";
+    void acquireAppSurface({
+      appId: record.id,
+      mode: "studio",
+      conversationId: residentUseChat.chatId,
+      conversationIncarnationId: residentUseChat.incarnationId,
+    })
+      .then((next) => {
+        leaseId = next.surfaceLeaseId;
+        if (active) setSurfaceState({ identity: surfaceIdentity, surface: next });
+        else return releaseAppSurface(leaseId);
+      })
+      .catch((cause) => {
+        if (active) {
+          setSurfaceFailure({
+            identity: surfaceIdentity,
+            error: cause instanceof Error ? cause.message : "App Studio surface 签发失败",
+          });
+        }
+      });
+    return () => {
+      active = false;
+      if (leaseId) void releaseAppSurface(leaseId);
+    };
+  }, [record.id, residentUseChat, surfaceIdentity]);
 
   const tabId = (value: MainSurface) => `${record.id}-${value}-tab`;
   const selectAdjacentTab = (event: KeyboardEvent, value: MainSurface) => {
@@ -109,10 +246,17 @@ export function BaseAppDetail({ record }: { record: AppRecord }) {
         </div>
       );
     }
+    if (value === "app" && appSurfaceError) {
+      return (
+        <div className="grid size-full place-items-center p-8 text-destructive text-sm">
+          {appSurfaceError}
+        </div>
+      );
+    }
     if (loading || !ownerKey || waitingForGui) {
       return (
         <div className="grid size-full place-items-center text-muted-foreground text-sm">
-          {waitingForGui ? "正在检查应用界面…" : "正在打开 Base…"}
+          {waitingForGui ? t("apps.guiChecking") : t("apps.baseOpening")}
         </div>
       );
     }
@@ -121,6 +265,13 @@ export function BaseAppDetail({ record }: { record: AppRecord }) {
         gui={gui}
         onHostAction={handleHostAction}
         onGoToData={() => selectMainSurface("data")}
+        toolbar={record.presetId === "design-canvas" && appSurface ? (
+          <DesignHistoryControls
+            appId={record.id}
+            appSurfaceLeaseId={appSurface.surfaceLeaseId}
+            onRestored={gui.refresh}
+          />
+        ) : undefined}
       />
     ) : (
       <BaseWorkbench ownerKey={ownerKey} requestedViewId={requestedView} />
@@ -147,7 +298,7 @@ export function BaseAppDetail({ record }: { record: AppRecord }) {
           <PanelRightIcon />
         </Button>
       }
-      backHref="/apps"
+      backHref={standalone ? undefined : "/apps"}
       title={`${record.manifest?.icon ?? "📦"} ${record.displayName}`}
       titleAdornment={
         <div className="flex items-center gap-1">
@@ -156,6 +307,29 @@ export function BaseAppDetail({ record }: { record: AppRecord }) {
             appName={record.displayName}
           />
           <AppShareDialog record={record} />
+          {!standalone && (
+            <Button
+              aria-label={t("windowSurface.openInWindow")}
+              onClick={() =>
+                void openSurfaceInWindow(
+                  residenceSurface,
+                  record.id,
+                  `/apps/${record.id}/${mainSurface}`,
+                  undefined,
+                  useChat.chatId && useChat.incarnationId
+                    ? {
+                        chatId: useChat.chatId,
+                        incarnationId: useChat.incarnationId,
+                      }
+                    : undefined
+                )
+              }
+              size="icon-sm"
+              variant="ghost"
+            >
+              <PanelsTopLeftIcon />
+            </Button>
+          )}
           <Button
             aria-label="Base App 设置"
             aria-pressed={settingsOpen}
@@ -187,6 +361,18 @@ export function BaseAppDetail({ record }: { record: AppRecord }) {
     >
       <div className="flex h-full min-w-0">
         <main className="relative flex min-w-0 flex-1 flex-col">
+          {record.presetId === "design-canvas" && record.defaultGrant == null && (
+            <div className="absolute top-3 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-background/95 px-4 py-2 text-sm shadow-lg">
+              <span>{t("apps.designHiddenHint")}</span>
+              <Button
+                onClick={() => void setDesignEnabled({ appId: record.id, enabled: true })}
+                size="sm"
+                variant="outline"
+              >
+                {t("apps.designReopen")}
+              </Button>
+            </div>
+          )}
           {record.skillStatus?.state === "failed" && (
             <div className="absolute top-[calc(var(--page-shell-header-height)+1rem)] left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-amber-500/30 bg-background/95 px-4 py-2 text-sm shadow-lg">
               <span>App skill 生成失败，使用 chat 暂无稳定录入协议。</span>

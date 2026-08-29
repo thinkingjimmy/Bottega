@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto, shared
- * [OUTPUT]: Provides FileAuthorizationStore, authorizing with path+dev+ino and using reserve→commit/rollback
+ * [OUTPUT]: Provides FileAuthorizationStore with renderer-window ownership, atomic ref rebinding, crash cleanup, and path+dev+ino reserve→commit/rollback
  * [POS]: The user file capacity of Electron main is limited; The authorization to bind specific inodes, the actual paths are given only to the main private staging
  */
 
@@ -27,6 +27,7 @@ type FileGrant = {
   expiresAt: number;
   reserved: boolean;
   releaseRequested: boolean;
+  rendererWindowId: string;
 };
 
 export type FileReservation = {
@@ -57,7 +58,8 @@ export class FileAuthorizationStore {
       mediaType: string;
       scope?: AgentWorkspaceScope;
     },
-    workspace: string
+    workspace: string,
+    rendererWindowId = "main"
   ): Promise<AuthorizedFile> {
     if (!isAbsolute(input.path) || !input.name.trim()) {
       throw new Error("文件授权参数无效");
@@ -87,6 +89,7 @@ export class FileAuthorizationStore {
       expiresAt: this.now() + this.ttlMs,
       reserved: false,
       releaseRequested: false,
+      rendererWindowId,
     });
     return { fileRef, name: input.name, mediaType: input.mediaType };
   }
@@ -136,7 +139,52 @@ export class FileAuthorizationStore {
     this.grants.delete(fileRef);
   }
 
+  releaseForWindow(fileRef: string, rendererWindowId: string) {
+    const grant = this.liveGrant(fileRef);
+    if (!grant || grant.rendererWindowId !== rendererWindowId) {
+      throw new Error("文件授权不属于当前窗口");
+    }
+    this.release(fileRef);
+  }
+
+  releaseWindow(rendererWindowId: string) {
+    for (const [fileRef, grant] of this.grants) {
+      if (grant.rendererWindowId === rendererWindowId) this.release(fileRef);
+    }
+  }
+
+  rebindWindow(
+    fileRefs: readonly string[],
+    sourceWindowId: string,
+    targetWindowId: string,
+    workspace: string
+  ) {
+    const unique = [...new Set(fileRefs)];
+    const grants = unique.map((fileRef) => {
+      const grant = this.liveGrant(fileRef);
+      if (
+        !grant ||
+        grant.rendererWindowId !== sourceWindowId ||
+        grant.workspace !== workspace ||
+        grant.reserved
+      ) {
+        throw new Error("文件授权无法迁移到目标窗口");
+      }
+      return grant;
+    });
+    for (const grant of grants) grant.rendererWindowId = targetWindowId;
+  }
+
   clear() {
     this.grants.clear();
+  }
+
+  private liveGrant(fileRef: string) {
+    const grant = this.grants.get(fileRef);
+    if (!grant || grant.expiresAt <= this.now()) {
+      this.grants.delete(fileRef);
+      return undefined;
+    }
+    return grant;
   }
 }

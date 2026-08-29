@@ -16,6 +16,7 @@ import type {
   FrozenAppExtensionRequirement,
   ScopedComponentGrant,
 } from "../../../shared/extensions-ipc";
+import type { TurnProjectContext } from "../../../shared/product-resource-scope";
 import { buildExtensionCapabilitySnapshot } from "../extensions/capability-snapshot";
 import {
   backendExtensionProbe,
@@ -34,7 +35,11 @@ const BACKENDS: readonly AgentBackendId[] = [
 export function projectAppExtensionStatus(
   record: AppRecord,
   registry: ExtensionRegistryStore,
-  grants: AppExtensionGrantStore
+  grants: AppExtensionGrantStore,
+  projectContext: TurnProjectContext = {
+    projectId: null,
+    projectLifecycleRevision: null,
+  }
 ): AppExtensionStatus {
   const activeId = record.generationBinding.active?.generationId ?? null;
   const generation = record.generations.find(
@@ -57,7 +62,7 @@ export function projectAppExtensionStatus(
     };
   }
 
-  const inventory = registry.snapshot();
+  const inventory = registry.visibleInventory(projectContext);
   const capability = BACKENDS.map((backendId) =>
     buildExtensionCapabilitySnapshot({
       inventory,
@@ -68,6 +73,7 @@ export function projectAppExtensionStatus(
       ),
       policy: EXTENSION_PRODUCT_POLICY,
       deliveryScope: "app",
+      selection: "effective",
     })
   );
   const grant = grants.generationProjection(record.id, activeId);
@@ -79,7 +85,9 @@ export function projectAppExtensionStatus(
     requirements: (generation.manifest.extensionRequirements ?? []).map(
       (declaration) => {
         const resolution = frozen.extensionRequirements.find(
-          (item) => item.componentIdentity === declaration.componentIdentity
+          (item) =>
+            item.declaredComponentIdentity ===
+            declaration.declaredComponentIdentity
         );
         return projectRequirement({
           declaration,
@@ -103,7 +111,7 @@ function projectRequirement(input: {
   capability: readonly ReturnType<typeof buildExtensionCapabilitySnapshot>[];
 }): AppExtensionRequirementStatus {
   const base = {
-    componentIdentity: input.declaration.componentIdentity,
+    declaredComponentIdentity: input.declaration.declaredComponentIdentity,
     required: input.declaration.required,
     ...(input.declaration.requestedConfig
       ? { requestedConfig: input.declaration.requestedConfig }
@@ -128,7 +136,8 @@ function projectRequirement(input: {
     resolution.packageGenerationRef
   );
   const component = generation?.components.find(
-    (item) => item.componentIdentity === resolution.componentIdentity
+    (item) =>
+      item.componentInstanceIdentity === resolution.componentInstanceIdentity
   );
   const generationState = !generation
     ? "missing"
@@ -147,10 +156,15 @@ function projectRequirement(input: {
       packageGenerationRef: resolution.packageGenerationRef,
       resolvedConfigDigest: resolution.resolvedConfigDigest,
     },
+    componentInstanceIdentity: resolution.componentInstanceIdentity,
     installed: Boolean(generation && component),
     admission: generation?.admission ?? "unknown",
     generationState,
-    enabled: enabledState(generationState, generation, component?.componentIdentity),
+    enabled: enabledState(
+      generationState,
+      generation,
+      component?.componentInstanceIdentity
+    ),
     grant: input.grant.revokedAt
       ? { state: "revoked", revokedAt: input.grant.revokedAt }
       : exactGrant
@@ -159,7 +173,7 @@ function projectRequirement(input: {
     eligibility:
       generationState === "active" && component
         ? input.capability.map((snapshot) =>
-            eligibilityOf(snapshot, component.componentIdentity)
+            eligibilityOf(snapshot, component.componentInstanceIdentity)
           )
         : [],
     deliveryHealth:
@@ -176,9 +190,9 @@ function projectRequirement(input: {
 function enabledState(
   state: AppExtensionRequirementStatus["generationState"],
   generation: ReturnType<ExtensionRegistryStore["generationProjection"]>,
-  componentIdentity: string | undefined
+  componentInstanceIdentity: string | undefined
 ): AppExtensionRequirementStatus["enabled"] {
-  if (!generation || !componentIdentity) return "unknown";
+  if (!generation || !componentInstanceIdentity) return "unknown";
   if (state === "removal-pending") return "removal-pending";
   if (state === "retained") return "retained";
   if (generation.administrativeState === "disable-pending") {
@@ -194,7 +208,7 @@ function matchesGrant(
 ) {
   return (
     grant.appGenerationId === appGenerationId &&
-    grant.componentIdentity === resolution.componentIdentity &&
+    grant.componentInstanceIdentity === resolution.componentInstanceIdentity &&
     grant.declarationDigest === resolution.declarationDigest &&
     grant.resolvedConfigDigest === resolution.resolvedConfigDigest &&
     grant.packageGenerationRef.packageGenerationId ===
@@ -206,13 +220,15 @@ function matchesGrant(
 
 function eligibilityOf(
   snapshot: ReturnType<typeof buildExtensionCapabilitySnapshot>,
-  componentIdentity: string
+  componentInstanceIdentity: string
 ): ExtensionBackendEligibilityView {
   const entry = snapshot.entries.find(
-    (item) => item.componentIdentity === componentIdentity
+    (item) => item.componentInstanceIdentity === componentInstanceIdentity
   );
   if (!entry) {
-    throw new Error(`active Extension component 缺少能力投影：${componentIdentity}`);
+    throw new Error(
+      `active Extension component 缺少能力投影：${componentInstanceIdentity}`
+    );
   }
   return {
     backendId: snapshot.backendId,

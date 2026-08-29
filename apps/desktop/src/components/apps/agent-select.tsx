@@ -76,7 +76,7 @@ export function AgentSelect({
           <SelectItem
             key={backend.id}
             value={backend.id}
-
+           
             disabled={backend.runtimeStatus !== "installed"}
           >
             <AgentRow value={backend.id} label={backend.displayName} />

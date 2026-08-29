@@ -1,16 +1,16 @@
 /**
- * [INPUT]: Depends on i18n/renderer Intl locale, lucide icons, shared MemoryRuntimeSnapshot/descriptor/configuration panel agreement, settings-layout with SettingsButton and Dialog/Input/Button with @ai-chat/ui
- * [OUTPUT]: Provides MemoryRuntimePanel (four-quadrant installation/repair, focused running progress, token+revision fenced and fence, directory of versions for retesting promptings, distribution/upgrading of distribution according to versionSource, 44px version input, configuration/unloading and logging), configuration and unloading bullet windows
- * [POS]: The settings/memory service file is the area of action; From the same quadrant, the children of SettingsChoiceRow are judged by the actions and texts of the derivatives
+ * [INPUT]: Depends on React hooks, lucide icons, shared MemoryRuntimeSnapshot/descriptor/target/config-panel agreement, settings-layout SettingsButton/SettingsIconButton/SettingsAlert, MemoryVersionPicker, reveal IPC, i18n and Dialog/Input/Button from @ai-chat/ui
+ * [OUTPUT]: Provides MemoryRuntimePanel (the per-engine management drawer: alerts, live operation progress, then either the install pitch or Version/Extraction model/Runtime rows with data-location beside version selection, refresh first in runtime controls, and confirmation before healthy-state repair; plus logs/version/config dialogs), MemoryRuntimeConfigDialog, MemoryUninstallDialog and blankMemoryConfigValues
+ * [POS]: settings/memory 引擎抽屉的正文。它只画一个引擎的处境与动作；选哪个在用归 memory-engine-list，产品级开关归视图
  */
 
 import { useEffect, useRef, useState } from "react";
 import {
   Download,
+  FolderOpen,
   KeyRound,
   Loader2,
   RefreshCw,
-  GitBranch,
   Trash2,
   TriangleAlert,
   Wrench,
@@ -19,14 +19,20 @@ import type {
   MemoryConfigIssue,
   MemoryConfigIssueAction,
   MemoryConfigPanel,
+  MemoryEffectiveTarget,
   MemoryProviderDescriptor,
   MemoryRuntimeSnapshot,
   MemoryRuntimeVersionsResult,
 } from "../../../../shared/memory-ipc";
-import { SettingsButton } from "@/components/settings/settings-layout";
+import {
+  SettingsAlert,
+  SettingsButton,
+  SettingsIconButton,
+} from "@/components/settings/settings-layout";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { intlLocale } from "@/lib/i18n-locale";
-import type { MemoryRuntimeStance, MemoryTranslate } from "@/lib/memory-view";
+import type { MemoryRuntimeStance } from "@/lib/memory-view";
+import { revealMemoryDataRoot } from "@/lib/memory-client";
 import {
   AppDialogBody,
   AppDialogContent,
@@ -43,93 +49,212 @@ import {
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { cn } from "@ai-chat/ui/lib/utils";
-import { MemoryVersionDialog } from "./memory-version-dialog";
-import { openExternal } from "@/lib/agent-client";
-
-/* ============================================================
- * 叙事查表：stance 决定这块在说什么，别处一个分支都不必再写。
- *
- * 两档从前共用一份「安装承诺」文案，于是对已经装好的人复述
- * 「安装 OpenViking 0.4.11（独立 Python 环境…）」——承诺早已兑现，
- * 再读一遍只是废话。只有 absent 档保留三行：那一档要说服一个什么都
- * 还没有的人。
- *
- * managed 档现在连那句现状交代也不留：「OpenViking 0.4.11 由产品托管」
- * 里唯一没被说过的事实是版本号，而它排在第三层最小的字里。版本、安装
- * 来源与生效地址一并升进上面那行状态事实，这里只剩动作——同一个后端的
- * 身份，一页之内说三遍不会让人更确信。等待配置是例外：那是真状态，不是
- * 复述。
- * ============================================================ */
-
-type RuntimeNarrative = {
-  /** null = 这一档没有话要说：动作自己就是全部内容。 */
-  heading: string | null;
-  lines: string[];
-  action: string;
-  /** 安装只在「什么都没有」那一档是主行动，别处它是可选的另一条路。 */
-  primary: boolean;
-};
-
-const STANCE_NARRATIVE: Record<
-  MemoryRuntimeStance,
-  (
-    descriptor: MemoryProviderDescriptor,
-    runtime: MemoryRuntimeSnapshot,
-    translate: MemoryTranslate
-  ) => RuntimeNarrative
-> = {
-  absent: (descriptor, _runtime, translate) => ({
-    heading: translate("memory.runtime.installHeading"),
-    lines: [
-      /* 只承诺两家都真的做到的事：版本锁定对两家都成立；SHA256 校验
-         只有提供单一 sdist 的后端才有（EverOS 有、OV 是 per-arch wheel
-         没有），细节在安装日志里逐条可见，不在这里一概而论。 */
-      translate("memory.runtime.installPackage", {
-        provider: descriptor.displayName,
-        version: descriptor.lockedVersion ?? "",
-      }),
-      translate("memory.runtime.installAutostart", {
-        url: descriptor.defaultBaseUrl,
-      }),
-      translate("memory.runtime.installStorage"),
-    ],
-    action: translate("memory.runtime.installAction"),
-    primary: true,
-  }),
-  managed: (descriptor, runtime, translate) => ({
-    heading: null,
-    /* 待配置阶段 plist 还没写：此时说「已注册登录自启」是撒谎——注册与
-       首次启动都发生在密钥提交那一刻（writeConfig）。装好且在跑的那一
-       档无话可说，版本与来源已由上面那行状态事实交代。 */
-    lines:
-      runtime.phase === "configuration-required"
-        ? [
-            translate("memory.runtime.managedNeedsConfig", {
-              provider: descriptor.displayName,
-              version: runtime.installedVersion ?? runtime.lockedVersion ?? "",
-            }),
-          ]
-        : [],
-    action: translate("memory.runtime.repairAction"),
-    primary: false,
-  }),
-};
+import { MemoryVersionPicker } from "./memory-version-picker";
 
 export const blankMemoryConfigValues = (panel: MemoryConfigPanel | null) =>
   Object.fromEntries((panel?.fields ?? []).map((field) => [field.key, ""]));
+
+/* ============================================================
+ * 属性行：左边一个名词，右边一排动作。
+ *
+ * 从前这块是一排平铺的按钮——配置、修复、选版本、升级、检查更新、
+ * 发布说明、重新检测、卸载，八颗同尺寸同权重挤在一行里 flex-wrap。
+ * 一排里没有主次，就等于没有入口：每次要动手都得先把八个标签读一遍。
+ * 而版本号在那一版里出现了三次（头部一次、事实带一次、按钮上一次），
+ * 三处还各自可能不同步。
+ *
+ * 现在按「关心什么」分三行：版本、提取模型、运行时。每行只有一颗带
+ * 文字的按钮——那是这一行此刻最该做的事；其余降成纯图标，边框、高度、
+ * 圆角与文字按钮同源（SettingsIconButton），所以一排读起来仍是一族，
+ * 主次却由「有没有文字」一眼分得开。
+ *
+ * key 顶对齐到 value 第一行：value 常有两行（值 + 注解），若让 key 垂直
+ * 居中，它就飘在两行中间，与自己解释的那个值错开一截。动作反而居中，
+ * 因为它对齐的是整行的重心而不是某一行文字。
+ * ============================================================ */
+
+/* ============================================================
+ * 运行进度：分段条 + 步骤名 + 计时，模型传输就地填进当前那一段。
+ *
+ * 从前模型下载另起一条独占的进度条挂在分段条下面。两条平行的条读起来
+ * 像两件事在同时发生，而它其实是「第几步」里那一步自己的细粒度进度。
+ * 让它回到所在的段里去填充，字节数落在说明行——一条条，一个意思。
+ *
+ * 它在设置抽屉与初次设置第二步各出现一次，故是一个组件而不是两段
+ * 长得差不多的 JSX：进度条一旦有两份实现，迟早一份先学会新状态。
+ * ============================================================ */
+
+export function MemoryOperationProgress({
+  runtime,
+  stepText,
+}: {
+  runtime: MemoryRuntimeSnapshot;
+  stepText: string | null;
+}) {
+  const { t } = useAppTranslation();
+  const [now, setNow] = useState(() => Date.now());
+  const running = runtime.phase === "running";
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [running, runtime.operationStartedAt]);
+  const elapsed = runtime.operationStartedAt
+    ? Math.max(0, Math.floor((now - runtime.operationStartedAt) / 1_000))
+    : 0;
+  return (
+    <div className="space-y-2">
+      {running && runtime.stepTotal > 0 && (
+        <div
+          data-testid="memory-runtime-progress"
+          className="flex gap-1"
+          aria-label={t("memory.runtime.steps", {
+            current: runtime.stepIndex,
+            total: runtime.stepTotal,
+          })}
+        >
+          {Array.from({ length: runtime.stepTotal }, (_, index) => {
+            const done = index < runtime.stepIndex;
+            const active = index === runtime.stepIndex;
+            const ratio =
+              active && runtime.transfer && runtime.transfer.totalBytes
+                ? Math.min(
+                    1,
+                    runtime.transfer.receivedBytes / runtime.transfer.totalBytes
+                  )
+                : 0;
+            return (
+              <span
+                key={index}
+                data-complete={done}
+                className={cn(
+                  "relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted",
+                  done && "bg-foreground"
+                )}
+              >
+                {active && runtime.transfer && (
+                  <span
+                    data-testid="memory-runtime-transfer"
+                    role="progressbar"
+                    aria-label={t("memory.runtime.modelTransferAria")}
+                    aria-valuemin={0}
+                    aria-valuemax={runtime.transfer.totalBytes}
+                    aria-valuenow={runtime.transfer.receivedBytes}
+                    className="absolute inset-y-0 left-0 origin-left rounded-full bg-foreground motion-safe:transition-transform"
+                    style={{ transform: `scaleX(${ratio})` }}
+                  />
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      <div className="text-muted-foreground text-xs">
+        {running ? (
+          <>
+            {stepText ?? t("memory.runtime.preparing")} ·{" "}
+            <span className="tabular-nums">
+              {new Intl.NumberFormat(intlLocale(), {
+                style: "unit",
+                unit: "second",
+                unitDisplay: "narrow",
+              }).format(elapsed)}
+            </span>
+          </>
+        ) : (
+          t("memory.runtime.preparing")
+        )}
+      </div>
+      {/* 没有步骤可分段时（stepTotal 为 0），传输自己就是唯一的进度，
+          于是它独占一条。两条条永远不会同时出现：有段就填段，没段才自立。 */}
+      {running && runtime.transfer && runtime.stepTotal === 0 && (
+        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+          {/* 进度条的身份挂在**填充**那一层，与分段态一致：两处若一处挂在
+              轨道、一处挂在填充，读它的人（与测试）就得先分辨自己拿到的
+              是哪一种。 */}
+          <div
+            data-testid="memory-runtime-transfer"
+            role="progressbar"
+            aria-label={t("memory.runtime.modelTransferAria")}
+            aria-valuemin={0}
+            aria-valuemax={runtime.transfer.totalBytes}
+            aria-valuenow={runtime.transfer.receivedBytes}
+            className="h-full origin-left rounded-full bg-foreground motion-safe:transition-transform"
+            style={{
+              transform: `scaleX(${Math.min(
+                1,
+                runtime.transfer.totalBytes
+                  ? runtime.transfer.receivedBytes / runtime.transfer.totalBytes
+                  : 0
+              )})`,
+            }}
+          />
+        </div>
+      )}
+      {running && runtime.transfer && (
+        <p className="text-muted-foreground text-xs tabular-nums">
+          {t("memory.runtime.modelTransfer", {
+            received: (runtime.transfer.receivedBytes / 1024 / 1024).toFixed(1),
+            total: (runtime.transfer.totalBytes / 1024 / 1024).toFixed(1),
+          })}
+          {runtime.transfer.recovered
+            ? ` · ${t("memory.runtime.modelRecovered")}`
+            : ""}
+        </p>
+      )}
+      {running && (
+        <p className="text-muted-foreground text-xs">
+          {t("memory.runtime.downloadHint")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ManageRow({
+  label,
+  value,
+  detail,
+  actions,
+}: {
+  label: string;
+  value: React.ReactNode;
+  detail?: React.ReactNode;
+  actions: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-4 py-3.5">
+      <div className="w-28 shrink-0 pt-px font-medium text-muted-foreground text-xs leading-normal">
+        {label}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] leading-normal">{value}</div>
+          {detail && (
+            <p className="mt-0.5 text-muted-foreground text-xs leading-normal">
+              {detail}
+            </p>
+          )}
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-2 self-center">
+          {actions}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function MemoryRuntimePanel({
   descriptor,
   runtime,
   stance,
   panel,
+  target,
   onInstall,
   onRepair,
   onUpgrade,
-  onCheckUpdates,
   onListVersions,
   onSwitchVersion,
-  checkingUpdates,
   onUninstall,
   onConfigure,
   onResolveConfigIssue,
@@ -140,13 +265,13 @@ export function MemoryRuntimePanel({
   /** 决定这块在说什么：托管在跑 / 什么都没有。 */
   stance: MemoryRuntimeStance;
   panel: MemoryConfigPanel | null;
+  /** 只有正在用的那一档才有生效地址；其余回落到 descriptor 的默认地址。 */
+  target?: MemoryEffectiveTarget | null;
   onInstall(): void;
   onRepair(): void;
   onUpgrade(): void;
-  onCheckUpdates(): void;
   onListVersions(): Promise<MemoryRuntimeVersionsResult>;
   onSwitchVersion(version: string): Promise<unknown> | void;
-  checkingUpdates: boolean;
   /** 打开卸载确认（对话框归调用方，与重建同一模式）。 */
   onUninstall(): void;
   onConfigure(): void;
@@ -154,18 +279,15 @@ export function MemoryRuntimePanel({
   onRecheck(): void;
 }) {
   const { t } = useAppTranslation();
-  const translate = (key: string, options?: Record<string, unknown>) =>
-    t(key, options);
   const running = runtime.phase === "running";
-  const narrative = STANCE_NARRATIVE[stance](descriptor, runtime, translate);
   const [logsRequestedOpen, setLogsRequestedOpen] = useState(false);
-  const [versionOpen, setVersionOpen] = useState(false);
   const [versions, setVersions] = useState<string[]>([]);
   const [listingVersions, setListingVersions] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
+  const [revealFailed, setRevealFailed] = useState(false);
+  const [repairConfirmOpen, setRepairConfirmOpen] = useState(false);
   const versionRequest = useRef(0);
   const runtimeRef = useRef(runtime);
   const operationFocusRef = useRef<HTMLDivElement | null>(null);
@@ -178,94 +300,192 @@ export function MemoryRuntimePanel({
     const node = logRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [runtime.log.length, logsOpen]);
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(timer);
-  }, [running, runtime.operationStartedAt]);
-  const elapsed = runtime.operationStartedAt
-    ? Math.max(0, Math.floor((now - runtime.operationStartedAt) / 1_000))
-    : 0;
   /* 两个正交事实，从前被同一个 manual 判过：
      manual  = ov.conf 由谁写（configModes），只管配置披露与配置按钮；
      lockedTarget = 安装目标由谁定（versionSource），只管版本失配与升级。 */
   const manual = Object.values(runtime.configModes).includes("manual");
   const lockedTarget = runtime.versionSource === "locked";
   const switchInProgress = switching || runtime.operation === "switch-version";
-  const needsConfig = runtime.phase === "configuration-required";
+  /* 判据是 configured 而不是 phase：写配置的那几秒 phase 是 running，
+     拿它反推「还缺配置吗」，会在提交的一瞬间答成「已经配好了」。 */
+  const needsConfig = runtime.installed && !runtime.configured;
   const hasInstallIdentity = runtime.installed || runtime.instanceId !== null;
-  const mirrorWithoutMarker = runtime.installed && !runtime.instanceId && !runtime.ownershipMarkerPresent;
-  const idleAction = mirrorWithoutMarker
-    ? t("memory.runtime.installAction")
-    : hasInstallIdentity
-      ? t("memory.runtime.repairAction")
-      : narrative.action;
+  const mirrorWithoutMarker =
+    runtime.installed && !runtime.instanceId && !runtime.ownershipMarkerPresent;
+  const versionMismatch = lockedTarget && runtime.versionMatch === false;
+  const yanked = Boolean(
+    runtime.installedVersion &&
+      runtime.yankedVersions?.includes(runtime.installedVersion)
+  );
+  /* 运行时是否需要动手：修复从图标升格为带文字的按钮，只在这几种情形。
+     healthy 时它仍在场（扳手图标），但不该和「一切正常」抢注意力。 */
+  const runtimeNeedsRepair = Boolean(
+    hasInstallIdentity &&
+      !needsConfig &&
+      (runtime.error ||
+        !runtime.serviceReachable ||
+        !runtime.instanceId ||
+        (!runtime.installed && runtime.instanceId))
+  );
 
-  /* 瞬时态压过叙事：正在跑就报步骤，装失败过就说「重试」——
-     后者只在 absent 档成立，另两档的动作本来就叫修复或改用。 */
-  const actionLabel = running
-    ? (runtime.step ?? t("memory.runtime.running"))
-    : stance === "absent" && runtime.error
-      ? t("memory.runtime.retryInstall")
-      : idleAction;
+  /* main 只发步骤身份，这一句是它变成人话的唯一地方：context 命中
+     `<kind>_<context>` 就用变体，缺席自动回落到 `<kind>`。 */
+  const stepText = runtime.step
+    ? t(`memory.runtime.step.${runtime.step.kind}`, {
+        context: runtime.step.context,
+        version: runtime.step.version ?? "",
+      })
+    : null;
 
-  /* 只画内容，连内边距都不画：它现在住在自己那一档服务的动作区里，
-     盒子归调用方——从前那份 px-4 py-3.5 是页签面板时代留下的。 */
+  const listVersions = () => {
+    const token = ++versionRequest.current;
+    setListingVersions(true);
+    setCatalogError(null);
+    void onListVersions()
+      .then((catalog) => {
+        /* 被更新的一次请求取代：那一次自己会给出结局，这里
+           沉默是对的——两个结局同时写进同一块状态才是错的。 */
+        if (token !== versionRequest.current) return;
+        const current = runtimeRef.current;
+        /* 但 fence 命中不同：它意味着这份目录属于另一个 provider
+           或另一个 revision，而不会再有第二个答案到来。无声 return
+           会让按钮转完一圈又回到原样，读者只能猜自己是不是没点中。 */
+        if (
+          catalog.providerId !== descriptor.id ||
+          current.revision > catalog.revision
+        ) {
+          setCatalogError(t("memory.version.listStale"));
+          return;
+        }
+        setVersions(catalog.versions);
+      })
+      .catch(() => {
+        if (token === versionRequest.current) {
+          setCatalogError(t("memory.version.listFailed"));
+        }
+      })
+      .finally(() => {
+        if (token === versionRequest.current) setListingVersions(false);
+      });
+  };
+
+  const versionActions = (
+    <>
+      {/* 一行里最多一颗实心/带文字的按钮，它是此刻最该做的事：
+          装的不是锁定版就先归位，有新版就去目录里挑（目录会把降级、
+          撤回、未验证三种警示当面说清，故这里不做「一键升到最新」）。 */}
+      {versionMismatch && (
+        <SettingsButton variant="outline" disabled={running} onClick={onUpgrade}>
+          <Wrench />
+          {t("memory.runtime.upgradeTo", { version: runtime.lockedVersion })}
+        </SettingsButton>
+      )}
+      {runtime.versionCatalogSupported && (
+        <MemoryVersionPicker
+          runtime={runtime}
+          providerName={descriptor.displayName}
+          versions={versions}
+          listing={listingVersions}
+          catalogError={catalogError}
+          /* 判据是 switchInProgress 而不是本地 switching：切换由运行时快照
+             接手之后本地标志就落回 false，而那一刻它显然还在跑——按得动
+             的入口意味着可以再挑一版压在正在装的那一版上。 */
+          disabled={running || switchInProgress}
+          prominent={runtime.updateAvailable && !versionMismatch}
+          busy={switchInProgress}
+          error={switchError}
+          onOpen={listVersions}
+          onDismiss={() => {
+            setSwitchError(null);
+            /* 切换在后台继续时，触发器已经变灰——焦点默认归还它就是掉进
+               body。此刻该读的是那条真进度。 */
+            if (switchInProgress) operationFocusRef.current?.focus();
+          }}
+          onConfirm={(version) => {
+            setSwitching(true);
+            setSwitchError(null);
+            Promise.resolve(onSwitchVersion(version))
+              .then((succeeded) => {
+                if (succeeded === false) {
+                  setSwitchError(t("memory.version.switchFailed"));
+                }
+              }, () => {
+                setSwitchError(t("memory.version.switchFailed"));
+              })
+              .finally(() => setSwitching(false));
+          }}
+        />
+      )}
+      {runtime.dataRoot && (
+        <SettingsIconButton
+          label={t("memory.backend.dataLocation")}
+          onClick={() => {
+            setRevealFailed(false);
+            void revealMemoryDataRoot(descriptor.id).catch(() => {
+              setRevealFailed(true);
+            });
+          }}
+        >
+          <FolderOpen />
+        </SettingsIconButton>
+      )}
+    </>
+  );
+
+  /* 卸载归运行时行，不归版本行。版本行问的是「装哪一版」，而卸载不是
+     其中一个答案——它取消这个问题本身。它真正的邻居是修复：重新检测、
+     修复、卸载，三者是同一条轴上依次加重的三步（免费重试 → 重装文件 →
+     连同数据一起抹掉），空间顺序照着代价排。
+
+     它不自带常驻警告：那段字每次开面板都喊一遍，等于把音量用在最不该
+     常驻的地方。静止态是灰的，hover 才转红，严重性交给那道必经的卸载
+     确认承担（它已写明「永久删除全部长期记忆数据」）。 */
+  const uninstallAction = hasInstallIdentity ? (
+    <SettingsIconButton
+      label={t("memory.runtime.uninstallConfirm")}
+      disabled={running}
+      className="text-muted-foreground hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+      onClick={onUninstall}
+    >
+      <Trash2 />
+    </SettingsIconButton>
+  ) : null;
+
   return (
     <div className="space-y-3">
-      {(narrative.heading || narrative.lines.length > 0) && (
-        <div>
-          {narrative.heading && (
-            <p className="font-medium text-sm">{narrative.heading}</p>
-          )}
-          {/* 标记的意义是复数：一条承诺没有第二条可与之分辨，那个圆点
-              就只是墨水。absent 档三行才需要它。 */}
-          <ul
-            className={cn(
-              "space-y-1 text-muted-foreground text-xs leading-relaxed",
-              narrative.heading && "mt-1.5",
-              narrative.lines.length > 1 &&
-                "list-disc pl-4 marker:text-muted-foreground/40"
-            )}
-          >
-            {narrative.lines.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </div>
-      )}
       {!runtime.supported && (
-        <p className="flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400">
-          <TriangleAlert className="mt-px size-4 shrink-0" />
-          {t("memory.runtime.unsupported")}
-        </p>
+        <SettingsAlert tone="warn">
+          <span className="flex items-start gap-2">
+            <TriangleAlert className="mt-px size-4 shrink-0" />
+            {t("memory.runtime.unsupported")}
+          </span>
+        </SettingsAlert>
       )}
-      {/* 版本失配是可用 + 警示，不是一票否决——沿用 OV 的 compat 先例。
-          但它只对「装的是当时的锁定版」成立：用户自选 0.4.16 之后，
-          这条琥珀会永远挂着反对他自己刚做的选择。判据是 versionSource，
-          与 configModes 的手工接管无关（那条披露在下面自己独立成立）。 */}
-      {lockedTarget && runtime.versionMatch === false && (
-        <p className="flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400">
-          <TriangleAlert className="mt-px size-4 shrink-0" />
-          {t("memory.runtime.versionMismatch", {
-            installed: runtime.installedVersion,
-            locked: runtime.lockedVersion,
-          })}
-        </p>
+      {/* 版本失配是可用 + 警示，不是一票否决。但它只对「装的是当时的
+          锁定版」成立：用户自选 0.4.16 之后，这条琥珀会永远挂着反对他
+          自己刚做的选择。判据是 versionSource，与 configModes 无关。 */}
+      {versionMismatch && (
+        <SettingsAlert tone="warn">
+          <span className="flex items-start gap-2">
+            <TriangleAlert className="mt-px size-4 shrink-0" />
+            {t("memory.runtime.versionMismatch", {
+              installed: runtime.installedVersion,
+              locked: runtime.lockedVersion,
+            })}
+          </span>
+        </SettingsAlert>
       )}
       {runtime.error && (
-        <p
-          role="alert"
-          className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-xs"
-        >
-          {runtime.step
-            ? t("memory.runtime.stepFailed", { step: runtime.step })
-            : ""}
+        <SettingsAlert>
+          {stepText ? t("memory.runtime.stepFailed", { step: stepText }) : ""}
           {runtime.error}
-        </p>
+        </SettingsAlert>
       )}
       {runtime.configIssue && (
-        <div role="alert" className="space-y-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs">
+        <div
+          role="alert"
+          className="space-y-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs ring-1 ring-amber-500/20"
+        >
           <p className="font-medium text-amber-700 dark:text-amber-400">
             {t("memory.runtime.configModified", {
               file: runtime.configIssue.file,
@@ -293,239 +513,237 @@ export function MemoryRuntimePanel({
         </div>
       )}
       {manual && !runtime.configIssue && (
-        <p className="rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400">
-          {t("memory.runtime.manualDetail")}
-        </p>
+        <SettingsAlert tone="warn">{t("memory.runtime.manualDetail")}</SettingsAlert>
       )}
+      {!runtime.installed && runtime.instanceId && !runtime.versionChange && (
+        <SettingsAlert tone="warn">
+          {t("memory.runtime.interruptedInstall", {
+            version: runtime.installedVersion ?? runtime.lockedVersion ?? "",
+          })}
+        </SettingsAlert>
+      )}
+      {runtime.unverifiedVersion && (
+        <SettingsAlert tone="warn">
+          {t("memory.runtime.versionCandidateAwaitingReadiness", {
+            version: runtime.unverifiedVersion,
+          })}
+        </SettingsAlert>
+      )}
+      {runtime.versionChange &&
+        runtime.versionChange.phase !== "candidate-installed" && (
+        <SettingsAlert tone="warn">
+          {t("memory.runtime.versionIntentRecoveryRequired", {
+            version: runtime.versionChange.targetVersion,
+          })}
+        </SettingsAlert>
+      )}
+      {runtime.installed && !runtime.instanceId && (
+        <SettingsAlert tone="warn">
+          {runtime.ownershipMarkerPresent
+            ? t("memory.runtime.identityRepair")
+            : t("memory.runtime.identityMissing")}
+        </SettingsAlert>
+      )}
+
       {(running || switchInProgress) && (
         <div
           ref={operationFocusRef}
           tabIndex={-1}
           role="status"
           data-testid="memory-runtime-focus-target"
-          className="rounded-md text-muted-foreground text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
         >
-          {running
-            ? <>{runtime.step ?? t("memory.runtime.preparing")} ·{" "}
-                {new Intl.NumberFormat(intlLocale(), {
-                  style: "unit",
-                  unit: "second",
-                  unitDisplay: "narrow",
-                }).format(elapsed)}</>
-            : t("memory.runtime.preparing")}
+          <MemoryOperationProgress runtime={runtime} stepText={stepText} />
         </div>
       )}
-      {running && runtime.stepTotal > 0 && (
-        <div data-testid="memory-runtime-progress" className="space-y-2">
-          <div
-            className="flex gap-1"
-            aria-label={t("memory.runtime.steps", {
-              current: runtime.stepIndex,
-              total: runtime.stepTotal,
-            })}
-          >
-            {Array.from({ length: runtime.stepTotal }, (_, index) => (
-              <span
-                key={index}
-                data-complete={index < runtime.stepIndex}
-                className={cn(
-                  "h-1.5 min-w-0 flex-1 rounded-full bg-muted",
-                  index < runtime.stepIndex && "bg-foreground"
-                )}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      {running && runtime.transfer && (
-        <div className="space-y-1" data-testid="memory-runtime-transfer">
-          <div
-            role="progressbar"
-            aria-label={t("memory.runtime.modelTransferAria")}
-            aria-valuemin={0}
-            aria-valuemax={runtime.transfer.totalBytes}
-            aria-valuenow={runtime.transfer.receivedBytes}
-            className="h-2 overflow-hidden rounded-full bg-muted"
-          >
-            <div
-              className="h-full origin-left rounded-full bg-foreground motion-safe:transition-transform"
-              style={{
-                transform: `scaleX(${Math.min(1, runtime.transfer.totalBytes
-                  ? runtime.transfer.receivedBytes / runtime.transfer.totalBytes
-                  : 0)})`,
-              }}
-            />
-          </div>
-          <p className="text-muted-foreground text-xs tabular-nums">
-            {t("memory.runtime.modelTransfer", {
-              received: (runtime.transfer.receivedBytes / 1024 / 1024).toFixed(1),
-              total: (runtime.transfer.totalBytes / 1024 / 1024).toFixed(1),
-            })}
-          </p>
-          {runtime.transfer.recovered && (
-            <p className="text-amber-700 text-xs dark:text-amber-400">
-              {t("memory.runtime.modelRecovered")}
+
+      {stance === "absent" ? (
+        /* ── 什么都还没有：这一档要说服一个空手的人 ───────────────
+           三条承诺只在这一档出现——装好之后再复述一遍，是把已经兑现的
+           承诺当成现状念给人听。 */
+        <div className="space-y-3">
+          <div>
+            <p className="font-medium text-sm">
+              {t("memory.runtime.installHeading")}
             </p>
+            <ul className="mt-1.5 list-disc space-y-1 pl-4 text-muted-foreground text-xs leading-relaxed marker:text-muted-foreground/40">
+              <li>
+                {t("memory.runtime.installPackage", {
+                  provider: descriptor.displayName,
+                  version: descriptor.lockedVersion ?? "",
+                })}
+              </li>
+              <li>
+                {t("memory.runtime.installAutostart", {
+                  url: descriptor.defaultBaseUrl,
+                })}
+              </li>
+              <li>{t("memory.runtime.installStorage")}</li>
+            </ul>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center gap-2">
+              <SettingsIconButton
+                variant="ghost"
+                label={t("memory.runtime.recheck")}
+                onClick={onRecheck}
+              >
+                <RefreshCw />
+              </SettingsIconButton>
+              {/* 半装的运行时要的是修复而不是重装：instanceId 在、文件不全，
+                  修复能安全地替换掉那份残缺；只有连归属标记都没有的镜像
+                  才必须从头装一遍。 */}
+              <SettingsButton
+                disabled={!runtime.supported || running}
+                onClick={
+                  mirrorWithoutMarker || !hasInstallIdentity ? onInstall : onRepair
+                }
+              >
+                {running ? (
+                  <Loader2 className="motion-safe:animate-spin" />
+                ) : (
+                  <Download />
+                )}
+                {running
+                  ? (stepText ?? t("memory.runtime.running"))
+                  : runtime.error
+                    ? t("memory.runtime.retryInstall")
+                    : mirrorWithoutMarker || !hasInstallIdentity
+                      ? t("memory.runtime.installAction")
+                      : t("memory.runtime.repairAction")}
+              </SettingsButton>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ── 装好了：按关心什么分三行，一行一个主动作 ──────────── */
+        <div className="divide-y divide-border border-border border-t">
+          <ManageRow
+            label={t("memory.engines.versionRow")}
+            value={
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-mono tabular-nums">
+                  {runtime.installedVersion ?? runtime.lockedVersion ?? "—"}
+                </span>
+                {runtime.versionSource === "selected" ? (
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-foreground text-xs">
+                    {t("memory.version.selected")}
+                  </span>
+                ) : (
+                  !versionMismatch && (
+                    <span className="rounded-full bg-muted px-1.5 py-0.5 text-foreground text-xs">
+                      {t("memory.version.locked")}
+                    </span>
+                  )
+                )}
+                {yanked && (
+                  <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-destructive text-xs">
+                    {t("memory.version.yanked")}
+                  </span>
+                )}
+              </span>
+            }
+            detail={
+              runtime.updateAvailable && runtime.latestVersion
+                ? t("memory.version.available", { version: runtime.latestVersion })
+                : undefined
+            }
+            actions={versionActions}
+          />
+
+          {panel && runtime.installed && (
+            <ManageRow
+              label={t("memory.engines.modelRow")}
+              value={
+                <span className={needsConfig ? "text-amber-700 dark:text-amber-400" : undefined}>
+                  {needsConfig
+                    ? t("memory.engines.modelUnset")
+                    : t("memory.engines.modelConfigured")}
+                </span>
+              }
+              actions={
+                <SettingsButton
+                  data-testid="memory-config-panel"
+                  variant={needsConfig ? undefined : "outline"}
+                  disabled={running || manual}
+                  onClick={onConfigure}
+                >
+                  <KeyRound />
+                  {t("memory.runtime.configureAction")}
+                </SettingsButton>
+              }
+            />
           )}
+
+          <ManageRow
+            label={t("memory.engines.runtimeRow")}
+            value={t("memory.engines.runtimeManaged", {
+              url: target?.baseUrl ?? descriptor.defaultBaseUrl,
+            })}
+            detail={t("memory.engines.runtimeAutostart")}
+            actions={
+              <>
+                {/* 重新检测只重新握手，不修改磁盘；它免费且可逆，故稳定待在
+                    最左边。需要确认的修复排在它后面，空间顺序也表达代价。 */}
+                <SettingsIconButton
+                  label={t("memory.runtime.recheck")}
+                  onClick={onRecheck}
+                >
+                  <RefreshCw />
+                </SettingsIconButton>
+                {/* 修复按情形改变分量：出事时它是这一行的主动作，平时
+                    只是一颗扳手——「一切正常」不该有一颗喊着修复的按钮。 */}
+                {runtimeNeedsRepair || mirrorWithoutMarker ? (
+                  <SettingsButton
+                    variant="outline"
+                    disabled={!runtime.supported || running}
+                    onClick={mirrorWithoutMarker ? onInstall : onRepair}
+                  >
+                    {running ? (
+                      <Loader2 className="motion-safe:animate-spin" />
+                    ) : (
+                      <Wrench />
+                    )}
+                    {mirrorWithoutMarker
+                      ? t("memory.runtime.installAction")
+                      : t("memory.runtime.repairAction")}
+                  </SettingsButton>
+                ) : (
+                  <SettingsIconButton
+                    label={t("memory.runtime.repairAction")}
+                    disabled={!runtime.supported || running}
+                    onClick={() => setRepairConfirmOpen(true)}
+                  >
+                    {running ? (
+                      <Loader2 className="motion-safe:animate-spin" />
+                    ) : (
+                      <Wrench />
+                    )}
+                  </SettingsIconButton>
+                )}
+                {uninstallAction}
+              </>
+            }
+          />
         </div>
       )}
-      {!runtime.installed && runtime.instanceId && !runtime.versionChange && (
-        <p className="rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400">
-          {t("memory.runtime.interruptedInstall", {
-            version: runtime.installedVersion ?? runtime.lockedVersion ?? "",
-          })}
-        </p>
-      )}
-      {runtime.versionChange && (
-        <p role="alert" className="rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400">
-          {t(runtime.versionChange.phase === "candidate-installed"
-            ? "memory.runtime.versionCandidateAwaitingReadiness"
-            : "memory.runtime.versionIntentRecoveryRequired", {
-            version: runtime.versionChange.targetVersion,
-          })}
-        </p>
-      )}
-      {runtime.installed && !runtime.instanceId && (
-        <p className="rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400">
-          {runtime.ownershipMarkerPresent
-            ? t("memory.runtime.identityRepair")
-            : t("memory.runtime.identityMissing")}
-        </p>
-      )}
-      {/* 动作并成一排：重新检测从前孤零零吊在整块面板之下，读起来
-          像是页面末尾的残留，而它其实是改完地址后紧接着要按的那一下。
 
-          配置提取模型也归这一排。它曾自带标题与说明独占一块——一句
-          「密钥只保存在本机」为一颗按钮供养出整个段落，而那句承诺在
-          填密钥的弹窗里还要再说一遍。承诺该待在动手的那一刻，入口就
-          只是入口：托管运行时能做的事，一排看完。 */}
-      <div className="flex flex-wrap items-center gap-2">
-        {/* 待配置阶段它才是主行动：此时服务根本没起来，修复安装无从修
-            起。两个 variant 判据互斥（待配置必已安装），一排里永远只有
-            一颗实心按钮，不必再写第三个分支去仲裁。 */}
-        {panel && runtime.installed && (
-          <SettingsButton
-            data-testid="memory-config-panel"
-            variant={needsConfig ? undefined : "outline"}
-            disabled={running || manual}
-            onClick={onConfigure}
-          >
-            <KeyRound />
-            {t("memory.runtime.configureAction")}
-          </SettingsButton>
-        )}
-        <SettingsButton
-          variant={narrative.primary ? undefined : "outline"}
-          disabled={!runtime.supported || running}
-          onClick={mirrorWithoutMarker ? onInstall : hasInstallIdentity ? onRepair : onInstall}
-        >
-          {running ? <Loader2 className="motion-safe:animate-spin" /> : <Download />}
-          {actionLabel}
-        </SettingsButton>
-        {/* 「升级到 {locked}」对自选版本是彻头彻尾的谎话：0.4.16 上按下去
-            会静默降回 0.4.11。自选者要换版本，走上面那颗「选择版本」。 */}
-        {lockedTarget && runtime.installed && runtime.versionMatch === false && (
-          <SettingsButton variant="outline" disabled={running} onClick={onUpgrade}>
-            <Wrench />
-            {t("memory.runtime.upgradeTo", { version: runtime.lockedVersion })}
-          </SettingsButton>
-        )}
-        {runtime.versionCatalogSupported && hasInstallIdentity && (
-          <SettingsButton
-            variant="outline"
-            className="min-h-11"
-            disabled={running || switching || listingVersions}
-            aria-busy={listingVersions}
-            onClick={() => {
-              const token = ++versionRequest.current;
-              setListingVersions(true);
-              setCatalogError(null);
-              void onListVersions()
-                .then((catalog) => {
-                  /* 被更新的一次请求取代：那一次自己会给出结局，这里
-                     沉默是对的——两个结局同时写进同一块状态才是错的。 */
-                  if (token !== versionRequest.current) return;
-                  const current = runtimeRef.current;
-                  /* 但 fence 命中不同：它意味着这份目录属于另一个 provider
-                     或另一个 revision，而不会再有第二个答案到来。无声 return
-                     会让按钮转完一圈又回到原样，读者只能猜自己是不是没点中。
-                     可重试的提示 + 仍可点的按钮，才是「什么都没发生」的诚实说法。 */
-                  if (
-                    catalog.providerId !== descriptor.id ||
-                    current.revision > catalog.revision
-                  ) {
-                    setCatalogError(t("memory.version.listStale"));
-                    return;
-                  }
-                  setVersions(catalog.versions);
-                  setVersionOpen(true);
-                })
-                .catch(() => {
-                  if (token === versionRequest.current) {
-                    setCatalogError(t("memory.version.listFailed"));
-                  }
-                })
-                .finally(() => {
-                  if (token === versionRequest.current) setListingVersions(false);
-                });
-            }}
-          >
-            {listingVersions
-              ? <Loader2 className="motion-safe:animate-spin" />
-              : <GitBranch />}
-            {t("memory.version.action")}
-          </SettingsButton>
-        )}
-        {runtime.versionCatalogSupported && (
-          <SettingsButton className="min-h-11" variant="ghost" disabled={checkingUpdates} onClick={onCheckUpdates}>
-            <RefreshCw className={checkingUpdates ? "motion-safe:animate-spin" : ""} />
-            {runtime.updateAvailable
-              ? t("memory.version.available", { version: runtime.latestVersion })
-              : t("memory.version.check")}
-          </SettingsButton>
-        )}
-        {runtime.versionCatalogSupported && descriptor.homepage && (
-          <SettingsButton
-            className="min-h-11"
-            variant="ghost"
-            onClick={() => void openExternal(`${descriptor.homepage}/releases`)}
-          >
-            {t("memory.version.changelog")}
-          </SettingsButton>
-        )}
-        <SettingsButton variant="ghost" onClick={onRecheck}>
-          {t("memory.runtime.recheck")}
-        </SettingsButton>
-        {/* 卸载是安装的反向承诺：没有它，拖走 app 之后 daemon 会
-            永远开机自启——孤儿进程不配存在。
-
-            但它从前与「重新检测」同排同尺寸同权重，只靠红色分——一个
-            永久删除全部记忆数据，一个只是重新握手一次。红在静止态就喊，
-            等于把音量用在最不该常驻的地方：ml-auto 把它推到行尾与例行
-            动作分家，静止态收成 muted，hover 才转红，严重性交给那道必经
-            的卸载确认承担（它已写明「永久删除全部长期记忆数据」）。 */}
-        {hasInstallIdentity && (
-          <SettingsButton
-            variant="ghost"
-            disabled={running}
-            className="ml-auto text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-            onClick={onUninstall}
-          >
-            <Trash2 />
-            {t("memory.runtime.uninstall")}
-          </SettingsButton>
-        )}
-        {running && (
-          <span className="text-muted-foreground text-xs">
-            {t("memory.runtime.downloadHint")}
-          </span>
-        )}
-      </div>
-      {catalogError && (
-        <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-xs">
-          {catalogError}
-        </p>
+      {revealFailed && (
+        <SettingsAlert>{t("memory.backend.dataLocationFailed")}</SettingsAlert>
       )}
+      <ConfirmationDialog
+        open={repairConfirmOpen}
+        onOpenChange={setRepairConfirmOpen}
+        title={t("memory.runtime.repairTitle", {
+          provider: descriptor.displayName,
+        })}
+        description={t("memory.runtime.repairDescription")}
+        confirmLabel={t("memory.runtime.repairAction")}
+        onConfirm={() => {
+          setRepairConfirmOpen(false);
+          onRepair();
+        }}
+      />
       {runtime.log.length > 0 && (
         <div className="space-y-2">
           <button
@@ -545,7 +763,7 @@ export function MemoryRuntimePanel({
             <SlimScroller asChild>
               <pre
                 ref={logRef}
-                className="max-h-40 overflow-y-auto rounded-md bg-muted/60 p-3 font-mono text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap"
+                className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted/60 p-3 font-mono text-[11px] text-muted-foreground leading-relaxed"
               >
                 {runtime.log.join("\n")}
               </pre>
@@ -553,39 +771,95 @@ export function MemoryRuntimePanel({
           )}
         </div>
       )}
-      <MemoryVersionDialog
-        open={versionOpen}
-        runtime={runtime}
-        providerName={descriptor.displayName}
-        versions={versions}
-        busy={switchInProgress}
-        error={switchError}
-        onOpenChange={(next) => {
-          setVersionOpen(next);
-          if (!next) setSwitchError(null);
-        }}
-        onCloseAutoFocus={(event) => {
-          if (!switchInProgress) return;
-          event.preventDefault();
-          operationFocusRef.current?.focus();
-        }}
-        onConfirm={(version) => {
-          setSwitching(true);
-          setSwitchError(null);
-          Promise.resolve(onSwitchVersion(version))
-            .then((succeeded) => {
-              if (succeeded === false) {
-                setSwitchError(t("memory.version.switchFailed"));
-                return;
-              }
-              setVersionOpen(false);
-            }, () => {
-              setSwitchError(t("memory.version.switchFailed"));
-            })
-            .finally(() => setSwitching(false));
-        }}
-      />
     </div>
+  );
+}
+
+/* ============================================================
+ * 配置字段：密钥表单只有这一份实现。
+ *
+ * 它同时长在两处——设置里的配置弹窗，与初次设置的第三步。两处各写
+ * 一遍意味着 secret/autocomplete/1Password 抑制/「留空即保留」这些
+ * 与凭据安全相关的细节会各自漂移，而漂移的那一份不会有人发现。
+ * 表单的形状归这里，容器（弹窗还是页面）归调用方。
+ * ============================================================ */
+
+export function MemoryConfigFields({
+  panel,
+  values,
+  busy,
+  requireMissingValues,
+  autoFocusFirst,
+  onChange,
+}: {
+  panel: MemoryConfigPanel;
+  values: Record<string, string>;
+  busy: boolean;
+  requireMissingValues: boolean;
+  autoFocusFirst: boolean;
+  onChange(values: Record<string, string>): void;
+}) {
+  const { t } = useAppTranslation();
+  return (
+    <>
+      {panel.fields.map((field, index) => {
+        const inputId = `memory-config-${panel.panelId}-${field.key}`;
+        const descriptionId = `${inputId}-description`;
+        /* 占位文案有两种身份：「留空即保留」是一句话，示例值是一个值。
+           句子该走界面字体——等宽把中文一个字一个字撑开，读起来像被
+           拆散的密码；示例值该走等宽——用户照着它的形状填，字符必须
+           一眼可辨。同一个条件决定文案与字体，不留第二处判断。 */
+        const retainHint = field.retainedWhenBlank;
+        return (
+          <div key={field.key} className="space-y-1.5">
+            <label htmlFor={inputId} className="block font-medium text-sm">
+              {t(`memory.provider.${panel.providerId}.field.${field.key}.label`, {
+                defaultValue: field.label,
+              })}
+            </label>
+            <Input
+              id={inputId}
+              name={field.key}
+              type={field.secret ? "password" : "text"}
+              autoFocus={index === 0 && autoFocusFirst}
+              autoComplete={field.secret ? "new-password" : "off"}
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore
+              required={requireMissingValues && field.required}
+              aria-describedby={descriptionId}
+              placeholder={
+                retainHint
+                  ? t("memory.runtime.retainBlank")
+                  : field.defaultValue ?? ""
+              }
+              value={values[field.key] ?? ""}
+              disabled={busy}
+              onChange={(event) =>
+                onChange({ ...values, [field.key]: event.target.value })
+              }
+              /* 14px 是这里的正确刻度：比基线的 12px 大一档，因为密钥与
+                 URL 要逐字符核对；也不到 16px——那是移动端防缩放的规矩，
+                 搬到桌面只会让输入值压过它自己的标签。md: 必须显式写，
+                 否则基线的 md:text-xs 会在桌面断点上赢回去。 */
+              className={cn(
+                "h-9 w-full px-3 font-mono text-sm md:text-sm",
+                retainHint && "placeholder:font-sans"
+              )}
+            />
+            <p
+              id={descriptionId}
+              className="text-muted-foreground text-xs leading-relaxed"
+            >
+              {t(
+                `memory.provider.${panel.providerId}.field.${field.key}.description`,
+                { defaultValue: field.description }
+              )}
+            </p>
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -638,7 +912,7 @@ export function MemoryRuntimeConfigDialog({
           }}
         >
           <DialogHeader className="shrink-0 gap-0 text-left">
-            <DialogTitle className="text-xl/7 font-semibold">
+            <DialogTitle className="font-semibold text-xl/7">
               {t("memory.runtime.configDialogTitle", {
                 provider: panel.title,
               })}
@@ -655,52 +929,14 @@ export function MemoryRuntimeConfigDialog({
           </DialogHeader>
 
           <AppDialogBody className="mt-4 space-y-4 pr-1">
-            {panel.fields.map((field, index) => {
-              const inputId = `memory-config-${panel.panelId}-${field.key}`;
-              const descriptionId = `${inputId}-description`;
-              return (
-                <div key={field.key} className="space-y-1.5">
-                  <label htmlFor={inputId} className="block text-sm font-medium">
-                    {t(
-                      `memory.provider.${panel.providerId}.field.${field.key}.label`,
-                      { defaultValue: field.label }
-                    )}
-                  </label>
-                  <Input
-                    id={inputId}
-                    name={field.key}
-                    type={field.secret ? "password" : "text"}
-                    autoFocus={index === 0 && allowAutoFocus}
-                    autoComplete={field.secret ? "new-password" : "off"}
-                    spellCheck={false}
-                    data-lpignore="true"
-                    data-1p-ignore
-                    required={requireMissingValues && field.required}
-                    aria-describedby={descriptionId}
-                    placeholder={
-                      field.retainedWhenBlank
-                        ? t("memory.runtime.retainBlank")
-                        : field.defaultValue ?? ""
-                    }
-                    value={values[field.key] ?? ""}
-                    disabled={busy}
-                    onChange={(event) =>
-                      onChange({ ...values, [field.key]: event.target.value })
-                    }
-                    className="h-9 w-full font-mono text-base md:text-base"
-                  />
-                  <p
-                    id={descriptionId}
-                    className="text-muted-foreground text-xs leading-relaxed"
-                  >
-                    {t(
-                      `memory.provider.${panel.providerId}.field.${field.key}.description`,
-                      { defaultValue: field.description }
-                    )}
-                  </p>
-                </div>
-              );
-            })}
+            <MemoryConfigFields
+              panel={panel}
+              values={values}
+              busy={busy}
+              requireMissingValues={requireMissingValues}
+              autoFocusFirst={allowAutoFocus}
+              onChange={onChange}
+            />
             {error && (
               <p
                 role="alert"
@@ -742,8 +978,8 @@ export function MemoryRuntimeConfigDialog({
   );
 }
 
-/* 卸载确认与面板同源一文件（与重建三件同一模式）：入口按钮在上面的
-   动作排里，对话框由视图持有 open 态。文案必须把三件事说满：删什么
+/* 卸载确认与面板同源一文件（与重建三件同一模式）：入口按钮在版本行的
+   图标排里，对话框由视图持有 open 态。文案必须把三件事说满：删什么
    （运行时 + 其中全部记忆数据）、留什么（授权账本与聊天）、然后会
    发生什么（该后端在用则自动关闭；重装后可重建回灌）。 */
 export function MemoryUninstallDialog({

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Policy v4/Delivery, runtime-owned instance, shared range Consent/rebuild controller, service/support, build/authorise/observe/run coordinator
- * [OUTPUT]: PrOvides a failed-open admission/recall/capture façade of the shared mode/generation, independent Provider/statistical alert, O(1) metadata source, view, preview/Consent, pause/resume, delete and rebuild recovery
+ * [INPUT]: Depends on Policy v4/Delivery, runtime-owned instance, the platform capability matrix, shared range Consent/rebuild controller, service/support, build/authorise/observe/run coordinator
+ * [OUTPUT]: Provides a platform-gated failed-open admission/recall/capture façade of the shared mode/generation, independent Provider/statistical alert, O(1) metadata source, view, preview/Consent, pause/resume, delete and rebuild recovery
  * [POS]: The main/memory/service chat combination root; Four Owners each keep the truth, Provider recall/capture Failed to get into canceled police, start recovery and attention
  */
 
@@ -65,6 +65,7 @@ import {
   prepareMemoryContribution,
   recordSettledRecall,
 } from "./support/memory-observability";
+import { assertPlatformCapability } from "../../../../shared/platform-capabilities";
 
 export class MemoryService {
   readonly policy: MemoryPolicyStore;
@@ -246,6 +247,22 @@ export class MemoryService {
       },
     });
   }
+
+  async initializeForPlatform(
+    resolveTarget: () => Promise<MemoryEffectiveTarget>,
+    memory: MemorySettings
+  ) {
+    if (!this.platformAvailable()) {
+      this.target = null;
+      this.provider = null;
+      this.memory = Object.freeze({ ...memory, enabled: false });
+      this.warning = "Memory is unavailable on this preview platform";
+      this.publish();
+      return;
+    }
+    await this.initialize(await resolveTarget(), memory);
+  }
+
   async initialize(target: MemoryEffectiveTarget, memory: MemorySettings) {
     this.target = target;
     this.memory = memory;
@@ -260,6 +277,7 @@ export class MemoryService {
     this.publish();
   }
   completeStartup() {
+    if (!this.platformAvailable()) return;
     this.accepting = true;
     this.worker.start();
     this.worker.kick();
@@ -272,6 +290,7 @@ export class MemoryService {
     this.targetResolver = resolver;
   }
   register(window: BrowserWindow, rendererUrl: string) {
+    this.assertPlatformAvailable();
     this.window = window;
     this.lastPublished = "";
     registerMemoryServiceIpc(window, rendererUrl, {
@@ -303,6 +322,7 @@ export class MemoryService {
     });
   }
   async applyMemoryConfig(target: MemoryEffectiveTarget, memory: MemorySettings) {
+    this.assertPlatformAvailable();
     if (this.network.isClosing) {
       throw new Error("Memory 运行时正在关停，配置稍后重试生效");
     }
@@ -541,6 +561,7 @@ export class MemoryService {
     );
   }
   async reconcile() {
+    if (!this.platformAvailable()) return;
     if (this.memory?.enabled) await this.initializeOwners();
     this.worker.kick();
   }
@@ -587,9 +608,11 @@ export class MemoryService {
     return this.rebuild.active();
   }
   async prepareRebuildRecovery() {
+    this.assertPlatformAvailable();
     return this.maintenance.prepareRebuildRecovery();
   }
   async recoverRebuilds() {
+    this.assertPlatformAvailable();
     return this.maintenance.recoverRebuilds();
   }
 
@@ -660,9 +683,11 @@ export class MemoryService {
   }
 
   runWorkerOnce() {
+    this.assertPlatformAvailable();
     return this.tick();
   }
   private async initializeOwners() {
+    this.assertPlatformAvailable();
     if (this.ownersInitialized || this.ownerFailure) return;
     if (!this.ownersFlight) {
       this.ownersFlight = (async () => {
@@ -688,6 +713,7 @@ export class MemoryService {
     await this.ownersFlight;
   }
   private installProvider(target: MemoryEffectiveTarget) {
+    this.assertPlatformAvailable();
     const module = requireMemoryModule(target.providerId);
     this.provider =
       this.options.providerFactory?.(target.providerId, target.baseUrl) ??
@@ -708,17 +734,22 @@ export class MemoryService {
     this.revokeFreshLeases();
   }
   private requireTarget() {
+    this.assertPlatformAvailable();
     if (!this.target) throw new Error("Memory 目标尚未解析");
     return this.target;
   }
-  private async resolveConsentTarget(providerId: string) {
-    if (this.target?.providerId === providerId) return this.target;
+  private resolveTargetFresh(providerId: string) {
+    this.assertPlatformAvailable();
     if (!this.targetResolver) throw new Error("Memory target resolver 尚未就绪");
     return this.targetResolver(providerId);
   }
-  private resolveTargetFresh(providerId: string) {
-    if (!this.targetResolver) throw new Error("Memory target resolver 尚未就绪");
-    return this.targetResolver(providerId);
+
+  private platformAvailable() {
+    return this.options.platformSupport.capabilities.memory;
+  }
+
+  private assertPlatformAvailable() {
+    assertPlatformCapability(this.options.platformSupport, "memory");
   }
   /* pending cleanup 只投影为可见状态，绝不自动发起破坏性 rebuild：
      rebuild = 清空 data root + 全量重提取（消耗第三方 API 费用），

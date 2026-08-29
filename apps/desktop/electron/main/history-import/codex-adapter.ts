@@ -75,7 +75,7 @@ export class CodexHistoryAdapter implements HistoryAdapter {
             title: humanTitle(db?.title || meta.title || "Codex 会话"), cwd: meta.cwd,
             createdAt: meta.createdAt, updatedAt: meta.updatedAt,
             historyRevision: digest(`${fingerprintRevision(value)}:${state.revision}`),
-            canResume: true, archived, incompleteTail: meta.incompleteTail, divergence: false,
+            canResume: true, archived, incompleteTail: meta.incompleteTail,
             sourceIncarnation: initialSourceIncarnation(key, value),
             sourcePath: path, fingerprint: value,
           });

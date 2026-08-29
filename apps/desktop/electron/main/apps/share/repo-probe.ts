@@ -18,6 +18,7 @@ import type {
   AppRepoProbeResult,
 } from "../../../../shared/apps-ipc";
 import type { AppExtensionRequirementDeclaration } from "../../../../shared/extensions-ipc";
+import { GLOBAL_PRODUCT_RESOURCE_SCOPE } from "../../../../shared/product-resource-scope";
 import { baseSnapshotFileSchema } from "../../../../shared/base-snapshot";
 import { sanitizedProcessEnvironment } from "../../codex-runtime";
 import { appManifestSchema } from "../install/manifest-schema";
@@ -43,7 +44,10 @@ type FrozenProbe = {
   extensionPreflights: AppExtensionInstallPreflight[];
 };
 
-type ExtensionProbePort = Pick<ExtensionInstaller, "preflight" | "discard">;
+type ExtensionProbePort = Pick<
+  ExtensionInstaller,
+  "preflight" | "discard" | "scopeRevision"
+>;
 
 type TreeEntry = {
   mode: string;
@@ -266,10 +270,21 @@ export class RepoProbeService {
     const preflight = await this.extensions.preflight({
       repoUrl: declaration.source.repoUrl,
       ...(declaration.source.ref ? { requestedRef: declaration.source.ref } : {}),
+      scope: GLOBAL_PRODUCT_RESOURCE_SCOPE,
+      expectedProjectLifecycleRevision: null,
+      expectedScopeRevision: this.extensions.scopeRevision(
+        GLOBAL_PRODUCT_RESOURCE_SCOPE
+      ),
     });
-    assertPreflightComponent(preflight, declaration.componentIdentity);
+    assertPreflightComponent(
+      preflight,
+      declaration.declaredComponentIdentity
+    );
     return {
-      componentIdentity: declaration.componentIdentity,
+      declaredComponentIdentity: declaration.declaredComponentIdentity,
+      scope: preflight.scope,
+      projectLifecycleRevision: preflight.projectLifecycleRevision,
+      scopeRevision: preflight.scopeRevision,
       repoUrl: preflight.source.normalizedUrl,
       requestedRef: preflight.source.requestedRef,
       resolvedCommit: preflight.source.resolvedCommit,
@@ -284,13 +299,15 @@ export class RepoProbeService {
 
 function assertPreflightComponent(
   preflight: ExtensionInstallPreflight,
-  componentIdentity: string
+  declaredComponentIdentity: string
 ) {
   const identities = preflight.admission.components.map(
     (component) => `${preflight.componentNamespace}/${component.componentId}`
   );
-  if (!identities.includes(componentIdentity)) {
-    throw new Error(`Extension 来源未提供声明组件：${componentIdentity}`);
+  if (!identities.includes(declaredComponentIdentity)) {
+    throw new Error(
+      `Extension 来源未提供声明组件：${declaredComponentIdentity}`
+    );
   }
 }
 

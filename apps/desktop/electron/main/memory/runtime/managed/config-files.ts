@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node fs/path, shared MemoryConfigIssue and the status of the manifest v2 file
- * [OUTPUT]: Provides secrets read only analysis, managed file drift detection, three hash hash hashing and configIssue
+ * [INPUT]: Depends on Node fs/path, shared MemoryConfigIssue and managed manifest file state
+ * [OUTPUT]: Provides fail-closed secret parsing, managed-file drift detection, three-hash convergence and configIssue comparison
  * [POS]: The main/memory/runtime/managed configuration fact is read-only; Coordinator decides when to repair and how to restart
  */
 
@@ -38,8 +38,9 @@ export async function readSecretValues(path: string) {
         typeof value === "string" && value ? [[key, value]] : []
       )
     );
-  } catch {
-    return {};
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw new Error("MEMORY_SECRET_STORE_UNREADABLE", { cause });
   }
 }
 

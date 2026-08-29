@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Agent Limit, strict RichValue/SubmissionContentV1, chat user envelope, backend descriptor and Agent IPC agreement
- * [OUTPUT]: Provides strictly keystroke/canonical reconstruction, Workspace owner CAS schema, RichValue, non-image input, Agent turnOptions, cross-field syntax with the original/content file/image sequence, Agent payload, manual/steeradmission, external source, user questions and conversationId verification
- * [POS]: The Electron main's Agent/Coordinator IPC is entering the first line of defense; Back end exclusive value testing assigned descriptor, unknown field not to enter reservation/staging
+ * [INPUT]: Depends on shared Agent limits/contracts, strict RichValue/SubmissionContentV1, chat user envelopes, and backend descriptors
+ * [OUTPUT]: Provides strict payload reconstruction and cross-field validation for Agent/manual/steer/adopt paths, including message-or-attachments adoption semantics
+ * [POS]: The first main-process trust boundary for Agent and coordinator IPC
  */
 
 import {
@@ -160,7 +160,6 @@ export function validateHistoryAdoptionSubmission(
   if (
     typeof raw.displayText !== "string" ||
     Buffer.byteLength(raw.displayText, "utf8") > MESSAGE_BYTE_LIMIT ||
-    !raw.displayText.trim() ||
     (raw.planMode !== undefined && typeof raw.planMode !== "boolean")
   ) {
     throw new Error("续聊首轮正文或 Plan 标记无效");
@@ -175,6 +174,9 @@ export function validateHistoryAdoptionSubmission(
     },
     attachmentPayloads: raw.attachmentPayloads,
   });
+  if (!raw.displayText.trim() && !envelope.attachmentPayloads?.length) {
+    throw new Error("续聊首轮必须包含正文或附件");
+  }
   const content = submissionContentV1Schema.parse(raw.content);
   assertDisplayTextConsistency(raw.displayText, content.content.displayText);
   assertRichInputConsistency(content, input);
@@ -348,7 +350,7 @@ function parseAgentPayload(value: unknown): AgentSendPayload {
     ) {
       throw new Error("session 格式无效");
     }
-    assertExactKeys(payload.session, ["backend", "id"], "session");
+    assertExactKeys(payload.session, ["backend", "id", "toolPlan"], "session");
     if (
       !BACKENDS.has(payload.session.backend ?? "") ||
       typeof payload.session.id !== "string" ||
@@ -358,7 +360,28 @@ function parseAgentPayload(value: unknown): AgentSendPayload {
     ) {
       throw new Error("session 格式无效");
     }
-    session = { backend: payload.session.backend, id: payload.session.id };
+    const toolPlan = payload.session.toolPlan;
+    if (
+      toolPlan !== undefined &&
+      (!toolPlan ||
+        typeof toolPlan !== "object" ||
+        Array.isArray(toolPlan) ||
+        Object.keys(toolPlan).some((key) => !["planDigest", "projectId"].includes(key)) ||
+        typeof toolPlan.planDigest !== "string" ||
+        !/^[a-f0-9]{64}$/.test(toolPlan.planDigest) ||
+        (toolPlan.projectId !== null &&
+          (typeof toolPlan.projectId !== "string" ||
+            !CONVERSATION_PATTERN.test(toolPlan.projectId))))
+    ) {
+      throw new Error("session tool plan binding 无效");
+    }
+    session = {
+      backend: payload.session.backend,
+      id: payload.session.id,
+      ...(toolPlan
+        ? { toolPlan: { planDigest: toolPlan.planDigest, projectId: toolPlan.projectId } }
+        : {}),
+    };
   }
   return {
     requestId: payload.requestId,
@@ -379,38 +402,34 @@ export function validateAgentTurnOptions(value: unknown): AgentTurnOptions {
     throw new Error("未知的 Agent 后端");
   }
   const backend = raw.backend as AgentBackendId;
+  const descriptor = backendRegistry.get(backend)!;
   assertExactKeys(
     value,
-    backend === "codex"
-      ? [
-          "backend",
-          "model",
-          "reasoningEffort",
-          "serviceTier",
-          "permissionMode",
-        ]
-      : ["backend", "model", "reasoningEffort", "permissionMode"],
+    [
+      "backend",
+      "model",
+      "reasoningEffort",
+      ...(descriptor.serviceTier ? ["serviceTier"] : []),
+      "permissionMode",
+    ],
     "Agent turnOptions"
   );
-  backendRegistry.get(backend)!.validateTurnOptions(value);
+  descriptor.validateTurnOptions(value);
   const permissionMode = raw.permissionMode as AgentPermissionMode;
-  if (backend === "codex") {
-    return {
-      backend,
-      model: raw.model as string,
-      reasoningEffort: raw.reasoningEffort as string,
-      serviceTier: raw.serviceTier as string,
-      permissionMode,
-    };
-  }
+  /* 必填与可选的差别已由 descriptor.validateTurnOptions 全部说完：codex 缺
+     三者任一在上一行就抛掉了，所以这里只剩一条「在场即透传」的投影。多写一
+     条按后端字面量分流的返回，第四家来的时候还要再改一次。 */
   return {
     backend,
     ...(typeof raw.model === "string" ? { model: raw.model } : {}),
     ...(typeof raw.reasoningEffort === "string"
       ? { reasoningEffort: raw.reasoningEffort }
       : {}),
+    ...(descriptor.serviceTier && typeof raw.serviceTier === "string"
+      ? { serviceTier: raw.serviceTier }
+      : {}),
     permissionMode,
-  };
+  } as AgentTurnOptions;
 }
 
 function parseUserInput(

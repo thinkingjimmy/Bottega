@@ -2,7 +2,7 @@
 
 [文档首页](../README.zh-CN.md) · [English](./README.md)
 
-Bottega 把 Agent 对话视为一个可持续、本地工作空间的控制面。产品由四个核心能力域构成。
+Bottega 把 Agent 对话视为一个可持续、本地工作空间的控制面。产品由以下核心能力域构成。
 
 ## Multi-agent
 
@@ -23,10 +23,18 @@ Bottega 把 Agent 对话视为一个可持续、本地工作空间的控制面�
 ## App
 
 - 从不可变 Git revision 安装 static、server 或 Base-backed App。
+- 使用随包交付的 Bottega Design Canvas 创建自包含 HTML 方向、比较 Live/History 版本，并把编号视觉锚点送回 Agent；预览不获得网络或存储权限。
 - 把 App 绑定到 Chat 与 Project，同时分离使用、编辑和授权。
 - 通过受约束的产品 SDK，在结构化数据旁呈现 App GUI。
 - 针对精确 App generation，分别授权 read、insert、patch、delete 与 attachment 能力。
 - 分享可复用工作流，不复制本机凭据或私有工作空间状态。
+
+## 工具与 Extension
+
+- Settings › Tools 提供全局默认值，并允许针对一个精确 Project 覆盖内置工具与手动 MCP server。
+- turn 开始前冻结最终工具与 MCP plan，重试和 session 恢复不会静默采用更新后的权限。
+- Extension 可安装到全局或一个精确 Project；Skill、App requirement、session、retained data 与删除清理共用同一 scoped owner。
+- MCP 密钥只进入 main-owned sealed storage；持久化所有权证据不完整时一律 fail closed。
 
 ## Memory
 
@@ -38,4 +46,4 @@ Bottega 把 Agent 对话视为一个可持续、本地工作空间的控制面�
 
 ## 共同基础
 
-四个能力域遵守同一组原则：本机 CLI 凭据主权、capability 有界文件访问、主进程持久化所有权、显式归档与删除流程，以及后端不支持某项能力时的诚实降级。
+这些能力域遵守同一组原则：本机 CLI 凭据主权、capability 有界文件访问、主进程持久化所有权、显式归档与删除流程，以及后端不支持某项能力时的诚实降级。

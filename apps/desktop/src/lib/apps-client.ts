@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/apps-ipc and preload exposed window.apps
- * [OUTPUT]: Provides installation/preflight, preset lists, Save, rename/chat slots, README/configuration/sharing, tri-mode and default authorization, capability current checks, App-scoped Extension, revocation/new generation and lease/deleted renderer IPC packages
+ * [OUTPUT]: Provides typed renderer calls for installation, presets, save/rename/chat slots, README/configuration/sharing, grants, App-scoped Extensions, surfaces, logs, and removal
  * [POS]: The edge of the edge of the Apps of lib, which elevates the business terminal to typed error, keeps the transmission bias abnormal
  */
 
@@ -8,11 +8,19 @@ import type {
   AddAppInput,
   AppConfigValue,
   AppGuiInfo,
+  AppGuiInfoInput,
   AppsBridgeApi,
   AppInstallEvent,
+  AppOpenMode,
   AppGrantSourcesSnapshot,
   AppGrantTarget,
   AppSurfaceAcquireInput,
+  DesignAutoOpenInput,
+  DeleteDesignDataInput,
+  ImportDesignCanvasInput,
+  ListDesignVersionsInput,
+  RestoreDesignVersionInput,
+  SetDesignEnabledInput,
   AvailableAppsInput,
   EnsureAppChatSlotInput,
   InstallPresetInput,
@@ -133,9 +141,55 @@ export const retryAppSkill = (appId: string) => {
 export const readAppReadme = (appId: string) =>
   window.apps?.readReadme(appId) ?? Promise.resolve(null);
 /** 取 GUI 现状并轮换 token；无桥接环境如实返回空 GUI，由调用方渲染空态。 */
-export const readAppGuiInfo = (appId: string): Promise<AppGuiInfo> =>
-  window.apps?.guiInfo(appId) ??
-  Promise.resolve({ pages: [], origin: "", token: "", baseCapabilities: [] });
+export const readAppGuiInfo = (input: AppGuiInfoInput): Promise<AppGuiInfo> =>
+  window.apps?.guiInfo(input) ??
+  Promise.resolve({
+    pages: [],
+    origin: "",
+    token: "",
+    baseCapabilities: [],
+    hostActions: [],
+  });
+export const releaseAppGuiSurface = (input: AppGuiInfoInput) =>
+  window.apps?.releaseGuiSurface(input) ?? Promise.resolve();
+export const setAppOpenMode = (appId: string, mode: AppOpenMode | null) => {
+  if (!window.apps) throw new Error("当前环境不支持 App 打开偏好");
+  return window.apps.setOpenMode({ appId, mode });
+};
+export const importDesignCanvas = (input: ImportDesignCanvasInput) => {
+  if (!window.apps) throw new Error("当前环境不支持 Design canvas 导入");
+  return window.apps.importDesignCanvas(input);
+};
+export const listDesignImportCandidates = (input: import("../../shared/apps-ipc").DesignSurfaceInput) => {
+  if (!window.apps) return Promise.resolve([]);
+  return window.apps.listDesignImportCandidates(input);
+};
+export const listDesignFiles = (input: import("../../shared/apps-ipc").DesignSurfaceInput) => {
+  if (!window.apps) return Promise.resolve([]);
+  return window.apps.listDesignFiles(input);
+};
+export const listDesignVersions = (input: ListDesignVersionsInput) => {
+  if (!window.apps) return Promise.resolve([]);
+  return window.apps.listDesignVersions(input);
+};
+export const restoreDesignVersion = (input: RestoreDesignVersionInput) => {
+  if (!window.apps) throw new Error("当前环境不支持 Design 版本恢复");
+  return window.apps.restoreDesignVersion(input);
+};
+export const setDesignAutoOpen = (input: DesignAutoOpenInput) => {
+  if (!window.apps) return Promise.resolve(false);
+  return window.apps.setDesignAutoOpen(input);
+};
+export const readDesignDataStatus = (appId: string) =>
+  window.apps?.designDataStatus(appId) ?? Promise.resolve(null);
+export const deleteDesignData = (input: DeleteDesignDataInput) => {
+  if (!window.apps) throw new Error("当前环境不支持 Design 数据删除");
+  return window.apps.deleteDesignData(input);
+};
+export const setDesignEnabled = (input: SetDesignEnabledInput) => {
+  if (!window.apps) throw new Error("当前环境不支持 Design visibility");
+  return window.apps.setDesignEnabled(input);
+};
 export const probeAppRepo = (repoUrl: string) => {
   if (!window.apps) throw new Error("当前环境不支持仓库预检");
   return window.apps.probeRepo(repoUrl);
@@ -192,10 +246,6 @@ export const openApp = (appId: string) => {
   if (!window.apps) throw new Error("当前环境不支持运行 App");
   return window.apps.open(appId);
 };
-export const appRuntimeStatus = (appId: string) => {
-  if (!window.apps) throw new Error("当前环境不支持 App runtime 状态");
-  return window.apps.status(appId);
-};
 export const appOriginWithoutStart = (appId: string) => {
   if (!window.apps) return Promise.resolve(null);
   return window.apps.originWithoutStart(appId);
@@ -239,13 +289,6 @@ export const acquireAppSurface = (input: AppSurfaceAcquireInput) => {
 export const releaseAppSurface = (surfaceLeaseId: string) =>
   window.apps?.releaseSurface(surfaceLeaseId) ?? Promise.resolve();
 
-export const acquireAppManagementLease = (appId: string) => {
-  if (!window.apps) throw new Error("当前环境不支持 App 管理会话");
-  return window.apps.acquireManagementLease(appId);
-};
-
-export const releaseAppManagementLease = (managementLeaseId: string) =>
-  window.apps?.releaseManagementLease(managementLeaseId) ?? Promise.resolve();
 export const readAppLog = (appId: string) =>
   window.apps?.readLog(appId) ?? Promise.resolve("");
 export const onAppsEvent = (callback: (event: AppInstallEvent) => void) =>

@@ -7,7 +7,10 @@
 import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import type { BackendModelInfo } from "../../../../shared/agent-ipc";
 import { inspectAcpSession } from "../acp/probe";
-import { MODEL_ID_PATTERN } from "../capability-validation";
+import {
+  MODEL_ID_PATTERN,
+  OPAQUE_CONFIG_VALUE_PATTERN,
+} from "../capability-validation";
 import {
   createModelCatalog,
   type ModelCatalog,
@@ -58,7 +61,7 @@ function effort(config: ConfigState) {
   const values = choices.map((choice) => choice.value);
   if (
     values.length === 0 ||
-    values.some((value) => !MODEL_ID_PATTERN.test(value)) ||
+    values.some((value) => !OPAQUE_CONFIG_VALUE_PATTERN.test(value)) ||
     new Set(values).size !== values.length ||
     typeof option.currentValue !== "string" ||
     !values.includes(option.currentValue)
@@ -107,12 +110,6 @@ async function discover(
         throw new Error("Codex ACP 模型目录无效");
       }
       const defaultModel = models.currentValue;
-      const serviceTiers = select(current, "fast-mode")
-        ? [
-            { id: "default", displayName: "Standard" },
-            { id: "priority", displayName: "Fast" },
-          ]
-        : [{ id: "default", displayName: "Standard" }];
       const result: BackendModelInfo[] = [];
       for (const choice of choices) {
         if (select(current, "model")?.currentValue !== choice.value) {
@@ -129,7 +126,12 @@ async function discover(
           displayName: choice.name || choice.value,
           isDefault: choice.value === defaultModel,
           ...effort(current),
-          serviceTiers,
+          serviceTiers: select(current, "fast-mode")
+            ? [
+                { id: "default", displayName: "Standard" },
+                { id: "priority", displayName: "Fast" },
+              ]
+            : [{ id: "default", displayName: "Standard" }],
         });
       }
       return result;

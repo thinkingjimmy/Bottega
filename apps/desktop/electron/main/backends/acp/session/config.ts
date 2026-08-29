@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ACP session configOptions and BackendTurnOptions
- * [OUTPUT]: Provides AcpTurnConfigValues, config wire, convergence, and permissions for each application
+ * [OUTPUT]: Provides AcpTurnConfigValues, fail-loud Speed descriptor drift detection, config wire convergence, and final server-returned config state
  * [POS]: The ACP session configures the clear boundaries; AcpTurn is called in fixed order before prompt, and the direction depends on the constant acp-turn → This file
  */
 
@@ -12,7 +12,7 @@ import {
 import type { BackendTurnOptions } from "../../types";
 
 /**
- * 每 turn 会话配置的三格数据；AcpSpawnConfig 组合本类型，方向恒为
+ * 每 turn 会话配置的数据；AcpSpawnConfig 组合本类型，方向恒为
  * acp-turn → session/config，不回头。
  */
 export type AcpTurnConfigValues = {
@@ -24,6 +24,8 @@ export type AcpTurnConfigValues = {
   };
   collaborationValues?: { default: string; plan: string };
   serviceTierValues?: Record<string, string>;
+  /** Lookup key for an advertised option; the resolved option.id goes on wire. */
+  serviceTierConfigId?: string;
 };
 
 export type SessionConfigState = {
@@ -100,6 +102,37 @@ function namedSelectConfig(
   );
 }
 
+/* Speed 档位缺席有两种成因，必须分开：**产品把 id 接错了**（响亮抛），与
+   **当前模型本就不支持**（静默跳过）。分辨它们的只能是「会话里还有没有另一
+   个明明就是 Speed 的 option」——而「明明就是」必须落在协议自己声明的
+   `model_config` 语义上，再加值域吻合；只按值域猜，任何一个 on/off 开关都会
+   被认成 Speed，把一个合法的能力缺席变成每 turn 硬错。 */
+const SERVICE_TIER_CATEGORY = "model_config";
+
+function optionalServiceTierConfig(
+  state: SessionConfigState,
+  id: string,
+  wireValues: readonly string[]
+) {
+  const exact = state.configOptions?.find(
+    (option): option is SelectConfig =>
+      option.type === "select" && option.id === id
+  );
+  if (exact) return exact;
+  const renamed = state.configOptions?.find(
+    (option): option is SelectConfig =>
+      option.type === "select" &&
+      option.category === SERVICE_TIER_CATEGORY &&
+      wireValues.every((value) => selectValues(option).includes(value))
+  );
+  if (renamed) {
+    throw new Error(
+      `ACP Speed descriptor wiring mismatch: expected ${id}, received ${renamed.id}`
+    );
+  }
+  return undefined;
+}
+
 function modeConfig(
   state: SessionConfigState,
   requested: string | readonly string[]
@@ -173,19 +206,35 @@ export async function applyTurnConfiguration(
       "ACP 后端未应用请求的 Thinking Effort"
     );
   }
-  if (config.serviceTierValues && "serviceTier" in turnOptions) {
+  if (
+    config.serviceTierValues &&
+    "serviceTier" in turnOptions &&
+    typeof turnOptions.serviceTier === "string"
+  ) {
+    if (!config.serviceTierConfigId) {
+      throw new Error("ACP 后端不支持当前 Speed 档位");
+    }
     const value = config.serviceTierValues[turnOptions.serviceTier];
     if (!value) throw new Error("ACP 后端不支持当前 Speed 档位");
-    const option = namedSelectConfig(current, "fast-mode", value);
-    current = await applyConfig(
-      context,
-      sessionId,
+    /* The option can legitimately be absent for a model without Speed support.
+       Missing descriptor wiring above is a product error and remains loud. */
+    const option = optionalServiceTierConfig(
       current,
-      option,
-      value,
-      (next, expected) => namedSelectConfig(next, "fast-mode", expected),
-      "ACP 后端未应用请求的 Speed 档位"
+      config.serviceTierConfigId,
+      Object.values(config.serviceTierValues)
     );
+    if (option) {
+      current = await applyConfig(
+        context,
+        sessionId,
+        current,
+        option,
+        value,
+        (next, expected) =>
+          namedSelectConfig(next, config.serviceTierConfigId!, expected),
+        "ACP 后端未应用请求的 Speed 档位"
+      );
+    }
   }
   if (config.collaborationValues) {
     const value = payload.planMode
@@ -203,10 +252,10 @@ export async function applyTurnConfiguration(
       "ACP 后端未应用请求的协作模式"
     );
   }
-  if (!config.modeValues) return;
+  if (!config.modeValues) return current;
   const requested = acpTurnMode(payload, config.modeValues);
   const { config: modeOption, mode } = modeConfig(current, requested);
-  await applyConfig(
+  current = await applyConfig(
     context,
     sessionId,
     current,
@@ -215,6 +264,7 @@ export async function applyTurnConfiguration(
     (next, value) => modeConfig(next, value).config,
     "ACP 后端未应用请求的工作模式"
   );
+  return current;
 }
 
 export function acpTurnMode(

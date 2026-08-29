@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Base Query pure function/type, crypto scope hash and builtin and ultimately CallToolResult byte size
- * [OUTPUT]: Provides legacy base_query and the core of the budget Section read_base, with three modes of formula perception options, cursor, column_meta and
- * [POS]: The base is a read-only projection moduleThe IO/ID/mutation is not touched, and the toolset inserts an immutable snapshot after the schema is checked in the registry
+ * [INPUT]: Depends on immutable Base snapshots, the shared canonical cell context/projection kernel, crypto scope hashes, and tool-result budgets
+ * [OUTPUT]: Provides legacy base_query plus bounded read_base projections with formula modes, cursors, and column metadata
+ * [POS]: The main Base read boundary; it builds one canonical context from the full snapshot and never performs Base mutations
  */
 
 import { createHash } from "node:crypto";
@@ -44,19 +44,20 @@ export function selectRows(base: BaseSnapshot, args: QueryArgs) {
     columnId: sort.column_id,
     direction: sort.direction,
   }));
+  const context = createBaseCellContext({
+    columns: base.meta.columns,
+    rows: base.rows,
+  });
   return {
     columns,
     projectedColumns: base.meta.columns.filter((column) =>
       columns.includes(column.id)
     ),
-    context: createBaseCellContext({
-      columns: base.meta.columns,
-      rows: base.rows,
-    }),
+    context,
     rows: projectBaseRows(
       base.rows,
       { filter: args.filter, sorts },
-      base.meta.columns
+      context
     ),
   };
 }

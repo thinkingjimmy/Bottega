@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on TurnRegistry projection lane, bridge, stabilization/Steer durable finalizer, port, canonical commit, projection and process group clearance
- * [OUTPUT]: Provides Agent turn cleanup, fresh sensitive lease release, wait for orderly item, project, abort/drain child and commit structured terminals, overtime Steer state transfer, settled/persist trace and continuous sequencing with boundary retesting
+ * [OUTPUT]: Provides Agent turn cleanup, resume-failure attempt settlement, fresh sensitive lease release, ordered projection waits, structured terminal commit, settled/persist trace and continuous sequencing
  * [POS]: The agent module's terminal transaction owner; agent-bridge is only responsible for launching, event routing and lifecycle
  */
 
-import type { AgentEventBody } from "../../../shared/agent-ipc";
+import { randomUUID } from "node:crypto";
 import { SubagentRegistry } from "../../../shared/subagent-registry";
 import {
   clearAgentSafetyLockWhenIdle,
@@ -22,15 +22,10 @@ import {
 import { prepareTurnCommit } from "./commit";
 import type {
   AgentBridgeOptions,
+  AgentEventPayload,
   AppendTurnResult,
   BridgeEntry,
 } from "./bridge-types";
-
-type AgentEventPayload = AgentEventBody extends infer Event
-  ? Event extends AgentEventBody
-    ? Omit<Event, "requestId">
-    : never
-  : never;
 
 type FinalizerPorts = {
   turns: TurnRegistry<AgentTurn>;
@@ -48,6 +43,33 @@ export async function cleanupAgentTurn(
 
 export function createBridgeFinalizer(ports: FinalizerPorts) {
   const { turns, publish, publishState, observe } = ports;
+
+  async function handleResumeFailed(
+    entry: BridgeEntry,
+    turn: AgentTurn,
+    generation: number
+  ) {
+    if (entry.generation !== generation) return;
+    entry.memoryContribution?.release();
+    entry.memoryContribution = undefined;
+    entry.builtinMcp?.revoke();
+    entry.builtinMcp = undefined;
+    /* A resume retry reuses request/context but starts a new process. Settle the
+       dead attempt before the new custody identity can replace its evidence. */
+    await entry.custody?.beginRelease();
+    const result = await cleanupAgentTurn(turn);
+    entry.processLease?.release();
+    entry.processLease = undefined;
+    if (!result.ok) {
+      reportAgentCleanupFailure(entry.backend, result.error);
+      throw result.error;
+    }
+    await entry.custody?.settle();
+    entry.custody = undefined;
+    entry.cleanup = "complete";
+    turns.markResumeFailed(entry, randomUUID());
+    publishState(entry);
+  }
 
   async function persistEntry(
     entry: BridgeEntry,
@@ -70,6 +92,9 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
           origin: entry.origin,
           context: entry.context,
           terminal: entry.effectiveTerminal?.type ?? "error",
+          ...(entry.effectiveTerminal?.facts
+            ? { facts: entry.effectiveTerminal.facts }
+            : {}),
           commit: entry.prepared!,
         });
         const result = options.appendTurnResult
@@ -215,6 +240,8 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
             await entry.resolvedInput?.release();
             entry.resolvedInput = undefined;
           });
+          await entry.backendSessionConfig?.releaseClaudePluginProjection?.();
+          entry.backendSessionConfig = undefined;
           /* dependency 只能在 custody 收口之后释放，而且必须在同一条路径上：
              上面任何一步抛出，这一行就不会执行，generation 于是继续被账本
              钉住，交给下次启动的 reconcile 收敛——这正是 D33 要的顺序。 */
@@ -277,5 +304,5 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
     });
   }
 
-  return { finalizeEntry, persistEntry };
+  return { finalizeEntry, handleResumeFailed, persistEntry };
 }

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, renderer Skills client/changed events, backend static capabilities, workspace scope/key and error integration
- * [OUTPUT]: Provides identity-stable skill catalog, Plan capability, model switching and mandatory consultation before sending
- * [POS]: The manual Skill/Plan state boundary of chat/runtime; Codex Check collaborationMode, ACP backend trusted by version-blocked descriptor
+ * [OUTPUT]: Provides one raw catalog load with memoized normal/Plan eligibility, scope-bound monotonic invalidated refs, persistent warnings, Plan capability, and fresh send consultation
+ * [POS]: Chat runtime boundary for Skill and Plan state; backend capability facts remain descriptor-owned
  */
 
 import {
@@ -15,8 +15,23 @@ import {
 import type { AgentWorkspaceScope } from "../../../../shared/agent-ipc";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import type { SkillInfo } from "../../../../shared/skills-ipc";
+import type { SkillsListResult } from "../../../../shared/skills-ipc";
 import { errorMessage } from "@/lib/errors";
 import { listSkills, loadSkillCapabilities } from "@/lib/skills-client";
+import { ProductFailureError } from "../../../../shared/product-failure";
+import { skillFailureText } from "@/lib/skill-failure-text";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
+
+/* envelope 失败走五语目录组句，其余（本地控制态的预译文本）原样透传——
+   裸 `skills-runtime/unavailable` 一类的码永远不该到 Plan tooltip 上。 */
+function skillsErrorText(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  cause: unknown
+) {
+  return cause instanceof ProductFailureError
+    ? skillFailureText(t, cause.failure)
+    : errorMessage(cause);
+}
 
 export function useChatSkills({
   ready,
@@ -31,25 +46,53 @@ export function useChatSkills({
   backend: AgentBackendId;
   planSupported: boolean;
 }) {
+  const { t } = useAppTranslation();
   const [planMode, setPlanMode] = useState(false);
   const [planAvailable, setPlanAvailable] = useState(false);
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [catalogs, setCatalogs] = useState<Readonly<{
+    normal: SkillsListResult;
+    plan: SkillsListResult;
+  }> | null>(null);
   const [skillsLoading, setSkillsLoading] = useState(false);
-  const [skillsError, setSkillsError] = useState("");
+  const [catalogError, setCatalogError] = useState("");
+  const [invalidatedSkillRefs, setInvalidatedSkillRefs] = useState<readonly string[]>([]);
   const [planCapabilityChecking, setPlanCapabilityChecking] = useState(false);
   const [catalogGeneration, setCatalogGeneration] = useState(0);
   const checkingRef = useRef(false);
   const scopeKeyRef = useRef(workspaceScopeKey);
+  const workspaceScopeRef = useRef(workspaceScope);
+  const invalidationBucketRef = useRef({
+    ready,
+    scopeKey: workspaceScopeKey,
+    refs: new Set<string>(),
+  });
 
   useLayoutEffect(() => {
     scopeKeyRef.current = workspaceScopeKey;
-  }, [workspaceScopeKey]);
+    workspaceScopeRef.current = workspaceScope;
+  }, [workspaceScope, workspaceScopeKey]);
+
+  useLayoutEffect(() => {
+    const bucket = invalidationBucketRef.current;
+    if (bucket.ready === ready && bucket.scopeKey === workspaceScopeKey) return;
+    invalidationBucketRef.current = {
+      ready,
+      scopeKey: workspaceScopeKey,
+      refs: new Set(),
+    };
+    setInvalidatedSkillRefs([]);
+    setCatalogError("");
+  }, [ready, workspaceScopeKey]);
 
   useEffect(
     () =>
-      window.skills?.onChanged(() =>
-        setCatalogGeneration((generation) => generation + 1)
-      ) ?? (() => {}),
+      window.skills?.onChanged((event) => {
+        const bucket = invalidationBucketRef.current;
+        if (!bucket.ready) return;
+        for (const ref of event.invalidatedRefs) bucket.refs.add(ref);
+        setInvalidatedSkillRefs([...bucket.refs]);
+        setCatalogGeneration((generation) => generation + 1);
+      }) ?? (() => {}),
     []
   );
 
@@ -58,41 +101,44 @@ export function useChatSkills({
     if (!ready) {
       void Promise.resolve().then(() => {
         if (!active) return;
-        setSkills([]);
+        setCatalogs(null);
         setPlanAvailable(false);
         setPlanMode(false);
         setSkillsLoading(false);
+        setCatalogError("");
       });
       return () => {
         active = false;
       };
     }
+    const requestedScope = workspaceScopeRef.current;
     void Promise.resolve()
       .then(() => {
         if (!active) return undefined;
         setSkillsLoading(true);
-        setSkillsError("");
+        setCatalogError("");
         return Promise.all([
-          listSkills({ scope: workspaceScope, backend, planMode }),
+          listSkills({ scope: requestedScope, backend, planMode: false }),
+          listSkills({ scope: requestedScope, backend, planMode: true }),
           backend === "codex"
-            ? loadSkillCapabilities(workspaceScope)
+            ? loadSkillCapabilities(requestedScope)
             : Promise.resolve({ plan: planSupported }),
         ]);
       })
       .then((result) => {
         if (!active || !result) return;
-        const [nextSkills, capabilities] = result;
-        setSkills(nextSkills);
+        const [normal, plan, capabilities] = result;
+        setCatalogs({ normal, plan });
         const available = planSupported && capabilities.plan;
         setPlanAvailable(available);
         if (!available) setPlanMode(false);
       })
       .catch((cause) => {
         if (!active) return;
-        setSkills([]);
+        setCatalogs(null);
         setPlanAvailable(false);
         setPlanMode(false);
-        setSkillsError(errorMessage(cause));
+        setCatalogError(skillsErrorText(t, cause));
       })
       .finally(() => {
         if (active) setSkillsLoading(false);
@@ -102,49 +148,47 @@ export function useChatSkills({
     };
   }, [
     backend,
-    planMode,
     planSupported,
     ready,
-    workspaceScope,
+    t,
     workspaceScopeKey,
     catalogGeneration,
   ]);
 
   const requirePlanCapability = useCallback(async () => {
     if (checkingRef.current) {
-      throw new Error("正在检查 Plan 能力，请稍候");
+      throw new Error(t("chat.skillControl.capabilityChecking"));
     }
     const requestedScopeKey = workspaceScopeKey;
+    const requestedScope = workspaceScopeRef.current;
     checkingRef.current = true;
     setPlanCapabilityChecking(true);
-    setSkillsLoading(true);
-    setSkillsError("");
+    setCatalogError("");
     try {
       const capabilities =
         backend === "codex"
-          ? await loadSkillCapabilities(workspaceScope)
+          ? await loadSkillCapabilities(requestedScope)
           : { plan: planSupported };
       if (scopeKeyRef.current !== requestedScopeKey) {
-        throw new Error("Workspace 已切换，请重试");
+        throw new Error(t("chat.skillControl.workspaceChanged"));
       }
       const available = planSupported && capabilities.plan;
       setPlanAvailable(available);
       if (!available) {
-        throw new Error("当前 Agent 不支持 Plan，请升级后重试");
+        throw new Error(t("chat.skillControl.planUnavailable"));
       }
     } catch (cause) {
       if (scopeKeyRef.current === requestedScopeKey) {
         setPlanAvailable(false);
         setPlanMode(false);
-        setSkillsError(errorMessage(cause));
+        setCatalogError(skillsErrorText(t, cause));
       }
       throw cause;
     } finally {
       checkingRef.current = false;
       setPlanCapabilityChecking(false);
-      if (scopeKeyRef.current === requestedScopeKey) setSkillsLoading(false);
     }
-  }, [backend, planSupported, workspaceScope, workspaceScopeKey]);
+  }, [backend, planSupported, t, workspaceScopeKey]);
 
   const togglePlanMode = useCallback(async () => {
     if (planMode) {
@@ -164,6 +208,13 @@ export function useChatSkills({
     []
   );
 
+  const projection = catalogs?.[planMode ? "plan" : "normal"];
+  const skills = useMemo<SkillInfo[]>(() => projection ? [...projection.skills] : [], [projection]);
+  const skillsHiddenCount = projection?.hiddenCount ?? 0;
+  const skillsError = catalogError || (
+    invalidatedSkillRefs.length ? t("chat.skillControl.invalidated") : ""
+  );
+
   return useMemo(() => ({
     isPlanCapabilityChecking,
     planAvailable,
@@ -173,6 +224,8 @@ export function useChatSkills({
     setPlanMode,
     skills,
     skillsError,
+    skillsHiddenCount,
+    invalidatedSkillRefs,
     skillsLoading,
     togglePlanMode,
   }), [
@@ -183,6 +236,8 @@ export function useChatSkills({
     requirePlanCapability,
     skills,
     skillsError,
+    skillsHiddenCount,
+    invalidatedSkillRefs,
     skillsLoading,
     togglePlanMode,
   ]);

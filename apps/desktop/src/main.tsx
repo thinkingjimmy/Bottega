@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React DOM/lazy/Suspense, router, global style, business/I18n/History Providers, history only read routes, MessageRendererProvider/chart, fenced directory, brand, product graphics, settingsStore, sidebar-layout synchronous durable files, lib/platform platform judgments, theme sensors, sonner Toaster and inert onboarding/unified Skills setup views
- * [OUTPUT]: The first is the React SPAFirst, synchronize the valid language, take on the brand Loading, start the detection, register the message renderer, upload the HistoryProvider with /history/: opaqueId, save only one option for the Surface route (Shortcuts overlay included), explicitly send the Chat surface visibility, hand the sidebar Cmd/Ctrl+B to the central dispatcher (SidebarProvider keyboardShortcut={false}) and submit the Sidebar layout uniquely
- * [POS]: The renderer's root input and the border of the first pack; Unified Provider sorting, triggering, pre-drawing fonts/themes before first rendering, deployment without a drop-down, routing, preheating and page-level fallback
+ * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, main/App window context, surface migration runtime, Sidebar, and notifications
+ * [OUTPUT]: Boots either the main Sidebar product tree or a fixed-App no-Sidebar window tree, including capsule reload and crash-loss notice
+ * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 
 import {
@@ -9,6 +9,7 @@ import {
   startTransition,
   StrictMode,
   Suspense,
+  useEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -17,6 +18,7 @@ import {
 import { createRoot } from "react-dom/client";
 import {
   HashRouter,
+  Navigate,
   Route,
   Routes,
   useLocation,
@@ -41,7 +43,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@ai-chat/ui/components/ui/sidebar";
-import { Toaster } from "@ai-chat/ui/components/ui/sonner";
+import { Toaster, toast } from "@ai-chat/ui/components/ui/sonner";
 import { TooltipProvider } from "@ai-chat/ui/components/ui/tooltip";
 import { ChatRoute } from "@/views/chat";
 import { initializeAppearance } from "@/lib/appearance";
@@ -60,6 +62,7 @@ import {
   settingsExitTarget,
   settingsRouteSection,
   MEMORY_SETTINGS_PATH,
+  SKILLS_SETTINGS_PATH,
   type SettingsOverlaySection,
 } from "@/lib/settings-navigation";
 import { settingsStore } from "@/lib/settings-store";
@@ -76,6 +79,12 @@ import "@ai-chat/ui/globals.css";
 import "@/appearance.css";
 // 组件级 css 统一在入口引入：node --test 的 tsx loader 无 css 处理，组件内 import 会炸 DOM 测试
 import "@/components/sidebar/sidebar-row.css";
+import { AppWindowShell } from "@/components/apps/app-window-shell";
+import {
+  installWindowSurfaceRuntime,
+  windowContext,
+} from "@/lib/window-surfaces-client";
+import { panelSlotStore } from "@/components/chat/side-panel/panel-slot-store";
 
 const AppDetailView = lazy(() =>
   import("@/views/app-detail").then((module) => ({
@@ -100,6 +109,11 @@ const BaseDetailView = lazy(() =>
 const GeneralSettingsView = lazy(() =>
   import("@/views/settings-general").then((module) => ({
     default: module.GeneralSettingsView,
+  }))
+);
+const AboutSettingsView = lazy(() =>
+  import("@/views/settings-about").then((module) => ({
+    default: module.AboutSettingsView,
   }))
 );
 const ShortcutsSettingsView = lazy(() =>
@@ -137,11 +151,6 @@ const SkillsSettingsView = lazy(() =>
     default: module.SkillsSettingsView,
   }))
 );
-const ExtensionsSettingsView = lazy(() =>
-  import("@/views/settings-extensions").then((module) => ({
-    default: module.ExtensionsPanel,
-  }))
-);
 const UsageSettingsView = lazy(() =>
   import("@/views/settings-usage").then((module) => ({
     default: module.UsageSettingsView,
@@ -155,6 +164,11 @@ const ArchiveSettingsView = lazy(() =>
 const HistoryRoute = lazy(() =>
   import("@/views/history").then((module) => ({
     default: module.HistoryRoute,
+  }))
+);
+const ProjectSettingsView = lazy(() =>
+  import("@/views/project-settings").then((module) => ({
+    default: module.ProjectSettingsView,
   }))
 );
 
@@ -185,7 +199,7 @@ function ProductLoading() {
       <div className="flex flex-col items-center gap-5">
         <img
           alt={PRODUCT_NAME}
-          className="pointer-events-none size-20 select-none object-contain"
+          className="pointer-events-none h-14 w-auto select-none"
           draggable={false}
           height={PRODUCT_MARK_SIZE.height}
           src={PRODUCT_MARK_URL}
@@ -259,6 +273,14 @@ function ProductApp() {
     startTransition(() => {
       setSettingsSection(null);
       void navigate(MEMORY_SETTINGS_PATH, { replace: inSettingsRoute });
+    });
+  };
+
+  const openSkillsSettings = () => {
+    settingsStore.ensureLoaded();
+    startTransition(() => {
+      setSettingsSection(null);
+      void navigate(SKILLS_SETTINGS_PATH, { replace: inSettingsRoute });
     });
   };
 
@@ -342,6 +364,7 @@ function ProductApp() {
                         onViewChange={setSidebarView}
                         onOpenSettings={() => selectSettings("general")}
                         onSelectSettings={selectSettings}
+                        onOpenSkillsSettings={openSkillsSettings}
                         onOpenMemorySettings={openMemorySettings}
                         onCloseSettings={closeSettings}
                       />
@@ -390,19 +413,26 @@ function ProductApp() {
                                 element={<ToolsSettingsView />}
                               />
                               <Route
+                                path="/settings/skills"
+                                element={<SkillsSettingsView />}
+                              />
+                              <Route
                                 path="/settings/extensions"
-                                element={<ExtensionsSettingsView />}
+                                element={<Navigate replace to="/settings/skills?tab=extensions" />}
+                              />
+                              <Route
+                                path="/projects/:projectId/settings"
+                                element={<ProjectSettingsView />}
                               />
                             </Routes>
                           </div>
                           {settingsSection === "general" && <GeneralSettingsView />}
+                          {settingsSection === "about" && <AboutSettingsView />}
                           {settingsSection === "shortcuts" && <ShortcutsSettingsView />}
                           {settingsSection === "backends" && <BackendsSettingsView />}
                           {settingsSection === "personalization" && <PersonalizationSettingsView />}
                           {settingsSection === "browser" && <BrowserSettingsView />}
                           {settingsSection === "tools" && <ToolsSettingsView />}
-                          {settingsSection === "skills" && <SkillsSettingsView />}
-                          {settingsSection === "extensions" && <ExtensionsSettingsView />}
                           {settingsSection === "usage" && <UsageSettingsView />}
                           {settingsSection === "archive" && <ArchiveSettingsView />}
                         </Suspense>
@@ -429,15 +459,51 @@ function AppToaster() {
   return <Toaster theme={theme} position="bottom-right" />;
 }
 
+function SurfaceRuntimeEvents() {
+  const { t } = useAppTranslation();
+  useEffect(() => {
+    const hydrate = () => panelSlotStore.reloadFromStorage();
+    const draftLost = () =>
+      toast.error(t("windowSurface.draftLost"), {
+        description: t("windowSurface.draftLostDescription"),
+      });
+    window.addEventListener("bottega:surface-hydrated", hydrate);
+    window.addEventListener("bottega:surface-draft-lost", draftLost);
+    return () => {
+      window.removeEventListener("bottega:surface-hydrated", hydrate);
+      window.removeEventListener("bottega:surface-draft-lost", draftLost);
+    };
+  }, [t]);
+  return null;
+}
+
+function WindowProductRoot() {
+  const { t } = useAppTranslation();
+  const context = windowContext();
+  if (context.role === "main") {
+    return <SetupProvider><ProductApp /></SetupProvider>;
+  }
+  return context.appId ? (
+    <AppWindowShell appId={context.appId} />
+  ) : (
+    <div role="alert" className="grid h-svh place-items-center bg-background text-destructive">
+      {t("windowSurface.missingIdentity")}
+    </div>
+  );
+}
+
 function App() {
+  const context = windowContext();
   return (
-    <AppI18nProvider initialLanguage={initialLanguage}>
+    <AppI18nProvider
+      initialLanguage={initialLanguage}
+      syncSettings={context.role === "main"}
+    >
       <AppearanceProvider initialAppearance={initialAppearance}>
         <HashRouter>
-          <SetupProvider>
-            <ProductApp />
-          </SetupProvider>
+          <WindowProductRoot />
         </HashRouter>
+        <SurfaceRuntimeEvents />
         <AppToaster />
       </AppearanceProvider>
     </AppI18nProvider>
@@ -453,6 +519,7 @@ setEffectiveLocale(initialLanguage);
 /* 与字体同批、同在首次 render 之前：主题在此已由 main 的 themeSource
    决定，这里只是把结论写上 documentElement，没有一帧错色。 */
 initializeTheme();
+installWindowSurfaceRuntime();
 /* 与字体、主题同批：目录也是首帧的一部分。首包只背英文，活跃语言在第一次
    render 之前就位——多等的是一次本地 chunk 读取，换来的是没有一帧英文闪
    过，也没有 Suspense 把根节点撕开。

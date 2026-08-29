@@ -1,14 +1,16 @@
 /**
- * [INPUT]: Depends on AppStore active generation, BaseGuiGrantStore exact projection, AppGateway, gui-api token/scanning/endpoint factory and Node fs realpath
- * [OUTPUT]: Provides AppGuiProjection with the only live binding, serial projection request `gui/`Remove the old worker, change the scoped token and generate GuiInfo
- * [POS]: The app module is based on the base-gui live capability ownerThe route/meta/token/handler uses the same binding
+ * [INPUT]: Depends on AppStore active generation, BaseGuiGrantStore exact projection, AppGateway, GUI token/scanning/API factories, and Node fs realpath
+ * [OUTPUT]: Provides the serialized Base GUI live projection, rotating scoped tokens and clearing origin worker/cache state on capability changes
+ * [POS]: The apps module Base GUI capability owner; route, metadata, token, and handler consume the same generation binding
  */
 
 import { realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   requestedBaseGuiCapabilities,
+  requestedBaseGuiHostActions,
   type AppGuiInfo,
+  type AppGuiInfoInput,
   type BaseGuiLiveBinding,
 } from "../../../shared/apps-ipc";
 import type { AppGateway } from "./app-gateway";
@@ -21,6 +23,10 @@ import {
 } from "./gui-api";
 import { isContained } from "./support";
 import type { BaseGuiGrantStore } from "./base-gui/grant-store";
+import {
+  createWorkspacePreviewHandler,
+  type WorkspacePreviewPort,
+} from "./base-gui/workspace-preview";
 
 /**
  * 详情页取 gui-info 与编辑 chat turn 落地共用
@@ -41,58 +47,67 @@ export class AppGuiProjection {
     this.gateway.attachBaseGuiApi(createBaseGuiApi(this.tokens, port));
   }
 
-  sync(appId: string, options: { resetCapability?: boolean } = {}) {
-    return this.serialize(appId, () => this.syncNow(appId, options));
+  configureWorkspacePreview(port: WorkspacePreviewPort) {
+    this.gateway.attachWorkspacePreview(
+      createWorkspacePreviewHandler(this.tokens, port)
+    );
   }
 
-  private async syncNow(
+  sync(appId: string, options: { resetCapability?: boolean } = {}) {
+    return this.serialize(appId, () => this.inspect(appId, options));
+  }
+
+  private async inspect(
     appId: string,
     options: { resetCapability?: boolean } = {}
   ) {
     const record = this.store.get(appId);
-    const origin = this.gateway.getOrigin(appId);
     const active = record?.generationBinding.active;
     if (record?.manifest?.kind === "base" && active) {
-      const binding = this.liveBinding(appId);
       const contentRoot = this.store.contentRoot(appId, active.generationId);
-      const root = binding ? await this.canonicalGuiRoot(contentRoot) : null;
+      const root = await this.canonicalGuiRoot(contentRoot);
       const pages = root ? await collectGuiPages(root) : [];
-      if (binding && root && pages.length) {
-        this.gateway.registerBaseGui(appId, join(contentRoot, "gui"), root, {
-          ...binding,
-        });
-        if (options.resetCapability) {
-          this.tokens.revoke(appId);
-          await this.gateway.clearBaseGuiWorkerState(appId);
-        }
-        return { pages, origin, binding };
+      if (root && pages.length) {
+        if (options.resetCapability) await this.revokeSurfacesNow(appId);
+        return { pages, contentRoot, root };
       }
     }
-    const registered = this.gateway.isBaseGuiRegistered(appId);
-    if (registered) this.gateway.unregister(appId);
-    this.tokens.revoke(appId);
-    if (registered || options.resetCapability) {
-      await this.gateway.clearBaseGuiWorkerState(appId);
-    }
-    return { pages: [], origin, binding: null };
+    await this.revokeSurfacesNow(appId);
+    return { pages: [], contentRoot: "", root: "" };
   }
 
-  /** 打开即轮换 token：旧 iframe 的下一次请求必然 401。 */
-  info(appId: string): Promise<AppGuiInfo> {
-    return this.serialize(appId, async () => {
-      const { pages, origin, binding } = await this.syncNow(appId, {
-        resetCapability: true,
-      });
+  /** 打开即轮换本 surface token；同 App 的其它面不受影响。 */
+  info(input: AppGuiInfoInput): Promise<AppGuiInfo> {
+    return this.serialize(`${input.appId}:${input.surfaceId}`, async () => {
+      const { pages, contentRoot, root } = await this.inspect(input.appId);
+      const binding = this.liveBinding(input);
+      const origin = this.gateway.getSurfaceOrigin(input.appId, input.surfaceId);
+      if (pages.length && binding && root) {
+        this.gateway.registerBaseGui(
+          input.appId,
+          input.surfaceId,
+          join(contentRoot, "gui"),
+          root,
+          binding
+        );
+        this.tokens.revokeSurface(input.appId, input.surfaceId);
+        await this.gateway.clearSurfaceWorkerState(input.appId, input.surfaceId);
+      } else {
+        this.tokens.revokeSurface(input.appId, input.surfaceId);
+        this.gateway.unregisterBaseGuiSurface(input.appId, input.surfaceId);
+      }
       return {
         pages,
         origin,
         token: pages.length && binding ? this.tokens.mint(binding) : "",
         baseCapabilities: binding?.baseCapabilities ?? [],
+        hostActions: binding?.hostActions ?? [],
       };
     });
   }
 
-  liveBinding(appId: string): BaseGuiLiveBinding | null {
+  liveBinding(input: AppGuiInfoInput | string): BaseGuiLiveBinding | null {
+    const appId = typeof input === "string" ? input : input.appId;
     const record = this.store.get(appId);
     const active = record?.generationBinding.active;
     const generation = record?.generations.find(
@@ -117,12 +132,24 @@ export class AppGuiProjection {
     const baseCapabilities = approved
       ? requested.filter((capability) => projection.capabilities.includes(capability))
       : [];
+    const hostActions = approved
+      ? requestedBaseGuiHostActions(generation.manifest).filter((action) =>
+          projection.hostActions.includes(action)
+        )
+      : [];
     return {
       appId,
       generationId: generation.generationId,
       contentDigest: generation.contentDigest,
       lifecycleRevision: record.lifecycleRevision,
       baseCapabilities,
+      hostActions,
+      workspaceReadScope: baseCapabilities.includes("workspace-read") &&
+        projection.capabilityScopes.workspaceRead === "design/"
+        ? "design/"
+        : null,
+      surfaceId: typeof input === "string" ? "capability-projection" : input.surfaceId,
+      appSurfaceLeaseId: typeof input === "string" ? null : input.appSurfaceLeaseId,
       capabilityDecisionId: approved
         ? projection.decision!.decisionId
         : null,
@@ -130,22 +157,35 @@ export class AppGuiProjection {
     };
   }
 
-  /** 编辑/校验侧现场扫盘，绝不读可能过期的缓存。 */
-  async pagesForApp(appId: string) {
-    const { pages } = await this.sync(appId);
-    return pages;
-  }
-
   /** App 下线/删除排在在途签发之后，保证 revoke 是该队列的最终写。 */
   revoke(appId: string) {
     return this.serialize(appId, async () => {
-      this.tokens.revoke(appId);
-      const registered = this.gateway.isBaseGuiRegistered(appId);
-      if (registered) this.gateway.unregister(appId);
-      if (registered || this.store.get(appId)?.manifest?.kind === "base") {
-        await this.gateway.clearBaseGuiWorkerState(appId);
+      await this.revokeSurfacesNow(appId);
+    });
+  }
+
+  release(input: AppGuiInfoInput) {
+    return this.serialize(`${input.appId}:${input.surfaceId}`, async () => {
+      this.tokens.revokeSurface(input.appId, input.surfaceId);
+      const registered = this.gateway.isBaseGuiRegistered(
+        input.appId,
+        input.surfaceId
+      );
+      this.gateway.unregisterBaseGuiSurface(input.appId, input.surfaceId);
+      if (registered) {
+        await this.gateway.clearSurfaceWorkerState(input.appId, input.surfaceId);
       }
     });
+  }
+
+  private async revokeSurfacesNow(appId: string) {
+    this.tokens.revokeApp(appId);
+    const origins = this.gateway.unregisterBaseGuiApp(appId);
+    await Promise.all(
+      origins.map(({ surfaceId }) =>
+        this.gateway.clearSurfaceWorkerState(appId, surfaceId)
+      )
+    );
   }
 
   /** mint 是撤销式写操作；同 App 并发 info 必须按调用顺序完成。 */

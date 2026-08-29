@@ -71,7 +71,6 @@ export class ShareFlow {
     private readonly bases: BaseStore,
     private readonly intents: LifecycleIntentStore,
     private readonly gate: AdmissionGate,
-    private readonly publish: (record: AppRecord) => void,
     private readonly run: ShareCommandRunner = command
   ) {
     this.root = join(userData, "app-share");
@@ -387,7 +386,6 @@ export class ShareFlow {
         ...record,
         publishedRepoUrl: remoteUrl,
       }));
-      this.publish(saved);
       await this.intents.advance(intent.intentId, "recorded");
       await rm(preview.staging, { recursive: true, force: true });
       return {

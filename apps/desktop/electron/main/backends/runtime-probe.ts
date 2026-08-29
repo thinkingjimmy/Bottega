@@ -157,7 +157,17 @@ const SECTION_MCP_MINIMUM: Partial<
      跑通内置工具的那次取证：2.1.220 六环全通（verified-capabilities
      2026-08-01 行）。2.1.216–2.1.219 因此正确地落回 none。 */
   claude: [2, 1, 220],
-  kimi: [0, 29, 2],
+  /* 0.29.2 → 0.39.0（2026-08-27 上调）。史实：kimi **0.37.0 引入**的
+     `acpMcpServersToConfigRecord` 对无 `type` 的条目直接 throw
+     「does not declare a runtime identity」，而 ACP v1 正典里 stdio 变体
+     本就靠**没有 `type`**识别（SDK 1.3.0 `McpServerStdio` 无此字段）⇒
+     **0.37.0–0.38.x 是坏窗口**：带内置 MCP 的 `session/new` 全数 -32603，
+     产品内置工具面在 kimi 上整段不可用。上游 PR #3183 在 **0.39.0 修复**
+     （补回 stdio 分支并自填 `runtime_id:"local"`），本机 0.39.0 深握手
+     `builtinMcpReady=55ms` 实测转绿。
+     **不做坏窗口区间闸**：产品未发布、无真实用户，零迁移哲学下把下界抬到
+     已验证版本即可——区间闸是为存量用户写的分支，这里没有存量用户。 */
+  kimi: [0, 39, 0],
 };
 
 function versionParts(value: string | undefined) {
@@ -181,7 +191,8 @@ function atLeast(
 
 /**
  * oracle 矩阵：未被本机实测证明的版本/后端一律 fail-closed。
- * kimi 0.29.2 于 2026-07-29 真机取证解锁（dev/agent-cli-docs.md 内置工具面回归行）。
+ * kimi 0.39.0 于 2026-08-27 真机取证解锁（深握手 builtinMcpReady 转绿）；0.29.2 的旧下界因
+ * 0.37.0–0.38.x 的上游 stdio MCP 坏窗口作废，详见常量上方注释与真值账同日行。
  * opencode 未进表 ⇒ 恒 none（延后账本 L7）。
  */
 export function builtinToolsForVersion(

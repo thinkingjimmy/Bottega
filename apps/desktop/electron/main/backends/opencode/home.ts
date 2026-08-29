@@ -1,14 +1,16 @@
 /**
- * [INPUT]: Depends on Node crypto/os/path, runtime-probe Minimum user environment, XDG/OPENCODE_* User variables with main Freeze third-party MCP plan
- * [OUTPUT]: Provides opencodeEnvironment ((variable pass/drop/override)  global AGENTS.md alternative semantics config dir, opencodeRoots/opencodeSensitiveFiles Fence data source, sessionId validator, each turn random server credentials, refusing to repeat alias with unaltered OPENCODE_CONFIG_CONTENT MCP overlay and locked listening + key-by-key permissions with overlapping Plan opencodepLaunchAc
- * [POS]: The environment and state root of backends/opencode is a single source of truth; version/models/turn Three paths share the same policy, sandbox declaration table takes path from here
+ * [INPUT]: Depends on Node crypto/fs/os/path, runtime-probe minimum environment, external-override existence metadata, main-frozen third-party MCP plans, and turn-leased built-in MCP specs
+ * [OUTPUT]: Provides external OpenCode override fail-close detection, isolated app-owned config environment, fence roots, session validation, random server credentials, locked ACP launch and combined MCP overlay
+ * [POS]: The environment and state-root authority of backends/opencode; product processes never read or forward user/agent override configuration bytes
  */
 
 import { randomBytes } from "node:crypto";
-import { tmpdir } from "node:os";
+import { lstatSync, mkdtempSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { sanitizedProcessEnvironment } from "../runtime-probe";
 import type { AcpLauncher, AgentRuntime } from "../types";
+import type { BuiltinMcpServerSpec } from "../../tools/lease";
 import {
   assertUniqueMcpBackendAliases,
   type ThirdPartyMcpPlan,
@@ -38,13 +40,68 @@ export const validateOpencodeSessionId = (id: string) =>
  * ============================================================ */
 const PASS_THROUGH = [
   "OPENCODE_DISABLE_DEFAULT_PLUGINS",
-  "OPENCODE_CONFIG",
-  "OPENCODE_CONFIG_DIR",
-  "XDG_CONFIG_HOME",
   "XDG_DATA_HOME",
   "XDG_CACHE_HOME",
   "XDG_STATE_HOME",
 ] as const;
+
+/* 每次 Bottega 进程使用一个不可猜的空配置根。外部配置检查与 OpenCode
+   启动之间即使发生替换，子进程也没有任何指向外部配置面的路径。 */
+const APP_OWNED_CONFIG_HOME = mkdtempSync(
+  join(tmpdir(), "bottega-opencode-config-")
+);
+
+const OVERRIDE_ROOT_ENTRIES = [
+  "opencode.json",
+  "opencode.jsonc",
+  "AGENTS.md",
+  "agent",
+  "agents",
+  "commands",
+] as const;
+
+type Lstat = (path: string) => unknown;
+
+export function assertNoExternalOpencodeOverrides(
+  source: NodeJS.ProcessEnv = process.env,
+  userHome = homedir(),
+  lstat: Lstat = lstatSync
+) {
+  const roots = new Set([
+    join(
+      resolve(source.XDG_CONFIG_HOME?.trim() || join(userHome, ".config")),
+      "opencode"
+    ),
+    join(userHome, ".opencode"),
+    ...(source.OPENCODE_CONFIG_DIR?.trim()
+      ? [resolve(source.OPENCODE_CONFIG_DIR.trim())]
+      : []),
+  ]);
+  const candidates = new Set([
+    ...(source.OPENCODE_CONFIG?.trim()
+      ? [resolve(source.OPENCODE_CONFIG.trim())]
+      : []),
+    ...[...roots].flatMap((root) =>
+      OVERRIDE_ROOT_ENTRIES.map((entry) => join(root, entry))
+    ),
+  ]);
+  for (const path of candidates) {
+    try {
+      lstat(path);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw new Error(
+        `OPENCODE_EXTERNAL_OVERRIDE_UNINSPECTABLE: cannot verify ${path}`,
+        { cause }
+      );
+    }
+    throw new Error(
+      `OPENCODE_EXTERNAL_OVERRIDE_PRESENT: remove or disable ${path} before starting an OpenCode turn`
+    );
+  }
+}
+
+export const opencodeAppOwnedConfigHome = () => APP_OWNED_CONFIG_HOME;
 
 const OVERRIDES = {
   OPENCODE_PURE: "1",
@@ -66,6 +123,7 @@ export function opencodeEnvironment(
   return {
     ...sanitizedProcessEnvironment(runtime.path, source),
     ...passed,
+    XDG_CONFIG_HOME: APP_OWNED_CONFIG_HOME,
     ...OVERRIDES,
   };
 }
@@ -182,7 +240,7 @@ const ACP_ARGS = [
 /* ============================================================
  * 这一注入不是加固，是两个权限档位能否成立的唯一支柱。
  *
- * 真机实测（1.18.14，dev/opencode-permission-probe.mjs）：**不注入
+ * 真机实测（1.18.14，DEV/agents/probes/opencode/permission.mjs）：**不注入
  * `OPENCODE_PERMISSION` 时，空配置下的 ACP turn 零审批请求，bash 与
  * edit 全部直接执行**——上游在 ACP 路径上的默认并不是 ask（上游默认表
  * 恰是 `"*": "allow"` 加三条例外，见 `agent/agent.ts` 的 defaults）。
@@ -246,12 +304,12 @@ const DOTENV_GUARD: Record<string, PermissionAction> = {
 
 /**
  * Plan（`planMode: true`）由宿主表达：composer 开关经 `modeValues` 切
- * build/plan agent，再叠下方 PLAN_OVERLAY 堵住权限面。上游 ACP builtins
- * 尚未移植 plan_exit，且 build agent 默认允许模型自己 `plan_enter`——
- * 让它自己进出，等于在宿主背后扳一个 UI 上写着别的状态的开关：自己进去，
- * 编辑全被拒而开关没亮 Plan；自己出来，开关还亮着 Plan 它却已在改代码。
- * deny 让这两个工具从模型的工具表里直接消失（上游 `disabled()`：末条匹配
- * 规则是 `*`+deny 即隐藏），比放一个只会失败的工具在那里诚实。
+ * build/plan agent，再叠下方 PLAN_OVERLAY 堵住权限面。主因是上游 ACP
+ * 路径不可达：三态真机工具表均无 plan_exit，真正缺口是 `builtins.ts`
+ * effect 内置表尚未移植，registry 注册本身并不等于 wire 可达。产品 deny
+ * 是第二层保险，因为宿主拥有 Plan 状态；上游 headless 也同构 deny。
+ * 让模型自己进出会使 UI 与真实 agent 分叉。deny 的两个值保持固定，并由
+ * 上游 `disabled()` 让工具从表中消失，而不是留下一个只会失败的入口。
  */
 const PLAN_LOCK: Record<string, PermissionAction> = {
   plan_enter: "deny",
@@ -304,6 +362,16 @@ const permissionBaseline = (session: {
     ...(session.planMode ? PLAN_OVERLAY : {}),
   });
 
+const withoutExternalConfigPointers = (env?: NodeJS.ProcessEnv) =>
+  Object.fromEntries(
+    Object.entries(env ?? {}).filter(
+      ([name]) =>
+        name !== "OPENCODE_CONFIG" &&
+        name !== "OPENCODE_CONFIG_DIR" &&
+        name !== "XDG_CONFIG_HOME"
+    )
+  );
+
 /**
  * ACP 进程启动三元组——本接入案的安全不变量全在这一份里：锁定的监听
  * 参数、权限基线、每 turn 随机凭据。`createTurn` 与 readiness 探测都必须
@@ -321,7 +389,7 @@ export const opencodeAcpLaunch: AcpLauncher = (runtime, overlay) => ({
   args: ACP_ARGS,
   env: {
     ...opencodeEnvironment(runtime),
-    ...overlay?.processEnv,
+    ...withoutExternalConfigPointers(overlay?.processEnv),
     /* ============================================================
      * 不变量后置。此前这几条排在 `overlay` **之前**，于是"权限基线不可
      * 被覆盖"这件事全靠另一个模块的纪律——app-config-store 只放行
@@ -330,11 +398,13 @@ export const opencodeAcpLaunch: AcpLauncher = (runtime, overlay) => ({
      * 这里不会有任何反应。挪到后面，它就成了本地的、结构上的事实。
      * ============================================================ */
     ...OVERRIDES,
+    XDG_CONFIG_HOME: APP_OWNED_CONFIG_HOME,
     OPENCODE_PERMISSION: permissionBaseline(overlay?.session ?? {}),
-    ...(overlay?.session?.thirdPartyMcpPlan?.entries.length
+    ...(overlay?.session?.thirdPartyMcpPlan?.entries.length || overlay?.session?.builtinMcp
       ? {
           OPENCODE_CONFIG_CONTENT: opencodeMcpOverlay(
-            overlay.session.thirdPartyMcpPlan
+            overlay?.session?.thirdPartyMcpPlan,
+            overlay?.session?.builtinMcp
           ),
         }
       : {}),
@@ -342,27 +412,47 @@ export const opencodeAcpLaunch: AcpLauncher = (runtime, overlay) => ({
   },
 });
 
-export function opencodeMcpOverlay(plan: ThirdPartyMcpPlan) {
-  assertUniqueMcpBackendAliases(plan.entries);
+export function opencodeMcpOverlay(
+  plan: ThirdPartyMcpPlan | undefined,
+  builtin?: BuiltinMcpServerSpec
+) {
+  const entries = plan?.entries ?? [];
+  assertUniqueMcpBackendAliases(entries);
+  if (builtin && entries.some((server) => server.backendAlias === builtin.name)) {
+    throw new Error(`OpenCode MCP alias duplicated: ${builtin.name}`);
+  }
   const serialized = JSON.stringify({
     mcp: Object.fromEntries(
-      plan.entries.map((server) => [
-        server.backendAlias,
-        server.transport === "stdio"
-          ? {
-              type: "local",
-              command: [server.command, ...server.args],
-              environment: server.env,
-              ...(server.cwd ? { cwd: server.cwd } : {}),
-              enabled: true,
-            }
-          : {
-              type: "remote",
-              url: server.url,
-              headers: server.headers,
-              enabled: true,
-            },
-      ])
+      [
+        ...entries.map((server) => [
+          server.backendAlias,
+          server.transport === "stdio"
+            ? {
+                type: "local",
+                command: [server.command, ...server.args],
+                environment: server.env,
+                ...(server.cwd ? { cwd: server.cwd } : {}),
+                enabled: true,
+              }
+            : {
+                type: "remote",
+                url: server.url,
+                headers: server.headers,
+                enabled: true,
+              },
+        ] as const),
+        ...(builtin
+          ? [[
+              builtin.name,
+              {
+                type: "local" as const,
+                command: [builtin.command, ...builtin.args],
+                environment: builtin.env,
+                enabled: true,
+              },
+            ] as const]
+          : []),
+      ]
     ),
   });
   if (Buffer.byteLength(serialized, "utf8") > 96 * 1024) {

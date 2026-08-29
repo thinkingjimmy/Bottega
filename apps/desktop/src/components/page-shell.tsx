@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on ReactNode, I18n, ui/button/sidebar, cn, lib/platform The platform is based on react-router Link
- * [OUTPUT]: Provides localised return buttons, untitled pagesshell, panelChromeClassName and crossHeaderPanelStyle with pure drag
- * [POS]: Public page outlines in the round-angle workspace, the alignment benchmark for single-line headers, drag areas and third-line cross-page headers; Folding page head left inside the edge of the platform forks ((mac lets the red and green lights + float the float, Windows lets the float only)
+ * [OUTPUT]: Provides localised return buttons, untitled pagesshell, an optional rail row under the header, panelChromeClassName and crossHeaderPanelStyle with pure drag
+ * [POS]: Public page outlines in the round-angle workspace, the alignment benchmark for single-line headers, drag areas and third-line cross-page headers; the divider is drawn once, at the bottom edge of the header block (the rail takes it over when present); Folding page head left inside the edge of the platform forks ((mac lets the red and green lights + float the float, Windows lets the float only)
  */
 
 import { Link } from "react-router";
@@ -38,12 +38,19 @@ export const crossHeaderPanelStyle = {
 
 /* 标题可缺席：空会话那种页面没有可写的名字，此时页头连同分隔线一起
    退成一条纯拖拽带——一条横线下面写着「新任务」，说的正是这一页已经
-   说过的话。分隔线因此不是独立开关，它只是「有标题」的影子。 */
+   说过的话。分隔线因此不是独立开关，它只是「有标题」的影子。
+
+   rail 是页头块的第二层（页签条那种整幅横带）。它一来，分隔线就跟着
+   走到块的最下沿——页头自己那条随即撤掉：两条平行线中间夹着 40px 空白，
+   说的是同一件事「页头到此为止」，说两遍就成了噪声。
+   规则因此只有一条：线永远画在页头块的最下沿，谁在最下沿谁画。
+   这也是不给布尔开关的原因——开关能被单独拨错，插槽不能。 */
 type PageShellProps = {
   title?: React.ReactNode;
   icon?: React.ReactNode; // 标题前的装饰图标
   titleAdornment?: React.ReactNode; // 标题后的操作或状态；跨页头第三栏盖不到，常驻操作放这里
   backHref?: string; // 有值则在标题前渲染返回按钮
+  rail?: React.ReactNode; // 页头下方那条整幅横带（页签条）；有它则分界线归它
   actions?: React.ReactNode; // 页头右侧操作区；开着跨页头第三栏时会被盖住
   children: React.ReactNode;
 };
@@ -53,6 +60,7 @@ export function PageShell({
   icon,
   titleAdornment,
   backHref,
+  rail,
   actions,
   children,
 }: PageShellProps) {
@@ -64,7 +72,7 @@ export function PageShell({
       <header
         className={cn(
           "relative flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-2 px-4 [-webkit-app-region:drag]",
-          title && "border-b",
+          title && !rail && "border-b",
           /* 折叠后浮动折叠钮落在内容区左上角：mac 要同时让开红绿灯故 8.5rem，
              Windows 无红绿灯只需让开钮本身（left-3 + 32px），pl-12 足矣。 */
           state === "collapsed" &&
@@ -118,6 +126,7 @@ export function PageShell({
           {actions}
         </div>
       </header>
+      {rail && <div className="shrink-0 border-b">{rail}</div>}
       <div className="min-h-0 flex-1">{children}</div>
     </div>
   );

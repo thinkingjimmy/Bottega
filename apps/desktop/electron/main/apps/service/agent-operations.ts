@@ -141,12 +141,10 @@ export class AppAgentOperations {
     if (input.role === "interactive") {
       if (input.agent === "auto") throw new Error("交互 Agent 不支持 Auto");
       await this.requireReadyBackend(input.agent);
-      const saved = await this.deps.store.update(record.id, (current) => ({
+      return this.deps.store.update(record.id, (current) => ({
         ...current,
         agent: input.agent as AgentBackendId,
       }));
-      this.deps.emit({ appId: record.id, type: "status", record: saved });
-      return saved;
     }
 
     const effective = await this.resolveMaintenanceBackend(input.agent);
@@ -170,7 +168,6 @@ export class AppAgentOperations {
           bindingRevision: current.bindingRevision + 1,
         };
       });
-      this.deps.emit({ appId: record.id, type: "status", record: saved });
       return saved;
     } finally {
       this.deps.maintenanceGate.release(record.id, owner);

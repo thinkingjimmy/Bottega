@@ -34,7 +34,7 @@ export function buildComponentDeliveryDecision(input: {
   inventory: ExtensionInventorySnapshot;
   capability: ExtensionCapabilitySnapshot;
   turnIdentity: ExtensionTurnIdentity;
-  productAllowed?: (componentIdentity: string) => boolean;
+  productAllowed?: (declaredComponentIdentity: string) => boolean;
 }): ComponentDeliveryDecision {
   assertSnapshot(input.inventory, input.capability, input.turnIdentity);
   const exclusions: ComponentDeliveryExclusion[] = [];
@@ -65,7 +65,8 @@ export function buildComponentDeliveryDecision(input: {
           item.appGenerationId === app.appGenerationId &&
           item.requirementResolutionDigest === app.frozenSet.resolutionDigest &&
           item.declarationDigest === requirement.declarationDigest &&
-          item.componentIdentity === requirement.componentIdentity &&
+          item.componentInstanceIdentity ===
+            requirement.componentInstanceIdentity &&
           item.packageGenerationRef.packageGenerationId ===
             requirement.packageGenerationRef.packageGenerationId &&
           item.packageGenerationRef.recordDigest ===
@@ -80,7 +81,8 @@ export function buildComponentDeliveryDecision(input: {
       }
       const capability = input.capability.entries.find(
         (item) =>
-          item.componentIdentity === requirement.componentIdentity &&
+          item.componentInstanceIdentity ===
+            requirement.componentInstanceIdentity &&
           item.packageGenerationRef.packageGenerationId ===
             requirement.packageGenerationRef.packageGenerationId &&
           item.packageGenerationRef.recordDigest ===
@@ -90,7 +92,9 @@ export function buildComponentDeliveryDecision(input: {
         const reason = capability?.exclusion ?? {
           taxonomyVersion: 1 as const,
           code: "backend-capability-mismatch" as const,
-          parameters: { componentIdentity: requirement.componentIdentity },
+          parameters: {
+            componentInstanceIdentity: requirement.componentInstanceIdentity,
+          },
           evidenceDigest: digestCanonical({ requirement, capability: null }),
         };
         exclusions.push(
@@ -115,21 +119,22 @@ export function buildComponentDeliveryDecision(input: {
         continue;
       }
       const materializationKey = digestCanonical({
-        componentIdentity: requirement.componentIdentity,
+        componentInstanceIdentity: requirement.componentInstanceIdentity,
         packageGenerationRef: requirement.packageGenerationRef,
         resolvedConfigDigest: requirement.resolvedConfigDigest,
         deliveryReference: capability.deliveryReference,
       });
       const collision = [...materializations.values()].find(
         (item) =>
-          item.componentIdentity === requirement.componentIdentity &&
+          item.componentInstanceIdentity ===
+            requirement.componentInstanceIdentity &&
           item.resolvedConfigDigest !== requirement.resolvedConfigDigest
       );
       if (collision && !capability.multiInstanceIsolation) {
         exclusions.push(
           exclusion(app, requirement, composition("multi-instance-conflict", {
             appId: app.appId,
-            componentIdentity: requirement.componentIdentity,
+            componentInstanceIdentity: requirement.componentInstanceIdentity,
           }))
         );
         continue;
@@ -138,7 +143,7 @@ export function buildComponentDeliveryDecision(input: {
       if (!delivery) {
         delivery = {
           deliveryInstanceId: randomUUID(),
-          componentIdentity: requirement.componentIdentity,
+          componentInstanceIdentity: requirement.componentInstanceIdentity,
           packageGenerationRef: requirement.packageGenerationRef,
           resolvedConfigDigest: requirement.resolvedConfigDigest,
           componentPlanLeaseId: randomUUID(),
@@ -148,7 +153,8 @@ export function buildComponentDeliveryDecision(input: {
       }
       requirementBindings.push({
         declarationDigest: requirement.declarationDigest,
-        componentIdentity: requirement.componentIdentity,
+        declaredComponentIdentity: requirement.declaredComponentIdentity,
+        componentInstanceIdentity: requirement.componentInstanceIdentity,
         packageGenerationRef: requirement.packageGenerationRef,
         resolvedConfigDigest: requirement.resolvedConfigDigest,
         required: requirement.required,
@@ -168,7 +174,7 @@ export function buildComponentDeliveryDecision(input: {
 
   return converge(exclusions, {
     planInstanceId: randomUUID(),
-    inventoryRevision: input.inventory.revision,
+    visibleInventoryVersion: input.inventory.visibleInventoryVersion,
     capabilitySnapshotDigest: input.capability.snapshotDigest,
     turnIdentity: input.turnIdentity,
     appBindings,
@@ -202,7 +208,7 @@ export function excludeFailedDeliveries(
         appGenerationId: app.appGenerationId,
         requirementResolutionDigest: app.requirementResolutionDigest,
         declarationDigest: binding.declarationDigest,
-        componentIdentity: binding.componentIdentity,
+        declaredComponentIdentity: binding.declaredComponentIdentity,
         required: binding.required,
         reason: { kind: "delivery-eligibility", reason },
       });
@@ -214,7 +220,7 @@ export function excludeFailedDeliveries(
      不变——收窄后仍是同一轮的同一个计划，plan lease 与快照目录都按它寻址。 */
   return converge(exclusions, {
     planInstanceId: decision.plan.planInstanceId,
-    inventoryRevision: decision.plan.inventoryRevision,
+    visibleInventoryVersion: decision.plan.visibleInventoryVersion,
     capabilitySnapshotDigest: decision.plan.capabilitySnapshotDigest,
     turnIdentity: decision.plan.turnIdentity,
     appBindings,
@@ -250,7 +256,10 @@ function authorizationExclusion(
   if (!app.agentDelegationEnabled) {
     return authorization("attachment-delegation-disabled", {});
   }
-  if (productAllowed && !productAllowed(requirement.componentIdentity)) {
+  if (
+    productAllowed &&
+    !productAllowed(requirement.declaredComponentIdentity)
+  ) {
     return authorization("product-policy-denied", {});
   }
   return undefined;
@@ -266,7 +275,7 @@ function exclusion(
     appGenerationId: app.appGenerationId,
     requirementResolutionDigest: app.frozenSet.resolutionDigest,
     declarationDigest: requirement.declarationDigest,
-    componentIdentity: requirement.componentIdentity,
+    declaredComponentIdentity: requirement.declaredComponentIdentity,
     required: requirement.required,
     reason,
   };
@@ -304,7 +313,8 @@ function assertSnapshot(
   turn: ExtensionTurnIdentity
 ) {
   if (
-    capability.inventoryRevision !== inventory.revision ||
+    capability.visibleInventoryVersion !== inventory.visibleInventoryVersion ||
+    turn.visibleInventoryVersion !== inventory.visibleInventoryVersion ||
     capability.backendId !== turn.backendId ||
     capability.backendRuntimeIdentity !== turn.backendRuntimeIdentity
   ) {

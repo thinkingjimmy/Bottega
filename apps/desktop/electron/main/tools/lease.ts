@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node crypto ̇ shared BuiltinTool Static registry and per-turn server/socket path
- * [OUTPUT]: Provides incarnation-bound BuiltinMcpLease, the launcher/budget is unchanged, the studio server spec, the ready/revoke signal, and the `(token, domainId)` Frequency control
- * [POS]: The tools platform authorization core; The sub-process only holds random tokens, main bridge only live lease
+ * [INPUT]: Depends on Node crypto, shared builtin-tool registry, per-turn server/socket path, and optional frozen Skills custody
+ * [OUTPUT]: Provides incarnation-bound BuiltinMcpLease, launcher/budgets, ready/revoke signals, `(token, domainId)` rate control, and custody release after invocation drain
+ * [POS]: Tool-platform authorization core; subprocesses hold only random tokens, while main holds the live lease and turn custody
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
@@ -30,6 +30,8 @@ export type BuiltinMcpLease = {
   generation: number;
   allowedTools: BuiltinToolName[];
   initiatorBackend: AgentBackendId;
+  /** References the resource-owning Skills turn custody; the lease owns no Skill bytes or Registry refs. */
+  skillsCustodyId?: string;
   /** 发起方 CLI 的 MCP client 对最终 CallToolResult 的可见上限。 */
   resultByteBudget: number;
   socketToken: string;
@@ -55,7 +57,7 @@ function abortError() {
 
 /**
  * 按签发 lease 的后端推导 result 字节预算：kimi CLI 在 ~100KB 处截断 MCP
- * 工具结果（dev/agent-cli-docs.md 真机实测），取 80KB 留余量；codex/claude
+ * 工具结果（DEV/agents/docs/agent-cli-docs.md 真机实测），取 80KB 留余量；codex/claude
  * 无发起方上限，维持 domain 逻辑预算。
  */
 export function initiatorResultByteBudget(
@@ -90,6 +92,7 @@ export class BuiltinMcpLeaseStore {
     allowedTools: BuiltinToolName[];
     initiatorBackend: AgentBackendId;
     resultByteBudget?: number;
+    skillsCustodyId?: string;
   }): IssuedBuiltinMcp {
     const socketToken = randomBytes(32).toString("hex");
     const allowedTools = [...new Set(input.allowedTools)].filter((name) =>

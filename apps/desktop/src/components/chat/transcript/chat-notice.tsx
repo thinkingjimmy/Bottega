@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared NoticeChatMessage canonical structure, I18n Provider, Section snapshot, React and Button
- * [OUTPUT]: Provides instantly updated memo ChatNotice with current language; First snapshot of the suspension class before disabling and crossing the window closure
- * [POS]: The control message sheet component of chat/transcript; The first is the "Bubble" and the "Agent" input
+ * [OUTPUT]: Provides instantly updated memo ChatNotice with current language; dormant app-chat-ready identity notices render no UI, while actionable notices retain live state
+ * [POS]: chat/transcript control-message renderer; ordinary user and assistant content stays in the standard message bubble path
  */
 
 import { memo, useEffect, useState } from "react";
@@ -23,7 +23,11 @@ function localizedNoticeMessageContent(
   notice: ChatNoticeData,
   t: ReturnType<typeof useAppTranslation>["t"]
 ) {
+  if (notice.kind === "app-chat-ready") return "";
   if (notice.kind === "manual-recovered") return t("notice.manualRecovered");
+  if (notice.kind === "skill-descriptions-truncated") {
+    return t("notice.skillDescriptionsTruncated");
+  }
   if (notice.kind === "relay-failed") {
     return t("notice.relayFailed", { relayId: notice.relayId });
   }
@@ -35,7 +39,7 @@ function localizedNoticeMessageContent(
   );
 }
 
-export const ChatNotice = memo(function ChatNotice({
+const VisibleChatNotice = memo(function VisibleChatNotice({
   message,
 }: {
   message: NoticeChatMessage;
@@ -130,4 +134,14 @@ export const ChatNotice = memo(function ChatNotice({
       )}
     </div>
   );
+});
+
+export const ChatNotice = memo(function ChatNotice({
+  message,
+}: {
+  message: NoticeChatMessage;
+}) {
+  return message.notice.kind === "app-chat-ready"
+    ? null
+    : <VisibleChatNotice message={message} />;
 });

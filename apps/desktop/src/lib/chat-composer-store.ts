@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React external store, nanoid, PromptInput/RichInput, Gallery origin, attachments, message queues and file authorization release
- * [OUTPUT]: Provides per-chat composer draft/annex/authorization/ queue/target Project ✓ Synchronize the scrapping of draft+ queue across the installation of workspace identity fence, incarnation fence with the national budget
+ * [OUTPUT]: Provides per-chat composer draft/files/queue/pending-ACK state, exact blank-line host append, plus epoch-fenced clone-safe window migration export/commit/restore with one active sender
  * [POS]: the uncommitted entry of a single owner of lib, together with its identity; Unlike retrievable message caches, the store prohibits the removal of LRU and "generation unknown" cannot pretend to replace it
  */
 
@@ -12,6 +12,8 @@ import type {
   RichValue,
 } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import type { ChatsEvent } from "../../shared/chats-ipc";
+import { MESSAGE_BYTE_LIMIT } from "../../shared/chats-ipc";
+import { richInputDisplayText } from "../../shared/rich-input-projection";
 import {
   emptyMessageQueue,
   invalidateWorkspaceBoundQueue,
@@ -19,6 +21,8 @@ import {
   queuedFileNodeIds,
   type MessageQueue,
 } from "./message-queue-model";
+import type { SurfaceComposerCapsule } from "../../shared/window-surfaces-ipc";
+import type { QueueItem } from "./message-queue-model";
 
 export type ComposerFile = PromptInputFilePart & {
   id: string;
@@ -31,7 +35,7 @@ export type ComposerFile = PromptInputFilePart & {
   };
 };
 export type FileNode = Extract<RichNode, { type: "file" }>;
-type FileResource = { file: File; node: FileNode };
+type FileResource = { file?: File; node: FileNode };
 type ComposerState = {
   /** "" = 尚未认领任何一世。它不是「某一世」，因此不能拿去和真实世代比大小。 */
   incarnationId: string;
@@ -66,8 +70,17 @@ type PendingComposerAck = {
   chatId: string;
 };
 const pendingAcks = new Map<string, PendingComposerAck>();
+type AckTransfer = Readonly<{
+  chatId: string;
+  epoch: number;
+  keys: ReadonlySet<string>;
+}>;
+const ackTransfers = new Map<string, AckTransfer>();
+const ownershipEpochs = new Map<string, number>();
+const flushingAcks = new Set<string>();
 
-const ackKey = (ack: PendingComposerAck) => `${ack.kind}:${ack.id}`;
+const ackKey = (ack: Pick<PendingComposerAck, "kind" | "id">) =>
+  `${ack.kind}:${ack.id}`;
 
 /** 与 queue settle 同一 updater 内调用，确保本地承诺不会先于 ack 重试记录。 */
 export function registerPendingComposerAck(ack: PendingComposerAck) {
@@ -76,9 +89,26 @@ export function registerPendingComposerAck(ack: PendingComposerAck) {
 
 function pendingComposerAcks(kind?: PendingComposerAck["kind"]) {
   return [...pendingAcks.values()].filter(
-    (ack) => kind === undefined || ack.kind === kind
+    (ack) =>
+      (kind === undefined || ack.kind === kind) &&
+      !isTransferredAck(ackKey(ack))
   );
 }
+
+const isTransferredAck = (key: string) =>
+  [...ackTransfers.values()].some(
+    (transfer) =>
+      transfer.epoch === ownershipEpoch(transfer.chatId) &&
+      transfer.keys.has(key)
+  );
+
+const ownershipEpoch = (chatId: string) => ownershipEpochs.get(chatId) ?? 0;
+
+const advanceOwnershipEpoch = (chatId: string) => {
+  const next = ownershipEpoch(chatId) + 1;
+  ownershipEpochs.set(chatId, next);
+  return next;
+};
 
 export async function flushPendingComposerAcks(ports: {
   manual(ids: string[]): Promise<void>;
@@ -86,15 +116,228 @@ export async function flushPendingComposerAcks(ports: {
 }) {
   for (const kind of ["manual", "steer"] as const) {
     const acks = pendingComposerAcks(kind);
-    if (!acks.length) continue;
+    const available = acks.filter((ack) => !flushingAcks.has(ackKey(ack)));
+    if (!available.length) continue;
+    const keys = available.map(ackKey);
+    for (const key of keys) flushingAcks.add(key);
     try {
-      await ports[kind](acks.map((ack) => ack.id));
-      for (const ack of acks) pendingAcks.delete(ackKey(ack));
+      await ports[kind](available.map((ack) => ack.id));
+      for (const ack of available) pendingAcks.delete(ackKey(ack));
     } catch {
       // ack 是清理优化；失败保留到下一次 attach/settle 重试。
+    } finally {
+      for (const key of keys) flushingAcks.delete(key);
     }
   }
 }
+
+/** Freeze this renderer's drain lane and export clone-safe state without renderer-owned file bytes. */
+export async function exportComposerCapsule(
+  chatId: string,
+  transactionId: string
+): Promise<SurfaceComposerCapsule> {
+  const current = readComposer(chatId);
+  const draftAttachmentRefs = new Set<string>();
+  const richValue: RichValue = [];
+  for (const node of current.draft.richValue) {
+    if (node.type !== "file") {
+      richValue.push(node);
+      continue;
+    }
+    const resource = current.fileResources.get(node.id);
+    if (!resource || resource.node.ref !== node.ref) continue;
+    draftAttachmentRefs.add(node.ref);
+    richValue.push(node);
+  }
+  const queue = current.queue.items.map((item) => {
+    const itemRichValue = item.prompt.richValue.filter(
+      (node) => node.type !== "file"
+    );
+    const attachmentsDropped =
+      itemRichValue.length !== item.prompt.richValue.length ||
+      item.prompt.attachments.length > 0;
+    return {
+      id: item.id,
+      richValue: structuredClone(itemRichValue),
+      displayText: item.prompt.displayText,
+      ...(attachmentsDropped ? { attachmentsDropped: true as const } : {}),
+      ...(item.content ? { content: structuredClone(item.content) } : {}),
+      ...(item.custodyIntentId ? { custodyIntentId: item.custodyIntentId } : {}),
+      ...(item.outboxRef ? { outboxRef: item.outboxRef } : {}),
+      state: attachmentsDropped ? "ambiguous" as const : migratedQueueState(item),
+      ...(item.workspaceInvalidated ? { workspaceInvalidated: true as const } : {}),
+      createdAt: item.createdAt,
+    };
+  });
+  const acks = pendingComposerAcks()
+    .filter((ack) => ack.chatId === chatId)
+    .map(({ kind, id }) => ({ kind, id }));
+  const capsule: SurfaceComposerCapsule = {
+    chatId,
+    incarnationId: current.incarnationId,
+    workspaceIdentityKey: current.workspaceIdentityKey,
+    projectId: current.projectId,
+    richValue: structuredClone(richValue),
+    attachmentRefs: [...draftAttachmentRefs],
+    pendingAcks: acks,
+    queue,
+    queuePaused: current.queue.paused,
+  };
+  claimAckTransfer(transactionId, capsule);
+  updateComposer(chatId, (state) => ({
+    ...state,
+    queue: state.queue.paused ? state.queue : { ...state.queue, paused: true },
+  }));
+  return capsule;
+}
+
+function claimAckTransfer(
+  transactionId: string,
+  capsule: SurfaceComposerCapsule
+) {
+  if (!transactionId || ackTransfers.has(transactionId)) {
+    throw new Error("Invalid composer migration transaction");
+  }
+  const keys = new Set(capsule.pendingAcks.map(ackKey));
+  for (const key of keys) {
+    if (flushingAcks.has(key) || isTransferredAck(key)) {
+      throw new Error("Composer ACK transfer is already active");
+    }
+  }
+  ackTransfers.set(transactionId, {
+    chatId: capsule.chatId,
+    epoch: ownershipEpoch(capsule.chatId),
+    keys,
+  });
+  for (const key of keys) pendingAcks.delete(key);
+}
+
+function assertAckTransfer(
+  transactionId: string,
+  capsule: SurfaceComposerCapsule
+) {
+  const transfer = ackTransfers.get(transactionId);
+  const expected = new Set(capsule.pendingAcks.map(ackKey));
+  if (
+    !transfer ||
+    transfer.chatId !== capsule.chatId ||
+    transfer.keys.size !== expected.size ||
+    [...transfer.keys].some((key) => !expected.has(key))
+  ) {
+    throw new Error("Composer migration transaction mismatch");
+  }
+  return transfer;
+}
+
+function discardSupersededTransfer(
+  transactionId: string,
+  capsule: SurfaceComposerCapsule
+) {
+  const transfer = ackTransfers.get(transactionId);
+  if (
+    transfer?.chatId !== capsule.chatId ||
+    transfer.epoch === ownershipEpoch(capsule.chatId)
+  ) {
+    return false;
+  }
+  ackTransfers.delete(transactionId);
+  return true;
+}
+
+/** Commit source retirement only after residence ownership has moved. */
+export function commitComposerCapsuleExport(
+  transactionId: string,
+  capsule: SurfaceComposerCapsule
+) {
+  if (discardSupersededTransfer(transactionId, capsule)) return;
+  assertAckTransfer(transactionId, capsule);
+  ackTransfers.delete(transactionId);
+  disposeComposer(capsule.chatId, new Set(capsule.attachmentRefs));
+}
+
+/** Restore the frozen source after any CAS, attachment-rebind, or hydrate failure. */
+export function restoreComposerCapsuleExport(
+  transactionId: string,
+  capsule: SurfaceComposerCapsule
+) {
+  if (discardSupersededTransfer(transactionId, capsule)) return;
+  assertAckTransfer(transactionId, capsule);
+  ackTransfers.delete(transactionId);
+  if (!entries.has(capsule.chatId)) {
+    importComposerCapsule(capsule);
+    return;
+  }
+  updateComposer(capsule.chatId, (current) => ({
+    ...current,
+    queue: { ...current.queue, paused: capsule.queuePaused },
+  }));
+  for (const ack of capsule.pendingAcks) {
+    registerPendingComposerAck({ ...ack, chatId: capsule.chatId });
+  }
+}
+
+/** Hydrate before ChatView mounts; existing main custody ids remain ambiguous and therefore cannot be resent. */
+export function importComposerCapsule(capsule: SurfaceComposerCapsule) {
+  advanceOwnershipEpoch(capsule.chatId);
+  const current = readComposer(capsule.chatId);
+  const richValue = structuredClone(capsule.richValue) as RichValue;
+  const expectedRefs = new Set(capsule.attachmentRefs);
+  const fileResources = new Map<string, FileResource>();
+  for (const node of richValue) {
+    if (node.type !== "file" || !expectedRefs.has(node.ref)) continue;
+    fileResources.set(node.id, { node });
+    expectedRefs.delete(node.ref);
+  }
+  if (expectedRefs.size) throw new Error("Migrated file reference has no draft node");
+  const queueItems: QueueItem[] = capsule.queue.map((item) => ({
+    id: item.id,
+    prompt: {
+      richValue: structuredClone(item.richValue) as QueueItem["prompt"]["richValue"],
+      displayText: item.displayText,
+      attachments: [],
+    },
+    ...(item.content
+      ? { content: structuredClone(item.content) as QueueItem["content"] }
+      : {}),
+    ...(item.custodyIntentId ? { custodyIntentId: item.custodyIntentId } : {}),
+    ...(item.outboxRef ? { outboxRef: item.outboxRef } : {}),
+    state: item.state,
+    ...(item.workspaceInvalidated || item.attachmentsDropped
+      ? { workspaceInvalidated: true as const }
+      : {}),
+    createdAt: item.createdAt,
+  }));
+  publish(capsule.chatId, {
+    ...current,
+    incarnationId: capsule.incarnationId,
+    /* 身份随胶囊落地：否则目标窗 bind 时把迁来的 file 节点判为跨工作区污染。 */
+    workspaceIdentityKey: capsule.workspaceIdentityKey,
+    projectId: capsule.projectId,
+    draft: {
+      richValue,
+      files: [],
+    },
+    fileResources,
+    queue: {
+      items: queueItems,
+      paused: capsule.queuePaused,
+      error: null,
+      owners: new Set(),
+      reorderLock: false,
+      revision: current.queue.revision + 1,
+    },
+  });
+  for (const ack of capsule.pendingAcks) {
+    registerPendingComposerAck({ ...ack, chatId: capsule.chatId });
+  }
+}
+
+const migratedQueueState = (item: QueueItem): "queued" | "ambiguous" =>
+  item.state === "ambiguous" ||
+  item.state === "submitting" ||
+  item.state === "steering"
+    ? "ambiguous"
+    : "queued";
 
 const publish = (chatId: string, next: ComposerState) => {
   entries.set(chatId, next);
@@ -112,6 +355,41 @@ export function updateComposer(
   const current = readComposer(chatId);
   const next = updater(current);
   return next === current ? current : publish(chatId, next);
+}
+
+const HOST_COMPOSE_TEXT_BYTE_LIMIT = 32 * 1024;
+
+/**
+ * A GUI may only append inert text to its already-bound chat draft. The update
+ * is atomic: invalid UTF-8 budgets leave every existing node and file untouched.
+ */
+export function appendComposerText(chatId: string, text: string) {
+  const bytes = new TextEncoder().encode(text).byteLength;
+  if (!text || bytes > HOST_COMPOSE_TEXT_BYTE_LIMIT) return false;
+  let appended = false;
+  updateComposer(chatId, (current) => {
+    const richValue = [...current.draft.richValue];
+    const tail = richValue.at(-1);
+    if (tail?.type === "text") {
+      const trailingNewlines = tail.value.match(/\n*$/)?.[0].length ?? 0;
+      const separator = tail.value ? "\n".repeat(Math.max(0, 2 - trailingNewlines)) : "";
+      richValue[richValue.length - 1] = { ...tail, value: tail.value + separator + text };
+    } else {
+      richValue.push({ id: `host_${nanoid()}`, type: "text", value: text });
+    }
+    if (
+      new TextEncoder().encode(richInputDisplayText(richValue)).byteLength >
+      MESSAGE_BYTE_LIMIT
+    ) {
+      return current;
+    }
+    appended = true;
+    return {
+      ...current,
+      draft: { ...current.draft, richValue },
+    };
+  });
+  return appended;
 }
 
 export const globalQueuedBytes = () =>
@@ -294,16 +572,22 @@ export function reconcileComposerProject(
   setComposerProject(chatId, null);
 }
 
-function disposeComposer(chatId: string) {
+function disposeComposer(
+  chatId: string,
+  retainedRefs: ReadonlySet<string> = new Set()
+) {
   const current = entries.get(chatId);
   if (!current) return;
   revokeFiles(current.draft.files);
   for (const { node } of current.fileResources.values()) {
-    void window.app?.releaseFile(node.ref);
+    if (!retainedRefs.has(node.ref)) void window.app?.releaseFile(node.ref);
   }
   entries.delete(chatId);
   for (const [key, ack] of pendingAcks) {
     if (ack.chatId === chatId) pendingAcks.delete(key);
+  }
+  for (const [transactionId, transfer] of ackTransfers) {
+    if (transfer.chatId === chatId) ackTransfers.delete(transactionId);
   }
   for (const listener of listeners.get(chatId) ?? []) listener();
 }
@@ -337,6 +621,9 @@ export function resetComposerStoreForTests() {
   for (const chatId of [...entries.keys()]) disposeComposer(chatId);
   listeners.clear();
   pendingAcks.clear();
+  ackTransfers.clear();
+  ownershipEpochs.clear();
+  flushingAcks.clear();
   draftChatId = mintDraftChatId();
   for (const listener of draftListeners) listener();
   draftListeners.clear();

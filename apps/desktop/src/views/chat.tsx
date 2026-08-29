@@ -1,13 +1,15 @@
 /**
- * [INPUT]: Depends on react-router, i18n, Chats/Projects/Setup/History Provider, chat, draft/activity store, draft-route, off-site judgments, AdoptionPrefix, PageShell, third-party request model, upper surface visibility and ChatView
- * [OUTPUT]: Provides ChatRoute, carrying regular draft/long chat, unchanging adopted preview, outsourced fork disclosure, third-party, deep-chain defense and visibility download
- * [POS]: The only chat routing component of views, which performs Project Routing Protection after the dual Provider load barrier; The draft is in the composer store, the component is responsible for consumption, retirement and the Project is the sole sole author of the draft
+ * [INPUT]: Depends on router, i18n, Chats/Projects/Setup providers, draft routing/residence policy, adopted prefix client/projector, PageShell, Skills onboarding card, side-panel commands, and ChatView
+ * [OUTPUT]: Provides ChatRoute for draft/product/adopted chats, draft-persisted navigation (the sole post-send page switch), the one-time Skills discovery entry, Project exit guards, Project-draft Settings entry, and side-panel arrival commands
+ * [POS]: The sole product chat route adapter in views
  */
 
 import { useEffect, useState } from "react";
-import type { HistoryAdoptionPrefix } from "../../shared/history-import-ipc";
-import { Navigate, useLocation, useParams, useSearchParams } from "react-router";
+import type { HistoryPrefixProjection } from "@/lib/history-prefix";
+import { projectAdoptedHistoryPrefix } from "@/lib/history-prefix";
+import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router";
 import { ChatView } from "@/components/chat/chat-view";
+import { SkillsOnboardingCard } from "@/components/chat/skills-onboarding-card";
 import {
   consumeSidePanelRequest,
   nextSidePanelCommandNonce,
@@ -19,23 +21,20 @@ import { useProjects } from "@/components/providers/projects-provider";
 import { useSetup } from "@/components/providers/setup-provider";
 import { AgentBackendIcon } from "@/lib/agent-backends";
 import { claimActiveChat } from "@/lib/chat-activity-store";
-import {
-  commitDraftChat,
-  setDraftRouteProject,
-  useDraftChatId,
-} from "@/lib/chat-composer-store";
-import { chatExitRoute } from "@/lib/draft-route";
+import { setDraftRouteProject, useDraftChatId } from "@/lib/chat-composer-store";
+import { useDraftChatResidence } from "@/lib/draft-chat-residence";
+import { chatExitRoute, projectAlive, projectSettingsRoute } from "@/lib/draft-route";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { Button } from "@ai-chat/ui/components/ui/button";
 // 第三栏在右侧，用 SidebarTrigger 同族的 Panel 图标；
 // PanelRight 本就是 PanelLeft 的水平镜像，比给左向图标套 scale-x-[-1] 更正。
-import { PanelRightIcon } from "lucide-react";
+import { PanelRightIcon, Settings } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { historyAdoptionPrefix } from "@/lib/history/client";
 
 type HistoryPrefixState = Readonly<{
   chatId: string;
-  value: HistoryAdoptionPrefix | null;
+  value: HistoryPrefixProjection | null;
 }>;
 
 export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean }) {
@@ -61,26 +60,21 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
     if (!id) return;
     void historyAdoptionPrefix(id)
       .then((value) => {
-        if (current) setHistoryPrefixState({ chatId: id, value });
+        if (current) {
+          setHistoryPrefixState({
+            chatId: id,
+            value: value ? projectAdoptedHistoryPrefix(value) : null,
+          });
+        }
       })
       .catch(() => {
         if (current) setHistoryPrefixState({ chatId: id, value: null });
       });
     return () => { current = false; };
   }, [id]);
-  /* 换槽不变量：路由叫得出名字、或列表里已经有这条记录——它就不再是草稿。
-     写在路由这一层而不是提交事务里，是因为 receipt 直接 settled/failed 的分支
-     根本不走 markPersisted，那条草稿 id 已是真会话却没人来退役它；下一次
-     「New chat」就会把用户带回一条已经发出去的对话。 */
-  useEffect(() => {
-    if (id) {
-      commitDraftChat(id);
-      return;
-    }
-    if (!chatsLoading && chats.some((chat) => chat.id === draftChatId)) {
-      commitDraftChat(draftChatId);
-    }
-  }, [chats, chatsLoading, draftChatId, id]);
+  /* 换槽与发送后切页的唯一通道：草稿 id 一旦出现在列表里，驻留中的用户被
+     带去那条 chat，弃稿则原地退役。裁决与成因详见 draft-chat-residence。 */
+  useDraftChatResidence({ id, chats, chatsLoading });
   /* 草稿的 Project 由路由说了算：`/` 就是根级，`/?projectId=X` 就是 X。整个
      产品里只有这里知道「路由发没发话」——query 缺席在草稿路由上是一句明确的
      「根级」，而在 `/chat/:id` 上什么也没说。把这两件事压成同一个 null 递给
@@ -89,26 +83,30 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
      必须排在退役之后：提交那一刻槽会换代，退役先跑，本次写入拿着旧 id 撞不上
      活的 draftChatId，自然作废。 */
   const routeProjectId = searchParams.get("projectId");
+  const routeProject = projects.find((project) => project.id === routeProjectId);
   useEffect(() => {
     if (id) return;
     setDraftRouteProject(draftChatId, routeProjectId);
   }, [draftChatId, id, routeProjectId]);
   // 全屏 Base「收起」回流：路由 state 携带 openBase，落地即请求展开第三栏
-  const openBaseOnArrival = Boolean(
-    (location.state as { openBase?: boolean } | null)?.openBase
-  );
+  const arrivalState = location.state as {
+    openBase?: boolean;
+    openSidePanel?: "openShell" | "browser";
+  } | null;
+  const arrivalTarget = arrivalState?.openSidePanel ??
+    (arrivalState?.openBase ? "base" : null);
   useEffect(() => {
-    if (!id || !openBaseOnArrival) return;
+    if (!id || !arrivalTarget) return;
     // 路由 state 是外部导航事件；这里只把一次性到达意图转成本地 nonce。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSidePanelRequest({
-      chatId: id,
+      conversationKey: id,
       command: {
-        target: "base",
+        target: arrivalTarget,
         nonce: nextSidePanelCommandNonce(),
       },
     });
-  }, [id, openBaseOnArrival]);
+  }, [arrivalTarget, id]);
   /* 草稿路由永远没有 summary。草稿 id 稳定之后若还让它去 chats 里撞名，
      一次「已归档」判定就会让下面的守卫在 "/" 上把自己重定向成死循环。 */
   const summary = id ? chats.find((chat) => chat.id === id) : undefined;
@@ -172,9 +170,9 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
             className={panelChromeClassName}
             onClick={() =>
               setSidePanelRequest({
-                chatId,
+                conversationKey: chatId,
                 command: {
-                  target: "base",
+                  target: "openShell",
                   nonce: nextSidePanelCommandNonce(),
                 },
               })
@@ -185,11 +183,26 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
           >
             <PanelRightIcon />
           </Button>
+        ) : !id && routeProjectId && projectAlive(routeProject) ? (
+          <Button
+            aria-label={t("projectSettings.open")}
+            asChild
+            className={panelChromeClassName}
+            size="icon-lg"
+            variant="ghost"
+          >
+            <Link to={projectSettingsRoute(routeProjectId)}>
+              <Settings />
+            </Link>
+          </Button>
         ) : undefined
       }
     >
-      <ChatView
-        key={chatId}
+      <div className="flex h-full min-h-0 flex-col">
+        <SkillsOnboardingCard />
+        <div className="min-h-0 flex-1">
+          <ChatView
+            key={chatId}
         scope={{ conversationId: chatId }}
         /* 草稿与持久会话一视同仁地抢焦点：换 chat 即换 key 重挂，光标该在的地方
            永远是输入框——用户点侧栏是为了说话，不是为了先按一次 Tab。落点分歧
@@ -200,10 +213,12 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
         sidePanelRequest={sidePanelRequest}
         historyPrefix={historyPrefix}
         surfaceVisible={surfaceVisible}
-        onConsumeSidePanelRequest={(nonce) =>
-          setSidePanelRequest((current) => consumeSidePanelRequest(current, nonce))
-        }
-      />
+            onConsumeSidePanelRequest={(nonce) =>
+              setSidePanelRequest((current) => consumeSidePanelRequest(current, nonce))
+            }
+          />
+        </div>
+      </div>
     </PageShell>
   );
 }

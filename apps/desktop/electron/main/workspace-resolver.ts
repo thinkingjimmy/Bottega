@@ -1,18 +1,30 @@
 /**
- * [INPUT]: Depends on shared AgentWorkspaceScope/ProjectWorkspaceBinding with Apps/Projects/Chats ((including adopted original cwd))
- * [OUTPUT]: Provides a strict scope test, resolveEffectiveWorkspace and resolveConversationContext; Adoption resume using the external source cwd after Project Fence
- * [POS]: Electron main's workspace is the only decision-making core; File candidates, Chat Home, Project binding, Skill and turn share the same fact of the solving
+ * [INPUT]: Depends on AgentWorkspaceScope, canonical TurnProjectContext, Project lifecycle/binding authority, role-aware App data custody, and Chats
+ * [OUTPUT]: Provides strict scope validation, role-aware effective workspace plus Project incarnation context, and conversation context resolution
+ * [POS]: Electron main's workspace and turn-Project authority; filesystem and scoped resource consumers share one canonical decision
  */
 
+import { createHash } from "node:crypto";
+import { join } from "node:path";
 import type { AgentWorkspaceScope } from "../../shared/agent-ipc";
 import {
   PROJECT_UNAVAILABLE,
   type ProjectWorkspaceBinding,
 } from "../../shared/projects-ipc";
 import type { WorkspaceResolver } from "./skills-catalog";
+import type { TurnProjectContext } from "../../shared/product-resource-scope";
 
 type AppSource = {
   resolveApp: (appId: string) => { dir: string } | undefined;
+  resolveAppData?: (appId: string) =>
+    | {
+        workspace: string;
+        authorityIdentity: string;
+        stableWorkspaceOwnerId: string;
+        dataCustodyId: string;
+      }
+    | null
+    | undefined;
 };
 
 type ProjectSource = {
@@ -25,6 +37,7 @@ type ProjectSource = {
     projectId: string
   ) => ProjectWorkspaceBinding | undefined;
   getMembershipRevision?: (projectId: string) => number | undefined;
+  getProjectLifecycleRevision?: (projectId: string) => number | undefined;
 };
 
 type ChatSource = {
@@ -32,13 +45,20 @@ type ChatSource = {
   getProjectId: (conversationId: string) => string | null | undefined;
   getHomeDir?: (conversationId: string) => string | undefined;
   getExecutionDir?: (conversationId: string) => string | undefined;
+  getAppRole?: (conversationId: string) => "edit" | "use" | null | undefined;
 };
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 export type WorkspaceOwner =
-  | { kind: "project"; projectId: string; membershipRevision: number }
+  | {
+      kind: "project";
+      projectId: string;
+      membershipRevision: number;
+      bindingCustodyId: string;
+    }
   | { kind: "app"; appId: string }
+  | { kind: "app-data"; appId: string; dataCustodyId: string }
   | { kind: "chat-home"; conversationId: string }
   | { kind: "default" };
 
@@ -53,7 +73,13 @@ export type EffectiveWorkspace =
       kind: "ready";
       workspace: string;
       owner: WorkspaceOwner;
+      /** Mutable fence identity used by leases and CAS. */
+      authorityIdentity: string;
+      /** Durable data identity used by CanvasRegistry and VersionHistory. */
+      stableWorkspaceOwnerId: string;
+      /** Compatibility alias for existing consumers; always equals authorityIdentity. */
       identity: string;
+      projectContext: TurnProjectContext;
     }
   | {
       kind: "unavailable";
@@ -100,10 +126,13 @@ function unavailable(
 
 function resolveProject(
   projectId: string,
+  apps: AppSource,
   projects: ProjectSource,
-  conversation?: { id: string; homeDir: string }
+  conversation?: { id: string; homeDir: string; appRole?: "edit" | "use" | null }
 ): EffectiveWorkspace {
   const revision = projects.getMembershipRevision?.(projectId);
+  const projectLifecycleRevision =
+    projects.getProjectLifecycleRevision?.(projectId);
   const binding = projects.getWorkspaceBinding?.(projectId);
   if (projects.getMembershipRevision && revision === undefined) {
     return unavailable(
@@ -111,6 +140,19 @@ function resolveProject(
       `${PROJECT_UNAVAILABLE}: Project 记录不存在`
     );
   }
+  if (
+    projects.getProjectLifecycleRevision &&
+    projectLifecycleRevision === undefined
+  ) {
+    return unavailable(
+      "project-missing",
+      `${PROJECT_UNAVAILABLE}: Project lifecycle 记录不存在`
+    );
+  }
+  const projectContext = {
+    projectId,
+    projectLifecycleRevision: projectLifecycleRevision ?? 1,
+  } as const;
   if (binding?.kind === "none" && !conversation) {
     return unavailable(
       "project-unbound",
@@ -118,6 +160,29 @@ function resolveProject(
     );
   }
   try {
+    if (binding?.kind === "app" && conversation?.appRole === "use") {
+      const data = apps.resolveAppData?.(binding.appId);
+      if (data === null) {
+        return unavailable("app-unavailable", "App 数据域尚未就绪");
+      }
+      if (data) {
+        const membershipRevision = revision ?? 0;
+        const authorityIdentity = `${data.authorityIdentity}:project:${projectId}:${membershipRevision}`;
+        return {
+          kind: "ready",
+          workspace: data.workspace,
+          owner: {
+            kind: "app-data",
+            appId: binding.appId,
+            dataCustodyId: data.dataCustodyId,
+          },
+          authorityIdentity,
+          stableWorkspaceOwnerId: data.stableWorkspaceOwnerId,
+          identity: authorityIdentity,
+          projectContext,
+        };
+      }
+    }
     const resolved =
       !conversation
         ? projects.resolveCodexContext(projectId)
@@ -127,19 +192,48 @@ function resolveProject(
           ) ??
           projects.resolveCodexContext(projectId);
     if (binding?.kind === "none" && conversation) {
+      const authorityIdentity = `chat-home:${conversation.id}`;
       return {
         kind: "ready",
         workspace: resolved.workspace,
         owner: { kind: "chat-home", conversationId: conversation.id },
-        identity: `chat-home:${conversation.id}`,
+        authorityIdentity,
+        stableWorkspaceOwnerId: authorityIdentity,
+        identity: authorityIdentity,
+        projectContext,
       };
     }
     const membershipRevision = revision ?? 0;
+    if (binding?.kind === "app") {
+      const authorityIdentity = `project:${projectId}:${membershipRevision}`;
+      return {
+        kind: "ready",
+        workspace: resolved.workspace,
+        owner: { kind: "app", appId: binding.appId },
+        authorityIdentity,
+        stableWorkspaceOwnerId: `app-source:${binding.appId}`,
+        identity: authorityIdentity,
+        projectContext,
+      };
+    }
+    const bindingCustodyId =
+      binding?.kind === "external"
+        ? binding.capabilityId
+        : `legacy-${projectId}`;
+    const authorityIdentity = `project:${projectId}:${membershipRevision}`;
     return {
       kind: "ready",
       workspace: resolved.workspace,
-      owner: { kind: "project", projectId, membershipRevision },
-      identity: `project:${projectId}:${membershipRevision}`,
+      owner: {
+        kind: "project",
+        projectId,
+        membershipRevision,
+        bindingCustodyId,
+      },
+      authorityIdentity,
+      stableWorkspaceOwnerId: `project-binding:${projectId}:${bindingCustodyId}`,
+      identity: authorityIdentity,
+      projectContext,
     };
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
@@ -159,24 +253,32 @@ export function resolveEffectiveWorkspace(
 ): EffectiveWorkspace {
   const scope = assertWorkspaceScope(value);
   if (scope.kind === "default") {
+    const authorityIdentity = "default";
     return {
       kind: "ready",
       workspace: defaultWorkspace,
       owner: { kind: "default" },
-      identity: "default",
+      authorityIdentity,
+      stableWorkspaceOwnerId: authorityIdentity,
+      identity: authorityIdentity,
+      projectContext: { projectId: null, projectLifecycleRevision: null },
     };
   }
   if (scope.kind === "project") {
-    return resolveProject(scope.projectId, projects);
+    return resolveProject(scope.projectId, apps, projects);
   }
   if (scope.kind === "app") {
     const resolved = apps.resolveApp(scope.appId);
+    const authorityIdentity = `app:${scope.appId}`;
     return resolved
       ? {
           kind: "ready",
           workspace: resolved.dir,
           owner: { kind: "app", appId: scope.appId },
-          identity: `app:${scope.appId}`,
+          authorityIdentity,
+          stableWorkspaceOwnerId: `app-source:${scope.appId}`,
+          identity: authorityIdentity,
+          projectContext: { projectId: null, projectLifecycleRevision: null },
         }
       : unavailable("app-unavailable", "App 不可用（不存在或正在维护）");
   }
@@ -187,20 +289,43 @@ export function resolveEffectiveWorkspace(
   const executionDir = chats.getExecutionDir?.(scope.conversationId);
   const projectId = chats.getProjectId(scope.conversationId);
   if (!projectId) {
+    const authorityIdentity = `chat-home:${scope.conversationId}`;
     return {
       kind: "ready",
       workspace: homeDir,
       owner: { kind: "chat-home", conversationId: scope.conversationId },
-      identity: `chat-home:${scope.conversationId}`,
+      authorityIdentity,
+      stableWorkspaceOwnerId: authorityIdentity,
+      identity: authorityIdentity,
+      projectContext: { projectId: null, projectLifecycleRevision: null },
     };
   }
-  const project = resolveProject(projectId, projects, {
+  const project = resolveProject(projectId, apps, projects, {
     id: scope.conversationId,
     homeDir,
+    appRole: chats.getAppRole?.(scope.conversationId),
   });
-  return project.kind === "ready" && executionDir
-    ? { ...project, workspace: executionDir }
-    : project;
+  if (
+    project.kind !== "ready" ||
+    !executionDir ||
+    project.owner.kind === "app-data" ||
+    executionDir === project.workspace
+  ) {
+    return project;
+  }
+  // executionDir 覆写指向与 Project 工作目录不同的物理目录时，必须把这一差异
+  // 折叠进 stableWorkspaceOwnerId：否则同一 Project 下两个 originalCwd 不同的
+  // chat 会塌缩成同一 artboard 身份，restore 时互相覆盖对方的 design/ 文件。
+  // authorityIdentity（可变 fence）保持不变。
+  return {
+    ...project,
+    workspace: executionDir,
+    stableWorkspaceOwnerId: `${project.stableWorkspaceOwnerId}:exec:${executionOwnerSegment(executionDir)}`,
+  };
+}
+
+function executionOwnerSegment(executionDir: string) {
+  return createHash("sha256").update(executionDir).digest("hex").slice(0, 16);
 }
 
 export function createEffectiveWorkspaceResolver(
@@ -239,7 +364,38 @@ export function createWorkspaceResolver(
         );
   return (scope) => {
     const result = resolveEffective(scope);
-    if (result.kind === "ready") return { workspace: result.workspace };
+    if (result.kind === "ready") {
+      return {
+        workspace: result.workspace,
+        projectContext: result.projectContext,
+      };
+    }
+    /* Project Settings still needs main-owned Library/Extension visibility for a
+       grouping Project. A private, nonexistent catalog root suppresses only
+       workspace discovery; canonical Project identity and lifecycle remain real.
+       Other consumers keep using EffectiveWorkspace and therefore still see the
+       grouping Project as filesystem-unavailable. */
+    if (
+      result.reason === "project-unbound" &&
+      scope.kind === "project" &&
+      projects &&
+      defaultWorkspace
+    ) {
+      const projectLifecycleRevision =
+        projects.getProjectLifecycleRevision?.(scope.projectId);
+      if (!projectLifecycleRevision) throw new Error(result.message);
+      return {
+        workspace: join(
+          defaultWorkspace,
+          ".grouped-project-scope",
+          scope.projectId
+        ),
+        projectContext: {
+          projectId: scope.projectId,
+          projectLifecycleRevision,
+        },
+      };
+    }
     throw new Error(result.message);
   };
 }
@@ -262,6 +418,27 @@ export function resolveConversationContext(
         ...(projects.resolveConversationContext?.(projectId, homeDir) ??
           projects.resolveCodexContext(projectId)),
         ...(executionDir ? { workspace: executionDir } : {}),
+        projectContext: {
+          projectId,
+          projectLifecycleRevision: requireProjectLifecycleRevision(
+            projects,
+            projectId
+          ),
+        },
       }
-    : { workspace: homeDir };
+    : {
+        workspace: homeDir,
+        projectContext: { projectId: null, projectLifecycleRevision: null },
+      };
+}
+
+function requireProjectLifecycleRevision(
+  projects: ProjectSource,
+  projectId: string
+) {
+  const revision = projects.getProjectLifecycleRevision?.(projectId);
+  if (projects.getProjectLifecycleRevision && revision === undefined) {
+    throw new Error(`${PROJECT_UNAVAILABLE}: Project lifecycle 记录不存在`);
+  }
+  return revision ?? 1;
 }

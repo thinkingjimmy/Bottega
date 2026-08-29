@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Electron app.isPackaged, main-owned PresetCatalog, dev submodule
- * [OUTPUT]: Provides PresetSourceResolver; release canonical constantRepoUrl+catalogPin, dev constant submodule path + field HEAD
+ * [INPUT]: Depends on Electron app.isPackaged, main-owned PresetCatalog sourceDirectory/URL/pin, and dev submodules
+ * [OUTPUT]: Provides PresetSourceResolver; release uses canonical URL+pin, dev uses repository-aligned submodule directory+live HEAD
  * [POS]: The default for apps/share is to have the hard border of the source channel; env/argv/Settings/IPC is not part of the packaged branch
  */
 
@@ -51,7 +51,7 @@ export class PresetSourceResolver {
         channel: "release",
       };
     }
-    const cloneLocator = join(this.devAppsRoot(), presetId);
+    const cloneLocator = join(this.devAppsRoot(), entry.sourceDirectory);
     return {
       presetId,
       cloneLocator,

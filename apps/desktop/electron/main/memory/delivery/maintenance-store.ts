@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on DurableJson/quarantineDurableFile, Delivery v4 schema, MemorySpaceGate and rename the atoms of the file system
- * [OUTPUT]: Provides Delivery store initialization (including self-healing of damaged blank ledgers), v3 switching to zero, runtime, recovery, attention/cleanup, compression, effect receipt and reservation drain
- * [POS]: The main/memory/delivery sustainability maintenance base class; store.ts focuses on delivery state machines, which take on the general ledger lifecycle and recovery mechanism
+ * [INPUT]: Depends on DurableJson corruption classification/quarantine, the Delivery v4 schema, MemorySpaceGate, and atomic filesystem rename
+ * [OUTPUT]: Provides Delivery initialization, validated invariant recovery, migration, compaction, attention cleanup, effect receipts, and reservation draining
+ * [POS]: The durable Delivery maintenance owner; only classified corruption may enter quarantine while ordinary I/O fails closed
  */
 
 import { createHash } from "node:crypto";
@@ -9,6 +9,7 @@ import { mkdir, readdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   DurableJson,
+  DurableFileCorruptionError,
   quarantineDurableFile,
 } from "../../persistence/durable-json";
 import { memorySpaceGate } from "../space-gate";
@@ -51,6 +52,13 @@ export const captureAttentionId = (input: {
   assistantSeq: number;
 }) => digest({ kind: "capture-gap", ...input });
 
+export class LedgerInvariantError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LedgerInvariantError";
+  }
+}
+
 const attentionActions = {
   "capture-gap": ["acknowledge"],
   "cleanup-failed": ["retry-cleanup", "abandon"],
@@ -80,6 +88,12 @@ export class DeliveryStoreMaintenance {
       await this.archiveV2();
       await this.openLedger();
     } catch (cause) {
+      if (
+        !(cause instanceof DurableFileCorruptionError) &&
+        !(cause instanceof LedgerInvariantError)
+      ) {
+        throw cause;
+      }
       /* 交付水位账本损坏：隔离原件后从空账本重走同一初始化路径（≡冷启动）。
          后果：stream 水位、reservation、cleanup/rebuild 与 receipt 全部清零，
          交付流水从头重新记账。这比让异常上抛置 ownerFailure 粘死整个
@@ -592,7 +606,9 @@ export class DeliveryStoreMaintenance {
           reservation.state = "abandoned-uncertain";
           reservation.finishedAt = Date.now();
           if (!instance.remoteTargets[reservation.targetId]) {
-            throw new Error("Reservation 缺少 RemoteTargetRecord");
+            throw new LedgerInvariantError(
+              "Reservation 缺少 RemoteTargetRecord"
+            );
           }
           const operationId = `orphan:${previous}:${reservation.id}`;
           const cleanupId = digest({ instance: instance.id, operationId });

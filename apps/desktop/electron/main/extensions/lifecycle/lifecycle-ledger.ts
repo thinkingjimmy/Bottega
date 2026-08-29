@@ -1,21 +1,29 @@
 /**
- * [INPUT]: Depends on persistence, the durable json, zod and the generation, source, access contract for shared/extension admission
- * [OUTPUT]: Provides ExtensionLifecycle Ledger: install/update/disable/uninstall shared recoverable ledger, atomic authorized snapshot, pre-allocated identity, App-by-App/phase checkpoint replacement with CAS
- * [POS]: Durable single-writer of extensions/lifecycle; Restore without looking at "rename completed", only the preset identity and status in this book
+ * [INPUT]: Depends on DurableJson, zod, canonical Product scope, and Extension generation/source/admission contracts
+ * [OUTPUT]: Provides scope-frozen Extension lifecycle receipts, atomic authorization snapshots, pre-allocated identities, and phase/App checkpoints
+ * [POS]: Durable single writer for Extension lifecycle; recovery trusts the frozen owner/lifecycle/scope CAS receipt rather than renderer input or filesystem guesses
  */
 
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { z } from "zod";
-import type {
-  ExtensionPackageGenerationRef,
-  ExtensionLifecycleStep,
-  Sha256Digest,
+import {
+  SHA256_DIGEST_IDENTITY_PATTERN,
+  type ExtensionPackageGenerationRef,
+  type ExtensionLifecycleStep,
+  type Sha256Digest,
 } from "../../../../shared/extensions-ipc";
+import {
+  sameProductResourceScope as sameScope,
+  type ProductResourceScope,
+} from "../../../../shared/product-resource-scope";
 import type { ExtensionAdapterId } from "../admission";
 import type { ExtensionPackageAdmission } from "../manifest-adapter";
 import type { ExtensionSourceProvenance } from "../registry-store";
-import { DurableJson } from "../../persistence/durable-json";
+import {
+  DurableJson,
+  type DurableReplaceFileFaults,
+} from "../../persistence/durable-json";
 
 /* ============================================================
  * 为什么必须先落账再动文件系统。
@@ -26,12 +34,11 @@ import { DurableJson } from "../../persistence/durable-json";
  * 之后每一步都按 id 幂等：重放要么命中已存在的那一代，要么用同一个 id 补写。
  * ============================================================ */
 
-const SHA_PATTERN = /^sha256:[a-f0-9]{64}$/;
-
 const digestSchema = z
   .string()
-  .regex(SHA_PATTERN)
+  .regex(SHA256_DIGEST_IDENTITY_PATTERN)
   .transform((value) => value as Sha256Digest);
+const identitySchema = z.string().regex(SHA256_DIGEST_IDENTITY_PATTERN);
 
 const generationRefSchema = z
   .object({
@@ -39,6 +46,16 @@ const generationRefSchema = z
     recordDigest: digestSchema,
   })
   .strict();
+
+const scopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("global") }).strict(),
+  z
+    .object({
+      kind: z.literal("project"),
+      projectId: z.string().regex(/^[A-Za-z0-9_-]{10,64}$/),
+    })
+    .strict(),
+]);
 
 const sourceSchema = z
   .object({
@@ -99,7 +116,7 @@ const mcpSchema = z
 
 const admissionSchema: z.ZodType<ExtensionPackageAdmission> = z
   .object({
-    adapterId: z.string().min(1),
+    adapterId: z.enum(["agent-plugins-1.0.0", "skill-repo-1.0.0"]),
     pluginRoot: z.string().min(1),
     manifest: z.record(z.string(), z.unknown()),
     unknownManifestFields: z.array(z.string()),
@@ -112,8 +129,12 @@ const admissionSchema: z.ZodType<ExtensionPackageAdmission> = z
 
 const authorizedInstallSchema = z
   .object({
-    adapterId: z.enum(["agent-plugins-1.0.0-wd", "skill-repo-1.0.0"]),
+    adapterId: z.enum(["agent-plugins-1.0.0", "skill-repo-1.0.0"]),
     componentNamespace: z.string().min(1),
+    scope: scopeSchema,
+    sourceIdentity: identitySchema,
+    expectedProjectLifecycleRevision: z.number().int().positive().nullable(),
+    expectedScopeRevision: z.number().int().nonnegative(),
     source: sourceSchema,
     admission: admissionSchema,
     evidence: z
@@ -134,7 +155,11 @@ const operationSchema = z
   .object({
     operationId: z.string().min(1),
     kind: z.enum(["install", "update", "disable", "uninstall"]),
-    installIdentity: z.string().min(1),
+    installIdentity: identitySchema,
+    scope: scopeSchema,
+    sourceIdentity: identitySchema,
+    expectedProjectLifecycleRevision: z.number().int().positive().nullable(),
+    expectedScopeRevision: z.number().int().nonnegative(),
     revision: z.number().int().nonnegative(),
     phase: z.enum(["staged", "sealing", "converging", "completed", "aborted"]),
     identities: z
@@ -147,6 +172,7 @@ const operationSchema = z
     contentDigest: digestSchema.nullable(),
     /* null = 尚未授权，可丢弃；非 null = 用户已确认，恢复必须重放到完成。 */
     authorizedInstall: authorizedInstallSchema.nullable().default(null),
+    installAuthorizationState: z.enum(["none", "prepared", "committed"]),
     completedSteps: z.array(z.string().min(1)),
     blocked: z
       .object({ code: z.string().min(1), message: z.string() })
@@ -156,12 +182,142 @@ const operationSchema = z
   })
   .strict();
 
+const DISABLE_STEPS: readonly ExtensionLifecycleStep[] = [
+  "product-sessions-drained",
+  "projection-binding-revoked",
+  "shared-artifacts-released",
+  "discovery-cache-invalidated",
+];
+const UNINSTALL_STEPS: readonly ExtensionLifecycleStep[] = [
+  "durable-references-resolved",
+  "runtime-custody-drained",
+  "package-generations-removed",
+  "package-bytes-collected",
+];
+
 const ledgerSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(3),
     operations: z.array(operationSchema),
   })
-  .strict();
+  .strict()
+  .superRefine((ledger, context) => {
+    const operationIds = new Set<string>();
+    const generationIds = new Set<string>();
+    const issue = (index: number, path: string[], message: string) =>
+      context.addIssue({
+        code: "custom",
+        path: ["operations", index, ...path],
+        message,
+      });
+    for (const [index, operation] of ledger.operations.entries()) {
+      if (operationIds.has(operation.operationId)) {
+        issue(index, ["operationId"], "operationId 必须唯一");
+      }
+      operationIds.add(operation.operationId);
+      if (generationIds.has(operation.identities.packageGenerationId)) {
+        issue(index, ["identities", "packageGenerationId"], "预分配 generation id 必须唯一");
+      }
+      generationIds.add(operation.identities.packageGenerationId);
+      const projectRevisionValid = operation.scope.kind === "global"
+        ? operation.expectedProjectLifecycleRevision === null
+        : operation.expectedProjectLifecycleRevision !== null;
+      if (!projectRevisionValid) {
+        issue(index, ["expectedProjectLifecycleRevision"], "Project lifecycle revision 与 scope 不一致");
+      }
+      const isInstall = operation.kind === "install" || operation.kind === "update";
+      const allowedSteps = operation.kind === "disable"
+        ? DISABLE_STEPS
+        : operation.kind === "uninstall"
+          ? UNINSTALL_STEPS
+          : [];
+      const completed = new Set(operation.completedSteps);
+      if (
+        completed.size !== operation.completedSteps.length ||
+        operation.completedSteps.some((step) => !allowedSteps.includes(step as ExtensionLifecycleStep))
+      ) {
+        issue(index, ["completedSteps"], "completed steps 必须唯一且属于 operation kind");
+      }
+      if (operation.phase === "staged" && operation.completedSteps.length > 0) {
+        issue(index, ["completedSteps"], "staged operation 不得提前完成 convergence step");
+      }
+      if (
+        operation.phase === "completed" &&
+        (completed.size !== allowedSteps.length ||
+          allowedSteps.some((step) => !completed.has(step)))
+      ) {
+        issue(index, ["completedSteps"], "completed lifecycle 必须精确覆盖全部 required steps");
+      }
+      if (!isInstall) {
+        if (
+          operation.authorizedInstall !== null ||
+          operation.installAuthorizationState !== "none" ||
+          operation.contentDigest !== null ||
+          operation.identities.pluginDataEpochId !== null ||
+          operation.identities.sourceEpochId !== null ||
+          operation.phase === "sealing"
+        ) {
+          issue(index, [], "disable/uninstall 不得携带 install authorization/epoch/content");
+        }
+        continue;
+      }
+      if (operation.completedSteps.length > 0) {
+        issue(index, ["completedSteps"], "install/update 不得携 convergence steps");
+      }
+      if (operation.contentDigest === null || operation.phase === "converging") {
+        issue(index, [], "install/update 必须携 content digest 且不得进入 converging");
+      }
+      const replay = operation.authorizedInstall;
+      if (operation.installAuthorizationState === "none") {
+        if (replay !== null || !["staged", "aborted"].includes(operation.phase)) {
+          issue(index, ["installAuthorizationState"], "none 只允许未授权 staged/aborted");
+        }
+        continue;
+      }
+      if (!replay) {
+        issue(index, ["authorizedInstall"], "prepared/committed 必须携授权快照");
+        continue;
+      }
+      const ownerMatches = sameScope(operation.scope, replay.scope) &&
+        operation.sourceIdentity === replay.sourceIdentity &&
+        operation.expectedProjectLifecycleRevision ===
+          replay.expectedProjectLifecycleRevision &&
+        operation.expectedScopeRevision === replay.expectedScopeRevision;
+      if (!ownerMatches) {
+        issue(index, ["authorizedInstall"], "授权快照 owner/CAS 必须与 operation 一致");
+      }
+      if (
+        (operation.kind === "install") !==
+          (replay.expectedActiveGenerationRef === null)
+      ) {
+        issue(index, ["authorizedInstall", "expectedActiveGenerationRef"], "install/update active baseline 不一致");
+      }
+      if (
+        (replay.admission.containsStdio && !operation.identities.pluginDataEpochId) ||
+        (!replay.admission.containsStdio && operation.identities.pluginDataEpochId)
+      ) {
+        issue(index, ["identities", "pluginDataEpochId"], "PLUGIN_DATA epoch 与 admission 不一致");
+      }
+      if (
+        operation.identities.sourceEpochId !== null &&
+        (operation.kind !== "update" || replay.expectedActiveGenerationRef === null)
+      ) {
+        issue(index, ["identities", "sourceEpochId"], "source epoch 只属于 stdio update baseline");
+      }
+      if (
+        operation.installAuthorizationState === "prepared" &&
+        operation.phase !== "staged"
+      ) {
+        issue(index, ["phase"], "prepared authorization 只能停在 staged");
+      }
+      if (
+        operation.installAuthorizationState === "committed" &&
+        !["sealing", "completed", "aborted"].includes(operation.phase)
+      ) {
+        issue(index, ["phase"], "committed authorization phase 非法");
+      }
+    }
+  });
 
 export type ExtensionLifecycleOperation = z.infer<typeof operationSchema>;
 export type ExtensionLifecycleKind = ExtensionLifecycleOperation["kind"];
@@ -170,6 +326,10 @@ export type ExtensionLifecyclePhase = ExtensionLifecycleOperation["phase"];
 export type AuthorizedExtensionInstall = Readonly<{
   adapterId: ExtensionAdapterId;
   componentNamespace: string;
+  scope: ProductResourceScope;
+  sourceIdentity: string;
+  expectedProjectLifecycleRevision: number | null;
+  expectedScopeRevision: number;
   source: ExtensionSourceProvenance;
   admission: ExtensionPackageAdmission;
   evidence: Readonly<{
@@ -185,6 +345,10 @@ export type AuthorizedExtensionInstall = Readonly<{
 export type StageLifecycleInput = Readonly<{
   kind: ExtensionLifecycleKind;
   installIdentity: string;
+  scope: ProductResourceScope;
+  sourceIdentity: string;
+  expectedProjectLifecycleRevision: number | null;
+  expectedScopeRevision: number;
   contentDigest?: Sha256Digest;
   /** 含 stdio 的代必须在 staged 就定下 epoch 身份，seal 前才可能创建/恢复它 */
   pluginDataEpochId?: string;
@@ -197,11 +361,12 @@ const TERMINAL: readonly ExtensionLifecyclePhase[] = ["completed", "aborted"];
 export class ExtensionLifecycleLedger {
   private readonly file: DurableJson<z.infer<typeof ledgerSchema>>;
 
-  constructor(userData: string) {
+  constructor(userData: string, faults: DurableReplaceFileFaults = {}) {
     this.file = new DurableJson(
       join(userData, "agent-extensions", "lifecycle.json"),
       ledgerSchema,
-      () => ({ schemaVersion: 1 as const, operations: [] })
+      () => ({ schemaVersion: 3 as const, operations: [] }),
+      faults
     );
   }
 
@@ -220,6 +385,10 @@ export class ExtensionLifecycleLedger {
         operationId: randomUUID(),
         kind: input.kind,
         installIdentity: input.installIdentity,
+        scope: structuredClone(input.scope),
+        sourceIdentity: input.sourceIdentity,
+        expectedProjectLifecycleRevision: input.expectedProjectLifecycleRevision,
+        expectedScopeRevision: input.expectedScopeRevision,
         revision: 0,
         phase: "staged",
         identities: {
@@ -229,6 +398,7 @@ export class ExtensionLifecycleLedger {
         },
         contentDigest: input.contentDigest ?? null,
         authorizedInstall: null,
+        installAuthorizationState: "none",
         completedSteps: [],
         blocked: null,
         createdAt: Date.now(),
@@ -238,20 +408,18 @@ export class ExtensionLifecycleLedger {
     });
   }
 
-  /**
-   * 用户授权与 `sealing` 是同一次 durable commit。
-   *
-   * 先推相位、后写 replay payload 会留下一个无法区分「未授权」
-   * 与「已授权但还没写完」的窗口；所以两者在这里不能拆。
-   */
-  authorizeInstall(
+  /** First persist the full authorization intent; Registry reservation bridges stores. */
+  prepareInstallAuthorization(
     operationId: string,
     expectedRevision: number,
     replay: AuthorizedExtensionInstall
   ) {
     return this.file.mutate((state) => {
       const operation = requireOperation(state.operations, operationId);
-      if (operation.phase === "sealing" && operation.authorizedInstall) {
+      if (
+        operation.installAuthorizationState !== "none" &&
+        operation.authorizedInstall
+      ) {
         return operation;
       }
       if (operation.kind !== "install" && operation.kind !== "update") {
@@ -262,12 +430,38 @@ export class ExtensionLifecycleLedger {
       }
       assertRevision(operation, expectedRevision);
       operation.revision += 1;
-      operation.phase = "sealing";
       operation.authorizedInstall = authorizedInstallSchema.parse({
         ...structuredClone(replay),
         migrateAppIds: [...new Set(replay.migrateAppIds)].sort(),
         migratedAppIds: [],
       });
+      operation.installAuthorizationState = "prepared";
+      operation.blocked = null;
+      return operation;
+    });
+  }
+
+  authorizeInstall(operationId: string, expectedRevision: number) {
+    return this.file.mutate((state) => {
+      const operation = requireOperation(state.operations, operationId);
+      if (
+        operation.phase === "sealing" &&
+        operation.installAuthorizationState === "committed" &&
+        operation.authorizedInstall
+      ) {
+        return operation;
+      }
+      if (
+        operation.phase !== "staged" ||
+        operation.installAuthorizationState !== "prepared" ||
+        !operation.authorizedInstall
+      ) {
+        throw conflict("扩展安装授权尚未 prepared 或相位已变化");
+      }
+      assertRevision(operation, expectedRevision);
+      operation.revision += 1;
+      operation.phase = "sealing";
+      operation.installAuthorizationState = "committed";
       operation.blocked = null;
       return operation;
     });
@@ -336,9 +530,29 @@ export class ExtensionLifecycleLedger {
       if (operation.phase === "completed") {
         throw conflict("已完成的扩展生命周期操作不能 abort");
       }
+      if (
+        operation.installAuthorizationState === "prepared" &&
+        operation.authorizedInstall
+      ) {
+        operation.installAuthorizationState = "none";
+        operation.authorizedInstall = null;
+      }
       operation.revision += 1;
       operation.phase = "aborted";
       return operation;
+    });
+  }
+
+  /** 初始 Registry CAS 未提交时物理撤掉 staged intent，避免幽灵 admission gate。 */
+  discardStaged(operationId: string) {
+    return this.file.mutate((state) => {
+      const operation = requireOperation(state.operations, operationId);
+      if (operation.phase !== "staged" || operation.authorizedInstall) {
+        throw conflict("只有未授权 staged lifecycle operation 可丢弃");
+      }
+      state.operations = state.operations.filter(
+        (item) => item.operationId !== operationId
+      );
     });
   }
 

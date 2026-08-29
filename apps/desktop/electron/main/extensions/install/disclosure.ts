@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, adapter registry and admission results
- * [OUTPUT]: Provides listPackageFiles, discloseExtensionPackage, capabilityLines and diffCapabilities
+ * [OUTPUT]: Provides listPackageFiles (full-path byte order, since it feeds a digest), discloseExtensionPackage, capabilityLines and diffCapabilities
  * [POS]: The ability to disclose extensions/install; The same measurement is shared between the installation and the update, and diff is comparable
  */
 
@@ -56,7 +56,18 @@ export async function listPackageFiles(
     if (!entry.isFile()) continue;
     files.push({ path: relative(root, path), bytes: (await stat(path)).size });
   }
-  return files.sort((left, right) => left.path.localeCompare(right.path));
+  return files.sort(byPathBytes);
+}
+
+/* 这份顺序会经 digestSkillDirectory 直接进 digest 输入。`localeCompare`
+   随 ICU/locale 漂移，同一份包在两台机器上会算出两个 skill digest——
+   与 registry-store `canonicalJson` 自己立的禁令同一条。码点序在星散平面上
+   还会与字节序分家，故只认字节（与 claude-plugin-projection 的投影尺同款）。 */
+function byPathBytes(left: ExtensionPackageFile, right: ExtensionPackageFile) {
+  return Buffer.compare(
+    Buffer.from(left.path, "utf8"),
+    Buffer.from(right.path, "utf8")
+  );
 }
 
 export async function discloseExtensionPackage(input: {

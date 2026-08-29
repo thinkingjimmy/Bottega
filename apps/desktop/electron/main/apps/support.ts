@@ -1,15 +1,11 @@
 /**
  * [INPUT]: Depends on Node path, Shared Apps/Agent DTO and the credible parameters of the installed input
- * [OUTPUT]: Provides path/environment assistants, GitHub URLs and AddApp authentication, initial AppRecord builds, and state-perpetuated broadcasting
- * [POS]: The only source of the cross-assistant of the apps module is the installation of access/path fences/environmental stripping/stats broadcast copy; Error is in the main/errors.ts
+ * [OUTPUT]: Provides path/environment assistants, GitHub URLs and AddApp authentication, and initial AppRecord builds
+ * [POS]: The only source of the cross-assistant of the apps module is the installation of access/path fences/environmental stripping; status broadcasting belongs to AppStore.watch, not to a helper each caller must remember; Error is in the main/errors.ts
  */
 
 import { isAbsolute, relative } from "node:path";
-import {
-  type AddAppInput,
-  type AppInstallEvent,
-  type AppRecord,
-} from "../../../shared/apps-ipc";
+import { type AddAppInput, type AppRecord } from "../../../shared/apps-ipc";
 import {
   AGENT_BACKEND_ORDER,
   type AgentBackendId,
@@ -97,25 +93,3 @@ export const strippedShell = (command: string) => ({
   executable: "/bin/zsh",
   args: ["-lc", `${STRIP_SENSITIVE_ENV}\n${command}`],
 });
-
-// ============================================================
-// 状态变更必须同时持久化并广播，两步合一杜绝漏发
-// ============================================================
-
-type StatusStore = {
-  update(
-    appId: string,
-    updater: (record: AppRecord) => AppRecord
-  ): Promise<AppRecord>;
-};
-
-export async function updateAndEmitStatus(
-  store: StatusStore,
-  emit: (event: AppInstallEvent) => void,
-  appId: string,
-  updater: (record: AppRecord) => AppRecord
-) {
-  const record = await store.update(appId, updater);
-  emit({ appId, type: "status", record });
-  return record;
-}

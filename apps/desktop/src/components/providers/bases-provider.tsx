@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React Context, shared BaseOwner changed/moved/migration Event rules with lib/bases client
- * [OUTPUT]: Provides BasesProvider/useBases to combine the pure function with the moved/changed/snapshot; migration Re-load, index with the owner key and provide revision-bound delete/JSON, section and upgrade commands
+ * [OUTPUT]: Provides BasesProvider/useBases with moved/changed snapshots, an explicit Project Base baseline-loaded fence, and revision-bound Base commands
  * [POS]: The single source of truth for the Base real-time state of the renderer; All IPC returns, navigation baseline, delta meta and event pull are through the ownerInstance/revision fence
  */
 
@@ -51,6 +51,7 @@ type BasesContextValue = {
   movedOwners: Readonly<Record<string, string>>;
   pinned: BasePinnedSummary[];
   projectBases: BasePinnedSummary[];
+  projectBasesLoaded: boolean;
   warning: string;
   get(ownerKey: string): Promise<BaseSnapshot | null>;
   ensure(ownerKey: string): Promise<BaseSnapshot>;
@@ -303,6 +304,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
   const [movedOwners, setMovedOwners] = useState<Record<string, string>>({});
   const [pinned, setPinned] = useState<BasePinnedSummary[]>([]);
   const [projectBases, setProjectBases] = useState<BasePinnedSummary[]>([]);
+  const [projectBasesLoaded, setProjectBasesLoaded] = useState(false);
   const [warning, setWarning] = useState("");
   const snapshotsRef = useRef<Record<string, BaseSnapshot>>({});
   const pinnedRef = useRef(new Map<string, BasePinnedSummary>());
@@ -466,6 +468,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
     const finishInitialization = () => {
       if (!active) return;
       initializingRef.current = false;
+      setProjectBasesLoaded(true);
       const buffered = bufferedEventsRef.current;
       bufferedEventsRef.current = [];
       buffered.forEach(applyEvent);
@@ -617,6 +620,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       movedOwners,
       pinned,
       projectBases,
+      projectBasesLoaded,
       warning,
       get: reload,
       ensure,
@@ -645,6 +649,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       patchRow,
       pinned,
       projectBases,
+      projectBasesLoaded,
       reload,
       snapshots,
       updateMeta,

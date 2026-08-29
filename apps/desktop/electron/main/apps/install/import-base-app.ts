@@ -74,7 +74,7 @@ type ImportRequest = {
 export class BaseAppImporter {
   private extensions: Pick<
     ExtensionInstaller,
-    "preflight" | "confirm" | "discard" | "isInstalled"
+    "preflight" | "confirm" | "discard" | "isInstalled" | "scopeRevision"
   > | null = null;
   constructor(
     private readonly apps: AppStore,
@@ -84,14 +84,13 @@ export class BaseAppImporter {
     private readonly configs: AppConfigStore,
     private readonly intents: LifecycleIntentStore,
     private readonly gate: AdmissionGate,
-    private readonly publish: (record: AppRecord) => void,
     /** 测试缝：required CLI 门禁默认走真探测器，注入假探测即可密封验证。 */
     private readonly detectCli: typeof detectCliRequirements = detectCliRequirements
   ) {}
 
   configureExtensions(port: Pick<
     ExtensionInstaller,
-    "preflight" | "confirm" | "discard" | "isInstalled"
+    "preflight" | "confirm" | "discard" | "isInstalled" | "scopeRevision"
   >) {
     if (this.extensions) throw new Error("Base App fulfillment 已配置");
     this.extensions = port;
@@ -185,13 +184,12 @@ export class BaseAppImporter {
           error: { code: "IMPORT_STATE_DRIFT", message: "App 安装恢复状态已漂移" },
         } as const;
       }
-      const retrying = await this.apps.update(appId, (record) => ({
+      await this.apps.update(appId, (record) => ({
         ...record,
         state: "creating",
         lastError: null,
         agentWarning: null,
       }));
-      this.publish(retrying);
       return this.execute(intent, null);
     });
     const record = this.apps.get(appId);
@@ -278,7 +276,6 @@ export class BaseAppImporter {
         ...current,
         state: "ready",
       }));
-      this.publish(saved);
       return {
         status: "done",
         value: saved,
@@ -386,7 +383,6 @@ export class BaseAppImporter {
         },
         agentWarning: `插件待处理：${fulfillment.error}`.slice(0, 3_500),
       }));
-      this.publish(record);
       return { status: "interrupted" };
     }
     /* fulfillment 全部 checkpoint 后才提交 manifest；AppStore 此刻才允许成代。 */
@@ -427,7 +423,6 @@ export class BaseAppImporter {
     await rename(packageRoot, finalDir);
     await makeWritable(finalDir);
     await rm(dirname(packageRoot), { recursive: true, force: true });
-    this.publish(record);
     return null;
   }
 
@@ -499,15 +494,16 @@ export class BaseAppImporter {
     );
     try {
       for (const item of expected) {
-        if (completed.has(item.componentIdentity)) continue;
+        if (completed.has(item.declaredComponentIdentity)) continue;
         const held = initial.find(
           (candidate) =>
-            candidate.componentIdentity === item.componentIdentity &&
+            candidate.declaredComponentIdentity ===
+              item.declaredComponentIdentity &&
             candidate.preflightId
         );
         if (extensions.isInstalled(item)) {
           if (held?.preflightId) await extensions.discard(held.preflightId);
-          completed.add(item.componentIdentity);
+          completed.add(item.declaredComponentIdentity);
           intent = await this.intents.advance(intent.intentId, intent.phase, {
             fulfilledExtensions: [...completed].sort(),
           });
@@ -518,9 +514,16 @@ export class BaseAppImporter {
           const value = await extensions.preflight({
             repoUrl: item.repoUrl,
             requestedRef: item.resolvedCommit,
+            scope: item.scope,
+            expectedProjectLifecycleRevision:
+              item.projectLifecycleRevision,
+            expectedScopeRevision: extensions.scopeRevision(item.scope),
           });
           preflight = {
-            componentIdentity: item.componentIdentity,
+            declaredComponentIdentity: item.declaredComponentIdentity,
+            scope: value.scope,
+            projectLifecycleRevision: value.projectLifecycleRevision,
+            scopeRevision: value.scopeRevision,
             repoUrl: value.source.normalizedUrl,
             requestedRef: value.source.requestedRef,
             resolvedCommit: value.source.resolvedCommit,
@@ -531,19 +534,24 @@ export class BaseAppImporter {
             state: "ready",
           };
         }
+        if (!preflight?.preflightId) {
+          throw new Error("Extension preflight receipt 不存在");
+        }
         if (
           preflight.contentDigest !== item.contentDigest ||
           preflight.capabilityDigest !== item.capabilityDigest ||
           preflight.resolvedCommit !== item.resolvedCommit
         ) {
-          throw new Error(`插件冻结身份漂移：${item.componentIdentity}`);
+          throw new Error(
+            `插件冻结身份漂移：${item.declaredComponentIdentity}`
+          );
         }
         await extensions.confirm({
-          preflightId: preflight.preflightId!,
+          preflightId: preflight.preflightId,
           expectedContentDigest: item.contentDigest,
           expectedResolvedCommit: item.resolvedCommit,
         });
-        completed.add(item.componentIdentity);
+        completed.add(item.declaredComponentIdentity);
         intent = await this.intents.advance(intent.intentId, intent.phase, {
           fulfilledExtensions: [...completed].sort(),
         });
@@ -555,7 +563,8 @@ export class BaseAppImporter {
     } catch (cause) {
       await Promise.allSettled(
         initial.flatMap((item) =>
-          item.preflightId && !completed.has(item.componentIdentity)
+          item.preflightId &&
+          !completed.has(item.declaredComponentIdentity)
             ? [extensions.discard(item.preflightId)]
             : []
         )
