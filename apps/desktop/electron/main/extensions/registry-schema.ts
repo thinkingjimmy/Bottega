@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod, canonical ProductResourceScope, and shared Extension digest types
- * [OUTPUT]: Provides the strict schema-v6 scoped Extension registry, durable install reservations, operation-bound lifecycle receipts, empty state, and package/source types
- * [POS]: Persistence cutover boundary for registry-store; pre-release schemas and adapter identities are intentionally unreadable
+ * [OUTPUT]: Provides the strict schema-v6 scoped Extension registry, canonical empty-ledger migration, durable reservations/receipts, empty state, and package/source types
+ * [POS]: Persistence cutover boundary for registry-store; live pre-release facts remain unreadable while exact empty v2-v5 ledgers upgrade without inventing authority
  */
 
 import { z } from "zod";
@@ -145,6 +145,19 @@ const lifecycleReceiptSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
 ]);
+const emptyLegacyStoreSchema = z
+  .object({
+    schemaVersion: z.union([
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+      z.literal(5),
+    ]),
+    revision: z.number().int().nonnegative(),
+    packages: z.array(z.never()).length(0),
+    refs: z.object({}).strict(),
+  })
+  .strict();
 
 export const extensionRegistryStoreSchema = z
   .object({
@@ -463,6 +476,17 @@ export function emptyExtensionRegistryStore(): ExtensionRegistryStoreFile {
     installReservations: [],
     lifecycleReceipts: [],
   };
+}
+
+export function migrateEmptyExtensionRegistry(
+  raw: unknown
+): ExtensionRegistryStoreFile {
+  const legacy = emptyLegacyStoreSchema.parse(raw);
+  return extensionRegistryStoreSchema.parse({
+    ...emptyExtensionRegistryStore(),
+    revision: legacy.revision,
+    scopeRevisions: { global: legacy.revision },
+  });
 }
 
 function generationRefKey(input: {

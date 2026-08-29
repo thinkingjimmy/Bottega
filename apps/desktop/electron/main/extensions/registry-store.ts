@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on durable Registry persistence, strict schema, canonical/projection kernels, and delegated install/lifecycle authorities
- * [OUTPUT]: Provides the scoped Registry facade, owned/visible inventory, install and lifecycle commands, per-scope revision invalidation, and poisoned-store recovery boundary
- * [POS]: Durable Extension owner and transaction coordinator; install/update and lifecycle state machines are delegated without exposing mutable stored state
+ * [INPUT]: Depends on durable Registry persistence, strict schema/empty-ledger migration, canonical/projection kernels, and delegated install/lifecycle authorities
+ * [OUTPUT]: Provides the scoped Registry facade, atomic empty-ledger upgrade, owned/visible inventory, lifecycle commands, scope invalidation, and poisoned-store boundary
+ * [POS]: Durable Extension owner and transaction coordinator; only authority-free legacy state upgrades, while live incompatible facts remain fail closed
  */
 
 import { mkdir, readFile } from "node:fs/promises";
@@ -33,6 +33,7 @@ import {
 import {
   emptyExtensionRegistryStore,
   extensionRegistryStoreSchema,
+  migrateEmptyExtensionRegistry,
   type ExtensionRegistryStoredPackage,
   type ExtensionRegistryStoreFile,
   type ExtensionSourceProvenance,
@@ -151,7 +152,11 @@ export class ExtensionRegistryStore {
         return;
       }
       try {
-        this.state = extensionRegistryStoreSchema.parse(raw);
+        const current = extensionRegistryStoreSchema.safeParse(raw);
+        this.state = current.success
+          ? current.data
+          : migrateEmptyExtensionRegistry(raw);
+        if (!current.success) await this.persist();
       } catch (cause) {
         throw new Error("Agent Extension Registry 无效，已 fail closed", { cause });
       }

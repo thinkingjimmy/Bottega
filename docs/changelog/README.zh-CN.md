@@ -8,7 +8,7 @@
 
 - 在干净公开历史上以正常子提交发布当前生产源码；测试、开发自动化与内部证据继续只留在 Bottega-Dev。
 - 内置工具与手动 MCP server 支持精确 Project 覆盖。每个 turn 在副作用开始前冻结最终工具计划、scope revision、runtime 支持事实与 sealed MCP 配置。
-- Extension 统一采用 `global | exact Project` 所有权，贯穿管理、Skill、App requirement、session、retained data 与删除恢复；terminal 旧 MCP-plan 账本可向前迁移，活跃且身份不完整的 custody 继续 fail closed。
+- Extension 统一采用 `global | exact Project` 所有权，贯穿管理、Skill、App requirement、session、retained data 与删除恢复。精确空 v2-v5 Extension Registry 与 terminal 旧 MCP-plan 账本可向前迁移；任何携带 live 或歧义授权事实的旧状态继续 fail closed。
 - 增加随包交付的 Bottega Design Canvas，支持自包含 HTML 画板、方向与历史比较、编号视觉锚点、沙箱预览与 Agent 侧 render check。
 - 四个第一方 App gitlink 全部推进到远端可达提交。本次是源码预览，不是仍受发布门禁约束的正式 `v0.1.0` 安装包 Release。
 
