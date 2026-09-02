@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on MemoryService Internal owners, runtime/network callbacks and Chat accessors
- * [OUTPUT]: Provides Consent/Capture/Backfill/Rebuild/Pause controller single direction assembly results
+ * [INPUT]: Depends on MemoryService internal owners, runtime/network callbacks, live Chat accessors, and native-only history segment pages
+ * [OUTPUT]: Provides Consent/Capture/Backfill/Rebuild/Pause controller one-way assembly with paged product-history wiring
  * [POS]: The composition root of the main/memory/service; Remove constructive noise from the business façade without additional truth
  */
 
 import type { ChatRecord } from "../../../../shared/chats-ipc";
+import type { MemoryNativeSegmentPage } from "../../chats/sqlite/database-protocol";
 import type { MemoryEffectiveTarget } from "../../../../shared/memory-ipc";
 import type { MemoryPrePromptValidation } from "../core/domain";
 import type { FrozenTurnMemoryContext } from "../core/domain";
@@ -35,6 +36,11 @@ type Dependencies = {
   runtimes: ManagedRuntimeRegistry;
   readChat(chatId: string): Promise<ChatRecord | null>;
   listChatSummaries(): Promise<Summary[]>;
+  readNativeChatSegment?(
+    chatId: string,
+    afterSeq: number,
+    limit: number
+  ): Promise<MemoryNativeSegmentPage | null>;
   initializeOwners(): Promise<void>;
   resolveTarget(providerId: string): Promise<MemoryEffectiveTarget>;
   destination(providerId: string): Promise<{ hostname: string; model: string }>;
@@ -57,6 +63,7 @@ export function composeMemoryControllers(dependencies: Dependencies) {
     destination: dependencies.destination,
     readChat: dependencies.readChat,
     listChatSummaries: dependencies.listChatSummaries,
+    readNativeChatSegment: dependencies.readNativeChatSegment,
   });
   const capture = new MemoryCaptureController({
     delivery: dependencies.delivery,
@@ -77,6 +84,7 @@ export function composeMemoryControllers(dependencies: Dependencies) {
     capture,
     readChat: dependencies.readChat,
     listChatSummaries: dependencies.listChatSummaries,
+    readNativeChatSegment: dependencies.readNativeChatSegment,
     runtime: dependencies.runtime,
   });
   const rebuild = new MemoryRebuildController({

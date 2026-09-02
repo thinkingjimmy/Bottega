@@ -1,16 +1,17 @@
 /**
- * [INPUT]: Depends on canonical Chat Summary Policy v4 Shared generation runtime-owned target/destination Level 3 scope resolver zod durable intent
- * [OUTPUT]: Provides a one-time authority of the reason/mode/generation/historical boundary/digest, a recoverable product history intent, and a rebuild Consent/Grant that only refills the current shared generation
+ * [INPUT]: Depends on canonical Chat summaries, native-only segment pages, Policy v4 shared generation, runtime-owned target/destination, scope resolver, and zod durable intent
+ * [OUTPUT]: Provides paged one-time reason/mode/generation/history boundary authority, recoverable product history intent, and rebuild Consent/Grant for the current shared generation
  * [POS]: The main/memory/orchestration consent controller is usedSettings only save intent, permanently disclose the bul value here
  */
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type {
-  AssistantChatMessage,
+  ChatMessage,
   ChatRecord,
   UserChatMessage,
 } from "../../../../shared/chats-ipc";
+import type { MemoryNativeSegmentPage } from "../../chats/sqlite/database-protocol";
 import type {
   MemoryConsentAuthority,
   MemoryConsentPreview,
@@ -85,6 +86,11 @@ type ConsentControllerDependencies = {
   destination(providerId: string): Promise<{ hostname: string; model: string }>;
   readChat(chatId: string): Promise<ChatRecord | null>;
   listChatSummaries(): Promise<ChatSummary[]>;
+  readNativeChatSegment?(
+    chatId: string,
+    afterSeq: number,
+    limit: number
+  ): Promise<MemoryNativeSegmentPage | null>;
 };
 
 export class MemoryConsentController {
@@ -377,8 +383,8 @@ export class MemoryConsentController {
     if (!consent) throw new Error("Rebuild Consent 未发布");
     let granted = 0;
     for (const summary of await this.dependencies.listChatSummaries()) {
-      const chat = await this.dependencies.readChat(summary.id);
-      if (!chat || chat.incarnationId !== summary.incarnationId) continue;
+      const chat = await this.inspectNativeChat(summary);
+      if (!chat) continue;
       const source = sourceSessionKey({
         chatId: chat.id,
         incarnationId: chat.incarnationId,
@@ -426,7 +432,7 @@ export class MemoryConsentController {
       ];
       for (const interval of intervals) {
         if (interval.upperTime < (interval.lowerTime ?? 0)) continue;
-        if (!hasMemorableInInterval(chat, interval)) continue;
+        if (!(await this.inspectNativeChat(summary, interval))?.hasMemorable) continue;
         const previewDigest = stableMemoryDigest({
           operationId,
           source,
@@ -503,26 +509,15 @@ export class MemoryConsentController {
     const boundaries: HistoryBoundary[] = [];
     for (const summary of summaries) {
       if (excludedChatIds.has(summary.id)) continue;
-      const chat = await this.dependencies.readChat(summary.id);
-      if (!chat || chat.incarnationId !== summary.incarnationId) continue;
-      const upperSeq = Math.min(
-        summary.lastSeq,
-        chat.messages.at(-1)?.seq ?? summary.lastSeq
-      );
-      const bounded = chat.messages.filter((message) => message.seq <= upperSeq);
-      const upperTime = bounded.reduce(
-        (latest, message) => Math.max(latest, message.createdAt),
-        0
-      );
+      const chat = await this.inspectNativeChat(summary);
+      if (!chat) continue;
+      const upperSeq = Math.min(summary.lastSeq, chat.lastSeq);
+      const upperTime = chat.to;
       chats += 1;
-      turns += bounded.filter(
-        (message) => message.role === "assistant" && isMemorableAssistant(message)
-      ).length;
+      turns += chat.turns;
       gaps += summary.trimmedThroughSeq > 0 ? 1 : 0;
-      for (const message of bounded) {
-        from = Math.min(from, message.createdAt);
-        to = Math.max(to, message.createdAt);
-      }
+      from = Math.min(from, chat.from);
+      to = Math.max(to, chat.to);
       const source = sourceSessionKey({
         chatId: chat.id,
         incarnationId: chat.incarnationId,
@@ -577,8 +572,13 @@ export class MemoryConsentController {
       >
     > = [];
     for (const boundary of boundaries) {
-      const chat = await this.dependencies.readChat(boundary.chatId);
-      if (!chat || chat.incarnationId !== boundary.incarnationId) continue;
+      const chat = await this.inspectNativeChat({
+        id: boundary.chatId,
+        incarnationId: boundary.incarnationId,
+        lastSeq: boundary.upperSeq,
+        trimmedThroughSeq: 0,
+      });
+      if (!chat) continue;
       const subject = resolveMemoryScopeSubject(
           {
             chatId: chat.id,
@@ -617,33 +617,111 @@ export class MemoryConsentController {
     }
     return grants;
   }
+
+  private async inspectNativeChat(
+    summary: ChatSummary,
+    interval?: { lowerTime: number | null; upperTime: number; upperSeq: number }
+  ) {
+    const inspect = (input: {
+      id: string;
+      incarnationId: string;
+      projectId: string | null;
+      homeDir: string | null;
+      lastSeq: number;
+      trimmedThroughSeq: number;
+      pages: AsyncIterable<Readonly<{
+        precedingUser: ChatMessage | null;
+        messages: readonly ChatMessage[];
+      }>>;
+    }) => this.inspectNativePages(input, summary, interval);
+    if (!this.dependencies.readNativeChatSegment) {
+      const chat = await this.dependencies.readChat(summary.id);
+      if (!chat || chat.readOnlyReason) return null;
+      return inspect({
+        id: chat.id,
+        incarnationId: chat.incarnationId,
+        projectId: chat.projectId,
+        homeDir: chat.homeDir ?? null,
+        lastSeq: chat.messages.at(-1)?.seq ?? 0,
+        trimmedThroughSeq: chat.trimmedThroughSeq ?? 0,
+        pages: oneNativePage(chat.messages),
+      });
+    }
+    const first = await this.dependencies.readNativeChatSegment(summary.id, 0, 128);
+    if (!first) return null;
+    const read = this.dependencies.readNativeChatSegment;
+    return inspect({ ...first, pages: nativeSegmentPages(first, read) });
+  }
+
+  private async inspectNativePages(
+    input: {
+      id: string;
+      incarnationId: string;
+      projectId: string | null;
+      homeDir: string | null;
+      lastSeq: number;
+      trimmedThroughSeq: number;
+      pages: AsyncIterable<Readonly<{
+        precedingUser: ChatMessage | null;
+        messages: readonly ChatMessage[];
+      }>>;
+    },
+    summary: ChatSummary,
+    interval?: { lowerTime: number | null; upperTime: number; upperSeq: number }
+  ) {
+    if (input.incarnationId !== summary.incarnationId) return null;
+    let turns = 0;
+    let from = Number.POSITIVE_INFINITY;
+    let to = 0;
+    let hasMemorable = false;
+    let lastUser: UserChatMessage | null = null;
+    for await (const page of input.pages) {
+      if (page.precedingUser?.role === "user") lastUser = page.precedingUser;
+      for (const message of page.messages) {
+        if (message.seq > summary.lastSeq) continue;
+        from = Math.min(from, message.createdAt);
+        to = Math.max(to, message.createdAt);
+        if (message.role === "user") lastUser = message;
+        if (message.role !== "assistant" || !isMemorableAssistant(message)) continue;
+        turns += 1;
+        const at = lastUser?.createdAt;
+        if (
+          interval && at !== undefined && message.seq <= interval.upperSeq &&
+          at <= interval.upperTime &&
+          (interval.lowerTime === null || at >= interval.lowerTime)
+        ) hasMemorable = true;
+      }
+    }
+    return {
+      id: input.id,
+      incarnationId: input.incarnationId,
+      projectId: input.projectId,
+      homeDir: input.homeDir,
+      lastSeq: input.lastSeq,
+      trimmedThroughSeq: input.trimmedThroughSeq,
+      turns,
+      from,
+      to,
+      hasMemorable,
+    };
+  }
 }
 
-function hasMemorableInInterval(
-  chat: ChatRecord,
-  interval: { lowerTime: number | null; upperTime: number; upperSeq: number }
-) {
-  return chat.messages.some(
-    (message) =>
-      message.role === "assistant" &&
-      message.seq <= interval.upperSeq &&
-      canonicalAdmissionTime(chat, message) <= interval.upperTime &&
-      (interval.lowerTime === null ||
-        canonicalAdmissionTime(chat, message) >= interval.lowerTime) &&
-      isMemorableAssistant(message)
-  );
+async function* oneNativePage(messages: readonly ChatMessage[]) {
+  yield { precedingUser: null, messages };
 }
 
-function canonicalAdmissionTime(
-  chat: ChatRecord,
-  assistant: AssistantChatMessage
+async function* nativeSegmentPages(
+  first: MemoryNativeSegmentPage,
+  read: NonNullable<ConsentControllerDependencies["readNativeChatSegment"]>
 ) {
-  return chat.messages
-    .filter(
-      (message): message is UserChatMessage =>
-        message.role === "user" && message.seq < assistant.seq
-    )
-    .at(-1)?.createdAt ?? Number.POSITIVE_INFINITY;
+  let page: MemoryNativeSegmentPage | null = first;
+  while (page) {
+    yield page;
+    page = page.nextAfterSeq === null
+      ? null
+      : await read(page.id, page.nextAfterSeq, 128);
+  }
 }
 
 export function assertConsentPreviewInput(value: unknown) {

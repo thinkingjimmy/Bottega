@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, Setup/I18n Provider, SetupBackendRow, settings-layout of SettingsCanvas/SettingsSection/SettingsList/SettingsButton, PageShell and lucide Server/RefreshCw
- * [OUTPUT]: Provides BackendsSettingsView to cover the Backends view under the Agents group; Present the backend status/version with on-site action, page header and explicit review in a 52px row list
+ * [INPUT]: Depends on React, Setup/I18n Provider, structured AgentFailureNotice, SetupBackendRow, settings-layout, PageShell and lucide Server/RefreshCw
+ * [OUTPUT]: Provides BackendsSettingsView with human-first/folded-diagnostic setup failures, backend status/version, page header, and explicit review in a 52px row list
  * [POS]: The Backends file that covers the Settings layer; The backend detection is extracted from the General and is separately partitioned into a page with the Personalization/Usage and Agents (the settings for the agent dimension) settings, so the conditions are not loaded and you can subscribe to SetupProvider only
  */
 
@@ -11,10 +11,12 @@ import { SetupBackendRow } from "@/components/setup/backend-row";
 import {
   SettingsButton,
   SettingsCanvas,
+  SettingsAlert,
   SettingsList,
   SettingsSection,
 } from "@/components/settings/settings-layout";
 import { PageShell } from "@/components/page-shell";
+import { AgentFailureNotice } from "@/components/agent-failure-notice";
 
 /* ============================================================
  * 后端检测原先挤在 General 顶部，用一片 auto-fill 卡片网格铺开：一张就绪
@@ -32,7 +34,6 @@ export function BackendsSettingsView() {
         <SettingsSection
           title={t("settings.backends.title")}
           description={t("settings.backends.description")}
-          alert={setup.error}
           action={
             <SettingsButton
               variant="outline"
@@ -44,11 +45,17 @@ export function BackendsSettingsView() {
             </SettingsButton>
           }
         >
-          <SettingsList>
-            {setup.status?.backends.map((backend) => (
-              <SetupBackendRow key={backend.id} backend={backend} />
-            ))}
-          </SettingsList>
+          <div className="space-y-3">
+            {setup.error && (
+              <AgentFailureNotice compact {...setup.error} />
+            )}
+            {setup.notice && <SettingsAlert tone="warn">{setup.notice}</SettingsAlert>}
+            <SettingsList>
+              {setup.status?.backends.map((backend) => (
+                <SetupBackendRow key={backend.id} backend={backend} />
+              ))}
+            </SettingsList>
+          </div>
         </SettingsSection>
       </SettingsCanvas>
     </PageShell>

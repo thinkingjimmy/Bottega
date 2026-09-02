@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared/apps-ipc and preload exposed window.apps
- * [OUTPUT]: Provides typed renderer calls for installation, presets, save/rename/chat slots, README/configuration/sharing, grants, App-scoped Extensions, surfaces, logs, and removal
- * [POS]: The edge of the edge of the Apps of lib, which elevates the business terminal to typed error, keeps the transmission bias abnormal
+ * [OUTPUT]: Provides typed renderer calls for installation, presets, save/rename/Pin/chat slots, README/configuration/sharing, fenced grant candidates and mutations, symmetric Studio authorize/decline/revoke, App-scoped Extensions, surfaces, logs, and removal
+ * [POS]: Renderer Apps transport adapter; structured business rejections become typed errors while transport failures stay untouched
  */
 
 import type {
@@ -11,8 +11,8 @@ import type {
   AppGuiInfoInput,
   AppsBridgeApi,
   AppInstallEvent,
-  AppOpenMode,
   AppGrantSourcesSnapshot,
+  AppGrantCandidatesInput,
   AppGrantTarget,
   AppSurfaceAcquireInput,
   DesignAutoOpenInput,
@@ -23,6 +23,10 @@ import type {
   SetDesignEnabledInput,
   AvailableAppsInput,
   EnsureAppChatSlotInput,
+  ListAppUseHistoryInput,
+  OpenAppEditorInput,
+  OpenAppEditorChatInput,
+  OpenAppUseChatInput,
   InstallPresetInput,
   RemoveAppMode,
   RenameAppInput,
@@ -48,9 +52,19 @@ export const listApps = () => {
   return window.apps.list();
 };
 
-export const addApp = (input: AddAppInput) => {
+export class DuplicateAppError extends Error {
+  constructor(readonly appId: string) {
+    super("App repository already exists");
+  }
+}
+
+export const addApp = async (input: AddAppInput) => {
   if (!window.apps) throw new Error("当前环境不支持自动安装");
-  return window.apps.add(input);
+  const result = await window.apps.add(input);
+  if (result.status === "rejected") {
+    throw new DuplicateAppError(result.error.appId);
+  }
+  return result.record;
 };
 
 export const removeApp = (
@@ -92,33 +106,44 @@ export const ensureAppChatSlot = (input: EnsureAppChatSlotInput) => {
   if (!window.apps) throw new Error("当前环境不支持 App chat 槽位");
   return window.apps.ensureChatSlot(input);
 };
-export const resolveAppExtensionConsent = (input: {
-  appId: string;
-  granted: boolean;
-}) => {
-  if (!window.apps) throw new Error("当前环境不支持扩展授权");
-  return window.apps.resolveExtensionConsent(input);
+export const listAppUseHistory = (input: ListAppUseHistoryInput) => {
+  if (!window.apps) throw new Error("当前环境不支持 App Use History");
+  return window.apps.listUseHistory(input);
+};
+export const openAppUseChat = (input: OpenAppUseChatInput) => {
+  if (!window.apps) throw new Error("当前环境不支持 App Use destination");
+  return window.apps.openUseChat(input);
+};
+export const newAppUseChat = (appId: string, requestId: string) => {
+  if (!window.apps) throw new Error("当前环境不支持 App Use New Chat");
+  return window.apps.newUseChat(appId, requestId);
+};
+export const openAppEditor = (input: OpenAppEditorInput) => {
+  if (!window.apps) throw new Error("当前环境不支持 App Editor destination");
+  return window.apps.openEditor(input);
+};
+export const openAppEditorChat = (input: OpenAppEditorChatInput) => {
+  if (!window.apps) throw new Error("当前环境不支持 App Editor chat destination");
+  return window.apps.openEditorChat(input);
+};
+export const hideAppEditor = (appId: string) => {
+  if (!window.apps) throw new Error("当前环境不支持隐藏 App Editor");
+  return window.apps.hideEditor(appId);
+};
+export const authorizeAppStudioAccess = (appId: string) => {
+  if (!window.apps) throw new Error("当前环境不支持 App Studio 授权");
+  return window.apps.authorizeStudioAccess(appId);
 };
 
-export const resolveAppBaseGuiConsent = (input: {
-  appId: string;
-  grantedCapabilities: import("../../shared/apps-ipc").BaseGuiCapability[];
-}) => {
-  if (!window.apps) throw new Error("当前环境不支持 Base GUI 授权");
-  return window.apps.resolveBaseGuiConsent(input);
+/** 拒绝本次授权：丢弃待批的那一代，重新构建随之解锁。 */
+export const declineAppStudioAccess = (appId: string) => {
+  if (!window.apps) throw new Error("当前环境不支持 App Studio 拒绝");
+  return window.apps.declineStudioAccess(appId);
 };
 
-export const promoteAppGeneration = (input: {
-  appId: string;
-  expectedConsentRevision: number;
-}) => {
-  if (!window.apps) throw new Error("当前环境不支持切换 App 版本");
-  return window.apps.promoteGeneration(input);
-};
-
-export const revokeAppBaseGuiAccess = (appId: string) => {
-  if (!window.apps) throw new Error("当前环境不支持 Base GUI 撤权");
-  return window.apps.revokeBaseGuiAccess(appId);
+export const revokeAppStudioAccess = (appId: string) => {
+  if (!window.apps) throw new Error("当前环境不支持 App Studio 撤权");
+  return window.apps.revokeStudioAccess(appId);
 };
 
 export const readAppExtensionStatus = (appId: string) => {
@@ -150,11 +175,33 @@ export const readAppGuiInfo = (input: AppGuiInfoInput): Promise<AppGuiInfo> =>
     baseCapabilities: [],
     hostActions: [],
   });
+export const readyAppGuiSurface = (
+  input: import("../../shared/apps-ipc").AppGuiReadyInput
+) => {
+  if (!window.apps) return Promise.resolve({ outcome: "aborted" as const });
+  return window.apps.guiReady(input);
+};
 export const releaseAppGuiSurface = (input: AppGuiInfoInput) =>
   window.apps?.releaseGuiSurface(input) ?? Promise.resolve();
-export const setAppOpenMode = (appId: string, mode: AppOpenMode | null) => {
-  if (!window.apps) throw new Error("当前环境不支持 App 打开偏好");
-  return window.apps.setOpenMode({ appId, mode });
+export const beginAppFileExport = (input: import("../../shared/apps-ipc").BeginFileExportInputV1) => {
+  if (!window.apps) throw new Error("当前环境不支持 App 文件导出");
+  return window.apps.fileExportBegin(input);
+};
+export const writeAppFileExport = (input: import("../../shared/apps-ipc").WriteFileExportChunkInputV1) => {
+  if (!window.apps) throw new Error("当前环境不支持 App 文件导出");
+  return window.apps.fileExportWrite(input);
+};
+export const finalizeAppFileExport = (input: import("../../shared/apps-ipc").CompleteFileExportInputV1) => {
+  if (!window.apps) throw new Error("当前环境不支持 App 文件导出");
+  return window.apps.fileExportFinalize(input);
+};
+export const cancelAppFileExport = (input: import("../../shared/apps-ipc").CompleteFileExportInputV1) => {
+  if (!window.apps) throw new Error("当前环境不支持 App 文件导出");
+  return window.apps.fileExportCancel(input);
+};
+export const setAppPinned = (appId: string, pinned: boolean) => {
+  if (!window.apps) throw new Error("当前环境不支持 App pin");
+  return window.apps.setPinned({ appId, pinned });
 };
 export const importDesignCanvas = (input: ImportDesignCanvasInput) => {
   if (!window.apps) throw new Error("当前环境不支持 Design canvas 导入");
@@ -273,6 +320,10 @@ export const setDefaultAppGrant = (input: SetDefaultAppGrantInput) => {
 export const listAppGrantSources = (): Promise<AppGrantSourcesSnapshot> => {
   if (!window.apps) return Promise.resolve({ chats: [], projects: [], globals: [] });
   return window.apps.listGrantSources();
+};
+export const listAppGrantCandidates = (input: AppGrantCandidatesInput) => {
+  if (!window.apps) return Promise.resolve([]);
+  return window.apps.listGrantCandidates(input);
 };
 export const listAvailableApps = (input: AvailableAppsInput) => {
   if (!window.apps) return Promise.resolve([]);

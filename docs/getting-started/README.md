@@ -32,7 +32,29 @@ See the [features guide](../features/README.md) for the product model and its fo
 
 Authenticate with the CLI provider before starting Bottega. Bottega never asks for or imports that credential.
 
-## Install and run
+## Download and install
+
+Every release publishes installers for three platforms on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases).
+
+| Platform | Asset | Notes |
+| --- | --- | --- |
+| macOS (Apple silicon) | `Bottega-<version>-arm64.dmg` or `-arm64-mac.zip` | Primary target. Apple silicon only. |
+| Windows (x64) | `Bottega-<version>-windows-x64.exe` | NSIS installer; choose the install directory during setup. |
+| Linux (x64) | `Bottega-<version>-linux-x64.AppImage` | `chmod +x` the file, then run it. |
+
+These builds are **not code-signed**, so each desktop platform asks once for confirmation.
+
+**macOS.** Gatekeeper refuses to open an unsigned application on a double-click. Either right-click the app in `Applications` and choose **Open**, then confirm in the dialog, or clear the quarantine attribute once from a terminal:
+
+```bash
+xattr -d com.apple.quarantine /Applications/Bottega.app
+```
+
+**Windows.** SmartScreen may show a "Windows protected your PC" warning for an unrecognized publisher. Choose **More info**, then **Run anyway**.
+
+Signed and notarized builds are planned; until then, verify the download against the SHA256 sums printed in the release build log if you need that assurance.
+
+## Build from source
 
 ```bash
 git clone --recurse-submodules https://github.com/thinkingjimmy/Bottega.git
@@ -56,7 +78,7 @@ pnpm build       # Build the Electron application
 pnpm dist        # Build a local macOS DMG
 ```
 
-The local DMG is a development artifact. The first formal, signed GitHub Release has not been published yet.
+`pnpm dist` produces an unsigned local package for the current platform, equivalent to the published installers.
 
 On first launch, choose a Chat Homes directory and let Bottega detect the supported CLIs. Once the workspace and at least one backend are ready, create a task and select its Agent before sending the first message.
 

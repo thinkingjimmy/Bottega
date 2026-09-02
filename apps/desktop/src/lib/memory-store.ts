@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Memory-client and shared memory status/description/running time contract
+ * [INPUT]: Depends on Memory-client, the effective renderer locale, shared i18n runtime, and shared memory status/description/running time contracts
  * [OUTPUT]: Provides module-level memoryStore: state, per-provider revision reducer, version checking instantaneous, health/upload, configuration/version switching and destructive capabilities
  * [POS]: Settings › Memory's renderer owner; View Unloaded Not Lost, Main Drive is Running Fact
  */
@@ -24,6 +24,8 @@ import type {
 import type { MemorySharingMode } from "../../shared/settings-ipc";
 import { acceptMemoryRuntimeSnapshot } from "../../shared/memory-ipc";
 import { errorMessage } from "@/lib/errors";
+import { effectiveLocale } from "@/lib/i18n-locale";
+import { translate } from "../../shared/i18n/runtime";
 import {
   getMemoryStatus,
   checkMemoryRuntimeUpdates,
@@ -150,13 +152,22 @@ export const memoryStore = {
       .catch((cause) =>
         publish({
           ...snapshot,
-          error: errorMessage(cause, "Memory provider 列表读取失败"),
+          error: errorMessage(
+            cause,
+            translate(effectiveLocale(), "memory.store.providerListFailed")
+          ),
         })
       );
-    void run(getMemoryStatus, "Memory 状态读取失败");
+    void run(
+      getMemoryStatus,
+      translate(effectiveLocale(), "memory.store.statusFailed")
+    );
   },
   refresh() {
-    void run(refreshMemoryHealth, "Memory 健康检查失败");
+    void run(
+      refreshMemoryHealth,
+      translate(effectiveLocale(), "memory.store.healthFailed")
+    );
   },
   async previewConsent(
     providerId: string,
@@ -177,7 +188,10 @@ export const memoryStore = {
       publish({
         ...snapshot,
         loading: false,
-        error: errorMessage(cause, "Memory 历史预览失败"),
+        error: errorMessage(
+          cause,
+          translate(effectiveLocale(), "memory.store.historyPreviewFailed")
+        ),
       });
       throw cause;
     }
@@ -198,12 +212,15 @@ export const memoryStore = {
     );
   },
   resolve(id: string, action: MemoryAttentionAction) {
-    void run(() => resolveMemoryAttention(id, action), "Memory 挂起处置失败");
+    void run(
+      () => resolveMemoryAttention(id, action),
+      translate(effectiveLocale(), "memory.store.attentionFailed")
+    );
   },
   recheckRuntime(providerId: string) {
     return runRuntime(
       () => refreshMemoryRuntimeState(providerId),
-      "Memory 运行时状态读取失败"
+      translate(effectiveLocale(), "memory.store.runtimeStatusFailed")
     );
   },
   resolveConfigIssue(
@@ -213,7 +230,7 @@ export const memoryStore = {
   ) {
     return runRuntime(
       () => resolveMemoryRuntimeConfigIssue(issue, action, authorityToken),
-      "Memory 配置问题处置失败"
+      translate(effectiveLocale(), "memory.store.configIssueFailed")
     );
   },
   async previewConfigIssue(
@@ -225,7 +242,13 @@ export const memoryStore = {
     } catch (cause) {
       publish({
         ...snapshot,
-        error: errorMessage(cause, "Memory 手工配置目的地预览失败"),
+        error: errorMessage(
+          cause,
+          translate(
+            effectiveLocale(),
+            "memory.store.manualConfigPreviewFailed"
+          )
+        ),
       });
       throw cause;
     }
@@ -237,7 +260,7 @@ export const memoryStore = {
   ) {
     return runRuntime(
       () => runMemoryRuntimeOperation(providerId, operation, version),
-      "Memory 运行时操作失败"
+      translate(effectiveLocale(), "memory.store.runtimeOperationFailed")
     );
   },
   async checkUpdates(providerId: string, force: boolean) {
@@ -248,7 +271,7 @@ export const memoryStore = {
     try {
       return await runRuntime(
         () => checkMemoryRuntimeUpdates(providerId, force),
-        "Memory 版本检查失败"
+        translate(effectiveLocale(), "memory.store.updateCheckFailed")
       );
     } finally {
       publish({
@@ -269,7 +292,10 @@ export const memoryStore = {
     } catch (cause) {
       publish({
         ...snapshot,
-        error: errorMessage(cause, "Memory 配置目的地预览失败"),
+        error: errorMessage(
+          cause,
+          translate(effectiveLocale(), "memory.store.configPreviewFailed")
+        ),
       });
       throw cause;
     }
@@ -288,7 +314,10 @@ export const memoryStore = {
     } catch (cause) {
       publish({
         ...snapshot,
-        error: errorMessage(cause, "Memory 配置目的地授权失败"),
+        error: errorMessage(
+          cause,
+          translate(effectiveLocale(), "memory.store.configAuthorityFailed")
+        ),
       });
       throw cause;
     }
@@ -307,7 +336,13 @@ export const memoryStore = {
     } catch (cause) {
       publish({
         ...snapshot,
-        error: errorMessage(cause, "Memory 手工配置目的地授权失败"),
+        error: errorMessage(
+          cause,
+          translate(
+            effectiveLocale(),
+            "memory.store.manualConfigAuthorityFailed"
+          )
+        ),
       });
       throw cause;
     }
@@ -319,7 +354,7 @@ export const memoryStore = {
   ) {
     return runRuntime(
       () => writeMemoryRuntimeConfig(providerId, values, authorityToken),
-      "Memory 运行时配置提交失败"
+      translate(effectiveLocale(), "memory.store.configSubmitFailed")
     );
   },
   async requestDestructiveAuthority(
@@ -331,7 +366,13 @@ export const memoryStore = {
     } catch (cause) {
       publish({
         ...snapshot,
-        error: errorMessage(cause, "Memory 破坏性操作授权失败"),
+        error: errorMessage(
+          cause,
+          translate(
+            effectiveLocale(),
+            "memory.store.destructiveAuthorityFailed"
+          )
+        ),
       });
       return null;
     }
@@ -343,7 +384,10 @@ export const memoryStore = {
     } catch (cause) {
       publish({
         ...snapshot,
-        error: errorMessage(cause, "Memory 破坏性操作失败"),
+        error: errorMessage(
+          cause,
+          translate(effectiveLocale(), "memory.store.destructiveFailed")
+        ),
       });
     }
   },

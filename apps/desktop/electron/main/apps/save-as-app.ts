@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on lifecycle Gate/Intent, App/Project/Chat/Base stores, save-as-app-support Pure rules, durable child promotion, sharing skill Product judgement, conversation Thresholds/availability and transition turn ports that must be clearly held by Project-gate
- * [OUTPUT]: Provides SaveAsAppService/saveAsApp/recover with structured business rejection, including archived source chat, D17 with App licensing, execution of requestId, etc
+ * [INPUT]: Depends on lifecycle Gate/Intent, App/Project/Chat/Base stores, current app locale, save-as-app-support rules, durable child promotion, sharing-skill policy, conversation availability, and Project-gated transition-turn ports
+ * [OUTPUT]: Provides SaveAsAppService/saveAsApp/recover with structured business rejection and schema-v14 App records initialized with an explicit empty Studio grant
  * [POS]: The Save as App Business Arrangement layer of the apps module; attachment fence encloses the entire Store queue, parent restores to the already-linked intent as true, child rolled-back through four durable rollback phases, clutching, source chat disappears and compensation fail-forward still clutches
  */
 
@@ -12,10 +12,11 @@ import {
   type AppRecord,
   type SaveAsAppInput,
 } from "../../../shared/apps-ipc";
-import type { ChatRecord } from "../../../shared/chats-ipc";
+import type { AppLocale } from "../../../shared/i18n/locale";
 import type { BasePromotionService } from "../bases/base-promotion-service";
 import type { BaseStore } from "../bases/base-store";
 import type { ChatStore } from "../chats/chat-store";
+import type { ChatMetadata } from "../chats/chat-summary";
 import type {
   AdmissionGate,
   SagaResult,
@@ -73,20 +74,28 @@ export type SaveAsAppDependencies = {
   coordinator: ConversationCoordinator;
   hasActiveTurn(chatId: string): boolean;
   isChatAvailable(chatId: string): boolean;
-  rotateSession(chat: ChatRecord): Promise<void>;
+  rotateSession(chat: ChatMetadata): Promise<void>;
   restoreSession(
-    chat: ChatRecord,
+    chat: ChatMetadata,
     session: SessionRef | null
   ): Promise<void>;
   removeShell(record: AppRecord): Promise<void>;
   enqueueSkillTurnHeld(input: {
-    chat: ChatRecord;
+    chat: ChatMetadata;
     turnIntentId: string;
     prompt: string;
     projectLifecycleHeld: true;
   }): Promise<void>;
+  locale?(): AppLocale;
   now?: () => number;
   allocate?: () => SaveIdentity;
+};
+
+type SaveAsAppIntentInput = {
+  chatId: string;
+  name: string;
+  icon: string;
+  locale?: AppLocale;
 };
 
 export class SaveAsAppService {
@@ -98,6 +107,7 @@ export class SaveAsAppService {
 
   async saveAsApp(input: SaveAsAppInput): Promise<AppRecord> {
     const normalized = normalizeInput(input);
+    const locale = this.dependencies.locale?.() ?? "en";
     const outcome = await this.dependencies.gate.admitAndRun(
       {
         kind: "save-as-app",
@@ -106,6 +116,7 @@ export class SaveAsAppService {
           chatId: normalized.chatId,
           name: normalized.name,
           icon: normalized.icon,
+          locale,
         },
         allocate: () =>
           this.dependencies.allocate?.() ?? {
@@ -154,7 +165,7 @@ export class SaveAsAppService {
         if (this.dependencies.hasActiveTurn(chatId)) {
           throw new Error("编辑 chat 仍有进行中的 turn");
         }
-        const chat = await this.dependencies.chats.get(chatId);
+        const chat = this.dependencies.chats.getMetadata(chatId);
         if (!chat) throw new Error("编辑 chat 不存在");
         const pending = await this.dependencies.store.update(
           appId,
@@ -236,7 +247,7 @@ export class SaveAsAppService {
       try {
         await this.dependencies.projects.runExclusive(() =>
           this.dependencies.coordinator.runConversationExclusive(chatId, async () => {
-            const chat = await this.dependencies.chats.get(chatId);
+            const chat = this.dependencies.chats.getMetadata(chatId);
             if (!chat) throw new Error("编辑 chat 不存在");
             await this.dependencies.enqueueSkillTurnHeld({
               chat,
@@ -257,11 +268,7 @@ export class SaveAsAppService {
   }
 
   private async runLocked(intent: LifecycleIntent): Promise<SagaResult> {
-    const input = intent.input as {
-      chatId: string;
-      name: string;
-      icon: string;
-    };
+    const input = intent.input as SaveAsAppIntentInput;
     const identity = allocatedIdentity(intent);
     const run = async (): Promise<SagaResult> => {
       try {
@@ -298,7 +305,7 @@ export class SaveAsAppService {
 
   private async execute(
     initial: LifecycleIntent,
-    input: { chatId: string; name: string; icon: string },
+    input: SaveAsAppIntentInput,
     identity: SaveIdentity
   ): Promise<SagaResult> {
     let intent = initial;
@@ -310,7 +317,11 @@ export class SaveAsAppService {
         rollbackError(intent)
       );
     }
-    const manifest = baseAppManifest(input.name, input.icon);
+    const manifest = baseAppManifest(
+      input.name,
+      input.icon,
+      input.locale ?? "en"
+    );
     const dir = join(this.dependencies.store.appsRoot, identity.appId);
     intent = await this.reconcilePromotionLink(intent, input, identity);
 
@@ -319,7 +330,7 @@ export class SaveAsAppService {
      * 缺失走 fail-forward（跳过 skill turn 仍推进到 ready），在线复检只会产出
      * 「谎报 rolled-back 却零补偿」的终态（AppRecord 卡 creating、壳全数残留）。 */
     if (!reached(intent, "promoted")) {
-      const chat = await this.dependencies.chats.get(input.chatId);
+      const chat = this.dependencies.chats.getMetadata(input.chatId);
       if (!chat) return rejected("CHAT_NOT_FOUND", "聊天不存在");
       if (!this.dependencies.isChatAvailable(input.chatId)) {
         return rejected("CHAT_UNAVAILABLE", "聊天已归档，不能保存为 App");
@@ -377,7 +388,7 @@ export class SaveAsAppService {
     }
 
     if (!reached(intent, "skill-turn-enqueued")) {
-      const chat = await this.dependencies.chats.get(input.chatId);
+      const chat = this.dependencies.chats.getMetadata(input.chatId);
       // 分水岭后源 chat 消失：fail-forward——跳过 skill turn 仍推进到 ready，
       // skillStatus 在下方按账本证据如实落 failed
       if (chat) {
@@ -400,7 +411,7 @@ export class SaveAsAppService {
       !this.dependencies.coordinator.durableTurnPhase(
         input.chatId,
         identity.turnIntentId
-      ) && !(await this.dependencies.chats.get(input.chatId));
+      ) && !this.dependencies.chats.getMetadata(input.chatId);
     const ready = await this.dependencies.store.update(
       identity.appId,
       (record) => ({
@@ -427,7 +438,7 @@ export class SaveAsAppService {
     initial: LifecycleIntent,
     input: { chatId: string; name: string; icon: string },
     identity: SaveIdentity,
-    sourceChat: ChatRecord,
+    sourceChat: ChatMetadata,
     originalProjectId: string | null,
     manifest: ReturnType<typeof baseAppManifest>,
     dir: string
@@ -468,6 +479,7 @@ export class SaveAsAppService {
           headlessConsent: null,
           bindingRevision: 0,
           lifecycleRevision: 0,
+          pinnedAt: null,
           domainIdentity: null,
           generations: [],
           generationBinding: {
@@ -475,9 +487,17 @@ export class SaveAsAppService {
             active: null,
             drainingGenerationIds: [],
           },
+          studioGrant: null,
+          studioGrantRevision: 0,
           manifest,
-          editChatSlot: { id: input.chatId, state: "canonical" },
+          editChatSlot: {
+            id: input.chatId,
+            incarnationId: chat.incarnationId,
+            state: "canonical",
+            revision: chat.chatRecordRevision,
+          },
           activeUseChatSlot: null,
+          editableSource: true,
           skillStatus: {
             state: "pending",
             turnIntentId: identity.turnIntentId,
@@ -533,7 +553,7 @@ export class SaveAsAppService {
           "edit"
         );
       }
-      chat = (await this.dependencies.chats.get(input.chatId))!;
+      chat = this.dependencies.chats.getMetadata(input.chatId)!;
       await this.dependencies.rotateSession(chat);
       intent = await this.dependencies.intents.advance(
         intent.intentId,
@@ -626,7 +646,7 @@ export class SaveAsAppService {
     const terminalError = rollbackError(intent, error);
     /* 源 chat 已被删除时无可恢复对象:跳过 chat 补偿但继续清理
      * Project/壳,补偿必须收敛而不是永久滞留 pending(fail-forward)。 */
-    const chat = await this.dependencies.chats.get(input.chatId);
+    const chat = this.dependencies.chats.getMetadata(input.chatId);
 
     if (!reached(intent,"rollback-chat-restored")) {
       if (chat) {
@@ -645,7 +665,7 @@ export class SaveAsAppService {
         } else if (chat.projectId !== originalProjectId) {
           throw new Error("回滚 Save as App 时聊天 Project 归属已变化");
         }
-        const restoredChat = await this.dependencies.chats.get(chat.id);
+        const restoredChat = this.dependencies.chats.getMetadata(chat.id);
         if (!restoredChat) throw new Error("回滚后聊天不存在");
         const originalSession = recoverySession(intent);
         if (originalSession.recorded) {

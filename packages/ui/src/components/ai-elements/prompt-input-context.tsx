@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, AI SDK FileUIPart, access to pure rules and useAttachmentList that supports typed AttachmentCommand
- * [OUTPUT]: Provides a PromptInput value model with workspace file/dir entryKind, unified display text, add-Validated access provider with fresh-count atoms and access hooks
+ * [INPUT]: Depends on React, AI SDK FileUIPart, host-injected UI text, pure file-admission rules, and typed useAttachmentList commands
+ * [OUTPUT]: Provides the PromptInput value model, localized addValidated errors, workspace entry projection, and attachment access hooks
  * [POS]: The state contract layer of ai-elements PromptInput; Draft owners can upgrade the lifecycle of the attachment to a cross-mounted store
  */
 
@@ -26,6 +26,7 @@ import {
   type AttachmentCommand,
   type AttachmentListControl,
 } from "../../hooks/use-attachment-list";
+import { useUiText } from "../../lib/ui-text";
 
 export type PromptInputFilePart = FileUIPart & {
   /** 原始 File 句柄：交给受信 preload 授权或 renderer 本地预览，路径不进入业务状态 */
@@ -189,6 +190,26 @@ export const PromptInputProvider = ({
   attachments: controlledAttachments,
   children,
 }: PromptInputProviderProps) => {
+  const fileTypeError = useUiText(
+    "fileTypeError",
+    "No files match the accepted types."
+  );
+  const fileSizeError = useUiText(
+    "fileSizeError",
+    "All files exceed the maximum size."
+  );
+  const fileCountError = useUiText(
+    "fileCountError",
+    "Too many files. Some were not added."
+  );
+  const fileMessages = useMemo(
+    () => ({
+      accept: fileTypeError,
+      max_file_size: fileSizeError,
+      max_files: fileCountError,
+    }),
+    [fileCountError, fileSizeError, fileTypeError]
+  );
   const [textInput, setTextInput] = useState(initialInput);
   // blob URL 生命周期统一在 useAttachmentList（与 PromptInput 本地路径共用同一实现）
   const list = useAttachmentList(controlledAttachments);
@@ -209,6 +230,7 @@ export const PromptInputProvider = ({
           list.filesRef.current.length + (options.externalFileCount ?? 0),
         maxFiles: options.maxFiles,
         maxFileSize: options.maxFileSize,
+        messages: fileMessages,
       });
       const attachments = options.attachmentFileFilter
         ? selection.files.filter(options.attachmentFileFilter)
@@ -216,7 +238,7 @@ export const PromptInputProvider = ({
       if (attachments.length > 0) listAdd(attachments);
       return selection;
     },
-    [list.filesRef, listAdd]
+    [fileMessages, list.filesRef, listAdd]
   );
 
   const openFileDialog = useCallback(() => openRef.current?.(), []);

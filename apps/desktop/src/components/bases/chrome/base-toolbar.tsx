@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on React, shared Base meta/filter with select first-id-wins helper, shadcn forms/menus native language and lucide icons, state of BaseMutationOutcome judgment type
- * [OUTPUT]: Provides BaseToolbar, FilterEditor and the native language; Six row-backed view sharing filter/columns/add-row, operation with the first row fixed at 40px, panel defaulted to and only opened by user, formula column chips display the expression restored by column name
- * [POS]: The base/chrome operating band; The CAS is responsible for the error of the BaseWorkbench terminology
+ * [INPUT]: Depends on React, shared Base meta/filter contracts, i18n, mutation outcomes, and UI menus/forms/icons
+ * [OUTPUT]: Provides BaseToolbar, filter/column editors, localized column actions, and formula-aware column chips
+ * [POS]: Shared Base chrome action band; BaseWorkbench owns CAS mutations while this module owns their visible controls
  */
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type { BaseMutationOutcome } from "../state/base-mutation-error";
 import {
@@ -60,6 +60,7 @@ import {
   isGroupableView,
 } from "../../../../shared/bases-ipc";
 import { BaseFormulaEditor } from "../editors/panels/base-formula-editor";
+import { InlineNameInput } from "./inline-name-input";
 
 // ============================================================================
 // 列类型的唯一目录：菜单渲染即数据遍历，不再散落 option 分支
@@ -323,7 +324,9 @@ export function BaseToolbar({
               return (
                 <InlineNameInput
                   key={column.id}
-                  ariaLabel={`Rename ${column.name}`}
+                  ariaLabel={t("bases.table.renameColumnAria", {
+                    column: column.name,
+                  })}
                   autoFocus
                   className="h-7 w-28 text-xs"
                   name={column.name}
@@ -357,7 +360,9 @@ export function BaseToolbar({
                     两个身份互相掩护，谁也认不出它可以点。 */}
                 <Icon className="size-3 text-muted-foreground" />
                 <button
-                  aria-label={`Rename ${column.name}`}
+                  aria-label={t("bases.table.renameColumnAria", {
+                    column: column.name,
+                  })}
                   className={cn(
                     "cursor-pointer hover:underline",
                     hidden && "line-through decoration-muted-foreground/50"
@@ -781,51 +786,4 @@ function filterValueText(value: BaseCellValue | undefined) {
       : `${value.lat},${value.lng}`;
   }
   return String(value ?? "");
-}
-
-// Base/视图/列共用的行内改名原语：blur 收口提交，Enter 即 blur，空值回退原名
-export function InlineNameInput({
-  name,
-  ariaLabel,
-  className,
-  autoFocus = false,
-  onRename,
-  onDone,
-}: {
-  name: string;
-  ariaLabel: string;
-  className?: string;
-  autoFocus?: boolean;
-  onRename(name: string): Promise<BaseMutationOutcome>;
-  onDone?(): void;
-}) {
-  const [draft, setDraft] = useState(name);
-  /* Esc 走 ref 而不是 setDraft：置空是异步的，而 blur() 同步触发 onBlur——
-   * 那次 onBlur 读到的仍是旧闭包里的 draft，于是「取消」反而把编辑值提交了。
-   * 用一枚同步的标记告诉 onBlur「这次不是提交」，退出仍只有 blur 一条通道。 */
-  const cancelled = useRef(false);
-  return (
-    <Input
-      aria-label={ariaLabel}
-      autoFocus={autoFocus}
-      className={className}
-      maxLength={200}
-      onBlur={() => {
-        const next = cancelled.current ? "" : draft.trim();
-        cancelled.current = false;
-        if (next && next !== name) void onRename(next);
-        else setDraft(name);
-        onDone?.();
-      }}
-      onChange={(event) => setDraft(event.target.value)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") event.currentTarget.blur();
-        if (event.key === "Escape") {
-          cancelled.current = true;
-          event.currentTarget.blur();
-        }
-      }}
-      value={draft}
-    />
-  );
 }

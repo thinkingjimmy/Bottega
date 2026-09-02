@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Depends on sharing App probe/requirement DTO, SafeReadme/readmeBody with i18n
- * [OUTPUT]: Provides AppInstallDisclosure and InstallSource: README formally before the requirements/plugins/sources are compressed into a definition table
- * [POS]: The installation of components/apps is disclosed from a single source; Preset details with GitHub Base import confirm sharing
+ * [INPUT]: Depends on frozen App manifest/probe requirements, SafeReadme/readmeBody, and i18n
+ * [OUTPUT]: Provides hasInstallReadme, AppInstallReadme (README body only) and AppInstallGrants (one card: consent items above the rule, provenance below)
+ * [POS]: The two halves of install authorization, composed by the Preset install dialog and the GitHub Base import dialog; technical evidence now sits inside the grant card instead of behind a disclosure
  */
 
 import type { ReactNode } from "react";
 import type {
   AppExtensionInstallPreflight,
+  AppManifest,
   AppRequirement,
 } from "../../../shared/apps-ipc";
 import type { AppExtensionRequirementDeclaration } from "../../../shared/extensions-ipc";
@@ -53,7 +54,7 @@ function requirementState(requirement: AppRequirement, status?: CliStatus) {
   if (!status) {
     return {
       tone: "declared",
-      key: requirement.required
+      labelKey: requirement.required
         ? "apps.requirementRequired"
         : "apps.requirementOptional",
     } as const;
@@ -61,7 +62,7 @@ function requirementState(requirement: AppRequirement, status?: CliStatus) {
   const ready = status.detectable && status.installed;
   return {
     tone: ready ? "ready" : "missing",
-    key: ready ? "apps.requirementReady" : "apps.requirementMissing",
+    labelKey: ready ? "apps.requirementReady" : "apps.requirementMissing",
   } as const;
 }
 
@@ -76,41 +77,104 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export function AppInstallDisclosure({
+/* 判空看的是摘掉标题之后的正文：只有一行 H1 的 README 等于没有正文。
+   判据只此一处，两个调用方都问它，免得各自写一遍再各自写歪。 */
+export function hasInstallReadme(readme: string) {
+  return readmeBody(readme).length > 0;
+}
+
+/** README 正文。标题归弹窗标题所有，故这里只渲染摘掉 H1 之后的那部分。 */
+export function AppInstallReadme({
   readme,
+  className,
+}: {
+  readme: string;
+  className?: string;
+}) {
+  const body = readmeBody(readme);
+  if (!body) return null;
+  return (
+    <SafeReadme className={cn(README_TYPOGRAPHY, className)}>{body}</SafeReadme>
+  );
+}
+
+/* ------------------------------------------------------------------------- *
+ *  授权卡：一张卡，一条内部细线，不是两个盒子。
+ *
+ *  上半是「你同意什么」——第二人称、明语、可数的几条；
+ *  下半是「你同意的是哪一份」——机器需求、Agent 插件、来源与指纹。
+ *
+ *  为什么合：来源不是旁证，是被授权物的身份。用户授权的从来不是抽象的那个
+ *  App，而是「来自这个仓库、这个 pin、这个 digest 的这一份」；机器需求与插件
+ *  同样是这次授权的作用范围。三条事实本就长在授权里，拆成第二个容器只是把
+ *  同一次决定切成两半摆着。
+ *
+ *  层级因此改由字号与颜色承担（14px 深色的同意项 vs 12px 灰的事实），
+ *  而不再靠多一个盒子——能消失的容器永远比能摆对的容器优雅。
+ * ------------------------------------------------------------------------- */
+export function AppInstallGrants({
   requirements,
   cliStatuses,
   extensions,
   extensionRequirements = [],
   source,
+  manifest,
+  permissionLabels,
 }: {
-  readme: string;
   requirements: readonly AppRequirement[];
   cliStatuses: readonly CliStatus[];
   extensions: readonly AppExtensionInstallPreflight[];
   extensionRequirements?: readonly AppExtensionRequirementDeclaration[];
   source: InstallSource;
+  manifest: AppManifest;
+  permissionLabels?: Readonly<{ read?: string; rowInsert?: string }>;
 }) {
   const { t } = useAppTranslation();
   const machineRequirements = requirements.filter(
     (requirement) => requirement.kind === "cli" || requirement.kind === "config"
   );
-  /* 判空看的是摘掉标题之后的正文：只有一行 H1 的 README 等于没有正文，
-     照着原串判会留下一条上不着村的分隔线。 */
-  const body = readmeBody(readme);
+  const capabilities = manifest.kind === "base"
+    ? manifest.gui?.capabilities ?? []
+    : [];
+  const permissions = [
+    permissionLabels?.read ?? t("apps.installPermissionReadOwnData"),
+    ...(capabilities.includes("row-insert")
+      ? [permissionLabels?.rowInsert ?? t("apps.installPermissionAddRows")]
+      : []),
+    ...(capabilities.includes("row-patch")
+      ? [t("apps.installPermissionEditRows")]
+      : []),
+    ...(capabilities.includes("row-delete")
+      ? [t("apps.installPermissionDeleteRows")]
+      : []),
+    ...(capabilities.includes("attachment-read")
+      ? [t("apps.installPermissionReadAttachments")]
+      : []),
+    ...(capabilities.includes("workspace-read")
+      ? [t("apps.installPermissionReadWorkspace")]
+      : []),
+  ];
 
   return (
-    <div className="flex flex-col gap-5">
-      {body && <SafeReadme className={README_TYPOGRAPHY}>{body}</SafeReadme>}
-      {/* 三条事实收在正文之后、动作之前——读完是什么，再看它要什么，然后决定。
-          它们不再是三个与 README 同级的段落标题：那会让「不需要额外 CLI」这种
-          零信息的答案占掉与说明书同等的版面。 */}
-      <dl
-        className={cn(
-          "grid grid-cols-[auto_1fr] gap-x-6 gap-y-3",
-          body && "border-t pt-5"
-        )}
-      >
+    /* 底色停在 bg-muted/40，不再往 sunken 走：卡里那几行 12px 的
+       muted-foreground 压在 sunken 上只剩 4.43:1，过不了 AA 的 4.5。
+       这张卡的底色深到这里就是尽头，再深一档就得换字色。 */
+    <div className="rounded-lg border bg-muted/40">
+      <ul className="flex flex-col gap-2 p-3 text-sm">
+        {permissions.map((permission) => (
+          <li className="flex items-start gap-2" key={permission}>
+            <span
+              aria-hidden="true"
+              className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary"
+            />
+            <span>{permission}</span>
+          </li>
+        ))}
+      </ul>
+      {/* 细线以下是「你同意的是哪一份」：读完它要什么，再看它是什么，然后决定。
+          这三条不该是与说明书同级的段落——「无额外要求」这种零信息的答案
+          占不起那份版面，但它们又确实是这次授权的作用范围，故收在同一张卡里。 */}
+      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 border-t p-3">
         <Fact label={t("apps.installNeeds")}>
           {machineRequirements.length ? (
             <ul className="flex flex-col gap-1">
@@ -126,7 +190,7 @@ export function AppInstallDisclosure({
                   >
                     <span>{requirement.label}</span>
                     <span className={cn("text-xs", REQUIREMENT_TONE[state.tone])}>
-                      {t(state.key)}
+                      {t(state.labelKey)}
                     </span>
                   </li>
                 );

@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * [INPUT]: Depends on repo preflight IPC, unified installation disclosures, requirements, common forms, AgentSelect, Apps/Setup Provider and dialog bases
- * [OUTPUT]: Provides AddAppDialog ((self-held page headers + triggers); URL→no-checkout Type and disclose Base/Web, close by probing discard/installing hide
- * [POS]: The only new entry to the apps module; The Chief App is accessed only from the empty shelf, where the GitHub warehouse is exclusively managed; Base is created before Agent selects and with AppRecord
+ * [INPUT]: Depends on repo preflight IPC, Apps i18n, the install grant card plus a local README disclosure, requirements, AgentSelect, Apps/Setup providers, and dialog primitives
+ * [OUTPUT]: Provides AddAppDialog for no-checkout GitHub review, unchanged Web install, and Studio-authorized Base import with direct canonical-detail navigation
+ * [POS]: Sole Apps creation entry; renderer owns review UI while main owns submitted durable install intents
  */
 
 import { useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router";
 import { Plus } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
@@ -32,16 +33,25 @@ import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useSetup } from "@/components/providers/setup-provider";
 import { maintenanceCapableBackends } from "@/lib/agent-backends";
 import { errorMessage } from "@/lib/errors";
-import { discardAppProbe, probeAppRepo } from "@/lib/apps-client";
+import {
+  discardAppProbe,
+  DuplicateAppError,
+  probeAppRepo,
+} from "@/lib/apps-client";
 import {
   AppRequirementsForm,
   appRequirementsSatisfied,
 } from "./app-requirements-form";
-import { AppInstallDisclosure } from "./app-install-disclosure";
+import {
+  AppInstallGrants,
+  AppInstallReadme,
+  hasInstallReadme,
+} from "./app-install-disclosure";
 import type {
   AppConfigValue,
   AppRepoProbeResult,
 } from "../../../shared/apps-ipc";
+import { canonicalAppSurfaceRoute } from "../../../shared/window-surfaces-ipc";
 
 type AddAppDialogProps = {
   onInstallStarted?: (appId: string) => void;
@@ -52,24 +62,22 @@ type Stage = "blocked" | "form" | "confirm" | "base-confirm";
 /* ------------------------------------------------------------------ *
  * 文案表：三态的标题/说明是数据而非分支，读的人一眼看全三种形态
  * ------------------------------------------------------------------ */
-const STAGE_TEXT: Record<Stage, { title: string; description: string }> = {
+const STAGE_TEXT: Record<Stage, { titleKey: string; descriptionKey: string }> = {
   blocked: {
-    title: "添加 App",
-    description: "暂时不能运行 App：需要一个已开放 App 维护能力的运行 Agent。",
+    titleKey: "apps.addDialog.blockedTitle",
+    descriptionKey: "apps.addDialog.blockedDescription",
   },
   form: {
-    title: "添加 App",
-    description:
-      "仅支持公开 GitHub 仓库的默认分支。私有仓库、指定分支和 monorepo 子目录暂不支持。",
+    titleKey: "apps.addDialog.formTitle",
+    descriptionKey: "apps.addDialog.formDescription",
   },
   confirm: {
-    title: "确认安装风险",
-    description: "安装第三方仓库会在本机执行代码，请先确认信任边界。",
+    titleKey: "apps.addDialog.confirmTitle",
+    descriptionKey: "apps.addDialog.confirmDescription",
   },
   "base-confirm": {
-    title: "确认导入 Base App",
-    description:
-      "已冻结远端提交并完成无 checkout 校验。请审阅指令、数据与依赖后确认。",
+    titleKey: "apps.installAuthorizationTitle",
+    descriptionKey: "apps.installAuthorizationDescription",
   },
 };
 
@@ -90,6 +98,23 @@ function Field({
       </span>
       {children}
     </div>
+  );
+}
+
+/* README 在这个弹窗里仍旧收在抽屉里，与预设弹窗不同：那边确认页只有说明书
+   与授权卡两件事，这边后面还排着 Agent 选择、需求表单和 CLI 体检——把一整篇
+   陌生仓库的 README 摊开，会把真正要填的东西推到三屏之外。
+   空正文不给空抽屉：判据借 hasInstallReadme，与预设弹窗同一个。 */
+function BaseReadmeDisclosure({ readme }: { readme: string }) {
+  const { t } = useAppTranslation();
+  if (!hasInstallReadme(readme)) return null;
+  return (
+    <details className="rounded-lg border p-3 text-sm">
+      <summary className="cursor-pointer font-medium">
+        {t("apps.installAboutApp")}
+      </summary>
+      <AppInstallReadme className="mt-4" readme={readme} />
+    </details>
   );
 }
 
@@ -118,6 +143,7 @@ function CapabilityBadge({ ok, text }: { ok: boolean; text: string }) {
 
 export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
   const { t } = useAppTranslation();
+  const navigate = useNavigate();
   const { records, addApp, highlightApp } = useApps();
   const setup = useSetup();
   const [open, setOpen] = useState(false);
@@ -160,12 +186,12 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
     maintenanceBackends.some((candidate) => candidate.id === backend.id);
   const maintenanceLabel = (backend: (typeof backends)[number]) =>
     backend.runtimeStatus !== "installed"
-      ? "未安装或版本不可用"
+      ? t("apps.addDialog.backendUnavailable")
       : backend.authStatus !== "authenticated"
-        ? "待登录"
+        ? t("apps.addDialog.backendLoginRequired")
       : maintenanceReady(backend)
-        ? "已开放运行"
-        : "未开放运行";
+        ? t("apps.addDialog.backendReady")
+        : t("apps.addDialog.backendBlocked");
 
   const review = async () => {
     if (probing) return;
@@ -178,7 +204,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
       );
       if (duplicate) {
         highlightApp(duplicate.id);
-        throw new Error("该仓库已添加，已在列表中高亮");
+        throw new Error(t("apps.addDialog.duplicateRepository"));
       }
       setNormalized(next);
       const result = await probeAppRepo(next);
@@ -192,7 +218,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
       setError("");
     } catch (cause) {
       if (attempt !== probeAttempt.current) return;
-      setError(errorMessage(cause, "仓库地址无效"));
+      setError(errorMessage(cause, t("apps.addDialog.invalidRepository")));
     } finally {
       if (attempt === probeAttempt.current) setProbing(false);
     }
@@ -208,6 +234,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
     installing.current = true;
     setSaving(true);
     setError("");
+    const installingBase = probe?.kind === "base";
     try {
       const app = await addApp({
         repoUrl: normalized,
@@ -217,16 +244,24 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
               preflightId: probe.preflightId,
               confirmedDigest: probe.digest,
               config,
+              authorization: {
+                scope: "studio-only",
+                decision: "approve-requested",
+              },
             }
           : {}),
       });
       setOpen(false);
       reset(false);
-      onInstallStarted?.(app.id);
+      if (installingBase) navigate(canonicalAppSurfaceRoute(app.id));
+      else onInstallStarted?.(app.id);
     } catch (cause) {
-      const message = errorMessage(cause, "添加 App 失败");
-      const duplicateId = message.match(/已添加：([a-z0-9]{10})/)?.[1];
+      const duplicateId =
+        cause instanceof DuplicateAppError ? cause.appId : null;
       if (duplicateId) highlightApp(duplicateId);
+      const message = duplicateId
+        ? t("apps.addDialog.duplicateRepository")
+        : errorMessage(cause, t("apps.addDialog.addFailed"));
       /* 已提交的 preflight 不可由 renderer 重放或 discard；重试归 App intent。 */
       setProbe(null);
       setNormalized("");
@@ -262,12 +297,14 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
   const actions = {
     blocked: {
       secondary: {
-        label: setup.checking ? "正在检测…" : "重新检测",
+        label: setup.checking
+          ? t("apps.addDialog.checking")
+          : t("apps.addDialog.recheck"),
         disabled: setup.checking,
         run: () => void setup.recheck(),
       },
       primary: {
-        label: "打开 Agent 设置",
+        label: t("apps.addDialog.openAgentSettings"),
         disabled: false,
         run: () => {
           setOpen(false);
@@ -277,7 +314,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
     },
     form: {
       secondary: {
-        label: "取消",
+        label: t("common.cancel"),
         disabled: false,
         run: () => {
           setOpen(false);
@@ -285,14 +322,16 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
         },
       },
       primary: {
-        label: probing ? "正在安全预检…" : "继续",
+        label: probing
+          ? t("apps.addDialog.preflighting")
+          : t("common.continue"),
         disabled: probing || !repoUrl.trim(),
         run: () => void review(),
       },
     },
     confirm: {
       secondary: {
-        label: "返回",
+        label: t("common.back"),
         disabled: saving,
         run: () => {
           setNormalized("");
@@ -300,14 +339,16 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
         },
       },
       primary: {
-        label: saving ? "正在提交…" : "下载并安装",
+        label: saving
+          ? t("apps.addDialog.submitting")
+          : t("apps.addDialog.downloadAndInstall"),
         disabled: saving,
         run: () => void install(),
       },
     },
     "base-confirm": {
       secondary: {
-        label: "返回",
+        label: t("common.back"),
         disabled: saving,
         run: () => {
           if (probe?.kind === "base") void discardAppProbe(probe.preflightId);
@@ -317,7 +358,9 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
         },
       },
       primary: {
-        label: saving ? "正在导入…" : "导入 Base App",
+        label: saving
+          ? t("apps.presetInstalling")
+          : t("apps.presetAllowAndInstall"),
         disabled:
           saving ||
           !maintenanceBackends.some(
@@ -350,16 +393,23 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{STAGE_TEXT[stage].title}</DialogTitle>
-          <DialogDescription>{STAGE_TEXT[stage].description}</DialogDescription>
+          <DialogTitle>
+            {t(
+              STAGE_TEXT[stage].titleKey,
+              stage === "base-confirm" && probe?.kind === "base"
+                ? { name: probe.manifest.name }
+                : undefined
+            )}
+          </DialogTitle>
+          <DialogDescription>
+            {t(STAGE_TEXT[stage].descriptionKey)}
+          </DialogDescription>
         </DialogHeader>
 
         {stage === "blocked" ? (
           <div className="flex flex-col gap-3">
             <p className="text-muted-foreground">
-              运行 Agent 会在本机无人值守地安装、修复并运行此 App，
-              因此后端必须实现维护适配器并通过能力门禁；若某些围栏无法强制，
-              只能在你明确接受并已记录风险例外后开放。
+              {t("apps.addDialog.blockedDisclosure")}
             </p>
             <ul className="flex flex-col gap-2 rounded-lg bg-card p-3 ring-1 ring-foreground/10">
               {backends.map((backend) => (
@@ -376,7 +426,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
               ))}
             </ul>
             <p className="text-[11px] text-muted-foreground">
-              符合能力门禁或已有明确风险例外的 Agent 就绪后，此入口将自动开放。
+              {t("apps.addDialog.blockedReadyHint")}
             </p>
           </div>
         ) : stage === "base-confirm" && probe?.kind === "base" ? (
@@ -388,25 +438,33 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
               <p className="text-muted-foreground">
                 {probe.manifest.description}
               </p>
-              <p>{probe.files.length} 个文件 · {probe.rowCount} 行</p>
+              <p>
+                {t("apps.addDialog.fileSummary", {
+                  files: probe.files.length,
+                  rows: probe.rowCount,
+                })}
+              </p>
               {probe.hasGui && (
                 <p className="mt-2 rounded bg-amber-500/10 p-2 text-amber-800 dark:text-amber-300">
-                  包含自定义 GUI，将在受限 iframe 沙箱内执行。
+                  {t("apps.addDialog.customGui")}
                 </p>
               )}
             </div>
-            <AppInstallDisclosure
+            <AppInstallGrants
+              manifest={probe.manifest}
               cliStatuses={probe.cliStatuses}
               extensions={probe.extensionPreflights}
               extensionRequirements={probe.manifest.extensionRequirements}
-              readme={probe.disclosures.find((item) => item.path === "README.md")?.content ?? ""}
               requirements={probe.requirements}
               source={{
                 label: probe.repoUrl,
                 fingerprint: `${probe.commitSha.slice(0, 12)} · ${probe.digest.slice(0, 12)}`,
               }}
             />
-            <Field id="base-agent" label="使用 Agent">
+            <BaseReadmeDisclosure
+              readme={probe.disclosures.find((item) => item.path === "README.md")?.content ?? ""}
+            />
+            <Field id="base-agent" label={t("apps.addDialog.useAgent")}>
               <AgentSelect
                 value={maintenanceAgent}
                 options={maintenanceBackends}
@@ -422,7 +480,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
             />
             {probe.cliStatuses.length > 0 && (
               <div className="rounded-lg border p-3 text-sm">
-                <p className="font-medium">本机 CLI 检测</p>
+                <p className="font-medium">{t("apps.addDialog.cliCheck")}</p>
                 <ul className="mt-2 flex flex-col gap-1.5">
                   {probe.cliStatuses.map((status) => {
                     const requirement = probe.requirements.find(
@@ -437,16 +495,20 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
                       >
                         <span>
                           {requirement?.label ?? status.id}
-                          {requirement?.required ? "（必需）" : "（可选）"}
+                          {t(
+                            requirement?.required
+                              ? "apps.addDialog.required"
+                              : "apps.addDialog.optional"
+                          )}
                         </span>
                         <CapabilityBadge
                           ok={ready}
                           text={
                             !status.detectable
-                              ? "未内置检测器"
+                              ? t("apps.addDialog.detectorUnavailable")
                               : status.installed
-                                ? "已安装"
-                                : "未安装"
+                                ? t("apps.addDialog.installed")
+                                : t("apps.addDialog.notInstalled")
                           }
                         />
                       </li>
@@ -455,7 +517,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
                 </ul>
                 {!cliRequirementsReady && (
                   <p className="mt-2 text-destructive text-xs" role="alert">
-                    必需 CLI 未通过检测，暂不能导入。
+                    {t("apps.addDialog.requiredCliBlocked")}
                   </p>
                 )}
               </div>
@@ -472,23 +534,30 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
             ))}
             {probe.ignored.length > 0 && (
               <p className="text-muted-foreground text-xs">
-                将丢弃白名单外文件：{probe.ignored.join("、")}
+                {t("apps.addDialog.ignoredFiles", {
+                  files: probe.ignored.join(", "),
+                })}
               </p>
             )}
           </SlimScroller>
         ) : stage === "confirm" ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5 rounded-lg bg-card p-3 ring-1 ring-foreground/10">
-              <span className="text-muted-foreground">即将下载并安装</span>
+              <span className="text-muted-foreground">
+                {t("apps.addDialog.aboutToInstall")}
+              </span>
               <span className="font-mono text-sm break-all">{ownerRepo}</span>
             </div>
             <p className="rounded-lg bg-amber-500/10 p-3 text-amber-800 ring-1 ring-amber-500/25 dark:text-amber-300">
               <strong className="font-medium">
-                安装与运行均以你的用户权限执行（可读写文件、访问网络）。
+                {t("apps.addDialog.permissionsWarning")}
               </strong>
-              仅添加你信任的仓库。
+              {" "}{t("apps.addDialog.trustedOnly")}
             </p>
-            <Field id="maintenance-agent" label="运行 Agent">
+            <Field
+              id="maintenance-agent"
+              label={t("apps.addDialog.runtimeAgent")}
+            >
               <AgentSelect
                 value={maintenanceAgent}
                 options={maintenanceBackends}
@@ -499,7 +568,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            <Field id="repo-url" label="仓库地址">
+            <Field id="repo-url" label={t("apps.addDialog.repositoryAddress")}>
               <Input
                 autoFocus
                 id="repo-url"
@@ -519,7 +588,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
               />
             </Field>
             <p className="text-[11px] text-muted-foreground">
-              下一步先以 no-checkout 方式读取 Git 对象并判型；此时不会运行仓库代码，也不会创建 App。
+              {t("apps.addDialog.nextStep")}
             </p>
           </div>
         )}

@@ -1,12 +1,14 @@
 /**
- * [INPUT]: Depends on shared ChatSummary, renderer the current Intl locale and the ChatActivity of the chat-activity-store; Chat, activity snapshots and freeze clocks
+ * [INPUT]: Depends on shared ChatSummary, renderer locale/catalog runtime, and ChatActivity from chat-activity-store; callers provide chat/activity snapshots and a frozen clock
  * [OUTPUT]: Provides ActivityGroup, groupChatsByActivity and compareRecent is the only quality updatedAt reverses); The active mode is exclusive Priority, the rest is grouped by the last five local calendar days, the first letters of the date title are written by the current locale
  * [POS]: The Activity of the renderer lib is the purest model boundary; Isolation time zone/DST, exclusive and sequential rules, not dependent on React/Provider/DOM
  */
 
 import type { ChatSummary } from "../../shared/chats-ipc";
 import type { ChatActivity } from "./chat-activity-store";
-import { intlLocale } from "./i18n-locale";
+import { effectiveLocale, intlLocale } from "./i18n-locale";
+import { translate } from "../../shared/i18n/runtime";
+import { appearsInActivity } from "../../shared/placement/activity";
 
 export type ActivityDayIndex = 0 | 1 | 2 | 3 | 4;
 
@@ -78,6 +80,7 @@ export function groupChatsByActivity({
   const today = localDayOrdinal(now);
 
   for (const chat of chats) {
+    if (!appearsInActivity(chat)) continue;
     const state = activity.get(chat.id);
     if (state) {
       priority.push({ chat, rank: PRIORITY_RANK[state] });
@@ -99,7 +102,7 @@ export function groupChatsByActivity({
   const groups: ActivityGroup[] = [
     {
       id: "priority",
-      label: "Priority",
+      label: translate(effectiveLocale(), "chat.sidebar.priority"),
       chats: priority.map(({ chat }) => chat),
     },
   ];

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AI Elements Message format, Share Button/Spinner, Codex clipboard boundaries, ResizeObserver and Plan open state
- * [OUTPUT]: Provides PlanCard, with fixed maximum height, step by step as required, open with a real click and Editing Spinner Unified rendering of the terminal/flow Plan
- * [POS]: The Plan message visual unit of chat/transcript, which is replicated by ChatTurn and ChatTurnDraft; The full content is read by the third generation
+ * [INPUT]: Depends on AI Elements message primitives, localized Plan controls, clipboard, ResizeObserver, and controlled side-panel expansion state
+ * [OUTPUT]: Provides PlanCard with a bounded preview, localized editing/copy/expand controls, and keyboard-equivalent activation
+ * [POS]: Plan message unit of chat/transcript, shared by final and streaming turns while the side panel owns full-content display
  */
 
 import {
@@ -21,6 +21,7 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { writeClipboardText } from "@/lib/agent-client";
 import { capMarkdown } from "@/lib/charts/chart-markdown";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 export function PlanCard({
   content,
@@ -35,6 +36,7 @@ export function PlanCard({
   onToggle?: () => void;
   copyable: boolean;
 }) {
+  const { t } = useAppTranslation();
   const [copied, setCopied] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -70,17 +72,27 @@ export function PlanCard({
       <div className="flex items-center gap-2 text-muted-foreground">
         {editing ? (
           <Spinner
-            aria-label="Plan 编辑中"
+            aria-label={t("chat.transcript.plan.editingAria")}
             className="size-4 text-muted-foreground"
           />
         ) : (
           <LightbulbIcon className="size-4" />
         )}
-        <span className="text-sm">{editing ? "Editing" : "Plan"}</span>
+        <span className="text-sm">
+          {t(
+            editing
+              ? "chat.transcript.plan.editing"
+              : "chat.transcript.plan.title"
+          )}
+        </span>
         <div className="ml-auto flex items-center gap-1">
           {copyable && (
             <Button
-              aria-label={copied ? "Copied" : "Copy plan"}
+              aria-label={t(
+                copied
+                  ? "chat.transcript.plan.copied"
+                  : "chat.transcript.plan.copy"
+              )}
               className="cursor-pointer"
               onClick={() =>
                 void writeClipboardText(content).then(() => setCopied(true))
@@ -94,7 +106,11 @@ export function PlanCard({
           )}
           {onToggle && (
             <Button
-              aria-label={isExpanded ? "收起 Plan 第三栏" : "在第三栏显示 Plan"}
+              aria-label={t(
+                isExpanded
+                  ? "chat.transcript.plan.collapsePanel"
+                  : "chat.transcript.plan.showPanel"
+              )}
               aria-pressed={isExpanded}
               className="cursor-pointer"
               onClick={onToggle}
@@ -112,8 +128,8 @@ export function PlanCard({
         aria-label={
           onToggle
             ? isExpanded
-              ? "收起 Plan 第三栏"
-              : "在第三栏显示完整 Plan"
+              ? t("chat.transcript.plan.collapsePanel")
+              : t("chat.transcript.plan.showFullPanel")
             : undefined
         }
         className={cn(

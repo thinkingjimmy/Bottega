@@ -1,12 +1,12 @@
 /**
- * [INPUT]: Depends on React setter/ref interface, Codex attach client, chat turn/ and ask questions about projection and hydration
- * [OUTPUT]: Provides bindChatAttachment; New generation synchronizes release of old request/Steer projections, and then sort attach/getChat/replay, record identity release, channel level item/delta stream with explicitly hydrated chat/session state
- * [POS]: The main-owned turn-binding device for chat/runtime isolates the long lifecycle protocol from the use-chat-session arrangement; Only after reading the chat booklet is the ID released
+ * [INPUT]: Depends on React setter/ref interface, Codex attach client, renderer locale/catalog runtime, chat turn projection, user input projection, and hydration
+ * [OUTPUT]: Provides bindChatAttachment; each generation releases old request/Steer projections, joins attach replay with message-free runtime context, starts paged message loading, and projects item/delta state
+ * [POS]: The main-owned turn-binding device for chat/runtime; runtime facts and timeline bytes enter through separate bounded ports
  */
 
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { ChatStatus } from "ai";
-import type { ChatMessage, ChatRecord } from "../../../../shared/chats-ipc";
+import type { ChatMessage, ChatRuntimeContext } from "../../../../shared/chats-ipc";
 import type {
   AgentBackendId,
   AgentApprovalRequest,
@@ -31,8 +31,10 @@ import {
   type ChatHydration,
 } from "@/lib/chat-hydration";
 import { errorMessage } from "@/lib/errors";
+import { effectiveLocale } from "@/lib/i18n-locale";
+import { translate } from "../../../../shared/i18n/runtime";
 import { projectPendingUserInput } from "@/lib/chat-user-input-state";
-import { primeChatMessages } from "@/lib/chat-messages-store";
+import { loadInitialChatMessages } from "@/lib/chat-messages-store";
 import {
   messageId,
   type PendingPlanDecisionState,
@@ -89,9 +91,9 @@ export function coalesceProjectionEvent(
 
 export type ChatAttachmentBinding = {
   chatId: string;
-  getChat: (chatId: string) => Promise<ChatRecord | null>;
+  getChat: (chatId: string) => Promise<ChatRuntimeContext | null>;
   onRecordAgent?: (agent: AgentBackendId) => void;
-  onRecord?: (record: ChatRecord | null) => void;
+  onRecord?: (record: ChatRuntimeContext | null) => void;
   onSteerSnapshot?: (intents: SteerOutboxProjection[]) => void;
   refs: {
     generation: MutableRefObject<number>;
@@ -147,7 +149,7 @@ const localError = (content: string): ChatMessage => ({
 export function bindChatAttachment(binding: ChatAttachmentBinding) {
   const { refs, set } = binding;
   let active = true;
-  let record: ChatRecord | null = null;
+  let record: ChatRuntimeContext | null = null;
   let snapshot: Parameters<typeof projectionFromSnapshot>[1] = null;
   const generation = ++refs.generation.current;
   /* 同一 hook 原位切 chat 时，旧请求与旧 Steer 投影都属于上一代身份。
@@ -291,7 +293,11 @@ export function bindChatAttachment(binding: ChatAttachmentBinding) {
     },
     (cause) => {
       if (!active) return;
-      appendLocalError(`**运行状态接管失败：** ${errorMessage(cause)}`);
+      appendLocalError(
+        translate(effectiveLocale(), "chat.runtime.attachment.takeoverFailed", {
+          message: errorMessage(cause),
+        })
+      );
     }
   );
 
@@ -300,7 +306,7 @@ export function bindChatAttachment(binding: ChatAttachmentBinding) {
       if (!active) return;
       record = nextRecord;
       binding.onRecord?.(record);
-      if (record) primeChatMessages(record);
+      if (record) loadInitialChatMessages(record.id);
       if (record) binding.onRecordAgent?.(record.agent);
       refs.recordExists.current = Boolean(record);
       if (refs.incarnationId) {
@@ -313,7 +319,11 @@ export function bindChatAttachment(binding: ChatAttachmentBinding) {
       if (!active) return;
       refs.recordExists.current = false;
       if (refs.incarnationId) refs.incarnationId.current = null;
-      appendLocalError(`**聊天加载失败：** ${errorMessage(cause)}`);
+      appendLocalError(
+        translate(effectiveLocale(), "chat.runtime.attachment.chatLoadFailed", {
+          message: errorMessage(cause),
+        })
+      );
     })
     .finally(() => {
       if (!active) return;

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Base value/view/attachment contracts and the canonical BaseCellContext evaluation kernel
- * [OUTPUT]: Provides Base owner/IPC DTOs, limits, mutation results, events, and context-required filter/project/group pure functions
+ * [OUTPUT]: Provides Base owner/IPC DTOs, limits, mutation results, events, and context-required filter/project/group functions with language-neutral group descriptors
  * [POS]: The shared Base wire and projection authority used by main, renderer, and the builtin-tool server; projection never manufactures its own partial evaluation context
  */
 
@@ -30,6 +30,7 @@ import type {
   BaseViewConfig,
 } from "./base-view-config";
 import type { BaseHistoryEntry } from "./bases/history-ledger-schema";
+import type { BaseNavigation } from "./placement/facts";
 
 export { baseCellText, dedupeSelectOptions, formatBaseDate, isBaseAttachmentValue, parseBaseDate } from "./base-values";
 export { cellValue, createBaseCellContext, isBaseRelationLabelColumn } from "./base-cell-value";
@@ -164,6 +165,8 @@ export type BaseMeta = {
   ownerInstanceId: string;
   name: string;
   pinned: boolean;
+  /** Optional only on legacy/browser wire inputs; canonical main snapshots always materialize it. */
+  navigation?: BaseNavigation;
   columns: BaseColumn[];
   views: BaseView[];
   activeViewId: string;
@@ -186,7 +189,21 @@ export type BasePinnedSummary = {
   ownerInstanceId: string;
   name: string;
   revision: number;
+  /** Missing only for a pre-v1 bridge; consumers must derive the conservative owner-contained fallback. */
+  navigation?: BaseNavigation;
 };
+
+export function baseNavigationOf(
+  value: Pick<BaseMeta, "owner" | "pinned" | "navigation">
+): BaseNavigation {
+  if (value.navigation) return value.navigation;
+  if (value.pinned) {
+    return { kind: "root-user-managed", source: "legacy-pin", activatedAt: 0 };
+  }
+  return value.owner.kind === "chat"
+    ? { kind: "conversation-contained", chatId: value.owner.chatId }
+    : { kind: "project-contained", projectId: value.owner.projectId };
+}
 
 export type BaseMetaPatch = Partial<
   Pick<
@@ -303,6 +320,7 @@ export const BASES_CHANNEL = {
   discardCorrupt: "bases:discard-corrupt",
   listPinned: "bases:list-pinned",
   listProject: "bases:list-project",
+  removeManaged: "bases:remove-managed",
   updateMeta: "bases:update-meta",
   authorizeMutation: "bases:authorize-mutation",
   insertRows: "bases:insert-rows",
@@ -330,6 +348,10 @@ export type BasesBridgeApi = {
   discardCorrupt(input: { ownerKey: string }): Promise<BaseSnapshot>;
   listPinned(): Promise<{ bases: BasePinnedSummary[]; warning?: string }>;
   listProjectBases(): Promise<{ bases: BasePinnedSummary[]; warning?: string }>;
+  removeManaged(input: {
+    ownerKey: string;
+    ownerInstanceId: string;
+  }): Promise<{ removed: boolean }>;
   authorizeMutation(input: {
     ownerKey: string;
     operation: BaseMutationOperation;
@@ -523,12 +545,16 @@ export function groupBaseRows(
     const id = String(projected[index] ?? "__none__");
     (buckets.get(id) ?? buckets.get("__none__")!).push(row);
   }
-  return laneIds.map((id) => ({
-    id,
-    label:
-      id === "__none__"
-        ? "Unassigned"
-        : column.options?.find((option) => option.id === id)?.label ?? id,
-    rows: buckets.get(id)!,
-  }));
+  return laneIds.map((id) => {
+    const laneRows = buckets.get(id)!;
+    if (id === "__none__") {
+      return { id, label: null, rows: laneRows, unassigned: true as const };
+    }
+    return {
+      id,
+      label: column.options?.find((option) => option.id === id)?.label ?? id,
+      rows: laneRows,
+      unassigned: false as const,
+    };
+  });
 }

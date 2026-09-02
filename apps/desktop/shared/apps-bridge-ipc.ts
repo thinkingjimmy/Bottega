@@ -1,24 +1,31 @@
 /**
  * [INPUT]: Depends on type-only Apps lifecycle, grant, package, surface, and Design command DTOs
- * [OUTPUT]: Provides APPS_CHANNEL and the complete renderer AppsBridgeApi contract
+ * [OUTPUT]: Provides APPS_CHANNEL, the AppRecordProjection/AppsProjectionSnapshot read models, and the complete renderer AppsBridgeApi contract, including fenced contextual grant candidates, structured add outcomes, symmetric Studio authorize/decline/revoke, and main-only durable App Pin mutation
  * [POS]: Shared Apps wire boundary; keeps channel routing and preload shape separate from durable domain records
  */
 
 import type {
   AddAppInput,
+  AddAppResult,
   AppCapabilitiesSnapshot,
   AppConfigValue,
   AppExtensionStatus,
   AppGrantSnapshot,
+  AppGrantCandidate,
+  AppGrantCandidatesInput,
   AppGrantSourcesSnapshot,
   AppGrantTarget,
   AppInstallEvent,
   AppManagementLeaseRef,
   AppOpenResult,
+  AppUseHistoryPage,
+  ListAppUseHistoryInput,
+  OpenAppEditorInput,
+  OpenAppEditorChatInput,
+  OpenAppUseChatInput,
   AppRecord,
   AppRepoProbeResult,
   AppRuntimeStatus,
-  AppsListSnapshot,
   AvailableAttachedApp,
   AvailableAppsInput,
   EnsureAppChatSlotInput,
@@ -32,6 +39,7 @@ import type {
   SaveAsAppInput,
   SaveAsAppResult,
   SetAppAgentInput,
+  SetAppPinnedInput,
   SetAppGrantInput,
   SetAppGrantStateInput,
   SetDefaultAppGrantInput,
@@ -40,14 +48,16 @@ import type {
   SharePublishInput,
 } from "./apps-ipc";
 import type {
+  AppEditorDestination,
+  AppUseSwitchReceipt,
+} from "./placement/facts";
+import type {
   AppAttachmentSurface,
   AppGuiInfo,
   AppGuiInfoInput,
-  AppOpenMode,
+  AppGuiReadyInput,
+  AppGuiReadyResult,
   AppSurfaceAcquireInput,
-  BaseGuiCapability,
-  BaseGuiCapabilityScopes,
-  BaseGuiHostActionCapability,
   DeleteDesignDataInput,
   DesignAutoOpenInput,
   DesignCanvasVersion,
@@ -58,6 +68,13 @@ import type {
   RestoreDesignVersionInput,
   SetDesignEnabledInput,
 } from "./apps-surface-ipc";
+import type {
+  BeginFileExportInputV1,
+  BeginFileExportResultV1,
+  CompleteFileExportInputV1,
+  CompleteFileExportResultV1,
+  WriteFileExportChunkInputV1,
+} from "./app-gui/file-export";
 
 export const APPS_CHANNEL = {
   add: "apps:add",
@@ -72,6 +89,7 @@ export const APPS_CHANNEL = {
   setGrantState: "apps:grant:state",
   setDefaultGrant: "apps:grant:default",
   listGrantSources: "apps:grant:sources",
+  listGrantCandidates: "apps:grant:candidates",
   listAvailable: "apps:available",
   acquireSurface: "apps:surface:acquire",
   releaseSurface: "apps:surface:release",
@@ -87,18 +105,28 @@ export const APPS_CHANNEL = {
   saveAsApp: "apps:save-as-app",
   rename: "apps:rename",
   ensureChatSlot: "apps:ensure-chat-slot",
+  listUseHistory: "apps:use-history:list",
+  openUseChat: "apps:use-chat:open",
+  newUseChat: "apps:use-chat:new",
+  openEditor: "apps:editor:open",
+  openEditorChat: "apps:editor-chat:open",
+  hideEditor: "apps:editor:hide",
   retrySkill: "apps:retry-skill",
-  resolveExtensionConsent: "apps:extension-consent",
-  resolveBaseGuiConsent: "apps:base-gui-consent",
-  revokeBaseGuiAccess: "apps:base-gui-access:revoke",
-  promoteGeneration: "apps:promote-generation",
+  authorizeStudioAccess: "apps:studio-access:authorize",
+  declineStudioAccess: "apps:studio-access:decline",
+  revokeStudioAccess: "apps:studio-access:revoke",
   extensionStatus: "apps:extension-status",
   revokeExtensionGrant: "apps:extension-grant:revoke",
   rebuildExtensionGeneration: "apps:extension-generation:rebuild",
   capabilities: "apps:capabilities",
   guiInfo: "apps:gui-info",
+  guiReady: "apps:gui-ready",
   releaseGuiSurface: "apps:gui-surface:release",
-  setOpenMode: "apps:open-mode:set",
+  fileExportBegin: "apps:file-export:begin",
+  fileExportWrite: "apps:file-export:write",
+  fileExportFinalize: "apps:file-export:finalize",
+  fileExportCancel: "apps:file-export:cancel",
+  setPinned: "apps:set-pinned",
   importDesignCanvas: "apps:design:import",
   listDesignImportCandidates: "apps:design:import-candidates",
   listDesignFiles: "apps:design:files",
@@ -123,10 +151,29 @@ export const APPS_CHANNEL = {
   shareDiscard: "apps:share-discard",
 } as const;
 
+/* ============================================================
+ * 记录投影：可派生的事实由 main 端上桌，renderer 不再自己推
+ *
+ * `studioSurfaceReady` 是 grant-authority.studioSurfaceReady 的结论，
+ * 与 surface 放行读同一组事实。它是派生量，故不进持久化 schema，只出现在
+ * 这条 wire 上——AppRecord 依旧是账本，投影只是账本上的一次朗读。
+ *
+ * 字段可选，因为老桥接与测试 fixture 递进来的是裸 AppRecord；缺席读作
+ * false，与「尚未授权」同义，不会替任何人补权。
+ * ============================================================ */
+export type AppRecordProjection = AppRecord &
+  Readonly<{ studioSurfaceReady?: boolean }>;
+
+export type AppsProjectionSnapshot = Readonly<{
+  apps: AppRecordProjection[];
+  /** 网关降级：列表可信，但 App 跑不起来 */
+  runtimeWarning: string | null;
+}>;
+
 export type AppsBridgeApi = {
-  add: (input: AddAppInput) => Promise<AppRecord>;
+  add: (input: AddAppInput) => Promise<AddAppResult>;
   remove: (appId: string, mode?: RemoveAppMode, requestId?: string) => Promise<void>;
-  list: () => Promise<AppsListSnapshot>;
+  list: () => Promise<AppsProjectionSnapshot>;
   open: (appId: string) => Promise<AppOpenResult>;
   status: (appId: string) => Promise<AppRuntimeStatus>;
   originWithoutStart: (appId: string) => Promise<AppOpenResult | null>;
@@ -136,6 +183,7 @@ export type AppsBridgeApi = {
   setGrantState: (input: SetAppGrantStateInput) => Promise<AppGrantSnapshot>;
   setDefaultGrant: (input: SetDefaultAppGrantInput) => Promise<AppRecord>;
   listGrantSources: () => Promise<AppGrantSourcesSnapshot>;
+  listGrantCandidates: (input: AppGrantCandidatesInput) => Promise<AppGrantCandidate[]>;
   listAvailable: (input: AvailableAppsInput) => Promise<AvailableAttachedApp[]>;
   acquireSurface: (input: AppSurfaceAcquireInput) => Promise<AppAttachmentSurface>;
   releaseSurface: (surfaceLeaseId: string) => Promise<void>;
@@ -150,23 +198,28 @@ export type AppsBridgeApi = {
   saveAsApp: (input: SaveAsAppInput) => Promise<SaveAsAppResult>;
   rename: (input: RenameAppInput) => Promise<AppRecord>;
   ensureChatSlot: (input: EnsureAppChatSlotInput) => Promise<EnsureAppChatSlotResult>;
+  listUseHistory: (input: ListAppUseHistoryInput) => Promise<AppUseHistoryPage>;
+  openUseChat: (input: OpenAppUseChatInput) => Promise<AppUseSwitchReceipt>;
+  newUseChat: (appId: string, requestId: string) => Promise<AppUseSwitchReceipt>;
+  openEditor: (input: OpenAppEditorInput) => Promise<AppEditorDestination>;
+  openEditorChat: (input: OpenAppEditorChatInput) => Promise<AppEditorDestination>;
+  hideEditor: (appId: string) => Promise<AppRecord>;
   retrySkill: (appId: string) => Promise<AppRecord>;
-  resolveExtensionConsent: (input: { appId: string; granted: boolean }) => Promise<AppRecord>;
-  resolveBaseGuiConsent: (input: {
-    appId: string;
-    grantedCapabilities: BaseGuiCapability[];
-    grantedHostActions?: BaseGuiHostActionCapability[];
-    grantedCapabilityScopes?: BaseGuiCapabilityScopes;
-  }) => Promise<AppRecord>;
-  revokeBaseGuiAccess: (appId: string) => Promise<AppRecord>;
-  promoteGeneration: (input: { appId: string; expectedConsentRevision: number }) => Promise<AppRecord>;
+  authorizeStudioAccess: (appId: string) => Promise<AppRecord>;
+  declineStudioAccess: (appId: string) => Promise<AppRecord>;
+  revokeStudioAccess: (appId: string) => Promise<AppRecord>;
   extensionStatus: (appId: string) => Promise<AppExtensionStatus>;
   revokeExtensionGrant: (appId: string) => Promise<AppExtensionStatus>;
   rebuildExtensionGeneration: (appId: string) => Promise<AppRecord>;
   capabilities: (appId: string) => Promise<AppCapabilitiesSnapshot>;
   guiInfo: (input: AppGuiInfoInput) => Promise<AppGuiInfo>;
+  guiReady: (input: AppGuiReadyInput) => Promise<AppGuiReadyResult>;
   releaseGuiSurface: (input: AppGuiInfoInput) => Promise<void>;
-  setOpenMode: (input: { appId: string; mode: AppOpenMode | null }) => Promise<AppRecord>;
+  fileExportBegin: (input: BeginFileExportInputV1) => Promise<BeginFileExportResultV1>;
+  fileExportWrite: (input: WriteFileExportChunkInputV1) => Promise<unknown>;
+  fileExportFinalize: (input: CompleteFileExportInputV1) => Promise<CompleteFileExportResultV1>;
+  fileExportCancel: (input: CompleteFileExportInputV1) => Promise<CompleteFileExportResultV1>;
+  setPinned: (input: SetAppPinnedInput) => Promise<AppRecord>;
   importDesignCanvas: (input: ImportDesignCanvasInput) => Promise<{ file: string }>;
   listDesignImportCandidates: (input: DesignSurfaceInput) => Promise<string[]>;
   listDesignFiles: (input: DesignSurfaceInput) => Promise<string[]>;

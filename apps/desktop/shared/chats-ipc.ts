@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on shared Agent, ProductFailure, project, and submission contracts
- * [OUTPUT]: Provides schema v11 messages with ProductFailure, branches, import snapshots, hidden App-chat identity notices, App grants, subagents, turn commits, relay/incarnation, and Chats bridge
+ * [OUTPUT]: Provides schema v12 messages/notices with the read-only imported-segment marker, message-free renderer runtime context, ProductFailure-aware snapshots/events, import origin, fenced timeline/around/outline/find pagination, revisions, branches, grants, commits, and Chats bridge
  * [POS]: Backend-independent durable Chat wire authority shared by main, preload, and renderer
  */
 
@@ -14,7 +14,13 @@ import type {
 import type { IncarnationPrecondition } from "./submission";
 import type { AppGrantRecord } from "./apps-ipc";
 import type { TurnContextReceipt } from "./memory-ipc";
-import type { ProductFailure } from "./product-failure";
+import type { ChatStorageFailure, ProductFailure } from "./product-failure";
+import type {
+  ChatStartState,
+  ChatTitleJob,
+  ChatTitleSource,
+  ConversationContext,
+} from "./placement/facts";
 
 export const MESSAGE_BYTE_LIMIT = 32 * 1024;
 /** 单条消息过程条目上限：reducer 产出、IPC 校验与存储 schema 共用同一真相 */
@@ -36,6 +42,9 @@ export type ChatToolPart = {
   title: string;
   detail?: string;
   status: "completed" | "failed";
+  /** agent-failure only: renderer-localized warning/error semantics. */
+  failure?: ProductFailure;
+  severity?: "warning" | "error";
 };
 
 export type ChatTextPart = {
@@ -107,6 +116,12 @@ type ChatMessageBase = {
   createdAt: number;
   /** 会话内持久单调序号；语义顺序只认 seq，墙钟仅供展示。 */
   seq: number;
+  /**
+   * 只读导入段的投影位：导入 entry 与原生消息各自从 1 开始编号，单看 seq
+   * 两段会互相穿插。段在前、seq 在后，才是这条会话真正的时间顺序。
+   * 只由 SQLite 读侧产出，落盘路径永不写。
+   */
+  segment?: "imported";
 };
 
 export type ChatRelayMeta = {
@@ -235,6 +250,8 @@ export type UnsequencedChatMessage = WithoutSequence<ChatMessage>;
 
 export type ChatSummary = {
   id: string;
+  /** Durable identity fence required by typed App destinations and message relists. */
+  incarnationId?: string;
   title: string | null;
   updatedAt: number;
   /** 诞生即定死、永不改写；侧栏 Project 子列表按它排，位置才稳定。 */
@@ -242,6 +259,13 @@ export type ChatSummary = {
   projectId: string | null;
   /** App Project 成员必须有角色，普通聊天恒为 null。 */
   appRole: AppChatRole | null;
+  /** Canonical durable ownership; appRole is a validated compatibility projection. */
+  context?: ConversationContext;
+  startState?: ChatStartState;
+  titleSource?: ChatTitleSource;
+  readOnlyReason?: "legacy-app-not-editable" | "external-readonly";
+  chatRecordRevision?: number;
+  chatMessageRevision?: number;
   agent: AgentBackendId;
   grants: AppGrantRecord[];
   grantRevision: number;
@@ -250,6 +274,8 @@ export type ChatSummary = {
    * main 现场从 messages 蒸出、永不落盘；提炼不出散文（纯代码/表格）时为 null。
    */
   preview: string | null;
+  /** 导入前传身份；缺席表示原生 Product Chat。 */
+  importOrigin?: ChatImportOrigin | null;
   /** 显式归档时间；父 Project 归档不会覆写本字段。 */
   archivedAt?: number;
   /** main 计算的父子合并投影。 */
@@ -264,9 +290,13 @@ export type ChatImportOrigin = Readonly<{
   resumeAlias: string;
   originalCwd: string;
   historyRevision: string;
-  adoptionSnapshotId: string;
+  adoptionSnapshotId?: string;
   sourceSize: number;
   sourceMtimeNs: string;
+  /* 导入段的成色，只由读侧投影出来：分隔线说「以上是导入的历史消息」还是
+     「来源已变化」，以及要不要提示被丢弃的未完成尾部，全看这两格。 */
+  sourceStatus?: "match" | "changed" | "missing";
+  incompleteTail?: boolean;
 }>;
 
 /** 只落主进程账本；renderer wire 与常驻 metadata 都必须显式剥离。 */
@@ -282,7 +312,22 @@ export type SupersededChatBranch = {
    `Omit<..., "preview">` 就把「永不落盘」这条法则钉进类型系统——
    谁想顺手把它存下来，编译期就会红，而不是等到盘上旧值与消息算出的
    新值分叉之后，靠人眼去发现两个真相。 */
-export type ChatRecord = Omit<ChatSummary, "preview"> & {
+type CanonicalChatFacts = Required<
+  Pick<
+    ChatSummary,
+    | "incarnationId"
+    | "context"
+    | "startState"
+    | "titleSource"
+    | "chatRecordRevision"
+    | "chatMessageRevision"
+  >
+>;
+
+export type ChatRecord = Omit<
+  ChatSummary,
+  "preview" | keyof CanonicalChatFacts
+> & CanonicalChatFacts & {
   incarnationId: string;
   /** v6 canonical 恒为绝对路径；null/undefined 仅用于 v5 只读窗口与非持久测试投影。 */
   homeDir?: string | null;
@@ -301,21 +346,33 @@ export type ChatRecord = Omit<ChatSummary, "preview"> & {
   supersededBranchesTrimmedThroughSeq?: number;
   messages: ChatMessage[];
   subagents?: Record<string, PersistedSubagent>;
+  titleJob: ChatTitleJob;
 };
+
+/** Renderer runtime facts deliberately exclude every message and branch payload. */
+export type ChatRuntimeContext = Omit<
+  ChatRecord,
+  | "messages"
+  | "supersededBranches"
+  | "supersededBranchesTrimmedThroughSeq"
+>;
 
 export type ChatsSnapshot = {
   chats: ChatSummary[];
+  collectionSnapshotRevision: number;
   warning?: string;
+  storageFailures?: ChatStorageFailure[];
 };
 
 export type ChatsEvent =
-  | { type: "upserted"; summary: ChatSummary }
-  | { type: "removed"; chatId: string }
+  | { type: "upserted"; summary: ChatSummary; chatRecordRevision?: number; collectionSnapshotRevision?: number }
+  | { type: "removed"; chatId: string; chatRecordRevision?: number; collectionSnapshotRevision?: number }
   | {
       type: "messages";
       chatId: string;
       incarnationId: string;
       revision: number;
+      chatMessageRevision?: number;
       mode?: "replace";
       messages: ChatMessage[];
     }
@@ -324,6 +381,7 @@ export type ChatsEvent =
       chatId: string;
       incarnationId: string;
       revision: number;
+      chatMessageRevision?: number;
       appended: ChatMessage[];
     }
   | {
@@ -331,15 +389,111 @@ export type ChatsEvent =
       chatId: string;
       incarnationId: string;
     }
+  | { type: "storage-failure"; failure: ChatStorageFailure }
   | { type: "warning"; message: string };
 
 export type ChatMessagesSnapshot = {
   chatId: string;
   incarnationId: string;
   revision: number;
+  /** Active immutable imported prefix; null for native-only Chats. */
+  activeGenerationId?: string | null;
+  /** Required by v12 main; optional only for an older renderer test/bridge snapshot. */
+  chatMessageRevision?: number;
   mode?: "replace";
   messages: ChatMessage[];
+  olderCursor?: ChatTimelineCursor | null;
+  hasMoreBefore?: boolean;
 };
+
+export type ChatTimelineCursor = Readonly<{
+  segment: "native" | "imported";
+  beforeSeq: number;
+  incarnationId: string;
+  nativeMessageRevision: number;
+  activeGenerationId: string | null;
+}>;
+
+export type ChatTimelinePage = Readonly<{
+  chatId: string;
+  incarnationId: string;
+  nativeMessageRevision: number;
+  activeGenerationId: string | null;
+  messages: ChatMessage[];
+  olderCursor: ChatTimelineCursor | null;
+  hasMoreBefore: boolean;
+}>;
+
+export type ChatTimelinePageInput = Readonly<{
+  chatId: string;
+  cursor?: ChatTimelineCursor | null;
+  limit?: number;
+}>;
+
+export type ChatTimelineAroundInput = Readonly<{
+  chatId: string;
+  messageId: string;
+  radius?: number;
+  fence?: Pick<ChatTimelineCursor, "incarnationId" | "nativeMessageRevision" | "activeGenerationId">;
+}>;
+
+export type ChatOutlineItem = Readonly<{
+  messageId: string;
+  seq: number;
+  role: ChatMessage["role"];
+  text: string;
+}>;
+
+/* 大纲从尾巴往回翻：beforeSeq 为 null 表示「该段的最新一条起」，否则只取
+   seq 严格小于它的那批。方向只有一个，因为消费者只有一个——目录窗口要的
+   永远是最新的 OUTLINE_WINDOW_LIMIT 条，正着翻要先把整条 Chat 读穿。 */
+export type ChatOutlineCursor = Readonly<{
+  segment: "imported" | "native";
+  beforeSeq: number | null;
+  incarnationId: string;
+  nativeMessageRevision: number;
+  activeGenerationId: string | null;
+}>;
+
+export type ChatOutlinePage = Readonly<{
+  chatId: string;
+  incarnationId: string;
+  nativeMessageRevision: number;
+  activeGenerationId: string | null;
+  items: ChatOutlineItem[];
+  nextCursor: ChatOutlineCursor | null;
+}>;
+
+export type ChatOutlineInput = Readonly<{
+  chatId: string;
+  cursor?: ChatOutlineCursor;
+  limit?: number;
+}>;
+
+export type ChatFindCursor = Readonly<{
+  offset: number;
+  incarnationId: string;
+  nativeMessageRevision: number;
+  activeGenerationId: string | null;
+}>;
+
+export type ChatFindInput = Readonly<{
+  chatId: string;
+  query: string;
+  cursor?: ChatFindCursor;
+  limit?: number;
+}>;
+
+export type ChatFindPage = Readonly<{
+  chatId: string;
+  incarnationId: string;
+  nativeMessageRevision: number;
+  activeGenerationId: string | null;
+  items: ChatOutlineItem[];
+  /** 本次查询在这条 Chat 里的精确命中总数，与 cursor/limit 无关。 */
+  total: number;
+  nextCursor: ChatFindCursor | null;
+}>;
 
 export type CreateChatInput = {
   id: string;
@@ -409,8 +563,11 @@ export type RenameChatInput = {
 
 export const CHATS_CHANNEL = {
   list: "chats:list",
-  get: "chats:get",
-  messagesSnapshot: "chats:messages-snapshot",
+  runtimeContext: "chats:runtime-context",
+  timelinePage: "chats:timeline-page",
+  timelineAround: "chats:timeline-around",
+  outlinePage: "chats:outline-page",
+  findMessages: "chats:find-messages",
   create: "chats:create",
   createForApp: "chats:create-for-app",
   append: "chats:append",
@@ -422,8 +579,11 @@ export const CHATS_CHANNEL = {
 
 export type ChatsBridgeApi = {
   list: () => Promise<ChatsSnapshot>;
-  get: (chatId: string) => Promise<ChatRecord | null>;
-  messagesSnapshot: (chatId: string) => Promise<ChatMessagesSnapshot | null>;
+  runtimeContext: (chatId: string) => Promise<ChatRuntimeContext | null>;
+  timelinePage: (input: ChatTimelinePageInput) => Promise<ChatTimelinePage | null>;
+  timelineAround: (input: ChatTimelineAroundInput) => Promise<ChatTimelinePage | null>;
+  outlinePage: (input: ChatOutlineInput) => Promise<ChatOutlinePage | null>;
+  findMessages: (input: ChatFindInput) => Promise<ChatFindPage | null>;
   create: (input: CreateChatInput) => Promise<ChatRecord>;
   createForApp: (input: CreateAppChatInput) => Promise<ChatRecord>;
   /** 返回存储后的消息（含主进程生成的附件元数据与截断结果），renderer 以其为准 */

@@ -1,10 +1,9 @@
 /**
- * [INPUT]: Depends on Chat/Project/App/Memory/Gallery/Browser/History services, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, manual staging, RelayLedger, and backend bridge
- * [OUTPUT]: Provides conversation services and manual preparation that freezes canonical Project lifecycle, Project Tools policy, and exact Skill selection before durable admission
- * [POS]: The conversation-domain startup composition module; assembles dependencies without holding global lifecycle state
+ * [INPUT]: Depends on Chat/Project/App/Memory/Gallery/Browser services, the History Import handle, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, manual staging, RelayLedger, and backend bridge
+ * [OUTPUT]: Provides ChatsService/Coordinator/Archive composition, adopted-continuation reconciliation, and manual preparation that freezes Project lifecycle, Tools policy, and exact Skill selection before durable admission
+ * [POS]: The conversation-domain startup composition module; the external-history half lives in history-import-runtime.ts and assembles dependencies without holding global lifecycle state
  */
 
-import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { AgentWorkspaceScope } from "../../../shared/agent-ipc";
 import type { TurnProjectContext } from "../../../shared/product-resource-scope";
@@ -32,16 +31,17 @@ import type { ChatHomeService } from "../chat-home/chat-home-service";
 import { PurgeJournal } from "../chat-home/purge-journal";
 import type { ChatStore } from "../chats/chat-store";
 import { ChatsService } from "../chats/chats-service";
+import { reconcileAdoptedContinuations } from "../chats/lifecycle/adopted-chat";
 import { generateTitle } from "../chats/title-generator";
 import type { ConversationDeletionCoordinator } from "../deletion/conversation-deletion-coordinator";
 import type { FileAuthorizationStore } from "../file-authorizations";
 import type { GalleryRuntime } from "../gallery/bootstrap";
-import { HistoryImportService } from "../history-import/service";
+import type { HistoryImportService } from "../history-import/service";
 import { assertTrustedGallerySubmission } from "../gallery/submission-authority";
 import type { LifecycleIntentStore } from "../lifecycle/intent-store";
 import type { MemoryLifecycleOrchestrator } from "../memory/runtime/control/lifecycle-orchestrator";
 import type { MemoryService } from "../memory/service/memory-service";
-import type { ProjectStore } from "../projects/project-store";
+import type { ProjectStore } from "../projects/store/project-store";
 import type { ProjectsService } from "../projects/projects-service";
 import {
   prepareManualTurn,
@@ -74,6 +74,7 @@ type ChatsRuntimeDependencies = {
   getCoordinator: () => ConversationCoordinator | null;
   getArchive: () => ArchiveService | null;
   getRelayLedger: () => RelayLedger | null;
+  getHistoryImport: () => HistoryImportService | null;
 };
 
 export function createChatsService({
@@ -93,8 +94,10 @@ export function createChatsService({
   getCoordinator,
   getArchive,
   getRelayLedger,
+  getHistoryImport,
 }: ChatsRuntimeDependencies) {
   return new ChatsService(store, {
+    recoverTitleJobs: true,
     chatHomes,
     isConversationTransitioning: (chatId) =>
       getCoordinator()?.isTransitioning(chatId) ?? Promise.resolve(false),
@@ -225,147 +228,34 @@ export function createChatsService({
           browser.service.releaseChat(record.id);
         },
       },
+      {
+        /* Chat 一走，指向它的 canonical 路由就是断链：当场作废。 */
+        id: "history-route",
+        release: async (record) => getHistoryImport()?.onChatRemoved(record.id),
+      },
     ],
     onTitleChanged: (record) => bases.renameForChat(record),
     deletionCoordinator: deletions,
   });
 }
 
-type HistoryImportRuntimeDependencies = Readonly<{
-  userData: string;
-  home: string;
-  projects: ProjectsService;
-  projectStore: ProjectStore;
-  chats: ChatStore;
-  settings: SettingsStore;
-  memory: MemoryService;
-  getCoordinator: () => ConversationCoordinator | null;
-}>;
-
-export async function initializeHistoryImportService({
-  userData,
-  home,
-  projects,
-  projectStore,
-  chats,
-  settings,
-  memory,
-  getCoordinator,
-}: HistoryImportRuntimeDependencies) {
-  const service = new HistoryImportService(userData, {
-    home,
-    listProjects: () => projectStore.list(),
-    getProject: (projectId) => projectStore.get(projectId),
-    prepareProject: () => projects.prepareExternalProject(),
-    commitProject: (input) => projects.commitExternalProject(input),
-    listSessionBindings: () => chats.listBindings(),
-    getAdoptionBinding: (chatId) => chats.getAdoptionBinding(chatId),
-    memoryState: () => {
-      const memorySettings = settings.get().memory;
-      const status = memory.status();
-      const consent = memory.policy.activeConsent();
-      return {
-        enabled: memorySettings.enabled,
-        ready: status.health === "ready" || status.health === "compat",
-        sharingMode: memorySettings.sharingMode,
-        providerId: status.target?.providerId ?? null,
-        providerDataInstanceId:
-          status.target?.providerDataInstanceId ?? null,
-        consentEpochId: consent?.id ?? null,
-      };
-    },
-    commitMemory: ({ grantId, snapshots, authorization }) =>
-      memory.importForeignHistory({ grantId, snapshots, authorization }),
-    previewProductMemory: () => memory.previewExistingProductHistory(),
-    commitProductMemory: (grantId, intent) =>
-      memory.commitExistingProductHistory(grantId, intent),
-    productMemoryCommitted: (grantId) =>
-      memory.existingProductHistoryCommitted(grantId),
-    adopt: async ({ request, entry, snapshot }) => {
-      const coordinator = getCoordinator();
-      const project = projectStore.get(entry.projectId);
-      if (!coordinator || !project) throw new Error("收养运行时尚未就绪");
-      if (request.turnOptions.backend !== entry.sourceKind) {
-        throw new Error("续聊 Agent 必须与外源会话同源");
-      }
-      const chatId = `chat_${randomUUID().replaceAll("-", "")}`;
-      const incarnationId = randomUUID().replaceAll("-", "");
-      const messageId = `user_${randomUUID().replaceAll("-", "")}`;
-      const requestId = `request_${randomUUID().replaceAll("-", "")}`;
-      const { submission } = request;
-      const turnOptions = await settings.resolveChatOptions(
-        { conversationId: request.opaqueId },
-        entry.sourceKind
-      );
-      const content = submission.displayText.trim();
-      const session = {
-        backend: entry.sourceKind,
-        id: entry.key.resumeAlias,
-      } as const;
-      const receipt = await coordinator.submitManualTurn({
-        intentId: `adopt_${randomUUID().replaceAll("-", "")}`,
-        persistence: {
-          kind: "adopt",
-          input: {
-            id: chatId,
-            title: entry.title || "Imported conversation",
-            agent: entry.sourceKind,
-            projectId: entry.projectId,
-            incarnationId,
-            session,
-            snapshotDigest: snapshot.digest,
-            importOrigin: {
-              sourceKind: entry.sourceKind,
-              storageFingerprint: entry.key.storageFingerprint,
-              canonicalNativeId: entry.key.canonicalNativeId,
-              aliases: entry.key.aliases,
-              resumeAlias: entry.key.resumeAlias,
-              originalCwd: entry.cwd,
-              historyRevision: entry.historyRevision,
-              adoptionSnapshotId: snapshot.snapshotId,
-              sourceSize: entry.fingerprint.size,
-              sourceMtimeNs: entry.fingerprint.mtimeNs,
-            },
-            firstMessage: {
-              id: messageId,
-              role: "user",
-              content,
-              createdAt: Date.now(),
-            },
-            ...(submission.attachmentPayloads?.length
-              ? { attachmentPayloads: submission.attachmentPayloads }
-              : {}),
-          },
-        },
-        turn: {
-          requestId,
-          scope: { conversationId: chatId },
-          session,
-          turnOptions,
-          ...(submission.planMode ? { planMode: true } : {}),
-          input: submission.input,
-        },
-        content: submission.content,
-        precondition: {
-          kind: "absent",
-          proposedIncarnationId: incarnationId,
-        },
-        workspacePrecondition: {
-          kind: "project",
-          projectId: project.id,
-          membershipRevision: project.membershipRevision,
-        },
-      });
-      if (receipt.phase === "failed") {
-        throw new Error("续聊启动失败，未静默创建空会话");
-      }
-      return { chatId, incarnationId, phase: receipt.phase };
-    },
-  });
-  await service.initialize();
-  await service.snapshots.gcMemoryOrphans();
-  return service;
+export function reconcileAdoptedContinuationRuntime(
+  store: ChatStore,
+  homes: ChatHomeService,
+  chats: ChatsService,
+  liveManualIntentIds: readonly string[]
+) {
+  return reconcileAdoptedContinuations({
+    store,
+    homes,
+    withProject: (_projectId, task) => task(),
+    commitWithAttachments: (payloads, commit) =>
+      chats.commitWithAttachments(payloads, commit),
+    publish: () => undefined,
+    onSessionBound: (session, chatId) => seedThreadScope(session, chatId),
+  }, new Set(liveManualIntentIds));
 }
+
 
 type ManualPrepareDependencies = {
   stagingRoot: string;
@@ -431,7 +321,7 @@ export function createManualTurnPreparer({
       : persistence.input.projectId ?? null;
     const lifecycleProjectId =
       persistence.kind === "append"
-        ? (await chatStore.get(persistence.input.chatId))?.projectId ?? null
+        ? chatStore.getMetadata(persistence.input.chatId)?.projectId ?? null
         : projectId ?? null;
     const resolved = creationIdentity
       ? resolveConversationContext(creationChatId!, projects, chatStore, {
@@ -492,7 +382,7 @@ export function createManualTurnPreparer({
       },
       sections: {
         conversationId: submission.turn.scope.conversationId,
-        get: (chatId) => chatStore.get(chatId),
+        get: (chatId) => chatStore.getConversation(chatId),
         readAttachment: readSectionAttachment,
         imageInput: runtime.capabilities.imageInput,
       },

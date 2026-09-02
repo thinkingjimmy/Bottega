@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node durable JSON, Registry generation refs with frozen requirement handoff set
- * [OUTPUT]: Provides AppExtensionReservationLedger, preparing/committing/aborting/releasing and maintaining permanently retired tombstone according to generationBuildId CAS
- * [POS]: The single writer of AppxExtension's Store durable handoff; The first is that the package generated is prepared/committed
+ * [INPUT]: Depends on Node durable JSON, canonical JSON identity, and Registry generation refs with frozen requirement handoff sets
+ * [OUTPUT]: Provides AppExtensionReservationLedger prepare/commit/abort/release with canonical frozen-set comparison and permanent generationBuildId tombstones
+ * [POS]: Single writer of App×Extension durable handoffs; object insertion order never creates a false generation drift
  */
 
 import { randomUUID } from "node:crypto";
@@ -11,7 +11,7 @@ import type {
   ExtensionPackageGenerationRef,
   FrozenAppExtensionRequirementSetV1,
 } from "../../../../shared/extensions-ipc";
-import type { ExtensionRegistryStore } from "../registry-store";
+import { canonicalJson, type ExtensionRegistryStore } from "../registry-store";
 
 export type AppExtensionBuildFence = {
   generationBuildId: string;
@@ -129,8 +129,8 @@ export class AppExtensionReservationLedger {
       if (
         reservation.requirementResolutionDigest !==
           input.appGenerationFrozenSet.resolutionDigest ||
-        JSON.stringify(reservation.handoffFrozenSet) !==
-          JSON.stringify(input.appGenerationFrozenSet)
+        canonicalJson(reservation.handoffFrozenSet) !==
+          canonicalJson(input.appGenerationFrozenSet)
       ) {
         throw Object.assign(new Error("App generation frozen handoff 不一致"), {
           status: 409,

@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on shared Bases owner contract, preload window.bases and chats-client browser identity
- * [OUTPUT]: Provides ownerKey Base CRUD, structured mutation, error recovery, section, parsing, chat→project, upgrade, navigation abstract, owner-native attachment/CSV/JSON, two-way/event renderer, packaging and synchronous memory degradation
- * [POS]: The only IPC export for src/lib/bases; The UI does not directly touch window.bases
+ * [INPUT]: Depends on shared Base IPC contracts, optional preload window.bases, and chats-client identity in browser fallback mode
+ * [OUTPUT]: Provides Base CRUD/import/export/promotion/attachment APIs with stable error codes and an in-memory fallback
+ * [POS]: Sole renderer IPC boundary for src/lib/bases; components never access window.bases directly and translate codes at the view boundary
  */
 
 import {
+  baseNavigationOf,
   ownerFromKey,
   ownerKeyOf,
   type BaseMetaPatch,
@@ -61,6 +62,7 @@ export async function ensureBase(ownerKey: string) {
       ownerInstanceId: chat.incarnationId,
       name: chat.title ?? "Untitled Base",
       pinned: false,
+      navigation: { kind: "conversation-contained", chatId: chat.id },
       columns: [],
       views: [
         { id: "table", name: "Table", order: 0, config: { type: "table" } },
@@ -89,6 +91,7 @@ function summaries(predicate: (snapshot: BaseSnapshot) => boolean) {
       ownerInstanceId: meta.ownerInstanceId,
       name: meta.name,
       revision: meta.revision,
+      navigation: baseNavigationOf(meta),
     }));
 }
 
@@ -107,6 +110,24 @@ export const listProjectBases = (): Promise<{
   Promise.resolve({
     bases: summaries((base) => base.meta.owner.kind === "project"),
   });
+
+export async function removeManagedBase(input: {
+  ownerKey: string;
+  ownerInstanceId: string;
+}) {
+  if (window.bases) return window.bases.removeManaged(input);
+  const current = memory.get(input.ownerKey);
+  if (!current || current.meta.ownerInstanceId !== input.ownerInstanceId) {
+    return { removed: false };
+  }
+  memory.delete(input.ownerKey);
+  emit({
+    type: "removed",
+    ownerKey: input.ownerKey,
+    ownerInstanceId: input.ownerInstanceId,
+  });
+  return { removed: true };
+}
 
 export async function resolveBaseForSection(
   sectionId: string
@@ -207,7 +228,7 @@ export async function updateBaseMeta(input: {
   if (current.meta.revision !== input.expectedRevision) {
     throwMutationError({
       code: "revision_conflict",
-      message: "Base revision 已变化",
+      message: machineMessage("revision_conflict"),
       currentRevision: current.meta.revision,
     });
   }
@@ -311,7 +332,7 @@ export async function deleteBaseRows(input: {
   if (current.meta.revision !== input.expectedRevision) {
     throwMutationError({
       code: "revision_conflict",
-      message: "Base revision 已变化",
+      message: machineMessage("revision_conflict"),
       currentRevision: current.meta.revision,
     });
   }
@@ -345,7 +366,12 @@ export const importBaseJson = async (
   expectedRevision: number
 ) => {
   if (!window.bases) {
-    return Promise.reject(new Error("当前环境不支持 Base JSON 导入"));
+    return Promise.reject(
+      clientError(
+        "json_import_unavailable",
+        "json_import_unavailable"
+      )
+    );
   }
   const authorityLeaseId = await window.bases.authorizeMutation({
     ownerKey,
@@ -368,7 +394,12 @@ export const importBaseXlsx = async (
   expectedRevision: number
 ) => {
   if (!window.bases) {
-    return Promise.reject(new Error("当前环境不支持 Base XLSX 导入"));
+    return Promise.reject(
+      clientError(
+        "xlsx_import_unavailable",
+        "xlsx_import_unavailable"
+      )
+    );
   }
   const authorityLeaseId = await window.bases.authorizeMutation({
     ownerKey,
@@ -402,7 +433,7 @@ export const readBaseAttachmentThumbnail = (
     ok: false as const,
     error: {
       code: "SOURCE_GONE" as const,
-      message: "当前宿主未启用 Base attachment",
+      message: machineMessage("attachment_source_unavailable"),
       retryable: false,
     },
   });
@@ -415,7 +446,7 @@ export async function putBaseAttachment(
       ok: false as const,
       error: {
         code: "IO_ERROR" as const,
-        message: "当前环境不支持 Base attachment 写入",
+        message: machineMessage("attachment_write_unavailable"),
         retryable: false,
       },
     };
@@ -441,6 +472,14 @@ export function onBasesEvent(callback: (event: BasesEvent) => void) {
   if (window.bases) return window.bases.onBasesEvent(callback);
   listeners.add(callback);
   return () => listeners.delete(callback);
+}
+
+function clientError(code: string, message: string) {
+  return Object.assign(new Error(message), { code });
+}
+
+function machineMessage(code: string) {
+  return code;
 }
 
 function bump(current: BaseSnapshot, rows: BaseRow[]): BaseSnapshot {

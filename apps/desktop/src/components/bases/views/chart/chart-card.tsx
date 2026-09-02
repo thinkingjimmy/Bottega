@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on projected Base rows/columns, a canonical BaseCellContext, ChartItem/model, viewport/editor, resize snapping, and dashboard actions
- * [OUTPUT]: Provides ChartCard with context-aware payload projection, read/edit states, accessible controls, and pointer resize intent
- * [POS]: The per-card render/gesture boundary; persistence remains an id-scoped ChartOp and canonical filtering/aggregation remains in chart-model
+ * [OUTPUT]: Provides ChartCard with localized model states, context-aware payload projection, accessible controls, and pointer resize intent
+ * [POS]: Per-card translation/render/gesture boundary; chart-model remains pure and persistence remains an id-scoped ChartOp
  */
 
 import {
@@ -19,7 +19,11 @@ import type {
   BaseRow,
   ChartItem,
 } from "../../../../../shared/bases-ipc";
-import { buildChartPayload } from "@/lib/charts/chart-model";
+import {
+  buildChartPayload,
+  type ChartModelMessage,
+  type ChartModelMessageCode,
+} from "@/lib/charts/chart-model";
 import { snapSpan } from "@/lib/charts/chart-pack";
 import type { ChartOp } from "@/lib/charts/chart-ops";
 import {
@@ -179,11 +183,11 @@ export function ChartCard({
       </header>
       <div className="min-h-0 flex-1">
         {"incomplete" in result ? (
-          <ChartState tone="warning" text={result.incomplete} />
+          <ChartState tone="warning" text={chartModelText(t, result.incomplete)} />
         ) : "error" in result ? (
-          <ChartState tone="error" text={result.error} />
+          <ChartState tone="error" text={chartModelText(t, result.error)} />
         ) : "empty" in result ? (
-          <ChartState tone="empty" text={result.empty} />
+          <ChartState tone="empty" text={chartModelText(t, result.empty)} />
         ) : (
           <ChartViewport
             ChartComponent={ChartComponent}
@@ -240,6 +244,31 @@ export function ChartCard({
       </span>
     </article>
   );
+}
+
+const CHART_MODEL_KEYS = {
+  filterScrubbed: "bases.chart.state.filterScrubbed",
+  dimensionRequired: "bases.chart.state.dimensionRequired",
+  valueRequired: "bases.chart.state.valueRequired",
+  seriesRequired: "bases.chart.state.seriesRequired",
+  pieSeriesUnsupported: "bases.chart.state.pieSeriesUnsupported",
+  scatterRequirements: "bases.chart.state.scatterRequirements",
+  heatmapRequirements: "bases.chart.state.heatmapRequirements",
+  pieValueRequired: "bases.chart.state.pieValueRequired",
+  singleValueForSeries: "bases.chart.state.singleValueForSeries",
+  labelLimit: "bases.chart.state.labelLimit",
+  seriesLimit: "bases.chart.state.seriesLimit",
+  pointLimit: "bases.chart.state.pointLimit",
+  empty: "bases.chart.state.empty",
+  pieNegative: "bases.chart.state.pieNegative",
+  invalidPayload: "bases.chart.state.invalidPayload",
+} as const satisfies Record<ChartModelMessageCode, string>;
+
+function chartModelText(
+  t: ReturnType<typeof useAppTranslation>["t"],
+  message: ChartModelMessage
+) {
+  return t(CHART_MODEL_KEYS[message.code], message.values ?? {});
 }
 
 function ChartState({

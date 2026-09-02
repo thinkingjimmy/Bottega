@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Memory health/runtime/status contracts and MemorySettings sharing modes
- * [OUTPUT]: Provides Memory presentation derivations, including the Project-level six-tier conclusion used by Project Settings
- * [POS]: Pure Memory presentation derivations shared by global Memory Settings and Project Settings
+ * [INPUT]: Depends on shared Memory health/runtime/status contracts, MemorySettings sharing modes, and a host-supplied catalog translator
+ * [OUTPUT]: Provides catalog-only Memory presentation derivations, including the Project-level six-tier conclusion used by Project Settings
+ * [POS]: Pure Memory presentation derivations shared by global Memory Settings and Project Settings; user copy never falls back to embedded prose
  */
 
 import type {
@@ -20,7 +20,7 @@ import type {
 import type { MemorySettings } from "../../shared/settings-ipc";
 
 export type ProjectMemoryConclusion = Readonly<{
-  key:
+  copyKey:
     | "projectSettings.general.memoryDisabled"
     | "projectSettings.general.memoryPaused"
     | "projectSettings.general.memoryUnavailable"
@@ -37,18 +37,18 @@ export function projectMemoryConclusion(input: {
 }): ProjectMemoryConclusion {
   const { memorySettings, serviceStatus, delivering } = input;
   if (!memorySettings?.enabled) {
-    return { key: "projectSettings.general.memoryDisabled", delivering };
+    return { copyKey: "projectSettings.general.memoryDisabled", delivering };
   }
   if (memorySettings.paused) {
-    return { key: "projectSettings.general.memoryPaused", delivering };
+    return { copyKey: "projectSettings.general.memoryPaused", delivering };
   }
   if (serviceStatus?.health === "unavailable") {
-    return { key: "projectSettings.general.memoryUnavailable", delivering };
+    return { copyKey: "projectSettings.general.memoryUnavailable", delivering };
   }
   if (memorySettings.sharingMode === "group") {
-    return { key: "projectSettings.general.memoryScoped", delivering };
+    return { copyKey: "projectSettings.general.memoryScoped", delivering };
   }
-  return { key: "projectSettings.general.memoryShared", delivering };
+  return { copyKey: "projectSettings.general.memoryShared", delivering };
 }
 /* ============================================================
  * 色标：呈现层只认五种语气，组件不再各自拼颜色。
@@ -63,11 +63,10 @@ export type MemoryTranslate = (
 ) => string;
 
 const copy = (
-  translate: MemoryTranslate | undefined,
-  key: string,
-  fallback: string,
+  translate: MemoryTranslate,
+  copyKey: string,
   options?: Record<string, unknown>
-) => translate?.(key, options) ?? fallback;
+) => translate(copyKey, options);
 
 export const TONE_TEXT: Record<MemoryTone, string> = {
   off: "text-muted-foreground",
@@ -102,18 +101,18 @@ export type MemoryBackendState = { label: string; tone: MemoryTone };
 export function memoryBackendState(
   descriptor: MemoryProviderDescriptor,
   runtime: MemoryRuntimeSnapshot | null,
-  translate?: MemoryTranslate
+  translate: MemoryTranslate
 ): MemoryBackendState {
   if (runtime && !runtime.installed && runtime.instanceId) {
     return {
-      label: copy(translate, "memory.backend.interrupted", "安装中断 · 可修复"),
+      label: copy(translate, "memory.backend.interrupted"),
       tone: "warn",
     };
   }
   if (runtime?.installed) {
     if (!runtime.instanceId) {
       return {
-        label: copy(translate, "memory.backend.identityRepair", "安装身份待修复"),
+        label: copy(translate, "memory.backend.identityRepair"),
         tone: "warn",
       };
     }
@@ -124,12 +123,12 @@ export function memoryBackendState(
        事实的第二次陈述。这里只回答「它此刻处在哪一档」。 */
     if (!runtime.configured) {
       return {
-        label: copy(translate, "memory.backend.installedNeedsConfig", "已安装 · 待配置"),
+        label: copy(translate, "memory.backend.installedNeedsConfig"),
         tone: "warn",
       };
     }
     return {
-      label: copy(translate, "memory.backend.installed", "已安装"),
+      label: copy(translate, "memory.backend.installed"),
       /* 失配只对「装的是当时的锁定版、如今应用锁定了新版」成立。用户
          自己在目录里挑的版本不是失配，是意图——把它染黄，等于让产品
          每次开面板都反对一次用户刚做过的决定。判据是 versionSource，
@@ -141,7 +140,7 @@ export function memoryBackendState(
     };
   }
   return {
-    label: copy(translate, "memory.backend.notInstalled", "未安装"),
+    label: copy(translate, "memory.backend.notInstalled"),
     tone: "off",
   };
 }
@@ -162,112 +161,113 @@ export type MemoryHealthView = {
   detail: string;
 };
 
-const UNAVAILABLE_VIEW: Record<
+const HEALTH_ISSUE_KEYS: Record<
   MemoryHealthIssue["kind"],
-  (detail: string) => { label: string; detail: string }
+  { labelKey: string; detailKey: string }
 > = {
-  unreachable: () => ({
-    label: "连不上本机服务",
-    detail:
-      "服务可能尚未启动。可用下方的「修复安装」重试；连通后这里会自动恢复。",
-  }),
-  unhealthy: () => ({
-    label: "服务未就绪",
-    detail: "已连上服务，但它报告尚未就绪，可能仍在启动中；稍后点右上角刷新重试。",
-  }),
-  auth: (mode) => ({
-    label: "服务开启了认证",
-    detail: `本产品不读取 CLI 凭据；提取模型密钥只保存在本机。服务连接本身只支持免认证 loopback，请以 dev 模式重启（当前认证模式：${mode}）。`,
-  }),
-  protocol: () => ({
-    label: "地址不是预期的记忆服务",
-    detail: "该地址返回了无法识别的内容，请确认端口指向本机记忆服务。",
-  }),
-  identity: () => ({
-    label: "端口被非托管进程占用",
-    detail:
-      "该端口的监听者不是产品托管的实例（可能托管服务已退出、被其它进程接管）。为避免把对话发给陌生服务，召回与交付已暂停；可在下方修复安装，或退出占用该端口的进程。",
-  }),
-  configuration: () => ({
-    label: "尚未完成配置",
-    detail: "运行时已启动但缺少提取所需的密钥；在下方提交配置后即可启用。",
-  }),
-  version: (version) => ({
-    label: "服务不可用",
-    detail: `检测到版本 ${version}，握手未通过；点右上角刷新重试。`,
-  }),
+  unreachable: {
+    labelKey: "memory.health.issue.unreachable.label",
+    detailKey: "memory.health.issue.unreachable.detail",
+  },
+  unhealthy: {
+    labelKey: "memory.health.issue.unhealthy.label",
+    detailKey: "memory.health.issue.unhealthy.detail",
+  },
+  auth: {
+    labelKey: "memory.health.issue.auth.label",
+    detailKey: "memory.health.issue.auth.detail",
+  },
+  protocol: {
+    labelKey: "memory.health.issue.protocol.label",
+    detailKey: "memory.health.issue.protocol.detail",
+  },
+  identity: {
+    labelKey: "memory.health.issue.identity.label",
+    detailKey: "memory.health.issue.identity.detail",
+  },
+  configuration: {
+    labelKey: "memory.health.issue.configuration.label",
+    detailKey: "memory.health.issue.configuration.detail",
+  },
+  version: {
+    labelKey: "memory.health.issue.version.label",
+    detailKey: "memory.health.issue.version.detail",
+  },
 };
 
-const HEALTH_VIEW: Record<MemoryHealth, MemoryHealthView> = {
+const HEALTH_VIEW: Record<
+  MemoryHealth,
+  { tone: MemoryTone; labelKey: string; detailKey: string }
+> = {
   unknown: {
     tone: "neutral",
-    label: "尚未检查",
-    detail: "点右上角刷新，向本机服务发起一次握手。",
+    labelKey: "memory.health.unknownLabel",
+    detailKey: "memory.health.unknownDetail",
   },
   checking: {
     tone: "neutral",
-    label: "检查中",
-    detail: "正在连接本机服务并校验握手。",
+    labelKey: "memory.health.checkingLabel",
+    detailKey: "memory.health.checkingDetail",
   },
   ready: {
     tone: "ready",
-    label: "服务可用",
-    detail: "本机服务连接正常，召回与交付已就绪。",
+    labelKey: "memory.health.readyLabel",
+    detailKey: "memory.health.readyDetail",
   },
   compat: {
     tone: "warn",
-    label: "兼容模式",
-    detail: "服务版本与本产品锁定的版本不同；功能继续可用，如遇异常建议重装锁定版本。",
+    labelKey: "memory.health.compatLabel",
+    detailKey: "memory.health.compatDetail",
   },
   unavailable: {
     tone: "danger",
-    label: "服务不可用",
-    detail: "握手失败；点右上角刷新重试。",
+    labelKey: "memory.health.unavailableLabel",
+    detailKey: "memory.health.unavailableDetail",
   },
 };
+
+const BLOCKED_REASON_KEYS = {
+  ownership: "memory.health.blocked.ownership",
+  configuration: "memory.health.blocked.configuration",
+  "not-installed": "memory.health.blocked.not-installed",
+} as const;
 
 export function memoryHealthView(
   enabled: boolean,
   health: MemoryHealth,
-  issue: MemoryHealthIssue | null = null,
-  translate?: MemoryTranslate
+  issue: MemoryHealthIssue | null,
+  translate: MemoryTranslate
 ): MemoryHealthView {
   if (!enabled)
     return {
       tone: "off",
-      label: copy(translate, "memory.health.offLabel", "已关闭"),
-      detail: copy(translate, "memory.health.offDetail", "开启后才会连接本机服务进行召回与交付。"),
+      label: copy(translate, "memory.health.offLabel"),
+      detail: copy(translate, "memory.health.offDetail"),
     };
   if (health === "unavailable" && issue) {
-    const view = UNAVAILABLE_VIEW[issue.kind](issue.detail);
+    const keys = HEALTH_ISSUE_KEYS[issue.kind];
     return {
       tone: issue.kind === "configuration" ? "warn" : "danger",
-      label: copy(translate, `memory.health.issue.${issue.kind}.label`, view.label, { detail: issue.detail }),
-      detail: copy(
-        translate,
-        `memory.health.issue.${issue.kind}.detail`,
-        `${view.detail}期间记忆暂停，聊天不受影响。`,
-        { detail: issue.detail }
-      ),
+      label: copy(translate, keys.labelKey, { detail: issue.detail }),
+      detail: copy(translate, keys.detailKey, { detail: issue.detail }),
     };
   }
   if (health === "compat" && issue?.kind === "version") {
     return {
       tone: "warn",
-      label: copy(translate, "memory.health.compatLabel", "兼容模式"),
+      label: copy(translate, "memory.health.compatLabel"),
       detail: copy(
         translate,
         "memory.health.compatVersionDetail",
-        `检测到服务版本 ${issue.detail} 与本产品锁定版本不同。功能继续可用；如遇召回或提取异常，建议重装锁定版本。`,
         { version: issue.detail }
       ),
     };
   }
   const view = HEALTH_VIEW[health];
   return {
-    ...view,
-    label: copy(translate, `memory.health.${health}Label`, view.label),
-    detail: copy(translate, `memory.health.${health}Detail`, view.detail),
+    tone: view.tone,
+    label: copy(translate, view.labelKey),
+    detail: copy(translate, view.detailKey),
   };
 }
 
@@ -303,7 +303,7 @@ export function memoryProviderStatusView(
   runtime: MemoryRuntimeSnapshot | null,
   /** null = 正在看另一个后端：它没有健康事实，只有库存事实。 */
   current: MemoryCurrentFacts | null,
-  translate?: MemoryTranslate
+  translate: MemoryTranslate
 ): MemoryStatusLine {
   /* 装好了却连不上：这不是库存问题而是就绪问题。它同时解释右侧那颗
      点不动的按钮——无论那是「设为当前服务」还是开关，句子都不必点名，
@@ -312,8 +312,7 @@ export function memoryProviderStatusView(
   const notReady = () =>
     copy(
       translate,
-      "memory.backend.notReady",
-      "服务尚未就绪；先在下方修复安装或重新检测。"
+      "memory.backend.notReady"
     );
   if (!current) {
     const state = memoryBackendState(descriptor, runtime, translate);
@@ -339,15 +338,14 @@ export function memoryProviderStatusView(
   const blocked = target?.blockedReasonCode
     ? copy(
         translate,
-        `memory.health.blocked.${target.blockedReasonCode}`,
-        target.blockedReason ?? "",
+        BLOCKED_REASON_KEYS[target.blockedReasonCode],
         { provider: target.providerId }
       )
     : target?.blockedReason ?? null;
   if (blocked)
     return {
       tone: "warn",
-      label: copy(translate, "memory.health.blockedLabel", "暂不可启用"),
+      label: copy(translate, "memory.health.blockedLabel"),
       detail: blocked,
     };
   const view = memoryHealthView(
@@ -392,23 +390,22 @@ export function memoryMasterRow(
   memory: { enabled: boolean; paused: boolean },
   status: MemoryStatusSnapshot,
   gateOpen: boolean,
-  translate?: MemoryTranslate
+  translate: MemoryTranslate
 ): MemoryMasterRow {
   const switchLabel = memory.paused
-    ? copy(translate, "memory.page.resume", "恢复长期记忆")
+    ? copy(translate, "memory.page.resume")
     : memory.enabled
-      ? copy(translate, "memory.page.pause", "暂停长期记忆")
-      : copy(translate, "memory.page.enable", "启用长期记忆");
+      ? copy(translate, "memory.page.pause")
+      : copy(translate, "memory.page.enable");
 
   /* 暂停压过健康：服务跑得再好，此刻也确实什么都不记。 */
   if (memory.enabled && memory.paused)
     return {
       tone: "warn",
-      label: copy(translate, "memory.page.statePaused", "已暂停"),
+      label: copy(translate, "memory.page.statePaused"),
       detail: copy(
         translate,
-        "memory.page.pausedBanner",
-        "长期记忆已暂停；聊天、工具、App 与 Skill 一切照常。"
+        "memory.page.pausedBanner"
       ),
       switchChecked: false,
       switchDisabled: false,
@@ -430,16 +427,14 @@ export function memoryMasterRow(
         tone: view.tone,
         label: copy(
           translate,
-          "memory.page.stateUnavailable",
-          "已暂停 · 服务不可用"
+          "memory.page.stateUnavailable"
         ),
         /* 只说后果。病因、地址与修复动作归下面那一档服务自己讲——
            同一句诊断隔着 60px 说两遍，第二遍不会让人更确信。而
            memoryServiceNeedsAttention 保证它此刻一定是摊开的。 */
         detail: copy(
           translate,
-          "memory.page.pausedBanner",
-          "长期记忆已暂停；聊天、工具、App 与 Skill 一切照常。"
+          "memory.page.pausedBanner"
         ),
         switchChecked: true,
         switchDisabled: false,
@@ -449,7 +444,7 @@ export function memoryMasterRow(
       tone: view.tone,
       /* 只说记不记。用哪个后端是它的子项自己的事——父说 whether，
          子说 which，同一个名词不在一张卡里出现两次。 */
-      label: copy(translate, "memory.page.stateOn", "已开启"),
+      label: copy(translate, "memory.page.stateOn"),
       /* 一切正常时没话可说；compat 与 checking 各自把自己解释掉。 */
       detail: view.tone === "ready" ? null : view.detail,
       switchChecked: true,
@@ -462,26 +457,23 @@ export function memoryMasterRow(
   const blocked = status.target?.blockedReasonCode
     ? copy(
         translate,
-        `memory.health.blocked.${status.target.blockedReasonCode}`,
-        status.target.blockedReason ?? "",
+        BLOCKED_REASON_KEYS[status.target.blockedReasonCode],
         { provider: status.target.providerId }
       )
     : (status.target?.blockedReason ?? null);
   const stuck = status.target?.canEnable === false || !gateOpen;
   return {
     tone: "off",
-    label: copy(translate, "memory.health.offLabel", "已关闭"),
+    label: copy(translate, "memory.health.offLabel"),
     detail: stuck
       ? blocked ||
         copy(
           translate,
-          "memory.backend.notReady",
-          "服务尚未就绪；先在下方修复安装或重新检测。"
+          "memory.backend.notReady"
         )
       : copy(
           translate,
-          "memory.health.offDetail",
-          "开启后才会连接本机服务进行召回与交付。"
+          "memory.health.offDetail"
         ),
     switchChecked: false,
     switchDisabled: stuck,
@@ -530,12 +522,12 @@ export const rebuildOutstanding = (rebuild: MemoryRebuildSnapshot | null) =>
 export function relativeMoment(
   at: number | null,
   now: number,
-  locale = "zh-CN",
-  translate?: MemoryTranslate
+  locale: string,
+  translate: MemoryTranslate
 ): string {
-  if (!at) return copy(translate, "memory.time.none", "尚无");
+  if (!at) return copy(translate, "memory.time.none");
   const seconds = Math.max(0, Math.round((now - at) / 1000));
-  if (seconds < 60) return copy(translate, "memory.time.now", "刚刚");
+  if (seconds < 60) return copy(translate, "memory.time.now");
   const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "always" });
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return formatter.format(-minutes, "minute");
@@ -579,29 +571,24 @@ type MemoryRecallOutcome =
 const RECALL_EVENT: Record<
   MemoryRecallOutcome,
   {
-    key: string;
-    fallback: (recall: MemoryRecallSnapshot) => string;
+    copyKey: string;
     tone: MemoryTone;
   }
 > = {
   used: {
-    key: "memory.activity.recallUsed",
-    fallback: (recall) => `最近召回 · 命中 ${recall.lastCount ?? 0} 条`,
+    copyKey: "memory.activity.recallUsed",
     tone: "ready",
   },
   none: {
-    key: "memory.activity.recallNone",
-    fallback: () => "最近召回 · 零命中",
+    copyKey: "memory.activity.recallNone",
     tone: "neutral",
   },
   unavailable: {
-    key: "memory.activity.recallFailed",
-    fallback: () => "最近召回 · 暂不可用",
+    copyKey: "memory.activity.recallFailed",
     tone: "warn",
   },
   idle: {
-    key: "memory.activity.lastRecall",
-    fallback: () => "最近召回",
+    copyKey: "memory.activity.lastRecall",
     tone: "off",
   },
 };
@@ -609,8 +596,8 @@ const RECALL_EVENT: Record<
 export function memoryActivityStats(
   status: MemoryStatusSnapshot,
   now: number,
-  locale = "zh-CN",
-  translate?: MemoryTranslate
+  locale: string,
+  translate: MemoryTranslate
 ): MemoryStat[] {
   const { pendingTurns, inflightBatches, deliveredTurns, gapTurns } =
     status.delivery;
@@ -628,7 +615,6 @@ export function memoryActivityStats(
       ? ` · ${copy(
           translate,
           "memory.activity.recallFailedCount",
-          `故障 ${recall.failedTurns}`,
           { count: recall.failedTurns }
         )}`
       : "";
@@ -638,7 +624,7 @@ export function memoryActivityStats(
           key: "rebuild",
           group: "event",
           value: relativeMoment(settled.startedAt, now, locale, translate),
-          label: copy(translate, "memory.activity.rebuilt", "上次重建 · 已完成"),
+          label: copy(translate, "memory.activity.rebuilt"),
           tone: "neutral",
           at: settled.startedAt,
         },
@@ -649,7 +635,7 @@ export function memoryActivityStats(
       key: "capture",
       group: "event",
       value: relativeMoment(status.lastCaptureAt, now, locale, translate),
-      label: copy(translate, "memory.activity.lastCapture", "最近交付 · canonical 落盘后"),
+      label: copy(translate, "memory.activity.lastCapture"),
       tone: status.lastCaptureAt ? "neutral" : "off",
       at: status.lastCaptureAt,
     },
@@ -661,7 +647,7 @@ export function memoryActivityStats(
          非零却只字不提，那句话就只是文案：把它接在结局之后一起说，
          承诺才在同一格里兑现——分开记录的前提是分开看得见。 */
       label:
-        copy(translate, recallEvent.key, recallEvent.fallback(recall), {
+        copy(translate, recallEvent.copyKey, {
           count: recall.lastCount ?? 0,
         }) + failedSuffix,
       tone: recallEvent.tone,
@@ -672,7 +658,7 @@ export function memoryActivityStats(
       key: "delivered",
       group: "counter",
       value: `${deliveredTurns}`,
-      label: copy(translate, "memory.activity.delivered", "已交付 turn"),
+      label: copy(translate, "memory.activity.delivered"),
       tone: deliveredTurns > 0 ? "neutral" : "off",
       at: null,
     },
@@ -680,7 +666,7 @@ export function memoryActivityStats(
       key: "pending",
       group: "counter",
       value: `${pendingTurns}`,
-      label: copy(translate, "memory.activity.pending", "待交付"),
+      label: copy(translate, "memory.activity.pending"),
       tone: pendingTurns > 0 ? "neutral" : "off",
       at: null,
     },
@@ -688,7 +674,7 @@ export function memoryActivityStats(
       key: "inflight",
       group: "counter",
       value: `${inflightBatches}`,
-      label: copy(translate, "memory.activity.inflight", "在途批"),
+      label: copy(translate, "memory.activity.inflight"),
       tone: inflightBatches > 0 ? "neutral" : "off",
       at: null,
     },
@@ -698,7 +684,7 @@ export function memoryActivityStats(
       key: "gap",
       group: "counter",
       value: `${gapTurns}`,
-      label: copy(translate, "memory.activity.gap", "缺口 turn · 已授权未送达"),
+      label: copy(translate, "memory.activity.gap"),
       tone: gapTurns > 0 ? "warn" : "off",
       at: null,
     },
@@ -708,7 +694,7 @@ export function memoryActivityStats(
       key: "recall-used",
       group: "counter",
       value: `${recall.usedTurns}`,
-      label: copy(translate, "memory.activity.recallUsedTurns", "召回命中 turn"),
+      label: copy(translate, "memory.activity.recallUsedTurns"),
       tone: recall.usedTurns > 0 ? "ready" : "off",
       at: null,
     },
@@ -716,7 +702,7 @@ export function memoryActivityStats(
       key: "recall-zero",
       group: "counter",
       value: `${recall.zeroTurns}`,
-      label: copy(translate, "memory.activity.recallZeroTurns", "零命中 turn"),
+      label: copy(translate, "memory.activity.recallZeroTurns"),
       tone: recall.zeroTurns > 0 ? "neutral" : "off",
       at: null,
     },
@@ -727,61 +713,49 @@ export function memoryActivityStats(
   ];
 }
 
-export const ATTENTION_LABEL: Record<MemoryAttentionKind, string> = {
-  "capture-gap": "提取交付存在缺口",
-  "cleanup-failed": "远端清理失败",
-  "rebuild-failed": "重建中断",
-  "capacity-pressure": "记忆账本需要压缩",
+const ATTENTION_LABEL_KEYS: Record<MemoryAttentionKind, string> = {
+  "capture-gap": "memory.attention.kind.capture-gap",
+  "cleanup-failed": "memory.attention.kind.cleanup-failed",
+  "rebuild-failed": "memory.attention.kind.rebuild-failed",
+  "capacity-pressure": "memory.attention.kind.capacity-pressure",
 };
 
-export const ATTENTION_ACTION_LABEL: Record<MemoryAttentionAction, string> = {
-  acknowledge: "已知悉",
-  "retry-cleanup": "重试清理",
-  compact: "立即压缩",
-  abandon: "放弃并记账",
-  "resume-rebuild": "继续重建",
+const ATTENTION_ACTION_LABEL_KEYS: Record<MemoryAttentionAction, string> = {
+  acknowledge: "memory.attention.action.acknowledge",
+  "retry-cleanup": "memory.attention.action.retry-cleanup",
+  compact: "memory.attention.action.compact",
+  abandon: "memory.attention.action.abandon",
+  "resume-rebuild": "memory.attention.action.resume-rebuild",
 };
 
-export const REBUILD_PHASE_LABEL: Record<MemoryRebuildPhase, string> = {
-  prepared: "准备中",
-  quiescing: "静默进行中的请求",
-  reconciling: "对账在途提交",
-  purging: "清理远端",
-  "watermarks-cleared": "重置水位",
-  backfilling: "回灌历史",
-  completed: "已完成",
-  failed: "已中断",
+const REBUILD_PHASE_LABEL_KEYS: Record<MemoryRebuildPhase, string> = {
+  prepared: "memory.rebuild.phase.prepared",
+  quiescing: "memory.rebuild.phase.quiescing",
+  reconciling: "memory.rebuild.phase.reconciling",
+  purging: "memory.rebuild.phase.purging",
+  "watermarks-cleared": "memory.rebuild.phase.watermarks-cleared",
+  backfilling: "memory.rebuild.phase.backfilling",
+  completed: "memory.rebuild.phase.completed",
+  failed: "memory.rebuild.phase.failed",
 };
 
 export function attentionLabel(
   kind: MemoryAttentionKind,
-  translate?: MemoryTranslate
+  translate: MemoryTranslate
 ) {
-  return copy(
-    translate,
-    `memory.attention.kind.${kind}`,
-    ATTENTION_LABEL[kind]
-  );
+  return copy(translate, ATTENTION_LABEL_KEYS[kind]);
 }
 
 export function attentionActionLabel(
   action: MemoryAttentionAction,
-  translate?: MemoryTranslate
+  translate: MemoryTranslate
 ) {
-  return copy(
-    translate,
-    `memory.attention.action.${action}`,
-    ATTENTION_ACTION_LABEL[action]
-  );
+  return copy(translate, ATTENTION_ACTION_LABEL_KEYS[action]);
 }
 
 export function rebuildPhaseLabel(
   phase: MemoryRebuildPhase,
-  translate?: MemoryTranslate
+  translate: MemoryTranslate
 ) {
-  return copy(
-    translate,
-    `memory.rebuild.phase.${phase}`,
-    REBUILD_PHASE_LABEL[phase]
-  );
+  return copy(translate, REBUILD_PHASE_LABEL_KEYS[phase]);
 }

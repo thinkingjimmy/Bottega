@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AppStore, Project-scoped Extension integration, grant authority, lifecycle/usage gates, reference/plan ledgers, and delivery materializer
- * [OUTPUT]: Provides AppTurnCoordinator for exact Project-aware reference acquisition, Extension delivery/health, Agent visibility, custody, and release
- * [POS]: App service turn authority; frozen App generation bindings are projected once and never re-resolved against live Extension precedence
+ * [INPUT]: Depends on AppStore, App edit-slot lookup, the shared source-mutation lane, source reconciliation, Project-scoped Extension integration, grant authority, lifecycle/usage gates, reference/plan ledgers, and delivery materializer
+ * [OUTPUT]: Provides AppTurnCoordinator for source-fenced edit admission, exact Project-aware reference acquisition, Extension delivery/health, Agent visibility, custody, terminal settlement, and release
+ * [POS]: App service turn authority; mutable edit work holds the same per-App lane as install/repair/publish while frozen App generation bindings are projected once and never re-resolved against live Extension precedence
  */
 
 import { join } from "node:path";
@@ -52,6 +52,7 @@ import {
 } from "../app-instruction-contributors";
 import type { AppReferenceJournal } from "../app-reference-journal";
 import type { AppStore } from "../app-store";
+import type { AppMutationCoordinator } from "../app-source-coordinator";
 import { selectAppReferences } from "../grant-budget";
 import type { ThirdPartyMcpPlanLedger } from "../../extensions/lifecycle/third-party-mcp-plan-ledger";
 import type { AgentContext } from "../../agent/bridge-types";
@@ -80,10 +81,17 @@ type AppTurnCoordinatorDependencies = {
   instructionContributors: AppInstructionContributorRegistry;
   grantAuthority(): AppGrantAuthority;
   extensions(): AppExtensionIntegration | null;
+  sourceMutations: AppMutationCoordinator;
+  editAppId(conversationId: string): string | undefined;
+  reconcileEditSource(appId: string): Promise<void>;
   emit(event: AppInstallEvent): void;
 };
 
 export class AppTurnCoordinator {
+  private readonly sourceMutationLeases = new Map<
+    string,
+    { appId: string; release(): void }
+  >();
   private readonly turnUsageLeases = new Map<string, string[]>();
   private readonly visibilityRevisions = new Map<string, number>();
   /* 物化产物与 plan lease 同生共死：root 只是本轮私有目录，不是第二本引用账。 */
@@ -99,6 +107,17 @@ export class AppTurnCoordinator {
   constructor(private readonly deps: AppTurnCoordinatorDependencies) {}
 
   async acquire(input: TurnInput) {
+    await this.acquireSourceMutation(input);
+    try {
+      return await this.acquireAdmitted(input);
+    } catch (cause) {
+      await this.release(input.requestId).catch(() => undefined);
+      this.releaseSourceMutation(input.requestId);
+      throw cause;
+    }
+  }
+
+  private async acquireAdmitted(input: TurnInput) {
     const effective = await this.deps.grantAuthority().effectiveGrants(
       input.conversationId
     );
@@ -264,8 +283,53 @@ export class AppTurnCoordinator {
         accepted.map(({ usage }) => usage.usageLeaseId)
       );
       await this.release(input.requestId);
+      this.releaseSourceMutation(input.requestId);
       throw cause;
     }
+  }
+
+  async settleSourceMutation<T>(
+    requestId: string,
+    operation: () => Promise<T>
+  ) {
+    try {
+      return await operation();
+    } finally {
+      this.releaseSourceMutation(requestId);
+    }
+  }
+
+  releaseAllSourceMutations() {
+    for (const requestId of [...this.sourceMutationLeases.keys()]) {
+      this.releaseSourceMutation(requestId);
+    }
+  }
+
+  private async acquireSourceMutation(input: TurnInput) {
+    if (
+      input.planMode ||
+      input.toolAccess !== "mutate" ||
+      this.sourceMutationLeases.has(input.requestId)
+    ) {
+      return;
+    }
+    const appId = this.deps.editAppId(input.conversationId);
+    if (!appId) return;
+    const release = await this.deps.sourceMutations.acquire(appId);
+    try {
+      await this.deps.reconcileEditSource(appId);
+      this.sourceMutationLeases.set(input.requestId, { appId, release });
+    } catch (cause) {
+      release();
+      throw cause;
+    }
+  }
+
+  private releaseSourceMutation(requestId: string) {
+    const lease = this.sourceMutationLeases.get(requestId);
+    if (!lease) return;
+    this.sourceMutationLeases.delete(requestId);
+    lease.release();
   }
 
   private publishVisibility(

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React Local feedback text, lucide icons and runtime provided Plan decision status/action
- * [OUTPUT]: Provides ChatPlanDecision, which presents implementation, feedback planning and three paths of certainty skipping
- * [POS]: The Plan completion mode of chat/composer is replaced; Only collect user intent, and the actual turn mode switches to runtime
+ * [INPUT]: Depends on React local feedback state, lucide icons, Chat composer i18n, and runtime-provided Plan decision status/action
+ * [OUTPUT]: Provides localized ChatPlanDecision with implementation, revision feedback, and explicit skip paths
+ * [POS]: Composer replacement shown after Plan completion; collects intent while runtime owns the actual mode transition
  */
 
 import { useState } from "react";
@@ -9,6 +9,7 @@ import { ArrowRightIcon, PenLineIcon, XIcon } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type { PlanDecision } from "@/lib/chat-plan";
 import type { PendingPlanDecisionState } from "../runtime/use-chat-session";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 export function ChatPlanDecision({
   pending,
@@ -17,6 +18,7 @@ export function ChatPlanDecision({
   pending: PendingPlanDecisionState;
   onDecision: (decision: PlanDecision) => void;
 }) {
+  const { t } = useAppTranslation();
   const [feedback, setFeedback] = useState("");
 
   const submitFeedback = () => {
@@ -28,10 +30,10 @@ export function ChatPlanDecision({
     <section className="rounded-2xl border bg-background p-4">
       <div className="flex min-h-10 items-start gap-4">
         <h2 className="min-w-0 flex-1 pt-1.5 font-medium text-sm leading-5">
-          Implement this plan?
+          {t("chat.composer.plan.decisionTitle")}
         </h2>
         <Button
-          aria-label="关闭 Plan 决策"
+          aria-label={t("chat.composer.plan.closeDecision")}
           disabled={pending.busy}
           onClick={() => onDecision({ kind: "skip" })}
           size="icon-sm"
@@ -51,7 +53,7 @@ export function ChatPlanDecision({
           1
         </span>
         <span className="min-w-0 flex-1 font-medium">
-          Yes, implement this plan
+          {t("chat.composer.plan.implement")}
         </span>
         <ArrowRightIcon className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
       </button>
@@ -67,11 +69,11 @@ export function ChatPlanDecision({
           <PenLineIcon className="size-4" />
         </span>
         <input
-          aria-label="告诉 Agent 如何调整 Plan"
+          aria-label={t("chat.composer.plan.reviseLabel")}
           className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           disabled={pending.busy}
           onChange={(event) => setFeedback(event.currentTarget.value)}
-          placeholder="No, and tell the Agent what to do differently"
+          placeholder={t("chat.composer.plan.revisePlaceholder")}
           value={feedback}
         />
         {feedback.trim() && (
@@ -81,7 +83,7 @@ export function ChatPlanDecision({
             size="sm"
             type="submit"
           >
-            发送
+            {t("chat.composer.plan.send")}
           </Button>
         )}
         <Button
@@ -92,7 +94,7 @@ export function ChatPlanDecision({
           type="button"
           variant="outline"
         >
-          Skip
+          {t("chat.composer.plan.skip")}
         </Button>
       </form>
 

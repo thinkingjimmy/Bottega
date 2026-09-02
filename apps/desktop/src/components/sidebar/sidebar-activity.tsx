@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Chats Provider, chat-activity-store, global snapshot, activity-groups, pure model, ChatThreadItem, Sidebar-active-path useSidebarActivePath, shared Sidebar grouping title token, React and sidebar originals
- * [OUTPUT]: Provides SidebarActivity; Rename the Permanent Priority to the last five local date groups and give the chat.preview to the row units that are shortened to two rows of previews
+ * [INPUT]: Depends on Chats and i18n Providers, chat-activity-store, global snapshot, activity-groups, pure model, ChatThreadItem, Sidebar-active-path useSidebarActivePath, shared Sidebar grouping title token, React and sidebar originals
+ * [OUTPUT]: Provides SidebarActivity with localized empty state; renders permanent Priority plus the last five local date groups and passes chat.preview to two-row chat units
  * [POS]: The Sidebar Activity list compiler for components, only installed in Activity mode; Zero-point timers are responsible for day-to-day rearrangement
  */
 
@@ -14,9 +14,10 @@ import {
   SidebarMenu,
 } from "@ai-chat/ui/components/ui/sidebar";
 import { ChatThreadItem } from "./chat/chat-thread-item";
-import { useSidebarActivePath } from "./sidebar-active-path";
+import { useSidebarActivePath } from "./active/active-path";
 import { SIDEBAR_GROUP_LABEL_CLASS_NAME } from "./sidebar-collapsible-group";
 import { useChats } from "../providers/chats-provider";
+import { useAppTranslation } from "../providers/i18n-provider";
 import { groupChatsByActivity } from "@/lib/activity-groups";
 import {
   readAllChatActivity,
@@ -38,6 +39,7 @@ const nextLocalMidnight = (now: number) => {
  * 于是本编排器连 Projects Provider 都不必再订阅。
  * ────────────────────────────────────────────────────────── */
 export function SidebarActivity() {
+  const { t } = useAppTranslation();
   const activePath = useSidebarActivePath();
   const { chats } = useChats();
   const activity = useSyncExternalStore(
@@ -73,7 +75,7 @@ export function SidebarActivity() {
           /* 空的 Priority 是好消息，不是缺失：用与预览同一档的弱对比说完
              就退场，音量高于此就成了「这里本该有东西」的错觉。 */
           <p className="px-2 py-1 text-[11px] text-sidebar-foreground/60">
-            Nothing needs attention
+            {t("chat.sidebar.nothingNeedsAttention")}
           </p>
         ) : (
           <SidebarMenu>
@@ -81,7 +83,11 @@ export function SidebarActivity() {
               <ChatThreadItem
                 key={chat.id}
                 chat={chat}
-                active={activePath === `/chat/${chat.id}`}
+                active={
+                  chat.context?.kind === "app-use"
+                    ? activePath.endsWith(`#app-use:${chat.id}`)
+                    : activePath === `/chat/${chat.id}`
+                }
                 preview={chat.preview ?? undefined}
               />
             ))}

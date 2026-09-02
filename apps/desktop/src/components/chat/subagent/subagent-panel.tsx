@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on ProjectedSubagent, full subagent projection, Conversation, share WorkedForRow/TurnParts, ThinkingShimmer, Button and SubagentAvatar
+ * [INPUT]: Depends on App i18n, ProjectedSubagent projections, Conversation, shared TurnParts, ThinkingShimmer, Button, and SubagentAvatar
  * [OUTPUT]: Provides SubagentPanel to unify 20px headers, share ElapsedLabel to show read-only flow details and return list entries
  * [POS]: The tabs for chat/subagent are detailed; Panel Tabs, transcript renderer, is used to close the panel
  */
@@ -21,6 +21,7 @@ import { ElapsedLabel, TurnParts } from "../transcript/chat-turn";
 import { SubagentAvatar } from "./subagent-avatar";
 import { capPartMarkdown } from "@/lib/charts/chart-markdown";
 import { ChartConversationBoundary } from "@/components/charts/chart-scroll-root";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 const activeStatus = (status: ProjectedSubagent["meta"]["status"]) =>
   ["pendingInit", "running"].includes(status);
@@ -36,6 +37,7 @@ export function SubagentPanel({
   onBack: () => void;
   onOpenSubagent: (agentThreadId: string) => void;
 }) {
+  const { t } = useAppTranslation();
   const active = activeStatus(agent.meta.status);
   const draft = agent.draft;
   const streaming = draft
@@ -57,7 +59,7 @@ export function SubagentPanel({
     <>
       <header className="flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-3 border-b px-4 [-webkit-app-region:drag]">
         <Button
-          aria-label="返回 Subagent 列表"
+          aria-label={t("chat.subagent.back")}
           className="cursor-pointer [-webkit-app-region:no-drag]"
           onClick={onBack}
           size="icon-sm"
@@ -109,7 +111,7 @@ export function SubagentPanel({
             </>
           ) : (
             <p className="text-muted-foreground text-sm">
-              实时详情已达上限；该 Subagent 仍会保留名称与状态。
+              {t("chat.subagent.detailLimit")}
             </p>
           )}
           </ConversationContent>

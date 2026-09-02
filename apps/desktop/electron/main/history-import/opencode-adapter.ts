@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node module/path, user home(XDG_DATA_HOME missing ~/.local/share) with history-import adapter Public core
- * [OUTPUT]: Provides OpencodeHistoryAdapter; readOnly SQLite scans the session that can be resumed natively, parse the single transaction small page flow join message/part, per page main-loop yield, time_updated, double-check, Abort/64MiB gate aggregation text/tools/work time
+ * [OUTPUT]: Provides OpencodeHistoryAdapter with read-only session scans and transaction-fenced paged message streams, revision checks, limits, tools, and duration
  * [POS]: The history-import OpenCode format adapter; The session_message migration target is empty and can be switched to todo/08-22-kimi-opencode-history-import.md L1); WAL search for read to keep single-generation snapshots
  */
 
@@ -9,6 +9,8 @@ import { join } from "node:path";
 import type { ForeignHistoryBlock, ForeignHistoryMessage, ForeignToolEvent } from "../../../shared/history-import-ipc";
 import {
   HISTORY_PARSER_VERSION,
+  batchHistoryTurns,
+  collectHistoryBatches,
   digest,
   fingerprint,
   humanTitle,
@@ -20,6 +22,8 @@ import {
   type AdapterEntry,
   type AdapterScan,
   type HistoryAdapter,
+  type HistoryBlockBatches,
+  type HistoryBlockTurns,
   type ParsedHistory,
   type ScanDepth,
   yieldHistoryParse,
@@ -100,9 +104,20 @@ export class OpencodeHistoryAdapter implements HistoryAdapter {
     };
   }
 
+  parseBatches(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches {
+    return batchHistoryTurns(this.parseTurns(entry, signal), signal);
+  }
+
   async parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory> {
-    const blocks: ForeignHistoryBlock[] = [];
-    await withDatabaseAsync(this.databasePath, async (db) => {
+    return collectHistoryBatches(this.parseBatches(entry, signal));
+  }
+
+  private async *parseTurns(
+    entry: AdapterEntry,
+    signal?: AbortSignal
+  ): HistoryBlockTurns {
+    const db = new (requireSqlite().DatabaseSync)(this.databasePath, { readOnly: true });
+    try {
       signal?.throwIfAborted();
       db.exec("BEGIN");
       let committed = false;
@@ -125,10 +140,12 @@ export class OpencodeHistoryAdapter implements HistoryAdapter {
             bytes += Buffer.byteLength(asString(row.part_data) ?? "", "utf8");
           }
           if (bytes > HISTORY_FILE_BYTES) throw new Error("HISTORY_OVERSIZE");
-          consumeRows(page, state, blocks, entry);
+          const ready = consumeRows(page, state, entry);
+          if (ready.length) yield ready;
           offset += page.length;
         }
-        flushMessage(state, blocks, entry);
+        const last = takeMessage(state, entry);
+        if (last) yield [last];
         assertSessionRevision(db, entry);
         db.exec("COMMIT");
         committed = true;
@@ -138,17 +155,21 @@ export class OpencodeHistoryAdapter implements HistoryAdapter {
           try { db.exec("ROLLBACK"); } catch { /* 原错误优先 */ }
         }
       }
-    });
-    return { blocks, incompleteTail: false };
+      return false;
+    } finally {
+      db.close();
+    }
   }
 }
 
-function consumeRows(page: Row[], state: ParseState, blocks: ForeignHistoryBlock[], entry: AdapterEntry) {
+function consumeRows(page: Row[], state: ParseState, entry: AdapterEntry) {
+  const blocks: ForeignHistoryBlock[] = [];
   for (const row of page) {
     const messageId = asString(row.message_id);
     if (!messageId) continue;
     if (messageId !== state.current?.id) {
-      flushMessage(state, blocks, entry);
+      const ready = takeMessage(state, entry);
+      if (ready) blocks.push(ready);
       state.current = {
         id: messageId,
         timeCreated: row.time_created,
@@ -160,28 +181,29 @@ function consumeRows(page: Row[], state: ParseState, blocks: ForeignHistoryBlock
     const part = parseJson(asString(row.part_data));
     if (part) state.current.parts.push(part);
   }
+  return blocks;
 }
 
-function flushMessage(state: ParseState, blocks: ForeignHistoryBlock[], entry: AdapterEntry) {
+function takeMessage(state: ParseState, entry: AdapterEntry): ForeignHistoryMessage | null {
   const row = state.current;
-  if (!row) return;
+  if (!row) return null;
   state.current = null;
   const data = parseJson(row.data);
   const role = data?.role === "assistant" ? "assistant" : data?.role === "user" ? "user" : null;
-  if (!role) return;
+  if (!role) return null;
   const content = row.parts.filter((part) => part.type === "text")
     .map((part) => asString(part.text) ?? "").filter(Boolean).join("\n").trim();
   const tools = role === "assistant" ? toolEvents(row.parts) : [];
-  if (!content && !tools.length) return;
+  if (!content && !tools.length) return null;
   const time = object(data?.time);
   const workedForMs = role === "assistant" ? durationOf(time) : undefined;
-  blocks.push({
+  return {
     kind: "message", id: row.id, nativeTurnId: row.id,
     deliverySeq: row.deliverySeq, role, content: content || "（仅工具活动）",
     createdAt: timestamp(time?.created ?? row.timeCreated, entry.createdAt),
     ...(tools.length ? { tools } : {}),
     ...(workedForMs !== undefined ? { workedForMs } : {}),
-  } satisfies ForeignHistoryMessage);
+  } satisfies ForeignHistoryMessage;
 }
 
 function assertSessionRevision(db: Database, entry: AdapterEntry) {
@@ -254,11 +276,6 @@ const requireSqlite = () => createRequire(import.meta.url)("node:sqlite") as { D
 function withDatabase<T>(path: string, body: (db: Database) => T): T {
   const db = new (requireSqlite().DatabaseSync)(path, { readOnly: true });
   try { return body(db); } finally { db.close(); }
-}
-
-async function withDatabaseAsync<T>(path: string, body: (db: Database) => Promise<T>): Promise<T> {
-  const db = new (requireSqlite().DatabaseSync)(path, { readOnly: true });
-  try { return await body(db); } finally { db.close(); }
 }
 
 const object = (value: unknown) => value && typeof value === "object" && !Array.isArray(value) ? value as Json : null;

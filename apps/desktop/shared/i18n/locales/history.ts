@@ -1,7 +1,7 @@
 /**
  * [INPUT]: No dependencies; the five-language characters remain completely synonymous
- * [OUTPUT]: Provides five-language History Import, read-only transcript, search, archive, and Sidebar rename copy
- * [POS]: External source history feature catalog in shared/i18n/locales, including the product-only rename boundary for imported sessions
+ * [OUTPUT]: Provides five-language History Import, read-only transcript, search, Sidebar presentation, and archive-restore copy
+ * [POS]: External source history feature catalog in shared/i18n/locales; Archive owns shared list and destructive-capability explanations
  */
 
 export const historyEn = {
@@ -30,14 +30,7 @@ export const historyEn = {
   disableProject: "Hide agent history",
   enableProject: "Show agent history",
   refreshProject: "Refresh agent history",
-  loading: "Loading history",
-  rename: "Rename",
-  renameTitle: "Rename imported chat",
-  renameDescription:
-    "Only the name shown in Bottega changes; the source Agent session is untouched.",
   incompleteTail: "The source file was still being written after bounded retries. Its incomplete tail was omitted; refresh to retry.",
-  you: "You",
-  loadMore: "Load earlier history",
   resumeUnavailable: "This Agent history cannot be continued in the app yet.",
   search: "Search",
   searchPlaceholder: "Search chats, Bases and project archives…",
@@ -47,7 +40,6 @@ export const historyEn = {
   searchActions: "Quick actions",
   searchUntitled: "Untitled",
   searchMore: "Load more results",
-  searchSkippedSessions: "{{count}} external sessions were not scanned because they changed, were unavailable, or are hidden by policy.",
   findPlaceholder: "Find in conversation",
   findCount: "{{current}} / {{total}}",
   findNoMatches: "No matches",
@@ -70,13 +62,9 @@ export const historyEn = {
   settingsDelivering: "Import confirmed — delivering to Memory in the background.",
   deliveringMemory: "Delivering history to Memory",
   interruptedGrant: "A previously confirmed import was interrupted. Preview again to resume the same one-time Grant; nothing is sent automatically.",
-  importedHistoryLabel: "Imported Agent history",
   importedDivider: "Imported history · Product conversation starts here",
   divergedDivider: "Source changed · Product conversation continues from the immutable snapshot",
   sourceMissingDivider: "The original record is no longer at its source · Product conversation continues from the immutable snapshot",
-  archivedSectionTitle: "Archived imported history",
-  archivedSectionDescription: "Imported chats archived in this app. Restoring brings them back to the sidebar; source files are never touched.",
-  archivedRestore: "Restore \"{{title}}\"",
 };
 
 export const historyZhCN: typeof historyEn = {
@@ -105,13 +93,7 @@ export const historyZhCN: typeof historyEn = {
   disableProject: "隐藏 Agent 历史",
   enableProject: "显示 Agent 历史",
   refreshProject: "刷新 Agent 历史",
-  loading: "正在加载历史",
-  rename: "重命名",
-  renameTitle: "重命名导入的聊天",
-  renameDescription: "只修改 Bottega 内显示的名称，不改动来源 Agent 会话。",
   incompleteTail: "来源文件在有界重试后仍在写入，未完成尾部已忽略；刷新后可再次尝试。",
-  you: "你",
-  loadMore: "加载更早历史",
   resumeUnavailable: "这类 Agent 历史暂时还不能在应用内继续。",
   search: "搜索",
   searchPlaceholder: "搜索聊天、数据表与项目归档…",
@@ -121,7 +103,6 @@ export const historyZhCN: typeof historyEn = {
   searchActions: "快捷操作",
   searchUntitled: "未命名",
   searchMore: "加载更多结果",
-  searchSkippedSessions: "{{count}} 个外源会话因发生变化、暂不可用或策略隐藏而未扫描。",
   findPlaceholder: "在对话中查找",
   findCount: "{{current}} / {{total}}",
   findNoMatches: "无匹配",
@@ -144,13 +125,9 @@ export const historyZhCN: typeof historyEn = {
   settingsDelivering: "导入已确认，正在后台交付到 Memory。",
   deliveringMemory: "正在把历史交付到 Memory",
   interruptedGrant: "上次已确认的导入被中断。请重新预览以续用同一个一次性 Grant；应用不会在重启后自动发送。",
-  importedHistoryLabel: "已导入的 Agent 历史",
   importedDivider: "以上是导入的历史消息 · 新消息从这里开始",
   divergedDivider: "来源已变化 · 产品对话继续使用不可变快照",
   sourceMissingDivider: "原始记录已不在原处 · 产品对话继续使用不可变快照",
-  archivedSectionTitle: "已归档的导入历史",
-  archivedSectionDescription: "在本应用内归档的导入会话。恢复后回到侧栏；源文件永远不被改动。",
-  archivedRestore: "恢复「{{title}}」",
 };
 
 export const historyJa: typeof historyEn = {
@@ -179,13 +156,7 @@ export const historyJa: typeof historyEn = {
   disableProject: "Agent 履歴を非表示",
   enableProject: "Agent 履歴を表示",
   refreshProject: "Agent 履歴を更新",
-  loading: "履歴を読み込み中",
-  rename: "名前を変更",
-  renameTitle: "取り込んだチャットの名前を変更",
-  renameDescription: "Bottega 内の表示名だけが変わり、元の Agent セッションは変更されません。",
   incompleteTail: "有界再試行後も元ファイルは書き込み中でした。不完全な末尾を除外したため、更新して再試行してください。",
-  you: "あなた",
-  loadMore: "以前の履歴を読み込む",
   resumeUnavailable: "この Agent 履歴は、まだアプリ内で続行できません。",
   search: "検索",
   searchPlaceholder: "チャット、Base、プロジェクトアーカイブを検索…",
@@ -195,7 +166,6 @@ export const historyJa: typeof historyEn = {
   searchActions: "クイック操作",
   searchUntitled: "無題",
   searchMore: "結果をさらに読み込む",
-  searchSkippedSessions: "{{count}} 件の外部セッションは、変更・利用不可・ポリシーによる非表示のため検索されませんでした。",
   findPlaceholder: "会話内を検索",
   findCount: "{{current}} / {{total}}",
   findNoMatches: "一致なし",
@@ -218,13 +188,9 @@ export const historyJa: typeof historyEn = {
   settingsDelivering: "取り込みを確認しました。バックグラウンドで Memory に配信しています。",
   deliveringMemory: "履歴を Memory に配信中",
   interruptedGrant: "以前に確認した取り込みが中断されました。再プレビューすると同じ一回限りの Grant を再開できます。自動送信はされません。",
-  importedHistoryLabel: "取り込まれた Agent 履歴",
   importedDivider: "取り込み履歴 · ここから製品内の会話",
   divergedDivider: "元データが変更されました · 不変スナップショットから会話を継続",
   sourceMissingDivider: "元の記録が保存元にありません · 不変スナップショットから会話を継続",
-  archivedSectionTitle: "アーカイブ済みのインポート履歴",
-  archivedSectionDescription: "このアプリ内でアーカイブしたインポート済み会話。復元するとサイドバーに戻ります。ソースファイルには一切触れません。",
-  archivedRestore: "「{{title}}」を復元",
 };
 
 export const historyFr: typeof historyEn = {
@@ -253,13 +219,7 @@ export const historyFr: typeof historyEn = {
   disableProject: "Masquer l’historique Agent",
   enableProject: "Afficher l’historique Agent",
   refreshProject: "Actualiser l’historique Agent",
-  loading: "Chargement de l’historique",
-  rename: "Renommer",
-  renameTitle: "Renommer le chat importé",
-  renameDescription: "Seul le nom affiché dans Bottega change ; la session Agent source reste intacte.",
   incompleteTail: "Le fichier source était encore en écriture après les tentatives limitées. Sa fin incomplète a été ignorée ; actualisez pour réessayer.",
-  you: "Vous",
-  loadMore: "Charger l’historique antérieur",
   resumeUnavailable: "Cet historique Agent ne peut pas encore être poursuivi dans l’application.",
   search: "Rechercher",
   searchPlaceholder: "Rechercher dans les chats, les Bases et les archives de projet…",
@@ -269,7 +229,6 @@ export const historyFr: typeof historyEn = {
   searchActions: "Actions rapides",
   searchUntitled: "Sans titre",
   searchMore: "Charger plus de résultats",
-  searchSkippedSessions: "{{count}} sessions externes n’ont pas été analysées car elles ont changé, sont indisponibles ou masquées par la politique.",
   findPlaceholder: "Rechercher dans la conversation",
   findCount: "{{current}} / {{total}}",
   findNoMatches: "Aucun résultat",
@@ -292,13 +251,9 @@ export const historyFr: typeof historyEn = {
   settingsDelivering: "Import confirmé — livraison vers Memory en arrière-plan.",
   deliveringMemory: "Livraison de l’historique vers Memory",
   interruptedGrant: "Un import déjà confirmé a été interrompu. Prévisualisez-le à nouveau pour reprendre le même Grant unique ; aucun envoi automatique n’a lieu.",
-  importedHistoryLabel: "Historique Agent importé",
   importedDivider: "Historique importé · La conversation produit commence ici",
   divergedDivider: "La source a changé · La conversation continue depuis l’instantané immuable",
   sourceMissingDivider: "L’enregistrement d’origine n’est plus à sa source · La conversation continue depuis l’instantané immuable",
-  archivedSectionTitle: "Historique importé archivé",
-  archivedSectionDescription: "Conversations importées archivées dans cette application. La restauration les ramène dans la barre latérale ; les fichiers source ne sont jamais modifiés.",
-  archivedRestore: "Restaurer « {{title}} »",
 };
 
 export const historyEs: typeof historyEn = {
@@ -327,13 +282,7 @@ export const historyEs: typeof historyEn = {
   disableProject: "Ocultar historial de Agent",
   enableProject: "Mostrar historial de Agent",
   refreshProject: "Actualizar historial de Agent",
-  loading: "Cargando historial",
-  rename: "Cambiar nombre",
-  renameTitle: "Cambiar el nombre del chat importado",
-  renameDescription: "Solo cambia el nombre mostrado en Bottega; la sesión de Agent de origen permanece intacta.",
   incompleteTail: "El archivo seguía escribiéndose tras los reintentos limitados. Se omitió el final incompleto; actualiza para reintentar.",
-  you: "Tú",
-  loadMore: "Cargar historial anterior",
   resumeUnavailable: "Este historial de Agent todavía no se puede continuar en la aplicación.",
   search: "Buscar",
   searchPlaceholder: "Buscar chats, Bases y archivos de proyectos…",
@@ -343,7 +292,6 @@ export const historyEs: typeof historyEn = {
   searchActions: "Acciones rápidas",
   searchUntitled: "Sin título",
   searchMore: "Cargar más resultados",
-  searchSkippedSessions: "No se analizaron {{count}} sesiones externas porque cambiaron, no estaban disponibles o la política las oculta.",
   findPlaceholder: "Buscar en la conversación",
   findCount: "{{current}} / {{total}}",
   findNoMatches: "Sin coincidencias",
@@ -366,11 +314,7 @@ export const historyEs: typeof historyEn = {
   settingsDelivering: "Importación confirmada; entregando a Memory en segundo plano.",
   deliveringMemory: "Entregando el historial a Memory",
   interruptedGrant: "Una importación ya confirmada se interrumpió. Vuelve a previsualizarla para reanudar el mismo Grant de un solo uso; no se envía nada automáticamente.",
-  importedHistoryLabel: "Historial de Agent importado",
   importedDivider: "Historial importado · La conversación del producto empieza aquí",
   divergedDivider: "La fuente cambió · La conversación continúa desde la instantánea inmutable",
   sourceMissingDivider: "El registro original ya no está en su origen · La conversación continúa desde la instantánea inmutable",
-  archivedSectionTitle: "Historial importado archivado",
-  archivedSectionDescription: "Conversaciones importadas archivadas en esta aplicación. Restaurarlas las devuelve a la barra lateral; los archivos de origen nunca se modifican.",
-  archivedRestore: "Restaurar «{{title}}»",
 };

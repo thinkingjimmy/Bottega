@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/chats-ipc and the shared/chat-turn-reducer's DraftPart/DraftToolPart
- * [OUTPUT]: Provides groupParts (GroupedToolPart and groupSummary)
+ * [OUTPUT]: Provides groupParts with standalone structured Agent failure notices, GroupedToolPart, and groupSummary
  * [POS]: The turn rendering projection of lib is pure function: reducer pipe flow state, where only the grouping is shown and can be returned independently
  */
 
@@ -18,6 +18,7 @@ export type PartGroup =
   | { type: "text"; part: ChatTextPart }
   | { type: "subagent"; part: DraftSubagentPart }
   | { type: "image"; part: DraftToolPart }
+  | { type: "failure"; part: DraftToolPart }
   | { type: "tools"; key: string; parts: GroupedToolPart[] };
 
 /** 组内连续 reasoning 合流为一行（detail 以空行拼接），避免"Thought/Thought"重复行 */
@@ -61,6 +62,8 @@ export function groupParts(parts: readonly DraftPart[]): PartGroup[] {
       groups.push({ type: "subagent", part });
     } else if (part.tool === "image") {
       groups.push({ type: "image", part });
+    } else if (part.tool === "agent-failure") {
+      groups.push({ type: "failure", part });
     } else if (last?.type === "tools") {
       last.parts.push(part);
     } else {
@@ -92,6 +95,7 @@ const KIND_BUCKETS: Record<DraftToolPart["tool"], Bucket> = {
   image: "tool",
   reasoning: "thought",
   "user-input": "question",
+  "agent-failure": "tool",
   other: "tool",
 };
 

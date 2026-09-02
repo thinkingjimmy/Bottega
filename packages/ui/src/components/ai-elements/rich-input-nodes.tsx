@@ -122,7 +122,9 @@ export function RichInputNodes({
           onClick={activate}
           onKeyDown={(event) => activateWithKeyboard(event, activate)}
           onMouseDown={(event) => event.preventDefault()}
-          title={workspaceFileClickTitle ?? node.path}
+          /* title 只说「我是谁」：PathLabel 会截断头部，悬停是读全路径的唯一出口，
+             与 dir chip 同构。可点击这件事由 aria-label 与手型/hover 承担。 */
+          title={node.path}
           type="button"
         >
           {content}

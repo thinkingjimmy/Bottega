@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shared Codex Snapshots/events, ChatRecord, Subagent Show names and shared turn reducer
- * [OUTPUT]: Provides attach projections with a stable message that is running in sequence; id→index overlay single-line append unordered, keeping the ledger
+ * [INPUT]: Depends on shared Codex snapshots/events, message-free ChatRuntimeContext, Subagent names, and the shared turn reducer
+ * [OUTPUT]: Provides attach projections with a stable segment-then-seq message order; id→index overlay single-line append unordered, keeping the ledger
  * [POS]: The main-owned turn of the renderer is read only by the projection core, which is detached from the React test
  */
 
@@ -24,7 +24,7 @@ import type {
 } from "../../shared/agent-ipc";
 import type {
   ChatMessage,
-  ChatRecord,
+  ChatRuntimeContext,
   PersistedSubagent,
 } from "../../shared/chats-ipc";
 import { displaySubagentName } from "../../shared/subagent-name";
@@ -116,6 +116,17 @@ const projectSubagentMeta = (meta: AgentSubagentMeta): AgentSubagentMeta => ({
   name: displaySubagentName(meta.name),
 });
 
+/* 导入段与原生段各自从 seq 1 开始编号：只按 seq 排，一条被收养的会话就会
+   把前传和续写交错成一团。段在前、seq 在后，才是这条会话的真实顺序——
+   排序键只此一处，合并、分页与锚点都读它。 */
+export const chatSegmentRank = (segment: ChatMessage["segment"]) =>
+  segment === "imported" ? 0 : 1;
+
+const segmentRank = (message: ChatMessage) => chatSegmentRank(message.segment);
+
+export const compareChatMessageOrder = (left: ChatMessage, right: ChatMessage) =>
+  segmentRank(left) - segmentRank(right) || left.seq - right.seq;
+
 export function mergeChatMessages(
   ledger: ChatMessage[],
   incoming: readonly ChatMessage[]
@@ -144,20 +155,18 @@ export function mergeChatMessages(
         continue;
       }
       result[existing] = message;
-      if (current.seq !== message.seq) monotonic = false;
+      if (compareChatMessageOrder(current, message) !== 0) monotonic = false;
       changed = true;
       continue;
     }
     const previous = result.at(-1);
-    if (previous && message.seq < previous.seq) monotonic = false;
+    if (previous && compareChatMessageOrder(message, previous) < 0) monotonic = false;
     indexes.set(message.id, result.length);
     result.push(message);
     changed = true;
   }
   if (!changed) return ledger;
-  return monotonic
-    ? result
-    : result.sort((left, right) => left.seq - right.seq);
+  return monotonic ? result : result.sort(compareChatMessageOrder);
 }
 
 const sameJson = (left: unknown, right: unknown) =>
@@ -233,11 +242,11 @@ const mergeLiveSubagents = (
 };
 
 export function projectionFromSnapshot(
-  record: ChatRecord | null,
+  record: ChatRuntimeContext | null,
   turn: TurnSnapshot | null,
   currentMessages: readonly ChatMessage[] = []
 ): ChatTurnProjection {
-  const messages = mergeChatMessages(record?.messages ?? [], currentMessages);
+  const messages = [...currentMessages];
   if (!turn) {
     return {
       messages,

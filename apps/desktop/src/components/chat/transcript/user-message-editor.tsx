@@ -12,7 +12,7 @@ import {
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Textarea } from "@ai-chat/ui/components/ui/textarea";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage, failureCode } from "@/lib/errors";
 import {
   REVISION_NOT_IDLE,
   REVISION_STALE,
@@ -51,14 +51,16 @@ export function UserMessageEditor({
       await onSubmit(draft);
       onCancel();
     } catch (cause) {
-      /* 稳定码不穿 UI：两枚修订专属码折成五语言人话，其余原样。 */
-      const raw = errorMessage(cause);
+      /* 稳定码不穿 UI：两枚修订专属码折成五语言人话，其余原样。
+         分类读 failureCode，而不是拿剥净后的人话去比码——`CODE` 与
+         `CODE: 人话` 两种写法都要落进同一个分支，剥净的那一半永远比不中。 */
+      const code = failureCode(cause);
       setError(
-        raw === REVISION_NOT_IDLE
+        code === REVISION_NOT_IDLE
           ? t("chatRevision.notIdle")
-          : raw === REVISION_STALE
+          : code === REVISION_STALE
             ? t("chatRevision.stale")
-            : raw
+            : errorMessage(cause)
       );
       submittingRef.current = false;
       setBusy(false);

@@ -1,25 +1,29 @@
 /**
- * [INPUT]: Depends on the browser Document; Receiving untrustworthy Base label/url and controlled turn on the callback
- * [OUTPUT]: Provides only Map popup nodes built with the textContent/DOM API
- * [POS]: The popup XSS boundary of lib/bases; The internal HTML/set HTML is banned, and URLs are ultimately still subject to main HTTPS-only output decisions
+ * [INPUT]: Depends on a browser Document plus untrusted Base label/URL, localized fallback/action labels, and a controlled open callback
+ * [OUTPUT]: Provides a Base Map popup node built only through textContent and DOM APIs
+ * [POS]: Popup XSS and imperative-copy boundary for lib/bases; callers own locale selection and main remains the HTTPS-only navigation authority
  */
 
 export function createBaseMapPopup(
   owner: Document,
-  label: string,
-  url: string,
-  open: (url: string) => void
+  input: {
+    label: string;
+    url: string;
+    fallbackLabel: string;
+    openLinkLabel: string;
+    onOpen(url: string): void;
+  }
 ) {
   const root = owner.createElement("div");
   const title = owner.createElement("strong");
-  title.textContent = label || "Location";
+  title.textContent = input.label || input.fallbackLabel;
   root.append(title);
-  if (url) {
+  if (input.url) {
     const button = owner.createElement("button");
     button.type = "button";
-    button.textContent = "Open link";
+    button.textContent = input.openLinkLabel;
     button.className = "map-base-link";
-    button.addEventListener("click", () => open(url));
+    button.addEventListener("click", () => input.onOpen(input.url));
     root.append(owner.createElement("br"), button);
   }
   return root;

@@ -410,12 +410,24 @@ export const baseViewSchema: z.ZodType<BaseView> = z
   })
   .strict();
 
-export const baseMetaSchema: z.ZodType<BaseMeta> = z
+const strictBaseMetaSchema = z
   .object({
     owner: baseOwnerSchema,
     ownerInstanceId: entityIdSchema,
     name: baseNameSchema,
     pinned: z.boolean(),
+    navigation: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("internal-app"), appId: z.string().min(1).max(128) }).strict(),
+      z.object({ kind: z.literal("conversation-contained"), chatId: entityIdSchema }).strict(),
+      z.object({ kind: z.literal("project-contained"), projectId: entityIdSchema }).strict(),
+      z
+        .object({
+          kind: z.literal("root-user-managed"),
+          source: z.enum(["legacy-pin", "retained-app-data"]),
+          activatedAt: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ]),
     columns: z.array(baseColumnSchema).max(BASE_COLUMN_LIMIT),
     views: z.array(baseViewSchema).min(1).max(BASE_VIEW_LIMIT),
     activeViewId: entityIdSchema,
@@ -447,6 +459,23 @@ export const baseMetaSchema: z.ZodType<BaseMeta> = z
       });
     }
   });
+
+export const baseMetaSchema: z.ZodType<BaseMeta> = z.preprocess((raw) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const meta = raw as Record<string, unknown>;
+  if ("navigation" in meta) return raw;
+  const owner = meta.owner as { kind?: unknown; chatId?: unknown; projectId?: unknown } | undefined;
+  const navigation = meta.pinned
+    ? {
+        kind: "root-user-managed" as const,
+        source: "legacy-pin" as const,
+        activatedAt: 0,
+      }
+    : owner?.kind === "project" && typeof owner.projectId === "string"
+      ? { kind: "project-contained" as const, projectId: owner.projectId }
+      : { kind: "conversation-contained" as const, chatId: String(owner?.chatId ?? "unknown") };
+  return { ...meta, navigation };
+}, strictBaseMetaSchema) as z.ZodType<BaseMeta>;
 
 /** 供本文件与 base-snapshot 的 zod refine 共用；同一约束不写第二遍。 */
 export function uniqueIds(
@@ -509,6 +538,13 @@ const ownerInputSchema = z
   .strict();
 
 export const baseGetInputSchema = ownerInputSchema;
+
+export const baseRemoveManagedInputSchema = z
+  .object({
+    ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
+    ownerInstanceId: entityIdSchema,
+  })
+  .strict();
 
 const authorityLeaseIdSchema = z.string().uuid();
 

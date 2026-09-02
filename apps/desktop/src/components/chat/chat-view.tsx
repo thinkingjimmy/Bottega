@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, HistoryPrefixProjection, transcript, composer, optional side panel, Gallery, and main-window Memory state
- * [OUTPUT]: Provides ChatViewFrame and ChatView with once-per-turn Design auto-open, abortable history Find, paged deep links, and App-window suppression of global Memory IPC
- * [POS]: The single horizontal chat layout for draft, product, foreign, and adopted sessions
+ * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, canonical transcript, composer, optional side panel, Gallery, and main-window Memory state
+ * [OUTPUT]: Provides ChatViewFrame and ChatView with once-per-turn Design auto-open, paged deep links, imported-segment pass-through, and App-window suppression of global Memory IPC
+ * [POS]: The single horizontal chat layout for draft and canonical native/imported sessions
  */
 
 import {
@@ -14,13 +14,11 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type ReactNode,
 } from "react";
 import type {
   AgentBackendId,
   AgentScope,
 } from "../../../shared/agent-ipc";
-import type { HistoryPrefixProjection } from "@/lib/history-prefix";
 import { ChatComposer } from "./composer/chat-composer";
 import { ChatEmptyState } from "./chat-empty-state";
 import {
@@ -52,6 +50,7 @@ import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useLocation } from "react-router";
 import { onAppsEvent } from "@/lib/apps-client";
 import { windowContext } from "@/lib/window-surfaces-client";
+import type { ImportSegmentFacts } from "./transcript/chat-transcript";
 
 const SidePanel = lazy(() =>
   import("./side-panel/side-panel").then((module) => ({
@@ -76,12 +75,10 @@ type ChatViewProps = {
   draftAgent?: AgentBackendId;
   panelContext?: PanelSessionContext;
   composerLockedReason?: string;
+  /** 导入段成色；缺席即这条会话没有历史前传。 */
+  importSegment?: ImportSegmentFacts;
   sidePanelRequest?: SidePanelRequest | null;
   onConsumeSidePanelRequest?: (nonce: number) => void;
-  historyPrefix?: HistoryPrefixProjection | null;
-  historyPrefixFooter?: ReactNode;
-  historyIndexLoader?: (signal: AbortSignal) => Promise<HistoryPrefixProjection>;
-  onHistoryJumpMiss?: (id: string) => Promise<void>;
   surfaceVisible?: boolean;
 };
 
@@ -117,12 +114,9 @@ export function ChatViewFrame({
   focusComposer = false,
   enableSidePanel = true,
   composerLockedReason,
+  importSegment,
   sidePanelRequest,
   onConsumeSidePanelRequest,
-  historyPrefix,
-  historyPrefixFooter,
-  historyIndexLoader,
-  onHistoryJumpMiss,
   surfaceVisible = true,
   includeGlobalMemory = true,
 }: ChatViewFrameProps) {
@@ -222,19 +216,6 @@ export function ChatViewFrame({
   const visibleSidePanelState = sidePanelState ?? retainedSidePanelState;
   const expandedPlanId =
     sidePanelState?.kind === "plan" ? sidePanelState.messageId : null;
-  const toggleForeignPlan = useCallback(
-    (plan: { anchorId: string; content: string }) => {
-      if (
-        controller.sidePanel.state.kind === "plan" &&
-        controller.sidePanel.state.messageId === plan.anchorId
-      ) {
-        controller.sidePanel.close();
-        return;
-      }
-      controller.sidePanel.openForeignPlan(plan);
-    },
-    [controller.sidePanel]
-  );
   const panelGeometry = resolveSidePanelGeometry(
     layoutWidth,
     sidePanelLayout.width
@@ -250,8 +231,7 @@ export function ChatViewFrame({
     !controller.transcript.draft &&
     controller.transcript.messages.every(
       (message) => message.notice?.kind === "app-chat-ready"
-    ) &&
-    !historyPrefix;
+    );
   const galleryDraftKey = conversationImageDraftKey(
     controller.transcript.draft
   );
@@ -298,13 +278,9 @@ export function ChatViewFrame({
               controller={controller.transcript}
               enableSidePanel={enableSidePanel}
               expandedPlanId={expandedPlanId}
+              importSegment={importSegment}
               onClosePlan={controller.sidePanel.close}
               showOutline={!visibleSidePanelState}
-              historyPrefix={historyPrefix}
-              historyPrefixFooter={historyPrefixFooter}
-              historyIndexLoader={historyIndexLoader}
-              onHistoryJumpMiss={onHistoryJumpMiss}
-              onToggleForeignPlan={toggleForeignPlan}
               routeSearch={location.search}
               surfaceVisible={surfaceVisible}
             />

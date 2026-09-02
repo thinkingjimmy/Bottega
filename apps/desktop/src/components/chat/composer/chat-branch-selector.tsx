@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, shared Git branch agreement, UI Popover/Command/Dialog/Input/Button and lucide icons
- * [OUTPUT]: Provides ChatBranchSelector, complete branch refresh/search/checkout/create with full visible status
- * [POS]: The Git interface boundaries of the chat/composer are in the context of the link; Only the consumer Provider is injected, not directly touching the IPC
+ * [INPUT]: Depends on React, shared Git branch agreement, Chat composer i18n, UI Popover/Command/Dialog/Input/Button and lucide icons
+ * [OUTPUT]: Provides localized ChatBranchSelector with complete branch refresh/search/checkout/create status
+ * [POS]: Git branch boundary for chat/composer; consumes injected operations and never reaches preload IPC directly
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,6 +36,7 @@ import type {
 } from "../../../../shared/projects-ipc";
 import { errorMessage } from "@/lib/errors";
 import { composerContextButtonClass } from "./chat-project-selector";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 type ChatBranchSelectorProps = {
   projectId: string;
@@ -63,6 +64,7 @@ function BranchRow({
   busy: boolean;
   onSelect: (branch: GitBranchRef) => void;
 }) {
+  const { t } = useAppTranslation();
   return (
     <CommandItem
       className={`min-h-11 px-3 py-2 text-sm ${branch.current ? "data-selected:bg-transparent" : ""}`}
@@ -75,7 +77,9 @@ function BranchRow({
         <span className="block truncate">{branch.name}</span>
         {branch.current && snapshot.uncommittedFiles > 0 && (
           <span className="block text-muted-foreground text-xs">
-            Uncommitted: {snapshot.uncommittedFiles} files
+            {t("chat.composer.branch.uncommitted", {
+              count: snapshot.uncommittedFiles,
+            })}
           </span>
         )}
       </span>
@@ -92,6 +96,7 @@ export function ChatBranchSelector({
   createBranch,
   onBusyChange,
 }: ChatBranchSelectorProps) {
+  const { t } = useAppTranslation();
   const requestEpoch = useRef(0);
   const [snapshot, setSnapshot] = useState<GitBranchSnapshot | null>(null);
   const [repository, setRepository] = useState<boolean | null>(null);
@@ -115,11 +120,11 @@ export function ChatBranchSelector({
     } catch (cause) {
       if (requestEpoch.current !== epoch) return;
       setRepository(true);
-      setError(errorMessage(cause, "Branches 加载失败"));
+      setError(errorMessage(cause, t("chat.composer.branch.loadFailed")));
     } finally {
       if (requestEpoch.current === epoch) setLoading(false);
     }
-  }, [listBranches, projectId]);
+  }, [listBranches, projectId, t]);
 
   useEffect(() => {
     void Promise.resolve().then(refresh);
@@ -148,7 +153,9 @@ export function ChatBranchSelector({
       setSnapshot(await checkoutBranch(projectId, branch));
       setOpen(false);
     } catch (cause) {
-      await updateAfterFailure(errorMessage(cause, "Branch 切换失败"));
+      await updateAfterFailure(
+        errorMessage(cause, t("chat.composer.branch.checkoutFailed"))
+      );
     } finally {
       setBusy(false);
       onBusyChange(false);
@@ -167,7 +174,7 @@ export function ChatBranchSelector({
       setCreateOpen(false);
       setBranchName("");
     } catch (cause) {
-      setCreateError(errorMessage(cause, "Branch 创建失败"));
+      setCreateError(errorMessage(cause, t("chat.composer.branch.createFailed")));
       try {
         const next = await listBranches(projectId);
         setSnapshot(next);
@@ -192,7 +199,7 @@ export function ChatBranchSelector({
       return !localNames.has(remoteBranchName);
     }),
   ];
-  const triggerLabel = snapshot?.head ?? "Branches";
+  const triggerLabel = snapshot?.head ?? t("chat.composer.branch.fallback");
 
   return (
     <>
@@ -227,25 +234,30 @@ export function ChatBranchSelector({
           className="w-[18.5rem] overflow-hidden rounded-2xl p-0"
         >
           <Command className="min-h-72 rounded-2xl p-0 [&_[data-slot=command-input-wrapper]]:p-3 [&_[data-slot=input-group]]:border-0 [&_[data-slot=input-group]]:bg-transparent [&_[data-slot=input-group]]:shadow-none">
-            <CommandInput className="text-sm" placeholder="Search branches" />
+            <CommandInput
+              className="text-sm"
+              placeholder={t("chat.composer.branch.search")}
+            />
             <CommandList className="max-h-72 min-h-48 px-2">
-              <CommandEmpty>No branches found.</CommandEmpty>
+              <CommandEmpty>{t("chat.composer.branch.empty")}</CommandEmpty>
               {snapshot?.detached && (
                 <div className="flex min-h-11 items-center gap-2 px-3 py-2 text-sm">
                   <GitBranch className="size-4 text-muted-foreground" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{snapshot.head}</span>
                     <span className="block text-muted-foreground text-xs">
-                      Detached HEAD
+                      {t("chat.composer.branch.detached")}
                       {snapshot.uncommittedFiles > 0 &&
-                        ` · Uncommitted: ${snapshot.uncommittedFiles} files`}
+                        ` · ${t("chat.composer.branch.uncommitted", {
+                          count: snapshot.uncommittedFiles,
+                        })}`}
                     </span>
                   </span>
                   <Check className="size-4" />
                 </div>
               )}
               {branches.length > 0 && (
-                <CommandGroup heading="Branches">
+                <CommandGroup heading={t("chat.composer.branch.group")}>
                   {branches.map((branch) => (
                     <BranchRow
                       key={`${branch.kind}:${branch.name}`}
@@ -259,7 +271,7 @@ export function ChatBranchSelector({
               )}
               {loading && snapshot && (
                 <p className="px-3 py-2 text-muted-foreground text-xs">
-                  Refreshing branches…
+                  {t("chat.composer.branch.refreshing")}
                 </p>
               )}
               {error && (
@@ -281,7 +293,7 @@ export function ChatBranchSelector({
                 }}
               >
                 <Plus className="size-4" />
-                Create and checkout new branch…
+                {t("chat.composer.branch.newAction")}
               </Button>
             </div>
           </Command>
@@ -305,18 +317,18 @@ export function ChatBranchSelector({
         >
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold">
-              Create and checkout branch
+              {t("chat.composer.branch.createTitle")}
             </DialogTitle>
             <DialogDescription className="sr-only">
-              Create a local branch from the current HEAD and check it out.
+              {t("chat.composer.branch.createDescription")}
             </DialogDescription>
           </DialogHeader>
           <label className="flex flex-col gap-3 text-sm font-medium">
-            <span>Branch name</span>
+            <span>{t("chat.composer.branch.name")}</span>
             <Input
               autoFocus
               className="h-10 rounded-xl text-sm font-normal"
-              placeholder="new-branch"
+              placeholder={t("chat.composer.branch.placeholder")}
               value={branchName}
               aria-invalid={Boolean(createError)}
               onChange={(event) => {
@@ -342,7 +354,7 @@ export function ChatBranchSelector({
               disabled={busy}
               onClick={() => setCreateOpen(false)}
             >
-              Close
+              {t("chat.composer.branch.close")}
             </Button>
             <Button
               type="button"
@@ -351,7 +363,9 @@ export function ChatBranchSelector({
               disabled={!branchName.trim() || busy}
               onClick={() => void submitCreate()}
             >
-              {busy ? "Creating…" : "Create and checkout"}
+              {busy
+                ? t("chat.composer.branch.creating")
+                : t("chat.composer.branch.createAndCheckout")}
             </Button>
           </DialogFooter>
         </DialogContent>

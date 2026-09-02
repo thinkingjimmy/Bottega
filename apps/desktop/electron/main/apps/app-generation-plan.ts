@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on sealed package digests, shared App/Extension contracts, and canonical App schema identities
- * [OUTPUT]: Provides pure generation planning, sealing, pending/active binding, promotion, and capability-decision projection
+ * [OUTPUT]: Provides pure generation planning, static-v2/compiled-v3 compatibility sealing, pending/active binding, promotion, and capability-decision projection
  * [POS]: Immutable App generation planning kernel; AppStore owns serialization and durable participant orchestration
  */
 
@@ -23,6 +23,8 @@ import {
 } from "../../../shared/apps-ipc";
 import type { AppExtensionRequirementDeclaration, Sha256Digest } from "../../../shared/extensions-ipc";
 import type { AppExtensionGenerationConsent, AppExtensionGenerationHandoff } from "./app-extension-generation";
+import type { PreparedCompiledAppGui } from "./gui-build/service";
+import { LEGACY_BASE_GUI_SDK_DIGEST } from "./gui-build/metadata";
 import { inspectPackageDigests, type PackageDigestSet } from "./share/package-contract";
 import { digest, domainIdentity } from "./app-store-schema";
 
@@ -45,6 +47,7 @@ export type NewGenerationPlan = Readonly<{
   previousActiveId: string | null;
   previousManifest: AppManifest | null;
   sourceDir: string;
+  compiled: PreparedCompiledAppGui | null;
 }>;
 
 /** `migrationId` = Extension 换代的 durable 幂等身份。 */
@@ -52,6 +55,7 @@ export type GenerationPlanOptions = Readonly<{
   migrationId?: string;
   sourceDir?: string;
   identitySuffix?: string;
+  compiled?: PreparedCompiledAppGui;
 }>;
 
 export function generationDigests(generation: AppGeneration): PackageDigestSet {
@@ -98,12 +102,26 @@ export async function planGeneration(
   ) {
     throw new Error("APP_DOMAIN_IDENTITY_CHANGE_REQUIRES_NEW_ID");
   }
-  const sourceDir = options.sourceDir ?? record.dir;
-  const digests = await inspectPackageDigests(sourceDir, record.manifest);
+  const sourceDir = options.compiled?.source.snapshotRoot ?? options.sourceDir ?? record.dir;
+  const digests = options.compiled
+    ? {
+        manifestDigest: options.compiled.digests.manifestDigest,
+        sourcePackageDigest: options.compiled.digests.sourcePackageDigest,
+        contentDigest: options.compiled.digests.contentDigest,
+      }
+    : await inspectPackageDigests(sourceDir, record.manifest);
+  const expectsCompiled = record.manifest.kind === "base" && Boolean(record.manifest.gui?.build);
+  if (expectsCompiled !== Boolean(options.compiled)) {
+    throw new Error(expectsCompiled
+      ? "compiled GUI generation requires a prepared sandbox artifact"
+      : "static generation cannot consume a compiled GUI artifact");
+  }
   if (
     !options.migrationId &&
     active?.manifestDigest === digests.manifestDigest &&
-    active.contentDigest === digests.contentDigest
+    active.sourcePackageDigest === digests.sourcePackageDigest &&
+    active.contentDigest === digests.contentDigest &&
+    (!options.compiled || active.buildReceiptDigest === options.compiled.buildReceiptDigest)
   ) {
     return null;
   }
@@ -135,6 +153,7 @@ export async function planGeneration(
     previousActiveId: previous?.generationBinding.active?.generationId ?? null,
     previousManifest: previous?.manifest ?? null,
     sourceDir,
+    compiled: options.compiled ?? null,
   };
 }
 
@@ -142,15 +161,43 @@ export function sealGeneration(
   plan: NewGenerationPlan,
   extensionRequirementResolution: AppExtensionResolutionBinding
 ): AppGeneration {
+  const compiled = plan.compiled;
+  const staticGui = !compiled && plan.manifest.kind === "base" && plan.manifest.gui
+    ? {
+        kind: "static-v2" as const,
+        legacySdkDigest: LEGACY_BASE_GUI_SDK_DIGEST,
+        legacyBaseApiVersion: "base-gui-legacy-v1" as const,
+        grantContractVersion: "studio-grant-v1" as const,
+        requiredHostActions: [
+          "open-data" as const,
+          "open-data-view" as const,
+          ...(plan.manifest.gui.hostActions?.includes("compose-text")
+            ? ["compose-text" as const]
+            : []),
+        ],
+      }
+    : null;
   return {
     generationId: plan.generationId,
     generationBuildId: plan.generationBuildId,
     manifestDigest: plan.manifestDigest,
     sourcePackageDigest: plan.sourcePackageDigest,
     contentDigest: plan.contentDigest,
+    ...(compiled
+      ? {
+          buildReceiptDigest: compiled.buildReceiptDigest,
+          compatibilityRefDigest: digest(compiled.receipt.compatibility),
+          compatibilityRef: structuredClone(compiled.receipt.compatibility),
+        }
+      : staticGui
+        ? {
+            compatibilityRefDigest: digest(staticGui),
+            compatibilityRef: staticGui,
+          }
+        : {}),
     manifest: structuredClone(plan.manifest),
     extensionRequirementResolution,
-    contentLayoutVersion: 2,
+    contentLayoutVersion: compiled ? 3 : 2,
     createdAt: Date.now(),
   };
 }
@@ -263,6 +310,12 @@ export function decisionPointer(decision: BaseGuiCapabilityDecision) {
     requestedCapabilities: decision.requestedCapabilities,
     requestedHostActions: decision.requestedHostActions,
     requestedCapabilityScopes: decision.requestedCapabilityScopes,
+    ...(decision.compatibilityRefDigest
+      ? { compatibilityRefDigest: decision.compatibilityRefDigest }
+      : {}),
+    ...(decision.compatibilityMigrationRevision
+      ? { compatibilityMigrationRevision: decision.compatibilityMigrationRevision }
+      : {}),
     state: decision.state,
   } as const;
 }

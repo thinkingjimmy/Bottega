@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on TurnRegistry projection lane, runtime registry, MCP-plan-bound session persistence, image projection, MCP/server-fact observation and subagent reducer
- * [OUTPUT]: Provides createTurnCallbacks connecting backend events to projections, atomic session+tool-plan binding, release/health owners and terminal finalization
+ * [OUTPUT]: Provides createTurnCallbacks connecting backend events to ProductFailure-aware projections, atomic session+tool-plan binding, release/health owners and terminal finalization
  * [POS]: The turn event of the agent sub-module is re-routed to the factory; Generating fence In this unified gate, the agent-bridge is solely responsible for starting the sorting process
  */
 
@@ -15,6 +15,10 @@ import type {
   TurnRegistry,
 } from "../turn-registry";
 import type { AgentTurn } from "../backends/types";
+import {
+  agentRuntimeFailure,
+  diagnosticFailureDetails,
+} from "../../../shared/product-failure";
 import type {
   AgentBridgeOptions,
   AgentContext,
@@ -225,7 +229,12 @@ export function createTurnCallbacks(
             entry,
             {
               type: "error",
-              message: `ACP 资源预算违规（${violation.budget}）：${violation.detail}`,
+              failure: agentRuntimeFailure(
+                "request-rejected",
+                diagnosticFailureDetails(
+                  `ACP policy ${violation.budget}: ${violation.detail}`
+                )
+              ),
               ...(violation.facts ? { facts: violation.facts } : {}),
             },
             options,
@@ -267,6 +276,7 @@ export function createTurnCallbacks(
               type: "error",
               message: failure.message,
               failureKind: failure.kind,
+              failure: failure.failure,
               ...(failure.kind === "usage-limit"
                 ? { usageLimit: failure.limit }
                 : {}),

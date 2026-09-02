@@ -4,6 +4,16 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-09-02 — v0.1.0
+
+- Published the first installers. Bottega is now available from GitHub Releases as a macOS arm64 DMG and ZIP, a Windows x64 NSIS installer, and a Linux x64 AppImage, all built from this tagged commit. These builds are unsigned; the [getting-started guide](../getting-started/README.md) documents the one-time step each platform asks for on first launch.
+- Rebuilt the Chat store on SQLite as its single source of truth. Conversations, turns, attachments, and facts now live in one durable local database instead of per-chat files, so a chat survives crashes, resumes without a rescan, and stops growing slower as it grows longer.
+- Made long conversations cheap to open. The timeline, the chat outline, and in-chat find are paged: opening a chat with tens of thousands of turns costs the same as opening a short one, and scrolling back never reloads the whole transcript.
+- Added gram-based full-text search across chats. Search now matches Chinese, Japanese, and Korean text as reliably as space-separated languages, and returns results from the same store the transcript reads.
+- Unified imported history into one timeline. Sessions adopted from the local Codex, Claude Code, Kimi Code, and OpenCode CLIs now render in the same transcript as chats created in Bottega, with the same outline, search, and navigation, instead of a separate read-only view.
+- Narrowed fact writes. A turn now updates only the facts it actually owns, so concurrent turns, Memory delivery, and Base writes no longer overwrite each other's state.
+- Closed the merge-review findings. App Use only navigates after a completed receipt, so a rejected or recovering App never moves the window; revoking an App's Base access now happens as one atomic step, so access and lifecycle can no longer disagree; and App and Project pinning, Project appearance, and Settings navigation were reorganized so the sidebar always reflects what is actually open.
+
 ## 2026-08-29 — Scoped tools, Extensions, and Design Canvas source preview
 
 - Published the current production source as a normal child commit of the clean public history, while keeping tests, development automation, and internal evidence in Bottega-Dev.

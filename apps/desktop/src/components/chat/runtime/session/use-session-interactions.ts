@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, Agent Approval/Question IPC, Shared Plan-review Decisions to be re-compiled, Plan follow-up intent, Section relay, Stop command and current request refs
- * [OUTPUT]: Provides result/callback identity-stable useSessionInteractions with stopSessionRequest; Stop action returns stopped/declined/failed
+ * [INPUT]: Depends on React, the app translation provider, Agent Approval/Question IPC, shared Plan-review decisions, Plan follow-up intent, Section relay, stop commands, and current request refs
+ * [OUTPUT]: Provides identity-stable useSessionInteractions, localized relay-stop confirmation, relayStopAccepted, and stopSessionRequest; stop actions return stopped/declined/failed
  * [POS]: The owner of the chat/runtime/session interaction status; Keep Plan Failed re-roll, relay Second confirmation and request-local cancel timing
  */
 
@@ -38,6 +38,7 @@ import {
   type PendingUserInputState,
 } from "../chat-session-model";
 import type { RelayStopResult } from "../../../../../shared/sections-ipc";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 export type SessionSubmit = (
   message: PromptInputMessage,
@@ -81,6 +82,14 @@ export function lastRelayUserMessage(
   return lastUser?.relay ? lastUser : undefined;
 }
 
+export function relayStopAccepted(
+  relayMessage: UserChatMessage | undefined,
+  message: string,
+  confirmAction: (message: string) => boolean
+) {
+  return !relayMessage || confirmAction(message);
+}
+
 export async function respondApprovalWithPlanMode(
   approval: AgentApprovalRequest,
   decision: AgentApprovalDecision,
@@ -100,6 +109,7 @@ export function useSessionInteractions({
   setPlanMode,
   reportStopError,
 }: SessionInteractionsInput) {
+  const { t } = useAppTranslation();
   const [approvals, setApprovals] = useState<AgentApprovalRequest[]>([]);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState("");
@@ -224,8 +234,9 @@ export function useSessionInteractions({
     if (!activeRequestId || cancelPending) return "failed" as const;
     const relayMessage = lastRelayUserMessage(messages);
     if (
-      relayMessage &&
-      !window.confirm("这会停止当前请求并断开整条 Section 接力链，继续吗？")
+      !relayStopAccepted(relayMessage, t("chat.relayStopConfirm"), (message) =>
+        window.confirm(message)
+      )
     ) {
       return "declined" as const;
     }
@@ -254,6 +265,7 @@ export function useSessionInteractions({
     messages,
     reportStopError,
     requestRef,
+    t,
   ]);
 
   return useMemo(() => ({

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React, shared, six classes BaseView, shadcn menu/confirmation box, tab chrome and icon status BaseMutationOutcome judgment type
+ * [INPUT]: Depends on React, shared BaseView contracts, menus/dialogs, tab chrome, InlineNameInput, icons, and Base mutation outcomes
  * [OUTPUT]: Provides BaseViewTabs; Single VIEW_TYPES directory drives six standard view tabs with added menus
  * [POS]: The view bar for bases/chrome is switched to the viewTabs slot in the BaseToolbar; Only the semantic intent, optimistic switch to the BaseWorkbench with CAS
  */
@@ -36,7 +36,8 @@ import {
   baseTabActionButtonClass,
   baseTabShellClass,
 } from "./base-tab-chrome";
-import { baseMenuItemHoverClass, InlineNameInput } from "./base-toolbar";
+import { baseMenuItemHoverClass } from "./base-toolbar";
+import { InlineNameInput } from "./inline-name-input";
 
 // ============================================================================
 // 视图类型的唯一目录：tab 图标与「+」菜单同源

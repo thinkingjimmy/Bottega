@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on ReactNode, I18n, ui/button/sidebar, cn, lib/platform The platform is based on react-router Link
- * [OUTPUT]: Provides localised return buttons, untitled pagesshell, an optional rail row under the header, panelChromeClassName and crossHeaderPanelStyle with pure drag
- * [POS]: Public page outlines in the round-angle workspace, the alignment benchmark for single-line headers, drag areas and third-line cross-page headers; the divider is drawn once, at the bottom edge of the header block (the rail takes it over when present); Folding page head left inside the edge of the platform forks ((mac lets the red and green lights + float the float, Windows lets the float only)
+ * [OUTPUT]: Provides PageShell with uniform 32px back/column chrome, title/titleAdornment, an optional centre zone, an optional rail row under the header, plus panelChromeClassName and crossHeaderPanelStyle
+ * [POS]: Page outline of the rounded workspace and the alignment benchmark for one-line headers; the header lays out as flex, or as an equal-gutter tri-zone grid once `center` is present; the divider is drawn once, at the bottom edge of the header block (the rail takes it over when present); the collapsed-sidebar left inset forks by platform (mac clears the traffic lights plus the floating trigger, Windows only the trigger)
  */
 
 import { Link } from "react-router";
@@ -50,6 +50,7 @@ type PageShellProps = {
   icon?: React.ReactNode; // 标题前的装饰图标
   titleAdornment?: React.ReactNode; // 标题后的操作或状态；跨页头第三栏盖不到，常驻操作放这里
   backHref?: string; // 有值则在标题前渲染返回按钮
+  center?: React.ReactNode; // 页头正中那一格（视图切换那类）；给了它，页头即改用三分栏
   rail?: React.ReactNode; // 页头下方那条整幅横带（页签条）；有它则分界线归它
   actions?: React.ReactNode; // 页头右侧操作区；开着跨页头第三栏时会被盖住
   children: React.ReactNode;
@@ -60,6 +61,7 @@ export function PageShell({
   icon,
   titleAdornment,
   backHref,
+  center,
   rail,
   actions,
   children,
@@ -71,7 +73,15 @@ export function PageShell({
     <div className="flex h-full flex-col [--page-shell-header-height:2.5rem]">
       <header
         className={cn(
-          "relative flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-2 px-4 [-webkit-app-region:drag]",
+          "relative h-[var(--page-shell-header-height)] shrink-0 items-center gap-2 px-4 [-webkit-app-region:drag]",
+          /* ── 居中不是「摆在中间」，是「两侧等宽」 ──────────────────────
+             ml-auto 推出来的中间会随标题长短漂移；absolute 定住的中间不漂，
+             但长标题会从它底下穿过去——两种都不是居中。只有 1fr auto 1fr
+             同时给出真正的居中与左栏的截断边界。
+             没有 center 的页面继续走 flex：三分栏会把截断点提前到半幅，而
+             那些页面的标题本可以一直长到 actions 跟前。分岔只有一处，且它
+             就是 center 这个词的定义，不是补丁。 */
+          center ? "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]" : "flex",
           title && !rail && "border-b",
           /* 折叠后浮动折叠钮落在内容区左上角：mac 要同时让开红绿灯故 8.5rem，
              Windows 无红绿灯只需让开钮本身（left-3 + 32px），pl-12 足矣。 */
@@ -91,38 +101,47 @@ export function PageShell({
             />
           </>
         )}
-        {backHref && (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={t("common.back")}
-            className="[-webkit-app-region:no-drag]"
-            asChild
-          >
-            <Link to={backHref}>
-              <ArrowLeft />
-            </Link>
-          </Button>
-        )}
-        {title && (
-          <div className="flex min-w-0 items-center gap-2">
-            {icon && (
-              <span
-                aria-hidden="true"
-                className="flex shrink-0 items-center justify-center [&>svg]:size-4"
-              >
-                {icon}
-              </span>
-            )}
-            <h1 className="truncate font-medium text-sm">{title}</h1>
-            {titleAdornment && (
-              <span className="flex shrink-0 items-center [-webkit-app-region:no-drag]">
-                {titleAdornment}
-              </span>
-            )}
+        {/* 返回与标题合成一格：三分栏下它们必须同属左栏，否则各占一列，
+            中栏就被挤到第三格去了。flex 下这层嵌套与原先的并列等价。 */}
+        <div className="flex min-w-0 items-center gap-2">
+          {backHref && (
+            <Button
+              size="icon-lg"
+              variant="ghost"
+              aria-label={t("common.back")}
+              className={cn("[-webkit-app-region:no-drag]", panelChromeClassName)}
+              asChild
+            >
+              <Link to={backHref}>
+                <ArrowLeft />
+              </Link>
+            </Button>
+          )}
+          {title && (
+            <div className="flex min-w-0 items-center gap-2">
+              {icon && (
+                <span
+                  aria-hidden="true"
+                  className="flex shrink-0 items-center justify-center [&>svg]:size-4"
+                >
+                  {icon}
+                </span>
+              )}
+              <h1 className="truncate font-medium text-sm">{title}</h1>
+              {titleAdornment && (
+                <span className="flex shrink-0 items-center [-webkit-app-region:no-drag]">
+                  {titleAdornment}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        {center && (
+          <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
+            {center}
           </div>
         )}
-        <div className="ml-auto flex items-center gap-2 [-webkit-app-region:no-drag]">
+        <div className="ml-auto flex items-center justify-end gap-2 [-webkit-app-region:no-drag]">
           {actions}
         </div>
       </header>

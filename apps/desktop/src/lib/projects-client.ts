@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/projects-ipc and preload exposed window.projects
- * [OUTPUT]: Provides Project list/bind/rename/reveal/non-destructive detach/recovery/sort, Git branch commands, events, and a lifecycle-revisioned browser fallback
+ * [OUTPUT]: Provides Project list/rename/reveal/placement Pin/non-destructive detach/recovery/sort, Git branch commands, events, and a lifecycle-revisioned browser fallback
  * [POS]: Sole renderer Projects IPC adapter; providers and components remain unaware of the Electron bridge
  */
 
@@ -8,6 +8,8 @@ import type {
   Project,
   GitBranchTarget,
   ProjectAppearance,
+  SetProjectAppPinnedInput,
+  SetProjectAppPinnedResult,
   ProjectsBridgeApi,
   ProjectsEvent,
   ProjectsSnapshot,
@@ -49,6 +51,7 @@ export const ensureProjectForApp = async (appId: string) => {
     dir: "",
     workspaceBinding: { kind: "app", appId },
     grants: [],
+    appPlacements: [],
     grantRevision: 0,
     membershipRevision: 0,
     projectLifecycleRevision: 1,
@@ -88,6 +91,34 @@ export const setProjectAppearance = async (
   return clone(project);
 };
 
+export const setProjectAppPinned = async (
+  input: SetProjectAppPinnedInput
+): Promise<SetProjectAppPinnedResult> => {
+  if (window.projects) return window.projects.setAppPinned(input);
+  const current = browserProjects.get(input.projectId);
+  if (!current) throw new Error("Project 不存在");
+  if (current.projectLifecycleRevision !== input.expectedProjectLifecycleRevision) {
+    throw new Error("Project lifecycle 已变更");
+  }
+  const existing = current.appPlacements.find(
+    (placement) => placement.appId === input.appId
+  );
+  if (Boolean(existing) === input.pinned) {
+    return { project: clone(current), changed: false };
+  }
+  const project: Project = {
+    ...current,
+    appPlacements: input.pinned
+      ? [...current.appPlacements, { appId: input.appId, pinnedAt: Date.now() }]
+      : current.appPlacements.filter(
+          (placement) => placement.appId !== input.appId
+        ),
+  };
+  browserProjects.set(project.id, project);
+  emit({ type: "upserted", project });
+  return { project: clone(project), changed: true };
+};
+
 export const detachLocalProject = (projectId: string) => {
   if (!window.projects) {
     return Promise.reject(new Error("桌面环境不可用，Project 未移除"));
@@ -95,12 +126,12 @@ export const detachLocalProject = (projectId: string) => {
   return window.projects.detachLocal(projectId);
 };
 
-export const chooseProjectWorkspaceBinding = (
-  projectId: string,
-  mode: import("../../shared/projects-ipc").ProjectMemoryRebindMode
-) =>
-  window.projects?.chooseWorkspaceBinding(projectId, mode) ??
-  Promise.resolve(null);
+export const revealProject = (projectId: string) => {
+  if (!window.projects) {
+    return Promise.reject(new Error("当前环境不支持系统目录定位"));
+  }
+  return window.projects.reveal(projectId);
+};
 
 export const releaseMissingProject = async (projectId: string) => {
   if (window.projects) return window.projects.releaseMissing(projectId);

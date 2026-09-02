@@ -1,29 +1,20 @@
 /**
- * [INPUT]: Depends on renderer IPC, Electron directory chooser, strict Project command schemas, and the ProjectsService authority port
- * [OUTPUT]: Registers Project list/mutation/branch/workspace-rebind renderer commands for the main window
+ * [INPUT]: Depends on renderer IPC, Electron shell reveal, strict Project command schemas, and the ProjectsService authority port
+ * [OUTPUT]: Registers Project list/mutation/branch/reveal renderer commands for the main window; reveal accepts only Project ID
  * [POS]: Renderer command adapter for projects-service.ts; store serialization, lifecycle fences, and cleanup remain owned by ProjectsService
  */
 
-import { randomUUID } from "node:crypto";
-import { realpath } from "node:fs/promises";
-import { dialog, type BrowserWindow } from "electron";
+import { shell, type BrowserWindow } from "electron";
 import { z } from "zod";
 import {
   PROJECT_ID_PATTERN,
-  PROJECT_UNAVAILABLE,
   PROJECTS_CHANNEL,
   type GitBranchTarget,
-  type ProjectMemoryRebindMode,
+  type SetProjectAppPinnedInput,
 } from "../../../shared/projects-ipc";
-import { translate } from "../../../shared/i18n/runtime";
 import { rendererIpc } from "../ipc-registrar";
-import {
-  assertWorkspaceDisjoint,
-  isUsableDirectory,
-} from "./fs-utils";
-import { projectAppearanceSchema } from "./project-store";
+import { projectAppearanceSchema } from "./store/project-store";
 import { projectSnapshotForRenderer } from "./service/renderer-policy";
-import { statusError } from "./service/errors";
 import type { ProjectsService } from "./projects-service";
 
 const appIdSchema = z.string().regex(/^[a-z0-9]{10}$/);
@@ -32,6 +23,14 @@ const branchTargetSchema = z.object({
   name: z.string().min(1).max(1024),
   kind: z.enum(["local", "remote"]),
 }) satisfies z.ZodType<GitBranchTarget>;
+const setProjectAppPinnedSchema = z
+  .object({
+    projectId: projectIdSchema,
+    appId: appIdSchema,
+    pinned: z.boolean(),
+    expectedProjectLifecycleRevision: z.number().int().positive(),
+  })
+  .strict() satisfies z.ZodType<SetProjectAppPinnedInput>;
 
 export function registerProjectsServiceIpc(
   window: BrowserWindow,
@@ -73,6 +72,9 @@ export function registerProjectsServiceIpc(
         return wire;
       })
     )
+    .handle(PROJECTS_CHANNEL.setAppPinned, (rawInput) =>
+      service.setAppPinned(setProjectAppPinnedSchema.parse(rawInput))
+    )
     .handle(PROJECTS_CHANNEL.detachLocal, (rawProjectId) =>
       service.detachLocalProject(projectIdSchema.parse(rawProjectId))
     )
@@ -103,78 +105,12 @@ export function registerProjectsServiceIpc(
         z.string().max(1024).parse(rawName)
       )
     )
-    .handle(PROJECTS_CHANNEL.chooseWorkspaceBinding, (rawProjectId, rawMode) =>
-      chooseWorkspaceBinding(
-        window,
-        service,
-        projectIdSchema.parse(rawProjectId),
-        z.enum(["retain", "new"]).parse(rawMode)
-      )
+    .handle(PROJECTS_CHANNEL.reveal, (rawProjectId) =>
+      service.runExclusive(async () => {
+        const directory = service.resolveRevealDirectory(
+          projectIdSchema.parse(rawProjectId)
+        );
+        shell.showItemInFolder(directory);
+      })
     );
-}
-
-async function chooseWorkspaceBinding(
-  window: BrowserWindow,
-  service: ProjectsService,
-  projectId: string,
-  mode: ProjectMemoryRebindMode
-) {
-  const current = service.store.get(projectId);
-  if (current?.workspaceBinding.kind === "app") {
-    throw statusError(403, "App Project 只能经删除 App 解除绑定");
-  }
-  const result = await dialog.showOpenDialog(window, {
-    title: translate(
-      service.options.locale?.() ?? "en",
-      "settings.native.chooseProjectWorkspace"
-    ),
-    properties: ["openDirectory"],
-  });
-  const selected = result.filePaths[0];
-  if (result.canceled || !selected) return null;
-  const expectation = (await service.options.snapshotMemoryRebind?.(projectId)) ?? {
-    expectedOldMemorySpaceId: null,
-    expectedSpaceGenerationRevision: null,
-  };
-  const capsule = await service.runExclusive(async () => {
-    service.assertProjectOpen(projectId);
-    service.assertWorkspaceRebindAllowed(projectId);
-    const canonical = await realpath(selected);
-    if (!isUsableDirectory(canonical)) throw new Error("所选文件夹不可用");
-    assertWorkspaceDisjoint(canonical, service.managedDirs());
-    const capabilityId = `workspace-${randomUUID().replaceAll("-", "")}`;
-    const operationId = `project-rebind:${randomUUID()}`;
-    const owner = service.store.get(projectId);
-    if (!owner) throw new Error(`${PROJECT_UNAVAILABLE}: Project 不存在`);
-    const journal = service.options.rebindJournal;
-    if (journal) {
-      return journal.begin({
-        operationId,
-        projectId,
-        sourceBinding: owner.workspaceBinding,
-        sourceDir: owner.dir,
-        sourceMembershipRevision: owner.membershipRevision,
-        ...expectation,
-        targetBinding: { kind: "external", capabilityId },
-        targetDir: canonical,
-        mode,
-      });
-    }
-    const now = Date.now();
-    return {
-      operationId,
-      projectId,
-      sourceBinding: owner.workspaceBinding,
-      sourceDir: owner.dir,
-      sourceMembershipRevision: owner.membershipRevision,
-      ...expectation,
-      targetBinding: { kind: "external" as const, capabilityId },
-      targetDir: canonical,
-      mode,
-      phase: "prepared" as const,
-      createdAt: now,
-      updatedAt: now,
-    };
-  });
-  return service.trackRebind(service.driveMemoryRebind(capsule));
 }

@@ -1,8 +1,14 @@
 /**
- * [INPUT]: Depends on React type and marquee style of the same name.css ((css introduced by main.tsx)
- * [OUTPUT]: Provides sidebar SubRowClass ((Project Folding Zone Geometry) ✓ SidebarRowMark ✓ First row width, and size sole arbiter ✓ SidebarRowTitle ✓ Sliding title ✓ SidebarRowTag ✓ End-to-end word tag ✓
- * [POS]: The components/sidebar side-bar shared vocabulary is consumed by chat/chat-thread-item, history/history-thread-item and project/project-item; The name of the game is "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", "Cross", " and "Cross" are all defined as "these" and "Cross" and "Cross" are defined by the following the following the following:
+ * [INPUT]: Depends on React types and the sidebar-row.css marquee contract loaded by the renderer
+ * [OUTPUT]: Provides shared root-action tone, sidebar SubRowClass, SidebarRowMark, SidebarRowTitle and SidebarRowTag
+ * [POS]: Shared row vocabulary for root and nested Sidebar entities; Chat and pinned Apps consume the same root-action contrast contract
  */
+
+/* 根级行尾动作只在指针真的进入按钮时升到强对比；指针停在标题上时，
+   动作可以显现，但仍保持弱对比。SidebarMenuAction 的默认 peer-hover 会
+   提前染深，所以所有根级业务行必须用这条规则盖回同一个 tone。 */
+export const sidebarRootMenuActionClass =
+  "cursor-pointer text-sidebar-foreground/35 hover:bg-transparent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground aria-expanded:text-sidebar-foreground peer-hover/menu-button:text-sidebar-foreground/35 peer-data-active/menu-button:text-sidebar-foreground/35";
 
 /* ── 子行几何的单一真相源 ────────────────────────────────────────
  * Project 折叠区里的每一行——Base 首行与其下所有 chat——共用这一串：

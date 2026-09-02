@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on zod and sha256 of node: crypto
- * [OUTPUT]: Provides LifecycleIntent to distinguish between seven types of strict input, phase, tombstone, stableInputHash and claims that contain preset provenance/plugin-by-plugin fulfillment/consent intent
+ * [INPUT]: Depends on zod, node:crypto SHA-256, and the shared five-locale enum
+ * [OUTPUT]: Provides current and migration-only LifecycleIntent schemas for seven saga inputs, including App deletion's durable placement-decision phase, frozen Studio-only install authorization, locale, tombstone, stableInputHash, provenance, fulfillment, and consent claims
  * [POS]: The type truth source of the lifecycle domain, covenant v3, second paragraph of the machine image; consumed by intent-store/admission-gate in a single direction
  */
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { APP_LOCALES } from "../../../shared/i18n/locale";
 
 /* ── phase 单调枚举:首档恒为 "proposed"(身份已定、尚未准入——R7/P0-1:
  * 落盘与取 gate 之间存在崩溃窗口,重启后必须能区分「已准入」与「仅提案」,
@@ -39,6 +40,8 @@ export const INTENT_PHASES = {
     "generations-retired",
     "grants-settled",
     "data-settled",
+    "placements-clearing",
+    "placements-settled",
   ],
   "chat-slot": ["proposed", "allocated"],
   "base-import": ["proposed", "delivered", "project-ensured", "base-seeded"],
@@ -66,6 +69,7 @@ const saveAsAppInput = z
     chatId: z.string().min(1),
     name: z.string().min(1).max(120),
     icon: z.string().min(1).max(16),
+    locale: z.enum(APP_LOCALES).optional(),
   })
   .strict();
 const basePromotionInput = z
@@ -107,7 +111,12 @@ const importInputFields = {
     contentDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
     capabilityDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   }).strict()).default([]),
-  consentIntent: z.boolean().default(false),
+  authorization: z
+    .object({
+      scope: z.literal("studio-only"),
+      decision: z.literal("approve-requested"),
+    })
+    .strict(),
 };
 const baseImportInput = z
   .object({ origin: z.literal("github"), ...importInputFields })
@@ -148,7 +157,7 @@ const terminalSchema = z
     message: "rolled-back 终态必须携带结构化 error",
   });
 
-export const lifecycleIntentSchema = z
+const lifecycleIntentEnvelopeSchema = z
   .object({
     intentId: z.string().min(1),
     parentIntentId: z.string().min(1).optional(),
@@ -175,6 +184,13 @@ export const lifecycleIntentSchema = z
         message: `kind ${intent.kind} 不存在 phase ${intent.phase}`,
       });
     }
+  });
+
+/** v1 迁移只用的信封 schema：验证事务骨架，不把历史 input 视为当前授权。 */
+export const legacyLifecycleIntentSchema = lifecycleIntentEnvelopeSchema;
+
+export const lifecycleIntentSchema = lifecycleIntentEnvelopeSchema.superRefine(
+  (intent, ctx) => {
     const parsed = INTENT_INPUT_SCHEMAS[intent.kind].safeParse(intent.input);
     if (!parsed.success) {
       ctx.addIssue({
@@ -182,9 +198,13 @@ export const lifecycleIntentSchema = z
         message: `kind ${intent.kind} 的 input 不合判别 schema`,
       });
     }
-  });
+  }
+);
 
 export type LifecycleIntent = z.infer<typeof lifecycleIntentSchema>;
+export type LegacyLifecycleIntent = z.infer<
+  typeof legacyLifecycleIntentSchema
+>;
 
 /* ── 终态压缩后的轻量墓碑:幂等查询永远可答;error 一并保留(R7/P1-9)。 ── */
 export const intentTombstoneSchema = z

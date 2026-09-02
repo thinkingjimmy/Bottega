@@ -1,0 +1,30 @@
+{
+  "schema": "bottega.app-gui-compatibility-support/v1",
+  "generationAdmission": {
+    "environmentVariable": "BOTTEGA_APP_GUI_ADMISSION_GATES",
+    "defaultOpen": [
+      "gate-1",
+      "gate-2",
+      "gate-3"
+    ],
+    "semantics": "An exact comma-separated subset admits only new or rebuilt generations; installed sealed runtimes remain runnable."
+  },
+  "runContracts": [
+    "base-gui-legacy-v1",
+    "sealed-runtime-v3",
+    "app-generation-cutover-v2",
+    "base-gui-query-v1",
+    "app-preferences-v1",
+    "workspace-read-v1",
+    "workspace-opaque-preview-v1",
+    "host-actions-v1",
+    "file-export-v1"
+  ],
+  "authoringContracts": [
+    "bottega-react-v1",
+    "bottega-ui-blocks-v1",
+    "bottega-app-starters-v1"
+  ],
+  "securityRevocations": [],
+  "migrationTargets": {}
+}

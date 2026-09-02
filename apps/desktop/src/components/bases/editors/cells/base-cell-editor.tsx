@@ -248,7 +248,9 @@ function AttachmentCellEditor({
         <>
           <BaseAttachmentPreview owner={owner} value={value} />
           <Button
-            aria-label={`Delete ${value.filename}`}
+            aria-label={t("bases.cell.deleteAttachment", {
+              filename: value.filename,
+            })}
             className="size-11 shrink-0 text-destructive opacity-100 transition-opacity motion-reduce:transition-none [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/attachment:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:focus-visible:opacity-100"
             disabled={disabled}
             onClick={async () => {

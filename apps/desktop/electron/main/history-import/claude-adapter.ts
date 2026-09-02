@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, user home and history-import adapter
- * [OUTPUT]: Provides ClaudeHistoryAdapter; The first reading is filter + identity/full. Two read-only scans, complete reading/line-by-line analysis, cwd, precision, assistant, split and tool result merging
+ * [OUTPUT]: Provides ClaudeHistoryAdapter with constant-memory identity/full scans and turn-bounded JSONL streaming that preserves assistant fragment and tool-result merging
  * [POS]: The Claude Code format adapter for history-import; slug is only rough, true attribution is only recognized by the record cwd
  */
 
@@ -14,22 +14,25 @@ import type {
 import {
   HISTORY_FILE_BYTES,
   HISTORY_PARSER_VERSION,
+  batchHistoryTurns,
+  collectHistoryBatches,
   digest,
   escapedUnsupported,
   fingerprint,
   fingerprintRevision,
   humanTitle,
-  historyParseCheckpoint,
   initialSourceIncarnation,
   isWithin,
   normalizedAliases,
   opaqueSessionId,
   readHeadLines,
-  readStableJsonl,
+  streamStableJsonl,
   timestamp,
   type AdapterEntry,
   type AdapterScan,
   type HistoryAdapter,
+  type HistoryBlockBatches,
+  type HistoryBlockTurns,
   type ParsedHistory,
   type ScanDepth,
 } from "./adapter";
@@ -103,14 +106,39 @@ export class ClaudeHistoryAdapter implements HistoryAdapter {
     };
   }
 
+  parseBatches(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches {
+    return batchHistoryTurns(this.parseTurns(entry, signal), signal);
+  }
+
   async parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory> {
-    const source = await readStableJsonl(entry.sourcePath, entry.fingerprint, signal);
-    const blocks: ForeignHistoryBlock[] = [];
+    return collectHistoryBatches(this.parseBatches(entry, signal));
+  }
+
+  private async *parseTurns(
+    entry: AdapterEntry,
+    signal?: AbortSignal
+  ): HistoryBlockTurns {
+    const source = streamStableJsonl(entry.sourcePath, entry.fingerprint, signal);
+    let blocks: ForeignHistoryBlock[] = [];
     const assistant = new Map<string, ForeignHistoryMessage>();
     const tools = new Map<string, ForeignToolEvent>();
     let deliverySeq = 0;
-    for (const [index, line] of source.lines.entries()) {
-      await historyParseCheckpoint(signal, index);
+    const flush = () => {
+      if (!blocks.length) return [];
+      const ready = refreshToolOutputs(blocks, tools);
+      blocks = [];
+      assistant.clear();
+      tools.clear();
+      return ready;
+    };
+    while (true) {
+      const next = await source.next();
+      if (next.done) {
+        const ready = flush();
+        if (ready.length) yield ready;
+        return next.value;
+      }
+      const { line } = next.value;
       deliverySeq += 1;
       let raw: Json;
       try {
@@ -132,6 +160,10 @@ export class ClaudeHistoryAdapter implements HistoryAdapter {
       const extracted = claudeContent(message?.content, tools);
       if (role === "user" && extracted.onlyToolResults) continue;
       if (!extracted.text.trim() && !extracted.tools.length) continue;
+      if (role === "user") {
+        const ready = flush();
+        if (ready.length) yield ready;
+      }
       if (role === "assistant") {
         const current = assistant.get(id);
         if (current) {
@@ -159,7 +191,6 @@ export class ClaudeHistoryAdapter implements HistoryAdapter {
       blocks.push(block);
       if (role === "assistant") assistant.set(id, block);
     }
-    return { blocks: refreshToolOutputs(blocks, tools), incompleteTail: source.incompleteTail };
   }
 }
 
@@ -177,7 +208,7 @@ function ownedCwd(cwd: string, projectRoot: string) {
  * 不属于本 Project 的文件（slug 前缀假阳性、worktree 会话）零全文成本跳过；
  * identity 档命中后以 stat 兜底呈现字段，full 档回到全文（后置 custom-title
  * 决定了 title 不可头读，PRD §F1）。头部未见身份的异形文件退回全文，不猜。
- * 64 MiB 上限在此统一裁决，两档对超大文件的收录结论必须一致。
+ * 4 GiB 流式上限在此统一裁决，两档对超大文件的收录结论必须一致。
  */
 async function sessionMeta(path: string, projectRoot: string, depth: ScanDepth) {
   const fallback = await stat(path);
@@ -206,10 +237,17 @@ async function sessionMeta(path: string, projectRoot: string, depth: ScanDepth) 
 }
 
 async function fullMeta(path: string, projectRoot: string) {
-  const source = await readStableJsonl(path);
+  const source = streamStableJsonl(path);
   let cwd = "", sessionId = "", title = "";
   let createdAt = Number.POSITIVE_INFINITY, updatedAt = 0;
-  for (const line of source.lines) {
+  let incompleteTail = false;
+  while (true) {
+    const next = await source.next();
+    if (next.done) {
+      incompleteTail = next.value;
+      break;
+    }
+    const { line } = next.value;
     let raw: Json;
     try { raw = JSON.parse(line) as Json; } catch { continue; }
     cwd ||= string(raw.cwd) ?? "";
@@ -233,7 +271,7 @@ async function fullMeta(path: string, projectRoot: string) {
     title: humanTitle(title || "Claude Code 会话"),
     createdAt: Number.isFinite(createdAt) ? createdAt : timestamp(undefined, fallback.birthtimeMs),
     updatedAt: updatedAt || timestamp(undefined, fallback.mtimeMs),
-    incompleteTail: source.incompleteTail,
+    incompleteTail,
   };
 }
 

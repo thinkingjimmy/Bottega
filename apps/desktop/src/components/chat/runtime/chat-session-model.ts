@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent/Chat/Project/Submission contracts, PromptInput, rich-input serialization, and transcript recovery helpers
- * [OUTPUT]: Provides the React-free session controller model, strict PanelSessionContext, derived identity keys, eligibility reasons, open commands, resume actions, and composer/transcript contracts
+ * [OUTPUT]: Provides the React-free session controller model, structured user-input errors, strict PanelSessionContext, App conversation-context projection, derived identity keys, eligibility reasons, open commands, and composer/transcript contracts
  * [POS]: The canonical type and pure-policy layer for chat/runtime
  */
 
@@ -13,6 +13,8 @@ import type {
   ChatAttachmentMeta,
   ChatMessage,
 } from "../../../../shared/chats-ipc";
+import type { ConversationContext } from "../../../../shared/placement/facts";
+import { CHAT_PANEL_CAPABILITIES } from "../../../../shared/placement/facts";
 import type { GallerySourceRef } from "../../../../shared/gallery-media-ipc";
 import type { Project } from "../../../../shared/projects-ipc";
 import type { WorkspacePrecondition } from "../../../../shared/submission";
@@ -37,34 +39,61 @@ export type ChatProjectMode =
  * 第三栏身份：一份上下文，三个派生问题
  *
  * conversationKey 回答“是哪段会话”，generationKey 回答“是哪一代”，
- * productRef 回答“能否触碰产品所有权”。后两者都从判别联合派生，不再让
- * opaqueId/incarnationId/revision 在调用点互相冒充。
+ * productRef 回答“能否触碰产品所有权”。三者都从判别联合派生，不再让
+ * chatId/incarnationId 在调用点互相冒充。外源会话不再有独立身份——同步
+ * 之后它就是一条只读 canonical Chat，走 product 这一支。
  * ============================================================ */
 export type PanelSessionContext =
-  | {
-      kind: "foreign";
-      foreignRef: { opaqueId: string; historyRevision: string };
-      productRef?: never;
-    }
-  | { kind: "draft"; draftKey: string; productRef?: never }
+  | { kind: "draft"; draftKey: string; conversationContext?: ConversationContext; productRef?: never }
   | {
       kind: "product" | "adopted";
       productRef: { chatId: string; incarnationId: string };
+      conversationContext?: ConversationContext;
     };
 
+export const panelConversationContext = (
+  project: ChatProjectMode,
+  selectedProjectId: string | null
+): ConversationContext =>
+  project.kind !== "fixed-app"
+    ? { kind: "ordinary" }
+    : project.appRole === "use"
+      ? { kind: "app-use", appId: project.appId }
+      : {
+          kind: "app-edit",
+          appId: project.appId,
+          projectId: selectedProjectId ?? "pending",
+        };
+
+export const createPanelSessionContext = (input: {
+  chatId: string;
+  incarnationId?: string;
+  adopted: boolean;
+  project: ChatProjectMode;
+  selectedProjectId: string | null;
+}): PanelSessionContext => {
+  const conversationContext = panelConversationContext(
+    input.project,
+    input.selectedProjectId
+  );
+  if (!input.incarnationId) {
+    return { kind: "draft", draftKey: input.chatId, conversationContext };
+  }
+  return {
+    kind: input.adopted ? "adopted" : "product",
+    productRef: {
+      chatId: input.chatId,
+      incarnationId: input.incarnationId,
+    },
+    conversationContext,
+  };
+};
+
 export const panelConversationKey = (context: PanelSessionContext) =>
-  context.kind === "foreign"
-    ? context.foreignRef.opaqueId
-    : context.kind === "draft"
-      ? context.draftKey
-      : context.productRef.chatId;
+  context.kind === "draft" ? context.draftKey : context.productRef.chatId;
 
 export const panelGenerationKey = (context: PanelSessionContext) =>
-  context.kind === "foreign"
-    ? context.foreignRef.historyRevision
-    : context.kind === "draft"
-      ? ""
-      : context.productRef.incarnationId;
+  context.kind === "draft" ? "" : context.productRef.incarnationId;
 
 export type PanelCapability =
   | "base"
@@ -73,11 +102,7 @@ export type PanelCapability =
   | "browser"
   | "image";
 
-export type PanelEligibilityReason =
-  | "foreign-base-unavailable"
-  | "foreign-app-unavailable"
-  | "foreign-subagents-unavailable"
-  | "foreign-images-unavailable";
+export type PanelEligibilityReason = "app-context-base-unavailable";
 
 export type PanelEligibility =
   | { allowed: true }
@@ -87,21 +112,11 @@ export function panelEligibility(
   context: PanelSessionContext,
   capability: PanelCapability
 ): PanelEligibility {
-  if (context.kind !== "foreign" || capability === "browser") {
-    return { allowed: true };
-  }
-  if (capability === "subagents") {
-    return { allowed: false, reason: "foreign-subagents-unavailable" };
-  }
-  if (capability === "image") {
-    return { allowed: false, reason: "foreign-images-unavailable" };
-  }
-  return {
-    allowed: false,
-    reason: capability === "base"
-      ? "foreign-base-unavailable"
-      : "foreign-app-unavailable",
-  };
+  return capability === "base" &&
+    context.conversationContext &&
+    !CHAT_PANEL_CAPABILITIES[context.conversationContext.kind].base
+    ? { allowed: false, reason: "app-context-base-unavailable" }
+    : { allowed: true };
 }
 
 export type SidePanelState =
@@ -114,7 +129,6 @@ export type SidePanelState =
   | {
       kind: "plan";
       messageId: string;
-      anchorId?: string;
       planItemId?: string;
       content: string;
       title: string;
@@ -296,14 +310,14 @@ export function advanceUserInput(
   if (pending.expiresAt && pending.expiresAt <= now) {
     return {
       kind: "blocked",
-      state: { ...pending, error: "这个问题已失效，请等待 Agent 继续。" },
+      state: { ...pending, error: { copyKey: "chat.userInput.expired" } },
     };
   }
   const question = pending.request.questions[pending.index];
   if (!question || !answers.length || answers.some((answer) => !answer.trim())) {
     return {
       kind: "blocked",
-      state: { ...pending, error: "请先填写答案。" },
+      state: { ...pending, error: { copyKey: "chat.userInput.answerRequired" } },
     };
   }
   const nextAnswers = {

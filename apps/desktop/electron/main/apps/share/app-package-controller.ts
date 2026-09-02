@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Apps package IPC, RepoProbe/main-owned PresetCatalog/SourceResolver/AppConfig/gh Detection, Base importer, optional immutable factory flow, ShareFlow, and canonical AppRecord query port
- * [OUTPUT]: Provides AppPackageController; concentrated repo/preset/factory probe, Base import retry/cancel, config/share IPC, README reads, and install environment
+ * [OUTPUT]: Provides AppPackageController; concentrated repo/preset/factory probe, Studio-only authorization validation, Base import retry/cancel, config/share IPC, README reads, and install environment
  * [POS]: The package app front for apps/share; AppsService only retains the general app lifecycle, and the details of the package distribution are not reversed
  */
 
@@ -85,6 +85,7 @@ export class AppPackageController {
     if (!preflightId || !confirmedDigest) {
       throw new Error("Base App preflight 参数不完整");
     }
+    const authorization = assertInstallAuthorization(input.request.authorization);
     const probe = this.probes.consume(
       preflightId,
       confirmedDigest,
@@ -101,6 +102,7 @@ export class AppPackageController {
       },
       agent: input.agent,
       config: input.request.config ?? structuredClone(EMPTY_APP_CONFIG),
+      authorization,
     });
   }
 
@@ -229,7 +231,8 @@ function assertInstallPresetInput(value: unknown): InstallPresetInput {
     typeof input.digest !== "string" ||
     !/^[0-9a-f]{64}$/.test(input.digest) ||
     typeof input.requestId !== "string" ||
-    !/^[A-Za-z0-9-]{10,80}$/.test(input.requestId)
+    !/^[A-Za-z0-9-]{10,80}$/.test(input.requestId) ||
+    !isInstallAuthorization(input.authorization)
   ) {
     throw new Error("预设安装参数无效");
   }
@@ -238,7 +241,24 @@ function assertInstallPresetInput(value: unknown): InstallPresetInput {
     requestId: input.requestId,
     preflightId: input.preflightId,
     digest: input.digest,
+    authorization: assertInstallAuthorization(input.authorization),
     ...(input.config ? { config: input.config as AppConfigValue } : {}),
+  };
+}
+
+function isInstallAuthorization(value: unknown) {
+  const input = value as { scope?: unknown; decision?: unknown } | null;
+  return input?.scope === "studio-only" &&
+    input.decision === "approve-requested";
+}
+
+function assertInstallAuthorization(value: unknown) {
+  if (!isInstallAuthorization(value)) {
+    throw new Error("Base App 安装授权意图无效");
+  }
+  return {
+    scope: "studio-only" as const,
+    decision: "approve-requested" as const,
   };
 }
 

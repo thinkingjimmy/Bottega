@@ -33,6 +33,11 @@ import {
 import { createBaseMapPopup } from "@/lib/bases/map-popup";
 import { ViewConfigBar, ViewConfigSelect } from "./view-config-bar";
 
+const MAP_FAILURE = {
+  offline: 1,
+  tilesUnavailable: 2,
+} as const;
+
 export function BaseMapView({
   columns,
   context,
@@ -87,9 +92,9 @@ export function BaseMapView({
     [locationColumn, rows]
   );
   const containerRef = useRef<HTMLDivElement>(null);
-  const [error, setError] = useState(
-    navigator.onLine ? "" : "Offline — showing the location list."
-  );
+  const [error, setError] = useState<
+    (typeof MAP_FAILURE)[keyof typeof MAP_FAILURE] | null
+  >(navigator.onLine ? null : MAP_FAILURE.offline);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -172,12 +177,13 @@ export function BaseMapView({
         const feature = event.features?.[0];
         if (!feature || feature.geometry.type !== "Point") return;
         const url = String(feature.properties?.url ?? "");
-        const root = createBaseMapPopup(
-          document,
-          String(feature.properties?.label ?? "Location"),
+        const root = createBaseMapPopup(document, {
+          label: String(feature.properties?.label ?? ""),
           url,
-          (target) => void openExternal(target)
-        );
+          fallbackLabel: t("bases.map.unnamedLocation"),
+          openLinkLabel: t("bases.cell.openLink"),
+          onOpen: (target) => void openExternal(target),
+        });
         const coordinates = feature.geometry.coordinates;
         new maplibregl.Popup()
           .setLngLat([coordinates[0]!, coordinates[1]!])
@@ -186,9 +192,9 @@ export function BaseMapView({
         }
       );
     });
-    map.on("error", () => setError("Map tiles are unavailable — showing the location list."));
+    map.on("error", () => setError(MAP_FAILURE.tilesUnavailable));
     return () => map.remove();
-  }, [context, labelColumn, locationColumn, points, urlColumn]);
+  }, [context, labelColumn, locationColumn, points, t, urlColumn]);
 
   if (!locationColumn) {
     return (
@@ -247,7 +253,13 @@ export function BaseMapView({
       {(error || !points.length) && (
         <SlimScroller className="min-h-0 flex-1 overflow-auto p-4">
           <p className="mb-3 text-muted-foreground text-sm">
-            {error || "No rows have coordinates yet."}
+            {error
+              ? t(
+                  error === MAP_FAILURE.offline
+                    ? "bases.map.offline"
+                    : "bases.map.tilesUnavailable"
+                )
+              : t("bases.map.noCoordinates")}
           </p>
           <LocationList
             cellContext={context}

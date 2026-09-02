@@ -1,13 +1,17 @@
 /**
  * [INPUT]: Depends on Base GUI surface binding/token claims, Node HTTP streams, and a custody-aware Design workspace port
- * [OUTPUT]: Provides authenticated read-only workspace list/history/source-line APIs plus exact sandboxed live/version HTML previews whose opaque-origin bridge emits bounded queryable element hints and renders transient overlays/pins
- * [POS]: The Base GUI Design workspace-read boundary; route parsing and response policy live here while custody and registry truth stay behind the port
+ * [OUTPUT]: Provides legacy authenticated workspace path routes and delegates compiled-v3 opaque refs/previews to the isolated compiled facade
+ * [POS]: The Base GUI Design workspace-read composition boundary; legacy route parsing remains here while compiled trust-domain logic lives in compiled-workspace.ts
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { BaseGuiLiveBinding } from "../../../../shared/apps-ipc";
+import type {
+  AppGuiRuntimeErrorCode,
+  BaseGuiLiveBinding,
+} from "../../../../shared/apps-ipc";
 import type { GuiTokenClaims } from "../gui-api";
 import { bearerToken, sameGuiBinding } from "./api/router";
+import { CompiledWorkspaceFacade } from "./compiled-workspace";
 
 const PREVIEW_CSP =
   "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; " +
@@ -212,26 +216,57 @@ type TokenVerifier = Readonly<{
   ): GuiTokenClaims | null;
 }>;
 
-export type WorkspacePreviewHandler = (
+export type WorkspacePreviewHandler = ((
   context: Readonly<{ appId: string; binding: BaseGuiLiveBinding }>,
   pathname: string,
   request: IncomingMessage,
   response: ServerResponse
-) => Promise<boolean>;
+) => Promise<boolean>) & Readonly<{
+  resolveOpaqueOrigin(appId: string, handle: string): BaseGuiLiveBinding | null;
+  serveOpaqueOrigin(
+    appId: string,
+    handle: string,
+    request: IncomingMessage,
+    response: ServerResponse
+  ): Promise<void>;
+}>;
 
 export function createWorkspacePreviewHandler(
   tokens: TokenVerifier,
   port: WorkspacePreviewPort
 ): WorkspacePreviewHandler {
-  return async (context, pathname, request, response) => {
+  const compiled = new CompiledWorkspaceFacade(port);
+  const handler = async (context: Readonly<{
+    appId: string;
+    binding: BaseGuiLiveBinding;
+  }>, pathname: string, request: IncomingMessage, response: ServerResponse) => {
     if (pathname.startsWith("/_api/workspace/")) {
-      await workspaceApi(tokens, port, context, pathname, request, response);
+      if (context.binding.contentLayoutVersion === 3) {
+        const binding = authenticateWorkspace(tokens, context, request, response);
+        if (binding) await compiled.api(context, pathname, request, response);
+      } else {
+        await workspaceApi(tokens, port, context, pathname, request, response);
+      }
       return true;
     }
     if (!pathname.startsWith("/_preview/")) return false;
+    if (context.binding.contentLayoutVersion === 3) {
+      respond(response, 404, workspaceError("workspace_route_not_found", "Legacy preview is unavailable to compiled Apps"), "application/json");
+      return true;
+    }
     await previewWorkspaceFile(port, context, pathname, request, response);
     return true;
   };
+  return Object.assign(handler, {
+    resolveOpaqueOrigin: (appId: string, handle: string) =>
+      compiled.resolveOpaqueOrigin(appId, handle),
+    serveOpaqueOrigin: (
+      appId: string,
+      handle: string,
+      request: IncomingMessage,
+      response: ServerResponse
+    ) => compiled.serveOpaqueOrigin(appId, handle, request, response),
+  });
 }
 
 async function workspaceApi(
@@ -275,7 +310,10 @@ function authenticateWorkspace(
     binding.workspaceReadScope !== "design/" ||
     !binding.baseCapabilities.includes("workspace-read")
   ) {
-    respond(response, 403, workspaceError("capability_not_granted", "workspace-read capability is not granted"), "application/json");
+    /* workspace 路由的 403 只有一个名字：workspaceFailureCode(403) 已经把
+       下游拒绝映射成 workspace_forbidden，入口这道闸再叫 capability_not_granted，
+       同一个「你没有这条 workspace 权限」就按抛出层级分裂成两个 code。 */
+    respond(response, 403, workspaceError("workspace_forbidden", "workspace-read capability is not granted"), "application/json");
     return null;
   }
   return binding;
@@ -569,7 +607,9 @@ function workspaceFailureMessage(status: number) {
                 : "Workspace preview failed";
 }
 
-function workspaceError(code: string, message: string) {
+/* code 收窄到共享联合体：wire code 原样透传给 App SDK，这里放宽成 string
+   就等于允许产出一个联合体里没有的名字，契约当场退化成注释。 */
+function workspaceError(code: AppGuiRuntimeErrorCode, message: string) {
   return { error: { code, message } };
 }
 

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React, use BrowserTabsController of BrowserTabsTabs, project, and use the UI Button/Input
+ * [INPUT]: Depends on React, App i18n, BrowserTabsController projections, and UI Button/Input primitives
  * [OUTPUT]: Provides BrowserPanel: Address tabs/navigation, DIP viewpoints and Agent control status bar
  * [POS]: The chrome renderer of the chat/browser; The web tabs are mentioned above, and the web pixels are drawn by the main WebContentsView
  */
@@ -20,6 +20,7 @@ import {
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { cn } from "@ai-chat/ui/lib/utils";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { normalizeBrowserUrl } from "../../../../shared/browser-ipc";
 import type { BrowserTabsController } from "./use-browser-tabs";
 
@@ -30,6 +31,7 @@ export function BrowserPanel({
   visible: boolean;
   controller: BrowserTabsController;
 }) {
+  const { t } = useAppTranslation();
   const { bridge, snapshot, busy, error, clearError, run } = controller;
   const [address, setAddress] = useState("");
   const [addressError, setAddressError] = useState("");
@@ -85,7 +87,7 @@ export function BrowserPanel({
     if (!bridge) return;
     const url = normalizeBrowserUrl(address);
     if (!url) {
-      setAddressError("请输入 http(s) 地址或裸域名");
+      setAddressError(t("chat.browser.invalidAddress"));
       return;
     }
     void run(async () => {
@@ -100,7 +102,7 @@ export function BrowserPanel({
   if (!bridge) {
     return (
       <div className="grid min-h-0 flex-1 place-items-center px-6 text-center text-muted-foreground text-sm">
-        Browser 仅在桌面应用中可用
+        {t("chat.browser.desktopOnly")}
       </div>
     );
   }
@@ -112,39 +114,39 @@ export function BrowserPanel({
         onSubmit={submitAddress}
       >
         <Button
-          aria-label="后退"
+          aria-label={t("chat.browser.back")}
           disabled={!active?.canGoBack || busy}
           onClick={() =>
             active && void bridge.goBack({ tabId: active.tabId })
           }
           size="icon-sm"
-          title="后退"
+          title={t("chat.browser.back")}
           type="button"
           variant="ghost"
         >
           <ArrowLeftIcon />
         </Button>
         <Button
-          aria-label="前进"
+          aria-label={t("chat.browser.forward")}
           disabled={!active?.canGoForward || busy}
           onClick={() =>
             active && void bridge.goForward({ tabId: active.tabId })
           }
           size="icon-sm"
-          title="前进"
+          title={t("chat.browser.forward")}
           type="button"
           variant="ghost"
         >
           <ArrowRightIcon />
         </Button>
         <Button
-          aria-label="刷新"
+          aria-label={t("chat.browser.reload")}
           disabled={!active || busy}
           onClick={() =>
             active && void bridge.reload({ tabId: active.tabId })
           }
           size="icon-sm"
-          title="刷新"
+          title={t("chat.browser.reload")}
           type="button"
           variant="ghost"
         >
@@ -152,7 +154,7 @@ export function BrowserPanel({
         </Button>
         <Input
           aria-invalid={Boolean(fieldError)}
-          aria-label="浏览器地址"
+          aria-label={t("chat.browser.addressLabel")}
           className={cn(
             "h-8 min-w-0 flex-1 rounded-full bg-muted/60 px-3 text-xs",
             fieldError && "animate-[shake_.18s_ease-in-out_2] ring-1 ring-destructive"
@@ -162,7 +164,7 @@ export function BrowserPanel({
             setAddressError("");
             clearError();
           }}
-          placeholder="输入网址"
+          placeholder={t("chat.browser.addressPlaceholder")}
           title={fieldError || address}
           value={address}
         />
@@ -174,7 +176,7 @@ export function BrowserPanel({
             否则这句「正在打开」会一直转下去，把失败演成永远的等待。 */}
         {!active && (
           <div className="absolute inset-0 z-10 grid place-items-center bg-background px-6 text-center text-muted-foreground text-sm">
-            {error || "正在打开网页…"}
+            {error || t("chat.browser.opening")}
           </div>
         )}
       </div>
@@ -186,14 +188,14 @@ export function BrowserPanel({
           role="status"
         >
           <span className="size-2 animate-pulse rounded-full bg-blue-500" />
-          <span className="font-medium">Agent 正在控制</span>
+          <span className="font-medium">{t("chat.browser.agentControlling")}</span>
           {active.agentAction && (
             <span className="min-w-0 flex-1 truncate text-muted-foreground">
               {active.agentAction}
             </span>
           )}
           <Button
-            aria-label="停止 Agent 浏览器动作"
+            aria-label={t("chat.browser.stopAgentAction")}
             className="h-7 gap-1.5"
             onClick={() =>
               void bridge.stopAgentBatch({ tabId: active.tabId })
@@ -203,7 +205,7 @@ export function BrowserPanel({
             variant="outline"
           >
             <SquareIcon className="size-3 fill-current" />
-            停止
+            {t("chat.browser.stop")}
           </Button>
         </div>
       )}

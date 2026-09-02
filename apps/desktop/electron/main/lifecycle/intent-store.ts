@@ -1,34 +1,47 @@
 /**
- * [INPUT]: Depends on node: fs/promises Atom write, node: crypto randomUUID, persistence/serial-queue, intent-types of schema/claims/hash
- * [OUTPUT]: Provides LifecycleIntentStore (create/createChild/advance/settle/findByRequest/pendingByClaims/compact) with LifecycleJournalCorruptError
- * [POS]: userData/lifecycle/intents.json); damage and "post-history file loss" are both fail-closed
+ * [INPUT]: Depends on node:fs/promises atomic write and v1 backup, node:crypto identity/digest, persistence/serial-queue, and intent-types current/legacy schemas, claims, and hashes
+ * [OUTPUT]: Provides LifecycleIntentStore with safe v1-to-v2 terminal-install migration, CRUD/recovery/compaction operations, and LifecycleJournalCorruptError
+ * [POS]: Owns userData/lifecycle/intents.json; completed legacy install intents migrate to tombstones while pending legacy authority and damaged or post-history-missing journals stay fail-closed
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { SerialQueue } from "../persistence/serial-queue";
 import {
   INTENT_PHASES,
+  INTENT_INPUT_SCHEMAS,
   PROPOSED_PHASE,
   assertFileInvariants,
   claimsOf,
   intentTombstoneSchema,
+  legacyLifecycleIntentSchema,
   lifecycleIntentSchema,
   stableInputHash,
+  type IntentTombstone,
+  type LegacyLifecycleIntent,
   type LifecycleIntent,
   type LifecycleKind,
 } from "./intent-types";
 
 const FILE_SCHEMA = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     intents: z.array(lifecycleIntentSchema),
     tombstones: z.array(intentTombstoneSchema),
   })
   .strict();
 type FileState = z.infer<typeof FILE_SCHEMA>;
+
+const LEGACY_FILE_SCHEMA = z
+  .object({
+    schemaVersion: z.literal(1),
+    intents: z.array(legacyLifecycleIntentSchema),
+    tombstones: z.array(intentTombstoneSchema),
+  })
+  .strict();
+type LegacyFileState = z.infer<typeof LEGACY_FILE_SCHEMA>;
 
 /** 终态完整条目保留窗口,过后压缩为墓碑(墓碑永久保留,幂等查询恒可答)。 */
 export const TERMINAL_RETENTION_MS = 72 * 60 * 60 * 1000;
@@ -80,9 +93,13 @@ export class LifecycleIntentStore {
     await this.queue.enqueue(async () => {
       try {
         const raw = await readFile(this.filePath, "utf8");
-        const parsed = FILE_SCHEMA.parse(JSON.parse(raw));
-        assertFileInvariants(parsed.intents, parsed.tombstones);
-        this.state = parsed;
+        const decoded = decodeFileState(JSON.parse(raw));
+        assertFileInvariants(decoded.state.intents, decoded.state.tombstones);
+        this.state = decoded.state;
+        if (decoded.migrated) {
+          await this.backupV1(raw);
+          await this.persist();
+        }
       } catch (cause) {
         if (isEnoent(cause)) {
           /* R7/P0-6a + R8:首装判据 = journal 目录之外的 seed 标记——
@@ -93,7 +110,7 @@ export class LifecycleIntentStore {
             () => false
           );
           if (!seeded) {
-            this.state = { schemaVersion: 1, intents: [], tombstones: [] };
+            this.state = { schemaVersion: 2, intents: [], tombstones: [] };
             await this.persist();
             await writeFile(this.seedPath, `${this.now()}\n`, { mode: 0o600 });
             return;
@@ -375,19 +392,7 @@ export class LifecycleIntentStore {
       await this.commit((s0) => {
         for (const intent of s0.intents) {
           if (!doomedIds.has(intent.intentId)) continue;
-          s0.tombstones.push({
-            kind: intent.kind,
-            requestId: intent.requestId,
-            intentId: intent.intentId,
-            inputHash: intent.inputHash,
-            status: intent.terminal!.status,
-            ...(intent.terminal!.receipt
-              ? { receipt: intent.terminal!.receipt }
-              : {}),
-            ...(intent.terminal!.error
-              ? { error: intent.terminal!.error }
-              : {}),
-          });
+          s0.tombstones.push(tombstoneOf(intent));
         }
         s0.intents = s0.intents.filter((i) => !doomedIds.has(i.intentId));
       });
@@ -498,15 +503,113 @@ export class LifecycleIntentStore {
     });
     await rename(tmp, this.filePath);
   }
+
+  private async backupV1(raw: string): Promise<void> {
+    const digest = createHash("sha256").update(raw).digest("hex").slice(0, 12);
+    const backup = `${this.filePath}.schema-v1-${digest}.bak`;
+    try {
+      await writeFile(backup, raw, { flag: "wx", mode: 0o600 });
+    } catch (cause) {
+      if (!hasCode(cause, "EEXIST")) throw cause;
+    }
+  }
 }
 
 function isEnoent(cause: unknown): boolean {
+  return hasCode(cause, "ENOENT");
+}
+
+function hasCode(cause: unknown, code: string): boolean {
   return (
     typeof cause === "object" &&
     cause !== null &&
     "code" in cause &&
-    (cause as { code?: unknown }).code === "ENOENT"
+    (cause as { code?: unknown }).code === code
   );
+}
+
+function decodeFileState(input: unknown): {
+  state: FileState;
+  migrated: boolean;
+} {
+  const header = z
+    .object({ schemaVersion: z.number().int() })
+    .passthrough()
+    .parse(input);
+  if (header.schemaVersion === 2) {
+    return { state: FILE_SCHEMA.parse(input), migrated: false };
+  }
+  if (header.schemaVersion !== 1) {
+    throw new Error(`lifecycle journal schemaVersion ${header.schemaVersion} 不受支持`);
+  }
+  return { state: migrateV1(LEGACY_FILE_SCHEMA.parse(input)), migrated: true };
+}
+
+function migrateV1(legacy: LegacyFileState): FileState {
+  const referenced = pendingReferences(legacy.intents);
+  const intents: LifecycleIntent[] = [];
+  const tombstones = [...legacy.tombstones];
+  for (const intent of legacy.intents) {
+    const current = lifecycleIntentSchema.safeParse(intent);
+    if (current.success) {
+      intents.push(current.data);
+      continue;
+    }
+    if (!canCompactLegacyInstall(intent, referenced)) {
+      throw new Error(
+        `lifecycle v1 intent ${intent.intentId} 不能在不推测授权的前提下安全迁移`
+      );
+    }
+    tombstones.push(tombstoneOf(intent));
+  }
+  return FILE_SCHEMA.parse({ schemaVersion: 2, intents, tombstones });
+}
+
+function pendingReferences(
+  intents: readonly LegacyLifecycleIntent[]
+): Set<string> {
+  return new Set(
+    intents
+      .filter((intent) => !intent.terminal)
+      .flatMap((intent) => Object.values(intent.recoveryState))
+      .filter((value): value is string => typeof value === "string")
+  );
+}
+
+function canCompactLegacyInstall(
+  intent: LegacyLifecycleIntent,
+  referenced: ReadonlySet<string>
+): boolean {
+  if (!intent.terminal || referenced.has(intent.intentId)) return false;
+  if (intent.kind !== "base-import" && intent.kind !== "preset-install") {
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(intent.input, "authorization")) {
+    return false;
+  }
+  const candidate = { ...intent.input };
+  if (Object.prototype.hasOwnProperty.call(candidate, "consentIntent")) {
+    if (typeof candidate.consentIntent !== "boolean") return false;
+    delete candidate.consentIntent;
+  }
+  candidate.authorization = {
+    scope: "studio-only",
+    decision: "approve-requested",
+  };
+  return INTENT_INPUT_SCHEMAS[intent.kind].safeParse(candidate).success;
+}
+
+function tombstoneOf(intent: LegacyLifecycleIntent): IntentTombstone {
+  if (!intent.terminal) throw new Error(`intent ${intent.intentId} 未终结`);
+  return intentTombstoneSchema.parse({
+    kind: intent.kind,
+    requestId: intent.requestId,
+    intentId: intent.intentId,
+    inputHash: intent.inputHash,
+    status: intent.terminal.status,
+    ...(intent.terminal.receipt ? { receipt: intent.terminal.receipt } : {}),
+    ...(intent.terminal.error ? { error: intent.terminal.error } : {}),
+  });
 }
 
 function assertSameHash(

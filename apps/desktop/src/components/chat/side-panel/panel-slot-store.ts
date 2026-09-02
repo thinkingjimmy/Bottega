@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React useSyncExternalStore, PanelSessionContext eligibility, panel-catalog region verification and renderer localStorage
- * [OUTPUT]: Provides durable PanelSlotAggregate, context-derived keys, explicit cross-window storage reload, foreign-slot sanitization, append-only migration and usePanelSlots
- * [POS]: The only owner of the per-generation slot of chat/side-panel; product-only regions cannot survive a foreign restore
+ * [OUTPUT]: Provides durable PanelSlotAggregate, context-derived keys, explicit cross-window storage reload, ineligible-slot sanitization, append-only migration and usePanelSlots
+ * [POS]: The only owner of the per-generation slot of chat/side-panel; a slot the current context is not eligible for never survives a restore
  */
 
 import { useSyncExternalStore } from "react";

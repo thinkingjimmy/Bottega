@@ -1,12 +1,14 @@
 /**
- * [INPUT]: Depends on Conversation primitives, HistoryPrefixProjection, canonical messages/turns, Find, Outline, foreign rows, attachments, revision actions, and side-panel Plan/Image commands
- * [OUTPUT]: Provides the unified transcript ordering immutable prefix before product history, hides dormant App identity notices structurally, and exposes generation-fenced route anchors, quality/source dividers, controlled Plan expansion, and Find/Outline
- * [POS]: The top-level chat/transcript projection; foreign rows never participate in product sequence convergence
+ * [INPUT]: Depends on Conversation primitives, the bounded Chat message store, backend identity, localized copy, canonical turns, Find, Outline, attachments, revision actions, and side-panel Plan/Image commands
+ * [OUTPUT]: Provides the localized canonical transcript with cursor-backed upward pagination, the imported-history divider (only its "match" wording has a producer today), a streaming draft confined to the native segment, scroll compensation, backend-aware failures, generation-fenced anchors, controlled Plan expansion, and Find/Outline
+ * [POS]: The top-level chat/transcript projection for native and imported SQLite timeline segments
  */
 
 import {
+  Fragment,
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -32,10 +34,6 @@ import type {
   NoticeChatMessage,
   UserChatMessage as UserMessage,
 } from "../../../../shared/chats-ipc";
-import {
-  historyRouteAnchor,
-  type HistoryPrefixProjection,
-} from "@/lib/history-prefix";
 import type { ChatSessionController } from "../runtime/use-chat-session";
 import type { ConversationImageSource } from "../runtime/chat-session-model";
 import type {
@@ -43,7 +41,7 @@ import type {
 } from "../runtime/chat-attachments";
 import type { ProjectedSubagent } from "@/lib/chat-turn-attach";
 import { ChatMessageActions } from "./chat-message-actions";
-import { ChatOutline } from "./chat-outline";
+import { ChatOutline, useCanonicalChatOutline } from "./chat-outline";
 import { ChatTurn, ChatTurnDraft } from "./chat-turn";
 import {
   ChatUserAttachments,
@@ -65,10 +63,40 @@ import {
   transcriptWindow,
 } from "./transcript-window";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { ForeignHistoryTranscriptRows } from "./foreign-history-transcript";
+import { ChevronUp, CircleXIcon, Loader2, Trash2Icon } from "lucide-react";
 import { TranscriptFind } from "./transcript-find";
 import { highlightTranscriptTarget } from "./transcript-highlight";
 import { UserMessageEditor } from "./user-message-editor";
+import type { AgentBackendId } from "../../../../shared/agent-ipc";
+import {
+  loadOlderChatMessages,
+  materializeChatMessage,
+  readChatMessages,
+} from "@/lib/chat-messages-store";
+
+/* 分隔行：一条细线把话题从中间断开，中间那格由调用者决定说什么——
+   「以上是导入的历史消息」，或者一枚「显示更早消息」。同一种语言，
+   于是这两处永远不会长成两副样子。 */
+function TranscriptDividerRow({ children, role }: {
+  children: ReactNode;
+  role?: "separator";
+}) {
+  return (
+    <div
+      className="flex items-center gap-3 py-2 text-muted-foreground text-xs"
+      role={role}
+    >
+      <span className="h-px flex-1 bg-border" />
+      {children}
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+export type ImportSegmentFacts = Readonly<{
+  sourceStatus?: "match" | "changed" | "missing";
+  incompleteTail?: boolean;
+}>;
 
 const MessageShell = ({ children, id }: {
   children: ReactNode;
@@ -158,6 +186,7 @@ export const ChatAssistantRow = memo(function ChatAssistantRow({
   message,
   isPlanExpanded,
   backendDisplayName,
+  backendId,
   showContinue,
   enableSidePanel,
   onContinue,
@@ -173,6 +202,7 @@ export const ChatAssistantRow = memo(function ChatAssistantRow({
   message: AssistantChatMessage;
   isPlanExpanded: boolean;
   backendDisplayName: string;
+  backendId?: AgentBackendId;
   showContinue: boolean;
   enableSidePanel: boolean;
   onContinue: () => void;
@@ -195,6 +225,7 @@ export const ChatAssistantRow = memo(function ChatAssistantRow({
         chatId={chatId}
         incarnationId={incarnationId}
         backendDisplayName={backendDisplayName}
+        backendId={backendId}
         isPlanExpanded={isPlanExpanded}
         message={message}
         showContinue={showContinue}
@@ -216,11 +247,7 @@ function TranscriptRows({
   onClosePlan,
   showOutline,
   setHistoryBatch,
-  historyPrefix,
-  historyPrefixFooter,
-  historyIndexLoader,
-  onHistoryJumpMiss,
-  onToggleForeignPlan,
+  importSegment,
   routeSearch,
   surfaceVisible = true,
 }: {
@@ -230,17 +257,14 @@ function TranscriptRows({
   onClosePlan: () => void;
   showOutline: boolean;
   setHistoryBatch: (active: boolean) => void;
-  historyPrefix?: HistoryPrefixProjection | null;
-  historyPrefixFooter?: ReactNode;
-  historyIndexLoader?: (signal: AbortSignal) => Promise<HistoryPrefixProjection>;
-  onHistoryJumpMiss?: (id: string) => Promise<void>;
-  onToggleForeignPlan?: (plan: { anchorId: string; content: string }) => void;
+  importSegment?: ImportSegmentFacts;
   routeSearch?: string;
   surfaceVisible?: boolean;
 }) {
   const { t } = useAppTranslation();
   const {
     backendDisplayName,
+    backendId,
     messages,
     draft,
     assistantSeq,
@@ -281,6 +305,9 @@ function TranscriptRows({
   const compensation = useRef<{ id: string; top: number } | null>(null);
   const restoreFocusAfterExpand = useRef(false);
   const loadedCount = useRef(0);
+  const loadingEarlier = useRef(false);
+  const [loadingEarlierNow, setLoadingEarlierNow] = useState(false);
+  const outline = useCanonicalChatOutline(chatId, incarnationId, showOutline);
   const windowed = useMemo(
     () => transcriptWindow(messages, anchor),
     [anchor, messages]
@@ -298,7 +325,6 @@ function TranscriptRows({
     [subagentCache, subagents, visibleMessages]
   );
   const subagentsByMessage = subagentProjection.projections;
-
   useLayoutEffect(() => {
     if (!anchorWasClamped) return;
     compensation.current = null;
@@ -363,19 +389,19 @@ function TranscriptRows({
     return () => cancelAnimationFrame(frame);
   }, [
     anchorWasClamped,
-    /* 收养前传异步到达后必须重查一次：深链目标若在前传行里，
-       首次消费时节点还没挂载。 */
-    historyPrefix,
     pendingJumpId,
     scrollRef,
     setHistoryBatch,
     windowed.anchor?.id,
   ]);
 
-  const loadEarlier = useCallback(() => {
-    if (windowed.start <= 0) return;
+  const loadEarlier = useCallback(async () => {
+    if (loadingEarlier.current) return;
     const scroller = scrollRef.current;
     if (!scroller) return;
+    if (windowed.start <= 0 && !readChatMessages(chatId)?.hasMoreBefore) return;
+    loadingEarlier.current = true;
+    setLoadingEarlierNow(true);
     releaseScrollLock();
     setHistoryBatch(true);
     const scrollerTop = scroller.getBoundingClientRect().top;
@@ -391,16 +417,39 @@ function TranscriptRows({
         top: firstVisible.getBoundingClientRect().top,
       };
     }
-    const next = expandTranscriptAnchor(messages, windowed.anchor);
-    const nextStart = transcriptWindow(messages, next).start;
-    restoreFocusAfterExpand.current = shouldRestoreTranscriptFocus(
-      nextStart,
-      document.activeElement instanceof HTMLElement &&
-        document.activeElement.hasAttribute("data-load-earlier")
-    );
-    loadedCount.current = windowed.start - nextStart;
-    setAnchor(next);
+    try {
+      if (windowed.start > 0) {
+        const next = expandTranscriptAnchor(messages, windowed.anchor);
+        const nextStart = transcriptWindow(messages, next).start;
+        restoreFocusAfterExpand.current = shouldRestoreTranscriptFocus(
+          nextStart,
+          document.activeElement instanceof HTMLElement &&
+            document.activeElement.hasAttribute("data-load-earlier")
+        );
+        loadedCount.current = windowed.start - nextStart;
+        setAnchor(next);
+        return;
+      }
+      const before = messages.length;
+      const page = await loadOlderChatMessages(chatId);
+      if (!page || page.messages.length <= before) {
+        /* 没有新行就没有位移要补：把补偿留在原地，下一次真正的加载会拿它
+           去对一个早已换过内容的坐标，滚动条于是跳一下。 */
+        compensation.current = null;
+        setHistoryBatch(false);
+        return;
+      }
+      loadedCount.current = page.messages.length - before;
+      setAnchor((current) => expandTranscriptAnchor(page.messages, current));
+    } catch {
+      compensation.current = null;
+      setHistoryBatch(false);
+    } finally {
+      loadingEarlier.current = false;
+      setLoadingEarlierNow(false);
+    }
   }, [
+    chatId,
     messages,
     releaseScrollLock,
     scrollRef,
@@ -408,6 +457,18 @@ function TranscriptRows({
     windowed.anchor,
     windowed.start,
   ]);
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const onScroll = () => {
+      if (scroller.scrollTop <= 96 && scroller.scrollHeight > scroller.clientHeight) {
+        void loadEarlier();
+      }
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, [loadEarlier, scrollRef]);
 
   const jumpTo = useCallback((id: string) => {
     const scroller = scrollRef.current;
@@ -428,26 +489,29 @@ function TranscriptRows({
     setHistoryBatch(true);
     setPendingJumpId(id);
     setAnchor((current) => includeTranscriptTarget(messages, current, id));
-    if (id.startsWith("foreign:")) {
-      void onHistoryJumpMiss?.(id).catch(() => undefined);
-    }
+    void materializeChatMessage(chatId, id)
+      .then((snapshot) => {
+        if (!snapshot) {
+          setPendingJumpId(null);
+          setHistoryBatch(false);
+          return;
+        }
+        setAnchor((current) =>
+          includeTranscriptTarget(snapshot.messages, current, id)
+        );
+      })
+      .catch(() => {
+        setPendingJumpId(null);
+        setHistoryBatch(false);
+      });
     return false;
-  }, [messages, onHistoryJumpMiss, releaseScrollLock, scrollRef, setHistoryBatch]);
+  }, [chatId, messages, releaseScrollLock, scrollRef, setHistoryBatch]);
 
   useLayoutEffect(() => {
-    const routeKey = JSON.stringify([
-      routeSearch ?? "",
-      historyPrefix?.source.routeGenerationKey ?? "",
-      historyPrefix?.source.contentGenerationKey ?? "",
-    ]);
+    const routeKey = routeSearch ?? "";
     if (consumedRouteKeyRef.current === routeKey) return;
     const searchParams = new URLSearchParams(routeSearch ?? "");
-    const id = searchParams.get("m") ?? (() => {
-      const value = searchParams.get("b");
-      return value && historyPrefix
-        ? historyRouteAnchor(historyPrefix, value)
-        : null;
-    })();
+    const id = searchParams.get("m");
     if (!id) {
       pendingRouteRef.current = null;
       return;
@@ -457,12 +521,16 @@ function TranscriptRows({
       consumedRouteKeyRef.current = routeKey;
       pendingRouteRef.current = null;
     }
-  }, [historyPrefix, jumpTo, routeSearch]);
+  }, [jumpTo, routeSearch]);
 
   const draftPlan = draft ? projectDraftPlan(draft) : null;
+  /* 草稿属于原生段：导入段自带一套从 1 起的 delivery_seq，只比 seq
+     会把流式草稿插进那段只读前传的中间。 */
   const draftIndex =
     draft && assistantSeq !== undefined
-      ? visibleMessages.findIndex((message) => message.seq > assistantSeq)
+      ? visibleMessages.findIndex(
+          (message) => message.segment !== "imported" && message.seq > assistantSeq
+        )
       : -1;
   const beforeDraft =
     draftIndex < 0
@@ -471,6 +539,20 @@ function TranscriptRows({
   const afterDraft =
     draftIndex < 0 ? [] : visibleMessages.slice(draftIndex);
   const lastUserId = messages.findLast((message) => message.role === "user")?.id;
+  /* 导入段的末条：分隔线钉在它下面。原生段还是空的时候也照钉，
+     否则一条刚同步进来的历史会话就只剩正文，没有「新消息从这里开始」。 */
+  const lastImportedId = messages.findLast(
+    (message) => message.segment === "imported"
+  )?.id;
+  /* "match" 与 "missing" 都由扫描说了算（HistoryImportService 一侧的
+     markImportSourceStatus）。"changed" 没有生产者，也不会有：内容一变就是
+     新的一代 import 代际，旧代际连同那句判定一起退休。分支留着是因为它是
+     这格事实的完整词表，删掉等于把「来源变了」从产品语言里抹去。 */
+  const importedDivider = importSegment?.sourceStatus === "missing"
+    ? t("history.sourceMissingDivider")
+    : importSegment?.sourceStatus === "changed"
+      ? t("history.divergedDivider")
+      : t("history.importedDivider");
   const renderMessage = (
     message: (typeof messages)[number]
   ) => {
@@ -519,6 +601,7 @@ function TranscriptRows({
         message={message}
         onClosePlan={onClosePlan}
         backendDisplayName={backendDisplayName}
+        backendId={backendId}
         onContinue={continueTurn}
         onRetry={retryTurn}
         onOpenPlan={openPlanPanel}
@@ -530,6 +613,22 @@ function TranscriptRows({
     );
     return <div className="contents" key={message.id}>{row}</div>;
   };
+  const renderRows = (rows: typeof messages) =>
+    rows.map((message) =>
+      message.id === lastImportedId ? (
+        <Fragment key={`${message.id}:imported-boundary`}>
+          {renderMessage(message)}
+          {importSegment?.incompleteTail && (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+              {t("history.incompleteTail")}
+            </p>
+          )}
+          <TranscriptDividerRow role="separator">
+            <span>{importedDivider}</span>
+          </TranscriptDividerRow>
+        </Fragment>
+      ) : renderMessage(message)
+    );
 
   return (
     <ChartConversationBoundary>
@@ -539,47 +638,38 @@ function TranscriptRows({
           tabIndex={-1}
         >
           <TranscriptFind
-            historyPrefix={historyPrefix}
-            historyIndexLoader={historyIndexLoader}
+            chatId={chatId}
             jumpTo={jumpTo}
-            messages={messages}
             surfaceVisible={surfaceVisible}
           />
-          {windowed.start > 0 && (
-            <Button
-              className="mx-auto"
-              data-load-earlier=""
-              onClick={loadEarlier}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              显示更早消息
-            </Button>
+          {(windowed.start > 0 || readChatMessages(chatId)?.hasMoreBefore) && (
+            <TranscriptDividerRow>
+              <button
+                className="inline-flex h-7 items-center gap-1 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-60"
+                data-load-earlier=""
+                disabled={loadingEarlierNow}
+                onClick={loadEarlier}
+                type="button"
+              >
+                {loadingEarlierNow ? (
+                  <>
+                    <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />
+                    {t("chat.transcript.loadingEarlier")}
+                  </>
+                ) : (
+                  <>
+                    <ChevronUp className="size-3" />
+                    {t("chat.transcript.loadEarlier")}
+                  </>
+                )}
+              </button>
+            </TranscriptDividerRow>
           )}
-          {historyPrefix && (
-            <section className="space-y-5" aria-label={t("history.importedHistoryLabel")}>
-              <ForeignHistoryTranscriptRows
-                blocks={historyPrefix.blocks}
-                contentGenerationKey={historyPrefix.source.contentGenerationKey}
-                expandedPlanKey={expandedPlanId}
-                onTogglePlan={enableSidePanel ? onToggleForeignPlan : undefined}
-              />
-              {historyPrefixFooter}
-              <div className="flex items-center gap-3 py-2 text-muted-foreground text-xs" role="separator">
-                <span className="h-px flex-1 bg-border" />
-                <span>{historyPrefix.quality.sourceStatus === "missing"
-                  ? t("history.sourceMissingDivider")
-                  : historyPrefix.quality.sourceStatus === "changed"
-                    ? t("history.divergedDivider")
-                    : t("history.importedDivider")}</span>
-                <span className="h-px flex-1 bg-border" />
-              </div>
-            </section>
-          )}
-          {beforeDraft.map(renderMessage)}
+          {renderRows(beforeDraft)}
           {draft && (
             <ChatTurnDraft
+              backendDisplayName={backendDisplayName}
+              backendId={backendId}
               chatId={chatId}
               incarnationId={incarnationId}
               assistantSeq={assistantSeq}
@@ -599,51 +689,39 @@ function TranscriptRows({
               subagents={subagents}
             />
           )}
-          {afterDraft.map(renderMessage)}
+          {renderRows(afterDraft)}
           {canAbandonFatal && (
-            <Message from="assistant">
-              <MessageContent className="border border-destructive/30 bg-destructive/10 text-destructive">
-                <p>本轮结果无法安全写入本地账本，输入保持锁定。</p>
-                <Button
-                  className="mt-3"
-                  onClick={() => void abandonFatal()}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  放弃本轮结果
-                </Button>
-              </MessageContent>
-            </Message>
+            <FailureCard
+              action={t("chat.transcript.abandonFatal")}
+              body={t("chat.transcript.fatalResultLocked")}
+              icon={<Trash2Icon className="size-3.5" />}
+              onAct={() => void abandonFatal()}
+              title={t("chat.transcript.fatalResultTitle")}
+            />
           )}
           {canAcknowledgeCleanup && (
-            <Message from="assistant">
-              <MessageContent className="border border-destructive/30 bg-destructive/10 text-destructive">
-                <p>{backendDisplayName} 进程组清理失败。请先确认相关进程已经结束，再解除本聊天的安全锁。</p>
-                <Button
-                  className="mt-3"
-                  onClick={() => void acknowledgeCleanup()}
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  已确认进程结束
-                </Button>
-              </MessageContent>
-            </Message>
+            <FailureCard
+              action={t("chat.transcript.acknowledgeCleanup")}
+              body={t("chat.transcript.cleanupFailed", {
+                backend: backendDisplayName,
+              })}
+              onAct={() => void acknowledgeCleanup()}
+              title={t("chat.transcript.cleanupFailedTitle")}
+            />
           )}
         </ConversationContent>
         <div aria-live="polite" className="sr-only" role="status">
           {announcement && (
             <span key={announcement.generation}>
-              已加载 {announcement.count} 条更早消息
+              {t("chat.transcript.loadedEarlier", {
+                count: announcement.count,
+              })}
             </span>
           )}
         </div>
         {showOutline && (
           <ChatOutline
-            historyBlocks={historyPrefix?.blocks}
-            historyContentGenerationKey={historyPrefix?.source.contentGenerationKey}
+            canonicalItems={outline.items}
             messages={messages}
             onJump={jumpTo}
           />
@@ -653,17 +731,50 @@ function TranscriptRows({
   );
 }
 
+/* 失败不是一条助手消息：它是一张卡片，跟 UsageLimitCard 用同一套语言。
+   整块染红只会把注意力烧在背景上，图标与标题才是真正要读的那两行。 */
+function FailureCard({
+  action,
+  body,
+  icon,
+  onAct,
+  title,
+}: {
+  action: string;
+  body: string;
+  icon?: ReactNode;
+  onAct(): void;
+  title: string;
+}) {
+  return (
+    <div
+      className="w-full min-w-0 rounded-xl border bg-muted/40 p-4"
+      role="alert"
+    >
+      <div className="flex items-center gap-2">
+        <CircleXIcon className="size-4 shrink-0 text-destructive" />
+        <span className="font-medium text-base">{title}</span>
+      </div>
+      <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground text-sm">
+        {body}
+      </p>
+      <div className="mt-4 flex justify-end">
+        <Button onClick={onAct} size="sm" type="button" variant="outline">
+          {icon}
+          {action}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export const ChatTranscript = memo(function ChatTranscript(props: {
   controller: ChatSessionController["transcript"];
   enableSidePanel: boolean;
   expandedPlanId: string | null;
   onClosePlan: () => void;
   showOutline: boolean;
-  historyPrefix?: HistoryPrefixProjection | null;
-  historyPrefixFooter?: ReactNode;
-  historyIndexLoader?: (signal: AbortSignal) => Promise<HistoryPrefixProjection>;
-  onHistoryJumpMiss?: (id: string) => Promise<void>;
-  onToggleForeignPlan?: (plan: { anchorId: string; content: string }) => void;
+  importSegment?: ImportSegmentFacts;
   routeSearch?: string;
   surfaceVisible?: boolean;
 }) {

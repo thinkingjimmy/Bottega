@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Policy v4/Delivery, runtime-owned instance, the platform capability matrix, shared range Consent/rebuild controller, service/support, build/authorise/observe/run coordinator
- * [OUTPUT]: Provides a platform-gated failed-open admission/recall/capture façade of the shared mode/generation, independent Provider/statistical alert, O(1) metadata source, view, preview/Consent, pause/resume, delete and rebuild recovery
+ * [INPUT]: Depends on Policy v4/Delivery, runtime-owned instance, platform capabilities, paged native-history Consent/rebuild controllers, service/support, and build/authorise/observe/run coordination
+ * [OUTPUT]: Provides a platform-gated admission/recall/capture façade with native-segment history, independent Provider/statistical alerts, O(1) metadata, preview/Consent, pause/resume, delete, and rebuild recovery
  * [POS]: The main/memory/service chat combination root; Four Owners each keep the truth, Provider recall/capture Failed to get into canceled police, start recovery and attention
  */
 
@@ -169,6 +169,7 @@ export class MemoryService {
       runtimes: options.runtimes,
       readChat: options.readChat,
       listChatSummaries: options.listChatSummaries,
+      readNativeChatSegment: options.readNativeChatSegment,
       initializeOwners: () => this.initializeOwners(),
       resolveTarget: (providerId) => this.resolveTargetFresh(providerId),
       destination: (providerId) => this.destination(providerId),

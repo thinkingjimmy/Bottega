@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, Durable Json, shared history-import
- * [OUTPUT]: Provides history-index v1: Project visibility/Memory intent, single-mode eligibility revision, per-source revision, file manifest, detection mode and atom generation release, sessionPrefs overlay (per-opaqueId title override and product-side archivedAt), and the one-step legacy-divergence entry migration on initialize
+ * [OUTPUT]: Provides history-index v1: Project visibility/Memory intent, per-source revision, file manifest, canonical Chat/generation route pointers with dangling-route forgetting, and legacy-divergence self-healing
  * [POS]: The history-import side of the product reads only index ledgers; Save only external source projections and fingerprints, not to transcribe CLI files or ChatStore
  */
 
@@ -33,24 +33,20 @@ const projectSchema = z.object({
   counts: z.array(countSchema), sourceRevisions: z.partialRecord(z.enum(HISTORY_SOURCE_KINDS), z.string()),
   entries: z.array(entrySchema), detectedFingerprints: z.record(z.string(), fingerprintSchema),
 }).strict();
-/* ── 产品侧会话呈现偏好：独立于 publish 的 overlay 档案 ─────────────
- * entries 每次刷新被扫描整体替换，rename/归档若写进 entry 就活不过下一次
- * 刷新；prefs 以 opaqueId 为键独立存放，投影时合成。CLI 源文件只读，
- * 归档与改名因此天然只是产品侧视图状态。 */
-const sessionPrefSchema = z.object({
-  title: z.string().min(1).max(200).optional(),
-  archivedAt: z.number().nonnegative().optional(),
+const canonicalRouteSchema = z.object({
+  chatId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+  generationId: z.string().min(1),
 }).strict();
 const stateSchema = z.object({
   schemaVersion: z.literal(1), revision: z.number().int().nonnegative(), projects: z.record(z.string(), projectSchema),
-  sessionPrefs: z.record(z.string(), sessionPrefSchema).default({}),
+  canonicalRoutes: z.record(z.string(), canonicalRouteSchema).default({}),
 }).strict();
 
-type IndexState = z.infer<typeof stateSchema>;
+export type IndexState = z.infer<typeof stateSchema>;
 export type StoredHistoryProject = IndexState["projects"][string];
-export type StoredSessionPref = IndexState["sessionPrefs"][string];
+export type StoredCanonicalRoute = IndexState["canonicalRoutes"][string];
 
-const empty = (): IndexState => ({ schemaVersion: 1, revision: 0, projects: {}, sessionPrefs: {} });
+const empty = (): IndexState => ({ schemaVersion: 1, revision: 0, projects: {}, canonicalRoutes: {} });
 
 export class HistoryImportIndexStore {
   private readonly ledger: DurableJson<IndexState>;
@@ -59,16 +55,18 @@ export class HistoryImportIndexStore {
     this.ledger = new DurableJson(join(userData, "history-import", "index-v1.json"), stateSchema, empty);
   }
 
-  /* 单步迁移：旧 v1 档案的 entry 带恒为 false 的死字段 divergence（四家
-   * adapter 从未产出过其他值，亦无任何消费方）。strict schema 收紧后旧档
-   * 解析必失败，此处剥字段重发布一次即自愈；结构陌生的真损坏返回
-   * undefined，维持 DurableJson 的 fail-closed 上抛。 */
+  /* 单步迁移：旧 v1 档案带两个已死字段——entry 上恒为 false 的 divergence，
+   * 以及顶层 sessionPrefs 呈现 overlay（改名/归档已全部转交 canonical Chat）。
+   * strict schema 收紧后旧档解析必失败，此处剥字段重发布一次即自愈；结构
+   * 陌生的真损坏返回 undefined，维持 DurableJson 的 fail-closed 上抛。 */
   initialize() {
     return this.ledger.initialize((raw) => {
       if (!raw || typeof raw !== "object") return undefined;
       const cloned = structuredClone(raw) as {
         projects?: Record<string, { entries?: Array<Record<string, unknown>> }>;
+        sessionPrefs?: unknown;
       };
+      delete cloned.sessionPrefs;
       if (!cloned.projects || typeof cloned.projects !== "object") return undefined;
       for (const project of Object.values(cloned.projects)) {
         if (!Array.isArray(project?.entries)) return undefined;
@@ -106,27 +104,31 @@ export class HistoryImportIndexStore {
     });
   }
 
-  sessionPref(opaqueId: string): StoredSessionPref | undefined {
-    return this.snapshot().sessionPrefs[opaqueId];
+  canonicalRoute(opaqueId: string): StoredCanonicalRoute | undefined {
+    return this.snapshot().canonicalRoutes[opaqueId];
   }
 
-  renameSession(opaqueId: string, title: string) {
+  /* 路由指向的 Chat 一旦消失，这条指针就是一根断链：快照会把它投影成一条
+     点不开的会话，而下一次同步又因为「已有路由」不肯重建。删掉即自愈。 */
+  forgetCanonicalRoutes(
+    predicate: (route: StoredCanonicalRoute, opaqueId: string) => boolean
+  ) {
     return this.ledger.mutate((state) => {
-      const current = state.sessionPrefs[opaqueId];
-      if (current?.title === title) return;
-      state.sessionPrefs[opaqueId] = { ...current, title };
-      state.revision += 1;
+      let changed = false;
+      for (const [opaqueId, route] of Object.entries(state.canonicalRoutes)) {
+        if (!predicate(route, opaqueId)) continue;
+        delete state.canonicalRoutes[opaqueId];
+        changed = true;
+      }
+      if (changed) state.revision += 1;
     });
   }
 
-  setSessionArchived(opaqueId: string, archived: boolean) {
+  recordCanonicalRoute(opaqueId: string, route: StoredCanonicalRoute) {
     return this.ledger.mutate((state) => {
-      const current = state.sessionPrefs[opaqueId];
-      if (archived === Boolean(current?.archivedAt)) return;
-      const next = { ...current, archivedAt: archived ? Date.now() : undefined };
-      if (!archived) delete next.archivedAt;
-      if (next.title === undefined && next.archivedAt === undefined) delete state.sessionPrefs[opaqueId];
-      else state.sessionPrefs[opaqueId] = next;
+      const current = state.canonicalRoutes[opaqueId];
+      if (current?.chatId === route.chatId && current.generationId === route.generationId) return;
+      state.canonicalRoutes[opaqueId] = route;
       state.revision += 1;
     });
   }

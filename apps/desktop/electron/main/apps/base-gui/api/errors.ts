@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node HTTP response and status/code/outcome/issues/currentRevision of errors in the main domain
- * [OUTPUT]: Provides apiError, JSON/original byte response and unified de-sensitive error mapping
+ * [OUTPUT]: Provides apiError, JSON/original byte response and route-aware (read vs write) de-sensitive error mapping
  * [POS]: The HTTP result boundary of apps/base-gui/api; Business leaves only throwing out structural errors
  */
 
@@ -28,23 +28,37 @@ export function apiError(
   });
 }
 
-export function respondMappedError(response: ServerResponse, cause: unknown) {
+/* 读路由与写路由的 5xx 语义不同：写请求「结果未知」必须让 App 用同一
+   requestId 重试确认；读请求什么都没提交，说「mutation 结果未知」是谎话。
+   路由类型是调用方的一等事实，不做猜测。 */
+export type GuiApiRoute = "read" | "write";
+
+export function respondMappedError(
+  response: ServerResponse,
+  cause: unknown,
+  route: GuiApiRoute = "read"
+) {
   const error = cause as Partial<GuiApiError>;
   const status =
     typeof error.status === "number" && error.status >= 400 && error.status < 600
       ? error.status
       : 500;
+  const uncertain = status >= 500 && route === "write";
   const code =
     typeof error.code === "string"
       ? error.code
       : status >= 500
-        ? "commit_uncertain"
+        ? uncertain ? "commit_uncertain" : "read_failed"
         : "internal_error";
   respondError(
     response,
     status === 499 ? 400 : status,
     code,
-    status >= 500 ? "Base mutation 结果未知" : error.message ?? "Base API 请求失败",
+    status < 500
+      ? error.message ?? "Base API 请求失败"
+      : uncertain
+        ? "Base mutation 结果未知"
+        : "Base 读取失败，请稍后重试",
     error.outcome ?? (status >= 500 ? "unknown" : "not-committed"),
     error.issues,
     error.currentRevision

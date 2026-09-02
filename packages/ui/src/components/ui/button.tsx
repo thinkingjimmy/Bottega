@@ -34,16 +34,16 @@ const buttonVariants = cva(
         lg: "h-8 gap-1 px-2.5 text-xs/relaxed has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-4",
         /* ── 药丸：房规尺码 + 隐形的 44px 命中区 ────────────────────────
            「可达性要求 44px」与「桌面 chrome 要 28-32px 密度」问的是两件事：
-           看起来多大，和点得中多大。分开，冲突就不存在了——控件留在 32px，
-           ::after 独自把命中区撑到 44px，不占版面也不放大视觉层级。
+           命中区走 touch-target-44（定义与取舍见 globals.css），控件留 32px。
            反面教材是把控件本身撑成 min-h-11：Settings › Skills 曾整片如此，
            44px 高配 8px 内边距配 22px 圆角，文字落进弧线里。
            内边距 20 ≥ 圆角 16 是这个形状的硬约束：小于圆角，字就贴上弯道。
            relative 焊在这里而不留给调用方：漏一处就少一处命中区，而漏掉的
-           地方永远比记得补的地方多。定位过的宿主自带包含块，className 里
-           后写的 absolute 经 tailwind-merge 仍然胜出，不会被它打回文档流。 */
+           地方永远比记得补的地方多。它也必须写成这个真类名而非藏进 utility——
+           tailwind-merge 只认得出 position 组里的成员，className 里后写的
+           absolute 因此仍然胜出，不会被它打回文档流。 */
         pill:
-          "relative h-8 min-w-[4.75rem] gap-1.5 rounded-full px-5 text-sm font-normal [&_svg:not([class*='size-'])]:size-4 after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
+          "relative h-8 min-w-[4.75rem] touch-target-44 gap-1.5 rounded-full px-5 text-sm font-normal [&_svg:not([class*='size-'])]:size-4",
         icon: "size-7 [&_svg:not([class*='size-'])]:size-3.5",
         "icon-xs": "size-5 rounded-sm [&_svg:not([class*='size-'])]:size-2.5",
         "icon-sm": "size-6 [&_svg:not([class*='size-'])]:size-3",

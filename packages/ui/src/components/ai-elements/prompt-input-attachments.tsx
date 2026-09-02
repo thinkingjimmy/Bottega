@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on attachment Displays native language, prompt-input context attachment hooks, and context and controls on shared UI text
- * [OUTPUT]: Provides PromptInputAttachments preview bar and select input; Remove the button body shape 24px:: after the 44px task area is raised, by default, only fine-pointer hover can be hidden; The image shrinks the entire block, enlarging the trigger, popping up the band name and the light box with the shutter button
+ * [INPUT]: Depends on attachment display primitives, prompt-input attachment hooks, dialog controls, and host-injected shared UI text
+ * [OUTPUT]: Provides localized PromptInputAttachments preview/remove controls and the attachment-selection trigger
  * [POS]: The attachment visual layer of ai-elements PromptInput; The attachment status and blob URL lifecycle are in context/hooks, not here
  */
 
@@ -56,6 +56,9 @@ export const PromptInputAttachments = ({
 }: PromptInputAttachmentsProps) => {
   const attachments = usePromptInputAttachments();
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const attachmentLabel = useUiText("attachment", "Attachment");
+  const previewLabel = useUiText("previewAttachment", "Preview attachment");
+  const removeLabel = useUiText("removeAttachment", "Remove attachment");
   if (attachments.files.length === 0) return null;
   /* 放大态由 id 派生而非另存一份 file：删除正在看的那张，它自己就从列表里
      消失、弹窗随之关上。存 file 就要再写一条「删除时同步关闭」的分支，而
@@ -67,7 +70,7 @@ export const PromptInputAttachments = ({
       <AttachmentGroup>
         {attachments.files.map((file) => {
           const isImage = file.mediaType?.startsWith("image/") === true;
-          const name = file.filename ?? "attachment";
+          const name = file.filename ?? attachmentLabel;
 
           return (
             <Attachment
@@ -88,7 +91,7 @@ export const PromptInputAttachments = ({
                      即触发器——type=button 不可省，这里身处 PromptInput 的
                      <form> 内，默认的 submit 会让「想看清楚」变成「发出去」。 */
                   <button
-                    aria-label={`Preview ${name}`}
+                    aria-label={`${previewLabel}: ${name}`}
                     className="size-full cursor-zoom-in rounded-[inherit] outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                     onClick={() => setPreviewId(file.id)}
                     type="button"
@@ -112,7 +115,7 @@ export const PromptInputAttachments = ({
                 className={cn(isImage && "absolute top-1 right-1")}
               >
                 <AttachmentAction
-                  aria-label={`Remove ${name}`}
+                  aria-label={`${removeLabel}: ${name}`}
                   size={isImage ? "icon-sm" : "icon-xs"}
                   variant={isImage ? "default" : "ghost"}
                   className={cn(
@@ -142,11 +145,11 @@ export const PromptInputAttachments = ({
       >
         <AppDialogContent className="w-auto max-w-[calc(100vw-3rem)] gap-2 p-2 sm:max-w-[calc(100vw-8rem)]">
           <DialogTitle className="truncate pr-8 pl-1 font-medium text-xs">
-            {preview?.filename ?? "attachment"}
+            {preview?.filename ?? attachmentLabel}
           </DialogTitle>
           {preview?.url && (
             <img
-              alt={preview.filename ?? "attachment"}
+              alt={preview.filename ?? attachmentLabel}
               className="max-h-[calc(100vh-8rem)] w-auto max-w-full self-center rounded-[0.9rem] object-contain"
               src={preview.url}
             />

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the Apps store/runtime/installer, generation/reference/data/custody durable ledgers, Base GUI grant/API/data migration, Design domain, App×Extension integration, and service sub-modules
- * [OUTPUT]: Provides AppsService with App lifecycle APIs, renderer-surface cleanup, request-bound Design turn settlement, role-aware and incarnation-fenced Design tool reads, registered preview ports, main Project-rebind migration, immediate Design Skill invalidation, and the single AppStore.watch subscription that turns every committed record into a renderer `status` event
- * [POS]: The composition root of the apps module; it maintains stable APIs, owns the only status forwarder, and delegates Design, install, turn, delete, and agent workflows to focused domains
+ * [INPUT]: Depends on the Apps store/runtime/installer, shared per-App source/lifecycle mutation lanes, generation/reference/data/custody durable ledgers, compiled Base GUI runtime, Design domain, App×Extension integration, navigation, and service sub-modules
+ * [OUTPUT]: Provides authority-gated AppsService startup, source-fenced Edit turns, Use/Edit navigation, compiled GUI cohort cutover, signed-update compatibility, Studio authorization, file export, renderer cleanup, convergent deletion, Design integration, and one durable status forwarder
+ * [POS]: The composition root of the apps module; it owns shared mutation lanes while delegating GUI, navigation, Design, install, turn, delete, and agent workflows to focused domains
  */
 
 import { join } from "node:path";
@@ -12,20 +12,21 @@ import type {
   AppExtensionStatus,
   AppGuiInfo,
   AppGuiInfoInput,
+  AppGuiReadyInput,
   AppInstallEvent,
   AppRecord,
+  AppRecordProjection,
   RemoveAppMode,
 } from "../../../shared/apps-ipc";
-import { APPS_CHANNEL } from "../../../shared/apps-ipc";
 import type { BaseToolsAvailability } from "../../../shared/builtin-tools";
 import type { ExtensionTurnIdentity } from "../../../shared/extensions-ipc";
 import type { TurnProjectContext } from "../../../shared/product-resource-scope";
 import type { AppLocale } from "../../../shared/i18n/locale";
-import { asError } from "../errors";
-import { rendererEventBus } from "../window/surfaces/renderer-event-bus";
+import type { TrustedRendererContext } from "../window/surfaces/trusted-renderer-context";
 import type { AppExtensionIntegration } from "../extensions/integration/app-extension-composition";
 import { ThirdPartyMcpPlanLedger } from "../extensions/lifecycle/third-party-mcp-plan-ledger";
 import type { AppGenerationBuildParticipantRegistry } from "../lifecycle/app-generation-build-participants";
+import type { AppNavigationService } from "./app-navigation";
 import { AppPlatformAdmission } from "../lifecycle/app-platform-admission";
 import type { AppChatSlots } from "./app-chat-slots";
 import { AppDataArchiveStore } from "./app-data-archive";
@@ -44,11 +45,14 @@ import { AppReferenceJournal } from "./app-reference-journal";
 import { AppRuntime } from "./app-runtime";
 import { AppServerDataCutover } from "./app-server-cutover";
 import { AppStore } from "./app-store";
+import { AppMutationCoordinator } from "./app-source-coordinator";
 import type { AppAttachmentFence } from "./attachments/attachment-fence";
-import type { AppGrantAuthority } from "./attachments/grant-authority";
+import {
+  studioSurfaceReady,
+  type AppGrantAuthority,
+} from "./attachments/grant-authority";
 import type { AppManagementLeaseRegistry } from "./attachments/management-leases";
 import type { AppAttachmentSurfaceLeaseRegistry } from "./attachments/surface-leases";
-import { AppGuiProjection } from "./gui-projection";
 import type { GuiBasePort } from "./gui-api";
 import type { WorkspacePreviewPort } from "./base-gui/workspace-preview";
 import { BaseGuiGrantStore } from "./base-gui/grant-store";
@@ -60,20 +64,23 @@ import type { AgentToolInventory } from "./runtime/agent-tools";
 import type { SaveAsAppService } from "./save-as-app";
 import { composeServerLifecycle } from "./server-lifecycle";
 import { AppAgentOperations } from "./service/agent-operations";
+import { publishAppEvent } from "./service/app-event-publisher";
 import { AppDeleteCoordinator } from "./service/delete-coordinator";
 import { AppDesignIntegration } from "./service/integrations/design-integration";
 import { AppEditTurnLifecycle } from "./service/lifecycle/edit-turn-lifecycle";
+import { applyCandidateCompatibility } from "./service/lifecycle/update-compatibility";
 import { registerAppsIpc } from "./service/ipc";
 import { resolveBindableApp, resolveRunnableApp } from "./service/lifecycle/app-resolution";
 import {
+  authorizeStudioAccess,
+  declineStudioAccess,
   originWithoutStart,
   rebuildExtensionGeneration,
   removeApp,
-  revokeBaseGuiAccess,
   revokeExtensionGrant,
   runtimeStatus,
-  withGuiCutover,
 } from "./service/lifecycle/runtime-operations";
+import { AppGuiRuntimeService } from "./service/gui-runtime-service";
 import { AppTurnCoordinator } from "./service/turn-coordinator";
 import { AppPackageController } from "./share/app-package-controller";
 import type { ShareFlow } from "./share/share-flow";
@@ -82,7 +89,7 @@ import { resolvePlatformCapabilities } from "../../../shared/platform-capabiliti
 import type { EffectiveWorkspaceResolver } from "../workspace-resolver";
 import { DESIGN_PRESET_ID } from "../design/enabled";
 import type { DesignProjectRebindEvidence } from "../design/service";
-
+import { createAppGuiBuildService } from "./gui-build/composition";
 function defaultGuardianArgs() {
   if (typeof __dirname !== "string") return [] as const;
   return [join(__dirname, "custody-guardian-entry.js")] as const;
@@ -109,7 +116,9 @@ export class AppsService {
   private readonly runtime!: AppRuntime;
   private readonly installer!: AppInstaller;
   private readonly maintenanceGate = new MaintenanceGate();
-  private readonly gui: AppGuiProjection;
+  private readonly sourceMutations = new AppMutationCoordinator();
+  private readonly lifecycleMutations = new AppMutationCoordinator();
+  private readonly guiRuntime: AppGuiRuntimeService;
   private readonly dataMigrations: AppDataMigrations;
   private readonly packages: AppPackageController;
   private readonly serverLifecycle: ReturnType<typeof composeServerLifecycle>;
@@ -132,28 +141,24 @@ export class AppsService {
   private managementLeases: AppManagementLeaseRegistry | null = null;
   private extensions: AppExtensionIntegration | null = null;
   private buildParticipants: AppGenerationBuildParticipantRegistry | null = null;
+  private navigationService: AppNavigationService | null = null;
   private locale: () => AppLocale = () => "en";
 
   get lifecycleGate() {
     return this.admission.app;
   }
-
   get usageRegistry() {
     return this.admission.usage;
   }
-
   get gatewayRequestLeases() {
     return this.gateway.requestLeases;
   }
-
   get attachments() {
     return this.attachmentFence;
   }
-
   get configs() {
     return this.packages.configs;
   }
-
   constructor(
     readonly userData: string,
     guardianArgs: readonly string[] = defaultGuardianArgs(),
@@ -162,11 +167,16 @@ export class AppsService {
     ) => Promise<AgentToolInventory | null>
   ) {
     this.store = new AppStore(userData);
+    this.store.configureAppGuiCompiler(createAppGuiBuildService(userData));
     /* 唯一的 status 发源地：AppStore 每提交一条记录就在这里转成 renderer 事件。
        IPC、工厂 provisioning、installer、runtime、启动自愈走的是同一个闸口，
        没有哪条写入路径需要（也没有资格）自己记得补一条广播。 */
     this.store.watch((record) =>
-      this.emit({ appId: record.id, type: "status", record })
+      this.emit({
+        appId: record.id,
+        type: "status",
+        record: this.projectRecord(record),
+      })
     );
     this.baseGuiGrants = new BaseGuiGrantStore(userData);
     this.store.configureBaseGuiGrants(this.baseGuiGrants);
@@ -187,20 +197,32 @@ export class AppsService {
       this.gatewayWarning = message;
       this.emit({ type: "runtime-warning", message });
     });
-    this.gateway.configureGenerationResolver((appId) => {
+    this.gateway.configureGenerationResolver((appId, binding) => {
       const record = this.store.get(appId);
       const active = record?.generationBinding.active;
-      return record && active
-        ? {
-            generationId: active.generationId,
-            lifecycleRevision: record.lifecycleRevision,
-          }
-        : null;
+      if (!record || !active) return false;
+      if (active.generationId === binding.generationId) {
+        return record.lifecycleRevision === binding.lifecycleRevision;
+      }
+      if (this.guiRuntime.isRoutableStagingBinding(appId, binding)) return true;
+      return (
+        binding.lifecycleRevision < record.lifecycleRevision &&
+        record.generationBinding.drainingGenerationIds.includes(
+          binding.generationId
+        ) &&
+        record.generations.some(
+          (generation) => generation.generationId === binding.generationId
+        )
+      );
     });
-    this.gui = new AppGuiProjection(
+    this.guiRuntime = new AppGuiRuntimeService(
+      userData,
       this.store,
       this.gateway,
-      this.baseGuiGrants
+      this.baseGuiGrants,
+      this.lifecycleGate,
+      () => this.window,
+      (appId) => this.emit({ appId, type: "gui" })
     );
     this.designIntegration = new AppDesignIntegration(
       userData,
@@ -228,7 +250,7 @@ export class AppsService {
     );
     this.design = this.designIntegration.service;
     this.store.configureGenerationCutover((appId, operation) =>
-      this.withGuiCutover(appId, operation)
+      this.guiRuntime.cutover(appId, operation)
     );
     this.dataMigrations = new AppDataMigrations(this.store);
     this.agentOperations = new AppAgentOperations({
@@ -288,7 +310,8 @@ export class AppsService {
       (record, details) =>
         this.agentOperations.confirmExtensions(record, details),
       this.maintenanceGate,
-      (appId) => this.agentOperations.readLogTail(appId)
+      (appId) => this.agentOperations.readLogTail(appId),
+      this.sourceMutations
     );
     this.turnCoordinator = new AppTurnCoordinator({
       userData,
@@ -300,6 +323,9 @@ export class AppsService {
       instructionContributors: this.instructionContributors,
       grantAuthority: () => this.requireGrantAuthority(),
       extensions: () => this.extensions,
+      sourceMutations: this.sourceMutations,
+      editAppId: (conversationId) => this.chatSlots?.editAppIdOf(conversationId),
+      reconcileEditSource: (appId) => this.installer.reconcileSourceHeld(appId),
       emit: (event) => this.emit(event),
     });
     this.deleteCoordinator = new AppDeleteCoordinator({
@@ -322,7 +348,8 @@ export class AppsService {
       extensions: () => this.extensions,
       buildParticipants: () => this.buildParticipants,
       stop: (appId) => this.stopApp(appId),
-      emitRemoved: (appId) => this.emit({ appId, type: "removed" }),
+      closeGuiSideEffects: (appId) => this.guiRuntime.closeAppSideEffects(appId),
+      deletePreferences: (appId) => this.guiRuntime.deletePreferences(appId),
     });
     this.editTurnLifecycle = new AppEditTurnLifecycle({
       store: this.store,
@@ -332,12 +359,14 @@ export class AppsService {
       syncGui: (appId) => this.syncBaseGuiRoute(appId),
       emit: (event) => this.emit(event),
       invalidateSkills: () => this.invalidateSkills?.(),
+      settleSourceMutation: (requestId, task) =>
+        this.turnCoordinator.settleSourceMutation(requestId, task),
     });
   }
 
   configureLocale(locale: () => AppLocale) { this.locale = locale; }
-
   async initialize() {
+    if ((await this.store.inspectAuthority()) === "degraded-corrupt") return "degraded-corrupt";
     await Promise.all([
       this.buildLedger.initialize(),
       this.referenceJournal.initialize(),
@@ -345,16 +374,20 @@ export class AppsService {
       this.dataCutovers.initialize(),
       this.dataArchives.initialize(),
       this.baseGuiGrants.initialize(),
+      this.store.initializeAppGuiCompiler(),
       this.designIntegration.initialize(),
+      this.guiRuntime.initialize(),
     ]);
     await this.serverCustody.initialize();
     await this.store.load();
+    if (this.store.authorityState() === "degraded-corrupt") return "degraded-corrupt";
+    await this.guiRuntime.recoverCutovers();
     await this.serverLifecycle.reconcile();
     await this.gateway.start();
     await this.installer.initialize();
     await this.store.normalizeStartupStates();
+    return this.store.authorityState();
   }
-
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
     registerAppsIpc(window, rendererUrl, {
@@ -377,24 +410,22 @@ export class AppsService {
         originWithoutStart(this.store, this.runtime, appId),
       extensionStatus: (appId) => this.extensionStatus(appId),
       capabilities: (appId) => this.capabilities(appId),
-      resolveExtensionConsent: (appId, granted) =>
-        this.store.resolvePendingConsent(appId, granted),
-      resolveBaseGuiConsent: (appId, granted, hostActions, scopes) =>
-        this.store.resolvePendingBaseGuiConsent(
-          appId,
-          granted,
-          hostActions,
-          scopes
+      authorizeStudioAccess: (appId) =>
+        this.runAppLifecycleMutation(appId, () => this.authorizeStudioAccess(appId)),
+      declineStudioAccess: (appId) =>
+        this.runAppLifecycleMutation(appId, () =>
+          declineStudioAccess({ appId, store: this.store })
         ),
-      revokeBaseGuiAccess: (appId) => this.revokeBaseGuiAccess(appId),
+      revokeStudioAccess: (appId) =>
+        this.runAppLifecycleMutation(appId, () =>
+          this.withGuiCutover(appId, () => this.store.revokeStudioAccess(appId))
+        ),
+      studioSurfaceReady: (record) =>
+        this.projectRecord(record).studioSurfaceReady === true,
       revokeExtensionGrant: async (appId) => {
         await revokeExtensionGrant(this.store, this.extensions, appId);
         return this.extensionStatus(appId);
       },
-      promoteGeneration: (appId, revision) =>
-        this.withGuiCutover(appId, () =>
-          this.store.promotePendingGeneration(appId, revision)
-        ),
       rebuildExtensionGeneration: (appId) =>
         rebuildExtensionGeneration(this.store, appId),
       remove: (appId, mode, requestId) => this.remove(appId, mode, requestId),
@@ -408,8 +439,21 @@ export class AppsService {
         if (!this.chatSlots) throw new Error("App chat slots 尚未初始化");
         return this.chatSlots.ensure(input);
       },
-      guiInfo: (input) => this.guiInfo(input),
-      releaseGuiSurface: (input) => this.releaseGuiSurface(input),
+      listUseHistory: (input) => this.requireNavigation().listAppUseHistory(input),
+      openUseChat: (input) => this.requireNavigation().openAppUseChat(input),
+      newUseChat: (appId, requestId) =>
+        this.requireNavigation().newAppUseChat(appId, requestId),
+      openEditor: (input) => this.requireNavigation().openAppEditor(input),
+      openEditorChat: (input) =>
+        this.requireNavigation().openAppEditorChat(input),
+      hideEditor: (appId) => this.requireNavigation().hideAppEditor(appId),
+      guiInfo: (input, context) => this.guiInfo(input, context),
+      guiReady: (input) => this.guiReady(input),
+      releaseGuiSurface: (input, context) => this.releaseGuiSurface(input, context),
+      fileExportBegin: (input) => this.guiRuntime.beginExport(input),
+      fileExportWrite: (input) => this.guiRuntime.writeExport(input),
+      fileExportFinalize: (input) => this.guiRuntime.finalizeExport(input),
+      fileExportCancel: (input) => this.guiRuntime.cancelExport(input),
       importDesignCanvas: (surfaceLeaseId, file) =>
         this.designIntegration.importCanvas(surfaceLeaseId, file),
       listDesignImportCandidates: (surfaceLeaseId) =>
@@ -432,7 +476,6 @@ export class AppsService {
       },
     });
   }
-
   resolveApp(appId: string) { return resolveRunnableApp(this.store, appId); }
   resolveAppForBinding(appId: string) { return resolveBindableApp(this.store, appId); }
   resolveAppData(appId: string) { return this.designIntegration.resolveAppData(appId); }
@@ -445,11 +488,7 @@ export class AppsService {
   ) {
     this.designIntegration.configureWorkspace(resolver, getConversationIncarnation);
   }
-
-  migrateDesignProjectWorkspace(evidence: DesignProjectRebindEvidence) {
-    return this.designIntegration.migrateProjectWorkspace(evidence);
-  }
-
+  migrateDesignProjectWorkspace(evidence: DesignProjectRebindEvidence) { return this.designIntegration.migrateProjectWorkspace(evidence); }
   async armDesignTurn(input: {
     chatId: string;
     conversationIncarnationId: string;
@@ -458,11 +497,7 @@ export class AppsService {
   }) {
     return this.designIntegration.armTurn(input);
   }
-
-  settleDesignTurn(chatId: string, incarnationId: string, turnId: string) {
-    return this.designIntegration.settleTurn(chatId, incarnationId, turnId);
-  }
-
+  settleDesignTurn(chatId: string, incarnationId: string, turnId: string) { return this.designIntegration.settleTurn(chatId, incarnationId, turnId); }
   configureSaveAsApp(
     service: SaveAsAppService,
     options: {
@@ -479,11 +514,9 @@ export class AppsService {
     });
     this.invalidateSkills = options.invalidateSkills;
   }
-
   configureAppDelete(service: AppDeleteService) {
     if (this.appDeleteService) throw new Error("App delete 已配置"); this.appDeleteService = service;
   }
-
   async markDeleteStalled(appId: string, message: string) {
     if (!this.store.get(appId)) return;
     await this.store.update(appId, (value) => ({
@@ -492,7 +525,6 @@ export class AppsService {
       lastError: { phase: "delete", message },
     }));
   }
-
   configureChatSlots(service: AppChatSlots) {
     if (this.chatSlots) throw new Error("App chat slots 已配置"); this.chatSlots = service;
   }
@@ -502,28 +534,25 @@ export class AppsService {
   configureAttachmentFence(fence: AppAttachmentFence) {
     if (this.attachmentFence) throw new Error("App attachment fence 已配置"); this.attachmentFence = fence;
   }
-
   configureSurfaceLeases(registry: AppAttachmentSurfaceLeaseRegistry) {
     if (this.surfaceLeases) throw new Error("App surface leases 已配置");
     this.surfaceLeases = registry;
     this.designIntegration.configureSurfaceLeases(registry);
+    this.guiRuntime.configureSurfaceLeases(registry);
     this.gateway.configureBaseGuiSurfaceValidator((surfaceLeaseId) =>
       registry.describe(surfaceLeaseId)
     );
   }
-
   configureManagementLeases(registry: AppManagementLeaseRegistry) {
     if (this.managementLeases) throw new Error("App management leases 已配置");
     this.managementLeases = registry;
   }
-
   describeManagementLease(id: string) { return this.requireManagementLeases().describe(id); }
   effectiveGrant(chatId: string, appId: string) {
     return this.requireGrantAuthority().effectiveGrant(chatId, appId);
   }
   describeSurface(id: string) { return this.requireSurfaceLeases().describe(id); }
   releaseWindowSurfaces(windowId: string) { this.requireSurfaceLeases().revokeWindow(windowId); }
-
   configureExtensions(
     integration: AppExtensionIntegration,
     participants: AppGenerationBuildParticipantRegistry
@@ -540,9 +569,7 @@ export class AppsService {
     this.store.configureExtensionComposition(participants, integration.port);
     this.packages.configureExtensions(integration);
   }
-
   reconcileThirdPartyMcpPlans(ids: ReadonlySet<string>) { return this.thirdPartyMcpPlans.reconcile(ids); }
-
   extensionStatus(appId: string): AppExtensionStatus {
     const record = this.requireRecord(appId);
     if (!this.extensions) throw new Error("App extension integration 尚未配置");
@@ -553,7 +580,6 @@ export class AppsService {
       this.extensions.contextForApp(appId)
     );
   }
-
   async capabilities(appId: string): Promise<AppCapabilitiesSnapshot> {
     const [snapshot, record] = await Promise.all([
       this.agentOperations.capabilities(appId),
@@ -567,15 +593,27 @@ export class AppsService {
       ...snapshot,
       baseGuiCapability: {
         requested,
-        effective: this.gui.liveBinding(appId)?.baseCapabilities ?? [],
+        effective: this.guiRuntime.liveBinding(appId)?.baseCapabilities ?? [],
       },
     };
   }
-
   markChatCanonical(appId: string, role: "edit" | "use", chatId: string) {
     return this.chatSlots?.markCanonical(appId, role, chatId) ?? Promise.resolve();
   }
-
+  configureNavigation(service: AppNavigationService) {
+    if (this.navigationService) throw new Error("App navigation 已配置");
+    this.navigationService = service;
+  }
+  navigation() {
+    return this.requireNavigation();
+  }
+  runAppLifecycleMutation<T>(appId: string, operation: () => Promise<T>) {
+    return this.lifecycleMutations.run(appId, operation);
+  }
+  private requireNavigation() {
+    if (!this.navigationService) throw new Error("App navigation 尚未初始化");
+    return this.navigationService;
+  }
   configurePackageFlows(importer: BaseAppImporter, shareFlow: ShareFlow) {
     this.packages.configure(importer, shareFlow);
     this.designIntegration.configureFactory({
@@ -590,58 +628,45 @@ export class AppsService {
 
   ensureDesignFactory() { return this.designIntegration.ensureFactory(); }
   resetDesignFactoryToPin() { return this.designIntegration.ensureFactory(true); }
-
+  finalizeDelete(appId: string) {
+    return this.designIntegration.finalizeFactoryDeletion(appId);
+  }
+  emitDeleteProgress(appId: string) {
+    this.emit({ appId, type: "progress", step: "", operation: "delete" });
+  }
+  emitRemoval(appId: string) {
+    this.emit({ appId, type: "removed" });
+  }
   resolveInteractiveAgent(appId: string) {
     const record = this.store.get(appId);
     return record && record.state !== "delete-failed" ? record.agent : undefined;
   }
-
   resolveAgentEnvironment(appId: string) {
     const record = this.requireRecord(appId);
     return this.packages.environment(appId, record);
   }
-
   isProjectAvailable(appId: string) {
     const record = this.store.get(appId); return Boolean(record && record.state !== "delete-failed");
   }
   listAppDirs() { return this.store.list().map((record) => record.dir); }
-
-  async onAppTurnCompleted(
-    appId: string,
-    conversationId: string,
-    requestId = ""
-  ) {
+  async onAppTurnCompleted(appId: string, conversationId: string, requestId = "") {
     return this.editTurnLifecycle.completed(appId, conversationId, requestId);
   }
-
-  async onAppTurnFailed(
-    appId: string,
-    conversationId: string,
-    requestId = ""
-  ) {
+  async onAppTurnFailed(appId: string, conversationId: string, requestId = "") {
     return this.editTurnLifecycle.failed(appId, conversationId, requestId);
   }
-
   readReadme(appId: string) { return this.packages.readReadme(this.requireRecord(appId)); }
   isAllowedOrigin(origin: string) { return this.gateway.isRegisteredOrigin(origin); }
   isBaseGuiOrigin(origin: string) { return this.gateway.isBaseGuiOrigin(origin); }
   isAllowedBaseGuiDocumentUrl(value: string) { return this.gateway.isAllowedBaseGuiDocumentUrl(value); }
-  configureGuiApi(port: GuiBasePort) { this.gui.configureApi(port); }
-  configureWorkspacePreview(port: WorkspacePreviewPort) { this.gui.configureWorkspacePreview(port); }
+  configureGuiApi(port: GuiBasePort) { this.guiRuntime.configureApi(port); }
+  configureWorkspacePreview(port: WorkspacePreviewPort) { this.guiRuntime.configureWorkspacePreview(port); }
   configureAppDataMigrations(port: AppDataMigrationPort) { this.dataMigrations.configure(port); }
   reconcileAppDataMigrations() { return this.dataMigrations.reconcileAll(); }
-
   async syncBaseGuiRoute(appId: string) {
-    let migrationFailure: unknown;
-    await this.dataMigrations.reconcile(appId).catch((cause) => {
-      migrationFailure = cause;
-    });
-    const result = await this.gui.sync(appId, { resetCapability: true });
-    if (migrationFailure) throw migrationFailure;
-    return result;
+    return this.guiRuntime.sync(appId, () => this.dataMigrations.reconcile(appId));
   }
-
-  async guiInfo(input: AppGuiInfoInput): Promise<AppGuiInfo> {
+  async guiInfo(input: AppGuiInfoInput, renderer: TrustedRendererContext): Promise<AppGuiInfo> {
     const surface = await this.requireSurfaceLeases().describe(
       input.appSurfaceLeaseId
     );
@@ -650,37 +675,42 @@ export class AppsService {
         status: 401,
       });
     }
-    let migrationError = "";
-    await this.dataMigrations.reconcile(input.appId).catch((cause) => {
-      migrationError = asError(cause).message;
-    });
-    const info = await this.gui.info(input);
-    return migrationError ? { ...info, error: migrationError } : info;
+    return this.guiRuntime.info(input, () => this.dataMigrations.reconcile(input.appId), renderer);
   }
-
-  releaseGuiSurface(input: AppGuiInfoInput) { return this.gui.release(input); }
+  async releaseGuiSurface(input: AppGuiInfoInput, renderer: TrustedRendererContext) {
+    if (!this.guiRuntime.rendererOwns(input, renderer)) return;
+    await this.guiRuntime.release(input);
+  }
+  guiReady(input: AppGuiReadyInput) { return this.guiRuntime.ready(input); }
   getReactGrabInjection() { return this.gateway.getServerInjectionJavascript(); }
+  applyCandidateCompatibility(matrix: Parameters<typeof applyCandidateCompatibility>[2]) { return applyCandidateCompatibility(this.store, this.guiRuntime, matrix); }
 
   async shutdown() {
+    this.turnCoordinator.releaseAllSourceMutations();
     await this.installer.shutdown();
+    await this.lifecycleMutations.drain();
     await this.runtime.shutdown();
     await this.serverCustody.close();
     await this.processCustody.closeAndFlush();
     await this.dataCutovers.closeAndFlush();
     await this.designIntegration.closeAndFlush();
+    await this.guiRuntime.shutdown();
   }
-
   closeDeleteAdmission(appId: string) { return this.deleteCoordinator.closeAdmission(appId); }
   revokeDeleteCapabilities(appId: string) { return this.deleteCoordinator.revokeCapabilities(appId); }
   settleDeleteBuilds(appId: string) { return this.deleteCoordinator.settleBuilds(appId); }
   generationDrainCounts(appId: string, generationId: string) {
     return this.deleteCoordinator.generationDrainCounts(appId, generationId);
   }
+  configureGenerationRetirement(
+    proof: (input: { appId: string; generationId: string }) => Promise<unknown>
+  ) {
+    this.guiRuntime.configureGenerationRetirement(proof);
+  }
   settleDeleteData(record: AppRecord, mode: RemoveAppMode) {
     return this.deleteCoordinator.settleData(record, mode);
   }
   removeBaseShell(record: AppRecord) { return this.deleteCoordinator.removeBaseShell(record); }
-
   acquireTurnApps(input: {
     conversationId: string;
     requestId: string;
@@ -694,40 +724,49 @@ export class AppsService {
   }) {
     return this.turnCoordinator.acquire(input);
   }
-
   turnExtensionSkills(id: string) { return this.turnCoordinator.skills(id); }
   turnExtensionMcpServers(id: string) { return this.turnCoordinator.mcpServers(id); }
   turnCustodyDependencies(id: string) { return this.turnCoordinator.custodyDependencies(id); }
   isTurnReferenceActive(id: string) { return this.referenceJournal.isActive(id); }
   isTurnPlanActive(id: string) { return this.thirdPartyMcpPlans.isActive(id); }
   releaseTurnApps(id: string) { return this.turnCoordinator.release(id); }
-
-  private withGuiCutover<T>(appId: string, operation: () => Promise<T>) {
-    return withGuiCutover(
-      {
-        runExclusive: (target, run) => this.lifecycleGate.run(target, run),
-        gateway: this.gateway,
-        gui: this.gui,
-      },
-      appId,
-      operation
-    );
+  /* ============================================================
+   * 派生字段只在这一处补
+   *
+   * record 到达 renderer 只有两条路：`list` 的快照与 `status` 事件。两条
+   * 路必须补同一份投影，否则界面会在「刚授权完」与「下一条事件」之间来回
+   * 翻脸——而那正是同一个事实被算了两遍的经典症状。
+   * ============================================================ */
+  private projectRecord(record: AppRecord): AppRecordProjection {
+    return {
+      ...record,
+      studioSurfaceReady: studioSurfaceReady(
+        record,
+        record.generationBinding.active && this.baseGuiGrants
+          ? this.baseGuiGrants.projection(
+              record.id,
+              record.generationBinding.active.generationId
+            )
+          : null
+      ),
+    };
   }
 
-  private revokeBaseGuiAccess(appId: string) {
-    return revokeBaseGuiAccess({
+  private withGuiCutover<T>(appId: string, operation: () => Promise<T>) {
+    return this.guiRuntime.cutover(appId, operation);
+  }
+  /** 一次动作批准同一 frozen generation 的全部声明，并在 promotion 前落 Studio grant。 */
+  private authorizeStudioAccess(appId: string) {
+    return authorizeStudioAccess({
       appId,
       store: this.store,
-      grants: this.baseGuiGrants,
       cutover: (operation) => this.withGuiCutover(appId, operation),
     });
   }
-
   private async stopApp(appId: string) {
     await this.runtime.stop(appId);
-    await this.gui.revoke(appId);
+    await this.guiRuntime.revoke(appId);
   }
-
   private remove(appId: string, mode?: RemoveAppMode, requestId = "") {
     return removeApp({
       appId,
@@ -736,49 +775,33 @@ export class AppsService {
       store: this.store,
       maintenanceGate: this.maintenanceGate,
       deleteService: this.appDeleteService,
-      design: this.design,
-      invalidateSkills: () => this.invalidateSkills?.(),
       markDeleteStalled: (message) => this.markDeleteStalled(appId, message),
     });
   }
-
   private requireGrantAuthority() {
     if (!this.grantAuthority) throw new Error("App grant authority 尚未初始化");
     return this.grantAuthority;
   }
-
   private requireSurfaceLeases() {
     if (!this.surfaceLeases) throw new Error("App surface leases 尚未初始化");
     return this.surfaceLeases;
   }
-
   private requireManagementLeases() {
     if (!this.managementLeases) {
       throw new Error("App management leases 尚未初始化");
     }
     return this.managementLeases;
   }
-
   private requireRecord(appId: string) {
     const record = this.store.get(appId);
     if (!record) throw new Error("App 不存在");
     return record;
   }
-
   private emit(event: AppInstallEvent) {
-    const designTransition =
-      event.type === "status" && event.record.presetId === DESIGN_PRESET_ID;
-    if (designTransition) this.invalidateSkills?.();
-    /* 事件按归属分发,与 chats/projects 同规格:主窗收全量,App 窗只收自己那只
-       App 的事件。status 事件整条 AppRecord(dir/manifest/grants/generations)
-       随行,绝不能向每个 App 窗广播所有 App 的记录;无 appId 的全局事件
-       (agent-visibility/runtime-warning)只落主窗。 */
-    let delivered = rendererEventBus.toRole("main", APPS_CHANNEL.event, event);
-    if ("appId" in event) {
-      delivered += rendererEventBus.toApp(event.appId, APPS_CHANNEL.event, event);
-    }
-    if (!delivered && this.window && !this.window.isDestroyed()) {
-      this.window.webContents.send(APPS_CHANNEL.event, event);
-    }
+    publishAppEvent({
+      event,
+      window: this.window,
+      invalidateSkills: this.invalidateSkills,
+    });
   }
 }

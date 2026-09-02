@@ -1,10 +1,22 @@
 /**
- * [INPUT]: dependence when not in operation; The first is the installation of five local directories
- * [OUTPUT]: Provides Sidebar Projects text in five languages: grouping actions, line menu, local removal/condition archiving, Project App authorization, 8 colors, 30 icons and a look-alike)
- * [POS]: Projects feature catalog of shared/i18n/locales; The color/icon name is defined by the lib/project-appearance, which leaves only the id and class name
+ * [INPUT]: No runtime dependencies; defines five isomorphic locale objects for Sidebar Projects
+ * [OUTPUT]: Provides Sidebar Projects text in five languages: grouping actions, App Edit hiding, Reveal failures, local removal/conditional archiving, 8 colors, 30 icons and appearance controls
+ * [POS]: Projects feature catalog in shared/i18n/locales; color and icon IDs are defined by lib/project-appearance
  */
 
 export const projectsEn = {
+  provider: {
+    loadFailed: "Failed to load Projects: {{message}}",
+    addFailed: "Failed to add Project: {{message}}",
+    appProjectFailed: "Failed to create App Project: {{message}}",
+    renameFailed: "Failed to rename Project: {{message}}",
+    appearanceFailed: "Failed to save Project appearance: {{message}}",
+    detachFailed: "Failed to remove local Project: {{message}}",
+    revealFailed: "Failed to show Project in the system file manager: {{message}}",
+    releaseFailed: "Failed to move chats back to the root: {{message}}",
+    sortFailed: "Failed to save Project sorting: {{message}}",
+    coordinatorUnavailable: "The Project import coordinator is unavailable.",
+  },
   sortAria: "Sort Projects",
   sortLastUpdated: "Last updated",
   sortManual: "Manual order",
@@ -17,8 +29,6 @@ export const projectsEn = {
   missingFolder: "Project folder is missing: {{dir}}",
   editBadge: "Edit",
   baseTag: "Base",
-  chooseWorkspace: "Choose working folder…",
-  changeWorkspace: "Change working folder…",
   rename: "Rename",
   renameTitle: "Rename Project",
   renameDescription:
@@ -37,33 +47,11 @@ export const projectsEn = {
     "This Project owns a Project Base and shared group Memory, so it can't be removed safely. Archive it instead to keep all of its data intact.",
   archiveInsteadConfirm: "Archive project",
   archive: "Archive",
+  hideAppProject: "Hide from Projects",
   archiveTitle: "Archive Project?",
   archiveDescription:
     "“{{name}}” and its {{chats}} chats will leave the sidebar. Restore or delete them permanently in Settings › Archive; external and App working folders are never deleted.",
   archivePinned: "Pinned Bases archived with it: {{bases}}.",
-  grants: {
-    entry: "App permissions…",
-    title: "Project App permissions",
-    description:
-      "A grant only changes what member Chats may use; it never opens a tab, starts an App, or reads a member Chat's Agent backend.",
-    summary: "Data: {{level}} · Agent delegation: {{delegation}}",
-    dataNone: "none",
-    delegationOn: "on",
-    delegationOff: "off",
-    disabledInherit: "Inheritance explicitly disabled",
-    revoke: "Revoke",
-    allowRead: "Allow read",
-    allowRowWrite: "Allow row write",
-    delegationEnable: "Enable Agent delegation",
-    delegationDisable: "Disable Agent delegation",
-    disableInherit: "Disable inheritance",
-    disabledExplicit: "Inheritance disabled",
-    empty: "No ready Apps.",
-    listFailed: "Failed to read the App list",
-    grantFailed: "Failed to grant Project App access",
-    revokeFailed: "Failed to revoke Project App access",
-    disableFailed: "Failed to disable Project App inheritance",
-  },
   appearance: {
     trigger: "{{name}} appearance",
     colorGroup: "Project color",
@@ -117,6 +105,18 @@ export const projectsEn = {
 type ProjectsCatalog = typeof projectsEn;
 
 export const projectsZhCN: ProjectsCatalog = {
+  provider: {
+    loadFailed: "Projects 加载失败：{{message}}",
+    addFailed: "Project 添加失败：{{message}}",
+    appProjectFailed: "App Project 建立失败：{{message}}",
+    renameFailed: "Project 重命名失败：{{message}}",
+    appearanceFailed: "Project 外观保存失败：{{message}}",
+    detachFailed: "Project 本地移除失败：{{message}}",
+    revealFailed: "无法在系统文件管理器中显示 Project：{{message}}",
+    releaseFailed: "聊天移回根级失败：{{message}}",
+    sortFailed: "Project 排序保存失败：{{message}}",
+    coordinatorUnavailable: "Project 导入协调器尚未挂载。",
+  },
   sortAria: "Project 排序",
   sortLastUpdated: "最近更新",
   sortManual: "手动排序",
@@ -129,8 +129,6 @@ export const projectsZhCN: ProjectsCatalog = {
   missingFolder: "Project 文件夹已丢失：{{dir}}",
   editBadge: "编辑",
   baseTag: "Base",
-  chooseWorkspace: "选择工作目录…",
-  changeWorkspace: "更改工作目录…",
   rename: "重命名",
   renameTitle: "重命名 Project",
   renameDescription: "只修改应用内显示名称，不改动磁盘文件夹。",
@@ -148,33 +146,11 @@ export const projectsZhCN: ProjectsCatalog = {
     "此 Project 拥有 Project Base 和共享的 group Memory，无法安全移除。改为归档可完整保留全部数据。",
   archiveInsteadConfirm: "归档 Project",
   archive: "归档",
+  hideAppProject: "从 Projects 隐藏",
   archiveTitle: "归档 Project？",
   archiveDescription:
     "「{{name}}」及其 {{chats}} 个聊天将从侧栏撤下。可在 Settings › Archive 恢复或永久删除；外部/App 工作目录永不删除。",
   archivePinned: "一并归档的 pinned Base：{{bases}} 个。",
-  grants: {
-    entry: "App 权限…",
-    title: "Project App 权限",
-    description:
-      "授权只改变成员 Chat 的可用候选与能力；不会自动打开 tab、启动 App，或读取成员 Chat 的 Agent 后端。",
-    summary: "数据：{{level}} · Agent 委托：{{delegation}}",
-    dataNone: "无",
-    delegationOn: "已开启",
-    delegationOff: "未开启",
-    disabledInherit: "已显式关闭继承",
-    revoke: "撤销",
-    allowRead: "允许读取",
-    allowRowWrite: "允许行写入",
-    delegationEnable: "开启 Agent 委托",
-    delegationDisable: "关闭 Agent 委托",
-    disableInherit: "显式关闭继承",
-    disabledExplicit: "已显式关闭",
-    empty: "没有 ready App。",
-    listFailed: "App 列表读取失败",
-    grantFailed: "Project App 授权失败",
-    revokeFailed: "Project App 撤销失败",
-    disableFailed: "Project App 显式关闭失败",
-  },
   appearance: {
     trigger: "{{name}} 外观",
     colorGroup: "Project 颜色",
@@ -226,6 +202,18 @@ export const projectsZhCN: ProjectsCatalog = {
 };
 
 export const projectsJa: ProjectsCatalog = {
+  provider: {
+    loadFailed: "Project の読み込みに失敗しました：{{message}}",
+    addFailed: "Project の追加に失敗しました：{{message}}",
+    appProjectFailed: "App Project の作成に失敗しました：{{message}}",
+    renameFailed: "Project の名前変更に失敗しました：{{message}}",
+    appearanceFailed: "Project の外観を保存できませんでした：{{message}}",
+    detachFailed: "ローカル Project の削除に失敗しました：{{message}}",
+    revealFailed: "Project をシステムのファイルマネージャーに表示できませんでした：{{message}}",
+    releaseFailed: "Chat をルートへ戻せませんでした：{{message}}",
+    sortFailed: "Project の並び順を保存できませんでした：{{message}}",
+    coordinatorUnavailable: "Project インポートコーディネーターを利用できません。",
+  },
   sortAria: "Project の並び替え",
   sortLastUpdated: "最終更新順",
   sortManual: "手動の並び順",
@@ -238,8 +226,6 @@ export const projectsJa: ProjectsCatalog = {
   missingFolder: "Project フォルダーが見つかりません：{{dir}}",
   editBadge: "編集",
   baseTag: "Base",
-  chooseWorkspace: "作業フォルダーを選択…",
-  changeWorkspace: "作業フォルダーを変更…",
   rename: "名前を変更",
   renameTitle: "Project の名前を変更",
   renameDescription:
@@ -258,33 +244,11 @@ export const projectsJa: ProjectsCatalog = {
     "この Project は Project Base と共有 group Memory を所有しているため、安全に削除できません。代わりにアーカイブすると、すべてのデータがそのまま保持されます。",
   archiveInsteadConfirm: "Project をアーカイブ",
   archive: "アーカイブ",
+  hideAppProject: "Projects から非表示",
   archiveTitle: "Project をアーカイブしますか？",
   archiveDescription:
     "「{{name}}」と {{chats}} 件のチャットが Sidebar から外れます。Settings › Archive で復元または完全削除できます。外部および App の作業フォルダーは削除されません。",
   archivePinned: "一緒にアーカイブされる固定 Base：{{bases}} 件。",
-  grants: {
-    entry: "App の権限…",
-    title: "Project App の権限",
-    description:
-      "許可はメンバー Chat が使える候補と能力だけを変えます。タブを開いたり App を起動したり、メンバー Chat の Agent バックエンドを読むことはありません。",
-    summary: "データ：{{level}} ・Agent 委任：{{delegation}}",
-    dataNone: "なし",
-    delegationOn: "オン",
-    delegationOff: "オフ",
-    disabledInherit: "継承を明示的に無効化済み",
-    revoke: "取り消す",
-    allowRead: "読み取りを許可",
-    allowRowWrite: "行の書き込みを許可",
-    delegationEnable: "Agent 委任を有効化",
-    delegationDisable: "Agent 委任を無効化",
-    disableInherit: "継承を明示的に無効化",
-    disabledExplicit: "明示的に無効",
-    empty: "ready な App がありません。",
-    listFailed: "App 一覧を読み込めませんでした",
-    grantFailed: "Project App の許可に失敗しました",
-    revokeFailed: "Project App の取り消しに失敗しました",
-    disableFailed: "Project App の継承無効化に失敗しました",
-  },
   appearance: {
     trigger: "{{name}} の外観",
     colorGroup: "Project の色",
@@ -336,6 +300,18 @@ export const projectsJa: ProjectsCatalog = {
 };
 
 export const projectsFr: ProjectsCatalog = {
+  provider: {
+    loadFailed: "Échec du chargement des Projects : {{message}}",
+    addFailed: "Échec de l’ajout du Project : {{message}}",
+    appProjectFailed: "Échec de la création du Project de l’App : {{message}}",
+    renameFailed: "Échec du renommage du Project : {{message}}",
+    appearanceFailed: "Échec de l’enregistrement de l’apparence du Project : {{message}}",
+    detachFailed: "Échec de la suppression du Project local : {{message}}",
+    revealFailed: "Impossible d’afficher le Project dans le gestionnaire de fichiers système : {{message}}",
+    releaseFailed: "Échec du déplacement des chats vers la racine : {{message}}",
+    sortFailed: "Échec de l’enregistrement du tri des Projects : {{message}}",
+    coordinatorUnavailable: "Le coordinateur d’importation de Project est indisponible.",
+  },
   sortAria: "Trier les Projects",
   sortLastUpdated: "Dernière mise à jour",
   sortManual: "Ordre manuel",
@@ -348,8 +324,6 @@ export const projectsFr: ProjectsCatalog = {
   missingFolder: "Dossier du Project introuvable : {{dir}}",
   editBadge: "Édition",
   baseTag: "Base",
-  chooseWorkspace: "Choisir un dossier de travail…",
-  changeWorkspace: "Changer de dossier de travail…",
   rename: "Renommer",
   renameTitle: "Renommer le Project",
   renameDescription:
@@ -368,33 +342,11 @@ export const projectsFr: ProjectsCatalog = {
     "Ce Project possède une Project Base et une mémoire de groupe partagée ; il ne peut pas être retiré en toute sécurité. Archivez-le plutôt pour conserver toutes ses données.",
   archiveInsteadConfirm: "Archiver le Project",
   archive: "Archiver",
+  hideAppProject: "Masquer dans Projects",
   archiveTitle: "Archiver le Project ?",
   archiveDescription:
     "« {{name}} » et ses {{chats}} chats quitteront la Sidebar. Restaurez-les ou supprimez-les définitivement dans Settings › Archive ; les dossiers de travail externes ou liés à une App ne sont jamais supprimés.",
   archivePinned: "Bases épinglées archivées avec lui : {{bases}}.",
-  grants: {
-    entry: "Permissions des Apps…",
-    title: "Permissions des Apps du Project",
-    description:
-      "Une autorisation ne change que ce que les Chats membres peuvent utiliser ; elle n’ouvre jamais d’onglet, ne démarre pas d’App et ne lit pas le backend Agent d’un Chat membre.",
-    summary: "Données : {{level}} · délégation Agent : {{delegation}}",
-    dataNone: "aucune",
-    delegationOn: "activée",
-    delegationOff: "désactivée",
-    disabledInherit: "Héritage explicitement désactivé",
-    revoke: "Révoquer",
-    allowRead: "Autoriser la lecture",
-    allowRowWrite: "Autoriser l’écriture de lignes",
-    delegationEnable: "Activer la délégation Agent",
-    delegationDisable: "Désactiver la délégation Agent",
-    disableInherit: "Désactiver l’héritage",
-    disabledExplicit: "Explicitement désactivé",
-    empty: "Aucune App prête.",
-    listFailed: "Échec de la lecture de la liste des Apps",
-    grantFailed: "Échec de l’autorisation de l’App du Project",
-    revokeFailed: "Échec de la révocation de l’App du Project",
-    disableFailed: "Échec de la désactivation de l’héritage",
-  },
   appearance: {
     trigger: "Apparence de {{name}}",
     colorGroup: "Couleur du Project",
@@ -446,6 +398,18 @@ export const projectsFr: ProjectsCatalog = {
 };
 
 export const projectsEs: ProjectsCatalog = {
+  provider: {
+    loadFailed: "No se pudieron cargar los Projects: {{message}}",
+    addFailed: "No se pudo añadir el Project: {{message}}",
+    appProjectFailed: "No se pudo crear el Project de la App: {{message}}",
+    renameFailed: "No se pudo renombrar el Project: {{message}}",
+    appearanceFailed: "No se pudo guardar la apariencia del Project: {{message}}",
+    detachFailed: "No se pudo eliminar el Project local: {{message}}",
+    revealFailed: "No se pudo mostrar el Project en el gestor de archivos del sistema: {{message}}",
+    releaseFailed: "No se pudieron mover los chats a la raíz: {{message}}",
+    sortFailed: "No se pudo guardar el orden de los Projects: {{message}}",
+    coordinatorUnavailable: "El coordinador de importación de Projects no está disponible.",
+  },
   sortAria: "Ordenar Projects",
   sortLastUpdated: "Última actualización",
   sortManual: "Orden manual",
@@ -458,8 +422,6 @@ export const projectsEs: ProjectsCatalog = {
   missingFolder: "No se encuentra la carpeta del Project: {{dir}}",
   editBadge: "Edición",
   baseTag: "Base",
-  chooseWorkspace: "Elegir carpeta de trabajo…",
-  changeWorkspace: "Cambiar carpeta de trabajo…",
   rename: "Cambiar nombre",
   renameTitle: "Cambiar el nombre del Project",
   renameDescription:
@@ -478,33 +440,11 @@ export const projectsEs: ProjectsCatalog = {
     "Este Project posee una Project Base y memoria de grupo compartida, por lo que no se puede quitar de forma segura. Archívalo para conservar todos sus datos.",
   archiveInsteadConfirm: "Archivar Project",
   archive: "Archivar",
+  hideAppProject: "Ocultar de Projects",
   archiveTitle: "¿Archivar el Project?",
   archiveDescription:
     "«{{name}}» y sus {{chats}} chats saldrán de la Sidebar. Puedes restaurarlos o eliminarlos definitivamente en Settings › Archive; las carpetas de trabajo externas o de una App nunca se eliminan.",
   archivePinned: "Bases fijadas archivadas con él: {{bases}}.",
-  grants: {
-    entry: "Permisos de Apps…",
-    title: "Permisos de Apps del Project",
-    description:
-      "Conceder permiso solo cambia lo que pueden usar los Chats miembros; nunca abre una pestaña, inicia una App ni lee el backend Agent de un Chat miembro.",
-    summary: "Datos: {{level}} · delegación de Agent: {{delegation}}",
-    dataNone: "ninguno",
-    delegationOn: "activada",
-    delegationOff: "desactivada",
-    disabledInherit: "Herencia desactivada explícitamente",
-    revoke: "Revocar",
-    allowRead: "Permitir lectura",
-    allowRowWrite: "Permitir escritura de filas",
-    delegationEnable: "Activar delegación de Agent",
-    delegationDisable: "Desactivar delegación de Agent",
-    disableInherit: "Desactivar la herencia",
-    disabledExplicit: "Desactivado explícitamente",
-    empty: "No hay Apps listas.",
-    listFailed: "No se pudo leer la lista de Apps",
-    grantFailed: "No se pudo conceder el permiso de la App del Project",
-    revokeFailed: "No se pudo revocar el permiso de la App del Project",
-    disableFailed: "No se pudo desactivar la herencia de la App del Project",
-  },
   appearance: {
     trigger: "Apariencia de {{name}}",
     colorGroup: "Color del Project",

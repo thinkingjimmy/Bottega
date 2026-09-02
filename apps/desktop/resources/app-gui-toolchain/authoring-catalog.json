@@ -1,0 +1,130 @@
+{
+  "schema": "bottega.app-gui-authoring-catalog/v1",
+  "preset": "bottega-react-v1",
+  "componentSystem": "shadcn-base-ui-v1",
+  "componentSnapshotDigest": "sha256:0e68acebc21195b2f897daebe6bf5be06722f10b7bba5b3b5765f20e7d880ae8",
+  "iconLibraries": [
+    "lucide",
+    "phosphor"
+  ],
+  "blocks": "bottega-ui-blocks-v1",
+  "starters": [
+    "crud",
+    "dashboard",
+    "kanban",
+    "gallery",
+    "editor"
+  ],
+  "files": [
+    {
+      "path": "electron/main/apps/gui-build/product-modules/blocks.ts",
+      "bytes": 12902,
+      "sha256": "sha256:58f4c5250aa6a5def80d1c0522a9615bfe1434a1607fe1a9868c382e97482203"
+    },
+    {
+      "path": "resources/app-gui-components/README.md",
+      "bytes": 1013,
+      "sha256": "sha256:6a9ef8d8232f70a8a57ecd72a0c7e416ccc80344ef1dbd09273801cafe4f68c9"
+    },
+    {
+      "path": "resources/app-gui-components/catalog.json",
+      "bytes": 1799,
+      "sha256": "sha256:2da6204f8237b9f86056c5a43699f945a12bed652d153ac1e63a768fa5fc103e"
+    },
+    {
+      "path": "resources/app-gui-components/feedback.tsx",
+      "bytes": 1816,
+      "sha256": "sha256:633aaeb9cb49b97ab518c3bd25f0ea55b6e4fef0cd8b87e4397e4e67ed725cea"
+    },
+    {
+      "path": "resources/app-gui-components/forms.tsx",
+      "bytes": 4243,
+      "sha256": "sha256:4a56484d1c4dda9a0ac635e8df55b6f1c125884b1040ac11f61380b6068cbf03"
+    },
+    {
+      "path": "resources/app-gui-components/navigation.tsx",
+      "bytes": 2246,
+      "sha256": "sha256:a4a9fe719a3ed0edbe912e126e07402d47a0b0a04e9280a33e08fb1e839187cc"
+    },
+    {
+      "path": "resources/app-gui-components/overlays.tsx",
+      "bytes": 3820,
+      "sha256": "sha256:6784060bc516e42adbd3437cfda65d2ab642a9f0092ac04c81023154286919fc"
+    },
+    {
+      "path": "resources/app-gui-components/surfaces.tsx",
+      "bytes": 2827,
+      "sha256": "sha256:403c56b5af5b963880dd27d1a2e6038bae6def606996a1b474536b6d56e54863"
+    },
+    {
+      "path": "resources/app-gui-starters/README.md",
+      "bytes": 909,
+      "sha256": "sha256:d44de1284eecc0dd0a790b4084cde1fda2b6c751704051332ae9d1e46b945264"
+    },
+    {
+      "path": "resources/app-gui-starters/catalog.json",
+      "bytes": 422,
+      "sha256": "sha256:a2afa2cb45e3d192921bff07d4cf6b44925626fabd5ed50eb32563f0d51feff9"
+    },
+    {
+      "path": "resources/app-gui-starters/scaffold/README.md",
+      "bytes": 593,
+      "sha256": "sha256:8cf55cdaeee83e3555fbdd1800abb65ab364b041a408421a9a877a35f49673bb"
+    },
+    {
+      "path": "resources/app-gui-starters/scaffold/component-origins.json",
+      "bytes": 131,
+      "sha256": "sha256:d43b92618c7c146a0d82dc9fd1699100516e9770cf6df8c2d22df305def10966"
+    },
+    {
+      "path": "resources/app-gui-starters/scaffold/components.json",
+      "bytes": 159,
+      "sha256": "sha256:3aaf5ab8adfbc033d2b087f77398cd97ded49a641392714b24f7eea6f56a0a8c"
+    },
+    {
+      "path": "resources/app-gui-starters/scaffold/scaffold.json",
+      "bytes": 466,
+      "sha256": "sha256:781a834b15fb987eece0b216f4ed0d387cfdb9000c75f57e056e184f73b03391"
+    },
+    {
+      "path": "resources/app-gui-starters/scaffold/styles.css",
+      "bytes": 473,
+      "sha256": "sha256:13f8a688b51a2eff4317e3a360eb171faa9d6dac5e6a4255fba68e96ec79b414"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/README.md",
+      "bytes": 783,
+      "sha256": "sha256:7274e1d8a7f0fbc806b1cb5663807d99a58fe726e4e42a4f26cc75a5d1715ce8"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/crud.tsx",
+      "bytes": 2950,
+      "sha256": "sha256:cc6aef8e822b460317eedb7c11b3f25b8afca4c5703a37750fd3ca3144bb9f26"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/dashboard.tsx",
+      "bytes": 1880,
+      "sha256": "sha256:d994c1548de21e083f8d4e8861aad0d9630a5c20f023f7bd0f188c0f30255570"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/editor.tsx",
+      "bytes": 3677,
+      "sha256": "sha256:8e92bc7fd4878e8cde9e75f83cd8c1275ee6d79d06163058a0edff0283d395b6"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/fixture-matrix.json",
+      "bytes": 501,
+      "sha256": "sha256:e5e02b577d9196ea4001837e26e70a560baf01ebf1a5ded68cf894db57d3bc7c"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/gallery.tsx",
+      "bytes": 3532,
+      "sha256": "sha256:5f584ffd7688543503aef799e3f2b5426e351b41c6a5b88429703b242524452d"
+    },
+    {
+      "path": "resources/app-gui-starters/templates/kanban.tsx",
+      "bytes": 2351,
+      "sha256": "sha256:3f4787ce45e0b75fd8f1443504a552b992ac41f14ea771551a5f5169e8c53b3a"
+    }
+  ]
+}

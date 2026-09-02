@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node crypto/fs/path, shared ChatHome status, SettingsStore/ChatStore port and ChatHomeLedger
- * [OUTPUT]: Provides ChatHomeService: root chooser, ready, ledger-owned rolledBack Re-test, eight-step CreationIntent's exact-marker objection/collision rejection, re-test recovery compensation, read-only root snapshot and ownership verification
- * [POS]: The coordinator of the chat-home area; The work across the store is not done in the ledger leaf lock
+ * [OUTPUT]: Provides ChatHomeService root selection, exact-marker creation ownership, committed dev/ino evidence, non-destructive committed isolation, rollback recovery, and read-only root snapshots
+ * [POS]: Chat Home ownership coordinator; cross-store SQLite continuation state remains in the Chat saga
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -173,6 +173,42 @@ export class ChatHomeService {
       "committed",
       { ownership: "valid", terminalAt: this.now() }
     );
+  }
+
+  async committedCreationEvidence(chatId: string, intentId: string) {
+    const record = this.ledger.get(chatId);
+    if (
+      !record ||
+      record.phase !== "committed" ||
+      record.ownership !== "valid" ||
+      record.intentId !== intentId
+    ) {
+      throw new Error("Committed Chat Home evidence is unavailable");
+    }
+    const verified = await this.verifyRecordOwnership(record, false);
+    if (!verified) throw new Error("Committed Chat Home ownership cannot be verified");
+    const homeIdentity = identity(await stat(verified.homeDir));
+    return {
+      receipt: {
+        phase: "committed" as const,
+        chatId: verified.chatId,
+        intentId: verified.intentId,
+        incarnationId: verified.incarnationId,
+        homeDir: verified.homeDir,
+      },
+      homeDirIdentity: {
+        root: verified.rootIdentity,
+        home: homeIdentity,
+      },
+    };
+  }
+
+  async isolateCommittedCreation(chatId: string, intentId: string, reason: string) {
+    const evidence = await this.committedCreationEvidence(chatId, intentId);
+    this.chats.pushWarning(
+      `Committed Chat Home ${chatId} was isolated without deletion: ${reason}`
+    );
+    return evidence;
   }
 
   identityForCreation(chatId: string) {

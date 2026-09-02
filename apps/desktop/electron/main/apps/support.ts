@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on Node path, Shared Apps/Agent DTO and the credible parameters of the installed input
- * [OUTPUT]: Provides path/environment assistants, GitHub URLs and AddApp authentication, and initial AppRecord builds
- * [POS]: The only source of the cross-assistant of the apps module is the installation of access/path fences/environmental stripping; status broadcasting belongs to AppStore.watch, not to a helper each caller must remember; Error is in the main/errors.ts
+ * [INPUT]: Depends on Node path plus the shared Apps/Agent install DTOs it validates
+ * [OUTPUT]: Provides the single `isContained` path fence, the credential-stripping login shell, `assertAddAppInput`, `createInstallingAppRecord`, and a re-exported `normalizeGithubRepoUrl`
+ * [POS]: The apps module's only cross-cutting helper leaf; every caller shares one containment rule instead of a private copy, while status broadcast stays with AppStore.watch and error normalization with main/errors.ts
  */
 
-import { isAbsolute, relative } from "node:path";
+import { isAbsolute, relative, sep } from "node:path";
 import { type AddAppInput, type AppRecord } from "../../../shared/apps-ipc";
 import {
   AGENT_BACKEND_ORDER,
@@ -60,6 +60,7 @@ export function createInstallingAppRecord(input: {
     lifecycleRevision: 0,
     defaultGrant: null,
     defaultGrantRevision: 0,
+    pinnedAt: null,
     domainIdentity: null,
     generations: [],
     generationBinding: {
@@ -70,15 +71,23 @@ export function createInstallingAppRecord(input: {
     manifest: null,
     editChatSlot: null,
     activeUseChatSlot: null,
+    editableSource: true,
     skillStatus: null,
     addedAt: input.addedAt,
   };
 }
 
-/** target 是否被 root 目录围栏包含（含相等），防路径逃逸。 */
+/**
+ * target 是否被 root 目录围栏包含（含相等），防路径逃逸。
+ *
+ * 逃逸的判据是「第一个路径段就是 ..」，不是「字符串以 .. 开头」：root 下一个
+ * 名叫 `..foo` 的兄弟目录，relative() 给出的正是 `..foo`，前缀匹配会把它误判
+ * 成越界并拒绝一个完全合法的路径。因此只认 `..${sep}` 与恰好等于 `..` 两形。
+ */
 export const isContained = (root: string, target: string) => {
   const path = relative(root, target);
-  return path === "" || (!path.startsWith("..") && !isAbsolute(path));
+  if (path === "") return true;
+  return path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 };
 
 // ============================================================

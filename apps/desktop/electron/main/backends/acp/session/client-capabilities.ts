@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ACP ClientCapabilities and the product backend capability policy
- * [OUTPUT]: Provides the single ACP initialize clientCapabilities builder and backend policy grid
+ * [OUTPUT]: Provides the single ACP initialize clientCapabilities builder, provider-neutral typed failure negotiation, and backend policy grid
  * [POS]: The ACP session negotiation policy source shared by production turns, readiness probes, and deep handshakes
  */
 
@@ -11,20 +11,51 @@ export type SessionCapabilityPolicy = Readonly<{
   plan: boolean;
   elicitation: "form" | "disabled";
   terminalAuth: boolean;
+  typedSessionFailures: boolean;
 }>;
 
 export const SESSION_CAPABILITY_POLICY: Readonly<
   Record<AgentBackendId, SessionCapabilityPolicy>
 > = {
-  codex: { plan: true, elicitation: "form", terminalAuth: false },
-  claude: { plan: false, elicitation: "form", terminalAuth: false },
-  kimi: { plan: false, elicitation: "form", terminalAuth: false },
-  opencode: { plan: false, elicitation: "form", terminalAuth: true },
+  codex: {
+    plan: true,
+    elicitation: "form",
+    terminalAuth: false,
+    typedSessionFailures: true,
+  },
+  claude: {
+    plan: false,
+    elicitation: "form",
+    terminalAuth: false,
+    typedSessionFailures: true,
+  },
+  kimi: {
+    plan: false,
+    elicitation: "form",
+    terminalAuth: false,
+    typedSessionFailures: false,
+  },
+  opencode: {
+    plan: false,
+    elicitation: "form",
+    terminalAuth: true,
+    typedSessionFailures: false,
+  },
 };
 
 export function buildAcpClientCapabilities(
   policy: SessionCapabilityPolicy
 ): ClientCapabilities {
+  const meta = {
+    ...(policy.terminalAuth ? { "terminal-auth": true } : {}),
+    ...(policy.typedSessionFailures
+      ? {
+          jetbrains: {
+            air: { version: 1, capabilities: ["sessionFailure"] },
+          },
+        }
+      : {}),
+  };
   return {
     /* 不声明 `session.configOptions.boolean` 是**有意的**，不是遗漏：一旦声明，
        两家 adapter 会把 fast 档从 select 换成 `type:"boolean"`，而消费侧的
@@ -36,8 +67,6 @@ export function buildAcpClientCapabilities(
     ...(policy.elicitation === "form"
       ? { elicitation: { form: {} } }
       : {}),
-    ...(policy.terminalAuth
-      ? { _meta: { "terminal-auth": true } }
-      : {}),
+    ...(Object.keys(meta).length ? { _meta: meta } : {}),
   };
 }

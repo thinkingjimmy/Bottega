@@ -89,6 +89,13 @@ export const needsBackendLogin = (backend: BackendInfo) =>
   backend.runtimeStatus === "installed" &&
   backend.authStatus === "unauthenticated";
 
+const BACKEND_GUIDE_KEYS = {
+  codex: { install: "setup.guide.codex.install", login: "setup.guide.codex.login" },
+  claude: { install: "setup.guide.claude.install", login: "setup.guide.claude.login" },
+  kimi: { install: "setup.guide.kimi.install", login: "setup.guide.kimi.login" },
+  opencode: { install: "setup.guide.opencode.install", login: "setup.guide.opencode.login" },
+} as const satisfies Record<AgentBackendId, Record<"install" | "login", string>>;
+
 /**
  * 该装还是该登，是 runtimeStatus 的函数——installed 是唯一"该登录"的状态，
  * 其余（missing/unsupported/error）一律"该装"。这个判断曾住在 main 里，
@@ -98,9 +105,9 @@ export const needsBackendLogin = (backend: BackendInfo) =>
 export const backendGuideKey = (
   backend: Pick<BackendInfo, "id" | "runtimeStatus">
 ) =>
-  `setup.guide.${backend.id}.${
+  BACKEND_GUIDE_KEYS[backend.id][
     backend.runtimeStatus === "installed" ? "login" : "install"
-  }`;
+  ];
 
 /* 标题生成的候选与 main 侧真门同构（index.ts 的 generateTitle：
    installed ∧ authenticated ∧ headless ∋ "title"）。authenticated 一项

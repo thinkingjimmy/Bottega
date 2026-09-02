@@ -1,21 +1,22 @@
 /**
- * [INPUT]: Depends on Apps/Projects/Chats/Bases services, lifecycle, SkillsCatalog, settings/archive, package import/share, and Agent turn control
- * [OUTPUT]: Provides configureAppMode with canonical use-chat slots, grants, promotion, save/delete, Base import, sharing, Skills turns, Extensions, and recovery
+ * [INPUT]: Depends on Apps/Projects/Chats/Bases services, lifecycle, current locale, SkillsCatalog, settings/archive, package import/share, and Agent turn control
+ * [OUTPUT]: Provides configureAppMode with canonical use-chat slots, ordinary and Studio-only grants, promotion, convergent save/delete with post-finalization removal publication, Base import, sharing, Skills turns, Extensions, and recovery
  * [POS]: Apps-domain composition root; wires Project grant commits to durable Project publication
  */
 
 import type { SessionRef } from "../../../shared/agent-ipc";
+import type { AppLocale } from "../../../shared/i18n/locale";
 import { dirname } from "node:path";
-import type { ChatRecord } from "../../../shared/chats-ipc";
 import { BasePromotionService } from "../bases/base-promotion-service";
 import type { BaseStore } from "../bases/base-store";
 import type { BasesService } from "../bases/bases-service";
 import type { ChatStore } from "../chats/chat-store";
+import type { ChatMetadata } from "../chats/chat-summary";
 import type { ChatsService } from "../chats/chats-service";
 import { AdmissionGate } from "../lifecycle/admission-gate";
 import type { LifecycleIntentStore } from "../lifecycle/intent-store";
 import { LifecycleReconciliation } from "../lifecycle/reconciliation";
-import type { ProjectStore } from "../projects/project-store";
+import type { ProjectStore } from "../projects/store/project-store";
 import type { ProjectsService } from "../projects/projects-service";
 import type { ConversationCoordinator } from "../sections/coordinator/conversation-coordinator";
 import type { SettingsStore } from "../settings-store";
@@ -25,6 +26,14 @@ import type { ExtensionRuntimeHolder } from "../extensions/lifecycle/disable-con
 import type { ExtensionProjectionLedger } from "../extensions/lifecycle/projection-ledger";
 import { AppDeleteService } from "./app-delete";
 import { AppChatSlots } from "./app-chat-slots";
+import { AppNavigationService } from "./app-navigation";
+import { windowRegistry } from "../window/surfaces/window-registry";
+import { surfaceWindowController } from "../window/surfaces/surface-window-controller";
+import { WINDOW_SURFACES_CHANNEL } from "../../../shared/window-surfaces-ipc";
+import {
+  hasCanonicalChatPlacement,
+  productDestinationRoute,
+} from "../../../shared/placement/facts";
 import { AppAttachmentFence } from "./attachments/attachment-fence";
 import { AppGrantAuthority } from "./attachments/grant-authority";
 import { AppAttachmentSurfaceLeaseRegistry } from "./attachments/surface-leases";
@@ -50,6 +59,7 @@ type AppModeDependencies = {
   coordinator: ConversationCoordinator;
   skills: SkillsCatalog;
   settings: SettingsStore;
+  locale(): AppLocale;
   hasConversationActivity(ids: Iterable<string>): boolean;
   isConversationAvailable(chatId: string): boolean;
   cancelConversations(ids: Iterable<string>): Promise<void>;
@@ -77,6 +87,40 @@ export function configureAppMode(dependencies: AppModeDependencies) {
       }),
   });
   dependencies.apps.configureChatSlots(chatSlots);
+  const navigation = new AppNavigationService({
+    apps: dependencies.apps.store,
+    chats: dependencies.chatStore,
+    projects: dependencies.projectStore,
+    slots: chatSlots,
+    runExclusive: (appId, operation) =>
+      dependencies.apps.runAppLifecycleMutation(appId, operation),
+    revokeOld: (intent) => Promise.resolve(surfaceWindowController.revokeAppUseChat(intent)),
+    drainOld: (intent) => intent.source
+      ? dependencies.cancelConversations([intent.source.id])
+      : Promise.resolve(),
+    claimTarget: (intent) => Promise.resolve(surfaceWindowController.claimAppUseChat(intent)),
+    captureSurfaceFence: (appId, source, target) =>
+      surfaceWindowController.captureAppUseSurfaceFence(appId, source, target),
+    validateSurfaceFence: (intent) =>
+      surfaceWindowController.assertAppUseSurfaceFence(intent),
+    focusMain: async (destination, intent) => {
+      if (destination.kind === "app-use-chat") {
+        await surfaceWindowController.focusAppUseInMain(destination, intent);
+        return;
+      }
+      const main = windowRegistry.main();
+      if (!main) return;
+      main.window.webContents.send(WINDOW_SURFACES_CHANNEL.command, {
+        type: "navigate",
+        route: productDestinationRoute(destination),
+      });
+      windowRegistry.focus(main.windowId);
+    },
+  });
+  dependencies.apps.configureNavigation(navigation);
+  dependencies.chats.configureAppChatDeactivation((chat, action) =>
+    navigation.prepareChatDeactivation(chat, action)
+  );
   /* fence 先于 grant authority：两个方向共用同一批 gate 与同一条 D17 判定，
      谁都不能自带第二份实例——那等于在锁序图上多画一条互不相识的边。 */
   const fence = new AppAttachmentFence({
@@ -93,7 +137,8 @@ export function configureAppMode(dependencies: AppModeDependencies) {
     dependencies.chatStore,
     dependencies.projectStore,
     fence,
-    (projectId) => dependencies.projects.publishStored(projectId)
+    (projectId) => dependencies.projects.publishStored(projectId),
+    dependencies.apps.baseGuiGrants
   );
   dependencies.apps.configureGrantAuthority(grantAuthority);
   const surfaceLeases = new AppAttachmentSurfaceLeaseRegistry(
@@ -118,6 +163,9 @@ export function configureAppMode(dependencies: AppModeDependencies) {
   );
   reconciliation.registerProjection("app-chat-slots", () =>
     chatSlots.reconcile()
+  );
+  reconciliation.registerProjection("app-navigation", () =>
+    navigation.recover()
   );
   const promotion = configurePromotion(dependencies, gate, reconciliation);
   const saveAsApp = configureSave(
@@ -225,7 +273,7 @@ function configureExtensionIntegration(
         }
         if (chatIds.length) await dependencies.cancelConversations(chatIds);
         for (const chatId of chatIds) {
-          const chat = await dependencies.chatStore.get(chatId);
+          const chat = dependencies.chatStore.getMetadata(chatId);
           if (chat) await rotateSession(chat, dependencies);
         }
         for (const holder of holders) {
@@ -403,8 +451,12 @@ function configureSave(
     rotateSession: (chat) => rotateSession(chat, dependencies),
     restoreSession: (chat, session) =>
       restoreSession(chat, session, dependencies),
-    removeShell: (record) => dependencies.apps.removeBaseShell(record),
+    removeShell: async (record) => {
+      await dependencies.apps.removeBaseShell(record);
+      dependencies.apps.emitRemoval(record.id);
+    },
     enqueueSkillTurnHeld: (input) => enqueueSkillTurn(input, dependencies),
+    locale: dependencies.locale,
   });
   dependencies.apps.configureSaveAsApp(saveAsApp, {
     renameBase: (record, name) =>
@@ -430,20 +482,41 @@ function configureDelete(
     },
     drainProviders
   );
+  dependencies.apps.configureGenerationRetirement((input) => retirement.proof(input));
   const appDelete = new AppDeleteService({
     store: dependencies.apps.store,
     projects: dependencies.projects,
     intents: dependencies.intents,
     gate,
     coordinator: dependencies.coordinator,
-    listProjectChats: (projectId) =>
-      dependencies.chatStore.listByProject(projectId),
-    getChat: (chatId) => dependencies.chatStore.get(chatId),
-    drainProjectTurns: (projectId) =>
+    runExclusive: (appId, operation) =>
+      dependencies.apps.runAppLifecycleMutation(appId, operation),
+    listAppChats: (appId) =>
+      dependencies.chatStore
+        .list()
+        .filter(hasCanonicalChatPlacement)
+        .filter(
+          (chat) =>
+            chat.context.kind !== "ordinary" && chat.context.appId === appId
+        )
+        .map((chat) => chat.id),
+    drainAppTurns: (appId) =>
       dependencies.cancelConversations(
-        dependencies.chatStore.listByProject(projectId)
+        dependencies.chatStore
+          .list()
+          .filter(hasCanonicalChatPlacement)
+          .filter(
+            (chat) =>
+              chat.context.kind !== "ordinary" && chat.context.appId === appId
+          )
+          .map((chat) => chat.id)
       ),
-    rotateSession: (chat) => rotateSession(chat, dependencies),
+    removeAppChat: (chatId, appId) =>
+      dependencies.chats.removeAppChatHeld(chatId, appId),
+    promoteRetainedBase: (projectId) =>
+      dependencies.bases.promoteRetainedAppBase(projectId).then(() => undefined),
+    convertToBaseCustody: (projectId, appId) =>
+      dependencies.projects.retainBaseCustodyHeld(projectId, appId).then(() => undefined),
     removeShell: (record) => dependencies.apps.removeBaseShell(record),
     closeAdmission: (appId) => dependencies.apps.closeDeleteAdmission(appId),
     settleBuilds: (appId) => dependencies.apps.settleDeleteBuilds(appId),
@@ -453,6 +526,10 @@ function configureDelete(
       dependencies.apps.revokeDeleteCapabilities(appId),
     settleData: (record, mode) =>
       dependencies.apps.settleDeleteData(record, mode),
+    finalizeRemoval: (appId) =>
+      dependencies.apps.finalizeDelete(appId).then(() => undefined),
+    publishRemoval: (appId) => dependencies.apps.emitRemoval(appId),
+    reportProgress: (appId) => dependencies.apps.emitDeleteProgress(appId),
   });
   dependencies.apps.configureAppDelete(appDelete);
   /* 恢复失败从前只进 RecoveryReport 与 console，record 一根汗毛不动——界面上
@@ -474,7 +551,7 @@ function configureDelete(
 }
 
 async function rotateSession(
-  chat: ChatRecord,
+  chat: ChatMetadata,
   dependencies: AppModeDependencies
 ) {
   if (!chat.session) return;
@@ -484,18 +561,18 @@ async function rotateSession(
     null
   );
   dependencies.releaseThreadScope(chat.id);
-  const current = await dependencies.chatStore.get(chat.id);
+  const current = dependencies.chatStore.getMetadata(chat.id);
   if (!current) return;
   dependencies.chats.publishRecord(current);
   dependencies.chats.publishSessionInvalidated(current);
 }
 
 async function restoreSession(
-  chat: ChatRecord,
+  chat: ChatMetadata,
   session: SessionRef | null,
   dependencies: AppModeDependencies
 ) {
-  const current = await dependencies.chatStore.get(chat.id);
+  const current = dependencies.chatStore.getMetadata(chat.id);
   if (!current) throw new Error("回滚 SessionRef 时聊天不存在");
   if (sameSession(current.session, session)) {
     if (session) dependencies.bindThreadScope(session, chat.id);
@@ -514,7 +591,7 @@ async function restoreSession(
     session
   );
   dependencies.bindThreadScope(session, chat.id);
-  const restored = await dependencies.chatStore.get(chat.id);
+  const restored = dependencies.chatStore.getMetadata(chat.id);
   if (restored) dependencies.chats.publishRecord(restored);
 }
 
@@ -532,7 +609,7 @@ function sameSession(left: SessionRef | null, right: SessionRef | null) {
 
 async function enqueueSkillTurn(
   input: {
-    chat: ChatRecord;
+    chat: ChatMetadata;
     turnIntentId: string;
     prompt: string;
     projectLifecycleHeld: true;
@@ -631,7 +708,7 @@ async function renameBaseApp(
   const project = dependencies.projectStore.findByAppId(appId);
   if (!project) throw new Error("Base App 缺少 Project");
   await dependencies.projects.runExclusive(async () => {
-    await dependencies.projectStore.rename(project.id, name);
+    await dependencies.projectStore.rename(project.id, name, "app");
     dependencies.projects.publishStored(project.id);
     const ownerKey = `project:${project.id}` as const;
     const base = await dependencies.bases.get(ownerKey);

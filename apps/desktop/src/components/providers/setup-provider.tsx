@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, setup-client, the Settings store, the narrow backend projection, onboarding-gate judgments, and shared SetupStatus
- * [OUTPUT]: Provides full SetupProvider, residence-scoped AppRuntimeSetupProvider, and useSetup for Chat/Settings/onboarding consumers
+ * [INPUT]: Depends on React Context, the locale catalog, setup-client, the Settings store, the narrow backend projection, onboarding-gate judgments, and shared SetupStatus
+ * [OUTPUT]: Provides full SetupProvider with structured Agent failures and non-error notices, residence-scoped AppRuntimeSetupProvider, and useSetup for Chat/Settings/onboarding consumers
  * [POS]: Renderer Agent-environment context; the main window owns setup lifecycle while App windows consume only backend runtime projections for their resident chat
  */
 
@@ -27,8 +27,11 @@ import {
   recheckBackend,
   refreshBackendLatest,
 } from "@/lib/setup-client";
-import { canEnterAgentBackend } from "@/lib/agent-backends";
-import { errorMessage } from "@/lib/errors";
+import { backendLabel, canEnterAgentBackend } from "@/lib/agent-backends";
+import {
+  rendererAgentSurfaceFailure,
+  type AgentSurfaceFailure,
+} from "@/lib/agent-failure";
 import {
   agentRequirement,
   chatHomeRequirement,
@@ -38,6 +41,7 @@ import {
 } from "@/lib/onboarding-gate";
 import { settingsStore } from "@/lib/settings-store";
 import { listBackends } from "@/lib/settings-client";
+import { useAppTranslation } from "./i18n-provider";
 
 /* ============================================================
  * 引导没有豁免档。
@@ -58,7 +62,8 @@ type SetupContextValue = {
   checking: boolean;
   busy: Partial<Record<AgentBackendId, SetupTerminalAction | "recheck">>;
   latestChecking: Partial<Record<AgentBackendId, boolean>>;
-  error: string;
+  error: AgentSurfaceFailure | null;
+  notice: string;
   ready: boolean;
   onboarding: OnboardingVerdict;
   openOnboarding: () => void;
@@ -83,16 +88,19 @@ const APP_RUNTIME_ONBOARDING: OnboardingVerdict = {
 
 /** App windows never acquire setup/settings authority; they only refresh backend facts. */
 export function AppRuntimeSetupProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useAppTranslation();
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [checking, setChecking] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<AgentSurfaceFailure | null>(null);
+  const [notice, setNotice] = useState("");
   const recheck = useCallback(async () => {
     setChecking(true);
     try {
       setStatus({ backends: await listBackends() });
-      setError("");
+      setError(null);
+      setNotice("");
     } catch (cause) {
-      setError(errorMessage(cause, "Agent 检测失败"));
+      setError(rendererAgentSurfaceFailure("runtime-unavailable", "Agent", cause));
     } finally {
       setChecking(false);
     }
@@ -101,15 +109,16 @@ export function AppRuntimeSetupProvider({ children }: { children: React.ReactNod
     const timer = window.setTimeout(() => void recheck(), 0);
     return () => window.clearTimeout(timer);
   }, [recheck]);
-  const unavailable = async () => {
-    throw new Error("请在主窗口管理 Agent 环境");
-  };
+  const unavailable = useCallback(async () => {
+    throw new Error(t("setup.provider.mainWindowOnly"));
+  }, [t]);
   const value = useMemo<SetupContextValue>(() => ({
     status,
     checking,
     busy: {},
     latestChecking: {},
     error,
+    notice,
     ready: isReady(status),
     onboarding: APP_RUNTIME_ONBOARDING,
     openOnboarding: () => undefined,
@@ -118,18 +127,20 @@ export function AppRuntimeSetupProvider({ children }: { children: React.ReactNod
     recheckBackend: async () => recheck(),
     refreshLatest: unavailable,
     recheck,
-  }), [checking, error, recheck, status]);
+  }), [checking, error, notice, recheck, status, unavailable]);
   return <SetupContext.Provider value={value}>{children}</SetupContext.Provider>;
 }
 
 export function SetupProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useAppTranslation();
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] =
     useState<SetupContextValue["busy"]>({});
   const [latestChecking, setLatestChecking] =
     useState<SetupContextValue["latestChecking"]>({});
-  const [error, setError] = useState("");
+  const [error, setError] = useState<AgentSurfaceFailure | null>(null);
+  const [notice, setNotice] = useState("");
   const [forced, setForced] = useState(false);
 
   /* Chat Home 是引导的另一半门槛，故 Provider 自己保证它被读取——
@@ -144,11 +155,12 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
 
   const recheck = useCallback(async () => {
     setChecking(true);
-    setError("");
+    setError(null);
+    setNotice("");
     try {
       setStatus(await checkSetup());
     } catch (cause) {
-      setError(errorMessage(cause, "Agent 检测失败"));
+      setError(rendererAgentSurfaceFailure("runtime-unavailable", "Agent", cause));
     } finally {
       setChecking(false);
     }
@@ -215,14 +227,22 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
   const runTerminal = useCallback(
     async (backend: AgentBackendId, operation: SetupTerminalAction) => {
       setBusy((current) => ({ ...current, [backend]: operation }));
-      setError("");
+      setError(null);
+      setNotice("");
       try {
         const result = await openBackendTerminalAction(backend, operation);
         if (result.delivery === "clipboard") {
-          setError("终端不可用，命令已复制到剪贴板。");
+          setNotice(t("setup.provider.terminalClipboard"));
         }
       } catch (cause) {
-        setError(errorMessage(cause, `${backend} 终端动作失败`));
+        setError(
+          rendererAgentSurfaceFailure(
+            "runtime-unavailable",
+            backendLabel(backend),
+            cause,
+            backend
+          )
+        );
       } finally {
         setBusy((current) => {
           const next = { ...current };
@@ -231,16 +251,24 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
         });
       }
     },
-    []
+    [t]
   );
 
   const recheckOne = useCallback(async (backend: AgentBackendId) => {
     setBusy((current) => ({ ...current, [backend]: "recheck" }));
-    setError("");
+    setError(null);
+    setNotice("");
     try {
       setStatus(await recheckBackend(backend));
     } catch (cause) {
-      setError(errorMessage(cause, `${backend} 重新检测失败`));
+      setError(
+        rendererAgentSurfaceFailure(
+          "runtime-unavailable",
+          backendLabel(backend),
+          cause,
+          backend
+        )
+      );
     } finally {
       setBusy((current) => {
         const next = { ...current };
@@ -257,6 +285,7 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
       busy,
       latestChecking,
       error,
+      notice,
       ready: isReady(status),
       onboarding,
       openOnboarding: () => setForced(true),
@@ -272,6 +301,7 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
       busy,
       latestChecking,
       error,
+      notice,
       onboarding,
       leaveOnboarding,
       runTerminal,

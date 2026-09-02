@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: Depends on React lazy/Suspense, shared history-import Agreement with lib/history/client
- * [OUTPUT]: Provides HistoryProvider/useHistory, including event-first watershed, global Project Add flight, switching, refreshing, session renaming/archiving and Memory delta second confirmation
- * [POS]: providers/history external source history and Project onboarding single renderer owner; Sidebar/Composer input is in this merge, asynchronous failure in warning
+ * [OUTPUT]: Provides HistoryProvider/useHistory: the event-first watershed, the global Project Add flight, enable/refresh, and the Memory delta second confirmation
+ * [POS]: The single renderer owner of external history and Project onboarding; presentation actions on a synchronized history belong to the canonical Chat, not here
  */
 
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -15,9 +15,7 @@ import {
   onHistoryEvent,
   prepareHistoryProject,
   refreshHistoryProject,
-  renameHistorySession,
   setHistoryProjectEnabled,
-  setHistorySessionArchived,
   commitHistoryMemory,
 } from "@/lib/history/client";
 import { errorMessage } from "@/lib/errors";
@@ -42,11 +40,9 @@ type HistoryContextValue = {
   commitMemory(snapshotId: string, digest: string): Promise<void>;
   setEnabled(projectId: string, enabled: boolean): Promise<void>;
   refreshProject(projectId: string): Promise<void>;
-  renameSession(opaqueId: string, title: string): Promise<void>;
-  setSessionArchived(opaqueId: string, archived: boolean): Promise<void>;
 };
 
-const initial: HistoryImportSnapshot = { revision: 0, entries: [], projects: [], memoryDelivering: false, warning: null };
+const initial: HistoryImportSnapshot = { revision: 0, entries: [], canonicalRoutes: {}, projects: [], memoryDelivering: false, warning: null };
 const HistoryContext = createContext<HistoryContextValue | null>(null);
 
 export function HistoryProvider({ children }: { children: React.ReactNode }) {
@@ -153,10 +149,6 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
       const result = await run(() => refreshHistoryProject(projectId)).catch(() => null);
       setRefreshPreview(result?.memoryPreview ?? null);
     },
-    /* rename/归档与 setEnabled 同律：mutation 后 main publish snapshot 事件，
-       此处不做乐观更新；失败投影为 warning 后仍向上抛，行内边界收敛 busy。 */
-    renameSession: (opaqueId, title) => run(() => renameHistorySession(opaqueId, title)),
-    setSessionArchived: (opaqueId, archived) => run(() => setHistorySessionArchived(opaqueId, archived)),
   }), [addProject, commitMemory, loading, run, snapshot, warning]);
 
   return (

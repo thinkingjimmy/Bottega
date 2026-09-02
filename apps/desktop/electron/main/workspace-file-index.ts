@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared Workspace Index/path Budget, projects/git-runner and Node opendir/lstat/path
+ * [INPUT]: Depends on shared Workspace Index/path Budget, projects/git/git-runner and Node opendir/lstat/path
  * [OUTPUT]: Provides canonical POSIX path, validation, 8MB retained index, three stage bounded Git NUL flow, walk list and fresh single path member/entity proof
  * [POS]: The Workspace indexing mechanism layer of Electron main; In Git/walk, the listing and directory derivatives execute raw/retained/count/byte upper limits, and the catalog only has caches, sequences and identity fence
  */
@@ -16,7 +16,7 @@ import {
   GitCommandError,
   runGit,
   runGitNulRecords,
-} from "./projects/git-runner";
+} from "./projects/git/git-runner";
 
 const WALK_DEPTH_LIMIT = 12;
 const WALK_VISIT_SLACK = 2;

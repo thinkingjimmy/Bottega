@@ -1,19 +1,31 @@
 /**
- * [INPUT]: No running dependence, only using type-sequence TypeScript
- * [OUTPUT]: Provides archiving target, explicitly archiving template projection, immutable deleting mode, Memory, rebuilding previews, events with ArchiveBridgeApi
+ * [INPUT]: Depends on the shared Agent backend identity and type-only TypeScript contracts
+ * [OUTPUT]: Provides archiving targets, Agent-identified Chat archive projections carrying the read-only capability flag, immutable deletion modes, Memory rebuild previews, events, and ArchiveBridgeApi
  * [POS]: Shared Archive/Purge single IPC agreement, binding main/preload/renderer three-way data shapes
  */
+
+import type { AgentBackendId } from "./agent-ipc";
 
 export type ArchiveTarget =
   | { kind: "chat"; id: string }
   | { kind: "project"; id: string };
 
-export type ArchivedEntity = {
-  target: ArchiveTarget;
+type ArchivedEntityBase = {
   title: string;
   archivedAt: number;
   memberCount: number;
+  /** 只读内容（导入历史、旧版 App Edit）：可恢复，永不可永久删除。 */
+  readOnly?: boolean;
 };
+
+export type ArchivedEntity =
+  | (ArchivedEntityBase & {
+      target: { kind: "chat"; id: string };
+      agent: AgentBackendId;
+    })
+  | (ArchivedEntityBase & {
+      target: { kind: "project"; id: string };
+    });
 
 export type ArchiveSnapshot = {
   entities: ArchivedEntity[];

@@ -1,13 +1,19 @@
 /**
- * [INPUT]: Depends on ExcelJS, Node zlib, streamlined decompression, limited file reading, Base JSON business import, shared cellValue/value/XLSX issue
+ * [INPUT]: Depends on the ExcelJS document Workbook leaf, Node module loader/zlib, streamlined decompression, limited file reading, Base JSON business import, shared cellValue/value/XLSX issue
  * [OUTPUT]: Provides BaseXlsxService, buildBaseXlsx, parseBaseXlsx/hasExcelTimeToken; Execute the atom report Pre-check, stabilize the issue code/0 Base data line, +2 on the renderer side is the worksheet line, UTC date-only/ISO datetime/cached formula, two-way mapping, type inference and actual decompression bytes/ZIP/dimensional budget
  * [POS]: The main-only XLSX format of bases/io; The renderer does not load ExcelJS, complete success reports first through the wire schema, then repeats the CAS in the BaseJsonService transaction
  */
 
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { createInflateRaw } from "node:zlib";
-import ExcelJS, { type Cell, type CellValue, type Worksheet } from "exceljs";
+import type {
+  Cell,
+  CellValue,
+  Workbook as ExcelWorkbook,
+  Worksheet,
+} from "exceljs";
 import {
   BASE_CELL_STRING_LIMIT,
   BASE_COLUMN_LIMIT,
@@ -32,6 +38,10 @@ import type { BaseCommitAuthority } from "../base-commit-authority";
 import { validateBaseCell } from "../base-mutation-validation";
 import type { BaseJsonService } from "./base-json";
 import { readBoundedFile } from "./base-json";
+
+const Workbook = createRequire(import.meta.url)(
+  "exceljs/lib/doc/workbook"
+) as typeof ExcelWorkbook;
 
 export const XLSX_FILE_BYTE_LIMIT = 32 * 1024 * 1024;
 export const XLSX_ENTRY_LIMIT = 2_048;
@@ -109,7 +119,7 @@ export class BaseXlsxService {
 }
 
 export async function buildBaseXlsx(snapshot: BaseSnapshot): Promise<Buffer> {
-  const workbook = new ExcelJS.Workbook();
+  const workbook = new Workbook();
   workbook.creator = "Bottega";
   workbook.created = new Date(0);
   const sheet = workbook.addWorksheet(safeSheetName(snapshot.meta.name));
@@ -147,7 +157,7 @@ export async function buildBaseXlsx(snapshot: BaseSnapshot): Promise<Buffer> {
 
 export async function parseBaseXlsx(buffer: Buffer, current: BaseSnapshot) {
   await inspectZipBudget(buffer);
-  const workbook = new ExcelJS.Workbook();
+  const workbook = new Workbook();
   const workbookBuffer = buffer.buffer.slice(
     buffer.byteOffset,
     buffer.byteOffset + buffer.byteLength

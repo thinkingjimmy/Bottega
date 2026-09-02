@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Message, Thinking, Terminal, Plan, image, subagent, localized failure, cold-turn projection, and Chat formatting components
- * [OUTPUT]: Provides TurnParts/ChatTurn/ChatTurnDraft with localized ProductFailure/empty-response projection, process folding, action-bar Memory status, external transcripts, and hot/cold rendering
- * [POS]: Assistant-turn renderer for chat/transcript; terminal categories, process grouping, Plan order, and display-only fallback copy converge here
+ * [INPUT]: Depends on Message, Thinking, Terminal, Plan, image, subagent, structured Agent failure notices, RegularChatTurn, cold-turn projection, and Chat formatting components
+ * [OUTPUT]: Provides TurnParts/ChatTurn/ChatTurnDraft with warning projection, Subagent availability, elapsed work, process folding, Plan composition, and hot/cold rendering
+ * [POS]: Assistant-turn process renderer for chat/transcript; delegates non-plan terminal presentation to chat-regular-turn
  */
 
 import {
@@ -22,6 +22,7 @@ import {
   GlobeIcon,
   ImageIcon,
   TerminalIcon,
+  TriangleAlertIcon,
   WrenchIcon,
 } from "lucide-react";
 import { useScrollLockRelease } from "@ai-chat/ui/components/ai-elements/conversation";
@@ -77,12 +78,12 @@ import { ChatMessageActions } from "./chat-message-actions";
 import { ImageBlock } from "./chat-image";
 import type { GallerySourceRef } from "../../../../shared/gallery-media-ipc";
 import type { ConversationImageSource } from "../runtime/chat-session-model";
-import { TurnErrorCard } from "./chat-error-card";
-import { UsageLimitCard } from "./chat-usage-limit-card";
 import { projectAssistantTurn } from "./turn-projection";
 import { useDraftProjection } from "./draft-projection";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { skillFailureText } from "@/lib/skill-failure-text";
+import { AgentFailureNotice } from "@/components/agent-failure-notice";
+import type { AgentBackendId } from "../../../../shared/agent-ipc";
+import { RegularChatTurn } from "./chat-regular-turn";
 
 // ─── 折叠开合：展开即主动脱离粘底锁，把"读旧内容"与"追新消息"区分开 ───
 // stick-to-bottom 只认高度增长，无法辨意图；展开时 stopScroll() 注入脱锁信号，
@@ -108,6 +109,7 @@ const TOOL_ICONS = {
   image: ImageIcon,
   reasoning: BrainIcon,
   "user-input": CircleQuestionMarkIcon,
+  "agent-failure": TriangleAlertIcon,
   other: WrenchIcon,
 } as const;
 
@@ -322,6 +324,8 @@ export function TurnParts({
   streamingIds = new Set<string>(),
   imageSourceRef,
   onOpenImage,
+  backendDisplayName = "Agent",
+  backendId,
 }: {
   parts: readonly DraftPart[];
   subagents?: Record<string, ProjectedSubagent>;
@@ -329,7 +333,10 @@ export function TurnParts({
   streamingIds?: ReadonlySet<string>;
   imageSourceRef?: (itemId: string) => GallerySourceRef | null;
   onOpenImage?: (source: ConversationImageSource) => void;
+  backendDisplayName?: string;
+  backendId?: AgentBackendId;
 }) {
+  const { t } = useAppTranslation();
   return (
     <div className="flex w-full min-w-0 max-w-full flex-wrap items-center gap-2">
       {groupParts(parts).map((group) => {
@@ -350,6 +357,17 @@ export function TurnParts({
               sourceRef={imageSourceRef?.(group.part.itemId) ?? null}
             />
           );
+        if (group.type === "failure")
+          return group.part.failure ? (
+            <AgentFailureNotice
+              backend={backendDisplayName}
+              backendId={backendId}
+              compact
+              failure={group.part.failure}
+              key={group.part.itemId}
+              tone={group.part.severity === "warning" ? "warning" : "danger"}
+            />
+          ) : null;
         if (group.type === "subagent") {
           const part: DraftSubagentPart = group.part;
           const agent = subagents[part.agentThreadId];
@@ -370,9 +388,9 @@ export function TurnParts({
               onClick={() => onOpenSubagent?.(part.agentThreadId)}
               title={
                 !agent
-                  ? "该 Subagent 的详情已被清理"
+                  ? t("chat.transcript.subagentDetailsCleared")
                   : unavailable
-                    ? "实时详情已达上限"
+                    ? t("chat.transcript.subagentDetailsLimited")
                     : agent.meta.name
               }
               type="button"
@@ -449,12 +467,16 @@ function TurnProcess({
   onOpenSubagent,
   imageSourceRef,
   onOpenImage,
+  backendDisplayName = "Agent",
+  backendId,
 }: {
   message: AssistantChatMessage;
   subagents: Record<string, ProjectedSubagent>;
   onOpenSubagent?: (agentThreadId: string) => void;
   imageSourceRef?: (itemId: string) => GallerySourceRef | null;
   onOpenImage?: (source: ConversationImageSource) => void;
+  backendDisplayName?: string;
+  backendId?: AgentBackendId;
 }) {
   const [open, onOpenChange] = useFoldState();
   const hasParts = (message.parts?.length ?? 0) > 0;
@@ -484,6 +506,8 @@ function TurnProcess({
       </CollapsibleTrigger>
       <CollapsibleContent className="pt-4">
         <TurnParts
+          backendDisplayName={backendDisplayName}
+          backendId={backendId}
           onOpenImage={onOpenImage}
           onOpenSubagent={onOpenSubagent}
           parts={(message.parts ?? []) as DraftPart[]}
@@ -540,77 +564,11 @@ function PlanTurn({
   );
 }
 
-function RegularChatTurn({
-  backendDisplayName,
-  message,
-  showContinue,
-  onContinue,
-  onRetry,
-  subagents,
-  onOpenSubagent,
-  imageSourceRef,
-  onOpenImage,
-}: {
-  backendDisplayName: string;
-  message: AssistantChatMessage;
-  showContinue: boolean;
-  onContinue: () => void;
-  onRetry: () => void;
-  subagents: Record<string, ProjectedSubagent>;
-  onOpenSubagent?: (agentThreadId: string) => void;
-  imageSourceRef?: (itemId: string) => GallerySourceRef | null;
-  onOpenImage?: (source: ConversationImageSource) => void;
-}) {
-  const { t } = useAppTranslation();
-  const content = message.failure
-    ? skillFailureText(t, message.failure)
-    : message.content || t("chat.noText");
-  // 额度耗尽是"等一等就好"，不是错误——它有自己的结构与动作，
-  // 不该套在通用红框里；usageLimit 存在与否即是这条岔路的唯一判据。
-  const usageLimit =
-    message.failureKind === "usage-limit" ? message.usageLimit : undefined;
-  return (
-    <Message from="assistant">
-      <TurnProcess
-        message={message}
-        onOpenSubagent={onOpenSubagent}
-        subagents={subagents}
-        imageSourceRef={imageSourceRef}
-        onOpenImage={onOpenImage}
-      />
-      {usageLimit ? (
-        <UsageLimitCard
-          backendDisplayName={backendDisplayName}
-          limit={usageLimit}
-          message={content}
-          onRetry={onRetry}
-        />
-      ) : message.isError ? (
-        // 「继续」交给卡片而非另起一行：canContinue 本就要求 isError
-        // （use-chat-session.ts），动作与病因同框，才不会是红框下面浮着一个孤儿按钮
-        <TurnErrorCard
-          content={content}
-          onContinue={showContinue ? onContinue : undefined}
-        />
-      ) : (
-        <MessageContent>
-          <MessageResponse>{content}</MessageResponse>
-        </MessageContent>
-      )}
-      <ChatMessageActions
-        content={content}
-        contextReceipt={message.contextReceipt}
-        createdAt={message.createdAt}
-        role="assistant"
-      />
-    </Message>
-  );
-}
-
 export function ChatTurn(props: {
   chatId: string;
   incarnationId: string | null;
   backendDisplayName: string;
+  backendId?: AgentBackendId;
   message: AssistantChatMessage;
   isPlanExpanded?: boolean;
   showContinue: boolean;
@@ -655,14 +613,22 @@ export function ChatTurn(props: {
   ) : (
     <RegularChatTurn
       backendDisplayName={props.backendDisplayName}
+      backendId={props.backendId}
       message={message}
       onContinue={props.onContinue}
-      onOpenSubagent={props.onOpenSubagent}
-      onOpenImage={props.onOpenImage}
       onRetry={props.onRetry}
+      process={
+        <TurnProcess
+          backendDisplayName={props.backendDisplayName}
+          backendId={props.backendId}
+          imageSourceRef={imageSourceRef}
+          message={message}
+          onOpenImage={props.onOpenImage}
+          onOpenSubagent={props.onOpenSubagent}
+          subagents={props.subagents}
+        />
+      }
       showContinue={props.showContinue}
-      subagents={props.subagents}
-      imageSourceRef={imageSourceRef}
     />
   );
 }
@@ -681,6 +647,8 @@ export function ChatTurnDraft({
   chatId,
   incarnationId,
   assistantSeq,
+  backendDisplayName = "Agent",
+  backendId,
 }: {
   draft: TurnDraft;
   hasPendingApproval: boolean;
@@ -693,6 +661,8 @@ export function ChatTurnDraft({
   chatId: string;
   incarnationId: string | null;
   assistantSeq?: number;
+  backendDisplayName?: string;
+  backendId?: AgentBackendId;
 }) {
   const label = shimmerLabel(draft, hasPendingApproval, queued);
   const plan = projectDraftPlan(draft);
@@ -713,6 +683,8 @@ export function ChatTurnDraft({
   const renderParts = (parts: typeof projection.beforePlan) =>
     parts.length > 0 && (
       <TurnParts
+        backendDisplayName={backendDisplayName}
+        backendId={backendId}
         imageSourceRef={imageSourceRef}
         onOpenSubagent={onOpenSubagent}
         onOpenImage={onOpenImage}
@@ -760,6 +732,7 @@ export function ElapsedLabel({
   startedAt: number;
   endedAt?: number;
 }) {
+  const { t } = useAppTranslation();
   const [now, setNow] = useState(() => endedAt ?? Date.now());
   useEffect(() => {
     if (endedAt !== undefined) return;
@@ -769,9 +742,15 @@ export function ElapsedLabel({
   const displayNow = endedAt ?? now;
   return (
     <WorkedForRow
-      label={`${endedAt === undefined ? "Working" : "Worked"} for ${formatDuration(
-        Math.max(0, displayNow - startedAt)
-      )}`}
+      label={
+        endedAt === undefined
+          ? t("chat.transcript.workingFor", {
+              duration: formatDuration(Math.max(0, displayNow - startedAt)),
+            })
+          : t("chat.workedFor", {
+              duration: formatDuration(Math.max(0, displayNow - startedAt)),
+            })
+      }
     />
   );
 }

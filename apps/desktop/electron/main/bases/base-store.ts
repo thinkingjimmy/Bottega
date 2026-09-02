@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared owner-aware Bases/Gallery schema, commit-kernel, attachments, startup recovery and SerialQueue; Initiate receiving canonical chat/project identity
- * [OUTPUT]: Provides owner key indexed BaseStore, rows+gallery+history, runtime generation submissions, one-time start of migration events, damage/migration blocks reconstruction and promotion
- * [POS]: The bases are the source of the runtime disk truth of the modules; Starting the 3D box, store/startup-migration, v2 meta is the only release record for rows/gallery/history
+ * [INPUT]: Depends on shared owner-aware Base/Gallery/navigation schemas, commit-kernel, attachments, startup recovery, and SerialQueue
+ * [OUTPUT]: Provides owner-key indexed Base storage, rows/gallery/history, canonical navigation mutation, pre-copy query snapshot byte identity, generation commits, migration events, corruption recovery, and promotion
+ * [POS]: Durable Base authority; startup and lifecycle services classify visibility here while renderer projections only consume summaries
  */
 import { join } from "node:path";
 import {
@@ -9,19 +9,15 @@ import {
   ownerKeyOf,
   type BaseMigrationEvent,
   type BaseMeta,
-  type BasePinnedSummary,
   type BaseSnapshot,
 } from "../../../shared/bases-ipc";
+import type { BaseNavigation } from "../../../shared/placement/facts";
 import {
   baseMetaSchema,
   baseRowSchema,
 } from "../../../shared/bases-schema";
 import type { BaseGalleryLedger } from "../../../shared/bases/gallery-attachments";
-import type {
-  BaseHistoryActor,
-  BaseHistoryEntry,
-  BaseHistoryLedger,
-} from "../../../shared/bases/history-ledger-schema";
+import type { BaseHistoryLedger } from "../../../shared/bases/history-ledger-schema";
 import { errorMessage } from "../errors";
 import { SerialQueue } from "../persistence/serial-queue";
 import { BaseAttachmentStore } from "./store/attachments";
@@ -39,6 +35,7 @@ import {
 } from "./store/gallery-ledger";
 import {
   appendHistoryEntry,
+  createHistoryEntry,
   emptyHistoryLedger,
   historyForRow,
 } from "./store/history-ledger";
@@ -52,7 +49,6 @@ import {
   BaseIncarnationError,
   BaseNotFoundError,
   BaseStoreConflictError,
-  baseNavigationSummary,
   chatOwnerIdentity,
   galleryOwnerId,
   projectOwnerIdentity,
@@ -65,6 +61,12 @@ import {
   type ReadonlyBaseSnapshot,
   type StoredBase,
 } from "./base-store-model";
+import {
+  baseOwnerSummaries,
+  navigationMutation,
+  projectBaseSummaries,
+  rootBaseSummaries,
+} from "./navigation/store-projection";
 export {
   BaseCorruptError,
   BaseIncarnationError,
@@ -114,11 +116,12 @@ export class BaseStore {
       warn: (message) => this.warn(message),
     });
   }
-  initialize(
+  async initialize(
     chats: ReadonlyMap<string, BaseIdentity>,
-    projectIds: ReadonlySet<string> = new Set()
+    projectIds: ReadonlySet<string> = new Set(),
+    navigationOf?: (meta: BaseMeta) => BaseNavigation
   ) {
-    return this.queue.enqueue(() =>
+    await this.queue.enqueue(() =>
       initializeBaseStoreStartup({
         root: this.root,
         exportsRoot: this.exportsRoot,
@@ -135,6 +138,25 @@ export class BaseStore {
         now: this.now,
       })
     );
+    if (!navigationOf) return;
+    for (const [ownerKey, state] of [...this.states.entries()]) {
+      const navigation = navigationOf(state.meta);
+      if (JSON.stringify(navigation) === JSON.stringify(state.meta.navigation)) {
+        continue;
+      }
+      await this.transact(ownerKey, state.meta.ownerInstanceId, (current) => ({
+        meta: {
+          ...current.meta,
+          navigation,
+          pinned: navigation.kind === "root-user-managed",
+          revision: current.meta.revision + 1,
+        },
+        rows: current.rows,
+        rowsChanged: false,
+        actor: "system",
+        operation: "navigation-migration",
+      }));
+    }
   }
   getWarning() {
     return this.warnings.join("\n") || undefined;
@@ -190,6 +212,31 @@ export class BaseStore {
     if (ownerInstanceId) this.assertInstance(state.meta, ownerInstanceId);
     return state;
   }
+  async describeQuerySnapshot(ownerKey: string, ownerInstanceId?: string) {
+    this.assertNotCorrupt(ownerKey, ownerInstanceId);
+    const state = this.states.get(ownerKey);
+    if (!state) return null;
+    if (ownerInstanceId) this.assertInstance(state.meta, ownerInstanceId);
+    return {
+      baseInstanceId: state.meta.ownerInstanceId,
+      revision: state.meta.revision,
+      expectedRowsBytes: await this.files.rowsBytes(state.meta),
+    };
+  }
+  copyQuerySnapshot(input: {
+    ownerKey: string;
+    baseInstanceId: string;
+    revision: number;
+  }) {
+    this.assertNotCorrupt(input.ownerKey, input.baseInstanceId);
+    const state = this.states.get(input.ownerKey);
+    const changed = !state || state.meta.ownerInstanceId !== input.baseInstanceId ||
+      state.meta.revision !== input.revision;
+    if (changed) {
+      throw new BaseStoreConflictError("Base query snapshot revision changed before copy");
+    }
+    return this.snapshot(state);
+  }
   /** 全量只读枚举（search 扫描源）；提交是整对象替换，引用无需克隆即版本一致。 */
   listAll(): Array<{ ownerKey: string; snapshot: ReadonlyBaseSnapshot }> {
     return [...this.states.entries()].map(([ownerKey, snapshot]) => ({
@@ -198,32 +245,23 @@ export class BaseStore {
     }));
   }
   baseSummaries() {
-    return new Map(
-      [...this.states.entries()].map(([ownerKey, { meta, rows }]) => [
-        ownerKey,
-        {
-          owner: clone(meta.owner),
-          ownerInstanceId: meta.ownerInstanceId,
-          rowCount: rows.length,
-        },
-      ])
+    return baseOwnerSummaries(this.states);
+  }
+  listPinned() {
+    return rootBaseSummaries(this.states.values());
+  }
+  listProjectBases() {
+    return projectBaseSummaries(this.states.values());
+  }
+  setNavigation(
+    ownerKey: string,
+    navigation: BaseNavigation
+  ): Promise<BaseSnapshot> {
+    const state = this.states.get(ownerKey);
+    if (!state) throw new BaseNotFoundError("Base does not exist");
+    return this.transact(ownerKey, state.meta.ownerInstanceId, (current) =>
+      navigationMutation(current, navigation)
     );
-  }
-  listPinned(): BasePinnedSummary[] {
-    return [...this.states.values()]
-      .filter(({ meta }) => meta.pinned)
-      .sort(
-        (left, right) =>
-          left.meta.name.localeCompare(right.meta.name) ||
-          ownerKeyOf(left.meta.owner).localeCompare(ownerKeyOf(right.meta.owner))
-      )
-      .map(({ meta }) => baseNavigationSummary(meta));
-  }
-  listProjectBases(): BasePinnedSummary[] {
-    return [...this.states.values()]
-      .filter(({ meta }) => meta.owner.kind === "project")
-      .sort((left, right) => left.meta.name.localeCompare(right.meta.name))
-      .map(({ meta }) => baseNavigationSummary(meta));
   }
   ensure(identity: BaseOwnerIdentity | BaseIdentity): Promise<BaseSnapshot> {
     const ownerIdentity =
@@ -301,7 +339,10 @@ export class BaseStore {
       }
       const rebuild =
         identity.owner.kind === "project"
-          ? projectOwnerIdentity(identity.owner.projectId, identity.title)
+          ? {
+              ...projectOwnerIdentity(identity.owner.projectId, identity.title),
+              ...(identity.navigation ? { navigation: identity.navigation } : {}),
+            }
           : identity;
       await this.files.removeFamilyFiles(ownerKey);
       await this.attachments.releaseFamily(
@@ -468,13 +509,24 @@ export class BaseStore {
     const existing = this.states.get(ownerKey);
     if (existing) {
       this.assertInstance(existing.meta, identity.ownerInstanceId);
-      return this.snapshot(existing);
+      const snapshot = this.snapshot(existing);
+      const mutation = identity.navigation
+        ? navigationMutation(snapshot, identity.navigation)
+        : null;
+      return mutation
+        ? this.commitLocked(ownerKey, identity.ownerInstanceId, mutation)
+        : snapshot;
     }
     const meta = baseMetaSchema.parse({
       owner: identity.owner,
       ownerInstanceId: identity.ownerInstanceId,
       name: identity.title?.trim() || "Untitled Base",
       pinned: false,
+      navigation: identity.navigation ?? (
+        identity.owner.kind === "project"
+          ? { kind: "project-contained", projectId: identity.owner.projectId }
+          : { kind: "conversation-contained", chatId: identity.owner.chatId }
+      ),
       columns: [],
       views: [
         {
@@ -578,7 +630,7 @@ export class BaseStore {
     try {
       history = appendHistoryEntry(
         current.history,
-        historyEntry(
+        createHistoryEntry(
           current.rows,
           input.rows,
           this.now(),
@@ -763,29 +815,4 @@ export class BaseStore {
   private warn(message: string) {
     this.warnings.push(message);
   }
-}
-
-/** 无行差分（纯 meta 提交：切视图、拖列宽、改列名）返回 null——不烧历史世代。 */
-function historyEntry(
-  before: readonly import("../../../shared/bases-ipc").BaseRow[],
-  after: readonly import("../../../shared/bases-ipc").BaseRow[],
-  at: number,
-  actor: BaseHistoryActor,
-  operation: string
-): BaseHistoryEntry | null {
-  const beforeById = new Map(before.map((row) => [row.id, row]));
-  const afterById = new Map(after.map((row) => [row.id, row]));
-  const rowIds = [...new Set([...beforeById.keys(), ...afterById.keys()])]
-    .filter((rowId) => !same(beforeById.get(rowId), afterById.get(rowId)))
-    .slice(0, 500);
-  if (!rowIds.length) return null;
-  const cells = rowIds.flatMap((rowId) => {
-    const left = beforeById.get(rowId)?.values ?? {};
-    const right = afterById.get(rowId)?.values ?? {};
-    const columnIds = [...new Set([...Object.keys(left), ...Object.keys(right)])]
-      .filter((columnId) => !same(left[columnId], right[columnId]))
-      .slice(0, 64);
-    return columnIds.length ? [{ rowId, columnIds }] : [];
-  });
-  return { at, actor, operation, rowIds, ...(cells.length ? { cells } : {}) };
 }

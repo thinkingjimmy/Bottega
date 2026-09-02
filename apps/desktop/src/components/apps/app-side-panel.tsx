@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on use HorizontalResize, PageShell crossHeaderPanelStyle/panelChromeClassName, Button and cn
- * [OUTPUT]: Provides AppSidePanel; The top of the page is a 44px resize rail, the bottom of the page is a 40px headline, and the door is closed
+ * [OUTPUT]: Provides AppSidePanel; a 44px resize rail on the leading edge, a 40px header, an optional second header band (rail) that takes over the divider, and zero width when closed
  * [POS]: The third-party apps are the only form source shared by the Use/Settings tab; The shutdown mode leaves zero width aside, and content is not posted
  */
 
@@ -27,6 +27,7 @@ export function AppSidePanel({
   railHint,
   closeLabel,
   header,
+  rail,
   children,
 }: {
   open: boolean;
@@ -35,6 +36,11 @@ export function AppSidePanel({
   railHint?: string; // rail 的 hover 提示；rail 本身不可见，键盘可缩放只能靠它露面
   closeLabel: string; // 关闭按钮的可访问名，如「收起设置栏」
   header?: ReactNode; // 40px 头部里关闭按钮之前的内容
+  /* 页头块的第二层（页签条那种整幅横带）。与 PageShell 同一条法：
+     分界线永远画在页头块的最下沿，谁在最下沿谁画。两条平行线中间夹着
+     40px 空白，说的是同一句「页头到此为止」，说两遍就成了噪声。
+     不给布尔开关——开关能被单独拨错，插槽不能。 */
+  rail?: ReactNode;
   children: ReactNode;
 }) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
@@ -95,8 +101,18 @@ export function AppSidePanel({
         /* 宽度写死在内层：外层正在被拖动，内容若跟着 flex 收缩会在拖拽全程重排。 */
         <div className="flex h-full flex-col" style={{ width }}>
           {/* 头部压成单行 40px，下边框与页头共用同一条基线——跨过页头之后，
-              平级感就只剩这条基线在维系。 */}
-          <header className="flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-1 border-b px-2 [-webkit-app-region:drag]">
+              平级感就只剩这条基线在维系。
+
+              px-4 与 PageShell 同值，理由也是同一个：这条头部是页头的平级
+              邻居，不是它的房客，两者的图标钮就该停在同一个内缩上。从前写
+              px-2，右端图标离窗沿 16 而页头动作离 24——面板顶替掉页头右侧
+              动作的那一刻，这级台阶就露了出来。 */}
+          <header
+            className={cn(
+              "flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-1 px-4 [-webkit-app-region:drag]",
+              !rail && "border-b"
+            )}
+          >
             {header}
             <Button
               aria-label={closeLabel}
@@ -109,6 +125,9 @@ export function AppSidePanel({
               <XIcon />
             </Button>
           </header>
+          {/* 线由这一层画，与 PageShell 逐字相同：调用方只递页签条本身，
+              递不进来一条画错位置的分界线。 */}
+          {rail && <div className="shrink-0 border-b">{rail}</div>}
           <div className="min-h-0 flex-1">{children}</div>
         </div>
       )}

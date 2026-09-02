@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Depends on AppStore/BaseAppImporter/AppGrantAuthority, factory package paths, and a custody activation callback
- * [OUTPUT]: Provides createDesignFactoryPorts, the concrete App lifecycle adapter for factory install, explicit grants, promotion, and pending-build-aborted source reset
+ * [INPUT]: Depends on AppStore/BaseAppImporter/AppGrantAuthority, factory package paths, and custody activation/orphan callbacks
+ * [OUTPUT]: Provides createDesignFactoryPorts, the concrete App lifecycle adapter for factory install, explicit Studio grants, a global grant taken from the shared defaultAppGrantRequest so opening availability never smuggles in an Agent delegation, promotion, legacy missing-owner cleanup, and pending-build-aborted source reset
  * [POS]: Design provisioning's Apps-domain edge; every state change is routed through an AppStore mutator, so AppStore.watch broadcasts it and this adapter carries no publisher of its own
  */
 
 import { chmod, lstat, readFile, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
+import { defaultAppGrantRequest } from "../../../../shared/apps-ipc";
 import type { AppRecord } from "../../../../shared/apps-ipc";
 import type { AppStore } from "../../apps/app-store";
 import type { AppGrantAuthority } from "../../apps/attachments/grant-authority";
@@ -26,6 +27,7 @@ export function createDesignFactoryPorts(input: {
   guiGrants: BaseGuiGrantStore;
   resolveAgent(): Promise<AgentBackendId>;
   activateCustody(appId: string): Promise<void>;
+  orphanCustody(appId: string): Promise<void>;
 }): DesignFactoryPorts {
   const find = (appId: string | null) => {
     const record = appId
@@ -54,6 +56,10 @@ export function createDesignFactoryPorts(input: {
         },
         agent: await input.resolveAgent(),
         config: structuredClone(EMPTY_APP_CONFIG),
+        authorization: {
+          scope: "studio-only",
+          decision: "approve-requested",
+        },
       })),
     approveFactoryGui: async (appId) =>
       project(await input.store.resolvePendingBaseGuiConsent(
@@ -71,13 +77,16 @@ export function createDesignFactoryPorts(input: {
       ));
     },
     activateCustody: input.activateCustody,
+    orphanCustody: input.orphanCustody,
+    /* 初装的「开放给全部」与画布上那条「重新打开」是同一个动作的两个时刻，
+       写的也是同一个 defaultGrant——故取同一份载荷，不再各拼各的。Design 读
+       工作区文件走的是上面 approveFactoryGui 那条 workspace-read 租约（scope
+       锁在 design/），与 Agent 的 fileRead 委托是两套机制：把委托默认打开，
+       只会让授权页的开关一装完就是开的，而用户从没被问过。 */
     enableGlobal: async (appId) =>
       project(await input.grants.setDefaultGrant({
         appId,
-        grant: {
-          requestedDataLevel: "none",
-          requestedAgentDelegation: { fileRead: true, useData: false },
-        },
+        grant: defaultAppGrantRequest("none"),
       })),
     resetToPayload: async ({ appId, packageRoot, trust }) => {
       const record = input.store.get(appId);
@@ -115,9 +124,13 @@ export function createDesignFactoryPorts(input: {
         }), { generationSourceDir: record.dir });
         const pending = saved.generationBinding.pending;
         if (pending) {
+          saved = await input.store.grantStudioAccess(
+            appId,
+            pending.generationId
+          );
           saved = await input.store.promotePendingGeneration(
             appId,
-            pending.expectedConsentRevision
+            saved.generationBinding.pending!.expectedConsentRevision
           );
         }
         const verified = project(saved);

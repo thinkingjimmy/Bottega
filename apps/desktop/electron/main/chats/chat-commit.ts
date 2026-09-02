@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the chat-schema, the budget, the shared Markdown, the fence scanner, the limiting constants and the subagent-registry
- * [OUTPUT]: Provides to submit kernel, fence-safe/tools original UTF-8 interrupts, etc. seq/GC/budget convergence with subagentsChanged reconstructed fact; The clean append is the whole section, trim is the access, and the dirty is the whole one
- * [POS]: The chats module has no IO submission kernel; ChatStore calls in a serial queue, and can be untested by the file system
+ * [INPUT]: Depends on the Chat schema, the aggregate budget, the shared Markdown fence scanner, the byte limits, and the subagent registry
+ * [OUTPUT]: Provides the IO-free turn-commit kernel: fence-safe UTF-8 truncation, seq assignment, reachability subagent GC, budget convergence, and an explicit subagentsChanged verdict
+ * [POS]: Pure commit kernel of the chats module; ChatStore calls it inside the serial queue, so it stays testable without a file system
  */
 
 import { TOOL_DETAIL_BYTE_LIMIT } from "../../../shared/agent-ipc";

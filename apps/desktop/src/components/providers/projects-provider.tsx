@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, AppsProvider, selectable HistoryProvider Project, import coordinator, shared Projects, contracts with projects-client
- * [OUTPUT]: Provides ProjectsProvider/useProjects, including epoch refresh, event buffer, App signature and window focus, invalid refresh, Project non-destructive detach/look/workspace chooser/missing, rescue and Git branch query/switch/create
- * [POS]: Project's single source of truth, driven by Path Guards, Sidebar, App Editors, and New Task selectors
+ * [INPUT]: Depends on React Context, the locale catalog, AppsProvider, selectable HistoryProvider Project, import coordinator, shared Projects, and projects-client contracts
+ * [OUTPUT]: Provides ProjectsProvider/useProjects with epoch refresh, buffered events, authoritative placement convergence, App focus, localized reveal/detach/missing failures, and Git branch operations
+ * [POS]: Renderer Project single source of truth; mutation Promise records never bypass ordered snapshot/event adoption
  */
 
 import {
@@ -21,14 +21,14 @@ import type {
   GitBranchTarget,
   ProjectAppearance,
   ProjectLocalDetachResult,
-  ProjectMemoryRebindMode,
+  SetProjectAppPinnedInput,
+  SetProjectAppPinnedResult,
   ProjectsEvent,
   ProjectsSortMode,
 } from "../../../shared/projects-ipc";
 import { useApps } from "./apps-provider";
 import {
   checkoutProjectBranch,
-  chooseProjectWorkspaceBinding,
   createProjectBranch,
   detachLocalProject as detachLocalProjectViaClient,
   ensureProjectForApp,
@@ -36,12 +36,15 @@ import {
   listProjects,
   onProjectsEvent,
   releaseMissingProject as releaseMissingProjectViaClient,
+  revealProject as revealProjectViaClient,
   renameProject as renameProjectViaClient,
   setProjectAppearance as setProjectAppearanceViaClient,
+  setProjectAppPinned as setProjectAppPinnedViaClient,
   setProjectsSortMode,
 } from "@/lib/projects-client";
 import { errorMessage } from "@/lib/errors";
 import { useOptionalHistory } from "./history/history-provider";
+import { useAppTranslation } from "./i18n-provider";
 
 type ProjectsContextValue = {
   projects: Project[];
@@ -56,11 +59,11 @@ type ProjectsContextValue = {
     projectId: string,
     appearance: ProjectAppearance
   ) => Promise<Project>;
+  setProjectAppPinned: (
+    input: SetProjectAppPinnedInput
+  ) => Promise<SetProjectAppPinnedResult>;
   detachLocalProject: (projectId: string) => Promise<ProjectLocalDetachResult>;
-  chooseWorkspaceBinding: (
-    projectId: string,
-    mode: ProjectMemoryRebindMode
-  ) => Promise<Project | null>;
+  revealProject: (projectId: string) => Promise<void>;
   releaseMissingProject: (projectId: string) => Promise<number>;
   setSortMode: (sortMode: ProjectsSortMode) => Promise<void>;
   listBranches: (projectId: string) => Promise<GitBranchSnapshot | null>;
@@ -86,6 +89,7 @@ function applyEvents(base: Project[], events: ProjectsEvent[]) {
 }
 
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useAppTranslation();
   const history = useOptionalHistory();
   const { records } = useApps();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -125,7 +129,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       setWarning(warningEvent?.message ?? snapshot.warning ?? "");
     } catch (cause) {
       if (currentEpoch === epoch.current) {
-        setWarning(`Projects 加载失败：${errorMessage(cause)}`);
+        setWarning(
+          t("projects.provider.loadFailed", { message: errorMessage(cause) })
+        );
       }
     } finally {
       if (currentEpoch === epoch.current) {
@@ -134,7 +140,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const unsubscribe = onProjectsEvent(receive);
@@ -159,11 +165,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [appsSignature, refresh]);
 
   const run = useCallback(
-    async <T,>(action: () => Promise<T>, label: string) => {
+    async <T,>(
+      action: () => Promise<T>,
+      failureCopy: (message: string) => string
+    ) => {
       try {
         return await action();
       } catch (cause) {
-        setWarning(`${label}：${errorMessage(cause)}`);
+        setWarning(failureCopy(errorMessage(cause)));
         throw cause;
       }
     },
@@ -178,41 +187,60 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       warning,
       refresh,
       addProject: () => run(
-        () => history?.addProject() ?? Promise.reject(new Error("Project 导入协调器尚未挂载")),
-        "Project 添加失败"
+        () => history?.addProject() ?? Promise.reject(new Error(t("projects.provider.coordinatorUnavailable"))),
+        (message) => t("projects.provider.addFailed", { message })
       ),
       ensureForApp: (appId) =>
-        run(() => ensureProjectForApp(appId), "App Project 建立失败"),
+        run(
+          () => ensureProjectForApp(appId),
+          (message) => t("projects.provider.appProjectFailed", { message })
+        ),
       renameProject: (projectId, name) =>
-        run(() => renameProjectViaClient(projectId, name), "Project 重命名失败"),
+        run(
+          () => renameProjectViaClient(projectId, name),
+          (message) => t("projects.provider.renameFailed", { message })
+        ),
       setProjectAppearance: (projectId, appearance) =>
         run(
           () => setProjectAppearanceViaClient(projectId, appearance),
-          "Project 外观保存失败"
+          (message) => t("projects.provider.appearanceFailed", { message })
         ),
+      setProjectAppPinned: async (input) => {
+        try {
+          const result = await setProjectAppPinnedViaClient(input);
+          if (!result.changed) await refresh();
+          return result;
+        } catch (cause) {
+          await refresh();
+          throw cause;
+        }
+      },
       detachLocalProject: (projectId) =>
         run(
           () => detachLocalProjectViaClient(projectId),
-          "Project 本地移除失败"
+          (message) => t("projects.provider.detachFailed", { message })
         ),
-      chooseWorkspaceBinding: (projectId, mode) =>
+      revealProject: (projectId) =>
         run(
-          () => chooseProjectWorkspaceBinding(projectId, mode),
-          "Project 工作目录选择失败"
+          () => revealProjectViaClient(projectId),
+          (message) => t("projects.provider.revealFailed", { message })
         ),
       releaseMissingProject: (projectId) =>
         run(
           () => releaseMissingProjectViaClient(projectId),
-          "聊天移回根级失败"
+          (message) => t("projects.provider.releaseFailed", { message })
         ),
       setSortMode: async (mode) => {
-        await run(() => setProjectsSortMode(mode), "Project 排序保存失败");
+        await run(
+          () => setProjectsSortMode(mode),
+          (message) => t("projects.provider.sortFailed", { message })
+        );
       },
       listBranches: listProjectBranches,
       checkoutBranch: checkoutProjectBranch,
       createBranch: createProjectBranch,
     }),
-    [history, loading, projects, refresh, run, sortMode, warning]
+    [history, loading, projects, refresh, run, sortMode, t, warning]
   );
 
   return (

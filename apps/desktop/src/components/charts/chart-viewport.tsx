@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, shared ChartPayload, obviously unobstructed color selection, LazyChart and the IntersectionObserver rooting roots
- * [OUTPUT]: Provides ChartViewport (including accessibleColors/cornerReserved display strategy)  ChartComponent types and payloads are accessible to description/data tables on demand; When the data input is stationary, the pointer-events together with the open area, hover/focus-visible/open mode triad, are used to return it
- * [POS]: The eager host kernel of components/charts; With a figure/IO/place/head animation box, ECharts lifecycle declines ChartCore
+ * [INPUT]: Depends on React, i18n, shared ChartPayload, ChartRenderPolicy, LazyChart, SlimScroller, and optional IntersectionObserver roots
+ * [OUTPUT]: Provides ChartViewport, ChartComponent, and localized chartAriaLabel with deferred rendering, one-shot animation, accessible data tables, and corner reservation
+ * [POS]: Eager host kernel for components/charts; it owns figure semantics and lifecycle while LazyChart owns the ECharts code boundary
  */
 
 import {
@@ -17,6 +17,8 @@ import { Button } from "@ai-chat/ui/components/ui/button";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import type { ChartPayload } from "../../../shared/chart-payload";
 import type { ChartRenderPolicy } from "@/lib/charts/chart-option";
+import type { TFunction } from "i18next";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { LazyChart } from "./chart-lazy";
 
 export type ChartComponent = ComponentType<{
@@ -25,18 +27,22 @@ export type ChartComponent = ComponentType<{
   onReady?: () => void;
 }>;
 
-export function chartAriaLabel(payload: ChartPayload) {
-  const names: Record<ChartPayload["type"], string> = {
-    pie: "饼图",
-    bar: "柱状图",
-    line: "折线图",
-    "stacked-bar": "堆叠柱状图",
-    scatter: "散点图",
-    radar: "雷达图",
-    heatmap: "热力图",
+export function chartAriaLabel(payload: ChartPayload, t: TFunction) {
+  const values = {
+    type: t(`bases.chart.type.${payload.type}`),
+    labels: t("bases.chart.render.labelCount", {
+      count: payload.labels.length,
+    }),
+    series: t("bases.chart.render.seriesCount", {
+      count: payload.series.length,
+    }),
   };
-  const title = payload.title ? `：${payload.title}` : "";
-  return `${names[payload.type]}${title}，${payload.labels.length} 个刻度、${payload.series.length} 条序列`;
+  return payload.title
+    ? t("bases.chart.render.ariaWithTitle", {
+        ...values,
+        title: payload.title,
+      })
+    : t("bases.chart.render.aria", values);
 }
 
 /* ── 命中区 44px，身形交还图表 ────────────────────────────────────
@@ -93,6 +99,7 @@ export function ChartViewport({
   cornerReserved?: boolean;
   ChartComponent?: ChartComponent;
 }) {
+  const { t } = useAppTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
   const canDefer = defer && typeof IntersectionObserver !== "undefined";
   const [visible, setVisible] = useState(!canDefer);
@@ -130,7 +137,7 @@ export function ChartViewport({
   const stop = (event: MouseEvent) => event.stopPropagation();
   return (
     <figure
-      aria-label={chartAriaLabel(payload)}
+      aria-label={chartAriaLabel(payload, t)}
       className={`group/chart-viewport relative min-w-0 ${className}`}
       ref={rootRef}
     >
@@ -156,7 +163,11 @@ export function ChartViewport({
         type="button"
         variant="secondary"
       >
-        {tableOpen ? "收起数据" : "查看数据"}
+        {t(
+          tableOpen
+            ? "bases.chart.render.hideData"
+            : "bases.chart.render.showData"
+        )}
       </Button>
       {tableOpen && (
         <SlimScroller
@@ -171,15 +182,19 @@ export function ChartViewport({
 }
 
 function ChartDataTable({ payload }: { payload: ChartPayload }) {
+  const { t } = useAppTranslation();
   return (
     <table className="w-full border-collapse text-left text-xs">
-      <caption className="sr-only">{payload.title ?? "图表数据"}</caption>
+      <caption className="sr-only">
+        {payload.title ?? t("bases.chart.render.dataCaption")}
+      </caption>
       <thead>
         <tr>
-          <th className="border-b p-1">标签</th>
+          <th className="border-b p-1">{t("bases.chart.render.labelHeader")}</th>
           {payload.series.map((series, index) => (
             <th className="border-b p-1" key={`${series.name}:${index}`}>
-              {series.name ?? `序列 ${index + 1}`}
+              {series.name ??
+                t("bases.chart.render.seriesName", { index: index + 1 })}
             </th>
           ))}
         </tr>

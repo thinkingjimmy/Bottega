@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on generation-bound handler context, opaque token registry, Base read/query kernel, mutation handlers and owner-scoped attachment port
- * [OUTPUT]: Provides GUIBasePort, BaseGuiApi plant and static method/capability routing for all Base GUI HTTP endpoints
- * [POS]: The root of the apps/base-gui/api combination; token→binding→method→capability→handler
+ * [INPUT]: Depends on generation-bound handler context, opaque token registry, active-generation fencing, legacy Base reads, durable pre-copy Query snapshot descriptors with live identity checks, compiled Query V1, mutation handlers and owner-scoped attachment port
+ * [OUTPUT]: Provides GUIBasePort, pre-copy query source/current-identity contract, client-disconnect AbortSignal plumbing, BaseGuiApi factory and strict token/method/capability/generation routing for legacy and compiled Base GUI endpoints
+ * [POS]: The root of the apps/base-gui/api combination; token→binding→method→capability→active-write fence→handler
  */
 
-import type { IncomingMessage } from "node:http";
+import { randomBytes } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { BaseGuiApiHandler } from "../../app-gateway";
 import type { BaseGuiLiveBinding } from "../../../../../shared/apps-ipc";
 import type {
@@ -24,11 +25,15 @@ import {
   mutateRows,
 } from "./mutations";
 import {
+  apiError,
   respondBytes,
   respondError,
   respondJson,
   respondMappedError,
 } from "./errors";
+import { readQueryRequest } from "./query-v1";
+import type { BaseGuiQueryRequestV1 } from "../../../../../shared/app-gui/query";
+import { z } from "zod";
 
 const ROWS_DEFAULT_LIMIT = 200;
 const ROWS_MAX_LIMIT = 500;
@@ -42,6 +47,25 @@ type MutationResult = Readonly<{
 
 export type GuiBasePort = {
   snapshot(appId: string): Promise<BaseSnapshot | null>;
+  /* querySnapshot 与 queryV1 在产品装配里是必备的（gui-runtime-service 注入）。
+     类型上保持可选只是为了不强迫上游装配体重复声明；缺失时 query-v1 路由
+     以 query_unavailable 收场，绝不在 main 线程上冒充执行器。 */
+  querySnapshot?(appId: string): Promise<BaseGuiQuerySnapshotSource | null>;
+  isActiveBinding?(binding: BaseGuiLiveBinding): boolean;
+  queryV1?(input: {
+    source: BaseGuiQuerySnapshotSource;
+    request: BaseGuiQueryRequestV1;
+    cursorKey: Uint8Array;
+    surfaceId: string;
+    signal: AbortSignal;
+  }): Promise<unknown>;
+  readPreferences?(input: { binding: BaseGuiLiveBinding }): Promise<unknown>;
+  writePreferences?(input: {
+    binding: BaseGuiLiveBinding;
+    expectedRevision: number;
+    value?: unknown;
+    reset: boolean;
+  }): Promise<unknown>;
   insertRows(input: {
     binding: BaseGuiLiveBinding;
     expectedBaseInstanceId: string;
@@ -66,6 +90,14 @@ export type GuiBasePort = {
   }): Promise<{ bytes: Buffer; filename: string; mediaType: string }>;
 };
 
+export type BaseGuiQuerySnapshotSource = Readonly<{
+  baseInstanceId: string;
+  revision: number;
+  expectedRowsBytes: number;
+  copy(): Promise<BaseSnapshot>;
+  currentIdentity(): Promise<Readonly<{ baseInstanceId: string; revision: number }> | null>;
+}>;
+
 type TokenVerifier = {
   verify(appId: string, surfaceId: string, candidate: string): GuiTokenClaims | null;
 };
@@ -76,6 +108,7 @@ export function createBaseGuiApi(
   options: { bodyTimeoutMs?: number } = {}
 ): BaseGuiApiHandler {
   const admission = new MutationAdmission();
+  const queryCursorKey = randomBytes(32);
   const bodyTimeoutMs = options.bodyTimeoutMs ?? GUI_MUTATION_BODY_TIMEOUT_MS;
   return async (context, pathname, request, response) => {
     const { appId, binding } = context;
@@ -94,23 +127,41 @@ export function createBaseGuiApi(
       ? ["GET", "HEAD"]
       : endpoint.kind === "rows"
         ? ["GET", "HEAD", "POST", "PATCH", "DELETE"]
-        : ["GET", "HEAD"];
+        : endpoint.kind === "query-v1"
+          ? ["POST"]
+        : endpoint.kind === "preferences"
+          ? ["GET", "POST"]
+          : ["GET", "HEAD"];
     response.setHeader("allow", allowed.join(", "));
     if (!allowed.includes(method)) {
       respondError(response, 405, "method_not_allowed", "请求方法不受支持");
       return;
     }
-    const capability = method === "POST"
-      ? "row-insert"
-      : method === "PATCH"
-        ? "row-patch"
-        : method === "DELETE"
-          ? "row-delete"
-          : endpoint.kind === "attachment"
-            ? "attachment-read"
-            : null;
+    const capability = endpoint.kind === "rows"
+      ? method === "POST"
+        ? "row-insert"
+        : method === "PATCH"
+          ? "row-patch"
+          : method === "DELETE"
+            ? "row-delete"
+            : null
+      : endpoint.kind === "attachment"
+        ? "attachment-read"
+        : null;
     if (capability && !binding.baseCapabilities.includes(capability)) {
       respondError(response, 403, "capability_not_granted", `缺少 ${capability} capability`);
+      return;
+    }
+    const writesState =
+      (endpoint.kind === "rows" && ["POST", "PATCH", "DELETE"].includes(method)) ||
+      (endpoint.kind === "preferences" && method === "POST");
+    if (writesState && port.isActiveBinding && !port.isActiveBinding(binding)) {
+      respondError(
+        response,
+        409,
+        "generation_draining",
+        "The previous App generation is read-only while it drains"
+      );
       return;
     }
     if (endpoint.kind === "attachment") {
@@ -122,6 +173,49 @@ export function createBaseGuiApi(
         respondBytes(response, artifact.bytes, artifact.mediaType, artifact.filename, method === "HEAD");
       } catch (cause) {
         respondMappedError(response, cause);
+      }
+      return;
+    }
+    if (endpoint.kind === "query-v1") {
+      const aborts = abortOnDisconnect(request, response);
+      try {
+        const querySnapshot = port.querySnapshot;
+        const queryV1 = port.queryV1;
+        if (!querySnapshot || !queryV1) {
+          throw apiError(503, "query_unavailable", "Query V1 executor is not configured");
+        }
+        const query = await readQueryRequest(request);
+        const source = await querySnapshot(appId);
+        if (!source) {
+          respondError(response, 404, "base_not_found", "该 App 没有可读的 Base");
+          return;
+        }
+        respondJson(response, 200, await queryV1({
+          source,
+          request: query,
+          cursorKey: queryCursorKey,
+          surfaceId: binding.surfaceId,
+          signal: aborts.signal,
+        }));
+      } catch (cause) {
+        respondMappedError(response, cause);
+      } finally {
+        aborts.release();
+      }
+      return;
+    }
+    if (endpoint.kind === "preferences") {
+      try {
+        if (method === "GET") {
+          if (!port.readPreferences) throw apiError(404, "preferences_unavailable", "App preferences are unavailable");
+          respondJson(response, 200, await port.readPreferences({ binding }));
+        } else {
+          if (!port.writePreferences) throw apiError(404, "preferences_unavailable", "App preferences are unavailable");
+          const body = await readPreferenceWrite(request);
+          respondJson(response, 200, await port.writePreferences({ binding, ...body }));
+        }
+      } catch (cause) {
+        respondMappedError(response, cause, method === "GET" ? "read" : "write");
       }
       return;
     }
@@ -175,15 +269,65 @@ function project(snapshot: BaseSnapshot, endpoint: "meta" | "rows", request: Inc
   }, BASE_QUERY_RESULT_BYTE_LIMIT - BASE_QUERY_ENVELOPE_RESERVE);
 }
 
+/* 客户端断开必须立刻传导到执行器：否则一个已经没人读的查询仍会占着快照
+   预留与 worker 槽位，直到 500 ms 墙钟自己烧完。IncomingMessage 的 "close"
+   在正常读完时也会触发，所以真正的中断信号取自 response 侧未写完的关闭。 */
+function abortOnDisconnect(request: IncomingMessage, response: ServerResponse) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const onResponseClose = () => {
+    if (!response.writableEnded) abort();
+  };
+  request.once("aborted", abort);
+  response.once("close", onResponseClose);
+  return {
+    signal: controller.signal,
+    release: () => {
+      request.off("aborted", abort);
+      response.off("close", onResponseClose);
+    },
+  };
+}
+
 function endpointFor(pathname: string) {
   if (pathname === "/_api/base/meta") return { kind: "meta" as const };
   if (pathname === "/_api/base/rows") return { kind: "rows" as const };
+  if (pathname === "/_api/base/query-v1") return { kind: "query-v1" as const };
+  if (pathname === "/_api/preferences") return { kind: "preferences" as const };
   const match = /^\/_api\/base\/attachments\/(attachment_[a-f0-9]{24})$/.exec(pathname);
   return match ? { kind: "attachment" as const, attachmentId: match[1]! } : null;
 }
 
+const preferenceWriteSchema = z.union([
+  z.object({ expectedRevision: z.number().int().nonnegative(), value: z.unknown() }).strict()
+    .transform((value) => ({ ...value, reset: false as const })),
+  z.object({ expectedRevision: z.number().int().nonnegative(), reset: z.literal(true) }).strict()
+    .transform((value) => ({ expectedRevision: value.expectedRevision, reset: true as const })),
+]);
+
+async function readPreferenceWrite(request: IncomingMessage) {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > 70 * 1024) throw apiError(413, "preference_limit", "Preference request exceeds its byte budget");
+    chunks.push(buffer);
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw apiError(400, "preference_invalid", "Preference request must be valid JSON");
+  }
+  const parsed = preferenceWriteSchema.safeParse(value);
+  if (!parsed.success) throw apiError(400, "preference_invalid", "Preference request is invalid", parsed.error.issues);
+  return parsed.data;
+}
+
 export function sameGuiBinding(claims: GuiTokenClaims, binding: BaseGuiLiveBinding) {
   return claims.appId === binding.appId &&
+    claims.contentLayoutVersion === binding.contentLayoutVersion &&
     claims.generationId === binding.generationId &&
     claims.contentDigest === binding.contentDigest &&
     claims.lifecycleRevision === binding.lifecycleRevision &&

@@ -1,22 +1,15 @@
 /**
- * [INPUT]: Depends on Electron, shared chat contracts, ChatHomeService, ChatStore/AttachmentStore, ChatTitleJobs, window surface scope, pure guards, Gallery image projection, and deletion core
- * [OUTPUT]: Provides the renderer/coordinator chat facade; durable turn commits remain successful when best-effort renderer projection fails, and App windows receive only their resident Studio's active use chat and referenced attachments
- * [POS]: The main process of the chats module is stored on the front door; All new Chats must be owned by Chat Home creation saga
+ * [INPUT]: Depends on Electron, shared chat contracts, ChatHomeService, outcome-aware ChatStore/AttachmentStore, ChatTitleJobs, renderer IPC/event adapters, pure guards, and deletion/removal controllers
+ * [OUTPUT]: Provides the renderer/coordinator Chat facade, the startup attachment sweep, unknown-commit attachment compensation, adopted continuation, scoped reads/events, and convergent removal
+ * [POS]: Main-process Chat service boundary; every new or adopted executable Chat is owned by a Chat Home creation saga
  */
 
 import { dirname, join } from "node:path";
-import { rendererEventBus } from "../window/surfaces/renderer-event-bus";
-import { surfaceWindowController } from "../window/surfaces/surface-window-controller";
 import { type BrowserWindow } from "electron";
-import type {
-  AgentBackendId,
-  AgentScope,
-  SessionRef,
-} from "../../../shared/agent-ipc";
+import type { AgentBackendId, AgentScope, SessionRef } from "../../../shared/agent-ipc";
 import { dataUrlByteSize } from "../../../shared/agent-ipc";
 import type { AppChatRole } from "../../../shared/chats-ipc";
 import {
-  CHATS_CHANNEL,
   type ChatAttachmentMeta,
   type ChatMessage,
   type ChatRecord,
@@ -32,14 +25,8 @@ import {
 } from "../../../shared/chats-ipc";
 import type { TrustedManualTurnSubmission as ManualTurnSubmission } from "../../../shared/sections-ipc";
 import { PROJECT_UNAVAILABLE } from "../../../shared/projects-ipc";
-import { rendererIpc } from "../ipc-registrar";
 import { AttachmentStore } from "./attachment-store";
-import {
-  exportAttachmentFile,
-  type AttachmentExportDependencies,
-} from "./attachment-export";
-import { redactImageDetails } from "../gallery/agent-image-projection";
-import { ATTACHMENT_ID_PATTERN, CHAT_ID_PATTERN } from "./chat-schema";
+import { exportAttachmentFile, type AttachmentExportDependencies } from "./attachment-export";
 import {
   ChatLedgerCorruptError,
   ChatMessageInvariantError,
@@ -47,41 +34,48 @@ import {
 } from "./chat-commit";
 import {
   isPersistenceIoError,
-  rejectLegacyRendererWrite,
   sameCanonicalFirstMessage,
   statusError,
 } from "./chats-service-guards";
-import { ChatStore, type ChatMessageMutation } from "./chat-store";
+import {
+  ChatStore,
+  isChatMutationOutcomeUnknown,
+  type ChatMessageMutation,
+} from "./chat-store";
 import type { ChatHomeService } from "../chat-home/chat-home-service";
 import type { ConversationDeletionMode } from "../deletion/conversation-deletion-coordinator";
 import {
   ChatDeletionDriver,
   type ChatDeletionOptions,
 } from "./chat-deletion";
-import {
-  rendererRecordOf,
-  summaryOfRecord as summaryOf,
-} from "./chat-summary";
+import { ChatRemovalController } from "./chat-removal";
+import { publishChatEvent, publishChatMutation } from "./chat-event-publisher";
+import { registerChatRendererIpc } from "./chat-renderer-ipc";
+import { summaryOfChatLike, type ChatMetadata } from "./chat-summary";
 import { ChatTitleJobs } from "./chat-title-jobs";
 import {
   appendInputSchema,
-  adoptInputSchema,
   createAppInputSchema,
   createInputSchema,
   renameInputSchema,
   type ParsedAttachmentPayload,
 } from "./chat-input";
+import { createDormantAppChat, type DormantAppChatInput } from "./lifecycle/dormant-app-chat";
 import {
-  createDormantAppChat,
-  type DormantAppChatInput,
-} from "./lifecycle/dormant-app-chat";
+  beginAdoptedContinuation,
+  createAdoptedChat,
+} from "./lifecycle/adopted-chat";
 export { rejectLegacyRendererWrite } from "./chats-service-guards";
+
+const summaryOf = summaryOfChatLike;
 
 type ChatHomeCreationPort = Pick<ChatHomeService,
   "identityForCreation" | "assertCanCreateChat" | "beginCreation" |
-  "markPrepared" | "commitCreation" | "rollbackCreation">;
+  "markPrepared" | "commitCreation" | "rollbackCreation" |
+  "committedCreationEvidence" | "isolateCommittedCreation">;
 
 export type ChatsServiceOptions = ChatDeletionOptions & {
+  recoverTitleJobs?: boolean;
   generateTitle: (firstMessage: string) => Promise<string>;
   /** 附件文件仓根目录（决策 5：userData/chat-attachments） */
   attachmentsRoot: string;
@@ -98,7 +92,7 @@ export type ChatsServiceOptions = ChatDeletionOptions & {
   cancelConversations: (conversationIds: Iterable<string>) => Promise<void>;
   releaseConversations?: (conversationIds: Iterable<string>) => void;
   /** 标题落盘后的 best-effort 同步（如 Base 名跟随）；失败只记日志，不阻塞改名。 */
-  onTitleChanged?: (record: ChatRecord) => Promise<void>;
+  onTitleChanged?: (record: Pick<ChatRecord, "id" | "incarnationId" | "title">) => Promise<void>;
   resolveAppAgent?: (
     appId: string,
     projectId: string
@@ -116,8 +110,10 @@ export type ChatsServiceOptions = ChatDeletionOptions & {
 };
 
 export class ChatsService {
+  private readonly titleRecovery: Promise<void>;
   private readonly attachments: AttachmentStore;
   private readonly deletion: ChatDeletionDriver;
+  private readonly removal: ChatRemovalController;
   private readonly exportsRoot: string;
   private readonly titles: ChatTitleJobs;
   private window: BrowserWindow | null = null;
@@ -134,91 +130,41 @@ export class ChatsService {
       options,
       (event) => this.emit(event)
     );
+    this.removal = new ChatRemovalController({
+      store,
+      deletion: this.deletion,
+      withConversationLifecycle: (task) =>
+        options.withConversationLifecycle(task),
+      isConversationTransitioning: options.isConversationTransitioning,
+      cancelConversations: options.cancelConversations,
+      releaseConversations: options.releaseConversations,
+    });
     this.exportsRoot =
       options.exportsRoot ?? join(dirname(options.attachmentsRoot), "exports");
     this.titles = new ChatTitleJobs(store, options, (event) => this.emit(event));
+    this.titleRecovery = options.recoverTitleJobs
+      ? this.titles.recover().catch((cause) => {
+          console.error("[chats] durable title outbox recovery failed", cause);
+        })
+      : Promise.resolve();
   }
 
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
-    const assertChatId = (chatId: unknown) => {
-      if (typeof chatId !== "string" || !CHAT_ID_PATTERN.test(chatId)) {
-        throw new Error("聊天 id 格式无效");
-      }
-      return chatId;
-    };
-
-    rendererIpc(window, rendererUrl, "拒绝非主窗口的聊天请求")
-      .roles("main", "app-window")
-      .handleWithContext(CHATS_CHANNEL.list, (context) => {
-        const scoped = surfaceWindowController.appWindowUseChat(context);
-        const chats = context.role === "main"
-          ? this.store.list()
-          : this.store.list().filter((chat) => chat.id === scoped?.chatId);
-        return {
-          chats: chats.map((chat) => ({
-          ...chat,
-          effectiveArchived:
-            Boolean(chat.archivedAt) ||
-            Boolean(
-              chat.projectId &&
-                this.options.isProjectArchived?.(chat.projectId)
-            ),
-          })),
-          ...(context.role === "main" && this.store.getWarning()
-            ? { warning: this.store.getWarning() }
-            : {}),
-        };
-      })
-      .handleWithContext(CHATS_CHANNEL.get, async (context, chatId) => {
-        const id = assertChatId(chatId);
-        surfaceWindowController.assertAppConversationRead(context, id);
-        return (
-        redactImageDetails(
-          rendererRecordOf(await this.store.get(id))
-        )
-        );
-      })
-      .handleWithContext(CHATS_CHANNEL.messagesSnapshot, async (context, chatId) => {
-        const id = assertChatId(chatId);
-        surfaceWindowController.assertAppConversationRead(context, id);
-        return redactImageDetails(await this.store.messagesSnapshot(id));
-      })
-      .roles("main")
-      .handle(CHATS_CHANNEL.create, rejectLegacyRendererWrite)
-      .handle(CHATS_CHANNEL.createForApp, rejectLegacyRendererWrite)
-      .handle(CHATS_CHANNEL.append, rejectLegacyRendererWrite)
-      .handle(CHATS_CHANNEL.rename, async (input) => {
-        this.assertAdmission();
+    registerChatRendererIpc(window, rendererUrl, {
+      store: this.store,
+      isProjectArchived: this.options.isProjectArchived,
+      assertAdmission: () => this.assertAdmission(),
+      rename: async (input) => {
         const { chatId, title } = renameInputSchema.parse(input);
         const record = await this.store.setTitle(chatId, title);
         this.emit({ type: "upserted", summary: summaryOf(record) });
         this.titles.sync(record);
         return summaryOf(record);
-      })
-      .handle(CHATS_CHANNEL.remove, async (chatId) => {
-        this.assertAdmission();
-        const id = assertChatId(chatId);
-        await this.remove(id);
-      })
-      .roles("main", "app-window")
-      .handleWithContext(CHATS_CHANNEL.readAttachment, async (context, attachmentId) => {
-        if (
-          typeof attachmentId !== "string" ||
-          !ATTACHMENT_ID_PATTERN.test(attachmentId)
-        ) {
-          throw new Error("附件 id 格式无效");
-        }
-        if (context.role === "app-window") {
-          const scoped = surfaceWindowController.appWindowUseChat(context);
-          const record = scoped ? await this.store.get(scoped.chatId) : null;
-          const referenced = record?.messages.some((message) =>
-            message.attachments?.some((attachment) => attachment.id === attachmentId)
-          );
-          if (!referenced) throw new Error("App window attachment read rejected");
-        }
-        return this.attachments.read(attachmentId);
-      });
+      },
+      remove: (chatId) => this.remove(chatId),
+      readAttachment: (attachmentId) => this.attachments.read(attachmentId),
+    });
 
     window.once("closed", () => {
       if (this.window === window) this.window = null;
@@ -301,11 +247,13 @@ export class ChatsService {
                 incarnationId: home.incarnationId,
                 homeDir: home.homeDir,
                 appRole: value.appRole,
+                appId: value.appId,
               }
             : {
                 incarnationId: home.incarnationId,
                 homeDir: home.homeDir,
                 appRole: value.appRole,
+                appId: value.appId,
               }
         )
       );
@@ -346,37 +294,24 @@ export class ChatsService {
     projectLifecycle?: "held"
   ) {
     this.assertAdmission();
-    this.options.chatHomes?.assertCanCreateChat();
-    const value = adoptInputSchema.parse(input);
-    const home = this.requireCreationHome(value.id, value.incarnationId);
-    if (this.options.isAppProject?.(value.projectId)) throw new Error("App Project 不接受外源历史收养");
-    await this.options.assertAgentReady?.(value.agent);
-    const create = () => this.commitWithAttachments(value.attachmentPayloads, (metas) => this.store.create(
-      value.id,
-      this.attachMetas(value.firstMessage, metas),
-      value.projectId,
-      value.agent,
-      {
-        minimumNextSeq: sequence ? sequence.assistantSeq + 1 : 2,
-        incarnationId: home.incarnationId,
-        homeDir: home.homeDir,
-        title: value.title,
-        session: value.session,
-        importOrigin: value.importOrigin,
-        snapshotDigest: value.snapshotDigest,
-      }
-    ));
-    const mutation = projectLifecycle === "held" ? await create() : await this.withProject(value.projectId, create);
-    this.emitMutation(mutation);
-    this.options.onAdoptedSessionBound?.(value.session, value.id);
-    return mutation.record;
+    return createAdoptedChat({
+      store: this.store,
+      homes: this.options.chatHomes,
+      isAppProject: this.options.isAppProject,
+      assertAgentReady: this.options.assertAgentReady,
+      withProject: (projectId, task) => this.withProject(projectId, task),
+      commitWithAttachments: (payloads, commit) =>
+        this.commitWithAttachments(payloads, commit),
+      publish: (mutation) => this.emitMutation(mutation),
+      onSessionBound: this.options.onAdoptedSessionBound,
+    }, input, sequence, projectLifecycle);
   }
 
   async appendUserMessage(input: AppendChatMessageInput, reservedSeq?: number) {
     this.assertAdmission();
     const value = appendInputSchema.parse(input);
     if (value.precondition) {
-      const current = await this.store.get(value.chatId);
+      const current = this.store.getMetadata(value.chatId);
       if (
         value.precondition.kind !== "existing" ||
         !current ||
@@ -413,11 +348,11 @@ export class ChatsService {
 
   /** durable preparation 专用：由 canonical meta 反查 blob，renderer 无法指定替代内容。 */
   async revisionAttachmentPayloads(chatId: string, messageId: string) {
-    const record = await this.store.get(chatId);
-    const message = record?.messages.find(
-      (candidate) => candidate.id === messageId
-    );
-    if (!record || message?.role !== "user") throw new Error("REVISION_STALE");
+    const message = await this.store.getNativeMessage(chatId, {
+      kind: "id",
+      messageId,
+    });
+    if (message?.role !== "user") throw new Error("REVISION_STALE");
     return Promise.all(
       (message.attachments ?? []).map(async (meta) => {
         const dataUrl = await this.attachments.read(meta.id);
@@ -449,7 +384,6 @@ export class ChatsService {
     await this.store.replaceSession(scope.conversationId, expected, next);
   }
 
-  /** 只持久化，事件由跨账本 Projects saga 在双落定后统一发布。 */
   async assignProject(chatId: string, projectId: string) {
     if (this.options.isAppProject?.(projectId)) {
       throw statusError(
@@ -460,7 +394,6 @@ export class ChatsService {
     return summaryOf(await this.store.setProjectId(chatId, projectId));
   }
 
-  /** lifecycle saga 专用；事件由 ProjectsService 在双账本落定后统一发布。 */
   async moveProject(
     chatId: string,
     expectedSource: string | null,
@@ -476,7 +409,6 @@ export class ChatsService {
     );
   }
 
-  /** local detach/missing 抢救没有 chat 外的第二成员账本，清绑定后即可发布。 */
   async releaseProject(chatId: string) {
     const summary = summaryOf(await this.store.clearProjectId(chatId));
     this.emit({ type: "upserted", summary });
@@ -487,25 +419,35 @@ export class ChatsService {
     this.emit({ type: "upserted", summary });
   }
 
-  publishRecord(record: ChatRecord) {
-    this.emit({ type: "upserted", summary: summaryOf(record) });
+  publishRecord(record: ChatRecord | ChatMetadata) {
+    this.emit({
+      type: "upserted",
+      summary: summaryOfChatLike(record),
+    });
   }
 
-  publishSessionInvalidated(record: ChatRecord) {
+  publishSessionInvalidated(record: Pick<ChatRecord, "id" | "incarnationId">) {
     this.emit({
       type: "session-invalidated",
       chatId: record.id,
       incarnationId: record.incarnationId,
     });
   }
-  publishEffectiveArchive(record: ChatRecord, effectiveArchived: boolean) {
+  publishEffectiveArchive(
+    record: ChatRecord | ChatMetadata,
+    effectiveArchived: boolean
+  ) {
     this.emit({
       type: "upserted",
-      summary: { ...summaryOf(record), effectiveArchived },
+      summary: {
+        ...summaryOfChatLike(record),
+        effectiveArchived,
+      },
     });
   }
   async beginCreation(submission: ManualTurnSubmission) {
     if (submission.persistence.kind === "append") return;
+    await beginAdoptedContinuation(this.store, submission);
     const workspaceScope: import("../../../shared/agent-ipc").AgentWorkspaceScope =
       submission.persistence.kind === "create-app"
         ? { kind: "app", appId: submission.persistence.input.appId }
@@ -588,6 +530,9 @@ export class ChatsService {
       if (isPersistenceIoError(cause)) {
         return { outcome: "retryable", error: cause as Error };
       }
+      /* 不可恢复的持久化失败此前只沿着 outcome 往上走，最终变成退出时那句
+         「无法安全退出」——原因整个丢了。它必须先在日志里留下自己的名字。 */
+      console.warn(`[chats] turn 持久化失败 chatId=${conversationId}`, cause);
       return {
         outcome: "fatal",
         error: cause instanceof Error ? cause : new Error(String(cause)),
@@ -653,8 +598,11 @@ export class ChatsService {
         const firstMessage = input.firstMessages[0];
         if (!firstMessage) throw new Error("Section 至少需要一条种子消息");
         await this.options.chatHomes!.markPrepared(input.id);
-        const existing = await this.store.get(input.id);
+        const existing = this.store.getMetadata(input.id);
         if (existing) {
+          const canonicalFirst = await this.store.getNativeMessage(input.id, {
+            kind: "first-user",
+          });
           if (
             existing.incarnationId !== input.incarnationId ||
             existing.agent !== input.agent ||
@@ -662,16 +610,17 @@ export class ChatsService {
             existing.createdAt !== firstMessage.createdAt ||
             (input.title !== undefined && existing.title !== input.title) ||
             !sameCanonicalFirstMessage(
-              existing.messages[0],
+              canonicalFirst ?? undefined,
               firstMessage
             )
           ) {
             throw new Error("CreateIntent 与已存在 Section 冲突");
           }
           for (const message of input.firstMessages.slice(1)) {
-            const candidate = existing.messages.find(
-              (stored) => stored.id === message.id
-            );
+            const candidate = await this.store.getNativeMessage(input.id, {
+              kind: "id",
+              messageId: message.id,
+            });
             if (candidate) {
               if (
                 candidate.role !== message.role ||
@@ -685,7 +634,9 @@ export class ChatsService {
             await this.appendCanonical(input.id, message);
           }
           await this.options.chatHomes!.commitCreation(input.id);
-          return (await this.store.get(input.id)) ?? existing;
+          const restored = await this.store.getConversation(input.id);
+          if (!restored) throw new Error("CreateIntent 对应 Section 已丢失");
+          return restored;
         }
         const mutation = await this.store.create(
           input.id,
@@ -700,8 +651,10 @@ export class ChatsService {
         );
         const { record } = mutation;
         for (const message of input.firstMessages.slice(1)) {
-          const latest = await this.store.get(input.id);
-          if (latest?.messages.some((candidate) => candidate.id === message.id)) {
+          if (await this.store.getNativeMessage(input.id, {
+            kind: "id",
+            messageId: message.id,
+          })) {
             continue;
           }
           await this.appendCanonical(input.id, message);
@@ -709,9 +662,11 @@ export class ChatsService {
         await this.options.chatHomes!.commitCreation(input.id);
         this.emitMutation(mutation);
         if (!input.title) this.scheduleTitle(record, firstMessage.content);
-        return (await this.store.get(input.id)) ?? record;
+        return (await this.store.getConversation(input.id)) ?? record;
       } catch (cause) {
-        await this.options.chatHomes!.rollbackCreation(input.id);
+        if (!isChatMutationOutcomeUnknown(cause)) {
+          await this.options.chatHomes!.rollbackCreation(input.id);
+        }
         throw cause;
       }
     };
@@ -720,104 +675,50 @@ export class ChatsService {
       : create();
   }
 
-  /** 人工/Section turn 与删除共用同一条 active deletion fence。 */
   assertOrdinaryTurnAllowed(chatId: string) {
-    if (this.deletion.hasActive(chatId)) {
-      throw new Error("聊天正在删除，不能启动新请求");
-    }
+    this.removal.assertOrdinaryTurnAllowed(chatId);
   }
 
-  /** renderer 单聊删除入口：与 send 共用门闩，先收割 pending/active turn 再删账本。 */
-  async remove(chatId: string) {
-    const candidate = await this.requireDeletionRecord(chatId);
-    const memory = await this.deletion.snapshot(candidate);
-    let record: ChatRecord | null = null;
-    await this.withConversationLifecycle(async () => {
-      if (await this.options.isConversationTransitioning?.(chatId)) {
-        throw Object.assign(
-          new Error("聊天正在保存为 App，完成或回滚前不能删除"),
-          { status: 409 }
-        );
-      }
-      const current = await this.requireDeletionRecord(chatId);
-      this.assertDeletionSnapshotCurrent(candidate, current);
-      record = current;
-      await this.deletion.prepare(current, "local-only", memory);
-    });
-    await this.options.cancelConversations([chatId]);
-    await this.deletion.drive(record!);
-    this.options.releaseConversations?.([chatId]);
+  async remove(chatId: string) { return this.removal.remove(chatId); }
+
+  configureAppChatDeactivation(
+    handler: (chat: Omit<ChatMetadata, "preview">, action: "archive" | "delete") => Promise<void>
+  ) {
+    this.removal.configureAppDeactivation(handler);
   }
 
-  /** Purge 也只在短 Project gate 内落 deletion intent，Memory driver 恒在 gate 外。 */
+  prepareForArchive(chat: Omit<ChatMetadata, "preview">) {
+    return this.removal.prepareForArchive(chat);
+  }
+
+  async removeAppChatHeld(chatId: string, appId: string) { return this.removal.removeAppChatHeld(chatId, appId); }
+
   async removeFromPurge(
     chatId: string,
     mode: ConversationDeletionMode = "local-only"
   ) {
-    const candidate = await this.requireDeletionRecord(chatId);
-    const memory = await this.deletion.snapshot(candidate);
-    let record: ChatRecord | null = null;
-    await this.withConversationLifecycle(async () => {
-      const current = await this.requireDeletionRecord(chatId);
-      this.assertDeletionSnapshotCurrent(candidate, current);
-      record = current;
-      await this.deletion.prepare(current, mode, memory);
-    });
-    await this.options.cancelConversations([chatId]);
-    await this.deletion.drive(record!, mode);
-    this.options.releaseConversations?.([chatId]);
+    return this.removal.removeFromPurge(chatId, mode);
   }
 
-  /** Project 删除逐 Chat 落 intent；held 只复用外层 P，每条 C lifecycle 仍由 deletion coordinator 串行。 */
-  async removeByProject(projectId: string, projectLifecycle?: "held") {
-    const chatIds = this.store.listByProject(projectId);
-    for (const chatId of chatIds) {
-      const candidate = await this.requireDeletionRecord(chatId);
-      const memory = await this.deletion.snapshot(candidate);
-      let record: ChatRecord | null = null;
-      const prepare = async () => {
-        const current = await this.requireDeletionRecord(chatId);
-        this.assertDeletionSnapshotCurrent(candidate, current);
-        if (current.projectId !== projectId) return;
-        record = current;
-        await this.deletion.prepare(current, "local-only", memory);
-      };
-      if (projectLifecycle === "held") await prepare();
-      else await this.withConversationLifecycle(prepare);
-      if (!record) continue;
-      await this.options.cancelConversations([chatId]);
-      await this.deletion.drive(record);
-      this.options.releaseConversations?.([chatId]);
-    }
-  }
+  async removeByProject(projectId: string, projectLifecycle?: "held") { return this.removal.removeByProject(projectId, projectLifecycle); }
 
   async sweepAttachments() {
     return this.attachments.sweep(await this.store.listReferencedAttachmentIds());
   }
 
   async readSectionAttachment(sectionId: string, attachmentId: string) {
-    const record = await this.store.get(sectionId);
-    const owned = record?.messages.some(
-      (message) =>
-        message.role === "user" &&
-        (message.attachments ?? []).some((meta) => meta.id === attachmentId)
-    );
+    const owned = await this.store.hasAttachmentReference(sectionId, attachmentId);
     if (!owned) throw statusError(404, "附件不属于该 Section");
     return this.attachments.read(attachmentId);
   }
 
-  recoverDeletions(waitForCompletion = true) {
-    return this.deletion.recover(waitForCompletion);
-  }
+  recoverDeletions(waitForCompletion = true) { return this.deletion.recover(waitForCompletion); }
 
-  /** 把消息归属的图片安全导出；源账本与源附件永不修改。 */
   async exportAttachment(sectionId: string, attachmentId: string) {
-    const record = await this.store.get(sectionId);
-    if (!record) throw statusError(404, "Section 不存在");
-    const meta = record.messages
-      .filter((message) => message.role === "user")
-      .flatMap((message) => message.attachments ?? [])
-      .find((attachment) => attachment.id === attachmentId);
+    if (!this.store.getMetadata(sectionId)) {
+      throw statusError(404, "Section 不存在");
+    }
+    const meta = await this.store.getAttachmentReference(sectionId, attachmentId);
     if (!meta) throw statusError(404, "附件不属于该 Section");
     return exportAttachmentFile({
       sourcePath: join(this.attachments.root, attachmentId),
@@ -828,17 +729,11 @@ export class ChatsService {
     });
   }
 
-  stopAdmission() {
-    this.admission = "draining";
-  }
+  stopAdmission() { this.admission = "draining"; }
 
-  closeAdmission() {
-    this.admission = "closed";
-  }
+  closeAdmission() { this.admission = "closed"; }
 
-  reopenAdmission() {
-    this.admission = "accepting";
-  }
+  reopenAdmission() { this.admission = "accepting"; }
 
   private assertAdmission() {
     if (this.admission !== "accepting") {
@@ -847,12 +742,11 @@ export class ChatsService {
   }
 
   async awaitTitleJobs() {
+    await this.titleRecovery;
     await this.titles.drain();
   }
 
-  scheduleTitle(record: ChatRecord, firstMessage: string) {
-    this.titles.schedule(record, firstMessage);
-  }
+  scheduleTitle(record: ChatRecord, firstMessage: string) { this.titles.schedule(record, firstMessage); }
 
   private attachMetas(
     message: UnsequencedUserMessage,
@@ -870,7 +764,9 @@ export class ChatsService {
     try {
       return await commit(metas);
     } catch (cause) {
-      await this.attachments.remove(metas);
+      if (!isChatMutationOutcomeUnknown(cause)) {
+        await this.attachments.remove(metas);
+      }
       throw cause;
     }
   }
@@ -884,10 +780,6 @@ export class ChatsService {
     return this.options.withProject(projectId, task);
   }
 
-  private withConversationLifecycle<T>(task: () => Promise<T>) {
-    return this.options.withConversationLifecycle(task);
-  }
-
   private requireCreationHome(chatId: string, incarnationId?: string) {
     const home = this.options.chatHomes?.identityForCreation(chatId);
     if (!home) throw new Error("Chat Home creation intent 尚未物化");
@@ -897,59 +789,11 @@ export class ChatsService {
     return home;
   }
 
-  private async requireDeletionRecord(chatId: string) {
-    const record = await this.store.get(chatId);
-    if (!record) throw new ChatNotFoundError(chatId);
-    return record;
-  }
-
-  private assertDeletionSnapshotCurrent(
-    expected: ChatRecord,
-    current: ChatRecord
-  ) {
-    if (
-      expected.incarnationId !== current.incarnationId ||
-      expected.projectId !== current.projectId
-    ) {
-      throw Object.assign(
-        new Error("Chat 归属已变化，请重试删除"),
-        { status: 409 }
-      );
-    }
-  }
-
   private emit(event: ChatsEvent) {
-    const projected = redactImageDetails(event);
-    let delivered = rendererEventBus.toRole("main", CHATS_CHANNEL.event, projected);
-    const chatId = event.type === "upserted" ? event.summary.id
-      : event.type === "warning" ? null : event.chatId;
-    const appId = chatId && surfaceWindowController.appIdForActiveUseChat(chatId);
-    if (appId) delivered += rendererEventBus.toApp(appId, CHATS_CHANNEL.event, projected);
-    if (!delivered && this.window && !this.window.isDestroyed()) {
-      this.window.webContents.send(CHATS_CHANNEL.event, projected);
-    }
+    publishChatEvent({ event, store: this.store, window: this.window });
   }
 
   private emitMutation(mutation: ChatMessageMutation) {
-    this.emit({ type: "upserted", summary: summaryOf(mutation.record) });
-    if (mutation.appended.length === 0) return;
-    if (mutation.mode === "replace") {
-      this.emit({
-        type: "messages",
-        chatId: mutation.record.id,
-        incarnationId: mutation.record.incarnationId,
-        revision: mutation.revision,
-        mode: "replace",
-        messages: structuredClone(mutation.record.messages),
-      });
-      return;
-    }
-    this.emit({
-      type: "messages-delta",
-      chatId: mutation.record.id,
-      incarnationId: mutation.record.incarnationId,
-      revision: mutation.revision,
-      appended: structuredClone(mutation.appended),
-    });
+    publishChatMutation(mutation, (event) => this.emit(event));
   }
 }

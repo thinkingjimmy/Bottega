@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ui Button, cn, lucide icon, name display at the back and shared AgentApprovalRequest/Decision
- * [OUTPUT]: Provides ChatApprovalCard; plan-review format presents the numbered decision line, the plan is written from the original plan item in the dialog, the line has no permanent bottom color, tones are only typed in red, and the general approval presents the command/details and capsule buttons, both by the back end choices submit the exact decision
- * [POS]: The official website of the company is the official website of the companyplan-review occupies the input box slot (no bottom gap), and is normally approved by placing the Composer above the mb-3 band, along with rounded-2xl; No reservation of permissions, only on current request
+ * [INPUT]: Depends on ui Button, cn, lucide icons, Chat composer i18n, backend display names and shared AgentApprovalRequest/Decision
+ * [OUTPUT]: Provides localized ChatApprovalCard; backend choices stay verbatim while fallback decisions, request titles, metadata, and details use the catalog
+ * [POS]: Composer decision surface for one pending approval; Plan review replaces the editor slot while ordinary approvals sit above it
  */
 
 import { ArrowRightIcon, LightbulbIcon, ShieldAlertIcon } from "lucide-react";
@@ -9,6 +9,7 @@ import { Button } from "@ai-chat/ui/components/ui/button";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { cn } from "@ai-chat/ui/lib/utils";
 import type { AgentApprovalDecision, AgentApprovalRequest } from "../../../../shared/agent-ipc";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 /* ── 决策渲染归一 ──────────────────────────────────────────────
  * ACP 后端给 choices 时用后端文案，否则合成同形的默认三选项。
@@ -28,14 +29,35 @@ const TONE_VARIANT = {
 
 function fallbackChoices(
   approval: AgentApprovalRequest,
-  planReview: boolean
+  planReview: boolean,
+  t: (key: string) => string
 ): DecisionButton[] {
   return [
-    { decision: "decline", label: planReview ? "要求修改" : "拒绝", tone: "secondary" },
+    {
+      decision: "decline",
+      label: t(
+        planReview
+          ? "chat.composer.approval.requestChanges"
+          : "chat.composer.approval.decline"
+      ),
+      tone: "secondary",
+    },
     ...(approval.canAcceptForSession
-      ? [{ decision: "accept-for-session", label: "本会话允许", tone: "secondary" } as const]
+      ? [{
+          decision: "accept-for-session",
+          label: t("chat.composer.approval.allowSession"),
+          tone: "secondary",
+        } as const]
       : []),
-    { decision: "accept", label: planReview ? "批准 Plan" : "允许一次", tone: "primary" },
+    {
+      decision: "accept",
+      label: t(
+        planReview
+          ? "chat.composer.approval.approvePlan"
+          : "chat.composer.approval.allowOnce"
+      ),
+      tone: "primary",
+    },
   ];
 }
 
@@ -126,17 +148,18 @@ export function ChatApprovalCard({
   error?: string;
   onDecision: (decision: AgentApprovalDecision) => void;
 }) {
+  const { t } = useAppTranslation();
   const planReview = approval.purpose === "plan-review";
   const choices: DecisionButton[] = approval.choices?.length
     ? approval.choices
-    : fallbackChoices(approval, planReview);
+    : fallbackChoices(approval, planReview, t);
   const title = planReview
-    ? "按这份 Plan 继续吗？"
+    ? t("chat.composer.approval.planTitle")
     : approval.kind === "command"
-      ? "请求运行命令"
+      ? t("chat.composer.approval.commandTitle")
       : approval.kind === "file-change"
-        ? "请求修改文件"
-        : "请求额外权限";
+        ? t("chat.composer.approval.fileChangeTitle")
+        : t("chat.composer.approval.permissionTitle");
   const detail = detailBeyondCommand(approval.reason ?? "", approval.command);
 
   return (
@@ -183,8 +206,18 @@ export function ChatApprovalCard({
 
       {(approval.cwd || approval.networkHost) && (
         <div className="mt-2 space-y-0.5">
-          {approval.cwd && <MetaRow label="位置" value={approval.cwd} />}
-          {approval.networkHost && <MetaRow label="网络" value={approval.networkHost} />}
+          {approval.cwd && (
+            <MetaRow
+              label={t("chat.composer.approval.location")}
+              value={approval.cwd}
+            />
+          )}
+          {approval.networkHost && (
+            <MetaRow
+              label={t("chat.composer.approval.network")}
+              value={approval.networkHost}
+            />
+          )}
         </div>
       )}
 
@@ -193,7 +226,9 @@ export function ChatApprovalCard({
       {detail && (
         <div className="mt-2 border-t pt-2">
           <p className="font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
-            {planReview ? "Plan" : "详情"}
+            {planReview
+              ? t("chat.composer.approval.plan")
+              : t("chat.composer.approval.details")}
           </p>
           <SlimScroller asChild>
             <p className="mt-1 max-h-56 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-5">

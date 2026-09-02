@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, PromptInput context, typed attachment commands, share context in the UI documentation, synchronize prepareSubmission with abort-aware Submit access restrictions
- * [OUTPUT]: Provides first await, single freeze, unre-committed, accurate cleaning, unloaded save, original cause, fresh-count single file access and plain textarea
- * [POS]: ai-elements the submission and access core of PromptInput to the attachments; provider/local is written by a single selection with the same source driven attachment, business feedback and errors
+ * [INPUT]: Depends on React, PromptInput context, typed attachment commands, host-injected UI text, and abort-aware submission gates
+ * [OUTPUT]: Provides PromptInput submission transactions, localized file-admission errors, fresh-count attachment selection, and the plain-text input surface
+ * [POS]: The submission and attachment-admission core of ai-elements PromptInput; provider and local paths share the same pure selection rules
  */
 
 import {
@@ -166,6 +166,26 @@ export const PromptInput = ({
     "submissionFailed",
     "Submission failed. Please try again."
   );
+  const fileTypeError = useUiText(
+    "fileTypeError",
+    "No files match the accepted types."
+  );
+  const fileSizeError = useUiText(
+    "fileSizeError",
+    "All files exceed the maximum size."
+  );
+  const fileCountError = useUiText(
+    "fileCountError",
+    "Too many files. Some were not added."
+  );
+  const fileMessages = useMemo(
+    () => ({
+      accept: fileTypeError,
+      max_file_size: fileSizeError,
+      max_files: fileCountError,
+    }),
+    [fileCountError, fileSizeError, fileTypeError]
+  );
   const controller = useOptionalPromptInputController();
   const usingProvider = !!controller;
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -194,6 +214,7 @@ export const PromptInput = ({
         currentCount: local.filesRef.current.length + externalFileCount,
         maxFiles,
         maxFileSize,
+        messages: fileMessages,
       });
       if (selection.error) onError?.(selection.error);
       if (selection.files.length === 0) return;
@@ -209,6 +230,7 @@ export const PromptInput = ({
       attachmentFileFilter,
       attachmentsDisabled,
       externalFileCount,
+      fileMessages,
       local,
       maxFileSize,
       maxFiles,
@@ -269,6 +291,7 @@ export const PromptInput = ({
           local.filesRef.current.length + (options.externalFileCount ?? 0),
         maxFiles: options.maxFiles,
         maxFileSize: options.maxFileSize,
+        messages: fileMessages,
       });
       const attachments = options.attachmentFileFilter
         ? selection.files.filter(options.attachmentFileFilter)
@@ -276,7 +299,7 @@ export const PromptInput = ({
       if (attachments.length > 0) local.add(attachments);
       return selection;
     },
-    [controller, local, usingProvider]
+    [controller, fileMessages, local, usingProvider]
   );
   const remove = usingProvider ? controller.attachments.remove : local.remove;
   const openFileDialog = useCallback(() => {

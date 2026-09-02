@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ui dialog/button/spinner, cn style tool, shared/apps-ipc RemoveAppMode
+ * [INPUT]: Depends on Apps i18n, UI dialog/button/spinner, cn, and shared RemoveAppMode
  * [OUTPUT]: Provides AppDeleteDialog, Base retention choices, and ordinary-App cascade confirmation that discloses Project chat deletion
- * [POS]: The only source of the removal of the app component pop-up windows, along with repair-dialog, is consumed by the app-card
+ * [POS]: Sole Apps deletion decision surface consumed by AppCard alongside repair-dialog
  */
 
 import { useState } from "react";
@@ -17,6 +17,7 @@ import {
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { cn } from "@ai-chat/ui/lib/utils";
 import type { RemoveAppMode } from "../../../shared/apps-ipc";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 type AppDeleteDialogProps = {
   open: boolean;
@@ -50,6 +51,7 @@ export function AppDeleteDialog({
   error,
   onDelete,
 }: AppDeleteDialogProps) {
+  const { t } = useAppTranslation();
   const [pending, setPending] = useState<RemoveAppMode | null>(null);
 
   const run = async (mode: RemoveAppMode) => {
@@ -71,20 +73,20 @@ export function AppDeleteDialog({
         // 描述句已拆进选项，显式声明无 description，免得 Radix 误报缺失。
         <DialogContent aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>删除 {name}？</DialogTitle>
+            <DialogTitle>{t("apps.deleteDialog.title", { name })}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-2">
             <DeleteChoice
-              title="只删除 App"
-              detail="Project、聊天和 Base 全部保留，之后仍可在 Project 里继续使用。"
+              title={t("apps.deleteDialog.retainTitle")}
+              detail={t("apps.deleteDialog.retainDetail")}
               busy={pending === "retain-data"}
               disabled={pending !== null}
               onClick={() => void run("retain-data")}
             />
             <DeleteChoice
               danger
-              title="连同数据一起删除"
-              detail="Project、聊天和 Base 一并永久删除，无法恢复。"
+              title={t("apps.deleteDialog.cascadeTitle")}
+              detail={t("apps.deleteDialog.cascadeDetail")}
               busy={pending === "cascade"}
               disabled={pending !== null}
               onClick={() => void run("cascade")}
@@ -95,10 +97,9 @@ export function AppDeleteDialog({
       ) : (
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除 {name}？</DialogTitle>
+            <DialogTitle>{t("apps.deleteDialog.title", { name })}</DialogTitle>
             <DialogDescription>
-              此操作会停止 App，删除本地仓库文件、专用 Agent 环境以及该 origin
-              的本地数据；若此 App 已创建 Project，其聊天也会一并删除，无法恢复。
+              {t("apps.deleteDialog.webDescription")}
             </DialogDescription>
           </DialogHeader>
           <DeleteError message={error} />
@@ -108,7 +109,7 @@ export function AppDeleteDialog({
               disabled={pending !== null}
               onClick={() => onOpenChange(false)}
             >
-              取消
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -119,7 +120,7 @@ export function AppDeleteDialog({
               {/* Spinner 自带 size-4，Button 的 svg 兜底选择器认 class 里的
                   size- 就不再插手；不显式对齐 size-3.5 它会比同排图标大一圈。 */}
               {pending && <Spinner className="size-3.5" />}
-              删除本地文件与 App 数据
+              {t("apps.deleteDialog.deleteFiles")}
             </Button>
           </DialogFooter>
         </DialogContent>

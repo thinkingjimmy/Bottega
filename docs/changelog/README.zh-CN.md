@@ -4,6 +4,16 @@
 
 本文件只记录产品里程碑，不记录内部实现的逐次迭代。日期表示对应能力首次形成完整产品形态的时间。
 
+## 2026-09-02 — v0.1.0
+
+- 发布首批安装包。Bottega 现在可以从 GitHub Releases 获取 macOS arm64 DMG 与 ZIP、Windows x64 NSIS 安装包，以及 Linux x64 AppImage，全部由本次 tag 对应的提交构建。这批产物未签名，首次启动时各平台需要的一次性操作见[快速开始](../getting-started/README.zh-CN.md)。
+- Chat 存储重建在 SQLite 之上，并以它为唯一真相源。对话、turn、附件与 fact 统一落在一个持久化本地数据库里，不再散落为逐 Chat 的文件；Chat 因此能在崩溃后存活、无需重新扫描即可恢复，也不再越长越慢。
+- 让长对话的打开成本恒定。时间线、Chat 大纲与 Chat 内查找全部分页：打开一个有几万 turn 的 Chat 与打开一个短 Chat 代价相同，向上回溯也不会重新加载整份转录。
+- 增加基于 gram 的全文搜索。搜索对中文、日文、韩文的匹配与空格分词语言一样可靠，且与转录读取同一份存储。
+- 导入历史并入同一条时间线。从本机 Codex、Claude Code、Kimi Code 与 OpenCode CLI 接续的 session，现在与 Bottega 内创建的 Chat 使用同一份转录、大纲、搜索与导航，不再是一个独立的只读视图。
+- 收窄 fact 写入。一个 turn 只更新它真正拥有的 fact，并发 turn、Memory 交付与 Base 写入不再互相覆盖状态。
+- 关闭合并评审发现的问题。App Use 只在收到 completed 回执后才导航，被拒绝或恢复中的 App 不会再移动窗口；撤销 App 的 Base 访问权限成为一次原子操作，访问权与生命周期不再出现半状态；App 与 Project 的固定、Project 外观与设置导航重新组织，侧边栏始终反映真正打开的内容。
+
 ## 2026-08-29 — Project 级工具、Extension 与 Design Canvas 源码预览
 
 - 在干净公开历史上以正常子提交发布当前生产源码；测试、开发自动化与内部证据继续只留在 Bottega-Dev。

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the preload WindowSurfacesBridgeApi, shared surface/capsule DTOs, browser history/sessionStorage, and React external-store hooks
- * [OUTPUT]: Provides windowContext, installWindowSurfaceRuntime, show/open/reclaim intents, transactional capsule export/commit/restore, checkpoints, and useSurfaceResidence
+ * [OUTPUT]: Provides windowContext, installWindowSurfaceRuntime, navigation-generation-fenced show/open/reclaim intents, capsule operations, checkpoints, and nullable useSurfaceResidence
  * [POS]: Renderer client for main-owned surface residency; it caches projections only and never decides ownership
  */
 
@@ -130,8 +130,22 @@ async function runCommand(command: SurfaceCommand) {
     });
 }
 
-export async function showSurface(surface: SurfaceKey, route: string) {
-  return window.windowSurfaces?.showSurface({ surface, route });
+export async function beginSurfaceNavigationIntent(intentId: string) {
+  const bridge = window.windowSurfaces;
+  if (!bridge?.beginNavigationIntent) return;
+  await bridge.beginNavigationIntent({ intentId });
+}
+
+export async function showSurface(
+  surface: SurfaceKey,
+  route: string,
+  navigationIntentId?: string
+) {
+  return window.windowSurfaces?.showSurface({
+    surface,
+    route,
+    ...(navigationIntentId ? { navigationIntentId } : {}),
+  });
 }
 
 export async function openSurfaceInWindow(
@@ -187,14 +201,14 @@ export function readSurfaceCheckpoint(surface: SurfaceKey) {
   return readCapsule(surface);
 }
 
-export function useSurfaceResidence(surface: SurfaceKey) {
+export function useSurfaceResidence(surface: SurfaceKey | null) {
   const value = useSyncExternalStore(
-    (listener) => subscribe(surface, listener),
-    () => residences.get(surface),
+    (listener) => (surface ? subscribe(surface, listener) : () => {}),
+    () => (surface ? residences.get(surface) : undefined),
     () => undefined
   );
   useEffect(() => {
-    if (value || !window.windowSurfaces) return;
+    if (!surface || value || !window.windowSurfaces) return;
     let alive = true;
     void window.windowSurfaces.residence(surface).then((residence) => {
       if (alive) commitResidence(residence);

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared AgentBackendId, renderer AgentBackendIcon and algorithm AgentAvatar
+ * [INPUT]: Depends on App i18n, shared AgentBackendId, renderer AgentBackendIcon, and algorithm AgentAvatar
  * [OUTPUT]: Provides SubagentAvatar; The spawn brand shows the target Agent logo when specified, and the native record maintains a stable algorithm headline
  * [POS]: The headline of chat/subagent is a single source of truth shared by a list, detail and transcript chip
  */
@@ -8,6 +8,7 @@ import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import { AgentBackendIcon, backendLabel } from "@/lib/agent-backends";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { AgentAvatar } from "./agent-avatar";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 export function SubagentAvatar({
   agentThreadId,
@@ -20,6 +21,7 @@ export function SubagentAvatar({
   size?: number;
   className?: string;
 }) {
+  const { t } = useAppTranslation();
   if (!agent) {
     return (
       <AgentAvatar
@@ -31,7 +33,9 @@ export function SubagentAvatar({
   }
   return (
     <AgentBackendIcon
-      aria-label={`${backendLabel(agent)} Subagent`}
+      aria-label={t("chat.subagent.avatarLabel", {
+        agent: backendLabel(agent),
+      })}
       backend={agent}
       className={cn("shrink-0", className)}
       style={{ height: size, width: size }}

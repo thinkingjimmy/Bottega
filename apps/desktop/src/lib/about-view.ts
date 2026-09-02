@@ -16,9 +16,23 @@ export type UpdateTone = "quiet" | "loud" | "danger";
 
 export type UpdateGlyph = "spinner" | "check" | "download" | "alert";
 
+type UpdateMessageKey =
+  | "settings.about.unavailable"
+  | "settings.about.checking"
+  | "settings.about.available"
+  | "settings.about.downloading"
+  | "settings.about.installing"
+  | "settings.about.failed"
+  | "settings.about.failedUnknown"
+  | "settings.about.current"
+  | "settings.about.backgroundFailed";
+type UpdateActionKey =
+  | "settings.about.upgrade"
+  | "settings.about.manualUpgrade";
+
 export type UpdateView = Readonly<{
-  /** i18n 键（settings.about 下）；null = 静息态，这一行只剩一颗按钮。 */
-  messageKey: string | null;
+  /** 完整 i18n 键；null = 静息态，这一行只剩一颗按钮。 */
+  messageKey: UpdateMessageKey | null;
   messageVars: Readonly<Record<string, string>>;
   glyph: UpdateGlyph | null;
   tone: UpdateTone;
@@ -27,7 +41,7 @@ export type UpdateView = Readonly<{
   /** 检查按钮此刻按不按得动。在飞或桥不在，都算按不动。 */
   blocked: boolean;
   /** 升级按钮的文案键；null = 这一档不给升级按钮。 */
-  upgradeKey: string | null;
+  upgradeKey: UpdateActionKey | null;
 }>;
 
 const SILENT: UpdateView = Object.freeze({
@@ -68,25 +82,27 @@ export function describeUpdate(
   /* 没有更新服务不是「静息」，是「这台机器上根本没有这条通路」。
      它与 phase 无关，故先于 switch 判掉——否则组件里要再写一遍。 */
   if (!bridgeReady) {
-    return speak({ messageKey: "unavailable", glyph: "alert", blocked: true });
+    return speak({ messageKey: "settings.about.unavailable", glyph: "alert", blocked: true });
   }
   const version = update.availableVersion ?? update.currentVersion;
   switch (update.phase) {
     case "checking":
-      return speak({ messageKey: "checking", glyph: "spinner", blocked: true });
+      return speak({ messageKey: "settings.about.checking", glyph: "spinner", blocked: true });
     case "available":
       return speak({
-        messageKey: "available",
+        messageKey: "settings.about.available",
         messageVars: { version },
         glyph: "download",
         tone: "loud",
         /* 自动安装与手动下载是两条通路，标签必须跟着走，
            否则 Windows 上写着「立即升级」按下去只是开了个网页。 */
-        upgradeKey: update.automaticInstall ? "upgrade" : "manualUpgrade",
+        upgradeKey: update.automaticInstall
+          ? "settings.about.upgrade"
+          : "settings.about.manualUpgrade",
       });
     case "downloading":
       return speak({
-        messageKey: "downloading",
+        messageKey: "settings.about.downloading",
         messageVars: { version },
         glyph: "download",
         tone: "loud",
@@ -94,24 +110,27 @@ export function describeUpdate(
         blocked: true,
       });
     case "installing":
-      return speak({ messageKey: "installing", glyph: "check", tone: "loud", blocked: true });
+      return speak({ messageKey: "settings.about.installing", glyph: "check", tone: "loud", blocked: true });
     case "error":
       return speak({
-        messageKey: "failed",
-        /* 缺失的错误原文是诊断，不是文案，故不进 i18n 目录。 */
-        messageVars: { message: update.error ?? "Unknown error" },
+        messageKey: update.error
+          ? "settings.about.failed"
+          : "settings.about.failedUnknown",
+        /* 诊断原文保持原样；缺失诊断则切换到完整 catalog 句子，
+           不把英文兜底伪装成外部错误内容。 */
+        messageVars: update.error ? { message: update.error } : {},
         glyph: "alert",
         tone: "danger",
       });
     case "not-available":
       return checkedHere
-        ? speak({ messageKey: "current", glyph: "check" })
+        ? speak({ messageKey: "settings.about.current", glyph: "check" })
         : SILENT;
     default:
       /* 后台那次自动检查失败过，就不再是静息态：自动通道已经断了，
          用户有权在按下按钮之前就知道这件事。 */
       return update.lastError
-        ? speak({ messageKey: "backgroundFailed", glyph: "alert", tone: "danger" })
+        ? speak({ messageKey: "settings.about.backgroundFailed", glyph: "alert", tone: "danger" })
         : SILENT;
   }
 }

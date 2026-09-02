@@ -32,7 +32,29 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 启动 Bottega 前，请先在对应官方 CLI 中完成登录。Bottega 不会要求或导入这些凭据。
 
-## 安装与启动
+## 下载与安装
+
+每个 release 都会在 [Releases 页面](https://github.com/thinkingjimmy/Bottega/releases)发布三个平台的安装包。
+
+| 平台 | 安装包 | 说明 |
+| --- | --- | --- |
+| macOS（Apple 芯片） | `Bottega-<version>-arm64.dmg` 或 `-arm64-mac.zip` | 主要目标平台，仅支持 Apple 芯片。 |
+| Windows（x64） | `Bottega-<version>-windows-x64.exe` | NSIS 安装包，安装过程中可选择目录。 |
+| Linux（x64） | `Bottega-<version>-linux-x64.AppImage` | 先 `chmod +x`，然后直接运行。 |
+
+这批产物**未做代码签名**，因此每个桌面平台都会要求确认一次。
+
+**macOS。** Gatekeeper 不允许双击打开未签名应用。可以在「应用程序」里右键点击 Bottega 选择**打开**，在弹窗中确认；也可以在终端里一次性清除隔离属性：
+
+```bash
+xattr -d com.apple.quarantine /Applications/Bottega.app
+```
+
+**Windows。** SmartScreen 可能提示「Windows 已保护你的电脑」，原因是发布者未被识别。点击**更多信息**，再点击**仍要运行**。
+
+签名与公证版本在计划中；在此之前，如果需要额外确认，请用 release 构建日志中打印的 SHA256 校验下载文件。
+
+## 从源码构建
 
 ```bash
 git clone --recurse-submodules https://github.com/thinkingjimmy/Bottega.git
@@ -56,7 +78,7 @@ pnpm build       # 构建 Electron 应用
 pnpm dist        # 在本地构建 macOS DMG
 ```
 
-本地 DMG 属于开发产物；首个正式签名的 GitHub Release 尚未发布。
+`pnpm dist` 会为当前平台产出未签名的本地安装包，与已发布的安装包等价。
 
 首次启动时，选择 Chat Homes 目录并等待 Bottega 检测本机 CLI。工作区与至少一个后端就绪后，即可创建任务，并在发送首条消息前选择 Agent。
 

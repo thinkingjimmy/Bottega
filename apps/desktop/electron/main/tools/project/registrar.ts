@@ -17,7 +17,7 @@ import {
   type SetProjectBuiltinToolOverrideInput,
   type SetProjectGlobalMcpOverrideInput,
 } from "../../../../shared/project-tools-ipc";
-import type { ProjectStore } from "../../projects/project-store";
+import type { ProjectStore } from "../../projects/store/project-store";
 import { rendererIpc } from "../../ipc-registrar";
 import type { ProjectToolPolicyStore } from "./store";
 

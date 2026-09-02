@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, shared AppRecord/PresetAppSummary, apps-client, and an optional fixed App-window identity
- * [OUTPUT]: Provides AppsProvider/useApps/useOptionalApps with full main-window operations or a fixed-App snapshot/event projection that never requests presets
- * [POS]: Renderer Apps state owner; fixed App windows retain one exact record while the main product owns global catalogs and management projections
+ * [INPUT]: Depends on React Context, the locale catalog, shared AppRecord/PresetAppSummary, apps-client, and an optional fixed App-window identity
+ * [OUTPUT]: Provides AppsProvider/useApps/useOptionalApps with epoch-fenced snapshot adoption, buffered App events, explicit list state, retryable refresh, durable global pins, deletion-aware cleanup, full main-window operations, or a fixed-App projection that never requests presets
+ * [POS]: Renderer Apps state owner; fixed App windows retain one exact record while the main product owns global catalogs, management projections, and stale-operation eviction
  */
 
 import {
@@ -18,6 +18,7 @@ import {
 import type {
   AddAppInput,
   AppAgentVisibility,
+  AppInstallEvent,
   AppRecord,
   AppOperation,
   AppRuntimeState,
@@ -48,11 +49,13 @@ import {
   revealApp,
   saveAsApp,
   setAppAgent,
+  setAppPinned,
   ensureAppChatSlot,
   retryAppSkill,
 } from "@/lib/apps-client";
 import { errorMessage } from "@/lib/errors";
 import { normalizeGithubRepoUrl as sharedNormalizeGithubRepoUrl } from "../../../shared/github-repo";
+import { useAppTranslation } from "./i18n-provider";
 
 type AppInfo = {
   id: string;
@@ -66,10 +69,16 @@ type AppState = AppRecord["state"];
 type AppsResultNotice = "error" | "success" | null;
 export type AppsSidebarStatus = "loading" | AppsResultNotice;
 
-const workingStates: AppState[] = ["creating", "installing", "updating"];
+const workingStates: AppState[] = [
+  "creating",
+  "installing",
+  "updating",
+  "deleting",
+];
 const failedStates: AppState[] = [
   "install-failed",
   "update-failed",
+  "delete-failed",
 ];
 
 function noticeForTransition(
@@ -102,6 +111,7 @@ export type AppListItem =
 type AppsContextValue = {
   apps: AppListItem[];
   records: AppRecord[];
+  pinnedRecords: AppRecord[];
   presets: PresetAppSummary[];
   /** 三段协议：probe 冻结 → 用户确认 → install 携带 preflightId+digest；放弃即 discard */
   probePreset: (presetId: string) => Promise<PresetProbeResult>;
@@ -110,6 +120,7 @@ type AppsContextValue = {
   loading: boolean;
   /** 列表没拉回来（renderer 侧 IPC 失败）：视图层不得据此宣称「还没有 App」 */
   listWarning: string;
+  refresh: () => void;
   /** 网关降级：与「有哪些 App」无关，走页面横幅 */
   runtimeWarning: string;
   /** 逐 conversation 的「上一轮 Agent 看不见什么」，与页面级 warning 不同槽 */
@@ -121,6 +132,7 @@ type AppsContextValue = {
   setAgent: (input: SetAppAgentInput) => Promise<AppRecord>;
   saveAsApp: (input: SaveAsAppInput) => Promise<AppRecord>;
   renameApp: (input: RenameAppInput) => Promise<AppRecord>;
+  setPinned: (appId: string, pinned: boolean) => Promise<AppRecord>;
   ensureChatSlot: (
     input: EnsureAppChatSlotInput
   ) => Promise<EnsureAppChatSlotResult>;
@@ -136,6 +148,18 @@ type AppsContextValue = {
 
 const AppsContext = createContext<AppsContextValue | null>(null);
 
+export function applyAppInventoryEvents(
+  base: readonly AppRecord[],
+  events: readonly AppInstallEvent[]
+) {
+  const records = new Map(base.map((record) => [record.id, record]));
+  for (const event of events) {
+    if (event.type === "status") records.set(event.appId, event.record);
+    if (event.type === "removed") records.delete(event.appId);
+  }
+  return [...records.values()];
+}
+
 /** 归一化单源在 shared；renderer 侧历史消费的是纯 URL 字符串，这里收窄投影。 */
 export function normalizeGithubRepoUrl(value: string) {
   return sharedNormalizeGithubRepoUrl(value).repoUrl;
@@ -148,6 +172,7 @@ export function AppsProvider({
   children: React.ReactNode;
   fixedAppId?: string;
 }) {
+  const { t } = useAppTranslation();
   const [records, setRecords] = useState<AppRecord[]>([]);
   const [presets, setPresets] = useState<PresetAppSummary[]>([]);
   const recordStates = useRef(new Map<string, AppState>());
@@ -167,15 +192,23 @@ export function AppsProvider({
   const [resultNotice, setResultNotice] =
     useState<AppsResultNotice>(null);
   const [loading, setLoading] = useState(hasAppsBridge());
+  const [reloadRevision, setReloadRevision] = useState(0);
+  const listEpoch = useRef(0);
+  const listRefreshing = useRef(false);
+  const bufferedEvents = useRef<AppInstallEvent[]>([]);
 
   useEffect(() => {
     if (!hasAppsBridge()) return;
     let active = true;
+    const currentEpoch = ++listEpoch.current;
+    listRefreshing.current = true;
+    bufferedEvents.current = [];
     const unsubscribe = onAppsEvent((event) => {
       if (!active) return;
       if (fixedAppId && (!("appId" in event) || event.appId !== fixedAppId)) {
         return;
       }
+      if (listRefreshing.current) bufferedEvents.current.push(event);
       if (event.type === "runtime-warning") {
         setRuntimeWarning(event.message);
       } else if (event.type === "agent-visibility") {
@@ -203,11 +236,39 @@ export function AppsProvider({
           ...current.filter((record) => record.id !== event.appId),
           event.record,
         ]);
+        setSteps((current) =>
+          workingStates.includes(event.record.state)
+            ? current
+            : withoutKey(current, event.appId)
+        );
+        setOperations((current) => {
+          if (event.record.state === "deleting") {
+            return { ...current, [event.appId]: "delete" };
+          }
+          if (
+            event.record.state === "creating" ||
+            event.record.state === "installing"
+          ) {
+            return { ...current, [event.appId]: "install" };
+          }
+          if (event.record.state === "updating") {
+            return {
+              ...current,
+              [event.appId]:
+                current[event.appId] === "repair" ? "repair" : "update",
+            };
+          }
+          return withoutKey(current, event.appId);
+        });
       } else if (event.type === "removed") {
         recordStates.current.delete(event.appId);
         setRecords((current) =>
           current.filter((record) => record.id !== event.appId)
         );
+        setSteps((current) => withoutKey(current, event.appId));
+        setOperations((current) => withoutKey(current, event.appId));
+        setRuntimeStates((current) => withoutKey(current, event.appId));
+        setLiveLogs((current) => withoutKey(current, event.appId));
       } else if (event.type === "progress") {
         setSteps((current) => ({ ...current, [event.appId]: event.step }));
         setOperations((current) => ({
@@ -231,15 +292,22 @@ export function AppsProvider({
     });
     void listApps()
       .then((snapshot) => {
-        if (!active) return;
-        const records = fixedAppId
+        if (!active || currentEpoch !== listEpoch.current) return;
+        const snapshotRecords = fixedAppId
           ? snapshot.apps.filter((record) => record.id === fixedAppId)
           : snapshot.apps;
+        const records = applyAppInventoryEvents(
+          snapshotRecords,
+          bufferedEvents.current
+        );
         recordStates.current = new Map(
           records.map((record) => [record.id, record.state])
         );
         setRecords(records);
-        setRuntimeWarning(snapshot.runtimeWarning ?? "");
+        setRuntimeWarning(bufferedEvents.current.reduce(
+          (warning, event) => event.type === "runtime-warning" ? event.message : warning,
+          snapshot.runtimeWarning ?? ""
+        ));
       })
       .catch((cause) => {
         /* 列表整条没拉回来。records 于是是空的，但「空」在这里的意思是
@@ -247,26 +315,37 @@ export function AppsProvider({
          * 视图层区分这两者，别把一次 IPC 失败讲成用户的现状。
          * main 侧不存在对应槽位：主档损坏时 AppStore 直接 fail-closed。 */
         if (active) {
-          setListWarning(errorMessage(cause, "Apps 加载失败"));
+          setListWarning(
+            t("apps.provider.listFailed", { message: errorMessage(cause) })
+          );
         }
       })
-      .finally(() => active && setLoading(false));
+      .finally(() => {
+        if (!active || currentEpoch !== listEpoch.current) return;
+        listRefreshing.current = false;
+        bufferedEvents.current = [];
+        setLoading(false);
+      });
     /* 预设目录是 main 内的编译期常量，唯一失败面是 IPC 桥缺席——与 listApps
      * 同一故障类，页面级告警由它承担，这里降级记录即可。 */
     if (!fixedAppId) {
       void listPresetApps()
         .then((summaries) => active && setPresets(summaries))
         .catch((cause) => {
-          console.warn(
-            `[apps] ${errorMessage(cause, "预设 App 清单读取失败")}`
-          );
+          console.warn("[apps] preset catalog read failed", cause);
         });
     }
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [fixedAppId]);
+  }, [fixedAppId, reloadRevision, t]);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setListWarning("");
+    setReloadRevision((current) => current + 1);
+  }, []);
 
   const addApp = useCallback(async (input: AddAppInput) => {
     const repoUrl = normalizeGithubRepoUrl(input.repoUrl);
@@ -275,13 +354,13 @@ export function AppsProvider({
     const app = {
       id: `${slug}-${Date.now()}`,
       name: slug,
-      description: `来自 ${repoUrl} 的浏览器降级应用`,
+      description: t("apps.provider.browserFallbackDescription", { url: repoUrl }),
       repoUrl,
       icon: "📦",
     };
     setBrowserApps((current) => [...current, app]);
     return app;
-  }, []);
+  }, [t]);
 
   const highlightApp = useCallback((appId: string) => {
     setHighlightedId(appId);
@@ -314,16 +393,31 @@ export function AppsProvider({
     [browserApps, operations, records, runtimeStates, steps]
   );
 
+  const pinnedRecords = useMemo(
+    () =>
+      records
+        .filter((record) => record.pinnedAt !== null)
+        .sort(
+          (left, right) =>
+            left.pinnedAt! - right.pinnedAt! ||
+            left.addedAt - right.addedAt ||
+            left.id.localeCompare(right.id)
+        ),
+    [records]
+  );
+
   const value = useMemo<AppsContextValue>(
     () => ({
       apps,
       records,
+      pinnedRecords,
       presets,
       probePreset: probePresetApp,
       installPreset: installPresetApp,
       discardPresetProbe: discardPresetAppProbe,
       loading,
       listWarning,
+      refresh,
       runtimeWarning,
       agentVisibility,
       highlightedId,
@@ -333,6 +427,7 @@ export function AppsProvider({
       setAgent: setAppAgent,
       saveAsApp,
       renameApp,
+      setPinned: setAppPinned,
       ensureChatSlot: ensureAppChatSlot,
       retrySkill: retryAppSkill,
       removeApp: async (appId, mode) => {
@@ -361,9 +456,11 @@ export function AppsProvider({
     [
       apps,
       records,
+      pinnedRecords,
       presets,
       loading,
       listWarning,
+      refresh,
       runtimeWarning,
       agentVisibility,
       highlightedId,
@@ -386,4 +483,11 @@ export function useApps() {
 
 export function useOptionalApps() {
   return useContext(AppsContext);
+}
+
+function withoutKey<T>(record: Record<string, T>, key: string) {
+  if (!(key in record)) return record;
+  const next = { ...record };
+  delete next[key];
+  return next;
 }

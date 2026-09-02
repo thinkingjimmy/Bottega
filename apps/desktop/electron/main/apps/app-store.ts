@@ -1,14 +1,10 @@
 /**
- * [INPUT]: Depends on App store schema/recovery, generation planning/building, shared App contracts, participant ledgers, Base GUI grants, and server cutover ports
- * [OUTPUT]: Provides the AppStore v12 single-writer facade, public generation commands, durable record commits, immutable artifact roots, and a `watch` subscription for every committed record
- * [POS]: Canonical App record and broadcast authority; schema, recovery, and generation sagas live in focused siblings while this facade serializes mutations and prevents stale renderer projections
+ * [INPUT]: Depends on App store schema/recovery, static-v2/compiled-v3 generation planning/building, the Studio grant command leaf, shared App contracts, participant ledgers, Base GUI grants, compiler service, and server cutover ports
+ * [OUTPUT]: Provides the AppStore v15 single-writer facade, startup authority repair barrier, Editor/Use/source facts, generation-bound Studio grants, durable commits/retirement, immutable artifact roots, bounded artifact collection, and record subscriptions
+ * [POS]: Canonical App record and broadcast authority; schema, recovery, generation sagas, and policy commands live in focused siblings while this facade serializes mutations and prevents stale renderer projections
  */
 
-import {
-  copyFile,
-  mkdir,
-  readFile,
-} from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative } from "node:path";
 import { randomUUID } from "node:crypto";
 import type {
@@ -23,14 +19,21 @@ import { durableReplaceFile } from "../persistence/durable-json";
 import type { AppGenerationBuildLedger } from "./app-generation-build-ledger";
 import type {
   AppServerCutoverPort,
-  PreparedServerCutover,
 } from "./app-server-cutover";
 import type { AppExtensionGenerationPort } from "./app-extension-generation";
 import type { AppGenerationBuildParticipantRegistry } from "../lifecycle/app-generation-build-participants";
 import type { BaseGuiGrantStore } from "./base-gui/grant-store";
 import { BaseGuiBuildParticipant } from "./base-gui/build-participant";
 import { AppGenerationBuilder } from "./app-generation-builder";
+import { AppGenerationConsentController } from "./app-generation-consent";
 import { AppStoreRecovery } from "./app-store-recovery";
+import { grantStudioAccess } from "./store-commands/studio-grant";
+import type { AppGuiBuildService } from "./gui-build/service";
+import {
+  AppStoreAuthorityEvidence,
+  type AppStoreAuthorityInspection,
+} from "./app-store-authority";
+import { classifyEditableAppSource } from "./app-source-capability";
 import {
   APP_ID_PATTERN,
   SCHEMA_VERSION,
@@ -41,35 +44,51 @@ import {
 } from "./app-store-schema";
 export { sealedContentDigest } from "./app-store-schema";
 
+export type AppStoreAuthorityState =
+  | "established-empty"
+  | "established"
+  | "degraded-corrupt";
+
 export class AppStore {
   readonly appsRoot: string;
   readonly artifactsRoot: string;
   readonly filePath: string;
   readonly legacyMigrationPath: string;
+  readonly authorityMarkerPath: string;
   private records = new Map<string, AppRecord>();
+  private authority: AppStoreAuthorityState = "degraded-corrupt";
+  private authorityInspection: AppStoreAuthorityInspection | null = null;
+  private freshInstallPendingLoad = false;
   private retiredIds = new Set<string>();
   /* appId → 上次广播出去的序列化记录；`persist()` 用它做差分，谁也不必记得
      「我这次改完要不要发一条」。 */
   private published = new Map<string, string>();
   private readonly watchers = new Set<(record: AppRecord) => void>();
   private readonly queue = new SerialQueue();
+  private readonly artifactRootProviders = new Set<() => readonly Readonly<{ appId: string; generationId: string }>[] >();
+  private readonly retainedArtifactRoots = new Map<string, number>();
   private buildLedger: AppGenerationBuildLedger | null = null;
   private serverCutover: AppServerCutoverPort | null = null;
   private participants: AppGenerationBuildParticipantRegistry | null = null;
   private extensions: AppExtensionGenerationPort | null = null;
   private baseGuiGrants: BaseGuiGrantStore | null = null;
   private baseGuiParticipant: BaseGuiBuildParticipant | null = null;
+  private appGuiCompiler: AppGuiBuildService | null = null;
   private generationCutover:
     | (<T>(appId: string, operation: () => Promise<T>) => Promise<T>)
     | null = null;
   private readonly generationBuilder: AppGenerationBuilder;
+  private readonly generationConsent: AppGenerationConsentController;
   private readonly recovery: AppStoreRecovery;
+  private readonly authorityEvidence: AppStoreAuthorityEvidence;
 
   constructor(userData: string) {
     this.appsRoot = join(userData, "apps");
     this.artifactsRoot = join(userData, "app-generation-artifacts");
     this.filePath = join(userData, "apps.json");
     this.legacyMigrationPath = join(userData, "apps-v11-migration.json");
+    this.authorityEvidence = new AppStoreAuthorityEvidence(userData);
+    this.authorityMarkerPath = this.authorityEvidence.markerPath;
     this.generationBuilder = new AppGenerationBuilder({
       artifactsRoot: this.artifactsRoot,
       get: (appId) => this.records.get(appId),
@@ -82,6 +101,18 @@ export class AppStore {
       extensions: () => this.extensions,
       baseGuiGrants: () => this.baseGuiGrants,
       baseGuiParticipant: () => this.baseGuiParticipant,
+      appGuiCompiler: () => this.appGuiCompiler,
+    });
+    this.generationConsent = new AppGenerationConsentController({
+      get: (appId) => this.get(appId),
+      enqueue: (operation) => this.queue.enqueue(operation),
+      commitRecord: (record, appId, previous) =>
+        this.commitRecord(record, appId, previous),
+      extension: () => this.extensions,
+      grants: () => this.baseGuiGrants,
+      builder: this.generationBuilder,
+      serverCutover: () => this.serverCutover,
+      buildLedger: () => this.buildLedger,
     });
     this.recovery = new AppStoreRecovery({
       records: this.records,
@@ -97,6 +128,7 @@ export class AppStore {
       commitRecord: (record, appId, previous) => this.commitRecord(record, appId, previous),
       withServerCutover: (appId, compute) => this.withServerCutover(appId, compute),
       enqueue: (operation) => this.queue.enqueue(operation),
+      artifactRoots: () => this.artifactRoots(),
     });
   }
 
@@ -109,6 +141,36 @@ export class AppStore {
     }
     this.buildLedger = buildLedger;
     this.serverCutover = serverCutover;
+  }
+
+  configureAppGuiCompiler(compiler: AppGuiBuildService) {
+    if (this.appGuiCompiler) throw new Error("App GUI compiler 已配置");
+    this.appGuiCompiler = compiler;
+  }
+
+  initializeAppGuiCompiler() {
+    if (!this.appGuiCompiler) throw new Error("App GUI compiler is not configured");
+    return this.appGuiCompiler.initialize();
+  }
+
+  registerArtifactRootProvider(
+    provider: () => readonly Readonly<{ appId: string; generationId: string }>[]
+  ) {
+    this.artifactRootProviders.add(provider);
+    return () => this.artifactRootProviders.delete(provider);
+  }
+
+  retainArtifactRoot(appId: string, generationId: string) {
+    const key = `${appId}/${generationId}`;
+    this.retainedArtifactRoots.set(key, (this.retainedArtifactRoots.get(key) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const count = (this.retainedArtifactRoots.get(key) ?? 1) - 1;
+      if (count > 0) this.retainedArtifactRoots.set(key, count);
+      else this.retainedArtifactRoots.delete(key);
+    };
   }
 
   /* 组合根注册；未注册时含 extensionRequirements 的 build 直接 fail closed，
@@ -149,34 +211,64 @@ export class AppStore {
     await this.normalizeStartupStates();
   }
 
+  async inspectAuthority() {
+    await Promise.all([
+      mkdir(this.appsRoot, { recursive: true }),
+      mkdir(this.artifactsRoot, { recursive: true, mode: 0o700 }),
+    ]);
+    const emptyContent = `${JSON.stringify({
+      schemaVersion: SCHEMA_VERSION,
+      apps: [],
+      retiredIds: [],
+    }, null, 2)}\n`;
+    const inspection = await this.authorityEvidence.inspectCanonical({
+      filePath: this.filePath,
+      emptyContent,
+      validate: (content) => {
+        const parsed = parseStore(JSON.parse(content)).file;
+        this.assertDerivedPaths(parsed.apps);
+        return parsed.apps.length;
+      },
+    });
+    this.authorityInspection = inspection;
+    this.authority = inspection.state;
+    this.freshInstallPendingLoad ||= inspection.initializedNow;
+    return this.authority;
+  }
+
   normalizeStartupStates() {
     return this.recovery.normalizeStartupStates();
   }
 
   async load() {
-    await Promise.all([
-      mkdir(this.appsRoot, { recursive: true }),
-      mkdir(this.artifactsRoot, { recursive: true, mode: 0o700 }),
-    ]);
+    if ((await this.inspectAuthority()) === "degraded-corrupt") return;
+    const freshInstall = this.freshInstallPendingLoad;
     let parsed: StoreFile;
     let legacy = false;
-    try {
-      const result = parseStore(JSON.parse(await readFile(this.filePath, "utf8")));
-      parsed = result.file;
-      legacy = result.legacy;
-      this.assertDerivedPaths(parsed.apps);
-    } catch (cause) {
-      const error = cause as NodeJS.ErrnoException;
-      if (error.code === "ENOENT") return;
-      /* 断代/损坏不得把整个 main 拖死：备份留证后按冷启动继续（≡ 首次安装的
-         空态路径）。上抛只会让 `appsService.initialize()` 挂掉进程，用户连
-         重装 App 的界面都进不去——隔离比 fail-closed 便宜得多。 */
-      await copyFile(this.filePath, `${this.filePath}.bak`).catch(() => {});
-      console.warn(
-        `[apps] apps.json 无法读取，已隔离旧版数据（备份至 ${this.filePath}.bak），Base App 请重装：${errorMessage(cause)}`
-      );
-      return;
+    let upgraded = false;
+    let sourceVersion = SCHEMA_VERSION;
+    let sourceContent = "";
+    sourceContent = await readFile(this.filePath, "utf8");
+    const raw = JSON.parse(sourceContent);
+    sourceVersion = Number((raw as { schemaVersion?: unknown }).schemaVersion);
+    const result = parseStore(raw);
+    parsed = result.file;
+    legacy = result.legacy;
+    upgraded = result.upgraded;
+    this.assertDerivedPaths(parsed.apps);
+    if (sourceVersion === 13 || sourceVersion === 14) {
+      parsed = {
+        ...parsed,
+        apps: await Promise.all(
+          parsed.apps.map(async (record) => ({
+            ...record,
+            editableSource: await classifyEditableAppSource(record.dir),
+          }))
+        ),
+      };
     }
+
+    this.authority = parsed.apps.length ? "established" : "established-empty";
 
     for (const record of parsed.apps) {
       this.records.set(record.id, structuredClone(record));
@@ -188,6 +280,7 @@ export class AppStore {
       ...parsed.retiredIds,
       ...parsed.apps.map((record) => record.id),
     ]);
+    await this.recovery.migrateStaticV2Compatibility();
     const checkpoint = await this.recovery.readLegacyMigrationCheckpoint();
     if (legacy) {
       await durableReplaceFile(
@@ -201,9 +294,17 @@ export class AppStore {
       );
       this.assertDerivedPaths(backup.apps);
       await this.recovery.migrateLegacyV11(backup.apps, checkpoint);
-    } else {
+    } else if (!freshInstall) {
+      if (upgraded) {
+        await durableReplaceFile(
+          `${this.filePath}.v${sourceVersion}.bak`,
+          sourceContent
+        );
+        await this.persist();
+      }
       await this.recovery.reconcileArtifacts();
     }
+    this.freshInstallPendingLoad = false;
   }
 
   /**
@@ -246,6 +347,28 @@ export class AppStore {
       .map((record) => structuredClone(record));
   }
 
+  authorityState(): AppStoreAuthorityState {
+    return this.authority;
+  }
+
+  /** Repair 只提交磁盘证据；当前实例保持写屏障，必须由新进程重新验权。 */
+  async repairAuthority() {
+    await this.queue.enqueue(async () => {
+      if (this.authority !== "degraded-corrupt") return;
+      if (!this.authorityInspection) throw new Error("App authority 尚未完成检查");
+      const content = JSON.stringify(
+        { schemaVersion: SCHEMA_VERSION, apps: [], retiredIds: [] },
+        null,
+        2
+      );
+      await this.authorityEvidence.repairCanonical({
+        filePath: this.filePath,
+        emptyContent: `${content}\n`,
+        inspection: this.authorityInspection,
+      });
+    });
+  }
+
   get(appId: string) {
     const record = this.records.get(appId);
     return record ? structuredClone(record) : undefined;
@@ -256,6 +379,7 @@ export class AppStore {
   }
 
   async reserveId(appId: string) {
+    this.assertWritableAuthority();
     await this.queue.enqueue(async () => {
       if (!APP_ID_PATTERN.test(appId)) throw new Error("App id 格式无效");
       if (this.retiredIds.has(appId)) throw new Error("App id 已退役");
@@ -271,7 +395,9 @@ export class AppStore {
 
   async set(
     record: AppRecord,
-    options: Readonly<{ generationSourceDir?: string }> = {}
+    options: Readonly<{
+      generationSourceDir?: string;
+    }> = {}
   ) {
     return this.withGenerationCutover(record.id, () =>
       this.withServerCutover(record.id, () => record, {
@@ -285,6 +411,7 @@ export class AppStore {
     appId: string,
     updater: (record: AppRecord) => AppRecord
   ) {
+    this.assertWritableAuthority();
     return this.queue.enqueue(() => {
       const current = this.records.get(appId);
       if (!current) throw new Error("App 不存在");
@@ -322,8 +449,37 @@ export class AppStore {
     }));
   }
 
+  /**
+   * Studio grant 只从 sealed manifest 与 main-owned Base GUI decision 推导。
+   * renderer 不能提交 data level/capability 列表，因而没有越权参数可伪造。
+   */
+  async grantStudioAccess(appId: string, generationId: string) {
+    this.assertWritableAuthority();
+    return this.queue.enqueue(() => grantStudioAccess({
+      get: (id) => this.get(id),
+      grants: this.baseGuiGrants,
+      commit: (next, id, previous) => this.commitRecord(next, id, previous),
+    }, appId, generationId));
+  }
+
+  async revokeStudioAccess(appId: string) {
+    return this.update(appId, (current) => ({
+      ...current,
+      studioGrant: null,
+      studioGrantRevision: (current.studioGrantRevision ?? 0) + 1,
+    }));
+  }
+
+  async setPinned(appId: string, pinned: boolean, now = Date.now()) {
+    return this.update(appId, (current) => ({
+      ...current,
+      pinnedAt: pinned ? current.pinnedAt ?? now : null,
+    }));
+  }
+
   /** capability tombstone 已 durable 后，只推进 fence；绝不因 workspace 漂移暗建新代。 */
   async advanceLifecycle(appId: string) {
+    this.assertWritableAuthority();
     return this.queue.enqueue(async () => {
       const current = this.records.get(appId);
       if (!current) throw new Error("App 不存在");
@@ -365,7 +521,10 @@ export class AppStore {
     appId: string,
     operation: () => Promise<T>
   ) {
-    return this.records.get(appId)?.generationBinding.active && this.generationCutover
+    this.assertWritableAuthority();
+    const current = this.records.get(appId);
+    const stagesBaseGui = current?.manifest?.kind === "base" && Boolean(current.manifest.gui);
+    return current?.generationBinding.active && this.generationCutover && !stagesBaseGui
       ? this.generationCutover(appId, operation)
       : operation();
   }
@@ -383,6 +542,7 @@ export class AppStore {
     compute: () => AppRecord,
     options: GenerationPlanOptions = {}
   ) {
+    this.assertWritableAuthority();
     const current = this.records.get(appId);
     const defaultBuildId = `build-${appId}-${(current?.lifecycleRevision ?? 0) + 1}`;
     const plannedOptions =
@@ -392,11 +552,11 @@ export class AppStore {
             identitySuffix: randomUUID().replaceAll("-", "").slice(0, 16),
           }
         : options;
-    const preview = await planGeneration(
-      compute(),
-      current,
-      plannedOptions
-    );
+    const candidate = compute();
+    const compiled = candidate.manifest?.kind === "base" && Boolean(candidate.manifest.gui?.build);
+    const preview = compiled
+      ? null
+      : await planGeneration(candidate, current, plannedOptions);
     const prepared =
       preview && needsServerEpoch(preview) && this.serverCutover
         ? await this.serverCutover.prepare({
@@ -420,257 +580,53 @@ export class AppStore {
   /* 用户对该 pending 代的同意/拒绝：GrantStore 单 commit 写 exact grant set，
      AppRecord 只跟随更新 decision 指针，绝不自己解释授权。 */
   async resolvePendingConsent(appId: string, granted: boolean) {
-    return this.queue.enqueue(async () => {
-      const current = this.get(appId);
-      const pending = current?.generationBinding.pending;
-      if (!current || !pending) throw new Error("App 没有待同意的 generation");
-      const resolution = current.generations.find(
-        (item) => item.generationId === pending.generationId
-      )?.extensionRequirementResolution;
-      if (resolution?.kind !== "frozen" || !this.extensions) {
-        throw new Error("pending generation 未冻结 extension resolution");
-      }
-      const consent = await this.extensions.resolveConsent({
-        appId,
-        frozenSet: resolution.frozenSet,
-        consentDecisionId: pending.consentDecisionId,
-        expectedConsentRevision: pending.expectedConsentRevision,
-        granted,
-      });
-      const nextPending = {
-        ...pending,
-        ...consent,
-        extensionState: consent.state,
-      };
-      nextPending.state = allParticipantsPromotable(nextPending)
-        ? "ready-to-promote"
-        : "consent-required";
-      return this.commitRecord(
-        {
-          ...current,
-          generationBinding: {
-            ...current.generationBinding,
-            pending: nextPending,
-          },
-        },
-        appId,
-        current
-      );
-    });
+    this.assertWritableAuthority();
+    return this.generationConsent.resolveExtension(appId, granted);
   }
-
-
   async resolvePendingBaseGuiConsent(
     appId: string,
     grantedCapabilities: readonly BaseGuiCapability[],
     grantedHostActions: readonly BaseGuiHostActionCapability[] = [],
     grantedCapabilityScopes: BaseGuiCapabilityScopes = {}
   ) {
-    return this.queue.enqueue(async () => {
-      const current = this.get(appId);
-      const pending = current?.generationBinding.pending;
-      const pointer = pending?.baseGuiDecision;
-      const generation = current?.generations.find(
-        (item) => item.generationId === pending?.generationId
-      );
-      if (!current || !pending || !pointer || !generation || !this.baseGuiGrants) {
-        throw new Error("App 没有待处理的 Base GUI capability decision");
-      }
-      const decision = await this.baseGuiGrants.decide({
-        appId,
-        generationId: generation.generationId,
-        decisionId: pointer.decisionId,
-        expectedRevision: pointer.expectedRevision,
-        contentDigest: generation.contentDigest,
-        grantedCapabilities,
-        grantedHostActions,
-        grantedCapabilityScopes,
-      });
-      if (decision.state === "declined") {
-        // participant tombstone 是资源释放的提交点；AppRecord 只能在它之后删 pending。
-        // 反过来会让崩溃后的 ledger 失去可重试的 generation 定位信息。
-        await this.generationBuilder.abortGenerationBuild(appId, generation);
-        const declined = {
-          ...current,
-          lifecycleRevision: current.lifecycleRevision + 1,
-          generations: current.generations.filter(
-            (item) => item.generationId !== pending.generationId
-          ),
-          generationBinding: {
-            ...current.generationBinding,
-            bindingRevision: current.generationBinding.bindingRevision + 1,
-            pending: undefined,
-          },
-        };
-        const committed = await this.commitRecord(declined, appId, current);
-        await this.generationBuilder.discardArtifact(appId, pending.generationId);
-        return committed;
-      }
-      const nextPending = {
-        ...pending,
-        ...(generation.extensionRequirementResolution.kind === "none"
-          ? {
-              consentDecisionId: decision.decisionId,
-              expectedConsentRevision: decision.revision,
-            }
-          : {}),
-        baseGuiDecision: decisionPointer(decision),
-      };
-      nextPending.state = allParticipantsPromotable(nextPending)
-        ? "ready-to-promote"
-        : "consent-required";
-      return this.commitRecord(
-        {
-          ...current,
-          generationBinding: {
-            ...current.generationBinding,
-            pending: nextPending,
-          },
-        },
-        appId,
-        current
-      );
-    });
+    this.assertWritableAuthority();
+    return this.generationConsent.resolveBaseGui(
+      appId,
+      grantedCapabilities,
+      grantedHostActions,
+      grantedCapabilityScopes
+    );
   }
 
   /** Main-owned maintenance rollback before promotion; active bytes never move. */
   async abortPendingGeneration(appId: string, generationId: string) {
-    return this.queue.enqueue(async () => {
-      const current = this.get(appId);
-      const pending = current?.generationBinding.pending;
-      const generation = current?.generations.find(
-        (item) => item.generationId === generationId
-      );
-      if (!current || pending?.generationId !== generationId || !generation) {
-        throw conflict("App pending generation 已变化");
-      }
-      await this.generationBuilder.abortGenerationBuild(appId, generation);
-      const saved = await this.commitRecord(
-        {
-          ...current,
-          lifecycleRevision: current.lifecycleRevision + 1,
-          generations: current.generations.filter(
-            (item) => item.generationId !== generationId
-          ),
-          generationBinding: {
-            ...current.generationBinding,
-            bindingRevision: current.generationBinding.bindingRevision + 1,
-            pending: undefined,
-          },
-        },
-        appId,
-        current
-      );
-      await this.generationBuilder.discardArtifact(appId, generationId).catch(() => undefined);
-      return saved;
-    });
+    this.assertWritableAuthority();
+    return this.generationConsent.abort(appId, generationId);
   }
 
   /* pending→active 的唯一入口：复核 build/reservation/decision 三份证据后才 CAS。
      旧 active 只进 draining，回收仍由统一 retirement coordinator 决定。 */
   async promotePendingGeneration(appId: string, expectedConsentRevision: number) {
-    /* pending 的 server 代同样是「新的 active writer」：它必须先经过与普通
-       更新完全相同的 drain/stop/隔离构造，才谈得上 CAS。 */
-    const pendingBefore = this.get(appId)?.generationBinding.pending;
-    const generationBefore = this.get(appId)?.generations.find(
-      (item) => item.generationId === pendingBefore?.generationId
+    this.assertWritableAuthority();
+    const current = this.get(appId);
+    const pending = current?.generationBinding.pending;
+    const generation = current?.generations.find(
+      (item) => item.generationId === pending?.generationId
     );
-    const prepared =
-      pendingBefore &&
-      generationBefore?.manifest.kind === "server" &&
-      this.serverCutover
-        ? await this.serverCutover.prepare({
-            appId,
-            generationBuildId: generationBefore.generationBuildId,
-            generationId: pendingBefore.generationId,
-          })
-        : null;
-    try {
-      const promoted = await this.promoteUnlocked(
-        appId,
-        expectedConsentRevision,
-        prepared
+    if (
+      this.generationCutover &&
+      generation?.manifest.kind === "base" &&
+      generation.manifest.gui
+    ) {
+      return this.generationCutover(appId, () =>
+        this.generationConsent.promote(appId, expectedConsentRevision)
       );
-      await prepared?.commit();
-      return promoted;
-    } catch (cause) {
-      await prepared?.abort();
-      throw cause;
     }
-  }
-
-  private async promoteUnlocked(
-    appId: string,
-    expectedConsentRevision: number,
-    prepared: PreparedServerCutover | null
-  ) {
-    return this.queue.enqueue(async () => {
-      const current = this.get(appId);
-      const pending = current?.generationBinding.pending;
-      if (!current || !pending) throw new Error("App 没有待 promote 的 generation");
-      if (
-        pending.expectedActiveGenerationId !==
-        (current.generationBinding.active?.generationId ?? null)
-      ) {
-        throw conflict("active generation 已变化，pending 失效");
-      }
-      if (pending.expectedConsentRevision !== expectedConsentRevision) {
-        throw conflict("App extension consent revision 已变化");
-      }
-      const generation = current.generations.find(
-        (item) => item.generationId === pending.generationId
-      );
-      if (!generation) throw new Error("pending generation 不存在");
-      if (generation.extensionRequirementResolution.kind === "frozen") {
-        if (
-          !this.extensions?.promotable({
-            appId,
-            appGenerationId: pending.generationId,
-            consentDecisionId: pending.consentDecisionId,
-            expectedConsentRevision,
-          })
-        ) {
-          throw conflict("App extension consent 尚未终结或已被撤销");
-        }
-      }
-      if (pending.baseGuiDecision) {
-        if (
-          !this.baseGuiGrants?.promotable({
-            appId,
-            generationId: generation.generationId,
-            contentDigest: generation.contentDigest,
-            decisionId: pending.baseGuiDecision.decisionId,
-            expectedRevision: pending.baseGuiDecision.expectedRevision,
-          })
-        ) {
-          throw conflict("Base GUI capability consent 尚未终结或已被撤销");
-        }
-      }
-      if (generation.manifest.kind === "server" && this.serverCutover) {
-        if (!prepared || prepared.generationId !== pending.generationId) {
-          throw conflict("server data cutover 与本次 promote 不匹配");
-        }
-      }
-      const promoted = await this.commitRecord(
-        promoteBinding(current, generation, pending, prepared?.dataEpochId),
-        appId,
-        current
-      );
-      const operation = this.buildLedger
-        ?.listNonTerminal(appId)
-        .find((item) => item.generationBuildId === generation.generationBuildId);
-      if (operation) {
-        await this.buildLedger!.advance(
-          operation.generationBuildId,
-          operation.revision,
-          "promoted"
-        );
-      }
-      return promoted;
-    });
+    return this.generationConsent.promote(appId, expectedConsentRevision);
   }
 
   async remove(appId: string) {
+    this.assertWritableAuthority();
     await this.queue.enqueue(async () => {
       const current = this.records.get(appId);
       if (!current) return;
@@ -687,6 +643,38 @@ export class AppStore {
     });
   }
 
+  async retireDrainingGeneration(appId: string, generationId: string) {
+    await this.queue.enqueue(async () => {
+      const current = this.records.get(appId);
+      if (!current?.generationBinding.drainingGenerationIds.includes(generationId)) return;
+      await this.commitRecord({
+        ...current,
+        generations: current.generations.map((generation) =>
+          generation.generationId === generationId
+            ? { ...generation, retiredAt: Date.now() }
+            : generation
+        ),
+        generationBinding: {
+          ...current.generationBinding,
+          bindingRevision: current.generationBinding.bindingRevision + 1,
+          drainingGenerationIds: current.generationBinding.drainingGenerationIds.filter(
+            (candidate) => candidate !== generationId
+          ),
+        },
+      }, appId, current);
+    });
+    await this.recovery.collectArtifacts();
+  }
+
+  private artifactRoots() {
+    const roots = [...this.retainedArtifactRoots.keys()].map((key) => {
+      const separator = key.indexOf("/");
+      return { appId: key.slice(0, separator), generationId: key.slice(separator + 1) };
+    });
+    for (const provider of this.artifactRootProviders) roots.push(...provider());
+    return roots;
+  }
+
   async closeAndFlush() {
     this.queue.close();
     await this.queue.flush();
@@ -701,12 +689,13 @@ export class AppStore {
     appId: string,
     previous: AppRecord | undefined
   ) {
-    if (next.generations.some((item) => item.contentLayoutVersion !== 2)) {
-      throw new Error("AppStore 只允许提交 v2 generation");
+    if (next.generations.some((item) => item.contentLayoutVersion !== 2 && item.contentLayoutVersion !== 3)) {
+      throw new Error("AppStore 只允许提交 static-v2 或 compiled-v3 generation");
     }
-    appRecordSchema.parse(next);
-    this.assertDerivedPaths([next]);
-    this.records.set(appId, structuredClone(next));
+    const canonical = appRecordSchema.parse(next);
+    assertResidenceFenceStable(previous, canonical);
+    this.assertDerivedPaths([canonical]);
+    this.records.set(appId, structuredClone(canonical));
     try {
       await this.persist();
     } catch (cause) {
@@ -731,6 +720,7 @@ export class AppStore {
   }
 
   private async persist() {
+    this.assertWritableAuthority();
     const apps = this.list();
     const content = JSON.stringify(
       {
@@ -743,6 +733,13 @@ export class AppStore {
     );
     await durableReplaceFile(this.filePath, `${content}\n`);
     this.announce(apps);
+  }
+
+  private assertWritableAuthority() {
+    if (this.authority !== "degraded-corrupt") return;
+    throw Object.assign(new Error("AppStore authority 已降级，拒绝任何 App 写入"), {
+      code: "APP_STORE_AUTHORITY_DEGRADED",
+    });
   }
 
   /**
@@ -774,12 +771,29 @@ export class AppStore {
   }
 }
 
+function assertResidenceFenceStable(
+  previous: AppRecord | undefined,
+  next: AppRecord
+) {
+  if (!previous?.activeUseSwitch) return;
+  const bindingChanged =
+    previous.generationBinding.bindingRevision !==
+      next.generationBinding.bindingRevision ||
+    (previous.generationBinding.active?.generationId ?? null) !==
+      (next.generationBinding.active?.generationId ?? null);
+  if (
+    previous.state !== next.state ||
+    previous.lifecycleRevision !== next.lifecycleRevision ||
+    bindingChanged
+  ) {
+    throw Object.assign(new Error("APP_USE_RESIDENCE_MUTATION_BUSY"), {
+      status: 409,
+    });
+  }
+}
+
 import {
-  allParticipantsPromotable,
-  conflict,
-  decisionPointer,
   needsServerEpoch,
   planGeneration,
-  promoteBinding,
   type GenerationPlanOptions,
 } from "./app-generation-plan";

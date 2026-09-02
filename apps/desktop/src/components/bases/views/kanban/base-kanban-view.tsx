@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the canonical BaseCellContext, React refs/state, dnd-kit, react-virtual, shared grouping, Kanban field projection, card rendering, and mutation outcomes
+ * [INPUT]: Depends on the canonical BaseCellContext, React refs/state, dnd-kit, react-virtual, shared grouping, InlineNameInput, Kanban field projection, card rendering, and mutation outcomes
  * [OUTPUT]: Provides BaseKanbanView with canonical computed/relation values, virtualized lanes, option management, and LWW drag patches
  * [POS]: The Base views Kanban renderer; workbench owns schema/context while this component owns lane presentation and interactions
  */
@@ -44,8 +44,8 @@ import {
 import {
   baseActionButtonClass,
   baseMenuItemHoverClass,
-  InlineNameInput,
 } from "../../chrome/base-toolbar";
+import { InlineNameInput } from "../../chrome/inline-name-input";
 import {
   KANBAN_CARD_CLASS,
   KanbanCard,
@@ -173,6 +173,9 @@ export function BaseKanbanView({
             busy={busy}
             cellContext={context}
             lane={lane}
+            label={
+              lane.unassigned ? t("bases.group.unassigned") : lane.label
+            }
             onAddRow={
               onAddRow &&
               (() =>
@@ -225,6 +228,7 @@ export function BaseKanbanView({
 function KanbanLane({
   cellContext,
   lane,
+  label,
   option,
   spec,
   tone,
@@ -235,6 +239,7 @@ function KanbanLane({
 }: {
   cellContext: BaseCellContext;
   lane: Lane;
+  label: string;
   option?: BaseSelectOption;
   spec: KanbanFaceSpec;
   tone: KanbanTone;
@@ -273,7 +278,7 @@ function KanbanLane({
         <KanbanLaneDot
           busy={busy}
           color={option?.color}
-          label={lane.label}
+          label={label}
           onPick={onUpdate && ((color) => onUpdate({ color }))}
           tone={tone}
         />
@@ -281,10 +286,10 @@ function KanbanLane({
             单击留给别处（拖拽落位、菜单），双击才是「我要改这个词」的意思。 */}
         {renaming && onUpdate ? (
           <InlineNameInput
-            ariaLabel={`Rename ${lane.label}`}
+            ariaLabel={t("bases.kanban.renameAria", { lane: label })}
             autoFocus
             className="h-6 min-w-0 flex-1 px-1.5 text-xs"
-            name={lane.label}
+            name={label}
             onDone={() => setRenaming(false)}
             onRename={(label) => onUpdate({ label })}
           />
@@ -297,11 +302,11 @@ function KanbanLane({
             onDoubleClick={onUpdate && (() => setRenaming(true))}
             title={
               onUpdate
-                ? t("bases.kanban.renameHint", { lane: lane.label })
-                : lane.label
+                ? t("bases.kanban.renameHint", { lane: label })
+                : label
             }
           >
-            {lane.label}
+            {label}
           </span>
         )}
         <span className="shrink-0 tabular-nums text-muted-foreground">
@@ -309,7 +314,7 @@ function KanbanLane({
         </span>
         {onAddRow && (
           <button
-            aria-label={t("bases.kanban.addCardTo", { lane: lane.label })}
+            aria-label={t("bases.kanban.addCardTo", { lane: label })}
             className={baseActionButtonClass}
             disabled={busy}
             onClick={() => void onAddRow()}

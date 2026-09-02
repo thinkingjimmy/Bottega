@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, Appearance/I18n/Setup Provider, settings-layout, settingsStore, PageShell and ui/select/skeleton/spinner
- * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle, with the settings for the Theme/Language, Font, chat Home and title generation that are permanently fixed
+ * [INPUT]: Depends on React, Appearance/I18n/Setup Provider, shared AgentFailureNotice, settings-layout, settingsStore, PageShell and ui/select/skeleton/spinner
+ * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle plus structured title-model failures for Theme/Language, Font, Chat Home, and title generation settings
  * [POS]: Settings: the default view of the layer of coverage; The condition is not loaded so you can't hold the set snapshot, subscribe to the settingsStore and pull the model directory that is isolated at the back end as needed
  */
 
@@ -17,6 +17,7 @@ import {
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
 import { PageShell } from "@/components/page-shell";
+import { AgentFailureNotice } from "@/components/agent-failure-notice";
 import { FolderOpen, RefreshCw, Settings, Sparkles } from "lucide-react";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
@@ -48,18 +49,19 @@ import {
   SelectValue,
 } from "@ai-chat/ui/components/ui/select";
 
-const THEME_OPTIONS: Array<{ key: string; value: ThemePreference }> = [
-  { key: "common.auto", value: "auto" },
-  { key: "common.light", value: "light" },
-  { key: "common.dark", value: "dark" },
+const THEME_OPTIONS: Array<{ labelKey: string; value: ThemePreference }> = [
+  { labelKey: "common.auto", value: "auto" },
+  { labelKey: "common.light", value: "light" },
+  { labelKey: "common.dark", value: "dark" },
 ];
 
 export const LANGUAGE_OPTIONS: Array<{
   emoji: string;
-  label: string;
+  label?: string;
+  labelKey?: "settings.general.autoDetect";
   value: LanguagePreference;
 }> = [
-  { emoji: "🌐", label: "Auto detect", value: "auto" },
+  { emoji: "🌐", labelKey: "settings.general.autoDetect", value: "auto" },
   { emoji: "🇨🇳", label: "简体中文", value: "zh-CN" },
   { emoji: "🇺🇸", label: "English", value: "en" },
   { emoji: "🇯🇵", label: "日本語", value: "ja" },
@@ -68,18 +70,23 @@ export const LANGUAGE_OPTIONS: Array<{
 ];
 
 function LanguageLabel({ option }: { option: (typeof LANGUAGE_OPTIONS)[number] }) {
+  const { t } = useAppTranslation();
   return (
     <span className="flex items-center gap-2">
       <span aria-hidden="true" className="w-5 text-center text-base leading-none">
         {option.emoji}
       </span>
-      <span>{option.label}</span>
+      <span>{option.labelKey ? t(option.labelKey) : option.label}</span>
     </span>
   );
 }
 
-const FONT_OPTIONS: Array<{ label: string; value: FontFamily }> = [
-  { label: "System", value: "system" },
+const FONT_OPTIONS: Array<{
+  label?: string;
+  labelKey?: "settings.general.systemFont";
+  value: FontFamily;
+}> = [
+  { labelKey: "settings.general.systemFont", value: "system" },
   { label: "Maple Mono NF-CN", value: "maple-mono" },
   { label: "Geist Sans", value: "geist-sans" },
 ];
@@ -355,7 +362,7 @@ export function ThemeSelect({ theme }: { theme: ThemePreference | null }) {
             value={option.value}
            
           >
-            {t(option.key)}
+            {t(option.labelKey)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -429,7 +436,7 @@ export function GeneralSettingsView() {
   const options = useMemo(() => titleAgentOptions(backends), [backends]);
   const titleAgent = effectiveTitleAgent(settings?.titleAgent, backends);
   const effectiveTitleBackend = titleSlot(titleAgent);
-  const modelsError = modelsErrorByBackend[effectiveTitleBackend] ?? "";
+  const modelsError = modelsErrorByBackend[effectiveTitleBackend] ?? null;
 
   useEffect(() => {
     settingsStore.ensureLoaded();
@@ -482,7 +489,7 @@ export function GeneralSettingsView() {
                           value={font.value}
                          
                         >
-                          {font.label}
+                          {font.labelKey ? t(font.labelKey) : font.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -567,7 +574,6 @@ export function GeneralSettingsView() {
           <SettingsSection
             title={t("settings.general.chat")}
             description={t("settings.general.chatDescription")}
-            alert={modelsError}
             action={
               modelsError && settings ? (
                 <SettingsButton
@@ -579,17 +585,20 @@ export function GeneralSettingsView() {
               ) : undefined
             }
           >
-            {settings ? (
-              <ChatRows
-                settings={settings}
-                titleAgent={titleAgent}
-                titleAgentOptions={options}
-                modelsByBackend={modelsByBackend}
-                modelsReadyByBackend={modelsReadyByBackend}
-              />
-            ) : (
-              <ChatRowsSkeleton />
-            )}
+            <div className="space-y-3">
+              {modelsError && <AgentFailureNotice compact {...modelsError} />}
+              {settings ? (
+                <ChatRows
+                  settings={settings}
+                  titleAgent={titleAgent}
+                  titleAgentOptions={options}
+                  modelsByBackend={modelsByBackend}
+                  modelsReadyByBackend={modelsReadyByBackend}
+                />
+              ) : (
+                <ChatRowsSkeleton />
+              )}
+            </div>
           </SettingsSection>
         </div>
       </SettingsCanvas>

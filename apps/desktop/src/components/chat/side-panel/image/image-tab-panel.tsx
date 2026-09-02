@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, Gallery transcript Projection, panel-catalog Image region Identity, share thumbnail hook, chats.readAttachment and Gallery settings
- * [OUTPUT]: Provides resolveConversationImage with ImageTabPanel; Only current conversation/incarnation can be proven from sources that initiate media readings
- * [POS]: The dynamic tab view of chat/side-panel/image; Holds each tab in scaled state, unload heavy media when activated but not unload tab status
+ * [INPUT]: Depends on React, Gallery transcript projection, panel-catalog Image identity, thumbnail/attachment readers, Gallery zoom settings, and the localized image catalog
+ * [OUTPUT]: Provides resolveConversationImage with an explicit localized fallback title and ImageTabPanel with localized preview, loading, retry, and failure states
+ * [POS]: Dynamic chat/side-panel Image view; each tab retains zoom state while inactive tabs release heavy media
  */
 
 import { useEffect, useState } from "react";
@@ -25,6 +25,7 @@ import {
   imageIdentityOf,
   type ImageRegionId,
 } from "../panel-catalog";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 export type ResolvedConversationImage = {
   source: ConversationImageSource;
@@ -34,7 +35,8 @@ export type ResolvedConversationImage = {
 
 export function resolveConversationImage(
   region: ImageRegionId,
-  projection: ConversationImageProjection
+  projection: ConversationImageProjection,
+  fallbackTitle: string
 ): ResolvedConversationImage | null {
   const identity = imageIdentityOf(region);
   const incarnationId = projection.incarnationId;
@@ -83,7 +85,7 @@ export function resolveConversationImage(
       : undefined;
   const part = canonicalPart ?? draftPart;
   if (!part || part.type !== "tool") return null;
-  const title = part.title || "Image";
+  const title = part.title || fallbackTitle;
   return {
     source: {
       kind: "generated",
@@ -162,19 +164,24 @@ export function ImageTabPanel({
   hydrated: boolean;
   image: ResolvedConversationImage | null;
 }) {
+  const { t } = useAppTranslation();
   const [zoom, setZoom] = useState(100);
   const [retrySignal, setRetrySignal] = useState(0);
 
   return (
     <section
-      aria-label={image ? `图片预览：${image.label}` : "图片预览"}
+      aria-label={
+        image
+          ? t("chat.sidePanel.image.previewNamed", { name: image.label })
+          : t("chat.sidePanel.image.preview")
+      }
       className="flex min-h-0 flex-1 flex-col"
     >
       <ViewConfigBar>
         <div className="ml-auto">
           <ViewConfigSelect
             disabled={!image}
-            label="Zoom"
+            label={t("chat.sidePanel.image.zoom")}
             onChange={(value) => setZoom(Number(value) || 100)}
             options={GALLERY_ZOOM_OPTIONS}
             value={String(zoom)}
@@ -207,6 +214,7 @@ function ImageTabContent({
   retrySignal: number;
   zoom: number;
 }) {
+  const { t } = useAppTranslation();
   return (
     <SlimScroller
       className="min-h-0 flex-1 overflow-auto bg-muted/20"
@@ -221,7 +229,10 @@ function ImageTabContent({
         )}
       >
         {!hydrated ? (
-          <ImageShimmer className="mx-auto" label="正在恢复图片" />
+          <ImageShimmer
+            className="mx-auto"
+            label={t("chat.sidePanel.image.restoring")}
+          />
         ) : !image ? (
           <ImageUnavailable />
         ) : image.source.kind === "generated" ? (
@@ -310,11 +321,15 @@ function ImageMedia({
   previewUrl: string;
   request: GalleryThumbnailRequest | AttachmentRequest;
 }) {
+  const { t } = useAppTranslation();
   if (!previewUrl) {
     return typeof request === "object" ? (
       <ImageUnavailable retryable={request.retryable} onRetry={onRetry} />
     ) : (
-      <ImageShimmer className="mx-auto" label="正在读取图片" />
+      <ImageShimmer
+        className="mx-auto"
+        label={t("chat.sidePanel.image.reading")}
+      />
     );
   }
   return (
@@ -341,12 +356,13 @@ function ImageUnavailable({
   retryable?: boolean;
   onRetry?: () => void;
 }) {
+  const { t } = useAppTranslation();
   return (
     <div
       className="mx-auto grid min-h-40 max-w-sm place-items-center gap-3 rounded-lg border bg-background p-6 text-center text-muted-foreground text-sm"
       role="status"
     >
-      <p>图片已不在当前对话中，或暂时无法读取。</p>
+      <p>{t("chat.sidePanel.image.unavailable")}</p>
       {retryable && onRetry ? (
         <Button
           className="min-h-11"
@@ -354,7 +370,7 @@ function ImageUnavailable({
           type="button"
           variant="outline"
         >
-          重试
+          {t("chat.sidePanel.image.retry")}
         </Button>
       ) : null}
     </div>

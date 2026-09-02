@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React contenteditable, SlimScroller, RichInput public types, PromptInput RichValue, and the pure document/history model
- * [OUTPUT]: Provides RichInput and public types; beforeinput/IME supports atomic chips, undo/redo, multi-trigger/multi-kind grouping, unified scrollbars and single-flight asynchronous consume
+ * [INPUT]: Depends on React contenteditable, SlimScroller, host-injected UI text, RichInput public types, PromptInput RichValue, and the pure document/history model
+ * [OUTPUT]: Provides RichInput and public types with localized default suggestion copy, atomic chips, undo/redo, multi-kind grouping, unified scrolling, and single-flight asynchronous consume
  * [POS]: RichInput editing state machine; types, candidate projection, node DOM, and IME adaptation remain in sibling modules
  */
 
@@ -35,11 +35,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import type { RichNode, RichValue } from "./prompt-input";
-import {
-  DEFAULT_SUGGESTION_COPY,
-  suggestionEditorAria,
-  SuggestionMenu,
-} from "./rich-input-suggestions";
+import { suggestionEditorAria, SuggestionMenu } from "./rich-input-suggestions";
 import { RichInputNodes } from "./rich-input-nodes";
 import { useRichInputComposition } from "./rich-input-composition";
 import {
@@ -58,6 +54,7 @@ import type {
   RichInputHandle,
   RichInputProps,
   RichInputSuggestion,
+  RichSuggestionCopy,
 } from "./rich-input-types";
 
 export { PathLabel } from "./rich-input-suggestions";
@@ -95,6 +92,32 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
   ) {
     const messageLabel = useUiText("message", "Message");
     const loadingLabel = useUiText("loading", "Loading");
+    const skillEmpty = useUiText("skillSuggestionsEmpty", "No Skills available");
+    const skillNoMatch = useUiText("skillSuggestionsNoMatch", "No matching Skills");
+    const mentionEmpty = useUiText("mentionSuggestionsEmpty", "No references available");
+    const mentionNoMatch = useUiText("mentionSuggestionsNoMatch", "No matching references");
+    const chatsLabel = useUiText("suggestionChats", "Chats");
+    const filesLabel = useUiText("suggestionFiles", "Files");
+    const skillsLabel = useUiText("suggestionSkills", "Skills");
+    const defaultSuggestionCopy = useMemo<Record<RichQuery["kind"], RichSuggestionCopy>>(
+      () => ({
+        skill: {
+          empty: skillEmpty,
+          noMatch: skillNoMatch,
+          groups: [{ kind: "skill", label: skillsLabel, triggers: ["skill"] }],
+        },
+        mention: {
+          empty: mentionEmpty,
+          noMatch: mentionNoMatch,
+          groups: [
+            { kind: "section", label: chatsLabel },
+            { kind: "workspace-file", label: filesLabel },
+            { kind: "skill", label: skillsLabel, triggers: ["mention"] },
+          ],
+        },
+      }),
+      [chatsLabel, filesLabel, mentionEmpty, mentionNoMatch, skillEmpty, skillNoMatch, skillsLabel]
+    );
     const resolvedPlaceholder = placeholder ?? messageLabel;
     const editorRef = useRef<HTMLDivElement>(null);
     const valueRef = useRef(value);
@@ -158,8 +181,8 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
         ? preview.query
         : query;
     const defaults = effectiveQuery
-      ? DEFAULT_SUGGESTION_COPY[effectiveQuery.kind]
-      : DEFAULT_SUGGESTION_COPY.mention;
+      ? defaultSuggestionCopy[effectiveQuery.kind]
+      : defaultSuggestionCopy.mention;
     const copy = useMemo(
       () => ({
         ...defaults,

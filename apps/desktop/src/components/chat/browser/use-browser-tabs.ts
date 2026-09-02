@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on React, preload Exposed window.browser and shared BrowserBridgeApi/tab projections
+ * [INPUT]: Depends on React, App i18n, preload-exposed window.browser, and shared BrowserBridgeApi/tab projections
  * [OUTPUT]: Provides use of BrowserTabs and BrowserTabsController: only snapshot subscription, explicitly synchronized with unified error packing tab action
  * [POS]: The tab status of the chat/browser page is entered; PanelTabs uses it to draw tabs, BrowserPanel uses it to draw navigation, and both share the same projection
  */
 
 import { useEffect, useState } from "react";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type {
   BrowserBridgeApi,
   BrowserTabsSnapshot,
@@ -44,6 +45,7 @@ export type BrowserTabsController = {
  * 订阅收进这里，上面挂一次，下面只消费。
  * ─────────────────────────────────────────────────────────── */
 export function useBrowserTabs(visible: boolean): BrowserTabsController {
+  const { t } = useAppTranslation();
   const bridge = window.browser;
   const [snapshot, setSnapshot] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
@@ -78,7 +80,11 @@ export function useBrowserTabs(visible: boolean): BrowserTabsController {
     try {
       await task();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "浏览器操作失败");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : t("chat.browser.operationFailed")
+      );
     } finally {
       setBusy(false);
     }

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on node: crypto and Electron WebContents' navigation/destruction events
- * [OUTPUT]: Provides RendererIdentity, `bindRendererIdentity`, `rendererIdentity` and `onRendererRotated`The only "what renderer session" on the main page is the "what renderer session" rule
- * [POS]: The window module's session ID is unlocked; The surface/management lease is suspended above it, navigation or reloading means the entire batch is invalid
+ * [INPUT]: Depends on node:crypto and Electron WebContents positional or object navigation/destruction events
+ * [OUTPUT]: Provides RendererIdentity, bindRendererIdentity, rendererIdentity, and onRendererRotated with main-frame-only rotation
+ * [POS]: Window renderer-incarnation authority; surface and management leases bind here, while subframe and same-document navigation remain inert
  */
 
 import { randomUUID } from "node:crypto";
@@ -34,7 +34,7 @@ export function bindRendererIdentity(contents: RendererIdentitySource) {
   if (sessions.has(contents.id)) return;
   sessions.set(contents.id, randomUUID());
   contents.on("did-start-navigation", (...args: unknown[]) => {
-    const details = (args.at(-1) ?? {}) as NavigationDetails;
+    const details = navigationDetails(args);
     if (details.isMainFrame === false || details.isSameDocument === true) return;
     rotate(contents.id);
   });
@@ -42,6 +42,18 @@ export function bindRendererIdentity(contents: RendererIdentitySource) {
     rotate(contents.id);
     sessions.delete(contents.id);
   });
+}
+
+function navigationDetails(args: unknown[]): NavigationDetails {
+  const structured = [...args].reverse().find((value): value is NavigationDetails =>
+    value !== null && typeof value === "object" &&
+    ("isMainFrame" in value || "isSameDocument" in value)
+  );
+  if (structured) return structured;
+  return {
+    isSameDocument: typeof args[2] === "boolean" ? args[2] : undefined,
+    isMainFrame: typeof args[3] === "boolean" ? args[3] : undefined,
+  };
 }
 
 /**

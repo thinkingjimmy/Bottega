@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on clone-safe primitives shared by Electron main, preload, and renderer
- * [OUTPUT]: Provides window role/bootstrap, exact App Studio route helpers, surface residence/capsule DTOs, export/hydrate/source-commit/restore commands, IPC channels, and WindowSurfacesBridgeApi
+ * [OUTPUT]: Provides window role/bootstrap, exact App Studio route helpers, navigation-intent-fenced surface DTOs, migration commands, IPC channels, and WindowSurfacesBridgeApi
  * [POS]: Shared wire truth for one-surface-one-window routing; renderer submits intents while main owns residency and migration
  */
 
@@ -68,6 +68,7 @@ export type SurfaceCapsuleV1 = Readonly<{
 export type ShowSurfaceInput = Readonly<{
   surface: SurfaceKey;
   route: string;
+  navigationIntentId?: string;
 }>;
 
 export type OpenSurfaceInWindowInput = ShowSurfaceInput &
@@ -126,6 +127,7 @@ export type SurfaceMigrationReply = Readonly<{
 
 export const WINDOW_SURFACES_CHANNEL = {
   residence: "window-surfaces:residence",
+  navigationIntent: "window-surfaces:navigation-intent",
   show: "window-surfaces:show",
   openInWindow: "window-surfaces:open-in-window",
   reclaim: "window-surfaces:reclaim",
@@ -137,6 +139,7 @@ export const WINDOW_SURFACES_CHANNEL = {
 export type WindowSurfacesBridgeApi = Readonly<{
   context: ProductWindowContext;
   residence(surface: SurfaceKey): Promise<SurfaceResidence>;
+  beginNavigationIntent(input: Readonly<{ intentId: string }>): Promise<void>;
   showSurface(input: ShowSurfaceInput): Promise<SurfaceIntentResult>;
   openInWindow(input: OpenSurfaceInWindowInput): Promise<SurfaceIntentResult>;
   reclaim(input: ReclaimSurfaceInput): Promise<SurfaceIntentResult>;

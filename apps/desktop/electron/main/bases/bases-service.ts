@@ -1,16 +1,12 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow, owner-aware Bases schemas, canonical Chat/Project records, BaseStore/owner resolution, row mutation, IO, promotion, attachment, and file-dialog ports
- * [OUTPUT]: Provides ownerKey CRUD/CAS/LWW, replay-aware App GUI row commands, exact App-renderer owner fences, Project probes, Section resolution, promotion, attachment events, and CSV/JSON/XLSX operations
+ * [OUTPUT]: Provides ownerKey CRUD/CAS/LWW, pre-copy Query snapshot descriptors, replay-aware App GUI row commands, exact App-renderer owner fences, Project probes, Section resolution, retained-data navigation promotion, attachment events, and CSV/JSON/XLSX operations
  * [POS]: Bases application service; owner and trusted App-renderer boundaries are resolved here while format IO and cross-store promotion remain delegated
  */
 
 import type { BrowserWindow } from "electron";
-import { rendererEventBus } from "../window/surfaces/renderer-event-bus";
 import {
-  BASE_EVENT_BYTE_LIMIT,
-  BASES_CHANNEL,
   ownerKeyOf,
-  type BaseChangedEvent,
   type BaseExportResult,
   type BaseMetaPatch,
   type BaseRow,
@@ -49,8 +45,9 @@ import {
 import { BaseRowMutations } from "./service/base-row-mutations";
 import { BaseAppGuiMutations } from "./service/base-app-gui-mutations";
 import { registerBasesRendererIpc } from "./service/bases-renderer-ipc";
+import { RetainedBaseNavigation } from "./navigation/retained-service";
+import { BaseEventPublisher } from "./service/base-event-publisher";
 
-const clone = <T>(value: T): T => structuredClone(value);
 export type BasesServiceOptions = {
   getChat(chatId: string): Promise<BaseChatRef | null>;
   getProject?(
@@ -63,21 +60,21 @@ export type BasesServiceOptions = {
   chooseImportPath?(format?: "json" | "xlsx"): Promise<string | null>;
   writeExport?: (path: string, content: string) => Promise<void>;
   onEvent?(event: BasesEvent): void;
+  onRetainedBaseRemoved?(projectId: string): Promise<void>;
   now?: () => number;
 };
-
 export class BaseConflictError extends Error {
   readonly status = 409;
 }
-
 export class BasesService {
-  private window: BrowserWindow | null = null;
   private admission: "accepting" | "draining" | "closed" = "accepting";
   private readonly now: () => number;
   private readonly attachmentService: BaseAttachmentService;
   private readonly io: BaseIoFacade;
   private readonly rowMutations: BaseRowMutations;
   private readonly appGuiMutations: BaseAppGuiMutations;
+  private readonly retainedNavigation: RetainedBaseNavigation;
+  private readonly events: BaseEventPublisher;
   private readonly commitAuthorities = new BaseCommitAuthorityRegistry();
   private appSurfaceValidator: {
     validateMutation(input: {
@@ -88,12 +85,12 @@ export class BasesService {
   } | null = null;
   readonly ownerResolver: BaseOwnerResolver;
   private promotion: BasePromotionService | null = null;
-
   constructor(
     readonly store: BaseStore,
     private readonly options: BasesServiceOptions
   ) {
     this.now = options.now ?? Date.now;
+    this.events = new BaseEventPublisher(options.onEvent);
     this.ownerResolver = new BaseOwnerResolver(store, {
       getChat: options.getChat,
       getProject: (projectId) => options.getProject?.(projectId),
@@ -115,7 +112,7 @@ export class BasesService {
         if (!principal) throw httpError(403, "目标 chat 无权读取 source Base");
       },
       assertAdmission: () => this.assertAdmission(),
-      emitChange: (snapshot, delta) => this.emitChange(snapshot, delta),
+      emitChange: (snapshot, delta) => this.events.changed(snapshot, delta),
       now: this.now,
       warn: (message) => this.store.pushWarning(message),
     });
@@ -128,15 +125,16 @@ export class BasesService {
       mutationIdentity: (ownerKey, authority, operation) =>
         this.mutationIdentity(ownerKey, authority, operation),
       assertAdmission: () => this.assertAdmission(),
-      emitChange: (snapshot, delta) => this.emitChange(snapshot, delta),
+      emitChange: (snapshot, delta) => this.events.changed(snapshot, delta),
     });
     this.rowMutations = new BaseRowMutations(store, {
+      now: this.now,
       assertAdmission: () => this.assertAdmission(),
       mutationIdentity: (ownerKey, authority, operation) =>
         this.mutationIdentity(ownerKey, authority, operation),
       mutationScope: (ownerKey, authority, operation, appFence) =>
         this.mutationScope(ownerKey, authority, operation, appFence),
-      emitChange: (snapshot, delta) => this.emitChange(snapshot, delta),
+      emitChange: (snapshot, delta) => this.events.changed(snapshot, delta),
       conflict: (message) => new BaseConflictError(message),
     });
     this.appGuiMutations = new BaseAppGuiMutations(
@@ -145,6 +143,13 @@ export class BasesService {
       this.commitAuthorities,
       { requireOwner: (ownerKey) => this.requireOwner(ownerKey) }
     );
+    this.retainedNavigation = new RetainedBaseNavigation(store, {
+      now: this.now,
+      clearFamily: (ownerKey, ownerInstanceId) =>
+        this.attachmentService.clearFamily(ownerKey, ownerInstanceId),
+      emit: (event) => this.events.publish(event),
+      onRemoved: options.onRetainedBaseRemoved,
+    });
   }
 
   configurePromotion(service: BasePromotionService) {
@@ -163,11 +168,11 @@ export class BasesService {
   }
 
   publishEvent(event: BasesEvent) {
-    this.emit(event);
+    this.events.publish(event);
   }
 
   register(window: BrowserWindow, rendererUrl: string) {
-    this.window = window;
+    this.events.bind(window);
     registerBasesRendererIpc(window, rendererUrl, this, {
       authorize: (input) => this.authorizeRendererMutation(input),
       consume: (leaseId) => this.commitAuthorities.consumeRenderer(leaseId),
@@ -177,7 +182,7 @@ export class BasesService {
         return this.promotion.promote(input);
       },
       closed: () => {
-        if (this.window === window) this.window = null;
+        this.events.unbind(window);
       },
     });
   }
@@ -185,6 +190,25 @@ export class BasesService {
   async get(ownerKey: string): Promise<BaseSnapshot | null> {
     const identity = await this.ownerResolver.identityForOwnerKey(ownerKey);
     return this.store.get(ownerKey, identity.ownerInstanceId || undefined);
+  }
+
+  async querySnapshot(ownerKey: string) {
+    const identity = await this.ownerResolver.identityForOwnerKey(ownerKey);
+    const descriptor = await this.store.describeQuerySnapshot(
+      ownerKey,
+      identity.ownerInstanceId || undefined
+    );
+    return descriptor && {
+      ...descriptor,
+      copy: async () => this.store.copyQuerySnapshot({ ownerKey, ...descriptor }),
+      currentIdentity: async () => {
+        const current = this.store.peek(ownerKey);
+        return current && {
+          baseInstanceId: current.meta.ownerInstanceId,
+          revision: current.meta.revision,
+        };
+      },
+    };
   }
 
   rowHistory(ownerKey: string, rowId: string) {
@@ -204,7 +228,7 @@ export class BasesService {
     this.assertAdmission();
     const identity = await this.ownerResolver.identityForOwnerKey(ownerKey);
     const snapshot = await this.store.discardCorrupt(identity);
-    this.emitChange(snapshot, { meta: snapshot.meta, upserts: [] });
+    this.events.changed(snapshot, { meta: snapshot.meta, upserts: [] });
     return snapshot;
   }
 
@@ -336,6 +360,14 @@ export class BasesService {
 
   navigationBases<T extends { ownerKey: string }>(bases: T[]) {
     return bases;
+  }
+
+  async promoteRetainedAppBase(projectId: string) {
+    return this.retainedNavigation.promote(projectId);
+  }
+
+  async removeManagedBase(ownerKey: string, ownerInstanceId: string) {
+    return this.retainedNavigation.remove(ownerKey, ownerInstanceId);
   }
 
   private async authorizeRendererMutation(input: {
@@ -631,7 +663,7 @@ export class BasesService {
     const removed = await this.store.remove(ownerKey, record.incarnationId);
     if (removed) {
       this.attachmentService.clearFamily(ownerKey, record.incarnationId);
-      this.emit({
+      this.events.publish({
         type: "removed",
         ownerKey,
         ownerInstanceId: record.incarnationId,
@@ -650,7 +682,7 @@ export class BasesService {
     );
     if (removed) {
       this.attachmentService.clearFamily(ownerKey, located.ownerInstanceId);
-      this.emit({
+      this.events.publish({
         type: "removed",
         ownerKey,
         ownerInstanceId: located.ownerInstanceId,
@@ -754,36 +786,6 @@ export class BasesService {
     };
   }
 
-  private emitChange(
-    snapshot: BaseSnapshot,
-    delta: Pick<BaseChangedEvent, "meta" | "upserts" | "removedRowIds">
-  ) {
-    const full: BaseChangedEvent = {
-      type: "base-changed",
-      ownerKey: ownerKeyOf(snapshot.meta.owner),
-      ownerInstanceId: snapshot.meta.ownerInstanceId,
-      revision: snapshot.meta.revision,
-      ...clone(delta),
-    };
-    const event =
-      Buffer.byteLength(JSON.stringify(full), "utf8") <= BASE_EVENT_BYTE_LIMIT
-        ? full
-        : {
-            type: "base-changed" as const,
-            ownerKey: full.ownerKey,
-            ownerInstanceId: full.ownerInstanceId,
-            revision: full.revision,
-          };
-    this.emit(event);
-  }
-
-  private emit(event: BasesEvent) {
-    this.options.onEvent?.(clone(event));
-    const delivered = rendererEventBus.broadcast(BASES_CHANNEL.event, event);
-    if (!delivered && this.window && !this.window.isDestroyed()) {
-      this.window.webContents.send(BASES_CHANNEL.event, event);
-    }
-  }
 }
 
 function httpError(status: number, message: string) {

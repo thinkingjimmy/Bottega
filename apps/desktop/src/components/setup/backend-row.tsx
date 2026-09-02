@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SetupProvider, i18n setup directory, agent-backends brand icons and instructions for keystrokes, backend-parts markup/icon action/action determination, settings-layout SettingsButton
- * [OUTPUT]: Provides SetupBackendRow — the single-row backend entry for the Backends settings page and Onboarding's SettingsList surface
+ * [OUTPUT]: Provides SetupBackendRow with localized recovery guidance and explicitly disclosed technical diagnostics for Backends settings and Onboarding
  * [POS]: The setup module's row form; now the only form after the card was retired, sharing its criteria and parts with backend-parts
  */
 
@@ -94,8 +94,11 @@ export function SetupBackendRow({ backend }: { backend: BackendInfo }) {
               <span className="flex flex-col gap-1">
                 {guide && <span>{guide}</span>}
                 {backend.reason && (
-                  <span className="line-clamp-6 break-words opacity-70">
-                    {backend.reason}
+                  <span className="flex flex-col gap-0.5 border-t pt-1 opacity-70">
+                    <span className="font-medium">{t("agentFailure.technicalDetails")}</span>
+                    <span className="line-clamp-6 break-words font-mono text-[11px]">
+                      {backend.reason}
+                    </span>
                   </span>
                 )}
               </span>

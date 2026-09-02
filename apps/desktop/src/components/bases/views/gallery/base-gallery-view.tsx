@@ -167,9 +167,7 @@ export function BaseGalleryView({
       groupGalleryItems(items, {
         bucket: config.dateBucket,
         grouped: Boolean(config.groupByDateColumnId),
-        ungroupedLabel: t("bases.gallery.ungrouped", {
-          defaultValue: "Ungrouped",
-        }),
+        ungroupedLabel: t("bases.gallery.ungrouped"),
       }),
     [config.dateBucket, config.groupByDateColumnId, items, t]
   );
@@ -345,9 +343,7 @@ export function BaseGalleryView({
         <ViewConfigBar>
           <ViewConfigSelect
             disabled={busy || !onConfigPatch}
-            label={t("bases.gallery.attachmentColumn", {
-              defaultValue: "Image",
-            })}
+            label={t("bases.gallery.attachmentColumn")}
             onChange={(attachmentColumnId) =>
               patchConfig({ attachmentColumnId })
             }
@@ -356,17 +352,17 @@ export function BaseGalleryView({
           />
           <ViewConfigSelect
             disabled={busy || !onConfigPatch}
-            label={t("bases.gallery.titleColumn", { defaultValue: "Title" })}
+            label={t("bases.gallery.titleColumn")}
             onChange={(titleColumnId) =>
               patchConfig({ titleColumnId: titleColumnId || undefined })
             }
             options={columns}
-            placeholder={t("common.none", { defaultValue: "None" })}
+            placeholder={t("bases.gallery.none")}
             value={config.titleColumnId ?? ""}
           />
           <ViewConfigSelect
             disabled={busy || !onConfigPatch}
-            label={t("bases.gallery.dateColumn", { defaultValue: "Group date" })}
+            label={t("bases.gallery.dateColumn")}
             onChange={(groupByDateColumnId) =>
               patchConfig({
                 groupByDateColumnId: groupByDateColumnId || undefined,
@@ -376,13 +372,13 @@ export function BaseGalleryView({
               })
             }
             options={columns.filter((column) => column.type === "date")}
-            placeholder={t("common.none", { defaultValue: "None" })}
+            placeholder={t("bases.gallery.none")}
             value={config.groupByDateColumnId ?? ""}
           />
           {config.groupByDateColumnId && (
             <ViewConfigSelect
               disabled={busy || !onConfigPatch}
-              label={t("bases.gallery.dateBucket", { defaultValue: "Bucket" })}
+              label={t("bases.gallery.dateBucket")}
               onChange={(dateBucket) =>
                 patchConfig({
                   dateBucket: dateBucket as GalleryConfig["dateBucket"],
@@ -390,7 +386,7 @@ export function BaseGalleryView({
               }
               options={["minute", "hour", "day", "week", "month"].map((id) => ({
                 id,
-                name: t(`bases.gallery.bucket.${id}`, { defaultValue: id }),
+                name: t(`bases.gallery.bucket.${id}`),
               }))}
               value={config.dateBucket ?? "day"}
             />

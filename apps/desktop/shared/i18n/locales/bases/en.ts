@@ -1,10 +1,15 @@
 /**
- * [INPUT]: Dependence when not running
- * [OUTPUT]: Provides BasesEn, Base Product pages en feature catalog
- * [POS]: The language sheets of shared/i18n/locales/bases; Installation on demand by the appropriate top locale
+ * [INPUT]: Has no runtime dependencies
+ * [OUTPUT]: Provides basesEn, the structural and fallback catalog for every Base and embedded-chart surface
+ * [POS]: English leaf catalog for shared/i18n/locales/bases; translated leaves derive their exact shape from this object
  */
 
 export const basesEn = {
+  provider: {
+    loadFailed: "Failed to load Bases: {{message}}",
+    reloadFailed: "Failed to reload Base {{ownerKey}}: {{message}}",
+    retiredResult: "Base {{ownerKey}} returned a retired generation.",
+  },
   quarantined: "This Base is quarantined",
   quarantinedDescription:
     "Recoverable files are preserved. Restore the backup manually, or discard it to create a new empty Base.",
@@ -15,8 +20,23 @@ export const basesEn = {
   discardTitle: "Discard recoverable Base data?",
   loading: "Loading Base…",
   loadingMap: "Loading Map…",
-  transcriptImages: "Transcript images",
   pageTitle: "Base",
+  detail: {
+    title: "{{name}} Base",
+    untitledChat: "Chat",
+  },
+  columnDefaults: {
+    image: "Image",
+    createdAt: "Created at",
+  },
+  starterStatus: {
+    todo: "Todo",
+    doing: "Doing",
+    done: "Done",
+  },
+  group: {
+    unassigned: "Unassigned",
+  },
   header: {
     openApp: "Open App",
     saveAsApp: "Save as App",
@@ -49,6 +69,12 @@ export const basesEn = {
     collapse: "Collapse into the side panel",
     closeAria: "Close Base",
     ioFailed: "Base import or export failed",
+    importJsonUnavailable: "JSON import is unavailable in this environment.",
+    importXlsxUnavailable: "Excel import is unavailable in this environment.",
+    deleteRetained: "Delete Base",
+    deleteRetainedConfirm: "Delete",
+    deleteRetainedTitle: "Delete this Base?",
+    deleteRetainedDescription: "This permanently deletes the retained App data. The deleted App, its chats, and its source cannot be restored from this Base.",
   },
   toolbar: {
     toggleFilter: "Toggle filter",
@@ -146,6 +172,7 @@ export const basesEn = {
     clear: "Clear",
     today: "Today",
     openLink: "Open link in the browser",
+    deleteAttachment: "Delete {{filename}}",
   },
   record: {
     title: "Add record",
@@ -153,6 +180,7 @@ export const basesEn = {
     attachmentRequired: "Choose an image before saving.",
     unsupportedImage: "Only PNG, JPEG, WebP, and GIF images are supported.",
     fileReadFailed: "The image file could not be read.",
+    attachmentWriteFailed: "The image could not be saved. Please try again.",
   },
   gui: {
     surfaceAria: "App GUI",
@@ -167,6 +195,13 @@ export const basesEn = {
     loadFailedTitle: "App failed to load",
     prepareFailedTitle: "App data upgrade failed",
     loadFailedHint: "The secure gateway or token may have expired. Retry or open Data.",
+    prepareFailedHint: "The App's stored data could not be brought to the version this release expects. Its previous data is untouched.",
+    permissionFailedTitle: "App authorization is out of date",
+    permissionFailedHint: "This version of the App was never approved, or its approval expired. Authorize it again to open the surface.",
+    cutoverFailedTitle: "App is switching versions",
+    cutoverFailedHint: "The previous version has not finished closing down. Wait a moment, then retry.",
+    surfaceGoneTitle: "This App view expired",
+    surfaceGoneHint: "The conversation moved on, so this view no longer has a valid lease. Reload the page to get a fresh one.",
     retry: "Retry",
     goToData: "Open Data",
   },
@@ -176,6 +211,10 @@ export const basesEn = {
     location: "Location",
     label: "Label",
     auto: "Auto",
+    offline: "You're offline. Showing the location list.",
+    tilesUnavailable: "Map tiles are unavailable. Showing the location list.",
+    noCoordinates: "No rows have coordinates yet.",
+    unnamedLocation: "Location",
   },
   chart: {
     add: "Add chart",
@@ -190,6 +229,24 @@ export const basesEn = {
       "The view filter was invalidated by a deleted column; please set it again.",
     emptyTitle: "This dashboard has no charts yet",
     emptyHint: "Add one and it recalculates whenever the data changes.",
+    unnamed: "Chart",
+    state: {
+      filterScrubbed: "The filter was invalidated by a deleted column. Set it again.",
+      dimensionRequired: "Choose a text, select, or date dimension column.",
+      valueRequired: "Choose a valid number column.",
+      seriesRequired: "Choose a valid secondary dimension column.",
+      pieSeriesUnsupported: "Pie charts do not support a secondary dimension.",
+      scatterRequirements: "Scatter charts need two number columns and no secondary dimension.",
+      heatmapRequirements: "Heatmaps need one number column and one secondary dimension.",
+      pieValueRequired: "Pie charts need one number column.",
+      singleValueForSeries: "A secondary dimension can use only one number column.",
+      labelLimit: "Charts can contain at most {{limit}} labels.",
+      seriesLimit: "Charts can contain at most {{limit}} series.",
+      pointLimit: "Charts can contain at most {{limit}} data points.",
+      empty: "No data",
+      pieNegative: "Pie charts cannot display negative values. Change the chart type or filter the data.",
+      invalidPayload: "The chart data exceeds the supported limits.",
+    },
     type: {
       pie: "Pie",
       bar: "Bar",
@@ -198,6 +255,26 @@ export const basesEn = {
       scatter: "Scatter",
       radar: "Radar",
       heatmap: "Heatmap",
+    },
+    render: {
+      invalidJson: "Chart JSON is invalid.",
+      invalidFormat: "Chart format is invalid.",
+      showSource: "View raw chart code",
+      overflow:
+        "This message contains too many charts. The remaining charts were collapsed.",
+      generating: "Generating chart",
+      loading: "Loading chart",
+      aria: "{{type}}, {{labels}}, {{series}}",
+      ariaWithTitle: "{{type}}: {{title}}, {{labels}}, {{series}}",
+      labelCount_one: "{{count}} label",
+      labelCount_other: "{{count}} labels",
+      seriesCount_one: "{{count}} series",
+      seriesCount_other: "{{count}} series",
+      showData: "View data",
+      hideData: "Hide data",
+      dataCaption: "Chart data",
+      labelHeader: "Label",
+      seriesName: "Series {{index}}",
     },
     editor: {
       open: "Edit chart",
@@ -229,6 +306,19 @@ export const basesEn = {
   gallery: {
     aria: "Generated image gallery",
     images: "Generated images",
+    attachmentColumn: "Image column",
+    titleColumn: "Title column",
+    dateColumn: "Group date column",
+    dateBucket: "Date bucket",
+    ungrouped: "Ungrouped",
+    none: "None",
+    bucket: {
+      minute: "Minute",
+      hour: "Hour",
+      day: "Day",
+      week: "Week",
+      month: "Month",
+    },
     modeAria: "Gallery mode",
     mode: { browse: "Browse", multi: "Multi-select", comment: "Comment" },
     zoom: "Zoom",
@@ -258,6 +348,7 @@ export const basesEn = {
     addCardTo: "Add card to {{lane}}",
     laneColor: "Lane color",
     laneColorCurrent: "Lane color: {{lane}}",
+    renameAria: "Rename {{lane}}",
     renameHint: "{{lane}} — double-click to rename",
     auto: "Auto",
     dropHere: "Drop cards here",
@@ -276,6 +367,7 @@ export const basesEn = {
   },
   list: {
     addRow: "Add row",
+    addRowTo: "Add row to {{group}}",
     empty: "No records match this view.",
     rowActions: "Actions for {{title}}",
     edit: "Edit",
@@ -295,6 +387,7 @@ export const basesEn = {
     sortHint: "Sort (Shift for multiple columns)",
     renameColumn: "Rename column",
     renameColumnAria: "Rename {{column}}",
+    unnamedColumn: "column",
     deleteColumn: "Delete column",
     deleteColumnAria: "Delete {{column}}",
     addColumn: "Add column",
@@ -306,6 +399,10 @@ export const basesEn = {
     deleteColumnDescription:
       "This removes the column “{{column}}” from every view. Its cell values become inaccessible.",
     resizeHint: "Drag to resize; use arrow keys for precise adjustment",
+    resizeAria: "Resize {{column}} column",
+    emptyNoColumns: "Add a column, then create your first row.",
+    emptyEditable: "No rows yet. Add one to start.",
+    emptyReadOnly: "No rows yet.",
   },
   summary: {
     cellAria: "{{column}} statistic: {{value}}",
@@ -328,6 +425,11 @@ export const basesEn = {
   },
   workbench: {
     viewLimit: "A Base must keep at least one view",
+    revisionConflict: "This Base changed elsewhere. The latest version was reloaded.",
+    galleryViewChanged: "This Gallery view was removed or changed. The latest Base was reloaded.",
+    galleryAttachmentChanged: "The Gallery image column was removed or changed. Choose it again.",
+    galleryTitleChanged: "The Gallery title column was removed or changed. Choose it again.",
+    galleryDateChanged: "The Gallery date column was removed or changed. Choose it again.",
   },
   history: {
     open: "View history",

@@ -20,10 +20,10 @@ export async function noticeDependencySatisfied(
   outbox: Readonly<{ chatId: string; dependsOnMessageId?: string }>
 ) {
   if (!outbox.dependsOnMessageId) return true;
-  const chat = await chats.store.get(outbox.chatId);
-  return Boolean(
-    chat?.messages.some((message) => message.id === outbox.dependsOnMessageId)
-  );
+  return Boolean(await chats.store.getNativeMessage(outbox.chatId, {
+    kind: "id",
+    messageId: outbox.dependsOnMessageId,
+  }));
 }
 
 export class SectionNoticeOutbox {

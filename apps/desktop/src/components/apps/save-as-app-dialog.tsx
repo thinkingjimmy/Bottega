@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, react-router, AppsProvider and Unified AppDialogContent/Input/Button
- * [OUTPUT]: Provides SaveAsAppDialog; Operating terminal clearance attempt, transfers of the disambiguation across unloading freeze and re-install the complete requestId+payload
- * [POS]: The Base→App unique table of the apps module; Modular attempt book unit page, panel and Sidebar
+ * [INPUT]: Depends on React, router, Apps i18n, AppsProvider, and AppDialog form primitives
+ * [OUTPUT]: Provides SaveAsAppDialog with durable ambiguous-attempt replay using the exact requestId and payload
+ * [POS]: Sole Base-to-App conversion form shared by full pages, panels, and the Sidebar
  */
 
 import { useRef, useState } from "react";
@@ -25,6 +25,7 @@ import { useApps } from "@/components/providers/apps-provider";
 import { errorMessage } from "@/lib/errors";
 import { SaveAsAppRejectedError } from "@/lib/apps-client";
 import type { SaveAsAppInput } from "../../../shared/apps-ipc";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 const ICONS = ["📦", "📊", "🧭", "🗂️", "💡", "🧰"] as const;
 type SaveAttempt = Readonly<{ input: Readonly<SaveAsAppInput> }>;
@@ -82,6 +83,7 @@ function OpenSaveAsAppDialog({
   onAttemptChange: (attempt: SaveAttempt | null) => void;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useAppTranslation();
   const navigate = useNavigate();
   const { saveAsApp } = useApps();
   const [name, setName] = useState(attempt?.input.name ?? defaultName);
@@ -90,7 +92,7 @@ function OpenSaveAsAppDialog({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(
-    attempt ? "上次提交结果未知，只能用原参数重试确认。" : ""
+    attempt ? t("apps.saveAs.uncertain") : ""
   );
   const submitting = useRef(false);
 
@@ -98,7 +100,7 @@ function OpenSaveAsAppDialog({
     if (submitting.current) return;
     const normalized = name.trim();
     if (!attempt && !normalized) {
-      setError("请输入 App 名称");
+      setError(t("apps.saveAs.enterName"));
       return;
     }
     const current =
@@ -124,7 +126,7 @@ function OpenSaveAsAppDialog({
       if (cause instanceof SaveAsAppRejectedError) {
         onAttemptChange(null);
       }
-      setError(errorMessage(cause, "Save as App 失败"));
+      setError(errorMessage(cause, t("apps.saveAs.failed")));
     } finally {
       submitting.current = false;
       setBusy(false);
@@ -135,14 +137,14 @@ function OpenSaveAsAppDialog({
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <AppDialogContent aria-busy={busy}>
         <DialogHeader className="shrink-0 text-left">
-          <DialogTitle>Save as App</DialogTitle>
+          <DialogTitle>{t("apps.saveAs.title")}</DialogTitle>
           <DialogDescription>
-            将创建 App：当前 Base 升级为 App 共享数据，本 chat 转为它的编辑会话。
+            {t("apps.saveAs.description")}
           </DialogDescription>
         </DialogHeader>
         <AppDialogBody className="mt-5 flex flex-col gap-4">
           <label className="flex flex-col gap-1.5 text-sm">
-            <span className="font-medium">名称</span>
+            <span className="font-medium">{t("apps.saveAs.name")}</span>
             <Input
               autoFocus
               disabled={busy || Boolean(attempt)}
@@ -155,11 +157,11 @@ function OpenSaveAsAppDialog({
             />
           </label>
           <fieldset className="flex flex-col gap-2">
-            <legend className="font-medium text-sm">图标</legend>
+            <legend className="font-medium text-sm">{t("apps.saveAs.icon")}</legend>
             <div className="flex flex-wrap gap-2">
               {ICONS.map((candidate) => (
                 <Button
-                  aria-label={`选择图标 ${candidate}`}
+                  aria-label={t("apps.saveAs.chooseIcon", { icon: candidate })}
                   aria-pressed={icon === candidate}
                   className="text-lg"
                   disabled={busy || Boolean(attempt)}
@@ -187,10 +189,10 @@ function OpenSaveAsAppDialog({
             type="button"
             variant="ghost"
           >
-            取消
+            {t("common.cancel")}
           </Button>
           <Button disabled={busy || !name.trim()} onClick={() => void submit()}>
-            {busy ? "正在创建…" : "Save as App"}
+            {busy ? t("apps.saveAs.creating") : t("apps.saveAs.title")}
           </Button>
         </DialogFooter>
       </AppDialogContent>

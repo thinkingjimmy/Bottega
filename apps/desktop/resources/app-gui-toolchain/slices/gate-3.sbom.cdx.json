@@ -1,0 +1,651 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "bottega-react-v1/gate-3",
+      "bom-ref": "pkg:generic/bottega-react-v1/gate-3@1"
+    },
+    "properties": [
+      {
+        "name": "bottega:pnpm-lockfile-sha256",
+        "value": "sha256:a6aa3241a788311febf6488dc011df016e9c76f40e08a7b344d9e3313cc08694"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "@dnd-kit/accessibility",
+      "version": "3.1.1",
+      "bom-ref": "pkg:npm/%40dnd-kit%2Faccessibility@3.1.1",
+      "purl": "pkg:npm/%40dnd-kit%2Faccessibility@3.1.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "acf49462cc8786236474cd46fd9d5cd453b88c9099293d0cbc19bb41b1bfd311"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:537607e3f1533ad2c5b12978967f5ab27f34ffb7e626e321017a7ccca6cc24ff"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@dnd-kit/core",
+      "version": "6.3.1",
+      "bom-ref": "pkg:npm/%40dnd-kit%2Fcore@6.3.1",
+      "purl": "pkg:npm/%40dnd-kit%2Fcore@6.3.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "659c468e7b226edbc6d0fe80380886c49d747bd2854eb701f2d79d6f9c135d78"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:537607e3f1533ad2c5b12978967f5ab27f34ffb7e626e321017a7ccca6cc24ff"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@dnd-kit/sortable",
+      "version": "10.0.0",
+      "bom-ref": "pkg:npm/%40dnd-kit%2Fsortable@10.0.0",
+      "purl": "pkg:npm/%40dnd-kit%2Fsortable@10.0.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "76b0b79f2bfa7bdec3037c85467074b2bbcffcc8ed8ca3cca599f9c8f9740c9a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:537607e3f1533ad2c5b12978967f5ab27f34ffb7e626e321017a7ccca6cc24ff"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@dnd-kit/utilities",
+      "version": "3.2.2",
+      "bom-ref": "pkg:npm/%40dnd-kit%2Futilities@3.2.2",
+      "purl": "pkg:npm/%40dnd-kit%2Futilities@3.2.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "093468cd167379022a24466fbacd90c40280afee852f138d8073337e1f7c6e8b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:537607e3f1533ad2c5b12978967f5ab27f34ffb7e626e321017a7ccca6cc24ff"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tanstack/react-table",
+      "version": "8.21.3",
+      "bom-ref": "pkg:npm/%40tanstack%2Freact-table@8.21.3",
+      "purl": "pkg:npm/%40tanstack%2Freact-table@8.21.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "fee9994e688f171e66626491dc2ac5a6ece1682a889abe977792e566b2096800"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:9db3f8ddd7031ab264b99bec49c221155d0c8649b53dd4aa007f2041d36cdf5f"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tanstack/react-virtual",
+      "version": "3.14.8",
+      "bom-ref": "pkg:npm/%40tanstack%2Freact-virtual@3.14.8",
+      "purl": "pkg:npm/%40tanstack%2Freact-virtual@3.14.8",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "64dc8fb044a6461bfe86f59479543bafd27aaea072db3a7f061ef8eb90239294"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tanstack/table-core",
+      "version": "8.21.3",
+      "bom-ref": "pkg:npm/%40tanstack%2Ftable-core@8.21.3",
+      "purl": "pkg:npm/%40tanstack%2Ftable-core@8.21.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "94ea33324378d8ef341e3119a7697e6b6538201fb56ce671bc007800543c133a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:9db3f8ddd7031ab264b99bec49c221155d0c8649b53dd4aa007f2041d36cdf5f"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tanstack/virtual-core",
+      "version": "3.17.6",
+      "bom-ref": "pkg:npm/%40tanstack%2Fvirtual-core@3.17.6",
+      "purl": "pkg:npm/%40tanstack%2Fvirtual-core@3.17.6",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "11a54e929aff4d49f17b916ed0de5518c337e939bc8004214f90db45fe319d4b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "axe-core",
+      "version": "4.10.3",
+      "bom-ref": "pkg:npm/axe-core@4.10.3",
+      "purl": "pkg:npm/axe-core@4.10.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0654cc20b2efcb1265cf10fac7ea231946891f98256a032ae1f9e6e5783a45ef"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:af175b9d96ee93c21a036152e1b905b0b95304d4ae8c2c921c7609100ba8df7e"
+        },
+        {
+          "name": "bottega:license:LICENSE-3RD-PARTY.txt:sha256",
+          "value": "sha256:4f8563870d0fca38bbc3e00b6f670cb7fa9f380ba9f26a7f7d1184a6b18b1653"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "date-fns",
+      "version": "4.4.0",
+      "bom-ref": "pkg:npm/date-fns@4.4.0",
+      "purl": "pkg:npm/date-fns@4.4.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "54b02412a754c096c26a0e780f1f167635a291dd7f999e34e6acae101b48dc01"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.md:sha256",
+          "value": "sha256:8d3951c38967b964b1fe259bfd200c2647cc04c858b55a4414e3122a60f1ef4b"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "echarts",
+      "version": "6.1.0",
+      "bom-ref": "pkg:npm/echarts@6.1.0",
+      "purl": "pkg:npm/echarts@6.1.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9824c13896e6d8189da48baed4431d4fd84a4e4046a7d48260f731133305ba21"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:634293835b43a6dd2094fa39182a3d9a6b9ca43b7fdb9ac354e8037af2a3093a"
+        },
+        {
+          "name": "bottega:license:NOTICE:sha256",
+          "value": "sha256:88c2418a8ab4dba3486b263600ab39e0c78c36142ddfa4167ed3d9c3a2d2ab38"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "react-dom",
+      "version": "19.2.4",
+      "bom-ref": "pkg:npm/react-dom@19.2.4",
+      "purl": "pkg:npm/react-dom@19.2.4",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "72ac76a9436705ea6ce347bb927e5e1ddf8e12b4064b6dec753b017859839245"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "react-hook-form",
+      "version": "7.87.0",
+      "bom-ref": "pkg:npm/react-hook-form@7.87.0",
+      "purl": "pkg:npm/react-hook-form@7.87.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1722e4e9c9f997dc22d5a7b4bba39de68d16604aba39d831248b474fa0a48340"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:e8eeb472f0a5889c2c51625b86a3f9b8630680adb9f49a125352e2e426392780"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "react",
+      "version": "19.2.4",
+      "bom-ref": "pkg:npm/react@19.2.4",
+      "purl": "pkg:npm/react@19.2.4",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "494353ba01218ef849cc757d1519fe1a92cd4d8398088c6cfe521d88206a3607"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "scheduler",
+      "version": "0.27.0",
+      "bom-ref": "pkg:npm/scheduler@0.27.0",
+      "purl": "pkg:npm/scheduler@0.27.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "304ada6e934557c237806468114b2d524e64df007da7b10267ef198e37e6338e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "tslib",
+      "version": "2.3.0",
+      "bom-ref": "pkg:npm/tslib@2.3.0",
+      "purl": "pkg:npm/tslib@2.3.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0efbbdf4e61ba16f0c11e717decd68e137b01027b622fbaa85a2e949dc0a6fca"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "0BSD"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.txt:sha256",
+          "value": "sha256:5989359645911c04a140c49d89496b13feca980bbf36d2250a12d3b9d06250d6"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "tslib",
+      "version": "2.8.1",
+      "bom-ref": "pkg:npm/tslib@2.8.1",
+      "purl": "pkg:npm/tslib@2.8.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8323d2c9b60d690d5a44939466cf6f1ce55ec7ee6b0cb7e10d2890ca3b6c6a38"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "0BSD"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.txt:sha256",
+          "value": "sha256:5989359645911c04a140c49d89496b13feca980bbf36d2250a12d3b9d06250d6"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "zod",
+      "version": "4.4.3",
+      "bom-ref": "pkg:npm/zod@4.4.3",
+      "purl": "pkg:npm/zod@4.4.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "aaa6b4591098284c78903214c7bd9127b1b1187712371dd9f2d7021a212284bc"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:3f1189b28e3866e0d979968d466b78f813f76827cfdca1fbb124cc0a5c8841f8"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "zrender",
+      "version": "6.1.0",
+      "bom-ref": "pkg:npm/zrender@6.1.0",
+      "purl": "pkg:npm/zrender@6.1.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "7af68072b0db8c1a1af9d41f8f468f34677b5ca6c9d4ec7af01b475e92ce9430"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:55ea01207028f76d844678511f29fc800f8a1e67a8a0fe80470128677847ad32"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:generic/bottega-react-v1/gate-3@1",
+      "dependsOn": [
+        "pkg:npm/%40dnd-kit%2Fcore@6.3.1",
+        "pkg:npm/%40dnd-kit%2Fsortable@10.0.0",
+        "pkg:npm/%40tanstack%2Freact-table@8.21.3",
+        "pkg:npm/%40tanstack%2Freact-virtual@3.14.8",
+        "pkg:npm/axe-core@4.10.3",
+        "pkg:npm/date-fns@4.4.0",
+        "pkg:npm/echarts@6.1.0",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react-hook-form@7.87.0",
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/zod@4.4.3"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40dnd-kit%2Faccessibility@3.1.1",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/tslib@2.8.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40dnd-kit%2Fcore@6.3.1",
+      "dependsOn": [
+        "pkg:npm/%40dnd-kit%2Faccessibility@3.1.1",
+        "pkg:npm/%40dnd-kit%2Futilities@3.2.2",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/tslib@2.8.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40dnd-kit%2Fsortable@10.0.0",
+      "dependsOn": [
+        "pkg:npm/%40dnd-kit%2Fcore@6.3.1",
+        "pkg:npm/%40dnd-kit%2Futilities@3.2.2",
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/tslib@2.8.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40dnd-kit%2Futilities@3.2.2",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/tslib@2.8.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40tanstack%2Freact-table@8.21.3",
+      "dependsOn": [
+        "pkg:npm/%40tanstack%2Ftable-core@8.21.3",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40tanstack%2Freact-virtual@3.14.8",
+      "dependsOn": [
+        "pkg:npm/%40tanstack%2Fvirtual-core@3.17.6",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40tanstack%2Ftable-core@8.21.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40tanstack%2Fvirtual-core@3.17.6",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/axe-core@4.10.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/date-fns@4.4.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/echarts@6.1.0",
+      "dependsOn": [
+        "pkg:npm/tslib@2.3.0",
+        "pkg:npm/zrender@6.1.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/react-dom@19.2.4",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/scheduler@0.27.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/react-hook-form@7.87.0",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/react@19.2.4",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/scheduler@0.27.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/tslib@2.3.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/tslib@2.8.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/zod@4.4.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/zrender@6.1.0",
+      "dependsOn": [
+        "pkg:npm/tslib@2.3.0"
+      ]
+    }
+  ]
+}

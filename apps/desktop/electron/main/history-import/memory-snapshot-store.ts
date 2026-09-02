@@ -143,7 +143,7 @@ export class HistorySnapshotStore {
     await this.hydrateLegacyGrantSources();
   }
 
-  async writeAdoption(input: { summary: Omit<ForeignHistorySummary, "productArchivedAt">; sourcePath: string; blocks: ForeignHistoryBlock[]; parserVersion: number; fingerprint: { size: number; mtimeNs: string }; incompleteTail: boolean }) {
+  async writeAdoption(input: { summary: ForeignHistorySummary; sourcePath: string; blocks: ForeignHistoryBlock[]; parserVersion: number; fingerprint: { size: number; mtimeNs: string }; incompleteTail: boolean }) {
     const body = {
       source: input.summary.key, projectId: input.summary.projectId, cwd: input.summary.cwd,
       title: input.summary.title, historyRevision: input.summary.historyRevision,
@@ -164,7 +164,7 @@ export class HistorySnapshotStore {
     return snapshot;
   }
 
-  async writeMemory(input: { summary: Omit<ForeignHistorySummary, "productArchivedAt">; sourceIncarnation: string; blocks: ForeignHistoryBlock[]; parserVersion: number; afterDeliverySeq?: number }) {
+  async writeMemory(input: { summary: ForeignHistorySummary; sourceIncarnation: string; blocks: ForeignHistoryBlock[]; parserVersion: number; afterDeliverySeq?: number }) {
     const allMessages = normalizedMemoryMessages(input.blocks);
     const messages = allMessages.filter((message) => message.deliverySeq > (input.afterDeliverySeq ?? 0));
     const lastAssistant = messages.filter((message) => message.role === "assistant").at(-1);

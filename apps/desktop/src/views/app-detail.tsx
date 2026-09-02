@@ -1,20 +1,19 @@
 /**
- * [INPUT]: Depends on react-router, Apps Provider, base app detail, README adornment, unified app settings panel, apps client, Web app frame/edit/repair
- * [OUTPUT]: Provides AppDetailView, residence-gated Base Studio rendering, Base/Web distribution, retry/cancel, README, and third-party settings
+ * [INPUT]: Depends on react-router, Apps i18n/provider, Base detail, README/settings surfaces, Apps client, and Web App frame/edit/repair components
+ * [OUTPUT]: Provides AppDetailView, residence-gated Base Studio rendering, App-window handoff, Editor navigation, Base/Web distribution, retry/cancel, README, and settings
  * [POS]: App detail route; web runtime start is gated by the positive servesWebRuntime predicate, and a nonresident main route renders a transfer card before any Base Studio hook or mutation surface mounts
  */
 
 import { useEffect, useState } from "react";
-import { Navigate, useParams } from "react-router";
+import { Navigate, useNavigate, useParams } from "react-router";
 import {
   FileText,
   MonitorPlay,
+  PanelsTopLeft,
   PencilLine,
   RefreshCw,
   Settings2,
-  Snowflake,
 } from "lucide-react";
-import { AppEditPanel } from "@/components/apps/app-edit-panel";
 import { AppReadmeAdornment } from "@/components/apps/app-readme-adornment";
 import { BaseAppDetail } from "@/components/apps/base-app-detail";
 import { AppSettingsPanel } from "@/components/apps/app-settings-panel";
@@ -28,9 +27,8 @@ import {
 import { RepairConfirmDialog } from "@/components/apps/repair-dialog";
 import { PageShell } from "@/components/page-shell";
 import { useApps } from "@/components/providers/apps-provider";
-import { openApp, readAppLog } from "@/lib/apps-client";
+import { openApp, openAppEditor, readAppLog } from "@/lib/apps-client";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Separator } from "@ai-chat/ui/components/ui/separator";
 import {
   Card,
   CardContent,
@@ -48,22 +46,28 @@ import {
 } from "@ai-chat/ui/components/ui/sheet";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
-import { cn } from "@ai-chat/ui/lib/utils";
+import { toast } from "@ai-chat/ui/components/ui/sonner";
 import { errorMessage } from "@/lib/errors";
-import { appStudioSurface } from "../../shared/window-surfaces-ipc";
+import {
+  appStudioSurface,
+  canonicalAppSurfaceRoute,
+} from "../../shared/window-surfaces-ipc";
 import {
   isCurrentResidence,
+  openSurfaceInWindow,
   useSurfaceResidence,
+  windowContext,
 } from "@/lib/window-surfaces-client";
 import { SurfaceAwayCard } from "@/components/apps/surface-away-card";
 import { servesWebRuntime, type AppRecord } from "../../shared/apps-ipc";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { productDestinationRoute } from "@/lib/product-navigation";
 
 type FrameState =
   | { type: "idle" | "loading" | "stopped"; message?: string }
   | { type: "online"; origin: string }
   | { type: "error"; message: string };
-type RightSurface = "none" | "settings" | "log" | "edit";
+type RightSurface = "none" | "settings" | "log";
 
 function ResidentBaseAppDetail({ record }: { record: AppRecord }) {
   const { t } = useAppTranslation();
@@ -85,6 +89,8 @@ function ResidentBaseAppDetail({ record }: { record: AppRecord }) {
 
 export function AppDetailView() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { t } = useAppTranslation();
   const { apps, retryApp, repairApp, cancelInstall, liveLogs } = useApps();
   const [rightSurface, setRightSurface] = useState<RightSurface>("none");
   const [frame, setFrame] = useState<FrameState>({ type: "idle" });
@@ -98,6 +104,7 @@ export function AppDetailView() {
   const record = app?.kind === "installed" ? app.record : null;
   const recordId = record?.id;
   const recordState = record?.state;
+  const standalone = windowContext().role === "app-window";
   /* 启 runtime 的资格必须正着问：manifest 是 active generation 的投影，成代前
      它是 null，反向的 `kind !== "base"` 会把「还不知道」读成「是 Web App」，
      于是这条 effect 会替 Base App 去开 web runtime，把它打成 update-failed。 */
@@ -105,6 +112,22 @@ export function AppDetailView() {
   const name =
     record?.manifest?.name ??
     (app?.kind === "placeholder" ? app.name : record?.displayName ?? "App");
+
+  const openWindow = async (target: AppRecord) => {
+    try {
+      const result = await openSurfaceInWindow(
+        appStudioSurface(target.id),
+        target.id,
+        canonicalAppSurfaceRoute(target.id)
+      );
+      if (!result) throw new Error(t("windowSurface.openInWindowUnavailable"));
+      navigate("/apps", { replace: true });
+    } catch (cause) {
+      toast.error(t("windowSurface.openInWindowFailed"), {
+        description: errorMessage(cause),
+      });
+    }
+  };
 
   useEffect(() => {
     if (!recordId || recordState !== "ready" || !webRuntime) return;
@@ -122,7 +145,7 @@ export function AppDetailView() {
           if (active) {
             setFrame({
               type: "error",
-              message: errorMessage(cause, "App 启动失败"),
+              message: errorMessage(cause, t("apps.detail.startFailed")),
             });
           }
         });
@@ -131,7 +154,7 @@ export function AppDetailView() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [recordId, recordState, webRuntime]);
+  }, [recordId, recordState, t, webRuntime]);
 
   useEffect(() => {
     if (rightSurface !== "log" || !recordId) return;
@@ -148,7 +171,6 @@ export function AppDetailView() {
     };
   }, [rightSurface, recordId, recordState]);
 
-  const editOpen = rightSurface === "edit";
   const logOpen = rightSurface === "log";
   const settingsOpen = rightSurface === "settings";
 
@@ -172,7 +194,7 @@ export function AppDetailView() {
             {app.description}
           </p>
           <p className="text-muted-foreground text-xs">
-            演示占位不可运行；请用右上角 + 添加真实 GitHub App。
+            {t("apps.detail.placeholder")}
           </p>
         </div>
       </PageShell>
@@ -192,8 +214,8 @@ export function AppDetailView() {
           type: "stopped",
           message:
             app.runtimeState === "crashed"
-              ? "App 进程意外退出"
-              : "App 已停止",
+              ? t("apps.detail.crashed")
+              : t("apps.detail.stopped"),
         } satisfies FrameState)
       : frame;
 
@@ -207,9 +229,22 @@ export function AppDetailView() {
       .catch((cause) =>
         setFrame({
           type: "error",
-          message: errorMessage(cause, "App 启动失败"),
+          message: errorMessage(cause, t("apps.detail.startFailed")),
         })
       );
+  };
+
+  const openEditor = async () => {
+    try {
+      const destination = await openAppEditor({
+        appId: record.id,
+        requestId: crypto.randomUUID(),
+        mode: "resume",
+      });
+      if (!standalone) navigate(productDestinationRoute(destination));
+    } catch (cause) {
+      toast.error(t("apps.detail.edit"), { description: errorMessage(cause) });
+    }
   };
 
   return (
@@ -220,11 +255,21 @@ export function AppDetailView() {
            盖住，而日志/设置/编辑必须常驻可达——被盖住的按钮等于不存在的按钮。 */
         titleAdornment={
           <div className="flex items-center gap-1">
+            {!standalone && (
+              <Button
+                aria-label={t("windowSurface.openInWindow")}
+                onClick={() => void openWindow(record)}
+                size="icon-sm"
+                variant="ghost"
+              >
+                <PanelsTopLeft />
+              </Button>
+            )}
             <AppReadmeAdornment appId={record.id} appName={name} />
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label="查看日志"
+              aria-label={t("apps.detail.viewLog")}
               onClick={() => setRightSurface("log")}
             >
               <FileText />
@@ -232,7 +277,7 @@ export function AppDetailView() {
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label="App Agent 设置"
+              aria-label={t("apps.detail.settings")}
               aria-pressed={settingsOpen}
               onClick={() =>
                 setRightSurface(settingsOpen ? "none" : "settings")
@@ -240,21 +285,16 @@ export function AppDetailView() {
             >
               <Settings2 />
             </Button>
-            {(record.state === "ready" || editOpen) && (
-              <>
-                <Separator className="mx-1 h-5" orientation="vertical" />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  aria-label="编辑 App"
-                  aria-pressed={editOpen}
-                  className={cn(editOpen && "bg-accent")}
-                  onClick={() => setRightSurface(editOpen ? "none" : "edit")}
-                >
-                  <PencilLine />
-                  编辑 App
-                </Button>
-              </>
+            {record.state === "ready" && record.editableSource === true && (
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={t("apps.detail.edit")}
+                onClick={() => void openEditor()}
+              >
+                <PencilLine />
+                {t("apps.detail.edit")}
+              </Button>
             )}
           </div>
         }
@@ -282,7 +322,9 @@ export function AppDetailView() {
               <div className="flex size-full items-center justify-center p-8">
                 <div className="flex flex-col items-center gap-3 text-muted-foreground">
                   <RefreshCw className="size-7 animate-spin" />
-                  <p className="font-medium text-sm">正在应用修改并重建 App</p>
+                  <p className="font-medium text-sm">
+                    {t("apps.detail.rebuilding")}
+                  </p>
                 </div>
               </div>
             )}
@@ -295,7 +337,9 @@ export function AppDetailView() {
                 role="alert"
                 className="absolute inset-x-4 top-4 z-20 rounded-lg border border-amber-500/30 bg-amber-50/95 p-3 text-amber-900 text-sm shadow-sm"
               >
-                Agent 未启动：{record.agentWarning}
+                {t("apps.detail.agentWarning", {
+                  warning: record.agentWarning,
+                })}
               </p>
             )}
             {record.state === "ready" && effectiveFrame.type === "online" && (
@@ -312,48 +356,26 @@ export function AppDetailView() {
                   <Card className="max-w-md">
                     <CardHeader>
                       <MonitorPlay className="mb-2 size-8 text-muted-foreground" />
-                      <CardTitle>App 未运行</CardTitle>
+                      <CardTitle>{t("apps.detail.notRunning")}</CardTitle>
                       <CardDescription>{effectiveFrame.message}</CardDescription>
                     </CardHeader>
                     <CardContent className="flex gap-2">
                       <Button onClick={restart}>
                         <RefreshCw />
-                        重新启动
+                        {t("apps.detail.restart")}
                       </Button>
                       <Button
                         variant="outline"
                         onClick={() => setRightSurface("log")}
                       >
-                        查看日志
+                        {t("apps.detail.viewLog")}
                       </Button>
                     </CardContent>
                   </Card>
                 </div>
               )}
 
-            <div
-              aria-hidden={!editOpen}
-              inert={!editOpen}
-              className={cn(
-                "absolute inset-0 z-10 flex items-center justify-center transition-opacity duration-300",
-                editOpen ? "opacity-100" : "pointer-events-none opacity-0"
-              )}
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-sky-200/50 via-cyan-100/35 to-blue-300/45 backdrop-blur-[4px] backdrop-saturate-150" />
-              <div className="relative flex flex-col items-center gap-2 text-sky-600/90">
-                <Snowflake className="size-10" />
-                <p className="font-medium text-sm">界面已冻结</p>
-              </div>
-            </div>
           </div>
-          {/* 编辑栏在内、设置栏在外：编辑是对 App 自身动刀，属于主体的一部分，
-              页头理应盖在它上面；设置是 App 的平级邻居，故它才跨页头。 */}
-          <AppEditPanel
-            open={editOpen}
-            appId={record.id}
-            appName={name}
-            defaultAgent={record.agent}
-          />
           <AppSettingsPanel
             onClose={() => setRightSurface("none")}
             open={settingsOpen}
@@ -365,14 +387,14 @@ export function AppDetailView() {
       <Sheet open={logOpen} onOpenChange={(next) => setRightSurface(next ? "log" : "none")}>
         <SheetContent className="sm:max-w-2xl">
           <SheetHeader>
-            <SheetTitle>安装与运行日志</SheetTitle>
+            <SheetTitle>{t("apps.detail.logTitle")}</SheetTitle>
             <SheetDescription>
-              历史日志最多读取末尾 256 KB，并叠加当前会话实时事件。
+              {t("apps.detail.logDescription")}
             </SheetDescription>
           </SheetHeader>
           <SlimScroller asChild>
             <pre className="m-4 flex-1 overflow-auto rounded-lg bg-muted p-4 text-xs">
-              {logText || "暂无日志"}
+              {logText || t("apps.detail.noLogs")}
             </pre>
           </SlimScroller>
         </SheetContent>

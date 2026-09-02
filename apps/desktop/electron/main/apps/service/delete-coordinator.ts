@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Apps lifecycle/usage/gateway gate, installer/runtime, generation/data/archive ledger, Extension participant and port of clearance of non-main files
- * [OUTPUT]: AppDelete Coordinator, access removal, ability withdrawal, build abort, data disposition, drain, evidence and shell clearance
- * [POS]: The side effect editor for apps/service removal; AppsService keeps the front door open and no longer connects the entire saga
+ * [INPUT]: Depends on Apps lifecycle/usage/gateway gate, installer/runtime, generation/data/preferences/archive ledgers, Extension participant and non-main cleanup ports
+ * [OUTPUT]: Provides AppDeleteCoordinator for admission closure, capability withdrawal, build abort, data/preferences disposition, drain evidence, and silent shell cleanup
+ * [POS]: apps/service deletion side-effect executor; renderer removal publication belongs to the enclosing saga after every domain finalizer commits
  */
 
 import { join } from "node:path";
@@ -52,7 +52,8 @@ type AppDeleteCoordinatorDependencies = {
   extensions(): AppExtensionIntegration | null;
   buildParticipants(): AppGenerationBuildParticipantRegistry | null;
   stop(appId: string): Promise<void>;
-  emitRemoved(appId: string): void;
+  closeGuiSideEffects(appId: string): Promise<void>;
+  deletePreferences(appId: string): Promise<void>;
 };
 
 export class AppDeleteCoordinator {
@@ -103,6 +104,7 @@ export class AppDeleteCoordinator {
     this.deps.surfaceLeases()?.revokeApp(appId);
     this.deps.managementLeases()?.revokeApp(appId);
     await this.deps.grantAuthority()?.revokeEverywhere(appId);
+    await this.deps.closeGuiSideEffects(appId);
     const grants = this.deps.extensions()?.grants;
     if (!grants) return;
     for (const generation of this.deps.store.get(appId)?.generations ?? []) {
@@ -252,8 +254,8 @@ export class AppDeleteCoordinator {
       record,
       this.deps.runtime.getOrigin(record.id)
     );
+    await this.deps.deletePreferences(record.id);
     await this.deps.store.remove(record.id);
-    this.deps.emitRemoved(record.id);
   }
 
   private requireRecord(appId: string) {

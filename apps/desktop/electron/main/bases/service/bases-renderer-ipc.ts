@@ -22,6 +22,7 @@ import {
   baseImportMutationResultSchema,
   baseInsertRowsInputSchema,
   basePatchRowInputSchema,
+  baseRemoveManagedInputSchema,
   basePromoteToProjectInputSchema,
   baseMutationSnapshotResultSchema,
   baseResolveForSectionInputSchema,
@@ -252,7 +253,14 @@ export function registerBasesRendererIpc(
   ipc.roles("main")
     .handle(BASES_CHANNEL.promoteToProject, (input) =>
       authority.promote(basePromoteToProjectInputSchema.parse(input))
-    );
+    )
+    .handle(BASES_CHANNEL.removeManaged, (input) => {
+      const parsed = baseRemoveManagedInputSchema.parse(input);
+      return service.removeManagedBase(
+        service.assertRendererOwnerKey(parsed.ownerKey),
+        parsed.ownerInstanceId
+      );
+    });
 
   const migrationEvents = service.store.drainMigrationEvents();
   const publishMigrations = () => {

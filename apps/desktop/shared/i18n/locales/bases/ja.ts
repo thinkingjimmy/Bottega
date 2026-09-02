@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on English basesEn type of directory structure
- * [OUTPUT]: Provides Bases Ja, Base product side ja feature catalog
- * [POS]: The language sheets of shared/i18n/locales/bases; Installation on demand by the appropriate top locale
+ * [INPUT]: Depends only on the structural type of the English basesEn catalog
+ * [OUTPUT]: Provides basesJa, the Japanese catalog for every Base and embedded-chart surface
+ * [POS]: Japanese leaf catalog for shared/i18n/locales/bases; loaded on demand by the top-level locale
  */
 
 import type { basesEn } from "./en";
@@ -9,6 +9,11 @@ import type { basesEn } from "./en";
 type BasesCatalog = typeof basesEn;
 
 export const basesJa: BasesCatalog = {
+  provider: {
+    loadFailed: "Base の読み込みに失敗しました：{{message}}",
+    reloadFailed: "Base {{ownerKey}} の再読み込みに失敗しました：{{message}}",
+    retiredResult: "Base {{ownerKey}} が廃止済みの世代を返しました。",
+  },
   quarantined: "この Base は隔離されています",
   quarantinedDescription:
     "復元可能なファイルは保持されています。バックアップを手動で復元するか、破棄して新しい空の Base を作成してください。",
@@ -19,8 +24,11 @@ export const basesJa: BasesCatalog = {
   discardTitle: "復元可能な Base データを破棄しますか？",
   loading: "Base を読み込み中…",
   loadingMap: "地図を読み込み中…",
-  transcriptImages: "転記画像",
   pageTitle: "Base",
+  detail: { title: "{{name}} Base", untitledChat: "チャット" },
+  columnDefaults: { image: "画像", createdAt: "作成日時" },
+  starterStatus: { todo: "未着手", doing: "進行中", done: "完了" },
+  group: { unassigned: "未割り当て" },
   header: {
     openApp: "App を開く",
     saveAsApp: "App として保存",
@@ -53,6 +61,12 @@ export const basesJa: BasesCatalog = {
     collapse: "サイドパネルに収める",
     closeAria: "Base を閉じる",
     ioFailed: "Base のインポート／エクスポートに失敗しました",
+    importJsonUnavailable: "この環境では JSON をインポートできません。",
+    importXlsxUnavailable: "この環境では Excel をインポートできません。",
+    deleteRetained: "Base を削除",
+    deleteRetainedConfirm: "削除",
+    deleteRetainedTitle: "この Base を削除しますか？",
+    deleteRetainedDescription: "保持された App データは完全に削除されます。削除済みの App、チャット、ソースコードをこの Base から復元することはできません。",
   },
   toolbar: {
     toggleFilter: "フィルターの表示切り替え",
@@ -150,6 +164,7 @@ export const basesJa: BasesCatalog = {
     clear: "クリア",
     today: "今日",
     openLink: "ブラウザーでリンクを開く",
+    deleteAttachment: "{{filename}} を削除",
   },
   record: {
     title: "レコードを追加",
@@ -157,6 +172,7 @@ export const basesJa: BasesCatalog = {
     attachmentRequired: "保存する前に画像を選択してください。",
     unsupportedImage: "PNG、JPEG、WebP、GIF 画像のみ利用できます。",
     fileReadFailed: "画像ファイルを読み取れませんでした。",
+    attachmentWriteFailed: "画像を保存できませんでした。再試行してください。",
   },
   gui: {
     surfaceAria: "App GUI",
@@ -171,6 +187,13 @@ export const basesJa: BasesCatalog = {
     loadFailedTitle: "App の読み込みに失敗しました",
     prepareFailedTitle: "App データのアップグレードに失敗しました",
     loadFailedHint: "安全なゲートウェイまたはトークンの期限切れです。再試行するかデータを開いてください。",
+    prepareFailedHint: "App が保存したデータを、今回のリリースが必要とするバージョンへ移行できませんでした。以前のデータはそのまま残っています。",
+    permissionFailedTitle: "App の許可が古くなっています",
+    permissionFailedHint: "このバージョンの App は承認されていないか、承認の有効期限が切れています。もう一度許可すると画面を開けます。",
+    cutoverFailedTitle: "App のバージョンを切り替えています",
+    cutoverFailedHint: "前のバージョンの終了処理がまだ終わっていません。少し待ってから再試行してください。",
+    surfaceGoneTitle: "この App ビューは失効しました",
+    surfaceGoneHint: "会話が進んだため、このビューのリースは無効になりました。ページを再読み込みすると新しいリースを取得できます。",
     retry: "再試行",
     goToData: "データを開く",
   },
@@ -180,6 +203,10 @@ export const basesJa: BasesCatalog = {
     location: "位置",
     label: "ラベル",
     auto: "自動",
+    offline: "オフラインです。位置リストを表示しています。",
+    tilesUnavailable: "地図タイルを利用できません。位置リストを表示しています。",
+    noCoordinates: "座標を持つ行はまだありません。",
+    unnamedLocation: "位置",
   },
   chart: {
     add: "チャートを追加",
@@ -194,6 +221,24 @@ export const basesJa: BasesCatalog = {
       "列の削除によりビューのフィルターが無効になりました。設定し直してください。",
     emptyTitle: "このダッシュボードにはまだチャートがありません",
     emptyHint: "1 枚追加すると、データの変化に合わせて自動で再計算します。",
+    unnamed: "チャート",
+    state: {
+      filterScrubbed: "列の削除によりフィルターが無効になりました。設定し直してください。",
+      dimensionRequired: "テキスト、選択、または日付のディメンション列を選択してください。",
+      valueRequired: "有効な数値列を選択してください。",
+      seriesRequired: "有効な副ディメンション列を選択してください。",
+      pieSeriesUnsupported: "円グラフは副ディメンションに対応していません。",
+      scatterRequirements: "散布図には 2 つの数値列が必要で、副ディメンションは使用できません。",
+      heatmapRequirements: "ヒートマップには 1 つの数値列と 1 つの副ディメンションが必要です。",
+      pieValueRequired: "円グラフには 1 つの数値列が必要です。",
+      singleValueForSeries: "副ディメンションでは数値列を 1 つだけ使用できます。",
+      labelLimit: "チャートのラベルは最大 {{limit}} 件です。",
+      seriesLimit: "チャートの系列は最大 {{limit}} 件です。",
+      pointLimit: "チャートのデータ点は最大 {{limit}} 件です。",
+      empty: "データがありません",
+      pieNegative: "円グラフに負の値は表示できません。種類またはフィルターを変更してください。",
+      invalidPayload: "チャートデータが対応範囲を超えています。",
+    },
     type: {
       pie: "円グラフ",
       bar: "棒グラフ",
@@ -202,6 +247,25 @@ export const basesJa: BasesCatalog = {
       scatter: "散布図",
       radar: "レーダーチャート",
       heatmap: "ヒートマップ",
+    },
+    render: {
+      invalidJson: "チャートの JSON が無効です。",
+      invalidFormat: "チャートの形式が無効です。",
+      showSource: "元のチャートコードを表示",
+      overflow: "このメッセージにはチャートが多すぎるため、残りを折りたたみました。",
+      generating: "チャートを生成中",
+      loading: "チャートを読み込み中",
+      aria: "{{type}}、{{labels}}、{{series}}",
+      ariaWithTitle: "{{type}}「{{title}}」、{{labels}}、{{series}}",
+      labelCount_one: "ラベル {{count}} 件",
+      labelCount_other: "ラベル {{count}} 件",
+      seriesCount_one: "系列 {{count}} 件",
+      seriesCount_other: "系列 {{count}} 件",
+      showData: "データを表示",
+      hideData: "データを閉じる",
+      dataCaption: "チャートデータ",
+      labelHeader: "ラベル",
+      seriesName: "系列 {{index}}",
     },
     editor: {
       open: "チャートを編集",
@@ -233,6 +297,19 @@ export const basesJa: BasesCatalog = {
   gallery: {
     aria: "生成画像ギャラリー",
     images: "生成された画像",
+    attachmentColumn: "画像列",
+    titleColumn: "タイトル列",
+    dateColumn: "グループ化する日付列",
+    dateBucket: "日付区分",
+    ungrouped: "未分類",
+    none: "なし",
+    bucket: {
+      minute: "分",
+      hour: "時間",
+      day: "日",
+      week: "週",
+      month: "月",
+    },
     modeAria: "ギャラリーモード",
     mode: { browse: "閲覧", multi: "複数選択", comment: "コメント" },
     zoom: "ズーム",
@@ -261,6 +338,7 @@ export const basesJa: BasesCatalog = {
     addCardTo: "{{lane}} にカードを追加",
     laneColor: "レーンの色",
     laneColorCurrent: "レーンの色：{{lane}}",
+    renameAria: "{{lane}} の名前を変更",
     renameHint: "{{lane}} — ダブルクリックで名前を変更",
     auto: "自動",
     dropHere: "ここにカードをドロップ",
@@ -279,6 +357,7 @@ export const basesJa: BasesCatalog = {
   },
   list: {
     addRow: "行を追加",
+    addRowTo: "{{group}} に行を追加",
     empty: "このビューに一致するレコードはありません。",
     rowActions: "{{title}} の操作",
     edit: "編集",
@@ -298,6 +377,7 @@ export const basesJa: BasesCatalog = {
     sortHint: "並べ替え（Shift で複数列）",
     renameColumn: "列名を変更",
     renameColumnAria: "{{column}} の名前を変更",
+    unnamedColumn: "列",
     deleteColumn: "列を削除",
     deleteColumnAria: "{{column}} を削除",
     addColumn: "列を追加",
@@ -309,6 +389,10 @@ export const basesJa: BasesCatalog = {
     deleteColumnDescription:
       "列「{{column}}」をすべてのビューから削除します。セルの値にはアクセスできなくなります。",
     resizeHint: "ドラッグで列幅を変更。矢印キーで微調整できます",
+    resizeAria: "{{column}} 列の幅を変更",
+    emptyNoColumns: "列を追加してから最初の行を作成してください。",
+    emptyEditable: "行はまだありません。追加して始めましょう。",
+    emptyReadOnly: "行はまだありません。",
   },
   summary: {
     cellAria: "{{column}} の集計：{{value}}",
@@ -331,6 +415,11 @@ export const basesJa: BasesCatalog = {
   },
   workbench: {
     viewLimit: "Base にはビューが最低 1 つ必要です",
+    revisionConflict: "この Base は別の場所で変更されました。最新の内容を再読み込みしました。",
+    galleryViewChanged: "このギャラリービューは削除または変更されました。最新の Base を再読み込みしました。",
+    galleryAttachmentChanged: "ギャラリーの画像列が削除または変更されました。選択し直してください。",
+    galleryTitleChanged: "ギャラリーのタイトル列が削除または変更されました。選択し直してください。",
+    galleryDateChanged: "ギャラリーの日付列が削除または変更されました。選択し直してください。",
   },
   history: {
     open: "履歴を表示",

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ui Button/Skeleton, Conversation Roll unlock, create a shared ResizeObserver, shared ChatAttachmentMeta, runtime LiveAttachmentPreview and attachments to read/open intentions
- * [OUTPUT]: Provides UserMessageFold and ChatUserAttachments; The former uses a shared observer to measure the 12 lines that are gradually folded and retrieved by the target, while the latter projects the preview of the attachment
- * [POS]: The user message display unit of chat/transcript is consumed by the ChatTranscript user branch (Decision 5)
+ * [INPUT]: Depends on UI Button/Skeleton, localized transcript controls, conversation scroll unlock, shared ResizeObserver, ChatAttachmentMeta, live previews, and attachment read/open intents
+ * [OUTPUT]: Provides localized UserMessageFold and ChatUserAttachments with 12-line measurement, lazy stored previews, and side-panel image actions
+ * [POS]: User-message body and attachment display unit consumed by the ChatTranscript user branch
  */
 
 import {
@@ -18,6 +18,7 @@ import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import type { ChatAttachmentMeta } from "../../../../shared/chats-ipc";
 import type { LiveAttachmentPreview } from "../runtime/chat-attachments";
 import { observeSharedResize } from "./shared-resize-observer";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 const USER_MESSAGE_PREVIEW_LINES = 12;
 const DEFAULT_USER_MESSAGE_LINE_HEIGHT = 20;
@@ -42,6 +43,7 @@ export function UserMessageFold({
   children: ReactNode;
   measurementKey?: unknown;
 }) {
+  const { t } = useAppTranslation();
   const [expanded, setExpanded] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -100,7 +102,11 @@ export function UserMessageFold({
           type="button"
           variant="ghost"
         >
-          {expanded ? "Show less" : "Show more"}
+          {t(
+            expanded
+              ? "chat.transcript.showLess"
+              : "chat.transcript.showMore"
+          )}
         </Button>
       )}
     </>
@@ -116,6 +122,7 @@ function Thumb({
   url: string;
   onOpen?: () => void;
 }) {
+  const { t } = useAppTranslation();
   if (!url) {
     return (
       <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground text-xs">
@@ -135,7 +142,9 @@ function Thumb({
   if (!onOpen) return image;
   return (
     <button
-      aria-label={`在第三栏打开图片：${filename}`}
+      aria-label={t("chat.transcript.openAttachmentInSidePanel", {
+        title: filename,
+      })}
       className="size-16 cursor-pointer touch-manipulation rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
       onClick={onOpen}
       type="button"

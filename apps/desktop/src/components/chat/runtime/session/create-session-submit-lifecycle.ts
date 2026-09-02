@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React layout lifecycle, submitting transaction status setter, session refs, message projection and attachment preview combinator
+ * [INPUT]: Depends on React layout lifecycle, renderer locale/catalog runtime, submission status setters, session refs, message projection, and attachment preview combinator
  * [OUTPUT]: Provides keyed mount-aware useSessionViewFence with generation-scoped createSessionSubmitLifecycle
  * [POS]: The renderer lifecycle adapter for chat/runtime/session; The naked setter is isolated and blocks the old Chat that has been transferred to the main from re-infesting the current view. Post-send navigation is deliberately absent: the fence rightly voids late receipts after a keyed remount, so page switching belongs to the route's draft-residence observation, never to receipts
  */
@@ -28,6 +28,8 @@ import {
 } from "../../../../../shared/chat-turn-reducer";
 import type { CodexRequest } from "@/lib/agent-client";
 import { errorMessage } from "@/lib/errors";
+import { effectiveLocale } from "@/lib/i18n-locale";
+import { translate } from "../../../../../shared/i18n/runtime";
 import {
   appendLivePreviews,
   type LiveAttachmentPreview,
@@ -153,7 +155,12 @@ export function createSessionSubmitLifecycle({
       set.status("ready");
       set.queued(false);
       clearDraft();
-      appendLocalAssistant(`**消息未发送：** ${message}`, true);
+      appendLocalAssistant(
+        translate(effectiveLocale(), "chat.runtime.submission.notSent", {
+          message,
+        }),
+        true
+      );
     },
     holdAmbiguousAdmission(message) {
       if (!isCurrent()) return;
@@ -164,7 +171,9 @@ export function createSessionSubmitLifecycle({
       set.queued(false);
       clearDraft();
       appendLocalAssistant(
-        `**消息状态未知：** ${message}。已保留原提交身份，请在队列中选择重发或删除。`,
+        translate(effectiveLocale(), "chat.runtime.submission.stateUnknown", {
+          message,
+        }),
         true
       );
     },
@@ -184,10 +193,12 @@ export function createSessionSubmitLifecycle({
       set.queueNotice("");
       if (receipt.blockedBy === "chain-paused") {
         set.queueNotice(
-          "消息已排队：该 Section 的接力链已暂停，请先处理聊天顶部的“继续”提示。"
+          translate(effectiveLocale(), "chat.runtime.submission.relayPaused")
         );
       } else if (receipt.blockedBy === "relay-queue") {
-        set.queueNotice("消息已排队：该 Section 有待处理的接力消息。");
+        set.queueNotice(
+          translate(effectiveLocale(), "chat.runtime.submission.relayPending")
+        );
       }
       appendPreviews(receipt.userMessage.id, previews);
       appendProjected(receipt.userMessage);
@@ -196,9 +207,11 @@ export function createSessionSubmitLifecycle({
     },
     reportAcceptedSyncFailure(cause) {
       if (!isCurrent()) return;
-      const notice =
-        `消息已被 Agent 接受，但本地会话状态刷新失败：${errorMessage(cause)}` +
-        "。请勿重复发送；当前任务仍会继续。";
+      const notice = translate(
+        effectiveLocale(),
+        "chat.runtime.submission.acceptedRefreshFailed",
+        { message: errorMessage(cause) }
+      );
       set.queueNotice((current) =>
         current ? `${current} ${notice}` : notice
       );

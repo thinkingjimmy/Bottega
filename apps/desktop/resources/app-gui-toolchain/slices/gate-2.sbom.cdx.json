@@ -1,0 +1,184 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "bottega-react-v1/gate-2",
+      "bom-ref": "pkg:generic/bottega-react-v1/gate-2@1"
+    },
+    "properties": [
+      {
+        "name": "bottega:pnpm-lockfile-sha256",
+        "value": "sha256:a6aa3241a788311febf6488dc011df016e9c76f40e08a7b344d9e3313cc08694"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "date-fns",
+      "version": "4.4.0",
+      "bom-ref": "pkg:npm/date-fns@4.4.0",
+      "purl": "pkg:npm/date-fns@4.4.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "54b02412a754c096c26a0e780f1f167635a291dd7f999e34e6acae101b48dc01"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.md:sha256",
+          "value": "sha256:8d3951c38967b964b1fe259bfd200c2647cc04c858b55a4414e3122a60f1ef4b"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "react-dom",
+      "version": "19.2.4",
+      "bom-ref": "pkg:npm/react-dom@19.2.4",
+      "purl": "pkg:npm/react-dom@19.2.4",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "72ac76a9436705ea6ce347bb927e5e1ddf8e12b4064b6dec753b017859839245"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "react",
+      "version": "19.2.4",
+      "bom-ref": "pkg:npm/react@19.2.4",
+      "purl": "pkg:npm/react@19.2.4",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "494353ba01218ef849cc757d1519fe1a92cd4d8398088c6cfe521d88206a3607"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "scheduler",
+      "version": "0.27.0",
+      "bom-ref": "pkg:npm/scheduler@0.27.0",
+      "purl": "pkg:npm/scheduler@0.27.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "304ada6e934557c237806468114b2d524e64df007da7b10267ef198e37e6338e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "zod",
+      "version": "4.4.3",
+      "bom-ref": "pkg:npm/zod@4.4.3",
+      "purl": "pkg:npm/zod@4.4.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "aaa6b4591098284c78903214c7bd9127b1b1187712371dd9f2d7021a212284bc"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:3f1189b28e3866e0d979968d466b78f813f76827cfdca1fbb124cc0a5c8841f8"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:generic/bottega-react-v1/gate-2@1",
+      "dependsOn": [
+        "pkg:npm/date-fns@4.4.0",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/zod@4.4.3"
+      ]
+    },
+    {
+      "ref": "pkg:npm/date-fns@4.4.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/react-dom@19.2.4",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/scheduler@0.27.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/react@19.2.4",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/scheduler@0.27.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/zod@4.4.3",
+      "dependsOn": []
+    }
+  ]
+}

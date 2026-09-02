@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on DesignService, AppStore, Base GUI grants, trusted surface leases, workspace plus current-chat identity resolution, factory import, and Apps event callbacks
- * [OUTPUT]: Provides AppDesignIntegration for request-bound Design turn watching, incarnation-fenced tool reads, workspace/history access, custody controls, main-evidence Project rebind migration, factory lifecycle/explicit reinstall, and renderer events
+ * [OUTPUT]: Provides AppDesignIntegration for request-bound Design turn watching, incarnation-fenced tool reads, workspace/history access, custody controls, main-evidence Project rebind migration, factory lifecycle/explicit reinstall with legacy missing-owner cleanup, idempotent deletion finalization, and renderer events
  * [POS]: apps/service Design composition boundary; AppsService delegates the complete Design capability family here
  */
 
 import type { AgentBackendId } from "../../../../../shared/agent-ipc";
+import { defaultAppGrantRequest } from "../../../../../shared/apps-ipc";
 import type { BaseGuiLiveBinding } from "../../../../../shared/apps-ipc";
 import type { EffectiveWorkspaceResolver } from "../../../workspace-resolver";
 import { DESIGN_PRESET_ID } from "../../../design/enabled";
@@ -240,14 +241,13 @@ export class AppDesignIntegration {
     if (this.store.get(appId)?.presetId !== DESIGN_PRESET_ID) {
       throw new Error("Only the Design factory can change Design visibility");
     }
+    /* 载荷取自共享的那一份：可见性与授权档写的是同一个 defaultGrant，
+       两边各拼一份就必然漂开——从前这里给 fileRead:true，授权档给 false，
+       于是「重新打开 Design」会把授权页的委托开关顶成开，用户从没碰过它。
+       Design 的工作区文件走 Base GUI 租约，不经 data 级别，故这里传 none。 */
     return this.ports.grantAuthority().setDefaultGrant({
       appId,
-      grant: enabled
-        ? {
-            requestedDataLevel: "none",
-            requestedAgentDelegation: { fileRead: true, useData: false },
-          }
-        : null,
+      grant: enabled ? defaultAppGrantRequest("none") : null,
     });
   }
 
@@ -302,6 +302,9 @@ export class AppDesignIntegration {
       activateCustody: async (appId) => {
         await this.service.activateFactoryCustody(appId);
       },
+      orphanCustody: async (appId) => {
+        await this.service.orphanApp(appId);
+      },
     }));
     const sourceRoot = designFactoryPayloadPath();
     const trust = this.ports.factoryDescriptor();
@@ -333,6 +336,14 @@ export class AppDesignIntegration {
     );
     this.ports.invalidateSkills();
     return result;
+  }
+
+  async finalizeFactoryDeletion(appId: string) {
+    const state = await this.service.markFactoryDeleted(appId);
+    if (state.appId !== appId || state.condition !== "deleted") return false;
+    await this.service.orphanApp(appId);
+    this.ports.invalidateSkills();
+    return true;
   }
 
   closeAndFlush() {

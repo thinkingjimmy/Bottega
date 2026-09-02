@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared BackendInfo, renderer agent-backends, end-to-end testing mode and ui/select
- * [OUTPUT]: Provides ChatAgentSelector; Selectable with read-only unifiedity only shows brand logo (Composer is the first place of identity), the multi-selection menu adapts width to the longest option and retains the logo, name and column in the selection
- * [POS]: The compact Agent ID input is placed in the chat/composer model area; Only read status retains unobstructed names and does not replicate the occupancy of visible horizontal space
+ * [INPUT]: Depends on shared BackendInfo, renderer agent-backends, Chat composer i18n, end-to-end testing mode and ui/select
+ * [OUTPUT]: Provides localized ChatAgentSelector; selectable and read-only identities expose the current/checking Agent state without duplicating visible horizontal space
+ * [POS]: Compact Agent identity control beside the model selector; read-only mode preserves identity without duplicating status chrome
  */
 
 import { useEffect, useRef } from "react";
@@ -21,6 +21,7 @@ import {
   backendLabel,
   readyAgentBackends,
 } from "@/lib/agent-backends";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 function AgentIdentity({
   backend,
@@ -29,17 +30,19 @@ function AgentIdentity({
   backend: AgentBackendId;
   checking: boolean;
 }) {
+  const { t } = useAppTranslation();
+  const backendName = backendLabel(backend);
   return (
     <div
-      aria-label={`当前 Agent ${backendLabel(backend)}`}
+      aria-label={t("chat.composer.agent.current", { backend: backendName })}
       aria-busy={checking}
       className="flex size-8 shrink-0 items-center justify-center"
-      title={`当前 Agent：${backendLabel(backend)}`}
+      title={t("chat.composer.agent.current", { backend: backendName })}
     >
       <AgentBackendIcon backend={backend} className="size-4" />
       {checking && (
         <span className="sr-only" role="status">
-          正在确认 {backendLabel(backend)} 状态
+          {t("chat.composer.agent.checking", { backend: backendName })}
         </span>
       )}
     </div>
@@ -63,6 +66,7 @@ export function ChatAgentSelector({
   saving?: boolean;
   onChange: (backend: AgentBackendId) => Promise<void>;
 }) {
+  const { t } = useAppTranslation();
   const available = readyAgentBackends(backends);
   const displayed =
     available.find((backend) => backend.id === value) ?? available[0];
@@ -104,13 +108,19 @@ export function ChatAgentSelector({
         }
       >
         <SelectTrigger
-          aria-label={`选择 Agent，当前 ${backendLabel(displayId)}`}
+          aria-label={t("chat.composer.agent.selectCurrent", {
+            backend: backendLabel(displayId),
+          })}
           aria-busy={checking}
           className="size-8 min-w-0 cursor-pointer justify-center gap-0 rounded-full border-0 bg-transparent p-0 shadow-none outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 data-[state=open]:bg-muted data-[size=default]:h-8 disabled:cursor-not-allowed [&>svg:last-child]:hidden"
           title={
             checking
-              ? `正在确认 ${backendLabel(displayId)} 状态`
-              : `当前 Agent：${backendLabel(displayId)}`
+              ? t("chat.composer.agent.checking", {
+                  backend: backendLabel(displayId),
+                })
+              : t("chat.composer.agent.current", {
+                  backend: backendLabel(displayId),
+                })
           }
         >
           <AgentBackendIcon backend={displayId} className="size-4" />
@@ -142,7 +152,9 @@ export function ChatAgentSelector({
       </Select>
       {checking && (
         <span className="sr-only" role="status">
-          正在确认 {backendLabel(displayId)} 状态
+          {t("chat.composer.agent.checking", {
+            backend: backendLabel(displayId),
+          })}
         </span>
       )}
     </div>

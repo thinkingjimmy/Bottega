@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on dnd-kit draggable/droppable, lucide, icons, steering, ability to move and turn, double-blocking, QueueItem/editableItem
- * [OUTPUT]: Provides accessible single message queue rows, ability to render in presence and only active turn, available Steer, drag/Edit/Delete and discrete decision buttons
+ * [INPUT]: Depends on dnd-kit draggable/droppable, lucide icons, Chat composer i18n, steering capability, and QueueItem/editableItem
+ * [OUTPUT]: Provides localized accessible queue rows with capability-gated Steer, drag, edit, delete, resend, and ambiguity actions
  * [POS]: The composer/queue atomic line view; Not reading session controller or external store
  */
 
@@ -13,6 +13,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { editableItem, type QueueItem } from "@/lib/message-queue-model";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 const iconButton =
   "grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-35";
@@ -43,6 +44,7 @@ export function MessageQueueRow({
   onResendAmbiguous(id: string): void;
   onRemoveAmbiguous(id: string): void;
 }) {
+  const { t } = useAppTranslation();
   const {
     attributes,
     listeners,
@@ -75,7 +77,10 @@ export function MessageQueueRow({
         ref={setActivatorNodeRef}
         {...attributes}
         {...listeners}
-        aria-label={`拖动第 ${index + 1} 条，共 ${count} 条`}
+        aria-label={t("chat.composer.queue.drag", {
+          position: index + 1,
+          count,
+        })}
         className={`${iconButton} cursor-grab touch-none active:cursor-grabbing`}
         disabled={!editable}
         type="button"
@@ -88,7 +93,7 @@ export function MessageQueueRow({
       {item.state === "ambiguous" ? (
         <>
           <button
-            aria-label="重发这条消息"
+            aria-label={t("chat.composer.queue.resend")}
             className={iconButton}
             onClick={() => onResendAmbiguous(item.id)}
             type="button"
@@ -96,7 +101,7 @@ export function MessageQueueRow({
             <RotateCcwIcon className="size-3.5" />
           </button>
           <button
-            aria-label="删除这条歧义消息"
+            aria-label={t("chat.composer.queue.deleteAmbiguous")}
             className={iconButton}
             onClick={() => onRemoveAmbiguous(item.id)}
             type="button"
@@ -108,7 +113,7 @@ export function MessageQueueRow({
         <>
           {steerSupported && (
             <button
-              aria-label="立即插入当前运行任务"
+              aria-label={t("chat.composer.queue.steer")}
               className={iconButton}
               disabled={!editable || !canSteer}
               onClick={() => onSteer(item.id)}
@@ -118,7 +123,7 @@ export function MessageQueueRow({
             </button>
           )}
           <button
-            aria-label="删除这条排队消息"
+            aria-label={t("chat.composer.queue.delete")}
             className={iconButton}
             disabled={!editable}
             onClick={() => onRemove(item.id)}
@@ -127,7 +132,7 @@ export function MessageQueueRow({
             <Trash2Icon className="size-3.5" />
           </button>
           <button
-            aria-label="编辑这条排队消息"
+            aria-label={t("chat.composer.queue.edit")}
             className={iconButton}
             disabled={!editable}
             onClick={() => onEdit(item.id)}

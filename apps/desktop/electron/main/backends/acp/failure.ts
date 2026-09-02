@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on unknown ACP/JSON-RPC original cause and outbound access to the limited stream snapshot
- * [OUTPUT]: Provides code+ structured data/locked versions of accurate reporting classification, containing auth-required and usage-limit of three respective judgments; The naked polyglot remains unknown
- * [POS]: the non-failure of ACP transport; Only the product diagnosis origin, product instructions are taken from the presentation layer by state
+ * [OUTPUT]: Provides exact structured ACP/HTTP classification into coarse terminal kind plus Agent ProductFailure semantics; arbitrary prose remains unknown
+ * [POS]: ACP transport failure classifier; renderer owns localized explanations and recovery instructions
  */
 
 import type {
@@ -9,6 +9,11 @@ import type {
   UsageLimitWindow,
 } from "../../../../shared/agent-ipc";
 import type { BackendFailure, FailureHints } from "../types";
+import {
+  agentRuntimeFailure,
+  diagnosticFailureDetails,
+  type AgentRuntimeFailureCode,
+} from "../../../../shared/product-failure";
 
 const AUTH_CODES = new Set([-32000, -32001, 401]);
 const AUTH_DATA_VALUES = new Set([
@@ -20,6 +25,7 @@ const LOCKED_AUTH_MESSAGES = new Set([
   "Authentication required",
   "Authentication required.",
 ]);
+const ACP_REQUEST_CANCELLED = -32800;
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -60,6 +66,28 @@ const CLAUDE_WINDOWS: Record<string, UsageLimitWindow> = {
 
 /** Kimi 的限流只在 HTTP 语义上可辨：429 或 provider.rate_limit 错误码 */
 const PROVIDER_LIMIT_CODES = new Set(["provider.rate_limit"]);
+const CONNECTION_CODES = new Set([
+  "ECONNABORTED",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETDOWN",
+  "ENETUNREACH",
+  "ETIMEDOUT",
+]);
+const SERVICE_HTTP_CODES = new Set([500, 501, 502, 503, 504]);
+const REQUEST_HTTP_CODES = new Set([400, 403, 404, 405, 409, 413, 422]);
+
+const CODEX_FAILURE_CODES: Record<string, AgentRuntimeFailureCode> = {
+  contextWindowExceeded: "context-exhausted",
+  sessionBudgetExceeded: "context-exhausted",
+  serverOverloaded: "service-unavailable",
+  internalServerError: "service-unavailable",
+  badRequest: "request-rejected",
+  sandboxError: "request-rejected",
+  cyberPolicy: "request-rejected",
+  unauthorized: "auth-required",
+};
 
 function codexUsageLimit(data: unknown) {
   return record(data)?.codexErrorInfo === CODEX_USAGE_LIMIT;
@@ -92,6 +120,69 @@ function providerUsageLimit(code: number | undefined, data: unknown) {
   );
 }
 
+function stringCode(source: Record<string, unknown> | undefined, data: unknown) {
+  const candidates = [source?.code, record(source?.cause)?.code, record(data)?.code];
+  return candidates.find((value): value is string => typeof value === "string");
+}
+
+function httpStatus(source: Record<string, unknown> | undefined, data: unknown) {
+  const values = [
+    source?.status,
+    source?.statusCode,
+    record(source?.cause)?.status,
+    record(source?.cause)?.statusCode,
+    record(data)?.status,
+    record(data)?.statusCode,
+  ];
+  return values.find((value): value is number => typeof value === "number");
+}
+
+function backendFailure(
+  code: AgentRuntimeFailureCode,
+  message: string,
+  limit?: UsageLimitInfo
+): BackendFailure {
+  const failure = agentRuntimeFailure(code);
+  if (code === "auth-required") {
+    return { kind: "auth-required", message, failure };
+  }
+  if (code === "rate-limited" || code === "quota-exhausted") {
+    return {
+      kind: "usage-limit",
+      message,
+      limit: limit ?? {
+        window: code === "rate-limited" ? "provider" : "unknown",
+      },
+      failure,
+    };
+  }
+  return { kind: "unknown", message, failure };
+}
+
+/** Transport owns exact secret redaction; this helper adds the bounded shared
+ * diagnostic envelope only after that redaction has completed. */
+export function withFailureDiagnostic(
+  failure: BackendFailure,
+  message: string
+): BackendFailure {
+  return {
+    ...failure,
+    message,
+    failure: agentRuntimeFailure(
+      failure.failure.domain === "agent-runtime" ? failure.failure.code : "unknown",
+      diagnosticFailureDetails(message)
+    ),
+  };
+}
+
+export function isAcpCancelledError(cause: unknown): boolean {
+  const source = record(cause);
+  return (
+    source?.code === ACP_REQUEST_CANCELLED ||
+    record(source?.cause)?.code === ACP_REQUEST_CANCELLED
+  );
+}
+
 export function classifyAcpFailure(
   cause: unknown,
   hints?: FailureHints
@@ -110,17 +201,40 @@ export function classifyAcpFailure(
       : cause instanceof Error
         ? cause.message
         : String(cause);
+  const codexCode = record(data)?.codexErrorInfo;
   const isAuth =
-    code !== undefined &&
-    AUTH_CODES.has(code) &&
-    (authData(data) || LOCKED_AUTH_MESSAGES.has(message.trim()));
-  if (isAuth) return { kind: "auth-required", message };
+    (code !== undefined &&
+      AUTH_CODES.has(code) &&
+      (authData(data) || LOCKED_AUTH_MESSAGES.has(message.trim()))) ||
+    codexCode === "unauthorized";
+  if (isAuth) return backendFailure("auth-required", message);
   // 限流判据按证据强弱排序：Claude 的结构化快照 > Codex 的错误码 > provider 429
-  const limit =
-    claudeUsageLimit(hints?.rateLimit) ??
-    (codexUsageLimit(data) ? { window: "unknown" as const } : undefined) ??
-    (providerUsageLimit(code, data) ? { window: "provider" as const } : undefined);
-  return limit
-    ? { kind: "usage-limit", message, limit }
-    : { kind: "unknown", message };
+  const claudeLimit = claudeUsageLimit(hints?.rateLimit);
+  if (claudeLimit) return backendFailure("quota-exhausted", message, claudeLimit);
+  if (codexUsageLimit(data)) {
+    return backendFailure("quota-exhausted", message, { window: "unknown" });
+  }
+  if (providerUsageLimit(code, data)) {
+    return backendFailure("rate-limited", message, { window: "provider" });
+  }
+  if (codexCode === "usageLimitExceeded") {
+    return backendFailure("quota-exhausted", message);
+  }
+  if (typeof codexCode === "string" && CODEX_FAILURE_CODES[codexCode]) {
+    return backendFailure(CODEX_FAILURE_CODES[codexCode], message);
+  }
+  const wireCode = stringCode(source, data);
+  if (wireCode && CONNECTION_CODES.has(wireCode.toUpperCase())) {
+    return backendFailure("connection-lost", message);
+  }
+  const status = code && code >= 100 ? code : httpStatus(source, data);
+  if (status === 402) return backendFailure("quota-exhausted", message);
+  if (status === 408) return backendFailure("connection-lost", message);
+  if (status && SERVICE_HTTP_CODES.has(status)) {
+    return backendFailure("service-unavailable", message);
+  }
+  if (status && REQUEST_HTTP_CODES.has(status)) {
+    return backendFailure("request-rejected", message);
+  }
+  return backendFailure("unknown", message);
 }

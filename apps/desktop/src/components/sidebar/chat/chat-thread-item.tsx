@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Sidebar/dropdown/skeleton/spinner primitives, shared Sidebar rename dialog, lucide icons, Chats/Projects/Setup Providers, i18n, chat activity, routing, and sidebar-row geometry
- * [OUTPUT]: Provides ChatThreadItem plus shared hover helpers; title, preview, activity, menu, modal rename, and direct archive actions keep the row mounted as one navigation surface
+ * [INPUT]: Depends on Sidebar/dropdown/skeleton/spinner primitives, shared row geometry/action tone, rename/archive feedback, Chats/Projects/Apps/Setup providers, archive restore client, typed product navigation, i18n, chat activity, and routing
+ * [OUTPUT]: Provides ChatThreadItem with App-leading identity, typed App Use/exact Editor opening, title/preview/activity, rename, and direct archive actions with targeted View/Undo recovery
  * [POS]: The shared chat line unit of components/sidebar/chat, consumed by the Chats, Activity and Project sublists, unifies the two levels of hover/focus feedback and does not embed li
  */
 
@@ -34,23 +34,29 @@ import {
   SidebarRowMark,
   SidebarRowTag,
   SidebarRowTitle,
+  sidebarRootMenuActionClass,
   sidebarSubRowClass,
 } from "../sidebar-row";
 import {
   SidebarRenameDialog,
   useSidebarRenameMenu,
 } from "../rename/sidebar-rename-dialog";
+import { useSidebarArchiveFeedback } from "../archive/archive-feedback";
 import type { ChatSummary } from "../../../../shared/chats-ipc";
 import { useChats } from "@/components/providers/chats-provider";
 import { useProjects } from "@/components/providers/projects-provider";
 import { useSetup } from "@/components/providers/setup-provider";
+import { useApps } from "@/components/providers/apps-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { AgentBackendIcon, backendLabel } from "@/lib/agent-backends";
 import { projectDraftRoute } from "@/lib/draft-route";
+import { restoreArchiveTargets } from "@/lib/archive-client";
 import {
   useChatActivity,
   type ChatActivity,
 } from "@/lib/chat-activity-store";
+import { openProductDestination, productDestinationRoute } from "@/lib/product-navigation";
+import { openAppEditor } from "@/lib/apps-client";
 
 type ChatThreadItemProps = {
   chat: ChatSummary;
@@ -74,9 +80,6 @@ const rootMenuButtonClass =
 const menuActionToneClass =
   "cursor-pointer text-sidebar-foreground/35 hover:bg-transparent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground aria-expanded:text-sidebar-foreground";
 
-const rootMenuActionClass =
-  `${menuActionToneClass} peer-hover/menu-button:text-sidebar-foreground/35 peer-data-active/menu-button:text-sidebar-foreground/35`;
-
 /** history 行与 chat 行共用同一 hover 显隐法则；导出以免两处各抄一份漂移。 */
 export const subMenuActionClass =
   `pointer-events-none opacity-0 ${menuActionToneClass} group-has-[:focus-visible]/menu-sub-item:pointer-events-auto group-has-[:focus-visible]/menu-sub-item:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 aria-expanded:pointer-events-auto aria-expanded:opacity-100`;
@@ -95,41 +98,58 @@ function ActivityDot({ className, label }: { className: string; label: string })
   );
 }
 
-const activityMarks: Record<ChatActivity, React.ReactNode> = {
-  waiting: (
-    <CircleQuestionMark
-      className="text-violet-500"
-      aria-label="等待你的回复"
-    />
-  ),
-  running: (
-    <Spinner
-      className="text-sidebar-foreground/55"
-      aria-label="正在生成"
-      data-chat-activity="running"
-    />
-  ),
-  done: <ActivityDot className="bg-blue-500" label="已完成，有新回复" />,
-  failed: (
-    <TriangleAlert
-      className="text-amber-500"
-      aria-label="运行未成功"
-    />
-  ),
-};
-
 function ChatThreadIcon({
   chat,
   unavailable,
   detecting,
   activity,
+  appIdentity,
 }: {
   chat: ChatSummary;
   unavailable: boolean;
   detecting: boolean;
   activity?: ChatActivity;
+  appIdentity?: { icon: string; name: string };
 }) {
-  if (activity) return activityMarks[activity];
+  const { t } = useAppTranslation();
+  if (activity === "waiting") {
+    return (
+      <CircleQuestionMark
+        className="text-violet-500"
+        aria-label={t("chat.sidebar.waiting")}
+      />
+    );
+  }
+  if (activity === "running") {
+    return (
+      <Spinner
+        className="text-sidebar-foreground/55"
+        aria-label={t("chat.sidebar.running")}
+        data-chat-activity="running"
+      />
+    );
+  }
+  if (activity === "done") {
+    return (
+      <ActivityDot className="bg-blue-500" label={t("chat.sidebar.done")} />
+    );
+  }
+  if (activity === "failed") {
+    return (
+      <TriangleAlert
+        className="text-amber-500"
+        aria-label={t("chat.sidebar.failed")}
+      />
+    );
+  }
+  if (chat.context?.kind === "app-use" && appIdentity) {
+    return (
+      <span aria-label={appIdentity.name} className="text-sm leading-none">
+        {appIdentity.icon}
+      </span>
+    );
+  }
+  const backend = backendLabel(chat.agent);
   return (
     <AgentBackendIcon
       backend={chat.agent}
@@ -141,10 +161,10 @@ function ChatThreadIcon({
       }
       aria-label={
         detecting
-          ? `${backendLabel(chat.agent)} 状态检测中`
+          ? t("chat.sidebar.backendDetecting", { backend })
           : unavailable
-          ? `${backendLabel(chat.agent)} 当前不可用`
-          : `${backendLabel(chat.agent)} 可用`
+          ? t("chat.sidebar.backendUnavailable", { backend })
+          : t("chat.sidebar.backendAvailable", { backend })
       }
     />
   );
@@ -160,12 +180,19 @@ export function ChatThreadItem({
   const { t } = useAppTranslation();
   const { renameChat, archiveChat } = useChats();
   const { projects } = useProjects();
+  const { records: apps } = useApps();
   const setup = useSetup();
   const navigate = useNavigate();
+  const showArchiveFeedback = useSidebarArchiveFeedback();
   const activity = useChatActivity(chat.id);
+  const context = chat.context;
   const [renameOpen, setRenameOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const renameMenu = useSidebarRenameMenu(() => setRenameOpen(true));
+  const appUseContext = context?.kind === "app-use" ? context : null;
+  const app = appUseContext
+    ? apps.find((candidate) => candidate.id === appUseContext.appId)
+    : undefined;
   const Item = variant === "sub" ? SidebarMenuSubItem : SidebarMenuItem;
   const MenuButton =
     variant === "sub" ? SidebarMenuSubButton : SidebarMenuButton;
@@ -178,10 +205,25 @@ export function ChatThreadItem({
     setBusy(true);
     try {
       await archiveChat(chat.id);
+      if (active && context?.kind === "app-use") return;
+      if (active && context?.kind === "app-edit") {
+        const destination = await openAppEditor({
+          appId: context.appId,
+          requestId: crypto.randomUUID(),
+          mode: "resume",
+        });
+        navigate(productDestinationRoute(destination));
+        return;
+      }
       /* 归档的是这条 chat 而不是它所在的 Project：把用户留在原 Project 的
          空白页上，下一句话仍在同一个上下文里说。路由守卫是同一判据的另一
          半，两处必须给出同一个落点，否则谁先落地就成了行为的定义者。 */
       if (active) navigate(projectDraftRoute(chat.projectId, projects));
+      showArchiveFeedback({
+        kind: "chat",
+        id: chat.id,
+        undo: () => restoreArchiveTargets([{ kind: "chat", id: chat.id }]),
+      });
     } catch {
       // 失败文案由 ChatsProvider 弹 toast，此处只收敛状态
     } finally {
@@ -196,12 +238,34 @@ export function ChatThreadItem({
   const titleNode =
     chat.title === null ? (
       <>
-        <span className="sr-only">标题生成中</span>
+        <span className="sr-only">{t("chat.generatingTitle")}</span>
         <Skeleton className="h-4 w-28" />
       </>
     ) : (
       <SidebarRowTitle>{chat.title}</SidebarRowTitle>
     );
+
+  const openChat = () => {
+    if (!chat.incarnationId || context?.kind === "ordinary" || !context) return;
+    const destination = context.kind === "app-use"
+      ? {
+          kind: "app-use-chat" as const,
+          appId: context.appId,
+          chatId: chat.id,
+          incarnationId: chat.incarnationId,
+        }
+      : {
+          kind: "app-editor-chat" as const,
+          appId: context.appId,
+          projectId: context.projectId,
+          chatId: chat.id,
+          incarnationId: chat.incarnationId,
+        };
+    void openProductDestination(
+      destination,
+      navigate
+    );
+  };
 
   // ─── 普通态：导航 + hover 更多菜单 + 删除二次确认 ───
   return (
@@ -221,7 +285,8 @@ export function ChatThreadItem({
         }${preview ? " h-auto! min-h-8 flex-col items-stretch gap-0.5 py-1.5" : ""}`}
         isActive={active}
       >
-        <Link to={`/chat/${chat.id}`}>
+        {context && context.kind !== "ordinary" && chat.incarnationId ? (
+          <button type="button" onClick={openChat}>
           <span className="flex w-full min-w-0 items-center gap-2">
             <SidebarRowMark>
               <ChatThreadIcon
@@ -229,6 +294,10 @@ export function ChatThreadItem({
                 unavailable={backendUnavailable}
                 detecting={backendStatus === undefined}
                 activity={activity}
+                appIdentity={{
+                  icon: app?.manifest?.icon ?? "📦",
+                  name: app?.displayName ?? t("common.apps"),
+                }}
               />
             </SidebarRowMark>
             {titleNode}
@@ -245,15 +314,38 @@ export function ChatThreadItem({
               {preview}
             </span>
           ) : null}
-        </Link>
+          </button>
+        ) : (
+          <Link to={`/chat/${chat.id}`}>
+            <span className="flex w-full min-w-0 items-center gap-2">
+              <SidebarRowMark>
+                <ChatThreadIcon
+                  chat={chat}
+                  unavailable={backendUnavailable}
+                  detecting={backendStatus === undefined}
+                  activity={activity}
+                />
+              </SidebarRowMark>
+              {titleNode}
+              {badge && <SidebarRowTag>{badge}</SidebarRowTag>}
+            </span>
+            {preview ? (
+              <span data-chat-preview className="line-clamp-2 whitespace-normal! text-[11px] text-sidebar-foreground/60 leading-snug">
+                {preview}
+              </span>
+            ) : null}
+          </Link>
+        )}
       </MenuButton>
 
       <SidebarMenuAction
         showOnHover={variant === "root"}
         className={
-          variant === "sub" ? subMenuActionClass : rootMenuActionClass
+          variant === "sub"
+            ? subMenuActionClass
+            : sidebarRootMenuActionClass
         }
-        aria-label="归档聊天"
+        aria-label={t("chat.sidebar.archiveChat")}
         disabled={busy}
         onClick={requestArchive}
       >
@@ -266,9 +358,11 @@ export function ChatThreadItem({
             {...renameMenu.triggerProps}
             showOnHover={variant === "root"}
             className={`right-7 ${
-              variant === "sub" ? subMenuActionClass : rootMenuActionClass
+              variant === "sub"
+                ? subMenuActionClass
+                : sidebarRootMenuActionClass
             }`}
-            aria-label="更多操作"
+            aria-label={t("chat.sidebar.moreActions")}
           >
             <MoreHorizontal />
           </SidebarMenuAction>
@@ -292,7 +386,7 @@ export function ChatThreadItem({
             onSelect={requestArchive}
           >
             <Archive />
-            归档
+            {t("chat.sidebar.archive")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

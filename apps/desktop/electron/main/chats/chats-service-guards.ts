@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared chat Type of message and Node style IO error code
- * [OUTPUT]: Provides ChatsService status errors, first message errors, and classification of old write-in rejections and persistence failures
- * [POS]: The only limitation of the chats module is the boundary of the chatsLet the IO front only list side effects
+ * [INPUT]: Depends on the shared Chat message types and Node IO error codes
+ * [OUTPUT]: Provides ChatsService status errors, first-message idempotency, the legacy renderer-write rejection, and persistence IO failure classification
+ * [POS]: Pure guard boundary of the chats module; it keeps ChatsService free of side-effect-shaped conditionals
  */
 
 import type {

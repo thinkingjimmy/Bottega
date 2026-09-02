@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on AppsProvider default list/permanent AppRecord, unified AppInstallDisclosure, requirements form and surface of AppDialog
- * [OUTPUT]: Provides a purely PresetShelf/PresetCard and a three-step protocol-based PresetInstallDialog (one upload = one probe)
- * [POS]: Apps shared space on the shelf with the head of page + menu; Open which preset is controlled by the caller and the installation protocol remains in the bullet window
+ * [INPUT]: Depends on AppsProvider preset facts, typed preset identities, Apps i18n, AppInstallReadme/AppInstallGrants, SlimScroller, requirements form, and AppDialog surfaces
+ * [OUTPUT]: Provides locale-projected PresetShelf/PresetCard copy plus a direct install affordance and three-step authorization/install dialog (one mount = one probe) whose README scrolls inside a bounded zone while the grant card stays pinned above the footer
+ * [POS]: Apps first-party discovery shelf; IPC carries stable identity and install facts while this renderer boundary owns all five-language product copy
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
+import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useApps } from "@/components/providers/apps-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
@@ -29,11 +30,16 @@ import type {
   AppConfigValue,
   AppRecord,
   InstallPresetInput,
+  PresetAppId,
   PresetAppSummary,
   PresetProbeResult,
 } from "../../../shared/apps-ipc";
 import { AppRequirementsForm, appRequirementsSatisfied } from "./app-requirements-form";
-import { AppInstallDisclosure } from "./app-install-disclosure";
+import {
+  AppInstallGrants,
+  AppInstallReadme,
+  hasInstallReadme,
+} from "./app-install-disclosure";
 
 const EMPTY_CONFIG: AppConfigValue = { values: {}, agentReadableKeys: [] };
 type CardStage =
@@ -42,9 +48,39 @@ type CardStage =
   | { kind: "ready"; probe: PresetProbeResult }
   | { kind: "installing"; probe: PresetProbeResult };
 
-function pickReadme(zh: boolean, preset: PresetAppSummary, probe: PresetProbeResult) {
+const PRESET_COPY_KEYS = {
+  "design-canvas": {
+    nameKey: "apps.presets.designCanvas.name",
+    descriptionKey: "apps.presets.designCanvas.description",
+  },
+  "dev-kanban": {
+    nameKey: "apps.presets.devKanban.name",
+    descriptionKey: "apps.presets.devKanban.description",
+  },
+  "expense-tracker": {
+    nameKey: "apps.presets.expenseTracker.name",
+    descriptionKey: "apps.presets.expenseTracker.description",
+  },
+  "fitness-log": {
+    nameKey: "apps.presets.fitnessLog.name",
+    descriptionKey: "apps.presets.fitnessLog.description",
+  },
+} as const satisfies Record<
+  PresetAppId,
+  { nameKey: string; descriptionKey: string }
+>;
+
+function localizedPreset(
+  t: ReturnType<typeof useAppTranslation>["t"],
+  presetId: PresetAppId
+) {
+  const copy = PRESET_COPY_KEYS[presetId];
+  return { name: t(copy.nameKey), description: t(copy.descriptionKey) };
+}
+
+function pickReadme(zh: boolean, probe: PresetProbeResult) {
   const disclosed = (path: string) => probe.disclosures.find((entry) => entry.path === path)?.content;
-  return (zh ? disclosed("README.zh-CN.md") : disclosed("README.md")) ?? disclosed("README.md") ?? (zh ? preset.readmeZhCN : preset.readme) ?? preset.readme;
+  return (zh ? disclosed("README.zh-CN.md") : disclosed("README.md")) ?? disclosed("README.md") ?? "";
 }
 
 /* ------------------------------------------------------------------------- *
@@ -70,10 +106,11 @@ export function PresetCard({ preset, onOpen }: {
   onOpen: () => void;
 }) {
   const { t } = useAppTranslation();
+  const copy = localizedPreset(t, preset.id);
 
   return (
     <Card
-      aria-label={t("apps.presetOpenDetails", { name: preset.name })}
+      aria-label={t("apps.presetOpenDetails", { name: copy.name })}
       className="group h-full cursor-pointer transition-colors hover:bg-muted/30"
       data-preset-id={preset.id}
       onClick={onOpen}
@@ -85,8 +122,8 @@ export function PresetCard({ preset, onOpen }: {
     >
       <CardHeader>
         <span className="mb-2 text-4xl">{preset.icon}</span>
-        <CardTitle className="truncate text-base">{preset.name}</CardTitle>
-        <CardDescription className="line-clamp-2">{preset.description}</CardDescription>
+        <CardTitle className="truncate text-base">{copy.name}</CardTitle>
+        <CardDescription className="line-clamp-2">{copy.description}</CardDescription>
         {preset.id === "design-canvas" && (
           <p className="line-clamp-2 text-muted-foreground text-xs">
             {t("apps.designPresetReinstallHint")}
@@ -94,7 +131,7 @@ export function PresetCard({ preset, onOpen }: {
         )}
       </CardHeader>
       <div className="px-4 pb-4">
-        <p className="flex items-center gap-1.5 font-medium text-sm text-primary" data-testid="preset-details-label"><Download className="size-4" />{t("apps.presetViewDetails")}</p>
+        <p className="flex items-center gap-1.5 font-medium text-sm text-primary" data-testid="preset-details-label"><Download className="size-4" />{t("apps.presetInstall")}</p>
       </div>
     </Card>
   );
@@ -115,6 +152,7 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
 }) {
   const { t, i18n } = useAppTranslation();
   const zh = (i18n.language ?? "").toLowerCase().startsWith("zh");
+  const copy = localizedPreset(t, preset.id);
   const [config, setConfig] = useState<AppConfigValue>(EMPTY_CONFIG);
   const [stage, setStage] = useState<CardStage>({ kind: "probing" });
   const [error, setError] = useState("");
@@ -135,6 +173,26 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
     const preflightId = heldPreflight.current;
     heldPreflight.current = null;
     if (preflightId) void discardPresetProbe(preflightId).catch(() => undefined);
+  };
+
+  const retryProbe = async () => {
+    const mine = (generation.current += 1);
+    release();
+    setStage({ kind: "probing" });
+    setError("");
+    try {
+      const next = await probePreset(preset.id);
+      if (mine !== generation.current) {
+        await discardPresetProbe(next.preflightId).catch(() => undefined);
+        return;
+      }
+      heldPreflight.current = next.preflightId;
+      setStage({ kind: "ready", probe: next });
+    } catch (cause) {
+      if (mine !== generation.current) return;
+      setStage({ kind: "idle" });
+      setError(errorMessage(cause, t("apps.presetProbeFailed")));
+    }
   };
 
   useEffect(() => {
@@ -163,11 +221,10 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
   }, []);
 
   const close = () => {
-    /* installing 的 preflight 已进入 durable intent；关窗只能隐藏，不能撤销。 */
-    if (stage.kind !== "installing") {
-      generation.current += 1;
-      release();
-    }
+    /* 安装结果必须回到用户刚确认的现场；进行中不允许 Escape/× 把状态藏掉。 */
+    if (stage.kind === "installing") return;
+    generation.current += 1;
+    release();
     onOpenChange(false);
   };
 
@@ -185,6 +242,10 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
         requestId: crypto.randomUUID(),
         preflightId: probe.preflightId,
         digest: probe.digest,
+        authorization: {
+          scope: "studio-only",
+          decision: "approve-requested",
+        },
         ...(preset.requirements.length ? { config } : {}),
       });
       setConfig(EMPTY_CONFIG);
@@ -197,6 +258,7 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
   };
 
   const probe = stage.kind === "ready" || stage.kind === "installing" ? stage.probe : null;
+  const readme = probe ? pickReadme(zh, probe) : "";
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
@@ -211,40 +273,98 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
           <div className="flex items-start gap-3">
             <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-2xl">{preset.icon}</span>
             <div className="min-w-0">
-              <DialogTitle className="text-lg/6 font-semibold">{preset.name}</DialogTitle>
-              <DialogDescription className="mt-1 text-sm/5">{preset.description}</DialogDescription>
+              <DialogTitle className="text-lg/6 font-semibold">
+                {t("apps.installAuthorizationTitle", { name: copy.name })}
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm/5">
+                {t("apps.installAuthorizationDescription")}
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
-        <AppDialogBody className="-mx-5 px-5 py-5">
-          {stage.kind === "probing" ? (
+        {stage.kind === "probing" ? (
+          <AppDialogBody className="-mx-5 px-5 py-5">
             <div className="grid min-h-48 place-items-center" role="status"><Spinner className="size-5" /><span className="sr-only">{t("apps.presetProbing")}</span></div>
-          ) : probe ? (
-            <div className="flex flex-col gap-5" data-testid="preset-confirm">
-              <AppInstallDisclosure
-                cliStatuses={probe.cliStatuses}
-                extensions={probe.extensionPreflights}
-                extensionRequirements={probe.manifest.extensionRequirements}
-                readme={pickReadme(zh, preset, probe)}
-                requirements={probe.requirements}
-                source={{
-                  label: probe.channel === "release" ? t("apps.presetSourceRelease") : t("apps.presetSourceDev"),
-                  fingerprint: `${probe.repoUrl} · ${probe.resolvedPin.slice(0, 12)} · ${probe.digest.slice(0, 12)}`,
-                }}
-              />
-              {probe.requirements.length > 0 && (
-                <AppRequirementsForm disabled={stage.kind === "installing"} onChange={setConfig} requirements={probe.requirements} value={config} />
-              )}
+          </AppDialogBody>
+        ) : probe ? (
+          /* 说明书与授权分成两层：上层有界内滚，下层钉死在页脚正上方。
+             为什么调换：权限清单原先住在唯一滚动层的顶部，README 一长它就滚
+             出视野——按下「允许并安装」的那一刻，屏幕上没有他正在同意的东西。
+
+             这一层 flex 盒子只为把两段仍旧罩在同一个 preset-confirm 下：
+             用户读到的与他同意的是同一次决定，测试问的也是这一整块。
+             它只写 min-h-0 不写 flex-1：内容多高就多高，短 README 不会撑出
+             一片空白；窗口不够高时收缩全落在 App 介绍那一层，头、授权卡与
+             页脚都是 shrink-0——该让路的是散文，不是合同。 */
+          <div className="flex min-h-0 flex-col" data-testid="preset-confirm">
+            {hasInstallReadme(readme) && (
+              /* pl-5 / pr-3 不是 px-5：右边那 8px 留给滚动条自己，
+                 正文列才与下方授权卡对得上。scrollbar-gutter 恒定占位，
+                 免得拇指现身那一帧整列横移 8px。 */
+              <section className="-mx-5 flex min-h-0 flex-col border-b pt-4 pr-3 pb-5 pl-5">
+                <h3 className="shrink-0 font-medium text-muted-foreground text-xs">
+                  {t("apps.installAboutApp")}
+                </h3>
+                {/* 为什么这一层要自己也是 flex 且 overflow-hidden：
+                    窗口不够高时 section 会被压缩，而 `height: 100%` 的滚动区
+                    跟不动——父高是 auto，百分比高度解析成 auto，于是 280px 的
+                    盒子原样溢出一个不裁剪的父级，正文越过细线糊在「授权详情」
+                    上面。让 wrap 与 scroller 一起 flex-1 + min-h-0，收缩才会
+                    一路传下去；overflow-hidden 是兜底：无论高度算成什么，
+                    正文都不可能画到这块区域外面去。 */}
+                <div className="relative mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <SlimScroller className="max-h-70 min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+                    <AppInstallReadme readme={readme} />
+                  </SlimScroller>
+                  {/* 静置时拇指是透明的，这道渐隐就是「下面还有」的唯一静态证据。
+                      颜色必须走 token：写死白色在深色主题下是一条白带。 */}
+                  <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-11 bg-gradient-to-b from-transparent to-popover" />
+                </div>
+              </section>
+            )}
+            <section className="-mx-5 shrink-0 px-5 py-5">
+              <h3 className="font-medium text-muted-foreground text-xs">
+                {t("apps.installAuthorizationDetails")}
+              </h3>
+              <div className="mt-3 flex flex-col gap-4">
+                <AppInstallGrants
+                  manifest={probe.manifest}
+                  permissionLabels={preset.id === "fitness-log"
+                    ? {
+                        read: t("apps.fitnessPermissionRead"),
+                        rowInsert: t("apps.fitnessPermissionAdd"),
+                      }
+                    : undefined}
+                  cliStatuses={probe.cliStatuses}
+                  extensions={probe.extensionPreflights}
+                  extensionRequirements={probe.manifest.extensionRequirements}
+                  requirements={probe.requirements}
+                  source={{
+                    label: probe.channel === "release" ? t("apps.presetSourceRelease") : t("apps.presetSourceDev"),
+                    fingerprint: `${probe.repoUrl} · ${probe.resolvedPin.slice(0, 12)} · ${probe.digest.slice(0, 12)}`,
+                  }}
+                />
+                {probe.requirements.length > 0 && (
+                  <AppRequirementsForm disabled={stage.kind === "installing"} onChange={setConfig} requirements={probe.requirements} value={config} />
+                )}
+              </div>
+            </section>
+          </div>
+        ) : error ? (
+          <AppDialogBody className="-mx-5 px-5 py-5">
+            <div className="space-y-3">
+              <p className="rounded-lg bg-destructive/10 p-3 text-destructive text-sm" role="alert">{error}</p>
+              <Button onClick={() => void retryProbe()} variant="outline">
+                {t("common.retry")}
+              </Button>
             </div>
-          ) : error ? (
-            <p className="rounded-lg bg-destructive/10 p-3 text-destructive text-sm" role="alert">{error}</p>
-          ) : null}
-        </AppDialogBody>
+          </AppDialogBody>
+        ) : null}
         <DialogFooter className="-mx-5 shrink-0 flex-row justify-end gap-2 border-t px-5 pt-4">
           <Button disabled={stage.kind === "installing"} onClick={close} variant="ghost">{t("apps.presetCancel")}</Button>
           <Button data-testid="preset-install-action" disabled={stage.kind !== "ready" || !ready} onClick={() => void confirmInstall()}>
             {stage.kind === "installing" ? <Spinner className="size-3" /> : <Download />}
-            {stage.kind === "installing" ? t("apps.presetInstalling") : t("apps.presetConfirm")}
+            {stage.kind === "installing" ? t("apps.presetInstalling") : t("apps.presetAllowAndInstall")}
           </Button>
         </DialogFooter>
       </AppDialogContent>

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: The sequencing type of shared Agent/Settings only
- * [OUTPUT]: Provides external session identity, fingerprints, request-id/abortable paged and full-index transcripts, presentation actions, Project state, adoption, and Memory snapshot contracts
- * [POS]: The history-import of shared single wire truth source; The renderer never gets an external source, absolute file path or can be counterfeited with SessionRef
+ * [OUTPUT]: Provides external session identity, fingerprints, canonical routing, adoption, and Memory snapshot contracts
+ * [POS]: The single source of truth for the shared history-import wire; the renderer never receives a source file path and cannot forge a SessionRef
  */
 
 import type {
@@ -55,8 +55,6 @@ export type ForeignHistorySummary = Readonly<{
   canResume: boolean;
   /** 合成位：源生归档（如 codex archived_sessions）或产品侧归档任一为真。 */
   archived: boolean;
-  /** 产品侧归档时刻；null 即未经产品归档（源生归档不可从产品恢复）。 */
-  productArchivedAt: number | null;
   incompleteTail: boolean;
 }>;
 
@@ -93,31 +91,6 @@ export type ForeignHistoryBlock =
   | ForeignHistoryMessage
   | UnsupportedHistoryBlock;
 
-export type ForeignHistoryTranscript = Readonly<{
-  summary: ForeignHistorySummary;
-  blocks: ForeignHistoryBlock[];
-  revision: string;
-  nextCursor: string | null;
-}>;
-
-export type ForeignHistoryIndex = Readonly<{
-  revision: string;
-  blocks: ForeignHistoryBlock[];
-  incompleteTail: boolean;
-}>;
-
-export type HistoryTranscriptIndexRequest = Readonly<{
-  opaqueId: string;
-  expectedHistoryRevision: string;
-  requestId: string;
-}>;
-
-export type HistoryTranscriptPageRequest = Readonly<{
-  opaqueId: string;
-  cursor?: string;
-  requestId: string;
-}>;
-
 export type HistorySourceCount = Readonly<{
   sourceKind: HistorySourceKind;
   installed: boolean;
@@ -140,6 +113,11 @@ export type ProjectHistoryImportState = Readonly<{
 export type HistoryImportSnapshot = Readonly<{
   revision: number;
   entries: ForeignHistorySummary[];
+  canonicalRoutes: Readonly<Record<string, Readonly<{
+    chatId: string;
+    generationId: string;
+    summary: ForeignHistorySummary;
+  }>>>;
   projects: ProjectHistoryImportState[];
   /** 任一已确认 Memory Grant 仍在后台交付（含 product-only，无 Project 可挂靠的场景）。 */
   memoryDelivering: boolean;
@@ -193,17 +171,6 @@ export type HistoryAdoptionReceipt = Readonly<{
   phase: "started" | "queued" | "settled";
 }>;
 
-export type HistoryAdoptionPrefix = Readonly<{
-  snapshotId: string;
-  digest: string;
-  contentGenerationKey: string;
-  routeGenerationKey: string;
-  title: string;
-  blocks: ForeignHistoryBlock[];
-  incompleteTail: boolean | "unknown";
-  sourceStatus: "match" | "changed" | "missing";
-}>;
-
 export type HistoryMemoryPreview = Readonly<{
   snapshotId: string;
   digest: string;
@@ -237,13 +204,7 @@ export const HISTORY_IMPORT_CHANNEL = {
   commitProject: "history-import:project:commit",
   setProjectEnabled: "history-import:project:set-enabled",
   refreshProject: "history-import:project:refresh",
-  renameSession: "history-import:session:rename",
-  setSessionArchived: "history-import:session:set-archived",
-  transcript: "history-import:transcript",
-  transcriptIndex: "history-import:transcript-index",
-  cancelTranscript: "history-import:transcript:cancel",
   adopt: "history-import:adopt",
-  adoptionPrefix: "history-import:adoption-prefix",
   memoryEligibility: "history-import:memory:eligibility",
   memoryPreview: "history-import:memory:preview",
   memoryCommit: "history-import:memory:commit",
@@ -261,13 +222,7 @@ export type HistoryImportBridgeApi = {
   }): Promise<ProjectHistoryCommitResult>;
   setProjectEnabled(projectId: string, enabled: boolean): Promise<void>;
   refreshProject(projectId: string): Promise<ProjectHistoryRefreshResult>;
-  renameSession(opaqueId: string, title: string): Promise<void>;
-  setSessionArchived(opaqueId: string, archived: boolean): Promise<void>;
-  transcript(input: HistoryTranscriptPageRequest): Promise<ForeignHistoryTranscript>;
-  transcriptIndex(input: HistoryTranscriptIndexRequest): Promise<ForeignHistoryIndex>;
-  cancelTranscript(requestId: string): void;
   adopt(input: PrepareHistoryAdoptionInput): Promise<HistoryAdoptionReceipt>;
-  adoptionPrefix(chatId: string): Promise<HistoryAdoptionPrefix | null>;
   memoryEligibility(input: {
     surface: "project" | "settings";
     projectId?: string;

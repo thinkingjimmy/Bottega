@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, shared App/agent contracts, and the App manifest schema
- * [OUTPUT]: Provides the apps.json v12/v11 schemas, strict migration parser, canonical manifest digest, and domain identity projection
+ * [OUTPUT]: Provides apps.json v15 with v14/v13/v11 readers, Editor/Use residence/source migration, static-v2/compiled-v3 generation discrimination, compatibility migration revisions across generation/consent/Studio grant, null-preserving Studio grant migration, strict parser, locale-independent byte-ordered canonical manifest digest, and domain identity projection
  * [POS]: AppStore persistence contract; storage and generation orchestration consume this fail-closed schema instead of defining it inline
  */
 
@@ -10,7 +10,7 @@ import { agentBackendIdSchema } from "../../../shared/agent-schema";
 import type { AppManifest } from "../../../shared/apps-ipc";
 import { appManifestSchema } from "./install/manifest-schema";
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 15;
 export const APP_ID_PATTERN = /^[a-z0-9]{10}$/;
 const REPO_PATTERN =
   /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
@@ -122,14 +122,91 @@ const generationV2Schema = z
     manifestDigest: digestSchema,
     sourcePackageDigest: digestSchema,
     contentDigest: digestSchema,
+    compatibilityRefDigest: digestSchema.optional(),
+    compatibilityRef: z
+      .object({
+        kind: z.literal("static-v2"),
+        legacySdkDigest: digestSchema,
+        legacyBaseApiVersion: z.literal("base-gui-legacy-v1"),
+        grantContractVersion: z.literal("studio-grant-v1"),
+        requiredHostActions: z.array(z.enum(["open-data", "open-data-view", "compose-text"])).max(3),
+      })
+      .strict()
+      .optional(),
+    compatibilityMigrationRevision: z.string().uuid().optional(),
     manifest: appManifestSchema,
     extensionRequirementResolution: extensionResolutionSchema,
     contentLayoutVersion: z.literal(2),
     createdAt: z.number().int().nonnegative(),
+    retiredAt: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((generation, context) => {
+    if (Boolean(generation.compatibilityRefDigest) !== Boolean(generation.compatibilityRef)) {
+      context.addIssue({ code: "custom", path: ["compatibilityRef"], message: "static-v2 compatibility ref 必须成对持久化" });
+    }
+    if (
+      generation.compatibilityRef &&
+      generation.compatibilityRefDigest !== digest(generation.compatibilityRef)
+    ) {
+      context.addIssue({ code: "custom", path: ["compatibilityRefDigest"], message: "static-v2 compatibility ref digest 不匹配" });
+    }
+  });
+const compiledCompatibilityRefSchema = z
+  .object({
+    kind: z.literal("compiled-v3"),
+    transformContractDigest: digestSchema,
+    sdkDigest: digestSchema,
+    cutoverContractVersion: z.literal("app-generation-cutover-v2"),
+    dataSdk: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("none") }).strict(),
+      z.object({ kind: z.literal("base-gui-data-v1"), querySemanticsVersion: z.literal("base-gui-query-v1") }).strict(),
+    ]),
+    preferences: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("none") }).strict(),
+      z.object({ kind: z.literal("app-preferences-v1"), schemaDigest: digestSchema, defaultsDigest: digestSchema }).strict(),
+    ]),
+    workspace: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("none") }).strict(),
+      z.object({ kind: z.literal("workspace-read-v1"), scope: z.literal("design/"), opaquePreviewContractVersion: z.literal("workspace-opaque-preview-v1") }).strict(),
+    ]),
+    hostActions: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("none") }).strict(),
+      z.object({
+        kind: z.literal("host-actions-v1"),
+        required: z.array(z.enum(["open-data", "open-data-view", "compose-text", "file.export"])).max(4),
+      }).strict(),
+    ]),
   })
   .strict();
+const generationV3Schema = z
+  .object({
+    generationId: z.string().min(1),
+    generationBuildId: z.string().min(1),
+    manifestDigest: digestSchema,
+    sourcePackageDigest: digestSchema,
+    contentDigest: digestSchema,
+    buildReceiptDigest: digestSchema,
+    compatibilityRefDigest: digestSchema,
+    compatibilityRef: compiledCompatibilityRefSchema,
+    manifest: appManifestSchema,
+    extensionRequirementResolution: extensionResolutionSchema,
+    contentLayoutVersion: z.literal(3),
+    createdAt: z.number().int().nonnegative(),
+    retiredAt: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((generation, context) => {
+    if (generation.compatibilityRefDigest !== digest(generation.compatibilityRef)) {
+      context.addIssue({
+        code: "custom",
+        path: ["compatibilityRefDigest"],
+        message: "compiled-v3 compatibility ref digest 不匹配",
+      });
+    }
+  });
 /* v1 只允许 load 后立刻 restage；所有 commit 都由 commitRecord 的 v2 guard 拦住。 */
-const generationSchema = z.union([legacyGenerationSchema, generationV2Schema]);
+const generationSchema = z.union([legacyGenerationSchema, generationV2Schema, generationV3Schema]);
 const domainIdentitySchema = z.discriminatedUnion("kind", [
   z
     .object({ kind: z.literal("no-data"), appKind: z.enum(["static", "server"]) })
@@ -164,11 +241,13 @@ const generationBindingSchema = z
             requestedCapabilities: z.array(
               z.enum(["row-insert", "row-patch", "row-delete", "attachment-read", "workspace-read"])
             ).max(5),
-            requestedHostActions: z.array(z.enum(["compose-text"])).max(1).default([]),
+            requestedHostActions: z.array(z.enum(["compose-text", "file.export"])).max(2).default([]),
             requestedCapabilityScopes: z
               .object({ workspaceRead: z.literal("design/").optional() })
               .strict()
               .default({}),
+            compatibilityRefDigest: digestSchema.optional(),
+            compatibilityMigrationRevision: z.string().uuid().optional(),
             state: z.enum(["consent-required", "approved", "declined"]),
           })
           .strict()
@@ -181,6 +260,81 @@ const generationBindingSchema = z
       .strict()
       .optional(),
     drainingGenerationIds: z.array(z.string().min(1)),
+  })
+  .strict();
+
+const appChatSlotSchema = z.preprocess(
+  (raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+    const slot = raw as Record<string, unknown>;
+    return {
+      ...slot,
+      incarnationId:
+        typeof slot.incarnationId === "string"
+          ? slot.incarnationId
+          : `legacy:${String(slot.id ?? "unknown")}`,
+      revision:
+        typeof slot.revision === "number" ? slot.revision : 1,
+    };
+  },
+  z
+    .object({
+      id: z.string().min(1).max(128),
+      incarnationId: z.string().min(1).max(256),
+      state: z.enum(["draft", "canonical"]),
+      revision: z.number().int().positive(),
+    })
+    .strict()
+);
+
+const editorProjectionSchema = z
+  .object({
+    editorActivatedAt: z.number().int().nonnegative().nullable(),
+    editorHiddenAt: z.number().int().nonnegative().nullable(),
+    editorRevision: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const sourceStateSchema = z
+  .object({
+    sourceRevision: z.number().int().nonnegative(),
+    fingerprint: z.string().min(1).max(512).nullable(),
+    lastReconciledAt: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
+const switchSlotSchema = z
+  .object({
+    id: z.string().min(1).max(128),
+    incarnationId: z.string().min(1).max(256),
+    state: z.enum(["draft", "canonical"]),
+    revision: z.number().int().positive(),
+  })
+  .strict();
+
+const appUseSwitchSchema = z
+  .object({
+    intentId: z.string().min(1).max(256),
+    appId: z.string().regex(APP_ID_PATTERN),
+    source: switchSlotSchema.nullable(),
+    target: switchSlotSchema,
+    expectedAppRevision: z.number().int().nonnegative(),
+    expectedLifecycleRevision: z.number().int().nonnegative().default(0),
+    expectedGenerationBindingRevision: z.number().int().nonnegative().default(0),
+    expectedGenerationId: z.string().min(1).max(256).nullable().default(null),
+    expectedSourceSurfaceRevision: z.number().int().nonnegative().default(0),
+    expectedTargetSurfaceRevision: z.number().int().nonnegative().default(0),
+    expectedStudioSurfaceRevision: z.number().int().nonnegative().default(0),
+    phase: z.enum([
+      "prepared",
+      "committed",
+      "old-revoked",
+      "old-drained",
+      "target-claimed",
+      "issuance-open",
+      "completed",
+    ]),
+    createdAt: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -253,28 +407,46 @@ export const appRecordSchema = z
       .nullable()
       .default(null),
     defaultGrantRevision: z.number().int().nonnegative().default(0),
-    openModeOverride: z
-      .enum(["same-window", "new-window"])
+    studioGrant: z
+      .object({
+        appId: z.string().regex(APP_ID_PATTERN),
+        generationId: z.string().min(1),
+        contentDigest: digestSchema,
+        data: z
+          .object({ kind: z.literal("base"), level: z.enum(["read", "row-write"]) })
+          .strict(),
+        agentDelegation: z
+          .object({ fileRead: z.literal(false), useData: z.literal(false) })
+          .strict(),
+        baseGuiDecisionId: z.string().uuid().nullable(),
+        baseGuiDecisionRevision: z.number().int().nonnegative(),
+        compatibilityRefDigest: digestSchema.optional(),
+        compatibilityMigrationRevision: z.string().uuid().optional(),
+        grantedAt: z.number().int().nonnegative(),
+      })
+      .strict()
       .nullable()
       .default(null),
+    studioGrantRevision: z.number().int().nonnegative().default(0),
+    pinnedAt: z.number().int().nonnegative().nullable(),
     domainIdentity: domainIdentitySchema.nullable(),
     generations: z.array(generationSchema),
     generationBinding: generationBindingSchema,
     manifest: appManifestSchema.nullable(),
-    editChatSlot: z
-      .object({
-        id: z.string().min(1).max(128),
-        state: z.enum(["draft", "canonical"]),
-      })
-      .strict()
-      .nullable(),
-    activeUseChatSlot: z
-      .object({
-        id: z.string().min(1).max(128),
-        state: z.enum(["draft", "canonical"]),
-      })
-      .strict()
-      .nullable(),
+    editChatSlot: appChatSlotSchema.nullable(),
+    activeUseChatSlot: appChatSlotSchema.nullable(),
+    editor: editorProjectionSchema.default({
+      editorActivatedAt: null,
+      editorHiddenAt: null,
+      editorRevision: 0,
+    }),
+    activeUseSwitch: appUseSwitchSchema.nullable().default(null),
+    sourceState: sourceStateSchema.default({
+      sourceRevision: 0,
+      fingerprint: null,
+      lastReconciledAt: null,
+    }),
+    editableSource: z.boolean(),
     skillStatus: z
       .object({
         state: z.enum(["pending", "done", "failed"]),
@@ -370,6 +542,22 @@ export const appRecordSchema = z
         message: "无 active generation 时 manifest 必须为空",
       });
     }
+    const studioGrant = record.studioGrant;
+    const studioGeneration = record.generations.find(
+      (generation) => generation.generationId === studioGrant?.generationId
+    );
+    if (
+      studioGrant &&
+      (studioGrant.appId !== record.id ||
+        !studioGeneration ||
+        studioGeneration.contentDigest !== studioGrant.contentDigest)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["studioGrant"],
+        message: "Studio grant 必须绑定本 App 的 exact generation/content digest",
+      });
+    }
   });
 
 export const storeSchema = z
@@ -385,11 +573,11 @@ export const storeSchema = z
   .superRefine((file, context) => {
     for (const [appIndex, app] of file.apps.entries()) {
       for (const [generationIndex, generation] of app.generations.entries()) {
-        if (generation.contentLayoutVersion === 2) continue;
+        if (generation.contentLayoutVersion === 2 || generation.contentLayoutVersion === 3) continue;
         context.addIssue({
           code: "custom",
           path: ["apps", appIndex, "generations", generationIndex],
-          message: "apps.json v12 不得包含 legacy generation",
+          message: `apps.json v${SCHEMA_VERSION} 不得包含 legacy generation`,
         });
       }
     }
@@ -397,10 +585,56 @@ export const storeSchema = z
 
 export type StoreFile = z.infer<typeof storeSchema>;
 
+const withLegacyEditableSource = (raw: unknown) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const record = raw as Record<string, unknown>;
+  return {
+    ...record,
+    editableSource:
+      typeof record.editableSource === "boolean"
+        ? record.editableSource
+        : true,
+  };
+};
+
+const legacyAppRecordSchema = z.preprocess(
+  withLegacyEditableSource,
+  appRecordSchema
+);
+
+const v11AppRecordSchema = z.preprocess((raw) => {
+  const record = withLegacyEditableSource(raw);
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    return record;
+  }
+  return {
+    ...record,
+    ...((record as Record<string, unknown>).pinnedAt === undefined
+      ? { pinnedAt: null }
+      : {}),
+  };
+}, appRecordSchema);
+
 export const legacyStoreSchema = z
   .object({
     schemaVersion: z.literal(11),
-    apps: z.array(appRecordSchema).max(100),
+    apps: z.array(v11AppRecordSchema).max(100),
+    retiredIds: z.array(z.string().regex(APP_ID_PATTERN)).max(10_000).default([]),
+  })
+  .strict();
+
+const v13StoreSchema = z
+  .object({
+    schemaVersion: z.literal(13),
+    apps: z.array(legacyAppRecordSchema).max(100),
+    retiredIds: z.array(z.string().regex(APP_ID_PATTERN)).max(10_000).default([]),
+  })
+  .strict();
+
+const v14StoreSchema = z
+  .object({
+    schemaVersion: z.literal(14),
+    apps: z.array(legacyAppRecordSchema).max(100),
     retiredIds: z.array(z.string().regex(APP_ID_PATTERN)).max(10_000).default([]),
   })
   .strict();
@@ -418,16 +652,37 @@ export type LegacyMigrationCheckpoint = z.infer<
 /** v11 是唯一迁移入口；其 shape 先完整验真，再由 load 备份并 restage。
  *  其它旧版/未来版一律抛错，不猜逐版本语义——由 load 备份 `.bak` 后隔离，
  *  按空态冷启动继续（启动不崩，App 重装即可）。 */
-export function parseStore(raw: unknown): { file: StoreFile; legacy: boolean } {
+export function parseStore(raw: unknown): {
+  file: StoreFile;
+  legacy: boolean;
+  upgraded: boolean;
+} {
   const version = (raw as { schemaVersion?: unknown } | null)?.schemaVersion;
   if (version === SCHEMA_VERSION) {
-    return { file: storeSchema.parse(raw), legacy: false };
+    return { file: storeSchema.parse(raw), legacy: false, upgraded: false };
+  }
+  if (version === 14) {
+    const previous = v14StoreSchema.parse(raw);
+    return {
+      file: { ...previous, schemaVersion: SCHEMA_VERSION },
+      legacy: false,
+      upgraded: true,
+    };
+  }
+  if (version === 13) {
+    const previous = v13StoreSchema.parse(raw);
+    return {
+      file: { ...previous, schemaVersion: SCHEMA_VERSION },
+      legacy: false,
+      upgraded: true,
+    };
   }
   if (version === 11) {
     const legacy = legacyStoreSchema.parse(raw);
     return {
       file: { ...legacy, schemaVersion: SCHEMA_VERSION },
       legacy: true,
+      upgraded: true,
     };
   }
   throw new Error(`不支持的 apps.json schemaVersion：${String(version)}`);
@@ -446,6 +701,14 @@ export function sealedContentDigest(manifest: AppManifest) {
   return digest({ manifest });
 }
 
+/**
+ * digest 的唯一排序依据必须是字节序：localeCompare 走进程 locale 与 ICU 版本，
+ * 同一份数据在两台机器上可能排出两种顺序，digest 也就跟着分叉。与
+ * gui-build/metadata.ts 的 canonicalJson 是同一套规则的孪生实现（两边各自本地
+ * 持有，互不 import，避免持久化契约反向依赖构建管线）。
+ * 当前 key 全是小写 ASCII，字节序与 localeCompare 结果一致，已有数据的 digest
+ * 不变。
+ */
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(canonicalJson).join(",")}]`;
@@ -453,7 +716,7 @@ function canonicalJson(value: unknown): string {
   if (value && typeof value === "object") {
     return `{${Object.entries(value)
       .filter(([, item]) => item !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => Buffer.compare(Buffer.from(left), Buffer.from(right)))
       .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
       .join(",")}}`;
   }

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on two-way owner router, Chats/Projects Provider, draft-route off-site judgment, PageShell, BaseWorkbench/SessionHost and BaseHeaderActions
- * [OUTPUT]: Provides BaseDetailView; Defend chat/Project deep chain, Project Select Recent members to host meetings, zero members directly lay out the Workbench
- * [POS]: The database is a collection of data from the databaseowner/Project Defenders: Bases and the option of meeting status are returned to their hosts
+ * [INPUT]: Depends on owner routes, Chats/Projects/Bases navigation providers, localized Base titles, PageShell, BaseWorkbench, session hosting, and Base header actions
+ * [OUTPUT]: Provides BaseDetailView with owner validation, retained-data custody bypass, move/archival redirects, localized titles, and Project chat fallback hosting
+ * [POS]: Full-page Base route boundary; visible retained Bases remain usable even though their custody Project is intentionally absent from Project navigation
  */
 
 import { DatabaseIcon } from "lucide-react";
@@ -24,14 +24,14 @@ export function BaseDetailView() {
   const { ownerKind, ownerId } = useParams();
   const { chats, loading } = useChats();
   const { projects, loading: projectsLoading } = useProjects();
-  const { movedOwners } = useBases();
+  const { movedOwners, pinned, projectBasesLoaded } = useBases();
   if (
     !ownerId ||
     (ownerKind !== "chat" && ownerKind !== "project")
   ) {
     return <Navigate replace to="/" />;
   }
-  if (loading || projectsLoading) {
+  if (loading || projectsLoading || !projectBasesLoaded) {
     return (
       <PageShell title={t("bases.pageTitle")}>
         <div className="h-full animate-pulse bg-muted/20" />
@@ -41,6 +41,14 @@ export function BaseDetailView() {
   const ownerKey = `${ownerKind}:${ownerId}`;
   const movedTo = movedOwners[ownerKey];
   if (movedTo) return <Navigate replace to={ownerRoute(movedTo)} />;
+  const retainedBase = pinned.find(
+    (base) => {
+      const navigation = base.navigation;
+      return base.ownerKey === ownerKey &&
+        navigation?.kind === "root-user-managed" &&
+        navigation.source === "retained-app-data";
+    }
+  );
   const directChat =
     ownerKind === "chat"
       ? chats.find((candidate) => candidate.id === ownerId)
@@ -56,7 +64,7 @@ export function BaseDetailView() {
      页；owner 是 Project 且它自己失效，根级才是唯一去处。 */
   const exitRoute =
     ownerKind === "project"
-      ? (projectAlive(project) ? null : "/")
+      ? (retainedBase || projectAlive(project) ? null : "/")
       : (directChat ? chatExitRoute(directChat, projects) : "/");
   if (exitRoute) return <Navigate replace to={exitRoute} />;
   const chat =
@@ -68,9 +76,12 @@ export function BaseDetailView() {
       )
       .sort((left, right) => right.updatedAt - left.updatedAt)[0];
   const title =
-    ownerKind === "project"
-      ? `${project!.name} Base`
-      : `${directChat!.title ?? "Chat"} Base`;
+    t("bases.detail.title", {
+      name:
+        ownerKind === "project"
+          ? retainedBase?.name ?? project!.name
+          : directChat!.title ?? t("bases.detail.untitledChat"),
+    });
   return (
     <PageShell
       actions={

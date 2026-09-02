@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on ChatStore, ChatHomeService, App agent/project validation ports, project serialization, and mutation publication
- * [OUTPUT]: Provides createDormantAppChat, an idempotent Chat Home + canonical App ChatRecord transaction
+ * [INPUT]: Depends on outcome-aware ChatStore, ChatHomeService, App agent/project validation ports, project serialization, and mutation publication
+ * [OUTPUT]: Provides createDormantAppChat, an idempotent Chat Home + canonical App ChatRecord transaction whose unknown commit never rolls back Home
  * [POS]: chats/lifecycle transaction owner for use-slot identity; ChatsService remains a thin trusted facade
  */
 
@@ -8,7 +8,11 @@ import { randomUUID } from "node:crypto";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import type { AppChatRole, ChatRecord } from "../../../../shared/chats-ipc";
 import type { ChatHomeService } from "../../chat-home/chat-home-service";
-import type { ChatMessageMutation, ChatStore } from "../chat-store";
+import {
+  isChatMutationOutcomeUnknown,
+  type ChatMessageMutation,
+  type ChatStore,
+} from "../chat-store";
 
 export type DormantAppChatInput = {
   intentId: string;
@@ -20,7 +24,7 @@ export type DormantAppChatInput = {
 };
 
 type Dependencies = {
-  store: Pick<ChatStore, "get" | "create">;
+  store: Pick<ChatStore, "getConversation" | "create">;
   chatHomes: Pick<
     ChatHomeService,
     "assertCanCreateChat" | "beginCreation" | "markPrepared" |
@@ -51,7 +55,7 @@ export async function createDormantAppChat(
     if (!home) throw new Error("Chat Home 服务不可用");
     try {
       await homes!.markPrepared(input.id);
-      const existing = await dependencies.store.get(input.id);
+      const existing = await dependencies.store.getConversation(input.id);
       if (existing) {
         assertExisting(existing, input, agent);
         await homes!.commitCreation(input.id);
@@ -79,13 +83,16 @@ export async function createDormantAppChat(
           homeDir: home.homeDir,
           title: input.title,
           appRole: input.appRole,
+          appId: input.appId,
           dormantNotice: true,
         }
       );
       await homes!.commitCreation(input.id);
       return { record: mutation.record, mutation };
     } catch (cause) {
-      await homes!.rollbackCreation(input.id);
+      if (!isChatMutationOutcomeUnknown(cause)) {
+        await homes!.rollbackCreation(input.id);
+      }
       throw cause;
     }
   });

@@ -263,7 +263,7 @@ async function assertManualBackend(
     }
     return;
   }
-  const record = await chats.store.get(submission.persistence.input.chatId);
+  const record = chats.store.getMetadata(submission.persistence.input.chatId);
   if (!record) throw new Error("人工 turn 的目标聊天不存在");
   if (record.agent !== backend) {
     throw new Error("人工 turn backend 与 canonical Chat Agent 不一致");

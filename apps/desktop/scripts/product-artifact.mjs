@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path and electron-builder.yml productName/linux executableName facts
- * [OUTPUT]: Provides readPackagedProduct and locateCurrentPlatformArtifact for macOS, Windows, and Linux unpacked outputs
+ * [OUTPUT]: Provides readPackagedProduct and locateCurrentPlatformArtifact for deterministic macOS, Windows, and Linux unpacked-output selection
  * [POS]: Single artifact-layout adapter shared by dist orchestration and packaged smoke; product names are never hard-coded in either caller
  */
 
@@ -22,7 +22,7 @@ export function readPackagedProduct(desktop) {
   };
 }
 
-export function locateCurrentPlatformArtifact(desktop, startedAt) {
+export function locateCurrentPlatformArtifact(desktop, startedAt, platform = process.platform) {
   const release = join(desktop, "release");
   const product = readPackagedProduct(desktop);
   const layouts = {
@@ -45,8 +45,8 @@ export function locateCurrentPlatformArtifact(desktop, startedAt) {
       executable: (app) => app,
     },
   };
-  const layout = layouts[process.platform];
-  if (!layout) throw new Error(`不支持的打包平台 ${process.platform}`);
+  const layout = layouts[platform];
+  if (!layout) throw new Error(`不支持的打包平台 ${platform}`);
   const candidates = readdirSync(release)
     .filter((name) => layout.directory.test(name))
     .map((name) => join(release, name))
@@ -63,11 +63,11 @@ export function locateCurrentPlatformArtifact(desktop, startedAt) {
     );
   const selected = candidates[0];
   if (!selected) {
-    throw new Error(`本次 dist 未生成 ${process.platform} unpacked 产物`);
+    throw new Error(`本次 dist 未生成 ${platform} unpacked 产物`);
   }
   return {
     ...selected,
-    platform: process.platform,
+    platform,
     resourcesPath: layout.resources(selected.appPath, selected.appOutDir),
     executable: layout.executable(selected.appPath),
   };

@@ -1,71 +1,34 @@
 /**
  * [INPUT]: Depends on ACP SDK transport/config options, framing/startup settlement, prompt handoff, frozen product/MCP inputs and runtime-bound server-fact oracle
- * [OUTPUT]: Provides AcpTurn/acpMcpServers, end-to-end session/prompt lifecycle with pre-prompt complete and continuously frozen model/mode facts, health observation, steering, approval, cancellation and resume
+ * [OUTPUT]: Provides AcpTurn/acpMcpServers, end-to-end session/prompt lifecycle with typed ProductFailure terminals/notices, pre-prompt complete and continuously frozen model/mode facts, health observation, steering, approval, cancellation and resume
  * [POS]: The agreement on ACP transport has been achieved; The acceptance/name denial of the session is evidence of MCP health, not spam; Process evidence with terminal ownership declining startup, failure first raw classification, post-defective release
  */
 
 import {
-  AGENT_METHODS,
-  CLIENT_METHODS,
-  PROTOCOL_VERSION,
-  client,
-  ndJsonStream,
-  type ClientContext,
-  type ContentBlock,
-  type CreateElicitationRequest,
-  type CreateElicitationResponse,
-  type RequestPermissionResponse,
+  AGENT_METHODS, CLIENT_METHODS, PROTOCOL_VERSION, client, ndJsonStream,
+  type ClientContext, type ContentBlock, type CreateElicitationRequest,
+  type CreateElicitationResponse, type RequestPermissionResponse,
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { Readable, Writable } from "node:stream";
-import type {
-  AgentApprovalDecision,
-  AgentUserInputAnswers,
-} from "../../../../shared/agent-ipc";
+import type { AgentApprovalDecision, AgentUserInputAnswers } from "../../../../shared/agent-ipc";
 import { asError } from "../../errors";
-import type {
-  AdapterSteerOutcome,
-  AgentProcessHost,
-  AgentTurn,
-  BackendTurnOptions,
-  StartOutcome,
-} from "../types";
-import {
-  ACP_MAX_DELTA_BYTES,
-  AcpFramingGuard,
-} from "./turn/framing-guard";
-import {
-  elicitationOutcome,
-  mapAcpElicitation,
-  type AcpElicitationMapping,
-} from "./turn/elicitation";
+import type { AdapterSteerOutcome, AgentProcessHost, AgentTurn, BackendTurnOptions, StartOutcome } from "../types";
+import { ACP_MAX_DELTA_BYTES, AcpFramingGuard } from "./turn/framing-guard";
+import { elicitationOutcome, mapAcpElicitation, type AcpElicitationMapping } from "./turn/elicitation";
 import { assertAcpProtocolVersion } from "./probe";
-import {
-  AcpStartupTracker,
-} from "./startup/budget";
+import { AcpStartupTracker } from "./startup/budget";
 import { describeAcpExit } from "./startup/exit";
 import { AcpProcessEvidence } from "./startup/evidence";
 import { AcpTurnSettlement } from "./startup/settlement";
 import {
-  createAcpEventState,
-  finalizeAcpPlan,
-  finalizeAcpPlans,
-  flushAcpSegments,
-  mapAcpSubagentMeta,
-  mapAcpUpdate,
-  mapPermissionRequest,
-  mapQuestionRequest,
-  mapStopReason,
-  permissionOutcome,
-  type AcpPermissionMapping,
-  questionOutcome,
-  type AcpQuestionMapping,
+  createAcpEventState, finalizeAcpPlan, finalizeAcpPlans, flushAcpSegments,
+  mapAcpSubagentMeta, mapAcpUpdate, mapPermissionRequest, mapQuestionRequest,
+  mapStopReason, permissionOutcome, questionOutcome,
+  type AcpPermissionMapping, type AcpQuestionMapping,
 } from "./map-events";
-import {
-  requestAcpSteering,
-  SteeringOperationGate,
-} from "./turn/acp-steering";
+import { requestAcpSteering, SteeringOperationGate } from "./turn/acp-steering";
 import { AcpTraceTee } from "./trace";
 import { AcpOutboundSink, PromptHandoffTracker } from "./turn/prompt-handoff";
 import { wrapInteractiveWithSeatbelt } from "../sandbox/seatbelt";
@@ -74,22 +37,14 @@ import { assertUniqueMcpBackendAliases } from "../../../../shared/mcp-servers-ip
 import { processHostOf, promptBlocks, type AcpSpawnConfig } from "./turn/setup";
 import { establishAcpSession } from "./turn/session-establishment";
 import { NegotiatedServerFactsOracle } from "./session/server-facts";
-import {
-  buildAcpClientCapabilities,
-  SESSION_CAPABILITY_POLICY,
-} from "./session/client-capabilities";
+import { buildAcpClientCapabilities, SESSION_CAPABILITY_POLICY } from "./session/client-capabilities";
+import { AcpSessionFailureProjection, terminalFactsForSessionFailure } from "./session/session-failure";
+import { isAcpCancelledError, withFailureDiagnostic } from "./failure";
+import { agentRuntimeFailure, type ProductFailure } from "../../../../shared/product-failure";
 
-export {
-  normalizeSteerOutcome,
-  resolvedInputBlocks,
-} from "./turn/acp-steering";
+export { normalizeSteerOutcome, resolvedInputBlocks } from "./turn/acp-steering";
 export { acpTurnMode } from "./session/config";
-export {
-  acpMcpServers,
-  processHostOf,
-  promptBlocks,
-  type AcpSpawnConfig,
-} from "./turn/setup";
+export { acpMcpServers, processHostOf, promptBlocks, type AcpSpawnConfig } from "./turn/setup";
 type PendingApproval = {
   mapping: AcpPermissionMapping;
   resolve: (response: RequestPermissionResponse) => void;
@@ -119,6 +74,7 @@ export class AcpTurn implements AgentTurn {
   private promptSettled = false;
   private readonly steeringGate = new SteeringOperationGate();
   private readonly handoff = new PromptHandoffTracker();
+  private readonly sessionFailures: AcpSessionFailureProjection;
   private readonly serverFacts?: NegotiatedServerFactsOracle;
 
   constructor(
@@ -139,6 +95,10 @@ export class AcpTurn implements AgentTurn {
     this.evidence = new AcpProcessEvidence(config.env, {
       secrets: thirdPartySecrets,
     });
+    this.sessionFailures = new AcpSessionFailureProjection(
+      options.callbacks,
+      (message) => this.evidence.redact(message)
+    );
     const backend = options.payload.turnOptions.backend;
     // 谁进 seatbelt 由围栏声明表回答，不在这里维护一份平行名单。
     const wrapped =
@@ -351,6 +311,13 @@ export class AcpTurn implements AgentTurn {
         void prompt.then(
           (response) => {
             this.promptSettled = true;
+            const failure = this.sessionFailures.projectPrompt(
+              (response as { _meta?: unknown })._meta
+            );
+            if (failure) {
+              void this.finish({ type: "error", failure });
+              return;
+            }
             void this.finish(mapStopReason(response.stopReason));
           },
           (cause) => this.processError(cause)
@@ -556,6 +523,11 @@ export class AcpTurn implements AgentTurn {
         params.update.configOptions
       );
     }
+    if (params.update.sessionUpdate === "session_info_update") {
+      this.sessionFailures.projectUpdate(
+        (params.update as { _meta?: unknown })._meta
+      );
+    }
     const subagentThreadId = this.handleSubagentMeta(params.update);
     for (const event of mapAcpUpdate(params.update, this.state)) {
       if (!this.emitMapped(event, subagentThreadId)) return;
@@ -708,6 +680,7 @@ export class AcpTurn implements AgentTurn {
   private async finish(event: {
     type: "done" | "cancelled" | "error";
     message?: string;
+    failure?: ProductFailure;
   }) {
     if (!this.settlement.requestTerminal()) return;
     await this.steeringGate.wait();
@@ -722,7 +695,12 @@ export class AcpTurn implements AgentTurn {
         : event;
     this.options.callbacks.onTerminal({
       ...(diagnostic.type === "error"
-        ? { ...diagnostic, ...this.terminalFailure() }
+        ? diagnostic.failure
+          ? {
+              ...diagnostic,
+              ...terminalFactsForSessionFailure(diagnostic.failure),
+            }
+          : { ...diagnostic, ...this.terminalFailure() }
         : diagnostic),
       ...this.turnFacts(),
     });
@@ -749,11 +727,22 @@ export class AcpTurn implements AgentTurn {
       { rateLimit: this.state.rateLimit }
     );
     return failure?.kind === "usage-limit"
-      ? { failureKind: failure.kind, usageLimit: failure.limit }
-      : { failureKind: "unknown" as const };
+      ? {
+          failureKind: failure.kind,
+          usageLimit: failure.limit,
+          failure: failure.failure,
+        }
+      : {
+          failureKind: failure?.kind ?? ("unknown" as const),
+          failure: failure?.failure ?? agentRuntimeFailure("unknown"),
+        };
   }
 
   private processError(cause: unknown) {
+    if (isAcpCancelledError(cause)) {
+      void this.finish({ type: "cancelled" });
+      return;
+    }
     if (!this.settlement.requestTerminal()) return;
     void this.finishError(cause);
   }
@@ -772,10 +761,13 @@ export class AcpTurn implements AgentTurn {
     }) ?? {
       kind: "unknown" as const,
       message: asError(cause).message,
+      failure: agentRuntimeFailure("unknown"),
     };
     const failure = {
-      ...classified,
-      message: this.evidence.redact(classified.message),
+      ...withFailureDiagnostic(
+        classified,
+        this.evidence.redact(classified.message)
+      ),
       ...this.turnFacts(),
     };
     /* onProcessError 是带 failureKind 的完整终态出口，必须先于 start()

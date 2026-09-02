@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on conversation scrolling context, pure outline projection, product messages, and loaded generation-scoped HistoryPrefixProjection blocks
- * [OUTPUT]: Provides a roving minimap whose product and foreign entries jump through the transcript's canonical anchors
+ * [INPUT]: Depends on conversation scrolling context, the paged canonical Chat outline client, localized outline copy, pure outline projection, and loaded timeline messages
+ * [OUTPUT]: Provides a stale-retrying, tail-first self-paging canonical outline window bounded to the newest OUTLINE_WINDOW_LIMIT entries and a localized roving minimap whose entries stay in transcript order and jump through transcript anchors
  * [POS]: The session navigation layer of chat/transcript
  */
 
@@ -19,18 +19,24 @@ import {
 import { FileTextIcon } from "lucide-react";
 import { useStickToBottomContext } from "@ai-chat/ui/components/ai-elements/conversation";
 import { cn } from "@ai-chat/ui/lib/utils";
-import type { ChatMessage } from "../../../../shared/chats-ipc";
-import type { ForeignHistoryBlock } from "../../../../shared/history-import-ipc";
+import type {
+  ChatMessage,
+  ChatOutlineCursor,
+  ChatOutlineItem,
+} from "../../../../shared/chats-ipc";
 import {
   activeOutlineIndex,
-  foreignOutlineEntries,
-  outlineEntries,
+  outlineMinimapEntries,
 } from "@/lib/chat-outline";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { getChatOutlinePage } from "@/lib/chats-client";
 
 const anchorSelector = (id: string) => `[data-message-id="${CSS.escape(id)}"]`;
 
 const LENS_WIDTHS = ["w-5", "w-4", "w-3", "w-2.5"];
 const BASE_WIDTH = "w-2";
+const OUTLINE_WINDOW_LIMIT = 400;
+const OUTLINE_PAGE_LIMIT = 200;
 
 type DotRuntime = {
   onHover(id: string, top: number): void;
@@ -128,25 +134,92 @@ const EMPTY_MEASUREMENTS: Measurements = {
   scrollHeight: 0,
 };
 
+export function useCanonicalChatOutline(
+  chatId: string,
+  incarnationId: string | null,
+  enabled: boolean
+) {
+  const [items, setItems] = useState<ChatOutlineItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const generation = useRef(0);
+  /* 大纲不该向用户要一次点击才肯继续，也不该为了拿到尾巴先把整条 Chat 读
+     穿：服务端从最新一条往回翻，这里凑满 OUTLINE_WINDOW_LIMIT 就收手——
+     最多 ceil(WINDOW / PAGE) 次往返，与 Chat 有多长无关。 */
+  const load = useCallback(async (retryStale: boolean) => {
+    const requestGeneration = generation.current;
+    setLoading(true);
+    try {
+      let requestedCursor: ChatOutlineCursor | undefined;
+      let canRetryStale = retryStale;
+      let collected: ChatOutlineItem[] = [];
+      for (;;) {
+        try {
+          const page = await getChatOutlinePage({
+            chatId,
+            ...(requestedCursor ? { cursor: requestedCursor } : {}),
+            limit: OUTLINE_PAGE_LIMIT,
+          });
+          if (requestGeneration !== generation.current) return;
+          if (!page) return;
+          collected = [...page.items, ...collected].slice(-OUTLINE_WINDOW_LIMIT);
+          setItems(collected);
+          if (!page.nextCursor || collected.length >= OUTLINE_WINDOW_LIMIT) return;
+          requestedCursor = page.nextCursor;
+        } catch (cause) {
+          const stale =
+            cause instanceof Error &&
+            /CHAT_(?:OUTLINE|TIMELINE)_STALE/.test(cause.message);
+          if (!canRetryStale || !stale) return;
+          canRetryStale = false;
+          requestedCursor = undefined;
+          collected = [];
+          if (requestGeneration !== generation.current) return;
+          setItems([]);
+        }
+      }
+    } finally {
+      if (requestGeneration === generation.current) setLoading(false);
+    }
+  }, [chatId]);
+  useEffect(() => {
+    generation.current += 1;
+    if (!enabled) {
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (!cancelled) setItems([]);
+      });
+      return () => {
+        cancelled = true;
+        generation.current += 1;
+      };
+    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setItems([]);
+      void load(true);
+    });
+    return () => {
+      cancelled = true;
+      generation.current += 1;
+    };
+  }, [chatId, incarnationId, enabled, load]);
+  return { items, loading };
+}
+
 export const ChatOutline = memo(function ChatOutline({
   messages,
-  historyBlocks,
-  historyContentGenerationKey,
+  canonicalItems,
   onJump,
 }: {
   messages: ChatMessage[];
-  historyBlocks?: readonly ForeignHistoryBlock[];
-  historyContentGenerationKey?: string;
+  canonicalItems?: readonly ChatOutlineItem[];
   onJump?: (id: string) => void;
 }) {
+  const { t } = useAppTranslation();
   const entries = useMemo(
-    () => [
-      ...(historyBlocks && historyContentGenerationKey
-        ? foreignOutlineEntries(historyBlocks, historyContentGenerationKey)
-        : []),
-      ...outlineEntries(messages),
-    ],
-    [historyBlocks, historyContentGenerationKey, messages]
+    () => outlineMinimapEntries(messages, canonicalItems ?? []),
+    [canonicalItems, messages]
   );
   const { scrollRef } = useStickToBottomContext();
   const [active, setActive] = useState(-1);
@@ -163,10 +236,6 @@ export const ChatOutline = memo(function ChatOutline({
   const effectiveRovingId = entryById.has(rovingId)
     ? rovingId
     : (entries[0]?.id ?? "");
-
-  useEffect(() => {
-    if (rovingId !== effectiveRovingId) setRovingId(effectiveRovingId);
-  }, [effectiveRovingId, rovingId]);
 
   const updateActive = useCallback((scrollTop: number) => {
     const current = measurements.current;
@@ -274,7 +343,7 @@ export const ChatOutline = memo(function ChatOutline({
   return (
     <DotContext.Provider value={runtime}>
       <nav
-        aria-label="Conversation outline"
+        aria-label={t("chat.transcript.outlineLabel")}
         className="-translate-y-1/2 absolute top-1/2 left-2 z-10 flex max-h-[70%] flex-col justify-center"
         onMouseLeave={() => setPreview(null)}
       >

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, Lucide icons, UI Button/Popover/Slider/SlimScroller, Fast Star Wars style, Shared model directory and chat model selection
- * [OUTPUT]: Provides full-capability ChatModelSelector with Effort controls, explicit Speed reset, F22 disclosure, and visible preference/effective fallback state
+ * [OUTPUT]: Provides full-capability ChatModelSelector with structured model-catalog failures, Effort controls, explicit Speed reset, F22 disclosure, and visible preference/effective fallback state
  * [POS]: The Codex model controller for chat/composer; list-only Back end is carried by independent chat-model-list-selector
  */
 
@@ -40,6 +40,8 @@ import {
 import type { CodexTurnOptions } from "../../../../shared/agent-ipc";
 import type { SessionServiceTierEffective } from "../../../../shared/agent-ipc";
 import type { CodexModelInfo } from "../../../../shared/settings-ipc";
+import { AgentFailureNotice } from "@/components/agent-failure-notice";
+import type { AgentSurfaceFailure } from "@/lib/agent-failure";
 import "./chat-model-selector.css";
 
 type SelectorView = "quick" | "advanced" | "model" | "effort" | "speed";
@@ -49,7 +51,7 @@ type ChatModelSelectorProps = {
   effectiveServiceTier?: SessionServiceTierEffective;
   models: CodexModelInfo[];
   modelsLoading: boolean;
-  modelsError: string;
+  modelsError: AgentSurfaceFailure | null;
   settingsError: string;
   disabled?: boolean;
   streaming?: boolean;
@@ -447,8 +449,8 @@ export function ChatModelSelector({
               </p>
             )}
             {modelsError && (
-              <div role="alert" className="mt-2 flex items-center gap-2 rounded-lg bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
-                <span className="min-w-0 flex-1">{modelsError}</span>
+              <div className="mt-2 space-y-1.5">
+                <AgentFailureNotice compact {...modelsError} />
                 <Button variant="ghost" size="icon-sm" onClick={onRetryModels} aria-label={t("chat.composer.modelSelector.retryModels")}>
                   <RotateCw className="size-3" />
                 </Button>

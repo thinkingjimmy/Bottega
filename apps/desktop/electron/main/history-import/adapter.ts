@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto/timers and shared history-import contracts
- * [OUTPUT]: Provides HistoryAdapter port ((identity/full, two-phase scan)), head read kernel, nanosecond fingerprint, containment, limiting conversion, humanTitle headline holomorphism, AbortSignal through bounded active-revision/incomplete-tail JSONL retries and CPU/sectional page resolution yield
- * [POS]: The history-import purely mechanistic layer; Claude/Codex adapter does not separate the invention of boundaries and abstractions
+ * [OUTPUT]: Provides the read-only HistoryAdapter port, 4-GiB constant-memory block streams, separately capped compatibility reads, stable JSONL streaming, two-depth scans, fingerprints, containment, per-line limits, titles, abort checkpoints, and compatibility collection
+ * [POS]: Mechanistic history-import adapter kernel shared by main projections and the dedicated parser worker
  */
 
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { open, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import {
@@ -23,7 +24,9 @@ import type {
 
 export const HISTORY_PARSER_VERSION = 1;
 export const UNSUPPORTED_PREVIEW_BYTES = 4 * 1024;
-export const HISTORY_FILE_BYTES = 64 * 1024 * 1024;
+export const HISTORY_COMPAT_FILE_BYTES = 64 * 1024 * 1024;
+export const HISTORY_FILE_BYTES = 4 * 1024 * 1024 * 1024;
+export const HISTORY_STREAM_LINE_BYTES = 64 * 1024 * 1024;
 export const QUICK_META_HEAD_BYTES = 64 * 1024;
 const INCOMPLETE_TAIL_RETRY_MS = [8, 24, 48] as const;
 
@@ -34,8 +37,7 @@ const INCOMPLETE_TAIL_RETRY_MS = [8, 24, 48] as const;
  */
 export type ScanDepth = "identity" | "full";
 
-/** productArchivedAt 是投影期从 sessionPrefs 合成的呈现字段，不属于扫描产物。 */
-export type AdapterEntry = Omit<ForeignHistorySummary, "productArchivedAt"> & {
+export type AdapterEntry = ForeignHistorySummary & {
   /** 仅 main/index 可见；append 保持，truncate/replace/parser 变化时轮换。 */
   sourceIncarnation: string;
   sourcePath: string;
@@ -65,16 +67,107 @@ export type AdapterScan = Readonly<{
   sourceRevision: string;
 }>;
 
+export type HistoryBinding = Readonly<{
+  chatId?: string;
+  session: { backend: string; id: string } | null;
+  importOrigin?: {
+    sourceKind: HistorySourceKind;
+    storageFingerprint: string;
+    canonicalNativeId: string;
+    aliases: string[];
+    resumeAlias: string;
+    adoptionSnapshotId?: string;
+  } | null;
+  snapshotDigest?: string | null;
+}>;
+
 export type ParsedHistory = Readonly<{
   blocks: ForeignHistoryBlock[];
   incompleteTail: boolean;
 }>;
 
+export type HistoryBlockBatches = AsyncGenerator<
+  ForeignHistoryBlock[],
+  boolean,
+  void
+>;
+
+export type HistoryBlockTurns = AsyncGenerator<
+  readonly ForeignHistoryBlock[],
+  boolean,
+  void
+>;
+
+export type StableJsonlLines = AsyncGenerator<
+  Readonly<{ line: string; index: number }>,
+  boolean,
+  void
+>;
+
 export interface HistoryAdapter {
   readonly sourceKind: HistorySourceKind;
   readonly parserVersion: number;
   scanProject(canonicalRoot: string, depth?: ScanDepth): Promise<AdapterScan>;
+  /** Built-in adapters implement this; optional keeps injected bounded test adapters minimal. */
+  parseBatches?(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches;
   parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory>;
+}
+
+export const HISTORY_IMPORT_PARSE_BATCH_POLICY = Object.freeze({
+  entryLimit: 1_024,
+  byteLimit: 4 * 1024 * 1024,
+  sliceMs: 50,
+});
+
+/** Compatibility collector for bounded callers; import publication consumes parseBatches directly. */
+export async function collectHistoryBatches(
+  source: HistoryBlockBatches
+): Promise<ParsedHistory> {
+  const blocks: ForeignHistoryBlock[] = [];
+  while (true) {
+    const next = await source.next();
+    if (next.done) return { blocks, incompleteTail: next.value };
+    blocks.push(...next.value);
+  }
+}
+
+/** Turns are finalized before batching, so later tool output can never mutate an acknowledged batch. */
+export async function* batchHistoryTurns(
+  source: HistoryBlockTurns,
+  signal?: AbortSignal
+): HistoryBlockBatches {
+  let batch: ForeignHistoryBlock[] = [];
+  let bytes = 0;
+  let startedAt = Date.now();
+  const reset = () => {
+    batch = [];
+    bytes = 0;
+    startedAt = Date.now();
+  };
+  while (true) {
+    signal?.throwIfAborted();
+    const next = await source.next();
+    if (next.done) {
+      if (batch.length) yield batch;
+      return next.value;
+    }
+    for (const block of next.value) {
+      signal?.throwIfAborted();
+      const size = Buffer.byteLength(JSON.stringify(block), "utf8");
+      if (
+        batch.length &&
+        (batch.length >= HISTORY_IMPORT_PARSE_BATCH_POLICY.entryLimit ||
+          bytes + size > HISTORY_IMPORT_PARSE_BATCH_POLICY.byteLimit ||
+          Date.now() - startedAt >= HISTORY_IMPORT_PARSE_BATCH_POLICY.sliceMs)
+      ) {
+        yield batch;
+        signal?.throwIfAborted();
+        reset();
+      }
+      batch.push(block);
+      bytes += size;
+    }
+  }
 }
 
 export function digest(value: string | Uint8Array) {
@@ -141,7 +234,7 @@ export async function readStableText(
       code: "HISTORY_REVISION_CHANGED",
     });
   }
-  if (before.size > HISTORY_FILE_BYTES) {
+  if (before.size > HISTORY_COMPAT_FILE_BYTES) {
     throw new Error("历史会话文件超过 64 MiB 安全上限");
   }
   const handle = await open(path, "r");
@@ -207,6 +300,59 @@ export async function readStableJsonl(
   }
   if (latest) return latest;
   throw lastFailure;
+}
+
+/**
+ * Streams complete JSONL records without retaining the source body. The fingerprint is checked
+ * on both sides; a final unterminated record is reported as an incomplete tail and never parsed.
+ */
+export async function* streamStableJsonl(
+  path: string,
+  expected?: HistoryFileFingerprint,
+  signal?: AbortSignal
+): StableJsonlLines {
+  signal?.throwIfAborted();
+  const before = await fingerprint(path, expected?.parserVersion);
+  if (expected && !sameFingerprint(before, expected)) {
+    throw Object.assign(new Error("HISTORY_REVISION_CHANGED"), {
+      code: "HISTORY_REVISION_CHANGED",
+    });
+  }
+  if (before.size > HISTORY_FILE_BYTES) {
+    throw new Error("流式历史会话文件超过 4 GiB 安全上限");
+  }
+  const stream = createReadStream(path, {
+    encoding: "utf8",
+    highWaterMark: 64 * 1024,
+    signal,
+  });
+  let pending = "";
+  let index = 0;
+  try {
+    for await (const chunk of stream) {
+      signal?.throwIfAborted();
+      pending += chunk;
+      if (Buffer.byteLength(pending, "utf8") > HISTORY_STREAM_LINE_BYTES) {
+        throw new Error("历史会话单条记录超过 64 MiB 安全上限");
+      }
+      let newline = pending.indexOf("\n");
+      while (newline >= 0) {
+        const line = pending.slice(0, newline).replace(/\r$/, "");
+        pending = pending.slice(newline + 1);
+        if (line) yield { line, index: index++ };
+        newline = pending.indexOf("\n");
+      }
+    }
+  } finally {
+    stream.destroy();
+  }
+  const after = await fingerprint(path, before.parserVersion);
+  if (!sameFingerprint(before, after)) {
+    throw Object.assign(new Error("HISTORY_REVISION_CHANGED"), {
+      code: "HISTORY_REVISION_CHANGED",
+    });
+  }
+  return pending.length > 0;
 }
 
 function isHistoryRevisionChange(cause: unknown) {

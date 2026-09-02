@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the main-owned PresetCatalog/SourceResolver, RepoProbeService, BaseAppImporter, and an optional immutable local-factory flow
- * [OUTPUT]: Provides probePreset/discard/install with frozen preset identity, plus an explicit product-factory branch that never falls through to Git
+ * [OUTPUT]: Provides probePreset/discard/install with frozen preset identity and Studio-only authorization forwarding, plus an explicit product-factory branch that never falls through to Git
  * [POS]: apps/share preset installation boundary; renderer holds only opaque preflight/digest evidence and cannot choose a URL or pin
  */
 
@@ -123,6 +123,7 @@ export class PresetInstallService {
       },
       agent,
       config,
+      authorization: input.authorization,
     });
   }
 }

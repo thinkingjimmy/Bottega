@@ -1,113 +1,223 @@
 /**
- * [INPUT]: Depends on Apps ensureChatSlot, optional Chats/Projects providers, AppRecord, and canonical Chat lookup
- * [OUTPUT]: Provides useAppUseChat with one durable canonical use-chat identity, incarnation hydration, and explicit recovery after deletion
- * [POS]: Apps renderer identity adapter shared by the main-page dock and App-window dock; moving the surface never creates a second conversation
+ * [INPUT]: Depends on AppRecord, typed Apps navigation IPC, scoped Chat events, URL destination hints, and localized error projection
+ * [OUTPUT]: Provides the explicit App Use conversation/history state machine with frozen paging, scoped stale detection, durable switch receipts, New Chat, retry, and canonical chat identity
+ * [POS]: App Use renderer controller; main owns history membership, destination validation, active residence, and issuance authority
  */
 
-import { useEffect, useRef, useState } from "react";
-import { useApps } from "@/components/providers/apps-provider";
-import { useOptionalChats } from "@/components/providers/chats-provider";
-import { useOptionalProjects } from "@/components/providers/projects-provider";
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
+import type { AppRecord, AppUseHistoryItem } from "../../../shared/apps-ipc";
+import {
+  ensureAppChatSlot,
+  listAppUseHistory,
+  newAppUseChat,
+  openAppUseChat,
+} from "@/lib/apps-client";
 import { errorMessage } from "@/lib/errors";
-import { getChat } from "@/lib/chats-client";
-import type { AppRecord } from "../../../shared/apps-ipc";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { onChatsEvent } from "@/lib/chats-client";
 
-/* active = 这个 App 此刻要不要一个使用会话，而不是"哪一栏开着"。
-   身份与呈现分家的意义全在这一个参数上：栏↔dock 互换时 active 恒为
-   true，槽位不重取、chatId 不跳变，用户看到的是同一段对话换了个位置。 */
+type UseView = "conversation" | "history";
+
 export function useAppUseChat(record: AppRecord, active: boolean) {
-  const { ensureChatSlot } = useApps();
-  const chatsContext = useOptionalChats();
-  const projectsContext = useOptionalProjects();
-  const chats = chatsContext?.chats ?? [];
-  const chatsLoading = chatsContext?.loading ?? false;
-  const projects = projectsContext?.projects ?? [];
-  const [chatId, setChatId] = useState(record.activeUseChatSlot?.id ?? "");
-  const [incarnation, setIncarnation] = useState({ chatId: "", value: "" });
+  const { t } = useAppTranslation();
+  const [searchParams] = useSearchParams();
+  const routeChatId = searchParams.get("chatId") ?? "";
+  const routeIncarnationId = searchParams.get("incarnationId") ?? "";
+  const routeHistory = searchParams.get("panel") === "history";
+  const initial = record.activeUseChatSlot;
+  const [identity, setIdentity] = useState({
+    chatId: initial?.id ?? "",
+    incarnationId: initial?.incarnationId ?? "",
+  });
+  const [view, setView] = useState<UseView>(routeHistory ? "history" : "conversation");
+  const [history, setHistory] = useState<AppUseHistoryItem[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [snapshotRevision, setSnapshotRevision] = useState<string | null>(null);
+  const [historyStale, setHistoryStale] = useState(false);
+  const [historyState, setHistoryState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [switchState, setSwitchState] = useState<"idle" | "switching" | "recovering">("idle");
   const [error, setError] = useState("");
+
+  const loadHistory = useCallback(async (nextCursor?: string) => {
+    setHistoryState("loading");
+    setError("");
+    try {
+      const page = await listAppUseHistory({
+        appId: record.id,
+        ...(nextCursor ? { cursor: nextCursor } : {}),
+        ...(nextCursor && snapshotRevision
+          ? { expectedSnapshotRevision: snapshotRevision }
+          : {}),
+        pageSize: 20,
+      });
+      setHistory((current) => nextCursor ? [...current, ...page.items] : page.items);
+      setSnapshotRevision(page.snapshotRevision);
+      setHistoryStale(page.latestSnapshotRevision !== page.snapshotRevision);
+      setCursor(page.nextCursor);
+      setHistoryState("ready");
+    } catch (cause) {
+      setHistoryState("error");
+      setError(errorMessage(cause, t("apps.usePanel.restoreFailed")));
+    }
+  }, [record.id, snapshotRevision, t]);
+
+  useEffect(() => {
+    if (!snapshotRevision) return;
+    return onChatsEvent((event) => {
+      if (
+        event.type === "upserted" &&
+        event.summary.context?.kind === "app-use" &&
+        event.summary.context.appId === record.id
+      ) {
+        setHistoryStale(true);
+        return;
+      }
+      if (
+        (event.type === "removed" ||
+          event.type === "messages" ||
+          event.type === "messages-delta") &&
+        history.some((item) => item.chatId === event.chatId)
+      ) {
+        setHistoryStale(true);
+      }
+    });
+  }, [history, record.id, snapshotRevision]);
 
   useEffect(() => {
     if (!active) return;
     let alive = true;
-    void ensureChatSlot({
-      appId: record.id,
-      role: "use",
-      requestId: crypto.randomUUID(),
-    })
-      .then((slot) => {
-        if (alive) setChatId(slot.id);
+    const target = routeChatId && routeIncarnationId
+      ? openAppUseChat({
+          appId: record.id,
+          chatId: routeChatId,
+          incarnationId: routeIncarnationId,
+          requestId: crypto.randomUUID(),
+        }).then((receipt) => {
+          if (receipt.status === "precommit-rejected") throw new Error(receipt.reason);
+          if (receipt.status === "recovering" || receipt.status === "committed") {
+            setSwitchState("recovering");
+            return null;
+          }
+          return receipt.target;
+        })
+      : ensureAppChatSlot({
+          appId: record.id,
+          role: "use",
+          requestId: crypto.randomUUID(),
+        }).then((slot) => ({
+          kind: "app-use-chat" as const,
+          appId: record.id,
+          chatId: slot.id,
+          incarnationId: slot.incarnationId,
+        }));
+    void target
+      .then((destination) => {
+        if (!alive || !destination) return;
+        setIdentity({ chatId: destination.chatId, incarnationId: destination.incarnationId });
+        if (!routeHistory) setView("conversation");
+        setSwitchState("idle");
       })
       .catch((cause) => {
-        if (alive) setError(errorMessage(cause, "使用 chat 创建失败"));
+        if (alive) setError(errorMessage(cause, t("apps.usePanel.restoreFailed")));
       });
-    return () => {
-      alive = false;
-    };
-  }, [active, ensureChatSlot, record.id]);
-
-  const projectId = projects.find(
-    (project) =>
-      project.workspaceBinding.kind === "app" &&
-      project.workspaceBinding.appId === record.id
-  )?.id;
-  const useChats = chats.filter(
-    (chat) => chat.projectId === projectId && chat.appRole === "use"
-  );
-  const hasCurrent = useChats.some((chat) => chat.id === chatId);
-  const persistedChatRef = useRef("");
+    return () => { alive = false; };
+  }, [active, record.id, routeChatId, routeHistory, routeIncarnationId, t]);
 
   useEffect(() => {
-    if (!chatId) return;
-    let alive = true;
-    void getChat(chatId).then((chat) => {
-      if (alive) setIncarnation({ chatId, value: chat?.incarnationId ?? "" });
-    });
-    return () => {
-      alive = false;
-    };
-  }, [chatId, hasCurrent]);
+    if (!active || !routeHistory || historyState !== "idle") return;
+    const timer = window.setTimeout(() => void loadHistory(), 0);
+    return () => window.clearTimeout(timer);
+  }, [active, historyState, loadHistory, routeHistory]);
 
   useEffect(() => {
-    if (!active || chatsLoading || !chatId) return;
-    if (hasCurrent) {
-      persistedChatRef.current = chatId;
-      return;
-    }
-    /* 自愈只问挂载者自己：「当前 chatId 曾被观察到持久化、现在消失了」才换新。
-     * 问槽位状态是错的——Select 切换后 chatId 可与槽位脱钩（槽位是 draft、
-     * 挂载的却是刚被删掉的历史 canonical chat），继续挂着等于往已删除的
-     * conversation id 里写字。草稿本来就不在列表里，不触发自愈。 */
-    if (persistedChatRef.current !== chatId) return;
-    persistedChatRef.current = "";
-    void ensureChatSlot({
-      appId: record.id,
-      role: "use",
-      requestId: crypto.randomUUID(),
-    })
-      .then((slot) => setChatId(slot.id))
-      .catch((cause) => setError(errorMessage(cause, "使用 chat 恢复失败")));
-  }, [active, chatId, chatsLoading, ensureChatSlot, hasCurrent, record.id]);
+    const slot = record.activeUseChatSlot;
+    if (!active || !slot || record.activeUseSwitch) return;
+    if (
+      switchState === "idle" &&
+      identity.chatId === slot.id &&
+      identity.incarnationId === slot.incarnationId
+    ) return;
+    const timer = window.setTimeout(() => {
+      setIdentity({ chatId: slot.id, incarnationId: slot.incarnationId });
+      setSwitchState("idle");
+      if (!routeHistory) setView("conversation");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [
+    active,
+    identity.chatId,
+    identity.incarnationId,
+    record.activeUseChatSlot,
+    record.activeUseSwitch,
+    routeHistory,
+    switchState,
+  ]);
 
-  const createNew = () => {
+  const showHistory = () => {
+    setView("history");
+    if (historyState === "idle" || historyState === "error") void loadHistory();
+  };
+
+  const select = async (item: AppUseHistoryItem) => {
+    setSwitchState("switching");
     setError("");
-    void ensureChatSlot({
-      appId: record.id,
-      role: "use",
-      mode: "new",
-      requestId: crypto.randomUUID(),
-    })
-      .then((slot) => setChatId(slot.id))
-      .catch((cause) => setError(errorMessage(cause, "使用 chat 创建失败")));
+    try {
+      const receipt = await openAppUseChat({
+        appId: record.id,
+        chatId: item.chatId,
+        incarnationId: item.incarnationId,
+        requestId: crypto.randomUUID(),
+      });
+      if (receipt.status === "precommit-rejected") throw new Error(receipt.reason);
+      if (receipt.status !== "completed") {
+        setSwitchState("recovering");
+        return;
+      }
+      setIdentity({ chatId: receipt.target.chatId, incarnationId: receipt.target.incarnationId });
+      setView("conversation");
+      setSwitchState("idle");
+    } catch (cause) {
+      setSwitchState("idle");
+      setError(errorMessage(cause, t("apps.usePanel.restoreFailed")));
+    }
+  };
+
+  const createNew = async () => {
+    setSwitchState("switching");
+    setError("");
+    try {
+      const receipt = await newAppUseChat(record.id, crypto.randomUUID());
+      if (receipt.status === "precommit-rejected") throw new Error(receipt.reason);
+      if (receipt.status !== "completed") {
+        setSwitchState("recovering");
+        return;
+      }
+      setIdentity({ chatId: receipt.target.chatId, incarnationId: receipt.target.incarnationId });
+      setView("conversation");
+      setSwitchState("idle");
+    } catch (cause) {
+      setSwitchState("idle");
+      setError(errorMessage(cause, t("apps.usePanel.createFailed")));
+    }
   };
 
   return {
-    chatId,
-    incarnationId: incarnation.chatId === chatId ? incarnation.value : "",
+    ...identity,
+    view,
+    history,
+    historyState,
+    switchState,
+    cursor,
+    historyStale,
     error,
-    chats: useChats,
-    hasCurrent,
-    createNew,
-    select: setChatId,
+    createNew: () => void createNew(),
+    showHistory,
+    showConversation: () => setView("conversation"),
+    retryHistory: () => void loadHistory(),
+    refreshHistory: () => void loadHistory(),
+    loadMore: () => cursor && void loadHistory(cursor),
+    select: (item: AppUseHistoryItem) => void select(item),
   };
 }
 

@@ -10,7 +10,7 @@ import {
   attachmentAdmissionKey,
   type AppPlatformAdmission,
 } from "../../lifecycle/app-platform-admission";
-import type { ProjectStore } from "../../projects/project-store";
+import type { ProjectStore } from "../../projects/store/project-store";
 import type { AppStore } from "../app-store";
 import { resolveAppGrant } from "./grant-resolver";
 
@@ -182,7 +182,7 @@ export class AppAttachmentFence {
   }
 
   private async chatConflicts(chatId: string) {
-    const chat = await this.dependencies.chats.get(chatId);
+    const chat = this.dependencies.chats.getMetadata(chatId);
     const names = new Set<string>();
     const projectId = chat?.projectId ?? null;
     const project = projectId
@@ -201,7 +201,7 @@ export class AppAttachmentFence {
     /* 零成员 Project 仍消费 defaultGrant；Project disabled 则是合法 suppression。 */
     this.addEffective(names, [], project);
     for (const chatId of this.dependencies.chats.listByProject(projectId)) {
-      const chat = await this.dependencies.chats.get(chatId);
+      const chat = this.dependencies.chats.getMetadata(chatId);
       this.addEffective(names, chat?.grants ?? [], project);
       for (const reference of this.dependencies.activeReferences(chatId)) {
         names.add(this.appName(reference.appId));

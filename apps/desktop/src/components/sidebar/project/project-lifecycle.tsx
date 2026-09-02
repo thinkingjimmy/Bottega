@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React state, Project/Chat contracts, ProjectsProvider detach mutation, archive client, shared dialogs, and i18n
- * [OUTPUT]: Provides useProjectLifecycle, ProjectLifecycleDialogs, and localDetachArchiveReasons as one archive/remove state machine
+ * [INPUT]: Depends on React state, Project/Chat contracts, ProjectsProvider detach mutation, archive client, optional caller-owned archive-success feedback, shared dialogs, and i18n
+ * [OUTPUT]: Provides useProjectLifecycle, ProjectLifecycleDialogs, and localDetachArchiveReasons as one archive/remove state machine with an optional post-archive signal
  * [POS]: Shared Project lifecycle controller consumed by Sidebar Project rows and Project Settings General
  */
 
@@ -42,6 +42,7 @@ export function useProjectLifecycle(
     hasProjectBase: boolean;
     groupMemory: boolean;
     onLeave(archiveMembers: boolean): void;
+    onArchived?(): void;
   }
 ) {
   const { detachLocalProject } = useProjects();
@@ -57,6 +58,7 @@ export function useProjectLifecycle(
     try {
       await archiveTargets([{ kind: "project", id: project.id }]);
       options.onLeave(true);
+      options.onArchived?.();
       setArchiveOpen(false);
       setLocalDetachOpen(false);
     } catch (cause) {

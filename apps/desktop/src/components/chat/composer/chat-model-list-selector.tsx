@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, lucide Icons, ui DropdownMenu(Sub/RadioGroup/Portal) /Skeleton/SlimScroller, shared list-only Model directory and chat-model-selection Pure rules
- * [OUTPUT]: Provides ChatModelListSelector with Model/Effort controls and an optional Speed row that preserves preference while showing effective fallback and reason
+ * [OUTPUT]: Provides ChatModelListSelector with structured model-catalog failures, Model/Effort controls, and an optional Speed row that preserves preference while showing effective fallback and reason
  * [POS]: The list-only model controller for chat/composer; Separated from the Codex Rapid Panel, but using its trigger formatting and dual-column option visual language
  */
 
@@ -33,13 +33,15 @@ import type {
   BackendModelInfo,
   SessionServiceTierEffective,
 } from "../../../../shared/agent-ipc";
+import { AgentFailureNotice } from "@/components/agent-failure-notice";
+import type { AgentSurfaceFailure } from "@/lib/agent-failure";
 
 type ChatModelListSelectorProps = {
   value: AgentTurnOptions;
   effectiveServiceTier?: SessionServiceTierEffective;
   models: BackendModelInfo[];
   modelsLoading: boolean;
-  modelsError: string;
+  modelsError: AgentSurfaceFailure | null;
   settingsError: string;
   disabled?: boolean;
   streaming?: boolean;
@@ -178,13 +180,15 @@ export function ChatModelListSelector({
     models.find((model) => model.isDefault);
   const effort = listModelEffortState(value, current);
   const speed = listModelSpeedState(value, current, effectiveServiceTier);
+  const effortText = effort.label ?? t(effort.fallbackKey);
+  const speedText = speed.label ?? t(speed.fallbackKey);
   const busy = disabled || saving || localBusy;
   const triggerLoading = saving || localBusy || (disabled && !streaming);
   const modelAdjustable = !busy && models.length > 1;
   const effortAdjustable = !busy && effort.adjustable;
   const speedAdjustable = !busy && speed.adjustable;
   /* 目录未到之前，这一行没有任何依据：模型名无处可取，effort 更是
-     listModelEffortState 在空目录上编出来的 "Default"。骨架屏是"还不知道"
+     listModelEffortState 在空目录上只能给出 catalog fallback。骨架屏是"还不知道"
      唯一诚实的形状——而 `未知` 与 `已知的默认` 是两件事，后者（目录已到、
      后端确实自选模型）仍旧照实说出"默认模型"。 */
   const pending = modelsLoading && !current;
@@ -195,7 +199,7 @@ export function ChatModelListSelector({
     ? t("chat.composer.modelSelector.loadingModels")
     : t("chat.composer.modelSelector.currentModel", {
         model: modelText,
-        effort: effort.label,
+        effort: effortText,
       });
   /* 原因只在意图与实际分叉时才是信息（listModelSpeedState 已经把这条判据
      收在 speed.reason 里），文案则永远从目录取。 */
@@ -235,7 +239,7 @@ export function ChatModelListSelector({
           disabled={busy}
           aria-label={triggerText}
           aria-busy={pending}
-          title={pending ? triggerText : `${modelText} · ${effort.label}`}
+          title={pending ? triggerText : `${modelText} · ${effortText}`}
           className={cn(
             "flex h-8 min-w-0 cursor-pointer items-center gap-1.5 rounded-full px-1.5 font-normal text-sm outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50",
             open ? "bg-muted hover:bg-muted/80" : "hover:bg-muted"
@@ -252,7 +256,7 @@ export function ChatModelListSelector({
               <>
                 <span className="truncate">{modelText}</span>
                 <span className="shrink-0 text-muted-foreground">
-                  {effort.label}
+                  {effortText}
                 </span>
               </>
             )}
@@ -339,7 +343,7 @@ export function ChatModelListSelector({
         {effortAdjustable ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className={summaryRowClass}>
-              <SummaryFace label={t("chat.composer.modelSelector.effort")} value={effort.label} pending={pending} />
+              <SummaryFace label={t("chat.composer.modelSelector.effort")} value={effortText} pending={pending} />
             </DropdownMenuSubTrigger>
             <DropdownMenuPortal>
               <DropdownMenuSubContent
@@ -374,7 +378,7 @@ export function ChatModelListSelector({
         ) : (
           <ReadOnlySummaryRow
             label={t("chat.composer.modelSelector.effort")}
-            value={effort.label}
+            value={effortText}
             pending={pending}
             reason={
               effort.options.length <= 1
@@ -388,7 +392,7 @@ export function ChatModelListSelector({
             <DropdownMenuSubTrigger className={summaryRowClass}>
               <SummaryFace
                 label={t("chat.composer.modelSelector.speed")}
-                value={speed.label}
+                value={speedText}
                 detail={speedReason}
                 pending={pending}
               />
@@ -422,7 +426,7 @@ export function ChatModelListSelector({
                 </p>
                 {speedReason && (
                   <p role="status" className="px-2 pb-1 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">{speed.label}</span>
+                    <span className="font-medium text-foreground">{speedText}</span>
                     {` · ${speedReason}`}
                   </p>
                 )}
@@ -432,7 +436,7 @@ export function ChatModelListSelector({
         ) : (
           <ReadOnlySummaryRow
             label={t("chat.composer.modelSelector.speed")}
-            value={speed.label}
+            value={speedText}
             pending={pending}
             reason={speedReason}
             detail={speedReason}
@@ -445,12 +449,9 @@ export function ChatModelListSelector({
         )}
         {modelsError && (
           <>
-            <p
-              role="alert"
-              className="mt-2 rounded-lg bg-destructive/10 px-2 py-1.5 text-xs text-destructive"
-            >
-              {modelsError}
-            </p>
+            <div className="mt-2">
+              <AgentFailureNotice compact {...modelsError} />
+            </div>
             {/* 重试是这块面板里唯一的动作，必须是 menuitem：菜单里的裸 button
                 方向键够不着、Tab 又会把整个菜单关掉，等于摆着不能按。 */}
             <DropdownMenuItem

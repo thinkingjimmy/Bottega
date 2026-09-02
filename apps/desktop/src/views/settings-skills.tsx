@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Library-first Skills IPC/client, compact row/batch/import/empty components, i18n, the shared Extensions surface, and Settings primitives
- * [OUTPUT]: Provides `/settings/skills` with name/description/source rows, one enabled switch, main-authored actions, deletion-only confirmation, enablement undo, budget facts, and Library acquisition
+ * [OUTPUT]: Provides `/settings/skills` with name/description/source rows, one enabled switch, main-authored actions, deletion-only confirmation, enablement undo, budget facts, and a positionally identical Skills/Extensions acquisition toolbar
  * [POS]: Sole global Skills management surface; renderer submits intents and contains no Agent-home, projection, native-target, or Codex-special logic
  */
 
@@ -70,6 +70,9 @@ export function SkillsSettingsView() {
   const [pendingDelete, setPendingDelete] = useState<ManagedSkillPlanPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [extensionsActionHost, setExtensionsActionHost] = useState<HTMLDivElement | null>(
+    null
+  );
 
   useEffect(() => {
     cachedSnapshot = snapshot;
@@ -189,7 +192,6 @@ export function SkillsSettingsView() {
     });
     return submit(intents);
   });
-
   return (
     <Tabs
       className="h-full min-h-0 gap-0"
@@ -212,22 +214,26 @@ export function SkillsSettingsView() {
         title={t("common.skills")}
       >
         <SettingsCanvas>
-          <div className="mb-4 flex items-center gap-2">
+          <div
+            className="mb-4 flex items-center gap-2"
+            data-testid="settings-skills-toolbar"
+          >
             <TabsList>
               <TabsTrigger value="skills">{t("settings.skills.tabs.skills")}</TabsTrigger>
               <TabsTrigger value="extensions">{t("settings.skills.tabs.extensions")}</TabsTrigger>
             </TabsList>
-            {tab === "skills" && (
-              <Button
-                className="ml-auto"
-                disabled={busy || readOnly}
-                onClick={() => setImportOpen(true)}
-                size="lg"
-              >
-                <Plus />
-                {t("settings.skills.importTitle")}
-              </Button>
-            )}
+            <div className="ml-auto" ref={setExtensionsActionHost}>
+              {tab === "skills" && (
+                <Button
+                  disabled={busy || readOnly}
+                  onClick={() => setImportOpen(true)}
+                  size="lg"
+                >
+                  <Plus />
+                  {t("settings.skills.importTitle")}
+                </Button>
+              )}
+            </div>
           </div>
           <TabsContent className="mt-0 space-y-4" value="skills">
             {error && <SettingsAlert>{error}</SettingsAlert>}
@@ -327,7 +333,10 @@ export function SkillsSettingsView() {
             )}
           </TabsContent>
           <TabsContent className="mt-0" value="extensions">
-            <ExtensionsContent packageIdentity={packageIdentity} />
+            <ExtensionsContent
+              packageIdentity={packageIdentity}
+              toolbarActionHost={extensionsActionHost}
+            />
           </TabsContent>
         </SettingsCanvas>
       </PageShell>

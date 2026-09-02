@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on projected Base rows, Gallery config, a canonical BaseCellContext, and stable media occurrence/identity helpers
- * [OUTPUT]: Provides context-aware Gallery tile projection, date groups, visual rows, pinned identities, and virtual-row lookup
+ * [OUTPUT]: Provides context-aware Gallery tile projection, date groups with caller-supplied ungrouped copy, visual rows, pinned identities, and virtual-row lookup
  * [POS]: The pure Gallery model; durable tiles come from Base attachment cells while relation/formula titles resolve against the full snapshot
  */
 
@@ -131,7 +131,7 @@ export function groupGalleryItems(
     locale?: string;
     grouped: boolean;
     allLabel?: string;
-    ungroupedLabel?: string;
+    ungroupedLabel: string;
   }
 ): GalleryGroup[] {
   if (!options.grouped) {
@@ -158,7 +158,7 @@ export function groupGalleryItems(
     id,
     label: group.date
       ? formatBucket(group.date, bucket, options.locale)
-      : options.ungroupedLabel ?? "Ungrouped",
+      : options.ungroupedLabel,
     items: group.items,
   }));
 }

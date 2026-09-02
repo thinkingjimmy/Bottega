@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on Apps README IPC, PageShell titleAdornment slots, AppDialogContent and secure Markdown MessageResponse
- * [OUTPUT]: Provides SafeREADME (which can be covered in a row)  readmeBody (which removes the repeat H1)  Readme renderer preload (which is a preload of the H1)  ReadmeAdornment (which is a direct current) and AppReadmeAdornment (which is a diskette with an appId)
- * [POS]: Markdown/README presents the boundaries of security for components/apps; Install details built-in with SafeReadme, App Adornment installed
+ * [INPUT]: Depends on Apps README IPC, Apps i18n, AppDialog primitives, and secure lazy Markdown rendering
+ * [OUTPUT]: Provides SafeReadme, readmeBody, useAppReadme, the controlled ReadmeDialog, ReadmeAdornment, and AppReadmeAdornment
+ * [POS]: Secure Apps README presentation boundary shared by install details, installed-App title adornments, and menu-hosted entries that must own the dialog's open state themselves
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { InfoIcon } from "lucide-react";
 import {
   AppDialogBody,
@@ -20,6 +20,7 @@ import {
 } from "@ai-chat/ui/components/ui/dialog";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { readAppReadme } from "@/lib/apps-client";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 type ReadmeMarkdownComponent = typeof import(
   "@ai-chat/ui/components/ai-elements/message"
@@ -36,9 +37,6 @@ const loadReadmeMarkdown = () => {
   });
   return readmeMarkdownPromise;
 };
-
-/** DOM 测试/高意图入口可在 render 前纳入 act；生产仍保留按需加载。 */
-export const preloadReadmeMarkdown = () => loadReadmeMarkdown().then(() => undefined);
 
 export function SafeReadme({
   children,
@@ -76,28 +74,47 @@ export function readmeBody(readme: string) {
   return readme.replace(/^\s*#\s+[^\n]*\n?/, "").trimStart();
 }
 
-/** 正文为空即不渲染入口：没有 README 就没有可看的东西，不摆一个空弹窗。 */
-export function ReadmeAdornment({
+/** README 取回：谁要决定「入口该不该出现」，谁就得先拿到正文。 */
+export function useAppReadme(appId: string) {
+  const [readme, setReadme] = useState("");
+  useEffect(() => {
+    let active = true;
+    void readAppReadme(appId)
+      .then((content) => {
+        if (active) setReadme(content ?? "");
+      })
+      .catch(() => {
+        if (active) setReadme("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [appId]);
+  return readme;
+}
+
+/* 受控，触发器可缺席：入口若落在下拉菜单里，菜单一关就会把触发器连同它
+   持有的 open 一起卸掉，弹窗于是永远开不起来——那条路径只传 open，不传
+   children。仍有常驻按钮的调用方把 DialogTrigger 塞进 children，Radix 的
+   aria-haspopup/expanded/controls 便一件不少。 */
+export function ReadmeDialog({
   appName,
   readme,
+  open,
+  onOpenChange,
+  children,
 }: {
   appName: string;
   readme: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children?: ReactNode; // 触发器插槽；菜单入口留空
 }) {
-  const [open, setOpen] = useState(false);
+  const { t } = useAppTranslation();
   if (!readme) return null;
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          aria-label={`查看 ${appName} README`}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          <InfoIcon />
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {children}
       <AppDialogContent className="sm:max-w-3xl">
         {/* README 自带标题层级：H1 就是它的名字。弹窗再摆一个可见 header，
             同一句话就有了两个声音，且小号 chrome 标题压在大号正文标题上，
@@ -105,7 +122,7 @@ export function ReadmeAdornment({
             Content 有可访问名，视觉标题让给正文，重复自然消失。 */}
         <DialogHeader className="sr-only">
           <DialogTitle>{appName}</DialogTitle>
-          <DialogDescription>App 介绍与使用方法</DialogDescription>
+          <DialogDescription>{t("apps.readme.description")}</DialogDescription>
         </DialogHeader>
         {/* mt 是给右上角那颗 × 让位，而且必须让纵向、不能让横向。
             header 降成 sr-only 后正文层顶到了最上面，滚动沟槽的头一段正好从
@@ -124,6 +141,38 @@ export function ReadmeAdornment({
   );
 }
 
+/** 正文为空即不渲染入口：没有 README 就没有可看的东西，不摆一个空弹窗。 */
+export function ReadmeAdornment({
+  appName,
+  readme,
+}: {
+  appName: string;
+  readme: string;
+}) {
+  const { t } = useAppTranslation();
+  const [open, setOpen] = useState(false);
+  if (!readme) return null;
+  return (
+    <ReadmeDialog
+      appName={appName}
+      onOpenChange={setOpen}
+      open={open}
+      readme={readme}
+    >
+      <DialogTrigger asChild>
+        <Button
+          aria-label={t("apps.readme.open", { name: appName })}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <InfoIcon />
+        </Button>
+      </DialogTrigger>
+    </ReadmeDialog>
+  );
+}
+
 export function AppReadmeAdornment({
   appId,
   appName,
@@ -131,21 +180,6 @@ export function AppReadmeAdornment({
   appId: string;
   appName: string;
 }) {
-  const [readme, setReadme] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    void readAppReadme(appId)
-      .then((content) => {
-        if (active) setReadme(content ?? "");
-      })
-      .catch(() => {
-        if (active) setReadme("");
-      });
-    return () => {
-      active = false;
-    };
-  }, [appId]);
-
+  const readme = useAppReadme(appId);
   return <ReadmeAdornment appName={appName} readme={readme} />;
 }

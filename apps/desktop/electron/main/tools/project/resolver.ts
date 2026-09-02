@@ -21,7 +21,7 @@ import type {
   ScopedResourceVersion,
   TurnProjectContext,
 } from "../../../../shared/resource-scope";
-import type { ProjectStore } from "../../projects/project-store";
+import type { ProjectStore } from "../../projects/store/project-store";
 import { projectBuiltinTools } from "../issuance";
 import type {
   ManualMcpServersStore,

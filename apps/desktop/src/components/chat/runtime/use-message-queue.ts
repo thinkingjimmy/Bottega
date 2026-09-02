@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React effect, composer external store, message-queue three-field modules with the assembly/admit/steer/outcome/ackOutcome/subscribeOutcome port
- * [OUTPUT]: Provides per-chat Independent empty inter-mounted queue controller, workspace-file Steer, hard drive, derived/manual custody in chat-persisted pre-reservation, durable outcome Deposit and Edit swap
+ * [INPUT]: Depends on React effects, app i18n, composer external store, message-queue state modules, and assembly/admit/steer/outcome/ack ports
+ * [OUTPUT]: Provides a per-chat queue controller with localized structured model errors, workspace-file Steer, durable/manual custody, outcome settlement, and edit swap
  * [POS]: The root of the renderer queue of chat/runtime; The state is stored, attached/admission/steer rules are narrowed down to modules
  */
 
@@ -59,8 +59,10 @@ import {
   swapWithInput,
   tryFreeze,
   type MessageQueue,
+  type QueueError,
   type QueueItem,
 } from "@/lib/message-queue-model";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 import {
   settleAdmission,
 } from "./message-queue/admission";
@@ -122,6 +124,14 @@ export function useMessageQueue({
   steerIntents: readonly SteerOutboxProjection[];
   ports: MessageQueuePorts;
 }) {
+  const { t } = useAppTranslation();
+  const errorText = useCallback(
+    (error: QueueError) =>
+      typeof error === "string"
+        ? error
+        : t(error.copyKey, { ...(error.values ?? {}) }),
+    [t]
+  );
   const state = useComposerState(chatId);
   const ownerRef = useRef(`queue_${crypto.randomUUID()}`);
   const drainingRef = useRef(new Set<string>());
@@ -363,7 +373,7 @@ export function useMessageQueue({
   }, [chatId, noticeCurrent, ports, steerIntents]);
 
   const enqueue = useCallback((message: PromptInputMessage) => {
-    let reason: string | undefined;
+    let reason: QueueError | undefined;
     updateComposer(chatId, (current) => {
       const result = enqueueItem(
         current.queue,
@@ -372,11 +382,17 @@ export function useMessageQueue({
       );
       reason = result.reason;
       return result.queue === current.queue
-        ? { ...current, queue: setQueueError(current.queue, reason ?? "无法加入队列") }
+        ? {
+            ...current,
+            queue: setQueueError(
+              current.queue,
+              reason ?? { copyKey: "chat.queue.enqueueFailed" }
+            ),
+          }
         : { ...current, queue: result.queue };
     });
-    if (reason) throw new Error(reason);
-  }, [chatId]);
+    if (reason) throw new Error(errorText(reason));
+  }, [chatId, errorText]);
 
   const edit = useCallback((id: string) => {
     const current = readComposer(chatId);
@@ -415,7 +431,7 @@ export function useMessageQueue({
     );
     if (!candidate || !canSteerQueueItem(candidate, isTurnRunning)) return;
     if (!requestId) {
-      noticeCurrent("当前 turn 已结束，该消息将按正常队列发送。");
+      noticeCurrent(t("chat.runtime.queue.turnEnded"));
       return;
     }
     const owner = ownerRef.current;
@@ -435,7 +451,7 @@ export function useMessageQueue({
       try {
         const materialized = await materializePrompt(claimedItem.prompt);
         if (activeChatRef.current !== chatId) {
-          throw new Error("Chat 视图已切换，未发送旧视图的 Steer。");
+          throw new Error(t("chat.runtime.queue.viewChangedSteerCancelled"));
         }
         admission = await ports.assembleSteer(materialized, {
           requestId,
@@ -443,7 +459,7 @@ export function useMessageQueue({
           createdAt: claimedItem.createdAt,
         });
         if (activeChatRef.current !== chatId) {
-          throw new Error("Chat 视图已切换，未发送旧视图的 Steer。");
+          throw new Error(t("chat.runtime.queue.viewChangedSteerCancelled"));
         }
       } catch (cause) {
         updateComposer(chatId, (current) => ({
@@ -519,6 +535,7 @@ export function useMessageQueue({
     noticeCurrent,
     ports,
     requestId,
+    t,
   ]);
 
   const decideAmbiguous = useCallback(
@@ -532,8 +549,7 @@ export function useMessageQueue({
         action === "resend" &&
         (item.custodyIntentId || !item.outboxRef)
       ) {
-        const message =
-          "Workspace 已变化；这条消息不能按新 Workspace 重发，请删除后重新输入。";
+        const message = t("chat.runtime.queue.workspaceChangedNoResend");
         updateComposer(chatId, (current) => ({
           ...current,
           queue: setQueueError(current.queue, message),
@@ -544,7 +560,7 @@ export function useMessageQueue({
       if (item.custodyIntentId || !item.outboxRef) {
         const custodyIntentId = item.custodyIntentId;
         if (!custodyIntentId || !ports.outcome) {
-          noticeCurrent("无法取得 durable outcome，已保持对账状态。");
+          noticeCurrent(t("chat.runtime.queue.durableOutcomeUnavailable"));
           return;
         }
         void ports
@@ -563,7 +579,7 @@ export function useMessageQueue({
               if (!failed) {
                 reconcileManualOutcome(outcome);
                 if (!persisted) {
-                  noticeCurrent("提交仍在 Main custody 中，请等待确定结果。");
+                  noticeCurrent(t("chat.runtime.queue.mainCustodyPending"));
                 }
                 return;
               }
@@ -627,8 +643,8 @@ export function useMessageQueue({
             reconcileManualOutcome(outcome);
             noticeCurrent(
               outcome.kind === "notFound"
-                ? "Main 没有给出安全负证明，不能盲目重发。"
-                : "当前提交不可普通重发；请按 durable outcome 提示处理。"
+                ? t("chat.runtime.queue.noSafeNegativeProof")
+                : t("chat.runtime.queue.ordinaryResendUnavailable")
             );
           })
           .catch((cause) =>
@@ -687,7 +703,7 @@ export function useMessageQueue({
           }));
         });
     },
-    [chatId, noticeCurrent, ports, reconcileManualOutcome]
+    [chatId, noticeCurrent, ports, reconcileManualOutcome, t]
   );
 
   const mutate = useCallback(
@@ -702,7 +718,7 @@ export function useMessageQueue({
   return useMemo(() => ({
     items: state.queue.items,
     paused: state.queue.paused,
-    error: state.queue.error,
+    error: state.queue.error ? errorText(state.queue.error) : null,
     enqueue,
     remove: (id: string) => {
       mutate((queue) => removeItem(queue, id));
@@ -730,6 +746,7 @@ export function useMessageQueue({
     decideAmbiguous,
     edit,
     enqueue,
+    errorText,
     isTurnRunning,
     mutate,
     steeringSupported,

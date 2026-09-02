@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React question-local state, lucide icon, ui cn/Button/SlimScroller, shared AgentUserInputQuestion and runtime pending status
- * [OUTPUT]: Provides a compact ChatUserInputSelector, which displays root/Subagent sources and a complete pending list, and supports single/multi-choice/must-have/text/Other/Secret, multi-theme progression and single submission
- * [POS]: The requestUserInput of the chat/composer is temporarily replaced; The event replaces the regular editor entirely
+ * [INPUT]: Depends on React question-local state, lucide icons, Chat composer/runtime i18n, ui cn/Button/SlimScroller, shared AgentUserInputQuestion and runtime pending status
+ * [OUTPUT]: Provides a localized compact ChatUserInputSelector with root/Subagent sources, pending-list projection, single/multi/text/Other/Secret input, and structured runtime-error resolution
+ * [POS]: Composer replacement for one pending requestUserInput event; it temporarily replaces the regular editor
  */
 
 import { useEffect, useState } from "react";
@@ -10,6 +10,7 @@ import { Button } from "@ai-chat/ui/components/ui/button";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { cn } from "@ai-chat/ui/lib/utils";
 import type { PendingUserInputState } from "../runtime/use-chat-session";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 /* ── 徽章律 ───────────────────────────────────────────────────
  * 徽章直径 = 它要对齐的那一行的行高。选项条是两行（标题 + 描述），
@@ -50,13 +51,18 @@ function RecommendedTag({ word }: { word: string }) {
 }
 
 function CountdownLabel({ expiresAt }: { expiresAt: number }) {
+  const { t } = useAppTranslation();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(timer);
   }, []);
   const remaining = Math.max(0, Math.ceil((expiresAt - now) / 1_000));
-  return <span className="text-xs tabular-nums">{remaining}s</span>;
+  return (
+    <span className="text-xs tabular-nums">
+      {t("chat.composer.userInput.countdown", { count: remaining })}
+    </span>
+  );
 }
 
 function SkipButton({
@@ -66,6 +72,7 @@ function SkipButton({
   busy: boolean;
   onSkip: () => void;
 }) {
+  const { t } = useAppTranslation();
   return (
     <Button
       className="ml-auto shrink-0 rounded-full"
@@ -75,7 +82,7 @@ function SkipButton({
       type="button"
       variant="outline"
     >
-      Skip
+      {t("chat.composer.userInput.skip")}
     </Button>
   );
 }
@@ -105,11 +112,16 @@ function ChatUserInputQuestion({
   pending: PendingUserInputState;
   onAnswer: (answers: string[]) => void;
 }) {
+  const { t } = useAppTranslation();
   const question = pending.request.questions[pending.index];
   const [text, setText] = useState("");
   const [other, setOther] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   if (!question) return null;
+  const errorText =
+    typeof pending.error === "string"
+      ? pending.error
+      : t(pending.error.copyKey);
 
   const options = question.options ?? [];
   const toggleSelected = (label: string) => {
@@ -127,9 +139,13 @@ function ChatUserInputQuestion({
      与正文重复的主题自动落选——ACP 里无 description 的字段，
      header 与 question 本就是同一个 property.title */
   const eyebrow = [
-    pending.request.agentName ?? "Main agent",
+    pending.request.agentName ?? t("chat.composer.userInput.mainAgent"),
     question.header,
-    pending.queue.length > 1 ? `${pending.queue.length} pending` : "",
+    pending.queue.length > 1
+      ? t("chat.composer.userInput.pendingCount", {
+          count: pending.queue.length,
+        })
+      : "",
   ]
     .filter((fact) => fact && fact !== question.question)
     .join(" · ");
@@ -147,7 +163,10 @@ function ChatUserInputQuestion({
           {/* 只报进度不给翻页：多题是单向逐条应答，永远置灰的箭头是假承诺 */}
           {pending.request.questions.length > 1 && (
             <span className="text-xs tabular-nums">
-              {pending.index + 1} of {pending.request.questions.length}
+              {t("chat.composer.userInput.progress", {
+                current: pending.index + 1,
+                total: pending.request.questions.length,
+              })}
             </span>
           )}
           {pending.expiresAt !== undefined && (
@@ -155,7 +174,7 @@ function ChatUserInputQuestion({
           )}
           {!question.required && (
             <Button
-              aria-label="跳过问题"
+              aria-label={t("chat.composer.userInput.skipQuestion")}
               disabled={pending.busy}
               onClick={() => onAnswer(["Skip"])}
               size="icon-sm"
@@ -169,11 +188,11 @@ function ChatUserInputQuestion({
 
       {pending.queue.length > 1 && (
         <SlimScroller
-          aria-label="等待中的并发提问"
+          aria-label={t("chat.composer.userInput.pendingList")}
           className="mt-2 max-h-24 space-y-1 overflow-y-auto border-t pt-2"
         >
           <p className="font-medium text-[11px] text-muted-foreground uppercase tracking-wide">
-            Pending
+            {t("chat.composer.userInput.pending")}
           </p>
           {pending.queue.slice(1).map((request) => (
             <div
@@ -181,10 +200,11 @@ function ChatUserInputQuestion({
               key={request.userInputId}
             >
               <span className="shrink-0 font-medium">
-                {request.agentName ?? "Main agent"}
+                {request.agentName ?? t("chat.composer.userInput.mainAgent")}
               </span>
               <span className="truncate text-muted-foreground">
-                {request.questions[0]?.question ?? "Waiting for input"}
+                {request.questions[0]?.question ??
+                  t("chat.composer.userInput.waiting")}
               </span>
             </div>
           ))}
@@ -258,7 +278,9 @@ function ChatUserInputQuestion({
                 <span className={cn(BADGE, "border bg-muted/60")}>
                   <PenLineIcon className="size-3" />
                 </span>
-                <span className="truncate">都不合适，告诉 Agent 其它做法</span>
+                <span className="truncate">
+                  {t("chat.composer.userInput.other")}
+                </span>
               </button>
             )}
             {question.multiSelect && (
@@ -269,7 +291,7 @@ function ChatUserInputQuestion({
                 size="sm"
                 type="button"
               >
-                确认选择
+                {t("chat.composer.userInput.confirm")}
               </Button>
             )}
             {!question.required && (
@@ -297,7 +319,7 @@ function ChatUserInputQuestion({
             className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             disabled={pending.busy}
             onChange={(event) => setText(event.currentTarget.value)}
-            placeholder="告诉 Agent 你的决定…"
+            placeholder={t("chat.composer.userInput.decisionPlaceholder")}
             type={question.isSecret ? "password" : "text"}
             value={text}
           />
@@ -307,7 +329,7 @@ function ChatUserInputQuestion({
             size="sm"
             type="submit"
           >
-            发送
+            {t("chat.composer.userInput.send")}
           </Button>
           {!question.required && (
             <SkipButton
@@ -318,8 +340,8 @@ function ChatUserInputQuestion({
         </form>
       )}
 
-      {pending.error && (
-        <p className="mt-1.5 text-destructive text-xs">{pending.error}</p>
+      {errorText && (
+        <p className="mt-1.5 text-destructive text-xs">{errorText}</p>
       )}
     </section>
   );

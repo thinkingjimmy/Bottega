@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppStore, ProjectStore, AppGrantAuthority ordinary/Studio projections, the canonical effective-workspace resolver, trusted renderer residence, and shared surface DTOs
- * [OUTPUT]: Provides AppAttachmentSurfaceLeaseRegistry with exact chat-tab/Studio authorization, renderer ownership, idempotent foreign-cleanup rejection, drift revalidation, bounded tombstones, and row-mutation admission
+ * [OUTPUT]: Provides AppAttachmentSurfaceLeaseRegistry with exact chat-tab/Studio authorization, cutover-derived runtime leases, read-only staging/draining generations, active-only mutation fencing, renderer ownership, drift revalidation, and bounded tombstones
  * [POS]: Main-only UI capability registry for apps/attachments; a slot or grant never substitutes for a live surface lease
  */
 
@@ -10,7 +10,7 @@ import type {
   AppSurfaceAcquireInput,
 } from "../../../../shared/apps-ipc";
 import type { BaseMutationOperation } from "../../../../shared/bases-ipc";
-import type { ProjectStore } from "../../projects/project-store";
+import type { ProjectStore } from "../../projects/store/project-store";
 import type { AppStore } from "../app-store";
 import type { AppGrantAuthority } from "./grant-authority";
 import type { TrustedRendererContext } from "../../window/surfaces/trusted-renderer-context";
@@ -35,9 +35,13 @@ export class AppAttachmentSurfaceLeaseRegistry {
       webContentsId: number;
       rendererIncarnation: string;
     }> | null;
+    stagingGenerationId: string | null;
+    sourceSurfaceLeaseId: string | null;
   }>();
   private readonly tombstones = new Map<string, number>();
   private resolveEffectiveWorkspace: EffectiveWorkspaceResolver | null = null;
+  private isStagingGeneration: (appId: string, generationId: string) => boolean =
+    () => false;
   private static readonly TOMBSTONE_TTL_MS = 15 * 60_000;
   private static readonly TOMBSTONE_LIMIT = 2_048;
 
@@ -54,6 +58,12 @@ export class AppAttachmentSurfaceLeaseRegistry {
     this.resolveEffectiveWorkspace = resolve;
   }
 
+  configureStagingGeneration(
+    resolve: (appId: string, generationId: string) => boolean
+  ) {
+    this.isStagingGeneration = resolve;
+  }
+
   async acquire(
     input: AppSurfaceAcquireInput,
     context?: TrustedRendererContext
@@ -67,6 +77,13 @@ export class AppAttachmentSurfaceLeaseRegistry {
       throw statusError(403, "当前 conversation incarnation 没有 App surface grant");
     }
     const app = this.apps.get(input.appId);
+    if (
+      app?.activeUseSwitch &&
+      app.activeUseSwitch.phase !== "issuance-open" &&
+      app.activeUseSwitch.phase !== "completed"
+    ) {
+      throw statusError(409, "App conversation residence is still switching");
+    }
     const active = app?.generationBinding.active;
     const generation = app?.generations.find(
       (item) => item.generationId === active?.generationId
@@ -112,12 +129,58 @@ export class AppAttachmentSurfaceLeaseRegistry {
             rendererIncarnation: context.rendererIncarnation,
           }
         : null,
+      stagingGenerationId: null,
+      sourceSurfaceLeaseId: null,
+    });
+    return structuredClone(surface);
+  }
+
+  async stage(surfaceLeaseId: string, generationId: string) {
+    const source = await this.requireLive(surfaceLeaseId, false);
+    const stored = this.leases.get(surfaceLeaseId);
+    const app = this.apps.get(source.appId);
+    const generation = app?.generations.find(
+      (item) => item.generationId === generationId
+    );
+    if (
+      !stored ||
+      !app ||
+      !generation ||
+      (app.generationBinding.pending?.generationId !== generationId &&
+        app.generationBinding.active?.generationId !== generationId) ||
+      !this.isStagingGeneration(source.appId, generationId)
+    ) {
+      throw statusError(409, "App generation 当前不可签发 staging surface");
+    }
+    const surface: AppAttachmentSurface = {
+      ...source,
+      surfaceLeaseId: randomUUID(),
+      generationId,
+      contentDigest: generation.contentDigest,
+      lifecycleRevision:
+        app.generationBinding.active?.generationId === generationId
+          ? app.lifecycleRevision
+          : app.lifecycleRevision + 1,
+    };
+    this.leases.set(surface.surfaceLeaseId, {
+      surface,
+      grantRevisionKey: stored.grantRevisionKey,
+      renderer: stored.renderer,
+      stagingGenerationId: generationId,
+      sourceSurfaceLeaseId: surfaceLeaseId,
     });
     return structuredClone(surface);
   }
 
   release(surfaceLeaseId: string) {
     if (this.leases.delete(surfaceLeaseId)) this.rememberGone(surfaceLeaseId);
+  }
+
+  releaseDerived(surfaceLeaseId: string) {
+    const stored = this.leases.get(surfaceLeaseId);
+    if (!stored?.sourceSurfaceLeaseId) return false;
+    this.release(surfaceLeaseId);
+    return true;
   }
 
   releaseFromRenderer(
@@ -148,7 +211,7 @@ export class AppAttachmentSurfaceLeaseRegistry {
 
   /** 逐请求复核入口；UI 与 mutation 共用同一条 generation/grant 漂移判据。 */
   describe(surfaceLeaseId: string) {
-    return this.requireLive(surfaceLeaseId);
+    return this.requireLive(surfaceLeaseId, false);
   }
 
   revokeApp(appId: string) {
@@ -173,7 +236,7 @@ export class AppAttachmentSurfaceLeaseRegistry {
     ownerKey: string;
     operation: BaseMutationOperation;
   }) {
-    const lease = await this.requireLive(input.surfaceLeaseId);
+    const lease = await this.requireLive(input.surfaceLeaseId, true);
     if (
       lease.ownerKey !== input.ownerKey ||
       lease.domainIdentity.kind !== "base" ||
@@ -188,7 +251,7 @@ export class AppAttachmentSurfaceLeaseRegistry {
     return lease;
   }
 
-  private async requireLive(surfaceLeaseId: string) {
+  private async requireLive(surfaceLeaseId: string, requireActive = false) {
     const stored = this.leases.get(surfaceLeaseId);
     if (!stored) {
       this.pruneTombstones();
@@ -224,19 +287,64 @@ export class AppAttachmentSurfaceLeaseRegistry {
     const app = this.apps.get(lease.appId);
     const active = app?.generationBinding.active;
     const generation = app?.generations.find(
-      (item) => item.generationId === active?.generationId
+      (item) => item.generationId === lease.generationId
     );
-    const effective = await this.surfaceGrant(lease);
+    const isActive = active?.generationId === lease.generationId;
+    const isDraining = Boolean(
+      app?.generationBinding.drainingGenerationIds.includes(lease.generationId)
+    );
+    const isStaging = this.isStagingGeneration(lease.appId, lease.generationId);
     const workspaceAuthorityIdentity = this.workspaceAuthority(
       lease.conversationId,
       410
     );
+    /* A promoted generation must not turn the old iframe into an abrupt 410.
+       Its exact sealed generation may finish reads while renderer double-buffering
+       converges, but mutations still require the current active lifecycle fence. */
+    if (
+      !requireActive &&
+      app?.state === "ready" &&
+      generation?.contentDigest === lease.contentDigest &&
+      isStaging &&
+      workspaceAuthorityIdentity === lease.workspaceAuthorityIdentity
+    ) {
+      const effective = await this.surfaceGrant(lease);
+      if (
+        effective?.snapshot.conversationIncarnationId !==
+          lease.conversationIncarnationId ||
+        !effective ||
+        revisionKey(effective.snapshot) !== stored.grantRevisionKey
+      ) {
+        this.leases.delete(surfaceLeaseId);
+        this.rememberGone(surfaceLeaseId);
+        throw statusError(410, "App staging surface lease 已因 grant 变化失效");
+      }
+      return structuredClone(lease);
+    }
+    if (
+      !requireActive &&
+      app?.state === "ready" &&
+      generation?.contentDigest === lease.contentDigest &&
+      isDraining &&
+      workspaceAuthorityIdentity === lease.workspaceAuthorityIdentity
+    ) {
+      return structuredClone(lease);
+    }
+    const effective = await this.surfaceGrant(lease);
+    if (
+      isActive &&
+      stored.stagingGenerationId === lease.generationId &&
+      effective?.snapshot.conversationIncarnationId === lease.conversationIncarnationId
+    ) {
+      stored.grantRevisionKey = revisionKey(effective.snapshot);
+      stored.stagingGenerationId = null;
+    }
     if (
       !app ||
       app.state !== "ready" ||
+      !isActive ||
       app.lifecycleRevision !== lease.lifecycleRevision ||
-      generation?.generationId !== lease.generationId ||
-      generation.contentDigest !== lease.contentDigest ||
+      generation?.contentDigest !== lease.contentDigest ||
       effective?.snapshot.conversationIncarnationId !==
         lease.conversationIncarnationId ||
       !effective ||
@@ -322,6 +430,8 @@ function revisionKey(snapshot: {
   projectGrantRevision: number | null;
   membershipRevision: number;
   defaultGrantRevision: number;
+  studioGrantRevision?: number;
+  baseGuiDecisionRevision?: number;
 }) {
   return [
     snapshot.chatGrantRevision,
@@ -329,6 +439,8 @@ function revisionKey(snapshot: {
     snapshot.projectGrantRevision ?? -1,
     snapshot.membershipRevision,
     snapshot.defaultGrantRevision,
+    snapshot.studioGrantRevision ?? -1,
+    snapshot.baseGuiDecisionRevision ?? -1,
   ].join(":");
 }
 

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Apps/Chats stores, Sections pending CreateIntent, shared AppLocale/local detachment causes, Agent conversation lifecycle, Memory rebind fence, Design rebind observer, ProjectStore, ProjectResourceCleanupCoordinator, and ProjectsService
- * [OUTPUT]: Provides composeProjectsService, which wires Project-held lifecycle callbacks, unified record cleanup, stale-session release, and main-owned rebind evidence into Memory and Design convergence
+ * [INPUT]: Depends on Apps plus narrow Chat metadata stores, Sections pending CreateIntent, shared AppLocale/local detachment causes, Agent conversation lifecycle, Memory rebind fence, Design rebind observer, ProjectStore, ProjectResourceCleanupCoordinator, and ProjectsService
+ * [OUTPUT]: Provides composeProjectsService, which wires authoritative App-directory reveal, Project-held lifecycle callbacks, Base-custody existence/cleanup, unified record cleanup, stale-session release, and main-owned rebind evidence into Memory and Design convergence
  * [POS]: The main composition of the projects module; ProjectsService maintains a domain-specific index that is only responsible for lifecycle and instance order
  */
 
@@ -15,9 +15,9 @@ import type { ChatsService } from "../chats/chats-service";
 import type { BasesService } from "../bases/bases-service";
 import type { MemoryService } from "../memory/service/memory-service";
 import type { ConversationDeletionCoordinator } from "../deletion/conversation-deletion-coordinator";
-import type { ProjectStore } from "./project-store";
+import type { ProjectStore } from "./store/project-store";
 import { ProjectsService } from "./projects-service";
-import { ProjectRebindJournal } from "./rebind-journal";
+import { ProjectRebindJournal } from "./rebind/rebind-journal";
 import type { AppLocale } from "../../../shared/i18n/locale";
 import type { ProjectLocalDetachReason } from "../../../shared/projects-ipc";
 import type { ProjectResourceCleanupCoordinator } from "./resource-cleanup/coordinator";
@@ -44,8 +44,19 @@ export function composeProjectsService(input: {
     resolveApp: (appId) => input.apps()?.resolveApp(appId),
     resolveAppForBinding: (appId) =>
       input.apps()?.resolveAppForBinding(appId),
+    resolveAppDirectory: (appId) => {
+      const apps = input.apps();
+      if (!apps?.isProjectAvailable(appId)) return undefined;
+      return apps.store.get(appId)?.dir;
+    },
     isAppProjectAvailable: (appId) =>
       input.apps()?.isProjectAvailable(appId) ?? false,
+    canPinApp: (appId) => {
+      const record = input.apps()?.store.get(appId);
+      return Boolean(
+        record?.state === "ready" && record.generationBinding.active
+      );
+    },
     listProjectRefs: () => input.chatStore()?.listProjectRefs() ?? new Map(),
     removeChatsByProject: (projectId, projectLifecycle) =>
       input.chats()?.removeByProject(projectId, projectLifecycle) ??
@@ -53,6 +64,8 @@ export function composeProjectsService(input: {
     removeBaseForProject: async (projectId) => {
       await input.bases()?.removeForProject(projectId);
     },
+    hasBaseForProject: (projectId) =>
+      input.bases()?.hasProjectBase(projectId) ?? true,
     cancelTurnsByProject: (projectId) =>
       cancelConversations(input.chatStore()?.listByProject(projectId) ?? []),
     hasActiveTurnsByProject: (projectId) =>
@@ -80,7 +93,7 @@ export function composeProjectsService(input: {
     localDetachReasons: input.localDetachReasons,
     releaseChatProject: async (chatId) => {
       const chats = input.chats();
-      const record = await input.chatStore()?.get(chatId);
+      const record = input.chatStore()?.getMetadata(chatId);
       if (!chats) throw new Error("ChatsService 尚未初始化");
       if (record?.session) {
         await chats.replaceSession(

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, i18n, AppsProvider, App Card/Progress, Add AppDialog, PresetShelf/PresetInstallDialog, Sheet and PageShell
- * [OUTPUT]: Provides AppsListView single-page entry; Grid, empty start shelf, progress/log and loading/alert mode installed
+ * [INPUT]: Depends on React/router navigation/progress and rejected-destination state, i18n, AppsProvider, App Card/Progress, Add AppDialog, PresetShelf/PresetInstallDialog, Sheet and PageShell
+ * [OUTPUT]: Provides AppsListView single-page entry with rejected App navigation evidence; preset authorization leads directly to canonical App detail while Web installs retain progress UI
  * [POS]: views `/apps` import of products; The page only tells you what's installed, the first App only enters from the empty shelf, the page head + goes straight to GitHub installation
  */
 
@@ -31,6 +31,8 @@ import { LayoutGrid } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type { PresetAppSummary } from "../../shared/apps-ipc";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
+import { canonicalAppSurfaceRoute } from "../../shared/window-surfaces-ipc";
 
 type InstalledApp = Extract<AppListItem, { kind: "installed" }>;
 /* epoch 让「再打开一次」成为一次新挂载：安装弹窗因此一次挂载只 probe 一次，
@@ -147,6 +149,9 @@ export function EmptyAppsPanel({
 
 export function AppsListView() {
   const { t } = useAppTranslation();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const {
     acknowledgeSidebarStatus,
     apps,
@@ -164,6 +169,11 @@ export function AppsListView() {
     revision: 0,
   });
   const [presetFlow, setPresetFlow] = useState<PresetFlow | null>(null);
+  const navigationError =
+    typeof (location.state as { appNavigationError?: unknown } | null)
+      ?.appNavigationError === "string"
+      ? (location.state as { appNavigationError: string }).appNavigationError
+      : "";
   const progressApp = apps.find(
     (app): app is InstalledApp =>
       app.kind === "installed" &&
@@ -177,6 +187,27 @@ export function AppsListView() {
       revision: current.revision + 1,
     }));
   };
+
+  useEffect(() => {
+    const appId = searchParams.get("progress");
+    if (!appId || loading) return;
+    const requested = apps.find(
+      (app): app is InstalledApp =>
+        app.kind === "installed" && app.record.id === appId
+    );
+    const timer = window.setTimeout(() => {
+      if (requested && isWorkingState(requested.record.state)) {
+        setProgressRequest((current) => ({
+          appId,
+          revision: current.revision + 1,
+        }));
+      }
+      const next = new URLSearchParams(searchParams);
+      next.delete("progress");
+      setSearchParams(next, { replace: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [apps, loading, searchParams, setSearchParams]);
 
   const openPreset = (preset: PresetAppSummary) => {
     setPresetFlow((current) => ({
@@ -198,6 +229,14 @@ export function AppsListView() {
         actions={<AddAppDialog onInstallStarted={openProgress} />}
       >
         <SlimScroller className="h-full overflow-y-auto p-4">
+          {navigationError && (
+            <p
+              role="alert"
+              className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm"
+            >
+              {navigationError}
+            </p>
+          )}
           {/* 横幅只承接与「有哪些 App」无关的运行时降级；列表自身的问题
               归列表位置去说，预设包的问题归安装弹窗去说。 */}
           {runtimeWarning && (
@@ -238,7 +277,7 @@ export function AppsListView() {
           onInstall={async (input) => {
             const record = await installPreset(input);
             highlightApp(record.id);
-            openProgress(record.id);
+            navigate(canonicalAppSurfaceRoute(record.id));
             return record;
           }}
           onOpenChange={(open) =>

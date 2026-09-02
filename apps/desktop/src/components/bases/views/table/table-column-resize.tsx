@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, i18n, UI, horizontal Pointer Capture resize core, shared column width on the bottom boundary with state BaseMutationOutcome judgment type
- * [OUTPUT]: Provides ColumnResizeHandle: Drag/keyboard width control on the dashboard separator line, drag period is reported in real time, release is submitted, pointer is removed and cancelled at the end
- * [POS]: width interacting sheets of the views/table column; The definitions of the column are unknown, and the lasting chromatic width is not known, as the CAS is given by the workbench
+ * [INPUT]: Depends on React pointer/keyboard events, i18n, and the BaseMutationOutcome contract
+ * [OUTPUT]: Provides ColumnResizeHandle with localized semantics, live drag previews, and release-only commits
+ * [POS]: Column-width interaction primitive for bases/views/table; Workbench owns persistent CAS updates
  */
 
 import {
@@ -85,7 +85,7 @@ export function ColumnResizeHandle({
   };
   return (
     <button
-      aria-label={`Resize ${name} column`}
+      aria-label={t("bases.table.resizeAria", { column: name })}
       aria-orientation="vertical"
       aria-valuemax={BASE_COLUMN_WIDTH_MAX}
       aria-valuemin={BASE_COLUMN_WIDTH_MIN}

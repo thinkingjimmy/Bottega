@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the type of AppRecord/AppOperation shared/apps-ipc
- * [OUTPUT]: Provides status document mapping, failed/working/pending-import/awaiting-generation predicates, the record-level badge label, pronouns and leave page rules
- * [POS]: state of apps → state of components→ Chinese text file only source, shared card with details page, eliminate three sets of maps simultaneously
+ * [OUTPUT]: Provides lifecycle/progress translation maps, effective operation/cancellation predicates, failed/working/pending-import/awaiting-generation predicates, the record-level badge key, and detail redirect rules
+ * [POS]: Pure Apps lifecycle semantics shared by cards, progress, and failure surfaces; locale copy remains in the Apps catalog
  */
 
 import type { AppOperation, AppRecord } from "../../../shared/apps-ipc";
@@ -9,36 +9,70 @@ import type { AppOperation, AppRecord } from "../../../shared/apps-ipc";
 type AppState = AppRecord["state"];
 type FailedState = "install-failed" | "update-failed" | "delete-failed";
 
-export const stateLabel: Record<AppState, string> = {
-  creating: "创建中",
-  installing: "安装中",
-  ready: "已就绪",
-  "install-failed": "安装失败",
-  updating: "更新中",
-  "update-failed": "更新失败",
-  deleting: "删除中",
-  "delete-failed": "删除失败",
-  quarantined: "已隔离",
+export const stateLabelKey: Record<AppState, string> = {
+  creating: "apps.state.creating",
+  installing: "apps.state.installing",
+  ready: "apps.state.ready",
+  "install-failed": "apps.state.installFailed",
+  updating: "apps.state.updating",
+  "update-failed": "apps.state.updateFailed",
+  deleting: "apps.state.deleting",
+  "delete-failed": "apps.state.deleteFailed",
+  quarantined: "apps.state.quarantined",
 };
 
-export const failureTitle: Record<FailedState, string> = {
-  "install-failed": "安装失败",
-  "update-failed": "更新失败",
-  "delete-failed": "删除失败",
+export const failureTitleKey: Record<FailedState, string> = {
+  "install-failed": "apps.state.installFailed",
+  "update-failed": "apps.state.updateFailed",
+  "delete-failed": "apps.state.deleteFailed",
 };
 
 /** 重试按钮文案；install-failed 统一为"干净重装"（retryInstall 会清空 manifest 重装）。 */
-export const retryLabel: Record<FailedState, string> = {
-  "install-failed": "干净重装",
-  "update-failed": "重试构建与启动",
-  "delete-failed": "重试删除残留",
+export const retryLabelKey: Record<FailedState, string> = {
+  "install-failed": "apps.state.retryCleanInstall",
+  "update-failed": "apps.state.retryBuild",
+  "delete-failed": "apps.state.retryDelete",
 };
 
-export const cancelOperationLabel: Record<AppOperation, string> = {
-  install: "取消安装",
-  update: "取消更新",
-  repair: "取消修复",
+export type CancelableAppOperation = Exclude<AppOperation, "delete">;
+
+export const cancelOperationLabelKey: Record<CancelableAppOperation, string> = {
+  install: "apps.state.cancelInstall",
+  update: "apps.state.cancelUpdate",
+  repair: "apps.state.cancelRepair",
 };
+
+export const progressTitleKey: Record<AppOperation, string> = {
+  install: "apps.progress.installingTitle",
+  update: "apps.progress.updatingTitle",
+  repair: "apps.progress.repairingTitle",
+  delete: "apps.progress.deletingTitle",
+};
+
+export const progressAriaKey: Record<AppOperation, string> = {
+  install: "apps.progress.installingAria",
+  update: "apps.progress.updatingAria",
+  repair: "apps.progress.repairingAria",
+  delete: "apps.progress.deletingAria",
+};
+
+export const effectiveAppOperation = (
+  record: AppRecord,
+  operation?: AppOperation
+): AppOperation => {
+  if (record.state === "deleting") return "delete";
+  if (record.state === "creating" || record.state === "installing") {
+    return "install";
+  }
+  if (record.state === "updating") {
+    return operation === "repair" ? "repair" : "update";
+  }
+  return operation ?? "install";
+};
+
+export const isCancelableOperation = (
+  operation: AppOperation
+): operation is CancelableAppOperation => operation !== "delete";
 
 export const isFailedState = (state: AppState): state is FailedState =>
   state === "install-failed" ||
@@ -65,8 +99,12 @@ export const isWorkingState = (state: AppState) =>
 export const isAwaitingGeneration = (record: AppRecord) =>
   record.state === "ready" && record.generationBinding.active === null;
 
-export const appStateLabel = (record: AppRecord) =>
-  isAwaitingGeneration(record) ? "待成代" : stateLabel[record.state];
+const awaitingGenerationLabelKey = "apps.state.awaitingGeneration";
+
+export const appStateLabelKey = (record: AppRecord) =>
+  isAwaitingGeneration(record)
+    ? awaitingGenerationLabelKey
+    : stateLabelKey[record.state];
 
 export const shouldRedirectAppDetail = (state: AppState) =>
   state === "creating" || state === "installing";

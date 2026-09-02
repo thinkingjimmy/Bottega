@@ -1,10 +1,16 @@
 /**
- * [INPUT]: Depends on i18n, scope-aware Extension client commands, package cards/dialog, and Settings primitives
- * [OUTPUT]: Provides one flat owned-package lifecycle surface reusable by global and Project Settings
+ * [INPUT]: Depends on React state, an optional stable toolbar action host, i18n, scope-aware Extension client commands, package cards/dialog, and Settings primitives
+ * [OUTPUT]: Provides one flat owned-package lifecycle surface reusable by global and Project Settings, with a portal-mounted global acquisition action or section-level fallback
  * [POS]: Canonical Extension UI; CLI Agent-plugin diagnostics stay main-only and invalidations trigger qualified refetches
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { Blocks, Plus } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type {
@@ -42,17 +48,20 @@ import {
   resolveUninstallExtension,
 } from "@/lib/extensions-client";
 import { errorMessage } from "@/lib/errors";
+import { Button } from "@ai-chat/ui/components/ui/button";
 
 export function ExtensionsContent({
   scope = GLOBAL_PRODUCT_RESOURCE_SCOPE,
   projectLifecycleRevision = null,
   description,
   packageIdentity = null,
+  toolbarActionHost,
 }: {
   scope?: ProductResourceScope;
   projectLifecycleRevision?: number | null;
   description?: string;
   packageIdentity?: string | null;
+  toolbarActionHost?: HTMLElement | null;
 }) {
   const { t } = useAppTranslation();
   const authorityKey = `${productResourceScopeKey(scope)}@${projectLifecycleRevision ?? "none"}`;
@@ -183,9 +192,25 @@ export function ExtensionsContent({
   const alert = bridgeMissing
     ? t("settings.extensions.page.bridgeMissing")
     : error;
+  const beginInstall = () => {
+    const epoch = nextEpoch();
+    setInstallState({ authorityKey, epoch, source: { repoUrl: "" } });
+  };
 
   return (
     <>
+      {toolbarActionHost &&
+        createPortal(
+          <Button
+            disabled={busy || bridgeMissing || !authorityReady}
+            onClick={beginInstall}
+            size="lg"
+          >
+            <Plus />
+            {t("settings.extensions.page.installGithub")}
+          </Button>,
+          toolbarActionHost
+        )}
       <div className="space-y-8">
         {snapshot?.productSessionAdmissionClosed && (
           <SettingsAlert tone="warn">
@@ -193,19 +218,16 @@ export function ExtensionsContent({
           </SettingsAlert>
         )}
         <SettingsSection
-          action={
+          action={toolbarActionHost === undefined ? (
             <SettingsButton
               disabled={busy || bridgeMissing || !authorityReady}
-              onClick={() => {
-                const epoch = nextEpoch();
-                setInstallState({ authorityKey, epoch, source: { repoUrl: "" } });
-              }}
+              onClick={beginInstall}
               variant="outline"
             >
               <Plus className="size-4" />
               {t("settings.extensions.page.installGithub")}
             </SettingsButton>
-          }
+          ) : undefined}
           alert={alert || undefined}
           description={description ?? t("settings.extensions.page.installedDescription")}
           title={t("settings.extensions.page.installedTitle")}

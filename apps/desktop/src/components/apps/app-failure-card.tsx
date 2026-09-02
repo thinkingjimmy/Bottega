@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on app-state Document mapping, shared repairSite eligibility is determined by ui card/button
- * [OUTPUT]: Provides AppFailureCard, rendering the failed title/phase/error; Durable Base import can only be continued/cancelled, normal failure can be fixed
- * [POS]: The failure status of the apps component shows the unit, consumed by AppDetailView
+ * [INPUT]: Depends on app-state translation-key maps, Apps i18n, repair eligibility, and UI card/button primitives
+ * [OUTPUT]: Provides AppFailureCard for retry, cancel, repair, and full-log failure actions
+ * [POS]: Apps failure surface consumed by AppDetailView; durable Base imports expose only continue or cancel
  */
 
 import { RefreshCw, Trash2, Wrench } from "lucide-react";
@@ -15,11 +15,12 @@ import {
 } from "@ai-chat/ui/components/ui/card";
 import { repairSite, type AppRecord } from "../../../shared/apps-ipc";
 import {
-  failureTitle,
+  failureTitleKey,
   isFailedState,
   isPendingBaseImport,
-  retryLabel,
+  retryLabelKey,
 } from "./app-state";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 type AppFailureCardProps = {
   record: AppRecord;
@@ -36,15 +37,19 @@ export function AppFailureCard({
   onRepair,
   onShowLog,
 }: AppFailureCardProps) {
+  const { t } = useAppTranslation();
   if (!isFailedState(record.state)) return null;
   const pendingImport = isPendingBaseImport(record);
   return (
     <div className="flex size-full items-center justify-center p-8">
       <Card className="max-w-lg">
         <CardHeader>
-          <CardTitle>{failureTitle[record.state]}</CardTitle>
+          <CardTitle>{t(failureTitleKey[record.state])}</CardTitle>
           <CardDescription>
-            阶段：{record.lastError?.phase ?? "unknown"}
+            {t("apps.failure.phase", {
+              phase:
+                record.lastError?.phase ?? t("apps.failure.unknownPhase"),
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -54,22 +59,24 @@ export function AppFailureCard({
           <div className="flex gap-2">
             <Button onClick={onRetry}>
               <RefreshCw />
-              {pendingImport ? "继续安装" : retryLabel[record.state]}
+              {pendingImport
+                ? t("apps.failure.continueInstall")
+                : t(retryLabelKey[record.state])}
             </Button>
             {pendingImport && (
               <Button variant="destructive" onClick={onCancel}>
                 <Trash2 />
-                取消安装
+                {t("apps.failure.cancelInstall")}
               </Button>
             )}
             {!pendingImport && repairSite(record) && (
               <Button variant="secondary" onClick={onRepair}>
                 <Wrench />
-                让维护 Agent 诊断修复
+                {t("apps.failure.repair")}
               </Button>
             )}
             <Button variant="outline" onClick={onShowLog}>
-              查看完整日志
+              {t("apps.failure.showLog")}
             </Button>
           </div>
         </CardContent>

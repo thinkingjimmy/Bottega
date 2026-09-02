@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on BasesProvider snapshots/mutations, i18n, the six row-backed views, owner-native uploads, chart operations, and Base chrome
- * [OUTPUT]: Provides BaseWorkbench with one snapshot-scoped canonical BaseCellContext, view-only row/column projection, CAS mutations, and full relation options
- * [POS]: The renderer Base composition root; it owns the canonical-versus-visible boundary and passes explicit context to every view/editor pipeline
+ * [OUTPUT]: Provides BaseWorkbench with canonical context, localized creation defaults, structured mutation recovery, CAS operations, and six view projections
+ * [POS]: Renderer Base composition root; it owns translation/state orchestration and passes explicit context to every view/editor pipeline
  */
 
 import {
@@ -38,7 +38,6 @@ import { renumberViews } from "../../../shared/base-views";
 import { useBases } from "@/components/providers/bases-provider";
 import { errorMessage } from "@/lib/errors";
 import {
-  baseMutationErrorCopy,
   isBaseRevisionConflict,
   recoverBaseMutationError,
   type BaseMutationOutcome,
@@ -69,7 +68,7 @@ import {
   patchLatestGalleryConfig,
   prepareGalleryUpload,
   prepareNewView,
-  titleCase,
+  starterSelectOptions,
   visibleColumns,
   withGroupBy,
   withMapColumn,
@@ -222,15 +221,15 @@ export function BaseWorkbench({
     );
   }
 
-  /* mutation 失败只有一条呈现路径。判别式 code 命中目录就说母语，
-     其余交给冲突恢复（它顺带决定要不要全量回载）——两者都不该在
-     调用点各写一遍，否则同一个 formula_cycle 在这条路上是中文、
-     在那条路上还是 main 抛来的裸串。 */
+  /* mutation 失败只有一条呈现路径。恢复层先按结构化 code 决定是否
+     回载，再把 copy descriptor 交给当前语言；只有未知错误才显示原始 message。 */
   const describeMutationError = async (cause: unknown) => {
-    const copy = baseMutationErrorCopy(cause);
-    return copy
-      ? t(copy.key, copy.values)
-      : await recoverBaseMutationError(cause, () => bases.get(ownerKey));
+    const recovery = await recoverBaseMutationError(cause, () =>
+      bases.get(ownerKey)
+    );
+    return "copy" in recovery
+      ? t(recovery.copy.copyKey, recovery.copy.values)
+      : recovery.message;
   };
   const run = async <T,>(operation: () => Promise<T>) => {
     setBusy(true);
@@ -449,15 +448,17 @@ export function BaseWorkbench({
     const id = `col_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
     const column: BaseColumn = {
       id,
-      name: `${titleCase(type)} ${snapshot.meta.columns.length + 1}`,
+      /* 默认列名与 select 选项都只在创建时取当前语言；既有 schema/row
+         没有迁移路径，也不会因用户后来切换语言而被改写。 */
+      name: `${t(`bases.columnType.${type}`, { defaultValue: type })} ${snapshot.meta.columns.length + 1}`,
       type,
       ...(type === "select"
         ? {
-            options: [
-              { id: "todo", label: "Todo" },
-              { id: "doing", label: "Doing" },
-              { id: "done", label: "Done" },
-            ],
+            options: starterSelectOptions({
+              todo: t("bases.starterStatus.todo"),
+              doing: t("bases.starterStatus.doing"),
+              done: t("bases.starterStatus.done"),
+            }),
           }
         : {}),
       ...(type === "formula" ? { formula } : {}),
@@ -489,7 +490,10 @@ export function BaseWorkbench({
   };
   const addView = async (type: BaseViewConfig["type"]) => {
     const id = `view_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
-    const prepared = prepareNewView(type, snapshot.meta.columns);
+    const prepared = prepareNewView(type, snapshot.meta.columns, {
+      image: t("bases.columnDefaults.image"),
+      createdAt: t("bases.columnDefaults.createdAt"),
+    });
     const view: BaseView = {
       id,
       /* 新视图的默认名按当前语言取一次：它是落盘的数据，此后不再随语言变。 */
@@ -542,7 +546,7 @@ export function BaseWorkbench({
       fileReadFailedMessage: t("bases.record.fileReadFailed"),
     });
     const result = await putBaseAttachment({ ...upload, surfaceLeaseId });
-    if (!result.ok) throw new Error(result.error.message);
+    if (!result.ok) throw Object.assign(new Error(result.error.message), result.error);
     const rowPatch = Object.fromEntries(
       Object.entries(values).filter(
         (entry): entry is [string, Exclude<(typeof entry)[1], undefined>] =>

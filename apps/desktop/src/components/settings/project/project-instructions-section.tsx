@@ -220,7 +220,7 @@ export function ProjectInstructionsSection({ project }: { project: Project }) {
 
 type Translate = ReturnType<typeof useAppTranslation>["t"];
 function projectInstructionError(t: Translate, code: string) {
-  const keys: Record<string, string> = {
+  const errorKeys: Record<string, string> = {
     conflict: "settings.personalization.errors.conflict",
     "too-large": "settings.personalization.errors.tooLarge",
     "oversized-file": "settings.personalization.errors.oversizedFile",
@@ -231,5 +231,5 @@ function projectInstructionError(t: Translate, code: string) {
     "app-managed": "projectSettings.instructions.appManaged",
     "workspace-changed": "projectSettings.instructions.workspaceChanged",
   } satisfies Record<ProjectInstructionsErrorCode | "workspace-changed", string>;
-  return t(keys[code] ?? "projectSettings.instructions.saveFailed");
+  return t(errorKeys[code] ?? "projectSettings.instructions.saveFailed");
 }

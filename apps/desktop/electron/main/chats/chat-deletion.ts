@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Chat/Attachment Store, durable ConversationDeletionCoordinator, Memory Space, only derivative function/section effect, port and name resource releaser
- * [OUTPUT]: Provides ChatDeletionDriver: local-only/cleanup-and-rebuild prepare/drive Both sections are deleted, restarted, activated fence and coordinatorless synchronous degradation
- * [POS]: The chat module removes the adaptive layer; ChatsService is only responsible for admission/cancel, and deletes journal and resource details without leaking back to the main page
+ * [INPUT]: Depends on the Chat and Attachment stores, the durable ConversationDeletionCoordinator, Memory Space intents, and named resource releasers
+ * [OUTPUT]: Provides ChatDeletionDriver: local-only and cleanup-and-rebuild prepare/drive phases, restart recovery, the conversation fence, and a coordinator-free synchronous fallback
+ * [POS]: Deletion adapter of the chats module; ChatsService only admits and cancels, while the durable journal and resource details stay behind this seam
  */
 
 import type { ChatRecord, ChatsEvent } from "../../../shared/chats-ipc";

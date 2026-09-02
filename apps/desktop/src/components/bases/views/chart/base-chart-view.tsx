@@ -294,7 +294,7 @@ export function BaseChartView({
               <DragOverlay dropAnimation={null}>
                 {activeId ? (
                   <div className="h-32 w-72 rounded-xl border bg-card/95 p-3 shadow-xl">
-                    {byId.get(activeId)?.name ?? "Chart"}
+                    {byId.get(activeId)?.name ?? t("bases.chart.unnamed")}
                   </div>
                 ) : null}
               </DragOverlay>,

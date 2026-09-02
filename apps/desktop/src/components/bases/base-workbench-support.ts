@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Base snapshot/View/attachment DTO, column narrowing of the native language, Chart default inference and browser FileReader
- * [OUTPUT]: Provides Workbench's new View Factory, five view config, pure conversion, column width/column statistics/grouping/field visibility/map column, latest-snapshot Gallery config patch, owner-native input, column projections and file readings in the original language
- * [POS]: The stateless support layer for components/bases; BaseWorkbench maintains the sorting and mutation, and the certainty-preparation logic is focused on this
+ * [INPUT]: Depends on shared Base snapshot/view/attachment DTOs, chart defaults, and browser FileReader
+ * [OUTPUT]: Provides localized starter factories, view preparation, view-config transforms, Gallery CAS/upload preparation, visible-column projection, and file reads
+ * [POS]: Stateless support layer for components/bases; BaseWorkbench owns effects and passes creation-time localized labels into these pure helpers
  */
 
 import type {
@@ -9,6 +9,7 @@ import type {
   BaseColumn,
   BaseColumnType,
   BaseMetaPatch,
+  BaseSelectOption,
   BaseSnapshot,
   BaseView,
   BaseViewConfig,
@@ -47,7 +48,8 @@ export function fileDataUrl(file: File, fallbackMessage: string) {
 /** 六种视图只有一个工厂；Gallery 的列补齐与 config 永远作为同一份结果返回。 */
 export function prepareNewView(
   type: BaseViewConfig["type"],
-  columns: BaseColumn[]
+  columns: BaseColumn[],
+  columnNames: { image: string; createdAt: string }
 ): { columns: BaseColumn[]; config: BaseViewConfig } {
   const preparedColumns = [...columns];
   const firstOfType = (columnType: BaseColumnType) =>
@@ -74,7 +76,7 @@ export function prepareNewView(
         config: { type, charts: [guessChartItem(columns)] },
       };
     case "gallery":
-      return prepareGalleryView(preparedColumns, firstOfType);
+      return prepareGalleryView(preparedColumns, firstOfType, columnNames);
     default:
       return { columns: preparedColumns, config: { type } };
   }
@@ -82,13 +84,18 @@ export function prepareNewView(
 
 function prepareGalleryView(
   columns: BaseColumn[],
-  firstOfType: (type: BaseColumnType) => string | undefined
+  firstOfType: (type: BaseColumnType) => string | undefined,
+  columnNames: { image: string; createdAt: string }
 ): { columns: BaseColumn[]; config: BaseViewConfig } {
   const existingAttachment = firstOfType("attachment");
   const attachmentColumnId =
     existingAttachment ?? allocateColumn(columns, "image");
   if (!existingAttachment) {
-    columns.push({ id: attachmentColumnId, name: "Image", type: "attachment" });
+    columns.push({
+      id: attachmentColumnId,
+      name: columnNames.image,
+      type: "attachment",
+    });
   }
   const groupByDateColumnId = findGeneratedColumn(
     columns,
@@ -98,7 +105,7 @@ function prepareGalleryView(
   if (!columns.some((column) => column.id === groupByDateColumnId)) {
     columns.push({
       id: groupByDateColumnId,
-      name: "Created at",
+      name: columnNames.createdAt,
       type: "date",
     });
   }
@@ -142,8 +149,16 @@ export function visibleColumns(columns: BaseColumn[], view: BaseView) {
   );
 }
 
-export function titleCase(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+export function starterSelectOptions(labels: {
+  todo: string;
+  doing: string;
+  done: string;
+}): BaseSelectOption[] {
+  return [
+    { id: "todo", label: labels.todo },
+    { id: "doing", label: labels.doing },
+    { id: "done", label: labels.done },
+  ];
 }
 
 /* ============================================================================
@@ -223,6 +238,7 @@ export function withMapColumn(
 }
 
 type GalleryConfig = Extract<BaseViewConfig, { type: "gallery" }>;
+const galleryViewChangedKey = "bases.workbench.galleryViewChanged";
 
 /**
  * 只把用户本次改动合并到刚刚从 main 读取的 config；渲染期旧 config 绝不回写。
@@ -235,17 +251,30 @@ export function patchLatestGalleryConfig(
 ): BaseMetaPatch {
   const view = latest.meta.views.find((candidate) => candidate.id === viewId);
   if (!view || view.config.type !== "gallery") {
-    throw new BaseMutationReloadError(
-      "Gallery 视图已被删除或改为其它类型，请重试"
-    );
+    throw new BaseMutationReloadError(galleryViewChangedKey);
   }
   const config: GalleryConfig = { ...view.config, ...patch };
-  requireColumn(latest, config.attachmentColumnId, "attachment", "图片");
+  requireColumn(
+    latest,
+    config.attachmentColumnId,
+    "attachment",
+    "bases.workbench.galleryAttachmentChanged"
+  );
   if (config.titleColumnId) {
-    requireColumn(latest, config.titleColumnId, undefined, "标题");
+    requireColumn(
+      latest,
+      config.titleColumnId,
+      undefined,
+      "bases.workbench.galleryTitleChanged"
+    );
   }
   if (config.groupByDateColumnId) {
-    requireColumn(latest, config.groupByDateColumnId, "date", "日期分组");
+    requireColumn(
+      latest,
+      config.groupByDateColumnId,
+      "date",
+      "bases.workbench.galleryDateChanged"
+    );
   }
   return {
     views: latest.meta.views.map((candidate) =>
@@ -258,13 +287,11 @@ function requireColumn(
   snapshot: BaseSnapshot,
   columnId: string,
   type: BaseColumnType | undefined,
-  label: string
+  errorKey: string
 ) {
   const column = snapshot.meta.columns.find((candidate) => candidate.id === columnId);
   if (!column || (type && column.type !== type)) {
-    throw new BaseMutationReloadError(
-      `Gallery ${label}列已被删除或类型已变化，请重新选择`
-    );
+    throw new BaseMutationReloadError(errorKey);
   }
 }
 

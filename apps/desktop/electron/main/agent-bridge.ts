@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the backend registry, TurnRegistry, structured Agent input, hydrated Project Tools receipts, Chat commit, Gallery, Memory, MCP leases, frozen session configuration, and retry guards
+ * [INPUT]: Depends on the backend registry, TurnRegistry, split public/internal Agent payload validation, hydrated Project Tools receipts, Chat commit, Gallery, Memory, MCP leases, frozen session configuration, and retry guards
  * [OUTPUT]: Provides canonical turn execution with runtime-only Project policy narrowing, MCP plan/session binding guards, same-session Speed convergence, ProductFailure-preserving finalization, leases, interaction/retry IPC, and shutdown
  * [POS]: Main-process multi-backend turn executor; the conversation coordinator supplies already-admitted manual intent
  */
@@ -12,7 +12,7 @@ import {
   type SessionRef,
 } from "../../shared/agent-ipc";
 import { stagedInputReadRoots } from "./agent-input";
-import { validateAgentPayload } from "./agent-payload-validation";
+import { parseAgentPayloadForStart } from "./agent-payload-validation";
 import {
   acquireAgentProcessLease,
   agentProcessSafetyLock,
@@ -31,7 +31,11 @@ import {
   assertResolvedInputCapabilities,
 } from "./backends/capability-validation";
 import { asError, withDeadline } from "./errors";
-import { ProductFailureError } from "../../shared/product-failure";
+import {
+  ProductFailureError,
+  agentRuntimeFailure,
+  diagnosticFailureDetails,
+} from "../../shared/product-failure";
 import { acpStartupBackstopMs } from "./backends/acp/startup/budget";
 import { createAgentBridgeIpcHandlers, registerAgentBridgeIpc } from "./agent/bridge-ipc";
 import type {
@@ -426,7 +430,13 @@ async function spawnAgent(
     if (!entry.turn) resolvedInput?.rollback();
     const terminal = cause instanceof ProductFailureError
       ? { type: "error" as const, failure: cause.failure }
-      : { type: "error" as const, message: asError(cause).message };
+      : {
+          type: "error" as const,
+          failure: agentRuntimeFailure(
+            entry.turn ? "unknown" : "runtime-unavailable",
+            diagnosticFailureDetails(asError(cause).message)
+          ),
+        };
     await finalizeEntry(entry, terminal, options, generation);
   }
 }
@@ -457,8 +467,11 @@ export async function startAgentPayload(
   if (options.platformSupport) {
     assertPlatformCapability(options.platformSupport, "agentTurns");
   }
-  validateAgentPayload(rawPayload);
-  const payload = rawPayload;
+  const payload = parseAgentPayloadForStart(
+    rawPayload,
+    origin,
+    preparedProjectTools?.receipt.projectContext
+  );
   const backend = backendById(payload.turnOptions.backend);
   const snapshot = await backendRuntimeRegistry.resolve(backend.id);
   if (snapshot.runtimeStatus !== "installed") {

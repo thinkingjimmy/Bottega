@@ -4,7 +4,7 @@
  * [POS]: The v2 file layout of bases/store borders on the IO; BaseStore only holds the status machine and submit order
  */
 
-import { copyFile, readFile, readdir, rename, rm } from "node:fs/promises";
+import { copyFile, readFile, readdir, rename, rm, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename, join } from "node:path";
 import {
@@ -70,6 +70,16 @@ export class BaseStoreFiles {
       throw new Error("Base rows 超过 20 MiB");
     }
     return content;
+  }
+
+  async rowsBytes(meta: BaseMeta) {
+    const bytes = (await stat(
+      this.rowsPath(ownerKeyOf(meta.owner), meta.rowsGeneration)
+    )).size;
+    if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes > BASE_ROWS_BYTE_LIMIT) {
+      throw this.options.corrupt("Base rows durable byte identity is invalid");
+    }
+    return bytes;
   }
 
   serializeGallery(gallery: BaseGalleryLedger) {

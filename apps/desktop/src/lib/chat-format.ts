@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on renderer Current Intl locale ((AssistantChatMessage is type-only, not dependent on running)
- * [OUTPUT]: Provides formatMessageTime (formatDuration) with workedForLabel (text of the timetable, null meaning headless)
+ * [OUTPUT]: Provides formatMessageTime (formatDuration) with workedForLabel (null means headless; imported turns with process rows but no source duration report the plain worked label)
  * [POS]: lib's chat shows a formatted pure function, which is run by a message action and consumed by ChatTurn, which is released from React and returns independently
  */
 
@@ -36,8 +36,15 @@ export function formatDuration(ms: number) {
  *     "干了一秒活"的虚报。死前确有过程时头仍要留，那是那段过程的唯一入口。
  * ────────────────────────────────────────────────────────────── */
 export function workedForLabel(message: AssistantChatMessage): string | null {
-  if (message.durationMs === undefined) return null;
   if (message.isError && !message.parts?.length) return null;
+  if (message.durationMs === undefined) {
+    /* 导入的历史里，工时是源自带的一笔账，很多来源根本不记。有过程却没账
+       时说「已处理」，而不是把那排工具行整个藏掉——原生消息没有这种缺口，
+       依旧沿用「没有工时就没有头」。 */
+    return message.segment === "imported" && message.parts?.length
+      ? translate(effectiveLocale(), "chat.worked")
+      : null;
+  }
   return translate(effectiveLocale(), "chat.workedFor", {
     duration: formatDuration(message.durationMs),
   });

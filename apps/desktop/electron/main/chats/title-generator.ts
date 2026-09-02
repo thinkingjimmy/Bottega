@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on BackendDescriptor, HeadlessExecutor, user-authenticated, no-tool-only read-only contracts with shared UTF-8 budgets
- * [OUTPUT]: Provides user-default/ephemeral title job, sanitizeTitle and wait-to-shutdown/reopen barrier
- * [POS]: The chats have a thin layer of title strategy; Unreliable text, no tools, processes, budgets, cancellations and cleanups all belong to the only HeadlessExecutor
+ * [INPUT]: Depends on BackendDescriptor, HeadlessExecutor, the user-default credential contract, the no-tool read-only profile, and the shared UTF-8 budgets
+ * [OUTPUT]: Provides the ephemeral user-default title job, sanitizeTitle, and the shutdown/reopen drain barrier
+ * [POS]: Thin title policy of the chats module; untrusted text, tool denial, process budgets, cancellation, and cleanup all belong to the single HeadlessExecutor
  */
 
 import type { BackendDescriptor, HeadlessRun } from "../backends/types";

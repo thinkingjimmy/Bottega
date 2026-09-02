@@ -1,15 +1,15 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, router, I18n, shadcn Command/Kbd/Spinner, lib/search client, shared search hit and search-text, Chats/Projects Provider, chat-activity-store, activity-groups compareRecent and lib/shortcuts
- * [OUTPUT]: Provides CommandPalette; The empty queries are current, have a query hit on the service end stream, Quick actions are always filtering locally at the end by tag with reactive shortcut keycaps (rebind swaps glyphs, disabled hides them, slot stays), discarded by job/epoch and routed by message locator
+ * [INPUT]: Depends on React, router, I18n, shadcn Command/Kbd/Spinner, shared AgentBackendIcon, lib/search client, shared search hit and search-text, Chats/Projects Provider, chat-activity-store, activity-groups compareRecent and lib/shortcuts
+ * [OUTPUT]: Provides CommandPalette; recent and searched Chat rows carry their Agent identity, empty-query rows are prevalidated executable destinations, query hits stream from main, and Quick actions retain reactive shortcut keycaps and locator routing
  * [POS]: The only command panel owner in the sidebar/search; 3 types of intent (near/hit/action) projected into the same PaletteRow, keyboard navigation handed over to cmdk
  */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router";
-import { Database, MessageSquare, Settings, SquarePen } from "lucide-react";
+import { Database, Settings, SquarePen } from "lucide-react";
 import type { GlobalSearchHit, SearchJobStarted } from "../../../../shared/search-ipc";
 import { normalizedSearchMatch, tokenizeSearchQuery } from "../../../../shared/search-text";
 import { cancelGlobalSearch, pullGlobalSearch, startGlobalSearch } from "@/lib/search/client";
@@ -35,6 +35,8 @@ import { compareRecent } from "@/lib/activity-groups";
 import { useShortcutKeys, type ShortcutId } from "@/lib/shortcuts";
 import { errorMessage } from "@/lib/errors";
 import { AgentBackendIcon } from "@/lib/agent-backends";
+import { openProductDestination, productDestinationRoute } from "@/lib/product-navigation";
+import { searchDestination } from "../../../../shared/placement/search";
 
 /* 七条是「一屏看得完」与「够得着昨天」的交点；再多就得滚，滚起来的
    最近列表和搜索没有区别，那这一组就白设了。 */
@@ -84,7 +86,6 @@ export function CommandPalette({
   const [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [skippedSessions, setSkippedSessions] = useState(0);
   const epoch = useRef(0);
   const jobRef = useRef<SearchJobStarted | null>(null);
 
@@ -93,7 +94,6 @@ export function CommandPalette({
     if (epoch.current !== expectedEpoch || jobRef.current?.jobId !== active.jobId) return;
     setHits((current) => append ? [...current, ...page.hits] : page.hits);
     setCursor(page.nextCursor);
-    setSkippedSessions(page.skippedSessions ?? 0);
   };
 
   useEffect(() => {
@@ -106,7 +106,6 @@ export function CommandPalette({
       if (current !== epoch.current) return;
       setJob(null);
       setError("");
-      setSkippedSessions(0);
       if (!open || !value) {
         setHits([]);
         setCursor(null);
@@ -150,19 +149,32 @@ export function CommandPalette({
     [projects]
   );
   const recents = useMemo(
-    () => chats.filter((chat) => !chat.effectiveArchived).slice().sort(compareRecent).slice(0, RECENT_LIMIT),
+    () => chats
+      .filter((chat) => !chat.effectiveArchived)
+      .flatMap((chat) => {
+        const destination = searchDestination(chat);
+        return destination ? [{ chat, destination }] : [];
+      })
+      .sort((left, right) => compareRecent(left.chat, right.chat))
+      .slice(0, RECENT_LIMIT),
     [chats]
   );
-  const recentRows: PaletteRow[] = recents.map((chat) => ({
+  const recentRows: PaletteRow[] = recents.map(({ chat, destination }) => ({
     key: `chat:${chat.id}`,
     icon: activity.get(chat.id) === "running"
       ? <Spinner className="text-muted-foreground" data-chat-activity="running" />
-      : <MessageSquare />,
+      : (
+          <AgentBackendIcon
+            backend={chat.agent}
+            className="size-3.5"
+            data-agent-backend={chat.agent}
+          />
+        ),
     title: chat.title ?? t("history.searchUntitled"),
     meta: chat.projectId ? projectNames.get(chat.projectId) : undefined,
     run: () => {
       onOpenChange(false);
-      void navigate(`/chat/${chat.id}`);
+      void openProductDestination(destination, navigate);
     },
   }));
 
@@ -170,16 +182,23 @@ export function CommandPalette({
   const hitRows: PaletteRow[] = hits.map((hit) => ({
     key: hit.key,
     icon: hit.source === "chat"
-      ? <MessageSquare />
-      : hit.source === "history" && hit.sourceKind
-        ? <AgentBackendIcon backend={hit.sourceKind} className="size-3.5" />
-        : <Database />,
+      ? (
+          <AgentBackendIcon
+            backend={hit.agent}
+            className="size-3.5"
+            data-agent-backend={hit.agent}
+          />
+        )
+      : <Database />,
     title: hit.title,
     meta: hit.subtitle,
     snippet: hit.snippet,
     run: () => {
       onOpenChange(false);
-      void navigate(locatorRoute(hit));
+      void openProductDestination(
+        hit.destination,
+        (route, options) => navigate(locatorRoute(hit, route), options)
+      );
     },
   }));
 
@@ -245,11 +264,6 @@ export function CommandPalette({
             </CommandGroup>
           )}
           {error && <p className="p-4 text-destructive text-xs" role="alert">{error}</p>}
-          {skippedSessions > 0 && (
-            <p className="px-2.5 py-2 text-[0.625rem] text-muted-foreground" role="status">
-              {t("history.searchSkippedSessions", { count: skippedSessions })}
-            </p>
-          )}
           {cursor && job && (
             <div className="p-1">
               <Button className="w-full" variant="ghost" size="sm" disabled={busy} onClick={() => {
@@ -316,13 +330,8 @@ function filterByQuery(rows: PaletteRow[], query: string) {
   return rows.filter((row) => normalizedSearchMatch(row.title, tokens) !== null);
 }
 
-function locatorRoute(hit: GlobalSearchHit) {
-  const parameter = hit.target?.kind === "chat-message"
-    ? ["m", hit.target.messageId]
-    : hit.target?.kind === "history-block"
-      ? ["b", hit.target.offset]
-      : null;
-  return parameter
-    ? `${hit.route}${hit.route.includes("?") ? "&" : "?"}${parameter[0]}=${encodeURIComponent(parameter[1])}`
-    : hit.route;
+function locatorRoute(hit: GlobalSearchHit, route = productDestinationRoute(hit.destination)) {
+  return hit.target
+    ? `${route}${route.includes("?") ? "&" : "?"}m=${encodeURIComponent(hit.target.messageId)}`
+    : route;
 }

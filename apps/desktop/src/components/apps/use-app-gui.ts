@@ -1,30 +1,36 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, Apps-client readAppGuiInfo/onAppsEvent, app generation revisionKey provided by the caller and apps declared by the AppGuiBinding port
- * [OUTPUT]: Provides useAppGui, generates a generation-fenced gui/status, prepares an error and provides short-lived tokens to AppGuiSurface
- * [POS]: The GUI port of the apps module is adapted to the leaf; token single instance semantics determines that the value point must be the only value point and is invalidated by record revision or main gui events
+ * [INPUT]: Depends on React, Apps-client readAppGuiInfo/ready/release/onAppsEvent, app generation revisionKey provided by the caller and apps declared by the AppGuiBinding port
+ * [OUTPUT]: Provides useAppGui with per-refresh runtime surfaces, staged cutover readiness, generation-fenced gui/status, delayed old-surface release, actionable errors, and short-lived tokens
+ * [POS]: Apps GUI acquisition adapter; one renderer value point owns old and candidate runtime surfaces until double-buffer promotion retires the old lease
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppGuiBinding } from "./app-gui-surface";
 import {
   onAppsEvent,
   readAppGuiInfo,
+  readyAppGuiSurface,
   releaseAppGuiSurface,
 } from "@/lib/apps-client";
 import { errorMessage } from "@/lib/errors";
+import type { AppGuiInfo, AppGuiInfoInput } from "../../../shared/apps-ipc";
 
-const EMPTY = {
+const EMPTY: AppGuiInfo = {
   pages: [] as string[],
   origin: "",
   token: "",
+  generationKey: "",
+  bootstrapProtocol: "load-v0" as const,
+  baseCapabilities: [] as readonly import("../../../shared/apps-ipc").BaseGuiCapability[],
   hostActions: [] as readonly import("../../../shared/apps-ipc").BaseGuiHostActionCapability[],
 };
 
 /**
- * 每次取值都会在 main 侧重扫 gui/ 并轮换 token（旧 token 立刻作废）。
- * 因此全应用只在此一处调用：多点取值会互相撤销，让先加载的 iframe 401。
+ * 每次取值都会在 main 侧重扫 gui/ 并取得独立 runtime Surface/token。
+ * 因此全应用只在此一处调用；旧 Surface 由此处保有到候选帧晋升，再统一释放，
+ * 多点取值会制造无法形成同一 double-buffer cohort 的孤儿 lease。
  */
 export function useAppGui({
   appId,
@@ -37,18 +43,35 @@ export function useAppGui({
   revisionKey: string;
   appSurfaceLeaseId?: string | null;
 }>): AppGuiBinding {
-  const [fetched, setFetched] = useState({
+  const [fetched, setFetched] = useState<{
+    appId: string;
+    info: AppGuiInfo;
+    requestKey: string;
+    revisionKey: string;
+    error: string;
+    surface: AppGuiInfoInput | null;
+  }>({
     appId: "",
     info: EMPTY,
     requestKey: "",
     revisionKey: "",
     error: "",
+    surface: null,
   });
   const [nonce, setNonce] = useState(0);
-  const surfaceId = useMemo(
-    () => appSurfaceLeaseId ? crypto.randomUUID() : "",
-    [appSurfaceLeaseId]
-  );
+  const ownedSurfaces = useRef(new Map<string, AppGuiInfoInput>());
+  const surfaceId = useMemo(() => {
+    /* Both values are identity fences: a new revision/refresh gets a distinct
+       runtime surface while the previous frame remains owned until promotion. */
+    void nonce;
+    void revisionKey;
+    return appSurfaceLeaseId ? crypto.randomUUID() : "";
+  }, [appSurfaceLeaseId, nonce, revisionKey]);
+  const releaseOwned = useCallback((surface: AppGuiInfoInput | null) => {
+    if (!surface) return;
+    ownedSurfaces.current.delete(surface.surfaceId);
+    void releaseAppGuiSurface(surface);
+  }, []);
   const input = useMemo(
     () => appSurfaceLeaseId && surfaceId
       ? { appId, surfaceId, appSurfaceLeaseId }
@@ -61,42 +84,59 @@ export function useAppGui({
   useEffect(() => {
     if (!enabled || !input) return;
     let active = true;
+    ownedSurfaces.current.set(input.surfaceId, input);
     const requestKey = JSON.stringify([appId, revisionKey, nonce]);
     void readAppGuiInfo(input)
-      .then((info) =>
-        active && setFetched({
+      .then((info) => {
+        const runtimeSurface = {
+          ...input,
+          appSurfaceLeaseId:
+            info.appSurfaceLeaseId ?? input.appSurfaceLeaseId,
+        };
+        ownedSurfaces.current.set(input.surfaceId, runtimeSurface);
+        if (!active) {
+          releaseOwned(runtimeSurface);
+          return;
+        }
+        setFetched({
           appId,
           info,
           requestKey,
           revisionKey,
           error: info.error ?? "",
-        })
-      )
-      .catch(
-        (cause) =>
-          active &&
+          surface: runtimeSurface,
+        });
+      })
+      .catch((cause) => {
+        releaseOwned(input);
+        if (active) {
           setFetched((current) => ({
             appId,
             info:
-              current.appId === appId && current.revisionKey === revisionKey
+              current.appId === appId
                 ? current.info
                 : EMPTY,
             requestKey,
             revisionKey,
             error: errorMessage(cause),
-          }))
-      );
+            surface: current.appId === appId ? current.surface : null,
+          }));
+        }
+      });
     return () => {
       active = false;
     };
-  }, [appId, enabled, input, nonce, revisionKey]);
+  }, [appId, enabled, input, nonce, releaseOwned, revisionKey]);
 
   useEffect(() => {
-    if (!input) return;
+    const owned = ownedSurfaces.current;
     return () => {
-      void releaseAppGuiSurface(input);
+      for (const surface of owned.values()) {
+        void releaseAppGuiSurface(surface);
+      }
+      owned.clear();
     };
-  }, [input]);
+  }, [appSurfaceLeaseId]);
 
   useEffect(() => {
     if (!enabled || !input) return;
@@ -111,21 +151,41 @@ export function useAppGui({
   const requestKey = JSON.stringify([appId, revisionKey, nonce]);
   const current =
     enabled && input &&
-    fetched.appId === appId &&
-    fetched.revisionKey === revisionKey
+    fetched.appId === appId
       ? fetched
       : null;
   /* 逐字段投影而不是整份 spread：AppGuiInfo 还带着 capability 等 wire 字段，
      spread 会把它们偷渡进 binding，在 renderer 侧长出第二个授权真相源。 */
   const info = current?.info ?? EMPTY;
+  const readySurface = current?.surface;
+  const cutoverId = info.cutover?.cutoverId;
   return {
     pages: info.pages,
     origin: info.origin,
     token: info.token,
-    surfaceLeaseId: input?.appSurfaceLeaseId ?? "",
+    generationKey: info.generationKey ?? "",
+    bootstrapProtocol: info.bootstrapProtocol ?? "load-v0",
+    surfaceId: current?.surface?.surfaceId ?? "",
+    surfaceLeaseId: current?.surface?.appSurfaceLeaseId ?? "",
+    cutoverId,
     hostActions: info.hostActions,
     loading: enabled && current?.requestKey !== requestKey,
     error: current?.error ?? "",
     refresh,
+    activate: () => {
+      const activeId = current?.surface?.surfaceId;
+      if (!activeId) return;
+      for (const [surfaceId, surface] of [...ownedSurfaces.current]) {
+        if (surfaceId !== activeId) releaseOwned(surface);
+      }
+    },
+    ready: cutoverId && readySurface
+      ? (readyNonce) => readyAppGuiSurface({
+          ...readySurface,
+          cutoverId,
+          readyNonce,
+        })
+      : undefined,
+    release: () => releaseOwned(current?.surface ?? null),
   };
 }

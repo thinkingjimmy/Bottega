@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on i18n, icons, UI menu primitives, Base/App actions, panel eligibility, image identity, and Browser tab projections
- * [OUTPUT]: Provides canonical panel tab/region types, parsers, i18n-keyed catalog descriptors, and keyboard-readable disabled-with-reason directory UI
+ * [INPUT]: Depends on i18n, icons, UI menu primitives, Base/App actions, the unified App authorization entry, panel eligibility, image identity, and Browser tab projections
+ * [OUTPUT]: Provides canonical panel tab/region types, parsers, i18n-keyed catalog descriptors, and keyboard-readable directory UI with one contextual App entry
  * [POS]: The tab identity and add-menu truth source for chat/side-panel
  */
 
@@ -36,7 +36,6 @@ import { baseTabActionButtonClass } from "@/components/bases/chrome/base-tab-chr
 import { panelChromeClassName } from "@/components/page-shell";
 import { SaveAsAppDialog } from "@/components/apps/save-as-app-dialog";
 import type { BrowserTabProjection } from "../../../../shared/browser-ipc";
-import type { AvailableAttachedApp } from "../../../../shared/apps-ipc";
 import type { ConversationImageSource } from "../runtime/chat-session-model";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 
@@ -299,28 +298,20 @@ export function AddPanelMenu({
   disabledFor,
   disabledReasonFor,
   onOpen,
-  availableApps = [],
+  onOpenApp,
   appsDisabled = false,
 }: {
   disabledFor: (id: PanelRegion) => boolean;
   disabledReasonFor?: (id: PanelRegion) => string | undefined;
   onOpen: (id: PanelRegion) => void;
-  availableApps?: readonly AvailableAttachedApp[];
+  onOpenApp: () => void;
   appsDisabled?: boolean;
 }) {
   const { t } = useAppTranslation();
   const full = PANEL_TAB_SPECS.every((spec) =>
     spec.id === "app"
-      ? appsDisabled ||
-        !availableApps.some((app) => !disabledFor(`app:${app.appId}`))
+      ? appsDisabled || disabledFor("app:catalog")
       : disabledFor(spec.id)
-  ) && !PANEL_TAB_SPECS.some((spec) =>
-    spec.id === "app"
-      ? Boolean(disabledReasonFor?.("app:catalog")) ||
-        availableApps.some((app) =>
-          Boolean(disabledReasonFor?.(`app:${app.appId}`))
-        )
-      : Boolean(disabledReasonFor?.(spec.id))
   );
   return (
     <DropdownMenu>
@@ -345,45 +336,29 @@ export function AddPanelMenu({
           const Icon = spec.icon;
           const label = t(spec.labelKey);
           if (spec.id === "app") {
-            return availableApps.length ? (
-              availableApps.map((app) => {
-                const region = `app:${app.appId}` as AppRegionId;
-                const disabled = appsDisabled || disabledFor(region);
-                const reason = disabledReasonFor?.(region);
-                return (
-                  <DropdownMenuItem
-                    aria-disabled={disabled || undefined}
-                    className={disabled ? "cursor-not-allowed opacity-55" : undefined}
-                    key={region}
-                    onSelect={(event) => {
-                      if (disabled) {
-                        event.preventDefault();
-                        return;
-                      }
-                      onOpen(region);
-                    }}
-                  >
-                    <Icon />
-                    <span className="min-w-0">
-                      <span className="block">{app.name}</span>
-                      {reason && (
-                        <span className="block text-muted-foreground text-xs">
-                          {reason}
-                        </span>
-                      )}
-                    </span>
-                  </DropdownMenuItem>
-                );
-              })
-            ) : (
+            const region = "app:catalog" as AppRegionId;
+            const disabled = appsDisabled || disabledFor(region);
+            const reason = disabledReasonFor?.(region);
+            return (
               <DropdownMenuItem
-                aria-disabled="true"
-                className="cursor-not-allowed opacity-55"
-                key="app-empty"
-                onSelect={(event) => event.preventDefault()}
+                aria-disabled={disabled || undefined}
+                className={disabled ? "cursor-not-allowed opacity-55" : undefined}
+                key="app"
+                onSelect={(event) => {
+                  if (disabled) {
+                    event.preventDefault();
+                    return;
+                  }
+                  onOpenApp();
+                }}
               >
                 <Icon />
-                {disabledReasonFor?.("app:catalog") ?? t("chat.sidePanel.authorizeAppFirst")}
+                <span className="min-w-0">
+                  <span className="block">{label}</span>
+                  <span className="block text-muted-foreground text-xs">
+                    {reason ?? t("chat.sidePanel.catalog.app.hint")}
+                  </span>
+                </span>
               </DropdownMenuItem>
             );
           }
@@ -423,20 +398,14 @@ export function AddPanelMenu({
 /** 空白页：目录的卡片式投影，条目增长只是多一行，无需改版式 */
 export function PanelTabsEmpty({
   onOpen,
-  availableApps = [],
+  onOpenApp,
   disabledFor = () => false,
   disabledReasonFor,
-  extraDisabled = [],
 }: {
   onOpen: (id: PanelRegion) => void;
-  availableApps?: readonly AvailableAttachedApp[];
+  onOpenApp: () => void;
   disabledFor?: (id: PanelRegion) => boolean;
   disabledReasonFor?: (id: PanelRegion) => string | undefined;
-  extraDisabled?: readonly Readonly<{
-    label: string;
-    hint: string;
-    reason: string;
-  }>[];
 }) {
   const { t } = useAppTranslation();
   return (
@@ -447,59 +416,23 @@ export function PanelTabsEmpty({
           const label = t(spec.labelKey);
           const hint = t(spec.hintKey);
           if (spec.id === "app") {
-            const appRows = availableApps.map((app) => {
-              const region = `app:${app.appId}` as AppRegionId;
-              const disabled = disabledFor(region);
-              const reason = disabledReasonFor?.(region);
-              return (
-                <button
-                  aria-disabled={disabled || undefined}
-                  aria-label={disabled && reason
-                    ? t("chat.sidePanel.unavailableNamedPanel", {
-                        name: app.name,
-                        reason,
-                      })
-                    : t("chat.sidePanel.openNamedPanel", { name: app.name })}
-                  className={cn(
-                    "group/panel-card flex w-full cursor-pointer items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-foreground/15 hover:bg-accent",
-                    disabled && "cursor-not-allowed opacity-55"
-                  )}
-                  key={region}
-                  onClick={() => {
-                    if (!disabled) onOpen(region);
-                  }}
-                  type="button"
-                >
-                  <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                    <Icon className="size-3.5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium text-sm">
-                      {app.name}
-                    </span>
-                    {reason && (
-                      <span className="block text-muted-foreground text-xs">
-                        {reason}
-                      </span>
-                    )}
-                  </span>
-                  <PlusIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                </button>
-              );
-            });
-            if (appRows.length) return appRows;
             const genericApp = "app:catalog" as AppRegionId;
             const reason = disabledReasonFor?.(genericApp);
-            if (!reason) return null;
+            const disabled = disabledFor(genericApp);
             return (
               <button
-                aria-disabled="true"
-                aria-label={t("chat.sidePanel.unavailableNamedPanel", {
-                  name: label,
-                  reason,
-                })}
-                className="flex w-full cursor-not-allowed items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left opacity-55"
-                key="app-disabled"
+                aria-disabled={disabled || undefined}
+                aria-label={disabled && reason
+                  ? t("chat.sidePanel.unavailableNamedPanel", { name: label, reason })
+                  : t("chat.sidePanel.openNamedPanel", { name: label })}
+                className={cn(
+                  "group/panel-card flex w-full cursor-pointer items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-foreground/15 hover:bg-accent",
+                  disabled && "cursor-not-allowed opacity-55"
+                )}
+                key="app"
+                onClick={() => {
+                  if (!disabled) onOpenApp();
+                }}
                 type="button"
               >
                 <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
@@ -507,8 +440,9 @@ export function PanelTabsEmpty({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium text-sm">{label}</span>
-                  <span className="block text-muted-foreground text-xs">{reason}</span>
+                  <span className="block text-muted-foreground text-xs">{reason ?? hint}</span>
                 </span>
+                <PlusIcon className="size-3.5 shrink-0 text-muted-foreground" />
               </button>
             );
           }
@@ -549,26 +483,6 @@ export function PanelTabsEmpty({
             </button>
           );
         })}
-        {extraDisabled.map((item) => (
-          <button
-            aria-disabled="true"
-            aria-label={t("chat.sidePanel.unavailableNamedPanel", {
-              name: item.label,
-              reason: item.reason,
-            })}
-            className="flex w-full cursor-not-allowed items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left opacity-55"
-            key={item.label}
-            type="button"
-          >
-            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-              <ImageIcon className="size-3.5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-medium text-sm">{item.label}</span>
-              <span className="block text-muted-foreground text-xs">{item.reason || item.hint}</span>
-            </span>
-          </button>
-        ))}
       </div>
     </div>
   );

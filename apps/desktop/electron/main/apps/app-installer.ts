@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node process/fs/path, backend, maintenance session/headless executor, install/repair kernel, packet contract fingerprint, maintenance gate, AppStore/AppRuntime and support assistant
- * [OUTPUT]: Provides AppInstaller, on the back end of the drop-down disk maintains the differentiation queue, install/repair cancels, extend confirmation, and after first install/edit stop→ manifest generation publish→sealed runtime start Safe delivery
- * [POS]: The supply chain of the apps module sorted the boundaries, defining the fast path with the obvious Agent Repair sharing the same closure
+ * [INPUT]: Depends on Node process/fs/path, backend execution, install/repair kernels, AppSourceMonitor, the shared AppMutationCoordinator, packet contract fingerprint, MaintenanceGate, AppStore, AppRuntime, and support assistant
+ * [OUTPUT]: Provides serialized per-App install/repair/edit rebuilds, held-lane source reconciliation, stale-receipt rejection, cancellation, extension confirmation, legacy runtime delivery, and compiled Base staging without stop-before-build
+ * [POS]: Apps supply-chain coordinator; it turns mutable source trees into validated runtime generations while AppSourceMonitor owns observation inside the same mutation lane
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -17,6 +17,7 @@ import {
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import {
+  appSourceStateOf,
   repairSite,
   servesWebRuntime,
   type AppFailurePhase,
@@ -45,7 +46,6 @@ import {
   type ExtensionDecision,
   type ExtensionPlan,
 } from "./install/extension";
-import { fingerprintWorkingTree, RepositoryState } from "./install/repository-state";
 import {
   abortTaskBeforeCommit,
   drainSerialTasks,
@@ -58,7 +58,11 @@ import { type RepairContext, RepairRunner } from "./install/repair/runner";
 import { MaintenanceGate } from "./maintenance-gate";
 import { asError } from "../errors";
 import { isContained, strippedShell } from "./support";
-import { inspectPackage, packageDigest } from "./share/package-contract";
+import {
+  AppMutationCoordinator,
+  assertAppSourceReceipt,
+} from "./app-source-coordinator";
+import { AppSourceMonitor } from "./app-source-monitor";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
 const NAMING_STUDIO_URL =
@@ -82,7 +86,7 @@ type ExecuteResult = {
 
 export class AppInstaller {
   private readonly tasks = new SerialTaskQueue();
-  private readonly repositoryState: RepositoryState;
+  private readonly sourceMonitor: AppSourceMonitor;
   private readonly repairs: RepairRunner;
   private worker: Promise<void> | null = null;
   private readonly schemaPath: string;
@@ -98,10 +102,24 @@ export class AppInstaller {
       details: string[]
     ) => Promise<boolean>,
     private readonly maintenanceGate: MaintenanceGate,
-    readLogTail: (appId: string) => Promise<string>
+    readLogTail: (appId: string) => Promise<string>,
+    private readonly mutations = new AppMutationCoordinator(),
+    sourceMonitorIntervalMs = 30_000
   ) {
     this.schemaPath = join(userData, "manifest-schema.json");
-    this.repositoryState = new RepositoryState(userData);
+    this.sourceMonitor = new AppSourceMonitor(
+      userData,
+      store,
+      mutations,
+      (record, task) =>
+        this.execute(
+          "git",
+          ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+          { cwd: record.dir, env: sanitizedProcessEnvironment(), task }
+        ).then((result) => result.stdout),
+      () => this.localTask(),
+      sourceMonitorIntervalMs
+    );
     const repairAdapter = new RepairAdapter({
       userData,
       schemaPath: this.schemaPath,
@@ -129,9 +147,10 @@ export class AppInstaller {
       applyExtension: (context, plan) =>
         this.applyExtension(context.record, context.record.dir, context.task, plan, context),
       fingerprint: async (record, task) =>
-        (await this.changedPaths(record, task)).fingerprint,
-      persistFingerprint: (appId, fingerprint) =>
-        this.repositoryState.write(appId, fingerprint),
+        (await this.sourceMonitor.inspect(record, task)).fingerprint,
+      persistFingerprint: async (appId, fingerprint) => {
+        await this.sourceMonitor.writeBaseline(appId, fingerprint);
+      },
     });
   }
 
@@ -142,6 +161,7 @@ export class AppInstaller {
       { mode: 0o600 }
     );
     await this.repairs.initialize();
+    await this.sourceMonitor.initialize();
   }
 
   enqueue(appId: string) {
@@ -217,19 +237,33 @@ export class AppInstaller {
     await this.rebuildAfterEdit(appId, true);
   }
 
-  async rebuildAfterEdit(appId: string, force = false) {
+  rebuildAfterEdit(appId: string, force = false) {
+    return this.serializeMutation(appId, () =>
+      this.rebuildAfterEditLocked(appId, force)
+    );
+  }
+
+  rebuildAfterEditHeld(appId: string, force = false) {
+    return this.rebuildAfterEditLocked(appId, force);
+  }
+
+  async reconcileSourceHeld(appId: string) {
+    await this.sourceMonitor.reconcileHeld(appId);
+  }
+
+  private async rebuildAfterEditLocked(appId: string, force = false) {
     if (this.maintenanceGate.isLocked(appId)) throw new Error("App 修复中");
-    if (this.tasks.has(appId)) throw new Error("该 App 正在执行其他操作");
     const record = this.store.get(appId);
     if (!record?.manifest || !["ready", "update-failed"].includes(record.state)) {
       throw new Error("App 尚未就绪");
     }
-    const task = this.tasks.begin(appId);
+    const task = this.localTask();
     let changedPaths: string[] = [];
     try {
-      const changes = await this.changedPaths(record, task);
+      const changes = await this.sourceMonitor.inspect(record, task);
       changedPaths = changes.paths;
-      const previousFingerprint = await this.repositoryState.read(appId);
+      await this.sourceMonitor.persist(appId, changes.fingerprint);
+      const previousFingerprint = await this.sourceMonitor.readBaseline(appId);
       if (previousFingerprint && !force && previousFingerprint === changes.fingerprint) {
         return;
       }
@@ -247,7 +281,11 @@ export class AppInstaller {
       }));
       this.emit({ appId, type: "progress", step: "正在应用 Agent 修改", operation: "update" });
       await this.appendLog(appId, "\n===== 编辑后更新 =====");
-      await this.runtime.stop(appId);
+      /* compiled Base edits stage against an immutable snapshot while the previous
+         sealed GUI remains active; only the later generation cutover may retire it. */
+      if (!(editedManifest.kind === "base" && editedManifest.gui?.build)) {
+        await this.runtime.stop(appId);
+      }
 
       if (servesWebRuntime(editedManifest) && editedManifest.buildCmd) {
         await this.runShell(
@@ -272,17 +310,25 @@ export class AppInstaller {
       if (editedManifest.kind === "static") {
         await this.validateStaticArtifact(record.dir, editedManifest);
       }
-      const ready = await this.store.publishGeneration(appId, (current) => ({
-        ...current,
-        manifest: editedManifest,
-        state: "ready",
-        lastError: null,
-      }));
+      const publishFingerprint = await this.sourceMonitor.inspect(record, task);
+      const sourceReceipt = await this.sourceMonitor.persist(
+        appId,
+        publishFingerprint.fingerprint
+      );
+      const ready = await this.store.publishGeneration(appId, (current) => {
+        assertAppSourceReceipt(appSourceStateOf(current), sourceReceipt);
+        return {
+          ...current,
+          manifest: editedManifest,
+          state: "ready",
+          lastError: null,
+        };
+      });
       if (servesWebRuntime(ready.manifest)) {
         await this.runtime.ensureRunning(appId);
       }
-      const applied = await this.changedPaths(ready, task);
-      await this.repositoryState.write(appId, applied.fingerprint);
+      const applied = await this.sourceMonitor.inspect(ready, task);
+      await this.sourceMonitor.writeBaseline(appId, applied.fingerprint);
     } catch (cause) {
       const error = asError(cause);
       await this.store.update(appId, (current) => ({
@@ -293,15 +339,24 @@ export class AppInstaller {
       await this.appendLog(appId, `[update:error] ${error.message}`);
       throw error;
     } finally {
-      this.tasks.complete(appId);
+      const latest = this.store.get(appId);
+      if (latest) {
+        await this.sourceMonitor.inspect(latest, task)
+          .then((value) => this.sourceMonitor.persist(appId, value.fingerprint))
+          .catch((cause) =>
+            console.warn("[apps] source fingerprint final reconcile failed", cause)
+          );
+      }
     }
   }
 
   async shutdown() {
+    await this.sourceMonitor.shutdown();
     await Promise.allSettled(
       this.tasks.entries().map(([appId]) => this.cancel(appId))
     );
     await this.worker;
+    await this.mutations.drain();
   }
 
   private startWorker() {
@@ -321,6 +376,12 @@ export class AppInstaller {
   }
 
   private async runWork(appId: string, task: InstallTask, work: QueuedWork) {
+    return this.serializeMutation(appId, () =>
+      this.runWorkLocked(appId, task, work)
+    );
+  }
+
+  private async runWorkLocked(appId: string, task: InstallTask, work: QueuedWork) {
     if (work.kind === "install") return this.installOne(appId, task);
     const timeout = setTimeout(() =>
       task.controller.abort(new Error("修复超过 30 分钟")), INSTALL_TIMEOUT_MS);
@@ -391,14 +452,20 @@ export class AppInstaller {
         await this.applyExtension(record, finalDir, task, plan);
       }
       const delivered = { ...record, dir: finalDir };
-      const baseline = await this.changedPaths(delivered, task);
-      await this.repositoryState.write(appId, baseline.fingerprint);
-      await this.store.publishGeneration(appId, (current) => ({
-        ...current,
-        state: "ready",
-        lastError: null,
-        manifest: deliveredManifest,
-      }), { generationSourceDir: finalDir });
+      const baseline = await this.sourceMonitor.inspect(delivered, task);
+      const sourceReceipt = await this.sourceMonitor.writeBaseline(
+        appId,
+        baseline.fingerprint
+      );
+      await this.store.publishGeneration(appId, (current) => {
+        assertAppSourceReceipt(appSourceStateOf(current), sourceReceipt);
+        return {
+          ...current,
+          state: "ready",
+          lastError: null,
+          manifest: deliveredManifest,
+        };
+      }, { generationSourceDir: finalDir });
       this.emit({ appId, type: "progress", step: "安装完成", operation: "install" });
     } catch (cause) {
       const signalReason = task.controller.signal.reason;
@@ -408,7 +475,7 @@ export class AppInstaller {
       await Promise.allSettled([
         rm(staging, { recursive: true, force: true }),
         rm(finalDir, { recursive: true, force: true }),
-        this.repositoryState.remove(appId),
+        this.sourceMonitor.removeBaseline(appId),
       ]);
       await this.markInstallFailed(appId, phase, error);
     } finally {
@@ -565,26 +632,18 @@ export class AppInstaller {
     return snapshot.runtime;
   }
 
-  private async changedPaths(record: AppRecord, task: InstallTask) {
-    try {
-      await access(join(record.dir, ".git"));
-    } catch {
-      const inspection = await inspectPackage(record.dir);
-      return {
-        paths: inspection.files.map((file) => file.path),
-        fingerprint: await packageDigest(record.dir, inspection.files),
-      };
-    }
-    const result = await this.execute(
-      "git",
-      ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-      {
-        cwd: record.dir,
-        env: sanitizedProcessEnvironment(),
-        task,
-      }
-    );
-    return fingerprintWorkingTree(record, result.stdout);
+  private serializeMutation<T>(appId: string, operation: () => Promise<T>) {
+    return this.mutations.run(appId, operation);
+  }
+
+  private localTask(): InstallTask {
+    return {
+      controller: new AbortController(),
+      pids: new Set<number>(),
+      started: true,
+      commitStarted: false,
+      settled: Promise.resolve(),
+    };
   }
 
   private async markInstallFailed(

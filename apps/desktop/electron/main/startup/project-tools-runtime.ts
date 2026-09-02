@@ -8,7 +8,7 @@ import { BUILTIN_TOOL_NAMES } from "../../../shared/builtin-tools";
 import type { SkillsCatalog, SkillsCatalogDependencies } from "../skills-catalog";
 import { backendRuntimeRegistry } from "../backends";
 import type { ChatStore } from "../chats/chat-store";
-import type { ProjectStore } from "../projects/project-store";
+import type { ProjectStore } from "../projects/store/project-store";
 import {
   PROJECT_CLEANUP_PLAN,
   ProjectResourceCleanupCoordinator,

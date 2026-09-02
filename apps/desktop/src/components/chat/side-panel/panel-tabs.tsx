@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React tabs, PanelSessionContext/eligibility, slot store, Browser tabs, and product-only Base/App/Image/Subagent panels
- * [OUTPUT]: Provides one tablist with eligibility-aware commands, fully localized catalog/foreign Image disclosure, restore sanitization, neutral shell opening, and product-query short circuits
+ * [INPUT]: Depends on React tabs, PanelSessionContext/eligibility, slot store, Browser tabs, the shared App authorization dialog/badge, and product-only Base/App/Image/Subagent panels
+ * [OUTPUT]: Provides one tablist with a unified installed-App add flow, independent App tabs, per-App authorization triggers, localized fallbacks, restore sanitization, and product-query short circuits
  * [POS]: The side-panel tab composition root and sole renderer of panel regions
  */
 
@@ -58,11 +58,13 @@ import {
 } from "@/lib/apps-client";
 import type { AvailableAttachedApp } from "../../../../shared/apps-ipc";
 import { AppTabPanel } from "./app-tab-panel";
+import { AppGrantBadge } from "./grant/app-grant-badge";
 import {
   ImageTabPanel,
   resolveConversationImage,
 } from "./image/image-tab-panel";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { AppAuthorizationDialog } from "@/components/apps/authorization/app-authorization-dialog";
 
 const SubagentPanel = lazy(() =>
   import("../subagent/subagent-panel").then((module) => ({
@@ -103,7 +105,7 @@ async function loadAvailableApps(
   return listAvailableApps({
     conversationId,
     conversationIncarnationId,
-  }).catch(() => []);
+  });
 }
 
 export function PanelTabs({
@@ -131,16 +133,26 @@ export function PanelTabs({
   const tabs = useMemo(() => [...slots.tabs], [slots.tabs]);
   const activeTabId = slots.active;
   const [availableApps, setAvailableApps] = useState<AvailableAttachedApp[]>([]);
-  const refreshApps = useCallback(() => {
-    if (!productRef) return;
-    void loadAvailableApps(productRef.chatId, productRef.incarnationId).then(setAvailableApps);
+  const [addAppOpen, setAddAppOpen] = useState(false);
+  const refreshApps = useCallback(async () => {
+    if (!productRef) return [];
+    const apps = await loadAvailableApps(
+      productRef.chatId,
+      productRef.incarnationId
+    );
+    setAvailableApps(apps);
+    return apps;
   }, [productRef]);
   useEffect(() => {
     if (!productRef) return;
     let active = true;
-    void loadAvailableApps(productRef.chatId, productRef.incarnationId).then((apps) => {
-      if (active) setAvailableApps(apps);
-    });
+    void loadAvailableApps(productRef.chatId, productRef.incarnationId)
+      .then((apps) => {
+        if (active) setAvailableApps(apps);
+      })
+      .catch(() => {
+        if (active) setAvailableApps([]);
+      });
     return () => {
       active = false;
     };
@@ -164,11 +176,15 @@ export function PanelTabs({
         galleryProjection
           ? tabs.filter(isImageRegion).map((region) => [
               region,
-              resolveConversationImage(region, galleryProjection),
+              resolveConversationImage(
+                region,
+                galleryProjection,
+                t("chat.sidePanel.image.fallbackTitle")
+              ),
             ])
           : []
       ),
-    [galleryProjection, tabs]
+    [galleryProjection, t, tabs]
   );
 
   useEffect(() => {
@@ -329,7 +345,11 @@ export function PanelTabs({
         !productRef ||
         sourceChatId !== productRef.chatId ||
         sourceIncarnationId !== productRef.incarnationId ||
-        !resolveConversationImage(region, galleryProjection)
+        !resolveConversationImage(
+          region,
+          galleryProjection,
+          t("chat.sidePanel.image.fallbackTitle")
+        )
       ) {
         return;
       }
@@ -353,6 +373,9 @@ export function PanelTabs({
     }
     if (target === "app") {
       handledNonce.current = command.nonce;
+      /* command 是父级 nonce 投递的外部事件；刷新 main-owned projection 正是
+         这个 effect 的同步职责，不是用 effect 派生本地 render state。 */
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       refreshApps();
       panelSlotStore.open(slotKey, `app:${command.appId}`);
       return;
@@ -365,7 +388,6 @@ export function PanelTabs({
     }
     if (target === "subagents") {
       // command 是父级递增 nonce 表达的外部事件；此处与 ensure/activate 同批落地。
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedAgentThreadId(command.agentThreadId ?? "");
     }
   }, [
@@ -379,6 +401,7 @@ export function PanelTabs({
     productRef,
     refreshApps,
     slotKey,
+    t,
   ]);
 
   /* ── 区域失去内容时退位 ──────────────────────────────────────────
@@ -417,9 +440,11 @@ export function PanelTabs({
       const spec = specForRegion(id);
       const Icon = spec.icon;
       const catalogLabel = t(spec.labelKey);
+      const attachedApp = isAppRegion(id)
+        ? visibleApps.find((app) => app.appId === appIdOf(id))
+        : undefined;
       const label = isAppRegion(id)
-        ? visibleApps.find((app) => app.appId === appIdOf(id))?.name ??
-          catalogLabel
+        ? attachedApp?.name ?? catalogLabel
         : isImageRegion(id)
           ? resolvedImages.get(id)?.label ?? catalogLabel
           : catalogLabel;
@@ -432,9 +457,24 @@ export function PanelTabs({
         panelId: `panel-tab-${id}`,
         widthClass: "min-w-0",
         closeLabel: t("chat.sidePanel.closeNamedTab", { name: label }),
-        actions: effectiveBaseOwnerKey && productRef
-          ? spec.renderTabActions?.(effectiveBaseOwnerKey, productRef.chatId)
-          : undefined,
+        /* 权限徽标长在 App 自己的 tab 上：tab 条是 Base/Browser/Image 共用的
+           chrome，挂在它右端的一颗盾说不清属于谁。所有者与标识同生共死。 */
+        actions: attachedApp && productRef
+          ? (
+            <AppGrantBadge
+              app={attachedApp}
+              chatId={productRef.chatId}
+              incarnationId={productRef.incarnationId}
+              onChanged={() => refreshApps().then(() => undefined)}
+              onRemoved={async () => {
+                panelSlotStore.close(slotKey, id);
+                await refreshApps();
+              }}
+            />
+          )
+          : effectiveBaseOwnerKey && productRef
+            ? spec.renderTabActions?.(effectiveBaseOwnerKey, productRef.chatId)
+            : undefined,
         select: () => panelSlotStore.activate(slotKey, id),
         close: () => {
           panelSlotStore.close(slotKey, id);
@@ -566,10 +606,11 @@ export function PanelTabs({
             ))}
           </div>
           <AddPanelMenu
-            availableApps={visibleApps}
+            appsDisabled={!productRef}
             disabledFor={catalogDisabled}
             disabledReasonFor={catalogDisabledReason}
             onOpen={openFromCatalog}
+            onOpenApp={() => setAddAppOpen(true)}
           />
         </div>
         <div className="[-webkit-app-region:no-drag]">
@@ -639,7 +680,6 @@ export function PanelTabs({
                 app={app}
                 chatId={productRef.chatId}
                 incarnationId={productRef.incarnationId}
-                onRefresh={refreshApps}
                 visible={activeTabId === region}
               />
             ) : (
@@ -679,17 +719,30 @@ export function PanelTabs({
           的闪现，此后任何重渲染都不会把已经端出去的空白页再闪掉。 */}
       {!items.length && !activeTabId && baseResolved && (
         <PanelTabsEmpty
-          availableApps={visibleApps}
           disabledFor={catalogDisabled}
           disabledReasonFor={catalogDisabledReason}
-          extraDisabled={context.kind === "foreign"
-            ? [{
-                label: t("chat.sidePanel.catalog.image.label"),
-                hint: t("chat.sidePanel.catalog.image.hint"),
-                reason: eligibilityReason("image") ?? "",
-              }]
-            : []}
           onOpen={openFromCatalog}
+          onOpenApp={() => setAddAppOpen(true)}
+        />
+      )}
+      {productRef && (
+        <AppAuthorizationDialog
+          mode="add"
+          onCommitted={async (appId) => {
+            const refreshed = await refreshApps();
+            if (!refreshed.some((app) => app.appId === appId)) {
+              throw new Error(t("apps.authorization.savedRefreshFailed"));
+            }
+            openPanel(`app:${appId}`);
+          }}
+          onOpenChange={setAddAppOpen}
+          open={addAppOpen}
+          openAppIds={tabs.filter(isAppRegion).map(appIdOf)}
+          target={{
+            kind: "chat",
+            chatId: productRef.chatId,
+            expectedConversationIncarnationId: productRef.incarnationId,
+          }}
         />
       )}
     </div>

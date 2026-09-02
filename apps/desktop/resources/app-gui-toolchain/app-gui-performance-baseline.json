@@ -1,0 +1,73 @@
+{
+  "schema": "bottega.app-gui-performance-baseline/v1",
+  "status": "pending-external-platform-evidence",
+  "fixture": {
+    "rows": 10000,
+    "columns": 20,
+    "maximumRowsJsonBytes": 20971520,
+    "filterNodes": 3,
+    "sortColumns": 2,
+    "projectionColumns": 5,
+    "aggregates": 2,
+    "descriptorDigest": "sha256:7687e611319f05e09fe266a8084873ce8ec55f9e83459572880195340f750bad"
+  },
+  "thresholds": {
+    "coldSurfaceTtiP95Ms": 1500,
+    "warmSurfaceTtiP95Ms": 750,
+    "query10kP95Ms": 250,
+    "queryHardTimeoutMs": 500,
+    "interactionP95Ms": 100,
+    "readyLongTaskMaxMs": 100,
+    "startupLongTaskMaxMs": 200,
+    "mountedDomNodes": 2000,
+    "mountedVirtualRows": 200,
+    "rendererHeapDeltaBytes": 134217728,
+    "initialQueries": 3,
+    "interactionQueries": 2
+  },
+  "requiredPlatforms": [
+    {
+      "platform": "darwin-arm64",
+      "status": "pending",
+      "receipt": null,
+      "requiredIdentity": [
+        "hardwareSku",
+        "cpu",
+        "ramBytes",
+        "osBuild",
+        "electronBuild",
+        "powerMode",
+        "fixtureDigest"
+      ]
+    },
+    {
+      "platform": "linux-x64",
+      "status": "pending",
+      "receipt": null,
+      "requiredIdentity": [
+        "hardwareSku",
+        "cpu",
+        "ramBytes",
+        "osBuild",
+        "electronBuild",
+        "powerMode",
+        "fixtureDigest"
+      ]
+    },
+    {
+      "platform": "win32-x64",
+      "status": "pending",
+      "receipt": null,
+      "requiredIdentity": [
+        "hardwareSku",
+        "cpu",
+        "ramBytes",
+        "osBuild",
+        "electronBuild",
+        "powerMode",
+        "fixtureDigest"
+      ]
+    }
+  ],
+  "releasePolicy": "No performance number is release evidence until all three platform receipts match this descriptor and threshold set."
+}

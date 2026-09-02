@@ -1,0 +1,146 @@
+# Public three-platform installer build for tagged Bottega releases.
+# Unsigned artifacts, repository GITHUB_TOKEN only, no secrets of any kind.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish, for example v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: build ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: mac
+            os: macos-14
+            flags: --mac --arm64 -c.mac.notarize=false -c.mac.hardenedRuntime=false
+            artifacts: |
+              apps/desktop/release/*.dmg
+              apps/desktop/release/*.zip
+              apps/desktop/release/*.blockmap
+              apps/desktop/release/latest-mac.yml
+          - platform: win
+            os: windows-latest
+            flags: --win --x64
+            artifacts: |
+              apps/desktop/release/*.exe
+              apps/desktop/release/*.blockmap
+              apps/desktop/release/latest.yml
+          - platform: linux
+            os: ubuntu-latest
+            flags: --linux --x64
+            artifacts: |
+              apps/desktop/release/*.AppImage
+              apps/desktop/release/latest-linux.yml
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          submodules: recursive
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @ai-chat/desktop build
+
+      # Unsigned on purpose: this workflow holds no signing identity.
+      - name: Package installers
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm --filter @ai-chat/desktop exec electron-builder ${{ matrix.flags }} --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.platform }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+
+      - name: Collect and verify assets
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          find installers -type f -exec mv -f {} assets/ \;
+          ls -l assets
+          for pattern in "*.dmg" "*-mac.zip" "latest-mac.yml" "*.exe" "latest.yml" "*.AppImage" "latest-linux.yml"; do
+            count=$(find assets -maxdepth 1 -name "$pattern" | wc -l)
+            if [ "$count" -eq 0 ]; then
+              echo "missing expected release asset: $pattern" >&2
+              exit 1
+            fi
+          done
+          echo "### SHA256" >> "$GITHUB_STEP_SUMMARY"
+          (cd assets && sha256sum * | tee -a "$GITHUB_STEP_SUMMARY")
+
+      - name: Build release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          node - "$TAG" <<'NODE' > notes.md || true
+          const { readFileSync } = require("node:fs");
+          const tag = process.argv[2];
+          const lines = readFileSync("docs/changelog/README.md", "utf8").split("\n");
+          const start = lines.findIndex((line) => line.startsWith("## ") && line.includes(tag));
+          if (start < 0) process.exit(1);
+          const rest = lines.slice(start + 1);
+          const end = rest.findIndex((line) => line.startsWith("## "));
+          process.stdout.write(rest.slice(0, end < 0 ? rest.length : end).join("\n").trim() + "\n");
+          NODE
+          if [ -s notes.md ]; then
+            echo "flags=--notes-file notes.md" >> "$GITHUB_OUTPUT"
+          else
+            echo "flags=--generate-notes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber assets/*
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" --latest ${{ steps.notes.outputs.flags }} assets/*
+          fi

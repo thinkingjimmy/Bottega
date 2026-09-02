@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, runtime controller, workspace, candidate/image transaction hooks, Gallery store/freeze/focus, type PromptInputProvider and RichInput
- * [OUTPUT]: Provides ChatComposer with rich submission, capability-aware controls, Gallery/Section image gates, and the explicit safe Resume Failure decision surface
+ * [INPUT]: Depends on React/router, runtime controller, Chat composer i18n, canonical Project Settings routing, workspace candidate/image transaction hooks, Gallery store/freeze/focus, PromptInputProvider and RichInput
+ * [OUTPUT]: Provides localized ChatComposer with rich submission, capability-aware controls, exact-Project settings entry, Gallery/Section image gates, and the explicit safe Resume Failure decision surface
  * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
 
@@ -13,6 +13,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Link } from "react-router";
 import {
   PromptInput,
   PromptInputActionMenu,
@@ -30,6 +31,7 @@ import {
 } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { PromptInputAttachments } from "@ai-chat/ui/components/ai-elements/prompt-input-attachments";
 import { Separator } from "@ai-chat/ui/components/ui/separator";
+import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   RichInput,
   type RichInputHandle,
@@ -40,6 +42,7 @@ import {
   ImagesIcon,
   LightbulbIcon,
   PlusIcon,
+  Settings,
   XIcon,
 } from "lucide-react";
 import {
@@ -82,6 +85,7 @@ import {
 } from "@/lib/gallery/focus-controller";
 import { freezeGalleryDraft } from "@/lib/gallery/submission";
 import { isReportedFailure } from "@/lib/errors";
+import { projectSettingsRoute } from "@/lib/draft-route";
 import { useComposerSuggestions } from "./workspace/use-composer-suggestions";
 import { useWorkspaceImageSelection } from "./workspace/use-workspace-image-selection";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
@@ -139,7 +143,9 @@ function ChatAddMenu({
           }
         >
           <LightbulbIcon className="size-4" />
-          {controller.planMode ? t("chat.composer.disablePlan") : "Plan"}
+          {controller.planMode
+            ? t("chat.composer.disablePlan")
+            : t("chat.composer.surface.plan")}
         </PromptInputActionMenuItem>
       </PromptInputActionMenuContent>
     </PromptInputActionMenu>
@@ -280,7 +286,7 @@ function ChatComposerContent({
       }
       if (images.length || gallery.selections.size) {
         controller.setAttachmentNotice(
-          "当前 Agent 不支持图片；画廊选择已暂停，手动图片请在能力恢复后重新添加。"
+          t("chat.composer.surface.imageUnsupported")
         );
       }
       return;
@@ -296,6 +302,7 @@ function ChatComposerContent({
     controller.replaceAttachmentFiles,
     controller.setAttachmentNotice,
     gallery.selections.size,
+    t,
   ]);
 
   useLayoutEffect(() => {
@@ -314,7 +321,9 @@ function ChatComposerContent({
         setAttachmentNotice(
           cause instanceof Error
             ? cause.message
-            : `无法授权文件：${file.name}`
+            : t("chat.composer.surface.authorizeFileFailed", {
+                file: file.name,
+              })
         ),
     };
     if (authorizationQueueRef.current) {
@@ -322,7 +331,7 @@ function ChatComposerContent({
     } else {
       authorizationQueueRef.current = new FileAuthorizationQueue(dependencies);
     }
-  }, [authorizeRichFile, discardRichNode, setAttachmentNotice]);
+  }, [authorizeRichFile, discardRichNode, setAttachmentNotice, t]);
 
   useLayoutEffect(() => {
     const authorizationQueue = authorizationQueueRef.current;
@@ -477,15 +486,28 @@ function ChatComposerContent({
               onNewProject={controller.createProject}
             />
             {controller.selectedProjectId && (
-              <ChatBranchSelector
-                key={controller.selectedProjectId}
-                projectId={controller.selectedProjectId}
-                disabled={turnControlsDisabled}
-                listBranches={controller.listBranches}
-                checkoutBranch={controller.checkoutBranch}
-                createBranch={controller.createBranch}
-                onBusyChange={setBranchBusy}
-              />
+              <>
+                <ChatBranchSelector
+                  key={controller.selectedProjectId}
+                  projectId={controller.selectedProjectId}
+                  disabled={turnControlsDisabled}
+                  listBranches={controller.listBranches}
+                  checkoutBranch={controller.checkoutBranch}
+                  createBranch={controller.createBranch}
+                  onBusyChange={setBranchBusy}
+                />
+                <Button
+                  aria-label={t("projectSettings.open")}
+                  asChild
+                  className="relative ml-auto rounded-full touch-target-44 hover:bg-muted-foreground/10"
+                  size="icon-lg"
+                  variant="ghost"
+                >
+                  <Link to={projectSettingsRoute(controller.selectedProjectId)}>
+                    <Settings />
+                  </Link>
+                </Button>
+              </>
             )}
           </div>
         )}
@@ -546,9 +568,11 @@ function ChatComposerContent({
           freezeGalleryDraft(controller.chatId, message)
         }
         onSubmit={(message, _event, { signal }) => {
-          if (branchBusy) throw new Error("Branch 操作完成后才能发送消息");
+          if (branchBusy) {
+            throw new Error(t("chat.composer.surface.branchBusy"));
+          }
           if (authorizationQueueRef.current?.isBusy()) {
-            throw new Error("文件授权完成后才能发送消息");
+            throw new Error(t("chat.composer.surface.fileAuthorizationBusy"));
           }
           return controller.handleSubmit(message, { signal });
         }}
@@ -574,7 +598,9 @@ function ChatComposerContent({
             invalidSkillRefs={controller.invalidatedSkillRefs}
             invalidSkillTitle={t("chat.skillControl.invalidated")}
             fileClickTitle={
-              enableSidePanel ? "预览 Markdown" : undefined
+              enableSidePanel
+                ? t("chat.composer.surface.previewMarkdown")
+                : undefined
             }
             onChange={controller.setRichValue}
             onFileClick={
@@ -588,7 +614,9 @@ function ChatComposerContent({
                 : undefined
             }
             workspaceFileClickTitle={
-              enableSidePanel ? "预览 Workspace 文件" : undefined
+              enableSidePanel
+                ? t("chat.composer.surface.previewWorkspaceFile")
+                : undefined
             }
             onNodeDiscarded={controller.discardRichNode}
             onQueryChange={handleQueryChange}
@@ -719,7 +747,9 @@ function ChatComposerContent({
               preferSubmit={draftReady}
               disabled={actionDisabled}
               {...(isGenerating && draftReady
-                ? { "aria-label": "加入队列" }
+                ? {
+                    "aria-label": t("chat.composer.surface.queueSubmit"),
+                  }
                 : {})}
             />
           </div>

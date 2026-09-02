@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React providers, canonical chat/turn snapshots, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
+ * [INPUT]: Depends on React, renderer locale/catalog runtime and data providers, canonical chat/turn snapshots, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
  * [OUTPUT]: Provides the stable ChatSessionController with main-derived resume actions, revision eligibility/submission, injectable panel identity, canonical submission, and side-panel state
  * [POS]: The thin composition root of chat/runtime; durable authority remains in main while renderer owns view generation. Routing stays outside: post-send navigation is the chat route's draft-residence observation, not a session concern
  */
@@ -21,6 +21,8 @@ import {
   type CodexRequest,
 } from "@/lib/agent-client";
 import { errorMessage } from "@/lib/errors";
+import { useEffectiveLocale } from "@/lib/i18n-locale";
+import { translate } from "../../../../shared/i18n/runtime";
 import { mergeChatMessages, sameProjectionStatus, type ChatProjectionStatus, type ChatTurnProjection, type ProjectedSubagent } from "@/lib/chat-turn-attach";
 import { bindComposerWorkspaceIdentity, reconcileComposerProject, replaceDraftFiles, retainComposerResources, setComposerProject, updateComposer, useComposerState } from "@/lib/chat-composer-store";
 import { createChatHydration, hydrationReady } from "@/lib/chat-hydration";
@@ -28,6 +30,7 @@ import type { TurnDraft } from "../../../../shared/chat-turn-reducer";
 import { type LiveAttachmentPreview } from "./chat-attachments";
 import {
   composerGates,
+  createPanelSessionContext,
   messageId,
   revisionUnavailableReason as resolveRevisionUnavailableReason,
   type ChatProjectMode,
@@ -63,6 +66,7 @@ export function useChatSession({
   draftAgent?: AgentBackendId;
   panelContext?: PanelSessionContext;
 }) {
+  const locale = useEffectiveLocale();
   const chatId = inputScope.conversationId;
   const projectKind = inputProject.kind;
   const fixedAppId = projectKind === "fixed-app" ? inputProject.appId : null;
@@ -193,9 +197,11 @@ export function useChatSession({
   const reportStopError = useCallback(
     (cause: unknown) =>
       setAttachmentNotice(
-        `停止整条 Section 接力链失败，已尝试停止当前请求：${errorMessage(cause)}。你可以重试。`
+        translate(locale, "chat.runtime.relayStopFailed", {
+          message: errorMessage(cause),
+        })
       ),
-    []
+    [locale]
   );
   const interactions = useSessionInteractions({
     activeRequestId,
@@ -207,13 +213,14 @@ export function useChatSession({
   });
   const panelContext = useMemo<PanelSessionContext>(() => {
     if (inputPanelContext) return inputPanelContext;
-    const incarnationId = messageSnapshot?.incarnationId;
-    if (!incarnationId) return { kind: "draft", draftKey: chatId };
-    return {
-      kind: adopted ? "adopted" : "product",
-      productRef: { chatId, incarnationId },
-    };
-  }, [adopted, chatId, inputPanelContext, messageSnapshot?.incarnationId]);
+    return createPanelSessionContext({
+      chatId,
+      incarnationId: messageSnapshot?.incarnationId,
+      adopted,
+      project,
+      selectedProjectId,
+    });
+  }, [adopted, chatId, inputPanelContext, messageSnapshot?.incarnationId, project, selectedProjectId]);
   const sidePanel = useSessionSidePanel({
     conversationId: chatId,
     panelContext,
@@ -253,7 +260,6 @@ export function useChatSession({
     openWorkspaceFile: openWorkspaceFilePanel,
     openImage,
     openPlan: openPlanPanel,
-    openForeignPlan,
     openSubagent,
     openTabs,
     reconcileRichValue: reconcileSidePanelRichValue,
@@ -267,7 +273,9 @@ export function useChatSession({
         onRecordAgent: (agent) => {
           void lockBackend(agent).catch((cause) =>
             appendLocalAssistant(
-              `**Agent 设置读取失败：** ${errorMessage(cause)}`,
+              translate(locale, "chat.runtime.settings.transcriptReadFailed", {
+                message: errorMessage(cause),
+              }),
               true
             )
           );
@@ -317,6 +325,7 @@ export function useChatSession({
       setPendingPlanDecision,
       setPendingUserInput,
       lockBackend,
+      locale,
     ]
   );
   // 路由意图归 ChatRoute；此处只把被删/失效 Project 这一外部事实收敛回根级。
@@ -578,26 +587,32 @@ export function useChatSession({
   );
   const reportActionFailure = useCallback(
     (action: string, cause: unknown) =>
-      appendLocalAssistant(`**${action}失败：** ${errorMessage(cause)}`, true),
-    [appendLocalAssistant]
+      appendLocalAssistant(
+        translate(locale, "chat.runtime.actionFailed", {
+          action,
+          message: errorMessage(cause),
+        }),
+        true
+      ),
+    [appendLocalAssistant, locale]
   );
   const abandonFatal = useCallback(
     () =>
       canAbandonFatal
         ? abandonFatalTurn(chatId).catch((cause) =>
-            reportActionFailure("放弃轮次", cause)
+            reportActionFailure(translate(locale, "chat.runtime.abandonTurn"), cause)
           )
         : Promise.resolve(),
-    [canAbandonFatal, chatId, reportActionFailure]
+    [canAbandonFatal, chatId, locale, reportActionFailure]
   );
   const acknowledgeCleanup = useCallback(
     () =>
       canAcknowledgeCleanup
         ? acknowledgeCleanupFailure(chatId).catch((cause) =>
-            reportActionFailure("确认清理", cause)
+            reportActionFailure(translate(locale, "chat.runtime.acknowledgeCleanup"), cause)
           )
         : Promise.resolve(),
-    [canAcknowledgeCleanup, chatId, reportActionFailure]
+    [canAcknowledgeCleanup, chatId, locale, reportActionFailure]
   );
   const retryWithoutSession = useCallback(async () => {
     if (!resumeFailure?.allowedActions.freshSession) return;
@@ -636,11 +651,11 @@ export function useChatSession({
         .filter((chat) => chat.id !== chatId)
         .map((chat) => ({
           chatId: chat.id,
-          name: chat.title ?? "未命名",
+          name: chat.title ?? translate(locale, "chat.runtime.unnamed"),
           agent: chat.agent,
           updatedAt: chat.updatedAt,
         })),
-    [chatId, chats]
+    [chatId, chats, locale]
   );
   const richDisplayText = useMemo(() => richValueDisplayText(richValue), [richValue]);
   const selectProject = useCallback(
@@ -654,6 +669,7 @@ export function useChatSession({
   const transcriptController = useStableController({
       chatId, incarnationId: messageSnapshot?.incarnationId ?? null,
       loading,
+      backendId: settings.turnOptions.backend,
       backendDisplayName: selectedBackend?.displayName ?? "Agent",
       messages,
       draft,
@@ -683,7 +699,6 @@ export function useChatSession({
       subagents,
       openTabs,
       openSubagent,
-      openForeignPlan,
       close: closeSidePanel,
     });
   const composerController = useStableController({

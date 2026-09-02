@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Design custody/enabled/registry/history/lifecycle journals/shared storage operations/provisioning/workspace/watcher modules, effective-workspace and live-surface adapters, and explicit deletion filesystem authority
- * [OUTPUT]: Provides DesignService, factory lifecycle, preview/history ports, serialized turn capture with retired-owner fencing, main-evidence Project owner migration, and crash-recoverable custody deletion/replacement
+ * [OUTPUT]: Provides DesignService, factory lifecycle, preview/history ports, serialized turn capture and factory custody transitions with retired-owner fencing, main-evidence Project owner migration, and crash-recoverable custody deletion/replacement
  * [POS]: Design's composition root; installation, Project rebind, and renderer layers consume narrow methods instead of reaching into durable ledgers
  */
 
@@ -513,7 +513,7 @@ export class DesignService {
   }
 
   orphanApp(appId: string) {
-    return this.custody.orphanApp(appId);
+    return this.storageOperations.run(() => this.custody.orphanApp(appId));
   }
 
   markFactoryDeleted(appId: string) {

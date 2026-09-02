@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on renderer Unified errorMessage and Base Full reload
- * [OUTPUT]: Provides BaseMutationReloadError, isBaseRevisionConflict, isbaseMutationErrorCopy, recoversBaseMutationError and BaseMutationOutcome; CAS/Local Structural Drifting Both Forced Re-loading and Maintenance
- * [POS]: The mutation conflict of bases/states is closedOnly consume IPC error code, Workbench/replacement cannot copy conflict branches
+ * [INPUT]: Depends on renderer error normalization and a caller-provided Base reload
+ * [OUTPUT]: Provides finite mutation copy descriptors, reload-aware recovery, and BaseMutationOutcome
+ * [POS]: Error policy boundary for components/bases/state; raw transport messages are fallback diagnostics, never the catalog
  */
 
 import { errorMessage } from "@/lib/errors";
@@ -13,7 +13,20 @@ import { errorMessage } from "@/lib/errors";
  * 就地错误 UI（formula 编辑器）显示的与横幅是同一份文案。 */
 export type BaseMutationOutcome = string | null;
 
-export class BaseMutationReloadError extends Error {}
+export type BaseMutationErrorCopy = {
+  copyKey: string;
+  values: Record<string, string | number>;
+};
+
+export class BaseMutationReloadError extends Error {
+  readonly copy: BaseMutationErrorCopy;
+
+  constructor(copyKey: string, values: BaseMutationErrorCopy["values"] = {}) {
+    super(copyKey);
+    this.name = "BaseMutationReloadError";
+    this.copy = { copyKey, values };
+  }
+}
 
 export function isBaseRevisionConflict(cause: unknown) {
   return mutationCode(cause) === "revision_conflict";
@@ -25,24 +38,22 @@ export function isBaseRevisionConflict(cause: unknown) {
  */
 const MUTATION_ERROR_KEYS: Record<string, string> = {
   formula_cycle: "bases.formula.error.cycle",
-};
-
-export type BaseMutationErrorCopy = {
-  key: string;
-  values: Record<string, string>;
+  revision_conflict: "bases.workbench.revisionConflict",
+  IO_ERROR: "bases.record.attachmentWriteFailed",
 };
 
 export function baseMutationErrorCopy(
   cause: unknown
 ): BaseMutationErrorCopy | null {
   const code = mutationCode(cause);
-  const key = code ? MUTATION_ERROR_KEYS[code] : undefined;
-  if (!key) return null;
+  const copyKey = code ? MUTATION_ERROR_KEYS[code] : undefined;
+  if (!copyKey) return null;
+  if (code !== "formula_cycle") return { copyKey, values: {} };
   const detail =
     cause && typeof cause === "object" && "detail" in cause
       ? (cause as { detail?: { columns?: string[] } }).detail
       : undefined;
-  return { key, values: { columns: (detail?.columns ?? []).join(" → ") } };
+  return { copyKey, values: { columns: (detail?.columns ?? []).join(" → ") } };
 }
 
 function mutationCode(cause: unknown) {
@@ -53,13 +64,14 @@ function mutationCode(cause: unknown) {
 export async function recoverBaseMutationError(
   cause: unknown,
   reload: () => Promise<unknown>
-) {
-  if (
-    !(cause instanceof BaseMutationReloadError) &&
-    !isBaseRevisionConflict(cause)
-  ) {
-    return errorMessage(cause);
+): Promise<{ copy: BaseMutationErrorCopy } | { message: string }> {
+  if (cause instanceof BaseMutationReloadError) {
+    await reload().catch(() => null);
+    return { copy: cause.copy };
   }
-  await reload().catch(() => null);
-  return `Base changed elsewhere. Latest state was reloaded: ${errorMessage(cause)}`;
+  if (isBaseRevisionConflict(cause)) {
+    await reload().catch(() => null);
+  }
+  const copy = baseMutationErrorCopy(cause);
+  return copy ? { copy } : { message: errorMessage(cause) };
 }

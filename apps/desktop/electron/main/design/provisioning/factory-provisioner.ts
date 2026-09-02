@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on DurableJson, immutable package inspection/copy/digest primitives, an exact catalog trust tuple, and narrow App lifecycle/grant/custody ports
- * [OUTPUT]: Provides DesignFactoryProvisioner with offline eager installation, resumable final-grant commit, delete tombstone, user-explicit offline reinstall, drift state, and rollback-safe reset-to-pin
+ * [OUTPUT]: Provides DesignFactoryProvisioner with offline eager installation, resumable final-grant commit, owner-exact delete tombstone, user-explicit offline reinstall including missing-owner legacy recovery, drift state, and rollback-safe reset-to-pin
  * [POS]: Design factory delivery state machine; it alone may auto-approve the factory grant set and never treats preset identity without exact bytes as trust
  */
 
@@ -84,6 +84,7 @@ export type DesignFactoryPorts = Readonly<{
   approveFactoryGui(appId: string): Promise<DesignFactoryApp>;
   promote(appId: string): Promise<DesignFactoryApp>;
   activateCustody(appId: string): Promise<void>;
+  orphanCustody(appId: string): Promise<void>;
   enableGlobal(appId: string): Promise<DesignFactoryApp>;
   resetToPayload(input: {
     appId: string;
@@ -203,12 +204,40 @@ export class DesignFactoryProvisioner {
   async reinstall(sourceRoot: string, rawTrust: DesignFactoryTrust) {
     const trust = trustSchema.parse(rawTrust);
     const state = this.file.snapshot();
+    const missingOwnerAppId = this.missingOwnerAppId(state);
     const retryingExplicitReinstall =
       state.condition === "failed" && state.deletedAt !== null;
-    if (state.condition !== "deleted" && !retryingExplicitReinstall) {
+    if (
+      state.condition !== "deleted" &&
+      !retryingExplicitReinstall &&
+      missingOwnerAppId === null
+    ) {
       throw new Error("Design factory 仅能在用户显式删除后重装");
     }
-    await this.file.mutate((current) => {
+    // 旧版删除可能已移除 AppStore 壳却未落 factory 墓碑。只有用户点击
+    // 显式重装时才允许收敛此状态；先 orphan 旧 custody，再丢弃旧 appId。
+    await this.orphanMissingOwner(missingOwnerAppId);
+    await this.resetForReinstall(trust);
+    return this.ensure(sourceRoot, trust);
+  }
+
+  private missingOwnerAppId(state: FactoryFile) {
+    if (state.appId === null) return null;
+    return this.requirePorts().find(state.appId) ? null : state.appId;
+  }
+
+  private async orphanMissingOwner(appId: string | null) {
+    if (appId === null) return;
+    try {
+      await this.requirePorts().orphanCustody(appId);
+    } catch (cause) {
+      await this.record({ condition: "failed", error: errorMessage(cause) });
+      throw cause;
+    }
+  }
+
+  private resetForReinstall(trust: DesignFactoryTrust) {
+    return this.file.mutate((current) => {
       current.revision += 1;
       current.requestId = this.createId();
       current.trust = trust;
@@ -217,10 +246,10 @@ export class DesignFactoryProvisioner {
       current.condition = "provisioning";
       current.previousDigest = null;
       current.error = null;
+      current.deletedAt ??= this.now();
       current.updatedAt = this.now();
       return current;
     });
-    return this.ensure(sourceRoot, trust);
   }
 
   async resetToPin(sourceRoot: string, rawTrust: DesignFactoryTrust) {
@@ -262,7 +291,9 @@ export class DesignFactoryProvisioner {
 
   markDeleted(appId: string) {
     const current = this.file.snapshot();
-    if (current.appId && current.appId !== appId) return Promise.resolve(current);
+    /* 只有账本精确拥有的 App 才能写删除墓碑。appId=null 是尚未安装，不是
+       「任何 App 都算我的」；否则普通 App 删除会意外解锁 factory 重装。 */
+    if (current.appId !== appId) return Promise.resolve(current);
     return this.record({
       appId,
       condition: "deleted",

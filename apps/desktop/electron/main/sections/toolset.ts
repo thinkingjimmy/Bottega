@@ -143,7 +143,7 @@ export function createSectionToolset(
     },
     read_section: async (args, context) => {
       const sectionId = args.section_id as string;
-      const record = await chats.get(sectionId);
+      const record = await chats.getConversation(sectionId);
       if (!record) {
         throw Object.assign(new Error("Section 不存在"), { status: 404 });
       }

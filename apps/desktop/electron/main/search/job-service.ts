@@ -1,13 +1,13 @@
 /**
- * [INPUT]: Depends on Electron IPC ChatStore/BaseStore Product snapshot Project archiving narrow queries HistoryImport Search narrow gateway search/query with shared SearchJob contract
- * [OUTPUT]: Provides GlobalSearchService: snapshot-fenced start, Chat/Base Priority with History, async lane, message locator, credit/byte backpressure, 250ms page budget, only cut the session boundary, only recognize job signal in flight parse, shut down - re-lock, skip disclosure, single-mode delivery epoch cursor, single pull threshold, cancel/TTL/capacity unified dispose
- * [POS]: search for the renderer job owner; Start freezing only product snapshots and external metadata, external source is valid for session-by-session analysis and fail-soft during pull period
+ * [INPUT]: Depends on Electron IPC, ChatStore gram-FTS candidates, BaseStore snapshots, archived Project facts, the exact query matcher, and shared SearchJob contracts
+ * [OUTPUT]: Provides GlobalSearchService with per-hit-fenced lazy Agent-identified Product Chat→Base lanes that skip stale hits instead of failing the job, keyset Chat-document paging that a mid-scan write cannot shift, exact post-filtering before limits, bounded resident pages, backpressure, cancellation that always drains the iterator, and TTL
+ * [POS]: Renderer search job owner; SQLite supplies Product Chat candidates while Base keeps its own bounded logical lane
  */
 
 import { createHash, randomUUID } from "node:crypto";
 import type { BrowserWindow } from "electron";
 import { z } from "zod";
-import { ownerFromKey } from "../../../shared/bases-ipc";
+import { baseNavigationOf, ownerFromKey } from "../../../shared/bases-ipc";
 import {
   SEARCH_JOB_CHANNEL,
   type GlobalSearchHit,
@@ -15,26 +15,34 @@ import {
   type SearchJobPage,
 } from "../../../shared/search-ipc";
 import type { ChatStore } from "../chats/chat-store";
-import type { BaseStore, ReadonlyBaseSnapshot } from "../bases/base-store";
 import type {
-  HistoryImportService,
-  SearchableHistoryEntry,
-} from "../history-import/service";
+  SearchDocumentCursor,
+  SearchDocumentHit,
+} from "../chats/sqlite/database-protocol";
+import type { ChatSummary } from "../../../shared/chats-ipc";
+import {
+  appearsInSearchBase,
+  searchDestination,
+} from "../../../shared/placement/search";
+import {
+  productDestinationRoute,
+  type ProductDestination,
+} from "../../../shared/placement/facts";
+import type { BaseStore, ReadonlyBaseSnapshot } from "../bases/base-store";
 import { rendererIpc } from "../ipc-registrar";
 import {
   makeSnippet,
+  matchTokens,
+  normalize,
   scanBase,
-  scanChat,
-  scanHistoryBlocks,
   tokenize,
   type Checkpoint,
   type ScanCounter,
-  type JobSearchLocator,
+  type SearchLocator,
 } from "./query";
 
 const JOB_TTL = 5 * 60_000;
 const MAX_JOBS = 8;
-const HISTORY_PAGE_MS = 250;
 const inputSchema = z.object({ query: z.string().trim().min(1).max(512) }).strict();
 const pullSchema = z.object({
   jobId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
@@ -44,46 +52,44 @@ const pullSchema = z.object({
 }).strict();
 
 type FrozenSource = {
-  chats: NonNullable<Awaited<ReturnType<ChatStore["get"]>>>[];
+  chats: ChatSummary[];
+  loadChatHits: (cursor: SearchDocumentCursor | null) => Promise<{
+    hits: SearchDocumentHit[];
+    nextCursor: SearchDocumentCursor | null;
+  }>;
+  chatStoreRevision: number;
   bases: Array<{
     ownerKey: string;
     snapshot: ReadonlyBaseSnapshot;
     title: string | null;
     sectionId: string | null;
   }>;
-  history: SearchableHistoryEntry[];
-  archivedChatRoutes: Record<string, string>;
-  archivedBaseRoutes: Record<string, string>;
+  archivedChatDestinations: Record<string, ProductDestination>;
+  archivedBaseDestinations: Record<string, ProductDestination>;
 };
 
-type Boundary = { kind: "history-boundary" };
-type PageBoundary = { kind: "history-page-boundary" };
-type StreamEvent = GlobalSearchHit | Checkpoint | Boundary | PageBoundary;
-type Progress = { skippedSessions: number };
-type PageSignal = { signal: AbortSignal };
+type Lane = "chat" | "base";
+type LaneBoundary = { kind: "lane-boundary"; lane: Lane };
+type StreamEvent = GlobalSearchHit | Checkpoint | LaneBoundary;
 type Job = {
   id: string;
   revision: string;
   deliveryEpoch: number;
   scanned: number;
-  skipped: number;
+  /** 被字节预算挤掉的命中；围栏跳过的那部分由 counter.skipped 记账。 */
+  byteSkipped: number;
   expiresAt: number;
   counter: ScanCounter;
-  progress: Progress;
   controller: AbortController;
   iterator: AsyncGenerator<StreamEvent>;
   inFlight: boolean;
-  inHistory: boolean;
-  page: PageSignal;
+  /** 在途 pull 的收尾闩：disposeJob 把 iterator.return() 挂在它后面。 */
+  settled?: Promise<void>;
+  closing?: Promise<void>;
+  lane: Lane;
+  lastIdentity: string | null;
   pendingHit?: GlobalSearchHit;
 };
-
-type HistorySearchPort = Pick<
-  HistoryImportService,
-  | "listSearchableEntries"
-  | "parseTranscriptForSearch"
-  | "readAdoptionSnapshotForSearch"
->;
 
 export class GlobalSearchService {
   private readonly jobs = new Map<string, Job>();
@@ -93,8 +99,7 @@ export class GlobalSearchService {
     private readonly bases: BaseStore,
     private readonly projectArchivedAt: (
       projectId: string
-    ) => number | null | undefined = () => null,
-    private readonly history?: HistorySearchPort
+    ) => number | null | undefined = () => null
   ) {}
 
   register(window: BrowserWindow, rendererUrl: string) {
@@ -118,35 +123,24 @@ export class GlobalSearchService {
       if (oldest) await this.disposeJob(oldest);
     }
     const tokens = tokenize(query);
-    const source = await this.freeze();
-    const revision = sourceRevision(source, this.chats.getStoreRevision());
+    const source = await this.freeze(tokens);
+    const revision = sourceRevision(source, source.chatStoreRevision);
     const id = `search_${randomUUID().replaceAll("-", "")}`;
-    const counter = { scanned: 0 };
-    const progress = { skippedSessions: 0 };
+    const counter: ScanCounter = { scanned: 0, skipped: 0 };
     const controller = new AbortController();
-    const page = { signal: controller.signal };
     const job: Job = {
       id,
       revision,
       deliveryEpoch: 0,
       scanned: 0,
-      skipped: 0,
+      byteSkipped: 0,
       counter,
-      progress,
       controller,
       expiresAt: Date.now() + JOB_TTL,
       inFlight: false,
-      inHistory: false,
-      page,
-      iterator: scanFrozen(
-        source,
-        tokens,
-        counter,
-        progress,
-        controller.signal,
-        page,
-        this.history
-      ),
+      lane: "chat",
+      lastIdentity: null,
+      iterator: scanFrozen(source, tokens, counter, controller.signal),
     };
     this.jobs.set(id, job);
     return {
@@ -159,21 +153,20 @@ export class GlobalSearchService {
   async pull(input: PullSearchInput): Promise<SearchJobPage> {
     this.sweep();
     const job = this.jobs.get(input.jobId);
-    if (!job || cursorOf(job) !== input.cursor) {
-      throw new Error("搜索 cursor 已失效");
-    }
+    if (!job) throw new Error("搜索 cursor 已失效");
     if (job.inFlight) throw new Error("同一搜索任务已有 pull 正在执行");
-    const pageLease = createHistoryPageLease(job.controller.signal);
-    job.page.signal = pageLease.signal;
+    if (cursorOf(job) !== input.cursor) throw new Error("搜索 cursor 已失效");
     job.inFlight = true;
+    let settle!: () => void;
+    job.settled = new Promise<void>((resolve) => { settle = resolve; });
     try {
       return await this.pullSerial(job, input);
     } catch (cause) {
       await this.disposeJob(job.id);
       throw cause;
     } finally {
-      pageLease.dispose();
       job.inFlight = false;
+      settle();
     }
   }
 
@@ -186,10 +179,8 @@ export class GlobalSearchService {
     let bytes = 2;
     let done = false;
     let steps = 0;
-    const startedAt = Date.now();
     const stepBudget = input.credit * 10 + 1;
     while (hits.length < input.credit && steps < stepBudget) {
-      if (job.inHistory && Date.now() - startedAt >= HISTORY_PAGE_MS) break;
       let value: StreamEvent;
       if (job.pendingHit) {
         value = job.pendingHit;
@@ -204,22 +195,21 @@ export class GlobalSearchService {
         }
         value = next.value;
       }
-      if (isHistoryBoundary(value)) {
-        job.inHistory = true;
-        if (hits.length) break;
+      if (isLaneBoundary(value)) {
+        job.lane = value.lane;
         continue;
       }
-      if (isHistoryPageBoundary(value)) break;
       if (isCheckpoint(value)) continue;
       const size = Buffer.byteLength(JSON.stringify(value), "utf8") + 1;
       if (bytes + size > input.byteBudget) {
-        if (!hits.length) job.skipped += 1;
+        if (!hits.length) job.byteSkipped += 1;
         else {
           job.pendingHit = value;
           break;
         }
       } else {
         hits.push(value);
+        job.lastIdentity = value.key;
         bytes += size;
       }
     }
@@ -231,53 +221,65 @@ export class GlobalSearchService {
       nextCursor: done ? null : cursorOf(job),
       done,
       scanned: job.scanned,
-      skipped: job.skipped,
-      skippedSessions: job.progress.skippedSessions,
+      skipped: job.byteSkipped + job.counter.skipped,
       snapshotRevision: job.revision,
     };
   }
 
-  private async freeze(): Promise<FrozenSource> {
-    const chats = (
-      await Promise.all(
-        this.chats.list().map((summary) => this.chats.get(summary.id))
-      )
-    )
-      .filter((record): record is NonNullable<typeof record> => Boolean(record))
-      .map((record) => structuredClone(record));
+  private async freeze(tokens: string[]): Promise<FrozenSource> {
+    const chatStoreRevision = this.chats.getStoreRevision();
+    /* 全局 revision 每一次写入都会前进：拿它当扫描围栏，等于让任何一条无关
+       Chat 的改名把正在读的搜索结果整个作废。围栏留在命中一侧（逐条比对
+       所属 Chat 的 record/message revision），过期的那一条跳过就是了。 */
+    const loadChatHits = async (cursor: SearchDocumentCursor | null) => {
+      const page = await this.chats.searchTimelineDocuments(tokens, cursor, 500);
+      return {
+        hits: page.hits.map((hit) => structuredClone(hit)),
+        nextCursor: page.nextCursor,
+      };
+    };
+    const chats = this.chats.list().map((summary) => structuredClone(summary));
     const summaries = new Map(chats.map((record) => [record.id, record]));
-    const archivedChatRoutes = Object.fromEntries(
+    const archivedChatDestinations = Object.fromEntries(
       chats.flatMap((record) => {
-        if (record.archivedAt) return [[record.id, archiveRoute("chat", record.id)]];
+        if (record.archivedAt) {
+          return [[record.id, archiveDestination("chat", record.id)]];
+        }
         if (record.projectId && this.projectArchivedAt(record.projectId)) {
-          return [[record.id, archiveRoute("project", record.projectId)]];
+          return [[record.id, archiveDestination("project", record.projectId)]];
         }
         return [];
       })
     );
-    const archivedBaseRoutes: Record<string, string> = {};
-    const bases = this.bases.listAll().map(({ ownerKey, snapshot }) => {
+    const archivedBaseDestinations: Record<string, ProductDestination> = {};
+    const bases = this.bases.listAll().flatMap(({ ownerKey, snapshot }) => {
       const owner = ownerFromKey(ownerKey);
       const chat = owner.kind === "chat" ? summaries.get(owner.chatId) : undefined;
+      if (!appearsInSearchBase(
+        baseNavigationOf(snapshot.meta),
+        owner.kind !== "chat" || Boolean(chat && searchDestination(chat))
+      )) return [];
       const archivedRoute = owner.kind === "chat"
-        ? archivedChatRoutes[owner.chatId]
+        ? archivedChatDestinations[owner.chatId]
         : this.projectArchivedAt(owner.projectId)
-          ? archiveRoute("project", owner.projectId)
+          ? archiveDestination("project", owner.projectId)
           : undefined;
-      if (archivedRoute) archivedBaseRoutes[ownerKey] = archivedRoute;
-      return {
+      if (archivedRoute) archivedBaseDestinations[ownerKey] = archivedRoute;
+      return [{
         ownerKey,
         snapshot: structuredClone(snapshot),
         title: chat?.title ?? null,
         sectionId: chat?.id ?? null,
-      };
+      }];
     });
-    const history = (this.history?.listSearchableEntries() ?? [])
-      .map((entry) => structuredClone(entry))
-      .sort((left, right) =>
-        right.updatedAt - left.updatedAt || left.opaqueId.localeCompare(right.opaqueId)
-      );
-    return { chats, bases, history, archivedChatRoutes, archivedBaseRoutes };
+    return {
+      chats,
+      loadChatHits,
+      chatStoreRevision,
+      bases,
+      archivedChatDestinations,
+      archivedBaseDestinations,
+    };
   }
 
   private sweep() {
@@ -287,12 +289,23 @@ export class GlobalSearchService {
     }
   }
 
+  /* 关闭必须真的走到 iterator.return()：pull 在途时只 abort 就退出，会把
+     生成器的 finally（游标、worker 句柄）永远吊在那里。改为把收尾挂到那次
+     pull 的尾巴上，无论它成功还是抛出都收。 */
   private async disposeJob(id: string) {
     const job = this.jobs.get(id);
     if (!job) return;
     this.jobs.delete(id);
     job.controller.abort();
-    await job.iterator.return(undefined).catch(() => undefined);
+    if (job.inFlight && job.settled) {
+      job.closing = job.settled.then(() => this.closeIterator(job));
+      return;
+    }
+    await this.closeIterator(job);
+  }
+
+  private closeIterator(job: Job) {
+    return job.iterator.return(undefined).then(() => undefined, () => undefined);
   }
 }
 
@@ -300,23 +313,67 @@ async function* scanFrozen(
   source: FrozenSource,
   tokens: string[],
   counter: ScanCounter,
-  progress: Progress,
-  signal: AbortSignal,
-  page: PageSignal,
-  history: HistorySearchPort | undefined
+  signal: AbortSignal
 ): AsyncGenerator<StreamEvent> {
-  for (const chat of source.chats) {
-    for (const event of scanChat(counter, chat, tokens)) {
-      if (event.kind !== "locator") {
-        yield event;
+  const summaries = new Map(source.chats.map((chat) => [chat.id, chat]));
+  let cursor: SearchDocumentCursor | null = null;
+  while (true) {
+    signal.throwIfAborted();
+    const page = await source.loadChatHits(cursor);
+    for (const hit of page.hits) {
+      signal.throwIfAborted();
+      counter.scanned += 1;
+      if (counter.scanned % 500 === 0) yield { kind: "checkpoint", scanned: counter.scanned };
+      if (matchTokens(hit.searchText, tokens) === null) continue;
+      const chat = summaries.get(hit.chatId);
+      if (!chat ||
+        chat.chatRecordRevision !== hit.coreRevision ||
+        chat.chatMessageRevision !== hit.nativeMessageRevision) {
+        counter.skipped += 1;
         continue;
       }
-      const messageId = event.matched === "message"
-        ? chat.messages.find((message) => message.seq === event.messageSeq)?.id
-        : undefined;
-      yield locatorHit(event, source.archivedChatRoutes[chat.id], messageId);
+      const destination = searchDestination(chat);
+      if (!destination) continue;
+      const normalizedText = normalize(hit.searchText);
+      const offset = Math.min(...tokens.map((token) => normalizedText.indexOf(normalize(token))).filter((value) => value >= 0));
+      const locator = hit.documentKind === "title"
+        ? {
+          kind: "locator" as const,
+          source: "chat" as const,
+          sectionId: hit.chatId,
+          title: hit.title,
+          agent: hit.agent,
+          updatedAt: hit.updatedAt,
+          matched: "title" as const,
+          normalizedText,
+          offset: Number.isFinite(offset) ? offset : 0,
+          }
+        : {
+          kind: "locator" as const,
+          source: "chat" as const,
+          sectionId: hit.chatId,
+          title: hit.title,
+          agent: hit.agent,
+          updatedAt: hit.updatedAt,
+          matched: "message" as const,
+          messageSeq: hit.messageSeq ?? hit.message?.seq ?? 0,
+          role: (hit.messageRole ?? hit.message?.role) === "user"
+            ? "user" as const
+            : "assistant" as const,
+          normalizedText,
+          offset: Number.isFinite(offset) ? offset : 0,
+          };
+      yield locatorHit(
+        locator,
+        destination,
+        source.archivedChatDestinations[hit.chatId],
+        hit.messageId ?? hit.message?.id
+      );
     }
+    if (page.nextCursor === null) break;
+    cursor = page.nextCursor;
   }
+  yield { kind: "lane-boundary", lane: "base" };
   for (const base of source.bases) {
     for (const event of scanBase(
       counter,
@@ -326,97 +383,43 @@ async function* scanFrozen(
       tokens
     )) {
       yield event.kind === "locator"
-        ? locatorHit(event, source.archivedBaseRoutes[base.ownerKey])
+        ? locatorHit(
+            event,
+            source.archivedBaseDestinations[base.ownerKey]
+              ? source.archivedBaseDestinations[base.ownerKey]!
+              : { kind: "base", ownerKey: base.ownerKey },
+            source.archivedBaseDestinations[base.ownerKey],
+          )
         : event;
     }
-  }
-  if (!history || !source.history.length) return;
-  yield { kind: "history-boundary" };
-  for (const entry of source.history) {
-    signal.throwIfAborted();
-    /* claimed 非 adopted 的正文即产品 messages，Chat lane 已覆盖——
-       跳过但不计入披露：它不是「搜不到的会话」。 */
-    if (entry.claimed && !entry.claimed.adopted) continue;
-    if (!entry.policySearchable || entry.archived) {
-      progress.skippedSessions += 1;
-      continue;
-    }
-    /* 页预算只裁「会话边界」：预算耗尽就挂起等下一页，绝不中止在飞的
-       parse——单会话 parse 超过 250ms 时，中止-重来会退化成永不收敛的
-       活锁（每页从零重跑同一个文件）。在飞 parse 只认 job signal
-       （cancel/TTL/容量淘汰仍即时生效），跑完的成果永远交付。 */
-    while (page.signal.aborted) {
-      yield { kind: "history-page-boundary" };
-    }
-    let blocks: Awaited<ReturnType<HistorySearchPort["parseTranscriptForSearch"]>>;
-    try {
-      blocks = entry.claimed?.adopted
-        ? await history.readAdoptionSnapshotForSearch(
-            entry.claimed.adoptionSnapshotId!,
-            entry.claimed.snapshotDigest!,
-            signal
-          )
-        : await history.parseTranscriptForSearch(
-            entry.opaqueId,
-            { fingerprint: entry.fingerprint, historyRevision: entry.historyRevision },
-            signal
-          );
-    } catch (cause) {
-      if (signal.aborted) throw cause;
-      progress.skippedSessions += 1;
-      continue;
-    }
-    {
-      const routeBase = entry.claimed?.adopted
-        ? `/chat/${entry.claimed.chatId}`
-        : `/history/${entry.opaqueId}`;
-      for (const event of scanHistoryBlocks(counter, entry, blocks, tokens)) {
-        yield event.kind === "locator"
-          ? locatorHit(event, undefined, undefined, routeBase)
-          : event;
-      }
-    }
-    yield { kind: "checkpoint", scanned: counter.scanned };
   }
 }
 
 function locatorHit(
-  locator: JobSearchLocator,
-  archivedRoute?: string,
-  messageId?: string,
-  historyRoute?: string
+  locator: SearchLocator,
+  destination: ProductDestination,
+  archivedDestination?: ProductDestination,
+  messageId?: string
 ): GlobalSearchHit {
   if (locator.source === "chat") {
+    const targetDestination = archivedDestination ?? destination;
     return {
       key: `chat:${locator.sectionId}:${locator.matched}:${
         "messageSeq" in locator ? locator.messageSeq : 0
       }`,
       source: "chat",
+      agent: locator.agent,
       title: locator.title ?? "Untitled chat",
       subtitle: locator.agent,
       snippet: makeSnippet(locator.normalizedText, locator.offset),
-      route: archivedRoute ?? `/chat/${locator.sectionId}`,
+      route: archivedDestination
+        ? productDestinationRoute(archivedDestination)
+        : `/chat/${locator.sectionId}`,
+      destination: targetDestination,
       updatedAt: locator.updatedAt,
       matched: locator.matched,
-      ...(messageId && !archivedRoute
+      ...(messageId && !archivedDestination
         ? { target: { kind: "chat-message" as const, messageId } }
-        : {}),
-    };
-  }
-  if (locator.source === "history") {
-    const offset = `${locator.historyRevision}:${locator.renderedRowKey}`;
-    return {
-      key: `history:${locator.opaqueId}:${locator.matched}:${locator.renderedRowKey}`,
-      source: "history",
-      sourceKind: locator.sourceKind,
-      title: locator.title,
-      subtitle: locator.projectId,
-      snippet: makeSnippet(locator.normalizedText, locator.offset),
-      route: historyRoute ?? `/history/${locator.opaqueId}`,
-      updatedAt: locator.updatedAt,
-      matched: locator.matched,
-      ...(locator.matched === "message"
-        ? { target: { kind: "history-block" as const, offset } }
         : {}),
     };
   }
@@ -429,17 +432,29 @@ function locatorHit(
     title: locator.baseName,
     subtitle: locator.chatTitle ?? owner.kind,
     snippet: makeSnippet(locator.normalizedText, locator.offset),
-    route: archivedRoute ?? (owner.kind === "chat"
-      ? `/bases/chat/${owner.chatId}`
-      : `/bases/project/${owner.projectId}`),
+    route: archivedDestination
+      ? productDestinationRoute(archivedDestination)
+      : owner.kind === "chat"
+        ? `/bases/chat/${owner.chatId}`
+        : `/bases/project/${owner.projectId}`,
+    destination: archivedDestination ?? destination,
     updatedAt: 0,
     matched: locator.matched,
   };
 }
 
-function cursorOf(job: Pick<Job, "id" | "revision" | "deliveryEpoch">) {
+function cursorOf(job: Pick<
+  Job,
+  "id" | "revision" | "deliveryEpoch" | "lane" | "lastIdentity"
+>) {
   return Buffer.from(
-    JSON.stringify({ id: job.id, revision: job.revision, epoch: job.deliveryEpoch })
+    JSON.stringify({
+      id: job.id,
+      revision: job.revision,
+      epoch: job.deliveryEpoch,
+      lane: job.lane,
+      lastIdentity: job.lastIdentity,
+    })
   ).toString("base64url");
 }
 
@@ -447,55 +462,32 @@ function sourceRevision(source: FrozenSource, chatRevision: number) {
   return createHash("sha256")
     .update(JSON.stringify({
       chatRevision,
+      chatFences: source.chats.map((chat) => [
+        chat.id,
+        chat.chatRecordRevision,
+        chat.chatMessageRevision,
+        chat.incarnationId,
+      ]),
       bases: source.bases.map((base) => [
         base.ownerKey,
         base.snapshot.meta.revision,
         base.snapshot.meta.rowsGeneration,
       ]),
-      history: source.history.map((entry) => [
-        entry.opaqueId,
-        entry.historyRevision,
-        entry.fingerprint,
-        entry.claimed,
-        entry.archived,
-        entry.policySearchable,
-      ]),
-      archivedChatRoutes: source.archivedChatRoutes,
-      archivedBaseRoutes: source.archivedBaseRoutes,
+      archivedChatDestinations: source.archivedChatDestinations,
+      archivedBaseDestinations: source.archivedBaseDestinations,
     }))
     .digest("hex");
 }
 
-const archiveRoute = (kind: "chat" | "project", id: string) =>
-  `/settings/archive?target=${encodeURIComponent(`${kind}:${id}`)}`;
+const archiveDestination = (
+  target: "chat" | "project",
+  id: string
+): ProductDestination => ({ kind: "archive", target, id });
 
 function isCheckpoint(value: StreamEvent): value is Checkpoint {
   return "kind" in value && value.kind === "checkpoint";
 }
 
-function isHistoryBoundary(value: StreamEvent): value is Boundary {
-  return "kind" in value && value.kind === "history-boundary";
-}
-
-function isHistoryPageBoundary(value: StreamEvent): value is PageBoundary {
-  return "kind" in value && value.kind === "history-page-boundary";
-}
-
-function createHistoryPageLease(jobSignal: AbortSignal) {
-  const controller = new AbortController();
-  const abortFromJob = () => controller.abort(jobSignal.reason);
-  if (jobSignal.aborted) abortFromJob();
-  else jobSignal.addEventListener("abort", abortFromJob, { once: true });
-  const timer = setTimeout(
-    () => controller.abort(new Error("HISTORY_PAGE_BUDGET_EXHAUSTED")),
-    HISTORY_PAGE_MS
-  );
-  timer.unref();
-  return {
-    signal: controller.signal,
-    dispose() {
-      clearTimeout(timer);
-      jobSignal.removeEventListener("abort", abortFromJob);
-    },
-  };
+function isLaneBoundary(value: StreamEvent): value is LaneBoundary {
+  return "kind" in value && value.kind === "lane-boundary";
 }

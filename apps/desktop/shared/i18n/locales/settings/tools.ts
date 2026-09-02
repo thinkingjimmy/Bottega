@@ -19,8 +19,6 @@ export const settingsToolsEn = {
   },
   builtin: {
     title: "Built-in tools",
-    description:
-      "Changes take effect on the next turn. The OpenCode backend does not use built-in tools.",
     globalDescription: "Global defaults take effect on the next turn. Projects can override each tool independently.",
     projectDescription: "Choose this Project's intent for each tool. Resetting an override restores the global default.",
     saveFailed: "Failed to save the built-in tool setting",
@@ -71,8 +69,6 @@ export const settingsToolsEn = {
   },
   mcp: {
     title: "MCP Servers",
-    description:
-      "Servers are injected as a whole (server-inclusion-only); tool discovery and calls are delegated to the backend. A broken OpenCode server can block a new session for about 30 seconds.",
     globalDescription: "Manage global MCP servers. Projects may inherit or override them without changing this list.",
     projectDescription: "Project servers are private to this Project. Inherited global servers can be overridden here.",
     globalEmptyHint: "Add a global server here. Project-owned servers never appear on this page.",
@@ -91,8 +87,6 @@ export const settingsToolsEn = {
     edit: "Edit",
     delete: "Delete {{name}}",
     emptyTitle: "No MCP servers yet",
-    emptyHint:
-      "Use “Add server” above to enter an absolute stdio command. Only enabled servers are injected into human, non-Plan turns.",
     addTitle: "Add MCP server",
     editTitle: "Edit MCP server",
     dialogDescription:
@@ -137,7 +131,6 @@ export const settingsToolsZhCN: SettingsToolsCatalog = {
   },
   builtin: {
     title: "内置工具",
-    description: "关闭后自下一轮生效；OpenCode 后端不使用内置工具。",
     globalDescription: "全局默认值从下一轮生效；各 Project 可独立覆盖每项工具。",
     projectDescription: "为本 Project 选择各工具的使用意图；重置覆盖后恢复全局默认值。",
     saveFailed: "内置工具设置保存失败",
@@ -179,7 +172,6 @@ export const settingsToolsZhCN: SettingsToolsCatalog = {
   },
   mcp: {
     title: "MCP Servers",
-    description: "按整台 server 注入（server-inclusion-only），工具发现与调用由 backend 代理。OpenCode 的坏 server 可能让新会话阻塞约 30 秒。",
     globalDescription: "管理全局 MCP server；Project 可继承或覆盖，且不会改写本清单。",
     projectDescription: "Project server 仅归本 Project 所有；继承的全局 server 可在此覆盖。",
     globalEmptyHint: "在此添加全局 server。Project 自有 server 永远不会出现在本页。",
@@ -194,7 +186,6 @@ export const settingsToolsZhCN: SettingsToolsCatalog = {
     effective: { enabled: "已启用", disabled: "已停用", unavailable: "意图已启用；Backend 不可用" },
     add: "添加 server", edit: "编辑", delete: "删除 {{name}}",
     emptyTitle: "还没有 MCP server",
-    emptyHint: "用上方“添加 server”填一条绝对路径 stdio command。只有启用的 server 会注入人工非 Plan 回合。",
     addTitle: "添加 MCP server", editTitle: "编辑 MCP server",
     dialogDescription: "只支持 stdio：command 必须是绝对路径。保存后按整台 server 注入下一次人工非 Plan 回合。",
     name: "名称", command: "绝对路径 command", args: "参数（每行一项）", environment: "环境变量", addVariable: "添加变量",
@@ -216,7 +207,7 @@ export const settingsToolsJa: SettingsToolsCatalog = {
     minimumRuntimeVersion: "ランタイム {{minimumVersion}} 以降が必要です（検出: {{detectedVersion}}）", unknownVersion: "不明なバージョン",
   },
   builtin: {
-    title: "組み込みツール", description: "変更は次のターンから反映されます。OpenCode バックエンドは組み込みツールを使用しません。", saveFailed: "組み込みツール設定を保存できませんでした", disabledCount: "{{count}} 件オフ",
+    title: "組み込みツール", saveFailed: "組み込みツール設定を保存できませんでした", disabledCount: "{{count}} 件オフ",
     globalDescription: "グローバル既定値は次のターンから反映され、Project ごとに各ツールを上書きできます。",
     projectDescription: "この Project のツール使用意図を選びます。上書きをリセットするとグローバル既定値に戻ります。",
     resetAll: "Project のツール上書きをすべてリセット", resetOne: "{{name}} をグローバル既定値に戻す",
@@ -254,7 +245,7 @@ export const settingsToolsJa: SettingsToolsCatalog = {
     },
   },
   mcp: {
-    title: "MCP Servers", description: "server 全体を注入し（server-inclusion-only）、ツール検出と呼び出しはバックエンドに委任します。壊れた OpenCode server は新規セッションを約 30 秒止める場合があります。",
+    title: "MCP Servers",
     globalDescription: "グローバル MCP server を管理します。Project はこの一覧を変更せず継承または上書きできます。",
     projectDescription: "Project server はこの Project 専用です。継承したグローバル server はここで上書きできます。",
     globalEmptyHint: "ここにグローバル server を追加します。Project 所有 server はこのページに表示されません。",
@@ -266,7 +257,7 @@ export const settingsToolsJa: SettingsToolsCatalog = {
     conflict: "server が別の場所で更新されました。最新状態を読み込み、下書きは保持しました。",
     source: { "global-default": "グローバル既定", "project-override": "Project 上書き", "project-owned": "Project 所有" },
     effective: { enabled: "有効", disabled: "無効", unavailable: "使用意図は有効ですが Backend を利用できません" },
-    add: "server を追加", edit: "編集", delete: "{{name}} を削除", emptyTitle: "MCP server はまだありません", emptyHint: "上の「server を追加」から絶対パスの stdio command を入力します。有効な server だけが人間の非 Plan ターンに注入されます。",
+    add: "server を追加", edit: "編集", delete: "{{name}} を削除", emptyTitle: "MCP server はまだありません",
     addTitle: "MCP server を追加", editTitle: "MCP server を編集", dialogDescription: "stdio のみ対応し、command は絶対パスが必要です。保存後、次の人間の非 Plan ターンに server 全体を注入します。",
     name: "名前", command: "command の絶対パス", args: "引数（1 行に 1 つ）", environment: "環境変数", addVariable: "変数を追加", envName: "環境変数名", envNewValue: "{{name}} の新しい値", envFallbackName: "環境変数", retainValue: "空欄なら現在の値を保持", value: "値", removeVariable: "{{name}} を削除", envNameRequired: "環境変数名は空にできません", envValueRequired: "{{name}} の新しい値を入力してください", descriptionLine: "{{transport}}・{{target}}・{{eligibility}}・{{health}}",
     eligibility: { eligible: "次の人間の非 Plan ターンで有効", "remote-policy-unsupported": "Remote チャネルはまだ利用できません", "authenticated-remote-unsupported": "静的 Header 付き authenticated remote は未対応", "query-remote-unsupported": "query 付き remote URL は未対応" },
@@ -282,7 +273,7 @@ export const settingsToolsFr: SettingsToolsCatalog = {
     minimumRuntimeVersion: "Nécessite le runtime {{minimumVersion}} ou ultérieur (détecté : {{detectedVersion}})", unknownVersion: "version inconnue",
   },
   builtin: {
-    title: "Outils intégrés", description: "Les changements s’appliquent au tour suivant. Le backend OpenCode n’utilise pas les outils intégrés.", saveFailed: "Impossible d’enregistrer le réglage de l’outil intégré", disabledCount: "{{count}} désactivés",
+    title: "Outils intégrés", saveFailed: "Impossible d’enregistrer le réglage de l’outil intégré", disabledCount: "{{count}} désactivés",
     globalDescription: "Les valeurs globales s’appliquent au prochain tour ; chaque Project peut remplacer chaque outil.",
     projectDescription: "Choisissez l’intention de ce Project pour chaque outil. Réinitialiser restaure la valeur globale.",
     resetAll: "Réinitialiser tous les remplacements du Project", resetOne: "Réinitialiser {{name}} à la valeur globale",
@@ -320,7 +311,7 @@ export const settingsToolsFr: SettingsToolsCatalog = {
     },
   },
   mcp: {
-    title: "Serveurs MCP", description: "Les serveurs sont injectés en bloc (server-inclusion-only) ; la découverte et les appels sont délégués au backend. Un serveur OpenCode défaillant peut bloquer une nouvelle session environ 30 secondes.", add: "Ajouter un serveur", edit: "Modifier", delete: "Supprimer {{name}}", emptyTitle: "Aucun serveur MCP", emptyHint: "Utilisez « Ajouter un serveur » ci-dessus pour saisir une commande stdio absolue. Seuls les serveurs activés sont injectés dans les tours humains non Plan.", addTitle: "Ajouter un serveur MCP", editTitle: "Modifier le serveur MCP", dialogDescription: "Seul stdio est pris en charge et la commande doit être un chemin absolu. Après enregistrement, le serveur entier est injecté au prochain tour humain non Plan.", name: "Nom", command: "Chemin absolu de la commande", args: "Arguments (un par ligne)", environment: "Variables d’environnement", addVariable: "Ajouter une variable", envName: "Nom de variable d’environnement", envNewValue: "Nouvelle valeur de {{name}}", envFallbackName: "variable d’environnement", retainValue: "Laisser vide pour conserver la valeur", value: "Valeur", removeVariable: "Supprimer {{name}}", envNameRequired: "Le nom de la variable ne peut pas être vide", envValueRequired: "Saisissez une nouvelle valeur pour {{name}}", descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
+    title: "Serveurs MCP", add: "Ajouter un serveur", edit: "Modifier", delete: "Supprimer {{name}}", emptyTitle: "Aucun serveur MCP", addTitle: "Ajouter un serveur MCP", editTitle: "Modifier le serveur MCP", dialogDescription: "Seul stdio est pris en charge et la commande doit être un chemin absolu. Après enregistrement, le serveur entier est injecté au prochain tour humain non Plan.", name: "Nom", command: "Chemin absolu de la commande", args: "Arguments (un par ligne)", environment: "Variables d’environnement", addVariable: "Ajouter une variable", envName: "Nom de variable d’environnement", envNewValue: "Nouvelle valeur de {{name}}", envFallbackName: "variable d’environnement", retainValue: "Laisser vide pour conserver la valeur", value: "Valeur", removeVariable: "Supprimer {{name}}", envNameRequired: "Le nom de la variable ne peut pas être vide", envValueRequired: "Saisissez une nouvelle valeur pour {{name}}", descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
     globalDescription: "Gérez les serveurs MCP globaux. Les Projects peuvent les hériter ou les remplacer sans modifier cette liste.",
     projectDescription: "Les serveurs du Project lui sont privés. Les serveurs globaux hérités peuvent être remplacés ici.",
     globalEmptyHint: "Ajoutez ici un serveur global. Les serveurs propres aux Projects n’apparaissent jamais sur cette page.",
@@ -345,7 +336,7 @@ export const settingsToolsEs: SettingsToolsCatalog = {
     minimumRuntimeVersion: "Requiere runtime {{minimumVersion}} o posterior (detectado: {{detectedVersion}})", unknownVersion: "versión desconocida",
   },
   builtin: {
-    title: "Herramientas integradas", description: "Los cambios se aplican en el siguiente turno. El backend OpenCode no usa herramientas integradas.", saveFailed: "No se pudo guardar el ajuste de la herramienta integrada", disabledCount: "{{count}} desactivadas",
+    title: "Herramientas integradas", saveFailed: "No se pudo guardar el ajuste de la herramienta integrada", disabledCount: "{{count}} desactivadas",
     globalDescription: "Los valores globales se aplican en el siguiente turno; cada Project puede sustituir cada herramienta.",
     projectDescription: "Elige la intención de este Project para cada herramienta. Restablecer recupera el valor global.",
     resetAll: "Restablecer todas las sustituciones del Project", resetOne: "Restablecer {{name}} al valor global",
@@ -383,7 +374,7 @@ export const settingsToolsEs: SettingsToolsCatalog = {
     },
   },
   mcp: {
-    title: "Servidores MCP", description: "Los servidores se inyectan completos (server-inclusion-only); el descubrimiento y las llamadas se delegan al backend. Un servidor OpenCode defectuoso puede bloquear una sesión nueva unos 30 segundos.", add: "Añadir servidor", edit: "Editar", delete: "Eliminar {{name}}", emptyTitle: "Aún no hay servidores MCP", emptyHint: "Usa «Añadir servidor» para indicar un comando stdio absoluto. Solo los servidores activados se inyectan en turnos humanos no Plan.", addTitle: "Añadir servidor MCP", editTitle: "Editar servidor MCP", dialogDescription: "Solo se admite stdio y el comando debe ser una ruta absoluta. Al guardar, el servidor completo se inyecta en el siguiente turno humano no Plan.", name: "Nombre", command: "Ruta absoluta del comando", args: "Argumentos (uno por línea)", environment: "Variables de entorno", addVariable: "Añadir variable", envName: "Nombre de variable de entorno", envNewValue: "Nuevo valor de {{name}}", envFallbackName: "variable de entorno", retainValue: "Déjalo vacío para conservar el valor", value: "Valor", removeVariable: "Eliminar {{name}}", envNameRequired: "El nombre de la variable no puede estar vacío", envValueRequired: "Introduce un valor nuevo para {{name}}", descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
+    title: "Servidores MCP", add: "Añadir servidor", edit: "Editar", delete: "Eliminar {{name}}", emptyTitle: "Aún no hay servidores MCP", addTitle: "Añadir servidor MCP", editTitle: "Editar servidor MCP", dialogDescription: "Solo se admite stdio y el comando debe ser una ruta absoluta. Al guardar, el servidor completo se inyecta en el siguiente turno humano no Plan.", name: "Nombre", command: "Ruta absoluta del comando", args: "Argumentos (uno por línea)", environment: "Variables de entorno", addVariable: "Añadir variable", envName: "Nombre de variable de entorno", envNewValue: "Nuevo valor de {{name}}", envFallbackName: "variable de entorno", retainValue: "Déjalo vacío para conservar el valor", value: "Valor", removeVariable: "Eliminar {{name}}", envNameRequired: "El nombre de la variable no puede estar vacío", envValueRequired: "Introduce un valor nuevo para {{name}}", descriptionLine: "{{transport}} · {{target}} · {{eligibility}} · {{health}}",
     globalDescription: "Gestiona los servidores MCP globales. Los Projects pueden heredarlos o sustituirlos sin cambiar esta lista.",
     projectDescription: "Los servidores del Project son privados. Los servidores globales heredados se pueden sustituir aquí.",
     globalEmptyHint: "Añade aquí un servidor global. Los servidores propios de Projects nunca aparecen en esta página.",

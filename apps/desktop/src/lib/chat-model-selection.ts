@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent/Codex turn options and ability to catalog the Backend/Codex model
- * [OUTPUT]: Provides default options, catalog-driven effort/tier rules, preference-versus-effective Speed presentation, Speed reason catalog addressing, labels, and model switching
+ * [OUTPUT]: Provides default options, catalog-addressed effort/tier fallbacks, preference-versus-effective Speed presentation, Speed reason addressing, external labels, and model switching
  * [POS]: lib's chat model chooses a pure rule layer that allows UI, perpetuation and testing to share the same set of side-effects-free decisions
  */
 
@@ -46,8 +46,14 @@ export function findModel(
 }
 
 /** 运行态判据 → 目录键。文案只住在五语言目录里，规则层只负责寻址。 */
+const SPEED_REASON_KEYS = {
+  modelUnsupported: "chat.composer.modelSelector.speedReason.modelUnsupported",
+  backendOff: "chat.composer.modelSelector.speedReason.backendOff",
+  backendOn: "chat.composer.modelSelector.speedReason.backendOn",
+} as const satisfies Record<SessionServiceTierReason, string>;
+
 export const speedReasonKey = (reason: SessionServiceTierReason) =>
-  `chat.composer.modelSelector.speedReason.${reason}`;
+  SPEED_REASON_KEYS[reason];
 
 export function quickEffortIndex(
   options: CodexTurnOptions,
@@ -119,7 +125,8 @@ export function listModelEffortState(
     options[0];
   return {
     value: selected?.effort,
-    label: selected?.label ?? "Default",
+    label: selected?.label,
+    fallbackKey: "chat.composer.modelFallback.defaultEffort" as const,
     options,
     adjustable: options.length > 1,
   };
@@ -144,11 +151,12 @@ export function listModelSpeedState(
   );
   return {
     value: preferred?.id,
-    label: diverged
+    label: diverged && preferred && active
       ? `${preferred?.displayName} → ${active?.displayName}`
-      : preferred?.displayName ?? "Standard",
-    preferredLabel: preferred?.displayName ?? "Standard",
-    activeLabel: active?.displayName ?? "Standard",
+      : preferred?.displayName,
+    fallbackKey: "chat.composer.modelFallback.standardSpeed" as const,
+    preferredLabel: preferred?.displayName,
+    activeLabel: active?.displayName,
     reason: diverged ? effective?.reason : undefined,
     diverged,
     options,

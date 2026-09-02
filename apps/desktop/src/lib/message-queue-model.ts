@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on manual-turn, shared/submission of SubmissionContentV1, PromptInput/RichInput and Gallery attachment origin/submissionData
- * [OUTPUT]: Provides columns of Gallery tokens that are DTO, budget, workspace identity, scrapped, workspace-file Steer, hard drive, CAS claim, derived manual custody and discrete state machines
+ * [OUTPUT]: Provides Gallery-token queue DTOs, structured catalog errors, budget/workspace identity fencing, workspace-file Steer custody, CAS claims, and pure state transitions
  * [POS]: The message queue machine image of lib; React/store is only responsible for maintaining status and executing side effects
  */
 
@@ -59,11 +59,24 @@ export type QueueItem = {
 export type MessageQueue = {
   items: QueueItem[];
   paused: boolean;
-  error: string | null;
+  error: QueueError | null;
   owners: ReadonlySet<string>;
   reorderLock: boolean;
   revision: number;
 };
+
+export type QueueError =
+  | string
+  | {
+      copyKey:
+        | "chat.queue.limit"
+        | "chat.queue.chatBudget"
+        | "chat.queue.enqueueFailed"
+        | "chat.queue.globalBudget"
+        | "chat.queue.frozenBudget"
+        | "chat.queue.workspaceChanged";
+      values?: Readonly<Record<string, string | number>>;
+    };
 
 export const QUEUE_LIMIT = 20;
 export const QUEUE_BYTE_BUDGET = 256 * 1024 * 1024;
@@ -245,7 +258,7 @@ export function releaseOwner(queue: MessageQueue, token: string) {
 export type QueueMutationResult = {
   queue: MessageQueue;
   accepted: boolean;
-  reason?: string;
+  reason?: QueueError;
 };
 
 export function enqueue(
@@ -254,15 +267,19 @@ export function enqueue(
   globalBytes = queuedBytes(queue)
 ): QueueMutationResult {
   if (queue.items.length >= QUEUE_LIMIT) {
-    return { queue, accepted: false, reason: `最多只能排队 ${QUEUE_LIMIT} 条消息` };
+    return {
+      queue,
+      accepted: false,
+      reason: { copyKey: "chat.queue.limit", values: { count: QUEUE_LIMIT } },
+    };
   }
   const bytes = queuedBytes({ ...queue, items: [...queue.items, item] });
   const added = bytes - queuedBytes(queue);
   if (bytes > QUEUE_BYTE_BUDGET) {
-    return { queue, accepted: false, reason: "当前聊天的排队附件超过 256 MiB" };
+    return { queue, accepted: false, reason: { copyKey: "chat.queue.chatBudget" } };
   }
   if (globalBytes + added > QUEUE_BYTE_BUDGET_GLOBAL) {
-    return { queue, accepted: false, reason: "所有聊天的排队附件超过 1 GiB" };
+    return { queue, accepted: false, reason: { copyKey: "chat.queue.globalBudget" } };
   }
   return {
     queue: revise(queue, { items: [...queue.items, item], error: null }),
@@ -355,7 +372,12 @@ export function tryFreeze(
   const added = contentBytes(envelope.content);
   if (queuedBytes(queue) + added > QUEUE_BYTE_BUDGET || globalBytes + added > QUEUE_BYTE_BUDGET_GLOBAL) {
     const reset = replaceItem(queue, id, (current) => ({ ...current, state: "queued", owner: undefined }));
-    return { queue: revise(reset, { paused: true, error: "冻结后的消息附件超过队列内存预算" }), accepted: false, reason: "冻结后的消息附件超过队列内存预算" };
+    const reason = { copyKey: "chat.queue.frozenBudget" } as const;
+    return {
+      queue: revise(reset, { paused: true, error: reason }),
+      accepted: false,
+      reason,
+    };
   }
   return {
     queue: replaceItem(queue, id, (current) => ({
@@ -477,17 +499,14 @@ export function invalidateWorkspaceBoundQueue(queue: MessageQueue) {
   if (!removed && !retained) {
     return { queue, invalidated: false, removed, retained };
   }
-  const retainedNotice = retained
-    ? `；${retained} 条已进入提交或对账，只能核对后删除，不能按新 Workspace 重发`
-    : "";
-  const removedNotice = removed
-    ? `已移除 ${removed} 条旧 scope 排队消息`
-    : "没有可安全移除的本地排队消息";
   return {
     queue: revise(queue, {
       items,
       paused: true,
-      error: `Workspace 已变化，${removedNotice}${retainedNotice}。`,
+      error: {
+        copyKey: "chat.queue.workspaceChanged",
+        values: { removed, retained },
+      },
     }),
     invalidated: true,
     removed,
@@ -498,7 +517,7 @@ export function invalidateWorkspaceBoundQueue(queue: MessageQueue) {
 export const setQueuePaused = (queue: MessageQueue, paused: boolean) =>
   revise(queue, { paused });
 
-export const setQueueError = (queue: MessageQueue, error: string | null) =>
+export const setQueueError = (queue: MessageQueue, error: QueueError | null) =>
   revise(queue, { error, ...(error ? { paused: true } : {}) });
 
 export const setReorderLock = (queue: MessageQueue, reorderLock: boolean) =>

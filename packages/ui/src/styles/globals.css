@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Tailwind/shadcn, Streamdown portal, tagging, ZeoSeven Maple Mono fonts and consumer coverage -- app-font-sans
- * [OUTPUT]: Provides @ai-chat/ui a full-scale theme, fonts, round corners, cross-pack scanning inputs, scrollbar-slim self-drawing scroll bar utility, and a Markdown full-screen Electron no-drag interaction border
+ * [OUTPUT]: Provides @ai-chat/ui a full-scale theme, fonts, round corners, cross-pack scanning inputs, scrollbar-slim self-drawing scroll bar utility, touch-target-44 invisible 44px hit-area utility, and a Markdown full-screen Electron no-drag interaction border
  * [POS]: Shared UI packages are universal-style root, desktop/web consumption; Browser ignored Electron exclusive app-region
  */
 
@@ -85,6 +85,38 @@
   &::-webkit-scrollbar-thumb:hover,
   & *::-webkit-scrollbar-thumb:hover {
     background-color: color-mix(in oklab, var(--foreground) 28%, transparent);
+  }
+}
+
+/* ============================================================
+ * touch-target-44 —— 视觉归视觉，命中归 ::after
+ *
+ * 「看起来多大」与「点得中多大」是两个问题。把控件本身撑成 44px 是上一代
+ * 做法：32px 的图标按钮撑高后，文字掉进圆角里（Settings › Skills 的反面
+ * 教材）。分开之后，桌面密度与触控可达不再互相让步——控件留在 24/25/32px，
+ * ::after 独自把命中高度撑到 44px，不占版面也不放大视觉层级。
+ *
+ * 这里**只收那段永远一样的几何**。另外两件事故意留在调用点：
+ *
+ * relative 不进来。它必须是那个真类名，tailwind-merge 才认得出 position
+ * 组——调用方传进来的 absolute 于是仍然胜出，不会被打回文档流。自定义
+ * utility 在 merge 眼里是陌生人，替不了它择一。宿主已定位的（memory-setup
+ * 的步骤段）本就不必再写。
+ *
+ * 横向默认与控件同宽，要外借设 --touch-target-inset（负值向外）。那是个
+ * 关于**邻居**的决定而非关于自己的：紧挨着标题的图标只借 6px，再多，一次
+ * 点在名字上的点击就可能开了浏览器。故留作参数，而不是抹平进这条规则。
+ * 走变量而非再写一个 after:-inset-x-*：两个同优先级的 inset-inline 谁赢
+ * 取决于产出顺序，而变量只有一处声明，没有顺序可赌。
+ * ============================================================ */
+@utility touch-target-44 {
+  &::after {
+    content: "";
+    position: absolute;
+    inset-inline: var(--touch-target-inset, 0px);
+    top: 50%;
+    height: 2.75rem;
+    transform: translateY(-50%);
   }
 }
 

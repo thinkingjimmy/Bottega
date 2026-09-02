@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto, zod and shared Base GUI generation/access identity
- * [OUTPUT]: Provides BaseGuiGrantStore: stable decision, exact generation capability set, self-administered approved state, append-only revoke tombstone, durable revision CAS and freezing air after damage/disruption
+ * [OUTPUT]: Provides BaseGuiGrantStore plus BASE_GUI_PARTIAL_DECISION: stable compatibility-bound decision, all-or-nothing decide (exact request coverage or decline), idempotent migration binding, self-administered approved state, append-only revoke tombstone, durable revision CAS and freezing air after damage/disruption
  * [POS]: authorized copywriter of apps/base-gui; The manifest only requests, and the active GUI writes only from the exact approved decision of the ledger
  */
 
@@ -34,8 +34,8 @@ const decisionSchema: z.ZodType<BaseGuiCapabilityDecision> = z
     expectedActiveGenerationId: z.string().min(1).nullable(),
     requestedCapabilities: z.array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read", "workspace-read"])).max(5),
     grantedCapabilities: z.array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read", "workspace-read"])).max(5),
-    requestedHostActions: z.array(z.enum(["compose-text"])).max(1).default([]),
-    grantedHostActions: z.array(z.enum(["compose-text"])).max(1).default([]),
+    requestedHostActions: z.array(z.enum(["compose-text", "file.export"])).max(2).default([]),
+    grantedHostActions: z.array(z.enum(["compose-text", "file.export"])).max(2).default([]),
     requestedCapabilityScopes: z
       .object({ workspaceRead: z.literal("design/").optional() })
       .strict()
@@ -44,6 +44,8 @@ const decisionSchema: z.ZodType<BaseGuiCapabilityDecision> = z
       .object({ workspaceRead: z.literal("design/").optional() })
       .strict()
       .default({}),
+    compatibilityRefDigest: digestSchema.optional(),
+    compatibilityMigrationRevision: z.string().uuid().optional(),
     state: z.enum(["consent-required", "approved", "declined"]),
   })
   .strict()
@@ -146,6 +148,8 @@ export class BaseGuiGrantStore {
     requestedCapabilities: readonly BaseGuiCapability[];
     requestedHostActions: readonly BaseGuiHostActionCapability[];
     requestedCapabilityScopes: BaseGuiCapabilityScopes;
+    compatibilityRefDigest?: `sha256:${string}`;
+    compatibilityMigrationRevision?: string;
   }) {
     return this.mutate(() => {
       const existing = this.state.decisions.find(
@@ -229,7 +233,23 @@ export class BaseGuiGrantStore {
         requestedScopeGrant.workspaceRead === "design/"
           ? { workspaceRead: "design/" as const }
           : {};
-      const approved = grantedCapabilities.length > 0 || grantedHostActions.length > 0;
+      const approved = coversRequest(current, {
+        grantedCapabilities,
+        grantedHostActions,
+        grantedCapabilityScopes,
+      });
+      /* 空 grant 是拒绝，全量 grant 是批准，两者之外没有第三种可落地的答案：
+         studio-grant 的放行判据要求逐项覆盖 requested 全集，子集写进账本也
+         永远换不来 promotion，只会留下一条谁也修不了的「批准过但不算数」。
+         与其让它安静地存在，不如在唯一写入点当场拒收。 */
+      if (
+        !approved &&
+        (grantedCapabilities.length > 0 ||
+          grantedHostActions.length > 0 ||
+          grantedCapabilityScopes.workspaceRead === "design/")
+      ) {
+        throw partialDecision();
+      }
       const decision: BaseGuiCapabilityDecision = {
         ...current,
         revision: this.nextRevision(),
@@ -265,6 +285,51 @@ export class BaseGuiGrantStore {
       (item) => item.decisionId === decisionId
     );
     return value ? structuredClone(value) : null;
+  }
+
+  bindCompatibility(input: {
+    appId: string;
+    generationId: string;
+    compatibilityRefDigest: `sha256:${string}`;
+    compatibilityMigrationRevision?: string;
+  }) {
+    return this.mutate(() => {
+      const indices = this.state.decisions.flatMap((decision, index) =>
+        decision.appId === input.appId &&
+        decision.generationId === input.generationId
+          ? [index]
+          : []
+      );
+      for (const index of indices) {
+        const decision = this.state.decisions[index]!;
+        if (
+          decision.compatibilityRefDigest === input.compatibilityRefDigest &&
+          decision.compatibilityMigrationRevision ===
+            input.compatibilityMigrationRevision
+        ) {
+          continue;
+        }
+        if (
+          decision.compatibilityRefDigest &&
+          decision.compatibilityRefDigest !== input.compatibilityRefDigest
+        ) {
+          throw conflict("Base GUI compatibility ref digest 已变化");
+        }
+        this.state.decisions[index] = {
+          ...decision,
+          compatibilityRefDigest: input.compatibilityRefDigest,
+          ...(input.compatibilityMigrationRevision
+            ? {
+                compatibilityMigrationRevision:
+                  input.compatibilityMigrationRevision,
+              }
+            : {}),
+          revision: this.nextRevision(),
+        };
+      }
+      const latest = indices.at(-1);
+      return latest === undefined ? null : this.state.decisions[latest]!;
+    });
   }
 
   projection(appId: string, generationId: string) {
@@ -366,4 +431,47 @@ function normalizeScopes(
 
 function conflict(message: string) {
   return Object.assign(new Error(message), { status: 409 });
+}
+
+/* ── 全有或全无 ────────────────────────────────────────────────────
+ * requested 三组（capability / host action / workspace scope）必须被
+ * granted 三组逐项覆盖，才算 approved。少一项就不是「少批一点」，而是
+ * 一份永远无法 promote 的死决定——见 store-commands/studio-grant.ts。
+ * ────────────────────────────────────────────────────────────── */
+function coversRequest(
+  requested: Pick<
+    BaseGuiCapabilityDecision,
+    "requestedCapabilities" | "requestedHostActions" | "requestedCapabilityScopes"
+  >,
+  granted: Pick<
+    BaseGuiCapabilityDecision,
+    "grantedCapabilities" | "grantedHostActions" | "grantedCapabilityScopes"
+  >
+) {
+  return (
+    requested.requestedCapabilities.length === granted.grantedCapabilities.length &&
+    requested.requestedCapabilities.every((capability) =>
+      granted.grantedCapabilities.includes(capability)
+    ) &&
+    requested.requestedHostActions.length === granted.grantedHostActions.length &&
+    requested.requestedHostActions.every((action) =>
+      granted.grantedHostActions.includes(action)
+    ) &&
+    requested.requestedCapabilityScopes.workspaceRead ===
+      granted.grantedCapabilityScopes.workspaceRead &&
+    (requested.requestedCapabilities.length > 0 ||
+      requested.requestedHostActions.length > 0 ||
+      requested.requestedCapabilityScopes.workspaceRead === "design/")
+  );
+}
+
+export const BASE_GUI_PARTIAL_DECISION = "BASE_GUI_PARTIAL_DECISION";
+
+function partialDecision() {
+  return Object.assign(
+    new Error(
+      `${BASE_GUI_PARTIAL_DECISION}: Base GUI 授权只能整份批准或整份拒绝`
+    ),
+    { status: 409, code: BASE_GUI_PARTIAL_DECISION }
+  );
 }

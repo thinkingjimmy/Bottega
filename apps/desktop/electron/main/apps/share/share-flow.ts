@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the App/Base/Project store, base sample, synthesizer, package-contract, templates, README positioning, fixed git/gh subprocesses (runner can be injected) and lifecycle gate
- * [OUTPUT]: Provides ShareFlow preview/publish/discard/recover with ShareCommandRunner; The data is presented in three ways: history continuous re-share; commitSha push; publishedRepoUrl replenish;
+ * [INPUT]: Depends on the App/Base/Project store, base sample, compiled source-only exporter/verifier, package-contract, templates, README positioning, fixed git/gh subprocesses (runner can be injected) and lifecycle gate
+ * [OUTPUT]: Provides ShareFlow preview/publish/discard/recover with ShareCommandRunner; compiled shares prove their outer source matches the sealed export before publication and never carry foreign runtime/receipt bytes
  * [POS]: The GitHub external side effects saga of apps/share; Agent is completely uninvolved, staging is pending while recovering evidence cannot be removed, and the crash is resumed by share-publish intent
  */
 
@@ -30,7 +30,7 @@ import type { BaseStore } from "../../bases/base-store";
 import type { LifecycleIntent } from "../../lifecycle/intent-types";
 import type { LifecycleIntentStore } from "../../lifecycle/intent-store";
 import type { AdmissionGate, SagaResult } from "../../lifecycle/admission-gate";
-import type { ProjectStore } from "../../projects/project-store";
+import type { ProjectStore } from "../../projects/store/project-store";
 import { sanitizedProcessEnvironment } from "../../codex-runtime";
 import type { AppStore } from "../app-store";
 import { README_SKELETON_HINT } from "../templates";
@@ -39,6 +39,10 @@ import {
   inspectPackage,
   packageDigest,
 } from "./package-contract";
+import {
+  exportPortableCompiledSource,
+  verifyPortableCompiledSource,
+} from "../gui-build/pipeline/portable";
 
 type StoredPreview = {
   appId: string;
@@ -122,6 +126,7 @@ export class ShareFlow {
         await this.run("git", ["init"], worktree);
       }
       const copied = await copyPackage(record.dir, worktree);
+      await this.exportCompiledGeneration(record, worktree);
       const dataPath = join(worktree, "data", "base.json");
       await mkdir(dirname(dataPath), { recursive: true, mode: 0o700 });
       await chmod(dataPath, 0o600).catch(() => undefined);
@@ -177,6 +182,40 @@ export class ShareFlow {
     } catch (cause) {
       await rm(staging, { recursive: true, force: true });
       throw cause;
+    }
+  }
+
+  private async exportCompiledGeneration(record: AppRecord, packageRoot: string) {
+    const generationId = record.generationBinding?.active?.generationId;
+    const generation = record.generations?.find(
+      (candidate) => candidate.generationId === generationId
+    );
+    if (!generation || generation.contentLayoutVersion !== 3) return;
+    if (
+      !generation.manifestDigest ||
+      !generation.sourcePackageDigest ||
+      !generation.buildReceiptDigest
+    ) {
+      throw new Error("active compiled-v3 generation 缺少 four-digest identity");
+    }
+    const releaseRoot = this.apps.retainArtifactRoot(record.id, generation.generationId);
+    try {
+      await exportPortableCompiledSource({
+        artifactRoot: this.apps.artifactRoot(record.id, generation.generationId),
+        packageRoot,
+        expected: {
+          manifestDigest: generation.manifestDigest,
+          sourcePackageDigest: generation.sourcePackageDigest,
+          contentDigest: generation.contentDigest,
+          buildReceiptDigest: generation.buildReceiptDigest,
+        },
+      });
+      /* copyPackage() copied the mutable author tree before the sealed source envelope.
+         Refuse to publish if those outer bytes no longer describe the active generation;
+         otherwise the target machine would correctly reject an unusable share later. */
+      await verifyPortableCompiledSource(packageRoot, generation.manifest);
+    } finally {
+      releaseRoot();
     }
   }
 

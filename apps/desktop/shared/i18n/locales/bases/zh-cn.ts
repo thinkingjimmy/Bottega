@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on English basesEn type of directory structure
- * [OUTPUT]: Provides BasesZhCN, Base Product side of the zh-cn feature catalog
- * [POS]: The language sheets of shared/i18n/locales/bases; Installation on demand by the appropriate top locale
+ * [INPUT]: Depends only on the structural type of the English basesEn catalog
+ * [OUTPUT]: Provides basesZhCN, the Simplified Chinese catalog for every Base and embedded-chart surface
+ * [POS]: Simplified Chinese leaf catalog for shared/i18n/locales/bases; loaded on demand by the top-level locale
  */
 
 import type { basesEn } from "./en";
@@ -9,6 +9,11 @@ import type { basesEn } from "./en";
 type BasesCatalog = typeof basesEn;
 
 export const basesZhCN: BasesCatalog = {
+  provider: {
+    loadFailed: "Bases 加载失败：{{message}}",
+    reloadFailed: "Base {{ownerKey}} 重拉失败：{{message}}",
+    retiredResult: "Base {{ownerKey}} 返回了已退役的数据代。",
+  },
   quarantined: "此 Base 已被隔离",
   quarantinedDescription:
     "可恢复文件已保留。请手动恢复备份，或弃置它以创建新的空 Base。",
@@ -19,8 +24,23 @@ export const basesZhCN: BasesCatalog = {
   discardTitle: "弃置可恢复的 Base 数据？",
   loading: "正在加载 Base…",
   loadingMap: "正在加载地图…",
-  transcriptImages: "转录图片",
   pageTitle: "Base",
+  detail: {
+    title: "{{name}} Base",
+    untitledChat: "聊天",
+  },
+  columnDefaults: {
+    image: "图片",
+    createdAt: "创建时间",
+  },
+  starterStatus: {
+    todo: "待办",
+    doing: "进行中",
+    done: "已完成",
+  },
+  group: {
+    unassigned: "未分配",
+  },
   header: {
     openApp: "打开 App",
     saveAsApp: "保存为 App",
@@ -53,6 +73,12 @@ export const basesZhCN: BasesCatalog = {
     collapse: "收起到第三栏",
     closeAria: "关闭 Base",
     ioFailed: "Base 导入导出失败",
+    importJsonUnavailable: "当前环境不支持 JSON 导入。",
+    importXlsxUnavailable: "当前环境不支持 Excel 导入。",
+    deleteRetained: "删除 Base",
+    deleteRetainedConfirm: "删除",
+    deleteRetainedTitle: "删除这个 Base？",
+    deleteRetainedDescription: "这会永久删除保留的 App 数据。已删除的 App、聊天与源码无法从此 Base 恢复。",
   },
   toolbar: {
     toggleFilter: "切换筛选",
@@ -150,6 +176,7 @@ export const basesZhCN: BasesCatalog = {
     clear: "清除",
     today: "今天",
     openLink: "在浏览器打开链接",
+    deleteAttachment: "删除 {{filename}}",
   },
   record: {
     title: "添加记录",
@@ -157,6 +184,7 @@ export const basesZhCN: BasesCatalog = {
     attachmentRequired: "请先选择图片再保存。",
     unsupportedImage: "仅支持 PNG、JPEG、WebP 和 GIF 图片。",
     fileReadFailed: "无法读取图片文件。",
+    attachmentWriteFailed: "无法保存图片，请重试。",
   },
   gui: {
     surfaceAria: "App GUI",
@@ -171,6 +199,13 @@ export const basesZhCN: BasesCatalog = {
     loadFailedTitle: "应用加载失败",
     prepareFailedTitle: "App 数据升级失败",
     loadFailedHint: "安全网关或令牌可能已失效，可以重试或前往数据。",
+    prepareFailedHint: "App 存下的数据没能升到本次发布要求的版本；旧数据原样保留，未被改动。",
+    permissionFailedTitle: "App 授权已过期",
+    permissionFailedHint: "这一版 App 没有被批准过，或批准已失效。重新授权后才能打开界面。",
+    cutoverFailedTitle: "App 正在换代",
+    cutoverFailedHint: "上一代还没收干净。稍候片刻再重试。",
+    surfaceGoneTitle: "这个 App 视图已失效",
+    surfaceGoneHint: "会话已经往前走了，这个视图的租约不再有效。刷新页面可以重新取一份。",
     retry: "重试",
     goToData: "前往数据",
   },
@@ -180,6 +215,10 @@ export const basesZhCN: BasesCatalog = {
     location: "位置",
     label: "标签",
     auto: "自动",
+    offline: "当前离线，正在显示位置列表。",
+    tilesUnavailable: "地图图块不可用，正在显示位置列表。",
+    noCoordinates: "还没有含坐标的记录。",
+    unnamedLocation: "位置",
   },
   chart: {
     add: "添加图表",
@@ -193,6 +232,24 @@ export const basesZhCN: BasesCatalog = {
     filterScrubbedView: "视图筛选已因删列失效，请重新设置。",
     emptyTitle: "这个仪表盘还没有图表",
     emptyHint: "添加一张图，数据变化后会自动重算。",
+    unnamed: "图表",
+    state: {
+      filterScrubbed: "筛选已因删列失效，请重新设置。",
+      dimensionRequired: "请选择文本、选项或日期维度列。",
+      valueRequired: "请选择有效的数值列。",
+      seriesRequired: "请选择有效的次维度列。",
+      pieSeriesUnsupported: "饼图不支持次维度。",
+      scatterRequirements: "散点图需要两个数值列，且不支持次维度。",
+      heatmapRequirements: "热力图需要一个数值列和一个次维度列。",
+      pieValueRequired: "饼图需要一个数值列。",
+      singleValueForSeries: "使用次维度时只能选择一个数值列。",
+      labelLimit: "图表最多包含 {{limit}} 个标签。",
+      seriesLimit: "图表最多包含 {{limit}} 个序列。",
+      pointLimit: "图表最多包含 {{limit}} 个数据点。",
+      empty: "无数据",
+      pieNegative: "饼图不能表示负值，请更换图型或筛选数据。",
+      invalidPayload: "图表数据超出支持范围。",
+    },
     type: {
       pie: "饼图",
       bar: "柱状图",
@@ -201,6 +258,25 @@ export const basesZhCN: BasesCatalog = {
       scatter: "散点图",
       radar: "雷达图",
       heatmap: "热力图",
+    },
+    render: {
+      invalidJson: "图表 JSON 无效。",
+      invalidFormat: "图表格式无效。",
+      showSource: "查看原始图表代码",
+      overflow: "本条消息包含过多图表，其余图表已折叠。",
+      generating: "正在生成图表",
+      loading: "正在加载图表",
+      aria: "{{type}}，{{labels}}，{{series}}",
+      ariaWithTitle: "{{type}}：{{title}}，{{labels}}，{{series}}",
+      labelCount_one: "{{count}} 个标签",
+      labelCount_other: "{{count}} 个标签",
+      seriesCount_one: "{{count}} 条序列",
+      seriesCount_other: "{{count}} 条序列",
+      showData: "查看数据",
+      hideData: "收起数据",
+      dataCaption: "图表数据",
+      labelHeader: "标签",
+      seriesName: "序列 {{index}}",
     },
     editor: {
       open: "编辑图表",
@@ -231,6 +307,19 @@ export const basesZhCN: BasesCatalog = {
   gallery: {
     aria: "生成图片画廊",
     images: "生成的图片",
+    attachmentColumn: "图片列",
+    titleColumn: "标题列",
+    dateColumn: "分组日期列",
+    dateBucket: "日期分桶",
+    ungrouped: "未分组",
+    none: "无",
+    bucket: {
+      minute: "分钟",
+      hour: "小时",
+      day: "天",
+      week: "周",
+      month: "月",
+    },
     modeAria: "画廊模式",
     mode: { browse: "浏览", multi: "多选", comment: "评论" },
     zoom: "缩放",
@@ -258,6 +347,7 @@ export const basesZhCN: BasesCatalog = {
     addCardTo: "在 {{lane}} 添加卡片",
     laneColor: "泳道颜色",
     laneColorCurrent: "泳道颜色：{{lane}}",
+    renameAria: "重命名 {{lane}}",
     renameHint: "{{lane}} — 双击可改名",
     auto: "自动",
     dropHere: "把卡片拖到这里",
@@ -276,6 +366,7 @@ export const basesZhCN: BasesCatalog = {
   },
   list: {
     addRow: "添加行",
+    addRowTo: "向 {{group}} 添加行",
     empty: "没有符合该视图的记录。",
     rowActions: "{{title}} 的操作",
     edit: "编辑",
@@ -295,6 +386,7 @@ export const basesZhCN: BasesCatalog = {
     sortHint: "排序（Shift 多列）",
     renameColumn: "重命名列",
     renameColumnAria: "重命名 {{column}}",
+    unnamedColumn: "列",
     deleteColumn: "删除列",
     deleteColumnAria: "删除 {{column}}",
     addColumn: "添加列",
@@ -306,6 +398,10 @@ export const basesZhCN: BasesCatalog = {
     deleteColumnDescription:
       "这会把列「{{column}}」从所有视图中移除，其单元格值将无法访问。",
     resizeHint: "拖动调整列宽；方向键可微调",
+    resizeAria: "调整 {{column}} 列宽",
+    emptyNoColumns: "请先添加一列，再创建第一行。",
+    emptyEditable: "还没有行，添加一行即可开始。",
+    emptyReadOnly: "还没有行。",
   },
   summary: {
     cellAria: "{{column}} 统计：{{value}}",
@@ -328,6 +424,11 @@ export const basesZhCN: BasesCatalog = {
   },
   workbench: {
     viewLimit: "Base 至少保留一个视图",
+    revisionConflict: "此 Base 已在其它位置发生变化，已重新加载最新版本。",
+    galleryViewChanged: "此画廊视图已被删除或改变，已重新加载最新 Base。",
+    galleryAttachmentChanged: "画廊图片列已被删除或改变，请重新选择。",
+    galleryTitleChanged: "画廊标题列已被删除或改变，请重新选择。",
+    galleryDateChanged: "画廊日期列已被删除或改变，请重新选择。",
   },
   history: {
     open: "查看历史",

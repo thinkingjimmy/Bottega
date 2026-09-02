@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on browser File agreement with PromptInput acceptance/size/number limit
- * [OUTPUT]: Provides selectPromptInputFiles with a shared error file size, pure function calculation of the current receivable file with the only validation error
+ * [INPUT]: Depends on browser File contracts, PromptInput acceptance/size/count limits, and host-resolved validation messages
+ * [OUTPUT]: Provides selectPromptInputFiles as a pure admission calculation with one localized validation error
  * [POS]: the access rules for the attachments ui/lib; Side effects of isolation testing and React state/URL/callback
  */
 
@@ -9,14 +9,17 @@ export type PromptInputFileError = {
   message: string;
 };
 
-export const PROMPT_INPUT_MAX_FILE_SIZE_MESSAGE =
-  "All files exceed the maximum size.";
+export type PromptInputFileMessages = Record<
+  PromptInputFileError["code"],
+  string
+>;
 
 type FileSelectionOptions = {
   accept?: string;
   currentCount: number;
   maxFiles?: number;
   maxFileSize?: number;
+  messages: PromptInputFileMessages;
 };
 
 function matchesAccept(file: File, accept?: string) {
@@ -45,7 +48,7 @@ export function selectPromptInputFiles(
       files: [],
       error: {
         code: "accept",
-        message: "No files match the accepted types.",
+        message: options.messages.accept,
       },
     };
   }
@@ -58,7 +61,7 @@ export function selectPromptInputFiles(
       files: [],
       error: {
         code: "max_file_size",
-        message: PROMPT_INPUT_MAX_FILE_SIZE_MESSAGE,
+        message: options.messages.max_file_size,
       },
     };
   }
@@ -73,7 +76,7 @@ export function selectPromptInputFiles(
         files,
         error: {
           code: "max_files",
-          message: "Too many files. Some were not added.",
+          message: options.messages.max_files,
         },
       }
     : { files };

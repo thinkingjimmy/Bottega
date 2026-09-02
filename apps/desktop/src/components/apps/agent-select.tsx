@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ui/select, lib/agent-backends with AgentBackendIcon/backendLabel and shared BackendInfo
- * [OUTPUT]: Provides AgentSelect with AgentSelectValue, brand logo + name drop down the Agent form, select Auto strategy items
- * [POS]: The only control selected by the App Agent form is shared by a single run Agent with the addition of a dual role setting; Chat by installed First round trial and error, and the next candidate is filtered by the caller
+ * [INPUT]: Depends on UI Select, Apps i18n, Agent backend labels/icons, and shared BackendInfo
+ * [OUTPUT]: Provides AgentSelect with AgentSelectValue, brand logo + name drop down the Agent form, select Auto strategy items, and either labelledBy or label as its accessible name
+ * [POS]: Shared Apps Agent picker; callers filter candidates while this control owns Auto strategy presentation
  */
 
 import { Sparkles } from "lucide-react";
@@ -12,8 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@ai-chat/ui/components/ui/select";
+import { cn } from "@ai-chat/ui/lib/utils";
 import { AgentBackendIcon, backendLabel } from "@/lib/agent-backends";
 import type { AgentBackendId, BackendInfo } from "../../../shared/agent-ipc";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 export type AgentSelectValue = AgentBackendId | "auto";
 
@@ -37,18 +39,28 @@ export function AgentSelect({
   allowAuto = false,
   disabled,
   labelledBy,
+  label,
+  size,
+  className,
   onChange,
 }: {
   value: AgentSelectValue;
   options: BackendInfo[];
   allowAuto?: boolean;
   disabled?: boolean;
-  labelledBy: string;
+  /* 名字二选一：竖排表单里旁边就站着一个 <span id>，用 labelledBy 指过去；
+     设置行里标签没有 id（它是 SettingsRow 的私事），用 label 直接报名。
+     两者都缺则这颗控件对读屏用户没有名字，故至少要给一个。 */
+  labelledBy?: string;
+  label?: string;
+  size?: "sm" | "default" | "lg";
+  className?: string;
   onChange: (value: AgentSelectValue) => void;
 }) {
+  const { t } = useAppTranslation();
   const labelOf = (id: AgentSelectValue) =>
     id === "auto"
-      ? "Auto"
+      ? t("common.auto")
       : (options.find((backend) => backend.id === id)?.displayName ??
         backendLabel(id));
 
@@ -59,8 +71,10 @@ export function AgentSelect({
       onValueChange={(next) => onChange(next as AgentSelectValue)}
     >
       <SelectTrigger
+        aria-label={label}
         aria-labelledby={labelledBy}
-        className="w-full min-w-0"
+        className={cn("w-full min-w-0", className)}
+        size={size}
       >
         <SelectValue>
           <AgentRow value={value} label={labelOf(value)} />
@@ -69,7 +83,7 @@ export function AgentSelect({
       <SelectContent className="min-w-44">
         {allowAuto && (
           <SelectItem value="auto">
-            <AgentRow value="auto" label="Auto" />
+            <AgentRow value="auto" label={t("common.auto")} />
           </SelectItem>
         )}
         {options.map((backend) => (

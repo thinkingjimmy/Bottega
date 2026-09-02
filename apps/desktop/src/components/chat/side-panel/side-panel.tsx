@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, PanelSessionContext, horizontal resize, PanelTabs, Plan/file/Workspace previews, and Gallery projection
- * [OUTPUT]: Provides the resizable tabs/plan/file side-panel host and forwards the canonical context to every tab consumer
+ * [INPUT]: Depends on React, PanelSessionContext, horizontal resize, PanelTabs, Plan/file/Workspace previews, Gallery projection, and the localized side-panel shell catalog
+ * [OUTPUT]: Provides the localized resizable tabs/plan/file side-panel host and forwards the canonical context to every tab consumer
  * [POS]: The visual shell of chat/side-panel; ChatView owns width and visibility
  */
 
@@ -28,6 +28,7 @@ import { ChartScrollRootProvider } from "@/components/charts/chart-scroll-root";
 import { SIDE_PANEL_TRANSITION_MS } from "@/lib/side-panel-layout";
 import type { ConversationImageProjection } from "./image/image-projection";
 import { GalleryOverlayProvider } from "@/lib/gallery/overlay";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 const PanelTabs = lazy(() =>
   import("./panel-tabs").then((module) => ({
     default: module.PanelTabs,
@@ -35,13 +36,14 @@ const PanelTabs = lazy(() =>
 );
 
 function BasePanelLoading() {
+  const { t } = useAppTranslation();
   return (
     <div
       aria-live="polite"
       className="grid min-h-0 flex-1 place-items-center"
       role="status"
     >
-      <span className="sr-only">Loading Base</span>
+      <span className="sr-only">{t("chat.sidePanel.shell.loadingBase")}</span>
       <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" />
     </div>
   );
@@ -68,6 +70,7 @@ export const SidePanel = memo(function SidePanel({
   subagents: Record<string, ProjectedSubagent>;
   galleryProjection: ConversationImageProjection;
 }) {
+  const { t } = useAppTranslation();
   const [documentScrollRoot, setDocumentScrollRoot] =
     useState<HTMLDivElement | null>(null);
   const documentState =
@@ -120,8 +123,8 @@ export const SidePanel = memo(function SidePanel({
           <Suspense fallback={<BasePanelLoading />}>
             <GalleryOverlayProvider projection={galleryProjection}>
               <PanelTabs
-                /* 会话 + 代际的复合身份：单独的代际位（如 foreign 的
-                   historyRevision）不保证跨会话唯一，丢了会话位就可能不重挂。 */
+                /* 会话 + 代际的复合身份：单独的代际位不保证跨会话唯一，
+                   丢了会话位就可能不重挂。 */
                 key={`${panelConversationKey(state.context)}\u0000${panelGenerationKey(state.context)}`}
                 context={state.context}
                 command={state.command}
@@ -138,7 +141,7 @@ export const SidePanel = memo(function SidePanel({
                 {title}
               </h2>
               <Button
-                aria-label="关闭预览"
+                aria-label={t("chat.sidePanel.shell.closePreview")}
                 className={cn(
                   "cursor-pointer [-webkit-app-region:no-drag]",
                   panelChromeClassName
@@ -165,7 +168,7 @@ export const SidePanel = memo(function SidePanel({
                 documentState.status === "loading") ? (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <LoaderCircleIcon className="size-4 animate-spin" />
-                  正在读取文件…
+                  {t("chat.sidePanel.shell.readingFile")}
                 </div>
               ) : (documentState.kind === "file" && documentState.error) ||
                 (documentState.kind === "workspace-preview" &&
@@ -179,7 +182,11 @@ export const SidePanel = memo(function SidePanel({
                   <p>
                     {workspacePreviewMetadataMessage(documentState.reason)}
                   </p>
-                  <p>{documentState.size ?? 0} bytes</p>
+                  <p>
+                    {t("chat.sidePanel.shell.bytes", {
+                      count: documentState.size ?? 0,
+                    })}
+                  </p>
                   {documentState.mtimeMs ? (
                     <p>{new Date(documentState.mtimeMs).toLocaleString()}</p>
                   ) : null}
@@ -206,7 +213,7 @@ export const SidePanel = memo(function SidePanel({
       </aside>
       {(open || resize.active) && (
         <button
-          aria-label="调整第三栏宽度"
+          aria-label={t("chat.sidePanel.shell.resize")}
           aria-orientation="vertical"
           aria-valuemax={Math.round(maxWidth)}
           aria-valuemin={Math.round(minWidth)}
@@ -229,7 +236,7 @@ export const SidePanel = memo(function SidePanel({
           onPointerUp={resize.finish}
           role="separator"
           tabIndex={0}
-          title="拖动或使用方向键调整第三栏宽度"
+          title={t("chat.sidePanel.shell.resizeHint")}
           type="button"
         />
       )}

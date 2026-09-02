@@ -49,7 +49,7 @@ export async function resumeCreateSectionSaga(
     return intent.sagaResult;
   }
   if (intent.projectId) {
-    const source = await dependencies.chats.store.get(intent.source.chatId);
+    const source = dependencies.chats.store.getMetadata(intent.source.chatId);
     if (
       source?.incarnationId !== intent.source.incarnationId ||
       source.projectId !== intent.projectId ||

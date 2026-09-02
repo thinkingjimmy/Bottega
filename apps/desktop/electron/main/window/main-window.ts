@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, domain services, Apps, Update, MCP, and window security
- * [OUTPUT]: Provides createMainWindow, exact-Project Tools/MCP and scoped Extension IPC, canonical turn validation, post-CAS projection, and App-window creation
+ * [OUTPUT]: Provides createMainWindow, exact-Project Tools/MCP and scoped Extension IPC, canonical turn validation through narrow Chat facts, post-CAS projection, and App-window creation
  * [POS]: Interactive main-window authority boundary; renderer identities are routing hints and main re-derives every Project lifecycle fact
  */
 
@@ -14,14 +14,8 @@ import {
 } from "../../../shared/settings-ipc";
 import { resolveAppLocale } from "../../../shared/i18n/locale";
 import { USAGE_CHANNEL } from "../../../shared/usage-ipc";
-import {
-  registerAgentBridge,
-  resetThreadServiceTierEffective,
-} from "../agent-bridge";
-import type {
-  AgentContext,
-  BuiltinTurnToolPolicy,
-} from "../agent/bridge-types";
+import { registerAgentBridge, resetThreadServiceTierEffective } from "../agent-bridge";
+import type { AgentContext, BuiltinTurnToolPolicy } from "../agent/bridge-types";
 import { projectTurnAllowedActions } from "../agent/turn-actions";
 import {
   mergeMaterializedExtensionSkills,
@@ -45,7 +39,7 @@ import type { MemoryService } from "../memory/service/memory-service";
 import type { ManagedRuntimeRegistry } from "../memory/runtime/managed-registry";
 import type { MemorySettingsOwner } from "../memory/service/settings-owner";
 import type { ProjectsService } from "../projects/projects-service";
-import type { ProjectStore } from "../projects/project-store";
+import type { ProjectStore } from "../projects/store/project-store";
 import { registerCoordinatorIpc } from "../sections/coordinator/coordinator-ipc";
 import type { ConversationCoordinator } from "../sections/coordinator/conversation-coordinator";
 import type { SettingsStore } from "../settings-store";
@@ -55,18 +49,13 @@ import { registerProjectPersonalization } from "../project-personalization";
 import type { BackendSetupService } from "../setup/backend-setup";
 import type { SkillsCatalog, WorkspaceResolver } from "../skills-catalog";
 import type { WorkspaceFileCatalog } from "../workspace-files";
-import {
-  initiatorResultByteBudget,
-  type BuiltinMcpLeaseStore,
-} from "../tools/lease";
+import { initiatorResultByteBudget, type BuiltinMcpLeaseStore } from "../tools/lease";
 import type { UsageService } from "../usage/usage-service";
 import { assertUsageRequest } from "../usage/usage-service";
 import type { GalleryMediaService } from "../gallery/media-service";
 import type { TurnEventsBroker } from "../gallery/turn-events-broker";
 import { resolveConversationContext } from "../workspace-resolver";
-import {
-  lockNavigation,
-} from "./security";
+import { lockNavigation } from "./security";
 import type { AgentTurnCustodyRuntime } from "../backends/agent-turn-custody-runtime";
 import { windowBackgroundColor } from "./native-theme";
 import type { BrowserRuntime } from "../browser/bootstrap";
@@ -76,21 +65,14 @@ import type { GlobalSearchService } from "../search/job-service";
 import { registerManualMcpServers } from "../tools/mcp/registrar";
 import { buildManualMcpPlan } from "../tools/mcp/planner";
 import { registerProjectTools } from "../tools/project/registrar";
-import {
-  projectBuiltinInventory,
-} from "../tools/project/resolver";
+import { projectBuiltinInventory } from "../tools/project/resolver";
 import type { ProjectToolPolicyStore } from "../tools/project/store";
-import {
-  projectManualMcpServerViews,
-} from "../extensions/component-health";
+import { projectManualMcpServerViews } from "../extensions/component-health";
 import { digestCanonical } from "../extensions/registry-store";
 import { resolveAppIconPath } from "./app-icon";
 import type { UpdateService } from "../update/service";
 import { resolvePlatformCapabilities } from "../../../shared/platform-capabilities";
-import {
-  WINDOW_ID_ARGUMENT,
-  WINDOW_ROLE_ARGUMENT,
-} from "../../../shared/window-surfaces-ipc";
+import { WINDOW_ID_ARGUMENT, WINDOW_ROLE_ARGUMENT } from "../../../shared/window-surfaces-ipc";
 import { configureWindowSurfaces } from "./surfaces/bootstrap";
 import { registerAppBridge } from "./surfaces/app-bridge";
 import { finalizeSkillsTurnProjection } from "./skills-turn-projection";
@@ -404,7 +386,7 @@ export function createMainWindow({
       /* 停用收敛未完成前不得启动**新的**产品会话：新会话会从尚未撤干净的
          ambient 投影里重新发现该包，并把它留到会话结束。已绑定 session 的
          续轮不受影响——它们由收敛自己的 drain/restart 负责。 */
-      if (!(await chats.store.get(conversationId))?.session) {
+      if (!chats.store.getMetadata(conversationId)?.session) {
         const projectId = chats.store.getProjectId(conversationId) ?? null;
         extensions.convergence.assertProductSessionAdmission(
           projectId
@@ -449,7 +431,7 @@ export function createMainWindow({
           throw new Error("Prepared Skills selection receipt 与 canonical turn 冲突");
         }
       }
-      const canonicalChat = await chats.store.get(conversationId);
+      const canonicalChat = chats.store.getMetadata(conversationId);
       if (
         preparedProjectTools &&
         preparedProjectTools.receipt.projectContext.projectId !==
@@ -457,13 +439,15 @@ export function createMainWindow({
       ) {
         throw new Error("PROJECT_TOOLS_CANONICAL_CONTEXT_MISMATCH");
       }
-      const canonicalUser =
-        origin?.kind === "manual"
-          ? canonicalChat?.messages.find(
-              (message) =>
-                message.id === origin.userMessageId && message.role === "user"
-            )
-          : undefined;
+      const candidateUser = origin?.kind === "manual"
+        ? await chats.store.getNativeMessage(conversationId, {
+            kind: "id",
+            messageId: origin.userMessageId,
+          })
+        : null;
+      const canonicalUser = candidateUser?.role === "user"
+        ? candidateUser
+        : undefined;
       const memoryAdmission =
         payload && origin?.kind === "manual" && canonicalChat && canonicalUser
           ? await memory.prepareAdmission({
@@ -659,7 +643,7 @@ export function createMainWindow({
         agentInputStagingRoot,
         {
           conversationId: payload.scope.conversationId,
-          get: (chatId) => chats.store.get(chatId),
+          get: (chatId) => chats.store.getConversation(chatId),
           readAttachment: (sectionId, attachmentId) =>
             chats.readSectionAttachment(sectionId, attachmentId),
           imageInput: capabilities.imageInput,
@@ -686,7 +670,7 @@ export function createMainWindow({
     appendTurnResult: (conversationId, input) =>
       chats.appendTurnResult(conversationId, input),
     loadSubagents: async (conversationId) =>
-      (await chats.store.get(conversationId))?.subagents ?? {},
+      (await chats.store.getNativeSubagents(conversationId)) ?? {},
     issueBuiltinMcp: (payload, generation, _origin, context) => {
       const allowedTools = context.finalTurnProjection?.allowedTools ?? [];
       if (!allowedTools.length) return undefined;

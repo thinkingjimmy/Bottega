@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * [INPUT]: Depends on ui Button Original language, ANSI rendering and lucide icons
- * [OUTPUT]: Provides Terminal output containers with Header/Title/Status/copy/clean family of actions
- * [POS]: The display component for the terminal output of ai-elements; Purely visual, no process or log state
+ * [INPUT]: Depends on ui Button primitives, ANSI rendering, lucide icons, and host-injected shared UI text
+ * [OUTPUT]: Provides Terminal output containers with localized Header/Title/Status/copy/clear actions
+ * [POS]: The display component for terminal output in ai-elements; purely visual, with no process or log state
  */
 
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { cn } from "@ai-chat/ui/lib/utils";
+import { useUiText } from "@ai-chat/ui/lib/ui-text";
 import Ansi from "ansi-to-react";
 import { CheckIcon, CopyIcon, TerminalIcon, Trash2Icon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes } from "react";
@@ -59,15 +60,18 @@ export const TerminalTitle = ({
   className,
   children,
   ...props
-}: TerminalTitleProps) => (
-  <div
-    className={cn("flex items-center gap-2 text-sm text-zinc-400", className)}
-    {...props}
-  >
-    <TerminalIcon className="size-4" />
-    {children ?? "Terminal"}
-  </div>
-);
+}: TerminalTitleProps) => {
+  const terminalLabel = useUiText("terminal", "Terminal");
+  return (
+    <div
+      className={cn("flex items-center gap-2 text-sm text-zinc-400", className)}
+      {...props}
+    >
+      <TerminalIcon className="size-4" />
+      {children ?? terminalLabel}
+    </div>
+  );
+};
 
 export type TerminalStatusProps = HTMLAttributes<HTMLDivElement>;
 

@@ -7,5 +7,6 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["electron", "shared", "scripts/**/*.ts", "electron.vite.config.ts"]
+  "include": ["electron", "shared", "scripts/**/*.ts", "electron.vite.config.ts"],
+  "exclude": ["electron/main/__tests__/fixtures/app-gui-compiled/**"]
 }

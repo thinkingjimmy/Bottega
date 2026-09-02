@@ -1,15 +1,17 @@
 /**
- * [INPUT]: Depends on AppListItem/AppsProvider, progress, app-state, dialogs, UI card/dropdown, router, surface residence intents, and external/reveal IPC
- * [OUTPUT]: Provides AppCard with single-path surface navigation, Design-default App-window opening, explicit new-window action, repair, retry, and deletion
- * [POS]: App listing unit; the badge follows the generation binding rather than state alone, and ready App navigation is main-owned so an already-resident Studio is focused instead of rendered twice
+ * [INPUT]: Depends on AppListItem/AppsProvider, progress, app-state, dialogs, UI card/dropdown, router, surface residence intents, AppWindow icon, shared system-file-manager copy, and external/reveal IPC
+ * [OUTPUT]: Provides AppCard with platform-correct Reveal copy, plain waiting-for-access recovery, current-surface navigation, direct Pin/Unpin beside More, lifecycle actions, frozen deletion-dialog identity, and non-cancellable deletion progress
+ * [POS]: App listing unit; the badge follows generation readiness without exposing internal terminology, and main-owned navigation focuses an existing Studio instead of rendering twice
  */
 
 import { useState } from "react";
 import {
+  AppWindowIcon,
   ExternalLink,
   FolderOpen,
   MoreHorizontal,
-  PanelsTopLeft,
+  Pin,
+  PinOff,
   RefreshCw,
   Wrench,
   Trash2,
@@ -34,18 +36,17 @@ import {
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { openExternal } from "@/lib/agent-client";
+import { repairSite } from "../../../shared/apps-ipc";
 import {
-  effectiveAppOpenMode,
-  repairSite,
-} from "../../../shared/apps-ipc";
-import {
-  appStateLabel,
-  cancelOperationLabel,
+  appStateLabelKey,
+  cancelOperationLabelKey,
+  effectiveAppOperation,
   isAwaitingGeneration,
+  isCancelableOperation,
   isFailedState,
   isPendingBaseImport,
   isWorkingState,
-  retryLabel,
+  retryLabelKey,
 } from "./app-state";
 import { AppDeleteDialog } from "./delete-dialog";
 import { RepairConfirmDialog } from "./repair-dialog";
@@ -55,7 +56,10 @@ import {
   openSurfaceInWindow,
   showSurface,
 } from "@/lib/window-surfaces-client";
-import { useAppTranslation } from "@/components/providers/i18n-provider";
+import {
+  useAppTranslation,
+  useSystemFileManagerRevealLabel,
+} from "@/components/providers/i18n-provider";
 
 type AppCardProps = {
   app: AppListItem;
@@ -64,11 +68,23 @@ type AppCardProps = {
 
 export function AppCard({ app, onOpenProgress }: AppCardProps) {
   const { t } = useAppTranslation();
+  const revealLabel = useSystemFileManagerRevealLabel();
   const navigate = useNavigate();
-  const { highlightedId, removeApp, retryApp, repairApp, cancelInstall, revealApp } =
-    useApps();
+  const {
+    highlightedId,
+    removeApp,
+    retryApp,
+    repairApp,
+    cancelInstall,
+    revealApp,
+    setPinned,
+  } = useApps();
   const [openError, setOpenError] = useState("");
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState({
+    open: false,
+    name: "",
+    isBase: false,
+  });
   const [repairOpen, setRepairOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -81,7 +97,9 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
           <CardDescription className="line-clamp-2">
             {app.description}
           </CardDescription>
-          <span className="text-muted-foreground text-xs">浏览器降级</span>
+          <span className="text-muted-foreground text-xs">
+            {t("apps.card.browserFallback")}
+          </span>
         </CardHeader>
       </Card>
     );
@@ -90,16 +108,19 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
   const { record } = app;
   const name = record.manifest?.name ?? record.displayName;
   const description =
-    record.manifest?.description ?? `正在准备 ${record.displayName}`;
+    record.manifest?.description ??
+    (isAwaitingGeneration(record)
+      ? t("apps.card.awaitingAuthorization")
+      : t("apps.card.preparing", { name: record.displayName }));
   const icon = record.manifest?.icon ?? "📦";
   const failed = isFailedState(record.state);
   const working = isWorkingState(record.state);
+  const effectiveOperation = effectiveAppOperation(record, app.operation);
   /* 徽标只在真的成了代时才敢说绿：否则它会和同一张卡上的占位图标、
      「正在准备…」描述当面对质。 */
   const awaitingGeneration = isAwaitingGeneration(record);
   const detailRoute = `/apps/${record.id}/app`;
   const surface = appStudioSurface(record.id);
-  const opensInWindowByDefault = effectiveAppOpenMode(record) === "new-window";
 
   const act = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -108,18 +129,21 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
       await action();
       return true;
     } catch (cause) {
-      setOpenError(errorMessage(cause, "操作失败"));
+      setOpenError(errorMessage(cause, t("apps.card.operationFailed")));
       return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const openDetail = async (forceWindow = opensInWindowByDefault) => {
-    const result = forceWindow
-      ? await openSurfaceInWindow(surface, record.id, detailRoute)
-      : await showSurface(surface, detailRoute);
+  const openCurrent = async () => {
+    const result = await showSurface(surface, detailRoute);
     if (!result) navigate(detailRoute);
+  };
+
+  const openWindow = async () => {
+    const result = await openSurfaceInWindow(surface, record.id, detailRoute);
+    if (!result) throw new Error(t("windowSurface.openInWindowUnavailable"));
   };
 
   return (
@@ -134,20 +158,24 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
         {working ? (
           <button
             type="button"
-            aria-label={`查看 ${name} 的安装过程`}
+            aria-label={t("apps.card.openProgress", { name })}
             className="absolute inset-0 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             onClick={() => onOpenProgress(record.id)}
           >
-            <span className="sr-only">查看 {name} 的安装过程</span>
+            <span className="sr-only">
+              {t("apps.card.openProgress", { name })}
+            </span>
           </button>
         ) : (
           <button
             type="button"
-            aria-label={`查看 ${name} 详情`}
+            aria-label={t("apps.card.openDetails", { name })}
             className="absolute inset-0 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-            onClick={() => void act(() => openDetail())}
+            onClick={() => void act(openCurrent)}
           >
-            <span className="sr-only">查看 {name} 详情</span>
+            <span className="sr-only">
+              {t("apps.card.openDetails", { name })}
+            </span>
           </button>
         )}
 
@@ -172,7 +200,7 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 )}
               >
                 {working && <Spinner className="mr-1 inline size-3" />}
-                {appStateLabel(record)}
+                {t(appStateLabelKey(record))}
               </span>
             </div>
             <CardTitle className="truncate text-base transition-colors group-hover/card:text-primary">
@@ -188,12 +216,14 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                   failed ? "text-destructive" : "text-muted-foreground"
                 )}
               >
-                {failed ? record.lastError?.message : app.step || "处理中…"}
+                {failed
+                  ? record.lastError?.message
+                  : app.step || t("apps.card.processing")}
               </p>
             )}
             {record.agentWarning && (
               <p className="line-clamp-2 text-amber-700 text-xs">
-                Agent 警告：{record.agentWarning}
+                {t("apps.card.agentWarning", { warning: record.agentWarning })}
               </p>
             )}
             {/* 错误从前只挂在仓库链接那一段里，没有仓库地址的卡片做任何操作
@@ -213,7 +243,9 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 挂上品牌图标就是在替来源撒谎。 */}
             {record.sourceRepoUrl && (
               <Button
-                aria-label={`打开源仓库 ${record.sourceRepoUrl}`}
+                aria-label={t("apps.card.openSource", {
+                  url: record.sourceRepoUrl,
+                })}
                 onClick={() => void act(() => openExternal(record.sourceRepoUrl!))}
                 size="icon-sm"
                 title={record.sourceRepoUrl}
@@ -223,12 +255,30 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 <ExternalLink />
               </Button>
             )}
+            <Button
+              aria-label={t(
+                record.pinnedAt === null ? "apps.pin" : "apps.unpin"
+              )}
+              aria-pressed={record.pinnedAt !== null}
+              disabled={busy}
+              onClick={() =>
+                void act(async () => {
+                  await setPinned(record.id, record.pinnedAt === null);
+                })
+              }
+              size="icon-sm"
+              title={t(record.pinnedAt === null ? "apps.pin" : "apps.unpin")}
+              type="button"
+              variant="ghost"
+            >
+              {record.pinnedAt === null ? <Pin /> : <PinOff />}
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="App 菜单"
+                  aria-label={t("apps.menu")}
                 >
                   <MoreHorizontal />
                 </Button>
@@ -237,9 +287,9 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                 {record.state === "ready" && (
                   <DropdownMenuItem
                     className="whitespace-nowrap"
-                    onSelect={() => void act(() => openDetail(true))}
+                    onSelect={() => void act(openWindow)}
                   >
-                    <PanelsTopLeft />
+                    <AppWindowIcon />
                     {t("windowSurface.openInWindow")}
                   </DropdownMenuItem>
                 )}
@@ -249,7 +299,7 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                     onSelect={() => void act(() => revealApp(record.id))}
                   >
                     <FolderOpen />
-                    在 Finder 中显示
+                    {revealLabel}
                   </DropdownMenuItem>
                 )}
                 {isFailedState(record.state) && (
@@ -259,8 +309,8 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                   >
                     <RefreshCw />
                     {isPendingBaseImport(record)
-                      ? "继续安装"
-                      : retryLabel[record.state]}
+                      ? t("apps.card.continueInstall")
+                      : t(retryLabelKey[record.state])}
                   </DropdownMenuItem>
                 )}
                 {isPendingBaseImport(record) && (
@@ -270,7 +320,7 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                     onSelect={() => void act(() => cancelInstall(record.id))}
                   >
                     <Trash2 />
-                    取消安装
+                    {t("apps.card.cancelInstall")}
                   </DropdownMenuItem>
                 )}
                 {!isPendingBaseImport(record) && repairSite(record) && (
@@ -279,17 +329,17 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                     onSelect={() => setRepairOpen(true)}
                   >
                     <Wrench />
-                    让维护 Agent 诊断修复
+                    {t("apps.card.repair")}
                   </DropdownMenuItem>
                 )}
-                {working && (
+                {working && isCancelableOperation(effectiveOperation) && (
                   <DropdownMenuItem
                     variant="destructive"
                     className="whitespace-nowrap"
                     onSelect={() => void act(() => cancelInstall(record.id))}
                   >
                     <Trash2 />
-                    {cancelOperationLabel[app.operation ?? "install"]}
+                    {t(cancelOperationLabelKey[effectiveOperation])}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
@@ -300,11 +350,18 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
                   // 换个上下文重新出现在删除弹窗里，冤枉了这次操作。
                   onSelect={() => {
                     setOpenError("");
-                    setDeleteOpen(true);
+                    /* 删除会先撤掉 active generation，中间快照的 manifest
+                       因此为 null。弹窗的题型属于用户刚刚确认的意图，不能
+                       跟着生命周期快照从 Base 选择题变成 Web 确认题。 */
+                    setDeleteDialog({
+                      open: true,
+                      name,
+                      isBase: record.manifest?.kind === "base",
+                    });
                   }}
                 >
                   <Trash2 />
-                  删除
+                  {t("apps.card.delete")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -313,10 +370,12 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
       </Card>
 
       <AppDeleteDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        name={name}
-        isBase={record.manifest?.kind === "base"}
+        open={deleteDialog.open}
+        onOpenChange={(open) =>
+          setDeleteDialog((current) => ({ ...current, open }))
+        }
+        name={deleteDialog.name}
+        isBase={deleteDialog.isBase}
         error={openError}
         onDelete={(mode) => act(() => removeApp(record.id, mode))}
       />

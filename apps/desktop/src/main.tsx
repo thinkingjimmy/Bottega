@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, main/App window context, surface migration runtime, Sidebar, and notifications
- * [OUTPUT]: Boots either the main Sidebar product tree or a fixed-App no-Sidebar window tree, including capsule reload and crash-loss notice
+ * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, main/App window context, surface migration runtime, Sidebar, and default/archive notifications
+ * [OUTPUT]: Boots either the main Sidebar product tree or a fixed-App no-Sidebar window tree, including capsule reload, crash-loss notice, and the dedicated top-center archive feedback channel
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 
@@ -25,6 +25,7 @@ import {
   useNavigate,
 } from "react-router";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
+import { ArchiveFeedbackToaster } from "@/components/sidebar/archive/archive-feedback";
 import { panelChromeClassName } from "@/components/page-shell";
 import { AppearanceProvider } from "@/components/providers/appearance-provider";
 import { AppI18nProvider, useAppTranslation } from "@/components/providers/i18n-provider";
@@ -159,11 +160,6 @@ const UsageSettingsView = lazy(() =>
 const ArchiveSettingsView = lazy(() =>
   import("@/views/settings-archive").then((module) => ({
     default: module.ArchiveSettingsView,
-  }))
-);
-const HistoryRoute = lazy(() =>
-  import("@/views/history").then((module) => ({
-    default: module.HistoryRoute,
   }))
 );
 const ProjectSettingsView = lazy(() =>
@@ -390,7 +386,6 @@ function ProductApp() {
                             <Routes>
                               <Route path="/" element={<ChatRoute surfaceVisible={!settingsSection} />} />
                               <Route path="/chat/:id" element={<ChatRoute surfaceVisible={!settingsSection} />} />
-                              <Route path="/history/:id" element={<HistoryRoute />} />
                               <Route
                                 path="/bases/:ownerKind/:ownerId"
                                 element={<BaseDetailView />}
@@ -456,7 +451,12 @@ function AppToaster() {
     resolvedThemeStore.subscribe,
     resolvedThemeStore.getSnapshot
   );
-  return <Toaster theme={theme} position="bottom-right" />;
+  return (
+    <>
+      <Toaster theme={theme} position="bottom-right" />
+      <ArchiveFeedbackToaster theme={theme} />
+    </>
+  );
 }
 
 function SurfaceRuntimeEvents() {

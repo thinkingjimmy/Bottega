@@ -6,6 +6,11 @@
 
 import { classifyAcpFailure } from "../acp/failure";
 import type { BackendFailure, FailureHints } from "../types";
+import { agentRuntimeFailure } from "../../../../shared/product-failure";
+
+const OPENCODE_AUTH_MESSAGES = new Set([
+  "Authentication required: provider authentication required",
+]);
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -19,7 +24,8 @@ function record(value: unknown): Record<string, unknown> | undefined {
  * data `{providerId?}`（小写 d，值可为 undefined）。
  *
  * 通用判据要求 message 恰为 `"Authentication required"` 或 data 命中词表，
- * 两条腿都不成立，故必须专属分支。providerId **不要求存在**——只拒
+ * 两条腿都不成立，故必须专属分支。这里把实机 wire 当成精确协议常量，
+ * 不对任意英文做前缀或正则猜测。providerId **不要求存在**——只拒
  * 「存在但不是 string」，那才是形状不对。
  *
  * 诚实边界：prompt 终态路径只把 ProviderAuthError 归 authRequired；
@@ -37,10 +43,14 @@ export function opencodeClassifyFailure(
     ?.providerId;
   if (
     code === -32000 &&
-    message.startsWith("Authentication required") &&
+    OPENCODE_AUTH_MESSAGES.has(message) &&
     (providerId === undefined || typeof providerId === "string")
   ) {
-    return { kind: "auth-required", message };
+    return {
+      kind: "auth-required",
+      message,
+      failure: agentRuntimeFailure("auth-required"),
+    };
   }
   return classifyAcpFailure(cause, hints);
 }

@@ -10,10 +10,10 @@ import type { MemoryTranslate } from "@/lib/memory-view";
 
 const translated = (
   translate: MemoryTranslate | undefined,
-  key: string,
+  copyKey: string,
   fallback: string,
   options?: Record<string, unknown>
-) => translate?.(key, options) ?? fallback;
+) => translate?.(copyKey, options) ?? fallback;
 
 export function memoryReceiptCopy(
   receipt?: TurnContextReceipt,

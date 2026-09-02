@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, shared BaseOwner changed/moved/migration Event rules with lib/bases client
+ * [INPUT]: Depends on React Context, the locale catalog, shared BaseOwner changed/moved/migration Event rules, and lib/bases client
  * [OUTPUT]: Provides BasesProvider/useBases with moved/changed snapshots, an explicit Project Base baseline-loaded fence, and revision-bound Base commands
  * [POS]: The single source of truth for the Base real-time state of the renderer; All IPC returns, navigation baseline, delta meta and event pull are through the ownerInstance/revision fence
  */
@@ -23,7 +23,15 @@ import type {
   BasesEvent,
   BaseSnapshot,
 } from "../../../shared/bases-ipc";
-import { ownerFromKey, ownerKeyOf } from "../../../shared/bases-ipc";
+import {
+  baseNavigationOf,
+  ownerFromKey,
+  ownerKeyOf,
+} from "../../../shared/bases-ipc";
+import {
+  appearsInProjectBase,
+  appearsInRootBases,
+} from "../../../shared/placement/base";
 import {
   deleteBaseRows,
   discardCorruptBase,
@@ -41,10 +49,12 @@ import {
   onBasesEvent,
   patchBaseRow,
   promoteBaseToProject,
+  removeManagedBase,
   resolveBaseForSection,
   updateBaseMeta,
 } from "@/lib/bases/client";
 import { errorMessage } from "@/lib/errors";
+import { useAppTranslation } from "./i18n-provider";
 
 type BasesContextValue = {
   snapshots: Readonly<Record<string, BaseSnapshot>>;
@@ -56,6 +66,7 @@ type BasesContextValue = {
   get(ownerKey: string): Promise<BaseSnapshot | null>;
   ensure(ownerKey: string): Promise<BaseSnapshot>;
   discardCorrupt(ownerKey: string): Promise<BaseSnapshot>;
+  removeManaged(ownerKey: string, ownerInstanceId: string): Promise<boolean>;
   updateMeta(input: {
     ownerKey: string;
     expectedRevision: number;
@@ -275,7 +286,8 @@ export async function reloadBaseEvent(
     ownerKey: string,
     ownerInstanceId?: string
   ) => Promise<BaseSnapshot | null>,
-  event: Extract<BasesEvent, { type: "base-changed" }>
+  event: Extract<BasesEvent, { type: "base-changed" }>,
+  failureCopy: (values: { ownerKey: string; message: string }) => string
 ) {
   try {
     const snapshot = await reload(event.ownerKey, event.ownerInstanceId);
@@ -287,7 +299,10 @@ export async function reloadBaseEvent(
     }
     return null;
   } catch (cause) {
-    return `Base ${event.ownerKey} 重拉失败：${errorMessage(cause)}`;
+    return failureCopy({
+      ownerKey: event.ownerKey,
+      message: errorMessage(cause),
+    });
   }
 }
 
@@ -300,6 +315,7 @@ function sortPinned(values: Iterable<BasePinnedSummary>) {
 }
 
 export function BasesProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useAppTranslation();
   const [snapshots, setSnapshots] = useState<Record<string, BaseSnapshot>>({});
   const [movedOwners, setMovedOwners] = useState<Record<string, string>>({});
   const [pinned, setPinned] = useState<BasePinnedSummary[]>([]);
@@ -344,17 +360,24 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       ownerInstanceId: merged.meta.ownerInstanceId,
       name: merged.meta.name,
       revision: merged.meta.revision,
+      navigation: baseNavigationOf(merged.meta),
     };
-    if (merged.meta.pinned) {
+    const navigation = baseNavigationOf(merged.meta);
+    if (appearsInRootBases(navigation)) {
       pinnedRef.current.set(ownerKey, summary);
     } else {
       pinnedRef.current.delete(ownerKey);
     }
     setPinned(sortPinned(pinnedRef.current.values()));
-    if (merged.meta.owner.kind === "project") {
+    if (
+      navigation.kind === "project-contained" &&
+      appearsInProjectBase(navigation, navigation.projectId)
+    ) {
       projectBasesRef.current.set(ownerKey, summary);
-      setProjectBases(sortPinned(projectBasesRef.current.values()));
+    } else {
+      projectBasesRef.current.delete(ownerKey);
     }
+    setProjectBases(sortPinned(projectBasesRef.current.values()));
     return merged;
   }, []);
 
@@ -378,10 +401,12 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
 
   const handleReloadEvent = useCallback(
     async (event: Extract<BasesEvent, { type: "base-changed" }>) => {
-      const reloadWarning = await reloadBaseEvent(reload, event);
+      const reloadWarning = await reloadBaseEvent(reload, event, (values) =>
+        t("bases.provider.reloadFailed", values)
+      );
       if (reloadWarning) setWarning(reloadWarning);
     },
-    [reload]
+    [reload, t]
   );
 
   const applyEvent = useCallback(
@@ -489,14 +514,21 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
             ownerInstanceId: snapshot.meta.ownerInstanceId,
             name: snapshot.meta.name,
             revision: snapshot.meta.revision,
+            navigation: baseNavigationOf(snapshot.meta),
           };
-          if (snapshot.meta.pinned) {
+          const navigation = baseNavigationOf(snapshot.meta);
+          if (appearsInRootBases(navigation)) {
             baseline.set(ownerKey, summary);
           } else {
             baseline.delete(ownerKey);
           }
-          if (snapshot.meta.owner.kind === "project") {
+          if (
+            navigation.kind === "project-contained" &&
+            appearsInProjectBase(navigation, navigation.projectId)
+          ) {
             projectBaseline.set(ownerKey, summary);
+          } else {
+            projectBaseline.delete(ownerKey);
           }
         }
         for (const [ownerKey, ownerInstances] of removedRef.current) {
@@ -524,14 +556,18 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch((cause) => {
-        if (active) setWarning(`Bases 加载失败：${errorMessage(cause)}`);
+        if (active) {
+          setWarning(
+            t("bases.provider.loadFailed", { message: errorMessage(cause) })
+          );
+        }
       })
       .finally(finishInitialization);
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [applyEvent]);
+  }, [applyEvent, t]);
 
   const wrap = useCallback(
     async (
@@ -546,7 +582,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
           expectedOwnerInstance
         );
         if (!snapshot) {
-          throw new Error(`Base ${ownerKey} 的操作结果来自已移除世代`);
+          throw new Error(t("bases.provider.retiredResult", { ownerKey }));
         }
         return snapshot;
       } catch (cause) {
@@ -554,7 +590,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
         throw cause;
       }
     },
-    [remember]
+    [remember, t]
   );
   const ensure = useCallback(
     (ownerKey: string) => wrap(ownerKey, () => ensureBase(ownerKey)),
@@ -564,6 +600,17 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
     (ownerKey: string) =>
       wrap(ownerKey, () => discardCorruptBase(ownerKey)),
     [wrap]
+  );
+  const removeManaged = useCallback(
+    async (ownerKey: string, ownerInstanceId: string) => {
+      try {
+        return (await removeManagedBase({ ownerKey, ownerInstanceId })).removed;
+      } catch (cause) {
+        setWarning(errorMessage(cause));
+        throw cause;
+      }
+    },
+    []
   );
   const updateMeta = useCallback(
     (input: Parameters<typeof updateBaseMeta>[0]) =>
@@ -625,6 +672,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       get: reload,
       ensure,
       discardCorrupt,
+      removeManaged,
       updateMeta,
       insertRows,
       patchRow,
@@ -646,6 +694,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       importJson,
       importXlsx,
       movedOwners,
+      removeManaged,
       patchRow,
       pinned,
       projectBases,

@@ -1,8 +1,8 @@
 "use client";
 /**
- * [INPUT]: Depends on React, I18n, ui/Sidebar, lib/brand/theme/update-client, History/Search/shortcuts, Apps/Chats/Bases providers, Memory/Settings navigation, shared ChatSummary, external-link IPC, and router
- * [OUTPUT]: Provides persistent application/settings navigation, About entry, Memory attention, and a conditional 44px blue update action with progress and platform-specific install behavior
- * [POS]: Sole persistent navigation surface; main.tsx owns its lifetime while active-section facts remain centralized in settings-navigation
+ * [INPUT]: Depends on React, i18n, Sidebar UI, product stores/providers, shared active App target/origin, navigation, external-link IPC, and router
+ * [OUTPUT]: Provides persistent navigation with asChild-stable row typography, pending-residence-safe generation-fenced Apps/global-pin/Project-alias targets, recovery, and status actions
+ * [POS]: Sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  */
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
@@ -33,6 +33,7 @@ import {
   Wrench,
 } from "lucide-react";
 import type { ChatSummary } from "../../../shared/chats-ipc";
+import type { ChatStorageFailure } from "../../../shared/product-failure";
 import {
   Sidebar,
   SidebarContent,
@@ -52,12 +53,12 @@ import {
 } from "@ai-chat/ui/components/ui/sidebar";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { ChatThreadItem } from "./chat/chat-thread-item";
-import { ProjectSection } from "./project/project-section";
+import { ProjectSection } from "./project/section/project-section";
 import { SidebarActivity } from "./sidebar-activity";
 import {
   SidebarActivePathContext,
   useSidebarActivePath,
-} from "./sidebar-active-path";
+} from "./active/active-path";
 import { SidebarCollapsibleGroup } from "./sidebar-collapsible-group";
 import {
   PRODUCT_LOGO_SIZE,
@@ -74,6 +75,7 @@ import {
 } from "@/components/providers/apps-provider";
 import { useChats } from "@/components/providers/chats-provider";
 import { useBases } from "@/components/providers/bases-provider";
+import { useProjects } from "@/components/providers/projects-provider";
 import { ownerRoute } from "@/components/bases/chrome/base-header-actions";
 import { SaveAsAppDialog } from "@/components/apps/save-as-app-dialog";
 import { CommandPalette } from "./search/command-palette";
@@ -92,6 +94,18 @@ import {
 } from "@/lib/settings-navigation";
 import { openExternal } from "@/lib/agent-client";
 import { RELEASE_URL, updateStore } from "@/lib/update-client";
+import { PinnedApps } from "./apps/pinned-apps";
+import { appearsInRootChats } from "../../../shared/placement/sidebar";
+import { ChatStorageFailureNotice } from "../chat-storage-failure-notice";
+import {
+  activeAppId,
+  resolveSidebarAppTarget,
+  SidebarAppTargetContext,
+} from "./active/app-target";
+import { useSidebarAppOrigin } from "./active/app-origin";
+import { useAppOriginReconciliation } from "./active/use-app-origin-reconciliation";
+import { appStudioSurface } from "../../../shared/window-surfaces-ipc";
+import { useSurfaceResidence } from "@/lib/window-surfaces-client";
 type AppSidebarProps = {
   /* 当前亮着的那一档，覆盖层与路由已在 main.tsx 折成一个值：侧栏不需要
      知道谁走路由、谁走覆盖层，五个档位一律只比这一个值。 */
@@ -110,7 +124,7 @@ type AppSidebarProps = {
   onCloseSettings: () => void;
 };
 const sidebarTypographyClass =
-  "[&_[data-slot=sidebar-group-label]]:text-sm [&_[data-slot=sidebar-menu-button]]:h-8 [&_[data-slot=sidebar-menu-button]]:font-normal! [&_[data-slot=sidebar-menu-button]]:text-sm [&_[data-slot=sidebar-menu-button]]:leading-5 [&_[data-slot=sidebar-menu-sub-button]]:h-8 [&_[data-slot=sidebar-menu-sub-button]]:font-normal! [&_[data-slot=sidebar-menu-sub-button]]:text-sm [&_[data-slot=sidebar-menu-sub-button]]:leading-5 [&_[data-slot=sidebar-menu-button]_svg]:[stroke-width:1.5]";
+  "[&_[data-slot=sidebar-group-label]]:text-sm [&_[data-sidebar=menu-button]]:h-8 [&_[data-sidebar=menu-button]]:font-normal! [&_[data-sidebar=menu-button]]:text-sm [&_[data-sidebar=menu-button]]:leading-5 [&_[data-sidebar=menu-sub-button]]:h-8 [&_[data-sidebar=menu-sub-button]]:font-normal! [&_[data-sidebar=menu-sub-button]]:text-sm [&_[data-sidebar=menu-sub-button]]:leading-5 [&_[data-sidebar=menu-button]_svg]:[stroke-width:1.5]";
 function AppsStatusIndicator({ status }: { status: AppsSidebarStatus }) {
   const { t } = useAppTranslation();
   if (!status) return null;
@@ -140,11 +154,13 @@ function AppsStatusIndicator({ status }: { status: AppsSidebarStatus }) {
 function ChatsSection({
   chats,
   warning,
+  storageFailures,
   open,
   onOpenChange,
 }: {
   chats: ChatSummary[];
   warning: string;
+  storageFailures: ChatStorageFailure[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -154,7 +170,7 @@ function ChatsSection({
   /* 排序口径唯一归 ChatsProvider（createdAt 倒序）：这里只过滤不重排——
      再排一遍只会与它悄悄漂移，Project 子列表已经吃过这个亏。 */
   const rootChats = chats.filter(
-    (chat) => !chat.projectId && !chat.effectiveArchived
+    (chat) => appearsInRootChats(chat)
   );
   return (
     <SidebarCollapsibleGroup
@@ -177,17 +193,27 @@ function ChatsSection({
           <ChatThreadItem
             key={chat.id}
             chat={chat}
-            active={activePath === `/chat/${chat.id}`}
+            active={
+              chat.context?.kind === "app-use"
+                ? activePath.endsWith(`#app-use:${chat.id}`)
+                : activePath === `/chat/${chat.id}`
+            }
           />
         ))}
       </SidebarMenu>
       {/* 空态与 Projects 同构：一行灰字告诉人这里怎么起头，别让空分组像坏了。
           + 建的是新 chat，故文案对齐「点击 + 开始聊天」。 */}
-      {rootChats.length === 0 && (
+      {rootChats.length === 0 && storageFailures.length === 0 && (
         <p className="px-2 py-1.5 text-muted-foreground text-xs">
           {t("common.chatsEmpty")}
         </p>
       )}
+      {storageFailures.map((failure, index) => (
+        <ChatStorageFailureNotice
+          key={`${failure.code}:${index}`}
+          failure={failure}
+        />
+      ))}
       {warning && (
         <p role="alert" className="px-2 py-1.5 text-muted-foreground text-xs">
           {warning}
@@ -280,14 +306,15 @@ export function AppSidebar({
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { sidebarStatus } = useApps();
+  const { pinnedRecords, records, sidebarStatus } = useApps();
+  const { projects } = useProjects();
   const [searchOpen, setSearchOpen] = useState(false);
   const resolvedTheme = useSyncExternalStore(
     resolvedThemeStore.subscribe,
     resolvedThemeStore.getSnapshot,
     resolvedThemeStore.getSnapshot
   );
-  const { chats, warning } = useChats();
+  const { chats, warning, storageFailures } = useChats();
   const { pinned } = useBases();
   /* 记忆告警常驻订阅：main 推送已按内容去重，静默时零重渲染。 */
   const memorySnapshot = useSyncExternalStore(
@@ -307,10 +334,6 @@ export function AppSidebar({
   const memoryBusy = Object.values(memorySnapshot.runtimes).some(
     (runtime) => runtime.phase === "running"
   );
-  /* ── 两个动作，一处定义 ──────────────────────────────────────────
-     ⌘N / ⌘, 与面板里那两行 Quick action 做的是同一件事。各写一份，
-     迟早分叉成「按键跳这儿、点行跳那儿」；这里定义一次，键盘表和面板
-     各自消费。面板由动作自己关——按下 ⌘N 时它可能正开着。 */
   const openNewChat = useCallback(() => {
     setSearchOpen(false);
     void navigate("/");
@@ -326,11 +349,35 @@ export function AppSidebar({
     /* ⌘B 从 packages/ui 的内建监听收编至此：走同一张可改绑真值表。 */
     toggleSidebar,
   });
-  /* 侧栏任一时刻只有一个当前目的地：设置盖着时应用面板没有当前项，故它
-     此刻代表的是一条永不匹配的空路径。行单元一律读这个值（见
-     sidebar-active-path），不许再各自问 router——那正是「设置亮着一档、
-     被盖住的应用面板还亮着一行」的来路。 */
-  const activePath = activeSettings ? "" : pathname;
+  const selectedUseChat =
+    pathname.startsWith("/apps/") && searchParams.get("panel") === "use"
+      ? searchParams.get("chatId")
+      : null;
+  const activePath = activeSettings
+    ? ""
+    : selectedUseChat
+      ? `${pathname}#app-use:${selectedUseChat}`
+      : pathname;
+  const origin = useSidebarAppOrigin();
+  const routedAppId = activeAppId(activePath);
+  const routedResidence = useSurfaceResidence(
+    routedAppId ? appStudioSurface(routedAppId) : null
+  );
+  const appTarget = resolveSidebarAppTarget({
+    activePath,
+    origin,
+    residence: routedResidence,
+    hasResidenceBridge: Boolean(window.windowSurfaces),
+    projects,
+    records,
+    globalPinnedAppIds: new Set(pinnedRecords.map((record) => record.id)),
+  });
+  useAppOriginReconciliation({
+    activePath,
+    settingsOpen: Boolean(activeSettings),
+    origin,
+    target: appTarget,
+  });
   const draftProjectId =
     activePath === "/" ? searchParams.get("projectId") : null;
   /* 显隐与高亮读同一个值：有档位亮着就是在设置里。Settings 导航按需挂载，
@@ -533,6 +580,7 @@ export function AppSidebar({
   ) : null;
   return (
     <SidebarActivePathContext value={activePath}>
+      <SidebarAppTargetContext value={appTarget}>
       <Sidebar variant="inset" className={sidebarTypographyClass}>
         {/* macOS 顶部这 40px 拖拽区专为红绿灯预留；Windows 走系统原生标题栏，
             没有红绿灯，这条留白就是凭空的空白，故按平台只在 mac 出现。 */}
@@ -609,7 +657,9 @@ export function AppSidebar({
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
-                  isActive={activePath.startsWith("/apps")}
+                  isActive={
+                    activePath === "/apps" || appTarget.kind === "apps"
+                  }
                 >
                   <Link to="/apps">
                     <LayoutGrid />
@@ -617,6 +667,7 @@ export function AppSidebar({
                   </Link>
                 </SidebarMenuButton>
                 <AppsStatusIndicator status={sidebarStatus} />
+                <PinnedApps />
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarHeader>
@@ -639,6 +690,7 @@ export function AppSidebar({
               <ChatsSection
                 chats={chats}
                 warning={warning}
+                storageFailures={storageFailures}
                 open={groups.chats}
                 onOpenChange={(open) => onGroupOpenChange("chats", open)}
               />
@@ -738,6 +790,7 @@ export function AppSidebar({
           onOpenSettings={openSettings}
         />
       </Sidebar>
+      </SidebarAppTargetContext>
     </SidebarActivePathContext>
   );
 }

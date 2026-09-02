@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node: crypto, shared ownerKey/BaseMeta, canonical chat References to database data, BaseStore, three-dimensional positioning, project
- * [OUTPUT]: Provides MutationPrincipal, BaseChatRef and BaseOwnerResolver; unifies owner parsing, App-owned Project fencing, section targets, and mutation principals
+ * [OUTPUT]: Provides MutationPrincipal, BaseChatRef and BaseOwnerResolver; Project identity carries creation-time Base navigation while ordinary generic-Base resolution stays separate from authorized App attachment resolution
  * [POS]: The owner rule of bases is one point; IPC/toolset/sections/search not to copy the "self-prioritize, project backtrack" section
  */
 
@@ -12,6 +12,8 @@ import {
 } from "../../../shared/bases-ipc";
 import type { ChatRecord } from "../../../shared/chats-ipc";
 import type { EffectiveAppGrant } from "../../../shared/apps-ipc";
+import type { Project } from "../../../shared/projects-ipc";
+import { baseNavigationForProject } from "../../../shared/placement/base";
 import {
   chatOwnerIdentity,
   type BaseOwnerIdentity,
@@ -26,14 +28,15 @@ export type BaseLeaseIdentity = {
 /** owner 解析只需要身份/归属四字段；恒走内存元数据，禁止为此读全量账本。 */
 export type BaseChatRef = Pick<
   ChatRecord,
-  "id" | "incarnationId" | "title" | "projectId"
+  "id" | "incarnationId" | "title" | "projectId" | "context"
 >;
 
 export type BaseOwnerResolverOptions = {
   getChat(chatId: string): Promise<BaseChatRef | null>;
   getProject(
     projectId: string
-  ): { id: string; name: string; archivedAt?: number } | undefined;
+  ): Pick<Project, "id" | "name"> &
+    Partial<Pick<Project, "archivedAt" | "workspaceBinding" | "role">> | undefined;
 };
 
 export type MutationPrincipal =
@@ -79,6 +82,9 @@ export class BaseOwnerResolver {
     const project = this.options.getProject(ref.projectId);
     if (!project) throw statusError(404, "Project 不存在");
     const located = this.store.locate(ownerKey);
+    const currentNavigation = located.status === "healthy"
+      ? this.store.peek(ownerKey, located.ownerInstanceId)?.meta.navigation
+      : undefined;
     return {
       owner: { kind: "project", projectId: project.id },
       ownerInstanceId:
@@ -86,6 +92,7 @@ export class BaseOwnerResolver {
           ? located.ownerInstanceId || randomUUID()
           : located.ownerInstanceId,
       title: project.name,
+      navigation: baseNavigationForProject(project, currentNavigation),
     };
   }
 
@@ -95,6 +102,9 @@ export class BaseOwnerResolver {
    */
   async resolveTargetForSection(sectionId: string) {
     const chat = await this.chat(sectionId);
+    if (chat.context.kind !== "ordinary") {
+      throw statusError(403, "App Use/Edit chats do not expose the generic Base panel");
+    }
     const own = chatOwnerIdentity({
       chatId: chat.id,
       incarnationId: chat.incarnationId,

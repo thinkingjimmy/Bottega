@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on hash-verified prepared Project/Tools/Skill receipts, durable ManualTurnIntent, ChatsService, SettingsStore, session-plan rebuild, and Agent start ports
- * [OUTPUT]: Provides workspace-fenced append/create/revise/adopt replay, stale MCP session replacement, and exact frozen Tools/Skill dispatch
+ * [OUTPUT]: Provides workspace-fenced append/create/revise/adopt replay, frozen-plan binding for adopted sessions, stale MCP session replacement, and exact frozen Tools/Skill dispatch
  * [POS]: The durable manual-intent executor of sections/coordinator
  */
 
@@ -63,6 +63,30 @@ export function manualUserMessage(persistence: ManualTurnPersistence) {
     : persistence.input.firstMessage;
 }
 
+export function bindAdoptedSessionPlan(
+  submission: ManualTurnSubmission,
+  toolPlan: Readonly<{ planDigest: string; projectId: string | null }>
+): ManualTurnSubmission {
+  if (
+    submission.persistence.kind !== "adopt" ||
+    submission.persistence.input.session.toolPlan
+  ) {
+    return submission;
+  }
+  const session = {
+    ...submission.persistence.input.session,
+    toolPlan: { ...toolPlan },
+  };
+  return {
+    ...submission,
+    persistence: {
+      kind: "adopt",
+      input: { ...submission.persistence.input, session },
+    },
+    turn: { ...submission.turn, session },
+  };
+}
+
 export async function manualSubmission(
   intent: DeepReadonly<ManualTurnIntent>
 ) {
@@ -77,8 +101,10 @@ export async function userMessagePersisted(
   conversationId: string,
   messageId: string
 ) {
-  const record = await chats.store.get(conversationId);
-  return Boolean(record?.messages.some((message) => message.id === messageId));
+  return Boolean(await chats.store.getNativeMessage(conversationId, {
+    kind: "id",
+    messageId,
+  }));
 }
 
 export async function assertManualPrecondition(
@@ -88,7 +114,7 @@ export async function assertManualPrecondition(
 ) {
   const precondition = submission.precondition;
   const conversationId = manualConversationId(submission.persistence);
-  const current = await chats.store.get(conversationId);
+  const current = chats.store.getMetadata(conversationId);
   const tombstone = ledger.read((state) => state.tombstones[conversationId]);
   if (precondition.kind === "existing") {
     if (
@@ -107,6 +133,11 @@ export async function assertManualPrecondition(
   // absent→create 的崩溃恢复幂等：createUserChat 落盘后、ledger
   // transition 前崩溃，重放看到的是自己创建的 incarnation——按
   // existing(P) 放行，交给 persistManual 的 canonical-user 短路续走。
+  //
+  // 收养一条已存在的只读 Chat 也只走这一条：代际是收养沿用的那一个，
+  // 于是「已存在且同代」就是它的全部合法形态。曾经另设一条只比对
+  // id/projectId/agent 的旁路——那条旁路恰恰只在代际不符时才会被走到，
+  // 也就是只在该拒绝的时候放行。
   if (current?.incarnationId === precondition.proposedIncarnationId) {
     if (tombstone?.incarnationId === precondition.proposedIncarnationId) {
       throw new Error("INCARNATION_MISMATCH");
@@ -127,7 +158,13 @@ export async function allocateManualSequences(
   submission: ManualTurnSubmission
 ) {
   const conversationId = manualConversationId(submission.persistence);
-  const record = await chats.store.get(conversationId);
+  const record = chats.store.getMetadata(conversationId);
+  if (
+    submission.persistence.kind === "adopt" &&
+    record?.readOnlyReason === "external-readonly"
+  ) {
+    return { userSeq: 1, assistantSeq: 2 };
+  }
   if (!record) {
     if (submission.persistence.kind === "append") {
       throw new Error("人工 turn 的目标聊天不存在");
@@ -168,10 +205,10 @@ async function persistManual(
 ) {
   const chatId = manualConversationId(persistence);
   const expected = manualUserMessage(persistence);
-  const existing = await chats.store.get(chatId);
-  const stored = existing?.messages.find(
-    (message) => message.id === expected.id && message.role === "user"
-  );
+  const stored = await chats.store.getNativeMessage(chatId, {
+    kind: "id",
+    messageId: expected.id,
+  });
   if (stored?.role === "user") {
     if (!sameManualUser(expected, stored, persistence)) {
       throw new Error("ManualTurnIntent 与 canonical user 冲突");
@@ -319,7 +356,7 @@ export function resolvedInputForFinalPayload(
 function notifyManualPersisted(
   dependencies: ManualTurnDependencies,
   submission: ManualTurnSubmission,
-  record: ChatRecord,
+  record: Pick<ChatRecord, "id" | "incarnationId">,
   message: UserChatMessage
 ) {
   const notify = dependencies.onManualPersisted;
@@ -345,7 +382,10 @@ export async function runManualTurn(
   projectLifecycleHeld = false
 ) {
   const hydrated = await manualSubmission(intent);
-  const submission = hydrated.submission;
+  const submission = bindAdoptedSessionPlan(hydrated.submission, {
+    planDigest: hydrated.projectTools.sessionPlanDigest,
+    projectId: hydrated.projectTools.receipt.projectContext.projectId,
+  });
   const expected = manualUserMessage(submission.persistence);
   const prepared = intent.payload as PreparedManualTurn;
   const currentProjectId = await manualLifecycleProjectId(
@@ -394,7 +434,7 @@ export async function runManualTurn(
     );
     if (!appended) return;
   }
-  const record = await dependencies.chats.store.get(intent.conversationId);
+  const record = dependencies.chats.store.getMetadata(intent.conversationId);
   if (!record) throw new Error("人工 turn 的目标聊天不存在");
   const expectedIncarnationId =
     submission.precondition.kind === "existing"
@@ -407,9 +447,10 @@ export async function runManualTurn(
   ) {
     throw new Error("ManualTurnIntent 与 canonical chat identity 冲突");
   }
-  const stored = record.messages.find(
-    (message) => message.id === expected.id && message.role === "user"
-  );
+  const stored = await dependencies.chats.store.getNativeMessage(record.id, {
+    kind: "id",
+    messageId: expected.id,
+  });
   if (!stored || stored.role !== "user") {
     throw new Error("ManualTurnIntent 已标记 appended，但 canonical user 缺失");
   }
@@ -447,6 +488,10 @@ export async function runManualTurn(
     }
     session = null;
   }
+  const messages = session
+    ? null
+    : await dependencies.chats.store.getNativeMessages(record.id);
+  if (!session && !messages) throw new Error("人工 turn 的 canonical context 缺失");
   const payload: AgentSendPayload = {
     ...submission.turn,
     preparedSkillSelection: prepared.skillSelection,
@@ -454,7 +499,7 @@ export async function runManualTurn(
     input: session
       ? submission.turn.input
       : recoveryInput(
-          record.messages,
+          messages!,
           submission.turn.input,
           expected.id
         ),

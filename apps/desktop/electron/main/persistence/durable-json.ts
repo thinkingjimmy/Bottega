@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, Zod schemas, and SerialQueue
- * [OUTPUT]: Provides durable directory publication, atomic file replacement, explicit corruption errors with retained diagnostics, quarantine, strict initialization/upgrades, and serialized rollback-safe mutation
+ * [OUTPUT]: Provides durable directory publication, atomic text/byte replacement, explicit corruption errors with retained diagnostics, quarantine, strict initialization/upgrades, and serialized rollback-safe mutation
  * [POS]: The persistence I/O boundary; DurableJson classifies unreadable content while store owners decide whether corruption may be quarantined and recovered
  */
 
@@ -46,6 +46,24 @@ export async function durableReplaceFile(
   mode = 0o600,
   faults: DurableReplaceFileFaults = {}
 ) {
+  return durableReplace(filePath, content, mode, faults);
+}
+
+/** Raw evidence must never pass through UTF-8 decoding before publication. */
+export async function durableReplaceBytes(
+  filePath: string,
+  content: Uint8Array,
+  mode = 0o600
+) {
+  return durableReplace(filePath, content, mode);
+}
+
+async function durableReplace(
+  filePath: string,
+  content: string | Uint8Array,
+  mode: number,
+  faults: DurableReplaceFileFaults = {}
+) {
   const directory = dirname(filePath);
   await ensureDurableDirectory(directory, 0o700, faults);
   const temporary = `${filePath}.${randomUUID()}.tmp`;
@@ -67,7 +85,9 @@ export async function durableReplaceFile(
     await rm(temporary, { force: true }).catch(() => undefined);
     throw cause;
   }
-  await faults.afterRename?.({ filePath, content });
+  if (typeof content === "string") {
+    await faults.afterRename?.({ filePath, content });
+  }
   const parent = await open(directory, "r");
   try {
     await parent.sync();

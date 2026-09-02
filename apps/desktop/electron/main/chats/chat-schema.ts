@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the zod, shared/agent-ipc and the limiting constant for chats-ipc, shared/projects-ipc PROJECT_ID_PATTERN
- * [OUTPUT]: Provides strict chat schema v11 with ProductFailure-aware assistant messages, MCP-plan-bound sessions, canonical users, dormant App-chat identity notices, branches, external snapshots, App grants, subagents, and interrupted facts
- * [POS]: Single durable chat schema authority; older and future versions fail closed with no compatibility reader
+ * [OUTPUT]: Provides the strict chat fact schema, the chat record schema v12 above it, and its readonly twin that admits an empty imported segment, with ProductFailure-aware assistant messages and warnings, the read-only imported-segment marker, sessions, branches, external snapshots with their presentation facts, grants, and subagents
+ * [POS]: Durable Chat record authority; SQLite is the only backend and no legacy file envelope precedes it
  */
 
 import { z } from "zod";
@@ -20,7 +20,6 @@ import {
   SUBAGENT_BYTE_LIMIT,
   type ChatPart,
   type ChatAttachmentMeta,
-  type ChatRecord,
   type ChatToolPart,
   type PersistedSubagent,
   noticeMessageContent,
@@ -62,7 +61,6 @@ const contextReceiptSchema = z
   })
   .strict();
 
-export const SCHEMA_VERSION = 11;
 export const CHAT_MESSAGE_LIMIT = 1_000;
 export const CHAT_BYTE_LIMIT = 2 * 1024 * 1024;
 export const CHAT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -94,6 +92,7 @@ const TOOL_KINDS = [
   "web-search",
   "image",
   "reasoning",
+  "agent-failure",
   "user-input",
   "other",
 ] as const;
@@ -120,6 +119,8 @@ const partSchemasWithLimit = (detailLimit: number, titleLimit: number) => {
         })
         .optional(),
       status: z.enum(["completed", "failed"]),
+      failure: productFailureSchema.optional(),
+      severity: z.enum(["warning", "error"]).optional(),
     })
     .strict();
   const text = z
@@ -221,7 +222,9 @@ export function messageBytes(message: {
         ? utf8Length(part.text)
         : part.type === "subagent"
           ? utf8Length(part.name) + utf8Length(part.agentThreadId)
-          : utf8Length(part.title) + (part.detail ? utf8Length(part.detail) : 0);
+          : utf8Length(part.title) +
+            (part.detail ? utf8Length(part.detail) : 0) +
+            (part.failure ? utf8Length(JSON.stringify(part.failure)) : 0);
   }
   for (const attachment of message.attachments ?? []) {
     total += utf8Length(attachment.filename) + utf8Length(attachment.mediaType);
@@ -255,6 +258,8 @@ const messageBaseFields = {
   content: boundedMessageContentSchema,
   createdAt: z.number().int().nonnegative(),
   seq: z.number().int().positive(),
+  // 只读导入段的投影位；只有 SQLite 读侧会写它，原生落盘从不带。
+  segment: z.literal("imported").optional(),
 };
 
 const nonEmptyMessageBaseFields = {
@@ -437,7 +442,8 @@ const canonicalRecordFields = {
     .string()
     .min(1)
     .max(2048)
-    .refine(isAbsolute, "homeDir 必须是绝对路径"),
+    .refine(isAbsolute, "homeDir 必须是绝对路径")
+    .nullable(),
   archivedAt: z.number().int().nonnegative().optional(),
 };
 
@@ -484,11 +490,59 @@ const appGrantFields = {
   grantRevision: z.number().int().nonnegative(),
 };
 
+const conversationContextSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("ordinary") }).strict(),
+  z.object({ kind: z.literal("app-use"), appId: z.string().min(1).max(128) }).strict(),
+  z
+    .object({
+      kind: z.literal("app-edit"),
+      appId: z.string().min(1).max(128),
+      projectId: z.string().regex(PROJECT_ID_PATTERN),
+    })
+    .strict(),
+]);
+
+const chatStartStateSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("unstarted") }).strict(),
+  z
+    .object({
+      kind: z.literal("started-exact"),
+      firstUserMessageAt: z.number().int().nonnegative(),
+      firstUserMessageSeq: z.number().int().positive(),
+    })
+    .strict(),
+]);
+
+const titleJobSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("none") }).strict(),
+  z
+    .object({
+      state: z.literal("pending"),
+      jobId: z.string().min(1).max(256),
+      expectedRecordRevision: z.number().int().positive(),
+      expectedTitleSource: z.enum(["app-fallback", "local-fallback"]),
+      createdAt: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      state: z.literal("completed"),
+      jobId: z.string().min(1).max(256),
+      completedAt: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      state: z.literal("superseded"),
+      jobId: z.string().min(1).max(256),
+      supersededAt: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+
 function validateRecord(
   record: {
     messages: Array<Parameters<typeof messageBytes>[0]>;
-    createdAt: number;
-    updatedAt: number;
   },
   context: z.core.$RefinementCtx
 ) {
@@ -503,14 +557,6 @@ function validateRecord(
       code: "custom",
       path: ["messages"],
       message: "聊天消息总量不能超过 2 MB",
-      input: record,
-    });
-  }
-  if (record.createdAt > record.updatedAt) {
-    context.addIssue({
-      code: "custom",
-      path: ["updatedAt"],
-      message: "updatedAt 不能早于 createdAt",
       input: record,
     });
   }
@@ -542,12 +588,31 @@ function validateRecord(
   }
 }
 
-export const chatRecordSchema = z
-  .object({
-    ...canonicalRecordFields,
-    ...appGrantFields,
-    projectId: z.string().regex(PROJECT_ID_PATTERN).nullable(),
+/* 事实与消息在此分家：ChatFacts 是剥掉消息、子代理、被取代分支的那一半。
+   窄事实写入与整聚合写入共用同一份字段清单，第二份真相无处生长。 */
+const {
+  messages: messagesField,
+  subagents: subagentsField,
+  supersededBranches: supersededBranchesField,
+  supersededBranchesTrimmedThroughSeq: branchWatermarkField,
+  ...factCanonicalFields
+} = canonicalRecordFields;
+
+const chatFactFields = {
+  ...factCanonicalFields,
+  ...appGrantFields,
+  projectId: z.string().regex(PROJECT_ID_PATTERN).nullable(),
     appRole: z.enum(["edit", "use"]).nullable(),
+    context: conversationContextSchema,
+    startState: chatStartStateSchema,
+    titleSource: z.enum(["app-fallback", "local-fallback", "generated", "user"]),
+    titleJob: titleJobSchema,
+    readOnlyReason: z.enum([
+      "legacy-app-not-editable",
+      "external-readonly",
+    ]).optional(),
+    chatRecordRevision: z.number().int().positive(),
+    chatMessageRevision: z.number().int().nonnegative(),
     agent: agentBackendIdSchema,
     session: z
       .object({
@@ -575,74 +640,154 @@ export const chatRecordSchema = z
         resumeAlias: z.string().min(1).max(512),
         originalCwd: z.string().min(1),
         historyRevision: z.string().min(1).max(512),
-        adoptionSnapshotId: z.string().regex(/^adopt_[a-f0-9]{64}$/),
+        adoptionSnapshotId: z.string().regex(/^adopt_[a-f0-9]{64}$/).optional(),
         sourceSize: z.number().int().nonnegative(),
         sourceMtimeNs: z.string().regex(/^\d+$/),
+        // 读侧投影位：分隔线与未完成尾部提示的取值来源，落盘不依赖它们。
+        sourceStatus: z.enum(["match", "changed", "missing"]).optional(),
+        incompleteTail: z.boolean().optional(),
       })
       .strict()
       .nullable()
       .optional(),
     snapshotDigest: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(),
+};
+
+function validateFacts(
+  record: z.infer<typeof strictChatFactsSchema>,
+  context: z.core.$RefinementCtx
+) {
+  if (record.createdAt > record.updatedAt) {
+    context.addIssue({
+      code: "custom",
+      path: ["updatedAt"],
+      message: "updatedAt 不能早于 createdAt",
+      input: record,
+    });
+  }
+  if (record.readOnlyReason === "external-readonly") {
+    if (record.homeDir !== null || record.session !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["homeDir"],
+        message: "external-readonly Chat 不得携带 Home 或 Session",
+        input: record,
+      });
+    }
+  } else if (record.homeDir === null) {
+    context.addIssue({
+      code: "custom",
+      path: ["homeDir"],
+      message: "可执行 Chat 必须携带绝对 Home",
+      input: record,
+    });
+  }
+  if (record.session && record.session.backend !== record.agent) {
+    context.addIssue({
+      code: "custom",
+      path: ["session", "backend"],
+      message: "session backend 必须等于 chat agent",
+      input: record,
+    });
+  }
+  if (
+    Boolean(record.snapshotDigest) !==
+    Boolean(record.importOrigin?.adoptionSnapshotId)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["importOrigin"],
+      message: "adoptionSnapshotId 与 snapshotDigest 必须同生同灭",
+      input: record,
+    });
+  }
+  if (
+    record.importOrigin &&
+    !record.session &&
+    record.readOnlyReason !== "external-readonly"
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["session"],
+      message: "收养会话必须保留原生 SessionRef",
+      input: record,
+    });
+  }
+  const expectedRole =
+    record.context.kind === "ordinary"
+      ? null
+      : record.context.kind === "app-use"
+        ? "use"
+        : "edit";
+  if (record.appRole !== expectedRole) {
+    context.addIssue({
+      code: "custom",
+      path: ["appRole"],
+      message: "appRole 必须是 canonical context 的派生投影",
+      input: record,
+    });
+  }
+  if (
+    record.context.kind === "app-edit" &&
+    record.context.projectId !== record.projectId
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["context", "projectId"],
+      message: "App Edit context 必须绑定同一 Project",
+      input: record,
+    });
+  }
+  /* 空的源文件也是一份诚实的历史：只读导入段允许零条 entry，此时
+     unstarted 就是实情。「必须已开始」只约束可执行的普通 Chat。 */
+  if (
+    record.context.kind === "ordinary" &&
+    record.startState.kind === "unstarted" &&
+    record.readOnlyReason !== "external-readonly"
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["startState"],
+      message: "ordinary canonical Chat 必须已开始",
+      input: record,
+    });
+  }
+  if (
+    record.context.kind === "app-edit" &&
+    record.startState.kind === "unstarted"
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["startState"],
+      message: "canonical App Edit Chat 必须已经开始；空编辑仅存在为 DraftIntent",
+      input: record,
+    });
+  }
+}
+
+const strictChatFactsSchema = z.object(chatFactFields).strict();
+
+/* 事实相：窄事实写入的唯一校验口。record 相在它之上再加消息不变式。 */
+export const chatFactsSchema = strictChatFactsSchema.superRefine(validateFacts);
+
+const recordSchemaOver = (messages: typeof messagesField) => z
+  .object({
+    ...chatFactFields,
+    messages,
+    subagents: subagentsField,
+    supersededBranches: supersededBranchesField,
+    supersededBranchesTrimmedThroughSeq: branchWatermarkField,
   })
   .strict()
   .superRefine((record, context) => {
     validateRecord(record, context);
-    if (record.session && record.session.backend !== record.agent) {
-      context.addIssue({
-        code: "custom",
-        path: ["session", "backend"],
-        message: "session backend 必须等于 chat agent",
-        input: record,
-      });
-    }
-    if (Boolean(record.importOrigin) !== Boolean(record.snapshotDigest)) {
-      context.addIssue({
-        code: "custom",
-        path: ["importOrigin"],
-        message: "importOrigin 与 snapshotDigest 必须同生同灭",
-        input: record,
-      });
-    }
-    if (record.importOrigin && !record.session) {
-      context.addIssue({
-        code: "custom",
-        path: ["session"],
-        message: "收养会话必须保留原生 SessionRef",
-        input: record,
-      });
-    }
+    validateFacts(record, context);
   });
 
-const chatFileSchema = z
-  .object({
-    schemaVersion: z.literal(SCHEMA_VERSION),
-    record: chatRecordSchema,
-  })
-  .strict();
+export const chatRecordSchema = recordSchemaOver(messagesField);
 
-/* ============================================================
- * 断代升级的唯一版本裁判：过去与未来一视同仁地 fail closed。
- * 携带版本号上抛，由调用方决定「未来档拒载」还是「旧档隔离」——
- * 判定在这里收敛成一个数字比较，调用方不再各自解读 schemaVersion。
- * ============================================================ */
-export class UnsupportedChatSchemaError extends Error {
-  constructor(readonly version: number) {
-    super(`不支持的聊天 schemaVersion：${version}`);
-    this.name = "UnsupportedChatSchemaError";
-  }
-}
-
-export function parseChatFile(value: unknown): ChatRecord {
-  if (value && typeof value === "object") {
-    const version = (value as { schemaVersion?: unknown }).schemaVersion;
-    if (typeof version === "number" && version !== SCHEMA_VERSION) {
-      throw new UnsupportedChatSchemaError(version);
-    }
-  }
-  const record = chatFileSchema.parse(value).record;
-  assertSubagentBudget(record.subagents);
-  return record;
-}
-
-export const serializeChatFile = (record: ChatRecord) =>
-  `${JSON.stringify({ schemaVersion: SCHEMA_VERSION, record })}\n`;
+/* 只读相：同一份记录契约，只是不再要求「至少一条消息」。一次导入可以
+   什么都没有——空源文件不该在读侧变成一条无法投影的记录。 */
+export const readonlyChatRecordSchema = recordSchemaOver(
+  z.array(messageSchema).max(CHAT_MESSAGE_LIMIT)
+);

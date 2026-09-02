@@ -177,15 +177,14 @@ export class GalleryMediaService {
   private async authorize(
     sourceRef: GallerySourceRef
   ): Promise<AuthorizedTranscriptMedia> {
-    const record = await this.store.get(sourceRef.chatId);
+    const record = this.store.getMetadata(sourceRef.chatId);
     if (!record || record.incarnationId !== sourceRef.incarnationId) {
       throw codedError("INCARNATION_MISMATCH");
     }
-    const canonical = record.messages.find(
-      (message) =>
-        message.role === "assistant" &&
-        message.seq === sourceRef.assistantSeq
-    );
+    const canonical = await this.store.getNativeMessage(sourceRef.chatId, {
+      kind: "seq",
+      seq: sourceRef.assistantSeq,
+    });
     if (canonical) {
       const present = canonical.parts?.some(
         (part) =>

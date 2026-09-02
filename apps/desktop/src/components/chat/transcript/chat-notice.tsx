@@ -18,6 +18,12 @@ import {
 } from "@/lib/sections-client";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 
+const SETTLED_COPY_KEYS = {
+  continued: "notice.continued",
+  discarded: "notice.discarded",
+  stale: "notice.stale",
+} as const;
+
 /** canonical content 继续由 shared 固定；renderer 只按结构化 kind 做当前语言投影。 */
 function localizedNoticeMessageContent(
   notice: ChatNoticeData,
@@ -96,6 +102,9 @@ const VisibleChatNotice = memo(function VisibleChatNotice({
         : actionState === "expired"
           ? "stale"
           : null;
+  const settledCopyKey = !settledState
+    ? null
+    : SETTLED_COPY_KEYS[settledState];
   return (
     <div className="mx-auto w-full rounded-xl border border-dashed bg-muted/40 px-4 py-3 text-center text-muted-foreground text-sm">
       <p>
@@ -123,13 +132,9 @@ const VisibleChatNotice = memo(function VisibleChatNotice({
           </Button>
         </div>
       )}
-      {settledState && (
+      {settledCopyKey && (
         <p className="mt-2 text-xs">
-          {settledState === "continued"
-            ? t("notice.continued")
-            : settledState === "discarded"
-              ? t("notice.discarded")
-              : t("notice.stale")}
+          {t(settledCopyKey)}
         </p>
       )}
     </div>

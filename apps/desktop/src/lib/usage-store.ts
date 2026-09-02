@@ -1,11 +1,13 @@
 /**
- * [INPUT]: Depends on usage-view-state Access restrictions and target paving, usage-client Summary/scanning/price subscriptions and errors
+ * [INPUT]: Depends on usage-view-state access restrictions/target paving, usage-client summaries/scanning/price subscriptions, renderer locale, shared i18n runtime, and errors
  * [OUTPUT]: Provides usageStore: module-level snapshot, mount-token activate, per-target seq, powerbrush and revision floor Active closure
  * [POS]: Usage renderer is the sole owner; View subscription-only, price push and no push high revision Summary
  */
 
 import type { UsageQueryTarget } from "../../shared/usage-ipc";
 import { errorMessage } from "@/lib/errors";
+import { effectiveLocale } from "@/lib/i18n-locale";
+import { translate } from "../../shared/i18n/runtime";
 import {
   getUsageSummary,
   subscribePricingUpdated,
@@ -101,7 +103,13 @@ function request(
       if (mode === "resolved") {
         commit({ type: "rejected", generation: requestGeneration });
       }
-      publish({ ...snapshot, error: errorMessage(cause, "用量读取失败") });
+      publish({
+        ...snapshot,
+        error: errorMessage(
+          cause,
+          translate(effectiveLocale(), "settings.usage.readFailed")
+        ),
+      });
     }
   );
 }

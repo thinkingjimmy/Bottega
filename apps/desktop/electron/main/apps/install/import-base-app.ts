@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on freeze packages directory/plugin preflight, strict manifest/base snapshot, App/Project/Base store, Extension installer, AppConfigStore and lifecycle gate
- * [OUTPUT]: Provides BaseAppImporter import/recover/retryPending/cancelPending; Fulfillment Failed to enter retest mode, canceled with a cleaner, such as a durable marker, and replaced after all plugins have been performed
+ * [INPUT]: Depends on freeze packages directory/plugin preflight, strict manifest/base snapshot, source-only compiled portability verification, App/Project/Base store, Extension installer, AppConfigStore and lifecycle gate
+ * [OUTPUT]: Provides BaseAppImporter import/recover/retryPending/cancelPending with durable Studio-only authorization, internal Base navigation at creation, mandatory local compiled rebuild, full requested-capability approval, grant-before-promotion ordering, and idempotent fulfillment recovery
  * [POS]: The basic delivery pipeline for apps/install; GitHub is different from the default only on "Where the package comes from", delivering, restoring and finishing zero copies
  */
 
@@ -17,6 +17,7 @@ import { dirname, join } from "node:path";
 import type {
   AppConfigValue,
   AppExtensionInstallPreflight,
+  AppInstallAuthorization,
   AppRecord,
   AppRequirement,
 } from "../../../../shared/apps-ipc";
@@ -39,6 +40,10 @@ import { inspectPackage, packageDigest } from "../share/package-contract";
 import { appManifestSchema } from "./manifest-schema";
 import { digestCanonical } from "../../extensions/registry-store";
 import type { ExtensionInstaller } from "../../extensions/install/installer";
+import {
+  discardPortableCompiledSource,
+  verifyPortableCompiledSource,
+} from "../gui-build/pipeline/portable";
 
 /**
  * 包的来源。`github` 记来源仓库、`preset` 不记——AppRecord.origin 与
@@ -69,6 +74,7 @@ type ImportRequest = {
   source: ImportSource;
   agent: AgentBackendId;
   config: AppConfigValue;
+  authorization: AppInstallAuthorization;
 };
 
 export class BaseAppImporter {
@@ -97,6 +103,7 @@ export class BaseAppImporter {
   }
 
   async import(request: ImportRequest) {
+    assertStudioAuthorization(request.authorization);
     await this.configs.stagePending(request.requestId, request.config);
     let outcome;
     try {
@@ -111,7 +118,7 @@ export class BaseAppImporter {
             packageRoot: request.source.packageRoot,
             agent: request.agent,
             extensionFulfillment: fulfillmentInput(request.source.extensionPreflights),
-            consentIntent: Boolean(request.source.extensionPreflights?.length),
+            authorization: request.authorization,
             ...(request.source.preset ?? {}),
           },
           allocate: () => ({
@@ -259,7 +266,10 @@ export class BaseAppImporter {
           await readFile(join(finalDir, "data", "base.json"), "utf8")
         )
       );
-      await this.baseStore.ensure(projectOwnerIdentity(projectId, snapshot.name));
+      await this.baseStore.ensure({
+        ...projectOwnerIdentity(projectId, snapshot.name),
+        navigation: { kind: "internal-app", appId },
+      });
       const ownerKey = `project:${projectId}`;
       await this.bases.importJson(
         ownerKey,
@@ -355,6 +365,9 @@ export class BaseAppImporter {
         lifecycleRevision: 0,
         defaultGrant: null,
         defaultGrantRevision: 0,
+        studioGrant: null,
+        studioGrantRevision: 0,
+        pinnedAt: null,
         domainIdentity: null,
         generations: [],
         generationBinding: {
@@ -365,6 +378,7 @@ export class BaseAppImporter {
         manifest: null,
         editChatSlot: null,
         activeUseChatSlot: null,
+        editableSource: true,
         skillStatus: null,
         addedAt: Date.now(),
       });
@@ -385,39 +399,49 @@ export class BaseAppImporter {
       }));
       return { status: "interrupted" };
     }
-    /* fulfillment 全部 checkpoint 后才提交 manifest；AppStore 此刻才允许成代。 */
-    record = await this.apps.set(
-      {
-        ...record,
-        state: "creating",
-        lastError: null,
-        agentWarning: null,
-        manifest,
-      },
-      { generationSourceDir: packageRoot }
+    /* fulfillment 全部 checkpoint 后才提交 manifest；恢复若已经有同字节的
+       pending/active generation，就从那条 durable 证据续跑，绝不重复造代。 */
+    const existingGenerationId =
+      record.generationBinding.pending?.generationId ??
+      record.generationBinding.active?.generationId;
+    const existingGeneration = record.generations.find(
+      (generation) => generation.generationId === existingGenerationId
     );
-    const declarations = manifest.extensionRequirements ?? [];
-    const canAutoConsent = fulfillment.complete &&
-      intent.input.consentIntent === true &&
-      declarations.length === (activeRequest.source.extensionPreflights?.length ?? 0);
-    if (record.generationBinding.pending && canAutoConsent) {
-      record = await this.apps.resolvePendingConsent(appId, true);
-      record = await this.apps.promotePendingGeneration(
-        appId,
-        record.generationBinding.pending!.expectedConsentRevision
+    if (existingGeneration) {
+      if (JSON.stringify(existingGeneration.manifest) !== JSON.stringify(manifest)) {
+        throw new Error("安装恢复的 frozen manifest 已漂移");
+      }
+    } else {
+      record = await this.apps.set(
+        {
+          ...record,
+          state: "creating",
+          lastError: null,
+          agentWarning: null,
+          manifest,
+        },
+        {
+          generationSourceDir: packageRoot,
+        }
       );
     }
-    if (declarations.length > 0 && !canAutoConsent) {
-      record = await this.apps.update(appId, (current) => ({
-        ...current,
-        agentWarning: "插件待处理：缺少可自动安装的 source",
-      }));
+    const declarations = manifest.extensionRequirements ?? [];
+    const canApproveExtensions = fulfillment.complete &&
+      declarations.length === (activeRequest.source.extensionPreflights?.length ?? 0);
+    if (declarations.length > 0 && !canApproveExtensions) {
+      throw new Error("插件声明与已确认的安装来源不一致");
     }
+    record = await this.approveRequestedAndPromote(
+      appId,
+      activeRequest.authorization,
+      canApproveExtensions
+    );
     await this.configs.write(
       appId,
       activeRequest.config,
       manifest.requirements?.tools ?? []
     );
+    await discardPortableCompiledSource(packageRoot);
     await rm(finalDir, { recursive: true, force: true });
     /* rename 即交付的原子证据；此后崩溃，恢复以 finalDir 存在为准跳过重交付。 */
     await rename(packageRoot, finalDir);
@@ -453,6 +477,7 @@ export class BaseAppImporter {
         },
         agent: intent.input.agent as AgentBackendId,
         config: await this.configs.readPending(intent.requestId),
+        authorization: assertStudioAuthorization(intent.input.authorization),
       };
     /* digest 复核对真实字节：交付（含崩溃恢复重入）拿到的必须就是用户在
      * preflight 确认的那份包——staging 在窗口期被换内容/植 symlink 都在这里
@@ -465,6 +490,7 @@ export class BaseAppImporter {
     const manifest = appManifestSchema.parse(
       JSON.parse(await readFile(join(packageRoot, "app.json"), "utf8"))
     );
+    await verifyPortableCompiledSource(packageRoot, manifest);
     baseSnapshotFileSchema.parse(
       JSON.parse(
         await readFile(join(packageRoot, "data", "base.json"), "utf8")
@@ -473,6 +499,44 @@ export class BaseAppImporter {
     assertRequirements(manifest.requirements?.tools ?? [], activeRequest.config);
     validateConfigRequirements(manifest.requirements?.tools ?? []);
     return { activeRequest, manifest };
+  }
+
+  private async approveRequestedAndPromote(
+    appId: string,
+    authorization: AppInstallAuthorization,
+    canApproveExtensions: boolean
+  ) {
+    assertStudioAuthorization(authorization);
+    let record = this.apps.get(appId);
+    let pending = record?.generationBinding.pending;
+    if (!record || !pending) return record!;
+    const generation = record.generations.find(
+      (item) => item.generationId === pending?.generationId
+    );
+    if (!generation) throw new Error("待授权 App generation 不存在");
+    if (generation.extensionRequirementResolution.kind === "frozen") {
+      if (!canApproveExtensions) throw new Error("Extension 兑现尚未完成");
+      record = await this.apps.resolvePendingConsent(appId, true);
+      pending = record.generationBinding.pending;
+    }
+    if (pending?.baseGuiDecision?.state === "consent-required") {
+      record = await this.apps.resolvePendingBaseGuiConsent(
+        appId,
+        pending.baseGuiDecision.requestedCapabilities,
+        pending.baseGuiDecision.requestedHostActions,
+        pending.baseGuiDecision.requestedCapabilityScopes
+      );
+      pending = record.generationBinding.pending;
+    }
+    if (generation.manifest.kind === "base" && generation.manifest.gui) {
+      record = await this.apps.grantStudioAccess(appId, generation.generationId);
+      pending = record.generationBinding.pending;
+    }
+    if (!pending) return record;
+    return this.apps.promotePendingGeneration(
+      appId,
+      pending.expectedConsentRevision
+    );
   }
 
   private async fulfillExtensions(
@@ -615,6 +679,17 @@ export class BaseAppImporter {
       error: { code: "USER_CANCELLED", message: "用户取消安装" },
     };
   }
+}
+
+function assertStudioAuthorization(value: unknown): AppInstallAuthorization {
+  const authorization = value as Partial<AppInstallAuthorization> | null;
+  if (
+    authorization?.scope !== "studio-only" ||
+    authorization.decision !== "approve-requested"
+  ) {
+    throw new Error("Base App 安装缺少 Studio-only 完整授权意图");
+  }
+  return { scope: "studio-only", decision: "approve-requested" };
 }
 
 function fulfillmentInput(

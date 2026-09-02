@@ -38,10 +38,9 @@ export function ViewConfigBar({ children }: { children: ReactNode }) {
  *
  * 只给未定位的控件用：这里的 relative 与 absolute 同属 position 组，
  * 经 cn 的 tailwind-merge 后写在后面的赢——贴到 absolute 控件上会把它
- * 打回文档流。定位过的宿主自己就是包含块，只取 after:* 那几个即可。
+ * 打回文档流。定位过的宿主自己就是包含块，只取 touch-target-44 即可。
  * ────────────────────────────────────────────────────────────── */
-export const viewConfigHitAreaClass =
-  "relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']";
+export const viewConfigHitAreaClass = "relative touch-target-44";
 
 export function ViewConfigSelect({
   label,

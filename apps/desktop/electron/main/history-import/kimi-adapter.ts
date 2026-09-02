@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, user home, default root outside the KIMI_CODE_HOME syntax, and history-import adapter, public core
- * [OUTPUT]: Provides KimiHistoryAdapter; state.json single file decision attribution/title/time ((two files are the same source), wire.jsonl can be suspended reading/line analysis turn.prompt/content.part/tool.call+result/turn.ended, only read agents/main natural immunity subagent mixed
+ * [OUTPUT]: Provides KimiHistoryAdapter with state metadata and turn-bounded wire.jsonl streaming for prompts, content parts, tools, results, and duration
  * [POS]: The history-imported Kimi CLI format adapter; Read only ~/.kimi-code/sessions, session_index.jsonl
  */
 
@@ -12,21 +12,24 @@ import {
   HISTORY_PARSER_VERSION,
   attachPendingTools,
   attachWorkedFor,
+  batchHistoryTurns,
+  collectHistoryBatches,
   digest,
   drainTools,
   fingerprint,
   fingerprintRevision,
   humanTitle,
-  historyParseCheckpoint,
   initialSourceIncarnation,
   isWithin,
   normalizedAliases,
   opaqueSessionId,
-  readStableJsonl,
+  streamStableJsonl,
   timestamp,
   type AdapterEntry,
   type AdapterScan,
   type HistoryAdapter,
+  type HistoryBlockBatches,
+  type HistoryBlockTurns,
   type ParsedHistory,
   type ScanDepth,
 } from "./adapter";
@@ -96,9 +99,20 @@ export class KimiHistoryAdapter implements HistoryAdapter {
    * assistant 分片，turn 边界（下一个 prompt / turn.ended）落块；think 分片
    * 与 codex reasoning 同律不进正文。tool.call/result 按 toolCallId 配对，
    * turn.ended.durationMs 与 codex task_complete 同律挂本 turn 末条 assistant。 */
+  parseBatches(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches {
+    return batchHistoryTurns(this.parseTurns(entry, signal), signal);
+  }
+
   async parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory> {
-    const source = await readStableJsonl(entry.sourcePath, entry.fingerprint, signal);
-    const blocks: ForeignHistoryBlock[] = [];
+    return collectHistoryBatches(this.parseBatches(entry, signal));
+  }
+
+  private async *parseTurns(
+    entry: AdapterEntry,
+    signal?: AbortSignal
+  ): HistoryBlockTurns {
+    const source = streamStableJsonl(entry.sourcePath, entry.fingerprint, signal);
+    let blocks: ForeignHistoryBlock[] = [];
     const tools = new Map<string, ForeignToolEvent>();
     let buffer = "", bufferSeq = 0, bufferAt = 0;
     const flush = () => {
@@ -111,14 +125,30 @@ export class KimiHistoryAdapter implements HistoryAdapter {
         content, createdAt: bufferAt, tools: tools.size ? drainTools(tools) : undefined,
       } satisfies ForeignHistoryMessage);
     };
-    for (const [index, line] of source.lines.entries()) {
-      await historyParseCheckpoint(signal, index);
+    const publish = () => {
+      if (!blocks.length) return [];
+      const ready = blocks;
+      blocks = [];
+      return ready;
+    };
+    while (true) {
+      const next = await source.next();
+      if (next.done) {
+        flush();
+        attachPendingTools(blocks, tools);
+        const ready = publish();
+        if (ready.length) yield ready;
+        return next.value;
+      }
+      const { line, index } = next.value;
       const seq = index + 1;
       let raw: Json; try { raw = JSON.parse(line) as Json; } catch { continue; }
       const at = timestamp(raw.time, entry.createdAt);
       if (raw.type === "turn.prompt") {
         flush();
         attachPendingTools(blocks, tools);
+        const ready = publish();
+        if (ready.length) yield ready;
         const content = promptText(raw.input);
         if (content) {
           blocks.push({
@@ -159,9 +189,6 @@ export class KimiHistoryAdapter implements HistoryAdapter {
         }
       }
     }
-    flush();
-    attachPendingTools(blocks, tools);
-    return { blocks, incompleteTail: source.incompleteTail };
   }
 }
 

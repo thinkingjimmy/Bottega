@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the main-window combination parameters, AppsService, effective-workspace resolver, system Skill resources, BuiltinToolRegistry, and chat incarnation reader
- * [OUTPUT]: Provides reusable main window launcher and environment-gated Browser/App/Design E2E drivers, including request-bound Design settlement, suppression, and explicit-$design lifecycle probes
+ * [OUTPUT]: Provides reusable main window launcher and environment-gated Browser/App/Design E2E drivers, including exact Gateway lease evidence plus request-bound Design settlement, suppression, and explicit-$design lifecycle probes
  * [POS]: The startup window is separated from the E2E combination layer; Remove the parameter duplication of the activate path, E2E rebuild Reuse production explicit generation cutover, no service lifecycle
  */
 
@@ -31,6 +31,7 @@ type BrowserE2eDriver = {
 
 type AppGuiE2eDriver = {
   rebuild(appId: string, conversationId: string): Promise<void>;
+  gatewayRequests(appId: string): Readonly<{ total: number; generations: readonly Readonly<{ generationId: string; count: number }>[]; evidence: readonly unknown[] }>;
 };
 
 type DesignE2eDriver = {
@@ -70,6 +71,17 @@ export function installAppGuiE2eDriver(service: AppsService) {
     __aiChatAppGuiE2E?: AppGuiE2eDriver;
   };
   scope.__aiChatAppGuiE2E = {
+    gatewayRequests(appId) {
+      const record = service.store.get(appId);
+      return {
+        total: service.gatewayRequestLeases.countApp(appId),
+        evidence: service.gatewayRequestLeases.evidence(appId),
+        generations: record?.generations.map(({ generationId }) => ({
+          generationId,
+          count: service.gatewayRequestLeases.count(appId, generationId).count,
+        })) ?? [],
+      };
+    },
     async rebuild(appId, conversationId) {
       await service.onAppTurnCompleted(
         appId,

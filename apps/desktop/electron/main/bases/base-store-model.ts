@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on shared owner-aware Base/Gallery type, schemes, budgets and gallery-ledger scores
- * [OUTPUT]: Provides BaseStore status/identity/mutation Type, field error, status check with owner→Gallery identity
+ * [INPUT]: Depends on shared owner-aware Base/Gallery/navigation types, schemas, budgets, and gallery-ledger facts
+ * [OUTPUT]: Provides BaseStore status/identity/mutation types, including optional creation-time navigation, field errors, and owner→Gallery identity
  * [POS]: The base layer of the Store is pure model; base-store.ts holds the IO/ queue, and this file closes without any side effects rules
  */
 
 import { randomUUID } from "node:crypto";
 import {
+  baseNavigationOf,
   BASE_COLUMN_LIMIT,
   BASE_ROW_BYTE_LIMIT,
   BASE_ROW_LIMIT,
@@ -22,6 +23,7 @@ import type {
   BaseHistoryActor,
   BaseHistoryLedger,
 } from "../../../shared/bases/history-ledger-schema";
+import type { BaseNavigation } from "../../../shared/placement/facts";
 import { galleryOwnerId } from "./store/base-files";
 import { validateGalleryLedger } from "./store/gallery-ledger";
 
@@ -72,6 +74,7 @@ export type BaseOwnerIdentity = {
   owner: BaseOwner;
   ownerInstanceId: string;
   title: string | null;
+  navigation?: BaseNavigation;
 };
 
 export type BaseStoreDependencies = {
@@ -86,6 +89,7 @@ export function baseNavigationSummary(meta: BaseMeta): BasePinnedSummary {
     ownerInstanceId: meta.ownerInstanceId,
     name: meta.name,
     revision: meta.revision,
+    navigation: structuredClone(baseNavigationOf(meta)),
   };
 }
 

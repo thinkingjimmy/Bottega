@@ -1,14 +1,16 @@
 /**
- * [INPUT]: Depends on ChatBoundary's upperSeq/upperTime Grant, bound sharing mode/generation Consent, canonical Chat, Policy/tombstone, Delivery and capture controller
- * [OUTPUT]: Provides grant-bound backfill for each tick to advance at least one historical assistant turn; Space must be consistent with the current Consent Sharing Generation
+ * [INPUT]: Depends on ChatBoundary upperSeq/upperTime Grant, bound sharing mode/generation Consent, native-only Chat segment pages, Policy/tombstone, Delivery, and capture controller
+ * [OUTPUT]: Provides paged grant-bound backfill that advances at most one historical assistant turn per tick while preserving the current Consent sharing generation
  * [POS]: The main/memory/orchestration canonical Chat history delivery compiler; ForeignSnapshotBoundary is consumed by a parallel foreign-history-controller
  */
 
 import type {
   AssistantChatMessage,
+  ChatMessage,
   ChatRecord,
   UserChatMessage,
 } from "../../../../shared/chats-ipc";
+import type { MemoryNativeSegmentPage } from "../../chats/sqlite/database-protocol";
 import {
   expectedPeerId,
   freezeMemoryValue,
@@ -30,6 +32,11 @@ type Dependencies = {
   capture: MemoryCaptureController;
   listChatSummaries(): Promise<ChatSummary[]>;
   readChat(chatId: string): Promise<ChatRecord | null>;
+  readNativeChatSegment?(
+    chatId: string,
+    afterSeq: number,
+    limit: number
+  ): Promise<MemoryNativeSegmentPage | null>;
   runtime(): Readonly<{
     providerDataInstanceId: string;
     runtimeGeneration: number;
@@ -80,32 +87,28 @@ export class MemoryBackfillController {
     for (const grant of grants) {
       for (const [source, upperSeq] of Object.entries(grant.upperSeqBySession)) {
         if (snapshot.state.tombstones[source]) continue;
-        const chat = await this.findChat(source);
-        if (!chat || !grant.chatIncarnations.includes(chat.incarnationId)) continue;
+        const summary = await this.findChat(source);
+        if (!summary || !grant.chatIncarnations.includes(summary.incarnationId)) continue;
         const stream = this.dependencies.delivery.stream({
           grantId: grant.id,
           providerDataInstanceId: grant.providerDataInstanceId,
           memorySpaceId: grant.memorySpaceId,
           sourceSessionKey: source,
         });
-        const grantedForSource = memorableAfter(
-          chat,
-          0,
-          upperSeq,
-          grant.lowerTime,
-          grant.upperTime
-        ).length;
-        grantedTurns += grantedForSource;
-        settledTurns += Math.min(
-          grantedForSource,
-          (stream?.delivered ?? 0) + (stream?.gap ?? 0)
-        );
-        const eligible = memorableAfter(
-          chat,
+        const selected = await this.inspectNativeChat(
+          summary,
           stream?.cursor ?? 0,
           upperSeq,
           grant.lowerTime,
           grant.upperTime
+        );
+        if (!selected) continue;
+        const { chat } = selected;
+        const grantedForSource = selected.granted;
+        grantedTurns += grantedForSource;
+        settledTurns += Math.min(
+          grantedForSource,
+          (stream?.delivered ?? 0) + (stream?.gap ?? 0)
         );
         await this.dependencies.delivery.ensureBackfillStream({
           grantId: grant.id,
@@ -113,11 +116,11 @@ export class MemoryBackfillController {
           providerId: consent.providerId,
           memorySpaceId: grant.memorySpaceId,
           sourceSessionKey: source,
-          pending: eligible.length,
+          pending: selected.pending,
         });
-        const assistant = eligible[0];
+        const assistant = selected.assistant;
         if (!assistant) continue;
-        const user = precedingUser(chat, assistant.seq);
+        const user = selected.user;
         if (!user) {
           await this.dependencies.delivery.recordBackfillGap({
             grantId: grant.id,
@@ -157,14 +160,42 @@ export class MemoryBackfillController {
 
   private async findChat(source: string) {
     for (const summary of await this.dependencies.listChatSummaries()) {
-      const chat = await this.dependencies.readChat(summary.id);
-      if (
-        chat &&
-        sourceSessionKey({ chatId: chat.id, incarnationId: chat.incarnationId }) ===
-          source
-      ) return chat;
+      if (sourceSessionKey({ chatId: summary.id, incarnationId: summary.incarnationId }) === source) {
+        return summary;
+      }
     }
     return null;
+  }
+
+  private async inspectNativeChat(
+    summary: ChatSummary,
+    cursor: number,
+    upperSeq: number,
+    lowerTime: number | null,
+    upperTime: number
+  ) {
+    if (!this.dependencies.readNativeChatSegment) {
+      const chat = await this.dependencies.readChat(summary.id);
+      if (!chat || chat.readOnlyReason) return null;
+      return inspectBackfillPages(
+        chat,
+        oneBackfillPage(chat.messages),
+        cursor,
+        upperSeq,
+        lowerTime,
+        upperTime
+      );
+    }
+    const first = await this.dependencies.readNativeChatSegment(summary.id, 0, 128);
+    if (!first || first.incarnationId !== summary.incarnationId) return null;
+    return inspectBackfillPages(
+      first,
+      backfillPages(first, this.dependencies.readNativeChatSegment),
+      cursor,
+      upperSeq,
+      lowerTime,
+      upperTime
+    );
   }
 
   private rebuildConsent(
@@ -178,7 +209,7 @@ export class MemoryBackfillController {
   }
 
   private contextFor(input: {
-    chat: ChatRecord;
+    chat: Pick<ChatRecord, "id" | "incarnationId" | "projectId" | "homeDir">;
     requestId: string;
     memorySpaceId: string;
     consentEpochId: string;
@@ -231,36 +262,60 @@ export class MemoryBackfillController {
   }
 }
 
-function memorableAfter(
-  chat: ChatRecord,
+async function inspectBackfillPages(
+  chat: Pick<ChatRecord, "id" | "incarnationId" | "projectId" | "homeDir">,
+  pages: AsyncIterable<Readonly<{
+    precedingUser: ChatMessage | null;
+    messages: readonly ChatMessage[];
+  }>>,
   cursor: number,
   upperSeq: number,
   lowerTime: number | null,
   upperTime: number
 ) {
-  return chat.messages.filter(
-    (message): message is AssistantChatMessage => {
+  let granted = 0;
+  let pending = 0;
+  let lastUser: UserChatMessage | null = null;
+  let assistant: AssistantChatMessage | null = null;
+  let user: UserChatMessage | null = null;
+  for await (const page of pages) {
+    if (page.precedingUser?.role === "user") lastUser = page.precedingUser;
+    for (const message of page.messages) {
+      if (message.role === "user") lastUser = message;
       if (
-        message.role !== "assistant" ||
-        message.seq <= cursor ||
-        message.seq > upperSeq ||
+        message.role !== "assistant" || message.seq > upperSeq ||
         !isMemorableAssistant(message)
-      ) return false;
-      const admissionAt = precedingUser(chat, message.seq)?.createdAt;
-      return Boolean(
-        admissionAt !== undefined &&
-          (lowerTime === null || admissionAt >= lowerTime) &&
-          admissionAt <= upperTime
-      );
+      ) continue;
+      const admissionAt = lastUser?.createdAt;
+      if (
+        admissionAt === undefined || admissionAt > upperTime ||
+        (lowerTime !== null && admissionAt < lowerTime)
+      ) continue;
+      granted += 1;
+      if (message.seq <= cursor) continue;
+      pending += 1;
+      if (!assistant) {
+        assistant = message;
+        user = lastUser;
+      }
     }
-  );
+  }
+  return { chat, granted, pending, assistant, user };
 }
 
-function precedingUser(chat: ChatRecord, assistantSeq: number) {
-  return chat.messages
-    .filter(
-      (message): message is UserChatMessage =>
-        message.role === "user" && message.seq < assistantSeq
-    )
-    .at(-1);
+async function* oneBackfillPage(messages: readonly ChatMessage[]) {
+  yield { precedingUser: null, messages };
+}
+
+async function* backfillPages(
+  first: MemoryNativeSegmentPage,
+  read: NonNullable<Dependencies["readNativeChatSegment"]>
+) {
+  let page: MemoryNativeSegmentPage | null = first;
+  while (page) {
+    yield page;
+    page = page.nextAfterSeq === null
+      ? null
+      : await read(page.id, page.nextAfterSeq, 128);
+  }
 }

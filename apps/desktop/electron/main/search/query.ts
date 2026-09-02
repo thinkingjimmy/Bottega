@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on canonical Section messageLines ((neutral projection of attachments that are not related to the delivery plan) √ shared baseCellText/cellValue/ownerKey/search-text/foreign grouping and read-only Chat/Base/History snapshot
- * [OUTPUT]: Provides owner-aware ((0 member sectionId=null) Chat/Base/History locator scan and checkpoint with formula requests; The full text is unified, AND matches and snippets are unified, shared/search-text is converted
+ * [INPUT]: Depends on shared baseCellText/cellValue/ownerKey/search-text and a read-only Base snapshot
+ * [OUTPUT]: Provides owner-aware (zero-member sectionId=null) Base locator scan plus the Chat locator types the SQLite candidate lanes project into
  * [POS]: The search domain has no IO-only query kernel; The toolset holds cross-Sectional scanning counts and asynchronous deletion of rhythm
  */
 
@@ -10,11 +10,7 @@ import {
   createBaseCellContext,
 } from "../../../shared/base-cell-value";
 import type { AgentBackendId } from "../../../shared/agent-ipc";
-import type { ChatRecord } from "../../../shared/chats-ipc";
 import type { ReadonlyBaseSnapshot } from "../bases/base-store";
-import { messageLines } from "../sections/export-transcript";
-import type { ForeignHistoryBlock, HistorySourceKind } from "../../../shared/history-import-ipc";
-import { groupForeignHistoryBlocks } from "../../../shared/foreign-history-grouping";
 import {
   matchSearchTokens as matchTokens,
   makeSearchSnippet as makeSnippet,
@@ -25,7 +21,9 @@ import {
 
 export { makeSnippet, matchTokens, normalize, tokenize };
 
-export type ScanCounter = { scanned: number };
+/* skipped 与 scanned 同源记账：命中所属 Chat 已被改写或删除时，那条候选
+   不是错误而是过期，跳过并计数，整个 job 不为一次无关写入而中止。 */
+export type ScanCounter = { scanned: number; skipped: number };
 export type Checkpoint = { kind: "checkpoint"; scanned: number };
 
 type LocatorText = {
@@ -57,68 +55,8 @@ export type BaseLocator = LocatorText & {
     | { matched: "cell"; rowId: string; columnId: string }
   );
 
-export type HistoryLocator = LocatorText & {
-  source: "history";
-  opaqueId: string;
-  projectId: string;
-  sourceKind: HistorySourceKind;
-  title: string;
-  updatedAt: number;
-  historyRevision: string;
-  renderedRowKey: string;
-  matched: "title" | "message";
-};
-
 export type SearchLocator = ChatLocator | BaseLocator;
-export type JobSearchLocator = SearchLocator | HistoryLocator;
 export type ScanEvent = SearchLocator | Checkpoint;
-export type HistoryScanEvent = HistoryLocator | Checkpoint;
-
-export function* scanChat(
-  shared: ScanCounter,
-  record: ChatRecord,
-  tokens: readonly string[]
-): Generator<ScanEvent> {
-  const title = normalizedMatch(record.title ?? "", tokens);
-  if (title) {
-    yield {
-      kind: "locator",
-      source: "chat",
-      sectionId: record.id,
-      title: record.title,
-      agent: record.agent,
-      updatedAt: record.updatedAt,
-      matched: "title",
-      ...title,
-    };
-  }
-  for (const message of [...record.messages].sort((a, b) => a.seq - b.seq)) {
-    shared.scanned += 1;
-    if (shared.scanned % 500 === 0) {
-      yield { kind: "checkpoint", scanned: shared.scanned };
-    }
-    if (message.role === "notice") continue;
-    /* 搜索语料是给人看的：附件行取与 @Section 交割计划无关的中性投影，
-       规划锚点绝不能进 snippet。 */
-    const matched = normalizedMatch(
-      messageLines(message, "plain").join("\n"),
-      tokens
-    );
-    if (!matched) continue;
-    yield {
-      kind: "locator",
-      source: "chat",
-      sectionId: record.id,
-      title: record.title,
-      agent: record.agent,
-      updatedAt: record.updatedAt,
-      matched: "message",
-      messageSeq: message.seq,
-      role: message.role,
-      ...matched,
-    };
-  }
-}
 
 export function* scanBase(
   shared: ScanCounter,
@@ -172,49 +110,6 @@ export function* scanBase(
         ...matched,
       };
     }
-  }
-}
-
-export function* scanHistoryBlocks(
-  shared: ScanCounter,
-  entry: {
-    opaqueId: string;
-    projectId: string;
-    sourceKind: HistorySourceKind;
-    title: string;
-    updatedAt: number;
-    historyRevision: string;
-  },
-  blocks: readonly ForeignHistoryBlock[],
-  tokens: readonly string[]
-): Generator<HistoryScanEvent> {
-  const title = normalizedSearchMatch(entry.title, tokens);
-  if (title) {
-    yield {
-      kind: "locator",
-      source: "history",
-      ...entry,
-      renderedRowKey: "title",
-      matched: "title",
-      ...title,
-    };
-  }
-  for (const row of groupForeignHistoryBlocks(blocks)) {
-    shared.scanned += 1;
-    if (shared.scanned % 500 === 0) yield { kind: "checkpoint", scanned: shared.scanned };
-    const text = row.kind === "user"
-      ? row.block.content
-      : row.messages.map((message) => message.content).join("\n");
-    const matched = normalizedSearchMatch(text, tokens);
-    if (!matched) continue;
-    yield {
-      kind: "locator",
-      source: "history",
-      ...entry,
-      renderedRowKey: row.key,
-      matched: "message",
-      ...matched,
-    };
   }
 }
 

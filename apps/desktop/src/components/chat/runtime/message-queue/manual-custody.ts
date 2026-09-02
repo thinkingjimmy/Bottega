@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared SubmissionOutcome/SubmissionAck with message-queue pure state machine
+ * [INPUT]: Depends on shared SubmissionOutcome/SubmissionAck, message-queue pure state machine, and renderer locale/catalog runtime
  * [OUTPUT]: Provides derived manual custody Final check, settled and generated ACK only when chat-persisted
  * [POS]: The manual outcome of runtime/message-queue is the purely projection boundary; React hook is only responsible for executing the returned ACK side effects
  */
@@ -13,6 +13,8 @@ import {
   settleItem,
   type MessageQueue,
 } from "@/lib/message-queue-model";
+import { effectiveLocale } from "@/lib/i18n-locale";
+import { translate } from "../../../../../shared/i18n/runtime";
 
 type ManualCustodyReconciliation = {
   queue: MessageQueue;
@@ -42,8 +44,8 @@ export function reconcileManualCustody(
         queue,
         outcome.message ??
           (outcome.retry === "recoverable"
-            ? "消息可恢复；重发会派生新提交身份。"
-            : "用户消息已持久化，请使用“重试 Agent turn”。")
+            ? translate(effectiveLocale(), "chat.runtime.queue.recoverable")
+            : translate(effectiveLocale(), "chat.runtime.queue.retryAgentTurn"))
       ),
     };
   }
@@ -54,7 +56,8 @@ export function reconcileManualCustody(
     return {
       queue: setQueueError(
         queue,
-        outcome.message ?? "提交仍在对账，普通重试可能重复执行。"
+        outcome.message ??
+          translate(effectiveLocale(), "chat.runtime.queue.reconciling")
       ),
     };
   }
@@ -63,7 +66,10 @@ export function reconcileManualCustody(
       return {
         queue: setQueueError(
           queue,
-          "提交已失败，main 已回收重试资源；请重新编辑发送。"
+          translate(
+            effectiveLocale(),
+            "chat.runtime.queue.failedResourcesReleased"
+          )
         ),
       };
     }
@@ -91,7 +97,10 @@ export function reconcileManualCustody(
   }
   if (outcome.phase === "failed") {
     return {
-      queue: setQueueError(queue, outcome.message ?? "提交已失败。"),
+      queue: setQueueError(
+        queue,
+        outcome.message ?? translate(effectiveLocale(), "chat.runtime.queue.failed")
+      ),
     };
   }
   // queued/main-journal 与 notFound 都保持 ambiguous：前者等待

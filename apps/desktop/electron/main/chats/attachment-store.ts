@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/path, nanoid and shared chats/agent
- * [OUTPUT]: Provides AttachmentStore: data URL Atomic drop-down disk, read by id, observable deletion failure and no reference to the attachment sweep when booted
- * [POS]: The attachment file warehouse of the chats module (Decision 5) is separated from the content and messages by JSON and is consumed exclusively by ChatsService
+ * [OUTPUT]: Provides AttachmentStore: atomic data-URL writes, reads by id, observable deletion failure, and the startup sweep of unreferenced files
+ * [POS]: Attachment byte store of the chats module; bytes live outside the Chat database and only ChatsService consumes them
  */
 
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";

@@ -1,15 +1,17 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Apps v5 record and app workspace binding from ProjectsProvider
+ * [INPUT]: Depends on Apps v5 record, Apps i18n, and app workspace bindings from ProjectsProvider
  * [OUTPUT]: Provides useAppBase, which stably parses Base App to the exclusive Project and project ownerKey
  * [POS]: The Base ownership of the apps module is the adaptive leaf; The Project/Base relationship is not self-guided
  */
 
 import type { AppRecord } from "../../../shared/apps-ipc";
 import { useProjects } from "@/components/providers/projects-provider";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 export function useAppBase(record: AppRecord) {
+  const { t } = useAppTranslation();
   const { loading, projects } = useProjects();
   const project = projects.find(
     (candidate) =>
@@ -22,7 +24,7 @@ export function useAppBase(record: AppRecord) {
     ownerKey: project ? `project:${project.id}` : "",
     error:
       !loading && !project
-        ? "Base App 缺少专属 Project，请重新打开或从 Apps 页重试"
+        ? t("apps.baseDetail.missingProject")
         : "",
   };
 }

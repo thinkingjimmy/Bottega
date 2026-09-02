@@ -58,11 +58,6 @@ const SETUP_ACTION_ROW = "flex min-h-11 items-center gap-4";
 const STEP_SEGMENT =
   "relative inline-flex h-[25px] items-center gap-1.5 whitespace-nowrap rounded-md border border-transparent pr-2.5 pl-[7px] font-medium text-xs leading-none";
 
-/* 「看起来多大」与「点得中多大」是两个问题，分开问就不冲突：段落留在
-   25px，::after 独自把命中区撑到 44px——与 Button size="pill" 同一手法。 */
-const STEP_HIT_AREA =
-  "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']";
-
 function runtimeSetupStep(runtime: MemoryRuntimeSnapshot | null): SetupStep {
   if (runtime?.installed && !runtime.configured) return 3;
   if (
@@ -457,7 +452,9 @@ function Stepper({
                 onClick={() => onSelectStep(position)}
                 className={cn(
                   STEP_SEGMENT,
-                  STEP_HIT_AREA,
+                  /* 段落留在 25px，命中高度由 touch-target-44 撑到 44px；
+                     STEP_SEGMENT 已带 relative，这里不必再写。 */
+                  "touch-target-44",
                   "cursor-pointer touch-manipulation text-foreground outline-none transition-colors duration-150 ease-out",
                   "active:translate-y-px focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
                   "motion-reduce:transform-none motion-reduce:transition-none",

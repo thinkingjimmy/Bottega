@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Agent custody journals, App/Chat ownership probes, Memory owners, Project recovery, Settings, and the platform capability matrix
- * [OUTPUT]: Provides ordered startup recovery for Agent custody and Memory plus lifecycle reconciliation reporting
+ * [INPUT]: Depends on Agent custody journals, App/Chat ownership probes, native-only Chat history segments, Memory owners, Project recovery, Settings, and the platform capability matrix
+ * [OUTPUT]: Provides ordered startup recovery for Agent custody and paged Memory history plus lifecycle reconciliation reporting
  * [POS]: The startup recovery composition boundary; index.ts retains lifecycle order while this module owns recovery-specific wiring
  */
 
@@ -86,9 +86,11 @@ export async function initializeMemoryRuntime({
   const runtimes = new ManagedRuntimeRegistry(userData, { platformSupport });
   const service = new MemoryService(userData, {
     platformSupport,
-    readChat: (chatId) => chats.get(chatId),
+    readChat: (chatId) => chats.getConversation(chatId),
     readChatRef: (chatId) => chats.getChatRef(chatId),
     listChatSummaries: () => chats.listChatSummaries(),
+    readNativeChatSegment: (chatId, afterSeq, limit) =>
+      chats.memoryNativeSegment(chatId, afterSeq, limit),
     runtimes,
   });
   let lifecycle: MemoryLifecycleOrchestrator | null = null;

@@ -1,10 +1,15 @@
 /**
  * [INPUT]: Depends on zod and the AppManifest field contract for shared/apps-ipc
- * [OUTPUT]: Provides static/server/ordinary-Base sealed manifests (including explicit Base GUI row-insert applications) with extension requirements for GitHub source and JSON Schema
+ * [OUTPUT]: Provides static/server/Base manifests, including compiled GUI build/preferences identities, host actions, extension requirements, and isomorphic JSON Schema
  * [POS]: The free-of-charge agreement for apps/install; App with component identity reference capability to support pre-freeze installation with selected source
  */
 
 import { z } from "zod";
+
+const sha256DigestSchema = z
+  .string()
+  .regex(/^sha256:[a-f0-9]{64}$/)
+  .transform((value) => value as `sha256:${string}`);
 
 // ============================================================
 // zod 与 JSON Schema 是同一契约的两种表示，字段必须逐一对应
@@ -73,13 +78,12 @@ const common = {
   description: z.string().trim().min(1).max(500),
   icon: z.string().trim().min(1).max(16),
   requirements: requirementsSchema.nullable(),
-  defaultOpenMode: z.enum(["same-window", "new-window"]).optional(),
   extensionRequirements: z
     .array(
       z
         .object({
           declaredComponentIdentity: z.string().trim().min(3).max(300),
-          packageDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+          packageDigest: sha256DigestSchema.optional(),
           versionRange: z.string().trim().min(1).max(120).optional(),
           required: z.boolean(),
           requestedConfig: z
@@ -210,12 +214,32 @@ const baseManifestSchema = z
           .max(5)
           .refine((values) => new Set(values).size === values.length),
         hostActions: z
-          .array(z.enum(["compose-text"]))
-          .max(1)
+          .array(z.enum(["compose-text", "file.export"]))
+          .max(2)
           .refine((values) => new Set(values).size === values.length)
           .optional(),
         capabilityScopes: z
           .object({ workspaceRead: z.literal("design/").optional() })
+          .strict()
+          .optional(),
+        build: z
+          .object({
+            preset: z.literal("bottega-react-v1"),
+            entry: z.literal("src/main.tsx"),
+            stylesheet: z.literal("src/styles.css"),
+            iconLibrary: z.enum(["lucide", "phosphor"]),
+          })
+          .strict()
+          .optional(),
+        preferences: z
+          .object({
+            schema: z.literal("gui/preferences.schema.json"),
+            schemaVersion: z.number().int().positive(),
+            schemaDigest: sha256DigestSchema,
+            defaults: z.literal("gui/preferences.defaults.json"),
+            defaultsDigest: sha256DigestSchema,
+            maxBytes: z.literal(65_536),
+          })
           .strict()
           .optional(),
       })
@@ -226,6 +250,20 @@ const baseManifestSchema = z
           context.addIssue({
             code: "custom",
             message: "workspace-read capability and design/ scope must be declared together",
+          });
+        }
+        if (gui.preferences && !gui.build) {
+          context.addIssue({
+            code: "custom",
+            path: ["preferences"],
+            message: "App preferences require the compiled bottega-react-v1 profile",
+          });
+        }
+        if (gui.hostActions?.includes("file.export") && !gui.build) {
+          context.addIssue({
+            code: "custom",
+            path: ["hostActions"],
+            message: "file.export requires the compiled bottega-react-v1 profile",
           });
         }
       })
@@ -243,7 +281,6 @@ const commonJsonProperties = {
   name: { type: "string", minLength: 1, maxLength: 120 },
   description: { type: "string", minLength: 1, maxLength: 500 },
   icon: { type: "string", minLength: 1, maxLength: 16 },
-  defaultOpenMode: { type: "string", enum: ["same-window", "new-window"] },
   requirements: {
     anyOf: [
       { type: "null" },
@@ -452,13 +489,44 @@ export const APP_MANIFEST_JSON_SCHEMA = {
             hostActions: {
               type: "array",
               uniqueItems: true,
-              maxItems: 1,
-              items: { enum: ["compose-text"] },
+              maxItems: 2,
+              items: { enum: ["compose-text", "file.export"] },
             },
             capabilityScopes: {
               type: "object",
               additionalProperties: false,
               properties: { workspaceRead: { const: "design/" } },
+            },
+            build: {
+              type: "object",
+              additionalProperties: false,
+              required: ["preset", "entry", "stylesheet", "iconLibrary"],
+              properties: {
+                preset: { const: "bottega-react-v1" },
+                entry: { const: "src/main.tsx" },
+                stylesheet: { const: "src/styles.css" },
+                iconLibrary: { enum: ["lucide", "phosphor"] },
+              },
+            },
+            preferences: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "schema",
+                "schemaVersion",
+                "schemaDigest",
+                "defaults",
+                "defaultsDigest",
+                "maxBytes",
+              ],
+              properties: {
+                schema: { const: "gui/preferences.schema.json" },
+                schemaVersion: { type: "integer", minimum: 1 },
+                schemaDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" },
+                defaults: { const: "gui/preferences.defaults.json" },
+                defaultsDigest: { type: "string", pattern: "^sha256:[a-f0-9]{64}$" },
+                maxBytes: { const: 65_536 },
+              },
             },
           },
         },

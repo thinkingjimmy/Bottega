@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on process-global renderer IPC, trusted WindowRegistry identities, exact App Studio route helpers, residence/migration state machines, canonical/durable-draft App-chat identity and active-use-slot lookup, and main-owned attachment/capability cleanup ports
- * [OUTPUT]: Provides SurfaceWindowController and its process-global instance for route-bound create/focus/reclaim/use-chat sync, exact App-window chat projections, transactional capsule transfer, crash cleanup, and quit reconciliation
+ * [INPUT]: Depends on process-global renderer IPC, trusted WindowRegistry identities, exact App Studio route helpers, residence/migration state machines, durable App Use switch fences, canonical/durable-draft App-chat identity, and main-owned attachment/capability cleanup ports
+ * [OUTPUT]: Provides SurfaceWindowController for navigation-generation-fenced show, create/focus/reclaim/use-chat sync, exact App-window chat projections, capsule transfer, crash cleanup, and quit reconciliation
  * [POS]: Window-surfaces policy root; it is the only path that may move Studio/chat residence or rebind renderer-owned attachment references
  */
 
@@ -12,7 +12,6 @@ import {
   assertAppSurfaceRoute,
   canonicalAppSurfaceRoute,
   chatSurface,
-  assertSurfaceKey,
   type OpenSurfaceInWindowInput,
   type ReclaimSurfaceInput,
   type ShowSurfaceInput,
@@ -36,12 +35,27 @@ import {
   assertConversationMutationScope,
   bindConversationScope,
 } from "./policy/conversation-scope";
+import type {
+  AppChatSlot,
+  AppUseChatDestination,
+  AppUseSurfaceFence,
+  AppUseSwitchIntent,
+} from "../../../../shared/placement/facts";
 import {
   type ProductWindowRecord,
   type WindowRegistry,
   type WindowRegistryEvent,
   windowRegistry,
 } from "./window-registry";
+import { AppUseResidenceController } from "./residence/app-use-controller";
+import {
+  openSurfaceInput,
+  parseAppId,
+  parseChatPart,
+  reclaimSurfaceInput,
+  showSurfaceInput,
+} from "./policy/surface-input";
+import { SurfaceNavigationIntents } from "./policy/surface-navigation-intents";
 
 type AppWindowFactory = (
   appId: string,
@@ -63,13 +77,6 @@ type PendingReply = {
   timer: ReturnType<typeof setTimeout>;
 };
 
-const assertAppId = (value: unknown) => {
-  if (typeof value !== "string" || !/^[A-Za-z0-9._-]{1,160}$/.test(value)) {
-    throw new Error("Invalid App id");
-  }
-  return value;
-};
-
 export class SurfaceWindowController {
   readonly residence = new SurfaceResidenceLedger();
   private readonly pending = new Map<string, PendingReply>();
@@ -78,6 +85,8 @@ export class SurfaceWindowController {
   private readonly transferredAttachments = new Set<string>();
   private readonly conversationOwners = new Map<string, string | null>();
   private readonly migration: SurfaceMigrationCoordinator;
+  private readonly appUseResidence: AppUseResidenceController;
+  private readonly navigationIntents = new SurfaceNavigationIntents();
   private createAppWindow: AppWindowFactory | null = null;
   private resolveChatIdentity: ((chatId: string) => ChatSurfaceIdentity | undefined) | null = null;
   private resolveActiveUseChat: ((appId: string) => string | undefined) | null = null;
@@ -120,6 +129,33 @@ export class SurfaceWindowController {
         if (rebindFailure) throw rebindFailure;
       },
     });
+    this.appUseResidence = new AppUseResidenceController(
+      this.residence,
+      registry,
+      {
+        chatSurface: (chatId, incarnationId) =>
+          this.validatedChatSurface(chatId, incarnationId),
+        bindConversation: (chatId, windowId) =>
+          this.conversationOwners.set(chatId, windowId),
+        publish: (residence) => this.publishResidence(residence, "intent"),
+        migrateToMain: (source, surface, route, expectedRevision, companions) =>
+          this.migrateToMain(
+            source,
+            surface,
+            route,
+            expectedRevision,
+            "intent",
+            companions
+          ),
+        closeSource: (source) => this.closeNow(source),
+        assertAdmission: () => this.assertAdmission(),
+        assertStudio: (context, appId) =>
+          this.assertAppStudioMutation(context, appId),
+        isMigrating: (surface) => this.migration.isMigrating(surface),
+        canClaim: (context, appId, chat, residence) =>
+          this.canClaimUseChat(context, appId, chat, residence),
+      }
+    );
     registry.subscribe((event) => this.onRegistryEvent(event));
   }
 
@@ -146,6 +182,9 @@ export class SurfaceWindowController {
       .roles("main", "app-window")
       .handleWithContext(WINDOW_SURFACES_CHANNEL.residence, (_context, rawSurface) =>
         this.residence.get(rawSurface)
+      )
+      .handleWithContext(WINDOW_SURFACES_CHANNEL.navigationIntent, (context, raw) =>
+        this.navigationIntents.accept(context.windowId, raw)
       )
       .handleWithContext(WINDOW_SURFACES_CHANNEL.show, (context, rawInput) =>
         this.show(context, this.showInput(rawInput))
@@ -239,6 +278,33 @@ export class SurfaceWindowController {
     );
   }
 
+  captureAppUseSurfaceFence(
+    appId: string,
+    source: AppChatSlot | null,
+    target: AppChatSlot
+  ): AppUseSurfaceFence {
+    return this.appUseResidence.capture(appId, source, target);
+  }
+
+  assertAppUseSurfaceFence(intent: AppUseSwitchIntent) {
+    this.appUseResidence.assertFence(intent);
+  }
+
+  revokeAppUseChat(intent: AppUseSwitchIntent) {
+    this.appUseResidence.revoke(intent);
+  }
+
+  claimAppUseChat(intent: AppUseSwitchIntent) {
+    this.appUseResidence.claim(intent);
+  }
+
+  async focusAppUseInMain(
+    destination: AppUseChatDestination,
+    intent?: AppUseSwitchIntent
+  ) {
+    return this.appUseResidence.focusInMain(destination, intent);
+  }
+
   assertAppStudioMutation(context: TrustedRendererContext, appId: string) {
     if (context.role === "app-window" && context.appId !== appId) {
       throw new Error("App window identity does not match the requested Studio");
@@ -297,6 +363,7 @@ export class SurfaceWindowController {
     input: ShowSurfaceInput
   ): Promise<SurfaceIntentResult> {
     this.assertAdmission();
+    this.navigationIntents.assertCurrent(context.windowId, input.navigationIntentId);
     const appId = this.appIdForStudio(input.surface);
     const route = assertAppSurfaceRoute(input.route, appId);
     /* App 窗只许 show 自己的 Studio：否则任意 App 窗可对别窗强制导航并抢焦点。 */
@@ -435,7 +502,7 @@ export class SurfaceWindowController {
       await this.migrateToMain(
         record,
         primary.surface,
-        canonicalAppSurfaceRoute(assertAppId(record.appId), "app"),
+        canonicalAppSurfaceRoute(parseAppId(record.appId), "app"),
         primary.claimRevision,
         reason,
         owned.filter((claim) => claim.surface !== primary.surface),
@@ -488,62 +555,7 @@ export class SurfaceWindowController {
   }
 
   private syncUseChat(context: TrustedRendererContext, rawInput: unknown) {
-    /* 与 openInWindow 同门：退出编排（stopAdmission）与在途迁移期间不得写驻留账本，
-       否则收回流程 export 等待中被撞 revision，优雅退出退化成 crash 丢草稿。 */
-    this.assertAdmission();
-    const input = rawInput as {
-      appId?: unknown;
-      previous?: { chatId?: unknown; incarnationId?: unknown };
-      next?: { chatId?: unknown; incarnationId?: unknown };
-    } | null;
-    const appId = assertAppId(input?.appId);
-    this.assertAppStudioMutation(context, appId);
-    const previous = input?.previous
-      ? this.validatedChatSurface(input.previous.chatId, input.previous.incarnationId)
-      : null;
-    const next = input?.next
-      ? this.validatedChatSurface(input.next.chatId, input.next.incarnationId)
-      : null;
-    for (const surface of [appStudioSurface(appId), previous, next]) {
-      if (surface && this.migration.isMigrating(surface)) {
-        throw new Error("Surface migration in progress; use-chat sync rejected");
-      }
-    }
-    if (previous === next) return next ? this.residence.get(next) : null;
-    if (previous) this.assertIntentResidence(context, this.residence.get(previous));
-    const nextResidence = next ? this.residence.get(next) : null;
-    if (nextResidence && !this.canClaimUseChat(context, appId, input?.next, nextResidence)) {
-      if (nextResidence.windowId) this.registry.focus(nextResidence.windowId);
-      throw new Error("Use chat is resident in another window");
-    }
-    const targetWindowId = context.role === "main" ? null : context.windowId;
-    const moves = [
-      ...(previous
-        ? [{
-            surface: previous,
-            expectedRevision: this.residence.get(previous).claimRevision,
-            windowId: null,
-          }]
-        : []),
-      ...(next && nextResidence?.windowId !== targetWindowId
-        ? [{
-            surface: next,
-            expectedRevision: nextResidence!.claimRevision,
-            windowId: targetWindowId,
-          }]
-        : []),
-    ];
-    if (!moves.length) return null;
-    const changed = this.residence.moveMany(moves);
-    if (previous) this.conversationOwners.set(input!.previous!.chatId as string, null);
-    if (next) {
-      this.conversationOwners.set(
-        input!.next!.chatId as string,
-        context.role === "main" ? null : context.windowId
-      );
-    }
-    for (const residence of changed) this.publishResidence(residence, "intent");
-    return next ? this.residence.get(next) : null;
+    return this.appUseResidence.sync(context, rawInput);
   }
 
   private exportCapsule(
@@ -665,53 +677,19 @@ export class SurfaceWindowController {
   }
 
   private showInput(value: unknown): ShowSurfaceInput {
-    const input = value as Partial<ShowSurfaceInput> | null;
-    return {
-      surface: assertSurfaceKey(input?.surface),
-      route: typeof input?.route === "string" ? input.route : "",
-    };
+    return showSurfaceInput(value);
   }
 
   private openInput(value: unknown): OpenSurfaceInWindowInput {
-    const input = value as Partial<OpenSurfaceInWindowInput> | null;
-    return {
-      ...this.showInput(value),
-      appId: assertAppId(input?.appId),
-      ...(input?.expectedRevision === undefined
-        ? {}
-        : { expectedRevision: this.revision(input.expectedRevision) }),
-      ...(input?.useChat
-        ? {
-            useChat: {
-              chatId: this.chatPart(input.useChat.chatId),
-              incarnationId: this.chatPart(input.useChat.incarnationId),
-            },
-          }
-        : {}),
-    };
+    return openSurfaceInput(value);
   }
 
   private reclaimInput(value: unknown): ReclaimSurfaceInput {
-    const input = value as Partial<ReclaimSurfaceInput> | null;
-    return {
-      ...this.showInput(value),
-      ...(input?.expectedRevision === undefined
-        ? {}
-        : { expectedRevision: this.revision(input.expectedRevision) }),
-    };
-  }
-
-  private revision(value: unknown) {
-    if (!Number.isInteger(value) || (value as number) < 0) {
-      throw new Error("Invalid residence revision");
-    }
-    return value as number;
+    return reclaimSurfaceInput(value);
   }
 
   private chatPart(value: unknown) {
-    if (typeof value !== "string") throw new Error("Invalid chat surface identity");
-    chatSurface(value, value);
-    return value;
+    return parseChatPart(value);
   }
 
   private validatedChatSurface(rawChatId: unknown, rawIncarnation: unknown) {
@@ -741,7 +719,7 @@ export class SurfaceWindowController {
   }
 
   private appIdForStudio(surface: SurfaceKey) {
-    return assertAppId(appIdFromStudioSurface(surface));
+    return parseAppId(appIdFromStudioSurface(surface));
   }
 
   private assertStudioIntent(
@@ -756,15 +734,6 @@ export class SurfaceWindowController {
     if (context.role === "main") return;
     if (context.appId !== appId || !this.isResident(context, residence)) {
       throw new Error("Window intent rejected from nonresident App window");
-    }
-  }
-
-  private assertIntentResidence(
-    context: TrustedRendererContext,
-    residence: SurfaceResidence
-  ) {
-    if (!this.isResident(context, residence)) {
-      throw new Error("Window intent rejected for a surface resident elsewhere");
     }
   }
 

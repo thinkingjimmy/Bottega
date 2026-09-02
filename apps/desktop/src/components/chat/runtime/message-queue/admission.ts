@@ -1,11 +1,13 @@
 /**
- * [INPUT]: Depends on shared AdmissionResult, message queue is a state machine and renderer error message text is a text
+ * [INPUT]: Depends on shared AdmissionResult, message queue state machine, renderer locale/catalog runtime, and structured admission error projection
  * [OUTPUT]: Provides manual admission receipt
  * [POS]: the access state boundary of the runtime/message-queue; Only calculate queue migration, no store reading or IPC execution
  */
 
 import type { AdmissionResult } from "../../../../../shared/sections-ipc";
 import { admissionReasonText } from "@/lib/skill-failure-text";
+import { effectiveLocale } from "@/lib/i18n-locale";
+import { translate } from "../../../../../shared/i18n/runtime";
 import {
   markAmbiguous,
   resetIdentity,
@@ -32,6 +34,6 @@ export function settleAdmission(
     ? settleItem(queue, id, owner)
     : setQueueError(
         resetIdentity(queue, id),
-        "消息未写入，请修正后重试"
+        translate(effectiveLocale(), "chat.runtime.queue.notPersisted")
       );
 }

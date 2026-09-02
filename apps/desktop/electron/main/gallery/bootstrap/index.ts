@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ChatStore canonical image detail/homeDir, Gallery broker/cache/media and Base attachment ingestion/target Chat authorization; The user data received and the occurrence of the activity were determined
- * [OUTPUT]: Provides initialize GalleryRuntime, by journal→canonical Reposition→cache GC→Base reconcile
- * [POS]: The combination root of gallery/bootstrap; Isolate Electron main/index.ts to Gallery Restore and attachment Port Connection Details
+ * [INPUT]: Depends on ChatStore metadata plus exact assistant-message facts, Gallery broker/cache/media, and Base attachment ingestion/target authorization
+ * [OUTPUT]: Provides GalleryRuntime initialization and exact transcript-image source resolution without aggregate Chat reads
+ * [POS]: Gallery/bootstrap composition root; isolates main/index.ts from restore, cache, and attachment port details
  */
 
 import { dirname, join } from "node:path";
@@ -85,7 +85,7 @@ export async function resolveCanonicalImageSource(
   store: ChatStore,
   sourceRef: Extract<GallerySourceRef, { kind: "transcript" }>
 ) {
-  const record = await store.get(sourceRef.chatId);
+  const record = store.getMetadata(sourceRef.chatId);
   if (
     !record ||
     record.incarnationId !== sourceRef.incarnationId ||
@@ -93,11 +93,11 @@ export async function resolveCanonicalImageSource(
   ) {
     return null;
   }
-  const message = record.messages.find(
-    (message) =>
-      message.role === "assistant" &&
-      message.seq === sourceRef.assistantSeq
-  );
+  const candidate = await store.getNativeMessage(sourceRef.chatId, {
+    kind: "seq",
+    seq: sourceRef.assistantSeq,
+  });
+  const message = candidate?.role === "assistant" ? candidate : null;
   const image = message?.parts?.find(
     (part): part is ChatToolPart =>
       part.type === "tool" &&

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on rendererIpc, Apps shared channels/input assertions, trusted Studio residence, generic store/runtime/grant/package ports, and the delegated Design registrar
- * [OUTPUT]: Registers main-only Apps management channels and the minimal fixed-App Studio read/surface/chat channels
+ * [INPUT]: Depends on the injectable rendererIpc registrar, Apps shared channels/input assertions, trusted Studio residence and renderer identity, generic store/runtime/grant/package ports, and the delegated Design registrar
+ * [OUTPUT]: Registers Apps management, fenced grant-candidate queries, main-owned typed App Use history/open/switch, recordless delete retry, Editor destination channels, structured add rejection, symmetric Studio authorize/decline/revoke, the studioSurfaceReady list projection, exact staged GUI readiness, renderer-owned GUI teardown, and fixed-App Studio channels
  * [POS]: apps/service generic renderer adapter; Design command parsing and authority live in integrations/design-ipc.ts
  */
 
@@ -11,22 +11,37 @@ import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import {
   APPS_CHANNEL,
   repairSite,
+  type AddAppResult,
   type AppCapabilitiesSnapshot,
   type AppExtensionStatus,
   type AppGuiInfo,
   type AppGuiInfoInput,
+  type AppGuiReadyInput,
+  type AppGuiReadyResult,
   type AppInstallEvent,
   type AppRecord,
   type AppRuntimeStatus,
-  type AppOpenMode,
-  type AppsListSnapshot,
+  type AppRecordProjection,
+  type AppsProjectionSnapshot,
   type EnsureAppChatSlotInput,
   type RemoveAppMode,
   type RenameAppInput,
   type SaveAsAppResult,
   type SetAppAgentInput,
+  type BeginFileExportInputV1,
+  type BeginFileExportResultV1,
+  type CompleteFileExportInputV1,
+  type CompleteFileExportResultV1,
+  type WriteFileExportChunkInputV1,
+  beginFileExportInputV1Schema,
+  completeFileExportInputV1Schema,
+  parseWriteFileExportChunkInputV1,
 } from "../../../../shared/apps-ipc";
-import { rendererIpc } from "../../ipc-registrar";
+import {
+  rendererIpc,
+  type RendererIpc,
+  type RendererIpcRegistrar,
+} from "../../ipc-registrar";
 import { rendererIdentity } from "../../window/renderer-identity";
 import type { AppDeleteService } from "../app-delete";
 import type { AppInstaller } from "../app-installer";
@@ -35,7 +50,9 @@ import type { AppStore } from "../app-store";
 import type { AppGrantAuthority } from "../attachments/grant-authority";
 import {
   assertAppGrantTarget,
+  assertAppGrantCandidatesInput,
   assertAppGuiInfoInput,
+  assertAppGuiReadyInput,
   assertAppSurfaceAcquireInput,
   assertAvailableAppsInput,
   assertSetAppGrantInput,
@@ -49,10 +66,15 @@ import { SaveAsAppRejectedError, type SaveAsAppService } from "../save-as-app";
 import {
   assertAppId,
   assertChatSlotInput,
+  assertListAppUseHistoryInput,
+  assertOpenAppEditorInput,
+  assertOpenAppEditorChatInput,
+  assertOpenAppUseChatInput,
   assertRemoveMode,
   assertRenameInput,
   assertSaveAsAppInput,
   assertSetAgentInput,
+  assertSetPinnedInput,
 } from "../service-inputs";
 import type { AppPackageController } from "../share/app-package-controller";
 import {
@@ -62,6 +84,7 @@ import {
 } from "../support";
 import type { AppLifecycleAdmissionGate } from "../../lifecycle/app-platform-admission";
 import { surfaceWindowController } from "../../window/surfaces/surface-window-controller";
+import type { TrustedRendererContext } from "../../window/surfaces/trusted-renderer-context";
 import {
   registerDesignIpc,
   type DesignIpcDependencies,
@@ -90,24 +113,30 @@ type AppsIpcDependencies = DesignIpcDependencies & {
   } | null;
   extensionStatus(appId: string): AppExtensionStatus;
   capabilities(appId: string): Promise<AppCapabilitiesSnapshot>;
-  resolveExtensionConsent(appId: string, granted: boolean): Promise<AppRecord>;
-  resolveBaseGuiConsent(
-    appId: string,
-    grantedCapabilities: import("../../../../shared/apps-ipc").BaseGuiCapability[],
-    grantedHostActions: import("../../../../shared/apps-ipc").BaseGuiHostActionCapability[],
-    grantedCapabilityScopes: import("../../../../shared/apps-ipc").BaseGuiCapabilityScopes
-  ): Promise<AppRecord>;
-  revokeBaseGuiAccess(appId: string): Promise<AppRecord>;
+  authorizeStudioAccess(appId: string): Promise<AppRecord>;
+  declineStudioAccess(appId: string): Promise<AppRecord>;
+  revokeStudioAccess(appId: string): Promise<AppRecord>;
+  studioSurfaceReady(record: AppRecord): boolean;
   revokeExtensionGrant(appId: string): Promise<AppExtensionStatus>;
-  promoteGeneration(appId: string, expectedConsentRevision: number): Promise<AppRecord>;
   rebuildExtensionGeneration(appId: string): Promise<AppRecord>;
   remove(appId: string, mode?: RemoveAppMode, requestId?: string): Promise<void>;
   readLogTail(appId: string): Promise<string>;
   setAgent(input: SetAppAgentInput): Promise<AppRecord>;
   rename(input: RenameAppInput): Promise<AppRecord>;
   ensureChatSlot(input: EnsureAppChatSlotInput): unknown;
-  guiInfo(input: AppGuiInfoInput): Promise<AppGuiInfo>;
-  releaseGuiSurface(input: AppGuiInfoInput): Promise<void>;
+  listUseHistory(input: import("../../../../shared/apps-ipc").ListAppUseHistoryInput): unknown;
+  openUseChat(input: import("../../../../shared/apps-ipc").OpenAppUseChatInput): unknown;
+  newUseChat(appId: string, requestId: string): unknown;
+  openEditor(input: import("../../../../shared/apps-ipc").OpenAppEditorInput): unknown;
+  openEditorChat(input: import("../../../../shared/apps-ipc").OpenAppEditorChatInput): unknown;
+  hideEditor(appId: string): unknown;
+  guiInfo(input: AppGuiInfoInput, context: TrustedRendererContext): Promise<AppGuiInfo>;
+  guiReady(input: AppGuiReadyInput): Promise<AppGuiReadyResult>;
+  releaseGuiSurface(input: AppGuiInfoInput, context: TrustedRendererContext): Promise<void>;
+  fileExportBegin(input: BeginFileExportInputV1): Promise<BeginFileExportResultV1>;
+  fileExportWrite(input: WriteFileExportChunkInputV1): Promise<unknown>;
+  fileExportFinalize(input: CompleteFileExportInputV1): Promise<CompleteFileExportResultV1>;
+  fileExportCancel(input: CompleteFileExportInputV1): Promise<CompleteFileExportResultV1>;
   resolveMaintenanceBackend(requested: AgentBackendId | "auto"): Promise<{
     id: AgentBackendId;
     version?: string;
@@ -116,26 +145,71 @@ type AppsIpcDependencies = DesignIpcDependencies & {
   onClosed(): void;
 };
 
+export async function retryAppOperation(
+  deps: Pick<
+    AppsIpcDependencies,
+    "appDelete" | "installer" | "packages" | "requireRecord"
+  >,
+  appId: string
+) {
+  const deletion = deps.appDelete();
+  if (deletion && await deletion.residual(appId)) {
+    await deletion.retry(appId);
+    return;
+  }
+  const record = deps.requireRecord(appId);
+  if (await deps.packages.hasPendingImport(appId)) {
+    await deps.packages.retryPendingImport(appId);
+  } else if (record.state === "install-failed") {
+    await deps.installer.retryInstall(appId);
+  } else if (record.state === "update-failed") {
+    await deps.installer.retryUpdate(appId);
+  } else if (record.state === "delete-failed") {
+    if (!deletion) throw new Error("App 删除尚未初始化");
+    await deletion.retry(appId);
+  } else {
+    throw new Error("当前状态不能重试");
+  }
+}
+
 const createAppId = customAlphabet(
   "abcdefghijklmnopqrstuvwxyz0123456789",
   10
 );
 
+export function registerAppPinIpc(
+  ipc: RendererIpc,
+  store: Pick<AppStore, "setPinned">
+) {
+  return ipc.handle(APPS_CHANNEL.setPinned, (value) => {
+    const input = assertSetPinnedInput(value);
+    return store.setPinned(input.appId, input.pinned);
+  });
+}
+
+export const duplicateAddAppResult = (appId: string): AddAppResult => ({
+  status: "rejected",
+  error: { code: "DUPLICATE_REPOSITORY", appId },
+});
+
 export function registerAppsIpc(
   window: BrowserWindow,
   rendererUrl: string,
-  deps: AppsIpcDependencies
+  deps: AppsIpcDependencies,
+  registerIpc: RendererIpcRegistrar = rendererIpc
 ) {
-  const mainIpc = rendererIpc(
+  const mainIpc = registerIpc(
     window,
     rendererUrl,
     "拒绝非主窗口的 Apps 管理请求"
   );
-  const studioIpc = rendererIpc(
+  const studioIpc = registerIpc(
     window,
     rendererUrl,
     "拒绝非受信窗口的 App Studio 请求"
   ).roles("main", "app-window");
+
+  registerAppPinIpc(mainIpc, deps.store);
 
   mainIpc.handle(APPS_CHANNEL.add, async (value) => {
       const input = assertAddAppInput(value);
@@ -143,7 +217,7 @@ export function registerAppsIpc(
       const duplicate = deps.store
         .list()
         .find((record) => record.sourceRepoUrl === normalized.repoUrl);
-      if (duplicate) throw new Error(`该仓库已添加：${duplicate.id}`);
+      if (duplicate) return duplicateAddAppResult(duplicate.id);
       if (input.preflightId || input.confirmedDigest) {
         if (!input.preflightId || !input.confirmedDigest) {
           throw new Error("Base App preflight 参数不完整");
@@ -151,11 +225,12 @@ export function registerAppsIpc(
         const maintenance = await deps.resolveMaintenanceBackend(
           input.maintenanceAgent
         );
-        return deps.packages.importBase({
+        const record = await deps.packages.importBase({
           request: input,
           repoUrl: normalized.repoUrl,
           agent: maintenance.id,
         });
+        return { status: "done", record } satisfies AddAppResult;
       }
       const maintenance = await deps.resolveMaintenanceBackend(
         input.maintenanceAgent
@@ -176,7 +251,7 @@ export function registerAppsIpc(
       });
       const saved = await deps.store.set(record);
       deps.installer.enqueue(id);
-      return saved;
+      return { status: "done", record: saved } satisfies AddAppResult;
     })
     .handle(APPS_CHANNEL.stop, (rawId) => deps.stop(assertAppId(rawId)))
     .handle(APPS_CHANNEL.grant, (input) =>
@@ -197,6 +272,9 @@ export function registerAppsIpc(
     })
     .handle(APPS_CHANNEL.listGrantSources, () =>
       deps.grantAuthority().listSources()
+    )
+    .handle(APPS_CHANNEL.listGrantCandidates, (input) =>
+      deps.grantAuthority().listCandidates(assertAppGrantCandidatesInput(input))
     )
     .handle(APPS_CHANNEL.listAvailable, (input) =>
       deps.grantAuthority().listAvailable(assertAvailableAppsInput(input))
@@ -223,45 +301,24 @@ export function registerAppsIpc(
     .handle(APPS_CHANNEL.releaseManagementLease, (leaseId) =>
       deps.managementLeases().release(assertSurfaceLeaseId(leaseId))
     )
-    .handle(APPS_CHANNEL.resolveExtensionConsent, async (raw) => {
-      const input = assertExtensionConsentInput(raw);
-      return deps.resolveExtensionConsent(input.appId, input.granted);
-    })
-    .handle(APPS_CHANNEL.resolveBaseGuiConsent, async (raw) => {
-      const input = assertBaseGuiConsentInput(raw);
-      return deps.resolveBaseGuiConsent(
-        input.appId,
-        input.grantedCapabilities,
-        input.grantedHostActions,
-        input.grantedCapabilityScopes
-      );
-    })
-    .handle(APPS_CHANNEL.revokeBaseGuiAccess, async (rawId) => {
-      const appId = assertAppId(rawId);
-      const saved = await deps.revokeBaseGuiAccess(appId);
+    .handle(APPS_CHANNEL.authorizeStudioAccess, (rawId) =>
+      deps.authorizeStudioAccess(assertAppId(rawId))
+    )
+    /* 拒绝与同意走同一道门：一个 appId 进去，一份新记录出来。丢弃 pending
+       会改变 GUI 可见性，故与撤权一样广播 `gui`。 */
+    .handle(APPS_CHANNEL.declineStudioAccess, async (rawId) => {
+      const saved = await deps.declineStudioAccess(assertAppId(rawId));
       deps.emit({ appId: saved.id, type: "gui" });
       return saved;
     })
-    .handle(APPS_CHANNEL.promoteGeneration, async (raw) => {
-      const input = assertPromoteInput(raw);
-      return deps.promoteGeneration(input.appId, input.expectedConsentRevision);
+    .handle(APPS_CHANNEL.revokeStudioAccess, async (rawId) => {
+      const saved = await deps.revokeStudioAccess(assertAppId(rawId));
+      deps.emit({ appId: saved.id, type: "gui" });
+      return saved;
     })
     .handle(APPS_CHANNEL.retry, async (rawId) => {
       const appId = assertAppId(rawId);
-      const record = deps.requireRecord(appId);
-      if (await deps.packages.hasPendingImport(appId)) {
-        await deps.packages.retryPendingImport(appId);
-      } else if (record.state === "install-failed") {
-        await deps.installer.retryInstall(appId);
-      } else if (record.state === "update-failed") {
-        await deps.installer.retryUpdate(appId);
-      } else if (record.state === "delete-failed") {
-        const service = deps.appDelete();
-        if (!service) throw new Error("App 删除尚未初始化");
-        await service.retry(appId);
-      } else {
-        throw new Error("当前状态不能重试");
-      }
+      await retryAppOperation(deps, appId);
     })
     .handle(APPS_CHANNEL.repair, async (rawId) => {
       const record = deps.requireRecord(assertAppId(rawId));
@@ -319,22 +376,30 @@ export function registerAppsIpc(
       )
     );
 
+  /* 派生一次，随记录一起上桌：Studio 面能否开出来是 main 的判词，renderer
+     从前自己比 generationId + contentDigest 两项，兼容重绑后就与 surface
+     的放行判据分了家。投影不进持久化 schema——它是朗读，不是账本。 */
+  const project = (record: AppRecord): AppRecordProjection => ({
+    ...record,
+    studioSurfaceReady: deps.studioSurfaceReady(record),
+  });
+
   studioIpc
     .handleWithContext(APPS_CHANNEL.list, (context) => {
       if (context.role !== "app-window") {
         return {
-          apps: deps.store.list(),
+          apps: deps.store.list().map(project),
           runtimeWarning: deps.gatewayWarning(),
-        } satisfies AppsListSnapshot;
+        } satisfies AppsProjectionSnapshot;
       }
       const appId = context.appId;
       if (!appId) throw new Error("App window is missing its fixed App identity");
       surfaceWindowController.assertAppStudioMutation(context, appId);
       const record = deps.store.get(appId);
       return {
-        apps: record ? [record] : [],
+        apps: record ? [project(record)] : [],
         runtimeWarning: deps.gatewayWarning(),
-      } satisfies AppsListSnapshot;
+      } satisfies AppsProjectionSnapshot;
     })
     .handleWithContext(APPS_CHANNEL.open, (context, rawId) => {
       const appId = assertAppId(rawId);
@@ -384,6 +449,43 @@ export function registerAppsIpc(
       assertFixedAppStudio(context, input.appId);
       return deps.ensureChatSlot(input);
     })
+    .handleWithContext(APPS_CHANNEL.listUseHistory, (context, value) => {
+      const input = assertListAppUseHistoryInput(value);
+      assertFixedAppStudio(context, input.appId);
+      return deps.listUseHistory(input);
+    })
+    .handleWithContext(APPS_CHANNEL.openUseChat, (context, value) => {
+      const input = assertOpenAppUseChatInput(value);
+      assertFixedAppStudio(context, input.appId);
+      return deps.openUseChat(input);
+    })
+    .handleWithContext(APPS_CHANNEL.newUseChat, (context, rawId, rawRequestId) => {
+      const appId = assertAppId(rawId);
+      assertFixedAppStudio(context, appId);
+      if (
+        typeof rawRequestId !== "string" ||
+        !rawRequestId ||
+        rawRequestId.length > 256
+      ) {
+        throw new Error("App Use New Chat requestId 无效");
+      }
+      return deps.newUseChat(appId, rawRequestId);
+    })
+    .handleWithContext(APPS_CHANNEL.openEditor, (context, value) => {
+      const input = assertOpenAppEditorInput(value);
+      assertFixedAppStudio(context, input.appId);
+      return deps.openEditor(input);
+    })
+    .handleWithContext(APPS_CHANNEL.openEditorChat, (context, value) => {
+      const input = assertOpenAppEditorChatInput(value);
+      assertFixedAppStudio(context, input.appId);
+      return deps.openEditorChat(input);
+    })
+    .handleWithContext(APPS_CHANNEL.hideEditor, (context, rawId) => {
+      const appId = assertAppId(rawId);
+      assertFixedAppStudio(context, appId);
+      return deps.hideEditor(appId);
+    })
     .handleWithContext(APPS_CHANNEL.guiInfo, async (context, raw) => {
       const input = assertAppGuiInfoInput(raw);
       if (deps.requireRecord(input.appId).manifest?.kind !== "base") {
@@ -398,24 +500,43 @@ export function registerAppsIpc(
         throw new Error("Surface lease does not belong to the requested App");
       }
       assertSurfaceMutation(context, surface);
-      return deps.guiInfo(input);
+      return deps.guiInfo(input, context);
+    })
+    .handleWithContext(APPS_CHANNEL.guiReady, async (context, raw) => {
+      const input = assertAppGuiReadyInput(raw);
+      const surface = await deps.surfaceLeases().describe(
+        input.appSurfaceLeaseId
+      );
+      if (surface.appId !== input.appId) {
+        throw new Error("Ready surface does not belong to the requested App");
+      }
+      assertSurfaceMutation(context, surface);
+      return deps.guiReady(input);
     })
     .handleBestEffortWithContext(APPS_CHANNEL.releaseGuiSurface, async (context, raw) => {
       const input = assertAppGuiInfoInput(raw);
-      const surface = deps.surfaceLeases().rendererSurfaceForRelease(
-        input.appSurfaceLeaseId,
-        context
-      );
-      if (!surface || surface.appId !== input.appId) return;
-      return deps.releaseGuiSurface(input);
+      assertFixedAppStudio(context, input.appId);
+      return deps.releaseGuiSurface(input, context);
     })
-    .handleWithContext(APPS_CHANNEL.setOpenMode, async (context, raw) => {
-      const input = assertOpenModeInput(raw);
-      surfaceWindowController.assertAppStudioMutation(context, input.appId);
-      return deps.store.update(input.appId, (record) => ({
-        ...record,
-        openModeOverride: input.mode,
-      }));
+    .handleWithContext(APPS_CHANNEL.fileExportBegin, async (context, raw) => {
+      const input = beginFileExportInputV1Schema.parse(raw);
+      await assertFileExportSurface(context, input.surface, deps);
+      return deps.fileExportBegin(input);
+    })
+    .handleWithContext(APPS_CHANNEL.fileExportWrite, async (context, raw) => {
+      const input = parseWriteFileExportChunkInputV1(raw);
+      await assertFileExportSurface(context, input.surface, deps);
+      return deps.fileExportWrite(input);
+    })
+    .handleWithContext(APPS_CHANNEL.fileExportFinalize, async (context, raw) => {
+      const input = completeFileExportInputV1Schema.parse(raw);
+      await assertFileExportSurface(context, input.surface, deps);
+      return deps.fileExportFinalize(input);
+    })
+    .handleWithContext(APPS_CHANNEL.fileExportCancel, async (context, raw) => {
+      const input = completeFileExportInputV1Schema.parse(raw);
+      await assertFileExportSurface(context, input.surface, deps);
+      return deps.fileExportCancel(input);
     });
 
   registerDesignIpc(studioIpc, deps);
@@ -432,13 +553,24 @@ export function registerAppsIpc(
   window.once("closed", deps.onClosed);
 }
 
+async function assertFileExportSurface(
+  context: Parameters<AppAttachmentSurfaceLeaseRegistry["rendererSurfaceForRelease"]>[1],
+  input: BeginFileExportInputV1["surface"],
+  deps: AppsIpcDependencies
+) {
+  const surface = await deps.surfaceLeases().describe(input.appSurfaceLeaseId);
+  if (surface.appId !== input.appId) throw new Error("File export surface does not belong to the requested App");
+  assertSurfaceMutation(context, surface);
+}
+
 async function openRuntime(deps: AppsIpcDependencies, appId: string) {
   const result = await deps.lifecycleGate.run(appId, () => {
     const record = deps.requireRecord(appId);
     if (!deps.lifecycleGate.isOpen(appId) || record.state !== "ready") {
-      throw Object.assign(new Error("App lifecycle admission 已关闭"), {
-        status: 409,
-      });
+      throw Object.assign(
+        new Error("APP_LIFECYCLE_ADMISSION_CLOSED: App 正在换代，稍后再打开"),
+        { status: 409 }
+      );
     }
     return deps.runtime.ensureRunning(appId);
   });
@@ -484,105 +616,4 @@ function assertSurfaceMutation(
   });
 }
 
-function assertOpenModeInput(raw: unknown): {
-  appId: string;
-  mode: AppOpenMode | null;
-} {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("App open mode 参数无效");
-  }
-  const input = raw as { appId?: unknown; mode?: unknown };
-  const allowed = input.mode === null ||
-    input.mode === "same-window" ||
-    input.mode === "new-window";
-  if (Object.keys(input).length !== 2 || !allowed) {
-    throw new Error("App open mode 参数无效");
-  }
-  return {
-    appId: assertAppId(input.appId),
-    mode: input.mode as AppOpenMode | null,
-  };
-}
 
-function assertExtensionConsentInput(raw: unknown) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("扩展同意参数无效");
-  }
-  const input = raw as { appId?: unknown; granted?: unknown };
-  if (typeof input.appId !== "string" || typeof input.granted !== "boolean") {
-    throw new Error("扩展同意参数无效");
-  }
-  return { appId: assertAppId(input.appId), granted: input.granted };
-}
-
-function assertBaseGuiConsentInput(raw: unknown) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("Base GUI 同意参数无效");
-  }
-  const input = raw as {
-    appId?: unknown;
-    grantedCapabilities?: unknown;
-    grantedHostActions?: unknown;
-    grantedCapabilityScopes?: unknown;
-  };
-  const allowed = new Set([
-    "row-insert",
-    "row-patch",
-    "row-delete",
-    "attachment-read",
-    "workspace-read",
-  ]);
-  if (
-    typeof input.appId !== "string" ||
-    !Array.isArray(input.grantedCapabilities) ||
-    input.grantedCapabilities.some(
-      (item) => typeof item !== "string" || !allowed.has(item)
-    )
-  ) {
-    throw new Error("Base GUI 同意参数无效");
-  }
-  const hostActions = input.grantedHostActions ?? [];
-  if (
-    !Array.isArray(hostActions) ||
-    hostActions.some((item) => item !== "compose-text")
-  ) {
-    throw new Error("Base GUI host action 同意参数无效");
-  }
-  const scopes = input.grantedCapabilityScopes ?? {};
-  if (
-    !scopes ||
-    typeof scopes !== "object" ||
-    Array.isArray(scopes) ||
-    Object.keys(scopes).some((key) => key !== "workspaceRead") ||
-    ("workspaceRead" in scopes &&
-      (scopes as { workspaceRead?: unknown }).workspaceRead !== "design/")
-  ) {
-    throw new Error("Base GUI capability scope 同意参数无效");
-  }
-  return {
-    appId: assertAppId(input.appId),
-    grantedCapabilities: [...new Set(input.grantedCapabilities)] as import("../../../../shared/apps-ipc").BaseGuiCapability[],
-    grantedHostActions: [...new Set(hostActions)] as import("../../../../shared/apps-ipc").BaseGuiHostActionCapability[],
-    grantedCapabilityScopes: scopes as import("../../../../shared/apps-ipc").BaseGuiCapabilityScopes,
-  };
-}
-
-function assertPromoteInput(raw: unknown) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("promote 参数无效");
-  }
-  const input = raw as {
-    appId?: unknown;
-    expectedConsentRevision?: unknown;
-  };
-  if (
-    typeof input.appId !== "string" ||
-    !Number.isInteger(input.expectedConsentRevision)
-  ) {
-    throw new Error("promote 参数无效");
-  }
-  return {
-    appId: assertAppId(input.appId),
-    expectedConsentRevision: input.expectedConsentRevision as number,
-  };
-}

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, and all shared renderer IPC contracts
- * [OUTPUT]: Denies WebRTC in every frame main world, then exposes sandboxed typed product bridges, including exact-Project Tools and scoped MCP APIs, only in the top frame
+ * [OUTPUT]: Denies WebRTC in every frame main world, then exposes role-filtered typed bridges including a read-only file-manager fact, ID-only Project Reveal, bounded Chat timeline/find queries, fenced App grants, surface navigation, App Pin, exact-Project Tools, and scoped MCP only in trusted top frames
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge
  */
 
@@ -10,7 +10,11 @@ import {
   webUtils,
   type IpcRendererEvent,
 } from "electron";
-import { APP_CHANNEL, type AppBridgeApi } from "../../shared/app-ipc";
+import {
+  APP_CHANNEL,
+  systemFileManagerForPlatform,
+  type AppBridgeApi,
+} from "../../shared/app-ipc";
 import {
   APPS_CHANNEL,
   type AddAppInput,
@@ -186,6 +190,8 @@ contextBridge.exposeInMainWorld("windowSurfaces", {
   context: windowContext,
   residence: (surface) =>
     ipcRenderer.invoke(WINDOW_SURFACES_CHANNEL.residence, surface),
+  beginNavigationIntent: (input) =>
+    ipcRenderer.invoke(WINDOW_SURFACES_CHANNEL.navigationIntent, input),
   showSurface: (input) =>
     ipcRenderer.invoke(WINDOW_SURFACES_CHANNEL.show, input),
   openInWindow: (input) =>
@@ -279,6 +285,7 @@ contextBridge.exposeInMainWorld("agent", {
 } satisfies AgentBridgeApi);
 
 contextBridge.exposeInMainWorld("app", {
+  systemFileManager: systemFileManagerForPlatform(process.platform),
   openExternal: (url: string) =>
     ipcRenderer.invoke(APP_CHANNEL.openExternal, url),
   writeClipboard: (text: string) =>
@@ -373,6 +380,8 @@ contextBridge.exposeInMainWorld("apps", {
   setDefaultGrant: (input) =>
     ipcRenderer.invoke(APPS_CHANNEL.setDefaultGrant, input),
   listGrantSources: () => ipcRenderer.invoke(APPS_CHANNEL.listGrantSources),
+  listGrantCandidates: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.listGrantCandidates, input),
   listAvailable: (input) =>
     ipcRenderer.invoke(APPS_CHANNEL.listAvailable, input),
   acquireSurface: (input) =>
@@ -394,16 +403,26 @@ contextBridge.exposeInMainWorld("apps", {
   rename: (input) => ipcRenderer.invoke(APPS_CHANNEL.rename, input),
   ensureChatSlot: (input) =>
     ipcRenderer.invoke(APPS_CHANNEL.ensureChatSlot, input),
+  listUseHistory: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.listUseHistory, input),
+  openUseChat: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.openUseChat, input),
+  newUseChat: (appId, requestId) =>
+    ipcRenderer.invoke(APPS_CHANNEL.newUseChat, appId, requestId),
+  openEditor: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.openEditor, input),
+  openEditorChat: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.openEditorChat, input),
+  hideEditor: (appId) =>
+    ipcRenderer.invoke(APPS_CHANNEL.hideEditor, appId),
   retrySkill: (appId) =>
     ipcRenderer.invoke(APPS_CHANNEL.retrySkill, appId),
-  resolveExtensionConsent: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.resolveExtensionConsent, input),
-  resolveBaseGuiConsent: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.resolveBaseGuiConsent, input),
-  revokeBaseGuiAccess: (appId) =>
-    ipcRenderer.invoke(APPS_CHANNEL.revokeBaseGuiAccess, appId),
-  promoteGeneration: (input) =>
-    ipcRenderer.invoke(APPS_CHANNEL.promoteGeneration, input),
+  authorizeStudioAccess: (appId) =>
+    ipcRenderer.invoke(APPS_CHANNEL.authorizeStudioAccess, appId),
+  declineStudioAccess: (appId) =>
+    ipcRenderer.invoke(APPS_CHANNEL.declineStudioAccess, appId),
+  revokeStudioAccess: (appId) =>
+    ipcRenderer.invoke(APPS_CHANNEL.revokeStudioAccess, appId),
   extensionStatus: (appId) =>
     ipcRenderer.invoke(APPS_CHANNEL.extensionStatus, appId),
   revokeExtensionGrant: (appId) =>
@@ -413,9 +432,18 @@ contextBridge.exposeInMainWorld("apps", {
   capabilities: (appId) =>
     ipcRenderer.invoke(APPS_CHANNEL.capabilities, appId),
   guiInfo: (input) => ipcRenderer.invoke(APPS_CHANNEL.guiInfo, input),
+  guiReady: (input) => ipcRenderer.invoke(APPS_CHANNEL.guiReady, input),
   releaseGuiSurface: (input) =>
     ipcRenderer.invoke(APPS_CHANNEL.releaseGuiSurface, input),
-  setOpenMode: (input) => ipcRenderer.invoke(APPS_CHANNEL.setOpenMode, input),
+  fileExportBegin: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.fileExportBegin, input),
+  fileExportWrite: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.fileExportWrite, input),
+  fileExportFinalize: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.fileExportFinalize, input),
+  fileExportCancel: (input) =>
+    ipcRenderer.invoke(APPS_CHANNEL.fileExportCancel, input),
+  setPinned: (input) => ipcRenderer.invoke(APPS_CHANNEL.setPinned, input),
   importDesignCanvas: (input) =>
     ipcRenderer.invoke(APPS_CHANNEL.importDesignCanvas, input),
   listDesignImportCandidates: (input) =>
@@ -463,9 +491,12 @@ contextBridge.exposeInMainWorld("apps", {
 
 contextBridge.exposeInMainWorld("chats", {
   list: () => ipcRenderer.invoke(CHATS_CHANNEL.list),
-  get: (chatId: string) => ipcRenderer.invoke(CHATS_CHANNEL.get, chatId),
-  messagesSnapshot: (chatId: string) =>
-    ipcRenderer.invoke(CHATS_CHANNEL.messagesSnapshot, chatId),
+  runtimeContext: (chatId: string) =>
+    ipcRenderer.invoke(CHATS_CHANNEL.runtimeContext, chatId),
+  timelinePage: (input) => ipcRenderer.invoke(CHATS_CHANNEL.timelinePage, input),
+  timelineAround: (input) => ipcRenderer.invoke(CHATS_CHANNEL.timelineAround, input),
+  outlinePage: (input) => ipcRenderer.invoke(CHATS_CHANNEL.outlinePage, input),
+  findMessages: (input) => ipcRenderer.invoke(CHATS_CHANNEL.findMessages, input),
   create: (input) => ipcRenderer.invoke(CHATS_CHANNEL.create, input),
   createForApp: (input) =>
     ipcRenderer.invoke(CHATS_CHANNEL.createForApp, input),
@@ -494,6 +525,8 @@ contextBridge.exposeInMainWorld("bases", {
     ipcRenderer.invoke(BASES_CHANNEL.discardCorrupt, input),
   listPinned: () => ipcRenderer.invoke(BASES_CHANNEL.listPinned),
   listProjectBases: () => ipcRenderer.invoke(BASES_CHANNEL.listProject),
+  removeManaged: (input) =>
+    ipcRenderer.invoke(BASES_CHANNEL.removeManaged, input),
   authorizeMutation: (input) =>
     ipcRenderer.invoke(BASES_CHANNEL.authorizeMutation, input),
   updateMeta: (input) => ipcRenderer.invoke(BASES_CHANNEL.updateMeta, input),
@@ -529,6 +562,8 @@ contextBridge.exposeInMainWorld("projects", {
     ipcRenderer.invoke(PROJECTS_CHANNEL.rename, projectId, name),
   setAppearance: (projectId, appearance) =>
     ipcRenderer.invoke(PROJECTS_CHANNEL.setAppearance, projectId, appearance),
+  setAppPinned: (input) =>
+    ipcRenderer.invoke(PROJECTS_CHANNEL.setAppPinned, input),
   detachLocal: (projectId: string) =>
     ipcRenderer.invoke(PROJECTS_CHANNEL.detachLocal, projectId),
   releaseMissing: (projectId: string) =>
@@ -541,12 +576,8 @@ contextBridge.exposeInMainWorld("projects", {
     ipcRenderer.invoke(PROJECTS_CHANNEL.checkoutBranch, projectId, target),
   createBranch: (projectId, name) =>
     ipcRenderer.invoke(PROJECTS_CHANNEL.createBranch, projectId, name),
-  chooseWorkspaceBinding: (projectId, mode) =>
-    ipcRenderer.invoke(
-      PROJECTS_CHANNEL.chooseWorkspaceBinding,
-      projectId,
-      mode
-    ),
+  reveal: (projectId) =>
+    ipcRenderer.invoke(PROJECTS_CHANNEL.reveal, projectId),
   onEvent: subscribe<ProjectsEvent>(PROJECTS_CHANNEL.event),
 } satisfies ProjectsBridgeApi);
 
@@ -559,18 +590,7 @@ contextBridge.exposeInMainWorld("historyImport", {
     ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.setProjectEnabled, projectId, enabled),
   refreshProject: (projectId) =>
     ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.refreshProject, projectId),
-  renameSession: (opaqueId, title) =>
-    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.renameSession, opaqueId, title),
-  setSessionArchived: (opaqueId, archived) =>
-    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.setSessionArchived, opaqueId, archived),
-  transcript: (input) =>
-    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.transcript, input),
-  transcriptIndex: (input) =>
-    ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.transcriptIndex, input),
-  cancelTranscript: (requestId) =>
-    ipcRenderer.send(HISTORY_IMPORT_CHANNEL.cancelTranscript, requestId),
   adopt: (input) => ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.adopt, input),
-  adoptionPrefix: (chatId) => ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.adoptionPrefix, chatId),
   memoryEligibility: (input) =>
     ipcRenderer.invoke(HISTORY_IMPORT_CHANNEL.memoryEligibility, input),
   memoryPreview: (input) =>

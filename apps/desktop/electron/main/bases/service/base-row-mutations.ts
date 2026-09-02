@@ -1,15 +1,17 @@
 /**
- * [INPUT]: Depends on BaseStore Single owner tasks, shared Base row/meta types, view scrub and mutation verification rules
- * [OUTPUT]: Provides BaseRow Mutations to commitInsert/commitPatch/commitDelete to perform CAS, validation, App GUI attachment rows with read-only, no-op and event projection
- * [POS]: The normal line mutation core of bases/service; BasesService only keeps entries, authority and event order
+ * [INPUT]: Depends on BaseStore single-owner queues, shared Base row/meta/navigation types, view scrubbing, and mutation validation
+ * [OUTPUT]: Provides CAS row/meta mutations, pin-to-navigation reconciliation, App GUI attachment rules, no-op detection, and event projection
+ * [POS]: Base mutation core; BasesService owns authority and event order while this module owns canonical state transitions
  */
 
 import type { AppBaseDataMigrationFile } from "../../../../shared/app-data-migration";
 import {
+  baseNavigationOf,
   BASE_ROW_LIMIT,
   type BaseChangedEvent,
   type BaseCellValue,
   type BaseColumn,
+  type BaseMeta,
   type BaseMetaPatch,
   type BaseRow,
   type BaseRowPatch,
@@ -47,6 +49,7 @@ const sameRow = (left: BaseRow, right: BaseRow) =>
 type MutationIdentity = { ownerInstanceId: string };
 
 type BaseRowMutationsOptions = {
+  now(): number;
   assertAdmission(): void;
   mutationIdentity(
     ownerKey: string,
@@ -143,7 +146,12 @@ export class BaseRowMutations {
             current.meta.revision
           );
         }
-        const rawMeta = { ...current.meta, ...clone(input.patch) };
+        const rawMeta = reconcilePinnedNavigation(
+          current.meta,
+          { ...current.meta, ...clone(input.patch) },
+          input.patch,
+          this.options.now()
+        );
         assertStableColumnTypes(current.meta.columns, rawMeta.columns);
         const removed = new Set(
           current.meta.columns
@@ -580,6 +588,39 @@ export class BaseRowMutations {
     }
     return { snapshot, removedRowIds, missingRowIds, replayed };
   }
+}
+
+function reconcilePinnedNavigation(
+  current: BaseMeta,
+  next: BaseMeta,
+  patch: BaseMetaPatch,
+  now: number
+): BaseMeta {
+  if (patch.pinned === undefined) return next;
+  if (patch.pinned) {
+    return {
+      ...next,
+      navigation: {
+        kind: "root-user-managed",
+        source: "legacy-pin",
+        activatedAt: now,
+      },
+    };
+  }
+  const navigation = baseNavigationOf(current);
+  if (
+    navigation.kind === "root-user-managed" &&
+    navigation.source === "retained-app-data"
+  ) {
+    return { ...next, pinned: true, navigation };
+  }
+  return {
+    ...next,
+    navigation:
+      current.owner.kind === "project"
+        ? { kind: "project-contained", projectId: current.owner.projectId }
+        : { kind: "conversation-contained", chatId: current.owner.chatId },
+  };
 }
 
 /**

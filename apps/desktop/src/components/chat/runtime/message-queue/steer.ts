@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared Steer receipt/outbox Projection, RichValue and message queue pure state machine
+ * [INPUT]: Depends on shared Steer receipt/outbox Projection, RichValue, message queue pure state machine, and renderer locale/catalog runtime
  * [OUTPUT]: Provides Steer attach Deposit, derived manual custody, migration, receipt, collection, local assembly, back and transfer divergent migration
  * [POS]: Steer state boundary of runtime/message-queue; The journal distinguishes between previous local failure and uncertainty after trying IPC
  */
@@ -25,6 +25,8 @@ import {
   type QueuedPrompt,
 } from "@/lib/message-queue-model";
 import { errorMessage } from "@/lib/errors";
+import { effectiveLocale } from "@/lib/i18n-locale";
+import { translate } from "../../../../../shared/i18n/runtime";
 
 function recoveredPrompt(intent: SteerOutboxProjection): QueuedPrompt | null {
   const recovery = intent.recovery;
@@ -112,7 +114,8 @@ export function reconcileSteerIntents(
       if (item) {
         queue = setQueueError(
           resetIdentity(queue, item.id),
-          intent.reason ?? "steering 未完成，消息已退回队列"
+          intent.reason ??
+            translate(effectiveLocale(), "chat.runtime.queue.steerReturned")
         );
         recovered = true;
       } else {
@@ -133,11 +136,18 @@ export function reconcileSteerIntents(
                       recoveredItem.id
                     ),
                     intent.reason ??
-                      "消息含重启前的资源；请选择精确重发或删除"
+                      translate(
+                        effectiveLocale(),
+                        "chat.runtime.queue.staleResourcesDecision"
+                      )
                   )
                 : setQueueError(
                     result.queue,
-                    intent.reason ?? "steering 未完成，消息已退回队列"
+                    intent.reason ??
+                      translate(
+                        effectiveLocale(),
+                        "chat.runtime.queue.steerReturned"
+                      )
                   );
             recovered = intent.recovery?.mode === "editable";
           }
@@ -172,7 +182,10 @@ export function reconcileSteerIntents(
         if (intent.recovery?.mode === "decision") {
           queue = setQueueError(
             markWorkspaceInvalidated(queue, custodyItem.id),
-            "消息含重启前的 Workspace 资源；只能等待精确结果或删除"
+            translate(
+              effectiveLocale(),
+              "chat.runtime.queue.staleWorkspaceWait"
+            )
           );
         }
       }
@@ -207,7 +220,9 @@ export const failLocalSteerAssembly = (
   const editable = unclaimed === queue ? resetIdentity(queue, id) : unclaimed;
   return setQueueError(
     editable,
-    `无法准备插入消息：${errorMessage(cause)}`
+    translate(effectiveLocale(), "chat.runtime.queue.steerPrepareFailed", {
+      message: errorMessage(cause),
+    })
   );
 };
 
@@ -219,7 +234,9 @@ export const markSteerTransportAmbiguous = (
 ) =>
   setQueueError(
     markAmbiguous(queue, id, outboxRef),
-    `无法确认消息是否已插入：${errorMessage(cause)}`
+    translate(effectiveLocale(), "chat.runtime.queue.steerVerifyFailed", {
+      message: errorMessage(cause),
+    })
   );
 
 export function settleSteerReceipt(
@@ -236,15 +253,24 @@ export function settleSteerReceipt(
     queue = settleItem(queue, id, owner);
     ack = result.persistState === "persisted";
     if (result.persistState === "pending") {
-      notice = "消息已插入，历史记录正在补写。";
+      notice = translate(
+        effectiveLocale(),
+        "chat.runtime.queue.steerHistoryPending"
+      );
     }
   } else if (result.outcome === "unconsumed") {
     queue = markManualCustody(queue, id, result.derivedIntentId);
-    notice = "消息未被当前 turn 消费，已排为下一条。";
+    notice = translate(
+      effectiveLocale(),
+      "chat.runtime.queue.steerQueuedNext"
+    );
   } else if (result.outcome === "ambiguous") {
     queue = setQueueError(
       markAmbiguous(queue, id, outboxRef),
-      "无法确认消息是否已送达，请核对对话后选择重发或删除。"
+      translate(
+        effectiveLocale(),
+        "chat.runtime.queue.steerDeliveryUnknown"
+      )
     );
   } else if (result.outcome === "dismissed") {
     queue = settleItem(queue, id, owner);

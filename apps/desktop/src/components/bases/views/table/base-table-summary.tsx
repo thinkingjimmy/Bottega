@@ -37,9 +37,22 @@ import {
   type BaseRow,
 } from "../../../../../shared/bases-ipc";
 
-/* 聚合的身份是 id，名字归目录：这里再抄一份英文表就等于把语言焊死在算子上。 */
+/* 编译器同时核对算子全集与目录寻址；新增聚合若没补文案会直接 typecheck 红。 */
+const AGGREGATION_LABEL_KEYS = {
+  average: "bases.summary.aggregation.average",
+  empty: "bases.summary.aggregation.empty",
+  filled: "bases.summary.aggregation.filled",
+  max: "bases.summary.aggregation.max",
+  median: "bases.summary.aggregation.median",
+  min: "bases.summary.aggregation.min",
+  range: "bases.summary.aggregation.range",
+  stddev: "bases.summary.aggregation.stddev",
+  sum: "bases.summary.aggregation.sum",
+  unique: "bases.summary.aggregation.unique",
+} as const satisfies Record<BaseAggregation, string>;
 const aggregationLabelKey = (aggregation: BaseAggregation) =>
-  `bases.summary.aggregation.${aggregation}`;
+  AGGREGATION_LABEL_KEYS[aggregation];
+const defaultNumberAggregation = (): BaseAggregation => "sum";
 
 export function BaseTableSummaryCells({
   columns,
@@ -121,7 +134,7 @@ function SummaryCell({
   const [open, setOpen] = useState(false);
   const aggregation =
     aggregationSetting === undefined && column.type === "number"
-      ? "sum"
+      ? defaultNumberAggregation()
       : aggregationSetting ?? undefined;
   const values = useMemo(
     () =>

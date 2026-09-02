@@ -1,31 +1,39 @@
 /**
- * [INPUT]: Depends on AvailableAttachedApp, apps-client only view/express open/stop, three-tiered BaseWorkbench, AppGrantCard and attachment lease
- * [OUTPUT]: Provides AppTabPanel; Unmanifested open time 0 start, read/row-write shared six views Base projection, Chat deny keep clear Recovery, disabled/delete keep original tombstone
- * [POS]: The general App tab shell for chat/side-panel; Navigation slots, authorization and runtime triangles are not interrelated
+ * [INPUT]: Depends on AvailableAttachedApp, apps-client surface/open/stop/file-export controls, BaseWorkbench, the grant failure notice, attachment leases, router data navigation, the shared AppAuthorizationDialog, and the localized App-tab catalog
+ * [OUTPUT]: Provides AppTabPanel with localized loading, tombstone and distinct unauthorized states, an inline authorization entry, data-surface navigation and file export from GUI host actions, last-turn failure disclosure, and data or trusted-GUI surfaces
+ * [POS]: General App tab shell for chat/side-panel; it opens the same shared authorization dialog the tab badge does and never maintains a second permission flow
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type {
   AppAttachmentSurface,
   AppRecord,
   AvailableAttachedApp,
+  BaseGuiHostAction,
 } from "../../../../shared/apps-ipc";
+import { canonicalAppSurfaceRoute } from "../../../../shared/window-surfaces-ipc";
 import {
   appOriginWithoutStart,
   acquireAppSurface,
+  beginAppFileExport,
+  cancelAppFileExport,
+  finalizeAppFileExport,
   listApps,
   openApp,
   stopApp,
   releaseAppSurface,
+  writeAppFileExport,
 } from "@/lib/apps-client";
-import { AppGrantCard } from "./app-grant-card";
+import { AppAuthorizationDialog } from "@/components/apps/authorization/app-authorization-dialog";
+import { AppGrantNotice } from "./grant/app-grant-notice";
 import { BaseWorkbench } from "@/components/bases/base-workbench";
 import { AppGuiSurface } from "@/components/apps/app-gui-surface";
 import { useAppGui } from "@/components/apps/use-app-gui";
 import { appendComposerText } from "@/lib/chat-composer-store";
 import { focusComposer } from "@/lib/gallery/focus-controller";
-import { DesignHistoryControls } from "@/components/apps/design/design-history-controls";
+import { DesignHistoryButton } from "@/components/apps/design/design-history-dialog";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 async function loadAppPanelState(appId: string) {
@@ -44,13 +52,11 @@ export function AppTabPanel({
   chatId,
   incarnationId,
   visible,
-  onRefresh,
 }: {
   app: AvailableAttachedApp;
   chatId: string;
   incarnationId: string;
   visible: boolean;
-  onRefresh: () => void;
 }) {
   const { t } = useAppTranslation();
   const [record, setRecord] = useState<AppRecord | null>(null);
@@ -70,6 +76,62 @@ export function AppTabPanel({
       : "",
   });
   const granted = app.effectiveGrant !== null;
+  const [authorizeOpen, setAuthorizeOpen] = useState(false);
+  const navigate = useNavigate();
+  /* 数据面的去处与 Base App Studio 完全同一个：`/apps/{id}/data`。侧栏这一格
+     没有第二个页签可切，所以「去数据」就是产品里那条既有的数据导航；viewId
+     随 location.state 一起过去，那边同一个 requestedView 消费它。 */
+  const openData = useCallback(
+    (viewId?: string) =>
+      navigate(canonicalAppSurfaceRoute(app.appId, "data"), {
+        state: viewId ? { requestedViewId: viewId } : undefined,
+      }),
+    [app.appId, navigate]
+  );
+  /* file.export 在这一格是能落地的：main 侧只要求「面租约属于本 App + 本
+     会话驻留 + 一次可信手势」，chat-tab 租约三样都有。从前这里一律 return
+     false，把一个真能做的动作说成做不了。 */
+  const hostAction = useCallback(
+    (
+      action: BaseGuiHostAction,
+      context: Readonly<{ trustedGestureAt: number | null }>,
+      exportSurface: Readonly<{
+        appId: string;
+        surfaceId: string;
+        appSurfaceLeaseId: string;
+      }>
+    ) => {
+      if (action.type === "compose-text") {
+        const accepted = appendComposerText(chatId, action.text);
+        if (accepted) focusComposer(chatId);
+        return Promise.resolve(accepted);
+      }
+      if (action.type === "open-data" || action.type === "open-data-view") {
+        openData(action.type === "open-data-view" ? action.viewId : undefined);
+        return Promise.resolve(true);
+      }
+      if (action.type === "file.export.begin") {
+        if (context.trustedGestureAt === null) return Promise.resolve(false);
+        return beginAppFileExport({
+          surface: exportSurface,
+          request: action.request,
+          trustedGestureAt: context.trustedGestureAt,
+        });
+      }
+      if (action.type === "file.export.chunk") {
+        return writeAppFileExport({
+          surface: exportSurface,
+          header: action.header,
+          bytes: action.bytes,
+        });
+      }
+      if (action.type === "file.export.finalize") {
+        return finalizeAppFileExport({ surface: exportSurface, exportId: action.exportId });
+      }
+      return cancelAppFileExport({ surface: exportSurface, exportId: action.exportId });
+    },
+    [chatId, openData]
+  );
   const refresh = useCallback(async () => {
     const next = await loadAppPanelState(app.appId);
     setRecord(next.record);
@@ -85,13 +147,17 @@ export function AppTabPanel({
       })
       .catch((cause) => {
         if (active) {
-          setError(cause instanceof Error ? cause.message : "App 状态读取失败");
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : t("chat.sidePanel.appTab.readFailed")
+          );
         }
       });
     return () => {
       active = false;
     };
-  }, [app.appId]);
+  }, [app.appId, t]);
   useEffect(() => {
     if (!granted) return;
     let active = true;
@@ -109,37 +175,45 @@ export function AppTabPanel({
       })
       .catch((cause) => {
         if (active) {
-          setError(cause instanceof Error ? cause.message : "App surface 签发失败");
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : t("chat.sidePanel.appTab.surfaceFailed")
+          );
         }
       });
     return () => {
       active = false;
       if (leaseId) void releaseAppSurface(leaseId);
     };
-  }, [app.appId, chatId, granted, incarnationId]);
+  }, [app.appId, chatId, granted, incarnationId, t]);
   if (!record || record.state !== "ready" || !record.generationBinding.active) {
     return (
       <div className="grid min-h-0 flex-1 place-items-center px-6 text-center text-muted-foreground text-sm">
-        {error || "App 已失效或正在删除；slot 已保留，但不会签发 runtime/data 能力。"}
+        {error || t("chat.sidePanel.appTab.unavailable")}
       </div>
     );
   }
   const noData = record.domainIdentity?.kind === "no-data";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AppGrantCard
-        conversationId={chatId}
-        grant={app.effectiveGrant}
-        onChanged={() => {
-          onRefresh();
-          void refresh();
-        }}
-        record={record}
-        target={{ kind: "chat", chatId }}
-      />
+      {/* 权限档位归 tab 上那颗盾；这里只在真的出事时让出一条横幅的高度 */}
+      {app.effectiveGrant && (
+        <AppGrantNotice appId={app.appId} chatId={chatId} />
+      )}
       {!app.effectiveGrant ? (
-        <div className="grid min-h-0 flex-1 place-items-center px-6 text-center text-muted-foreground text-sm">
-          此 Chat 已显式关闭该 App。清除 Chat 覆盖后会重新继承 Project 或默认全局授权。
+        /* 「未授权」不是「已失效」。从前两态共用一句话，说的还是错的那一句，
+           而且没有出口——盾在页签上，用户得先猜到它在那里。这里把同一个
+           对话框摆在人正看着的地方，措辞照实说。 */
+        <div className="grid min-h-0 flex-1 place-items-center gap-3 px-6 text-center text-sm">
+          <div className="flex flex-col items-center gap-3">
+            <p className="text-muted-foreground">
+              {t("chat.sidePanel.appTab.notAuthorized")}
+            </p>
+            <Button onClick={() => setAuthorizeOpen(true)} variant="outline">
+              {t("chat.sidePanel.appTab.authorize")}
+            </Button>
+          </div>
         </div>
       ) : noData ? (
         origin ? (
@@ -153,7 +227,7 @@ export function AppTabPanel({
             />
             {record.manifest?.kind === "server" && (
               <Button className="m-3" onClick={() => void stopApp(record.id).then(refresh)} variant="outline">
-                停止 App
+                {t("chat.sidePanel.appTab.stop")}
               </Button>
             )}
           </>
@@ -164,11 +238,15 @@ export function AppTabPanel({
                 void openApp(record.id)
                   .then((result) => setOrigin(result.origin))
                   .catch((cause) =>
-                    setError(cause instanceof Error ? cause.message : "启动失败")
+                    setError(
+                      cause instanceof Error
+                        ? cause.message
+                        : t("chat.sidePanel.appTab.startFailed")
+                    )
                   )
               }
             >
-              打开 App
+              {t("chat.sidePanel.appTab.open")}
             </Button>
           </div>
         )
@@ -178,20 +256,19 @@ export function AppTabPanel({
         designGui && surface ? (
           <AppGuiSurface
             gui={gui}
-            onGoToData={() => undefined}
-            toolbar={<DesignHistoryControls
+            onGoToData={() => openData()}
+            toolbar={<DesignHistoryButton
               appId={record.id}
               appSurfaceLeaseId={surface.surfaceLeaseId}
               onRestored={gui.refresh}
             />}
-            onHostAction={(action) => {
-              if (action.type === "compose-text") {
-                const accepted = appendComposerText(chatId, action.text);
-                if (accepted) focusComposer(chatId);
-                return accepted;
-              }
-              return false;
-            }}
+            onHostAction={(action, context) =>
+              hostAction(action, context, {
+                appId: record.id,
+                surfaceId: gui.surfaceId,
+                appSurfaceLeaseId: surface.surfaceLeaseId,
+              })
+            }
           />
         ) : !record.domainIdentity || record.domainIdentity.kind === "no-data" ? null : surface?.ownerKey &&
           surface.dataGrant?.kind === "base" ? (
@@ -215,6 +292,20 @@ export function AppTabPanel({
           </div>
         )
       )}
+      {/* 与页签上那颗盾开的是同一个对话框：授权只有一个编辑器，这里只是
+          把它的入口放到用户正在看的那一格里。 */}
+      <AppAuthorizationDialog
+        appId={app.appId}
+        mode="edit"
+        onCommitted={refresh}
+        onOpenChange={setAuthorizeOpen}
+        open={authorizeOpen}
+        target={{
+          kind: "chat",
+          chatId,
+          expectedConversationIncarnationId: incarnationId,
+        }}
+      />
     </div>
   );
 }

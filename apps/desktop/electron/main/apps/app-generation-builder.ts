@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on App generation plans, durable participant ledgers, Extension/Base GUI participants, server cutover, and sealed artifact storage
- * [OUTPUT]: Provides generation build staging, participant checkpoints, rollback, artifact cleanup, and post-commit settlement
+ * [OUTPUT]: Provides generation build staging, compatibility-bound Base GUI decisions, Studio-pending GUI generations, participant checkpoints, rollback, artifact cleanup, and post-commit settlement
  * [POS]: App generation saga owner beneath AppStore; AppStore retains record serialization and public lifecycle commands
  */
 
@@ -15,6 +15,7 @@ import type { AppExtensionGenerationPort } from "./app-extension-generation";
 import type { AppGenerationBuildParticipantRegistry } from "../lifecycle/app-generation-build-participants";
 import type { BaseGuiGrantStore } from "./base-gui/grant-store";
 import type { BaseGuiBuildParticipant } from "./base-gui/build-participant";
+import type { AppGuiBuildService } from "./gui-build/service";
 import { removePackageArtifact, sealPackageArtifact } from "./share/package-contract";
 import {
   allParticipantsPromotable,
@@ -42,6 +43,7 @@ export type AppGenerationBuilderHost = Readonly<{
   extensions(): AppExtensionGenerationPort | null;
   baseGuiGrants(): BaseGuiGrantStore | null;
   baseGuiParticipant(): BaseGuiBuildParticipant | null;
+  appGuiCompiler(): AppGuiBuildService | null;
 }>;
 
 export class AppGenerationBuilder {
@@ -53,6 +55,7 @@ export class AppGenerationBuilder {
   private get extensions() { return this.host.extensions(); }
   private get baseGuiGrants() { return this.host.baseGuiGrants(); }
   private get baseGuiParticipant() { return this.host.baseGuiParticipant(); }
+  private get appGuiCompiler() { return this.host.appGuiCompiler(); }
   private get(appId: string) { return this.host.get(appId); }
   private artifactRoot(appId: string, generationId: string) { return this.host.artifactRoot(appId, generationId); }
   private commitRecord(record: AppRecord, appId: string, previous?: AppRecord) {
@@ -65,26 +68,38 @@ export class AppGenerationBuilder {
     options: GenerationPlanOptions = {}
   ) {
     const previous = this.host.get(record.id);
-    const plan = await planGeneration(record, previous, options);
-    if (!plan) return this.commitRecord(record, record.id, previous);
-    await sealPackageArtifact({
-      source: plan.sourceDir,
-      finalRoot: this.artifactRoot(record.id, plan.generationId),
-      manifest: plan.manifest,
-      expected: plan.digests,
-    });
+    const compiledManifest = record.manifest?.kind === "base" && record.manifest.gui?.build
+      ? record.manifest
+      : null;
+    const compiled = options.compiled ?? (compiledManifest
+      ? await this.requireAppGuiCompiler().prepare({
+          appId: record.id,
+          sourceRoot: options.sourceDir ?? record.dir,
+          manifest: compiledManifest,
+        })
+      : null);
     let operation: AppGenerationBuildOperation | null = null;
+    let plan: NewGenerationPlan | null = null;
     let committed = false;
     try {
+      plan = await planGeneration(record, previous, { ...options, ...(compiled ? { compiled } : {}) });
+      if (!plan) return this.commitRecord(record, record.id, previous);
+      if (compiled) {
+        await compiled.seal(this.artifactRoot(record.id, plan.generationId));
+      } else {
+        await sealPackageArtifact({
+          source: plan.sourceDir,
+          finalRoot: this.artifactRoot(record.id, plan.generationId),
+          manifest: plan.manifest,
+          expected: plan.digests,
+        });
+      }
       operation = await this.beginBuild(plan);
       /* 有声明就必须先拿到 participant 的 prepared handoff：pending 代只引用
          committed reservation 与 decision，永不直接 CAS active。 */
       const staged = plan.declarations.length
         ? await this.stageExtension(plan, operation)
-        : {
-            record: bindActive(plan, sealGeneration(plan, { kind: "none" })),
-            operation: null,
-          };
+        : this.stageWithoutExtensions(plan);
       if (staged.operation) operation = staged.operation;
       const capabilityBound = await this.bindBaseGuiCapability(
         plan,
@@ -98,7 +113,7 @@ export class AppGenerationBuilder {
       await this.settleBuild(plan, operation);
       return this.get(record.id)!;
     } catch (cause) {
-      if (!committed) {
+      if (!committed && plan) {
         try {
           await this.rollbackBuild(plan, operation);
         } catch (rollbackCause) {
@@ -109,7 +124,42 @@ export class AppGenerationBuilder {
         }
       }
       throw cause;
+    } finally {
+      await compiled?.cleanup();
     }
+  }
+
+  private requireAppGuiCompiler() {
+    if (!this.appGuiCompiler) {
+      throw Object.assign(new Error("compiled App GUI compiler is unavailable"), {
+        code: "GUI_COMPILER_SANDBOX_UNAVAILABLE",
+      });
+    }
+    return this.appGuiCompiler;
+  }
+
+  /**
+   * 有 GUI 的 Base generation 即使没声明可写 capability，也必须先停在 pending：
+   * read-only Studio grant 仍需显式落盘，不能被 bindActive 偷跑越过授权点。
+   */
+  private stageWithoutExtensions(plan: NewGenerationPlan) {
+    const generation = sealGeneration(plan, { kind: "none" });
+    if (plan.manifest.kind !== "base" || !plan.manifest.gui) {
+      return { record: bindActive(plan, generation), operation: null };
+    }
+    return {
+      record: bindCapabilityPending(plan, generation, plan.base, {
+        generationId: generation.generationId,
+        expectedActiveGenerationId: plan.previousActiveId,
+        resolutionDigest: generation.contentDigest,
+        packageGenerationReservationId: `studio:${generation.generationId}`,
+        runtime: runtimeBinding(plan),
+        consentDecisionId: `studio:${generation.generationId}`,
+        expectedConsentRevision: 0,
+        state: "ready-to-promote",
+      }),
+      operation: null,
+    };
   }
 
   private async bindBaseGuiCapability(
@@ -161,6 +211,14 @@ export class AppGenerationBuilder {
         requestedCapabilityScopes: plan.requestedBaseGuiCapabilityScopes,
       });
     }
+    if (!generation.compatibilityRefDigest) {
+      throw new Error("Base GUI generation compatibility ref 尚未 sealed");
+    }
+    decision = await this.baseGuiGrants.bindCompatibility({
+      appId: plan.base.id,
+      generationId: generation.generationId,
+      compatibilityRefDigest: generation.compatibilityRefDigest,
+    }) ?? decision;
     if (!record.generationBinding.pending && decision.state === "approved") {
       return { record, operation };
     }

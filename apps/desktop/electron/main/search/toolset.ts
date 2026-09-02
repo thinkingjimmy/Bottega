@@ -1,24 +1,32 @@
 /**
  * [INPUT]: Depends on ChatStore, BaseStore owner listing, Project archiving narrow queries, search/query flow locator, event loop yield and builtin result
- * [OUTPUT]: Provides Section chat/Base search; Project Base only scans once and carries the ownerKey, the zero-member section ID=null and the archive status is still correct
+ * [OUTPUT]: Provides Section chat/Base search over keyset Chat-document pages; a Project Base is scanned once and carries its ownerKey, a zero-member Section keeps id=null with its archive state intact, and hits whose Chat was rewritten or removed count as skipped_sections instead of failing the call
  * [POS]: The only IO layer in the search domain; Only short read photos are expired but the version is consistent
  */
 
 import { createHash } from "node:crypto";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
-import { ownerFromKey } from "../../../shared/bases-ipc";
-import { BaseCorruptError, BaseIncarnationError, type BaseStore } from "../bases/base-store";
-import { ChatLedgerCorruptError, ChatNotFoundError } from "../chats/chat-commit";
+import { baseNavigationOf, ownerFromKey } from "../../../shared/bases-ipc";
+import {
+  appearsInSearchBase,
+  searchDestination,
+} from "../../../shared/placement/search";
+import type { BaseStore } from "../bases/base-store";
 import type { ChatStore } from "../chats/chat-store";
+import type {
+  SearchDocumentCursor,
+  SearchDocumentHit,
+} from "../chats/sqlite/database-protocol";
 import type { BuiltinToolContext, BuiltinToolset } from "../tools/registry";
 import { builtinCallToolResultBytes } from "../tools/result";
 import {
   makeSnippet,
+  matchTokens,
   normalize,
   scanBase,
-  scanChat,
   tokenize,
   type Checkpoint,
+  type ScanCounter,
   type ScanEvent,
   type SearchLocator,
 } from "./query";
@@ -71,8 +79,8 @@ async function search(
   const tokens = tokenize(args.query);
   const queryHash = hash(normalize(args.query));
   const offset = decodeCursor(args.cursor, kind, queryHash);
-  const skipped = { count: 0 };
-  const events = sourceEvents(chats, bases, kind, tokens, skipped);
+  const counter: ScanCounter = { scanned: 0, skipped: 0 };
+  const events = sourceEvents(chats, bases, kind, tokens, counter);
   const hits: Array<Record<string, unknown>> = [];
   const byteLimit = Math.min(
     SEARCH_RESULT_BYTE_LIMIT,
@@ -89,7 +97,7 @@ async function search(
       continue;
     }
     if (hits.length >= args.limit) {
-      return envelope(hits, skipped.count, false, encodeCursor(kind, queryHash, position));
+      return envelope(hits, counter.skipped, false, encodeCursor(kind, queryHash, position));
     }
     const hit = {
       ...toHit(event),
@@ -102,17 +110,17 @@ async function search(
     const next = [...hits, hit];
     const candidate = envelope(
       next,
-      skipped.count,
+      counter.skipped,
       true,
       encodeCursor(kind, queryHash, position + 1)
     );
     if (builtinCallToolResultBytes(candidate) > byteLimit) {
-      return envelope(hits, skipped.count, true, encodeCursor(kind, queryHash, position));
+      return envelope(hits, counter.skipped, true, encodeCursor(kind, queryHash, position));
     }
     hits.push(hit);
     position += 1;
   }
-  return envelope(hits, skipped.count, false);
+  return envelope(hits, counter.skipped, false);
 }
 
 function effectiveArchived(
@@ -131,9 +139,8 @@ async function* sourceEvents(
   bases: BaseStore,
   kind: SearchKind,
   tokens: readonly string[],
-  skipped: { count: number }
+  counter: ScanCounter
 ): AsyncGenerator<ScanEvent> {
-  const shared = { scanned: 0 };
   if (kind === "base") {
     const summaries = chats.list();
     for (const { ownerKey, snapshot } of bases.listAll()) {
@@ -148,31 +155,85 @@ async function* sourceEvents(
                   right.updatedAt - left.updatedAt ||
                   left.id.localeCompare(right.id)
               )[0];
+      if (!appearsInSearchBase(
+        baseNavigationOf(snapshot.meta),
+        owner.kind !== "chat" || Boolean(member && searchDestination(member))
+      )) continue;
       yield* scanBase(
-        shared,
+        counter,
         { id: member?.id ?? null, title: member?.title ?? null },
         ownerKey,
         snapshot,
         tokens
       );
-      yield { kind: "checkpoint", scanned: shared.scanned };
+      yield { kind: "checkpoint", scanned: counter.scanned };
     }
     return;
   }
-  for (const summary of chats.list()) {
-    try {
-      if (kind === "chat") {
-        const record = await chats.get(summary.id);
-        if (!record) skipped.count += 1;
-        else yield* scanChat(shared, record, tokens);
+  yield* sqliteChatEvents(chats, tokens, counter);
+}
+
+async function* sqliteChatEvents(
+  chats: ChatStore,
+  tokens: readonly string[],
+  counter: ScanCounter
+): AsyncGenerator<ScanEvent> {
+  const summaries = new Map(chats.list().map((summary) => [summary.id, summary]));
+  let cursor: SearchDocumentCursor | null = null;
+  while (true) {
+    const page = await chats.searchTimelineDocuments(tokens, cursor, 500);
+    if (!page) return;
+    for (const hit of page.hits) {
+      counter.scanned += 1;
+      if (counter.scanned % 500 === 0) {
+        yield { kind: "checkpoint", scanned: counter.scanned };
       }
-    } catch (cause) {
-      if (isAbort(cause)) throw cause;
-      if (isSkippable(cause)) skipped.count += 1;
-      else throw cause;
+      /* 命中所属 Chat 被删或已改写：这条候选只是过期，不是工具调用失败。
+         跳过并计入 skipped_sections，一次无关写入不该炸掉整次搜索。 */
+      const summary = summaries.get(hit.chatId);
+      if (!summary || !sameSearchFence(summary, hit)) {
+        counter.skipped += 1;
+        continue;
+      }
+      if (!searchDestination(summary)) continue;
+      /* offset 0 是合法命中：标题几乎总在 0 处命中，用真值判断会整类丢失。 */
+      if (matchTokens(hit.searchText, tokens) === null) continue;
+      const normalizedText = normalize(hit.searchText);
+      const offsets = tokens
+        .map((token) => normalizedText.indexOf(normalize(token)))
+        .filter((value) => value >= 0);
+      const common = {
+        kind: "locator" as const,
+        source: "chat" as const,
+        sectionId: hit.chatId,
+        title: hit.title,
+        agent: hit.agent,
+        updatedAt: hit.updatedAt,
+        normalizedText,
+        offset: offsets.length ? Math.min(...offsets) : 0,
+      };
+      yield hit.documentKind === "title"
+        ? { ...common, matched: "title" }
+        : {
+            ...common,
+            matched: "message",
+            messageSeq: hit.messageSeq ?? hit.message?.seq ?? 0,
+            role: (hit.messageRole ?? hit.message?.role) === "user"
+              ? "user"
+              : "assistant",
+          };
     }
-    yield { kind: "checkpoint", scanned: shared.scanned };
+    if (page.nextCursor === null) return;
+    cursor = page.nextCursor;
   }
+}
+
+function sameSearchFence(
+  summary: ReturnType<ChatStore["list"]>[number],
+  hit: SearchDocumentHit
+) {
+  return summary.chatRecordRevision === hit.coreRevision &&
+    summary.chatMessageRevision === hit.nativeMessageRevision;
 }
 
 async function checkpoint(context: BuiltinToolContext, _event: Checkpoint) {
@@ -256,15 +317,6 @@ function decodeCursor(value: string | undefined, kind: SearchKind, queryHash: st
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("base64url").slice(0, 16);
-
-const isAbort = (cause: unknown) =>
-  cause instanceof DOMException && cause.name === "AbortError";
-
-const isSkippable = (cause: unknown) =>
-  cause instanceof BaseIncarnationError ||
-  cause instanceof BaseCorruptError ||
-  cause instanceof ChatLedgerCorruptError ||
-  cause instanceof ChatNotFoundError;
 
 function statusError(status: number, message: string) {
   return Object.assign(new Error(message), { status });

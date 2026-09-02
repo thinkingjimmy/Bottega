@@ -34,26 +34,6 @@ import type {
   RichSuggestionCopy,
 } from "./rich-input-types";
 
-export const DEFAULT_SUGGESTION_COPY: Record<
-  RichQuery["kind"],
-  RichSuggestionCopy
-> = {
-  skill: {
-    empty: "没有可用 Skill",
-    noMatch: "没有匹配的 Skill",
-    groups: [{ kind: "skill", label: "Skills", triggers: ["skill"] }],
-  },
-  mention: {
-    empty: "没有可用引用",
-    noMatch: "没有匹配的引用",
-    groups: [
-      { kind: "section", label: "Chats" },
-      { kind: "workspace-file", label: "Files" },
-      { kind: "skill", label: "Skills", triggers: ["mention"] },
-    ],
-  },
-};
-
 export function fileIcon(name: string) {
   const extension = name.split(".").at(-1)?.toLowerCase();
   if (["md", "mdx", "txt", "rtf"].includes(extension ?? "")) {

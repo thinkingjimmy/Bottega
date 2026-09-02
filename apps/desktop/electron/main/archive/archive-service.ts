@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, Node crypto/fs, Chat/Project stores, ChatHome/Purge journals, Coordinator pending CreationIntent/conversation critical area, ProjectsService durable cleanup, ChatsService delete chain, and optional Memory rebuild port
- * [OUTPUT]: Provides ArchiveService: explicitly archived Projection, immutable local-only/cleanup-and-rebuild purge, short Project intent/CAS, canonical+pending member snapshot and verified/record-only tokenized preview
+ * [OUTPUT]: Provides ArchiveService: explicitly archived Agent-identified Chat projection carrying read-only capability, immutable local-only/cleanup-and-rebuild purge that refuses read-only Chats, short Project intent/CAS, canonical+pending member snapshot and verified/record-only tokenized preview
  * [POS]: The trans-book coordinator of the archive module; The product gate only packs intent/CAS, Memory receipt/drain/network both outside the gate and hold multiple conversation locks at different times
  */
 
@@ -21,12 +21,13 @@ import type { ChatsService } from "../chats/chats-service";
 import type { ChatHomeService } from "../chat-home/chat-home-service";
 import type { PurgeJournal } from "../chat-home/purge-journal";
 import type { ChatHomeRecord } from "../chat-home/ledger-values";
-import type { ProjectStore } from "../projects/project-store";
+import type { ProjectStore } from "../projects/store/project-store";
 import type { ProjectsService } from "../projects/projects-service";
 import type { ConversationCoordinator } from "../sections/coordinator/conversation-coordinator";
 import { rendererIpc } from "../ipc-registrar";
 import { SerialQueue } from "../persistence/serial-queue";
 import { errorMessage } from "../errors";
+import { appearsInArchive } from "../../../shared/placement/archive";
 
 type ProjectGateState = "open" | "archiving" | "archived" | "purging";
 
@@ -126,7 +127,10 @@ export class ArchiveService {
     const entities = [
       ...this.projects
         .list()
-        .filter((project) => project.archivedAt !== undefined)
+        .filter(
+          (project) =>
+            project.role !== "base-custody" && project.archivedAt !== undefined
+        )
         .map((project) => ({
           target: { kind: "project" as const, id: project.id },
           title: project.name,
@@ -135,12 +139,14 @@ export class ArchiveService {
         })),
       ...this.chats
         .list()
-        .filter((chat) => chat.archivedAt !== undefined)
+        .filter(appearsInArchive)
         .map((chat) => ({
           target: { kind: "chat" as const, id: chat.id },
           title: chat.title ?? "未命名聊天",
           archivedAt: chat.archivedAt!,
           memberCount: 0,
+          agent: chat.agent,
+          ...(chat.readOnlyReason ? { readOnly: true } : {}),
         })),
     ].sort(
       (left, right) =>
@@ -180,6 +186,9 @@ export class ArchiveService {
         for (const target of this.unique(targets)) {
           if (target.kind === "chat") {
             await this.withArchivableConversation(target.id, async () => {
+              const candidate = this.chats.getMetadata(target.id);
+              if (!candidate) throw new Error("Chat 不存在");
+              await this.chatsService.prepareForArchive?.(candidate);
               await this.coordinator.failArchived(target.id);
               const record = await this.chats.setArchivedAt(target.id, now);
               this.chatsService.publishRecord(record);
@@ -220,7 +229,7 @@ export class ArchiveService {
                     `Project 已归档，但 Chat ${chatId} 队列清理待重试：${errorMessage(cause)}`
                   );
                 });
-              const record = await this.chats.get(chatId);
+              const record = this.chats.getMetadata(chatId);
               if (record) this.chatsService.publishEffectiveArchive(record, true);
             }
           });
@@ -240,6 +249,12 @@ export class ArchiveService {
       try {
         for (const target of this.unique(targets)) {
           if (target.kind === "chat") {
+            const candidate = this.chats.getMetadata(target.id);
+            /* 导入历史是只读但活着的会话：归档过就必须恢复得回来。
+               真正回不来的只有旧版 App Edit 那种失去可编辑性的记录。 */
+            if (candidate?.readOnlyReason === "legacy-app-not-editable") {
+              throw new Error("Read-only legacy App Edit chats cannot be restored");
+            }
             const memberProjectId = this.chats.getProjectId(target.id);
             if (
               memberProjectId &&
@@ -265,7 +280,7 @@ export class ArchiveService {
             await this.projects.setArchivedAt(target.id, undefined);
             this.projectsService.publishStored(target.id);
             for (const chatId of this.chats.listByProject(target.id)) {
-              const record = await this.chats.get(chatId);
+              const record = this.chats.getMetadata(chatId);
               if (record) {
                 this.chatsService.publishEffectiveArchive(
                   record,
@@ -296,6 +311,9 @@ export class ArchiveService {
       if (target.kind === "chat") {
         const chat = this.chats.list().find((item) => item.id === target.id);
         if (!chat?.archivedAt) blockedReasons.push(`Chat ${target.id} 未显式归档`);
+        else if (chat.readOnlyReason) {
+          blockedReasons.push(`Chat ${target.id} 是只读内容，不能永久删除`);
+        }
       } else if (!this.projects.get(target.id)?.archivedAt) {
         blockedReasons.push(`Project ${target.id} 未显式归档`);
       } else if (

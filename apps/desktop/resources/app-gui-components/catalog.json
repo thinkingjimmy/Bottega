@@ -1,0 +1,47 @@
+{
+  "schema": "bottega.app-gui-component-snapshot/v1",
+  "snapshotDigest": "sha256:0e68acebc21195b2f897daebe6bf5be06722f10b7bba5b3b5765f20e7d880ae8",
+  "compatibleOriginSnapshots": [],
+  "components": [
+    {
+      "id": "feedback",
+      "sourcePath": "feedback.tsx",
+      "targetPath": "gui/src/components/ui/feedback.tsx",
+      "sha256": "sha256:633aaeb9cb49b97ab518c3bd25f0ea55b6e4fef0cd8b87e4397e4e67ed725cea",
+      "license": "MIT",
+      "exports": ["Progress", "Toast"]
+    },
+    {
+      "id": "forms",
+      "sourcePath": "forms.tsx",
+      "targetPath": "gui/src/components/ui/forms.tsx",
+      "sha256": "sha256:4a56484d1c4dda9a0ac635e8df55b6f1c125884b1040ac11f61380b6068cbf03",
+      "license": "MIT",
+      "exports": ["Button", "Input", "Textarea", "Label", "Field", "Checkbox", "Switch", "RadioGroup", "Radio", "Select"]
+    },
+    {
+      "id": "navigation",
+      "sourcePath": "navigation.tsx",
+      "targetPath": "gui/src/components/ui/navigation.tsx",
+      "sha256": "sha256:a4a9fe719a3ed0edbe912e126e07402d47a0b0a04e9280a33e08fb1e839187cc",
+      "license": "MIT",
+      "exports": ["Tabs", "Accordion"]
+    },
+    {
+      "id": "overlays",
+      "sourcePath": "overlays.tsx",
+      "targetPath": "gui/src/components/ui/overlays.tsx",
+      "sha256": "sha256:6784060bc516e42adbd3437cfda65d2ab642a9f0092ac04c81023154286919fc",
+      "license": "MIT",
+      "exports": ["Dialog", "AlertDialog", "Popover", "Tooltip", "DropdownMenu"]
+    },
+    {
+      "id": "surfaces",
+      "sourcePath": "surfaces.tsx",
+      "targetPath": "gui/src/components/ui/surfaces.tsx",
+      "sha256": "sha256:403c56b5af5b963880dd27d1a2e6038bae6def606996a1b474536b6d56e54863",
+      "license": "MIT",
+      "exports": ["Card", "Badge", "Separator", "Skeleton", "Table", "ScrollArea"]
+    }
+  ]
+}

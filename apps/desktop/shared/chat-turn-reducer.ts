@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Chat and Agent IPC turn-item vocabulary
- * [OUTPUT]: Provides sequential TurnDraft, Plan projection, delta/item/finalize state machines, ProductFailure-preserving settle projection, and the SubagentSettleOutcome ruler that converges still-running subagents by the turn's own terminal
+ * [OUTPUT]: Provides sequential TurnDraft, Plan projection, delta/item/finalize state machines, ProductFailure-preserving terminal and warning projection, and the SubagentSettleOutcome ruler that converges still-running subagents by the turn's own terminal
  * [POS]: Shared turn-state core consumed by main persistence and renderer live projection
  */
 
@@ -67,7 +67,9 @@ export type DraftPlanProjection = {
 
 /** 结构性事实优先于过程噪声：subagent 与用户问答不该被 reasoning/command 洪流挤出 */
 const isProtected = (part: ChatPart) =>
-  part.type === "subagent" || (part.type === "tool" && part.tool === "user-input");
+  part.type === "subagent" ||
+  (part.type === "tool" &&
+    (part.tool === "user-input" || part.tool === "agent-failure"));
 
 export function slicePartsProtected(
   parts: ChatPart[],
@@ -157,6 +159,8 @@ export function applyItem(draft: TurnDraft, item: AgentTurnItem): TurnDraft {
       title: item.title,
       ...(item.detail ? { detail: item.detail } : {}),
       status: item.status,
+      ...(item.failure ? { failure: item.failure } : {}),
+      ...(item.severity ? { severity: item.severity } : {}),
     }),
   };
 }

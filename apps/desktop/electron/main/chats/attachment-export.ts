@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node guarded fs/crypto/path, shared Image dataURL/8MB compatible with canonical ChatAttachmentMeta
- * [OUTPUT]: Provides exportAttachmentFile: Source/Goal O_NOFOLLOW|O_NONBLOCK, MIME/length weighting, 0700/0600 and temporary file atomic arrays
- * [POS]: The chats attachment is exporting the security kernel; ChatsService exclusive attribution test, this file exclusive file system state machine with narrow fault seam injection
+ * [INPUT]: Depends on guarded Node fs/crypto/path, the shared 8 MiB image data-URL limits, and canonical ChatAttachmentMeta
+ * [OUTPUT]: Provides exportAttachmentFile: O_NOFOLLOW|O_NONBLOCK on both ends, MIME and length agreement, 0700/0600 modes, and an atomic rename from a randomly named temporary file
+ * [POS]: Security kernel of attachment export; ChatsService owns ownership checks while this file owns the file-system state machine and its injectable failure seams
  */
 
 import { randomUUID } from "node:crypto";

@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends On Chat All records and O(1) metadata are read-only ports, Memory provider, factory, host runtime registry and the platform capability matrix
- * [OUTPUT]: Provides a combination of memory service options that distinguish between the original reading and the title-level observation reading
+ * [INPUT]: Depends on legacy full Chat reads, native-only paged segments, O(1) metadata, Memory provider/factory, host runtime registry, and the platform capability matrix
+ * [OUTPUT]: Provides Memory service ports that distinguish live full-record reads, native history segments, and title-level observation reads
  * [POS]: The main/memory/service/support dependence is injected into the border; The facade is only to be kept in operation while coordinating duties
  */
 
 import type { ChatRecord } from "../../../../../shared/chats-ipc";
+import type { MemoryNativeSegmentPage } from "../../../chats/sqlite/database-protocol";
 import type { PlatformCapabilities } from "../../../../../shared/platform-capabilities";
 import type { MemoryProvider } from "../../core/provider";
 import type { ManagedRuntimeRegistry } from "../../runtime/managed-registry";
@@ -23,6 +24,11 @@ export type MemoryServiceOptions = {
       trimmedThroughSeq: number;
     }>
   >;
+  readNativeChatSegment?(
+    chatId: string,
+    afterSeq: number,
+    limit: number
+  ): Promise<MemoryNativeSegmentPage | null>;
   runtimes: ManagedRuntimeRegistry;
   /* 必给，不可缺省。"没人告诉我这台机器行不行"唯一安全的读法是拒绝，
      而可选字段的缺省只能是放行——那正是把安全门写成默认开着。 */

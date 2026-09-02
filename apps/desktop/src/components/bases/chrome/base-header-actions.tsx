@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on react-router, BaseOwner key, Apps/Chats/Projects/Bases Provider, SaveAsAppDialog, drop down menu, upgrade confirmation boxes and lucide icons
- * [OUTPUT]: Provides use of BaseAppActions, XLSXImportIssueDetails, PromotionAttemptFence and BaseHeaderActions: Save/Open App, CSV/JSON/XLSX, two-way, XLSX, importing constant disclosure of substitution/clean definitions and sequential details, with 50 remaining sentences before rendering, chat→project, upgrade, start/call
- * [POS]: The source of truth for the head movements of bases/chrome; Page shared with third party Base→App determined that old pinned data is no longer read-only
+ * [INPUT]: Depends on Base/Apps/Chats/Projects providers, router navigation, dialogs, menus, i18n, and structured client error codes
+ * [OUTPUT]: Provides BaseHeaderActions, useBaseAppActions, localized XLSX issue disclosure, and PromotionAttemptFence
+ * [POS]: Header action boundary for components/bases/chrome; transport codes are translated here and Base data mutations stay in providers
  */
 
 import { useRef, useState } from "react";
@@ -18,6 +18,7 @@ import {
   MoreHorizontalIcon,
   Minimize2Icon,
   PackagePlusIcon,
+  Trash2Icon,
   XIcon,
 } from "lucide-react";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
@@ -26,6 +27,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@ai-chat/ui/components/ui/dropdown-menu";
 import { useBases } from "@/components/providers/bases-provider";
@@ -79,9 +81,10 @@ export function useBaseAppActions(ownerKey: string, chatId?: string) {
       await operation();
     } catch (cause) {
       console.warn(`[bases] header action failed ownerKey=${ownerKey}`, cause);
+      const copyKey = headerErrorCopyKey(cause);
       setActionError(
-        errorCode(cause) === "xlsx_issue_limit"
-          ? t("bases.header.importXlsxIssueLimit")
+        copyKey
+          ? t(copyKey)
           : errorMessage(cause, t("bases.header.ioFailed"))
       );
       await bases.get(ownerKey).catch(() => null);
@@ -177,10 +180,10 @@ function localizeXlsxIssue(
   t: ReturnType<typeof useAppTranslation>["t"],
   reason: BaseXlsxIssue["reason"]
 ) {
-  return t(XLSX_ISSUE_COPY[reason]);
+  return t(XLSX_ISSUE_KEYS[reason]);
 }
 
-const XLSX_ISSUE_COPY = {
+const XLSX_ISSUE_KEYS = {
   cell_too_large: "bases.header.importXlsxCellTooLarge",
   formula_read_only: "bases.header.importXlsxFormulaReadOnly",
   attachment_not_importable: "bases.header.importXlsxAttachmentNotImportable",
@@ -195,10 +198,18 @@ const XLSX_ISSUE_COPY = {
   invalid_location: "bases.header.importXlsxInvalidValue",
 } as const satisfies Record<BaseXlsxIssue["reason"], string>;
 
-function errorCode(cause: unknown) {
-  return cause && typeof cause === "object" && "code" in cause
-    ? cause.code
-    : undefined;
+const HEADER_ERROR_KEYS = {
+  xlsx_issue_limit: "bases.header.importXlsxIssueLimit",
+  json_import_unavailable: "bases.header.importJsonUnavailable",
+  xlsx_import_unavailable: "bases.header.importXlsxUnavailable",
+} as const;
+
+function headerErrorCopyKey(cause: unknown) {
+  if (!cause || typeof cause !== "object" || !("code" in cause)) return null;
+  const code = typeof cause.code === "string" ? cause.code : "";
+  return code in HEADER_ERROR_KEYS
+    ? HEADER_ERROR_KEYS[code as keyof typeof HEADER_ERROR_KEYS]
+    : null;
 }
 
 export class PromotionAttemptFence {
@@ -248,6 +259,8 @@ export function BaseHeaderActions({
   const [saveOpen, setSaveOpen] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const promotionAttempt = useRef(new PromotionAttemptFence());
   const owner = ownerFromKey(ownerKey);
   const projectOwnerKey = projectId
@@ -258,6 +271,14 @@ export function BaseHeaderActions({
     owner.kind === "chat" &&
     Boolean(projectOwnerKey) &&
     !bases.projectBases.some((base) => base.ownerKey === projectOwnerKey);
+  const retainedBase = bases.pinned.find(
+    (base) => {
+      const navigation = base.navigation;
+      return base.ownerKey === ownerKey &&
+        navigation?.kind === "root-user-managed" &&
+        navigation.source === "retained-app-data";
+    }
+  );
   const promote = async () => {
     if (owner.kind !== "chat") return;
     setPromoting(true);
@@ -278,6 +299,23 @@ export function BaseHeaderActions({
       );
     } finally {
       setPromoting(false);
+    }
+  };
+  const removeRetained = async () => {
+    if (!retainedBase) return;
+    setRemoving(true);
+    try {
+      if (
+        await bases.removeManaged(
+          retainedBase.ownerKey,
+          retainedBase.ownerInstanceId
+        )
+      ) {
+        setRemoveOpen(false);
+        void navigate("/", { replace: true });
+      }
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -371,6 +409,18 @@ export function BaseHeaderActions({
                 <FileSpreadsheetIcon />
                 {t("bases.header.importXlsx")}
               </DropdownMenuItem>
+              {retainedBase && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={() => setRemoveOpen(true)}
+                  >
+                    <Trash2Icon />
+                    {t("bases.header.deleteRetained")}
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           {canPromote && (
@@ -443,6 +493,15 @@ export function BaseHeaderActions({
         onOpenChange={setPromoteOpen}
         open={promoteOpen}
         title={t("bases.header.promoteTitle")}
+      />
+      <ConfirmationDialog
+        busy={removing}
+        confirmLabel={t("bases.header.deleteRetainedConfirm")}
+        description={t("bases.header.deleteRetainedDescription")}
+        onConfirm={() => void removeRetained()}
+        onOpenChange={setRemoveOpen}
+        open={removeOpen}
+        title={t("bases.header.deleteRetainedTitle")}
       />
       {saveChatId && (
         <SaveAsAppDialog

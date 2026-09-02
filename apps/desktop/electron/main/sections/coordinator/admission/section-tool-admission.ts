@@ -81,8 +81,8 @@ export class SectionToolAdmission {
          一个普通 Agent 就能用 send_to_section 绕过去。 */
       this.dependencies.chats.assertOrdinaryTurnAllowed(input.sectionId);
       const [source, target] = await Promise.all([
-        this.dependencies.chats.store.get(context.lease.chatId),
-        this.dependencies.chats.store.get(input.sectionId),
+        Promise.resolve(this.dependencies.chats.store.getMetadata(context.lease.chatId)),
+        Promise.resolve(this.dependencies.chats.store.getMetadata(input.sectionId)),
       ]);
       if (!source || !target) {
         return { status: "rejected", detail: "来源或目标 Section 不存在" };
@@ -146,7 +146,7 @@ export class SectionToolAdmission {
     );
     const known = this.dependencies.ledger.snapshot().createIntents[intentId];
     if (known) return this.resumeToolResult(intentId);
-    const source = await this.dependencies.chats.store.get(
+    const source = this.dependencies.chats.store.getMetadata(
       context.lease.chatId
     );
     if (!source) {
@@ -169,7 +169,7 @@ export class SectionToolAdmission {
         throw new Error("来源 Section 与 context_section_ids 去重后最多 8 个");
       }
       const contextRecords = await Promise.all(
-        contextIds.map((id) => this.dependencies.chats.store.get(id))
+        contextIds.map((id) => Promise.resolve(this.dependencies.chats.store.getMetadata(id)))
       );
       if (contextRecords.some((record) => !record)) {
         throw new Error("context_section_ids 中有 Section 不存在");
@@ -194,7 +194,7 @@ export class SectionToolAdmission {
       };
       const admit = async (projectAdmissionHeld = false) => {
         if (projectId) {
-          const liveSource = await this.dependencies.chats.store.get(source.id);
+          const liveSource = this.dependencies.chats.store.getMetadata(source.id);
           if (
             liveSource?.incarnationId !== source.incarnationId ||
             liveSource.projectId !== projectId ||
@@ -320,7 +320,7 @@ export class SectionToolAdmission {
             ...(resumed.detail ? { detail: resumed.detail } : {}),
           };
     }
-    const source = await this.dependencies.chats.store.get(context.lease.chatId);
+    const source = this.dependencies.chats.store.getMetadata(context.lease.chatId);
     if (!source) return { section_id: "", first_turn: "rejected" };
     try {
       const agent = (input.agent ?? source.agent) as AgentBackendId;
@@ -338,7 +338,7 @@ export class SectionToolAdmission {
         .slice(0, 32);
       const admit = async (projectAdmissionHeld = false) => {
         if (projectId) {
-          const liveSource = await this.dependencies.chats.store.get(source.id);
+          const liveSource = this.dependencies.chats.store.getMetadata(source.id);
           if (
             liveSource?.incarnationId !== source.incarnationId ||
             liveSource.projectId !== projectId ||

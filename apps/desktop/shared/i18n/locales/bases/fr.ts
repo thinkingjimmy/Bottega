@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on English basesEn type of directory structure
- * [OUTPUT]: Provides BasesFr, Base product pages fr feature catalog
- * [POS]: The language sheets of shared/i18n/locales/bases; Installation on demand by the appropriate top locale
+ * [INPUT]: Depends only on the structural type of the English basesEn catalog
+ * [OUTPUT]: Provides basesFr, the French catalog for every Base and embedded-chart surface
+ * [POS]: French leaf catalog for shared/i18n/locales/bases; loaded on demand by the top-level locale
  */
 
 import type { basesEn } from "./en";
@@ -9,6 +9,11 @@ import type { basesEn } from "./en";
 type BasesCatalog = typeof basesEn;
 
 export const basesFr: BasesCatalog = {
+  provider: {
+    loadFailed: "Échec du chargement des Bases : {{message}}",
+    reloadFailed: "Échec du rechargement de la Base {{ownerKey}} : {{message}}",
+    retiredResult: "La Base {{ownerKey}} a renvoyé une génération retirée.",
+  },
   quarantined: "Cette Base est mise en quarantaine",
   quarantinedDescription:
     "Les fichiers récupérables sont conservés. Restaurez la sauvegarde manuellement ou supprimez-les pour créer une nouvelle Base vide.",
@@ -19,8 +24,11 @@ export const basesFr: BasesCatalog = {
   discardTitle: "Supprimer les données récupérables de la Base ?",
   loading: "Chargement de la Base…",
   loadingMap: "Chargement de la carte…",
-  transcriptImages: "Images de la transcription",
   pageTitle: "Base",
+  detail: { title: "Base {{name}}", untitledChat: "Chat" },
+  columnDefaults: { image: "Image", createdAt: "Créé le" },
+  starterStatus: { todo: "À faire", doing: "En cours", done: "Terminé" },
+  group: { unassigned: "Non attribué" },
   header: {
     openApp: "Ouvrir l’App",
     saveAsApp: "Enregistrer comme App",
@@ -53,6 +61,12 @@ export const basesFr: BasesCatalog = {
     collapse: "Réduire dans le panneau latéral",
     closeAria: "Fermer la Base",
     ioFailed: "Échec de l’import ou de l’export de la Base",
+    importJsonUnavailable: "L’import JSON n’est pas disponible dans cet environnement.",
+    importXlsxUnavailable: "L’import Excel n’est pas disponible dans cet environnement.",
+    deleteRetained: "Supprimer la Base",
+    deleteRetainedConfirm: "Supprimer",
+    deleteRetainedTitle: "Supprimer cette Base ?",
+    deleteRetainedDescription: "Cette action supprime définitivement les données conservées de l’App. L’App supprimée, ses chats et son code source ne peuvent pas être restaurés depuis cette Base.",
   },
   toolbar: {
     toggleFilter: "Afficher ou masquer le filtre",
@@ -151,6 +165,7 @@ export const basesFr: BasesCatalog = {
     clear: "Effacer",
     today: "Aujourd’hui",
     openLink: "Ouvrir le lien dans le navigateur",
+    deleteAttachment: "Supprimer {{filename}}",
   },
   record: {
     title: "Ajouter un enregistrement",
@@ -158,6 +173,7 @@ export const basesFr: BasesCatalog = {
     attachmentRequired: "Choisissez une image avant d’enregistrer.",
     unsupportedImage: "Seules les images PNG, JPEG, WebP et GIF sont acceptées.",
     fileReadFailed: "Impossible de lire le fichier image.",
+    attachmentWriteFailed: "Impossible d’enregistrer l’image. Réessayez.",
   },
   gui: {
     surfaceAria: "GUI de l’App",
@@ -172,6 +188,13 @@ export const basesFr: BasesCatalog = {
     loadFailedTitle: "Échec du chargement de l’App",
     prepareFailedTitle: "Échec de la mise à niveau des données de l’App",
     loadFailedHint: "La passerelle sécurisée ou le jeton a peut-être expiré. Réessayez ou ouvrez les données.",
+    prepareFailedHint: "Les données enregistrées de l’App n’ont pas pu être migrées vers la version attendue par cette édition. Les données précédentes restent intactes.",
+    permissionFailedTitle: "L’autorisation de l’App a expiré",
+    permissionFailedHint: "Cette version de l’App n’a jamais été approuvée, ou son approbation a expiré. Autorisez-la de nouveau pour ouvrir la surface.",
+    cutoverFailedTitle: "L’App change de version",
+    cutoverFailedHint: "La version précédente n’a pas fini de s’arrêter. Patientez un instant, puis réessayez.",
+    surfaceGoneTitle: "Cette vue de l’App a expiré",
+    surfaceGoneHint: "La conversation a avancé : cette vue n’a plus de bail valide. Rechargez la page pour en obtenir un nouveau.",
     retry: "Réessayer",
     goToData: "Ouvrir les données",
   },
@@ -181,6 +204,10 @@ export const basesFr: BasesCatalog = {
     location: "Localisation",
     label: "Étiquette",
     auto: "Auto",
+    offline: "Vous êtes hors ligne. La liste des emplacements est affichée.",
+    tilesUnavailable: "Les tuiles de la carte sont indisponibles. La liste des emplacements est affichée.",
+    noCoordinates: "Aucune ligne ne possède encore de coordonnées.",
+    unnamedLocation: "Emplacement",
   },
   chart: {
     add: "Ajouter un graphique",
@@ -196,6 +223,24 @@ export const basesFr: BasesCatalog = {
     emptyTitle: "Ce tableau de bord n’a encore aucun graphique",
     emptyHint:
       "Ajoutez-en un : il se recalcule dès que les données changent.",
+    unnamed: "Graphique",
+    state: {
+      filterScrubbed: "Le filtre a été invalidé par la suppression d’une colonne. Reconfigurez-le.",
+      dimensionRequired: "Choisissez une colonne de dimension de type texte, sélection ou date.",
+      valueRequired: "Choisissez une colonne numérique valide.",
+      seriesRequired: "Choisissez une dimension secondaire valide.",
+      pieSeriesUnsupported: "Les graphiques en secteurs n’acceptent pas de dimension secondaire.",
+      scatterRequirements: "Les nuages de points nécessitent deux colonnes numériques et aucune dimension secondaire.",
+      heatmapRequirements: "Les cartes thermiques nécessitent une colonne numérique et une dimension secondaire.",
+      pieValueRequired: "Les graphiques en secteurs nécessitent une colonne numérique.",
+      singleValueForSeries: "Une dimension secondaire ne peut utiliser qu’une colonne numérique.",
+      labelLimit: "Un graphique peut contenir au maximum {{limit}} libellés.",
+      seriesLimit: "Un graphique peut contenir au maximum {{limit}} séries.",
+      pointLimit: "Un graphique peut contenir au maximum {{limit}} points de données.",
+      empty: "Aucune donnée",
+      pieNegative: "Un graphique en secteurs ne peut pas afficher de valeurs négatives. Changez de type ou filtrez les données.",
+      invalidPayload: "Les données du graphique dépassent les limites prises en charge.",
+    },
     type: {
       pie: "Camembert",
       bar: "Barres",
@@ -204,6 +249,25 @@ export const basesFr: BasesCatalog = {
       scatter: "Nuage de points",
       radar: "Radar",
       heatmap: "Carte de chaleur",
+    },
+    render: {
+      invalidJson: "Le JSON du graphique est invalide.",
+      invalidFormat: "Le format du graphique est invalide.",
+      showSource: "Afficher le code source du graphique",
+      overflow: "Ce message contient trop de graphiques. Les graphiques restants ont été repliés.",
+      generating: "Génération du graphique",
+      loading: "Chargement du graphique",
+      aria: "{{type}}, {{labels}}, {{series}}",
+      ariaWithTitle: "{{type}} : {{title}}, {{labels}}, {{series}}",
+      labelCount_one: "{{count}} libellé",
+      labelCount_other: "{{count}} libellés",
+      seriesCount_one: "{{count}} série",
+      seriesCount_other: "{{count}} séries",
+      showData: "Afficher les données",
+      hideData: "Masquer les données",
+      dataCaption: "Données du graphique",
+      labelHeader: "Libellé",
+      seriesName: "Série {{index}}",
     },
     editor: {
       open: "Modifier le graphique",
@@ -236,6 +300,19 @@ export const basesFr: BasesCatalog = {
   gallery: {
     aria: "Galerie d’images générées",
     images: "Images générées",
+    attachmentColumn: "Colonne d’image",
+    titleColumn: "Colonne de titre",
+    dateColumn: "Colonne de date de regroupement",
+    dateBucket: "Période",
+    ungrouped: "Non groupé",
+    none: "Aucune",
+    bucket: {
+      minute: "Minute",
+      hour: "Heure",
+      day: "Jour",
+      week: "Semaine",
+      month: "Mois",
+    },
     modeAria: "Mode de la galerie",
     mode: { browse: "Parcourir", multi: "Sélection multiple", comment: "Commentaire" },
     zoom: "Zoom",
@@ -265,6 +342,7 @@ export const basesFr: BasesCatalog = {
     addCardTo: "Ajouter une carte à {{lane}}",
     laneColor: "Couleur de la colonne",
     laneColorCurrent: "Couleur de la colonne : {{lane}}",
+    renameAria: "Renommer {{lane}}",
     renameHint: "{{lane}} — double-cliquez pour renommer",
     auto: "Auto",
     dropHere: "Déposez les cartes ici",
@@ -283,6 +361,7 @@ export const basesFr: BasesCatalog = {
   },
   list: {
     addRow: "Ajouter une ligne",
+    addRowTo: "Ajouter une ligne à {{group}}",
     empty: "Aucun enregistrement ne correspond à cette vue.",
     rowActions: "Actions pour {{title}}",
     edit: "Modifier",
@@ -303,6 +382,7 @@ export const basesFr: BasesCatalog = {
     sortHint: "Trier (Maj pour plusieurs colonnes)",
     renameColumn: "Renommer la colonne",
     renameColumnAria: "Renommer {{column}}",
+    unnamedColumn: "colonne",
     deleteColumn: "Supprimer la colonne",
     deleteColumnAria: "Supprimer {{column}}",
     addColumn: "Ajouter une colonne",
@@ -316,6 +396,10 @@ export const basesFr: BasesCatalog = {
       "Cela retire la colonne « {{column}} » de toutes les vues. Ses valeurs deviennent inaccessibles.",
     resizeHint:
       "Faites glisser pour redimensionner ; les flèches permettent un ajustement précis",
+    resizeAria: "Redimensionner la colonne {{column}}",
+    emptyNoColumns: "Ajoutez une colonne, puis créez votre première ligne.",
+    emptyEditable: "Aucune ligne pour le moment. Ajoutez-en une pour commencer.",
+    emptyReadOnly: "Aucune ligne pour le moment.",
   },
   summary: {
     cellAria: "Statistique de {{column}} : {{value}}",
@@ -338,6 +422,11 @@ export const basesFr: BasesCatalog = {
   },
   workbench: {
     viewLimit: "Une Base doit conserver au moins une vue",
+    revisionConflict: "Cette Base a été modifiée ailleurs. La dernière version a été rechargée.",
+    galleryViewChanged: "Cette vue Galerie a été supprimée ou modifiée. La dernière Base a été rechargée.",
+    galleryAttachmentChanged: "La colonne d’image de la Galerie a été supprimée ou modifiée. Choisissez-la de nouveau.",
+    galleryTitleChanged: "La colonne de titre de la Galerie a été supprimée ou modifiée. Choisissez-la de nouveau.",
+    galleryDateChanged: "La colonne de date de la Galerie a été supprimée ou modifiée. Choisissez-la de nouveau.",
   },
   history: {
     open: "Voir l’historique",

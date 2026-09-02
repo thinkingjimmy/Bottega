@@ -1,6 +1,6 @@
 /**
  * [INPUT]: No external dependence
- * [OUTPUT]: Provides errorMessage (i.e. the message is reported as a user-readable text file and the machine code prefix is removed from the main) and reportedFailure/isReportedFailure (i.e. whether the failure has been explained above)
+ * [OUTPUT]: Provides errorMessage (user-readable text with the IPC envelope, the machine-code prefix, and a bare all-caps code stripped), failureCode (the stable code for localized classification), and reportedFailure/isReportedFailure
  * [POS]: The only source of Error in the renderer is the instance of Error, a three-dimensional copy of the component layer handwritten by the substitute
  */
 
@@ -13,6 +13,23 @@
  * ────────────────────────────────────────────────────────────── */
 const MACHINE_CODE = /^[A-Z][A-Z0-9_]{3,}:\s*/;
 
+/* ── 只有码、没有人话的那一种 ──────────────────────────────────────
+ * `APP_GUI_DRAIN_TIMEOUT` 这类断言压根没写后半段：冒号规则剥不掉它，
+ * 于是整个码原样端上桌。它不是省略了解释，它是根本没有解释——所以剥
+ * 净之后必须由调用方兜底成一句人话，而不是把码当人话读给用户听。
+ * 整条消息全等才算：正文里出现的大写词不受牵连。
+ * ────────────────────────────────────────────────────────────── */
+const BARE_MACHINE_CODE = /^[A-Z][A-Z0-9_]{3,}$/;
+
+/** 抛出物携带的稳定机器码；没有码时为空串。视图据此选本地化解释。 */
+export const failureCode = (cause: unknown) => {
+  const message = (cause instanceof Error ? cause.message : String(cause))
+    .replace(IPC_ENVELOPE, "")
+    .trim();
+  if (BARE_MACHINE_CODE.test(message)) return message;
+  return MACHINE_CODE.exec(message)?.[0].replace(/:\s*$/, "") ?? "";
+};
+
 /* ── IPC 通道名也是坐标，不是人话 ──────────────────────────────────
  * Electron 把通道名与远端栈一起拼进 message：
  * `Error invoking remote method 'extensions:preflight': Error: 仅支持…`。
@@ -23,10 +40,14 @@ const IPC_ENVELOPE = /^Error invoking remote method '[^']*':\s*(?:\w*Error:\s*)?
 
 /** 任意抛出物归一为用户可读文案；非 Error 或剥完只剩空串时使用 fallback。 */
 export const errorMessage = (cause: unknown, fallback?: string) => {
-  const stripped = (cause instanceof Error ? cause.message : fallback ?? String(cause))
+  const envelopeFree = (cause instanceof Error ? cause.message : fallback ?? String(cause))
     .replace(IPC_ENVELOPE, "")
-    .replace(MACHINE_CODE, "")
     .trim();
+  const stripped = (
+    BARE_MACHINE_CODE.test(envelopeFree)
+      ? ""
+      : envelopeFree.replace(MACHINE_CODE, "")
+  ).trim();
   /* 剥完为空是真实存在的：只有信封没有正文的 Error。此时端一个空字符串上桌
      等于什么都没说——兜底属于归一处，不该由每个调用点各写一次 `|| "…"`。 */
   return stripped || fallback || "";

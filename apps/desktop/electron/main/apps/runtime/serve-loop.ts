@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path/crypto, serve-trigger Single-cycle execution/log/warning capability injected by the pure core and the caller
- * [OUTPUT]: Provides createServeLoop, root directory identity collection, security token, read, ack path/clear and settled+dispose lifecycle
- * [POS]: The server IO status machine for Apps/runtime to pin root identity to zero, the app to write ancestor monitoring, the turn-start token and the acc drive after success to maintain the Agent rounds on demand
+ * [INPUT]: Depends on Node fs/path/crypto, the pure serve-trigger core, apps/support `isContained`, and the caller-injected run/log/warn capabilities
+ * [OUTPUT]: Provides createServeLoop plus root-identity capture, turn tokens, bounded trigger reads, ack write/clear, and the settled+dispose lifecycle
+ * [POS]: The apps/runtime serve IO state machine; it pins root identity once, watches the ancestor chain for writes, and drives Agent turns from acks instead of re-resolving paths per event
  */
 
 import { constants, type FSWatcher, watch } from "node:fs";
@@ -16,12 +16,13 @@ import {
   rm,
   type FileHandle,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import type {
   AppManifest,
   ServerAppManifest,
 } from "../../../../shared/apps-ipc";
 import { asError } from "../../errors";
+import { isContained } from "../support";
 import {
   consumeTokenBucket,
   contractFingerprint,
@@ -643,11 +644,6 @@ function splitWatchPath(watchPath: string) {
     throw new Error("serveTrigger.watchPath 不是安全相对路径");
   }
   return normalized;
-}
-
-function isContained(root: string, candidate: string) {
-  const path = relative(root, candidate);
-  return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path));
 }
 
 async function readDeliveryFingerprint(userData: string, appId: string) {

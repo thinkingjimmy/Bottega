@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, react-i18next, shared i18n runtime/catalogs/locale, renderer locale, and an optional main-window Settings subscription
- * [OUTPUT]: Provides AppI18nProvider/useAppTranslation with preload-first locale and opt-in durable Settings synchronization
+ * [INPUT]: Depends on React, react-i18next, shared i18n runtime/catalogs/locale, renderer locale and system file-manager facts, and an optional main-window Settings subscription
+ * [OUTPUT]: Provides AppI18nProvider/useAppTranslation plus shared platform-correct Reveal copy with preload-first locale and opt-in durable Settings synchronization
  * [POS]: Renderer language lifecycle owner; App windows keep their preload locale without acquiring the global Settings envelope
  */
 
@@ -22,6 +22,7 @@ import { loadCatalog } from "../../../shared/i18n/catalogs";
 import { catalogOf, createAppI18n } from "../../../shared/i18n/runtime";
 import { settingsStore } from "@/lib/settings-store";
 import { setEffectiveLocale } from "@/lib/i18n-locale";
+import { systemFileManager } from "@/lib/agent-client";
 import { UiTextProvider } from "@ai-chat/ui/lib/ui-text";
 
 /* 组件会被测试、错误页与 Story/SSR 脱离根 Provider 单独渲染。
@@ -109,3 +110,13 @@ export function AppI18nProvider({
 }
 
 export const useAppTranslation = useTranslation;
+
+export function useSystemFileManagerRevealLabel() {
+  const { t } = useAppTranslation();
+  const manager = systemFileManager();
+  if (manager === "finder") return t("common.reveal.finder");
+  if (manager === "file-explorer") {
+    return t("common.reveal.fileExplorer");
+  }
+  return t("common.reveal.fileManager");
+}

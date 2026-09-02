@@ -1,7 +1,7 @@
 /**
  * [INPUT]: No running dependence, only using type-sequence TypeScript
- * [OUTPUT]: Provides Project v5 lifecycle-fenced identity, workspace/App binding, app grants, local detach, archiving, sorting, appearance, Memory rebind, and Git branch contracts
- * [POS]: Shared Project wire truth; projectLifecycleRevision is the incarnation/delete fence and workspaceBinding is the only App identity source
+ * [OUTPUT]: Provides Project v8 lifecycle-fenced identity, workspace/App binding, positive-grant-gated App placements, hidden Base custody role, grants, archiving, sorting, appearance, native reveal, and Git contracts
+ * [POS]: Shared Project wire truth; projectLifecycleRevision fences incarnation/deletion, reveal carries only Project ID, and appPlacements express navigation without granting App capability
  */
 
 import type { AppGrantRecord } from "./apps-ipc";
@@ -20,12 +20,21 @@ export type ProjectWorkspaceBinding =
  * ────────────────────────────────────────────────────────── */
 export type ProjectAppearance = { color: string; icon: string };
 
+export type ProjectAppPlacement = Readonly<{
+  appId: string;
+  pinnedAt: number;
+}>;
+
 export type Project = {
   id: string;
   name: string;
   dir: string;
   appearance?: ProjectAppearance;
   workspaceBinding: ProjectWorkspaceBinding;
+  /** Canonical v8 records materialize both fields; absence denotes a pre-v6 wire input. */
+  role?: "workspace" | "base-custody";
+  nameSource?: "app" | "user";
+  appPlacements: readonly ProjectAppPlacement[];
   grants: AppGrantRecord[];
   grantRevision: number;
   membershipRevision: number;
@@ -83,6 +92,18 @@ export type ProjectsEvent =
 
 export type ProjectLocalDetachReason = "project-base" | "group-memory";
 
+export type SetProjectAppPinnedInput = Readonly<{
+  projectId: string;
+  appId: string;
+  pinned: boolean;
+  expectedProjectLifecycleRevision: number;
+}>;
+
+export type SetProjectAppPinnedResult = Readonly<{
+  project: Project;
+  changed: boolean;
+}>;
+
 export type ProjectLocalDetachResult =
   | { status: "detached"; movedChatCount: number }
   | {
@@ -98,17 +119,16 @@ export const PROJECTS_CHANNEL = {
   ensureForApp: "projects:ensure-for-app",
   rename: "projects:rename",
   setAppearance: "projects:set-appearance",
+  setAppPinned: "projects:app-placement:set-pinned",
   detachLocal: "projects:detach-local",
   releaseMissing: "projects:release-missing",
   setSortMode: "projects:set-sort-mode",
   listBranches: "projects:branches:list",
   checkoutBranch: "projects:branches:checkout",
   createBranch: "projects:branches:create",
-  chooseWorkspaceBinding: "projects:workspace-binding:choose",
+  reveal: "projects:reveal",
   event: "projects:event",
 } as const;
-
-export type ProjectMemoryRebindMode = "retain" | "new";
 
 export type ProjectsBridgeApi = {
   list: () => Promise<ProjectsSnapshot>;
@@ -118,6 +138,9 @@ export type ProjectsBridgeApi = {
     projectId: string,
     appearance: ProjectAppearance
   ) => Promise<Project>;
+  setAppPinned: (
+    input: SetProjectAppPinnedInput
+  ) => Promise<SetProjectAppPinnedResult>;
   detachLocal: (projectId: string) => Promise<ProjectLocalDetachResult>;
   releaseMissing: (projectId: string) => Promise<number>;
   setSortMode: (sortMode: ProjectsSortMode) => Promise<ProjectsSortMode>;
@@ -130,9 +153,6 @@ export type ProjectsBridgeApi = {
     projectId: string,
     name: string
   ) => Promise<GitBranchSnapshot>;
-  chooseWorkspaceBinding: (
-    projectId: string,
-    mode: ProjectMemoryRebindMode
-  ) => Promise<Project | null>;
+  reveal: (projectId: string) => Promise<void>;
   onEvent: (callback: (event: ProjectsEvent) => void) => () => void;
 };

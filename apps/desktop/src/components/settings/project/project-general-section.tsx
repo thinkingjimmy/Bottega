@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on Project/Chat projections, Projects/History/Bases providers, Memory/settings stores, shared appearance/grants/lifecycle surfaces, routing, and i18n
- * [OUTPUT]: Provides ProjectGeneralSection with basics, App grants, Base entry, and lifecycle controls
+ * [OUTPUT]: Provides ProjectGeneralSection with basics, unified contextual App authorization/placement management, Base entry, and lifecycle controls
  * [POS]: Project Settings General tab; composes existing owners without creating a second Project state model
  */
 
@@ -16,10 +16,10 @@ import { useProjects } from "@/components/providers/projects-provider";
 import { useBases } from "@/components/providers/bases-provider";
 import { useOptionalHistory } from "@/components/providers/history/history-provider";
 import { SidebarRenameDialog } from "@/components/sidebar/rename/sidebar-rename-dialog";
-import { ProjectAppGrantsPanel } from "@/components/sidebar/project/grants/project-app-grants-panel";
+import { ProjectAppPlacements } from "./apps/project-app-placements";
 import {
   ProjectAppearancePanel,
-} from "@/components/sidebar/project/project-appearance-picker";
+} from "@/components/sidebar/project/appearance/project-appearance-picker";
 import {
   ProjectLifecycleDialogs,
   useProjectLifecycle,
@@ -131,7 +131,7 @@ export function ProjectGeneralSection({
               label={t("projectSettings.general.memory")}
               description={
                 <>
-                  {t(memoryConclusion.key)}
+                  {t(memoryConclusion.copyKey)}
                   {memoryConclusion.delivering && ` · ${t("projectSettings.general.memoryDelivering")}`}
                 </>
               }
@@ -159,16 +159,19 @@ export function ProjectGeneralSection({
           </SettingsList>
         </SettingsSection>
 
-        <SettingsSection
-          title={t("projectSettings.general.appsSection")}
-          description={project.workspaceBinding.kind === "app" ? t("projectSettings.general.appsManagedByApp") : undefined}
-        >
-          {project.workspaceBinding.kind === "app" ? (
+        {/* App Project 的授权归 App 页面，这里只留一句去处；其余情况整段
+            （标题、说明、「添加 App」入口）都归 ProjectAppPlacements 自己，
+            动作才落得进 SettingsSection 已有的 action 位。 */}
+        {project.workspaceBinding.kind === "app" ? (
+          <SettingsSection
+            description={t("projectSettings.general.appsManagedByApp")}
+            title={t("projectSettings.general.appsSection")}
+          >
             <SettingsEmpty icon={<PanelsTopLeft />} title={t("projectSettings.general.appsManagedByApp")} hint={t("projectSettings.general.appLifecycleHint")} />
-          ) : (
-            <ProjectAppGrantsPanel project={project} />
-          )}
-        </SettingsSection>
+          </SettingsSection>
+        ) : (
+          <ProjectAppPlacements project={project} />
+        )}
 
         <SettingsSection title={t("projectSettings.general.baseSection")}>
           {!projectBasesLoaded ? (
@@ -234,6 +237,7 @@ export function ProjectGeneralSection({
                 htmlFor="project-detach"
                 label={t("projects.removeLocal")}
                 description={t("projectSettings.general.detachHint")}
+                tone="destructive"
                 control={
                   <SettingsButton id="project-detach" onClick={lifecycle.requestLocalDetach} variant="destructive">
                     <FolderX />{t("projects.removeLocal")}

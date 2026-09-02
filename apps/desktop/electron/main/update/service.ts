@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on BrowserWindow, shared update IPC, one UpdateAdapter, scheduling/forced-exit hooks, and a two-phase safe-quit port
- * [OUTPUT]: Provides app-singleton UpdateService with check/download state, non-returning installer handoff, IPC registration, TTL, and sanitized pre-terminal errors
+ * [INPUT]: Depends on BrowserWindow, shared update IPC, one UpdateAdapter, signed candidate compatibility preflight, scheduling/forced-exit hooks, and a two-phase safe-quit port
+ * [OUTPUT]: Provides app-singleton UpdateService with check/download state, fail-closed durable-contract preflight, non-returning installer handoff, IPC registration, TTL, and sanitized pre-terminal errors
  * [POS]: The main-owned update lifecycle authority; windows subscribe to it but never own timers or updater listeners
  */
 
@@ -17,6 +17,7 @@ import type {
   UpdateAdapterEvents,
   UpdateInfo,
 } from "./adapter";
+import type { AppGuiCompatibilitySupport } from "../../../shared/app-gui/support";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const FIRST_CHECK_DELAY_MS = 30_000;
@@ -33,6 +34,10 @@ export type UpdateServiceOptions = {
   platform: NodeJS.Platform;
   resourcesPath: string;
   automaticInstall: boolean;
+  candidateCompatibility?: Readonly<{
+    load(version: string): Promise<AppGuiCompatibilitySupport>;
+    apply(matrix: AppGuiCompatibilitySupport): Promise<void>;
+  }>;
   prepareSafeQuit(reason: "update"): Promise<boolean>;
   forceExit(code: number): void;
   now?: () => number;
@@ -144,14 +149,23 @@ export class UpdateService {
     if (this.snapshotValue.phase !== "available") {
       return Promise.reject(new Error("当前没有可下载的更新"));
     }
-    this.publish({
-      ...this.snapshotValue,
-      phase: "downloading",
-      progress: { percent: 0, transferred: 0, total: 0 },
-      error: null,
-    });
-    const flight = this.options.adapter
-      .downloadUpdate()
+    const version = this.snapshotValue.availableVersion;
+    const flight = Promise.resolve()
+      .then(async () => {
+        if (!version) throw new Error("GUI_COMPATIBILITY_VERSION_UNAVAILABLE");
+        const compatibility = this.options.candidateCompatibility;
+        if (compatibility) {
+          const matrix = await compatibility.load(version);
+          await compatibility.apply(matrix);
+        }
+        this.publish({
+          ...this.snapshotValue,
+          phase: "downloading",
+          progress: { percent: 0, transferred: 0, total: 0 },
+          error: null,
+        });
+        await this.options.adapter!.downloadUpdate();
+      })
       .then(async () => {
         await this.installFlight;
         return this.snapshotValue;

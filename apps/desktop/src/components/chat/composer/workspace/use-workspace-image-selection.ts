@@ -1,13 +1,12 @@
 /**
- * [INPUT]: Depends on Workspace readRef client, PromptInput Atomic attachment access, composer scope/capability and RichInput candidate agreement
- * [OUTPUT]: Provides useWorkspaceImageSelection; When you select fresh resign, just specify the expiration of TTL and re-sign once, scope identity change fails backwards
+ * [INPUT]: Depends on Workspace readRef client, the app translation provider, PromptInput atomic attachment admission, composer scope/capability, and the RichInput candidate contract
+ * [OUTPUT]: Provides useWorkspaceImageSelection with localized read/admission failures; selection fresh-signs and retries exactly once only for explicit TTL expiry
  * [POS]: the boundaries of the composer/workspace's image candidate affairs; Read, decode, access, and chat compose are done in one place, and the Chat Composer only takes the pending status
  */
 
 import { useCallback, useLayoutEffect, useRef } from "react";
 import type { AttachmentsContext } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import type { RichInputProps } from "@ai-chat/ui/components/ai-elements/rich-input";
-import { PROMPT_INPUT_MAX_FILE_SIZE_MESSAGE } from "@ai-chat/ui/lib/prompt-input-files";
 import {
   ATTACHMENT_BYTE_LIMIT,
   ATTACHMENT_LIMIT,
@@ -17,6 +16,7 @@ import {
   resignWorkspaceFile,
 } from "@/lib/workspace-files-client";
 import type { ChatSessionController } from "../../runtime/use-chat-session";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 const IMAGE_PATH_PATTERN = /\.(?:png|jpe?g|gif|webp)$/i;
 
@@ -35,6 +35,7 @@ export function useWorkspaceImageSelection({
   attachments: AttachmentsContext;
   controller: ChatSessionController["composer"];
 }) {
+  const { t } = useAppTranslation();
   const generation = useRef(0);
   const mounted = useRef(true);
   const latest = useRef({
@@ -116,10 +117,10 @@ export function useWorkspaceImageSelection({
           if (result.kind !== "image") {
             if (result.kind === "metadata" && result.reason === "too-large") {
               throw new Error(
-                `${PROMPT_INPUT_MAX_FILE_SIZE_MESSAGE} (${result.size} > ${ATTACHMENT_BYTE_LIMIT})`
+                `${t("ui.fileSizeError")} (${result.size} > ${ATTACHMENT_BYTE_LIMIT})`
               );
             }
-            throw new Error("所选路径不是受支持的图片");
+            throw new Error(t("chat.workspaceImage.unsupported"));
           }
           const payload = result.dataUrl.slice(result.dataUrl.indexOf(",") + 1);
           const bytes = Uint8Array.from(atob(payload), (character) =>
@@ -136,18 +137,22 @@ export function useWorkspaceImageSelection({
             maxFileSize: ATTACHMENT_BYTE_LIMIT,
           });
           if (selection.error || selection.files.length !== 1) {
-            throw new Error(selection.error?.message ?? "图片附件准入失败");
+            throw new Error(
+              selection.error?.message ?? t("chat.workspaceImage.admissionFailed")
+            );
           }
           return true;
         } catch (cause) {
           if (!stillCurrent()) return true;
           controller.setAttachmentNotice(
-            cause instanceof Error ? cause.message : "无法读取 Workspace 图片"
+            cause instanceof Error
+              ? cause.message
+              : t("chat.workspaceImage.readFailed")
           );
           return false;
         }
       })();
     },
-    [attachments, controller]
+    [attachments, controller, t]
   );
 }

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, react-router navigation, useAppTranslation onboarding catalog, SetupProvider judgments, Library-first Skills discovery/import, settingsStore, brand assets, SetupBackendRow and Settings/UI primitives
- * [OUTPUT]: Provides the required Chat Home/Agent onboarding followed by optional Skills discovery and Memory setup
+ * [INPUT]: Depends on React, react-router navigation, useAppTranslation onboarding catalog, SetupProvider judgments, shared AgentFailureNotice, Library-first Skills discovery/import, settingsStore, brand assets, SetupBackendRow and Settings/UI primitives
+ * [OUTPUT]: Provides required Chat Home/Agent onboarding with structured Agent failures, followed by optional Skills discovery and Memory setup
  * [POS]: Insensible main-owned onboarding pages of views; The sequence of steps and blockages are all derived from the same judgment as the onboarding-gate, and the page itself is no longer a threshold
  */
 
@@ -10,6 +10,7 @@ import { useNavigate } from "react-router";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useSetup } from "@/components/providers/setup-provider";
 import { SetupBackendRow } from "@/components/setup/backend-row";
+import { AgentFailureNotice } from "@/components/agent-failure-notice";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
@@ -302,11 +303,11 @@ function AgentStep() {
         {t("onboarding.agentAutoRecheck", { product: PRODUCT_NAME })}
       </p>
       {setup.error && (
-        <p
-          role="alert"
-          className="rounded-md bg-destructive/10 px-3 py-2 text-destructive text-xs ring-1 ring-destructive/20"
-        >
-          {setup.error}
+        <AgentFailureNotice compact {...setup.error} />
+      )}
+      {setup.notice && (
+        <p className="rounded-md bg-amber-500/10 px-3 py-2 text-amber-800 text-xs ring-1 ring-amber-500/20 dark:text-amber-300" role="status">
+          {setup.notice}
         </p>
       )}
     </>

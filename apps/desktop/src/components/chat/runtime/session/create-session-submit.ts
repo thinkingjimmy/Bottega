@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Chat/Project/Setup port, Conversation Coordinator, session-submission-payload, errors, and the text is associated with the attachment sequencing/Abort tool
+ * [INPUT]: Depends on Chat/Project/Setup ports, Conversation Coordinator, session-submission-payload, renderer locale/catalog runtime, errors, attachment sequencing, and Abort tools
  * [OUTPUT]: Provides createSessionSubmit/createSessionRevisionSubmit, compiles a single task, including workspace/live-view fence, canonical owner CAS, revision tail CAS and durable admission; Re-exported the only first-round installation function
  * [POS]: The limit of the submission of chat/runtime/session transactions; The main custody is not cancelled due to view switching, and the delayed return can only be written back to the still matched renderer generation
  */
@@ -20,10 +20,7 @@ import type {
   ChatMessage,
   UnsequencedUserMessage,
 } from "../../../../../shared/chats-ipc";
-import {
-  REVISION_NOT_IDLE,
-  REVISION_STALE,
-} from "../../../../../shared/chats-ipc";
+import { REVISION_NOT_IDLE, REVISION_STALE } from "../../../../../shared/chats-ipc";
 import type {
   AdmissionResult,
   ManualTurnPersistence,
@@ -33,9 +30,7 @@ import type {
   IncarnationPrecondition,
   WorkspacePrecondition,
 } from "../../../../../shared/submission";
-import type {
-  PromptInputMessage,
-} from "@ai-chat/ui/components/ai-elements/prompt-input";
+import type { PromptInputMessage } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import type { useChats } from "@/components/providers/chats-provider";
 import type { useProjects } from "@/components/providers/projects-provider";
 import type { useSetup } from "@/components/providers/setup-provider";
@@ -58,7 +53,9 @@ import {
   queuedPrompt,
 } from "@/lib/message-queue-model";
 import { errorMessage, reportedFailure } from "@/lib/errors";
+import { effectiveLocale } from "@/lib/i18n-locale";
 import { admissionReasonText } from "@/lib/skill-failure-text";
+import { translate } from "../../../../../shared/i18n/runtime";
 import {
   ackManualIntents,
   ackSubmissionOutcome,
@@ -66,9 +63,7 @@ import {
   getSubmissionOutcome,
   submitManualTurn,
 } from "@/lib/sections-client";
-import {
-  splitChatAttachments,
-} from "../chat-attachments";
+import { splitChatAttachments } from "../chat-attachments";
 import {
   buildMockTurnInput,
   messageId,
@@ -77,14 +72,9 @@ import {
   type ChatProjectMode,
 } from "../chat-session-model";
 import type { useChatSettings } from "../use-chat-settings";
-import type {
-  SessionSubmitLifecycle,
-} from "./create-session-submit-lifecycle";
+import type { SessionSubmitLifecycle } from "./create-session-submit-lifecycle";
 import type { SessionSubmit } from "./use-session-interactions";
-import {
-  gallerySnapshot,
-  submissionContent,
-} from "./session-submission-payload";
+import { gallerySnapshot, submissionContent } from "./session-submission-payload";
 export { assembleFirstTurnPayload } from "./session-submission-payload";
 
 type ChatsPort = Pick<
@@ -270,7 +260,13 @@ export function createSessionSubmissionPorts(
     if (selectedBackend?.runtimeStatus !== "installed") {
       setup.openOnboarding();
       lifecycle.showLocalAssistant(
-        `**需要先完成 ${selectedBackend?.displayName ?? settings.turnOptions.backend} 初始化。** 已为你打开安装与登录向导。`,
+        translate(
+          effectiveLocale(),
+          "chat.runtime.submission.backendSetupRequired",
+          {
+            backend: selectedBackend?.displayName ?? settings.turnOptions.backend,
+          }
+        ),
         true
       );
       throw new Error("Agent 未初始化");
@@ -692,7 +688,9 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
     } catch (cause) {
       throwIfSubmissionAborted(signal);
       input.lifecycle.rejectBeforeAdmission(
-        `本地会话准备失败：${errorMessage(cause)}`
+        translate(effectiveLocale(), "chat.runtime.submission.localPreparationFailed", {
+          message: errorMessage(cause),
+        })
       );
       throw reportedFailure(cause);
     }
@@ -760,7 +758,7 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
         steer: ackAgentSteerIntents,
       });
     if (receipt.phase === "failed" && !receipt.userPersisted) {
-      const reason = "消息未写入，请修正后重试";
+      const reason = translate(effectiveLocale(), "chat.runtime.queue.notPersisted");
       input.lifecycle.rejectBeforeAdmission(reason);
       await flushAcks();
       throw reportedFailure(new Error(reason));

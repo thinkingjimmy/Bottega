@@ -1,30 +1,31 @@
 "use client";
 
 /**
- * [INPUT]: Depends on AppRecord/AppGrantSource/Project Projection, apps-client tri-mode and default authorization commands, i18n, Select/SettingsSwitch and ConfirmationDialog
- * [OUTPUT]: Provides AppGrantsPanel; Pre-defined "available range" rank, then exposed capacity rank or specified range list by rank
- * [POS]: The license base for components/apps is replicated by the AppSettingsPanel; Chat is only clear at this level, Project/Whole is managed on the App side
+ * [INPUT]: Depends on AppRecord/AppGrantSource projections, fenced scope-clear and global default commands, i18n, Select, ConfirmationDialog, and Settings primitives
+ * [OUTPUT]: Provides AppGrantsPanel with global defaults, scope audit/clear, and an always-reachable Studio access row whose revocation is confirmed like every other 30s-drain consequence; contextual Project creation is intentionally excluded
+ * [POS]: The grants body of components/apps, mounted by AppSettingsPanel; Project and Chat authorization starts only inside those contexts
  */
 
 /* ============================================================
- * 为什么是「一个档位 + 一份清单」，而不是把三源并排摊开
+ * 为什么这里只保留「全局默认 + 作用域审计」
  *
- * resolver 的法只有两句：负向记录压制同层与下层，其余各层正授权取宽并集。
- * 于是「默认给不给」是唯一的真维度，作用域记录只是对它的偏离。
+ * resolver 采用就近覆盖：Chat 有记录就直接决定，否则看 Project，最后才看
+ * defaultGrant。作用域正授权和 disabled 都是完整决定，不与上层做集合运算。
  *
- * 而本页能签发的载荷只有一种（grantRequest 给作用域的与给默认档的逐字
- * 相同），四种组合里立刻有两种是纯冗余：默认开时再给作用域正授权，默认关时
- * 再给作用域负向记录——都在压制或加宽一个已经如此的世界。旧版把这四种一视
- * 同仁地摆成两列按钮，读的人得先在脑子里跑一遍 resolver 才知道哪颗有用。
+ * 因而 App 设置页只拥有全局默认；Chat/Project 记录必须在对应上下文创建。
+ * 这里把它们列出来，是为了审计与清除，不是再造一个脱离上下文的添加入口。
+ * 清除恢复上层继承，disabled 明确保留“当前作用域关闭”的语义，两者不可混写。
  *
- * 所以档位只有两个真值，直接映射 defaultGrant 的有无；「不授权」不是第三档，
- * 它是「仅指定」的空态——同一份持久值不该有两个名字，否则刷新后无从复原。
- * 负向记录随之退出产品：本页不再签发它，存量仍如实登记在清单里并可移除——
- * 账本里的事实可以被清除，但不可以被藏起来。
+ * ── 排版为什么全部交给 settings-layout ──────────────────────
+ * 这一面从前手写 `rounded-lg border p-3` 与四种 space-y，与侧栏、Project
+ * settings 各写各的。同一个产品里「一块内容」长三种样子，而三种都没错，
+ * 只是没有一个地方说了算。现在一律走 SettingsSection / SettingsList /
+ * SettingsRow：控件靠右、不占满宽度，表面的环才有行可分隔——环与满宽控件
+ * 的边框平行等距时，它就不再是容器，只是一圈没有职责的描边。
  * ============================================================ */
 
 import { useState } from "react";
-import { Button } from "@ai-chat/ui/components/ui/button";
+import { ShieldOff } from "lucide-react";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import {
   Select,
@@ -33,48 +34,62 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@ai-chat/ui/components/ui/select";
-import { SettingsSwitch } from "@/components/settings/settings-layout";
+import {
+  SettingsBadge,
+  SettingsButton,
+  SettingsEmpty,
+  SettingsList,
+  SettingsRow,
+  SettingsSection,
+  SettingsSwitch,
+} from "@/components/settings/settings-layout";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { setAppGrantState, setDefaultAppGrant } from "@/lib/apps-client";
+import { defaultAppGrantRequest } from "../../../shared/apps-ipc";
 import type {
+  AppGrantCommandTarget,
   AppGrantSource,
-  AppGrantTarget,
   AppRecord,
 } from "../../../shared/apps-ipc";
-import type { Project } from "../../../shared/projects-ipc";
 
 type PendingConfirmation =
-  | { kind: "project"; projectId: string; projectName: string }
+  | { kind: "project"; target: AppGrantCommandTarget; projectName: string }
   | { kind: "open-all" }
-  | { kind: "purge" };
+  | { kind: "revoke-studio" };
 
 type ScopeRow = {
   key: string;
   name: string;
-  caption: string;
+  kind: string;
+  off: boolean;
   // 撤销要不要过确认由 target.kind 直接判定：Project 影响整组成员，Chat 只清本层。
   // 再存一份布尔就是给同一个事实开第二个真相源，迟早各说各话。
-  target: AppGrantTarget;
+  target: AppGrantCommandTarget;
 };
 
+/* 载荷取自共享的 defaultAppGrantRequest：可见性侧（Design 那条「重新打开」
+   的悬浮条）写的是同一个 defaultGrant，两边各拼一份就必然漂开。这里只还
+   需要说出自己的数据级别——Base App 读自己的 Base，其余不读。 */
 function grantRequest(record: AppRecord) {
-  return {
-    requestedDataLevel:
-      record.domainIdentity?.kind === "base" ? "read" as const : "none" as const,
-    requestedAgentDelegation: { fileRead: false, useData: false },
-  };
+  return defaultAppGrantRequest(
+    record.domainIdentity?.kind === "base" ? "read" : "none"
+  );
 }
 
 export function AppGrantsPanel({
   record,
   sources,
-  projects,
+  onRevokeStudio,
   onChanged,
   onError,
 }: {
   record: AppRecord;
   sources: readonly AppGrantSource[];
-  projects: readonly Project[];
+  /* App 内权限是「它能碰到什么」的第三行，而不是另起一段：三行问的是同一个
+     问题——这款 App 拿得到什么。分成两段，读的人得自己把它们并起来。判据与
+     状态都在 record 上，故不必由调用方拆成几个参数递进来；撤销要发 IPC，
+     那一件事仍归 AppSettingsPanel。 */
+  onRevokeStudio: () => void;
   onChanged: () => void;
   onError: (cause: unknown) => void;
 }) {
@@ -88,23 +103,24 @@ export function AppGrantsPanel({
     record.defaultGrant?.agentDelegation.fileRead ||
     record.defaultGrant?.agentDelegation.useData
   );
-
-  const ordinaryProjects = projects.filter(
-    (project) => project.workspaceBinding.kind !== "app" && !project.archivedAt
+  const busy = busyKey !== "";
+  /* 声明与已授权是两件事，界面也照实分两态：manifest 里有 gui 才有这一行，
+     studioGrant 决定它此刻说的是「已允许」还是「还没允许」。 */
+  const studioDeclared = Boolean(
+    record.manifest?.kind === "base" && record.manifest.gui
   );
+  const studioGranted = Boolean(record.studioGrant);
+
   const scopes: ScopeRow[] = sources.flatMap((source) => {
-    if (!source.target) return [];
-    const kind = t(source.target.kind === "chat" ? "apps.settingsScopeChat" : "apps.settingsScopeProject");
+    if (!source.target || !source.commandTarget) return [];
     return [{
       key: `${source.target.kind}:${source.target.kind === "chat" ? source.target.chatId : source.target.projectId}`,
       name: source.targetName,
-      caption: source.state === "grant" ? kind : `${kind} · ${t("apps.settingsScopeOff")}`,
-      target: source.target,
+      kind: t(source.target.kind === "chat" ? "apps.settingsScopeChat" : "apps.settingsScopeProject"),
+      off: source.state !== "grant",
+      target: source.commandTarget,
     }];
   });
-  const addableProjects = ordinaryProjects.filter(
-    (project) => !scopes.some((scope) => scope.key === `project:${project.id}`)
-  );
 
   const run = async (key: string, operation: () => Promise<unknown>) => {
     setBusyKey(key);
@@ -118,22 +134,13 @@ export function AppGrantsPanel({
     }
   };
 
-  const setScope = (target: AppGrantTarget, state: "grant" | "clear") => run(
+  const clearScope = (target: AppGrantCommandTarget) => run(
     `${target.kind}:${target.kind === "chat" ? target.chatId : target.projectId}`,
     () => setAppGrantState({
       appId: record.id,
       target,
-      state,
-      ...(state === "grant" ? grantRequest(record) : {}),
-    })
-  );
-
-  const clearAllScopes = () => Promise.all(
-    scopes.map((scope) => setAppGrantState({
-      appId: record.id,
-      target: scope.target,
       state: "clear",
-    }))
+    })
   );
 
   const updateDefault = (
@@ -147,181 +154,230 @@ export function AppGrantsPanel({
     grant: { requestedDataLevel, requestedAgentDelegation },
   }));
 
-  /* 放宽要确认，收紧不用：开到「全部作用域」是一次扩权，且会连带清掉清单里
-     每一条更具体的记录——不清就等于让档位对残留记录说谎。 */
+  /* 放宽全局默认要确认，收紧不用。更近作用域是独立事实：改 defaultGrant
+     绝不顺手清掉 Chat/Project 记录，否则“改默认”会偷偷变成批量改权限。 */
   const changeMode = (next: string) => {
     if (next === "all") return setPending({ kind: "open-all" });
     void run("default", () => setDefaultAppGrant({ appId: record.id, grant: null }));
   };
 
+  /* 撤销 Studio 会拉起最长 30s 的 GUI drain 并踢掉正在用的界面——与清除
+     Project 作用域同一量级的后果，故走同一道确认门。同类后果两种把关，
+     用户学不会哪一颗按下去会疼。 */
   const confirm = () => {
+    if (pending?.kind === "revoke-studio") {
+      onRevokeStudio();
+      setPending(null);
+      return;
+    }
     const operation = pending?.kind === "project"
-      ? setScope({ kind: "project", projectId: pending.projectId }, "clear")
-      : pending?.kind === "purge"
-        ? run("default", clearAllScopes)
-        : run("default", async () => {
-            await setDefaultAppGrant({ appId: record.id, grant: grantRequest(record) });
-            await clearAllScopes();
-          });
+      ? clearScope(pending.target)
+      : run("default", () =>
+          setDefaultAppGrant({ appId: record.id, grant: grantRequest(record) })
+        );
     void operation.finally(() => setPending(null));
   };
 
-  return (
-    <div className="space-y-6">
-      {/* ── 档位：这一页唯一需要先回答的问题 ───────────────── */}
-      <section className="space-y-2">
-        <label className="font-medium text-sm" htmlFor="app-grant-scope-mode">
-          {t("apps.settingsScopeMode")}
-        </label>
-        <Select
-          disabled={busyKey !== ""}
-          onValueChange={changeMode}
-          value={openToAll ? "all" : "selected"}
-        >
-          <SelectTrigger className="w-full" id="app-grant-scope-mode">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("apps.settingsScopeAll")}</SelectItem>
-            <SelectItem value="selected">{t("apps.settingsScopeSelected")}</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-muted-foreground text-xs">
-          {t(openToAll ? "apps.settingsScopeAllHint" : "apps.settingsScopeSelectedHint")}
-        </p>
-      </section>
+  /* 三种确认共用一台对话框：标题、正文、确认按钮各是一条目录键，而不是
+     三串就地拼出来的三元表达式——同一个问题在三处各写一次，迟早三处说法不同。
+     字段名以 Key 收尾，静态门禁据此知道这些字符串是坐标而不是文案。 */
+  const confirmCopy = {
+    "open-all": {
+      titleKey: "apps.settingsOpenAllTitle",
+      descriptionKey: "apps.settingsOpenAllConfirm",
+      confirmLabelKey: "apps.settingsScopeAll",
+      tone: "default",
+    },
+    project: {
+      titleKey: "apps.projectRevokeTitle",
+      descriptionKey: "apps.projectRevokeConfirm",
+      confirmLabelKey: "apps.revoke",
+      tone: "destructive",
+    },
+    "revoke-studio": {
+      titleKey: "apps.settingsRevokeStudioTitle",
+      descriptionKey: "apps.settingsRevokeStudioConfirm",
+      confirmLabelKey: "apps.settingsRevokeStudioAccess",
+      tone: "destructive",
+    },
+  } as const;
+  const confirmation = confirmCopy[pending?.kind ?? "open-all"];
 
-      {/* ── 全部档：能力档挂在 defaultGrant 上，只有这一档才有落点 ── */}
-      {openToAll && (
-        <section className="space-y-3 rounded-lg border p-3">
-          {isBase && (
-            <div className="flex items-center justify-between gap-3">
-              <label className="font-medium text-sm" htmlFor="app-grant-data">
-                {t("apps.settingsDataAccess")}
-              </label>
+  return (
+    <div className="space-y-8">
+      {/* ── 档位：这一页唯一需要先回答的问题 ───────────────── */}
+      <SettingsSection title={t("apps.settingsScopeMode")}>
+        <SettingsList>
+          <SettingsRow
+            htmlFor="app-grant-scope-mode"
+            label={t("apps.settingsScopeRow")}
+            description={t(openToAll ? "apps.settingsScopeAllHint" : "apps.settingsScopeSelectedHint")}
+            control={
               <Select
-                disabled={busyKey !== ""}
-                onValueChange={(next) => void updateDefault(next as "none" | "read" | "row-write")}
-                value={dataLevel}
+                disabled={busy}
+                onValueChange={changeMode}
+                value={openToAll ? "all" : "selected"}
               >
-                <SelectTrigger className="w-40" id="app-grant-data">
+                <SelectTrigger
+                  aria-label={t("apps.settingsScopeRow")}
+                  id="app-grant-scope-mode"
+                  size="lg"
+                >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("apps.settingsDataNone")}</SelectItem>
-                  <SelectItem value="read">{t("apps.settingsDataRead")}</SelectItem>
-                  <SelectItem value="row-write">{t("apps.settingsDataWrite")}</SelectItem>
+                <SelectContent align="end">
+                  <SelectItem value="all">{t("apps.settingsScopeAll")}</SelectItem>
+                  <SelectItem value="selected">{t("apps.settingsScopeSelected")}</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-          )}
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-medium text-sm">{t("apps.settingsDelegation")}</p>
-              <p className="text-muted-foreground text-xs">{t("apps.settingsDelegationHint")}</p>
-            </div>
-            <SettingsSwitch
-              checked={delegated}
-              disabled={busyKey !== ""}
-              id="app-grant-delegation"
-              label={t("apps.settingsDelegation")}
-              onToggle={() => void updateDefault(
-                dataLevel,
-                delegated
-                  ? { fileRead: false, useData: false }
-                  : { fileRead: true, useData: Boolean(record.defaultGrant?.data) }
-              )}
+            }
+          />
+          {/* 作用域清单只做审计/清除；无论默认开关如何都逐条展示。 */}
+          {scopes.map((scope) => (
+            <SettingsRow
+              key={scope.key}
+              label={scope.name}
+              badge={
+                <SettingsBadge tone={scope.off ? "muted" : "neutral"}>
+                  {scope.off ? `${scope.kind} · ${t("apps.settingsScopeOff")}` : scope.kind}
+                </SettingsBadge>
+              }
+              control={
+                <SettingsButton
+                  disabled={busyKey === scope.key}
+                  onClick={() => {
+                    if (scope.target.kind !== "project") {
+                      void clearScope(scope.target);
+                      return;
+                    }
+                    setPending({
+                      kind: "project",
+                      target: scope.target,
+                      projectName: scope.name,
+                    });
+                  }}
+                  variant="outline"
+                >
+                  {t("apps.settingsClear")}
+                </SettingsButton>
+              }
             />
-          </div>
-          {/* 全部档下清单本该是空的；存量残留只给一句如实交代与一颗清除键——
-              藏起来才是撒谎，摊成可逐条编辑的例外清单则是把维度又加回来。 */}
-          {scopes.length > 0 && (
-            <div className="flex items-center justify-between gap-3 border-t pt-3">
-              <p className="text-muted-foreground text-xs">
-                {t("apps.settingsResidualScopes", { scopes: scopes.length })}
-              </p>
-              <Button
-                disabled={busyKey !== ""}
-                onClick={() => setPending({ kind: "purge" })}
-                size="sm"
-                variant="ghost"
-              >
-                {t("apps.settingsClear")}
-              </Button>
-            </div>
-          )}
-        </section>
+          ))}
+        </SettingsList>
+        {scopes.length === 0 && (
+          <SettingsEmpty
+            hint={t("apps.settingsScopeEmptyHint")}
+            icon={<ShieldOff />}
+            title={t("apps.settingsScopeEmptyTitle")}
+          />
+        )}
+      </SettingsSection>
+
+      {/* ── 能力：全挂在 defaultGrant 上，只有全部档才有落点 ── */}
+      {openToAll && (
+        <SettingsSection
+          description={t("apps.settingsCapabilitiesHint")}
+          title={t("apps.settingsCapabilities")}
+        >
+          <SettingsList>
+            {isBase && (
+              <SettingsRow
+                htmlFor="app-grant-data"
+                label={t("apps.settingsDataAccess")}
+                description={t("apps.settingsDataAccessHint")}
+                control={
+                  <Select
+                    disabled={busy}
+                    onValueChange={(next) => void updateDefault(next as "none" | "read" | "row-write")}
+                    value={dataLevel}
+                  >
+                    <SelectTrigger
+                      aria-label={t("apps.settingsDataAccess")}
+                      id="app-grant-data"
+                      size="lg"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      <SelectItem value="none">{t("apps.authorization.dataNone")}</SelectItem>
+                      <SelectItem value="read">{t("apps.authorization.dataRead")}</SelectItem>
+                      <SelectItem value="row-write">{t("apps.authorization.dataWrite")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                }
+              />
+            )}
+            <SettingsRow
+              htmlFor="app-grant-delegation"
+              label={t("apps.settingsDelegation")}
+              description={t("apps.settingsDelegationHint")}
+              control={
+                <SettingsSwitch
+                  checked={delegated}
+                  disabled={busy}
+                  id="app-grant-delegation"
+                  label={t("apps.settingsDelegation")}
+                  onToggle={() => void updateDefault(
+                    dataLevel,
+                    delegated
+                      ? { fileRead: false, useData: false }
+                      : { fileRead: true, useData: Boolean(record.defaultGrant?.data) }
+                  )}
+                />
+              }
+            />
+          </SettingsList>
+        </SettingsSection>
       )}
 
-      {/* ── 仅指定档：清单只登记事实，空态自己说清「处处不可用」 ── */}
-      {!openToAll && (
-        <section className="space-y-2">
-          <p className="font-medium text-sm">{t("apps.settingsScopeList")}</p>
-          {scopes.map((scope) => (
-            <div className="flex items-center justify-between gap-3 rounded-lg border p-3" key={scope.key}>
-              <div className="min-w-0">
-                <p className="truncate font-medium text-sm">{scope.name}</p>
-                <p className="text-muted-foreground text-xs">{scope.caption}</p>
-              </div>
-              <Button
-                disabled={busyKey === scope.key}
-                onClick={() => {
-                  if (scope.target.kind !== "project") {
-                    void setScope(scope.target, "clear");
-                    return;
-                  }
-                  setPending({
-                    kind: "project",
-                    projectId: scope.target.projectId,
-                    projectName: scope.name,
-                  });
-                }}
-                size="sm"
-                variant="ghost"
-              >
-                {t("apps.settingsClear")}
-              </Button>
-            </div>
-          ))}
-          {scopes.length === 0 && (
-            <p className="text-muted-foreground text-sm">{t("apps.settingsScopeEmpty")}</p>
-          )}
-          {addableProjects.length > 0 && (
-            /* 受控在空串：选完即执行，下拉自己回到 placeholder，不冒充当前值。 */
-            <Select
-              disabled={busyKey !== ""}
-              onValueChange={(projectId) => void setScope({ kind: "project", projectId }, "grant")}
-              value=""
-            >
-              <SelectTrigger className="w-full" aria-label={t("apps.settingsScopeAdd")}>
-                <SelectValue placeholder={t("apps.settingsScopeAdd")} />
-              </SelectTrigger>
-              <SelectContent>
-                {addableProjects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </section>
+      {/* ── App 内权限：与全局档位正交，故不能挂在它的 if 里 ──────
+          Studio grant 问的是「这款 App 自己的界面能碰到什么」，与
+          Chat/Project 能不能用它是两个问题。从前这一行嵌在「全部档」
+          之下，而新装的 Base App 的 defaultGrant 是 null——于是同意书
+          里那句「权限可稍后撤销」指向一个用户永远走不到的地方。 */}
+      {studioDeclared && (
+        <SettingsSection
+          description={t("apps.settingsStudioAccessHint")}
+          title={t("apps.settingsStudioAccessSection")}
+        >
+          <SettingsList>
+            <SettingsRow
+              label={t("apps.settingsStudioAccessTitle")}
+              description={t(
+                studioGranted
+                  ? "apps.settingsStudioAccessActive"
+                  : "apps.settingsStudioAccessMissing"
+              )}
+              control={
+                studioGranted ? (
+                  <SettingsButton
+                    disabled={busy}
+                    onClick={() => setPending({ kind: "revoke-studio" })}
+                    variant="outline"
+                  >
+                    <ShieldOff />
+                    {t("apps.settingsRevokeStudioAccess")}
+                  </SettingsButton>
+                ) : null
+              }
+            />
+          </SettingsList>
+        </SettingsSection>
       )}
 
       <ConfirmationDialog
-        busy={busyKey !== ""}
+        busy={busy}
         cancelLabel={t("common.cancel")}
-        confirmLabel={pending?.kind === "open-all"
-          ? t("apps.settingsScopeAll")
-          : t("apps.revoke")}
-        confirmTone={pending?.kind === "open-all" ? "default" : "destructive"}
-        description={pending?.kind === "project"
-          ? t("apps.projectRevokeConfirm", { app: record.displayName, target: pending.projectName })
-          : t(pending?.kind === "purge" ? "apps.settingsPurgeConfirm" : "apps.settingsOpenAllConfirm", { scopes: scopes.length })}
+        confirmLabel={t(confirmation.confirmLabelKey)}
+        confirmTone={confirmation.tone}
+        description={t(confirmation.descriptionKey, {
+          app: record.displayName,
+          target: pending?.kind === "project" ? pending.projectName : "",
+        })}
         onConfirm={confirm}
         onOpenChange={(open) => { if (!open) setPending(null); }}
         open={pending !== null}
-        title={pending?.kind === "project"
-          ? t("apps.projectRevokeTitle")
-          : t(pending?.kind === "purge" ? "apps.settingsPurgeTitle" : "apps.settingsOpenAllTitle")}
+        title={t(confirmation.titleKey)}
       />
     </div>
   );

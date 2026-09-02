@@ -1,0 +1,1743 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "bottega-react-v1",
+      "bom-ref": "pkg:generic/bottega-react-v1@1"
+    },
+    "properties": [
+      {
+        "name": "bottega:pnpm-lockfile-sha256",
+        "value": "sha256:a6aa3241a788311febf6488dc011df016e9c76f40e08a7b344d9e3313cc08694"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "@babel/runtime",
+      "version": "7.29.7",
+      "bom-ref": "pkg:npm/%40babel%2Fruntime@7.29.7",
+      "purl": "pkg:npm/%40babel%2Fruntime@7.29.7",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "7d47c4740fdfdfef5c6a94ecc9e4b2c88e36a8af3f3ac2897b958abaa6870e01"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@base-ui/react",
+      "version": "1.7.0",
+      "bom-ref": "pkg:npm/%40base-ui%2Freact@1.7.0",
+      "purl": "pkg:npm/%40base-ui%2Freact@1.7.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e91fc61f87f8e9d650a79b1c59785623c216d72c60231cc50dea63ccf1c82e3c"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:07fc1b39d69d14bc7d40482a628f47226258eb01265db68ae684944b916beb2a"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@base-ui/utils",
+      "version": "0.3.2",
+      "bom-ref": "pkg:npm/%40base-ui%2Futils@0.3.2",
+      "purl": "pkg:npm/%40base-ui%2Futils@0.3.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "22615700943aa6ab33cbc1a0899f88f743d8dea40b2b7e2a44dcaa87269cfbfe"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:07fc1b39d69d14bc7d40482a628f47226258eb01265db68ae684944b916beb2a"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@date-fns/tz",
+      "version": "1.5.0",
+      "bom-ref": "pkg:npm/%40date-fns%2Ftz@1.5.0",
+      "purl": "pkg:npm/%40date-fns%2Ftz@1.5.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "52f0cb4ae20d0d52e306ad0698d7cd9a8738726cca2d9c1d4a926e82f44e26bd"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.md:sha256",
+          "value": "sha256:cc7267726f809c066c35c81a17d7525bccf588ecc826b15ca65a15d34106c804"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@dnd-kit/accessibility",
+      "version": "3.1.1",
+      "bom-ref": "pkg:npm/%40dnd-kit%2Faccessibility@3.1.1",
+      "purl": "pkg:npm/%40dnd-kit%2Faccessibility@3.1.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "acf49462cc8786236474cd46fd9d5cd453b88c9099293d0cbc19bb41b1bfd311"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:537607e3f1533ad2c5b12978967f5ab27f34ffb7e626e321017a7ccca6cc24ff"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@dnd-kit/core",
+      "version": "6.3.1",
+      "bom-ref": "pkg:npm/%40dnd-kit%2Fcore@6.3.1",
+      "purl": "pkg:npm/%40dnd-kit%2Fcore@6.3.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "659c468e7b226edbc6d0fe80380886c49d747bd2854eb701f2d79d6f9c135d78"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:537607e3f1533ad2c5b12978967f5ab27f34ffb7e626e321017a7ccca6cc24ff"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@dnd-kit/sortable",
+      "version": "10.0.0",
+      "bom-ref": "pkg:npm/%40dnd-kit%2Fsortable@10.0.0",
+      "purl": "pkg:npm/%40dnd-kit%2Fsortable@10.0.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "76b0b79f2bfa7bdec3037c85467074b2bbcffcc8ed8ca3cca599f9c8f9740c9a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:537607e3f1533ad2c5b12978967f5ab27f34ffb7e626e321017a7ccca6cc24ff"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@dnd-kit/utilities",
+      "version": "3.2.2",
+      "bom-ref": "pkg:npm/%40dnd-kit%2Futilities@3.2.2",
+      "purl": "pkg:npm/%40dnd-kit%2Futilities@3.2.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "093468cd167379022a24466fbacd90c40280afee852f138d8073337e1f7c6e8b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:537607e3f1533ad2c5b12978967f5ab27f34ffb7e626e321017a7ccca6cc24ff"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@floating-ui/core",
+      "version": "1.8.0",
+      "bom-ref": "pkg:npm/%40floating-ui%2Fcore@1.8.0",
+      "purl": "pkg:npm/%40floating-ui%2Fcore@1.8.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1e3c4043e5764f4e227f0d48190c0641a2a2377637241efe36cd02e7b763362f"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@floating-ui/dom",
+      "version": "1.8.0",
+      "bom-ref": "pkg:npm/%40floating-ui%2Fdom@1.8.0",
+      "purl": "pkg:npm/%40floating-ui%2Fdom@1.8.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b8d3a358a4681497b86e171fd68445f2da537fa83ce62fbccdb581f68d55b9cb"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@floating-ui/react-dom",
+      "version": "2.1.9",
+      "bom-ref": "pkg:npm/%40floating-ui%2Freact-dom@2.1.9",
+      "purl": "pkg:npm/%40floating-ui%2Freact-dom@2.1.9",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9a48255b5d8dd02f34d9422fc6ad8bc33b50ae122433be7582d8fc3a68cba16d"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@floating-ui/utils",
+      "version": "0.2.12",
+      "bom-ref": "pkg:npm/%40floating-ui%2Futils@0.2.12",
+      "purl": "pkg:npm/%40floating-ui%2Futils@0.2.12",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "44602003a15e6a859dfe89b68775deb7463dd2f8a8ce638267d3deb04f96285a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@jridgewell/gen-mapping",
+      "version": "0.3.13",
+      "bom-ref": "pkg:npm/%40jridgewell%2Fgen-mapping@0.3.13",
+      "purl": "pkg:npm/%40jridgewell%2Fgen-mapping@0.3.13",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b13da6b20109373c173d47fa2ead8d247afd4fdd521ba3a147a617cf3288d498"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:769d154fbde32a915af110b1123650bc79f4cbe675acc66e005265bf069c6c6c"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@jridgewell/remapping",
+      "version": "2.3.5",
+      "bom-ref": "pkg:npm/%40jridgewell%2Fremapping@2.3.5",
+      "purl": "pkg:npm/%40jridgewell%2Fremapping@2.3.5",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f6f1d758b1b0eaa719440f57d3c4429d0a8bcefcd9f43b17b748af77df48e49b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:769d154fbde32a915af110b1123650bc79f4cbe675acc66e005265bf069c6c6c"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@jridgewell/resolve-uri",
+      "version": "3.1.2",
+      "bom-ref": "pkg:npm/%40jridgewell%2Fresolve-uri@3.1.2",
+      "purl": "pkg:npm/%40jridgewell%2Fresolve-uri@3.1.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ec57307eb867c42f090c4e15823b09e09615d69499bf8775b7ca45d4268a3615"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:1ad100697b2b3320d602f7606be8ea5025f6c2f833879f14d77b7421dfa72cd0"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@jridgewell/sourcemap-codec",
+      "version": "1.5.5",
+      "bom-ref": "pkg:npm/%40jridgewell%2Fsourcemap-codec@1.5.5",
+      "purl": "pkg:npm/%40jridgewell%2Fsourcemap-codec@1.5.5",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "bcb5a037f04b758b2e6a7fbea0cc5f3352af84f0055c31e11c29140e8be4d35b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:769d154fbde32a915af110b1123650bc79f4cbe675acc66e005265bf069c6c6c"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@jridgewell/trace-mapping",
+      "version": "0.3.31",
+      "bom-ref": "pkg:npm/%40jridgewell%2Ftrace-mapping@0.3.31",
+      "purl": "pkg:npm/%40jridgewell%2Ftrace-mapping@0.3.31",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f508b6e58d3363d19caad99d2c260a9bc68d0ce49a0059b9e3a8d38ff0298a72"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:769d154fbde32a915af110b1123650bc79f4cbe675acc66e005265bf069c6c6c"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@phosphor-icons/react",
+      "version": "2.1.10",
+      "bom-ref": "pkg:npm/%40phosphor-icons%2Freact@2.1.10",
+      "purl": "pkg:npm/%40phosphor-icons%2Freact@2.1.10",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0a20f934f817fde31dbfb71ac8b3a12fcf92174d7f6d20eb6a6fb6f53c9c5445"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:6918b72504641180600cbbd4a86b0dfa9dfccf788775694325b71b9a029f6eb4"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tailwindcss/node",
+      "version": "4.3.2",
+      "bom-ref": "pkg:npm/%40tailwindcss%2Fnode@4.3.2",
+      "purl": "pkg:npm/%40tailwindcss%2Fnode@4.3.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b120bfd4589819669217adfe8c3b3c606536a5d3c4bf58f03fa953cf18ebd975"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tailwindcss/oxide-darwin-arm64",
+      "version": "4.3.2",
+      "bom-ref": "pkg:npm/%40tailwindcss%2Foxide-darwin-arm64@4.3.2",
+      "purl": "pkg:npm/%40tailwindcss%2Foxide-darwin-arm64@4.3.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "cfd0495d24fa2ff2362648c1501e2904181404e062eba9cf03aa688c19a7266f"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tailwindcss/oxide",
+      "version": "4.3.2",
+      "bom-ref": "pkg:npm/%40tailwindcss%2Foxide@4.3.2",
+      "purl": "pkg:npm/%40tailwindcss%2Foxide@4.3.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "05d2d00d32b0017d9dd4d8540be1da5389fab7f02c9a78081164f28f79996db3"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tanstack/react-table",
+      "version": "8.21.3",
+      "bom-ref": "pkg:npm/%40tanstack%2Freact-table@8.21.3",
+      "purl": "pkg:npm/%40tanstack%2Freact-table@8.21.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "fee9994e688f171e66626491dc2ac5a6ece1682a889abe977792e566b2096800"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:9db3f8ddd7031ab264b99bec49c221155d0c8649b53dd4aa007f2041d36cdf5f"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tanstack/react-virtual",
+      "version": "3.14.8",
+      "bom-ref": "pkg:npm/%40tanstack%2Freact-virtual@3.14.8",
+      "purl": "pkg:npm/%40tanstack%2Freact-virtual@3.14.8",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "64dc8fb044a6461bfe86f59479543bafd27aaea072db3a7f061ef8eb90239294"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tanstack/table-core",
+      "version": "8.21.3",
+      "bom-ref": "pkg:npm/%40tanstack%2Ftable-core@8.21.3",
+      "purl": "pkg:npm/%40tanstack%2Ftable-core@8.21.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "94ea33324378d8ef341e3119a7697e6b6538201fb56ce671bc007800543c133a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:9db3f8ddd7031ab264b99bec49c221155d0c8649b53dd4aa007f2041d36cdf5f"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@tanstack/virtual-core",
+      "version": "3.17.6",
+      "bom-ref": "pkg:npm/%40tanstack%2Fvirtual-core@3.17.6",
+      "purl": "pkg:npm/%40tanstack%2Fvirtual-core@3.17.6",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "11a54e929aff4d49f17b916ed0de5518c337e939bc8004214f90db45fe319d4b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "@types/react",
+      "version": "19.2.17",
+      "bom-ref": "pkg:npm/%40types%2Freact@19.2.17",
+      "purl": "pkg:npm/%40types%2Freact@19.2.17",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "69a85fd407dfc9c988ed2d3d1f3831d06cab1c3238638a33998cd2521008b907"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "axe-core",
+      "version": "4.10.3",
+      "bom-ref": "pkg:npm/axe-core@4.10.3",
+      "purl": "pkg:npm/axe-core@4.10.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0654cc20b2efcb1265cf10fac7ea231946891f98256a032ae1f9e6e5783a45ef"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:af175b9d96ee93c21a036152e1b905b0b95304d4ae8c2c921c7609100ba8df7e"
+        },
+        {
+          "name": "bottega:license:LICENSE-3RD-PARTY.txt:sha256",
+          "value": "sha256:4f8563870d0fca38bbc3e00b6f670cb7fa9f380ba9f26a7f7d1184a6b18b1653"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "csstype",
+      "version": "3.2.3",
+      "bom-ref": "pkg:npm/csstype@3.2.3",
+      "purl": "pkg:npm/csstype@3.2.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "6e8cf7d4de72930214898d50499133307bb3eee14ff79faea48efedbc8abbdfd"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:11d55bd4541c75ee7879547ac49089c489163dae49551389713c3d026cab383e"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "date-fns",
+      "version": "4.4.0",
+      "bom-ref": "pkg:npm/date-fns@4.4.0",
+      "purl": "pkg:npm/date-fns@4.4.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "54b02412a754c096c26a0e780f1f167635a291dd7f999e34e6acae101b48dc01"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.md:sha256",
+          "value": "sha256:8d3951c38967b964b1fe259bfd200c2647cc04c858b55a4414e3122a60f1ef4b"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "detect-libc",
+      "version": "2.1.2",
+      "bom-ref": "pkg:npm/detect-libc@2.1.2",
+      "purl": "pkg:npm/detect-libc@2.1.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0ad7a48740ae323a34410dc7bb538174b5fa09b9e0607f97362eae4b7c3ca849"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "echarts",
+      "version": "6.1.0",
+      "bom-ref": "pkg:npm/echarts@6.1.0",
+      "purl": "pkg:npm/echarts@6.1.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9824c13896e6d8189da48baed4431d4fd84a4e4046a7d48260f731133305ba21"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:634293835b43a6dd2094fa39182a3d9a6b9ca43b7fdb9ac354e8037af2a3093a"
+        },
+        {
+          "name": "bottega:license:NOTICE:sha256",
+          "value": "sha256:88c2418a8ab4dba3486b263600ab39e0c78c36142ddfa4167ed3d9c3a2d2ab38"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "enhanced-resolve",
+      "version": "5.21.6",
+      "bom-ref": "pkg:npm/enhanced-resolve@5.21.6",
+      "purl": "pkg:npm/enhanced-resolve@5.21.6",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "01ba2a99358c707b349f002bea8f7c1d8f3d39f5440662161cc00fee914a15a8"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:9068a8782d2fb4c6e432cfa25334efa56f722822180570802bf86e71b6003b1e"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "esbuild",
+      "version": "0.28.1",
+      "bom-ref": "pkg:npm/esbuild@0.28.1",
+      "purl": "pkg:npm/esbuild@0.28.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1ba48a466fb9298c76ce945fc785a696c437f4810dfe00469a99af5cde6356f3"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.md:sha256",
+          "value": "sha256:b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "graceful-fs",
+      "version": "4.2.11",
+      "bom-ref": "pkg:npm/graceful-fs@4.2.11",
+      "purl": "pkg:npm/graceful-fs@4.2.11",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "24b1c58bfb65b8544b4cb25600729dd1d127cfbdbc139a911325a84d535bfc90"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:f65c5d9f22a317b2a10803bd1868461ce6499c2ed7217bc80c0cc772a748789c"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "jiti",
+      "version": "2.7.0",
+      "bom-ref": "pkg:npm/jiti@2.7.0",
+      "purl": "pkg:npm/jiti@2.7.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2d07b9e17e026ba33500f9b65351891892a1ddfc4f7e4f9fbc0708da44cb7d26"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:46231df5a7733c3f52f11b71f3df61813007745b62b09031acfb45fb42d75082"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "lightningcss-darwin-arm64",
+      "version": "1.32.0",
+      "bom-ref": "pkg:npm/lightningcss-darwin-arm64@1.32.0",
+      "purl": "pkg:npm/lightningcss-darwin-arm64@1.32.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9056060124374fca06c9386ea3c0150295f25b712d9c165706e651e2612ee2e0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:5eba353fe5076ac3432177f8ab1cf75e3afcd0584251e37c3bfead5f447d040e"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "lightningcss",
+      "version": "1.32.0",
+      "bom-ref": "pkg:npm/lightningcss@1.32.0",
+      "purl": "pkg:npm/lightningcss@1.32.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "61427b1df1d7a011746199ef149eb27e4a41543269c3e8f51789d139948131fc"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:5eba353fe5076ac3432177f8ab1cf75e3afcd0584251e37c3bfead5f447d040e"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "lucide-react",
+      "version": "1.24.0",
+      "bom-ref": "pkg:npm/lucide-react@1.24.0",
+      "purl": "pkg:npm/lucide-react@1.24.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2a39bcc43d324e800ebdcd9298b6068741a539a8cbf3b236e03c5a687d0bfbfe"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "magic-string",
+      "version": "0.30.21",
+      "bom-ref": "pkg:npm/magic-string@0.30.21",
+      "purl": "pkg:npm/magic-string@0.30.21",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "60acff2771ae9ab980e9cae85f2f86f5504937c7817539e7b522abb545d33bea"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:1cbe51b907662f6cb1492b16c359384a595180bf0e4d101603ed525e75c4e484"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "react-dom",
+      "version": "19.2.4",
+      "bom-ref": "pkg:npm/react-dom@19.2.4",
+      "purl": "pkg:npm/react-dom@19.2.4",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "72ac76a9436705ea6ce347bb927e5e1ddf8e12b4064b6dec753b017859839245"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "react-hook-form",
+      "version": "7.87.0",
+      "bom-ref": "pkg:npm/react-hook-form@7.87.0",
+      "purl": "pkg:npm/react-hook-form@7.87.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1722e4e9c9f997dc22d5a7b4bba39de68d16604aba39d831248b474fa0a48340"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:e8eeb472f0a5889c2c51625b86a3f9b8630680adb9f49a125352e2e426392780"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "react",
+      "version": "19.2.4",
+      "bom-ref": "pkg:npm/react@19.2.4",
+      "purl": "pkg:npm/react@19.2.4",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "494353ba01218ef849cc757d1519fe1a92cd4d8398088c6cfe521d88206a3607"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "reselect",
+      "version": "5.3.0",
+      "bom-ref": "pkg:npm/reselect@5.3.0",
+      "purl": "pkg:npm/reselect@5.3.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b56927a82cd5a63f37bb79b80e8e2c3888eb138c6579630a2c276cc4c94f70a5"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:e98047a5dee068b33f82e8c4b7a63037b5108c93393198efd4097753004af5dd"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "scheduler",
+      "version": "0.27.0",
+      "bom-ref": "pkg:npm/scheduler@0.27.0",
+      "purl": "pkg:npm/scheduler@0.27.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "304ada6e934557c237806468114b2d524e64df007da7b10267ef198e37e6338e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "source-map-js",
+      "version": "1.2.1",
+      "bom-ref": "pkg:npm/source-map-js@1.2.1",
+      "purl": "pkg:npm/source-map-js@1.2.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f706f74ee575b7f6297c68a77df96f6e999ef1c32ef19758df4806fffe2004c4"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:6cb0631f71c7749763fd3dd1d5bee52dd1070ec17f2edc1710079ad070bd2fbd"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "tailwindcss",
+      "version": "4.3.2",
+      "bom-ref": "pkg:npm/tailwindcss@4.3.2",
+      "purl": "pkg:npm/tailwindcss@4.3.2",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2fa77d5c6d365fd476aeeea4693f1eb922e7bfea48c8aae37107ad5bc83cda04"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "tapable",
+      "version": "2.3.3",
+      "bom-ref": "pkg:npm/tapable@2.3.3",
+      "purl": "pkg:npm/tapable@2.3.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a69d12d4db3f20034c3692aaa39665bdba863d6348ed6fb6039b005de5d6fea8"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:824ef6c33ae5ecbbab65d37f2b37da2bfc81d76cf7676ec0f59d00a0a38bdb75"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "tslib",
+      "version": "2.3.0",
+      "bom-ref": "pkg:npm/tslib@2.3.0",
+      "purl": "pkg:npm/tslib@2.3.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0efbbdf4e61ba16f0c11e717decd68e137b01027b622fbaa85a2e949dc0a6fca"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "0BSD"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.txt:sha256",
+          "value": "sha256:5989359645911c04a140c49d89496b13feca980bbf36d2250a12d3b9d06250d6"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "tslib",
+      "version": "2.8.1",
+      "bom-ref": "pkg:npm/tslib@2.8.1",
+      "purl": "pkg:npm/tslib@2.8.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8323d2c9b60d690d5a44939466cf6f1ce55ec7ee6b0cb7e10d2890ca3b6c6a38"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "0BSD"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.txt:sha256",
+          "value": "sha256:5989359645911c04a140c49d89496b13feca980bbf36d2250a12d3b9d06250d6"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "typescript",
+      "version": "5.9.3",
+      "bom-ref": "pkg:npm/typescript@5.9.3",
+      "purl": "pkg:npm/typescript@5.9.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0ad0dbfd9c19570b2f30771d4255e50f6547c7bfd7df0b9023d32f97f2afc4d4"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.txt:sha256",
+          "value": "sha256:a5e9f9b1575301c7a7a03508fdaa2e05a918cc17fd21c6e898096a96d6a34f61"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "use-sync-external-store",
+      "version": "1.6.0",
+      "bom-ref": "pkg:npm/use-sync-external-store@1.6.0",
+      "purl": "pkg:npm/use-sync-external-store@1.6.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9df5a1a2af898a0d82cfce6845cd97498bfa56544e9cf91fc3293c90f8cffdfc"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "zod",
+      "version": "4.4.3",
+      "bom-ref": "pkg:npm/zod@4.4.3",
+      "purl": "pkg:npm/zod@4.4.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "aaa6b4591098284c78903214c7bd9127b1b1187712371dd9f2d7021a212284bc"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:3f1189b28e3866e0d979968d466b78f813f76827cfdca1fbb124cc0a5c8841f8"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "zrender",
+      "version": "6.1.0",
+      "bom-ref": "pkg:npm/zrender@6.1.0",
+      "purl": "pkg:npm/zrender@6.1.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "7af68072b0db8c1a1af9d41f8f468f34677b5ca6c9d4ec7af01b475e92ce9430"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:55ea01207028f76d844678511f29fc800f8a1e67a8a0fe80470128677847ad32"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:generic/bottega-react-v1@1",
+      "dependsOn": [
+        "pkg:npm/%40base-ui%2Freact@1.7.0",
+        "pkg:npm/%40dnd-kit%2Fcore@6.3.1",
+        "pkg:npm/%40dnd-kit%2Fsortable@10.0.0",
+        "pkg:npm/%40phosphor-icons%2Freact@2.1.10",
+        "pkg:npm/%40tailwindcss%2Fnode@4.3.2",
+        "pkg:npm/%40tailwindcss%2Foxide@4.3.2",
+        "pkg:npm/%40tanstack%2Freact-table@8.21.3",
+        "pkg:npm/%40tanstack%2Freact-virtual@3.14.8",
+        "pkg:npm/axe-core@4.10.3",
+        "pkg:npm/date-fns@4.4.0",
+        "pkg:npm/echarts@6.1.0",
+        "pkg:npm/esbuild@0.28.1",
+        "pkg:npm/lucide-react@1.24.0",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react-hook-form@7.87.0",
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/tailwindcss@4.3.2",
+        "pkg:npm/typescript@5.9.3",
+        "pkg:npm/zod@4.4.3"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40babel%2Fruntime@7.29.7",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40base-ui%2Freact@1.7.0",
+      "dependsOn": [
+        "pkg:npm/%40babel%2Fruntime@7.29.7",
+        "pkg:npm/%40base-ui%2Futils@0.3.2",
+        "pkg:npm/%40date-fns%2Ftz@1.5.0",
+        "pkg:npm/%40floating-ui%2Freact-dom@2.1.9",
+        "pkg:npm/%40floating-ui%2Futils@0.2.12",
+        "pkg:npm/%40types%2Freact@19.2.17",
+        "pkg:npm/date-fns@4.4.0",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/use-sync-external-store@1.6.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40base-ui%2Futils@0.3.2",
+      "dependsOn": [
+        "pkg:npm/%40babel%2Fruntime@7.29.7",
+        "pkg:npm/%40floating-ui%2Futils@0.2.12",
+        "pkg:npm/%40types%2Freact@19.2.17",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/reselect@5.3.0",
+        "pkg:npm/use-sync-external-store@1.6.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40date-fns%2Ftz@1.5.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40dnd-kit%2Faccessibility@3.1.1",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/tslib@2.8.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40dnd-kit%2Fcore@6.3.1",
+      "dependsOn": [
+        "pkg:npm/%40dnd-kit%2Faccessibility@3.1.1",
+        "pkg:npm/%40dnd-kit%2Futilities@3.2.2",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/tslib@2.8.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40dnd-kit%2Fsortable@10.0.0",
+      "dependsOn": [
+        "pkg:npm/%40dnd-kit%2Fcore@6.3.1",
+        "pkg:npm/%40dnd-kit%2Futilities@3.2.2",
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/tslib@2.8.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40dnd-kit%2Futilities@3.2.2",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/tslib@2.8.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40floating-ui%2Fcore@1.8.0",
+      "dependsOn": [
+        "pkg:npm/%40floating-ui%2Futils@0.2.12"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40floating-ui%2Fdom@1.8.0",
+      "dependsOn": [
+        "pkg:npm/%40floating-ui%2Fcore@1.8.0",
+        "pkg:npm/%40floating-ui%2Futils@0.2.12"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40floating-ui%2Freact-dom@2.1.9",
+      "dependsOn": [
+        "pkg:npm/%40floating-ui%2Fdom@1.8.0",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40floating-ui%2Futils@0.2.12",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40jridgewell%2Fgen-mapping@0.3.13",
+      "dependsOn": [
+        "pkg:npm/%40jridgewell%2Fsourcemap-codec@1.5.5",
+        "pkg:npm/%40jridgewell%2Ftrace-mapping@0.3.31"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40jridgewell%2Fremapping@2.3.5",
+      "dependsOn": [
+        "pkg:npm/%40jridgewell%2Fgen-mapping@0.3.13",
+        "pkg:npm/%40jridgewell%2Ftrace-mapping@0.3.31"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40jridgewell%2Fresolve-uri@3.1.2",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40jridgewell%2Fsourcemap-codec@1.5.5",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40jridgewell%2Ftrace-mapping@0.3.31",
+      "dependsOn": [
+        "pkg:npm/%40jridgewell%2Fresolve-uri@3.1.2",
+        "pkg:npm/%40jridgewell%2Fsourcemap-codec@1.5.5"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40phosphor-icons%2Freact@2.1.10",
+      "dependsOn": [
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40tailwindcss%2Fnode@4.3.2",
+      "dependsOn": [
+        "pkg:npm/%40jridgewell%2Fremapping@2.3.5",
+        "pkg:npm/enhanced-resolve@5.21.6",
+        "pkg:npm/jiti@2.7.0",
+        "pkg:npm/lightningcss@1.32.0",
+        "pkg:npm/magic-string@0.30.21",
+        "pkg:npm/source-map-js@1.2.1",
+        "pkg:npm/tailwindcss@4.3.2"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40tailwindcss%2Foxide-darwin-arm64@4.3.2",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40tailwindcss%2Foxide@4.3.2",
+      "dependsOn": [
+        "pkg:npm/%40tailwindcss%2Foxide-darwin-arm64@4.3.2"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40tanstack%2Freact-table@8.21.3",
+      "dependsOn": [
+        "pkg:npm/%40tanstack%2Ftable-core@8.21.3",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40tanstack%2Freact-virtual@3.14.8",
+      "dependsOn": [
+        "pkg:npm/%40tanstack%2Fvirtual-core@3.17.6",
+        "pkg:npm/react-dom@19.2.4",
+        "pkg:npm/react@19.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/%40tanstack%2Ftable-core@8.21.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40tanstack%2Fvirtual-core@3.17.6",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/%40types%2Freact@19.2.17",
+      "dependsOn": [
+        "pkg:npm/csstype@3.2.3"
+      ]
+    },
+    {
+      "ref": "pkg:npm/axe-core@4.10.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/csstype@3.2.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/date-fns@4.4.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/detect-libc@2.1.2",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/echarts@6.1.0",
+      "dependsOn": [
+        "pkg:npm/tslib@2.3.0",
+        "pkg:npm/zrender@6.1.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/enhanced-resolve@5.21.6",
+      "dependsOn": [
+        "pkg:npm/graceful-fs@4.2.11",
+        "pkg:npm/tapable@2.3.3"
+      ]
+    },
+    {
+      "ref": "pkg:npm/esbuild@0.28.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/graceful-fs@4.2.11",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/jiti@2.7.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/lightningcss-darwin-arm64@1.32.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/lightningcss@1.32.0",
+      "dependsOn": [
+        "pkg:npm/detect-libc@2.1.2",
+        "pkg:npm/lightningcss-darwin-arm64@1.32.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/lucide-react@1.24.0",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/magic-string@0.30.21",
+      "dependsOn": [
+        "pkg:npm/%40jridgewell%2Fsourcemap-codec@1.5.5"
+      ]
+    },
+    {
+      "ref": "pkg:npm/react-dom@19.2.4",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4",
+        "pkg:npm/scheduler@0.27.0"
+      ]
+    },
+    {
+      "ref": "pkg:npm/react-hook-form@7.87.0",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/react@19.2.4",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/reselect@5.3.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/scheduler@0.27.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/source-map-js@1.2.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/tailwindcss@4.3.2",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/tapable@2.3.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/tslib@2.3.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/tslib@2.8.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/typescript@5.9.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/use-sync-external-store@1.6.0",
+      "dependsOn": [
+        "pkg:npm/react@19.2.4"
+      ]
+    },
+    {
+      "ref": "pkg:npm/zod@4.4.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/zrender@6.1.0",
+      "dependsOn": [
+        "pkg:npm/tslib@2.3.0"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on zod and JSON-safe primitive values
- * [OUTPUT]: Provides domain-scoped ProductFailure, strict versioned safe details, IPC Result envelopes, schemas, constructors, and failure guards
+ * [OUTPUT]: Provides domain-scoped ProductFailure, Agent and Chat-storage taxonomies, bounded/redacted diagnostics, strict safe details, IPC Result envelopes, constructors, and guards
  * [POS]: Shared failure wire contract; main owns classification, transports return data instead of throwing, and renderer owns localized sentences
  */
 
@@ -23,6 +23,32 @@ export const SKILLS_MANAGEMENT_FAILURE_CODES = [
   "read-only",
   "failed",
 ] as const;
+
+export const AGENT_RUNTIME_FAILURE_CODES = [
+  "auth-required",
+  "rate-limited",
+  "quota-exhausted",
+  "context-exhausted",
+  "connection-lost",
+  "request-rejected",
+  "service-unavailable",
+  "runtime-unavailable",
+  "unknown",
+] as const;
+
+export const CHAT_STORAGE_FAILURE_CODES = [
+  "file-quarantined",
+  "backup-failed",
+  "recovery-conflict",
+] as const;
+
+export type AgentRuntimeFailureCode =
+  (typeof AGENT_RUNTIME_FAILURE_CODES)[number];
+
+export type ChatStorageFailureCode =
+  (typeof CHAT_STORAGE_FAILURE_CODES)[number];
+
+export const FAILURE_DIAGNOSTIC_CHAR_LIMIT = 2_048;
 
 const noDetailsSchema = z.object({
   version: z.literal(1),
@@ -47,11 +73,18 @@ const refDetailsSchema = z.object({
   ref: z.string().min(1).max(512),
 }).strict();
 
+const diagnosticDetailsSchema = z.object({
+  version: z.literal(1),
+  kind: z.literal("diagnostic"),
+  message: z.string().min(1).max(FAILURE_DIAGNOSTIC_CHAR_LIMIT),
+}).strict();
+
 export const productFailureSafeDetailsSchema = z.discriminatedUnion("kind", [
   noDetailsSchema,
   requirementDetailsSchema,
   limitDetailsSchema,
   refDetailsSchema,
+  diagnosticDetailsSchema,
 ]);
 
 export type ProductFailureSafeDetails = z.infer<typeof productFailureSafeDetailsSchema>;
@@ -68,12 +101,27 @@ const skillsManagementFailureSchema = z.object({
   safeDetails: productFailureSafeDetailsSchema,
 }).strict();
 
+const agentRuntimeFailureSchema = z.object({
+  domain: z.literal("agent-runtime"),
+  code: z.enum(AGENT_RUNTIME_FAILURE_CODES),
+  safeDetails: productFailureSafeDetailsSchema,
+}).strict();
+
+export const chatStorageFailureSchema = z.object({
+  domain: z.literal("chat-storage"),
+  code: z.enum(CHAT_STORAGE_FAILURE_CODES),
+  safeDetails: productFailureSafeDetailsSchema,
+}).strict();
+
 export const productFailureSchema = z.discriminatedUnion("domain", [
   skillsRuntimeFailureSchema,
   skillsManagementFailureSchema,
+  agentRuntimeFailureSchema,
+  chatStorageFailureSchema,
 ]);
 
 export type ProductFailure = z.infer<typeof productFailureSchema>;
+export type ChatStorageFailure = z.infer<typeof chatStorageFailureSchema>;
 
 export type ProductResult<T> =
   | Readonly<{ ok: true; value: T }>
@@ -83,6 +131,25 @@ export const noFailureDetails = (): ProductFailureSafeDetails => ({
   version: 1,
   kind: "none",
 });
+
+/* Renderer 可见诊断统一经过这把窄门。ACP transport 还会先按本轮 secret
+ * 做精确脱敏；这里负责跨来源的预算与常见凭据/用户目录遮罩。 */
+export function diagnosticFailureDetails(
+  value: unknown
+): ProductFailureSafeDetails {
+  const raw = value instanceof Error ? value.message : String(value ?? "");
+  const message = raw
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
+    .replace(/\b(?:sk|sess|token)-[A-Za-z0-9_-]{8,}\b/gi, "[redacted]")
+    .replace(/\b(api[_-]?key|access[_-]?token|refresh[_-]?token)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\/Users\/[^/\s]+/g, "/Users/…")
+    .replace(/\b[A-Z]:\\Users\\[^\\\s]+/gi, "C:\\Users\\…")
+    .trim()
+    .slice(0, FAILURE_DIAGNOSTIC_CHAR_LIMIT);
+  return message
+    ? { version: 1, kind: "diagnostic", message }
+    : noFailureDetails();
+}
 
 export const skillsRuntimeFailure = (
   code: (typeof SKILLS_RUNTIME_FAILURE_CODES)[number],
@@ -98,6 +165,24 @@ export const skillsManagementFailure = (
   safeDetails: ProductFailureSafeDetails = noFailureDetails()
 ): ProductFailure => productFailureSchema.parse({
   domain: "skills-management",
+  code,
+  safeDetails,
+});
+
+export const agentRuntimeFailure = (
+  code: AgentRuntimeFailureCode,
+  safeDetails: ProductFailureSafeDetails = noFailureDetails()
+): ProductFailure => productFailureSchema.parse({
+  domain: "agent-runtime",
+  code,
+  safeDetails,
+});
+
+export const chatStorageFailure = (
+  code: ChatStorageFailureCode,
+  safeDetails: ProductFailureSafeDetails = noFailureDetails()
+): ChatStorageFailure => chatStorageFailureSchema.parse({
+  domain: "chat-storage",
   code,
   safeDetails,
 });

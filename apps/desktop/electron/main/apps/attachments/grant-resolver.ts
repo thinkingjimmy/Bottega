@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Apps' chat/project tri-mode recording and App default global licensing
- * [OUTPUT]: Provides resolve AppGrant purely function; In-Level Disabled, Short-Layer, Interlayer is authorizing broad integration and provenance
- * [POS]: The authoritative semantics of apps/attachments; effective/listAvailable/conversion/surface can be consumed here only, and individual handwriting and assembly are prohibited
+ * [INPUT]: Depends on shared Chat/Project App grant records and the global App default grant
+ * [OUTPUT]: Provides the pure resolveAppGrant function with Chat → Project → global nearest-scope selection and compact provenance
+ * [POS]: Authorization semantic core for apps/attachments; effective, available, conversion and surface paths consume this result instead of recomputing it
  */
 
 import {
@@ -15,8 +15,7 @@ type Source = "chat" | "project" | "global";
 export type GrantResolution = Readonly<{
   effective: AppCapabilityGrant | null;
   provenance: Readonly<{
-    winner: Source | null;
-    contributors: readonly Source[];
+    effectiveSource: Source | null;
     suppressedBy: "chat" | "project" | null;
   }>;
 }>;
@@ -28,53 +27,20 @@ export function resolveAppGrant(input: {
   global?: AppCapabilityGrant | null;
 }): GrantResolution {
   if (isDisabled(input.chat)) return suppressed("chat");
-
   const direct = positive(input.chat);
-  if (isDisabled(input.project)) {
-    return direct
-      ? merge(input.appId, [["chat", direct]], "project")
-      : suppressed("project");
-  }
-
-  const candidates: Array<readonly [Source, AppCapabilityGrant]> = [];
-  if (direct) candidates.push(["chat", direct]);
+  if (direct) return granted(direct, "chat");
+  if (isDisabled(input.project)) return suppressed("project");
   const inherited = positive(input.project);
-  if (inherited) candidates.push(["project", inherited]);
-  if (input.global) candidates.push(["global", input.global]);
-  return merge(input.appId, candidates, null);
+  if (inherited) return granted(inherited, "project");
+  return input.global ? granted(input.global, "global") : suppressed(null);
 }
 
-function merge(
-  appId: string,
-  candidates: readonly (readonly [Source, AppCapabilityGrant])[],
-  suppressedBy: "chat" | "project" | null
-): GrantResolution {
-  if (!candidates.length) return suppressed(suppressedBy);
-  let data: AppCapabilityGrant["data"];
-  let winner = candidates[0][0];
-  let grantedAt = 0;
-  let fileRead = false;
-  let useData = false;
-  for (const [source, grant] of candidates) {
-    if (dataRank(grant.data) > dataRank(data)) {
-      data = grant.data;
-      winner = source;
-    }
-    grantedAt = Math.max(grantedAt, grant.grantedAt);
-    fileRead ||= grant.agentDelegation.fileRead;
-    useData ||= grant.agentDelegation.useData;
-  }
+function granted(grant: AppCapabilityGrant, source: Source): GrantResolution {
   return {
-    effective: {
-      appId,
-      ...(data ? { data: structuredClone(data) } : {}),
-      agentDelegation: { fileRead, useData },
-      grantedAt,
-    },
+    effective: structuredClone(grant),
     provenance: {
-      winner,
-      contributors: candidates.map(([source]) => source),
-      suppressedBy,
+      effectiveSource: source,
+      suppressedBy: null,
     },
   };
 }
@@ -92,11 +58,6 @@ function suppressed(
 ): GrantResolution {
   return {
     effective: null,
-    provenance: { winner: null, contributors: [], suppressedBy },
+    provenance: { effectiveSource: null, suppressedBy },
   };
-}
-
-function dataRank(data: AppCapabilityGrant["data"] | undefined) {
-  if (!data) return 0;
-  return data.level === "read" ? 1 : 2;
 }

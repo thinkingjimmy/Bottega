@@ -1,17 +1,17 @@
 /**
- * [INPUT]: Depends on React, route search params, archive-client, history provider optional snapshots and archiving actions, renderer, current Intl locale, shared Archive/history DTO, PageShell, settings, original language, confirmation dialog, Tooltip and Button
- * [OUTPUT]: Provides a view of the locator focused archive entity settings, a permanent control bar, a kind icon line, a row-level action, two-tier purge, confirmation and imported history archive recovery sections (recovering only, not deleting source files only, read only)
- * [POS]: The following is a list of the most common types of cookies that you can use: Archived search hits fall to focusable entities, parentheses recover unfolded, purge folded by main only executed
+ * [INPUT]: Depends on React, route search params and canonical archive locators, archive-client, the optional History warning, shared Archive DTOs, the archive-list presentation module, PageShell, Settings primitives, confirmation dialog, and Tooltip
+ * [OUTPUT]: Provides one chronological archived-item list for product Chats and Projects, unified targeted focus/selection/restore, capability-aware delete actions, and a single-container purge confirmation whose only box is the deleted-path evidence, zero-valued facts omitted and Memory rebuild offered as an opt-in checkbox
+ * [POS]: Settings archive composition surface; main owns purge authority and read-only entities keep an accessible non-destructive delete boundary
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { Archive, Folder, MessageSquare, RotateCcw, Trash2 } from "lucide-react";
+import { Archive } from "lucide-react";
 import type {
   ArchivePurgeMode,
   ArchiveTarget,
-  ArchivedEntity,
+  PurgeMemoryPreview,
   PurgePreview,
 } from "../../shared/archive-ipc";
 import {
@@ -21,78 +21,134 @@ import {
 } from "@/lib/archive-client";
 import { useArchive } from "@/components/providers/archive-provider";
 import { useOptionalHistory } from "@/components/providers/history/history-provider";
-import { historyBackend } from "../../shared/history-import-ipc";
-import { AgentBackendIcon, backendLabel } from "@/lib/agent-backends";
+import {
+  ArchivedItemRow,
+  ArchiveSelectBox,
+  archiveRowId,
+  type ArchiveListItem,
+} from "./settings-archive-list";
 import { PageShell } from "@/components/page-shell";
 import {
   SettingsButton,
   SettingsCanvas,
-  SettingsChoiceRow,
   SettingsEmpty,
   SettingsList,
   SettingsSection,
 } from "@/components/settings/settings-layout";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
-import { Button } from "@ai-chat/ui/components/ui/button";
-import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@ai-chat/ui/components/ui/tooltip";
 import { cn } from "@ai-chat/ui/lib/utils";
-import { intlLocale } from "@/lib/i18n-locale";
+import { archiveSettingsTargetKey } from "@/lib/settings-navigation";
 
-const keyOf = (target: ArchiveTarget) => `${target.kind}:${target.id}`;
+const keyOf = (target: ArchiveTarget) => archiveSettingsTargetKey(target);
+
 type PendingPurge = {
   targets: ArchiveTarget[];
   preview: PurgePreview;
   mode: ArchivePurgeMode;
 };
 
-const formatArchivedAt = (value: number) =>
-  new Intl.DateTimeFormat(intlLocale(), {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-
-/* 类型列说人话：kind 是内部枚举，成员数是它的限定语，两者同属「这是什么」 */
-function entityKind(
-  entity: ArchivedEntity,
-  t: ReturnType<typeof useAppTranslation>["t"]
-) {
-  if (entity.target.kind === "project") {
-    return t("archive.projectKind", { count: entity.memberCount });
-  }
-  return t("archive.chatKind");
-}
-
 /* ============================================================
  * 「Chat Home」是内部词汇：它指这个 Chat 的工作文件夹，用户没有
  * 义务知道我们内部管它叫什么。删除是不可逆操作，说明必须用一遍
  * 就懂的词，否则确认弹窗等于没有确认。
  *
- * 这一片此前整个是 <span className="block"> 写成的：ConfirmationDialog
- * 的 description 从前落在 <p> 里，而 <p> 只收 phrasing content。方言
- * 已随 app-dialog 改用 <div> 一并退场，卡片与单选组因此能直接用
- * settings 的现成原语，量度也就与设置页对上了。
+ * 这一片此前是四个圆角容器套着的：弹窗 → 卡片 → 路径块 → 第二张卡。
+ * 而常见情形下第一张卡里只装一样东西——包一个东西的盒子不是分组，
+ * 是包装。现在正文里只剩一个盒子，就是路径块；它留下不是因为好看，
+ * 是因为它是这次操作里唯一不可逆的那份证据。
+ *
+ * 分组改由排版承担：一条 1px 线切开「删什么」与「Memory 怎么办」，
+ * 字重跃迁与留白负责其余层级。一条线比两个圆角容器轻一个量级，
+ * 干的却是同一件事。
  * ============================================================ */
 
-const MEMORY_MODE_LABEL_ID = "archive-purge-memory-mode";
-
-/* 一行事实：左边说的是哪一笔，右边是它的值。三笔本是同一族数字，
-   此前却是三段各自成段的自由行文——读者得自己把它们认成一组。 */
+/* 一行事实：左边说的是哪一笔，右边是它的值。
+   为零的那一笔由调用方整行摘掉，而不是渲染成「0」或「无」——
+   「一并删除的 Base 0」在版面上占着与真事实同等的分量，讲的却是
+   「什么也没发生」。能消失的分支永远比能写对的分支优雅。 */
 function PurgeFact({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 px-4 py-3">
-      <span className="shrink-0 text-muted-foreground text-xs">{label}</span>
-      <span className="min-w-0 text-right font-medium text-xs break-all tabular-nums">
+    <div className="flex items-baseline justify-between gap-4 text-xs">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="min-w-0 text-right font-medium break-all tabular-nums">
         {value}
       </span>
     </div>
+  );
+}
+
+/* 路径的层级本身就是信息：前缀说位置，末段说要死的是哪一个文件夹。
+   红只染末段——整条都红等于没有重点，而重点恰恰是最后那一节。 */
+function PurgePath({ path }: { path: string }) {
+  const cut = path.lastIndexOf("/");
+  return (
+    <div className="font-mono text-xs/[18px] break-all">
+      {cut > 0 && (
+        <span className="text-muted-foreground">{path.slice(0, cut + 1)}</span>
+      )}
+      <span className="font-semibold text-destructive">
+        {path.slice(cut + 1)}
+      </span>
+    </div>
+  );
+}
+
+/* 成本明细：四行「标签 + 值」，不是四行散文。信息量一样，扫读成本
+   差一个量级——费用与耗时是要签字的那部分，埋在句子中间等于没写。 */
+function RebuildFact({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex gap-3 text-xs/[18px]">
+      <span className="w-7 shrink-0 text-muted-foreground">{label}</span>
+      <span className={cn("min-w-0", mono && "font-mono break-all")}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function RebuildDetail({ memory }: { memory: PurgeMemoryPreview }) {
+  const { t } = useAppTranslation();
+  return (
+    <>
+      <div className="mt-2 space-y-1.5">
+        <RebuildFact
+          label={t("archive.rebuildScopeLabel")}
+          value={t("archive.rebuildScope")}
+        />
+        <RebuildFact
+          label={t("archive.rebuildSizeLabel")}
+          value={t("archive.rebuildSize", {
+            chats: memory.chats,
+            turns: memory.turns,
+          })}
+        />
+        <RebuildFact
+          label={t("archive.rebuildTargetLabel")}
+          value={`${memory.hostname} · ${memory.model}`}
+          mono
+        />
+        <RebuildFact
+          label={t("archive.rebuildImpactLabel")}
+          value={t("archive.rebuildImpact")}
+        />
+      </div>
+      <p className="mt-2 text-muted-foreground text-xs leading-relaxed">
+        {t("archive.rebuildNote")}
+      </p>
+    </>
   );
 }
 
@@ -107,190 +163,123 @@ export function PurgePreviewDescription({
 }) {
   const { t } = useAppTranslation();
   const memory = preview.memory;
+  const rebuilding = mode === "cleanup-and-rebuild";
+  const hasFolders = preview.deletePaths.length > 0;
+  const hasBases = preview.pinnedBaseCount > 0;
+  const hasRetained = preview.retainedExternalBindings.length > 0;
   return (
-    <div className="space-y-3">
-      <p className="font-medium text-destructive">
+    <>
+      {/* 红不再泼在这一整段上。它是所有删除确认都要说的那句套话，
+          而这次特有的东西是下面那几条路径——红该落在那里。 */}
+      <p>
         {t("archive.purgeIrreversible")}
+        {hasFolders ? ` ${t("archive.purgeFolders")}` : ""}
       </p>
 
-      <SettingsList>
-        <PurgeFact
-          label={t("archive.pinnedBasesLabel")}
-          value={preview.pinnedBaseCount}
-        />
-        <PurgeFact
-          label={t("archive.retainedLabel")}
-          value={
-            preview.retainedExternalBindings.length
-              ? preview.retainedExternalBindings.join("、")
-              : t("archive.none")
-          }
-        />
-        {/* 路径清单是「将删除的工作文件夹」那一行的证据，故住在它肚子里，
-            而不是另起一段——它解释的是哪个数字，位置本身就该说清楚。 */}
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between gap-4">
-            <span className="text-muted-foreground text-xs">
-              {t("archive.deleteFoldersLabel")}
-            </span>
-            <span className="shrink-0 font-medium text-xs tabular-nums">
-              {preview.deletePaths.length}
-            </span>
-          </div>
-          <SlimScroller asChild>
-            <div className="mt-2 max-h-40 overflow-y-auto rounded-md bg-muted/60 p-2 font-mono text-xs break-all whitespace-pre-wrap">
-              {preview.deletePaths.length
-                ? preview.deletePaths.join("\n")
-                : t("archive.none")}
-            </div>
-          </SlimScroller>
+      {hasFolders && (
+        <div className="mt-3 space-y-1 rounded-md bg-destructive/[0.06] px-2.5 py-2">
+          {preview.deletePaths.map((path) => (
+            <PurgePath key={path} path={path} />
+          ))}
         </div>
-      </SettingsList>
-
-      <p id={MEMORY_MODE_LABEL_ID} className="font-medium text-foreground">
-        {t("archive.memoryMode")}
-      </p>
-      {/* 两档是一个枚举，不是两个方框：整行命中区、roving tabindex 与
-          方向键闭环都焊在 SettingsChoiceRow 里，本页不再自带第四份实现。
-          禁用态也归它管——「当前 Memory 目标不可重建」由说明文字讲，
-          档位本身灰掉，两件事各说各的那一半。 */}
-      <SettingsList role="radiogroup" aria-labelledby={MEMORY_MODE_LABEL_ID}>
-        <SettingsChoiceRow
-          label={t("archive.localOnlyTitle")}
-          description={t("archive.localOnlyDetail")}
-          checked={mode === "local-only"}
-          onSelect={() => onModeChange?.("local-only")}
-        />
-        <SettingsChoiceRow
-          label={t("archive.rebuildTitle")}
-          description={
-            memory
-              ? t("archive.rebuildDetail", {
-                  chats: memory.chats,
-                  turns: memory.turns,
-                  hostname: memory.hostname,
-                  model: memory.model,
-                })
-              : t("archive.rebuildUnavailable")
-          }
-          checked={mode === "cleanup-and-rebuild"}
-          disabled={!memory}
-          onSelect={() => onModeChange?.("cleanup-and-rebuild")}
-        />
-      </SettingsList>
-    </div>
-  );
-}
-
-/* ============================================================
- * 44px 点击区包住 16px 视觉方块：触控可达，视觉不臃肿。
- * indeterminate 是 DOM property 而非 attribute，只能经 ref 落下。
- *
- * showLabel 只给控制条那一枚用：一个孤零零的方块不说自己管什么，
- * 而这枚管着整张列表。标签仍由 aria-label 播报，摊开的那份因此
- * aria-hidden——同一句话念两遍，读屏用户听到的是「全选 全选」。
- * 文字包在同一个 label 里，于是它和方块是同一个命中区，而不是
- * 「看得见的」与「点得动的」两块。
- * ============================================================ */
-
-function SelectBox({
-  label,
-  showLabel = false,
-  checked,
-  indeterminate = false,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  showLabel?: boolean;
-  checked: boolean;
-  indeterminate?: boolean;
-  disabled?: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label
-      className={cn(
-        "flex min-h-11 cursor-pointer items-center",
-        showLabel && "pr-2",
-        disabled && "cursor-not-allowed"
       )}
-    >
-      <span className="flex size-11 shrink-0 touch-manipulation items-center justify-center">
-        <input
-          ref={(node) => {
-            if (node) node.indeterminate = indeterminate;
-          }}
-          aria-label={label}
-          type="checkbox"
-          className="size-4 accent-foreground"
-          checked={checked}
-          disabled={disabled}
-          onChange={(event) => onChange(event.currentTarget.checked)}
-        />
-      </span>
-      {showLabel && (
-        <span aria-hidden="true" className="text-muted-foreground text-xs">
-          {label}
-        </span>
-      )}
-    </label>
-  );
-}
 
-/* 图标 16px，点击区 44px——与同页 checkbox 同一条规矩。
-   名字不在视觉里，就必须在可及名里：aria-label 与 tooltip 同文。
-
-   destructive 只染 hover，不染静置：每行都挂一颗，恒亮红就是一整列
-   红色贯穿全表，版面重心全押在删除上——而这一页最常做的事是恢复。
-   红是「你正指着它」的回答，不是列表的底色。 */
-function RowAction({
-  label,
-  icon,
-  destructive = false,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  icon: typeof RotateCcw;
-  destructive?: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  const Icon = icon;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          aria-label={label}
-          disabled={disabled}
-          className={cn(
-            "size-11 touch-manipulation text-muted-foreground",
-            destructive && "hover:text-destructive"
+      {(hasBases || hasRetained) && (
+        <div className="mt-3 space-y-2">
+          {hasBases && (
+            <PurgeFact
+              label={t("archive.basesDeletedLabel")}
+              value={preview.pinnedBaseCount}
+            />
           )}
-          onClick={onClick}
-        >
-          <Icon className="size-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="top">{label}</TooltipContent>
-    </Tooltip>
+          {hasRetained && (
+            <PurgeFact
+              label={t("archive.retainedLabel")}
+              value={preview.retainedExternalBindings.join("、")}
+            />
+          )}
+        </div>
+      )}
+
+      {/* 一条 1px 线切开「删什么」与「Memory 怎么办」，替下从前那两张卡 */}
+      <div className="my-5 h-px bg-border" />
+
+      {/* 这一句不是选项，是既成事实，所以它没有单选圈，只有一句话。
+          从前它顶着一个 radio：给「什么也不额外做」发一个圈，等于把
+          默认伪装成选择，于是用户被迫在两个看起来同权的东西里挑一个。 */}
+      <p className="font-semibold text-foreground text-sm/5">
+        {t("archive.memoryRetainedTitle")}
+      </p>
+      <p className="mt-1.5 text-xs leading-relaxed">
+        {t("archive.memoryRetainedDetail")}
+      </p>
+
+      {/* 勾上才浮出那层浅底：容器按需出现，而不是先画好一个盒子再往里
+          塞东西。内外边距两态恒定，故切换时文字一像素不动，变的只是
+          背景。整个 label 就是命中区，44px 由这一行的实际高度给足。 */}
+      <label
+        className={cn(
+          "mt-4 flex cursor-pointer items-start gap-3 rounded-lg p-3 transition-colors",
+          rebuilding && "bg-muted",
+          !memory && "cursor-not-allowed opacity-50"
+        )}
+      >
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4 shrink-0 accent-foreground"
+          checked={rebuilding}
+          disabled={!memory}
+          onChange={(event) =>
+            onModeChange?.(
+              event.currentTarget.checked ? "cleanup-and-rebuild" : "local-only"
+            )
+          }
+        />
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-foreground text-sm/5">
+            {t("archive.rebuildTitle")}
+          </div>
+          {!memory ? (
+            <p className="mt-1 text-xs leading-relaxed">
+              {t("archive.rebuildUnavailable")}
+            </p>
+          ) : rebuilding ? (
+            <RebuildDetail memory={memory} />
+          ) : (
+            <p className="mt-1 text-xs leading-relaxed">
+              {t("archive.rebuildDetail", {
+                chats: memory.chats,
+                turns: memory.turns,
+              })}
+            </p>
+          )}
+        </div>
+      </label>
+    </>
   );
 }
 
 export function ArchiveSettingsView() {
   const { t } = useAppTranslation();
   const { snapshot, busy, error, run } = useArchive();
+  const history = useOptionalHistory();
   const [searchParams] = useSearchParams();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pendingPurge, setPendingPurge] = useState<PendingPurge | null>(null);
 
   const entities = snapshot.entities;
+  const items = useMemo<ArchiveListItem[]>(() => {
+    const productItems: ArchiveListItem[] = entities.map((entity) => ({
+      key: keyOf(entity.target),
+      archivedAt: entity.archivedAt,
+      entity,
+    }));
+    return productItems.sort(
+      (left, right) => right.archivedAt - left.archivedAt
+    );
+  }, [entities]);
   const searchTarget = searchParams.get("target");
-  const resolvedSearchTarget = entities.some((entity) => keyOf(entity.target) === searchTarget)
+  const resolvedSearchTarget = items.some((item) => item.key === searchTarget)
     ? searchTarget
     : null;
   useEffect(() => {
@@ -299,12 +288,14 @@ export function ArchiveSettingsView() {
     row?.focus({ preventScroll: true });
     row?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [resolvedSearchTarget]);
-  const targets = useMemo(
-    () =>
-      entities
-        .filter((entity) => selected.has(keyOf(entity.target)))
-        .map((entity) => entity.target),
-    [selected, entities]
+  const selectedItems = useMemo(
+    () => items.filter((item) => selected.has(item.key)),
+    [items, selected]
+  );
+  const selectedTargets = selectedItems.map((item) => item.entity.target);
+  const operationBusy = busy;
+  const selectionIncludesReadOnly = selectedItems.some(
+    (item) => item.entity.readOnly === true
   );
 
   const commit = async (
@@ -314,6 +305,22 @@ export function ArchiveSettingsView() {
     const completed = await run(task);
     if (completed && clearSelection) setSelected(new Set());
     return completed;
+  };
+
+  /* 标题先说删的是什么：确认页从前只说「所选归档」，而人此刻最需要
+     知道的正是「所选」到底是哪几样。三句各自成句而不是一句话里塞
+     两个复数——中日英法西的连接词与量词规则不同，硬拼必翻车。 */
+  const purgeTitle = (purgeTargets: ArchiveTarget[]) => {
+    const projects = purgeTargets.filter(
+      (target) => target.kind === "project"
+    ).length;
+    const chats = purgeTargets.length - projects;
+    if (chats && projects) {
+      return t("archive.confirmTitleMixed", { chats, projects });
+    }
+    return projects
+      ? t("archive.confirmTitleProjects", { count: projects })
+      : t("archive.confirmTitleChats", { count: chats });
   };
 
   const requestPurge = (nextTargets: ArchiveTarget[]) =>
@@ -342,13 +349,20 @@ export function ArchiveSettingsView() {
     if (completed) setPendingPurge(null);
   };
 
-  const toggle = (target: ArchiveTarget, checked: boolean) =>
+  const toggle = (key: string, checked: boolean) =>
     setSelected((current) => {
       const next = new Set(current);
-      if (checked) next.add(keyOf(target));
-      else next.delete(keyOf(target));
+      if (checked) next.add(key);
+      else next.delete(key);
       return next;
     });
+
+  const restoreSelected = async () => {
+    if (selectedTargets.length === 0) return;
+    if (await run(() => restoreArchiveTargets(selectedTargets))) {
+      setSelected(new Set());
+    }
+  };
 
   /* ==========================================================
    * 控制条常驻，只有它肚子里的批量动作随选择态出现。
@@ -367,9 +381,10 @@ export function ArchiveSettingsView() {
    * 是好事。
    * ========================================================== */
 
-  const allSelected = entities.length > 0 && targets.length === entities.length;
+  const allSelected =
+    items.length > 0 && selectedItems.length === items.length;
 
-  // 与侧栏同名：这一页收 Chat 与 Project 两种，items 才盖得住
+  // 与侧栏同名：这一页收 Chat、Project 与导入历史，items 才盖得住
   return (
     <PageShell title={t("common.archivedItems")} icon={<Archive />}>
       <SettingsCanvas>
@@ -377,9 +392,9 @@ export function ArchiveSettingsView() {
           <SettingsSection
             title={t("archive.sectionTitle")}
             description={t("archive.description")}
-            alert={error}
+            alert={error || history?.warning}
           >
-            {entities.length === 0 ? (
+            {items.length === 0 ? (
               <SettingsEmpty
                 icon={<Archive />}
                 title={t("archive.emptyTitle")}
@@ -388,7 +403,7 @@ export function ArchiveSettingsView() {
             ) : (
               <SettingsList data-testid="archive-list">
                 <div className="flex items-center gap-2 pr-2 pl-1">
-                  <SelectBox
+                  <ArchiveSelectBox
                     label={
                       allSelected
                         ? t("archive.deselectAll")
@@ -396,80 +411,102 @@ export function ArchiveSettingsView() {
                     }
                     showLabel
                     checked={allSelected}
-                    indeterminate={targets.length > 0 && !allSelected}
-                    disabled={busy}
+                    indeterminate={selectedItems.length > 0 && !allSelected}
+                    disabled={operationBusy}
                     onChange={(checked) =>
                       setSelected(
                         checked
-                          ? new Set(entities.map((item) => keyOf(item.target)))
+                          ? new Set(items.map((item) => item.key))
                           : new Set()
                       )
                     }
                   />
-                  {targets.length > 0 && (
+                  {selectedItems.length > 0 && (
                     <div
                       data-testid="archive-bulk-actions"
                       className="ml-auto flex items-center gap-2"
                     >
                       <span className="text-muted-foreground text-xs tabular-nums">
-                        {t("archive.selected", { count: targets.length })}
+                        {t("archive.selected", { count: selectedItems.length })}
                       </span>
                       <SettingsButton
                         variant="ghost"
-                        disabled={busy}
+                        disabled={operationBusy}
                         onClick={() => setSelected(new Set())}
                       >
                         {t("archive.clearSelection")}
                       </SettingsButton>
                       <SettingsButton
                         variant="outline"
-                        disabled={busy}
-                        onClick={() =>
-                          void commit(() => restoreArchiveTargets(targets))
-                        }
+                        disabled={operationBusy}
+                        onClick={() => void restoreSelected()}
                       >
                         {t("archive.restoreSelected")}
                       </SettingsButton>
-                      <SettingsButton
-                        variant="destructive"
-                        disabled={busy}
-                        onClick={() => void requestPurge(targets)}
-                      >
-                        {t("archive.deleteSelected")}
-                      </SettingsButton>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <SettingsButton
+                            data-testid="archive-bulk-delete"
+                            variant="destructive"
+                            aria-disabled={selectionIncludesReadOnly || undefined}
+                            aria-description={
+                              selectionIncludesReadOnly
+                                ? t("archive.importedDeleteUnavailable")
+                                : undefined
+                            }
+                            disabled={operationBusy}
+                            className={cn(
+                              selectionIncludesReadOnly &&
+                                "cursor-not-allowed bg-transparent text-muted-foreground opacity-50 hover:bg-transparent hover:text-muted-foreground"
+                            )}
+                            onClick={
+                              selectionIncludesReadOnly
+                                ? undefined
+                                : () => void requestPurge(selectedTargets)
+                            }
+                          >
+                            {t("archive.deleteSelected")}
+                          </SettingsButton>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          {selectionIncludesReadOnly
+                            ? t("archive.importedDeleteUnavailable")
+                            : t("archive.deleteSelected")}
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                   )}
                 </div>
 
-                {entities.map((entity) => (
-                  <ArchiveRow
-                    key={keyOf(entity.target)}
-                    entity={entity}
-                    searchTargeted={resolvedSearchTarget === keyOf(entity.target)}
-                    checked={selected.has(keyOf(entity.target))}
-                    onChange={(checked) => toggle(entity.target, checked)}
-                    busy={busy}
+                {items.map((item) => (
+                  <ArchivedItemRow
+                    key={item.key}
+                    item={item}
+                    searchTargeted={resolvedSearchTarget === item.key}
+                    checked={selected.has(item.key)}
+                    onChange={(checked) => toggle(item.key, checked)}
+                    busy={operationBusy}
                     onRestore={() =>
-                      void commit(() => restoreArchiveTargets([entity.target]))
+                      void commit(() =>
+                        restoreArchiveTargets([item.entity.target])
+                      )
                     }
-                    onPurge={() => void requestPurge([entity.target])}
+                    onPurge={
+                      item.entity.readOnly
+                        ? undefined
+                        : () => void requestPurge([item.entity.target])
+                    }
                   />
                 ))}
               </SettingsList>
             )}
           </SettingsSection>
-
-          <ImportedHistoryArchiveSection />
         </div>
       </SettingsCanvas>
 
       <ConfirmationDialog
         open={pendingPurge !== null}
-        title={
-          pendingPurge?.mode === "cleanup-and-rebuild"
-            ? t("archive.confirmRebuildTitle")
-            : t("archive.confirmTitle")
-        }
+        title={pendingPurge ? purgeTitle(pendingPurge.targets) : ""}
         description={
           pendingPurge
             ? (
@@ -499,163 +536,5 @@ export function ArchiveSettingsView() {
         onConfirm={() => void confirmPurge()}
       />
     </PageShell>
-  );
-}
-
-function ArchiveRow({
-  entity,
-  searchTargeted,
-  checked,
-  onChange,
-  busy,
-  onRestore,
-  onPurge,
-}: {
-  entity: ArchivedEntity;
-  searchTargeted: boolean;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  busy: boolean;
-  onRestore: () => void;
-  onPurge: () => void;
-}) {
-  const { t } = useAppTranslation();
-  const isProject = entity.target.kind === "project";
-  const KindIcon = isProject ? Folder : MessageSquare;
-  return (
-    <div
-      id={archiveRowId(keyOf(entity.target))}
-      data-testid="archive-row"
-      data-selected={checked}
-      data-search-targeted={searchTargeted}
-      tabIndex={-1}
-      className={cn(
-        "flex items-center gap-2 pr-2 pl-1 transition-colors hover:bg-muted/50 focus-visible:outline-none motion-reduce:transition-none",
-        searchTargeted && "bg-accent ring-2 ring-inset ring-ring"
-      )}
-    >
-      <SelectBox
-        label={t("archive.selectEntity", { title: entity.title })}
-        checked={checked}
-        disabled={busy}
-        onChange={onChange}
-      />
-
-      {/* 类型不再占一整列：11 行里 10 行写着同一个词，那不是一列数据，
-          是一列复述。一个 16px 图标说完「这是什么」，余量全给名称；
-          真正带信息的那一半——Project 的成员数——跟着名字走。
-          图标是唯一的类型载体，故它必须有可及名，不能只是装饰。 */}
-      <span
-        role="img"
-        aria-label={entityKind(entity, t)}
-        className="flex shrink-0 items-center text-muted-foreground"
-      >
-        <KindIcon aria-hidden="true" className="size-4" />
-      </span>
-
-      <span
-        title={entity.title}
-        className="min-w-0 flex-1 truncate font-medium text-sm"
-      >
-        {entity.title}
-        {isProject && (
-          /* aria-hidden：同一个数已由上面图标的可及名念过一遍 */
-          <span aria-hidden="true" className="font-normal text-muted-foreground">
-            {" · "}
-            {t("archive.chatCount", { count: entity.memberCount })}
-          </span>
-        )}
-      </span>
-
-      {/* 定宽右对齐：行各自是一个 flex 容器，宽度不定死就没有列，
-          归档时刻也就无法竖着比——而「哪些是同一天归的」正是这一页
-          唯一会被扫读的关系。 */}
-      <span className="w-40 shrink-0 truncate text-right text-muted-foreground text-xs tabular-nums">
-        {formatArchivedAt(entity.archivedAt)}
-      </span>
-
-      <span className="flex shrink-0 items-center">
-        <RowAction
-          label={t("archive.restoreEntity", { title: entity.title })}
-          icon={RotateCcw}
-          disabled={busy}
-          onClick={onRestore}
-        />
-        <RowAction
-          label={t("archive.deleteEntity", { title: entity.title })}
-          icon={Trash2}
-          destructive
-          disabled={busy}
-          onClick={onPurge}
-        />
-      </span>
-    </div>
-  );
-}
-
-const archiveRowId = (key: string) => `archive-target-${key.replaceAll(":", "-")}`;
-
-/* ============================================================
- * 导入历史的归档段：产品实体走 archive-ipc 的恢复/purge 全家桶，
- * 而外源会话的「归档」只是产品侧 sessionPrefs overlay——源文件只读，
- * 因此这里只有恢复、没有永久删除（删不掉不属于我们的东西，就不许诺）。
- * 只列产品侧归档（productArchivedAt 非空）：源生归档（codex 自己的
- * archived_sessions）不是本应用做的决定，恢复也轮不到本应用。
- * 空则整段消失——这一段是从属陈述，不是常驻主体。
- * ============================================================ */
-function ImportedHistoryArchiveSection() {
-  const { t } = useAppTranslation();
-  const history = useOptionalHistory();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const entries = (history?.snapshot.entries ?? [])
-    .filter((entry) => entry.productArchivedAt !== null)
-    .sort((left, right) => (right.productArchivedAt ?? 0) - (left.productArchivedAt ?? 0));
-  if (!history || entries.length === 0) return null;
-  return (
-    <SettingsSection
-      title={t("history.archivedSectionTitle")}
-      description={t("history.archivedSectionDescription")}
-    >
-      <SettingsList data-testid="archive-history-list">
-        {entries.map((entry) => (
-          <div
-            key={entry.opaqueId}
-            data-testid="archive-history-row"
-            className="flex items-center gap-2 py-1 pr-2 pl-2 transition-colors hover:bg-muted/50 motion-reduce:transition-none"
-          >
-            <span className="flex shrink-0 items-center text-muted-foreground">
-              <AgentBackendIcon
-                backend={historyBackend(entry.sourceKind)}
-                className="size-4"
-                aria-label={backendLabel(historyBackend(entry.sourceKind))}
-              />
-            </span>
-            <span
-              title={entry.title}
-              className="min-w-0 flex-1 truncate font-medium text-sm"
-            >
-              {entry.title}
-            </span>
-            <span className="w-40 shrink-0 truncate text-right text-muted-foreground text-xs tabular-nums">
-              {formatArchivedAt(entry.productArchivedAt ?? 0)}
-            </span>
-            <span className="flex shrink-0 items-center">
-              <RowAction
-                label={t("history.archivedRestore", { title: entry.title })}
-                icon={RotateCcw}
-                disabled={busyId === entry.opaqueId}
-                onClick={() => {
-                  setBusyId(entry.opaqueId);
-                  void history
-                    .setSessionArchived(entry.opaqueId, false)
-                    .catch(() => {})
-                    .finally(() => setBusyId(null));
-                }}
-              />
-            </span>
-          </div>
-        ))}
-      </SettingsList>
-    </SettingsSection>
   );
 }

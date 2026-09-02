@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, PanelSessionContext, panel memory, Browser/Plan/Subagent projections, Workspace readRef, and file preview resources
- * [OUTPUT]: Provides identity-stable side-panel state, draft-to-product context rebinding, eligibility, openShell/foreign Plan commands, and context-generation fenced asynchronous previews
+ * [INPUT]: Depends on React, localized side-panel Plan titles, PanelSessionContext, panel memory, Browser/Plan/Subagent projections, Workspace readRef, and file preview resources
+ * [OUTPUT]: Provides identity-stable localized side-panel state, draft-to-product context rebinding, eligibility, openShell/Plan commands, and generation-fenced asynchronous previews
  * [POS]: The sole side-panel state owner in chat/runtime/session
  */
 
@@ -49,6 +49,7 @@ import type {
   BrowserTabsSnapshot,
 } from "../../../../../shared/browser-ipc";
 import { recallSidePanel, rememberSidePanel } from "./side-panel-memory";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 declare global {
   interface Window {
@@ -72,12 +73,13 @@ export function reconcilePlanPanel(
   current: SidePanelState,
   draft: TurnDraft | null,
   messages: readonly ChatMessage[],
-  status: ChatStatus
+  status: ChatStatus,
+  titles: Readonly<{ editing: string; plan: string }>
 ): SidePanelState {
   if (current.kind !== "plan" || !current.planItemId) return current;
   const livePlan = draft ? projectDraftPlan(draft) : null;
   if (livePlan?.itemId === current.planItemId) {
-    const title = livePlan.editing ? "Editing" : "Plan";
+    const title = livePlan.editing ? titles.editing : titles.plan;
     return current.content === livePlan.content && current.title === title
       ? current
       : { ...current, content: livePlan.content, title };
@@ -96,7 +98,7 @@ export function reconcilePlanPanel(
         kind: "plan",
         messageId: finalPlan.id,
         content: finalPlan.content,
-        title: "Plan",
+        title: titles.plan,
       }
     : { kind: "none" };
 }
@@ -112,27 +114,33 @@ export function useSessionSidePanel({
   workspaceScope,
   workspaceScopeKey,
 }: SidePanelInput) {
+  const { t } = useAppTranslation();
+  const planTitles = useMemo(
+    () => ({
+      editing: t("chat.transcript.plan.editing"),
+      plan: t("chat.transcript.plan.title"),
+    }),
+    [t]
+  );
   const conversationKey = panelConversationKey(panelContext);
   const generationKey = panelGenerationKey(panelContext);
+  const conversationContext = panelContext.conversationContext;
   const context = useMemo<PanelSessionContext>(
-    () => panelContext.kind === "foreign"
+    () => panelContext.kind === "draft"
       ? {
-          kind: "foreign",
-          foreignRef: {
-            opaqueId: conversationKey,
-            historyRevision: generationKey,
-          },
+          kind: "draft",
+          draftKey: conversationKey,
+          ...(conversationContext ? { conversationContext } : {}),
         }
-      : panelContext.kind === "draft"
-        ? { kind: "draft", draftKey: conversationKey }
-        : {
-            kind: panelContext.kind,
-            productRef: {
-              chatId: conversationKey,
-              incarnationId: generationKey,
-            },
+      : {
+          kind: panelContext.kind,
+          productRef: {
+            chatId: conversationKey,
+            incarnationId: generationKey,
           },
-    [conversationKey, generationKey, panelContext.kind]
+          ...(conversationContext ? { conversationContext } : {}),
+        },
+    [conversationContext, conversationKey, generationKey, panelContext.kind]
   );
   const [scopedState, setScopedState] = useState(() => ({
     conversationKey,
@@ -198,8 +206,10 @@ export function useSessionSidePanel({
   }, [scopedState]);
 
   useEffect(() => {
-    setState((current) => reconcilePlanPanel(current, draft, messages, status));
-  }, [draft, messages, setState, status]);
+    setState((current) =>
+      reconcilePlanPanel(current, draft, messages, status, planTitles)
+    );
+  }, [draft, messages, planTitles, setState, status]);
 
   // 只有 createTab 那一次投影携带 createdTabId：本 chat 名下新 tab 出现的
   // 瞬间自发亮出 Browser 面板，历史 tab 与他 chat 事件永不误触发。
@@ -289,30 +299,18 @@ export function useSessionSidePanel({
       kind: "plan",
       messageId: message.id,
       content: message.content,
-      title: "Plan",
+      title: planTitles.plan,
     });
-  }, [setState]);
+  }, [planTitles.plan, setState]);
   const openDraftPlan = useCallback((plan: DraftPlanProjection) => {
     setState({
       kind: "plan",
       messageId: plan.itemId,
       planItemId: plan.itemId,
       content: plan.content,
-      title: plan.editing ? "Editing" : "Plan",
+      title: plan.editing ? planTitles.editing : planTitles.plan,
     });
-  }, [setState]);
-  const openForeignPlan = useCallback((plan: {
-    anchorId: string;
-    content: string;
-  }) => {
-    setState({
-      kind: "plan",
-      messageId: plan.anchorId,
-      anchorId: plan.anchorId,
-      content: plan.content,
-      title: "Plan",
-    });
-  }, [setState]);
+  }, [planTitles.editing, planTitles.plan, setState]);
   const reconcileRichValue = useCallback((value: RichValue) => {
     setState((current) =>
       (current.kind === "file" || current.kind === "workspace-preview") &&
@@ -423,7 +421,6 @@ export function useSessionSidePanel({
     closeFile,
     openTabs,
     openDraftPlan,
-    openForeignPlan,
     openFile,
     openWorkspaceFile,
     openImage,
@@ -434,7 +431,6 @@ export function useSessionSidePanel({
     close,
     closeFile,
     openDraftPlan,
-    openForeignPlan,
     openFile,
     openImage,
     openPlan,

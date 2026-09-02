@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on message action primitives, icons, formatting, clipboard, optional revision eligibility, and request-bound Memory receipts
- * [OUTPUT]: Provides copy/revision actions followed by time and an optional icon-free Memory status
+ * [INPUT]: Depends on message action primitives, icons, localized transcript/revision copy, formatting, clipboard, optional revision eligibility, and request-bound Memory receipts
+ * [OUTPUT]: Provides localized copy/revision actions followed by time and an optional icon-free Memory status
  * [POS]: Shared action row for user and assistant transcript messages
  */
 
@@ -63,8 +63,16 @@ export function ChatMessageActions({
     >
       <MessageAction
         className="cursor-pointer"
-        label={copied ? "Copied" : "Copy"}
-        tooltip={copied ? "Copied" : "Copy"}
+        label={t(
+          copied
+            ? "chat.transcript.actions.copied"
+            : "chat.transcript.actions.copy"
+        )}
+        tooltip={t(
+          copied
+            ? "chat.transcript.actions.copied"
+            : "chat.transcript.actions.copy"
+        )}
         onClick={copy}
       >
         {copied ? <CheckIcon /> : <CopyIcon />}

@@ -40,8 +40,8 @@ export async function deliverRelaySaga(
   let relay = dependencies.ledger.snapshot().relays[relayId];
   if (!relay || !["queued", "appended"].includes(relay.deliveryPhase)) return;
   const [source, target] = await Promise.all([
-    dependencies.chats.store.get(relay.source.chatId),
-    dependencies.chats.store.get(relay.target.chatId),
+    Promise.resolve(dependencies.chats.store.getMetadata(relay.source.chatId)),
+    Promise.resolve(dependencies.chats.store.getMetadata(relay.target.chatId)),
   ]);
   if (
     !source ||
@@ -68,7 +68,10 @@ export async function deliverRelaySaga(
     relay = sequenced;
   }
   if (relay.deliveryPhase === "queued") {
-    if (!target.messages.some((message) => message.id === relay.userMessageId)) {
+    if (!await dependencies.chats.store.getNativeMessage(target.id, {
+      kind: "id",
+      messageId: relay.userMessageId,
+    })) {
       const message: UnsequencedUserMessage = {
         id: relay.userMessageId,
         role: "user",
@@ -106,7 +109,7 @@ export async function deliverRelaySaga(
   );
   if (!claimed) return;
   try {
-    const latestTarget = await dependencies.chats.store.get(target.id);
+    const latestTarget = dependencies.chats.store.getMetadata(target.id);
     if (!latestTarget) throw new Error("目标 Section 在 claim 后被删除");
     const turnOptions = await dependencies.settings.resolveChatOptions(
       { conversationId: target.id },
@@ -122,7 +125,7 @@ export async function deliverRelaySaga(
       (candidate) => candidate.mode === "run" && candidate.relayId === claimed.id
     );
     for (const context of intent?.contextSections ?? []) {
-      const record = await dependencies.chats.store.get(context.chatId);
+      const record = dependencies.chats.store.getMetadata(context.chatId);
       if (record?.incarnationId === context.incarnationId) {
         currentInput.push({
           type: "section",
@@ -130,6 +133,12 @@ export async function deliverRelaySaga(
           name: record.title ?? "未命名",
         });
       }
+    }
+    const messages = latestTarget.session
+      ? null
+      : await dependencies.chats.store.getNativeMessages(target.id);
+    if (!latestTarget.session && !messages) {
+      throw new Error("目标 Section 的 canonical context 缺失");
     }
     const payload: AgentSendPayload = {
       requestId: claimed.requestId,
@@ -139,7 +148,7 @@ export async function deliverRelaySaga(
       input: latestTarget.session
         ? currentInput
         : recoveryInput(
-            latestTarget.messages,
+            messages!,
             currentInput,
             claimed.userMessageId
           ),

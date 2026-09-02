@@ -23,7 +23,7 @@ import {
 import { fuzzyScore } from "../../shared/workspace-fuzzy";
 import type { SubmissionContentV1 } from "../../shared/submission";
 import { rendererIpc } from "./ipc-registrar";
-import { GitCommandError } from "./projects/git-runner";
+import { GitCommandError } from "./projects/git/git-runner";
 import {
   buildWorkspaceIndex,
   defaultIsGitRepository,

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node fs/path/crypto, shared AppManifest and base.json budget; Receiving local app/package directories
+ * [INPUT]: Depends on Node fs/path/crypto, shared AppManifest, base.json budget, and bounded source-only compiled portability envelope; Receiving local app/package directories
  * [OUTPUT]: Provides the only Base release whitelist, kind-aware source/runtime, three projections, three-domain digest, immutable artifact seal/verify/GC; Web only checks the runtime input, and safely retains the internal symlink and execution bit
  * [POS]: The two-way packet of apps/share is compatible with the generation artifact machine; Publish, pre-check, pre-set import with AppStore without self-building whitelist, copy or fingerprint algorithm
  */
@@ -42,6 +42,7 @@ export const PACKAGE_ALLOWLIST = [
   "data/base.json",
   "migrations/**",
   "gui/**",
+  ".bottega/compiled-source-v1/**",
 ] as const;
 
 // 谓词从常量推导，白名单只此一份——手抄第二份的那天就是静默漂移的那天
@@ -67,6 +68,13 @@ const RUNTIME_BUDGET = {
   totalBytes: 512 * 1024 * 1024,
   files: 20_000,
   depth: 16,
+} as const;
+
+const PORTABLE_SOURCE_BUDGET = {
+  fileBytes: 16 * 1024 * 1024,
+  totalBytes: 16 * 1024 * 1024,
+  files: 512,
+  depth: 10,
 } as const;
 
 export type PackageInspection = {
@@ -141,9 +149,12 @@ async function inspectSourcePackage(
   const files: PackageInspection["files"] = [];
   const ignored: string[] = [];
   let totalBytes = 0;
+  let sourceBytes = 0;
+  let sourceFiles = 0;
+  let portableBytes = 0;
+  let portableFiles = 0;
 
   const visit = async (directory: string, depth: number) => {
-    if (depth > PACKAGE_BUDGET.depth) throw new Error("App 包目录深度超过 6");
     const entries = await readdir(directory, { withFileTypes: true });
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (entry.name === ".git") continue;
@@ -166,6 +177,12 @@ async function inspectSourcePackage(
       }
       if (entry.isDirectory()) {
         if (couldContainAllowedPath(packagePath)) {
+          const depthLimit = isPortableSourcePath(packagePath)
+            ? PORTABLE_SOURCE_BUDGET.depth
+            : PACKAGE_BUDGET.depth;
+          if (depth + 1 > depthLimit) {
+            throw new Error(`App 包目录深度超限：${packagePath}`);
+          }
           await assertContained(canonicalRoot, absolute);
           await visit(absolute, depth + 1);
         } else {
@@ -182,24 +199,43 @@ async function inspectSourcePackage(
         continue;
       }
       await assertContained(canonicalRoot, absolute);
-      const limit =
-        packagePath === "data/base.json"
+      const portable = isPortableSourcePath(packagePath);
+      const limit = portable
+        ? PORTABLE_SOURCE_BUDGET.fileBytes
+        : packagePath === "data/base.json"
           ? PACKAGE_BUDGET.baseFileBytes
           : PACKAGE_BUDGET.fileBytes;
       if (metadata.size > limit) throw new Error(`App 包文件超限：${packagePath}`);
       totalBytes += metadata.size;
       files.push({ path: packagePath, bytes: metadata.size });
-      if (
-        files.length > PACKAGE_BUDGET.files ||
-        totalBytes > PACKAGE_BUDGET.totalBytes
-      ) {
-        throw new Error("App 包超过 512 文件或 16 MB 总预算");
+      if (portable) {
+        portableBytes += metadata.size;
+        portableFiles += 1;
+        if (
+          portableFiles > PORTABLE_SOURCE_BUDGET.files ||
+          portableBytes > PORTABLE_SOURCE_BUDGET.totalBytes
+        ) {
+          throw new Error("compiled source 可移植制品超过 512 文件或 16 MB 总预算");
+        }
+      } else {
+        sourceBytes += metadata.size;
+        sourceFiles += 1;
+        if (
+          sourceFiles > PACKAGE_BUDGET.files ||
+          sourceBytes > PACKAGE_BUDGET.totalBytes
+        ) {
+          throw new Error("App 源码包超过 512 文件或 16 MB 总预算");
+        }
       }
     }
   };
 
   await visit(canonicalRoot, 0);
   return { files, ignored, totalBytes };
+}
+
+function isPortableSourcePath(path: string) {
+  return path === ".bottega" || path.startsWith(".bottega/");
 }
 
 async function rejectNestedSymlinks(

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on settings-client revision Letters get/set/mutateMemory/onChanged/Chat Home chooser/listModels, shared
- * [OUTPUT]: Provides settingsStore with testable factory owner by revision rebase, sequential mutation, Memory, special commands, per-backend Models, independent epoch and useSyncExternalStore
+ * [INPUT]: Depends on settings-client revision get/set/mutateMemory/onChanged/Chat Home chooser/listModels, shared i18n runtime, and the renderer effective locale
+ * [OUTPUT]: Provides settingsStore with testable factory owner by revision rebase, sequential mutation, Memory, special commands, per-backend Models with structured Agent failures, independent epoch and useSyncExternalStore
  * [POS]: General/Memory/Onboarding is set to the renderer as the sole owner; Domain and back end isolation to avoid slow requests, old responses and error contamination
  */
 
@@ -17,6 +17,12 @@ import type {
 } from "../../shared/settings-ipc";
 import { backendLabel } from "./agent-backends";
 import { errorMessage } from "./errors";
+import { effectiveLocale } from "./i18n-locale";
+import { translate } from "../../shared/i18n/runtime";
+import {
+  rendererAgentSurfaceFailure,
+  type AgentSurfaceFailure,
+} from "./agent-failure";
 import {
   chooseChatHomesRoot,
   getSettings,
@@ -32,7 +38,7 @@ export type SettingsStoreSnapshot = {
   modelsReadyByBackend: Partial<Record<AgentBackendId, boolean>>;
   /** settings 域错误；Memory 视图依赖此字段名与语义。 */
   error: string;
-  modelsErrorByBackend: Partial<Record<AgentBackendId, string>>;
+  modelsErrorByBackend: Partial<Record<AgentBackendId, AgentSurfaceFailure | null>>;
   chatHomesRootBusy: boolean;
   chatHomesRootError: string;
 };
@@ -147,7 +153,10 @@ export function createSettingsStoreOwner(
         settingsLoading = false;
         publish({
           ...snapshot,
-          error: errorMessage(cause, "设置读取失败"),
+          error: errorMessage(
+            cause,
+            translate(effectiveLocale(), "settings.general.settingsLoadFailed")
+          ),
         });
       }
     );
@@ -172,7 +181,7 @@ export function createSettingsStoreOwner(
       },
       modelsErrorByBackend: {
         ...snapshot.modelsErrorByBackend,
-        [backend]: "",
+        [backend]: null,
       },
     });
     void dependencies.list(backend).then(
@@ -192,7 +201,7 @@ export function createSettingsStoreOwner(
           },
           modelsErrorByBackend: {
             ...snapshot.modelsErrorByBackend,
-            [backend]: "",
+            [backend]: null,
           },
         });
       },
@@ -208,9 +217,11 @@ export function createSettingsStoreOwner(
           },
           modelsErrorByBackend: {
             ...snapshot.modelsErrorByBackend,
-            [backend]: errorMessage(
+            [backend]: rendererAgentSurfaceFailure(
+              "service-unavailable",
+              backendLabel(backend),
               cause,
-              `${backendLabel(backend)} 模型列表读取失败`
+              backend
             ),
           },
         });
@@ -279,7 +290,10 @@ export function createSettingsStoreOwner(
           ...snapshot,
           chatHomesRootError: errorMessage(
             cause,
-            "Chat Home 存放位置修改失败"
+            translate(
+              effectiveLocale(),
+              "settings.general.chatHomeChangeFailed"
+            )
           ),
         });
       } finally {

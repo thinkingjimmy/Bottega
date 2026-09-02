@@ -1,5 +1,5 @@
-# [INPUT]: Depends on electron-vite output, root LICENSE, system skills, the immutable Design factory payload, Base GUI SDK, icons, hardened-runtime entitlements, and pinned react-grab browser assets
-# [OUTPUT]: Produces Bottega macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage artifacts with an offline Design factory and GitHub update metadata
+# [INPUT]: Depends on electron-vite output, test-receipt exclusion, root LICENSE, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons, entitlements, and pinned react-grab assets
+# [OUTPUT]: Produces Bottega macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage artifacts with an offline fail-closed App GUI compiler and no test-only receipt
 # [POS]: The only desktop packaging configuration; release signing is fail-closed in release scripts while ordinary CI packaging remains unsigned
 
 appId: com.jimmywong.bottega
@@ -8,7 +8,11 @@ directories:
   output: release
 files:
   - out/**
+  - "!out/.e2e-build-receipt.json"
   - "!out/renderer/.chart-module-report.json"
+asarUnpack:
+  - node_modules/@esbuild/**
+  - node_modules/@tailwindcss/oxide*/**
 extraResources:
   - from: ../../LICENSE
     to: LICENSE
@@ -20,6 +24,12 @@ extraResources:
     to: factory-apps/design-canvas
   - from: resources/gui-sdk
     to: gui-sdk
+  - from: resources/app-gui-toolchain
+    to: app-gui-toolchain
+  - from: resources/app-gui-starters
+    to: app-gui-starters
+  - from: resources/app-gui-components
+    to: app-gui-components
   - from: node_modules/react-grab/dist/index.global.js
     to: react-grab/index.global.js
   - from: node_modules/react-grab/dist/styles.css

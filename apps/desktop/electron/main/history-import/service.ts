@@ -1,30 +1,23 @@
 /**
- * [INPUT]: Depends on Electron IPC, Project/Chat queries, strict turn options, four history adapters, Project/Memory coordinators, index/snapshot stores, and shared contracts
- * [OUTPUT]: Provides detection/refresh, stable identity, abortable paged/revision-fenced full-index transcripts, consumer-aware bounded parse single-flight, adoption, source-quality projection, search/export, presentation, Memory, and drain APIs
- * [POS]: The canonical federated history owner and renderer-safe authority boundary
+ * [INPUT]: Depends on Electron IPC, Project/Chat queries, strict turn options, four history adapters, the dedicated import worker, Project/Memory coordinators, index/snapshot stores, and shared contracts
+ * [OUTPUT]: Provides detection/refresh, stable identity, a separately scheduled off-main backpressured SQLite sync that skips adopted sources, forgets dangling routes, and marks vanished/returned sources missing/match within the scanned Project scope, canonical generation routing, registration-time snapshot republication, adoption, transcript export/search reads, Memory, and drain APIs
+ * [POS]: Canonical federated history and renderer-safe authority boundary; production SQLite ingestion parses outside main
  */
 
 import { createHash } from "node:crypto";
-import { stat } from "node:fs/promises";
 import type { BrowserWindow } from "electron";
 import { z } from "zod";
 import {
   HISTORY_IMPORT_CHANNEL,
-  HISTORY_SOURCE_KINDS,
-  sessionAliases,
   type HistorySourceKind,
   type ForeignHistoryBlock,
-  type ForeignHistoryTranscript,
   type HistoryImportEvent,
   type HistoryImportSnapshot,
   type ForeignHistorySummary,
-  type HistoryAdoptionPrefix,
   type HistoryMemoryPreview,
-  type HistoryFileFingerprint,
   type PrepareHistoryAdoptionInput,
   type ProjectHistoryImportState,
 } from "../../../shared/history-import-ipc";
-import { SECTION_EXPORT_BYTE_LIMIT } from "../../../shared/agent-ipc";
 import type { Project } from "../../../shared/projects-ipc";
 import { rendererIpc } from "../ipc-registrar";
 import {
@@ -32,12 +25,12 @@ import {
   validateHistoryAdoptionSubmission,
 } from "../agent-payload-validation";
 import type { ProductHistoryIntent } from "../memory/orchestration/consent-controller";
-import { isWithin, sameFingerprint, sourceCount, type AdapterEntry, type AdapterScan, type HistoryAdapter, type ParsedHistory, type ScanDepth } from "./adapter";
+import { sourceCount, type AdapterEntry, type AdapterScan, type HistoryAdapter, type HistoryBinding, type ParsedHistory, type ScanDepth } from "./adapter";
 import { ClaudeHistoryAdapter } from "./claude-adapter";
 import { CodexHistoryAdapter } from "./codex-adapter";
 import { KimiHistoryAdapter } from "./kimi-adapter";
 import { OpencodeHistoryAdapter } from "./opencode-adapter";
-import { HistoryImportIndexStore, type StoredHistoryProject } from "./index-store";
+import { HistoryImportIndexStore, type StoredCanonicalRoute, type StoredHistoryProject } from "./index-store";
 import {
   HistorySnapshotStore,
   type AdoptionSnapshot,
@@ -46,19 +39,21 @@ import {
 import { ProjectImportCoordinator } from "./project-import-coordinator";
 import { MemoryGrantCoordinator } from "./memory-grant-coordinator";
 import type { HistoryMemoryAuthorization } from "./memory-grant-coordinator";
+import { HistoryImportWorkerClient } from "./import-worker/client";
+import { canonicalHistoryProjection } from "./routing/canonical-projection";
+import {
+  aliasesClaimed,
+  deepestOwner,
+  historiesChanged,
+  historyFileState,
+  publicEntry,
+  sourceRevisions,
+} from "./routing/history-policy";
+import { foreignTranscriptSnapshot } from "./routing/foreign-transcript";
 
-const PAGE_SIZE = 200;
+export { historyFileState } from "./routing/history-policy";
+
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
-const transcriptIndexRequestSchema = z.object({
-  opaqueId: idSchema,
-  expectedHistoryRevision: z.string().min(1),
-  requestId: idSchema,
-}).strict();
-const transcriptPageRequestSchema = z.object({
-  opaqueId: idSchema,
-  cursor: z.string().optional(),
-  requestId: idSchema,
-}).strict();
 
 type ParseFlight = {
   controller: AbortController;
@@ -83,17 +78,32 @@ export type HistoryImportServiceOptions = {
   getProject(projectId: string): ProjectRef | undefined;
   prepareProject(): Promise<{ canonicalRoot: string; name: string } | null>;
   commitProject(input: { canonicalRoot: string; name: string }): Promise<{ project: Project; created: boolean }>;
-  listSessionBindings(): Array<{
-    chatId?: string;
-    session: { backend: string; id: string };
-    importOrigin?: { adoptionSnapshotId: string } | null;
-    snapshotDigest?: string | null;
-  }>;
+  listSessionBindings(): HistoryBinding[];
+  /* canonical Chat 的三种去向：仍是只读导入代际、已被收养成可写会话、
+     或者干脆没了。同步与投影都读它，绝不各自猜。 */
+  chatLifecycle(chatId: string): "external-readonly" | "managed" | "missing";
+  /* 源文件在不在，只有扫描知道；它是 sourceStatus 的唯一事实来源。 */
+  markImportSourceStatus(chatId: string, sourceStatus: "match" | "missing"): Promise<void>;
+  syncHistory(input: {
+    entry: AdapterEntry;
+    summary: ForeignHistorySummary;
+    blocks:
+      | readonly ForeignHistoryBlock[]
+      | AsyncIterable<
+          readonly ForeignHistoryBlock[] |
+          import("../chats/sqlite/database-protocol").PreparedHistoryImportBatch
+        >;
+    incompleteTail: boolean;
+    signal: AbortSignal;
+  }): Promise<{ chatId: string; generationId: string } | null>;
   memoryState(): HistoryMemoryAuthorization;
   adopt?(input: {
     request: PrepareHistoryAdoptionInput;
     entry: AdapterEntry;
     snapshot: AdoptionSnapshot;
+    /* 同步早已把这条外源落成只读 canonical Chat：收养只续写它，
+       绝不第二次开同一个 import 代际。 */
+    route: StoredCanonicalRoute | null;
   }): Promise<{ chatId: string; incarnationId: string; phase: "started" | "queued" | "settled" }>;
   commitMemory?(input: {
     grantId: string;
@@ -110,26 +120,7 @@ export type HistoryImportServiceOptions = {
   }>;
   commitProductMemory?(grantId: string, intent: ProductHistoryIntent): Promise<void>;
   productMemoryCommitted?(grantId: string): boolean;
-  getAdoptionBinding?(chatId: string): { snapshotId: string; digest: string } | null;
 };
-
-export type SearchableHistoryEntry = Readonly<{
-  opaqueId: string;
-  projectId: string;
-  sourceKind: HistorySourceKind;
-  title: string;
-  updatedAt: number;
-  historyRevision: string;
-  fingerprint: HistoryFileFingerprint;
-  archived: boolean;
-  policySearchable: boolean;
-  claimed: null | {
-    chatId: string;
-    adopted: boolean;
-    adoptionSnapshotId?: string;
-    snapshotDigest?: string;
-  };
-}>;
 
 export class HistoryImportService {
   readonly index: HistoryImportIndexStore;
@@ -142,7 +133,8 @@ export class HistoryImportService {
   private detecting = new Set<string>();
   private refreshing = new Set<string>();
   private readonly parseCache = new Map<string, ParseFlight>();
-  private readonly transcriptRequests = new Map<string, AbortController>();
+  private readonly importWorker: HistoryImportWorkerClient | null;
+  private readonly lifetime = new AbortController();
 
   constructor(userData: string, private readonly options: HistoryImportServiceOptions, adapters?: HistoryAdapter[]) {
     this.index = new HistoryImportIndexStore(userData);
@@ -153,6 +145,7 @@ export class HistoryImportService {
       new KimiHistoryAdapter(options.home),
       new OpencodeHistoryAdapter(options.home),
     ];
+    this.importWorker = adapters ? null : new HistoryImportWorkerClient();
     this.projectImports = new ProjectImportCoordinator({
       select: options.prepareProject,
       count: async (root) => (await this.scan(root, "identity")).map(sourceCount),
@@ -166,7 +159,7 @@ export class HistoryImportService {
           ? `${stored.membershipRevision}:${stored.eligibilityRevision}`
           : null;
       },
-      visibleEntries: () => this.snapshot().entries,
+      visibleEntries: () => this.visibleSourceEntries(),
       materialize: async (opaqueId) => {
         const entry = this.findEntry(opaqueId);
         if (!entry) throw new Error("历史会话不存在");
@@ -187,11 +180,22 @@ export class HistoryImportService {
     await Promise.all([this.index.initialize(), this.snapshots.initialize()]);
     await this.index.removeMissing(new Set(this.options.listProjects().map((project) => project.id)));
     await this.memory.reconcile();
-    setImmediate(() => void this.detectAll().catch((cause) => this.setWarning(cause)));
+  }
+
+  /* 后台同步必须排在续聊对账之后：一个抢先激活的新代际会让 pending 的
+     continuation.finalize 撞上代际围栏，saga 被隔离、Home 变孤儿。启动
+     顺序是组合根的事，本服务只提供这一枚可被安排的入口。 */
+  startBackgroundSync() {
+    setImmediate(() => void this.detectAll()
+      .then(() => this.syncStoredHistories())
+      .catch((cause) => this.setWarning(cause)));
   }
 
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
+    /* 启动同步跑在窗口注册之前：那批 publish 全部落空。窗口一到就补发一次
+       当前快照，侧栏因此不必靠一次刷新才看见已经同步好的历史会话。 */
+    this.publish();
     const ipc = rendererIpc(window, rendererUrl, "拒绝非主窗口的历史导入请求")
       .roles("main");
     ipc
@@ -201,104 +205,35 @@ export class HistoryImportService {
       .handle(HISTORY_IMPORT_CHANNEL.commitProject, (raw) => this.commitProject(parseCommit(raw)))
       .handle(HISTORY_IMPORT_CHANNEL.setProjectEnabled, (projectId, enabled) => this.setProjectEnabled(idSchema.parse(projectId), z.boolean().parse(enabled)))
       .handle(HISTORY_IMPORT_CHANNEL.refreshProject, (projectId) => this.refreshProjectForUser(idSchema.parse(projectId)))
-      .handle(HISTORY_IMPORT_CHANNEL.renameSession, (opaqueId, title) => this.renameSession(idSchema.parse(opaqueId), z.string().trim().min(1).max(200).parse(title)))
-      .handle(HISTORY_IMPORT_CHANNEL.setSessionArchived, (opaqueId, archived) => this.setSessionArchived(idSchema.parse(opaqueId), z.boolean().parse(archived)))
-      .handle(HISTORY_IMPORT_CHANNEL.transcript, (raw) => {
-        const request = transcriptPageRequestSchema.parse(raw);
-        return this.withTranscriptRequest(request.requestId, (signal) =>
-          this.transcript(request.opaqueId, request.cursor, signal));
-      })
-      .handle(HISTORY_IMPORT_CHANNEL.transcriptIndex, async (raw) => {
-        const request = transcriptIndexRequestSchema.parse(raw);
-        return this.withTranscriptRequest(request.requestId, (signal) =>
-          this.transcriptIndex(request.opaqueId, request.expectedHistoryRevision, signal));
-      })
       .handle(HISTORY_IMPORT_CHANNEL.adopt, (raw) => this.adopt(parseAdopt(raw)))
-      .handle(HISTORY_IMPORT_CHANNEL.adoptionPrefix, (chatId) => this.adoptionPrefix(idSchema.parse(chatId)))
       .handle(HISTORY_IMPORT_CHANNEL.memoryEligibility, (raw) => {
         const input = z.object({ surface: z.enum(["project", "settings"]), projectId: idSchema.optional() }).strict().parse(raw);
         return this.memoryEligibility(input);
       })
       .handle(HISTORY_IMPORT_CHANNEL.memoryPreview, (raw) => this.memoryPreview(parseMemoryPreview(raw)))
-      .handle(HISTORY_IMPORT_CHANNEL.memoryCommit, (snapshotId, digest) => this.memoryCommit(idSchema.parse(snapshotId), z.string().regex(/^[a-f0-9]{64}$/).parse(digest)))
-      .on(HISTORY_IMPORT_CHANNEL.cancelTranscript, (rawRequestId) => {
-        const requestId = idSchema.safeParse(rawRequestId);
-        if (requestId.success) this.transcriptRequests.get(requestId.data)?.abort();
-      });
+      .handle(HISTORY_IMPORT_CHANNEL.memoryCommit, (snapshotId, digest) => this.memoryCommit(idSchema.parse(snapshotId), z.string().regex(/^[a-f0-9]{64}$/).parse(digest)));
     window.once("closed", () => {
       if (this.window === window) this.window = null;
-      for (const controller of this.transcriptRequests.values()) {
-        controller.abort();
-      }
-      this.transcriptRequests.clear();
     });
-  }
-
-  private async withTranscriptRequest<T>(
-    requestId: string,
-    run: (signal: AbortSignal) => Promise<T>
-  ) {
-    if (this.transcriptRequests.has(requestId)) throw new Error("HISTORY_TRANSCRIPT_REQUEST_EXISTS");
-    const controller = new AbortController();
-    this.transcriptRequests.set(requestId, controller);
-    try { return await run(controller.signal); }
-    finally { this.transcriptRequests.delete(requestId); }
   }
 
   snapshot(): HistoryImportSnapshot {
     const state = this.index.snapshot();
     const claimed = this.claimedAliases();
+    const projection = canonicalHistoryProjection({
+      state,
+      projectVisible: (project) => project.enabled && this.validBinding(project),
+      entryVisible: (entry) => !aliasesClaimed(entry, claimed),
+      routeLive: (route) => this.options.chatLifecycle(route.chatId) !== "missing",
+      present: (entry) => this.presentEntry(entry),
+    });
     return {
       revision: state.revision,
-      entries: Object.values(state.projects).flatMap((project) =>
-        project.enabled && this.validBinding(project)
-          ? project.entries.filter((entry) => !aliasesClaimed(entry, claimed)).map((entry) => this.presentEntry(entry))
-          : []
-      ),
+      ...projection,
       projects: Object.values(state.projects).map((project) => this.projectState(project)),
       memoryDelivering: this.memory.delivering(),
       warning: this.warning,
     };
-  }
-
-  /** SearchJob 只冻结 KB 级元数据；正文必须在 pull 时经下面两条窄门面取。 */
-  listSearchableEntries(): SearchableHistoryEntry[] {
-    const bindings = this.options.listSessionBindings();
-    return Object.values(this.index.snapshot().projects).flatMap((project) =>
-      project.entries.map((entry) => {
-        const aliases = sessionAliases(entry.key);
-        const binding = bindings.find(
-          (candidate) =>
-            candidate.session.backend === entry.sourceKind &&
-            aliases.has(candidate.session.id)
-        );
-        const summary = this.presentEntry(entry);
-        const adopted = Boolean(binding?.importOrigin?.adoptionSnapshotId && binding.snapshotDigest);
-        return {
-          opaqueId: entry.opaqueId,
-          projectId: entry.projectId,
-          sourceKind: entry.sourceKind,
-          title: summary.title,
-          updatedAt: entry.updatedAt,
-          historyRevision: entry.historyRevision,
-          fingerprint: structuredClone(entry.fingerprint),
-          archived: summary.archived,
-          policySearchable: Boolean(project.enabled && this.validBinding(project)),
-          claimed: binding
-            ? {
-                chatId: binding.chatId ?? "",
-                adopted,
-                ...(adopted
-                  ? {
-                      adoptionSnapshotId: binding.importOrigin!.adoptionSnapshotId,
-                      snapshotDigest: binding.snapshotDigest!,
-                    }
-                  : {}),
-              }
-            : null,
-        };
-      })
-    );
   }
 
   private parseEntry(
@@ -372,35 +307,6 @@ export class HistoryImportService {
     });
   }
 
-  async parseTranscriptForSearch(
-    opaqueId: string,
-    expected: { fingerprint: HistoryFileFingerprint; historyRevision: string },
-    signal: AbortSignal
-  ) {
-    signal.throwIfAborted();
-    const entry = this.findEntry(opaqueId);
-    if (!entry || entry.historyRevision !== expected.historyRevision || !sameFingerprint(entry.fingerprint, expected.fingerprint)) {
-      throw Object.assign(new Error("历史会话已变化"), { code: "HISTORY_REVISION_CHANGED" });
-    }
-    const adapter = this.adapters.find((candidate) => candidate.sourceKind === entry.sourceKind);
-    if (!adapter) throw new Error("历史来源 adapter 不存在");
-    const parsed = await this.parseEntry(entry, signal);
-    signal.throwIfAborted();
-    const current = this.findEntry(opaqueId);
-    if (!current || current.historyRevision !== expected.historyRevision || !sameFingerprint(current.fingerprint, expected.fingerprint)) {
-      throw Object.assign(new Error("历史会话已变化"), { code: "HISTORY_REVISION_CHANGED" });
-    }
-    return parsed.blocks;
-  }
-
-  async readAdoptionSnapshotForSearch(snapshotId: string, expectedDigest: string, signal: AbortSignal) {
-    signal.throwIfAborted();
-    const snapshot = await this.snapshots.readAdoption(snapshotId, signal);
-    signal.throwIfAborted();
-    if (snapshot.digest !== expectedDigest) throw new Error("收养快照 digest 不一致");
-    return snapshot.blocks as ForeignHistoryBlock[];
-  }
-
   async prepareProject() {
     return this.projectImports.prepare();
   }
@@ -432,31 +338,9 @@ export class HistoryImportService {
     this.publish();
   }
 
-  /* ── 产品侧会话呈现动作：改名与归档都只写 sessionPrefs overlay ────
-   * CLI 源文件只读是铁律；这两个动作因此天然是视图状态，刷新扫描
-   * 整体替换 entries 也冲不掉。 */
-  async renameSession(opaqueId: string, title: string) {
-    if (!this.findEntry(opaqueId)) throw new Error("历史会话不存在");
-    await this.index.renameSession(opaqueId, title);
-    this.publish();
-  }
-
-  async setSessionArchived(opaqueId: string, archived: boolean) {
-    if (!this.findEntry(opaqueId)) throw new Error("历史会话不存在");
-    await this.index.setSessionArchived(opaqueId, archived);
-    this.publish();
-  }
-
-  /** wire 投影唯一出口：sessionPrefs 的 title override 与产品侧归档在此合成。 */
+  /** wire 投影唯一出口：canonical 归档状态由 Chat 侧持有，此处只投源生事实。 */
   private presentEntry(entry: AdapterEntry): ForeignHistorySummary {
-    const pref = this.index.sessionPref(entry.opaqueId);
-    const summary = publicEntry(entry);
-    return {
-      ...summary,
-      title: pref?.title ?? summary.title,
-      archived: summary.archived || Boolean(pref?.archivedAt),
-      productArchivedAt: pref?.archivedAt ?? null,
-    };
+    return publicEntry(entry);
   }
 
   async detectAll() {
@@ -496,9 +380,13 @@ export class HistoryImportService {
         await this.scanOwned(project, "full"),
         this.index.project(projectId)?.entries ?? []
       );
+      await this.syncEntries(
+        scans.flatMap((scan) => scan.entries),
+        new Set([projectId])
+      );
       await this.index.publish({
         projectId, canonicalRoot: project.dir, membershipRevision: project.membershipRevision,
-        counts: scans.map(sourceCount), sourceRevisions: revisions(scans), entries: scans.flatMap((scan) => scan.entries),
+        counts: scans.map(sourceCount), sourceRevisions: sourceRevisions(scans), entries: scans.flatMap((scan) => scan.entries),
       });
       const state = this.projectState(this.index.project(projectId)!);
       this.publish({ type: "project", project: state });
@@ -515,42 +403,6 @@ export class HistoryImportService {
     return {
       project,
       memoryPreview: preview && preview.turns > 0 ? preview : null,
-    };
-  }
-
-  async transcript(opaqueId: string, cursor?: string, signal?: AbortSignal): Promise<ForeignHistoryTranscript> {
-    signal?.throwIfAborted();
-    const entry = this.requireVisibleEntry(opaqueId);
-    const parsed = await this.parseEntry(entry, signal);
-    signal?.throwIfAborted();
-    const offset = decodeCursor(cursor, entry.historyRevision);
-    const blocks = parsed.blocks.slice(offset, offset + PAGE_SIZE);
-    const next = offset + blocks.length;
-    return {
-      summary: { ...this.presentEntry(entry), incompleteTail: parsed.incompleteTail }, blocks,
-      revision: entry.historyRevision,
-      nextCursor: next < parsed.blocks.length ? encodeCursor(entry.historyRevision, next) : null,
-    };
-  }
-
-  async transcriptIndex(
-    opaqueId: string,
-    expectedHistoryRevision: string,
-    signal?: AbortSignal
-  ) {
-    signal?.throwIfAborted();
-    const entry = this.requireVisibleEntry(opaqueId);
-    if (entry.historyRevision !== expectedHistoryRevision) {
-      throw Object.assign(new Error("历史会话已变化"), {
-        code: "HISTORY_REVISION_CHANGED",
-      });
-    }
-    const parsed = await this.parseEntry(entry, signal);
-    signal?.throwIfAborted();
-    return {
-      revision: entry.historyRevision,
-      blocks: parsed.blocks,
-      incompleteTail: parsed.incompleteTail,
     };
   }
 
@@ -583,40 +435,20 @@ export class HistoryImportService {
       fingerprint: { size: entry.fingerprint.size, mtimeNs: entry.fingerprint.mtimeNs },
       incompleteTail: parsed.incompleteTail,
     });
-    const receipt = await this.options.adopt({ request, entry, snapshot });
+    const receipt = await this.options.adopt({
+      request,
+      entry,
+      snapshot,
+      route: this.index.canonicalRoute(request.opaqueId) ?? null,
+    });
     this.publish();
     return receipt;
   }
 
-  async adoptionPrefix(chatId: string): Promise<HistoryAdoptionPrefix | null> {
-    const binding = this.options.getAdoptionBinding?.(chatId);
-    if (!binding) return null;
-    const snapshot = await this.snapshots.readAdoption(binding.snapshotId);
-    if (snapshot.digest !== binding.digest) throw new Error("收养快照 digest 与 Chat 账本不一致");
-    let sourceStatus: HistoryAdoptionPrefix["sourceStatus"] = "match";
-    try {
-      const current = await stat(snapshot.sourcePath, { bigint: true });
-      if (
-        Number(current.size) !== snapshot.fingerprint.size ||
-        String(current.mtimeNs) !== snapshot.fingerprint.mtimeNs
-      ) sourceStatus = "changed";
-    } catch (cause) {
-      sourceStatus = (cause as NodeJS.ErrnoException).code === "ENOENT"
-        ? "missing"
-        : "changed";
-    }
-    return {
-      snapshotId: snapshot.snapshotId,
-      digest: snapshot.digest,
-      contentGenerationKey: snapshot.snapshotId,
-      routeGenerationKey: snapshot.historyRevision,
-      title: snapshot.title,
-      blocks: snapshot.blocks as import("../../../shared/history-import-ipc").ForeignHistoryBlock[],
-      incompleteTail: snapshot.schemaVersion === 2
-        ? snapshot.incompleteTail
-        : "unknown",
-      sourceStatus,
-    };
+  /** Chat 删除的即时通知：不等下一轮同步，路由当场作废。 */
+  async onChatRemoved(chatId: string) {
+    await this.index.forgetCanonicalRoutes((route) => route.chatId === chatId);
+    this.publish();
   }
 
   memoryEligibility(input: { surface: "project" | "settings"; projectId?: string }) {
@@ -638,13 +470,11 @@ export class HistoryImportService {
   }
 
   async closeAndFlush() {
-    for (const controller of this.transcriptRequests.values()) {
-      controller.abort();
-    }
-    this.transcriptRequests.clear();
+    this.lifetime.abort(new Error("History import service closed"));
     await Promise.all([
       this.index.closeAndFlush(),
       this.snapshots.closeAndFlush(),
+      this.importWorker?.close() ?? Promise.resolve(),
     ]);
   }
 
@@ -689,10 +519,88 @@ export class HistoryImportService {
     if (!entry || !project?.enabled || !this.validBinding(project) || aliasesClaimed(entry, this.claimedAliases())) throw new Error("历史会话不存在或已由产品 Chat 收养");
     return entry;
   }
+  private visibleSourceEntries() {
+    return Object.values(this.index.snapshot().projects).flatMap((project) =>
+      project.enabled && this.validBinding(project)
+        ? project.entries.map((entry) => this.presentEntry(entry))
+        : []
+    );
+  }
   private claimedAliases() {
     const claimed = new Set<string>();
-    for (const binding of this.options.listSessionBindings()) claimed.add(`${binding.session.backend}:${binding.session.id}`);
+    for (const binding of this.options.listSessionBindings()) {
+      if (binding.session) claimed.add(`${binding.session.backend}:${binding.session.id}`);
+    }
     return claimed;
+  }
+  private async syncStoredHistories() {
+    const projects = Object.values(this.index.snapshot().projects).filter(
+      (project) => project.enabled && this.validBinding(project)
+    );
+    await this.syncEntries(
+      projects.flatMap((project) => project.entries),
+      new Set(projects.map((project) => project.projectId))
+    );
+    this.publish();
+  }
+
+  /* Chat 被删后账本里那条路由就是断链：先抹掉它，本轮同步才会把 Chat 重建
+     出来并记下新的路由。 */
+  private async pruneDanglingRoutes() {
+    await this.index.forgetCanonicalRoutes(
+      (route) => this.options.chatLifecycle(route.chatId) === "missing"
+    );
+  }
+
+  /* 已路由的源从扫描里消失了，转录顶上那条「来源已不在」的分隔线才有生产
+     者；它再出现就把话收回。判定的范围只到本轮扫描覆盖的 Project，否则一次
+     单 Project 刷新会把别人的源一并宣判失踪。 */
+  private async reconcileSourceStatus(
+    scanned: ReadonlySet<string>,
+    scope: ReadonlySet<string>
+  ) {
+    const routes = Object.entries(this.index.snapshot().canonicalRoutes);
+    for (const [opaqueId, route] of routes) {
+      const present = scanned.has(opaqueId);
+      const stored = this.findEntry(opaqueId);
+      if (!present && !(stored && scope.has(stored.projectId))) continue;
+      if (this.options.chatLifecycle(route.chatId) === "missing") continue;
+      await this.options.markImportSourceStatus(
+        route.chatId,
+        present ? "match" : "missing"
+      );
+    }
+  }
+
+  private async syncEntries(
+    entries: readonly AdapterEntry[],
+    scope: ReadonlySet<string>
+  ) {
+    await this.pruneDanglingRoutes();
+    await this.reconcileSourceStatus(
+      new Set(entries.map((entry) => entry.opaqueId)),
+      scope
+    );
+    for (const entry of entries) {
+      /* 收养之后这条外源已经是一条可写 Chat：再往它身上开一个 import 代际
+         会把 revision 撞成永久 stale。跳过不是错误，是这条源的终局。 */
+      const route = this.index.canonicalRoute(entry.opaqueId);
+      if (route && this.options.chatLifecycle(route.chatId) === "managed") continue;
+      const signal = this.lifetime.signal;
+      const parsed = this.importWorker ? null : await this.parseEntry(entry, signal);
+      const result = await this.options.syncHistory({
+        entry,
+        summary: this.presentEntry(entry),
+        blocks: this.importWorker
+          ? this.importWorker.parseBatches(this.options.home, entry, signal)
+          : parsed!.blocks,
+        incompleteTail: parsed?.incompleteTail ?? entry.incompleteTail,
+        signal,
+      });
+      if (result) {
+        await this.index.recordCanonicalRoute(entry.opaqueId, result);
+      }
+    }
   }
   private projectState(project: StoredHistoryProject): ProjectHistoryImportState {
     return { projectId: project.projectId, enabled: project.enabled, memoryImportIntent: project.memoryImportIntent, detecting: this.detecting.has(project.projectId), refreshing: this.refreshing.has(project.projectId), delivering: this.memory.deliveringProjects().has(project.projectId), hasChanges: project.hasChanges, generation: project.generation, counts: project.counts };
@@ -705,29 +613,6 @@ export class HistoryImportService {
   private setWarning(cause: unknown) { this.warning = cause instanceof Error ? cause.message : String(cause); this.publish(); }
 }
 
-export function historyFileState(previous: import("../../../shared/history-import-ipc").HistoryFileFingerprint | undefined, next: import("../../../shared/history-import-ipc").HistoryFileFingerprint | undefined, movedToArchive = false) {
-  if (!previous) return next ? "new" : "unchanged";
-  if (!next) return "delete";
-  if (movedToArchive) return "archive";
-  if (previous.device !== next.device || previous.inode !== next.inode) return "replace";
-  if (next.size < previous.size) return "truncate";
-  if (next.size > previous.size) return "append";
-  return sameFingerprint(previous, next) ? "unchanged" : "replace";
-}
-
-function historiesChanged(previous: AdapterEntry[], next: AdapterEntry[]) {
-  const before = new Map(previous.map((entry) => [entry.sourcePath, entry.fingerprint]));
-  const after = new Map(next.map((entry) => [entry.sourcePath, entry.fingerprint]));
-  if (before.size !== after.size) return true;
-  return [...after].some(([path, fingerprint]) => historyFileState(before.get(path), fingerprint) !== "unchanged");
-}
-function deepestOwner(cwd: string, projects: ProjectRef[]) { return projects.filter((project) => project.dir && isWithin(project.dir, cwd)).sort((left, right) => right.dir.length - left.dir.length || left.id.localeCompare(right.id))[0]; }
-function revisions(scans: AdapterScan[]): Record<HistorySourceKind, string> { return Object.fromEntries(HISTORY_SOURCE_KINDS.map((kind) => [kind, scans.find((scan) => scan.sourceKind === kind)?.sourceRevision ?? "missing"])) as Record<HistorySourceKind, string>; }
-function aliasesClaimed(entry: AdapterEntry, claimed: ReadonlySet<string>) { return [...sessionAliases(entry.key)].some((alias) => claimed.has(`${entry.sourceKind}:${alias}`)); }
-function publicEntry(entry: AdapterEntry) { const { sourcePath: _sourcePath, fingerprint: _fingerprint, sourceIncarnation: _sourceIncarnation, ...summary } = entry; return summary; }
-
-function encodeCursor(revision: string, offset: number) { return Buffer.from(JSON.stringify({ v: 1, revision, offset })).toString("base64url"); }
-function decodeCursor(cursor: string | undefined, revision: string) { if (!cursor) return 0; try { const value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as { v?: unknown; revision?: unknown; offset?: unknown }; if (value.v !== 1 || value.revision !== revision || !Number.isSafeInteger(value.offset) || Number(value.offset) < 0) throw new Error(); return Number(value.offset); } catch { throw new Error("历史分页 cursor 与当前 revision 不匹配"); } }
 function parseCommit(value: unknown) { return z.object({ token: z.string().min(1), importHistory: z.boolean(), previewMemory: z.boolean() }).strict().parse(value); }
 function parseAdopt(value: unknown): PrepareHistoryAdoptionInput {
   const parsed = z.object({ opaqueId: idSchema, expectedHistoryRevision: z.string().min(1), submission: z.unknown(), turnOptions: z.unknown() }).strict().parse(value);
@@ -740,25 +625,3 @@ function parseAdopt(value: unknown): PrepareHistoryAdoptionInput {
   };
 }
 function parseMemoryPreview(value: unknown) { return z.object({ projectId: idSchema.optional(), includeProductChats: z.boolean() }).strict().parse(value); }
-
-/* ── @ 引用转录快照：user/assistant 正文 + 工具一行痕迹，尾部优先 ────
- * 与 Section 快照同一 256KB 预算：超限时丢最早的轮次，保留最近内容。 */
-function foreignTranscriptSnapshot(title: string, blocks: readonly ForeignHistoryBlock[]) {
-  const chunks: string[] = [];
-  for (const block of blocks) {
-    if (block.kind !== "message") continue;
-    const lines = [`${block.role}: ${block.content}`];
-    for (const tool of block.tools ?? []) lines.push(`  [tool:${tool.name}]`);
-    chunks.push(lines.join("\n"));
-  }
-  const header = `# ${title}\n\n`;
-  let bodyChunks = [...chunks];
-  let body = bodyChunks.join("\n\n");
-  const budget = SECTION_EXPORT_BYTE_LIMIT - Buffer.byteLength(header, "utf8");
-  while (bodyChunks.length > 1 && Buffer.byteLength(body, "utf8") > budget) {
-    bodyChunks = bodyChunks.slice(1);
-    body = `[已按字节预算截断，仅保留最近内容]\n\n${bodyChunks.join("\n\n")}`;
-  }
-  if (Buffer.byteLength(body, "utf8") > budget) body = Buffer.from(body, "utf8").subarray(0, Math.max(0, budget)).toString("utf8");
-  return `${header}${body}`;
-}

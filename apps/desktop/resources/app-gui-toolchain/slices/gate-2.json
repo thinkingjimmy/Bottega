@@ -1,0 +1,68 @@
+{
+  "schema": "bottega.app-gui-runtime-slice/v1",
+  "id": "gate-2",
+  "files": [
+    {
+      "path": "electron/main/app-gui-query-worker-entry.ts",
+      "bytes": 382,
+      "sha256": "sha256:057785ff4be4b21339c2cb063eff97bec84e56bc931276b4ca61502b03516d27"
+    },
+    {
+      "path": "electron/main/apps/base-gui/api/query-executor.ts",
+      "bytes": 23754,
+      "sha256": "sha256:02b3938423bb5ae992d69f4b74212576effd71c461623bf198e0175944216671"
+    },
+    {
+      "path": "electron/main/apps/base-gui/api/query-v1.ts",
+      "bytes": 20706,
+      "sha256": "sha256:4aa1cada77577c8d626909368c9c0cef73338e814c6329fda2801f31c1d13b53"
+    },
+    {
+      "path": "electron/main/apps/base-gui/api/query-worker.ts",
+      "bytes": 3994,
+      "sha256": "sha256:4a48ed3b658d0d09544640ec287472a4f2f629bdbb6fb30892640a4b40dd3394"
+    },
+    {
+      "path": "electron/main/apps/base-gui/compiled-workspace.ts",
+      "bytes": 18759,
+      "sha256": "sha256:d8ecf8839dc859666c62186dfbe3546e2b64ac16a636670c77b2bf7058c16eac"
+    },
+    {
+      "path": "electron/main/apps/base-gui/workspace-preview.ts",
+      "bytes": 26779,
+      "sha256": "sha256:7223d93a9abe062f11203076fde7916c55c715882c14882223de10086bdd0266"
+    },
+    {
+      "path": "electron/main/apps/preferences/runtime.ts",
+      "bytes": 10687,
+      "sha256": "sha256:2fbd650d35bceb69b47cf04f00ce17c4cff50fb14890dc1b8a0378887fdf0a90"
+    },
+    {
+      "path": "electron/main/apps/preferences/schema.ts",
+      "bytes": 5866,
+      "sha256": "sha256:5054cf60075e2dd91ed27bf924901ea5027ec129934356ee25805038654f3f69"
+    },
+    {
+      "path": "electron/main/apps/preferences/store.ts",
+      "bytes": 10499,
+      "sha256": "sha256:6a7ab59c3e34776dcea144dbe240b683b48ff950bfc8f5adadd0f2c571167dea"
+    },
+    {
+      "path": "shared/app-gui/query.ts",
+      "bytes": 7324,
+      "sha256": "sha256:2c97c0b40aff941eed3dc87ad6aa436c86503eaf0f78a82de9993c0a5874090d"
+    },
+    {
+      "path": "src/components/apps/app-gui-surface.tsx",
+      "bytes": 25802,
+      "sha256": "sha256:5c967bfc7c42bae1a8104b594cc906b59adc2155ffd1e68d0a4aafcb1b24675c"
+    }
+  ],
+  "runtimeSbomDigest": "sha256:759c32b83e107cee3fb6be8926a0005ff67958ceb04cc8ec41bd7ed4312b0d47",
+  "noticesDigest": "sha256:29dc4d3208217fc98b4d209f1c5fb9bc7812a979fb9be62d5091ff841ee470a4",
+  "authoringContracts": [
+    "app-react-data-hooks-v1",
+    "app-react-preferences-v1",
+    "app-react-workspace-v1"
+  ]
+}

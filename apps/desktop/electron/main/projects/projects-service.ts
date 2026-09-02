@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Electron chooser, shared Project/Chat contracts, lifecycle-fenced ProjectStore, ProjectResourceCleanupCoordinator, rebind saga, and cross-domain cleanup ports
- * [OUTPUT]: Provides Project CRUD/branch/workspace operations, canonical lifecycle contexts, rebuildable removal handlers, and startup cleanup recovery
+ * [INPUT]: Depends on shared Project/Chat contracts, lifecycle-fenced ProjectStore, filesystem validation, ProjectResourceCleanupCoordinator, rebind saga, and cross-domain cleanup ports
+ * [OUTPUT]: Provides Project CRUD/branch/workspace operations, authoritative reveal-directory resolution, canonical lifecycle contexts, exact held App-placement planning/cleanup, rebuildable removal handlers, empty Base-custody collection, and startup cleanup recovery
  * [POS]: Main Project authority; archive/rebind preserve incarnation while permanent removal is delegated only to the durable resource cleanup coordinator
  */
 
@@ -13,13 +13,13 @@ import {
   workspaceCapabilityId,
   type GitBranchTarget,
   type Project,
-  type ProjectLocalDetachReason,
   type ProjectLocalDetachResult,
+  type SetProjectAppPinnedInput,
+  type SetProjectAppPinnedResult,
   type ProjectsEvent,
   type ProjectsSnapshot,
 } from "../../../shared/projects-ipc";
 import type { AppChatRole, ChatSummary } from "../../../shared/chats-ipc";
-import type { AppLocale } from "../../../shared/i18n/locale";
 import { translate } from "../../../shared/i18n/runtime";
 import { errorMessage } from "../errors";
 import { SerialQueue } from "../persistence/serial-queue";
@@ -34,80 +34,22 @@ import {
   checkoutGitBranch,
   createGitBranch,
   listGitBranches,
-} from "./git-branches";
+} from "./git/git-branches";
 import {
   ProjectStore,
   type ProjectRemovalOperation,
   type StoredProject,
-} from "./project-store";
-import {
-  ProjectRebindJournal,
-  type ProjectRebindCapsule,
-  type ProjectRebindExpectation,
-} from "./rebind-journal";
+} from "./store/project-store";
+import type { ProjectRebindCapsule } from "./rebind/rebind-journal";
 import {
   driveProjectRebind,
   isProjectRebindSource,
   isProjectRebindTarget,
-} from "./rebind-saga";
+} from "./rebind/rebind-saga";
 import { ProjectResourceCleanupCoordinator } from "./resource-cleanup/coordinator";
 import { registerProjectsServiceIpc } from "./projects-service-ipc";
-
-export type ProjectsServiceOptions = {
-  locale?: () => AppLocale;
-  resolveApp: (appId: string) => { dir: string; name: string } | undefined;
-  resolveAppForBinding?: (appId: string) => { dir: string; name: string } | undefined;
-  isAppProjectAvailable: (appId: string) => boolean;
-  listProjectRefs: () => Map<string, { latestUpdatedAt: number }>;
-  removeChatsByProject: (projectId: string, projectLifecycle?: "held") => Promise<void>;
-  removeBaseForProject?: (projectId: string) => Promise<void>;
-  cancelTurnsByProject: (projectId: string) => Promise<void>;
-  hasActiveTurnsByProject: (projectId: string) => boolean;
-  getChatBinding: (chatId: string) =>
-    { projectId: string | null; incarnationId: string } | undefined;
-  assignProjectToChat: (chatId: string, projectId: string) => Promise<ChatSummary>;
-  moveChatProject?: (
-    chatId: string,
-    expectedSource: string | null,
-    target: string | null,
-    appRole?: AppChatRole | null
-  ) => Promise<ChatSummary>;
-  publishChatUpserted: (summary: ChatSummary) => void;
-  listChatsByProject: (projectId: string) => string[];
-  hasPendingProjectCreation?: (projectId: string) => boolean;
-  localDetachReasons?: (projectId: string) => ProjectLocalDetachReason[];
-  releaseChatProject: (chatId: string) => Promise<ChatSummary>;
-  /** userData + 全部 App dir；Project dir 由 store 自取。 */
-  listManagedRoots: () => string[];
-  /** Archive ProjectLifecycleGate 的即时投影；所有绑定/成员变更在 queue 内复核。 */
-  isProjectOpen?: (projectId: string) => boolean;
-  /**
-   * D17/D26：把既有 Project 转成 App Project 前，先按固定全序取 gate 并复核该
-   * Project 及其成员 chat 的 grant/active reference。必须包住整条 Store queue——
-   * gate 只能在 queue 之外获取，反向获取会被 fail-fast 打死。
-   */
-  admitAppConversion?: <T>(
-    projectId: string,
-    work: () => Promise<T>
-  ) => Promise<T>;
-  snapshotMemoryRebind?: (
-    projectId: string
-  ) => Promise<ProjectRebindExpectation | null>;
-  prepareMemoryRebind?: (
-    projectId: string,
-    operationId: string,
-    expectation: ProjectRebindExpectation & { mode: "retain" | "new" }
-  ) => Promise<{ applied: boolean }>;
-  /** 删除 intent 已持久时，新的 workspace rebind 必须让路。 */
-  hasDeletionFenceForProject?: (projectId: string) => boolean;
-  /** 生产组合根必传；测试可省略以聚焦无 Memory 的旧路径。 */
-  rebindJournal?: ProjectRebindJournal;
-  onWorkspaceRebound?: (evidence: Pick<
-    ProjectRebindCapsule,
-    "operationId" | "projectId" | "sourceBinding" | "targetBinding"
-  >) => Promise<void>;
-  resourceCleanup: ProjectResourceCleanupCoordinator;
-};
+import type { ProjectsServiceOptions } from "./projects-service-options";
+export type { ProjectsServiceOptions } from "./projects-service-options";
 
 export class ProjectsService {
   private readonly queue = new SerialQueue();
@@ -138,6 +80,39 @@ export class ProjectsService {
   }
   recoverResourceCleanup() {
     return this.resourceCleanup.recoverPending();
+  }
+  async cleanupEmptyBaseCustody() {
+    if (!this.options.hasBaseForProject) return [];
+    const failures: Array<{ projectId: string; message: string }> = [];
+    for (const project of this.store.list()) {
+      if (
+        project.role !== "base-custody" ||
+        this.options.hasBaseForProject(project.id)
+      ) {
+        continue;
+      }
+      try {
+        await this.cleanupBaseCustody(project.id);
+      } catch (cause) {
+        failures.push({
+          projectId: project.id,
+          message: cause instanceof Error ? cause.message : String(cause),
+        });
+      }
+    }
+    return failures;
+  }
+  async cleanupBaseCustody(projectId: string) {
+    const project = this.store.get(projectId);
+    if (
+      project?.role !== "base-custody" ||
+      this.options.hasBaseForProject?.(projectId)
+    ) {
+      return false;
+    }
+    await this.resourceCleanup.remove(projectId, "delete-base-custody");
+    this.emit({ type: "removed", projectId });
+    return true;
   }
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
@@ -191,7 +166,7 @@ export class ProjectsService {
     return this.queue.enqueue(async () => this.snapshot());
   }
   private snapshot(): ProjectsSnapshot {
-    const stored = this.store.list();
+    const stored = this.store.list().filter((project) => project.role !== "base-custody");
     const storedIds = new Set(stored.map((project) => project.id));
     const placeholders = [...this.options.listProjectRefs()]
       .filter(([projectId]) => !storedIds.has(projectId))
@@ -200,7 +175,10 @@ export class ProjectsService {
         name: "已丢失的 Project",
         dir: "",
         workspaceBinding: { kind: "none" },
+        role: "workspace",
+        nameSource: "user",
         grants: [],
+        appPlacements: [],
         grantRevision: 0,
         membershipRevision: 0,
         projectLifecycleRevision: 0,
@@ -286,6 +264,51 @@ export class ProjectsService {
   publishStored(projectId: string) {
     const stored = this.store.get(projectId);
     if (stored) this.emit({ type: "upserted", project: this.withMissing(stored) });
+  }
+  setAppPinned(
+    input: SetProjectAppPinnedInput
+  ): Promise<SetProjectAppPinnedResult> {
+    return this.runExclusive(async () => {
+      const current = this.store.assertProjectLifecycle(
+        input.projectId,
+        input.expectedProjectLifecycleRevision
+      );
+      this.assertProjectOpen(input.projectId);
+      if (this.withMissing(current).missing) {
+        throw statusError(409, "Project 当前不可用，请刷新后重试");
+      }
+      const alreadyPinned = current.appPlacements.some(
+        (placement) => placement.appId === input.appId
+      );
+      if (
+        input.pinned &&
+        !alreadyPinned &&
+        this.options.canPinApp?.(input.appId) !== true
+      ) {
+        throw statusError(409, "App 尚未就绪，不能新增 Sidebar placement");
+      }
+      const result = await this.store.appPlacements.setPinned(
+        input.projectId,
+        input.appId,
+        input.pinned,
+        input.expectedProjectLifecycleRevision
+      );
+      const project = this.withMissing(result.project);
+      if (result.changed) this.emit({ type: "upserted", project });
+      return { project, changed: result.changed };
+    });
+  }
+  clearAppPlacementsHeld(appId: string) {
+    return this.store.appPlacements.clearAppPlacementsHeld(appId);
+  }
+  appPlacementProjectIdsHeld(appId: string) {
+    return this.store.appPlacements.projectIdsForApp(appId);
+  }
+  reconcileOrphanAppPlacementsHeld(liveAppIds: ReadonlySet<string>) {
+    return this.store.appPlacements.reconcileOrphanAppPlacementsHeld(liveAppIds);
+  }
+  publishProjectUpserts(projectIds: readonly string[]) {
+    for (const projectId of new Set(projectIds)) this.publishStored(projectId);
   }
   publishRemoved(projectId: string) {
     this.emit({ type: "removed", projectId });
@@ -424,6 +447,19 @@ export class ProjectsService {
     this.emit({ type: "upserted", project });
     return project;
   }
+  async retainBaseCustodyHeld(projectId: string, appId: string) {
+    this.assertNoMemoryRebind(projectId);
+    const current = this.store.get(projectId);
+    if (
+      current?.role !== "base-custody" &&
+      (current?.workspaceBinding.kind !== "app" || current.workspaceBinding.appId !== appId)
+    ) {
+      throw new Error("Project is not owned by the target App");
+    }
+    const stored = await this.store.convertToBaseCustody(projectId);
+    this.emit({ type: "removed", projectId });
+    return this.withMissing(stored);
+  }
   async moveChatProjectHeld(
     chatId: string,
     expectedSource: string | null,
@@ -551,6 +587,29 @@ export class ProjectsService {
     const project = this.store.get(projectId);
     return Boolean(project && !this.withMissing(project).missing);
   }
+  resolveRevealDirectory(projectId: string) {
+    const project = this.store.get(projectId);
+    if (
+      !project ||
+      project.role !== "workspace" ||
+      project.dir === "" ||
+      !this.isProjectOpen(projectId)
+    ) {
+      throw new Error(`${PROJECT_UNAVAILABLE}: Project 不可显示`);
+    }
+    const binding = project.workspaceBinding;
+    const directory =
+      binding.kind === "external"
+        ? this.store.resolveWorkspace(binding)
+        : binding.kind === "app" &&
+            this.options.isAppProjectAvailable(binding.appId)
+          ? this.options.resolveAppDirectory?.(binding.appId)
+          : undefined;
+    if (!directory || !isUsableDirectory(directory)) {
+      throw new Error(`${PROJECT_UNAVAILABLE}: Project 目录不可用`);
+    }
+    return directory;
+  }
   private branchWorkspace(projectId: string) {
     this.assertNoMemoryRebind(projectId);
     const project = this.store.get(projectId);
@@ -603,6 +662,7 @@ export class ProjectsService {
   private isProjectOpen(projectId: string) {
     return !this.deletingProjects.has(projectId) &&
       !this.store.get(projectId)?.deletionCheckpoint &&
+      !this.store.get(projectId)?.archivedAt &&
       (this.options.isProjectOpen?.(projectId) ?? true);
   }
 
@@ -662,6 +722,9 @@ export class ProjectsService {
       this.cleanupProjectRuntime(context.projectId, undefined)
     );
     this.resourceCleanup.registerRuntime("delete-app-project", (context) =>
+      this.cleanupProjectRuntime(context.projectId, "held")
+    );
+    this.resourceCleanup.registerRuntime("delete-base-custody", (context) =>
       this.cleanupProjectRuntime(context.projectId, "held")
     );
     this.resourceCleanup.registerRuntime("detach-local-project", (context) =>

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on relay/state ledgers, Chat and Settings services, Agent main bridge, memory/bootstrap ports, manual-turn helpers, and the canonical residence index
- * [OUTPUT]: Provides durable manual/relay FIFO admission, per-conversation scheduling, delivery, transition/active-turn probes, and queue wake-up operations
+ * [INPUT]: Depends on relay/state ledgers, Chat and Settings services, SQLite unknown-outcome classification, Agent main bridge, memory/bootstrap ports, manual-turn helpers, and the canonical residence index
+ * [OUTPUT]: Provides durable manual/relay FIFO admission, per-conversation scheduling, delivery, transition/active-turn probes, unknown-commit compensation fences, queue wake-up operations, and a quiescent shutdown that drains every in-flight dispatch before the ledger flushes
  * [POS]: Sections coordinator arbiter; renderer and MCP callers submit intents while this module alone advances Chat commits and Agent claims
  */
 
@@ -14,6 +14,7 @@ import type {
 import type { ChatMessage } from "../../../../shared/chats-ipc";
 import type { ManualTurnReceipt, TrustedManualTurnSubmission as ManualTurnSubmission, RelayActionsSnapshot } from "../../../../shared/sections-ipc";
 import { ConversationQueue } from "./scheduler/conversation-queue";
+import { DispatchTracker } from "./scheduler/dispatch-tracker";
 import {
   blockedReceiptFor,
   isRunnableDeliverable,
@@ -50,10 +51,13 @@ import {
   type TurnPreparationEvent,
 } from "./turn-preparation";
 import type { PreparedManualTurn } from "./admission/prepared-manual-turn";
+import { isChatMutationOutcomeUnknown } from "../../chats/chat-store";
 export type { RelayToolStatus } from "./admission/section-tool-admission";
 
 export class ConversationCoordinator {
   private readonly running = new Set<string>();
+  /* kick 投递即忘，而派发在 startTurn 返回之后还要继续写 ledger。 */
+  private readonly dispatches = new DispatchTracker();
   private readonly conversations = new ConversationQueue();
   private readonly chains = new ConversationQueue();
   private readonly notices: SectionNoticeOutbox;
@@ -596,16 +600,23 @@ export class ConversationCoordinator {
           this.kick(conversationId);
         }
       });
-    void (workspaceLifecycleHeld
-      ? this.dependencies.withWorkspaceLifecycle(run)
-      : run()
-    ).catch((cause) => {
-      this.running.delete(conversationId);
-      console.error(
-        `[section-coordinator] conversation=${conversationId} 调度失败`,
-        cause
-      );
-    });
+    this.dispatches.track(
+      workspaceLifecycleHeld
+        ? this.dependencies.withWorkspaceLifecycle(run)
+        : run(),
+      (cause) => {
+        this.running.delete(conversationId);
+        console.error(`[section-coordinator] conversation=${conversationId} 调度失败`, cause);
+      }
+    );
+  }
+
+  /* 关机的唯一静默点：先关闸，再等在途派发落地（它们还会写 ledger），
+     最后才冲刷 ledger。顺序反了就会「先删目录，后 rename 临时文件」。 */
+  async closeAndFlush() {
+    this.accepting = false;
+    await this.dispatches.drain();
+    await this.dependencies.ledger.closeAndFlush();
   }
 
   private releaseRunningIfIdle(conversationId: string) {
@@ -748,6 +759,13 @@ export class ConversationCoordinator {
     try {
       await runManualTurn(intent, this.dependencies, projectLifecycleHeld);
     } catch (cause) {
+      if (isChatMutationOutcomeUnknown(cause)) {
+        this.dependencies.chats.store.pushWarning(
+          `Manual ${intent.id} 的 SQLite commit 结果未知；operationId=${cause.operationId}，已停止补偿与自动重试，等待 receipt 恢复。`
+        );
+        this.running.delete(intent.conversationId);
+        return;
+      }
       const current = this.dependencies.ledger.read(
         (state) => state.manualIntents[intent.id]
       );

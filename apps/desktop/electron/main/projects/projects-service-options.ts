@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Project/Chat/i18n contracts, durable Memory rebind expectations, the Project rebind journal, and the Project resource cleanup coordinator
- * [OUTPUT]: Provides the complete dependency-port contract consumed by ProjectsService
+ * [OUTPUT]: Provides the complete dependency-port contract consumed by ProjectsService, including authoritative App-directory reveal, App Pin eligibility, Base existence, and cleanup ports
  * [POS]: Projects module composition boundary; keeps cross-domain ports out of the Project lifecycle implementation
  */
 
@@ -12,20 +12,23 @@ import type {
   ProjectRebindCapsule,
   ProjectRebindExpectation,
   ProjectRebindJournal,
-} from "./rebind-journal";
+} from "./rebind/rebind-journal";
 
 export type ProjectsServiceOptions = {
   locale?: () => AppLocale;
   resolveApp: (appId: string) => { dir: string; name: string } | undefined;
   resolveAppForBinding?: (appId: string) =>
     { dir: string; name: string } | undefined;
+  resolveAppDirectory?: (appId: string) => string | undefined;
   isAppProjectAvailable: (appId: string) => boolean;
+  canPinApp?: (appId: string) => boolean;
   listProjectRefs: () => Map<string, { latestUpdatedAt: number }>;
   removeChatsByProject: (
     projectId: string,
     projectLifecycle?: "held"
   ) => Promise<void>;
   removeBaseForProject?: (projectId: string) => Promise<void>;
+  hasBaseForProject?: (projectId: string) => boolean;
   cancelTurnsByProject: (projectId: string) => Promise<void>;
   hasActiveTurnsByProject: (projectId: string) => boolean;
   getChatBinding: (chatId: string) =>

@@ -1,29 +1,29 @@
 /**
- * [INPUT]: Depends on external source history source type; The rest use only the sequentially based type
- * [OUTPUT]: Provides SearchJob start/pull/cancel Chat/History live goals, stable hits, snapshot revision, skip session disclosure and cursor IPC agreement
- * [POS]: The truth source of the shared universal search wire; The only back-up capability of the renderer is the pull credit/byte budget
+ * [INPUT]: Depends on the Agent backend identity and the shared product-destination facts
+ * [OUTPUT]: Provides the SearchJob start/pull/cancel contract over the Chat and Base lanes: source-specific identity, stable hits, scanned/skipped counters, snapshot revision, and cursor
+ * [POS]: The single source of truth for the shared global-search wire; the renderer's only backpressure lever is the pull credit/byte budget
  */
 
-import type { HistorySourceKind } from "./history-import-ipc";
+import type { AgentBackendId } from "./agent-ipc";
+import type { ProductDestination } from "./placement/facts";
 
-export type GlobalSearchSource = "chat" | "base" | "history";
+/* 外源历史不再有自己的搜索泳道：同步后它就是一条只读 canonical Chat，
+   命中经 chat 泳道给出，命中目标也只剩产品消息一种。 */
+export type GlobalSearchSource = "chat" | "base";
 
-export type GlobalSearchTarget =
-  | { kind: "chat-message"; messageId: string }
-  | { kind: "history-block"; offset: string };
+export type GlobalSearchTarget = { kind: "chat-message"; messageId: string };
 
 export type GlobalSearchHit = Readonly<{
   key: string;
-  source: GlobalSearchSource;
   title: string;
   subtitle: string;
   snippet: string;
   route: string;
+  destination: ProductDestination;
   updatedAt: number;
   matched: string;
   target?: GlobalSearchTarget;
-  sourceKind?: HistorySourceKind;
-}>;
+} & ({ source: "chat"; agent: AgentBackendId } | { source: "base" })>;
 
 export type StartSearchInput = Readonly<{ query: string }>;
 export type SearchJobStarted = Readonly<{
@@ -43,7 +43,6 @@ export type SearchJobPage = Readonly<{
   done: boolean;
   scanned: number;
   skipped: number;
-  skippedSessions?: number;
   snapshotRevision: string;
 }>;
 

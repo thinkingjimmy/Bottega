@@ -101,7 +101,7 @@ export function AboutSection() {
   /* checkedAt 无条件并进插值表：用不到它的键会自己忽略，
      而写成分支就得为「哪几句需要时间」再维护一份名单。 */
   const message = view.messageKey
-    ? t(`settings.about.${view.messageKey}`, { checkedAt, ...view.messageVars })
+    ? t(view.messageKey, { checkedAt, ...view.messageVars })
     : "";
   /* 失败信息是一串原始报错，塞不进版本行那半行宽度——截断的报错等于没报。
      故它独占一条 SettingsAlert：能换行，且 role="alert" 比 polite 更该被听见。 */
@@ -251,10 +251,10 @@ export function AboutSection() {
                     </SettingsButton>
                     {view.upgradeKey && (
                       <SettingsButton
-                        aria-label={t(`settings.about.${view.upgradeKey}`)}
+                        aria-label={t(view.upgradeKey)}
                         onClick={() => void upgrade()}
                       >
-                        {t(`settings.about.${view.upgradeKey}`)}
+                        {t(view.upgradeKey)}
                       </SettingsButton>
                     )}
                   </div>

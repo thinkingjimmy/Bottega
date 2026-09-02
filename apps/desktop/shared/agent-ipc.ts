@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on chat-turn/chats/codex contracts, canonical Project scope, Extension generation identities, and Project Tools session receipts
- * [OUTPUT]: Provides multi-backend DTOs, ProductFailure-aware turn lifecycle, MCP-plan-bound SessionRef, durable Skill selection receipts, runtime/auth/Steer contracts, structured input, CAS, and budgets
+ * [OUTPUT]: Provides presentation-free multi-backend DTOs, ProductFailure-aware terminal and warning lifecycle, structured usage-limit facts, MCP-plan-bound SessionRef, durable Skill receipts, runtime/auth/Steer contracts, structured input, CAS, and budgets
  * [POS]: Shared Agent wire truth connecting Electron main, preload, and renderer without exposing mutable scope authority
  */
 
@@ -92,14 +92,6 @@ export type UsageLimitInfo = {
   window: UsageLimitWindow;
   /** 恢复时刻（epoch ms）。拿不到就没有——卡片据此整行隐去，绝不编造。 */
   resetsAt?: number;
-};
-
-/** 窗口的中文短语；unknown/provider 无周期可言，由渲染层决定是否成行 */
-export const USAGE_LIMIT_WINDOW_LABEL: Record<UsageLimitWindow, string> = {
-  "five-hour": "5 小时周期",
-  weekly: "每周周期",
-  provider: "服务商限流",
-  unknown: "未知周期",
 };
 
 export type HeadlessPurpose =
@@ -233,6 +225,8 @@ export type AgentTurnItemKind =
   | "web-search"
   | "image"
   | "reasoning"
+  /** Provider-neutral sessionFailure warning/error; copy is localized in renderer. */
+  | "agent-failure"
   /** 反问用户：由 ACP 结构化请求映射并在作答/关闭时持久化。 */
   | "user-input"
   | "other";
@@ -249,6 +243,9 @@ export type AgentTurnItem = {
   /** 展开正文（命令输出/diff 等），主进程侧已截断 */
   detail?: string;
   status: AgentTurnItemStatus;
+  /** Only agent-failure items carry product semantics; title/detail stay diagnostic. */
+  failure?: ProductFailure;
+  severity?: "warning" | "error";
 };
 
 // ─── 工作区意图：renderer 只提交可验证身份，不提交 cwd/path ───

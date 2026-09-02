@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, SetupProvider shared backend directory, shared settings/models/workspace agreements, drafted default Agent, settings-client and renderer errorMessage
- * [OUTPUT]: Provides identity-stable useChatSettings with scoped options, explicit model/Speed session reset intent, model catalogs, backend locks, and stale-ack rejection
+ * [INPUT]: Depends on React, renderer locale/catalog runtime, Setup Provider backend data, shared settings/models/workspace contracts, drafted default Agent, settings-client, and renderer error projection
+ * [OUTPUT]: Provides identity-stable useChatSettings with scoped options, explicit model/Speed session reset intent, structured model-catalog failures, backend locks, and stale-ack rejection
  * [POS]: The Agent status source for chat/runtime is set; Asynchronous regression only rewrites the conversation it started, and the model finds that it consumes a credible workspace scope
  */
 
@@ -21,6 +21,13 @@ import type {
   BackendModelInfo,
 } from "../../../../shared/agent-ipc";
 import { errorMessage } from "@/lib/errors";
+import { backendLabel } from "@/lib/agent-backends";
+import {
+  rendererAgentSurfaceFailure,
+  type AgentSurfaceFailure,
+} from "@/lib/agent-failure";
+import { useEffectiveLocale } from "@/lib/i18n-locale";
+import { translate } from "../../../../shared/i18n/runtime";
 import {
   getSettings,
   listModels,
@@ -43,6 +50,7 @@ export function useChatSettings(
   retryBackends: () => Promise<void>,
   draftBackend?: AgentBackendId
 ) {
+  const locale = useEffectiveLocale();
   const activeConversation = useRef({
     conversationId: scope.conversationId,
     generation: 0,
@@ -79,7 +87,7 @@ export function useChatSettings(
   const [settingsError, setSettingsError] = useState("");
   const [models, setModels] = useState<BackendModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
-  const [modelsError, setModelsError] = useState("");
+  const [modelsError, setModelsError] = useState<AgentSurfaceFailure | null>(null);
   const modelRequestGeneration = useRef(0);
 
   const captureConversation = useCallback(() => {
@@ -107,14 +115,21 @@ export function useChatSettings(
           !isCurrentConversation(conversation)
         ) return;
         setModels(next);
-        setModelsError("");
+        setModelsError(null);
       } catch (cause) {
         if (
           generation !== modelRequestGeneration.current ||
           !isCurrentConversation(conversation)
         ) return;
         setModels([]);
-        setModelsError(errorMessage(cause));
+        setModelsError(
+          rendererAgentSurfaceFailure(
+            "service-unavailable",
+            backendLabel(backend),
+            cause,
+            backend
+          )
+        );
       } finally {
         if (
           generation === modelRequestGeneration.current &&
@@ -161,13 +176,17 @@ export function useChatSettings(
         }
       } catch (cause) {
         if (isCurrentConversation(capture)) {
-          setSettingsError(`Agent 设置读取失败：${errorMessage(cause)}`);
+          setSettingsError(
+            translate(locale, "chat.runtime.settings.readFailed", {
+              message: errorMessage(cause),
+            })
+          );
         }
       } finally {
         if (isCurrentConversation(capture)) setSettingsLoading(false);
       }
     });
-  }, [captureConversation, isCurrentConversation, scope.conversationId]);
+  }, [captureConversation, isCurrentConversation, locale, scope.conversationId]);
 
   const updateTurnOptions = useCallback(
     async (next: AgentTurnOptions, resetSessionEffective = false) => {
@@ -200,14 +219,18 @@ export function useChatSettings(
             conversationId: capture.conversationId,
             value: previous,
           });
-          setSettingsError(`Agent 设置保存失败：${errorMessage(cause)}`);
+          setSettingsError(
+            translate(locale, "chat.runtime.settings.saveFailed", {
+              message: errorMessage(cause),
+            })
+          );
         }
         throw cause;
       } finally {
         if (isCurrentConversation(capture)) setSettingsSaving(false);
       }
     },
-    [captureConversation, isCurrentConversation, lockedBackend, turnOptions]
+    [captureConversation, isCurrentConversation, locale, lockedBackend, turnOptions]
   );
 
   const selectBackend = useCallback(

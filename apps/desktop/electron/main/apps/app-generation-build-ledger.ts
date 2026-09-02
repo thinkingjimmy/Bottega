@@ -57,7 +57,7 @@ const operationSchema = z.object({
     requestedCapabilities: z
       .array(z.enum(["row-insert", "row-patch", "row-delete", "attachment-read", "workspace-read"]))
       .max(5),
-    requestedHostActions: z.array(z.enum(["compose-text"])).max(1).default([]),
+    requestedHostActions: z.array(z.enum(["compose-text", "file.export"])).max(2).default([]),
     requestedCapabilityScopes: z
       .object({ workspaceRead: z.literal("design/").optional() })
       .strict()

@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on Electron lifecycle, Node filesystem, and every main-owned service, including scoped Extensions, Project cleanup/Tools, Agent policy, chats/coordinator/custody, Apps, Design, browser, and usage
- * [OUTPUT]: Provides the desktop composition root, scoped inventory and Project Tools wiring, cleanup participant registration, recovery order, windows, and two-phase shutdown
+ * [INPUT]: Depends on Electron lifecycle, Node filesystem, shared five-locale translation, and every main-owned service, including signed-update compatibility, scoped Extensions, Project cleanup/Tools, Agent policy, Chat continuation recovery, coordinator/custody, Apps, Design, browser, and usage
+ * [OUTPUT]: Provides the desktop composition root, pre-Project App authority repair, signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown
  * [POS]: The root lifecycle owner of the desktop main process
  */
-
 import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
-import { app, dialog, type FileFilter } from "electron";
+import { app, dialog } from "electron";
 import { AppsService } from "./apps/apps-service";
 import { ChatStore } from "./chats/chat-store";
 import type { ChatsService } from "./chats/chats-service";
@@ -41,8 +40,8 @@ import { SettingsStore } from "./settings-store";
 import { resolveAppLocale } from "../../shared/i18n/locale";
 import { resolvePlatformCapabilities } from "../../shared/platform-capabilities";
 import { BackendSetupService } from "./setup/backend-setup";
-import { runStateResetsThroughV5 } from "./state-reset";
-import { ProjectStore } from "./projects/project-store";
+import { runStateResetsThroughV6 } from "./state-reset";
+import { ProjectStore } from "./projects/store/project-store";
 import { ProjectsService } from "./projects/projects-service";
 import { composeProjectsService } from "./projects/composition";
 import { RelayLedger } from "./sections/coordinator/relay-ledger";
@@ -78,13 +77,15 @@ import { defaultChromeRoot, installBrowserPanel, type BrowserRuntime } from "./b
 import type { HistoryImportService } from "./history-import/service";
 import { GlobalSearchService } from "./search/job-service";
 import { registerAllCatalogs } from "../../shared/i18n/resources";
+import { translate } from "../../shared/i18n/runtime";
 import {
   createArchiveService,
   createChatsService,
   createConversationCoordinator,
   createManualTurnPreparer,
-  initializeHistoryImportService,
+  reconcileAdoptedContinuationRuntime,
 } from "./startup/conversation-runtime";
+import { initializeHistoryImportService } from "./startup/history-import-runtime";
 import { createUnifiedSkillsService } from "./startup/unified-skills-runtime";
 import type { UnifiedSkillsService } from "./skills-management/service";
 import { runSkillsCutover } from "./skills-management/cutover";
@@ -112,12 +113,19 @@ import {
   reportLifecycleReconciliation,
 } from "./startup/recovery-runtime";
 import { ProjectToolsRuntime } from "./startup/project-tools-runtime";
-
+import { createBaseFileDialogs } from "./startup/base-file-dialogs";
+import { startChatStoreMaintenance, stopChatStoreMaintenance } from "./startup/chat-store-maintenance";
+import {
+  classifyLegacyBaseNavigation,
+  InformationArchitectureStartup,
+  runRequiredProjectPlacementGate,
+} from "./startup/information-architecture-startup";
+import { presentAppAuthorityRepair } from "./startup/app-authority-repair";
+import { configureAppBaseRuntime } from "./startup/app-base-runtime";
 /* main 无首包预算，故一次性投喂全部五语言，`translate()` 保持同步。
    放在组合根的模块作用域：晚于它的任何 translate 都已有母语目录，早于
    它的则退化为英文而非裸 key——降级方向由 runtime 的英文常驻担保。 */
 registerAllCatalogs();
-
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 let appsService: AppsService | null = null;
 let chatStore: ChatStore | null = null;
@@ -183,12 +191,15 @@ if (!hasSingleInstanceLock) {
       } catch (cause) {
         console.warn("[acp-trace] startup cleanup unavailable", cause);
       }
-      await runStateResetsThroughV5(userData);
+      await runStateResetsThroughV6(userData);
       const titleWorkspace = join(userData, "codex-workspace");
       const agentInputStagingRoot = join(userData, "agent-input-staging");
       await mkdir(titleWorkspace, { recursive: true });
       const canonicalUserData = await realpath(userData);
-      updateService = createDesktopUpdateService(app, () => safeQuit.prepare("update"));
+      updateService = createDesktopUpdateService(app, () => safeQuit.prepare("update"), process.env, (matrix) => {
+        if (!appsService) throw new Error("GUI_COMPATIBILITY_PREFLIGHT_UNAVAILABLE");
+        return appsService.applyCandidateCompatibility(matrix);
+      });
       browserRuntime = installBrowserPanel(
         defaultChromeRoot(app.getPath("home"))
       );
@@ -234,8 +245,22 @@ if (!hasSingleInstanceLock) {
       chatStore = new ChatStore(userData, {
         isAppProject: (projectId) =>
           projectStore?.get(projectId)?.workspaceBinding.kind === "app",
+        appForProject: (projectId) => {
+          const binding = projectStore?.get(projectId)?.workspaceBinding;
+          if (binding?.kind !== "app") return null;
+          return {
+            appId: binding.appId,
+            editableSource: Boolean(
+              appsService?.store.get(binding.appId)?.editableSource
+            ),
+          };
+        },
       });
-      await appsService.initialize();
+      if ((await appsService.initialize()) === "degraded-corrupt")
+        return presentAppAuthorityRepair(appsService.store, currentLocale());
+      const informationArchitectureMigration =
+        await InformationArchitectureStartup.create(userData);
+      await informationArchitectureMigration.appFacts(appsService.store.list());
       /* 上一条命的 backend 必须先收敛；否则空的内存引用会误导
          App/Extension 回收仍被活进程使用的 generation。 */
       const recoveredCustody = await recoverAgentTurnCustody({
@@ -262,6 +287,7 @@ if (!hasSingleInstanceLock) {
         skillsCatalog?.invalidate();
       });
       await projectStore.initialize();
+      await informationArchitectureMigration.projects(projectStore.list());
       await projectToolsRuntime.initialize(settingsStore);
       await projectsService.initialize();
       await chatStore.initialize();
@@ -305,6 +331,7 @@ if (!hasSingleInstanceLock) {
         settings: settingsStore,
         memory: memoryService,
         getCoordinator: () => sectionCoordinator,
+        getChats: () => chatsService,
       });
       baseStore = new BaseStore(userData);
       await baseStore.initialize(
@@ -313,95 +340,35 @@ if (!hasSingleInstanceLock) {
             .listBaseIdentities()
             .map((identity) => [identity.chatId, identity])
         ),
-        new Set(projectStore.list().map((project) => project.id))
+        new Set(projectStore.list().map((project) => project.id)),
+        (meta) => classifyLegacyBaseNavigation(meta, (id) => projectStore!.get(id))
       );
+      await informationArchitectureMigration.bases(baseStore.listAll());
+      await informationArchitectureMigration.chats(chatStore.list());
       globalSearch = new GlobalSearchService(
         chatStore,
         baseStore,
-        (projectId) => projectStore!.get(projectId)?.archivedAt,
-        historyImport
+        (projectId) => projectStore!.get(projectId)?.archivedAt
       );
       basesService = new BasesService(baseStore, {
         getChat: async (chatId) => chatStore!.getChatRef(chatId),
         getProject: (projectId) => projectStore!.get(projectId),
-        chooseExportPath: async (suggestedName, format = "csv") => {
-          const filters: Record<"csv" | "json" | "xlsx", FileFilter> = {
-            csv: { name: "CSV", extensions: ["csv"] },
-            json: { name: "Base JSON", extensions: ["json"] },
-            xlsx: { name: "Excel Workbook", extensions: ["xlsx"] },
-          };
-          const result = await dialog.showSaveDialog({
-            defaultPath: suggestedName,
-            filters: [filters[format]],
-          });
-          return result.canceled ? null : result.filePath;
+        onRetainedBaseRemoved: async (projectId) => {
+          await projectsService!.cleanupBaseCustody(projectId).catch((cause) =>
+            console.error(
+              `[projects] retained Base custody cleanup (${projectId}) failed; startup will retry`,
+              cause
+            )
+          );
         },
-        chooseImportPath: async (format = "json") => {
-          const filters: Record<"json" | "xlsx", FileFilter> = {
-            json: { name: "Base JSON", extensions: ["json"] },
-            xlsx: { name: "Excel Workbook", extensions: ["xlsx"] },
-          };
-          const result = await dialog.showOpenDialog({
-            properties: ["openFile"],
-            filters: [filters[format]],
-          });
-          return result.canceled ? null : result.filePaths[0] ?? null;
-        },
+        ...createBaseFileDialogs(dialog, currentLocale),
       });
       await galleryRuntime.connectBases(basesService);
-      /* GUI 只能访问它自己 App 的 Project Base，owner 恒由 Host appId 解析；
-         不存在不创建。四个 adapter 共用同一句解析，缺失恒为结构化 404。 */
-      const requireProjectOwnerKey = (appId: string) => {
-        const project = projectStore?.findByAppId(appId);
-        if (!project) {
-          throw Object.assign(new Error("该 App 没有可用的 Base"), {
-            status: 404,
-            code: "base_not_found",
-            outcome: "not-committed" as const,
-          });
-        }
-        return `project:${project.id}`;
-      };
-      appsService.configureGuiApi({
-        snapshot: async (appId) => {
-          const project = projectStore?.findByAppId(appId);
-          if (!project) return null;
-          return basesService!.get(`project:${project.id}`);
-        },
-        insertRows: async (input) =>
-          basesService!.insertRowsFromAppGui({
-            ownerKey: requireProjectOwnerKey(input.binding.appId),
-            ...input,
-          }),
-        patchRows: async (input) =>
-          basesService!.patchRowsFromAppGui({
-            ownerKey: requireProjectOwnerKey(input.binding.appId),
-            ...input,
-          }),
-        deleteRows: async (input) =>
-          basesService!.deleteRowsFromAppGui({
-            ownerKey: requireProjectOwnerKey(input.binding.appId),
-            ...input,
-          }),
-        readAttachment: async (input) =>
-          basesService!.readAttachmentForAppGui(
-            requireProjectOwnerKey(input.binding.appId),
-            input.attachmentId
-          ),
+      await configureAppBaseRuntime({
+        apps: appsService,
+        projects: projectStore,
+        bases: basesService,
       });
-      appsService.configureAppDataMigrations({
-        apply: async (appId, file) => {
-          const project = projectStore?.findByAppId(appId);
-          if (!project) throw new Error("App 对应的 Project 不存在");
-          await basesService!.applyAppDataMigration(`project:${project.id}`, file);
-        },
-      });
-      const migrationFailures = await appsService.reconcileAppDataMigrations();
-      for (const failure of migrationFailures) {
-        console.warn(
-          `[apps] live Base migration failed for ${failure.appId}: ${failure.message}`
-        );
-      }
       const builtinSocket = join(userData, "builtin-tools", "bridge.sock");
       builtinLeases = new BuiltinMcpLeaseStore(
         builtinSocket,
@@ -453,6 +420,7 @@ if (!hasSingleInstanceLock) {
         getCoordinator: () => sectionCoordinator,
         getArchive: () => archiveService,
         getRelayLedger: () => relayLedger,
+        getHistoryImport: () => historyImport,
       });
       const prepareManualSubmission = createManualTurnPreparer({
         stagingRoot: agentInputStagingRoot,
@@ -513,6 +481,7 @@ if (!hasSingleInstanceLock) {
         coordinator: sectionCoordinator,
         skills: skillsCatalog,
         settings: settingsStore,
+        locale: currentLocale,
         hasConversationActivity,
         isConversationAvailable: (chatId) =>
           archiveService?.isConversationAvailable(chatId) ?? true,
@@ -589,6 +558,12 @@ if (!hasSingleInstanceLock) {
           await lifecycleIntents.listPending()
         )
       );
+      await reconcileAdoptedContinuationRuntime(
+        chatStore, chatHomeService, chatsService, liveManualIntentIds,
+      );
+      /* 外源同步必须排在续聊对账之后：抢先激活的新代际会让 pending 的
+         continuation.finalize 撞上代际围栏，saga 被隔离、Home 变孤儿。 */
+      historyImport.startBackgroundSync();
       archiveService = createArchiveService({
         userData,
         chatStore,
@@ -605,13 +580,35 @@ if (!hasSingleInstanceLock) {
       await archiveService.initialize();
       /* 所有 Project runtime handler 与 retained-resource participant 都已在此刻
          重建；现在自动续跑删除 checkpoint，不等待 renderer 再点一次删除。 */
+      for (const failure of await projectsService.cleanupEmptyBaseCustody()) {
+        console.error(
+          `[projects] empty Base custody cleanup (${failure.projectId}) failed: ${failure.message}`
+        );
+      }
       for (const failure of await projectsService.recoverResourceCleanup()) {
         console.error(
           `[projects] cleanup ${failure.operation}(${failure.projectId}) 启动恢复失败：${failure.message}`
         );
       }
-      const lifecycleReport = await appMode.reconciliation.run();
+      const lifecycleReport = await runRequiredProjectPlacementGate({
+        recoverLifecycle: () => appMode!.reconciliation.run(),
+        appAuthority: () => appsService!.store.authorityState(),
+        liveAppIds: () =>
+          new Set(appsService!.store.list().map((record) => record.id)),
+        reconcile: (liveAppIds) =>
+          projectsService!.runExclusive(() =>
+            projectsService!.reconcileOrphanAppPlacementsHeld(liveAppIds)
+          ),
+        publish: (projectIds) =>
+          projectsService!.publishProjectUpserts(projectIds),
+      });
       reportLifecycleReconciliation(lifecycleReport);
+      await informationArchitectureMigration.complete({
+        apps: appsService.store.list(),
+        projects: projectStore.list(),
+        bases: baseStore.listAll(),
+        chats: chatStore.list(),
+      });
       await appMode.saveAsApp.recoverPendingSkills();
       // probe/share/preset staging 的内存映射不跨进程：pending intent 之外的
       // 一律孤儿（pending 配置副本含 secret），失败只警告不阻断启动
@@ -703,42 +700,26 @@ if (!hasSingleInstanceLock) {
         update: updateService,
       });
       openMainWindow();
+      startChatStoreMaintenance(chatStore);
       updateService.start();
       if (platformSupport.capabilities.memory) {
         continueMemoryRebuildRecovery(memoryService);
       }
+      /* 注册这一句本身就是「服务全就绪」的证明：它排在全部装配之后，任何
+         中途返回都到不了这里。此前那串十八项 `&&` 因此恒为真——它读起来
+         像一道闸门，实际上只是同一件事的第二种说法。 */
       app.on("activate", () => {
-        if (
-          !windowRegistry.main() &&
-          appsService &&
-          projectsService &&
-          chatsService &&
-          basesService &&
-          settingsStore &&
-          projectToolsRuntime &&
-          skillsCatalog &&
-          unifiedSkillsService &&
-          skillsTurnCustody &&
-          fileAuthorizations &&
-          workspaceFiles &&
-          workspaceResolver &&
-          usageService &&
-          memoryService &&
-          archiveService &&
-          galleryMediaService &&
-          galleryEvents &&
-          updateService
-        ) {
-          openMainWindow();
-        }
+        if (!windowRegistry.main()) openMainWindow();
       });
     })
     .catch((cause) => {
       const error = asError(cause);
       console.error("[main] initialization failed", error);
       dialog.showErrorBox(
-        "Bottega 启动失败",
-        `主进程初始化失败，应用将安全退出。\n\n${error.message}`
+        translate(currentLocale(), "settings.native.startupFailureTitle"),
+        translate(currentLocale(), "settings.native.startupFailureMessage", {
+          detail: error.message,
+        })
       );
       app.quit();
     });
@@ -749,6 +730,7 @@ const shutdownRecovery = new ShutdownRecoveryGate();
 function stopChatAdmission() {
   /* 先关准入再 flush：退出链里绝不能再产生新的 dispatch，否则 flush 完成之后
      还会有一个刚起来的 backend 进程拿着已经写完的账本。 */
+  stopChatStoreMaintenance();
   sectionCoordinator?.stopAdmission();
   builtinBridge?.stopAdmission();
   basesService?.stopAdmission();
@@ -803,4 +785,4 @@ const safeQuit = installApplicationQuit(app, dialog, {
     ),
   report: (reason, phase, cause) =>
     console.error(`[shutdown:${reason}] ${phase} phase failed`, cause),
-});
+}, currentLocale);

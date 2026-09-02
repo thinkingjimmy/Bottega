@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared Agent limits/contracts, strict RichValue/SubmissionContentV1, chat user envelopes, and backend descriptors
- * [OUTPUT]: Provides strict payload reconstruction and cross-field validation for Agent/manual/steer/adopt paths, including message-or-attachments adoption semantics
- * [POS]: The first main-process trust boundary for Agent and coordinator IPC
+ * [OUTPUT]: Provides strict public payload reconstruction plus a separate manual-origin start parser for main-owned prepared Skill receipts, and cross-field validation for Agent/manual/steer/adopt paths
+ * [POS]: The first main-process trust boundary for public Agent/coordinator IPC; only the internal start parser can reconstruct coordinator-owned Skill authority
  */
 
 import {
@@ -52,7 +52,11 @@ import type {
   AgentUserInputResponse,
 } from "../../shared/agent-ipc";
 import type { HistoryAdoptionSubmission } from "../../shared/history-import-ipc";
+import type { TurnProjectContext } from "../../shared/product-resource-scope";
 import { backendRegistry } from "./backends";
+import { parsePreparedSkillSelection } from "./agent/prepared-skill-selection-validation";
+import { skillsTurnOwnerId } from "./skills-management/turn-custody";
+import type { TurnOrigin } from "./turn-registry";
 
 const CONVERSATION_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 export const ATTACHMENT_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -312,13 +316,39 @@ export function validateAgentPayload(
   parseAgentPayload(value);
 }
 
-function parseAgentPayload(value: unknown): AgentSendPayload {
+export function parseAgentPayloadForStart(
+  value: unknown,
+  origin: TurnOrigin | undefined,
+  projectContext: TurnProjectContext | undefined
+): AgentSendPayload {
+  return parseAgentPayload(value, { origin, projectContext });
+}
+
+type StartAuthority = Readonly<{
+  origin?: TurnOrigin;
+  projectContext?: TurnProjectContext;
+}>;
+
+function parseAgentPayload(
+  value: unknown,
+  authority?: StartAuthority
+): AgentSendPayload {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("请求格式无效");
   }
+  const acceptsPreparedSelection =
+    authority?.origin?.kind === "manual" && authority.projectContext !== undefined;
   assertExactKeys(
     value,
-    ["requestId", "session", "scope", "turnOptions", "planMode", "input"],
+    [
+      "requestId",
+      "session",
+      "scope",
+      "turnOptions",
+      "planMode",
+      "input",
+      ...(acceptsPreparedSelection ? ["preparedSkillSelection"] : []),
+    ],
     "Agent payload"
   );
   const payload = value as Partial<AgentSendPayload>;
@@ -341,6 +371,21 @@ function parseAgentPayload(value: unknown): AgentSendPayload {
     throw new Error("Plan 模式格式无效");
   }
   const turnOptions = validateAgentTurnOptions(payload.turnOptions);
+  const preparedSkillSelection = payload.preparedSkillSelection === undefined
+    ? undefined
+    : parsePreparedSkillSelection(payload.preparedSkillSelection);
+  if (
+    preparedSkillSelection &&
+    (preparedSkillSelection.refOwnerId !== skillsTurnOwnerId(payload.requestId) ||
+      preparedSkillSelection.backend !== turnOptions.backend ||
+      preparedSkillSelection.planMode !== Boolean(payload.planMode) ||
+      preparedSkillSelection.projectContext.projectId !==
+        authority?.projectContext?.projectId ||
+      preparedSkillSelection.projectContext.projectLifecycleRevision !==
+        authority?.projectContext?.projectLifecycleRevision)
+  ) {
+    throw new Error("preparedSkillSelection 与 Agent turn authority 不一致");
+  }
   let session: AgentSendPayload["session"];
   if (payload.session !== undefined) {
     if (
@@ -390,6 +435,7 @@ function parseAgentPayload(value: unknown): AgentSendPayload {
     input,
     ...(session ? { session } : {}),
     ...(payload.planMode !== undefined ? { planMode: payload.planMode } : {}),
+    ...(preparedSkillSelection ? { preparedSkillSelection } : {}),
   };
 }
 

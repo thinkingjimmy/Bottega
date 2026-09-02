@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React, ChatSessionController, Last turn selector, TurnParts/MessageResponse and ChatComposer
+ * [INPUT]: Depends on React, App i18n, ChatSessionController, latest-turn selector, TurnParts/MessageResponse, and ChatComposer
  * [OUTPUT]: Provides ChatSessionDock: The Latest turn tabs for the real hanging composer and the latest turn tabs for the input card
  * [POS]: The only source of the chat/dock's floating form; No session, no contamination of the Base, the host decides who is covered by it
  */
@@ -12,6 +12,7 @@ import type { ChatSessionController } from "../runtime/use-chat-session";
 import { TurnParts } from "../transcript/chat-turn";
 import { selectLatestTurn } from "./latest-turn";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 /* dock 只负责定位与列宽：卡片形态归 Composer 自己的输入组，内外各画一圈
    圆角边框只会让边界重影；左右下留白也由 Composer 的 p-4 单独供给。
@@ -24,6 +25,7 @@ export function ChatSessionDock({
   chatId: string;
   controller: ChatSessionController;
 }) {
+  const { t } = useAppTranslation();
   const [latestOpen, setLatestOpen] = useState(false);
   const latest = useMemo(
     () =>
@@ -47,14 +49,21 @@ export function ChatSessionDock({
         <section className="pointer-events-auto relative z-0 mx-7 -mb-px overflow-hidden rounded-t-2xl bg-muted shadow-xl">
           <button
             aria-expanded={latestOpen}
-            aria-label={`${latestOpen ? "折叠" : "展开"} Latest turn`}
+            aria-label={t(
+              latestOpen
+                ? "chat.dock.collapseLatest"
+                : "chat.dock.expandLatest"
+            )}
             className="flex min-h-11 w-full items-center gap-2 px-4 text-left font-medium text-xs"
             onClick={() => setLatestOpen((value) => !value)}
             type="button"
           >
-            <span className="min-w-0 flex-1">Latest turn</span>
+            <span className="min-w-0 flex-1">{t("chat.dock.latestTurn")}</span>
             {!latestOpen && latest.kind === "draft" && (
-              <span className="size-2 rounded-full bg-primary" aria-label="有新回复" />
+              <span
+                aria-label={t("chat.dock.newReply")}
+                className="size-2 rounded-full bg-primary"
+              />
             )}
             {/* 页签朝上长：收起时指上（拉开），展开时指下（收回）。
                 箭头永远指向点击后内容去的方向，与折叠面板向下展开相反。 */}

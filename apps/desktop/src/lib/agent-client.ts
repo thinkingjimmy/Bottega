@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on nanoid, AbortSignal, shared Agent/App IPC, preload bridges, and browser mocks
- * [OUTPUT]: Provides attach/event subscriptions, send/steer/decision commands, same-session and fresh-session retry, abandon, cancel, and cleanup confirmation
+ * [OUTPUT]: Provides attach/event subscriptions, send/steer/decision commands, same-session and fresh-session retry, abandon/cancel/cleanup confirmation, and the read-only system file-manager fact
  * [POS]: The renderer's narrow Agent IPC facade; local disposal never cancels a main-owned turn
  */
 
@@ -55,6 +55,9 @@ export type AgentRequest = {
 
 /** @deprecated renderer 正在迁移到 AgentRequest；仅保留源兼容，不进入 IPC。 */
 export type CodexRequest = AgentRequest;
+
+export const systemFileManager = () =>
+  window.app?.systemFileManager ?? "file-manager";
 
 export function sendToAgent(
   input: AgentUserInput[],

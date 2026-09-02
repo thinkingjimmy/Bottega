@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path/module, user home and history-import adapter
- * [OUTPUT]: Provides CodexHistoryAdapter; The first reading is attributed to filter + identity/full. Two read-only scans active/archive rollout, can stop the full text reading/double analysis, response_item/event_msg option one, task_complete, work time logging with state_5.sqlite alias/title, complete
+ * [OUTPUT]: Provides CodexHistoryAdapter with active/archive scans and constant-memory metadata plus bounded two-pass JSONL streaming for response/event selection, tools, task duration, and state metadata
  * [POS]: the history-import Codex CLI format adapter; SQLite is open with readOnly and as an independent source revision
  */
 
@@ -11,6 +11,8 @@ import type { ForeignHistoryBlock, ForeignHistoryMessage, ForeignToolEvent } fro
 import {
   HISTORY_FILE_BYTES,
   HISTORY_PARSER_VERSION,
+  batchHistoryTurns,
+  collectHistoryBatches,
   digest,
   escapedUnsupported,
   fingerprint,
@@ -19,17 +21,18 @@ import {
   drainTools,
   fingerprintRevision,
   humanTitle,
-  historyParseCheckpoint,
   initialSourceIncarnation,
   isWithin,
   normalizedAliases,
   opaqueSessionId,
   readHeadLines,
-  readStableJsonl,
+  streamStableJsonl,
   timestamp,
   type AdapterEntry,
   type AdapterScan,
   type HistoryAdapter,
+  type HistoryBlockBatches,
+  type HistoryBlockTurns,
   type ParsedHistory,
   type ScanDepth,
 } from "./adapter";
@@ -93,34 +96,54 @@ export class CodexHistoryAdapter implements HistoryAdapter {
     };
   }
 
+  parseBatches(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches {
+    return batchHistoryTurns(this.parseTurns(entry, signal), signal);
+  }
+
   async parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory> {
-    const source = await readStableJsonl(entry.sourcePath, entry.fingerprint, signal);
-    const records: Array<{ raw: Json; line: string; seq: number }> = [];
-    let hasResponseMessages = false;
-    for (const [index, line] of source.lines.entries()) {
-      await historyParseCheckpoint(signal, index);
-      try {
-        const raw = JSON.parse(line) as Json;
-        records.push({ raw, line, seq: index + 1 });
-        const payload = object(raw.payload);
-        if (raw.type === "response_item" && payload?.type === "message") hasResponseMessages = true;
-      } catch {
-        records.push({ raw: {}, line, seq: index + 1 });
-      }
-    }
-    const blocks: ForeignHistoryBlock[] = [];
+    return collectHistoryBatches(this.parseBatches(entry, signal));
+  }
+
+  private async *parseTurns(
+    entry: AdapterEntry,
+    signal?: AbortSignal
+  ): HistoryBlockTurns {
+    const hasResponseMessages = await containsResponseMessages(entry, signal);
+    const source = streamStableJsonl(entry.sourcePath, entry.fingerprint, signal);
+    let blocks: ForeignHistoryBlock[] = [];
     const toolCalls = new Map<string, ForeignToolEvent>();
-    for (const [index, record] of records.entries()) {
-      await historyParseCheckpoint(signal, index);
-      const payload = object(record.raw.payload);
-      if (!Object.keys(record.raw).length) {
-        blocks.push(unsupported(record.line, record.seq, "invalid-json"));
+    const flush = () => {
+      if (!blocks.length) return [];
+      const ready = blocks;
+      blocks = [];
+      return ready;
+    };
+    while (true) {
+      const next = await source.next();
+      if (next.done) {
+        attachPendingTools(blocks, toolCalls);
+        const ready = flush();
+        if (ready.length) yield ready;
+        return next.value;
+      }
+      const { line, index } = next.value;
+      const seq = index + 1;
+      let raw: Json;
+      try { raw = JSON.parse(line) as Json; }
+      catch { raw = {}; }
+      const payload = object(raw.payload);
+      if (!Object.keys(raw).length) {
+        blocks.push(unsupported(line, seq, "invalid-json"));
         continue;
       }
-      if (record.raw.type === "response_item") {
-        const block = responseItem(payload, record.raw.timestamp, record.seq, entry, toolCalls);
+      if (raw.type === "response_item") {
+        const block = responseItem(payload, raw.timestamp, seq, entry, toolCalls);
         if (block) {
-          if (block.role === "user") attachPendingTools(blocks, toolCalls);
+          if (block.role === "user") {
+            attachPendingTools(blocks, toolCalls);
+            const ready = flush();
+            if (ready.length) yield ready;
+          }
           blocks.push(block.role === "assistant" && toolCalls.size
             ? { ...block, tools: drainTools(toolCalls) }
             : block);
@@ -128,20 +151,42 @@ export class CodexHistoryAdapter implements HistoryAdapter {
         continue;
       }
       // runtime 的 turn 工时账：挂到本 turn 末条 assistant；两种流（response_item/event_msg）都在此拦截
-      if (record.raw.type === "event_msg" && payload?.type === "task_complete") {
+      if (raw.type === "event_msg" && payload?.type === "task_complete") {
         attachWorkedFor(blocks, payload.duration_ms);
         continue;
       }
-      if (!hasResponseMessages && record.raw.type === "event_msg") {
-        const block = eventMessage(payload, record.raw.timestamp, record.seq, entry);
-        if (block) blocks.push(block);
+      if (!hasResponseMessages && raw.type === "event_msg") {
+        const block = eventMessage(payload, raw.timestamp, seq, entry);
+        if (block) {
+          if (block.role === "user") {
+            const ready = flush();
+            if (ready.length) yield ready;
+          }
+          blocks.push(block);
+        }
         continue;
       }
-      if (["session_meta", "turn_context", "event_msg"].includes(String(record.raw.type))) continue;
-      blocks.push(unsupported(record.line, record.seq, "unsupported-record"));
+      if (["session_meta", "turn_context", "event_msg"].includes(String(raw.type))) continue;
+      blocks.push(unsupported(line, seq, "unsupported-record"));
     }
-    attachPendingTools(blocks, toolCalls);
-    return { blocks, incompleteTail: source.incompleteTail };
+  }
+}
+
+async function containsResponseMessages(entry: AdapterEntry, signal?: AbortSignal) {
+  const source = streamStableJsonl(entry.sourcePath, entry.fingerprint, signal);
+  while (true) {
+    const next = await source.next();
+    if (next.done) return false;
+    try {
+      const raw = JSON.parse(next.value.line) as Json;
+      const payload = object(raw.payload);
+      if (raw.type === "response_item" && payload?.type === "message") {
+        await source.return(false);
+        return true;
+      }
+    } catch {
+      /* Invalid records are surfaced during the second, publishing pass. */
+    }
   }
 }
 
@@ -151,7 +196,7 @@ export class CodexHistoryAdapter implements HistoryAdapter {
  * （guardian 审批评估、thread_spawn worker）继承父会话 cwd 但不是用户会话，
  * 同样在此排除。identity 档命中后以 stat 兜底呈现字段，full 档回到全文取
  * title/时间。头部未见 session_meta 的异形文件退回全文，不猜。
- * 64 MiB 上限在此统一裁决，两档收录结论必须一致。
+ * 4 GiB 流式上限在此统一裁决，两档收录结论必须一致。
  */
 async function sessionMeta(path: string, root: string, depth: ScanDepth) {
   const fallback = await stat(path);
@@ -182,16 +227,26 @@ async function sessionMeta(path: string, root: string, depth: ScanDepth) {
 }
 
 async function fullMeta(path: string, root: string) {
-  const source = await readStableJsonl(path);
+  const source = streamStableJsonl(path);
   let cwd = "", sessionId = "", title = "";
   let createdAt = Number.POSITIVE_INFINITY, updatedAt = 0;
-  for (const line of source.lines) {
+  let incompleteTail = false;
+  while (true) {
+    const next = await source.next();
+    if (next.done) {
+      incompleteTail = next.value;
+      break;
+    }
+    const { line } = next.value;
     let raw: Json; try { raw = JSON.parse(line) as Json; } catch { continue; }
     const payload = object(raw.payload);
     const at = timestamp(raw.timestamp ?? payload?.timestamp, 0);
     if (at) { createdAt = Math.min(createdAt, at); updatedAt = Math.max(updatedAt, at); }
     if (raw.type === "session_meta") {
-      if (subagentThread(payload)) return null;
+      if (subagentThread(payload)) {
+        await source.return(false);
+        return null;
+      }
       cwd ||= string(payload?.cwd) ?? "";
       sessionId ||= string(payload?.id) ?? "";
     }
@@ -200,7 +255,7 @@ async function fullMeta(path: string, root: string) {
   if (!cwd || !isWithin(root, cwd)) return null;
   const fallback = await stat(path);
   return {
-    cwd, sessionId, title, incompleteTail: source.incompleteTail,
+    cwd, sessionId, title, incompleteTail,
     createdAt: Number.isFinite(createdAt) ? createdAt : timestamp(undefined, fallback.birthtimeMs),
     updatedAt: updatedAt || timestamp(undefined, fallback.mtimeMs),
   };

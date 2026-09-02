@@ -37,6 +37,7 @@ export async function prepareProjectBase(input: {
     // pin 已冻结为存量 chat base 专用展示：升格产物带着 pinned 会重新钻进
     // Sidebar「Bases」组，且没有任何 unpin 入口能把它弄出去
     pinned: false,
+    navigation: { kind: "project-contained", projectId: input.projectId },
     revision: 0,
     rowsGeneration: 0,
     galleryGeneration: 0,

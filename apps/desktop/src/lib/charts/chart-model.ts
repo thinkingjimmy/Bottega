@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on projected Base rows, chart-visible columns, a canonical BaseCellContext, ChartItem filters/aggregations, and ChartPayload limits
- * [OUTPUT]: Provides buildChartPayload and uniqueDisplayNames with payload/incomplete/empty/error outcomes
+ * [OUTPUT]: Provides buildChartPayload and uniqueDisplayNames with payload or finite code/params state outcomes
  * [POS]: The pure Chart projection model; view membership is filtered without replacing the caller's full-snapshot evaluation context
  */
 
@@ -22,11 +22,33 @@ import {
   type ChartPayload,
 } from "../../../shared/chart-payload";
 
+export type ChartModelMessageCode =
+  | "filterScrubbed"
+  | "dimensionRequired"
+  | "valueRequired"
+  | "seriesRequired"
+  | "pieSeriesUnsupported"
+  | "scatterRequirements"
+  | "heatmapRequirements"
+  | "pieValueRequired"
+  | "singleValueForSeries"
+  | "labelLimit"
+  | "seriesLimit"
+  | "pointLimit"
+  | "empty"
+  | "pieNegative"
+  | "invalidPayload";
+
+export type ChartModelMessage = {
+  code: ChartModelMessageCode;
+  values?: Record<string, number>;
+};
+
 export type ChartModelResult =
   | ChartPayload
-  | { incomplete: string }
-  | { empty: string }
-  | { error: string };
+  | { incomplete: ChartModelMessage }
+  | { empty: ChartModelMessage }
+  | { error: ChartModelMessage };
 
 type Group = { key: string; label: string };
 type RowBuckets = Map<string, Map<string, BaseRow[]>>;
@@ -38,7 +60,7 @@ export function buildChartPayload(
   context: BaseCellContext
 ): ChartModelResult {
   if (item.filterScrubbed) {
-    return { incomplete: "筛选已因删列失效，请重新设置" };
+    return incomplete("filterScrubbed");
   }
   const dimension = columns.find(
     (column) => column.id === item.dimensionColumnId
@@ -51,34 +73,34 @@ export function buildChartPayload(
     (column) => column.id === item.seriesColumnId
   );
   if (!dimension || !["text", "select", "date"].includes(dimension.type)) {
-    return { incomplete: "请选择文本、选项或日期维度列" };
+    return incomplete("dimensionRequired");
   }
   if (!values.length || values.length !== (item.valueColumnIds?.length ?? 0)) {
-    return { incomplete: "请选择有效的数值列" };
+    return incomplete("valueRequired");
   }
   if (item.seriesColumnId && !seriesColumn) {
-    return { incomplete: "请选择有效的次维度列" };
+    return incomplete("seriesRequired");
   }
   if (item.chartType === "pie" && seriesColumn) {
-    return { incomplete: "饼图不支持次维度" };
+    return incomplete("pieSeriesUnsupported");
   }
   if (
     item.chartType === "scatter" &&
     (seriesColumn || values.length !== 2)
   ) {
-    return { incomplete: "散点图需要两个独立数值列，且不支持次维度" };
+    return incomplete("scatterRequirements");
   }
   if (
     item.chartType === "heatmap" &&
     (!seriesColumn || values.length !== 1)
   ) {
-    return { incomplete: "热力图需要一个数值列和一个次维度列" };
+    return incomplete("heatmapRequirements");
   }
   if (item.chartType === "pie" && values.length !== 1) {
-    return { incomplete: "饼图需要一个数值列" };
+    return incomplete("pieValueRequired");
   }
   if (seriesColumn && values.length !== 1) {
-    return { incomplete: "使用次维度时只能选择一个数值列" };
+    return incomplete("singleValueForSeries");
   }
 
   const filtered = projectBaseRows(rows, { filter: item.filter }, context);
@@ -116,17 +138,17 @@ export function buildChartPayload(
     }
     addGroup(dimensionKeys, dimensionKey);
     if (dimensionKeys.size > CHART_LABEL_LIMIT) {
-      return { error: "标签数量不能超过 120" };
+      return modelError("labelLimit", { limit: CHART_LABEL_LIMIT });
     }
     if (seriesColumn) {
       addGroup(seriesKeys, seriesKey!);
       if (seriesKeys.size > CHART_SERIES_LIMIT) {
-        return { error: "序列数量不能超过 12" };
+        return modelError("seriesLimit", { limit: CHART_SERIES_LIMIT });
       }
     }
     const seriesCount = seriesColumn ? seriesKeys.size : valueSeriesCount;
     if (dimensionKeys.size * seriesCount > CHART_POINT_LIMIT) {
-      return { error: "图表数据点不能超过 2000" };
+      return modelError("pointLimit", { limit: CHART_POINT_LIMIT });
     }
     const dimensionBucket = buckets.get(dimensionKey) ?? new Map();
     const bucketKey = seriesColumn ? seriesKey! : "";
@@ -139,11 +161,11 @@ export function buildChartPayload(
     dimensionKeys,
     dimension
   );
-  if (!dimensionGroups.length) return { empty: "无数据" };
+  if (!dimensionGroups.length) return empty();
   const seriesGroups = seriesColumn
     ? orderGroups(seriesKeys, seriesColumn)
     : values.map((column) => ({ key: column.id, label: column.name }));
-  if (!seriesGroups.length) return { empty: "无数据" };
+  if (!seriesGroups.length) return empty();
   const names = uniqueDisplayNames(seriesGroups.map((group) => group.label));
   const labels = uniqueDisplayNames(dimensionGroups.map((group) => group.label));
   const payload: ChartPayload = {
@@ -168,22 +190,22 @@ export function buildChartPayload(
     }),
   };
   const points = payload.series.flatMap((series) => series.data);
-  if (!points.some((value) => value !== null)) return { empty: "无数据" };
+  if (!points.some((value) => value !== null)) return empty();
   if (
     payload.type === "pie" &&
     points.some((value) => value !== null && value < 0)
   ) {
-    return { error: "饼图不能表示负值，请更换图型或筛选数据" };
+    return modelError("pieNegative");
   }
   if (
     payload.type === "pie" &&
     points.every((value) => value === null || value === 0)
   ) {
-    return { empty: "无数据" };
+    return empty();
   }
   const parsed = chartPayloadSchema.safeParse(payload);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "图表数据超出限制" };
+    return modelError("invalidPayload");
   }
   return parsed.data;
 }
@@ -237,7 +259,8 @@ function truncateName(value: string, limit: number) {
 export function uniqueDisplayNames(values: readonly string[]) {
   const used = new Set<string>();
   return values.map((raw) => {
-    const source = raw || "未命名";
+    // An em dash is a language-neutral empty marker; human copy stays in the view.
+    const source = raw || "—";
     let candidate = truncateName(source, 40);
     let suffixNumber = 2;
     while (used.has(candidate)) {
@@ -248,4 +271,19 @@ export function uniqueDisplayNames(values: readonly string[]) {
     used.add(candidate);
     return candidate;
   });
+}
+
+function incomplete(code: ChartModelMessageCode): ChartModelResult {
+  return { incomplete: { code } };
+}
+
+function empty(): ChartModelResult {
+  return { empty: { code: "empty" } };
+}
+
+function modelError(
+  code: ChartModelMessageCode,
+  values?: Record<string, number>
+): ChartModelResult {
+  return { error: { code, values } };
 }

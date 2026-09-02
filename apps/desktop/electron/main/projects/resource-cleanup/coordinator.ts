@@ -7,12 +7,12 @@
 import type {
   ProjectRemovalOperation,
   ProjectStore,
-} from "../project-store";
+} from "../store/project-store";
 
 export type ProjectResourceCleanupContext = Readonly<{
   projectId: string;
   projectLifecycleRevision: number;
-  resourceAdmissions: readonly import("../project-store").ProjectResourceAdmission[];
+  resourceAdmissions: readonly import("../store/project-store").ProjectResourceAdmission[];
 }>;
 
 export type ProjectResourceCleanupParticipant = Readonly<{

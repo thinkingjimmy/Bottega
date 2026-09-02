@@ -57,7 +57,7 @@ function projectOwner(
 }
 
 function conversationOwner(
-  record: ChatRecord,
+  record: Pick<ChatRecord, "id" | "incarnationId" | "projectId">,
   dependencies: WorkspacePreconditionDependencies
 ): WorkspacePrecondition {
   if (!record.projectId) return chatHome(record);
@@ -101,7 +101,7 @@ export async function manualLifecycleProjectId(
   if (submission.persistence.kind !== "append") {
     return submission.persistence.input.projectId ?? null;
   }
-  const record = await chats.store.get(submission.persistence.input.chatId);
+  const record = chats.store.getMetadata(submission.persistence.input.chatId);
   if (!record) throw new Error("人工 turn 的目标聊天不存在");
   return record.projectId;
 }
@@ -115,7 +115,7 @@ export async function assertManualWorkspacePrecondition(
   );
   let current: WorkspacePrecondition;
   if (submission.persistence.kind === "append") {
-    const record = await dependencies.chats.store.get(
+    const record = dependencies.chats.store.getMetadata(
       submission.persistence.input.chatId
     );
     if (!record) throw new Error("WORKSPACE_PRECONDITION_MISMATCH");
@@ -152,7 +152,7 @@ export async function assertConversationWorkspacePrecondition(
   dependencies: WorkspacePreconditionDependencies
 ) {
   const expected = workspacePreconditionSchema.parse(expectedValue);
-  const record = await dependencies.chats.store.get(conversationId);
+  const record = dependencies.chats.store.getMetadata(conversationId);
   if (!record || !sameOwner(expected, conversationOwner(record, dependencies))) {
     throw new Error("WORKSPACE_PRECONDITION_MISMATCH");
   }
@@ -163,7 +163,7 @@ export async function withConversationWorkspacePrecondition<T>(
   conversationId: string,
   expected: WorkspacePrecondition,
   dependencies: ConversationWorkspaceDependencies,
-  task: (record: ChatRecord) => Promise<T>
+  task: (record: Pick<ChatRecord, "id" | "incarnationId" | "projectId">) => Promise<T>
 ) {
   const run = async () =>
     task(

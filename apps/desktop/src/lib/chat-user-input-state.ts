@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared AgentUserInputRequest contract
- * [OUTPUT]: ProvIDes renderer and query queue projections, has answered ID conditions clear, equivalent reference early withdrawal with PendingUserInputState
+ * [OUTPUT]: Provides pending requestUserInput projection, typed copy-key errors, queue identity retention, and answered-request clearing
  * [POS]: requestUserInput pure state boundary for attach projection and session response competitive consumption
  */
 
@@ -12,7 +12,11 @@ export type PendingUserInputState = {
   answers: Record<string, { answers: string[] }>;
   expiresAt?: number;
   busy: boolean;
-  error: string;
+  error:
+    | string
+    | {
+        copyKey: "chat.userInput.expired" | "chat.userInput.answerRequired";
+      };
   queue: AgentUserInputRequest[];
 };
 

@@ -16,7 +16,7 @@ import {
 } from "../../../../shared/mcp-servers-ipc";
 import type { ProductResourceScope } from "../../../../shared/resource-scope";
 import { rendererIpc } from "../../ipc-registrar";
-import type { ProjectStore } from "../../projects/project-store";
+import type { ProjectStore } from "../../projects/store/project-store";
 import type { ProjectToolPolicyStore } from "../project/store";
 import type { ManualMcpServersStore } from "./store";
 

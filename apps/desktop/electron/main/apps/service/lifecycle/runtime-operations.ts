@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on App store/runtime/delete services, Base GUI projection/grants/gateway, extension integration, and Design custody
- * [OUTPUT]: Provides focused runtime status, GUI cutover, grant revocation, and destructive App lifecycle operations
+ * [INPUT]: Depends on App store/runtime/delete services, Base GUI projection, gateway request barriers, generation-fenced side effects, and extension integration
+ * [OUTPUT]: Provides focused runtime status, no-pre-revoke GUI cutover with request/effect drain, symmetric Studio authorize/decline, extension grant revocation, and destructive App lifecycle operations
  * [POS]: apps/service operation layer; removes transactional mechanics from the AppsService composition root
  */
 
@@ -8,14 +8,11 @@ import { randomUUID } from "node:crypto";
 import type { AppRuntimeStatus, AppRecord, RemoveAppMode } from "../../../../../shared/apps-ipc";
 import { asError } from "../../../errors";
 import type { AppExtensionIntegration } from "../../../extensions/integration/app-extension-composition";
-import type { DesignService } from "../../../design/service";
-import { DESIGN_PRESET_ID } from "../../../design/enabled";
 import type { AppDeleteService } from "../../app-delete";
 import { shouldMarkDeleteFailed } from "../../app-delete";
 import type { AppGateway } from "../../app-gateway";
 import type { AppRuntime } from "../../app-runtime";
 import type { AppStore } from "../../app-store";
-import type { BaseGuiGrantStore } from "../../base-gui/grant-store";
 import type { AppGuiProjection } from "../../gui-projection";
 import type { MaintenanceGate } from "../../maintenance-gate";
 
@@ -23,7 +20,29 @@ type GuiCutoverPorts = Readonly<{
   runExclusive<T>(appId: string, operation: () => Promise<T>): Promise<T>;
   gateway: AppGateway;
   gui: AppGuiProjection;
+  activeGenerationId(appId: string): string | null;
+  closeSideEffects(appId: string): void;
+  drainSideEffects(appId: string, generationId: string, deadlineMs: number): Promise<void>;
+  reopenSideEffects(appId: string): void;
 }>;
+
+type GenerationCutoverPorts = Readonly<{
+  hasRecord(appId: string): boolean;
+  runLifecycle<T>(appId: string, operation: () => Promise<T>): Promise<T>;
+  runGui<T>(appId: string, operation: () => Promise<T>): Promise<T>;
+}>;
+
+/** A not-yet-published App cannot own a surface, so its first generation only needs the
+ * residence-shared lifecycle lane. Existing Apps additionally drain GUI capability. */
+export function withGenerationCutover<T>(
+  ports: GenerationCutoverPorts,
+  appId: string,
+  operation: () => Promise<T>
+) {
+  return ports.runLifecycle(appId, () =>
+    ports.hasRecord(appId) ? ports.runGui(appId, operation) : operation()
+  );
+}
 
 export function withGuiCutover<T>(
   ports: GuiCutoverPorts,
@@ -31,44 +50,116 @@ export function withGuiCutover<T>(
   operation: () => Promise<T>
 ) {
   return ports.runExclusive(appId, async () => {
+    /* The old route remains visible while the caller finishes fallible work.
+       Admission closes only for the short CAS barrier; revocation happens after the
+       new active generation is durable. Failure leaves the previous surface intact. */
+    const previousGenerationId = ports.activeGenerationId(appId);
     ports.gateway.requestLeases.closeAdmission(appId);
+    ports.closeSideEffects(appId);
     try {
-      await ports.gui.revoke(appId);
       const deadline = Date.now() + 30_000;
+      const generationId = ports.activeGenerationId(appId);
       while (ports.gateway.requestLeases.countApp(appId) > 0) {
         if (Date.now() >= deadline) {
           throw Object.assign(new Error("APP_GUI_DRAIN_TIMEOUT"), { status: 409 });
         }
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
+      if (generationId) await ports.drainSideEffects(appId, generationId, deadline);
       const result = await operation();
-      await ports.gui.sync(appId, { resetCapability: true });
+      const nextGenerationId = ports.activeGenerationId(appId);
+      /* A generation swap keeps old surface routes/tokens alive under the durable
+         draining id until renderer nonce-ready releases them. Same-generation
+         revocation must still invalidate every token immediately. */
+      await ports.gui.sync(appId, {
+        resetCapability: previousGenerationId === nextGenerationId,
+      });
       return result;
-    } catch (cause) {
-      await ports.gui.sync(appId, { resetCapability: true }).catch(() => {});
-      throw cause;
     } finally {
       ports.gateway.requestLeases.reopenAdmission(appId);
+      ports.reopenSideEffects(appId);
     }
   });
 }
 
-export function revokeBaseGuiAccess(input: {
+/* ============================================================
+ * 拒绝是授权的对称面，不是「不点同意」
+ *
+ * 同意有一条端到端的路（consent → grant → promote），拒绝从前只存在于
+ * main 的账本里，界面上没有入口——用户唯一能做的是把窗口关掉，而那什么
+ * 也没发生：pending 代还在，重新构建被它挡着，下次进来还是同一张卡。
+ *
+ * 这里把拒绝收成一条命令：有 Base GUI decision 就走账本的 declined 语义
+ * （落拒绝墓碑并丢弃这一代），没有就直接 abort 这一代。两条路的终点相同
+ * ——pending 消失，重新构建重新可用。没有 pending 时它是幂等的 no-op：
+ * 「没有待批的东西可拒绝」本就不是错误，用户只是还没被授权而已。
+ * ============================================================ */
+export async function declineStudioAccess(input: {
   appId: string;
   store: AppStore;
-  grants: BaseGuiGrantStore;
-  cutover<T>(operation: () => Promise<T>): Promise<T>;
 }) {
   const record = requireRecord(input.store, input.appId);
-  const generationId = record.generationBinding.active?.generationId;
-  const generation = record.generations.find((item) => item.generationId === generationId);
-  if (!generationId || generation?.manifest.kind !== "base") {
-    throw new Error("App 没有 active Base GUI generation");
+  const pending = record.generationBinding.pending;
+  if (!pending) return record;
+  if (pending.baseGuiDecision?.state === "consent-required") {
+    return input.store.resolvePendingBaseGuiConsent(input.appId, [], [], {});
   }
-  return input.cutover(async () => {
-    await input.grants.revoke(input.appId, generationId);
-    return input.store.advanceLifecycle(input.appId);
-  });
+  return input.store.abortPendingGeneration(input.appId, pending.generationId);
+}
+
+export function authorizeStudioAccess(input: {
+  appId: string;
+  store: AppStore;
+  cutover<T>(operation: () => Promise<T>): Promise<T>;
+}) {
+  const prepare = async () => {
+    let record = requireRecord(input.store, input.appId);
+    let pending = record.generationBinding.pending;
+    const generationId =
+      pending?.generationId ?? record.generationBinding.active?.generationId;
+    const generation = record.generations.find(
+      (item) => item.generationId === generationId
+    );
+    if (
+      !generationId ||
+      !generation ||
+      generation.manifest.kind !== "base" ||
+      !generation.manifest.gui
+    ) {
+      throw new Error("App 没有可授权的 Studio GUI");
+    }
+    if (
+      pending &&
+      generation.extensionRequirementResolution.kind === "frozen" &&
+      pending.extensionState !== "ready-to-promote"
+    ) {
+      record = await input.store.resolvePendingConsent(input.appId, true);
+      pending = record.generationBinding.pending;
+    }
+    if (pending?.baseGuiDecision?.state === "consent-required") {
+      record = await input.store.resolvePendingBaseGuiConsent(
+        input.appId,
+        pending.baseGuiDecision.requestedCapabilities,
+        pending.baseGuiDecision.requestedHostActions,
+        pending.baseGuiDecision.requestedCapabilityScopes
+      );
+      pending = record.generationBinding.pending;
+    }
+    if (!pending) {
+      return input.cutover(() =>
+        input.store.grantStudioAccess(input.appId, generationId)
+      );
+    }
+    record = await input.store.grantStudioAccess(input.appId, generationId);
+    pending = record.generationBinding.pending;
+    return pending
+      ? input.store.promotePendingGeneration(
+          input.appId,
+          pending.expectedConsentRevision
+        )
+      : record;
+  };
+  return prepare();
 }
 
 export async function revokeExtensionGrant(
@@ -127,11 +218,8 @@ export async function removeApp(input: {
   store: AppStore;
   maintenanceGate: MaintenanceGate;
   deleteService: AppDeleteService | null;
-  design: DesignService;
-  invalidateSkills(): void;
   markDeleteStalled(message: string): Promise<void>;
 }) {
-  const designApp = input.store.get(input.appId)?.presetId === DESIGN_PRESET_ID;
   if (input.maintenanceGate.isLocked(input.appId)) {
     throw new Error("App 修复中，暂时不能删除");
   }
@@ -144,29 +232,13 @@ export async function removeApp(input: {
       mode: input.mode,
       requestId: input.requestId,
     });
-    if (designApp) {
-      /* markFactoryDeleted 是持久「已删」墓碑,必须等 remove() 真正提交后才落。
-         若抢在 remove 之前落账,remove 抛错(如 drain 冲突 409)时 App 仍
-         ready+granted、$design 继续可见,而账本已宣告删除 → ensure() 永远早退,
-         durable 谎言换来死锁。 */
-      await input.design.markFactoryDeleted(input.appId);
-      await input.design.orphanApp(input.appId);
-      input.invalidateSkills();
-    }
   } catch (cause) {
-    const status = (cause as { status?: number }).status;
-    const stalled =
-      status === 409 && (await input.deleteService.residual(input.appId)) !== null;
+    const stalled = (await input.deleteService.residual(input.appId)) !== null;
     if (shouldMarkDeleteFailed({
-      status,
       state: input.store.get(input.appId)?.state,
       hasResidual: stalled,
     })) {
-      await input.markDeleteStalled(
-        stalled
-          ? "上一次删除中断后未收尾，用「重试删除残留」续跑同一事务"
-          : asError(cause).message
-      );
+      await input.markDeleteStalled(asError(cause).message);
     }
     throw cause;
   }

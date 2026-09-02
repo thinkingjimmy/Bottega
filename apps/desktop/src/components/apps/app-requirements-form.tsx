@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on shared requirements/AppConfigValue and Basic Input; Receiving control configuration
- * [OUTPUT]: Provides AppRequirementsForm and appRequirementsSatisfied; Config must be blocked, default secret, clear Agent readable authorization
- * [POS]: General configuration tables for components/apps, preflight installation and detailed configuration of the same machine
+ * [INPUT]: Depends on shared requirements/AppConfigValue, Apps i18n, and controlled UI Input
+ * [OUTPUT]: Provides AppRequirementsForm and appRequirementsSatisfied with secret-by-default configuration and explicit Agent-readable grants
+ * [POS]: Shared Apps requirement editor used by preflight install and machine configuration surfaces
  */
 
 import { Input } from "@ai-chat/ui/components/ui/input";
@@ -11,6 +11,7 @@ import type {
   AppConfigValue,
   AppRequirement,
 } from "../../../shared/apps-ipc";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 export function appRequirementsSatisfied(
   requirements: readonly AppRequirement[],
@@ -38,12 +39,17 @@ export function AppRequirementsForm({
   onChange: (value: AppConfigValue) => void;
   disabled?: boolean;
 }) {
+  const { t } = useAppTranslation();
   const configs = requirements.filter(
     (requirement) =>
       requirement.kind === "config" && requirement.configKey
   );
   if (!requirements.length) {
-    return <p className="text-muted-foreground text-sm">此 App 未声明额外依赖。</p>;
+    return (
+      <p className="text-muted-foreground text-sm">
+        {t("apps.requirements.none")}
+      </p>
+    );
   }
   return (
     <div className="flex flex-col gap-3">
@@ -53,7 +59,11 @@ export function AppRequirementsForm({
           <div className="rounded-lg border p-3 text-sm" key={requirement.id}>
             <p className="font-medium">
               {requirement.label}
-              {requirement.required ? "（必需）" : "（可选）"}
+              {t(
+                requirement.required
+                  ? "apps.requirements.required"
+                  : "apps.requirements.optional"
+              )}
             </p>
             <p className="text-muted-foreground">{requirement.note}</p>
           </div>
@@ -97,7 +107,7 @@ export function AppRequirementsForm({
                 type="checkbox"
               />
               <span>
-                非敏感，允许 Agent 读取（运行时会进入 Agent 进程环境，可能出现在会话中）
+                {t("apps.requirements.agentReadable")}
               </span>
             </span>
           </label>

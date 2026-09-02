@@ -536,7 +536,7 @@ export function InstructionsEditor({
 
 type Translate = ReturnType<typeof useAppTranslation>["t"];
 function errorCopy(t: Translate, code: AgentInstructionsErrorCode) {
-  const keys: Record<AgentInstructionsErrorCode, string> = {
+  const errorKeys: Record<AgentInstructionsErrorCode, string> = {
     conflict: "settings.personalization.errors.conflict",
     "too-large": "settings.personalization.errors.tooLarge",
     "oversized-file": "settings.personalization.errors.oversizedFile",
@@ -544,5 +544,5 @@ function errorCopy(t: Translate, code: AgentInstructionsErrorCode) {
     "read-failed": "settings.personalization.errors.readFailed",
     "write-failed": "settings.personalization.errors.writeFailed",
   };
-  return t(keys[code]);
+  return t(errorKeys[code]);
 }

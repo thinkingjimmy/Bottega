@@ -1,13 +1,12 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Apps share IPC, AppDialogContent, Base AppRecord with three modes of tables
- * [OUTPUT]: Provides AppShareDialog; gh onboarding, preview of the data on the certainty, README, alert and confirmation releases
- * [POS]: The GitHub product sharing process for components/apps; There's no Agent Turn at all
+ * [INPUT]: Depends on Apps share IPC, Apps i18n, AppDialog primitives, and Base AppRecord data modes
+ * [OUTPUT]: Provides the controlled AppShareDialog for gh onboarding, deterministic preview, README warning, and confirmed publish
+ * [POS]: GitHub sharing workflow for Apps; open state is owned by the caller because the entry point lives in a dropdown menu that unmounts on close; it runs fixed git/gh operations and never starts an Agent turn
  */
 
 import { useState } from "react";
-import { Share2Icon } from "lucide-react";
 import {
   AppDialogBody,
   AppDialogContent,
@@ -19,7 +18,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@ai-chat/ui/components/ui/dialog";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
@@ -36,10 +34,19 @@ import type {
   ShareDataMode,
   SharePreview,
 } from "../../../shared/apps-ipc";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
-export function AppShareDialog({ record }: { record: AppRecord }) {
+export function AppShareDialog({
+  record,
+  open,
+  onOpenChange,
+}: {
+  record: AppRecord;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { t } = useAppTranslation();
   const isReshare = Boolean(record.publishedRepoUrl);
-  const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<GhStatus | null>(null);
   const [mode, setMode] = useState<ShareDataMode>("sample");
   const [repoName, setRepoName] = useState(slug(record.displayName));
@@ -54,7 +61,7 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
     try {
       setStatus(await readGhStatus());
     } catch (cause) {
-      setError(errorMessage(cause, "GitHub CLI 检测失败"));
+      setError(errorMessage(cause, t("apps.share.detectFailed")));
     } finally {
       setBusy(false);
     }
@@ -72,7 +79,7 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
         })
       );
     } catch (cause) {
-      setError(errorMessage(cause, "分享预览失败"));
+      setError(errorMessage(cause, t("apps.share.previewFailed")));
     } finally {
       setBusy(false);
     }
@@ -90,9 +97,9 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
         confirmedDigest: preview.digest,
         requestId: preview.previewId,
       });
-      setOpen(false);
+      onOpenChange(false);
     } catch (cause) {
-      setError(errorMessage(cause, "发布失败"));
+      setError(errorMessage(cause, t("apps.share.publishFailed")));
     } finally {
       setBusy(false);
     }
@@ -102,7 +109,7 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        setOpen(next);
+        onOpenChange(next);
         if (next && !status) void detect();
         if (!next) {
           if (preview) void discardAppShare(preview.previewId);
@@ -110,20 +117,11 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
         }
       }}
     >
-      <DialogTrigger asChild>
-        <Button
-          aria-label="Share 到 GitHub"
-          size="icon-sm"
-          variant="ghost"
-        >
-          <Share2Icon />
-        </Button>
-      </DialogTrigger>
       <AppDialogContent className="sm:max-w-2xl">
         <DialogHeader className="shrink-0">
-          <DialogTitle>Share 到 GitHub</DialogTitle>
+          <DialogTitle>{t("apps.share.title")}</DialogTitle>
           <DialogDescription>
-            产品固定生成包并运行 git/gh；不会启动 Agent，也不会包含 App 配置。
+            {t("apps.share.description")}
           </DialogDescription>
         </DialogHeader>
         <AppDialogBody className="mt-3">
@@ -133,18 +131,23 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
             <code>brew install gh</code>
             <code>gh auth login</code>
             <Button disabled={busy} onClick={() => void detect()} variant="outline">
-              {busy ? "检测中…" : "重新检测"}
+              {busy ? t("apps.share.detecting") : t("apps.share.recheck")}
             </Button>
           </div>
         ) : preview ? (
           <div className="flex flex-col gap-3 text-sm">
             {preview.readmePlaceholder && (
               <p className="rounded-lg bg-amber-500/10 p-3 text-amber-800 dark:text-amber-300">
-                README 仍是骨架。建议先在编辑 chat 完善介绍与使用方法；也可继续发布。
+                {t("apps.share.readmePlaceholder")}
               </p>
             )}
             <p>{preview.diffSummary}</p>
-            <p>{preview.files.length} 个文件，base.json {preview.rowCount} 行</p>
+            <p>
+              {t("apps.share.fileSummary", {
+                files: preview.files.length,
+                rows: preview.rowCount,
+              })}
+            </p>
             <SlimScroller asChild>
               <ul className="max-h-40 overflow-y-auto rounded border p-2 font-mono text-xs">
                 {preview.files.map((file) => (
@@ -163,20 +166,20 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
         ) : (
           <div className="flex flex-col gap-3 text-sm">
             <label className="flex flex-col gap-1">
-              <span className="font-medium">数据</span>
+              <span className="font-medium">{t("apps.share.data")}</span>
               <select
                 className="h-9 rounded-md border bg-background px-3"
                 onChange={(event) => setMode(event.target.value as ShareDataMode)}
                 value={mode}
               >
-                <option value="sample">确定性示例数据</option>
-                <option value="schema">仅结构</option>
-                <option value="full">全部真实数据（确认知情）</option>
+                <option value="sample">{t("apps.share.sample")}</option>
+                <option value="schema">{t("apps.share.schema")}</option>
+                <option value="full">{t("apps.share.full")}</option>
               </select>
             </label>
             {isReshare ? (
               <div className="rounded-lg border p-3">
-                <p className="font-medium">发布目标（固定）</p>
+                <p className="font-medium">{t("apps.share.fixedTarget")}</p>
                 <p className="break-all text-muted-foreground">
                   {record.publishedRepoUrl}
                 </p>
@@ -184,7 +187,9 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
             ) : (
               <>
                 <label className="flex flex-col gap-1">
-                  <span className="font-medium">仓库名</span>
+                  <span className="font-medium">
+                    {t("apps.share.repositoryName")}
+                  </span>
                   <Input
                     onChange={(event) => setRepoName(event.target.value)}
                     value={repoName}
@@ -198,7 +203,7 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
                     }
                     type="checkbox"
                   />
-                  私有仓库
+                  {t("apps.share.privateRepository")}
                 </label>
               </>
             )}
@@ -217,7 +222,7 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
                 }}
                 variant="outline"
               >
-                返回
+                {t("common.back")}
               </Button>
             )}
             <Button
@@ -226,7 +231,11 @@ export function AppShareDialog({ record }: { record: AppRecord }) {
               }
               onClick={() => void (preview ? publish() : prepare())}
             >
-              {busy ? "处理中…" : preview ? "确认发布" : "生成预览"}
+              {busy
+                ? t("apps.share.processing")
+                : preview
+                  ? t("apps.share.confirmPublish")
+                  : t("apps.share.generatePreview")}
             </Button>
           </DialogFooter>
         )}

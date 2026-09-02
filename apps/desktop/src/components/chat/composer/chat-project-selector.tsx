@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, shared Project, UI Popover/Command/Button and lucide Folder/Plus/X
- * [OUTPUT]: Provides a replaceable ChatProject Menu, compositor, and a context-coded ChatProject Selector with a composerContextButtonClass
- * [POS]: The Project selects the only menu in the chat; The composer is triggered by a chip, the Chat is triggered by the name of the project in the guided language, and the branch interaction is coordinated by the ChatBranchSelector
+ * [INPUT]: Depends on React, shared Project, Chat composer i18n, UI Popover/Command/Button and lucide Folder/Plus/X
+ * [OUTPUT]: Provides a localized reusable ChatProjectMenu, compact ChatProjectSelector, and composerContextButtonClass
+ * [POS]: Canonical Project menu shared by composer and empty-chat entry points; branch interaction remains in ChatBranchSelector
  */
 
 import { useState, type ReactNode } from "react";
@@ -19,6 +19,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@ai-chat/ui/components/ui/popover";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 export const composerContextButtonClass =
   "h-8 rounded-full px-2 text-sm font-normal transition-colors hover:bg-muted-foreground/10";
@@ -46,6 +47,7 @@ export function ChatProjectMenu({
   side = "top",
   children,
 }: ProjectMenuProps & { children: ReactNode }) {
+  const { t } = useAppTranslation();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -97,7 +99,7 @@ export function ChatProjectMenu({
         sideOffset={10}
         avoidCollisions={false}
         className="w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl p-0"
-        aria-label="Project 选择器"
+        aria-label={t("chat.composer.project.selector")}
       >
         <Command
           shouldFilter={false}
@@ -109,12 +111,12 @@ export function ChatProjectMenu({
             value={query}
             onValueChange={setQuery}
             className="text-sm"
-            placeholder="Search projects"
+            placeholder={t("chat.composer.project.search")}
           />
           <CommandList className="max-h-52 px-1 pb-2">
             {visibleProjects.length === 0 ? (
               <p className="py-5 text-center text-muted-foreground text-sm">
-                No projects found
+                {t("chat.composer.project.empty")}
               </p>
             ) : (
               visibleProjects.map((project) => (
@@ -140,7 +142,7 @@ export function ChatProjectMenu({
               onClick={() => void createProject()}
             >
               <Plus className="size-4" />
-              New Project
+              {t("chat.composer.project.create")}
             </Button>
             <Button
               type="button"
@@ -150,7 +152,7 @@ export function ChatProjectMenu({
               onClick={() => select(null)}
             >
               <X className="size-4" />
-              Work in chat
+              {t("chat.composer.project.workInChat")}
             </Button>
           </div>
         </Command>
@@ -160,9 +162,11 @@ export function ChatProjectMenu({
 }
 
 export function ChatProjectSelector(props: ProjectMenuProps) {
+  const { t } = useAppTranslation();
   const selected = props.projects.find(
     (project) => project.id === props.selectedProjectId
   );
+  const selectedName = selected?.name ?? t("chat.composer.project.chat");
   return (
     <ChatProjectMenu {...props}>
       <Button
@@ -170,10 +174,12 @@ export function ChatProjectSelector(props: ProjectMenuProps) {
         size="lg"
         variant="ghost"
         className={`${composerContextButtonClass} max-w-56 gap-2 data-[state=open]:bg-muted-foreground/10`}
-        aria-label={`当前聊天 Project：${selected?.name ?? "Chat"}`}
+        aria-label={t("chat.composer.project.current", {
+          project: selectedName,
+        })}
       >
         <Folder className="size-4" />
-        <span className="truncate">{selected?.name ?? "Chat"}</span>
+        <span className="truncate">{selectedName}</span>
       </Button>
     </ChatProjectMenu>
   );

@@ -1,22 +1,30 @@
 /**
- * [INPUT]: Depends on Electron app packaging facts, the adapter selection matrix, a safe-quit port and the E2E receipt environment
- * [OUTPUT]: Provides createDesktopUpdateService: the one UpdateService this product ships, including its platform install policy
+ * [INPUT]: Depends on Electron app packaging facts, the adapter selection matrix, embedded release-key candidate policy, a durable App compatibility preflight, a safe-quit port and the E2E receipt environment
+ * [OUTPUT]: Provides createDesktopUpdateService: the one UpdateService this product ships, including fail-closed candidate compatibility and platform install policy
  * [POS]: main/update assembly; the composition root owns lifecycle order while this file owns what "the updater for this app" means
  */
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { App } from "electron";
+import type { AppGuiCompatibilitySupport } from "../../../shared/app-gui/support";
 import { createSelectedUpdateAdapter } from "./selection";
 import { UpdateService } from "./service";
+import { createGitHubCompatibilityLoader } from "./compatibility";
 
 const E2E_FALLBACK_VERSION = "0.1.1";
 
 export function createDesktopUpdateService(
   app: App,
   prepareSafeQuit: (reason: "update") => Promise<boolean>,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  applyCandidateCompatibility?: (
+    matrix: AppGuiCompatibilitySupport
+  ) => Promise<void>
 ) {
+  const resourcesPath = app.isPackaged
+    ? process.resourcesPath
+    : join(app.getAppPath(), "../..");
   return new UpdateService({
     adapter: createSelectedUpdateAdapter({
       isPackaged: app.isPackaged,
@@ -30,9 +38,17 @@ export function createDesktopUpdateService(
     platform: process.platform,
     /* 打包后 LICENSE 在 asar 之外的 resources；开发态回到仓库根，根
        LICENSE 是唯一来源，About 读的就是它。 */
-    resourcesPath: app.isPackaged
-      ? process.resourcesPath
-      : join(app.getAppPath(), "../.."),
+    resourcesPath,
+    ...(app.isPackaged
+      ? {
+          candidateCompatibility: {
+            load: createGitHubCompatibilityLoader(resourcesPath),
+            apply: applyCandidateCompatibility ?? (async () => {
+              throw new Error("GUI_COMPATIBILITY_PREFLIGHT_UNAVAILABLE");
+            }),
+          },
+        }
+      : {}),
     /* Windows 首版没有 Authenticode 签名，不开自动安装：只检查更新并
        导向 Release 页，由用户自己核对签名后安装。 */
     automaticInstall: process.platform !== "win32",

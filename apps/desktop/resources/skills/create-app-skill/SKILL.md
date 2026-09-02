@@ -44,99 +44,118 @@ Project Base as the source of truth.
 
 ## Custom GUI (only when the user asks for one)
 
-An App can ship an independent static Surface in `gui/`. The product serves it
-from the App's own gateway origin and exposes it as “应用” beside “数据”. It is
-not a Base View: do not call `base_set_view`. Do this only on request — Apps
-without `gui/` behave exactly as before.
+A GUI-only App has no App-owned runtime, process, job, scheduler, database, or
+network authority. It may still use consented Base reads/mutations, attachment
+reads, scoped workspace preview, preferences, and individually declared Host
+Actions. It is an independent “App” Surface, never a Base View.
 
-Rules that are not style preferences; break one and the page silently fails:
+Choose exactly one authoring profile:
 
-1. **Write plain static files into `gui/`.** No build step, no dev server, no
-   `node_modules`. HTML/CSS/JS/SVG only. Sub-directories are fine.
-2. **Never write inline `<script>`.** The GUI is served with
-   `script-src 'self'`, so inline script is blocked and the page renders blank
-   with no error the user can see. Put JS in a separate file and reference it:
-   `<script src="./app.js"></script>`. Inline `<style>` is allowed.
-3. **Only same-origin subresources.** No CDN links, remote fonts, remote
-   images, WebRTC, workers, or alternate data channel. Data URIs are allowed
-   for images.
-4. **Consume the fragment token once.** Read `baseToken` from `location.hash`,
-   keep it only in memory, then immediately remove the fragment with
-   `history.replaceState`. Never log, render, persist, or put it in a query.
-5. **Read the Base through the same-origin API:**
-   - `GET /_api/base/meta` → `{ name, columns, views, revision, rowCount,
-     baseInstanceId, capabilities: { rowInsert } }`
-   - `GET /_api/base/rows?limit=&cursor=` → `{ rows, nextCursor, revision, columns }`
-   Both require `Authorization: Bearer <token>`. Read every page until
-   `nextCursor` is absent, then re-read meta and require the same
-   `baseInstanceId + revision`; never infer EOF from a short page. `_api` is a
-   reserved prefix, so `gui/_api/...` files are unreachable.
-6. **Default to read-only.** New Base Apps must omit `gui.capabilities`. Only
-   request the exact needed subset of `row-insert`, `row-patch`, `row-delete`,
-   and `attachment-read`. The immutable generation still needs per-capability
-   user consent; runtime behavior follows `meta.capabilities`, never manifest
-   wishes.
-7. **Use the product SDK.** Load `<script defer src="/_sdk/base-api.js"></script>`
-   and call `window.BottegaBase`. Direct HTTP remains available for debugging,
-   but never copy a private SDK into each App. Meta mutation, import, and
-   attachment upload remain unavailable. The Host chooses the App's Base; no
-   body may contain ownerKey, projectId, appId, or a path.
-8. **Use CAS and stable ids.** POST one strict batch:
+### Compiled profile — default for new product UI
 
-   ```json
-   {
-     "expectedBaseInstanceId": "<meta.baseInstanceId>",
-     "expectedRevision": 12,
-     "rows": [{ "id": "<stable-random-id>", "values": { "name": "Example" } }]
-   }
-   ```
+Start from the closest production Starter (CRUD, Dashboard, Kanban, Gallery, or
+Editor), then compose `@bottega/app-blocks` and local Base UI primitives. Do not
+copy transport, token, polling, CAS, retry, or unknown-outcome state machines.
 
-   Freeze ids and values before the first POST. A retry or reconciliation must
-   reuse that exact batch. Only `expectedRevision` may be rebased after a full
-   consistent refresh; `expectedBaseInstanceId` never rebases. Editing creates
-   a new frozen batch with new ids.
-9. **Treat outcome, not status text, as authority.** A 200 response (including
-   `replayed=true`) is durable, so refresh but never POST again if refresh
-   fails. `revision_conflict` requires full refresh/reconcile; `row_id_conflict`
-   and `base_instance_changed` are hard conflicts. Respect 429 `Retry-After`
-   with a bounded retry. A disconnect or `outcome=unknown` freezes the batch
-   until all stable ids are reconciled. `outcome=not-committed` may return to an
-   editable error. Focus the first bounded `issues` entry without displaying
-   raw internal details.
-10. **Refresh by polling meta at most every few seconds.** Re-fetch all rows
-    only when instance/revision changed, abort hidden or superseded reads, and
-    stop polling when the Surface unloads.
-
-Minimal `gui/app.js` shape:
-
-```js
-const params = new URLSearchParams(location.hash.slice(1));
-const token = params.get("baseToken");
-history.replaceState(null, "", location.pathname + location.search);
-const api = (path) =>
-  fetch(path, { headers: { Authorization: `Bearer ${token}` } }).then((r) => {
-    if (!r.ok) throw new Error(`${path} ${r.status}`);
-    return r.json();
-  });
-
-let seen = -1;
-async function tick() {
-  const meta = await api("/_api/base/meta");
-  if (meta.revision === seen) return;
-  seen = meta.revision;
-  const rows = [];
-  let cursor = "";
-  do {
-    const page = await api(`/_api/base/rows?limit=200${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
-    rows.push(...page.rows);
-    cursor = page.nextCursor ?? "";
-  } while (cursor);
-  render(meta, rows);
-}
-tick();
-setInterval(() => tick().catch(console.error), 3000);
+```text
+app.json
+gui/
+├── components.json
+├── component-origins.json
+└── src/
+    ├── main.tsx
+    └── styles.css
 ```
 
-Use `gui/index.html` as the fixed entry. Internal pages and assets stay under
-`gui/`, and `index.html` owns any internal navigation. Without an explicit
-row-insert request, keep the example and generated manifest read-only.
+Minimal manifest fragment:
+
+```json
+{
+  "kind": "base",
+  "packageSchemaVersion": 2,
+  "gui": {
+    "capabilities": [],
+    "build": {
+      "preset": "bottega-react-v1",
+      "entry": "src/main.tsx",
+      "stylesheet": "src/styles.css",
+      "iconLibrary": "lucide"
+    }
+  }
+}
+```
+
+`bottega-react-v1` means React, TypeScript, Tailwind v4, shadcn Base UI source,
+and a Bottega-owned fixed compiler. App-controlled build commands, config,
+plugins, CLI execution, dev servers, package manifests, and `node_modules` are
+forbidden. Source owns `gui/src/main.tsx`; Bottega generates runtime
+`gui/index.html`, external scripts, CSS, transport, and receipt.
+
+- Import Base/environment/preferences through `@bottega/app-react`; never read
+  the fragment, raw globals, `/_sdk`, or `/_api`.
+- Prefer Bottega UI Blocks for loading, empty, error, permission, conflict,
+  unknown-outcome, forms, detail, attachment, export, and virtual tables.
+- Large data uses bounded Query V1 plus virtualization; never fetch, sort,
+  aggregate, or render the entire Base in the iframe.
+- Tailwind scans only `gui/src`. Use complete static class names. Put dynamic
+  values in CSS variables. `@plugin`, `@config`, `@source`, external URLs, and
+  executable config are rejected.
+- shadcn components are local, origin-attested source from the product snapshot
+  and use Base UI. Never run a component CLI inside the App. Portals remain in
+  the iframe and must preserve focus, Escape, keyboard order, and the root
+  stacking context.
+- Choose `lucide` or `phosphor`, import named icons statically, and give every
+  icon-only control an accessible name and a 44 px target.
+- The compiler runs a fixed strict semantic typecheck before emit. Treat its
+  stable finding code and relative source location as the repair contract.
+
+### Static profile — legacy/simple pages
+
+Static source supplies `gui/index.html` and uses only product-supported local
+resource MIME types. The Gateway MIME allowlist is the single transport truth;
+`validate_app` reports unsupported files. MIME support does not grant CSP use:
+WASM has a MIME type but dynamic code remains forbidden, and CSS external URLs,
+remote fonts/images/scripts, `blob:` images, workers, WebRTC, popups, downloads,
+and alternate channels remain blocked.
+
+- Scripts are external files under `gui/`; inline scripts fail validation.
+- Use the immutable product `/_sdk/base-api.js`. Consume neither the fragment
+  nor a copied/private SDK. The legacy SDK owns token cleanup and transport.
+- `gui/index.html` is the fixed entry. History Router fallback is not provided;
+  arbitrary SPA paths are blocked unless a fixed legal document exists.
+- Preserve stable row ids, Base instance/revision CAS, bounded retry, unknown
+  outcome reconciliation, and visibility-aware polling. Never infer pagination
+  completion from a short page.
+- External CSS URLs are rejected by validation and CSP. Same-origin assets are
+  still constrained by the product MIME and CSP policies.
+
+### Capabilities, state, and desktop actions
+
+Default to no privileged capability. Request only the exact subset of
+`row-insert`, `row-patch`, `row-delete`, `attachment-read`, or scoped
+`workspace-read`; effective runtime grants, never manifest wishes, are truth.
+
+Preferences store only low-risk UI state such as density, column widths,
+filters, recent view, collapsed panels, and dismissed onboarding. Define the
+strict manifest-owned schema/default digests, use SDK revision CAS, and stay
+under 64 KiB. Base rows, attachments, business state, pending writes, tokens,
+secrets, paths, and capability decisions belong elsewhere.
+
+`open-data` and `open-data-view` are built-in navigation. `compose-text` and
+`file.export` require their exact manifest Host Action and user consent. Native
+export receives bytes, MIME, digest, and a suggested basename; the Host chooses
+the path. Clipboard, external URL, print, notification, and attachment upload
+are not available in this preset. Never emulate them with popup, browser
+download, hidden file input, custom scheme, or direct IPC.
+
+If the request needs background sync, timers/jobs, OAuth or arbitrary external
+API access, a long-running database, heavy backend compute, or arbitrary file
+system access, report that GUI-only cannot provide it. Do not silently generate
+a `server` App or invent `backend`, `runtime`, `jobs`, or `scheduler` manifest
+fields.
+
+Before handing off, run `validate_app`, then use App Workbench across light and
+dark themes, locale/time zone, narrow viewport, reduced motion, keyboard-only,
+permission denied, loading, empty, 10,000-row, revision-conflict, and
+unknown-outcome fixtures. Errors must be zero; do not claim axe, visual, CSP,
+performance, or real-Electron evidence unless that check actually ran.

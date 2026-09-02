@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on PromptInput context, share Command/Dropdown/InputGroup/Select/Tooltip and the API to screen the browser
- * [OUTPUT]: Provides PromptInput menu, buttons, submits and`preferSubmit` Decide whether to submit or stop the main button, selector, pending card, tag page, and command control family
+ * [INPUT]: Depends on PromptInput context, host-injected UI text, shared Command/Dropdown/InputGroup/Select/Tooltip, and browser-screening APIs
+ * [OUTPUT]: Provides PromptInput menus, selectors, pending cards, and a localized `preferSubmit`-aware submit/stop control family
  * [POS]: ai-elements is a non-business visual control layer of PromptInput; Form transactions and provider status held by sibling files
  */
 
@@ -44,6 +44,7 @@ import {
   TooltipTrigger,
 } from "@ai-chat/ui/components/ui/tooltip";
 import { cn } from "@ai-chat/ui/lib/utils";
+import { useUiText } from "@ai-chat/ui/lib/ui-text";
 import type { ChatStatus } from "ai";
 import {
   ArrowUpIcon,
@@ -328,6 +329,8 @@ export const PromptInputSubmit = ({
   preferSubmit = false,
   ...props
 }: PromptInputSubmitProps) => {
+  const stopLabel = useUiText("stop", "Stop");
+  const submitLabel = useUiText("submit", "Submit");
   /* 按钮表达「此刻最该做的事」，不是「turn 处于什么状态」。有待发内容时
      状态图标一律没有话语权——否则用户打完字盯着一个方块，不知道回车会去
      哪里。停止只在没东西可发时独占这个位置。 */
@@ -354,7 +357,7 @@ export const PromptInputSubmit = ({
   );
   return (
     <InputGroupButton
-      aria-label={stopping ? "Stop" : "Submit"}
+      aria-label={stopping ? stopLabel : submitLabel}
       className={cn(className)}
       onClick={handleClick}
       size={size}

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on projected rows/columns, the canonical BaseCellContext, full relation options, TanStack Table, virtualization, grouping, summaries, editors, and mutations
+ * [INPUT]: Depends on projected rows/columns, the canonical BaseCellContext, full relation options, TanStack Table, virtualization, grouping, summaries, editors, InlineNameInput, and mutations
  * [OUTPUT]: Provides BaseTableView with canonical cell values, virtual rows, grouping/summaries, sorting/width/column controls, history, and optional edit actions
  * [POS]: The Base Table renderer; visible membership follows the named view while formula/relation evaluation follows the full snapshot context
  */
@@ -55,8 +55,8 @@ import {
   baseActionButtonClass,
   baseDestructiveActionButtonClass,
   baseMenuItemHoverClass,
-  InlineNameInput,
 } from "../../chrome/base-toolbar";
+import { InlineNameInput } from "../../chrome/inline-name-input";
 import { BaseTableSummaryCells } from "./base-table-summary";
 import { ColumnResizeHandle } from "./table-column-resize";
 
@@ -279,7 +279,10 @@ export function BaseTableView({
       {
         kind: "group" as const,
         id: lane.id,
-        label: lane.label,
+        label:
+          lane.unassigned
+            ? t("bases.group.unassigned")
+            : lane.label,
         count: lane.rows.length,
       },
       ...lane.rows.flatMap((laneRow) => {
@@ -292,7 +295,7 @@ export function BaseTableView({
         rows: lane.rows,
       },
     ]);
-  }, [context, groupColumn, rows, visibleRows]);
+  }, [context, groupColumn, rows, t, visibleRows]);
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
@@ -389,7 +392,10 @@ export function BaseTableView({
               >
                 {renameColumnId === header.id && onRenameColumn ? (
                   <InlineNameInput
-                    ariaLabel={`Rename ${sourceColumn?.name ?? "column"}`}
+                    ariaLabel={t("bases.table.renameColumnAria", {
+                      column:
+                        sourceColumn?.name ?? t("bases.table.unnamedColumn"),
+                    })}
                     autoFocus
                     className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent px-2 text-xs shadow-none focus-visible:ring-0"
                     name={sourceColumn?.name ?? ""}
@@ -607,11 +613,13 @@ export function BaseTableView({
         </div>
         {!rows.length && (
           <div className="p-6 text-center text-muted-foreground text-sm">
-            {!columns.length
-              ? "Add a column, then create your first row."
-              : onPatch || onDelete
-                ? "No rows yet. Add one to start."
-                : "No rows yet."}
+            {t(
+              !columns.length
+                ? "bases.table.emptyNoColumns"
+                : onPatch || onDelete
+                  ? "bases.table.emptyEditable"
+                  : "bases.table.emptyReadOnly"
+            )}
           </div>
         )}
       </SlimScroller>

@@ -53,7 +53,7 @@ export async function mutateRows(input: {
   const release = input.admission.acquire(input.appId);
   if (!release) {
     input.response.setHeader("retry-after", "1");
-    respondMappedError(input.response, apiError(429, "mutation_busy", "Base mutation 正忙"));
+    respondMappedError(input.response, apiError(429, "mutation_busy", "Base mutation 正忙"), "write");
     return;
   }
   try {
@@ -99,7 +99,7 @@ export async function mutateRows(input: {
           : await input.port.deleteRows(common as Parameters<GuiBasePort["deleteRows"]>[0]);
     respondJson(input.response, 200, result);
   } catch (cause) {
-    respondMappedError(input.response, cause);
+    respondMappedError(input.response, cause, "write");
   } finally {
     release();
   }

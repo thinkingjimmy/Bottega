@@ -101,8 +101,10 @@ export function ProjectSettingsView() {
         icon={<Settings />}
         rail={
           /* h-10 与页头等高：两行 40px 读成一个页头块，而不是页头下面吊了
-             一条窄带。px-6 落在列表上（横带整幅由 PageShell 给）。 */
-          <TabsList className="w-fit px-6 group-data-horizontal/tabs:h-10" variant="line">
+             一条窄带。横带整幅由 PageShell 给，内缩因此落在列表上：
+             pl-3 = SettingsCanvas 的 24 减去触发器自带的 px-3，对齐的是页签
+             的字而不是它的盒子。与 App 设置栏那条页签条同源，两处同改。 */
+          <TabsList className="w-fit pl-3 pr-6 group-data-horizontal/tabs:h-10" variant="line">
             {PROJECT_TABS.map((value) => (
               <TabsTrigger className="cursor-pointer px-3" key={value} value={value}>
                 {t(`projectSettings.tabs.${value}`)}

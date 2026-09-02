@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React lazy/Suspense, streamdown CustomRenderer is compatible with the same directory ChartSkeleton
- * [OUTPUT]: Provides CHAT_FENCE_RENDERERS and ChartOverflowNotice
- * [POS]: The components/charts are geared towards the border between the chat and the front of the packagingChart check and viewport can be accessed from here via dynamic import
+ * [INPUT]: Depends on React lazy/Suspense, Streamdown renderer contracts, i18n, and ChartSkeleton
+ * [OUTPUT]: Provides CHAT_FENCE_RENDERERS plus the localized ChartOverflowNotice
+ * [POS]: Lazy registry boundary for components/charts; validation and viewport code load only when a chart fence is encountered
  */
 
 import { lazy, Suspense } from "react";
@@ -10,6 +10,7 @@ import type {
   CustomRendererProps,
 } from "@ai-chat/ui/components/ai-elements/message/renderer-context";
 import { ChartSkeleton } from "./chart-fence-skeleton";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 /**
  * 注册表要在挂载 Provider 时就位，正文里出不出现 chart 围栏却是运行期才
@@ -29,9 +30,10 @@ function ChartFence(props: CustomRendererProps) {
 }
 
 export function ChartOverflowNotice() {
+  const { t } = useAppTranslation();
   return (
     <div className="my-2 rounded-lg border bg-muted/30 p-3 text-muted-foreground text-sm">
-      本条消息包含过多图表，其余图表已折叠。
+      {t("bases.chart.render.overflow")}
     </div>
   );
 }

@@ -1,10 +1,12 @@
 /**
- * [INPUT]: Depends on the stable field of the shared BaseApp Manifest
- * [OUTPUT]: Provides Base App's app.json/README/AGENTS/CLAUDE skeleton and create-skill fixed tips
- * [POS]: The Save as App authentication template for the apps module; The product only writes the skeleton, and the business protocol is complemented by a visible create-skill turn
+ * [INPUT]: Depends on the shared BaseAppManifest contract plus the shared locale and translation runtime
+ * [OUTPUT]: Provides localized Base App manifests, app.json/README/AGENTS/CLAUDE scaffolds, and the create-skill prompt
+ * [POS]: The Save as App template boundary; persisted user-facing manifest copy is localized while authored scaffold language remains an explicit product decision
  */
 
 import type { BaseAppManifest } from "../../../shared/apps-ipc";
+import type { AppLocale } from "../../../shared/i18n/locale";
+import { translate } from "../../../shared/i18n/runtime";
 
 export const APP_SKILL_PLACEHOLDER = "<!-- create-app-skill:pending -->";
 /** README 骨架占位句；share 前置检查据此判断「介绍尚未完善」，两处必须同源。 */
@@ -12,13 +14,14 @@ export const README_SKELETON_HINT = "请在这里补充一句清晰的用途说�
 
 export function baseAppManifest(
   name: string,
-  icon: string
+  icon: string,
+  locale: AppLocale = "en"
 ): BaseAppManifest {
   return {
     kind: "base",
     packageSchemaVersion: 2,
     name,
-    description: `${name} 的共享 Base App`,
+    description: translate(locale, "apps.saveAs.generatedDescription", { name }),
     icon,
     requirements: null,
   };

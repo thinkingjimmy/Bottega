@@ -108,7 +108,10 @@ export function BaseListView({
         {
           kind: "group" as const,
           id: lane.id,
-          label: lane.label,
+          label:
+            lane.unassigned
+              ? t("bases.group.unassigned")
+              : lane.label,
           count: lane.rows.length,
           tone: selectOptionTone(groupColumn, lane.id),
           collapsed: Boolean(collapsed[lane.id]),
@@ -117,7 +120,7 @@ export function BaseListView({
           ? []
           : lane.rows.map((row) => ({ kind: "row" as const, row }))),
       ]);
-  }, [collapsed, context, groupColumn, rows]);
+  }, [collapsed, context, groupColumn, rows, t]);
   // 估值只决定首帧滚动条长度，measureElement 落地后即被真值取代；
   // 读态行恒为 ROW_HEIGHT，只有编辑态展开才需要重测。
   // eslint-disable-next-line react-hooks/incompatible-library -- 10k 行必须使用 TanStack 窗口化
@@ -185,7 +188,9 @@ export function BaseListView({
                 </button>
                 {onCreateRow && groupColumn && (
                   <Button
-                    aria-label={`Add row to ${entry.label}`}
+                    aria-label={t("bases.list.addRowTo", {
+                      group: entry.label,
+                    })}
                     className="size-6 shrink-0 cursor-pointer text-muted-foreground"
                     disabled={busy}
                     onClick={() =>

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends only on route and overlay string values
- * [OUTPUT]: Provides canonical settings paths, overlay/destination types, exit routing, and the single active-section projection
- * [POS]: Single renderer authority for Settings navigation and active-section state, including the Extensions-to-Packages alias
+ * [INPUT]: Depends only on route, overlay, and archived-item locator string values
+ * [OUTPUT]: Provides canonical settings paths, archived-item locator keys/URLs, overlay/destination types, exit routing, and the single active-section projection
+ * [POS]: Single renderer authority for Settings navigation, archive deep links, and active-section state, including the Extensions-to-Packages alias
  */
 
 export const SETTINGS_ROUTE_PREFIX = "/settings/";
@@ -12,6 +12,25 @@ export const ARCHIVE_SETTINGS_PATH = "/settings/archive";
 export const TOOLS_SETTINGS_PATH = "/settings/tools";
 export const SKILLS_SETTINGS_PATH = "/settings/skills";
 export const EXTENSIONS_SETTINGS_PATH = "/settings/extensions";
+
+/** Sidebar 与 Settings 共用的归档定位身份；kind 进入 key，来源不会碰撞。 */
+export type ArchivedSettingsLocator = {
+  kind: "chat" | "project";
+  id: string;
+};
+
+export const archiveSettingsTargetKey = (
+  target: ArchivedSettingsLocator
+) => `${target.kind}:${target.id}`;
+
+export const archiveSettingsTargetPath = (
+  target: ArchivedSettingsLocator
+) => {
+  const search = new URLSearchParams({
+    target: archiveSettingsTargetKey(target),
+  });
+  return `${ARCHIVE_SETTINGS_PATH}?${search}`;
+};
 
 /** 覆盖层能承载的档位：盖在当前路由之上，关掉即回到原地。 */
 export type SettingsOverlaySection =

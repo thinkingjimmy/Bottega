@@ -1,18 +1,10 @@
 /**
- * [INPUT]: Depends on Electron app/session, Node http/fs/net/path/crypto, http-proxy, generation bindings, and local ReactGrab assets
- * [OUTPUT]: Provides AppGateway with fixed-origin static/proxy/Base GUI hosting, generation leases, self-only generic egress CSP, nonce-bound static injection, and pre-publication worker/cache cleanup
+ * [INPUT]: Depends on Electron app/session, Node http/fs/net/path/crypto, http-proxy, generation bindings, the frozen legacy GUI SDK digest, and local ReactGrab assets
+ * [OUTPUT]: Provides AppGateway with fixed-origin static/proxy/Base GUI hosting, digest-verified in-memory legacy SDK serving, explicit TCP connection custody at shutdown, finally-released static generation leases, transport-bound proxy/WS leases, per-preview opaque origins, self-only generic egress CSP, nonce-bound static injection, and pre-publication worker/cache cleanup
  * [POS]: The apps module network boundary; one route authority owns containment, CSP composition, lifecycle storage reset, proxying, and request admission
  */
 
-import { createReadStream } from "node:fs";
-import { randomBytes } from "node:crypto";
-import {
-  readFile,
-  realpath,
-  rename,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { createServer, type Server as NetServer } from "node:net";
 import {
   createServer as createHttpServer,
@@ -20,21 +12,15 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import {
-  extname,
-  join,
-  normalize,
-  resolve,
-} from "node:path";
-import { pipeline } from "node:stream/promises";
+import { join } from "node:path";
 import { app, session } from "electron";
 import httpProxy from "http-proxy";
 import { asError } from "../errors";
 import {
+  GatewayConnectionCustody,
   GatewayRequestLeaseRegistry,
   type GatewayGenerationBinding,
 } from "./gateway-request-leases";
-import { isContained } from "./support";
 import type { BaseGuiLiveBinding } from "../../../shared/apps-ipc";
 import type { WorkspacePreviewHandler } from "./base-gui/workspace-preview";
 import {
@@ -46,30 +32,25 @@ import {
   gatewayRouteKey,
   isApiPath,
   isSdkPath,
-  MIME_TYPES,
   type GatewayHostIdentity,
 } from "./base-gui/gateway-policy";
+import {
+  serveGatewayFile,
+  type GatewayBaseGuiFileRoute,
+  type GatewayStaticFileRoute,
+} from "./base-gui/gateway-file-server";
+import { readVerifiedLegacyBaseGuiSdk } from "./gui-build/metadata";
 
 const DEFAULT_PORT = 4700;
 
-type StaticRoute = {
-  type: "static";
-  root: string;
-  rootReal: string;
-};
+type StaticRoute = GatewayStaticFileRoute;
 
 /**
  * base 型 App 的 `gui/` 独立路由类型：与 static 共用 containment 解析，
  * 但独占 `_api` 截获与禁外联 CSP，且**绝不注入 ReactGrab**——注入的 inline
  * script 与 `script-src 'self'` 天然互斥，同用一型必然自相矛盾。
  */
-type BaseGuiRoute = {
-  type: "base-gui";
-  surfaceId: string;
-  root: string;
-  rootReal: string;
-  binding: BaseGuiLiveBinding;
-};
+type BaseGuiRoute = GatewayBaseGuiFileRoute;
 
 type ProxyRoute = {
   type: "proxy";
@@ -103,6 +84,7 @@ export class AppGateway {
   private readonly routes = new Map<string, GatewayRoute>();
   private readonly settingsPath: string;
   private readonly proxy = httpProxy.createProxyServer({ ws: true });
+  private readonly connections = new GatewayConnectionCustody();
   private server: Server | null = null;
   private port = DEFAULT_PORT;
   private reactGrabScript = "";
@@ -110,10 +92,14 @@ export class AppGateway {
   private reactGrabEnabled = false;
   private baseGuiApi: BaseGuiApiHandler | null = null;
   private workspacePreview: WorkspacePreviewHandler | null = null;
+  private legacyGuiSdk: Promise<Buffer | null> | null = null;
   readonly requestLeases = new GatewayRequestLeaseRegistry();
-  /* 窄解析器：gateway 不认识 AppStore，只问「这个 App 此刻的 active 代是什么」。 */
-  private activeBinding: (appId: string) => GatewayGenerationBinding | null =
-    () => null;
+  /* Gateway 不认识 AppStore，只问某条 exact generation binding 是否仍可路由。
+     promotion 后 active 与 bounded draining surface 可并存，绝不透明转代。 */
+  private isRoutableBinding: (
+    appId: string,
+    binding: GatewayGenerationBinding
+  ) => boolean = () => false;
   private validateSurfaceLease: (
     surfaceLeaseId: string
   ) => Promise<void> = async () => {
@@ -175,10 +161,7 @@ export class AppGateway {
       this.reactGrabScript = "";
       this.reactGrabStyle = "";
       this.reactGrabEnabled = false;
-      const error = asError(cause);
-      console.warn(
-        `[apps] react-grab 资产不可用，组件选取静默降级：${error.message}`
-      );
+      console.warn(`[apps] react-grab 资产不可用，组件选取静默降级：${asError(cause).message}`);
     }
     const saved = await this.readSettings();
     const candidates = saved
@@ -208,9 +191,7 @@ export class AppGateway {
     const server = this.server;
     this.server = null;
     if (!server) return;
-    await new Promise<void>((resolvePromise, reject) => {
-      server.close((error) => (error ? reject(error) : resolvePromise()));
-    });
+    await this.connections.close(server);
   }
 
   getOrigin(appId: string) {
@@ -267,9 +248,28 @@ export class AppGateway {
   }
 
   configureGenerationResolver(
+    resolver: (appId: string, binding: GatewayGenerationBinding) => boolean
+  ): void;
+  configureGenerationResolver(
     resolver: (appId: string) => GatewayGenerationBinding | null
+  ): void;
+  configureGenerationResolver(
+    resolver:
+      | ((appId: string, binding: GatewayGenerationBinding) => boolean)
+      | ((appId: string) => GatewayGenerationBinding | null)
   ) {
-    this.activeBinding = resolver;
+    this.isRoutableBinding = (appId, binding) => {
+      const result = (
+        resolver as (
+          appId: string,
+          binding: GatewayGenerationBinding
+        ) => boolean | GatewayGenerationBinding | null
+      )(appId, binding);
+      return typeof result === "boolean"
+        ? result
+        : result?.generationId === binding.generationId &&
+            result.lifecycleRevision === binding.lifecycleRevision;
+    };
   }
 
   configureBaseGuiSurfaceValidator(
@@ -347,10 +347,7 @@ export class AppGateway {
   }
 
   clearSurfaceWorkerState(appId: string, surfaceId: string) {
-    return this.clearWorkerStorage(
-      this.getSurfaceOrigin(appId, surfaceId),
-      WORKER_STORAGES
-    );
+    return this.clearWorkerStorage(this.getSurfaceOrigin(appId, surfaceId), WORKER_STORAGES);
   }
 
   async registerProxy(
@@ -400,6 +397,7 @@ export class AppGateway {
         this.handleRequestFailure(response, cause)
       );
     });
+    server.on("connection", (connection) => this.connections.track(connection));
     server.on("upgrade", (request, socket, head) => {
       const identity = this.identityFromRequest(request);
       const appId = identity?.appId;
@@ -410,7 +408,7 @@ export class AppGateway {
       }
       /* WS 是最长寿的那一类连接：它必须与 HTTP 走同一道 generation 门，
          并且 lease 活到 socket 真的关闭为止，drain 才等得到零。 */
-      const leaseId = this.admitRequest(appId, route);
+      const leaseId = this.admitRequest(appId, route, request);
       if (!leaseId) {
         socket.destroy();
         return;
@@ -450,6 +448,17 @@ export class AppGateway {
     const identity = this.identityFromRequest(request);
     const appId = identity?.appId;
     const route = identity ? this.routeFor(identity) : undefined;
+    if (
+      appId &&
+      identity?.surfaceId &&
+      !route &&
+      await this.serveOpaqueWorkspacePreview(
+        appId,
+        identity.surfaceId,
+        request,
+        response
+      )
+    ) return;
     if (!appId || !route) {
       this.respond(response, 404, "App 未运行或 Host 无效");
       return;
@@ -479,7 +488,7 @@ export class AppGateway {
     }
     /* 每请求复核，而不是只在签发 origin 时看一眼：origin 跨代不变，
        长寿命 iframe 会带着旧代的 URL 一直敲门（风险 11）。 */
-    const leaseId = this.admitRequest(appId, route);
+    const leaseId = this.admitRequest(appId, route, request);
     if (!leaseId) {
       const pathname = route.type === "base-gui" ? decodePathname(request) : null;
       if (pathname && (isApiPath(pathname) || isSdkPath(pathname))) {
@@ -554,9 +563,9 @@ export class AppGateway {
         return;
       }
     }
-    response.once("close", release);
-    response.once("finish", release);
     if (route.type === "proxy") {
+      response.once("close", release);
+      response.once("finish", release);
       this.proxy.web(
         request,
         response,
@@ -579,7 +588,24 @@ export class AppGateway {
       this.respond(response, 400, "请求路径无效");
       return;
     }
-    await this.serveFile(route, pathname, request, response);
+    try {
+      await serveGatewayFile({
+        route,
+        pathname,
+        request,
+        response,
+        baseGuiCsp: route.type === "base-gui"
+          ? `${BASE_GUI_CSP}; frame-src http://*.${route.binding.appId}.localhost:${this.port}`
+          : BASE_GUI_CSP,
+        reactGrab: {
+          enabled: this.reactGrabEnabled,
+          script: this.reactGrabScript,
+          style: this.reactGrabStyle,
+        },
+      });
+    } finally {
+      release();
+    }
   }
 
   private async serveBaseGuiSdk(
@@ -599,91 +625,27 @@ export class AppGateway {
       this.respond(response, 405, "请求方法不受支持");
       return;
     }
-    const root = app.isPackaged
-      ? join(process.resourcesPath, "gui-sdk")
-      : join(app.getAppPath(), "resources", "gui-sdk");
-    try {
-      const body = await readFile(join(root, "base-api.js"));
-      response.statusCode = 200;
-      response.setHeader("content-type", "text/javascript; charset=utf-8");
-      response.setHeader("content-length", String(body.byteLength));
-      response.end(method === "HEAD" ? undefined : body);
-    } catch {
+    const body = await this.loadLegacyGuiSdk();
+    if (!body) {
       this.respond(response, 503, "GUI SDK 资源不可用");
-    }
-  }
-
-  private async serveFile(
-    route: StaticRoute | BaseGuiRoute,
-    pathname: string,
-    request: IncomingMessage,
-    response: ServerResponse
-  ) {
-    const lexical = resolve(route.root, `.${pathname}`);
-    if (!isContained(normalize(route.root), lexical)) {
-      this.respond(response, 403, "拒绝访问 App 目录之外的路径");
       return;
     }
-
-    let target = lexical;
-    try {
-      const info = await stat(target);
-      if (info.isDirectory()) target = join(target, "index.html");
-      target = await realpath(target);
-      if (!isContained(route.rootReal, target)) {
-        this.respond(response, 403, "拒绝访问符号链接指向的外部路径");
-        return;
-      }
-    } catch {
-      target = await realpath(join(route.root, "index.html")).catch(() => "");
-      if (!target || !isContained(route.rootReal, target)) {
-        this.respond(response, 404, "静态资源不存在");
-        return;
-      }
-    }
-
-    const contentType =
-      MIME_TYPES[extname(target).toLowerCase()] ?? "application/octet-stream";
     response.statusCode = 200;
-    response.setHeader("content-type", contentType);
-    response.setHeader("cache-control", "no-store");
-    let reactGrabNonce: string | undefined;
-    if (route.type === "base-gui") {
-      response.setHeader("content-security-policy", BASE_GUI_CSP);
-    } else {
-      reactGrabNonce = this.reactGrabEnabled
-        ? randomBytes(18).toString("base64url")
-        : undefined;
-      response.setHeader(
-        "content-security-policy",
-        appContentSecurityPolicy(reactGrabNonce)
-      );
-    }
-    if (request.method === "HEAD") {
-      response.end();
-      return;
-    }
-    if (contentType.startsWith("text/html")) {
-      const html = await readFile(target, "utf8");
-      response.end(
-        route.type === "base-gui"
-          ? html
-          : this.injectReactGrab(html, reactGrabNonce)
-      );
-      return;
-    }
-    await pipeline(createReadStream(target), response);
+    response.setHeader("content-type", "text/javascript; charset=utf-8");
+    response.setHeader("content-length", String(body.byteLength));
+    response.end(method === "HEAD" ? undefined : body);
   }
 
-  private injectReactGrab(html: string, nonce?: string) {
-    if (!this.reactGrabEnabled) return html;
-    const style = this.reactGrabStyle.replace(/<\/style/gi, "<\\/style");
-    const script = this.reactGrabScript.replace(/<\/script/gi, "<\\/script");
-    const nonceAttribute = nonce ? ` nonce="${nonce}"` : "";
-    const injection = `<style id="ai-chat-react-grab-style">${style}</style><script${nonceAttribute}>${script}</script>`;
-    return html.includes("</head>")
-      ? html.replace("</head>", `${injection}</head>`)
-      : `${injection}${html}`;
+  /* PRD D31/§7.5：legacy SDK 字节先过冻结的产品摘要，再常驻内存。逐请求读盘与
+     「读到什么就发什么」是同一个缺陷的两面，验证一次后两者一起消失。 */
+  private loadLegacyGuiSdk() {
+    this.legacyGuiSdk ??= readVerifiedLegacyBaseGuiSdk(app.isPackaged
+      ? join(process.resourcesPath, "gui-sdk")
+      : join(app.getAppPath(), "resources", "gui-sdk")).catch(() => null).then((body) => {
+        if (!body) console.warn("[apps] GUI SDK 字节未通过冻结产品摘要校验，legacy Base GUI 已断供");
+        return body;
+      });
+    return this.legacyGuiSdk;
   }
 
   private identityFromRequest(request: IncomingMessage) {
@@ -695,18 +657,54 @@ export class AppGateway {
     return this.routes.get(gatewayRouteKey(identity));
   }
 
+  private async serveOpaqueWorkspacePreview(
+    appId: string,
+    handle: string,
+    request: IncomingMessage,
+    response: ServerResponse
+  ) {
+    const preview = this.workspacePreview;
+    const binding = preview?.resolveOpaqueOrigin(appId, handle);
+    if (!preview || !binding?.appSurfaceLeaseId) return false;
+    try {
+      await this.validateSurfaceLease(binding.appSurfaceLeaseId);
+    } catch (cause) {
+      const status = Number((cause as { status?: unknown }).status);
+      this.respondBaseGuiError(
+        response,
+        status === 410 ? 410 : 401,
+        status === 410 ? "surface_gone" : "surface_invalid",
+        status === 410 ? "App surface 已关闭" : "App surface 无效"
+      );
+      return true;
+    }
+    if (!this.isRoutableBinding(appId, binding)) {
+      this.respondBaseGuiError(
+        response,
+        410,
+        "generation_stale",
+        "App 版本已切换或已停止，请重新打开"
+      );
+      return true;
+    }
+    const leaseId = this.requestLeases.acquire(appId, binding, requestEvidence(request));
+    if (!leaseId) {
+      this.respondBaseGuiError(response, 409, "cutover_admission_closed", "App 正在切换版本");
+      return true;
+    }
+    try {
+      await preview.serveOpaqueOrigin(appId, handle, request, response);
+    } finally {
+      this.requestLeases.release(leaseId);
+    }
+    return true;
+  }
+
   /* 放行三条件：admission 未关、route 仍在、且它绑定的那一代仍是 active。
      任一不成立都不放行——「透明转到新代」正是这里禁止的事。 */
-  private admitRequest(appId: string, route: GatewayRoute) {
-    const active = this.activeBinding(appId);
-    if (
-      !active ||
-      active.generationId !== route.binding.generationId ||
-      active.lifecycleRevision !== route.binding.lifecycleRevision
-    ) {
-      return null;
-    }
-    return this.requestLeases.acquire(appId, route.binding);
+  private admitRequest(appId: string, route: GatewayRoute, request: IncomingMessage) {
+    if (!this.isRoutableBinding(appId, route.binding)) return null;
+    return this.requestLeases.acquire(appId, route.binding, requestEvidence(request));
   }
 
   private routeFromRequest(request: IncomingMessage) {
@@ -731,11 +729,7 @@ export class AppGateway {
     response.statusCode = status;
     response.setHeader("content-type", "application/json; charset=utf-8");
     response.setHeader("cache-control", "no-store");
-    response.end(
-      JSON.stringify({
-        error: { code, message, outcome: "not-committed" },
-      })
-    );
+    response.end(JSON.stringify({ error: { code, message, outcome: "not-committed" } }));
   }
 
   private handleRequestFailure(response: ServerResponse, cause: unknown) {
@@ -795,4 +789,8 @@ export class AppGateway {
     });
     await rename(temporary, this.settingsPath);
   }
+}
+
+function requestEvidence(request: IncomingMessage) {
+  return `${request.method ?? "GET"} ${request.url ?? "/"}`;
 }
