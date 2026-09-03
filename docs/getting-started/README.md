@@ -40,15 +40,17 @@ Every release publishes installers for three platforms on the [Releases page](ht
 | --- | --- | --- |
 | macOS (Apple silicon) | `Bottega-<version>-arm64.dmg` or `-arm64-mac.zip` | Primary target. Apple silicon only. |
 | Windows (x64) | `Bottega-<version>-windows-x64.exe` | NSIS installer; choose the install directory during setup. |
-| Linux (x64) | `Bottega-<version>-linux-x64.AppImage` | `chmod +x` the file, then run it. |
+| Linux (x64) | `Bottega-<version>-linux-x86_64.AppImage` | `chmod +x` the file, then run it. |
 
-These builds are **not code-signed**, so each desktop platform asks once for confirmation.
+These builds are **not code-signed**, so each desktop platform needs a one-time step.
 
-**macOS.** Gatekeeper refuses to open an unsigned application on a double-click. Either right-click the app in `Applications` and choose **Open**, then confirm in the dialog, or clear the quarantine attribute once from a terminal:
+**macOS.** Gatekeeper blocks an unsigned download and reports that Bottega "is damaged and can't be opened". The file is fine; the quarantine flag macOS attaches to downloads is what triggers the message. After copying Bottega into `Applications`, clear the flag once from Terminal, then launch normally:
 
 ```bash
-xattr -d com.apple.quarantine /Applications/Bottega.app
+xattr -rd com.apple.quarantine /Applications/Bottega.app
 ```
+
+The right-click **Open** and **Open Anyway** shortcuts do not apply to this build; the Terminal command is the supported path until signed releases ship.
 
 **Windows.** SmartScreen may show a "Windows protected your PC" warning for an unrecognized publisher. Choose **More info**, then **Run anyway**.
 

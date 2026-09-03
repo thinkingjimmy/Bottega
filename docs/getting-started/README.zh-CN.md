@@ -40,15 +40,17 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 | --- | --- | --- |
 | macOS（Apple 芯片） | `Bottega-<version>-arm64.dmg` 或 `-arm64-mac.zip` | 主要目标平台，仅支持 Apple 芯片。 |
 | Windows（x64） | `Bottega-<version>-windows-x64.exe` | NSIS 安装包，安装过程中可选择目录。 |
-| Linux（x64） | `Bottega-<version>-linux-x64.AppImage` | 先 `chmod +x`，然后直接运行。 |
+| Linux（x64） | `Bottega-<version>-linux-x86_64.AppImage` | 先 `chmod +x`，然后直接运行。 |
 
-这批产物**未做代码签名**，因此每个桌面平台都会要求确认一次。
+这批产物**未做代码签名**，因此每个桌面平台都需要一次性的额外步骤。
 
-**macOS。** Gatekeeper 不允许双击打开未签名应用。可以在「应用程序」里右键点击 Bottega 选择**打开**，在弹窗中确认；也可以在终端里一次性清除隔离属性：
+**macOS。** Gatekeeper 会拦截未签名的下载文件，提示 Bottega「已损坏，无法打开」。文件本身没有问题，触发提示的是 macOS 给下载文件加的隔离标记。把 Bottega 拖入「应用程序」后，在终端里一次性清除该标记，之后正常双击启动即可：
 
 ```bash
-xattr -d com.apple.quarantine /Applications/Bottega.app
+xattr -rd com.apple.quarantine /Applications/Bottega.app
 ```
+
+右键**打开**和「仍要打开」对这批构建不适用；在签名版本发布前，终端命令是唯一受支持的方式。
 
 **Windows。** SmartScreen 可能提示「Windows 已保护你的电脑」，原因是发布者未被识别。点击**更多信息**，再点击**仍要运行**。
 
