@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on message action primitives, icons, localized transcript/revision copy, formatting, clipboard, optional revision eligibility, and request-bound Memory receipts
- * [OUTPUT]: Provides localized copy/revision actions followed by time and an optional icon-free Memory status
+ * [INPUT]: Depends on message action primitives, icons, localized transcript/revision/fork copy, formatting, clipboard, optional mutation eligibility, and request-bound Memory receipts
+ * [OUTPUT]: Provides localized copy/edit/fork actions followed by time and an optional icon-free Memory status
  * [POS]: Shared action row for user and assistant transcript messages
  */
 
 import { useEffect, useRef, useState } from "react";
-import { CheckIcon, CopyIcon, PencilIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, GitForkIcon, PencilIcon } from "lucide-react";
 import {
   MessageAction,
   MessageActions,
@@ -24,6 +24,8 @@ type ChatMessageActionsProps = {
   contextReceipt?: TurnContextReceipt;
   onEdit?: () => void;
   editDisabledReason?: string;
+  onFork?: () => void;
+  forkDisabledReason?: string;
 };
 
 export function ChatMessageActions({
@@ -33,6 +35,8 @@ export function ChatMessageActions({
   contextReceipt,
   onEdit,
   editDisabledReason,
+  onFork,
+  forkDisabledReason,
 }: ChatMessageActionsProps) {
   const { t } = useAppTranslation();
   const [copied, setCopied] = useState(false);
@@ -86,6 +90,17 @@ export function ChatMessageActions({
           onClick={onEdit}
         >
           <PencilIcon />
+        </MessageAction>
+      )}
+      {(onFork || forkDisabledReason) && (
+        <MessageAction
+          className={forkDisabledReason ? "cursor-not-allowed opacity-50" : "cursor-pointer"}
+          disabled={Boolean(forkDisabledReason)}
+          label={forkDisabledReason ?? t("chat.fork.action")}
+          tooltip={forkDisabledReason ?? t("chat.fork.action")}
+          onClick={onFork}
+        >
+          <GitForkIcon />
         </MessageAction>
       )}
       <span className="text-muted-foreground text-xs">

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, shared Git branch agreement, Chat composer i18n, UI Popover/Command/Dialog/Input/Button and lucide icons
- * [OUTPUT]: Provides localized ChatBranchSelector with complete branch refresh/search/checkout/create status
- * [POS]: Git branch boundary for chat/composer; consumes injected operations and never reaches preload IPC directly
+ * [INPUT]: Depends on React, shared Project Git branch agreement, Chat composer i18n, UI Popover/Command/Dialog/Input/Button and lucide icons
+ * [OUTPUT]: Provides localized ChatBranchSelector with complete Project branch refresh/search/checkout/create controls
+ * [POS]: Git branch boundary for chat/composer; consumes injected Project-scoped operations, while managed-worktree Chats render their read-only chip in chat-managed-worktree-row
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

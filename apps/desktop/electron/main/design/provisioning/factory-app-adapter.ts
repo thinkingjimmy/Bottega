@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import { defaultAppGrantRequest } from "../../../../shared/apps-ipc";
 import type { AppRecord } from "../../../../shared/apps-ipc";
-import type { AppStore } from "../../apps/app-store";
+import type { AppStore } from "../../apps/store/app-store";
 import type { AppGrantAuthority } from "../../apps/attachments/grant-authority";
 import type { BaseGuiGrantStore } from "../../apps/base-gui/grant-store";
 import type { BaseAppImporter } from "../../apps/install/import-base-app";

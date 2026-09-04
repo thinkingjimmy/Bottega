@@ -15,7 +15,7 @@ import {
   type CustodyLaunchRequest,
   type CustodyRuntimeOptions,
 } from "../../custody/attachment";
-import type { AppProcessCustodyJournal } from "../process-custody-journal";
+import type { AppProcessCustodyJournal } from "../server/process-custody-journal";
 
 export type AppServerCustodyHandle = {
   readonly custodyId: string;
@@ -79,10 +79,6 @@ export class AppServerCustodyRuntime {
   async close() {
     this.closeAdmission();
     await this.channel.close();
-  }
-
-  isAccepting() {
-    return this.accepting;
   }
 
   /**

@@ -1,36 +1,41 @@
 /**
- * [INPUT]: Depends on BaseStore single-owner queues, shared Base row/meta/navigation types, view scrubbing, and mutation validation
- * [OUTPUT]: Provides CAS row/meta mutations, pin-to-navigation reconciliation, App GUI attachment rules, no-op detection, and event projection
+ * [INPUT]: Depends on BaseStore single-owner queues, shared Base row/meta types, view scrubbing, and mutation validation, plus the shared statusError constructor from main/errors
+ * [OUTPUT]: Provides CAS row/meta mutations that declare the exact rows they touched, App GUI attachment rules, no-op detection, and event projection
  * [POS]: Base mutation core; BasesService owns authority and event order while this module owns canonical state transitions
  */
 
 import type { AppBaseDataMigrationFile } from "../../../../shared/app-data-migration";
 import {
-  baseNavigationOf,
   BASE_ROW_LIMIT,
   type BaseChangedEvent,
   type BaseCellValue,
   type BaseColumn,
-  type BaseMeta,
   type BaseMetaPatch,
   type BaseRow,
   type BaseRowPatch,
   type BaseSnapshot,
 } from "../../../../shared/bases-ipc";
-import { applyAppBaseDataMigration } from "../app-data-migration";
-import type { BaseCommitAuthority } from "../base-commit-authority";
-import type { BaseMutationOperation } from "../base-commit-authority";
-import type { BaseStore } from "../base-store";
+import { applyAppBaseDataMigration } from "./app-data-migration";
+import type { BaseCommitAuthority } from "./base-commit-authority";
+import type { BaseMutationOperation } from "./base-commit-authority";
+import {
+  ALL_ROWS_CHANGED,
+  NO_ROWS_CHANGED,
+  type BaseStore,
+} from "../base-store";
 import {
   scrubBaseFormulaColumns,
   scrubBaseRelationColumns,
   scrubBaseViews,
-} from "../base-view-validation";
+} from "../validation/base-view-validation";
 import {
   assertStableColumnTypes,
+  baseColumnIndex,
+  baseRowIdSet,
   validateBaseCell,
   validateBaseModel,
-} from "../base-mutation-validation";
+} from "../validation/base-mutation-validation";
+import { statusError } from "../../errors";
 
 const clone = <T>(value: T): T => structuredClone(value);
 const same = (left: unknown, right: unknown) =>
@@ -49,7 +54,6 @@ const sameRow = (left: BaseRow, right: BaseRow) =>
 type MutationIdentity = { ownerInstanceId: string };
 
 type BaseRowMutationsOptions = {
-  now(): number;
   assertAdmission(): void;
   mutationIdentity(
     ownerKey: string,
@@ -99,7 +103,8 @@ export class BaseRowMutations {
         return {
           meta: migration.meta,
           rows: migration.rows,
-          rowsChanged: migration.rowsChanged,
+          /* 迁移会整表克隆并可能加列：这是货真价实的整表改写，全量体检。 */
+          changedRowIds: ALL_ROWS_CHANGED,
           actor: "system",
           operation: "app-data-migration",
         };
@@ -146,12 +151,7 @@ export class BaseRowMutations {
             current.meta.revision
           );
         }
-        const rawMeta = reconcilePinnedNavigation(
-          current.meta,
-          { ...current.meta, ...clone(input.patch) },
-          input.patch,
-          this.options.now()
-        );
+        const rawMeta = { ...current.meta, ...clone(input.patch) };
         assertStableColumnTypes(current.meta.columns, rawMeta.columns);
         const removed = new Set(
           current.meta.columns
@@ -187,9 +187,15 @@ export class BaseRowMutations {
               ),
             }))
           : current.rows;
-        validateBaseModel(meta, rows);
+        /* 列没动，任何一行都不可能因为这次 meta 变化而失效：视图/公式/关系
+           照旧全查，行校验则只在列真的变了（含 select 选项增删）时才付。 */
+        const columnsChanged =
+          meta.columns !== current.meta.columns &&
+          !same(meta.columns, current.meta.columns);
+        validateBaseModel(meta, columnsChanged ? rows : []);
         const comparableMeta = { ...meta, revision: current.meta.revision };
-        if (same(comparableMeta, current.meta) && same(rows, current.rows)) {
+        /* 没删列时 rows 就是原引用；引用相等即「行未变」，无须再逐字节比。 */
+        if (rows === current.rows && same(comparableMeta, current.meta)) {
           return null;
         }
         changed = true;
@@ -197,7 +203,8 @@ export class BaseRowMutations {
         return {
           meta,
           rows,
-          rowsChanged,
+          /* 删列会重写每一行的 values：那时才该整表体检，否则一行都没碰。 */
+          changedRowIds: rowsChanged ? ALL_ROWS_CHANGED : NO_ROWS_CHANGED,
           actor: input.authority.actor,
           operation: "meta",
         };
@@ -283,11 +290,10 @@ export class BaseRowMutations {
           }
           incomingIds.add(row.id);
         }
-        const issues = collectRowIssues(
-          input.rows,
-          current.meta.columns,
-          [...current.rows, ...input.rows]
-        );
+        const issues = collectRowIssues(input.rows, current.meta.columns, [
+          ...current.rows,
+          ...input.rows,
+        ]);
         if (issues.length) {
           throw mutationError(
             400,
@@ -329,7 +335,7 @@ export class BaseRowMutations {
         return {
           meta: { ...current.meta, revision: current.meta.revision + 1 },
           rows: [...current.rows, ...additions],
-          rowsChanged: true,
+          changedRowIds: new Set(additions.map((row) => row.id)),
           actor: input.actor,
           operation: "row-insert",
         };
@@ -407,7 +413,10 @@ export class BaseRowMutations {
       input.ownerInstanceId,
       (current) => {
         this.options.assertAdmission();
-        const byId = new Map(current.rows.map((row) => [row.id, clone(row)]));
+        /* 列/行 id 各建一次索引：每格 find/some 一遍全表是把 O(1) 写成 O(n)。 */
+        const columns = baseColumnIndex(current.meta.columns);
+        const relationTargets = baseRowIdSet(current.rows);
+        const byId = new Map(current.rows.map((row) => [row.id, row]));
         const changed = new Set<string>();
         for (const [rowIndex, patchInput] of input.patches.entries()) {
           const row = byId.get(patchInput.rowId);
@@ -422,9 +431,7 @@ export class BaseRowMutations {
           }
           const values = { ...row.values };
           for (const [columnId, value] of Object.entries(patchInput.patch)) {
-            const column = current.meta.columns.find(
-              (candidate) => candidate.id === columnId
-            );
+            const column = columns.get(columnId);
             /* 与 insert 侧 collectRowIssues 同一套 issue 词汇：请求写错列名是
                用户输入错误，不是「提交结果未知」，绝不能落成 500。 */
             if (!column) {
@@ -447,7 +454,7 @@ export class BaseRowMutations {
             }
             if (value === null) delete values[columnId];
             else {
-              validateBaseCell(column, value, "external", current.rows);
+              validateBaseCell(column, value, "external", relationTargets);
               values[columnId] = clone(value);
             }
           }
@@ -477,7 +484,7 @@ export class BaseRowMutations {
         return {
           meta: { ...current.meta, revision: current.meta.revision + 1 },
           rows,
-          rowsChanged: true,
+          changedRowIds: changed,
           actor: input.actor,
           operation: "row-patch",
         };
@@ -577,7 +584,8 @@ export class BaseRowMutations {
         return {
           meta: { ...current.meta, revision: current.meta.revision + 1 },
           rows: current.rows.filter((row) => !requested.has(row.id)),
-          rowsChanged: true,
+          changedRowIds: NO_ROWS_CHANGED,
+          removedRowIds: existing,
           actor: input.actor,
           operation: "row-delete",
         };
@@ -588,39 +596,6 @@ export class BaseRowMutations {
     }
     return { snapshot, removedRowIds, missingRowIds, replayed };
   }
-}
-
-function reconcilePinnedNavigation(
-  current: BaseMeta,
-  next: BaseMeta,
-  patch: BaseMetaPatch,
-  now: number
-): BaseMeta {
-  if (patch.pinned === undefined) return next;
-  if (patch.pinned) {
-    return {
-      ...next,
-      navigation: {
-        kind: "root-user-managed",
-        source: "legacy-pin",
-        activatedAt: now,
-      },
-    };
-  }
-  const navigation = baseNavigationOf(current);
-  if (
-    navigation.kind === "root-user-managed" &&
-    navigation.source === "retained-app-data"
-  ) {
-    return { ...next, pinned: true, navigation };
-  }
-  return {
-    ...next,
-    navigation:
-      current.owner.kind === "project"
-        ? { kind: "project-contained", projectId: current.owner.projectId }
-        : { kind: "conversation-contained", chatId: current.owner.chatId },
-  };
 }
 
 /**
@@ -652,8 +627,7 @@ function mutationError(
   currentRevision?: number,
   issues?: Array<{ rowIndex: number; columnId: string; reason: string }>
 ) {
-  return Object.assign(new Error(message), {
-    status,
+  return statusError(status, message, {
     code,
     outcome: "not-committed" as const,
     ...(currentRevision === undefined ? {} : { currentRevision }),
@@ -666,7 +640,8 @@ function collectRowIssues(
   columns: BaseColumn[],
   relationRows: readonly BaseRow[]
 ) {
-  const byId = new Map(columns.map((column) => [column.id, column]));
+  const byId = baseColumnIndex(columns);
+  const relationTargets = baseRowIdSet(relationRows);
   const issues: Array<{ rowIndex: number; columnId: string; reason: string }> = [];
   for (const [rowIndex, row] of rows.entries()) {
     for (const [columnId, value] of Object.entries(row.values)) {
@@ -680,7 +655,7 @@ function collectRowIssues(
           column,
           value as BaseCellValue,
           "external",
-          relationRows
+          relationTargets
         );
       } catch {
         issues.push({ rowIndex, columnId, reason: invalidCellReason(column) });

@@ -10,14 +10,6 @@ export const basesEn = {
     reloadFailed: "Failed to reload Base {{ownerKey}}: {{message}}",
     retiredResult: "Base {{ownerKey}} returned a retired generation.",
   },
-  quarantined: "This Base is quarantined",
-  quarantinedDescription:
-    "Recoverable files are preserved. Restore the backup manually, or discard it to create a new empty Base.",
-  discardData: "Discard quarantined data",
-  discardAndRecreate: "Discard and recreate",
-  discardDescription:
-    "This permanently deletes the quarantined metadata and retained row generations, then creates a new empty Base.",
-  discardTitle: "Discard recoverable Base data?",
   loading: "Loading Base…",
   loadingMap: "Loading Map…",
   pageTitle: "Base",

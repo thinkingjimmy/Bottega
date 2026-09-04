@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on zod and shared Base row/cell/id/ batch budget
- * [OUTPUT]: Provides insert/patch/delete GUI API strictly enclosed schema with bounded issue
- * [POS]: The first is the application of the app/base-gui/apiNo reading requests, no execution of business mutation
+ * [INPUT]: Depends on zod plus the shared Base row/cell/id schemas and batch budget
+ * [OUTPUT]: Provides the strict insert/patch/delete request envelopes with bounded batch sizes and typed parse issues
+ * [POS]: Pure schema leaf of apps/base-gui/api; it reads no request stream and performs no mutation
  */
 
 import { z } from "zod";

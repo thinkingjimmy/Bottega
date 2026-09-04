@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on AbortController and the process pid set, not dependent on Electron, store or specific installation logic
- * [OUTPUT]: Provides QueuedWork/InstallTask, deletes/submits linearity, SerialTaskQueue and separates the drain from the failure
- * [POS]: The core of the task lifecycle of apps/install, which turns queued/running/settled into a single source of truth that can be waited for
+ * [OUTPUT]: Provides QueuedWork/InstallTask, the cancel/commit linearization point, SerialTaskQueue, and a drain that keeps failure reporting separate
+ * [POS]: The apps/install task-lifecycle kernel; it makes queued/running/settled one awaitable source of truth
  */
 
 export type InstallTask = {
@@ -40,13 +40,9 @@ export class SerialTaskQueue {
   private readonly tasks = new Map<string, TaskEntry>();
 
   enqueue(work: QueuedWork) {
-    const task = this.create(work.appId, false);
+    const task = this.create(work.appId);
     this.pending.push(work);
     return task;
-  }
-
-  begin(appId: string) {
-    return this.create(appId, true);
   }
 
   get(appId: string): InstallTask | undefined {
@@ -94,7 +90,7 @@ export class SerialTaskQueue {
     task.settle();
   }
 
-  private create(appId: string, started: boolean) {
+  private create(appId: string) {
     if (this.tasks.has(appId)) throw new Error("该 App 已有任务在执行");
     let settle!: () => void;
     const settled = new Promise<void>((resolve) => {
@@ -103,7 +99,7 @@ export class SerialTaskQueue {
     const task: TaskEntry = {
       controller: new AbortController(),
       pids: new Set<number>(),
-      started,
+      started: false,
       commitStarted: false,
       settled,
       settle,

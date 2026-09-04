@@ -16,11 +16,11 @@ import type {
 } from "../../../../shared/apps-ipc";
 import { baseSnapshotFileSchema } from "../../../../shared/base-snapshot";
 import { appManifestSchema } from "../../apps/install/manifest-schema";
-import type { PresetFactoryFlow } from "../../apps/share/preset-install-service";
+import type { PresetFactoryFlow } from "../../apps/share/preset/preset-install-service";
 import {
   inspectPackage,
   packageDigest,
-} from "../../apps/share/package-contract";
+} from "../../apps/share/package/package-contract";
 import type { DesignFactoryTrust } from "./factory-provisioner";
 
 type FrozenFactoryProbe = Readonly<{

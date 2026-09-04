@@ -44,6 +44,8 @@ export type BuiltinIssuanceInput = {
   disabledTools?: readonly string[];
   /** Proven capable Skills custody exists for this exact turn. */
   useSkill?: boolean;
+  /** 只属于当前 managed-worktree Chat 的精确 main-owned commit authority。 */
+  managedWorktreeCommit?: boolean;
 };
 
 export function issueBuiltinMcpWhenAllowed<T>(
@@ -61,7 +63,12 @@ export function projectBuiltinTools(
 ): BuiltinToolName[] {
   const access = builtinToolAccess(input);
   if (access === "none") return [];
-  const exact = input.useSkill ? (["use_skill"] as BuiltinToolName[]) : [];
+  const exact = [
+    ...(input.useSkill ? (["use_skill"] as BuiltinToolName[]) : []),
+    ...(input.managedWorktreeCommit && access === "mutate" && !input.planMode
+      ? (["commit_managed_worktree"] as BuiltinToolName[])
+      : []),
+  ];
   return [...admittedTools(input), ...exact].filter((name) => {
     const allowlist = builtinToolSpec(name)?.backendAllowlist;
     return !allowlist || allowlist.includes(input.backend);

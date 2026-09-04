@@ -55,4 +55,8 @@ export const agentFailureEn = {
       resolution: "Try once more. If it happens again, expand and copy the technical details for support.",
     },
   },
+  notice: {
+    title: "{{backend}} sent a notice",
+    explanation: "This notice comes from {{backend}} itself, not from Bottega. This reply is not affected.",
+  },
 };

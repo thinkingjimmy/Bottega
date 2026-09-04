@@ -6,7 +6,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import type {
-  ForeignHistoryBlock,
+  ForeignHistoryMessage,
   ForeignHistorySummary,
   HistoryMemoryEligibility,
   HistoryMemoryPreview,
@@ -57,7 +57,7 @@ export class MemoryGrantCoordinator {
       visibleEntries(): ForeignHistorySummary[];
       materialize(opaqueId: string): Promise<{
         entry: AdapterEntry;
-        blocks: ForeignHistoryBlock[];
+        blocks: ForeignHistoryMessage[];
         parserVersion: number;
       }>;
       commitForeign?(input: {

@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on zod and discriminated App GUI compatibility refs
- * [OUTPUT]: Provides strict compatibility-support matrices, required run-contract derivation, and normal-block/security-quarantine decisions
+ * [OUTPUT]: Provides the strict compatibility-support matrix schema/type and one deterministic supported/blocked/quarantine verdict; run-contract derivation stays internal because the verdict is the only thing any caller reads
  * [POS]: Shared app-gui release floor; updater and rollback gates consume this pure verdict instead of inferring support from local refcounts
  */
 
 import { z } from "zod";
 import type { AppGuiCompatibilityRef } from "./contracts";
 
-export const APP_GUI_RUN_CONTRACTS = [
+const APP_GUI_RUN_CONTRACTS = [
   "base-gui-legacy-v1",
   "sealed-runtime-v3",
   "app-generation-cutover-v2",
@@ -19,7 +19,7 @@ export const APP_GUI_RUN_CONTRACTS = [
   "file-export-v1",
 ] as const;
 
-export type AppGuiRunContract = (typeof APP_GUI_RUN_CONTRACTS)[number];
+type AppGuiRunContract = (typeof APP_GUI_RUN_CONTRACTS)[number];
 
 export const appGuiCompatibilitySupportSchema = z.object({
   schema: z.literal("bottega.app-gui-compatibility-support/v1"),
@@ -41,7 +41,7 @@ export const appGuiCompatibilitySupportSchema = z.object({
 });
 
 export type AppGuiCompatibilitySupport = z.infer<typeof appGuiCompatibilitySupportSchema>;
-export type AppGuiCompatibilityVerdict =
+type AppGuiCompatibilityVerdict =
   | Readonly<{ status: "supported"; required: readonly AppGuiRunContract[] }>
   | Readonly<{
       status: "blocked";
@@ -56,7 +56,7 @@ export type AppGuiCompatibilityVerdict =
       migrationTargets: Readonly<Partial<Record<AppGuiRunContract, string>>>;
     }>;
 
-export function requiredAppGuiRunContracts(
+function requiredAppGuiRunContracts(
   refs: readonly AppGuiCompatibilityRef[]
 ): readonly AppGuiRunContract[] {
   const required = new Set<AppGuiRunContract>();

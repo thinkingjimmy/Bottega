@@ -16,21 +16,20 @@ import type {
   AppLifecycleAdmissionGate,
   AppUsageRegistry,
 } from "../../lifecycle/app-platform-admission";
-import { cleanupAppFiles } from "../app-cleanup";
-import type { AppDataArchiveStore } from "../app-data-archive";
-import type { AppDataCutoverLedger } from "../app-data-cutover-ledger";
-import type { AppGenerationBuildLedger } from "../app-generation-build-ledger";
-import type { AppGateway } from "../app-gateway";
-import type { AppInstaller } from "../app-installer";
-import type { AppProcessCustodyJournal } from "../process-custody-journal";
-import type { AppReferenceJournal } from "../app-reference-journal";
-import type { AppRuntime } from "../app-runtime";
-import type { AppServerDataCutover } from "../app-server-cutover";
-import type { AppStore } from "../app-store";
+import { cleanupAppFiles } from "../maintenance/app-cleanup";
+import type { AppDataArchiveStore } from "../server/app-data-archive";
+import type { AppDataCutoverLedger } from "../server/app-data-cutover-ledger";
+import type { AppGenerationBuildLedger } from "../generation/app-generation-build-ledger";
+import type { AppGateway } from "../gateway/app-gateway";
+import type { AppInstaller } from "../source/app-installer";
+import type { AppProcessCustodyJournal } from "../server/process-custody-journal";
+import type { AppReferenceJournal } from "../turn/app-reference-journal";
+import type { AppRuntime } from "../server/app-runtime";
+import type { AppServerDataCutover } from "../server/app-server-cutover";
+import type { AppStore } from "../store/app-store";
 import type { AppGrantAuthority } from "../attachments/grant-authority";
-import type { AppManagementLeaseRegistry } from "../attachments/management-leases";
 import type { AppAttachmentSurfaceLeaseRegistry } from "../attachments/surface-leases";
-import { appDigest } from "./digest";
+import { appDigest } from "../support";
 
 type AppDeleteCoordinatorDependencies = {
   userData: string;
@@ -47,7 +46,6 @@ type AppDeleteCoordinatorDependencies = {
   dataArchives: AppDataArchiveStore;
   serverCutover: AppServerDataCutover;
   surfaceLeases(): AppAttachmentSurfaceLeaseRegistry | null;
-  managementLeases(): AppManagementLeaseRegistry | null;
   grantAuthority(): AppGrantAuthority | null;
   extensions(): AppExtensionIntegration | null;
   buildParticipants(): AppGenerationBuildParticipantRegistry | null;
@@ -67,8 +65,7 @@ export class AppDeleteCoordinator {
       }
       this.deps.usageRegistry.closeAdmission(appId);
       this.deps.surfaceLeases()?.revokeApp(appId);
-      this.deps.managementLeases()?.revokeApp(appId);
-      await this.deps.installer.cancel(appId);
+        await this.deps.installer.cancel(appId);
       await this.deps.stop(appId);
       if (
         (record.state === "deleting" || record.state === "delete-failed") &&
@@ -102,7 +99,6 @@ export class AppDeleteCoordinator {
   async revokeCapabilities(appId: string) {
     this.deps.gatewayRequestLeases.closeAdmission(appId);
     this.deps.surfaceLeases()?.revokeApp(appId);
-    this.deps.managementLeases()?.revokeApp(appId);
     await this.deps.grantAuthority()?.revokeEverywhere(appId);
     await this.deps.closeGuiSideEffects(appId);
     const grants = this.deps.extensions()?.grants;

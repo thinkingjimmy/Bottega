@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the Chat and Attachment stores, the durable ConversationDeletionCoordinator, Memory Space intents, and named resource releasers
- * [OUTPUT]: Provides ChatDeletionDriver: local-only and cleanup-and-rebuild prepare/drive phases, restart recovery, the conversation fence, and a coordinator-free synchronous fallback
+ * [INPUT]: Depends on the Chat and Attachment stores, the durable ConversationDeletionCoordinator, Memory Space intents, deletion admission, and named pre/post resource releasers
+ * [OUTPUT]: Provides ChatDeletionDriver: advisory admission, local-only and cleanup-and-rebuild prepare/drive phases, restart recovery, the conversation fence, and a coordinator-free synchronous fallback
  * [POS]: Deletion adapter of the chats module; ChatsService only admits and cancels, while the durable journal and resource details stay behind this seam
  */
 
@@ -8,6 +8,7 @@ import type { ChatRecord, ChatsEvent } from "../../../shared/chats-ipc";
 import type {
   ConversationDeletionCoordinator,
   ConversationDeletionMode,
+  ConversationDeletionPreResource,
   ConversationDeletionResource,
   DeletionMemoryIntent,
   DeletionRecord,
@@ -32,6 +33,8 @@ export type ChatDeletionOptions = {
     ): Promise<void> | void;
   };
   deletionResources?: readonly ConversationDeletionResource[];
+  deletionPreResources?: readonly ConversationDeletionPreResource[];
+  admitDeletion?: (records: readonly DeletionRecord[]) => Promise<void>;
   deletionCoordinator?: ConversationDeletionCoordinator;
 };
 
@@ -70,6 +73,10 @@ export class ChatDeletionDriver {
 
   hasActive(chatId: string) {
     return this.options.deletionCoordinator?.hasActive(chatId) ?? false;
+  }
+
+  admit(records: readonly DeletionRecord[]) {
+    return this.options.admitDeletion?.(records) ?? Promise.resolve();
   }
 
   recover(waitForCompletion = true) {
@@ -118,9 +125,12 @@ export class ChatDeletionDriver {
     await memory.applyPolicy(intent);
     await memory.drain(intent);
     if (mode === "cleanup-and-rebuild") await memory.applyDelivery(intent);
+    for (const resource of this.options.deletionPreResources ?? []) {
+      await resource.release(record, operationId);
+    }
     const metas = await this.store.remove(record.id, record.incarnationId);
     for (const resource of this.resources()) {
-      await resource.release(record, metas, "deleted-proven");
+      await resource.release(record, metas, "deleted-proven", operationId);
     }
     this.emit({ type: "removed", chatId: record.id });
   }
@@ -162,6 +172,7 @@ export class ChatDeletionDriver {
         this.store.pushWarning(message);
         this.emit({ type: "warning", message });
       },
+      preResources: this.options.deletionPreResources ?? [],
       resources: this.resources(),
     };
   }

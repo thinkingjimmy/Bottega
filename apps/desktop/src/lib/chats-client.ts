@@ -16,8 +16,13 @@ import type {
   ChatsBridgeApi,
   ChatsEvent,
   ChatsSnapshot,
+  CommitManagedWorktreeInput,
+  CommitManagedWorktreeResult,
   CreateChatInput,
   CreateAppChatInput,
+  ForkChatPreflight,
+  ForkChatPreflightInput,
+  ForkChatRequest,
   RenameChatInput,
 } from "../../shared/chats-ipc";
 import { previewOfMessages } from "../../shared/chat-preview";
@@ -51,6 +56,11 @@ const summaryOf = ({
   agent,
   grants,
   grantRevision,
+  parentChatId,
+  parentIncarnationId,
+  parentMessageId,
+  inheritedThroughSeq,
+  executionKind,
   messages,
 }: ChatRecord): ChatSummary => ({
   id,
@@ -69,6 +79,11 @@ const summaryOf = ({
   agent,
   grants,
   grantRevision,
+  parentChatId: parentChatId ?? null,
+  parentIncarnationId: parentIncarnationId ?? null,
+  parentMessageId: parentMessageId ?? null,
+  inheritedThroughSeq: inheritedThroughSeq ?? null,
+  executionKind: executionKind ?? null,
   preview: previewOfMessages(messages),
 });
 
@@ -266,6 +281,27 @@ export const deleteChat = async (chatId: string): Promise<void> => {
   if (window.chats) return window.chats.remove(chatId);
   if (!browserChats.delete(chatId)) throw new Error("聊天不存在");
   emit({ type: "removed", chatId });
+};
+
+export const preflightChatFork = (
+  input: ForkChatPreflightInput
+): Promise<ForkChatPreflight> => {
+  if (!window.chats) return Promise.reject(new Error("Chat fork is unavailable"));
+  return window.chats.forkPreflight(input);
+};
+
+export const forkChat = (input: ForkChatRequest): Promise<ChatRecord> => {
+  if (!window.chats) return Promise.reject(new Error("Chat fork is unavailable"));
+  return window.chats.fork(input);
+};
+
+export const commitChatWorktree = (
+  input: CommitManagedWorktreeInput
+): Promise<CommitManagedWorktreeResult> => {
+  if (!window.chats) {
+    return Promise.reject(new Error("Managed worktree commit is unavailable"));
+  }
+  return window.chats.commitManagedWorktree(input);
 };
 
 export const onChatsEvent = (callback: (event: ChatsEvent) => void) => {

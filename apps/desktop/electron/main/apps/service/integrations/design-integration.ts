@@ -21,7 +21,7 @@ import type { AppAttachmentSurfaceLeaseRegistry } from "../../attachments/surfac
 import type { WorkspacePreviewPort } from "../../base-gui/workspace-preview";
 import type { BaseGuiGrantStore } from "../../base-gui/grant-store";
 import type { BaseAppImporter } from "../../install/import-base-app";
-import type { AppStore } from "../../app-store";
+import type { AppStore } from "../../store/app-store";
 
 type FactoryDescriptor = Readonly<{
   presetId: typeof DESIGN_PRESET_ID;

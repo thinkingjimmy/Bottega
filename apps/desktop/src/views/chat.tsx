@@ -1,13 +1,16 @@
 /**
  * [INPUT]: Depends on router, i18n, Chats/Projects/Setup providers, canonical chat context, the exact App Editor route gate, draft routing/residence, PageShell, side-panel capability policy, and ChatView
- * [OUTPUT]: Provides ChatRoute for ordinary/adopted/imported chats resolved through the canonical history routes, imported-segment facts and composer locks, main-approved App Editor chats, fixed Editor drafts, legacy App Use replacement, post-send navigation, Project guards, and context-safe side-panel commands while draft Project actions stay in Composer context
+ * [OUTPUT]: Provides ChatRoute for ordinary/adopted/imported chats resolved through canonical history routes, imported-segment Fork context and composer locks, main-approved App Editor chats, fixed Editor drafts, legacy App Use replacement, post-send navigation, Project guards, and context-safe side-panel commands while draft Project actions stay in Composer context
  * [POS]: The sole product chat route adapter in views
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ChatView, ChatViewFrame } from "@/components/chat/chat-view";
-import type { ImportSegmentFacts } from "@/components/chat/transcript/chat-transcript";
+import type {
+  ChatForkViewContext,
+  ImportSegmentFacts,
+} from "@/components/chat/transcript/chat-transcript";
 import { SkillsOnboardingCard } from "@/components/chat/skills-onboarding-card";
 import {
   consumeSidePanelRequest,
@@ -37,6 +40,7 @@ import { CHAT_PANEL_CAPABILITIES } from "../../shared/placement/facts";
 import type { ForeignHistorySummary } from "../../shared/history-import-ipc";
 import { useChatSession, type ChatProjectMode } from "@/components/chat/runtime/use-chat-session";
 import { assembleFirstTurnPayload } from "@/components/chat/runtime/session/create-session-submit";
+import { onChatsEvent } from "@/lib/chats-client";
 import type { PromptInputMessage } from "@ai-chat/ui/components/ai-elements/prompt-input";
 
 export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean }) {
@@ -51,11 +55,26 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
   const { snapshot: historySnapshot } = useHistory();
   const [sidePanelRequest, setSidePanelRequest] =
     useState<SidePanelRequest | null>(null);
+  const [truncatedChatId, setTruncatedChatId] = useState<string | null>(null);
   const draftChatId = useDraftChatId();
   const appEditAppId = searchParams.get("appEditAppId");
   const appEditIntent = searchParams.get("appEditIntent");
   const editorDraft = !id && Boolean(appEditAppId && appEditIntent);
   const chatId = id ?? (editorDraft ? appEditIntent! : draftChatId);
+  const recoveryTruncated = Boolean(id && truncatedChatId === id);
+  useEffect(() => {
+    if (!id) return;
+    const unsubscribe = onChatsEvent((event) => {
+      if (event.type === "recovery-truncated" && event.chatId === id) {
+        setTruncatedChatId(id);
+      }
+    });
+    /* 一次性披露：离开这条 Chat 就清掉，回来不再重复提示。 */
+    return () => {
+      unsubscribe();
+      setTruncatedChatId(null);
+    };
+  }, [id]);
   // 进入即消费该会话的活动标记；离开只撤销自己的声明，跑完才可能重新标记。
   useEffect(() => (id ? claimActiveChat(id) : undefined), [id]);
   /* 换槽与发送后切页的唯一通道：草稿 id 一旦出现在列表里，驻留中的用户被
@@ -181,6 +200,21 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
     : summaryContext?.kind === "app-edit"
       ? { kind: "fixed-app", appId: summaryContext.appId, appRole: "edit" }
       : { kind: "selectable" };
+  const forkContext: ChatForkViewContext | undefined = summary
+    ? {
+        summary,
+        parent: summary.parentChatId
+          ? chats.find((chat) =>
+              chat.id === summary.parentChatId &&
+              chat.incarnationId === summary.parentIncarnationId
+            ) ?? null
+          : null,
+        navigateToChat: (targetChatId, messageId) => {
+          const query = messageId ? `?m=${encodeURIComponent(messageId)}` : "?fork=divider";
+          navigate(`/chat/${encodeURIComponent(targetChatId)}${query}`);
+        },
+      }
+    : undefined;
 
   const page = (
     <PageShell
@@ -223,6 +257,11 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
     >
       <div className="flex h-full min-h-0 flex-col">
         <SkillsOnboardingCard />
+        {recoveryTruncated && (
+          <div className="mx-3 mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs" role="status">
+            {t("chat.fork.recoveryTruncated")}
+          </div>
+        )}
         <div className="min-h-0 flex-1">
           {summary?.readOnlyReason === "external-readonly" && canonicalHistory ? (
             <ImportedChatView
@@ -230,6 +269,7 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
               chatId={chatId}
               history={canonicalHistory[1].summary}
               importSegment={importSegment}
+              forkContext={forkContext}
               project={projectMode}
               sidePanelRequest={sidePanelRequest}
               surfaceVisible={surfaceVisible}
@@ -252,6 +292,8 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
               composerLockedReason={summary?.readOnlyReason === "external-readonly"
                 ? t("chat.importedReadOnlyReason")
                 : undefined}
+              managedWorktree={summary?.executionKind === "managed-worktree"}
+              forkContext={forkContext}
               surfaceVisible={surfaceVisible}
               onConsumeSidePanelRequest={(nonce) =>
                 setSidePanelRequest((current) => consumeSidePanelRequest(current, nonce))
@@ -273,6 +315,7 @@ function ImportedChatView({
   chatId,
   history,
   importSegment,
+  forkContext,
   project,
   sidePanelRequest,
   surfaceVisible,
@@ -281,6 +324,7 @@ function ImportedChatView({
   chatId: string;
   history: ForeignHistorySummary;
   importSegment?: ImportSegmentFacts;
+  forkContext?: ChatForkViewContext;
   project: ChatProjectMode;
   sidePanelRequest: SidePanelRequest | null;
   surfaceVisible: boolean;
@@ -325,6 +369,7 @@ function ImportedChatView({
       controller={controller}
       focusComposer
       importSegment={importSegment}
+      forkContext={forkContext}
       sidePanelRequest={sidePanelRequest}
       surfaceVisible={surfaceVisible}
       onConsumeSidePanelRequest={onConsumeSidePanelRequest}

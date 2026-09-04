@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared ChatStoreState cell (metadata map, projection, published aggregate slot, database client, device id) and bounded SQLite query commands
- * [OUTPUT]: Provides ChatReadModel: cloned metadata, message-free renderer context, exact/bounded native-message and Subagent facts, execution-context projection, Memory segments, generation-fenced timeline/outline/find, keyset search queries, and attachment reachability
+ * [OUTPUT]: Provides ChatReadModel: cloned metadata, message-free renderer context, exact/bounded native-message and Subagent facts, execution-context projection, Memory segments, generation-fenced timeline/outline/find, keyset search queries, deduplicated global storage-failure intake, and attachment reachability
  * [POS]: Read-model collaborator of ChatStore; it holds no state of its own, so bounded projections can never enlarge the mutation coordinator
  */
 
@@ -22,6 +22,7 @@ import type { ChatMetadata } from "../chat-summary";
 import { queryGramTokens } from "../sqlite/chat-repository";
 import type { SearchDocumentCursor } from "../sqlite/database-protocol";
 import type { ChatStoreState } from "./state";
+import type { ChatStorageFailure } from "../../../../shared/product-failure";
 
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -156,6 +157,12 @@ export class ChatReadModel {
   getWarning() { return this.state.warnings.join("\n") || undefined; }
   getStorageFailures() { return clone(this.state.storageFailures); }
   pushWarning(message: string) { this.state.warnings.push(message); }
+  /* 闸门每 6 小时跑一次，同一条失败反复推只留一份：按内容去重，快照不长尾巴。 */
+  pushStorageFailure(failure: ChatStorageFailure) {
+    const key = JSON.stringify(failure);
+    if (this.state.storageFailures.some((existing) => JSON.stringify(existing) === key)) return;
+    this.state.storageFailures.push(clone(failure));
+  }
   getProjectId(chatId: string) { return this.state.projection.projectId(chatId); }
   getChatRef(chatId: string) { return this.state.projection.chatRef(chatId); }
   getIncarnationId(chatId: string) { return this.state.projection.incarnationId(chatId); }

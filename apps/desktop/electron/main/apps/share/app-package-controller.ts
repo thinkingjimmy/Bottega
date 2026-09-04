@@ -25,12 +25,12 @@ import {
   EMPTY_APP_CONFIG,
 } from "./app-config-store";
 import { detectGhStatus } from "./gh-detect";
-import { RepoProbeService } from "./repo-probe";
+import { RepoProbeService } from "./package/repo-probe";
 import {
   PresetInstallService,
   type PresetFactoryFlow,
-} from "./preset-install-service";
-import { PresetSourceResolver } from "./preset-source";
+} from "./preset/preset-install-service";
+import { PresetSourceResolver } from "./preset/preset-source";
 import type { ShareFlow } from "./share-flow";
 import type { AppExtensionIntegration } from "../../extensions/integration/app-extension-composition";
 

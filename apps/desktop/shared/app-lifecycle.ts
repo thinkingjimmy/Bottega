@@ -1,7 +1,7 @@
 /**
  * [INPUT]: type-only depends on the generation/domain/Base GUI access DTO for apps-ipc and the digest, requirement declaration for extensions-ipc
- * [OUTPUT]: Provides two process custody, activation, drain, data epoch, with a build, reference, and execution plan digest of Base GUI capability request/checkpoint, with the ownership of the contract with the cutover source/target closed durable lifecycle
- * [POS]: The App is a shared App Attach lifecycle protocolThe renderer has no capability-bearing identity
+ * [OUTPUT]: Provides the durable lifecycle contracts: process custody and activation, drain evidence, data-epoch ownership, generation build/reference records, Base GUI capability requests and checkpoints, and the cutover's closed source/target pair carried by a single monotonic disposition
+ * [POS]: The shared App Attach lifecycle protocol; no capability-bearing identity ever reaches the renderer
  */
 
 import type {
@@ -81,7 +81,7 @@ export type AppReferenceJournalEntry = Readonly<{
   lifecycleRevision: number;
   frozenCapability: FrozenAppReferenceCapability;
   capabilityDigest: Sha256Digest;
-  phase: "prepared" | "active" | "release-pending" | "released";
+  phase: "prepared" | "active" | "released";
 }>;
 
 export type AgentTurnCustodyDependency =
@@ -201,9 +201,8 @@ export type AppDataCutoverSource =
   | Readonly<{ kind: "legacy-import"; snapshotId: string }>;
 
 /**
- * `disposition` 是单调的 durable 决定轴，`phase` 只是 `open` 期间的进度标记。
- * 重启对账只信 disposition + store 里那条 active binding：两者交叉即可判定
- * 「CAS 到底发生没发生」，不必给物理目录再编一套心跳。
+ * `disposition` 是唯一的 durable 决定轴。重启对账只信它与 store 里那条 active
+ * binding：两者交叉即可判定「CAS 到底发生没发生」，不必再给物理进度编一套心跳。
  */
 export type AppDataCutoverRecord = Readonly<{
   cutoverId: string;
@@ -219,5 +218,4 @@ export type AppDataCutoverRecord = Readonly<{
   appId: string;
   source: AppDataCutoverSource;
   target: Readonly<{ generationId: string; dataEpochId: string }>;
-  phase: "admission-close" | "source-drain" | "target-build" | "cas" | "done";
 }>;

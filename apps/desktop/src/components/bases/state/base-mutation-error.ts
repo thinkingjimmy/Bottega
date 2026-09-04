@@ -42,7 +42,9 @@ const MUTATION_ERROR_KEYS: Record<string, string> = {
   IO_ERROR: "bases.record.attachmentWriteFailed",
 };
 
-export function baseMutationErrorCopy(
+/* 目录查表只是 recoverBaseMutationError 的第一步，不是一条对外能力：
+   单独导出它，调用方就能拿到 copy 却跳过那次必需的回载。 */
+function baseMutationErrorCopy(
   cause: unknown
 ): BaseMutationErrorCopy | null {
   const code = mutationCode(cause);

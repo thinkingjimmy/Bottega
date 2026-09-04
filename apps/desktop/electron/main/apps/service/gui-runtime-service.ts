@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppStore, AppGateway, lifecycle serialization, trusted renderer identity, Base GUI grants/data ports, attachment surface leases, query worker, preferences storage, file-export custody, renderer transition publication, and the current product window
- * [OUTPUT]: Provides the cohesive Base GUI runtime boundary for projection, staged cohort acquisition/readiness, SDK routes, cutover barriers, preferences, exports, signed-update quarantine, renderer-owned surface release, initialization, non-fatal startup cutover recovery reporting, and shutdown
+ * [OUTPUT]: Provides the cohesive Base GUI runtime boundary for projection, staged cohort acquisition/readiness keyed by the renderer's logical lease, SDK routes, cutover barriers, preferences, exports, signed-update quarantine, renderer-owned surface release, initialization, non-fatal startup cutover recovery reporting, and shutdown
  * [POS]: apps/service GUI facade; keeps AppsService as a composition root while GUI runtime ownership remains explicit and testable
  */
 
@@ -14,17 +14,16 @@ import type {
   BaseGuiLiveBinding,
 } from "../../../../shared/apps-ipc";
 import { asError } from "../../errors";
-import type { AppGateway } from "../app-gateway";
-import type { AppStore } from "../app-store";
+import type { AppGateway } from "../gateway/app-gateway";
+import type { AppStore } from "../store/app-store";
 import type { AppAttachmentSurfaceLeaseRegistry } from "../attachments/surface-leases";
-import { BaseGuiQueryExecutor } from "../base-gui/api/query-executor";
+import { BaseGuiQueryExecutor } from "../base-gui/api/query/query-executor";
 import type { BaseGuiGrantStore } from "../base-gui/grant-store";
 import type { WorkspacePreviewPort } from "../base-gui/workspace-preview";
 import { AppFileExportController } from "../file-export/controller";
-import { AppGuiProjection } from "../gui-projection";
+import { AppGuiProjection } from "../generation/gui-projection";
 import { AppGuiCutoverCoordinator } from "../gui-cutover/coordinator";
-import { participantEvidence } from "../gui-cutover/participants";
-import type { GuiBasePort } from "../gui-api";
+import type { GuiBasePort } from "../generation/gui-api";
 import { AppPreferencesRuntime } from "../preferences/runtime";
 import { withGuiCutover } from "./lifecycle/runtime-operations";
 import type { TrustedRendererContext } from "../../window/surfaces/trusted-renderer-context";
@@ -89,14 +88,9 @@ export class AppGuiRuntimeService {
         this.projection.sync(appId, { resetCapability }),
       prepareAppParticipants: async (intent) => {
         await this.projection.prepareGeneration(intent.appId, intent.nextGenerationId);
-        if (intent.participantPlan.some((entry) => entry.participantId === "preferences-v1")) {
+        if (intent.participantPlan.includes("preferences-v1")) {
           await this.preferences.validateCutover(intent);
         }
-        return participantEvidence(intent, "app", {
-          appId: intent.appId,
-          nextGenerationId: intent.nextGenerationId,
-          expectedActiveGenerationId: intent.expectedActiveGenerationId,
-        });
       },
       retireGeneration: async (appId, generationId) => {
         if (!this.retirementProof) throw new Error("APP_GENERATION_RETIREMENT_PROOF_UNAVAILABLE");
@@ -188,13 +182,9 @@ export class AppGuiRuntimeService {
     const target = await this.cutovers.acquire(input);
     const info = await this.projection.info(target.input, {
       ...(target.generationId ? { generationId: target.generationId } : {}),
+      logicalLeaseId: input.appSurfaceLeaseId,
     }, renderer);
-    const result = target.cutoverId
-      ? {
-          ...info,
-          cutover: { cutoverId: target.cutoverId, lifecycle: "staging" as const },
-        }
-      : info;
+    const result = target.cutoverId ? { ...info, cutoverId: target.cutoverId } : info;
     return migrationError ? { ...result, error: migrationError } : result;
   }
 
@@ -303,19 +293,14 @@ export class AppGuiRuntimeService {
     if (generationId) await this.exports.drain(appId, generationId, deadlineMs);
   }
 
+  /** 每一次 Base API 写调用都要问一遍，走不克隆的路由事实。 */
   private isActiveBinding(binding: BaseGuiLiveBinding) {
-    const record = this.store.get(binding.appId);
-    const active = record?.generationBinding.active;
-    const generation = record?.generations.find(
-      (item) => item.generationId === active?.generationId
-    );
+    const facts = this.store.routingFacts(binding.appId);
     return Boolean(
-      record &&
-      active &&
-      generation &&
-      active.generationId === binding.generationId &&
-      generation.contentDigest === binding.contentDigest &&
-      record.lifecycleRevision === binding.lifecycleRevision
+      facts &&
+      facts.activeGenerationId === binding.generationId &&
+      facts.activeContentDigest === binding.contentDigest &&
+      facts.lifecycleRevision === binding.lifecycleRevision
     );
   }
 

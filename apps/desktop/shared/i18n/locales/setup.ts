@@ -1,7 +1,7 @@
 /**
- * [INPUT]: dependence when not in operation; The first is the installation of five local directories
- * [OUTPUT]: Provides five languages of syntax Setup backend card text: status tags, actions, and the installation/login instructions in the backend × runtimeStatus key
- * [POS]: Setup feature catalog for shared/i18n/locales; The main is to stop roasting the product instructions into the diagnostic string, and the instructions here are to take the id key, and the renderer will take the unspelled one
+ * [INPUT]: Depends on no runtime modules; five locale branches share the English Setup catalog shape
+ * [OUTPUT]: Provides five-language Setup status labels, contextual login actions, and backend × runtime recovery guidance
+ * [POS]: The Setup feature catalog; it keeps product language in the renderer while main transports only runtime/auth facts and raw diagnostics
  */
 
 /* ============================================================
@@ -16,8 +16,8 @@ export const setupEn = {
     mainWindowOnly: "Manage the Agent environment in the main window.",
     terminalClipboard: "The terminal is unavailable. The command was copied to the clipboard.",
   },
-  status: { ready: "Ready", missing: "Not installed", unsupported: "Update required", "auth-required": "Sign-in required", error: "Check failed" },
-  install: "Install", login: "Sign in", update: "Update available",
+  status: { ready: "Ready", installed: "Installed", checking: "Checking", missing: "Not installed", unsupported: "Update required", "auth-required": "Sign-in required", error: "Check failed" },
+  install: "Install", login: "Sign in", manageLogin: "Manage sign-in", update: "Update available",
   updateAria: "Update {{backend}}", checkLatest: "Check the latest {{backend}} version", recheck: "Check {{backend}} again",
   details: "What to do about {{backend}}",
   guide: {
@@ -34,8 +34,8 @@ export const setupZhCN: SetupCatalog = {
     mainWindowOnly: "请在主窗口管理 Agent 环境。",
     terminalClipboard: "终端不可用，命令已复制到剪贴板。",
   },
-  status: { ready: "就绪", missing: "未安装", unsupported: "版本过低", "auth-required": "待登录", error: "检测失败" },
-  install: "安装", login: "登录", update: "可更新",
+  status: { ready: "就绪", installed: "已安装", checking: "检测中", missing: "未安装", unsupported: "版本过低", "auth-required": "待登录", error: "检测失败" },
+  install: "安装", login: "登录", manageLogin: "管理登录", update: "可更新",
   updateAria: "更新 {{backend}}", checkLatest: "检查 {{backend}} 最新版本", recheck: "重新检测 {{backend}}",
   details: "{{backend}} 该怎么处理",
   guide: {
@@ -51,8 +51,8 @@ export const setupJa: SetupCatalog = {
     mainWindowOnly: "Agent 環境はメインウィンドウで管理してください。",
     terminalClipboard: "ターミナルを利用できません。コマンドをクリップボードにコピーしました。",
   },
-  status: { ready: "利用可能", missing: "未インストール", unsupported: "更新が必要", "auth-required": "ログインが必要", error: "検出に失敗" },
-  install: "インストール", login: "ログイン", update: "更新できます",
+  status: { ready: "利用可能", installed: "インストール済み", checking: "確認中", missing: "未インストール", unsupported: "更新が必要", "auth-required": "ログインが必要", error: "検出に失敗" },
+  install: "インストール", login: "ログイン", manageLogin: "ログインを管理", update: "更新できます",
   updateAria: "{{backend}} を更新", checkLatest: "{{backend}} の最新バージョンを確認", recheck: "{{backend}} を再検出",
   details: "{{backend}} の対処方法",
   guide: {
@@ -68,8 +68,8 @@ export const setupFr: SetupCatalog = {
     mainWindowOnly: "Gérez l’environnement Agent dans la fenêtre principale.",
     terminalClipboard: "Le terminal est indisponible. La commande a été copiée dans le presse-papiers.",
   },
-  status: { ready: "Prêt", missing: "Non installé", unsupported: "Mise à jour requise", "auth-required": "Connexion requise", error: "Échec de la détection" },
-  install: "Installer", login: "Se connecter", update: "Mise à jour disponible",
+  status: { ready: "Prêt", installed: "Installé", checking: "Vérification", missing: "Non installé", unsupported: "Mise à jour requise", "auth-required": "Connexion requise", error: "Échec de la détection" },
+  install: "Installer", login: "Se connecter", manageLogin: "Gérer la connexion", update: "Mise à jour disponible",
   updateAria: "Mettre à jour {{backend}}", checkLatest: "Vérifier la dernière version de {{backend}}", recheck: "Revérifier {{backend}}",
   details: "Que faire pour {{backend}}",
   guide: {
@@ -85,8 +85,8 @@ export const setupEs: SetupCatalog = {
     mainWindowOnly: "Gestiona el entorno del Agent en la ventana principal.",
     terminalClipboard: "La terminal no está disponible. El comando se copió al portapapeles.",
   },
-  status: { ready: "Listo", missing: "No instalado", unsupported: "Requiere actualización", "auth-required": "Requiere inicio de sesión", error: "Fallo la comprobación" },
-  install: "Instalar", login: "Iniciar sesión", update: "Actualización disponible",
+  status: { ready: "Listo", installed: "Instalado", checking: "Comprobando", missing: "No instalado", unsupported: "Requiere actualización", "auth-required": "Requiere inicio de sesión", error: "Fallo la comprobación" },
+  install: "Instalar", login: "Iniciar sesión", manageLogin: "Gestionar inicio de sesión", update: "Actualización disponible",
   updateAria: "Actualizar {{backend}}", checkLatest: "Comprobar la última versión de {{backend}}", recheck: "Volver a comprobar {{backend}}",
   details: "Qué hacer con {{backend}}",
   guide: {

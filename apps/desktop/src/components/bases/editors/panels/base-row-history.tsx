@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, BasesProvider rowHistory Reading face, i18n, Unified Dialog with the current list of Base columns
+ * [INPUT]: Depends on React, the useBaseSnapshots rowHistory reading face, i18n, Unified Dialog with the current list of Base columns
  * [OUTPUT]: Provides BaseRowHistoryDialog; The rowId shows the last 50 actor/time/operation, the field abstract takes only the cell in the row and shows the column name as the missing column return id)
  * [POS]: The details of the bases/editors/panels are read only; No history, no enduring status, no rollback
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useBases } from "@/components/providers/bases-provider";
+import { useBaseSnapshots } from "@/components/providers/bases-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import {
   Dialog,
@@ -33,7 +33,7 @@ export function BaseRowHistoryDialog({
   onOpenChange(open: boolean): void;
 }) {
   const { t, i18n } = useAppTranslation();
-  const bases = useBases();
+  const bases = useBaseSnapshots();
   /* 列名而非 columnId：账本记的是 id，人看的是名字；查不到的列（已删）
      回退成 id，让「那一列现在没了」仍然可辨认，而不是凭空消失。 */
   const columnNames = useMemo(

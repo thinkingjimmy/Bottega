@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on injectable renderer IPC registration, ChatStore, surface-scoped read policy, strict chat/attachment ids, Gallery redaction, and injected rename/remove/attachment ports
- * [OUTPUT]: Provides registerChatRendererIpc for testable scoped projections, bounded timeline/around/outline/find queries with image redaction, main-only storage failures, and validated mutations
+ * [OUTPUT]: Provides registerChatRendererIpc for scoped reads plus strict main-only fork preflight/create/managed-commit mutations
  * [POS]: The chats renderer IPC adapter; ChatsService supplies domain callbacks while this module owns channel validation and window scope
  */
 
@@ -17,11 +17,19 @@ import type { ChatStore } from "./chat-store";
 import { rejectLegacyRendererWrite } from "./chats-service-guards";
 import type {
   ChatFindCursor,
+  CommitManagedWorktreeInput,
+  ForkChatPreflightInput,
+  ForkChatRequest,
   ChatOutlineCursor,
   ChatOutlineInput,
   ChatTimelineAroundInput,
   ChatTimelinePageInput,
 } from "../../../shared/chats-ipc";
+import {
+  commitManagedWorktreeInputSchema,
+  forkChatInputSchema,
+  forkPreflightInputSchema,
+} from "./chat-input";
 
 type ChatRendererIpcPorts = {
   store: ChatStore;
@@ -29,6 +37,9 @@ type ChatRendererIpcPorts = {
   assertAdmission(): void;
   rename(input: unknown): Promise<unknown>;
   remove(chatId: string): Promise<void>;
+  forkPreflight?(input: ForkChatPreflightInput): Promise<unknown>;
+  fork?(input: ForkChatRequest): Promise<unknown>;
+  commitManagedWorktree?(input: CommitManagedWorktreeInput): Promise<unknown>;
   readAttachment(attachmentId: string): Promise<unknown>;
 };
 
@@ -203,6 +214,21 @@ export function registerChatRendererIpc(
     .handle(CHATS_CHANNEL.create, rejectLegacyRendererWrite)
     .handle(CHATS_CHANNEL.createForApp, rejectLegacyRendererWrite)
     .handle(CHATS_CHANNEL.append, rejectLegacyRendererWrite)
+    .handle(CHATS_CHANNEL.forkPreflight, (input) => {
+      ports.assertAdmission();
+      if (!ports.forkPreflight) throw new Error("Chat fork is unavailable");
+      return ports.forkPreflight(forkPreflightInputSchema.parse(input));
+    })
+    .handle(CHATS_CHANNEL.fork, (input) => {
+      ports.assertAdmission();
+      if (!ports.fork) throw new Error("Chat fork is unavailable");
+      return ports.fork(forkChatInputSchema.parse(input));
+    })
+    .handle(CHATS_CHANNEL.commitManagedWorktree, (input) => {
+      ports.assertAdmission();
+      if (!ports.commitManagedWorktree) throw new Error("Managed worktree commit is unavailable");
+      return ports.commitManagedWorktree(commitManagedWorktreeInputSchema.parse(input));
+    })
     .handle(CHATS_CHANNEL.rename, (input) => {
       ports.assertAdmission();
       return ports.rename(input);

@@ -25,9 +25,11 @@ import {
   type SetAppGrantStateInput,
   type SetDefaultAppGrantInput,
 } from "../../../../shared/apps-ipc";
+import type { ChatMetadata } from "../../chats/chat-summary";
 import type { ChatStore } from "../../chats/chat-store";
+import type { StoredProject } from "../../projects/store/project-store-schema";
 import type { ProjectStore } from "../../projects/store/project-store";
-import type { AppStore } from "../app-store";
+import type { AppStore } from "../store/app-store";
 import type { BaseGuiGrantStore } from "../base-gui/grant-store";
 import type { AppAttachmentFence } from "./attachment-fence";
 import { resolveAppGrant } from "./grant-resolver";
@@ -278,47 +280,73 @@ export class AppGrantAuthority {
       ...inherited.keys(),
       ...this.apps.list().filter((app) => app.defaultGrant).map((app) => app.id),
     ]);
-    return [...ids].flatMap((appId): EffectiveAppGrant[] => {
-      const app = this.apps.get(appId);
-      const binding = app?.generationBinding.active;
-      const generation = app?.generations.find(
-        (item) => item.generationId === binding?.generationId
-      );
-      const resolved = resolveAppGrant({
-        appId,
-        chat: direct.get(appId),
-        project: inherited.get(appId),
-        global: app?.defaultGrant,
-      });
-      if (!resolved.effective || !app || app.state !== "ready" || !binding || !generation) {
-        return [];
-      }
-      return [{
-        appId,
-        grant: resolved.effective,
-        provenance: {
-          effectiveSource: resolved.provenance.effectiveSource!,
-          suppressedBy: resolved.provenance.suppressedBy,
-        },
-        snapshot: {
-          conversationId: chat.id,
-          conversationIncarnationId: chat.incarnationId,
-          chatGrantRevision: chat.grantRevision,
-          projectId: chat.projectId,
-          projectGrantRevision: project?.grantRevision ?? null,
-          membershipRevision: project?.membershipRevision ?? 0,
-          defaultGrantRevision: app.defaultGrantRevision ?? 0,
-          appId,
-          appLifecycleRevision: app.lifecycleRevision,
-          appGenerationId: generation.generationId,
-          appContentDigest: generation.contentDigest,
-        },
-      }];
+    return [...ids].flatMap((appId) => {
+      const grant = this.resolveEffective(context, appId, direct, inherited);
+      return grant ? [grant] : [];
     });
   }
 
+  /**
+   * 每次 Base 读写都要问一遍「这个 App 现在有权限吗」。走 effectiveGrants 等于
+   * 为了一个 App 把整张 App 表 structuredClone 一遍——单点问题只查单点。
+   */
   async effectiveGrant(chatId: string, appId: string) {
-    return (await this.effectiveGrants(chatId)).find((item) => item.appId === appId);
+    const context = await this.context(chatId);
+    if (!context) return undefined;
+    const { chat, project } = context;
+    return (
+      this.resolveEffective(
+        context,
+        appId,
+        byApp(chat.grants),
+        byApp(project?.grants ?? [])
+      ) ?? undefined
+    );
+  }
+
+  /** 单个 App 的授权判定：chat > project > default，且必须钉在活跃 generation 上。 */
+  private resolveEffective(
+    context: { chat: ChatMetadata; project: StoredProject | undefined },
+    appId: string,
+    direct: Map<string, AppGrantRecord>,
+    inherited: Map<string, AppGrantRecord>
+  ): EffectiveAppGrant | null {
+    const { chat, project } = context;
+    const app = this.apps.get(appId);
+    const binding = app?.generationBinding.active;
+    const generation = app?.generations.find(
+      (item) => item.generationId === binding?.generationId
+    );
+    const resolved = resolveAppGrant({
+      appId,
+      chat: direct.get(appId),
+      project: inherited.get(appId),
+      global: app?.defaultGrant,
+    });
+    if (!resolved.effective || !app || app.state !== "ready" || !binding || !generation) {
+      return null;
+    }
+    return {
+      appId,
+      grant: resolved.effective,
+      provenance: {
+        effectiveSource: resolved.provenance.effectiveSource!,
+        suppressedBy: resolved.provenance.suppressedBy,
+      },
+      snapshot: {
+        conversationId: chat.id,
+        conversationIncarnationId: chat.incarnationId,
+        chatGrantRevision: chat.grantRevision,
+        projectId: chat.projectId,
+        projectGrantRevision: project?.grantRevision ?? null,
+        membershipRevision: project?.membershipRevision ?? 0,
+        defaultGrantRevision: app.defaultGrantRevision ?? 0,
+        appId,
+        appLifecycleRevision: app.lifecycleRevision,
+        appGenerationId: generation.generationId,
+        appContentDigest: generation.contentDigest,
+      },
+    };
   }
 
   /**

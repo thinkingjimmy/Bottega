@@ -1,12 +1,12 @@
 /**
- * [INPUT]: Depends on Node HTTP response and status/code/outcome/issues/currentRevision of errors in the main domain
- * [OUTPUT]: Provides apiError, JSON/original byte response and route-aware (read vs write) de-sensitive error mapping
- * [POS]: The HTTP result boundary of apps/base-gui/api; Business leaves only throwing out structural errors
+ * [INPUT]: Depends on Node HTTP responses and the status/code/outcome/issues/currentRevision carried by main-side errors
+ * [OUTPUT]: Provides apiError, JSON and raw-byte responses, and route-aware (read versus write) error mapping that never leaks host detail
+ * [POS]: The response boundary of apps/base-gui/api; every other module only throws structured errors at it
  */
 
 import type { ServerResponse } from "node:http";
 
-export type GuiApiError = Error & {
+type GuiApiError = Error & {
   status: number;
   code: string;
   outcome: "not-committed" | "unknown";
@@ -31,7 +31,7 @@ export function apiError(
 /* 读路由与写路由的 5xx 语义不同：写请求「结果未知」必须让 App 用同一
    requestId 重试确认；读请求什么都没提交，说「mutation 结果未知」是谎话。
    路由类型是调用方的一等事实，不做猜测。 */
-export type GuiApiRoute = "read" | "write";
+type GuiApiRoute = "read" | "write";
 
 export function respondMappedError(
   response: ServerResponse,

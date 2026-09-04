@@ -16,7 +16,7 @@ export const CLI_DETECTORS = {
   ffmpeg: { command: "ffmpeg", args: ["-version"] },
 } as const;
 
-export type CliRequirementStatus = {
+type CliRequirementStatus = {
   id: string;
   detectable: boolean;
   installed: boolean;

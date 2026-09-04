@@ -4,4 +4,4 @@
  * [POS]: Main bundle utility entry; composition roots address its emitted JavaScript by a fixed filename
  */
 
-import "./apps/base-gui/api/query-worker";
+import "./apps/base-gui/api/query/query-worker";

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the canonical Chat schema, SQLite connection, and deterministic repository codecs
- * [OUTPUT]: Provides connection-scoped row projection writers for narrow append/turn/fact commits, Chat core, readonly presentation, local facts, messages, subagents, attachments, branches, origins, and delta-only search documents written in variable-limit-safe chunks
+ * [OUTPUT]: Provides connection-scoped row projection writers for fork-aware Chat core/device bindings, narrow commits, messages, subagents, attachments, branches, origins, and chunked search documents
  * [POS]: Write projection layer beneath transactional ChatRepository mutation orchestration
  */
 
@@ -201,8 +201,9 @@ export class ChatRecordWriter {
       `INSERT INTO chats(
          id, lifecycle_kind, agent, title, title_source, created_at, updated_at,
          archived_at, incarnation_id, next_seq, trimmed_through_seq,
-         branches_trimmed_through_seq, core_revision, native_message_revision
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         branches_trimmed_through_seq, core_revision, native_message_revision,
+         parent_chat_id, parent_incarnation_id, parent_message_id, inherited_through_seq
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          lifecycle_kind = excluded.lifecycle_kind,
          agent = excluded.agent,
@@ -213,6 +214,10 @@ export class ChatRecordWriter {
          incarnation_id = excluded.incarnation_id,
          next_seq = excluded.next_seq,
          trimmed_through_seq = excluded.trimmed_through_seq,
+         parent_chat_id = excluded.parent_chat_id,
+         parent_incarnation_id = excluded.parent_incarnation_id,
+         parent_message_id = excluded.parent_message_id,
+         inherited_through_seq = excluded.inherited_through_seq,
          core_revision = excluded.core_revision,
          native_message_revision = excluded.native_message_revision`
     ).run(
@@ -229,7 +234,11 @@ export class ChatRecordWriter {
       record.trimmedThroughSeq ?? 0,
       0,
       record.chatRecordRevision,
-      record.chatMessageRevision
+      record.chatMessageRevision,
+      record.parentChatId ?? null,
+      record.parentIncarnationId ?? null,
+      record.parentMessageId ?? null,
+      record.inheritedThroughSeq ?? null
     );
   }
 
@@ -348,14 +357,16 @@ export class ChatRecordWriter {
     this.database.prepare(
       `INSERT INTO chat_device_bindings(
          chat_id, device_id, state, home_dir, session_backend, session_id,
-         session_tool_plan_json, start_state_json, binding_revision,
-         created_at, updated_at
-       ) VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?, ?)
+         session_tool_plan_json, start_state_json, execution_dir, execution_kind,
+         binding_revision, created_at, updated_at
+       ) VALUES (?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(chat_id, device_id) DO UPDATE SET
          state = 'ready', home_dir = excluded.home_dir,
          session_backend = excluded.session_backend, session_id = excluded.session_id,
          session_tool_plan_json = excluded.session_tool_plan_json,
          start_state_json = excluded.start_state_json,
+         execution_dir = excluded.execution_dir,
+         execution_kind = excluded.execution_kind,
          binding_revision = excluded.binding_revision,
          updated_at = excluded.updated_at`
     ).run(
@@ -366,6 +377,8 @@ export class ChatRecordWriter {
       record.session?.id ?? null,
       record.session?.toolPlan ? json(record.session.toolPlan) : null,
       json(record.startState),
+      record.executionDir ?? null,
+      record.executionKind ?? null,
       record.chatRecordRevision,
       record.createdAt,
       record.updatedAt

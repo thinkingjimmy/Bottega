@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on in-memory canonical Chat metadata and the shared summary projection
- * [OUTPUT]: Provides sorted summaries, exact identity/ownership projections, adoption snapshot references, external-history bindings, and Project references
+ * [OUTPUT]: Provides sorted summaries, exact identity/ownership/execution projections, adoption snapshot references, external-history bindings, and Project references
  * [POS]: Read-only ChatStore projection layer; it never reads durable storage, mutates records, or persists
  */
 
@@ -56,7 +56,8 @@ export class ChatStoreProjection {
   }
 
   executionDir(chatId: string) {
-    return this.get(chatId)?.importOrigin?.originalCwd;
+    const record = this.get(chatId);
+    return record?.executionDir ?? record?.importOrigin?.originalCwd;
   }
 
   adoptionSnapshotIds() {

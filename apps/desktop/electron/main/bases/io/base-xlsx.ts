@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the ExcelJS document Workbook leaf, Node module loader/zlib, streamlined decompression, limited file reading, Base JSON business import, shared cellValue/value/XLSX issue
+ * [INPUT]: Depends on the ExcelJS document Workbook leaf, Node module loader/zlib, streamlined decompression, limited file reading, Base JSON business import, shared cellValue/value/XLSX issue, plus the shared statusError constructor from main/errors
  * [OUTPUT]: Provides BaseXlsxService, buildBaseXlsx, parseBaseXlsx/hasExcelTimeToken; Execute the atom report Pre-check, stabilize the issue code/0 Base data line, +2 on the renderer side is the worksheet line, UTC date-only/ISO datetime/cached formula, two-way mapping, type inference and actual decompression bytes/ZIP/dimensional budget
  * [POS]: The main-only XLSX format of bases/io; The renderer does not load ExcelJS, complete success reports first through the wire schema, then repeats the CAS in the BaseJsonService transaction
  */
@@ -34,10 +34,14 @@ import {
 } from "../../../../shared/bases-ipc";
 import { baseXlsxIssuesSchema } from "../../../../shared/bases-schema";
 import { baseSnapshotFile } from "../../../../shared/base-snapshot";
-import type { BaseCommitAuthority } from "../base-commit-authority";
-import { validateBaseCell } from "../base-mutation-validation";
+import type { BaseCommitAuthority } from "../service/base-commit-authority";
+import {
+  baseRowIdSet,
+  validateBaseCell,
+} from "../validation/base-mutation-validation";
 import type { BaseJsonService } from "./base-json";
 import { readBoundedFile } from "./base-json";
+import { statusError } from "../../errors";
 
 const Workbook = createRequire(import.meta.url)(
   "exceljs/lib/doc/workbook"
@@ -226,12 +230,13 @@ export async function parseBaseXlsx(buffer: Buffer, current: BaseSnapshot) {
   const rows = current.rows.map((row) => incomingById.get(row.id) ?? row);
   const existingIds = new Set(current.rows.map((row) => row.id));
   for (const row of incomingById.values()) if (!existingIds.has(row.id)) rows.push(row);
+  const relationTargets = baseRowIdSet(rows);
   for (const row of incomingById.values()) {
     for (const column of columns) {
       const value = row.values[column.id];
       if (column.type !== "relation" || value === undefined) continue;
       try {
-        validateBaseCell(column, value, "external", rows);
+        validateBaseCell(column, value, "external", relationTargets);
       } catch {
         delete row.values[column.id];
         appendXlsxIssue(issues, {
@@ -535,8 +540,4 @@ function isHttpsUrl(value: string) {
 
 function safeSheetName(value: string) {
   return value.replace(/[\\/*?:[\]]/g, " ").trim().slice(0, 31) || "Base";
-}
-
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }

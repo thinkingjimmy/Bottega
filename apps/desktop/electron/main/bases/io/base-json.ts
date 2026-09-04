@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on BaseStore, base.json strict, contract, base mutation, system file selection, port of ownership and expected revision
- * [OUTPUT]: Provides BaseJSONService with mergeImportedColumns to complete single file JSON storage, limited readings and CAS upsert in transactions
+ * [INPUT]: Depends on BaseStore, base.json strict, contract, base mutation, system file selection, port of ownership and expected revision, plus the shared statusError constructor from main/errors
+ * [OUTPUT]: Provides BaseJSONService with mergeImportedColumns to complete single file JSON storage, limited readings, and CAS upsert transactions that declare a whole-table rewrite only when a row is actually overwritten
  * [POS]: The JSON boundary of the bases module can be ported; BasesService only retains IPC sorting, where the format/budget/compound semantics are focused
  */
 
@@ -18,15 +18,22 @@ import {
   baseSnapshotFile,
   baseSnapshotFileSchema,
   type BaseSnapshotFile,
-  type BaseSnapshotFileV2,
 } from "../../../../shared/base-snapshot";
 import type { BaseColumn } from "../../../../shared/base-values";
-import type { BaseStore, BaseOwnerIdentity } from "../base-store";
-import type { BaseCommitAuthority } from "../base-commit-authority";
 import {
+  ALL_ROWS_CHANGED,
+  NO_ROWS_CHANGED,
+  type BaseOwnerIdentity,
+  type BaseStore,
+} from "../base-store";
+import type { BaseCommitAuthority } from "../service/base-commit-authority";
+import {
+  baseColumnIndex,
+  baseRowIdSet,
   validateBaseModel,
   validateBaseRow,
-} from "../base-mutation-validation";
+} from "../validation/base-mutation-validation";
+import { statusError } from "../../errors";
 
 const clone = <T>(value: T): T => structuredClone(value);
 const same = (left: unknown, right: unknown) =>
@@ -128,8 +135,10 @@ export class BaseJsonService {
         for (const row of imported.rows) {
           if (!seen.has(row.id)) rows.push(clone(row));
         }
+        const columnIndex = baseColumnIndex(columns);
+        const relationTargets = baseRowIdSet(rows);
         imported.rows.forEach((row) =>
-          validateBaseRow(row, columns, "external", rows)
+          validateBaseRow(row, columnIndex, "external", relationTargets)
         );
         const activeViewId = imported.views.some(
           (view) => view.id === current.meta.activeViewId
@@ -159,8 +168,10 @@ export class BaseJsonService {
         if (!metaChanged && !upserts.length) return null;
         return {
           meta,
-          rows,
-          rowsChanged: upserts.length > 0,
+          /* 没有一行被覆写时交回原引用：这才是「纯 meta 提交」的凭据。 */
+          rows: upserts.length ? rows : current.rows,
+          /* 导入是整表重写语义（未列出的列会归空），全量体检当得起这份代价。 */
+          changedRowIds: upserts.length ? ALL_ROWS_CHANGED : NO_ROWS_CHANGED,
           actor: authority.actor,
           operation: "json-import",
         };
@@ -186,7 +197,7 @@ export function mergeImportedColumns(
     if (!next) return clone(column);
     incomingById.delete(column.id);
     if (next.type !== column.type) {
-      throw httpError(
+      throw statusError(
         400,
         `列 ${column.id} 类型冲突：${column.type} → ${next.type}`
       );
@@ -208,7 +219,7 @@ export function mergeImportedColumns(
 
 function parseSnapshotFile(
   file: string | BaseSnapshotFile
-): BaseSnapshotFileV2 {
+): BaseSnapshotFile {
   try {
     return baseSnapshotFileSchema.parse(
       typeof file === "string" ? JSON.parse(file) : file
@@ -221,7 +232,7 @@ function parseSnapshotFile(
       Array.isArray((cause as { issues: Array<{ message?: string }> }).issues)
         ? (cause as { issues: Array<{ message?: string }> }).issues[0]?.message
         : undefined;
-    throw httpError(400, issue ?? "Base JSON 文件无效");
+    throw statusError(400, issue ?? "Base JSON 文件无效");
   }
 }
 
@@ -230,7 +241,7 @@ async function readBoundedSnapshot(path: string) {
   try {
     const metadata = await file.stat();
     if (!metadata.isFile() || metadata.size > BASE_SNAPSHOT_FILE_BYTE_LIMIT) {
-      throw httpError(
+      throw statusError(
         400,
         `Base JSON 文件不能超过 ${BASE_SNAPSHOT_FILE_BYTE_LIMIT} 字节`
       );
@@ -246,7 +257,7 @@ export async function readBoundedFile(path: string, limit: number) {
   try {
     const metadata = await file.stat();
     if (!metadata.isFile() || metadata.size > limit) {
-      throw httpError(400, `文件不能超过 ${limit} 字节`);
+      throw statusError(400, `文件不能超过 ${limit} 字节`);
     }
     return readOpenedFile(file, metadata.size);
   } finally {
@@ -260,13 +271,9 @@ async function readOpenedFile(
 ) {
   const content = await file.readFile();
   if (content.byteLength !== expectedBytes) {
-    throw httpError(400, "文件在读取期间发生变化");
+    throw statusError(400, "文件在读取期间发生变化");
   }
   return content;
-}
-
-function httpError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }
 
 function mutationConflict(currentRevision: number) {

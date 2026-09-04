@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, the locale catalog, shared AppRecord/PresetAppSummary, apps-client, and an optional fixed App-window identity
- * [OUTPUT]: Provides AppsProvider/useApps/useOptionalApps with epoch-fenced snapshot adoption, buffered App events, explicit list state, retryable refresh, durable global pins, deletion-aware cleanup, full main-window operations, or a fixed-App projection that never requests presets
+ * [INPUT]: Depends on React Context, the locale catalog, the shared AppRecordProjection/PresetAppSummary read models, apps-client, and an optional fixed App-window identity
+ * [OUTPUT]: Provides AppsProvider/useApps/useOptionalApps carrying main's AppRecordProjection end to end, with epoch-fenced snapshot adoption, buffered App events, explicit list state, retryable refresh, durable global pins, deletion-aware cleanup, full main-window operations, or a fixed-App projection that never requests presets
  * [POS]: Renderer Apps state owner; fixed App windows retain one exact record while the main product owns global catalogs, management projections, and stale-operation eviction
  */
 
@@ -18,8 +18,8 @@ import {
 import type {
   AddAppInput,
   AppAgentVisibility,
-  AppInstallEvent,
   AppRecord,
+  AppRecordProjection,
   AppOperation,
   AppRuntimeState,
   EnsureAppChatSlotInput,
@@ -32,6 +32,7 @@ import type {
   SaveAsAppInput,
   SetAppAgentInput,
 } from "../../../shared/apps-ipc";
+import type { AppsRendererEvent } from "@/lib/apps-client";
 import {
   addApp as addAppViaBridge,
   cancelAppInstall,
@@ -102,7 +103,7 @@ export type AppListItem =
   | ({ kind: "placeholder" } & AppInfo)
   | {
       kind: "installed";
-      record: AppRecord;
+      record: AppRecordProjection;
       step: string;
       operation?: AppOperation;
       runtimeState?: AppRuntimeState;
@@ -110,8 +111,8 @@ export type AppListItem =
 
 type AppsContextValue = {
   apps: AppListItem[];
-  records: AppRecord[];
-  pinnedRecords: AppRecord[];
+  records: AppRecordProjection[];
+  pinnedRecords: AppRecordProjection[];
   presets: PresetAppSummary[];
   /** 三段协议：probe 冻结 → 用户确认 → install 携带 preflightId+digest；放弃即 discard */
   probePreset: (presetId: string) => Promise<PresetProbeResult>;
@@ -149,8 +150,8 @@ type AppsContextValue = {
 const AppsContext = createContext<AppsContextValue | null>(null);
 
 export function applyAppInventoryEvents(
-  base: readonly AppRecord[],
-  events: readonly AppInstallEvent[]
+  base: readonly AppRecordProjection[],
+  events: readonly AppsRendererEvent[]
 ) {
   const records = new Map(base.map((record) => [record.id, record]));
   for (const event of events) {
@@ -173,7 +174,7 @@ export function AppsProvider({
   fixedAppId?: string;
 }) {
   const { t } = useAppTranslation();
-  const [records, setRecords] = useState<AppRecord[]>([]);
+  const [records, setRecords] = useState<AppRecordProjection[]>([]);
   const [presets, setPresets] = useState<PresetAppSummary[]>([]);
   const recordStates = useRef(new Map<string, AppState>());
   const [browserApps, setBrowserApps] = useState<AppInfo[]>([]);
@@ -195,7 +196,7 @@ export function AppsProvider({
   const [reloadRevision, setReloadRevision] = useState(0);
   const listEpoch = useRef(0);
   const listRefreshing = useRef(false);
-  const bufferedEvents = useRef<AppInstallEvent[]>([]);
+  const bufferedEvents = useRef<AppsRendererEvent[]>([]);
 
   useEffect(() => {
     if (!hasAppsBridge()) return;

@@ -7,7 +7,7 @@
 import { createSubagentToolset } from "./agent/subagent-toolset";
 import { SubagentSpawnService } from "./agent/subagent-spawn";
 import type { AppsService } from "./apps/apps-service";
-import { createAppToolset } from "./apps/toolset";
+import { createAppToolset } from "./apps/turn/toolset";
 import type { BaseStore } from "./bases/base-store";
 import type { BasesService } from "./bases/bases-service";
 import { createBaseToolset } from "./bases/toolset";
@@ -75,7 +75,7 @@ export function createBuiltinToolsets(deps: BuiltinToolsetDependencies) {
       deps.basesService,
       (chatId) => !(deps.archiveService?.isConversationAvailable(chatId) ?? true)
     ),
-    createProjectToolset(deps.projectsService),
+    createProjectToolset(deps.projectsService, deps.chatsService),
     createSubagentToolset(subagentSpawn),
     createSearchToolset(
       deps.chatStore,

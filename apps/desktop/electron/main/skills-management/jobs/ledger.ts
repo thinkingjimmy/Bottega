@@ -15,7 +15,6 @@ import type {
 } from "../../../../shared/unified-skills-ipc";
 import {
   DurableJson,
-  initializeDurableJsonOrQuarantine,
 } from "../../persistence/durable-json";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -135,7 +134,7 @@ export class SkillsJobLedger {
   }
 
   initialize() {
-    return initializeDurableJsonOrQuarantine(this.file, upgradeJobs);
+    return this.file.initialize(upgradeJobs);
   }
 
   snapshot() {

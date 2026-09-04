@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on ChatStore, ChatDeletionDriver, conversation lifecycle/cancellation ports, and optional App chat deactivation
- * [OUTPUT]: Provides ChatRemovalController for renderer (which refuses imported readonly Chats), App-held, purge, and Project-held deletion paths
+ * [INPUT]: Depends on ChatStore, ChatDeletionDriver advisory/resource phases, conversation lifecycle/cancellation ports, and optional App chat deactivation
+ * [OUTPUT]: Provides ChatRemovalController with purge-wide read-only admission for renderer, App-held, purge, and Project-held deletion paths
  * [POS]: The chats deletion orchestration boundary; ChatsService delegates removal while durable deletion details remain in ChatDeletionDriver
  */
 
@@ -49,6 +49,11 @@ export class ChatRemovalController {
     }
   }
 
+  async admit(chatIds: readonly string[]) {
+    const records = await Promise.all(chatIds.map((chatId) => this.requireRecord(chatId)));
+    await this.ports.deletion.admit(records);
+  }
+
   /* 渲染层发起的永久删除仍然拒绝导入的只读会话：产品面把它的垃圾桶
      置灰，这里就是那道栅栏。删除 Project 与清空归档走的是另外两条路，
      它们必须能连只读会话一起带走——仓储层因此不再自己设限。 */
@@ -57,6 +62,7 @@ export class ChatRemovalController {
     if (candidate.readOnlyReason === "external-readonly") {
       throw Object.assign(new Error("导入的只读会话不能永久删除"), { status: 409 });
     }
+    await this.ports.deletion.admit([candidate]);
     await this.appDeactivation?.(candidate, "delete");
     const memory = await this.ports.deletion.snapshot(candidate);
     let record: ChatRecord | null = null;
@@ -85,6 +91,7 @@ export class ChatRemovalController {
     ) {
       throw new Error("App delete cannot remove an ordinary or foreign chat");
     }
+    await this.ports.deletion.admit([candidate]);
     const memory = await this.ports.deletion.snapshot(candidate);
     const current = await this.requireRecord(chatId);
     this.assertSnapshotCurrent(candidate, current);
@@ -99,6 +106,7 @@ export class ChatRemovalController {
     mode: ConversationDeletionMode = "local-only"
   ) {
     const candidate = await this.requireRecord(chatId);
+    await this.ports.deletion.admit([candidate]);
     const memory = await this.ports.deletion.snapshot(candidate);
     let record: ChatRecord | null = null;
     await this.ports.withConversationLifecycle(async () => {
@@ -113,8 +121,12 @@ export class ChatRemovalController {
   }
 
   async removeByProject(projectId: string, projectLifecycle?: "held") {
-    for (const chatId of this.ports.store.listByProject(projectId)) {
-      const candidate = await this.requireRecord(chatId);
+    const candidates = await Promise.all(
+      this.ports.store.listByProject(projectId).map((chatId) => this.requireRecord(chatId))
+    );
+    await this.ports.deletion.admit(candidates);
+    for (const candidate of candidates) {
+      const chatId = candidate.id;
       const memory = await this.ports.deletion.snapshot(candidate);
       let record: ChatRecord | null = null;
       const prepare = async () => {

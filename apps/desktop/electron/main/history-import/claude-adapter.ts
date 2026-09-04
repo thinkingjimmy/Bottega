@@ -1,13 +1,12 @@
 /**
- * [INPUT]: Depends on Node fs/path, user home and history-import adapter
- * [OUTPUT]: Provides ClaudeHistoryAdapter with constant-memory identity/full scans and turn-bounded JSONL streaming that preserves assistant fragment and tool-result merging
+ * [INPUT]: Depends on Node fs/path, user home, the history-import adapter kernel and the shared turn-folding seam
+ * [OUTPUT]: Provides ClaudeHistoryAdapter with constant-memory identity/full scans and turn-bounded JSONL streaming that preserves assistant fragment and tool-result merging, folds a turn into one assistant block, strips the product-context envelope from content blocks and titles, and skips every non-conversation record
  * [POS]: The Claude Code format adapter for history-import; slug is only rough, true attribution is only recognized by the record cwd
  */
 
 import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type {
-  ForeignHistoryBlock,
   ForeignHistoryMessage,
   ForeignToolEvent,
 } from "../../../shared/history-import-ipc";
@@ -17,7 +16,6 @@ import {
   batchHistoryTurns,
   collectHistoryBatches,
   digest,
-  escapedUnsupported,
   fingerprint,
   fingerprintRevision,
   humanTitle,
@@ -36,6 +34,7 @@ import {
   type ParsedHistory,
   type ScanDepth,
 } from "./adapter";
+import { foldHistoryTurns, stripProductContext } from "./turn-folding";
 
 type Json = Record<string, unknown>;
 
@@ -107,7 +106,7 @@ export class ClaudeHistoryAdapter implements HistoryAdapter {
   }
 
   parseBatches(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches {
-    return batchHistoryTurns(this.parseTurns(entry, signal), signal);
+    return batchHistoryTurns(foldHistoryTurns(this.parseTurns(entry, signal), signal), signal);
   }
 
   async parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory> {
@@ -119,7 +118,7 @@ export class ClaudeHistoryAdapter implements HistoryAdapter {
     signal?: AbortSignal
   ): HistoryBlockTurns {
     const source = streamStableJsonl(entry.sourcePath, entry.fingerprint, signal);
-    let blocks: ForeignHistoryBlock[] = [];
+    let blocks: ForeignHistoryMessage[] = [];
     const assistant = new Map<string, ForeignHistoryMessage>();
     const tools = new Map<string, ForeignToolEvent>();
     let deliverySeq = 0;
@@ -144,16 +143,13 @@ export class ClaudeHistoryAdapter implements HistoryAdapter {
       try {
         raw = JSON.parse(line) as Json;
       } catch {
-        blocks.push(unsupported(line, deliverySeq, "invalid-json"));
         continue;
       }
       if (ignoredClaudeRecord(raw)) continue;
+      /* 会话记录之外的一切——已知元数据、未来才出现的记录类型、半行坏
+         JSON——都不是对话内容，跳过即可，不得物化成一条消息。 */
       const role = raw.type === "assistant" || raw.type === "user" ? raw.type : null;
-      if (!role) {
-        if (isKnownClaudeMetadata(raw)) continue;
-        blocks.push(unsupported(line, deliverySeq, "unsupported-record"));
-        continue;
-      }
+      if (!role) continue;
       const message = object(raw.message);
       const id = string(message?.id) ?? string(raw.uuid) ?? `${role}-${deliverySeq}`;
       const at = timestamp(raw.timestamp, entry.createdAt);
@@ -173,7 +169,7 @@ export class ClaudeHistoryAdapter implements HistoryAdapter {
             tools: mergeTools(current.tools ?? [], extracted.tools),
           };
           assistant.set(id, merged);
-          const index = blocks.findIndex((block) => block.kind === "message" && block.id === id);
+          const index = blocks.findIndex((block) => block.id === id);
           if (index >= 0) blocks[index] = merged;
           continue;
         }
@@ -283,7 +279,12 @@ function claudeContent(value: unknown, results: Map<string, ForeignToolEvent>) {
   for (const item of value) {
     const block = object(item);
     if (!block) continue;
-    if (block.type === "text" && typeof block.text === "string") text.push(block.text);
+    /* 产品信封是独立的一块 text block（也可能与正文同块），剥掉它再入正文；
+       整块只剩信封的直接消失，用户那句话因此才是第一条用户消息与标题。 */
+    if (block.type === "text" && typeof block.text === "string") {
+      const text_ = stripProductContext(block.text);
+      if (text_) text.push(text_);
+    }
     if (block.type === "tool_use") {
       const event = {
         id: string(block.id) ?? `tool-${tools.length}`,
@@ -303,8 +304,8 @@ function claudeContent(value: unknown, results: Map<string, ForeignToolEvent>) {
   return { text: text.join("\n"), tools, onlyToolResults: toolResults > 0 && !text.length && !tools.length };
 }
 
-function refreshToolOutputs(blocks: ForeignHistoryBlock[], results: Map<string, ForeignToolEvent>) {
-  return blocks.map((block) => block.kind !== "message" || !block.tools ? block : {
+function refreshToolOutputs(blocks: ForeignHistoryMessage[], results: Map<string, ForeignToolEvent>) {
+  return blocks.map((block) => !block.tools ? block : {
     ...block,
     tools: block.tools.map((tool) => results.get(tool.id) ?? tool),
   });
@@ -316,21 +317,6 @@ function mergeTools(left: ForeignToolEvent[], right: ForeignToolEvent[]) {
 
 function ignoredClaudeRecord(raw: Json) {
   return raw.isSidechain === true || raw.isMeta === true || raw.type === "system" || raw.type === "progress";
-}
-
-function isKnownClaudeMetadata(raw: Json) {
-  return ["custom-title", "file-history-snapshot", "queue-operation", "summary"].includes(String(raw.type));
-}
-
-function unsupported(line: string, seq: number, reason: string) {
-  return {
-    kind: "unsupported" as const,
-    id: `unsupported-${seq}`,
-    deliverySeq: seq,
-    createdAt: 0,
-    reason,
-    escapedPreview: escapedUnsupported(line),
-  };
 }
 
 const object = (value: unknown) => value && typeof value === "object" && !Array.isArray(value) ? value as Json : null;

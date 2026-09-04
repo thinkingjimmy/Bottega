@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on generation-bound handler context, opaque token registry, active-generation fencing, legacy Base reads, durable pre-copy Query snapshot descriptors with live identity checks, compiled Query V1, mutation handlers and owner-scoped attachment port
- * [OUTPUT]: Provides GUIBasePort, pre-copy query source/current-identity contract, client-disconnect AbortSignal plumbing, BaseGuiApi factory and strict token/method/capability/generation routing for legacy and compiled Base GUI endpoints
+ * [OUTPUT]: Provides GUIBasePort, pre-copy query source/current-identity contract, bounded query/preference body readers, client-disconnect AbortSignal plumbing, BaseGuiApi factory and strict token/method/capability/generation routing for legacy and compiled Base GUI endpoints
  * [POS]: The root of the apps/base-gui/api combination; token→binding→method→capability→active-write fence→handler
  */
 
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { BaseGuiApiHandler } from "../../app-gateway";
+import type { BaseGuiApiHandler } from "../../gateway/app-gateway";
 import type { BaseGuiLiveBinding } from "../../../../../shared/apps-ipc";
 import type {
   BaseRow,
@@ -18,7 +18,7 @@ import {
   BASE_QUERY_ENVELOPE_RESERVE,
   BASE_QUERY_RESULT_BYTE_LIMIT,
 } from "../../../bases/base-read";
-import type { GuiTokenClaims } from "../../gui-api";
+import type { GuiTokenClaims } from "../../generation/gui-api";
 import {
   GUI_MUTATION_BODY_TIMEOUT_MS,
   MutationAdmission,
@@ -31,12 +31,16 @@ import {
   respondJson,
   respondMappedError,
 } from "./errors";
-import { readQueryRequest } from "./query-v1";
-import type { BaseGuiQueryRequestV1 } from "../../../../../shared/app-gui/query";
+import {
+  baseGuiQueryRequestV1Schema,
+  type BaseGuiQueryRequestV1,
+} from "../../../../../shared/app-gui/query";
 import { z } from "zod";
 
 const ROWS_DEFAULT_LIMIT = 200;
 const ROWS_MAX_LIMIT = 500;
+const QUERY_REQUEST_LIMIT = 64 * 1024;
+const QUERY_BODY_TIMEOUT_MS = 5_000;
 
 type MutationResult = Readonly<{
   baseInstanceId: string;
@@ -56,7 +60,6 @@ export type GuiBasePort = {
     source: BaseGuiQuerySnapshotSource;
     request: BaseGuiQueryRequestV1;
     cursorKey: Uint8Array;
-    surfaceId: string;
     signal: AbortSignal;
   }): Promise<unknown>;
   readPreferences?(input: { binding: BaseGuiLiveBinding }): Promise<unknown>;
@@ -194,7 +197,6 @@ export function createBaseGuiApi(
           source,
           request: query,
           cursorKey: queryCursorKey,
-          surfaceId: binding.surfaceId,
           signal: aborts.signal,
         }));
       } catch (cause) {
@@ -304,6 +306,37 @@ const preferenceWriteSchema = z.union([
   z.object({ expectedRevision: z.number().int().nonnegative(), reset: z.literal(true) }).strict()
     .transform((value) => ({ expectedRevision: value.expectedRevision, reset: true as const })),
 ]);
+
+async function readQueryRequest(request: IncomingMessage, timeoutMs = QUERY_BODY_TIMEOUT_MS) {
+  const contentLength = Number(request.headers["content-length"] ?? 0);
+  if (!Number.isSafeInteger(contentLength) || contentLength < 0 || contentLength > QUERY_REQUEST_LIMIT) {
+    throw apiError(413, "query_budget_exceeded", "Query request exceeds 64 KiB");
+  }
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  const timer = setTimeout(() => request.destroy(apiError(408, "query_timeout", "Query body timed out")), timeoutMs);
+  try {
+    for await (const chunk of request) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bytes += buffer.byteLength;
+      if (bytes > QUERY_REQUEST_LIMIT) throw apiError(413, "query_budget_exceeded", "Query request exceeds 64 KiB");
+      chunks.push(buffer);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw apiError(400, "query_invalid", "Query body must be valid JSON");
+  }
+  const parsed = baseGuiQueryRequestV1Schema.safeParse(raw);
+  if (!parsed.success) {
+    throw apiError(400, "query_invalid", "Query contract is invalid", parsed.error.issues);
+  }
+  return parsed.data;
+}
 
 async function readPreferenceWrite(request: IncomingMessage) {
   const chunks: Buffer[] = [];

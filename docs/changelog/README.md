@@ -4,6 +4,19 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-09-04 — v0.1.1
+
+- Published the v0.1.1 installers: a macOS arm64 DMG and ZIP, a Windows x64 NSIS installer, and a Linux x64 AppImage. These builds are still unsigned, so the one-time step each platform asks for on first launch is unchanged from 0.1.0 and stays documented in the [getting-started guide](../getting-started/README.md).
+- Added Chat Fork. Any assistant reply can become the starting point of a new chat that inherits the history before it as read-only, and a fork on a Git Project can take a product-managed worktree of its own, so two branches of the same conversation stop overwriting one working copy.
+- Grew the usage side of Apps. App Use now has a history panel, and an App can run in a standalone window instead of only inside the main one.
+- Unified the App GUI Surface on one component set and one message channel, so App pages no longer each carry their own copy of the protocol.
+- Fixed two real losses in imported history. Refreshing imported history now keeps each chat's Project membership, and re-importing a session rewrites its title search document instead of leaving a stale one behind.
+- Reflowed onboarding. The three steps now adapt to narrow windows with container-aware capability rows, and the descriptions collapse to chat home, Agent, and extras, which keeps a readable line width at every width.
+- Made chat-store maintenance repair drift instead of failing, and made a genuine failure actionable. A search projection that no longer matches the conversations it derives from is recomputed and rewritten through the same write path; when a self-check does fail, the Sidebar shows a typed notice with the way out and a report button that opens a prefilled GitHub issue.
+- Gave the installed app its own data directory. A copy installed from a release now keeps its data in a `Bottega` directory instead of sharing the one a development build uses, so the two no longer rebuild each other's local state.
+- Made an unreadable durable ledger recover instead of stopping startup. A ledger whose contents cannot be trusted is now quarantined under a new name for evidence and rebuilt empty, and the app continues to start.
+- Advanced the bundled first-party App presets to their published commits.
+
 ## 2026-09-02 — v0.1.0
 
 - Published the first installers. Bottega is now available from GitHub Releases as a macOS arm64 DMG and ZIP, a Windows x64 NSIS installer, and a Linux x64 AppImage, all built from this tagged commit. These builds are unsigned; the [getting-started guide](../getting-started/README.md) documents the one-time step each platform asks for on first launch.

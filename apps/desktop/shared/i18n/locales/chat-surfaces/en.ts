@@ -52,8 +52,7 @@ export const chatSurfacesEn = {
       unresolved: "Unresolved",
       configOverrideDiff: "Config override: {{value}}",
       eligible: "Eligible: {{value}}",
-      deliverySummary:
-        "Delivery health: {{delivery}}; active this turn: {{active}}",
+      turnActive: "Active this turn: {{active}}",
     },
     appTab: {
       readFailed: "Could not read App status",

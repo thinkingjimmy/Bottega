@@ -16,7 +16,7 @@ const digestSchema = z
   .transform((value) => value as `sha256:${string}`);
 const directionSchema = z.enum(["asc", "desc"]);
 
-export const BASE_GUI_QUERY_AGGREGATIONS = [
+const BASE_GUI_QUERY_AGGREGATIONS = [
   "average",
   "empty",
   "filled",

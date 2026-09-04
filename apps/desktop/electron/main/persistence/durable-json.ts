@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/path, Zod schemas, and SerialQueue
- * [OUTPUT]: Provides durable directory publication, atomic text/byte replacement, explicit corruption errors with retained diagnostics, quarantine, strict initialization/upgrades, and serialized rollback-safe mutation
- * [POS]: The persistence I/O boundary; DurableJson classifies unreadable content while store owners decide whether corruption may be quarantined and recovered
+ * [OUTPUT]: Provides durable directory publication, atomic text/byte replacement, explicit corruption errors with retained diagnostics, quarantine, strict single-step upgrades, initialization that quarantines untrusted content and rebuilds empty by default (reporting `quarantined`), and serialized rollback-safe mutation
+ * [POS]: The persistence I/O boundary; DurableJson owns the recovery decision for unreadable content so no ledger can turn a schema drift into a fatal startup
  */
 
 import { randomUUID } from "node:crypto";
@@ -147,7 +147,8 @@ async function syncDirectory(directory: string) {
 
 /* ============================================================
  * 损坏隔离：改名留证而非删除，最多保留最近三份避免无限累积。
- * 隔离本身不是恢复——隔离后是 fail-closed 还是空态重建，由调用方决定。
+ * initialize 读到无法信任的内容时自动走这里；owner 只在自己的领域不变量
+ * 失败时才需要手动调用它。
  * ============================================================ */
 export async function quarantineDurableFile(filePath: string) {
   const directory = dirname(filePath);
@@ -169,28 +170,6 @@ export async function quarantineDurableFile(filePath: string) {
   );
 }
 
-/**
- * 预发布断代语义：无法信任的账本「按不存在处理」——隔离留证，空态重建。
- * 选择调用它（而非裸 initialize）就是 owner 的恢复决策；IO 错误照常上抛，
- * 因为磁盘读写不动时空态重建同样写不进去，谎报 ready 只会把故障推迟到下一笔。
- */
-export async function initializeDurableJsonOrQuarantine<T>(
-  file: DurableJson<T>,
-  upgrade?: DurableJsonUpgrade<T>
-) {
-  try {
-    await file.initialize(upgrade);
-  } catch (cause) {
-    if (!(cause instanceof DurableFileCorruptionError)) throw cause;
-    console.warn(
-      `[durable-json] 账本无法读取，已隔离原件后空态重建（备份至 ${file.filePath}.quarantine-*）`,
-      cause
-    );
-    await quarantineDurableFile(file.filePath);
-    await file.initialize();
-  }
-}
-
 export class DurableJson<T> {
   private state: T;
   private ready = false;
@@ -206,38 +185,60 @@ export class DurableJson<T> {
     this.state = empty();
   }
 
+  /* ── 读不出即隔离重建：这是 initialize 的默认语义，不是 owner 的选项 ──
+     磁盘上的字节读到了却无法信任（JSON 坏了、schema 对不上、升级函数也
+     不认）：改名留证、空态重建、照常 ready，并把 quarantined 告诉调用方。
+     此前这层保护是一个可选的外层函数，二十多个账本从未调用它——任何一次
+     「形状变了、号没升」都会让主进程起不来（09-04 的 process-custody 就是）。
+     两类错误照常上抛：IO 错误（磁盘不动时空态同样写不进去，谎报 ready 只是
+     把故障推迟到下一笔）与升级函数交出的非法状态（那是代码错误，隔离只会
+     把它藏起来）。 */
   async initialize(upgrade?: DurableJsonUpgrade<T>) {
     if (this.poisoned) {
       throw new Error(`Durable authority 已 poisoned，必须新建实例重开：${this.filePath}`);
     }
-    await this.queue.enqueue(async () => {
+    return this.queue.enqueue(async (): Promise<{ quarantined: boolean }> => {
       const content = await this.readExisting();
       if (content === null) {
         await this.persistOrPoison(this.state);
         this.ready = true;
-        return;
+        return { quarantined: false };
       }
-      let raw: unknown;
-      try {
-        raw = JSON.parse(content) as unknown;
-      } catch (cause) {
-        throw new DurableFileCorruptionError(this.filePath, cause);
-      }
-      const current = this.schema.safeParse(raw);
-      if (current.success) {
-        this.state = current.data;
+      const loaded = this.decode(content, upgrade);
+      if (loaded.ok) {
+        if (loaded.persist) await this.persistOrPoison(loaded.state);
+        this.state = loaded.state;
         this.ready = true;
-        return;
+        return { quarantined: false };
       }
-      const migrated = upgrade?.(raw);
-      if (migrated === undefined) {
-        throw new DurableFileCorruptionError(this.filePath, current.error);
-      }
-      const next = this.schema.parse(migrated);
-      await this.persistOrPoison(next);
-      this.state = next;
+      console.warn(
+        `[durable-json] 账本无法读取，已隔离原件后空态重建（备份至 ${this.filePath}.quarantine-*）`,
+        loaded.error
+      );
+      await quarantineDurableFile(this.filePath);
+      await this.persistOrPoison(this.state);
       this.ready = true;
+      return { quarantined: true };
     });
+  }
+
+  private decode(
+    content: string,
+    upgrade?: DurableJsonUpgrade<T>
+  ): { ok: true; state: T; persist: boolean } | { ok: false; error: DurableFileCorruptionError } {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(content) as unknown;
+    } catch (cause) {
+      return { ok: false, error: new DurableFileCorruptionError(this.filePath, cause) };
+    }
+    const current = this.schema.safeParse(raw);
+    if (current.success) return { ok: true, state: current.data, persist: false };
+    const migrated = upgrade?.(raw);
+    if (migrated === undefined) {
+      return { ok: false, error: new DurableFileCorruptionError(this.filePath, current.error) };
+    }
+    return { ok: true, state: this.schema.parse(migrated), persist: true };
   }
 
   snapshot() {

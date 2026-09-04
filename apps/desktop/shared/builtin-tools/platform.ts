@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, Agent backend identity and shared Bases schema/budget
- * [OUTPUT]: Provides built-in tool platform types, nine-domain budgets, Plan exclusion, cross-referencing, timeouts, common id/query schemas, and annotation constants
+ * [OUTPUT]: Provides built-in tool platform types, nine-domain budgets, Plan exclusion, cross-referencing, timeouts, common id schemas, the `read_base` query shape, and annotation constants
  * [POS]: The building of public buildings without assembly tools; The domain spec is only down-dependent on this document and does not depend on index reverse
  */
 
@@ -169,7 +169,8 @@ export const baseFilterWireSchema = z
     "Filter AST。叶子 {kind:'condition',columnId,operator,value?}，operator ∈ eq|neq|contains|gt|gte|lt|lte|is-empty|not-empty（后两者无 value）；组合 {kind:'and'|'or',filters:[…]} 或 {kind:'not',filter:…}；深度 ≤8、节点 ≤64。"
   );
 
-export const baseQueryShape = (filter: z.ZodType) =>
+/** `read_base` 的查询底座：filter/sort/columns 投影加游标分页。 */
+export const readBaseShape = (filter: z.ZodType) =>
   z
     .object({
       filter: filter.optional(),

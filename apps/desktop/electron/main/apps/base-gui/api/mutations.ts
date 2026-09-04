@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node request/response, shared wire budget, strict GUI mutation, encryption, Base GUI live binding and injected GuiBasePort
- * [OUTPUT]: Provides row insert/patch/delete handler, single App/wide admission and bounded body reader
- * [POS]: The HTTP page for the apps/base-gui/api mutation; The capability and token are determined by the router, and the domain semantics are assigned to the Bases
+ * [INPUT]: Depends on Node request/response streams, the shared wire budget, the strict mutation envelopes, crypto, the Base GUI live binding, and the injected GuiBasePort
+ * [OUTPUT]: Provides the row insert/patch/delete handlers with per-App and global admission plus a bounded, timed body reader
+ * [POS]: Mutation half of apps/base-gui/api; the router settles token and capability, and Bases owns the domain semantics
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";

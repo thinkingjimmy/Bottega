@@ -313,7 +313,18 @@ export function BaseTableView({
   const selectedIds = table
     .getSelectedRowModel()
     .rows.map((row) => row.original.id);
-  const deleteColumn = columns.find((column) => column.id === deleteColumnId);
+  /* 表头是一次遍历，不该在里面再遍历两遍。列与排序各建一张表，
+     「这一列叫什么、按哪个方向排」便都退化成一次哈希查找——
+     列数越多，省下的越是整整一个 O(n²)。 */
+  const columnById = useMemo(
+    () => new Map(columns.map((column) => [column.id, column])),
+    [columns]
+  );
+  const sortDirections = useMemo(
+    () => new Map(sorts.map((sort) => [sort.columnId, sort.direction])),
+    [sorts]
+  );
+  const deleteColumn = columnById.get(deleteColumnId);
   const width = table.getTotalSize();
   const leadingWidths = [
     ...(onDelete ? [SELECT_COLUMN_WIDTH] : []),
@@ -358,9 +369,7 @@ export function BaseTableView({
           style={{ minWidth: width }}
         >
           {table.getHeaderGroups()[0]?.headers.map((header) => {
-            const direction = sorts.find(
-              (sort) => sort.columnId === header.id
-            )?.direction;
+            const direction = sortDirections.get(header.id);
             if (DISPLAY_COLUMN_IDS.has(header.id)) {
               return (
                 <div
@@ -377,9 +386,7 @@ export function BaseTableView({
                 </div>
               );
             }
-            const sourceColumn = columns.find(
-              (column) => column.id === header.id
-            );
+            const sourceColumn = columnById.get(header.id);
             const persistedWidth =
               columnWidths?.[header.id] ??
               (sourceColumn ? defaultColumnWidth(sourceColumn) : 170);
@@ -704,7 +711,9 @@ function defaultColumnWidth(column: BaseColumn) {
   return column.type === "location" ? 210 : 170;
 }
 
-export function nextBaseSorts(
+/* 排序推进是表头点击的私有语义：三态循环（升→降→无）只有这一处消费者，
+   导出它等于邀请别处复制一份「点第几下是什么」的判断。 */
+function nextBaseSorts(
   current: BaseSort[],
   columnId: string,
   additive = false

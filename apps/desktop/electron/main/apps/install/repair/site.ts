@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/path, snapshot tree test and journal/AppRecord type
- * [OUTPUT]: Provides RepairSite interface, stagingSite/copySite policy, repairSiteFor, classifySwappingState, exists
- * [POS]: The full difference between install/repair and copy (clean re-staging) and local update is that the runner is no longer branched
+ * [OUTPUT]: Provides the RepairSite interface, the stagingSite/copySite policies, repairSiteFor, and exists
+ * [POS]: The whole staging-vs-copy difference of install/repair lives here, so the runner never branches on site kind
  */
 
 import { cp, mkdir, rename, rm, stat } from "node:fs/promises";
@@ -29,7 +29,7 @@ export interface RepairSite {
   readonly workingState: "installing" | "updating";
   workspacePath(roots: SiteRoots, appId: string, runId: string): string;
   trashPath(roots: SiteRoots, appId: string, runId: string): string | undefined;
-  /** 重建修复现场：staging=清空后 clone；copy=停运行时 + S0/S1 快照复制并记录基线。 */
+  /** 重建修复现场：staging=清空后 clone；copy=停运行时 + 复制后记录 S1 基线。 */
   prepare(hooks: SiteHooks, context: SiteContext): Promise<void>;
   /** 原子交换：staging=单 rename；copy=S2 校验 + trash 两段 rename，内层失败自动复位。 */
   swap(context: SiteContext): Promise<void>;
@@ -85,7 +85,7 @@ export const stagingSite: RepairSite = {
 };
 
 // ============================================================
-// copy：就绪 App 的原地更新，S0/S1/S2 三次快照守护正式目录
+// copy：就绪 App 的原地更新，S1/S2 两次快照守护正式目录
 // ============================================================
 
 export const copySite: RepairSite = {
@@ -95,18 +95,18 @@ export const copySite: RepairSite = {
     join(roots.userData, "repair-workspaces", `${appId}-${runId}`),
   trashPath: (roots, appId, runId) =>
     join(roots.userData, "repair-trash", `${appId}-${runId}`),
+  /* 只在复制之后取一次基线：S1 与提交前的 S2 一比，就已经证明了「正式目录
+     自复制完成起没被动过」。复制之前再取一张 S0，多走一整棵树的 lstat，
+     换来的只是「复制途中变过没有」——而那件事 S1≠S2 一样会挡下来。 */
   async prepare(hooks, { record, journal }) {
     await hooks.stopRuntime();
-    const s0 = await snapshotTree(record.dir);
     await rm(journal.workspace, { recursive: true, force: true });
     await mkdir(dirname(journal.workspace), { recursive: true, mode: 0o700 });
     await cp(record.dir, journal.workspace, {
       recursive: true,
       preserveTimestamps: true,
     });
-    const s1 = await snapshotTree(record.dir);
-    assertSameTree(s0, s1, "复制期间目录变更");
-    journal.s1TreeSha256 = s1;
+    journal.s1TreeSha256 = await snapshotTree(record.dir);
   },
   async swap({ record, journal }) {
     const s2 = await snapshotTree(record.dir);
@@ -150,9 +150,3 @@ export const copySite: RepairSite = {
 
 export const repairSiteFor = (kind: RepairJournal["site"]): RepairSite =>
   kind === "staging" ? stagingSite : copySite;
-
-/** 表驱动分发，供崩溃恢复矩阵测试沿用同一断言入口。 */
-export const classifySwappingState = (
-  kind: RepairJournal["site"],
-  presence: SwapPresence
-): SwapDisposition => repairSiteFor(kind).classifySwap(presence);

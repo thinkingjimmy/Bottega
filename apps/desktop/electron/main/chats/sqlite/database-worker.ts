@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on worker_threads/path, the closed database protocol, ChatSqliteConnection, ChatRepository, and typed schema errors
- * [OUTPUT]: Provides the sole node:sqlite/blob owner, startup reaping of interrupted imports, and the serial narrow-query/mutation dispatcher whose committed receipt is posted before cadence-bounded WAL/FTS maintenance runs on the same serial tail
+ * [OUTPUT]: Provides the sole node:sqlite/blob owner, startup reaping of interrupted imports, and the serial narrow-query/mutation dispatcher whose committed receipt is posted before cadence-bounded WAL/FTS maintenance and the self-healing search-projection reconcile run on the same serial tail
  * [POS]: Process isolation boundary between Electron main and synchronous SQLite; it never accepts SQL text
  */
 
@@ -143,7 +143,7 @@ class DatabaseWorkerRuntime {
       case "list-reconcilable-continuations": return repository.listReconcilableContinuations();
       case "maintenance-gate": {
         repository.mergeHistoryImportSearchIndex(4_096);
-        const sourceProjection = repository.validateSearchProjection();
+        const sourceProjection = repository.reconcileSearchProjection();
         const result = { ...this.connection.maintenanceGate(), sourceProjection };
         await this.connection.checkpoint("TRUNCATE");
         return result;

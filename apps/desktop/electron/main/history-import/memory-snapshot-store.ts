@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/path, zod, durable replacement, product-history intents, shared transcript DTOs, and complete reference projections
+ * [INPUT]: Depends on Node crypto/fs/path, zod, durable replacement, product-history intents, shared transcript DTOs read through foreignMessageText (folded statements included), and complete reference projections
  * [OUTPUT]: Provides immutable Memory/Adoption snapshots, schema-v2 quality freeze, deterministic digest projection, cancellable reads, Grant/watermark ledgers, drain, and fail-closed GC
  * [POS]: The TOCTOU and crash-consistency layer of history-import
  */
@@ -9,7 +9,7 @@ import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { z } from "zod";
-import { HISTORY_SOURCE_KINDS, type ForeignHistoryBlock, type ForeignHistorySummary, type HistorySourceKind } from "../../../shared/history-import-ipc";
+import { HISTORY_SOURCE_KINDS, foreignMessageText, type ForeignHistoryMessage, type ForeignHistorySummary, type HistorySourceKind } from "../../../shared/history-import-ipc";
 import { DurableJson, durableReplaceFile } from "../persistence/durable-json";
 import {
   productHistoryIntentSchema,
@@ -143,7 +143,7 @@ export class HistorySnapshotStore {
     await this.hydrateLegacyGrantSources();
   }
 
-  async writeAdoption(input: { summary: ForeignHistorySummary; sourcePath: string; blocks: ForeignHistoryBlock[]; parserVersion: number; fingerprint: { size: number; mtimeNs: string }; incompleteTail: boolean }) {
+  async writeAdoption(input: { summary: ForeignHistorySummary; sourcePath: string; blocks: ForeignHistoryMessage[]; parserVersion: number; fingerprint: { size: number; mtimeNs: string }; incompleteTail: boolean }) {
     const body = {
       source: input.summary.key, projectId: input.summary.projectId, cwd: input.summary.cwd,
       title: input.summary.title, historyRevision: input.summary.historyRevision,
@@ -164,7 +164,7 @@ export class HistorySnapshotStore {
     return snapshot;
   }
 
-  async writeMemory(input: { summary: ForeignHistorySummary; sourceIncarnation: string; blocks: ForeignHistoryBlock[]; parserVersion: number; afterDeliverySeq?: number }) {
+  async writeMemory(input: { summary: ForeignHistorySummary; sourceIncarnation: string; blocks: ForeignHistoryMessage[]; parserVersion: number; afterDeliverySeq?: number }) {
     const allMessages = normalizedMemoryMessages(input.blocks);
     const messages = allMessages.filter((message) => message.deliverySeq > (input.afterDeliverySeq ?? 0));
     const lastAssistant = messages.filter((message) => message.role === "assistant").at(-1);
@@ -431,7 +431,7 @@ export function memoryLogicalSourceKey(snapshot: MemorySourceSnapshot) {
   );
 }
 
-export function memoryPrefixDigest(blocks: ForeignHistoryBlock[], upperDeliverySeq: number) {
+export function memoryPrefixDigest(blocks: ForeignHistoryMessage[], upperDeliverySeq: number) {
   return hash(canonical(normalizedMemoryMessages(blocks)
     .filter((message) => message.deliverySeq <= upperDeliverySeq)
     .map(({ nativeTurnId, deliverySeq, role, createdAt, contentDigest }) => ({
@@ -541,15 +541,20 @@ function canonical(value: unknown): string {
   if (value && typeof value === "object") return `{${Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
   return JSON.stringify(value);
 }
-function normalizedMemoryMessages(blocks: ForeignHistoryBlock[]) {
-  return blocks.flatMap((block) => block.kind === "message" && block.content.trim() ? [{
-    nativeTurnId: block.nativeTurnId,
-    deliverySeq: block.deliverySeq,
-    role: block.role,
-    content: block.content,
-    createdAt: block.createdAt,
-    contentDigest: hash(block.content),
-  }] : []).sort((left, right) => left.deliverySeq - right.deliverySeq);
+/* Memory 收的是「这条 turn 说过的话」，不是渲染形状：折进末条的中间陈述
+   与计划正文都必须原样在场——foreignMessageText 是这条口径的唯一出处。 */
+function normalizedMemoryMessages(blocks: ForeignHistoryMessage[]) {
+  return blocks.flatMap((block) => {
+    const content = foreignMessageText(block);
+    return content ? [{
+      nativeTurnId: block.nativeTurnId,
+      deliverySeq: block.deliverySeq,
+      role: block.role,
+      content,
+      createdAt: block.createdAt,
+      contentDigest: hash(content),
+    }] : [];
+  }).sort((left, right) => left.deliverySeq - right.deliverySeq);
 }
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const safeId = (value: string) => { if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error("snapshotId 格式无效"); return value; };

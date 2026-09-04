@@ -19,7 +19,7 @@ const intentSchema = z.object({
 }).strict();
 const fileSchema = z.object({ schemaVersion: z.literal(1), intents: z.array(intentSchema).max(4) }).strict();
 type File = z.infer<typeof fileSchema>;
-export type FileExportIntent = z.infer<typeof intentSchema>;
+type FileExportIntent = z.infer<typeof intentSchema>;
 
 export class FileExportIntentStore {
   private readonly file: DurableJson<File>;
@@ -62,9 +62,9 @@ export class FileExportIntentStore {
   }
 }
 
-export const FILE_EXPORT_BUSY = "FILE_EXPORT_BUSY";
+const FILE_EXPORT_BUSY = "FILE_EXPORT_BUSY";
 
-export function fileExportBusy() {
+function fileExportBusy() {
   return Object.assign(new Error(FILE_EXPORT_BUSY), { code: FILE_EXPORT_BUSY, status: 429 });
 }
 

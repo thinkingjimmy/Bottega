@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Base/Apps/Chats/Projects providers, router navigation, dialogs, menus, i18n, and structured client error codes
- * [OUTPUT]: Provides BaseHeaderActions, useBaseAppActions, localized XLSX issue disclosure, and PromotionAttemptFence
+ * [OUTPUT]: Provides BaseHeaderActions and useBaseAppActions; XLSX issue disclosure and the promotion attempt fence stay module-private
  * [POS]: Header action boundary for components/bases/chrome; transport codes are translated here and Base data mutations stay in providers
  */
 
@@ -30,11 +30,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@ai-chat/ui/components/ui/dropdown-menu";
-import { useBases } from "@/components/providers/bases-provider";
+import {
+  useBaseSnapshots,
+  useBasesNavigation,
+} from "@/components/providers/bases-provider";
 import { useOptionalApps } from "@/components/providers/apps-provider";
 import { useOptionalChats } from "@/components/providers/chats-provider";
 import { useOptionalProjects } from "@/components/providers/projects-provider";
-import { SaveAsAppDialog } from "@/components/apps/save-as-app-dialog";
+import { SaveAsAppDialog } from "@/components/apps/dialogs/save-as-app-dialog";
 import { panelChromeClassName } from "@/components/page-shell";
 import { cn } from "@ai-chat/ui/lib/utils";
 import {
@@ -46,7 +49,7 @@ import { errorMessage } from "@/lib/errors";
 
 export function useBaseAppActions(ownerKey: string, chatId?: string) {
   const { t } = useAppTranslation();
-  const bases = useBases();
+  const bases = useBaseSnapshots();
   const records = useOptionalApps()?.records ?? [];
   const chats = useOptionalChats()?.chats ?? [];
   const projects = useOptionalProjects()?.projects ?? [];
@@ -82,12 +85,13 @@ export function useBaseAppActions(ownerKey: string, chatId?: string) {
     } catch (cause) {
       console.warn(`[bases] header action failed ownerKey=${ownerKey}`, cause);
       const copyKey = headerErrorCopyKey(cause);
+      /* 失败后不再补一发全量 get：provider 的 snapshot 已经是本机真相，
+         而导入/导出失败本身从不改变它——那一次 IPC 只是把同一份数据再取一遍。 */
       setActionError(
         copyKey
           ? t(copyKey)
           : errorMessage(cause, t("bases.header.ioFailed"))
       );
-      await bases.get(ownerKey).catch(() => null);
     } finally {
       setBusy(false);
     }
@@ -117,6 +121,7 @@ export function useBaseAppActions(ownerKey: string, chatId?: string) {
     actionIssues,
     actionNotice,
     busy,
+    columns: snapshot?.meta.columns ?? [],
     defaultName: sourceChat?.title || snapshot?.meta.name || "My App",
     ready: Boolean(snapshot),
     saveChatId: owner.kind === "chat" ? owner.chatId : "",
@@ -133,7 +138,7 @@ export function useBaseAppActions(ownerKey: string, chatId?: string) {
    余下的用一句话交代清楚有多少，而不是静默少给。 */
 const XLSX_ISSUE_RENDER_LIMIT = 50;
 
-export function XlsxImportIssueDetails({
+function XlsxImportIssueDetails({
   columns,
   issues,
 }: {
@@ -212,7 +217,9 @@ function headerErrorCopyKey(cause: unknown) {
     : null;
 }
 
-export class PromotionAttemptFence {
+/* 一次升格只有一个 requestId：终态之前的重复点击必须落在同一次尝试上，
+   否则 main 侧会看见两次「新建 Project Base」的请求。 */
+class PromotionAttemptFence {
   private requestId = "";
 
   begin(create: () => string = () => crypto.randomUUID()): string {
@@ -240,13 +247,14 @@ export function BaseHeaderActions({
 }) {
   const { t } = useAppTranslation();
   const navigate = useNavigate();
-  const bases = useBases();
+  const bases = useBasesNavigation();
   const {
     app,
     actionError,
     actionIssues,
     actionNotice,
     busy,
+    columns,
     defaultName,
     ready,
     saveChatId,
@@ -271,7 +279,7 @@ export function BaseHeaderActions({
     owner.kind === "chat" &&
     Boolean(projectOwnerKey) &&
     !bases.projectBases.some((base) => base.ownerKey === projectOwnerKey);
-  const retainedBase = bases.pinned.find(
+  const retainedBase = bases.rootBases.find(
     (base) => {
       const navigation = base.navigation;
       return base.ownerKey === ownerKey &&
@@ -342,10 +350,7 @@ export function BaseHeaderActions({
               })}
             </p>
           )}
-          <XlsxImportIssueDetails
-            columns={bases.snapshots[ownerKey]?.meta.columns ?? []}
-            issues={actionIssues}
-          />
+          <XlsxImportIssueDetails columns={columns} issues={actionIssues} />
         </div>
       )}
       {mode === "page" && (

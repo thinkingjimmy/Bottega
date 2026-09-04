@@ -7,7 +7,7 @@
 import { app, dialog, type MessageBoxOptions } from "electron";
 import type { AppLocale } from "../../../shared/i18n/locale";
 import { translate } from "../../../shared/i18n/runtime";
-import type { AppStore } from "../apps/app-store";
+import type { AppStore } from "../apps/store/app-store";
 
 type RepairPromptPorts = Readonly<{
   show(options: MessageBoxOptions): Promise<{ response: number }>;

@@ -31,10 +31,12 @@ export function sampleSnapshot(
   source: Omit<BaseSnapshotFileV2, "rows">,
   avoidIds: ReadonlySet<string> = new Set()
 ): BaseSnapshotFileV2 {
-  return baseSnapshotFileSchema.parse({
+  const file = baseSnapshotFileSchema.parse({
     ...source,
+    schemaVersion: 2,
     rows: synthesizeBaseSampleRows(source.columns, avoidIds),
   });
+  return { ...file, schemaVersion: 2 };
 }
 
 /**

@@ -8,11 +8,11 @@ import { lstat, mkdir, readFile, readdir, rmdir, stat, unlink, writeFile } from 
 import { dirname, join, relative, sep } from "node:path";
 import type { AppManifest } from "../../../../../shared/apps-ipc";
 import type { Sha256Digest } from "../../../../../shared/extensions-ipc";
-import { inspectPackage } from "../../share/package-contract";
+import { inspectPackage } from "../../share/package/package-contract";
 import { canonicalDigest, canonicalJson, sha256 } from "../metadata";
 import { type CompiledV3DigestSet, verifyCompiledV3Artifact } from "./seal";
 
-export const PORTABLE_COMPILED_SOURCE_PATH = ".bottega/compiled-source-v1";
+const PORTABLE_COMPILED_SOURCE_PATH = ".bottega/compiled-source-v1";
 
 type SourceFile = Readonly<{ path: string; bytes: number; sha256: Sha256Digest }>;
 type SourceReceipt = Readonly<{

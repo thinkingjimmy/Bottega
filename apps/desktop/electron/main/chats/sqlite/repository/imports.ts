@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on crypto, closed history-import commands, SQLite rows, deterministic codecs, the content-addressed ImportBlobStore, the retired-generation reclamation sweep, and ChatRecordWriter search projection
- * [OUTPUT]: Provides identity-bearing readonly Chat creation refused for adopted sources, resumable immutable generations, chunk/blob content, bounded FTS merge policy, revision-converging activation, cancellation, the sole no-op-on-equal source_status writer ("changed" has no producer and is unreachable), startup reaping of interrupted runs, saga-fenced bounded GC of superseded and abandoned generations, and run inspection
- * [POS]: External-history write model beneath ChatRepository; it never reads source files and commits exactly one bounded batch at a time
+ * [OUTPUT]: Provides identity-bearing readonly Chat creation refused for adopted sources whose title search document is rewritten on every re-import (so a changed source title can never leave the projection drifted), resumable immutable generations, chunk/blob content, bounded FTS merge policy, revision-converging activation, cancellation, the sole no-op-on-equal source_status writer ("changed" has no producer and is unreachable), startup reaping of interrupted runs, saga-fenced bounded GC of superseded and abandoned generations, and run inspection
+ * [POS]: External-history write model beneath ChatRepository; it never reads source files, stores nothing but whole source messages, and commits exactly one bounded batch at a time
  */
 
 import { randomUUID } from "node:crypto";
@@ -68,8 +68,6 @@ export function importedEntryDigest(entry: HistoryImportEntryInput) {
     content: entry.content,
     createdAt: entry.createdAt ?? null,
     payload: entry.payload ?? null,
-    contentComplete: entry.contentComplete,
-    incompleteReason: entry.incompleteReason ?? null,
   }));
 }
 
@@ -542,6 +540,19 @@ export class HistoryImportRepository {
                 updated_at = MAX(updated_at, ?), archived_at = ?
           WHERE id = ? AND lifecycle_kind = 'external-readonly'`
       ).run(source.title, source.updatedAt, source.archivedAt ?? null, chatId);
+      /* 标题改了，标题的搜索文档也得跟着改——否则 chats.title 与那一行文档
+         各说各话，维护闸门的 `reconcileSearchProjection` 会判它漂移。
+         回读而不是直接用 source.title：`title_source='user'` 时上面那条
+         UPDATE 保留的是用户自己起的名字。
+         注意这一分支只在来源真的变化时才跑：来源不变的 begin 被收据回放
+         短路，存量漂移由维护闸门按 chats.title 重算修复，不靠这里。
+         同分支里其它被改写的事实（成员归属、origins 的别名/状态）都不进
+         搜索投影，标题是这里唯一的缺口。 */
+      this.writer.writeTitleSearchDocument(
+        chatId,
+        (this.database.prepare("SELECT title FROM chats WHERE id = ?")
+          .get(chatId) as Row | undefined)?.title as string | null ?? null
+      );
       this.database.prepare(
         `UPDATE chat_local_memberships
             SET local_project_id = ?, updated_at = MAX(updated_at, ?)
@@ -672,8 +683,8 @@ export class HistoryImportRepository {
       `INSERT INTO chat_import_entry_versions(
          entry_version_id, chat_id, source_entry_id, source_message_id, role,
          created_at, payload_json, digest_codec_version, content_digest,
-         byte_size, content_complete, incomplete_reason
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`
+         byte_size
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
     ).run(
       entryVersionId,
       chatId,
@@ -683,9 +694,7 @@ export class HistoryImportRepository {
       entry.createdAt ?? null,
       json(payload),
       contentDigest,
-      byteSize,
-      entry.contentComplete ? 1 : 0,
-      entry.incompleteReason ?? null
+      byteSize
     );
     if (byteSize > IMPORT_BLOB_THRESHOLD_BYTES) {
       this.blobs.write(entryVersionId, entry.content);

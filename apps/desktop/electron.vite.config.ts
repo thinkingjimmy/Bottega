@@ -79,7 +79,9 @@ export default defineConfig({
          缺少它会让 renderer HMR 成功、Electron 却继续执行旧 bundle。 */
       watch: {},
       externalizeDeps: {
-        exclude: ["@modelcontextprotocol/sdk", "zod"],
+        /* zod 是 dependencies 里的包却要打进 bundle；@modelcontextprotocol/sdk 已不是
+           dependency，externalize 插件本就不会碰它，无需再排除。 */
+        exclude: ["zod"],
       },
       rollupOptions: {
         input: {

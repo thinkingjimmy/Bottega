@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Project/Chat contracts, lifecycle-fenced ProjectStore, filesystem validation, ProjectResourceCleanupCoordinator, rebind saga, and cross-domain cleanup ports
- * [OUTPUT]: Provides Project CRUD/branch/workspace operations, authoritative reveal-directory resolution, canonical lifecycle contexts, exact held App-placement planning/cleanup, rebuildable removal handlers, empty Base-custody collection, and startup cleanup recovery
+ * [OUTPUT]: Provides Project CRUD/workspace operations, Project-scoped branch mutations, conversation-scoped managed-worktree branch reads, authoritative reveal-directory resolution, canonical lifecycle contexts, exact held App-placement planning/cleanup, rebuildable removal handlers, and startup cleanup recovery
  * [POS]: Main Project authority; archive/rebind preserve incarnation while permanent removal is delegated only to the durable resource cleanup coordinator
  */
 
@@ -358,8 +358,10 @@ export class ProjectsService {
       ? { workspace: homeDir }
       : this.resolveCodexContext(projectId);
   }
-  async listBranches(projectId: string) {
-    const workspace = this.branchWorkspace(projectId);
+  async listBranches(projectId: string, conversationId?: string) {
+    const workspace = conversationId
+      ? await this.options.resolveConversationBranchWorkspace?.(projectId, conversationId) ?? null
+      : this.branchWorkspace(projectId);
     return workspace ? listGitBranches(workspace) : null;
   }
   checkoutBranch(projectId: string, target: GitBranchTarget) {
@@ -405,12 +407,14 @@ export class ProjectsService {
       if (this.options.hasActiveTurnsByProject(projectId)) {
         throw statusError(409, "Project 正在运行任务，结束后再移除");
       }
-      const reasons = [
-        ...new Set(this.options.localDetachReasons?.(projectId) ?? []),
-      ];
-      if (reasons.length) {
-        return { status: "archive-required", reasons };
+      const reasons = [...new Set(this.options.localDetachReasons?.(projectId) ?? [])];
+      if (
+        this.options.hasManagedWorktreesForProject?.(projectId) &&
+        !reasons.includes("managed-worktree")
+      ) {
+        reasons.push("managed-worktree");
       }
+      if (reasons.length) return { status: "archive-required", reasons };
       const chatIds = this.options.listChatsByProject(projectId);
       await this.resourceCleanup.remove(projectId, "detach-local-project");
       this.emit({ type: "removed", projectId });
@@ -704,6 +708,8 @@ export class ProjectsService {
   }
   assertWorkspaceRebindAllowed(projectId: string) {
     this.assertNoMemoryRebind(projectId);
+    if (this.options.hasManagedWorktreesForProject?.(projectId))
+      throw statusError(409, "Project 仍拥有 managed worktree Chat；请先永久删除这些 Chat 再改绑");
     if (this.options.hasDeletionFenceForProject?.(projectId)) {
       throw statusError(409, "Project 中有 Chat 删除待完成，请稍后重试改绑");
     }

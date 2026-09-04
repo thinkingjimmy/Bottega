@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node atomic file IO, ledger-values schema and persistence/serial-queue
- * [OUTPUT]: Provides ChatHomeLedger v1, Atom submits ownership+CreationIntent, rolls back with intent/hash→planned Re-test, alter, damage isolation and 30 days of gravestones compression
+ * [OUTPUT]: Provides ChatHomeLedger v1 with exact replay identity, atomic ownership transitions, corruption isolation, and 30-day tombstone compaction
  * [POS]: The creation/ownership leaf of the chat-home lock; Access to any other lock during lock-up
  */
 
@@ -82,7 +82,11 @@ export class ChatHomeLedger {
       if (existing) {
         if (
           existing.intentId !== parsed.intentId ||
-          existing.submissionHash !== parsed.submissionHash
+          existing.submissionHash !== parsed.submissionHash ||
+          existing.incarnationId !== parsed.incarnationId ||
+          existing.homeDir !== parsed.homeDir ||
+          JSON.stringify(existing.workspaceScope) !== JSON.stringify(parsed.workspaceScope) ||
+          JSON.stringify(existing.worktree ?? null) !== JSON.stringify(parsed.worktree ?? null)
         ) {
           throw new Error("CreationIntent 与已有 Chat Home ownership 冲突");
         }

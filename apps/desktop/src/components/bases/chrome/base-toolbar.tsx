@@ -4,7 +4,7 @@
  * [POS]: Shared Base chrome action band; BaseWorkbench owns CAS mutations while this module owns their visible controls
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type { BaseMutationOutcome } from "../state/base-mutation-error";
 import {
@@ -182,13 +182,18 @@ export function BaseToolbar({
       ? activeView.config
       : undefined;
   const visibleColumnIds = scopedConfig?.visibleColumnIds;
-  const hiddenColumnIds = new Set(
-    visibleColumnIds?.length
-      ? meta.columns
-          .map((column) => column.id)
-          .filter((id) => !visibleColumnIds.includes(id))
-      : []
-  );
+  /* 「显哪些」是数组，「藏哪些」才是这里要问的问题。曾用 includes 逐列回查
+     整张显示清单——列数一多就是 O(n²)，且每次重渲染重来一遍。先把显示清单
+     收成 Set，判定便与列数无关；memo 让它只在配置真的变了时重建。 */
+  const hiddenColumnIds = useMemo(() => {
+    if (!visibleColumnIds?.length) return new Set<string>();
+    const visible = new Set(visibleColumnIds);
+    return new Set(
+      meta.columns
+        .map((column) => column.id)
+        .filter((id) => !visible.has(id))
+    );
+  }, [meta.columns, visibleColumnIds]);
   const toggleColumnVisible = (columnId: string) => {
     const hidden = new Set(hiddenColumnIds);
     if (!hidden.delete(columnId)) hidden.add(columnId);
@@ -723,7 +728,9 @@ export function BaseFilterEditor({
   );
 }
 
-export function buildBaseFilterCondition(
+/* 过滤 AST 的唯一产地就是上面那只编辑器：导出它，别处就会绕过校验
+   自己拼 condition，而「空值算不算错」这类判断便有了第二份答案。 */
+function buildBaseFilterCondition(
   columnType: BaseColumnType,
   columnId: string,
   operator: FilterOperator,

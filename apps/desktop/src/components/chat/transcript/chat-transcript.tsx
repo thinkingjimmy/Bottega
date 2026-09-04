@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Conversation primitives, the bounded Chat message store, backend identity, localized copy, canonical turns, Find, Outline, attachments, revision actions, and side-panel Plan/Image commands
- * [OUTPUT]: Provides the localized canonical transcript with cursor-backed upward pagination, the imported-history divider (only its "match" wording has a producer today), a streaming draft confined to the native segment, scroll compensation, backend-aware failures, generation-fenced anchors, controlled Plan expansion, and Find/Outline
+ * [INPUT]: Depends on Conversation primitives, bounded Chat reads, backend identity, localized copy, canonical assistant turns, focused fork/static-row/divider siblings, Find, Outline, revision actions, and side-panel Plan/Image commands
+ * [OUTPUT]: Provides the localized canonical transcript with cursor-backed upward pagination, imported/native Fork anchors and boundaries, a streaming draft confined to the native segment, scroll compensation, backend-aware failures, generation-fenced anchors, controlled Plan expansion, and Find/Outline
  * [POS]: The top-level chat/transcript projection for native and imported SQLite timeline segments
  */
 
@@ -13,7 +13,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import {
   Conversation,
@@ -22,33 +21,16 @@ import {
   useScrollLockRelease,
   useStickToBottomContext,
 } from "@ai-chat/ui/components/ai-elements/conversation";
-import {
-  Message,
-  MessageContent,
-  MessageResponse,
-} from "@ai-chat/ui/components/ai-elements/message";
-import { Button } from "@ai-chat/ui/components/ui/button";
 import { projectDraftPlan } from "../../../../shared/chat-turn-reducer";
 import type {
   AssistantChatMessage,
-  NoticeChatMessage,
-  UserChatMessage as UserMessage,
 } from "../../../../shared/chats-ipc";
 import type { ChatSessionController } from "../runtime/use-chat-session";
 import type { ConversationImageSource } from "../runtime/chat-session-model";
-import type {
-  LiveAttachmentPreview,
-} from "../runtime/chat-attachments";
 import type { ProjectedSubagent } from "@/lib/chat-turn-attach";
-import { ChatMessageActions } from "./chat-message-actions";
 import { ChatOutline, useCanonicalChatOutline } from "./chat-outline";
 import { ChatTurn, ChatTurnDraft } from "./chat-turn";
-import {
-  ChatUserAttachments,
-  UserMessageFold,
-} from "./chat-user-attachments";
-import { ChatNotice } from "./chat-notice";
-import { capMarkdown } from "@/lib/charts/chart-markdown";
+import { FailureCard } from "./chat-error-card";
 import { ChartConversationBoundary } from "@/components/charts/chart-scroll-root";
 import {
   createMessageSubagentCacheStore,
@@ -63,7 +45,7 @@ import {
   transcriptWindow,
 } from "./transcript-window";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { ChevronUp, CircleXIcon, Loader2, Trash2Icon } from "lucide-react";
+import { ChevronUp, Loader2, Trash2Icon } from "lucide-react";
 import { TranscriptFind } from "./transcript-find";
 import { highlightTranscriptTarget } from "./transcript-highlight";
 import { UserMessageEditor } from "./user-message-editor";
@@ -73,114 +55,27 @@ import {
   materializeChatMessage,
   readChatMessages,
 } from "@/lib/chat-messages-store";
+import { TranscriptDividerRow } from "./transcript-divider";
+import {
+  ForkChatDialog,
+  ForkLineageDivider,
+  type ChatForkViewContext,
+} from "./chat-fork-controls";
+import {
+  ChatNoticeRow,
+  ChatUserMessage,
+  MessageShell,
+} from "./transcript-message-rows";
+
+export type { ChatForkViewContext } from "./chat-fork-controls";
 
 /* 分隔行：一条细线把话题从中间断开，中间那格由调用者决定说什么——
    「以上是导入的历史消息」，或者一枚「显示更早消息」。同一种语言，
    于是这两处永远不会长成两副样子。 */
-function TranscriptDividerRow({ children, role }: {
-  children: ReactNode;
-  role?: "separator";
-}) {
-  return (
-    <div
-      className="flex items-center gap-3 py-2 text-muted-foreground text-xs"
-      role={role}
-    >
-      <span className="h-px flex-1 bg-border" />
-      {children}
-      <span className="h-px flex-1 bg-border" />
-    </div>
-  );
-}
-
 export type ImportSegmentFacts = Readonly<{
   sourceStatus?: "match" | "changed" | "missing";
   incompleteTail?: boolean;
 }>;
-
-const MessageShell = ({ children, id }: {
-  children: ReactNode;
-  id: string;
-}) => (
-  <div
-    className="w-full min-w-0 max-w-full"
-    data-message-id={id}
-    tabIndex={-1}
-  >
-    {children}
-  </div>
-);
-
-function UserMessageBody({ content }: { content: string }) {
-  return (
-    <MessageContent className="gap-1">
-      <UserMessageFold measurementKey={content}>
-        <MessageResponse>{capMarkdown(content)}</MessageResponse>
-      </UserMessageFold>
-    </MessageContent>
-  );
-}
-
-const ChatUserMessage = memo(function ChatUserMessage({
-  message,
-  live,
-  chatId,
-  incarnationId,
-  onOpenImage,
-  onEdit,
-  editDisabledReason,
-}: {
-  message: UserMessage;
-  live?: LiveAttachmentPreview[];
-  chatId: string;
-  incarnationId: string | null;
-  onOpenImage?: (source: ConversationImageSource) => void;
-  onEdit?: () => void;
-  editDisabledReason?: string;
-}) {
-  return (
-    <MessageShell id={message.id}>
-      <Message from="user">
-        <ChatUserAttachments
-          attachments={message.attachments}
-          live={live}
-          onOpen={
-            incarnationId && onOpenImage
-              ? (attachment) =>
-                  onOpenImage({
-                    kind: "attachment",
-                    chatId,
-                    incarnationId,
-                    attachment,
-                  })
-              : undefined
-          }
-        />
-        <UserMessageBody content={message.content} />
-        <ChatMessageActions
-          content={message.content}
-          createdAt={message.createdAt}
-          onEdit={onEdit}
-          editDisabledReason={editDisabledReason}
-          role="user"
-        />
-      </Message>
-    </MessageShell>
-  );
-});
-
-const ChatNoticeRow = memo(function ChatNoticeRow({
-  message,
-}: {
-  message: NoticeChatMessage;
-}) {
-  if (message.notice.kind === "app-chat-ready") return null;
-  return (
-    <MessageShell id={message.id}>
-      <ChatNotice message={message} />
-    </MessageShell>
-  );
-});
 
 export const ChatAssistantRow = memo(function ChatAssistantRow({
   message,
@@ -195,6 +90,8 @@ export const ChatAssistantRow = memo(function ChatAssistantRow({
   onClosePlan,
   onOpenSubagent,
   onOpenImage,
+  onFork,
+  forkDisabledReason,
   subagents,
   chatId,
   incarnationId,
@@ -211,6 +108,8 @@ export const ChatAssistantRow = memo(function ChatAssistantRow({
   onClosePlan: () => void;
   onOpenSubagent: (agentThreadId: string) => void;
   onOpenImage: (source: ConversationImageSource) => void;
+  onFork?: () => void;
+  forkDisabledReason?: string;
   subagents: Record<string, ProjectedSubagent>;
   chatId: string;
   incarnationId: string | null;
@@ -233,6 +132,8 @@ export const ChatAssistantRow = memo(function ChatAssistantRow({
         onRetry={onRetry}
         onOpenSubagent={enableSidePanel ? onOpenSubagent : undefined}
         onOpenImage={enableSidePanel ? onOpenImage : undefined}
+        onFork={onFork}
+        forkDisabledReason={forkDisabledReason}
         subagents={subagents}
         onTogglePlan={enableSidePanel ? togglePlan : undefined}
       />
@@ -249,6 +150,7 @@ function TranscriptRows({
   setHistoryBatch,
   importSegment,
   routeSearch,
+  forkContext,
   surfaceVisible = true,
 }: {
   controller: ChatSessionController["transcript"];
@@ -259,6 +161,7 @@ function TranscriptRows({
   setHistoryBatch: (active: boolean) => void;
   importSegment?: ImportSegmentFacts;
   routeSearch?: string;
+  forkContext?: ChatForkViewContext;
   surfaceVisible?: boolean;
 }) {
   const { t } = useAppTranslation();
@@ -298,6 +201,7 @@ function TranscriptRows({
   const consumedRouteKeyRef = useRef<string | null>(null);
   const pendingRouteRef = useRef<{ key: string; id: string } | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [forkAnchor, setForkAnchor] = useState<AssistantChatMessage | null>(null);
   const [announcement, setAnnouncement] = useState<{
     generation: number;
     count: number;
@@ -512,6 +416,17 @@ function TranscriptRows({
     if (consumedRouteKeyRef.current === routeKey) return;
     const searchParams = new URLSearchParams(routeSearch ?? "");
     const id = searchParams.get("m");
+    if (!id && searchParams.get("fork") === "divider") {
+      const divider = scrollRef.current?.querySelector("[data-fork-divider]");
+      if (divider instanceof HTMLElement) {
+        releaseScrollLock();
+        divider.scrollIntoView({ behavior: "smooth", block: "center" });
+        divider.focus({ preventScroll: true });
+        highlightTranscriptTarget(divider);
+        consumedRouteKeyRef.current = routeKey;
+      }
+      return;
+    }
     if (!id) {
       pendingRouteRef.current = null;
       return;
@@ -521,7 +436,7 @@ function TranscriptRows({
       consumedRouteKeyRef.current = routeKey;
       pendingRouteRef.current = null;
     }
-  }, [jumpTo, routeSearch]);
+  }, [jumpTo, releaseScrollLock, routeSearch, scrollRef]);
 
   const draftPlan = draft ? projectDraftPlan(draft) : null;
   /* 草稿属于原生段：导入段自带一套从 1 起的 delivery_seq，只比 seq
@@ -539,6 +454,20 @@ function TranscriptRows({
   const afterDraft =
     draftIndex < 0 ? [] : visibleMessages.slice(draftIndex);
   const lastUserId = messages.findLast((message) => message.role === "user")?.id;
+  /* Fork 资格按 transcript 位置而非 seq 判断：adopted Chat 的 imported/native
+     两段 seq 会重叠。索引表随 messages 身份缓存一次，行级查询是 O(1)。 */
+  const { firstUserIndex, indexById } = useMemo(() => ({
+    firstUserIndex: messages.findIndex((candidate) => candidate.role === "user"),
+    indexById: new Map(messages.map((candidate, index) => [candidate.id, index])),
+  }), [messages]);
+  const forkSourceEligible = Boolean(
+    forkContext &&
+    forkContext.summary.projectId &&
+    forkContext.summary.context?.kind === "ordinary" &&
+    (!forkContext.summary.readOnlyReason ||
+      forkContext.summary.readOnlyReason === "external-readonly") &&
+    forkContext.summary.executionKind !== "managed-worktree"
+  );
   /* 导入段的末条：分隔线钉在它下面。原生段还是空的时候也照钉，
      否则一条刚同步进来的历史会话就只剩正文，没有「新消息从这里开始」。 */
   const lastImportedId = messages.findLast(
@@ -579,19 +508,29 @@ function TranscriptRows({
           live={livePreviews.get(message.id)}
           message={message}
           onEdit={
-            canRevise && message.id === lastUserId
+            canRevise &&
+            message.id === lastUserId &&
+            !(forkContext?.summary.inheritedThroughSeq &&
+              message.seq <= forkContext.summary.inheritedThroughSeq)
               ? () => setEditingMessageId(message.id)
               : undefined
           }
           editDisabledReason={
-            message.id === lastUserId && revisionUnavailableReason
-              ? t(`chatRevision.unavailable.${revisionUnavailableReason}`)
-              : undefined
+            message.id !== lastUserId
+              ? undefined
+              : forkContext?.summary.inheritedThroughSeq &&
+                  message.seq <= forkContext.summary.inheritedThroughSeq
+                ? t("chat.fork.inheritedReadOnly")
+                : revisionUnavailableReason
+                  ? t(`chatRevision.unavailable.${revisionUnavailableReason}`)
+                  : undefined
           }
           onOpenImage={enableSidePanel ? openImage : undefined}
         />
       );
     }
+    const forkPrefixHasUser =
+      firstUserIndex >= 0 && (indexById.get(message.id) ?? -1) >= firstUserIndex;
     const row = (
       <ChatAssistantRow
         chatId={chatId}
@@ -607,28 +546,68 @@ function TranscriptRows({
         onOpenPlan={openPlanPanel}
         onOpenSubagent={openSubagent}
         onOpenImage={openImage}
+        onFork={
+          forkSourceEligible &&
+          !message.isError &&
+          Boolean(message.content.trim() || message.parts?.length) &&
+          forkPrefixHasUser
+            ? () => setForkAnchor(message)
+            : undefined
+        }
+        forkDisabledReason={
+          forkSourceEligible &&
+          (message.isError ||
+            (!message.content.trim() && !message.parts?.length) ||
+            !forkPrefixHasUser)
+            ? t("chat.fork.unavailable")
+            : undefined
+        }
         showContinue={canContinue && message.id === messages.at(-1)?.id}
         subagents={subagentsByMessage.get(message.id) ?? EMPTY_SUBAGENTS}
       />
     );
     return <div className="contents" key={message.id}>{row}</div>;
   };
-  const renderRows = (rows: typeof messages) =>
-    rows.map((message) =>
-      message.id === lastImportedId ? (
-        <Fragment key={`${message.id}:imported-boundary`}>
-          {renderMessage(message)}
-          {importSegment?.incompleteTail && (
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-              {t("history.incompleteTail")}
-            </p>
-          )}
-          <TranscriptDividerRow role="separator">
-            <span>{importedDivider}</span>
-          </TranscriptDividerRow>
-        </Fragment>
-      ) : renderMessage(message)
+  const renderRow = (message: (typeof messages)[number]) =>
+    forkContext?.summary.inheritedThroughSeq === message.seq ? (
+      <Fragment key={`${message.id}:fork-boundary`}>
+        {renderMessage(message)}
+        <ForkLineageDivider context={forkContext} />
+      </Fragment>
+    ) : message.id === lastImportedId ? (
+      <Fragment key={`${message.id}:imported-boundary`}>
+        {renderMessage(message)}
+        {importSegment?.incompleteTail && (
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+            {t("history.incompleteTail")}
+          </p>
+        )}
+        <TranscriptDividerRow role="separator">
+          <span>{importedDivider}</span>
+        </TranscriptDividerRow>
+      </Fragment>
+    ) : renderMessage(message);
+  /* 别人的前传是一处地标：读屏得先知道自己站在哪一段里，那条分隔线只有
+     看得见的人才读得到。display:contents 让 section 只留语义、不留盒子，
+     行与行之间的间距因此仍由 ConversationContent 的栅格说了算。 */
+  const renderRows = (rows: typeof messages) => {
+    const boundary = rows.findIndex((message) => message.segment !== "imported");
+    const imported = boundary < 0 ? rows : rows.slice(0, boundary);
+    const native = boundary < 0 ? [] : rows.slice(boundary);
+    return (
+      <>
+        {imported.length > 0 && (
+          <section
+            aria-label={t("history.importedHistoryLabel")}
+            className="contents"
+          >
+            {imported.map(renderRow)}
+          </section>
+        )}
+        {native.map(renderRow)}
+      </>
     );
+  };
 
   return (
     <ChartConversationBoundary>
@@ -690,6 +669,13 @@ function TranscriptRows({
             />
           )}
           {renderRows(afterDraft)}
+          {forkAnchor && forkContext && (
+            <ForkChatDialog
+              anchor={forkAnchor}
+              context={forkContext}
+              onClose={() => setForkAnchor(null)}
+            />
+          )}
           {canAbandonFatal && (
             <FailureCard
               action={t("chat.transcript.abandonFatal")}
@@ -731,43 +717,6 @@ function TranscriptRows({
   );
 }
 
-/* 失败不是一条助手消息：它是一张卡片，跟 UsageLimitCard 用同一套语言。
-   整块染红只会把注意力烧在背景上，图标与标题才是真正要读的那两行。 */
-function FailureCard({
-  action,
-  body,
-  icon,
-  onAct,
-  title,
-}: {
-  action: string;
-  body: string;
-  icon?: ReactNode;
-  onAct(): void;
-  title: string;
-}) {
-  return (
-    <div
-      className="w-full min-w-0 rounded-xl border bg-muted/40 p-4"
-      role="alert"
-    >
-      <div className="flex items-center gap-2">
-        <CircleXIcon className="size-4 shrink-0 text-destructive" />
-        <span className="font-medium text-base">{title}</span>
-      </div>
-      <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground text-sm">
-        {body}
-      </p>
-      <div className="mt-4 flex justify-end">
-        <Button onClick={onAct} size="sm" type="button" variant="outline">
-          {icon}
-          {action}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 export const ChatTranscript = memo(function ChatTranscript(props: {
   controller: ChatSessionController["transcript"];
   enableSidePanel: boolean;
@@ -776,6 +725,7 @@ export const ChatTranscript = memo(function ChatTranscript(props: {
   showOutline: boolean;
   importSegment?: ImportSegmentFacts;
   routeSearch?: string;
+  forkContext?: ChatForkViewContext;
   surfaceVisible?: boolean;
 }) {
   const [historyBatch, setHistoryBatch] = useState(false);

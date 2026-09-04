@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Message, Thinking, Terminal, Plan, image, subagent, structured Agent failure notices, RegularChatTurn, cold-turn projection, and Chat formatting components
- * [OUTPUT]: Provides TurnParts/ChatTurn/ChatTurnDraft with warning projection, Subagent availability, elapsed work, process folding, Plan composition, and hot/cold rendering
+ * [INPUT]: Depends on Message, Thinking, Terminal, Plan, image source custody, subagent, structured Agent failure notices, RegularChatTurn, fork actions, cold-turn projection, and Chat formatting components
+ * [OUTPUT]: Provides TurnParts/ChatTurn/ChatTurnDraft with warning projection, Subagent availability, elapsed work, process folding, Plan composition, fork controls, and hot/cold rendering
  * [POS]: Assistant-turn process renderer for chat/transcript; delegates non-plan terminal presentation to chat-regular-turn
  */
 
@@ -529,6 +529,8 @@ function PlanTurn({
   onOpenSubagent,
   imageSourceRef,
   onOpenImage,
+  onFork,
+  forkDisabledReason,
 }: {
   message: AssistantChatMessage;
   isExpanded: boolean;
@@ -537,6 +539,8 @@ function PlanTurn({
   onOpenSubagent?: (agentThreadId: string) => void;
   imageSourceRef?: (itemId: string) => GallerySourceRef | null;
   onOpenImage?: (source: ConversationImageSource) => void;
+  onFork?: () => void;
+  forkDisabledReason?: string;
 }) {
   return (
     <Message from="assistant">
@@ -558,6 +562,8 @@ function PlanTurn({
         content={message.content}
         contextReceipt={message.contextReceipt}
         createdAt={message.createdAt}
+        onFork={onFork}
+        forkDisabledReason={forkDisabledReason}
         role="assistant"
       />
     </Message>
@@ -578,10 +584,18 @@ export function ChatTurn(props: {
   subagents: Record<string, ProjectedSubagent>;
   onOpenSubagent?: (agentThreadId: string) => void;
   onOpenImage?: (source: ConversationImageSource) => void;
+  onFork?: () => void;
+  forkDisabledReason?: string;
 }) {
   const imageSourceRef = useCallback(
-    (itemId: string): GallerySourceRef | null =>
-      props.incarnationId
+    (itemId: string): GallerySourceRef | null => {
+      const referenced = props.message.parts?.find(
+        (part) => part.type === "tool" && part.itemId === itemId && part.mediaSource
+      );
+      if (referenced?.type === "tool" && referenced.mediaSource) {
+        return referenced.mediaSource;
+      }
+      return props.incarnationId
         ? {
             kind: "transcript",
             chatId: props.chatId,
@@ -589,10 +603,12 @@ export function ChatTurn(props: {
             assistantSeq: props.message.seq,
             itemId,
           }
-        : null,
+        : null;
+    },
     [
       props.chatId,
       props.incarnationId,
+      props.message.parts,
       props.message.seq,
     ]
   );
@@ -609,6 +625,8 @@ export function ChatTurn(props: {
       onToggle={props.onTogglePlan}
       subagents={props.subagents}
       imageSourceRef={imageSourceRef}
+      onFork={props.onFork}
+      forkDisabledReason={props.forkDisabledReason}
     />
   ) : (
     <RegularChatTurn
@@ -628,6 +646,8 @@ export function ChatTurn(props: {
           subagents={props.subagents}
         />
       }
+      onFork={props.onFork}
+      forkDisabledReason={props.forkDisabledReason}
       showContinue={props.showContinue}
     />
   );

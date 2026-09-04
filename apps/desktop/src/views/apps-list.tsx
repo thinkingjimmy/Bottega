@@ -6,14 +6,14 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { AddAppHint } from "@/components/apps/add-app-hint";
-import { AddAppDialog } from "@/components/apps/add-app-dialog";
+import { AddAppDialog } from "@/components/apps/install/add-app-dialog";
 import { AppCard } from "@/components/apps/app-card";
-import { AppProgressDialog } from "@/components/apps/app-progress-dialog";
+import { AppProgressDialog } from "@/components/apps/dialogs/app-progress-dialog";
 import { isWorkingState } from "@/components/apps/app-state";
 import {
   PresetInstallDialog,
   PresetShelf,
-} from "@/components/apps/preset-app-shelf";
+} from "@/components/apps/install/preset-app-shelf";
 import { PageShell } from "@/components/page-shell";
 import {
   type AppListItem,

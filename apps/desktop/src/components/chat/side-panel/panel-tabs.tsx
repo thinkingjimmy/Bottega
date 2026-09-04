@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React tabs, PanelSessionContext/eligibility, slot store, Browser tabs, the shared App authorization dialog/badge, and product-only Base/App/Image/Subagent panels
+ * [INPUT]: Depends on React tabs, PanelSessionContext/eligibility, slot store, Browser tabs, the shared App authorization dialog/badge, the Base navigation/snapshot provider slices, and product-only Base/App/Image/Subagent panels
  * [OUTPUT]: Provides one tablist with a unified installed-App add flow, independent App tabs, per-App authorization triggers, localized fallbacks, restore sanitization, and product-query short circuits
  * [POS]: The side-panel tab composition root and sole renderer of panel regions
  */
@@ -24,7 +24,10 @@ import {
   baseTabShellClass,
 } from "@/components/bases/chrome/base-tab-chrome";
 import { BaseWorkbench } from "@/components/bases/base-workbench";
-import { useBases } from "@/components/providers/bases-provider";
+import {
+  useBaseSnapshots,
+  useBasesNavigation,
+} from "@/components/providers/bases-provider";
 import type { ProjectedSubagent } from "@/lib/chat-turn-attach";
 import type { ConversationImageProjection } from "./image/image-projection";
 import { BROWSER_TAB_LIMIT } from "../../../../shared/browser-ipc";
@@ -122,7 +125,8 @@ export function PanelTabs({
   galleryProjection?: ConversationImageProjection;
 }) {
   const { t } = useAppTranslation();
-  const { movedOwners, resolveForSection, snapshots } = useBases();
+  const { movedOwners, resolveForSection } = useBasesNavigation();
+  const { snapshots } = useBaseSnapshots();
   const productRef = context.kind === "product" || context.kind === "adopted"
     ? context.productRef
     : null;
@@ -225,8 +229,7 @@ export function PanelTabs({
   const effectiveBaseOwnerKey =
     movedOwners[baseOwnerKey] ?? baseOwnerKey;
   /* ── 「这条 chat 有没有 Base」──────────────────────────────────────
-   * 否定只有一个来源：解析明确回答 absent。corrupt 是「有」——数据在盘上，
-   * 隔离与重建那张恢复面本就长在 Base tab 里；解析失败也当「有」，因为
+   * 否定只有一个来源：解析明确回答 absent。解析失败也当「有」，因为
    * ownerKey 落空时 tab 正文渲染的是那句错误、BaseWorkbench 根本不挂载，
    * 于是 ensure 跑不起来、Base 造不出来——「不隐式建库」与「错误看得见」
    * 同时成立。把一次 IPC 抖动谎报成「你没有 Base」才是两头皆输。

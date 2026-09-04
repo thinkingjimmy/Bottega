@@ -49,14 +49,14 @@ import type { AppGrantAuthority } from "../attachments/grant-authority";
 import {
   collectAppSkillEntries,
   type AppInstructionContributorRegistry,
-} from "../app-instruction-contributors";
-import type { AppReferenceJournal } from "../app-reference-journal";
-import type { AppStore } from "../app-store";
-import type { AppMutationCoordinator } from "../app-source-coordinator";
-import { selectAppReferences } from "../grant-budget";
+} from "../turn/app-instruction-contributors";
+import type { AppReferenceJournal } from "../turn/app-reference-journal";
+import type { AppStore } from "../store/app-store";
+import type { AppMutationCoordinator } from "../source/app-source-coordinator";
+import { selectAppReferences } from "../turn/grant-budget";
 import type { ThirdPartyMcpPlanLedger } from "../../extensions/lifecycle/third-party-mcp-plan-ledger";
 import type { AgentContext } from "../../agent/bridge-types";
-import { appDigest } from "./digest";
+import { appDigest } from "../support";
 
 type TurnInput = {
   conversationId: string;
@@ -277,13 +277,12 @@ export class AppTurnCoordinator {
         extensionDiscoveryBindings: delivery.discoveryBindings,
       };
     } catch (cause) {
-      /* durable entry 可能已落盘，失败必须走统一释放路径，否则 generation 永不归零。 */
+      /* durable entry 可能已落盘：把已签发的 usage lease 记上账，释放交给
+         `acquire` 那一条统一出口——两处各释放一次，第二次只会是空转。 */
       this.turnUsageLeases.set(
         input.requestId,
         accepted.map(({ usage }) => usage.usageLeaseId)
       );
-      await this.release(input.requestId);
-      this.releaseSourceMutation(input.requestId);
       throw cause;
     }
   }

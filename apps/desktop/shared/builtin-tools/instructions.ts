@@ -6,7 +6,6 @@
 
 const BASE_READ_TOOLS = [
   "base_describe",
-  "base_query",
   "read_base",
   "base_export_csv",
   "search_bases",
@@ -23,7 +22,6 @@ const BASE_MUTATION_TOOLS = [
 
 const CHART_READ_TOOLS = [
   "base_describe",
-  "base_query",
   "read_base",
   "search_bases",
 ] as const;

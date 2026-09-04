@@ -14,14 +14,6 @@ export const basesFr: BasesCatalog = {
     reloadFailed: "Échec du rechargement de la Base {{ownerKey}} : {{message}}",
     retiredResult: "La Base {{ownerKey}} a renvoyé une génération retirée.",
   },
-  quarantined: "Cette Base est mise en quarantaine",
-  quarantinedDescription:
-    "Les fichiers récupérables sont conservés. Restaurez la sauvegarde manuellement ou supprimez-les pour créer une nouvelle Base vide.",
-  discardData: "Supprimer les données en quarantaine",
-  discardAndRecreate: "Supprimer et recréer",
-  discardDescription:
-    "Cette action supprime définitivement les métadonnées isolées et les générations de lignes conservées, puis crée une nouvelle Base vide.",
-  discardTitle: "Supprimer les données récupérables de la Base ?",
   loading: "Chargement de la Base…",
   loadingMap: "Chargement de la carte…",
   pageTitle: "Base",

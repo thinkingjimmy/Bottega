@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto/fs/path, shared attachment Budget and Gallery image header parser; Receive the owner file stem + lifecycle id and final bytes
- * [OUTPUT]: Provides content addresses AttachmentStore, family copy, data URL parsing, reserve→commit/release, budget, ownership, read and deleted-proven, clean
+ * [OUTPUT]: Provides content addresses AttachmentStore, family copy, data URL parsing, reserve→commit/release, incrementally accounted budget, ownership, read and deleted-proven, clean
  * [POS]: The source of the truth of the blob of bases/store; Final bytes hashed by magic/header after a second test, the directory physical name with owner lifecycle
  */
 
@@ -15,7 +15,7 @@ import {
   rm,
   stat,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   BASE_ATTACHMENT_BYTE_LIMIT,
   BASE_ATTACHMENT_CHAT_BUDGET,
@@ -45,6 +45,10 @@ export class BaseAttachmentStore {
 
   constructor(readonly root: string) {}
 
+  /**
+   * 全量重扫只属于启动：它 stat 每个家族的每个 blob，代价与磁盘上的
+   * 附件总量成正比。此后账目一律增量维护——删了多少减多少，拷来多少加多少。
+   */
   async initialize() {
     await mkdir(this.root, { recursive: true, mode: 0o700 });
     this.committedGlobal = 0;
@@ -53,23 +57,7 @@ export class BaseAttachmentStore {
       if (!entry.isDirectory() || !entry.name.endsWith(".attachments")) {
         continue;
       }
-      let bytes = 0;
-      for (const file of await readdir(join(this.root, entry.name), {
-        withFileTypes: true,
-      })) {
-        if (!file.isFile()) continue;
-        // writeImmutable 崩溃遗留的 tmp 不入预算，就地清理。
-        if (file.name.endsWith(".tmp")) {
-          await rm(join(this.root, entry.name, file.name), {
-            force: true,
-          }).catch(() => undefined);
-          continue;
-        }
-        if (!/^att_[a-f0-9]{64}\./.test(file.name)) continue;
-        bytes += (await stat(join(this.root, entry.name, file.name))).size;
-      }
-      this.committedChats.set(entry.name, bytes);
-      this.committedGlobal += bytes;
+      this.account(entry.name, await this.measureFamily(join(this.root, entry.name), true));
     }
   }
 
@@ -168,7 +156,7 @@ export class BaseAttachmentStore {
       recursive: true,
       force: true,
     });
-    await this.initialize();
+    this.forget(this.familyKey(ownerStem, ownerInstanceId));
   }
 
   async gcFamily(
@@ -184,17 +172,40 @@ export class BaseAttachmentStore {
       if (isCode(cause, "ENOENT")) return;
       throw cause;
     }
+    const doomed: string[] = [];
+    const temporary: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      // writeImmutable 崩溃遗留的 tmp 从未入账：删它不动账目。
+      if (entry.name.endsWith(".tmp")) temporary.push(entry.name);
+      else if (
+        /^att_[a-f0-9]{64}\./.test(entry.name) &&
+        !referenced.has(entry.name)
+      ) {
+        doomed.push(entry.name);
+      }
+    }
     await Promise.all(
-      entries
-        .filter(
-          (entry) =>
-            entry.isFile() &&
-            /^att_[a-f0-9]{64}\./.test(entry.name) &&
-            !referenced.has(entry.name)
-        )
-        .map((entry) => rm(join(directory, entry.name), { force: true }))
+      temporary.map((name) =>
+        rm(join(directory, name), { force: true }).catch(() => undefined)
+      )
     );
-    await this.initialize();
+    if (!doomed.length) return;
+    const freed = await Promise.all(
+      doomed.map(async (name) => {
+        const path = join(directory, name);
+        const bytes = await stat(path).then(
+          (info) => info.size,
+          () => 0
+        );
+        await rm(path, { force: true });
+        return bytes;
+      })
+    );
+    this.account(
+      this.familyKey(ownerStem, ownerInstanceId),
+      -freed.reduce((total, bytes) => total + bytes, 0)
+    );
   }
 
   async copyFamily(
@@ -214,7 +225,9 @@ export class BaseAttachmentStore {
     } catch (cause) {
       if (!isCode(cause, "ENOENT")) throw cause;
     }
-    await this.initialize();
+    const key = this.familyKey(toStem, toInstanceId);
+    this.forget(key);
+    this.account(key, await this.measureFamily(destination, false));
   }
 
   async isolateFamily(
@@ -228,7 +241,57 @@ export class BaseAttachmentStore {
     } catch (cause) {
       if (!isCode(cause, "ENOENT")) throw cause;
     }
-    await this.initialize();
+    // `.orphan-<ts>` 已不叫 `.attachments`：initialize 不再认它，账目也该忘记它。
+    this.forget(this.familyKey(ownerStem, ownerInstanceId));
+  }
+
+  private familyKey(ownerStem: string, ownerInstanceId: string) {
+    return basename(this.familyPath(ownerStem, ownerInstanceId));
+  }
+
+  /** 只丈量一个家族目录；sweepTemporary 仅在启动重扫时开启。 */
+  private async measureFamily(directory: string, sweepTemporary: boolean) {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (cause) {
+      if (isCode(cause, "ENOENT")) return 0;
+      throw cause;
+    }
+    let bytes = 0;
+    for (const file of entries) {
+      if (!file.isFile()) continue;
+      // writeImmutable 崩溃遗留的 tmp 不入预算，就地清理。
+      if (file.name.endsWith(".tmp")) {
+        if (sweepTemporary) {
+          await rm(join(directory, file.name), { force: true }).catch(
+            () => undefined
+          );
+        }
+        continue;
+      }
+      if (!/^att_[a-f0-9]{64}\./.test(file.name)) continue;
+      bytes += (await stat(join(directory, file.name))).size;
+    }
+    return bytes;
+  }
+
+  private account(chatKey: string, delta: number) {
+    if (!delta) {
+      this.committedChats.set(chatKey, this.committedChats.get(chatKey) ?? 0);
+      return;
+    }
+    const next = Math.max(0, (this.committedChats.get(chatKey) ?? 0) + delta);
+    this.committedChats.set(chatKey, next);
+    this.committedGlobal = Math.max(0, this.committedGlobal + delta);
+  }
+
+  private forget(chatKey: string) {
+    this.committedGlobal = Math.max(
+      0,
+      this.committedGlobal - (this.committedChats.get(chatKey) ?? 0)
+    );
+    this.committedChats.delete(chatKey);
   }
 
   private reserve(chatKey: string, bytes: number): Reservation {

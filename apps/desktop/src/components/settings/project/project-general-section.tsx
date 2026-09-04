@@ -13,7 +13,7 @@ import type { Project } from "../../../../shared/projects-ipc";
 import type { ChatSummary } from "../../../../shared/chats-ipc";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useProjects } from "@/components/providers/projects-provider";
-import { useBases } from "@/components/providers/bases-provider";
+import { useBasesNavigation } from "@/components/providers/bases-provider";
 import { useOptionalHistory } from "@/components/providers/history/history-provider";
 import { SidebarRenameDialog } from "@/components/sidebar/rename/sidebar-rename-dialog";
 import { ProjectAppPlacements } from "./apps/project-app-placements";
@@ -61,10 +61,10 @@ export function ProjectGeneralSection({
   const history = useOptionalHistory();
   const {
     ensure: ensureBase,
-    pinned,
+    rootBases,
     projectBases,
     projectBasesLoaded,
-  } = useBases();
+  } = useBasesNavigation();
   const { settings } = useSyncExternalStore(
     settingsStore.subscribe,
     settingsStore.getSnapshot
@@ -90,12 +90,12 @@ export function ProjectGeneralSection({
   const projectBase = projectBases.find(
     (base) => base.ownerKey === `project:${project.id}`
   );
-  const pinnedBaseCount = chats.filter((chat) =>
-    pinned.some((base) => base.ownerKey === `chat:${chat.id}`)
+  const rootBaseCount = chats.filter((chat) =>
+    rootBases.some((base) => base.ownerKey === `chat:${chat.id}`)
   ).length + Number(Boolean(projectBase));
   const lifecycle = useProjectLifecycle(project, {
     chats,
-    pinnedBaseCount,
+    rootBaseCount,
     hasProjectBase: Boolean(projectBase),
     groupMemory: settings?.memory.sharingMode === "group",
     onLeave: () => {},

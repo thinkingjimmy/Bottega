@@ -4,7 +4,7 @@
  * [POS]: App×Extension composition root; each domain keeps its own ledger while this module fixes dependency order and Project cleanup ownership
  */
 
-import type { AppExtensionGenerationPort } from "../../apps/app-extension-generation";
+import type { AppExtensionGenerationPort } from "../../apps/generation/app-extension-generation";
 import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/app-generation-build-participants";
 import type { AppGenerationDrainProviderRegistry } from "../../lifecycle/app-generation-drain-providers";
 import { VALIDATOR_FIXTURE_DIGEST } from "../admission";

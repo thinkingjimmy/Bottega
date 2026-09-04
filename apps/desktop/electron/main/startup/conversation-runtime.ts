@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Chat/Project/App/Memory/Gallery/Browser services, the History Import handle, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, manual staging, RelayLedger, and backend bridge
- * [OUTPUT]: Provides ChatsService/Coordinator/Archive composition, adopted-continuation reconciliation, and manual preparation that freezes Project lifecycle, Tools policy, and exact Skill selection before durable admission
+ * [OUTPUT]: Provides ChatsService/Coordinator/Archive composition, Project workspace authority for Chat forks, adopted-continuation reconciliation, and frozen manual preparation
  * [POS]: The conversation-domain startup composition module; the external-history half lives in history-import-runtime.ts and assembles dependencies without holding global lifecycle state
  */
 
@@ -111,6 +111,8 @@ export function createChatsService({
         : undefined,
     isAppProject: (projectId) =>
       projectStore.get(projectId)?.workspaceBinding.kind === "app",
+    resolveProjectWorkspace: (projectId) =>
+      projects.resolveCodexContext(projectId).workspace,
     onAppChatCreated: async ({ appId, appRole, chatId }) => {
       await apps
         .markChatCanonical(appId, appRole, chatId)
@@ -197,8 +199,15 @@ export function createChatsService({
           policyDigest,
           deliveryDigests,
           mode
-        ),
+      ),
     },
+    admitDeletion: (records) => chatHomes.assertDeletionAdmissible(records),
+    deletionPreResources: [
+      {
+        id: "managed-worktree",
+        release: (record) => chatHomes.releaseWorktreeForDeletion(record),
+      },
+    ],
     deletionResources: [
       {
         id: "relay",
@@ -232,6 +241,11 @@ export function createChatsService({
         /* Chat 一走，指向它的 canonical 路由就是断链：当场作废。 */
         id: "history-route",
         release: async (record) => getHistoryImport()?.onChatRemoved(record.id),
+      },
+      {
+        id: "chat-home",
+        release: (record, _attachments, _proof, operationId) =>
+          chatHomes.releaseHomeForDeletion(record, operationId),
       },
     ],
     onTitleChanged: (record) => bases.renameForChat(record),
@@ -559,7 +573,7 @@ export function createArchiveService({
     Date.now,
     (chatIds) =>
       baseStore
-        .listPinned()
+        .listRootBases()
         .filter(({ ownerKey }) => {
           const owner = ownerFromKey(ownerKey);
           return owner.kind === "chat" && chatIds.has(owner.chatId);

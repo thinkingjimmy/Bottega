@@ -54,7 +54,7 @@ export const chatSurfacesJa: typeof chatSurfacesEn = {
       unresolved: "未解決",
       configOverrideDiff: "設定の上書き：{{value}}",
       eligible: "利用可能性：{{value}}",
-      deliverySummary: "配信状態：{{delivery}}、このターンで有効：{{active}}",
+      turnActive: "このターンで有効：{{active}}",
     },
     appTab: {
       readFailed: "App の状態を読み取れませんでした",

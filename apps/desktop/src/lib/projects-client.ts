@@ -147,8 +147,10 @@ export const setProjectsSortMode = async (sortMode: ProjectsSortMode) => {
   return sortMode;
 };
 
-export const listProjectBranches = (projectId: string) =>
-  window.projects?.listBranches(projectId) ?? Promise.resolve(null);
+export const listProjectBranches = (
+  projectId: string,
+  conversationId?: string
+) => window.projects?.listBranches(projectId, conversationId) ?? Promise.resolve(null);
 
 export const checkoutProjectBranch = (
   projectId: string,

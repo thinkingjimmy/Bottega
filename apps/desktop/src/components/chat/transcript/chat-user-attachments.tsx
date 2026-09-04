@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on UI Button/Skeleton, localized transcript controls, conversation scroll unlock, shared ResizeObserver, ChatAttachmentMeta, live previews, and attachment read/open intents
- * [OUTPUT]: Provides localized UserMessageFold and ChatUserAttachments with 12-line measurement, lazy stored previews, and side-panel image actions
+ * [OUTPUT]: Provides localized UserMessageFold with hover feedback, directional expansion chevrons, and a 44px touch target, plus ChatUserAttachments with 12-line measurement, lazy stored previews, and side-panel image actions
  * [POS]: User-message body and attachment display unit consumed by the ChatTranscript user branch
  */
 
@@ -15,6 +15,7 @@ import {
 import { useScrollLockRelease } from "@ai-chat/ui/components/ai-elements/conversation";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { ChatAttachmentMeta } from "../../../../shared/chats-ipc";
 import type { LiveAttachmentPreview } from "../runtime/chat-attachments";
 import { observeSharedResize } from "./shared-resize-observer";
@@ -96,7 +97,7 @@ export function UserMessageFold({
         <Button
           aria-controls={contentId}
           aria-expanded={expanded}
-          className="-ml-2 h-8 self-start px-2 text-sm font-normal hover:bg-transparent dark:hover:bg-transparent"
+          className="-ml-2 h-8 self-start px-2 text-muted-foreground text-sm font-normal touch-manipulation touch-target-44 hover:text-foreground"
           onClick={toggle}
           size="sm"
           type="button"
@@ -106,6 +107,11 @@ export function UserMessageFold({
             expanded
               ? "chat.transcript.showLess"
               : "chat.transcript.showMore"
+          )}
+          {expanded ? (
+            <ChevronUp aria-hidden="true" data-icon="inline-end" />
+          ) : (
+            <ChevronDown aria-hidden="true" data-icon="inline-end" />
           )}
         </Button>
       )}

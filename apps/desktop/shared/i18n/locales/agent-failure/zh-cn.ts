@@ -57,4 +57,8 @@ export const agentFailureZhCN: typeof agentFailureEn = {
       resolution: "请再试一次；如果仍然出现，请展开并复制技术详情用于排查。",
     },
   },
+  notice: {
+    title: "{{backend}} 发出了一条提示",
+    explanation: "这条提示来自 {{backend}} 自身，不是 Bottega 的问题，本轮回复不受影响。",
+  },
 };

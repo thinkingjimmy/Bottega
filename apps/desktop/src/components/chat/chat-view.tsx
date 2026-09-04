@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React layout measurement, ChatSessionController, window role, canonical transcript, composer, optional side panel, Gallery, and main-window Memory state
- * [OUTPUT]: Provides ChatViewFrame and ChatView with once-per-turn Design auto-open, paged deep links, imported-segment pass-through, and App-window suppression of global Memory IPC
+ * [OUTPUT]: Provides ChatViewFrame and ChatView with managed-worktree capability projection, Design auto-open, paged deep links, and imported-segment pass-through
  * [POS]: The single horizontal chat layout for draft and canonical native/imported sessions
  */
 
@@ -50,7 +50,10 @@ import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useLocation } from "react-router";
 import { onAppsEvent } from "@/lib/apps-client";
 import { windowContext } from "@/lib/window-surfaces-client";
-import type { ImportSegmentFacts } from "./transcript/chat-transcript";
+import type {
+  ChatForkViewContext,
+  ImportSegmentFacts,
+} from "./transcript/chat-transcript";
 
 const SidePanel = lazy(() =>
   import("./side-panel/side-panel").then((module) => ({
@@ -80,6 +83,8 @@ type ChatViewProps = {
   sidePanelRequest?: SidePanelRequest | null;
   onConsumeSidePanelRequest?: (nonce: number) => void;
   surfaceVisible?: boolean;
+  managedWorktree?: boolean;
+  forkContext?: ChatForkViewContext;
 };
 
 export function ChatView({
@@ -115,6 +120,8 @@ export function ChatViewFrame({
   enableSidePanel = true,
   composerLockedReason,
   importSegment,
+  managedWorktree,
+  forkContext,
   sidePanelRequest,
   onConsumeSidePanelRequest,
   surfaceVisible = true,
@@ -279,6 +286,7 @@ export function ChatViewFrame({
               enableSidePanel={enableSidePanel}
               expandedPlanId={expandedPlanId}
               importSegment={importSegment}
+              forkContext={forkContext}
               onClosePlan={controller.sidePanel.close}
               showOutline={!visibleSidePanelState}
               routeSearch={location.search}
@@ -306,6 +314,7 @@ export function ChatViewFrame({
             controller={controller.composer}
             enableSidePanel={enableSidePanel}
             focusOnReady={focusComposer}
+            managedWorktree={managedWorktree}
           />
         )}
       </div>

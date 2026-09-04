@@ -14,14 +14,6 @@ export const basesZhCN: BasesCatalog = {
     reloadFailed: "Base {{ownerKey}} 重拉失败：{{message}}",
     retiredResult: "Base {{ownerKey}} 返回了已退役的数据代。",
   },
-  quarantined: "此 Base 已被隔离",
-  quarantinedDescription:
-    "可恢复文件已保留。请手动恢复备份，或弃置它以创建新的空 Base。",
-  discardData: "弃置隔离数据",
-  discardAndRecreate: "弃置并重建",
-  discardDescription:
-    "这会永久删除隔离的元数据和保留的行版本，然后创建新的空 Base。",
-  discardTitle: "弃置可恢复的 Base 数据？",
   loading: "正在加载 Base…",
   loadingMap: "正在加载地图…",
   pageTitle: "Base",

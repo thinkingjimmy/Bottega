@@ -1,6 +1,6 @@
 /**
  * [INPUT]: No running dependence, only using type-sequence TypeScript
- * [OUTPUT]: Provides Project v8 lifecycle-fenced identity, workspace/App binding, positive-grant-gated App placements, hidden Base custody role, grants, archiving, sorting, appearance, native reveal, and Git contracts
+ * [OUTPUT]: Provides Project v8 lifecycle-fenced identity, workspace/App binding, positive-grant-gated App placements, hidden Base custody role, grants, archiving, sorting, appearance, native reveal, and Project/conversation-scoped Git contracts
  * [POS]: Shared Project wire truth; projectLifecycleRevision fences incarnation/deletion, reveal carries only Project ID, and appPlacements express navigation without granting App capability
  */
 
@@ -90,7 +90,10 @@ export type ProjectsEvent =
   | { type: "sort-mode"; sortMode: ProjectsSortMode }
   | { type: "warning"; message: string };
 
-export type ProjectLocalDetachReason = "project-base" | "group-memory";
+export type ProjectLocalDetachReason =
+  | "project-base"
+  | "group-memory"
+  | "managed-worktree";
 
 export type SetProjectAppPinnedInput = Readonly<{
   projectId: string;
@@ -144,7 +147,10 @@ export type ProjectsBridgeApi = {
   detachLocal: (projectId: string) => Promise<ProjectLocalDetachResult>;
   releaseMissing: (projectId: string) => Promise<number>;
   setSortMode: (sortMode: ProjectsSortMode) => Promise<ProjectsSortMode>;
-  listBranches: (projectId: string) => Promise<GitBranchSnapshot | null>;
+  listBranches: (
+    projectId: string,
+    conversationId?: string
+  ) => Promise<GitBranchSnapshot | null>;
   checkoutBranch: (
     projectId: string,
     target: GitBranchTarget

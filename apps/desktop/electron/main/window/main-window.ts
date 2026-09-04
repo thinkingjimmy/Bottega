@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, domain services, Apps, Update, MCP, and window security
- * [OUTPUT]: Provides createMainWindow, exact-Project Tools/MCP and scoped Extension IPC, canonical turn validation through narrow Chat facts, post-CAS projection, and App-window creation
+ * [OUTPUT]: Provides createMainWindow, exact-Project Tools/MCP and Extension IPC, managed-worktree admission/seatbelt roots, canonical turn validation, and App-window creation
  * [POS]: Interactive main-window authority boundary; renderer identities are routing hints and main re-derives every Project lifecycle fact
  */
 
@@ -13,7 +13,6 @@ import {
   SETTINGS_CHANNEL,
 } from "../../../shared/settings-ipc";
 import { resolveAppLocale } from "../../../shared/i18n/locale";
-import { USAGE_CHANNEL } from "../../../shared/usage-ipc";
 import { registerAgentBridge, resetThreadServiceTierEffective } from "../agent-bridge";
 import type { AgentContext, BuiltinTurnToolPolicy } from "../agent/bridge-types";
 import { projectTurnAllowedActions } from "../agent/turn-actions";
@@ -32,7 +31,6 @@ import { registerExtensions } from "../extensions/extensions-registrar";
 import type { BasesService } from "../bases/bases-service";
 import type { ChatHomeService } from "../chat-home/chat-home-service";
 import type { ChatsService } from "../chats/chats-service";
-import { rendererIpc } from "../ipc-registrar";
 import type { FileAuthorizationStore } from "../file-authorizations";
 import type { ArchiveService } from "../archive/archive-service";
 import type { MemoryService } from "../memory/service/memory-service";
@@ -51,7 +49,6 @@ import type { SkillsCatalog, WorkspaceResolver } from "../skills-catalog";
 import type { WorkspaceFileCatalog } from "../workspace-files";
 import { initiatorResultByteBudget, type BuiltinMcpLeaseStore } from "../tools/lease";
 import type { UsageService } from "../usage/usage-service";
-import { assertUsageRequest } from "../usage/usage-service";
 import type { GalleryMediaService } from "../gallery/media-service";
 import type { TurnEventsBroker } from "../gallery/turn-events-broker";
 import { resolveConversationContext } from "../workspace-resolver";
@@ -86,6 +83,11 @@ import {
   freezeBuiltinPolicy,
   turnProjectionInput,
 } from "./turn-policy";
+import {
+  assertManagedWorktreePermission,
+  resolveManagedWorktreeAccess,
+} from "./managed-worktree-access";
+import { registerUsage } from "./usage-registration";
 
 type MainWindowDependencies = {
   mainDirectory: string;
@@ -123,23 +125,6 @@ type MainWindowDependencies = {
   globalSearch: GlobalSearchService;
   update: UpdateService;
 };
-
-function registerUsage(
-  window: BrowserWindow,
-  rendererUrl: string,
-  usage: UsageService
-) {
-  usage.attachWindow(window);
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的用量请求")
-    .handle(USAGE_CHANNEL.getSummary, (rawTarget, rawOptions) => {
-      const request = assertUsageRequest(rawTarget, rawOptions);
-      return usage.getSummary(request.target, {
-        forceRefresh: request.forceRefresh,
-      });
-    })
-    .handle(USAGE_CHANNEL.replayProgress, () => usage.replayProgress());
-  window.once("closed", () => usage.detachWindow(window));
-}
 
 export function createMainWindow({
   mainDirectory,
@@ -432,6 +417,11 @@ export function createMainWindow({
         }
       }
       const canonicalChat = chats.store.getMetadata(conversationId);
+      const managedWorktree = await resolveManagedWorktreeAccess(
+        canonicalChat,
+        context.workspace,
+        chatHomes
+      );
       if (
         preparedProjectTools &&
         preparedProjectTools.receipt.projectContext.projectId !==
@@ -487,6 +477,9 @@ export function createMainWindow({
           };
       return {
         ...context,
+        ...(managedWorktree.active
+          ? { managedWorktree: true }
+          : {}),
         ...(preparedSkillSelection ? { preparedSkillSelection } : {}),
         ...(builtinToolPolicy ? { builtinToolPolicy } : {}),
         ...(preparedProjectTools ? { preparedProjectTools } : {}),
@@ -514,6 +507,7 @@ export function createMainWindow({
           readOnlyRoots: [
             ...chatReadOnlyRoots,
             ...attached.readOnlyRoots,
+            ...managedWorktree.readOnlyRoots,
           ],
           controlRoot: dirname(chatHomes.ledger.filePath),
         },
@@ -606,6 +600,8 @@ export function createMainWindow({
     assertChatBackend: (conversationId, backend) =>
       chats.store.assertBackend(conversationId, backend),
     assertTurnAdmission: (payload) => {
+      const chat = chats.store.getMetadata(payload.scope.conversationId);
+      assertManagedWorktreePermission(chat, payload.turnOptions.permissionMode);
       if (
         payload.turnOptions.permissionMode === "full-access" &&
         settings.get().fullAccessAcknowledgedAt === null

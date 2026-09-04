@@ -49,7 +49,7 @@ export const chatSurfacesZhCN: typeof chatSurfacesEn = {
       unresolved: "未解析",
       configOverrideDiff: "配置覆盖差异：{{value}}",
       eligible: "可用性：{{value}}",
-      deliverySummary: "交付健康度：{{delivery}}；本轮活跃：{{active}}",
+      turnActive: "本轮活跃：{{active}}",
     },
     appTab: {
       readFailed: "App 状态读取失败",

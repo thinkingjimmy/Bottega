@@ -12,8 +12,8 @@ import type { BaseRow, BaseRowPatch, BaseSnapshot } from "../../../../shared/bas
 import type {
   BaseCommitAuthorityRegistry,
   BaseMutationOperation,
-} from "../base-commit-authority";
-import type { BaseAttachmentService } from "../attachment-service";
+} from "./base-commit-authority";
+import type { BaseAttachmentService } from "../attachment/attachment-service";
 import type { BaseRowMutations } from "./base-row-mutations";
 
 type Options = {

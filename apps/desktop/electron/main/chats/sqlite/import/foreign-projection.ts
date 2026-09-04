@@ -1,13 +1,16 @@
 /**
- * [INPUT]: Depends on the shared ForeignToolEvent wire shape and the canonical ChatToolPart/part budgets
- * [OUTPUT]: Provides projectForeignTools; imported source tool events become canonical ChatToolParts (native kind classification, argument-derived title, clipped detail) inside a caller-supplied byte budget
+ * [INPUT]: Depends on the shared ForeignToolEvent/ForeignProcessStep wire shapes, the imported tool-detail cap and the canonical ChatPart/part budgets
+ * [OUTPUT]: Provides projectForeignTools and projectForeignParts; imported tool events and folded intermediate statements become canonical ChatParts (native kind classification, argument-derived title, 16 KiB-capped detail) inside one shared message byte budget
  * [POS]: Pure projection beside the SQLite import reader; imported rows therefore speak the same TurnParts language as native history
  */
 
-import type { ChatToolPart } from "../../../../../shared/chats-ipc";
+import type { ChatPart, ChatToolPart } from "../../../../../shared/chats-ipc";
 import { MESSAGE_PART_LIMIT } from "../../../../../shared/chats-ipc";
-import { TOOL_DETAIL_BYTE_LIMIT } from "../../../../../shared/agent-ipc";
-import type { ForeignToolEvent } from "../../../../../shared/history-import-ipc";
+import { IMPORTED_TOOL_DETAIL_BYTE_LIMIT } from "../../../../../shared/agent-ipc";
+import type {
+  ForeignProcessStep,
+  ForeignToolEvent,
+} from "../../../../../shared/history-import-ipc";
 import { PART_TITLE_CHAR_LIMIT } from "../../chat-schema";
 
 type Json = Record<string, unknown>;
@@ -76,31 +79,32 @@ function argTitle(args: Json | null): string | null {
 /* 预算是入参而非常量：这些 part 与正文共享同一条 32 KB 消息预算，
    超出即整条 record 落不进 chatRecordSchema。宁可少给几行工具详情，
    也不让一条超长的导入消息把整段历史读成异常。 */
-export function projectForeignTools(
+type Budget = { bytes: number; parts: number };
+
+function toolParts(
   tools: readonly ForeignToolEvent[] | undefined,
-  budgetBytes: number
+  budget: Budget
 ): ChatToolPart[] {
   const parts: ChatToolPart[] = [];
-  let remaining = budgetBytes;
   for (const tool of tools ?? []) {
-    if (parts.length >= MESSAGE_PART_LIMIT) break;
+    if (budget.parts <= 0) break;
     const kind = kindOf(tool.name);
     const title = clip(
       (argTitle(parsedArgs(tool.input)) ?? tool.name).replace(/\s+/g, " ").trim(),
       TITLE_LIMIT
     ) || tool.name;
     const titleBytes = Buffer.byteLength(title, "utf8");
-    if (titleBytes > remaining) break;
-    remaining -= titleBytes;
+    if (titleBytes > budget.bytes) break;
+    budget.bytes -= titleBytes;
     // command 的标题已是命令本身，详情只留终端输出；其余工具实参与结果并陈
     const raw = kind === "command"
       ? tool.output
       : [tool.input, tool.output].filter(Boolean).join("\n\n") || undefined;
     // 预算连一个省略号都装不下时，这条详情整段让位，而不是剪成半截。
-    const detail = raw && remaining > CLIP_ELLIPSIS_BYTES
-      ? clipBytes(raw, Math.min(TOOL_DETAIL_BYTE_LIMIT, remaining))
+    const detail = raw && budget.bytes > CLIP_ELLIPSIS_BYTES
+      ? clipBytes(raw, Math.min(IMPORTED_TOOL_DETAIL_BYTE_LIMIT, budget.bytes))
       : undefined;
-    if (detail) remaining -= Buffer.byteLength(detail, "utf8");
+    if (detail) budget.bytes -= Buffer.byteLength(detail, "utf8");
     parts.push({
       type: "tool",
       itemId: clip(tool.id, 256),
@@ -109,6 +113,45 @@ export function projectForeignTools(
       ...(detail ? { detail } : {}),
       status: "completed",
     });
+    budget.parts -= 1;
   }
+  return parts;
+}
+
+export function projectForeignTools(
+  tools: readonly ForeignToolEvent[] | undefined,
+  budgetBytes: number
+): ChatToolPart[] {
+  return toolParts(tools, { bytes: budgetBytes, parts: MESSAGE_PART_LIMIT });
+}
+
+/**
+ * 折叠后的一条 assistant：逐条摊开被折进来的中间陈述，每一步先它的工具、
+ * 再它的文字——一条 assistant 消息挂着的工具是**跑在它之前**的那些调用，
+ * 反过来排就会让「先说后做」的假象顶替真实时序（JSON 时代 groupTurns
+ * 同律）。末条自己的工具殿后；文本与工具共用同一条消息预算游标。
+ */
+export function projectForeignParts(input: {
+  process?: readonly ForeignProcessStep[];
+  tools?: readonly ForeignToolEvent[];
+  budgetBytes: number;
+  itemIdPrefix: string;
+}): ChatPart[] {
+  const budget: Budget = { bytes: input.budgetBytes, parts: MESSAGE_PART_LIMIT };
+  const parts: ChatPart[] = [];
+  (input.process ?? []).forEach((step, index) => {
+    parts.push(...toolParts(step.tools, budget));
+    const text = step.text.trim();
+    if (!text || budget.parts <= 0 || budget.bytes <= CLIP_ELLIPSIS_BYTES) return;
+    const clipped = clipBytes(text, budget.bytes);
+    parts.push({
+      type: "text",
+      itemId: clip(`${input.itemIdPrefix}:process-${index}`, 256),
+      text: clipped,
+    });
+    budget.bytes -= Buffer.byteLength(clipped, "utf8");
+    budget.parts -= 1;
+  });
+  parts.push(...toolParts(input.tools, budget));
   return parts;
 }

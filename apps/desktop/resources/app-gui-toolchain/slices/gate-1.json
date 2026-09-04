@@ -9,33 +9,33 @@
     },
     {
       "path": "electron/main/apps/gui-build/admission.ts",
-      "bytes": 3931,
-      "sha256": "sha256:db65444913f79d2b78a22e7fa4ab8348fb80c61453922203020c02bc52c6ed45"
+      "bytes": 3456,
+      "sha256": "sha256:9307162194fcf656c1eea46de5397d769e5ef9c24b2fdf1b8a952f7436356d9d"
     },
     {
       "path": "electron/main/apps/gui-build/contracts.ts",
-      "bytes": 2585,
-      "sha256": "sha256:9d1b4422d047bc1f5003b5bae9813505bc7ce1c604b2822e469140d2d2e5aeaf"
+      "bytes": 3125,
+      "sha256": "sha256:041f5c8b00d85b0aea49e86e22583dac476661e692fda970bce488603f81ff62"
     },
     {
       "path": "electron/main/apps/gui-build/metadata.ts",
-      "bytes": 6677,
-      "sha256": "sha256:8aefd684c58bc3427a729872f9f568756d3af085bd6086ccfc2c1a30b938d751"
+      "bytes": 7958,
+      "sha256": "sha256:2059fc7a03019b8acad929c2809776e190b0f91a0eb9198778e2f9cf584b50bb"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/compiler.ts",
-      "bytes": 27904,
-      "sha256": "sha256:33e0f6ef828642cd8dcfb3259e71dd67786d1b6a187e76f427c99af26e45beeb"
+      "bytes": 28837,
+      "sha256": "sha256:b3cd891f23ab6df916a5b331d2540f1eb331682018de4415165068014b70ffb3"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/dynamic-code-policy.ts",
-      "bytes": 14593,
-      "sha256": "sha256:e5a9b38e127ce3e132e8c45f5916bc6331ad32acba80136ef9a408f77f794c33"
+      "bytes": 14586,
+      "sha256": "sha256:ba924c244cb2d20d91f8c9c076663bf87d3d1c2715026fe8e79eee50ff98201f"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/portable.ts",
-      "bytes": 8965,
-      "sha256": "sha256:be9ea72b60cdeb2d362ba879e99432dfd1256c1f11e28208aa0116edef369e22"
+      "bytes": 8966,
+      "sha256": "sha256:37574a2ca9b1828df65315a1da20db81d6ac4c39ecc078e58dad428913dc8128"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/receipt-metadata.ts",
@@ -44,33 +44,33 @@
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/sandbox.ts",
-      "bytes": 27490,
-      "sha256": "sha256:bedf4f3b4f062302d508408a1f55014641ba74be46454a433af709df80f8c4f4"
+      "bytes": 31467,
+      "sha256": "sha256:81a6deed89df457971d8e756e6f79eda012193a04682acb47a8ad62fbe5ab1ec"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/seal.ts",
-      "bytes": 11776,
-      "sha256": "sha256:6947de4a67f6a3c7961c73b8c5acb5a659a4d5d2fdc3c8d96fa362ca01a89607"
+      "bytes": 12327,
+      "sha256": "sha256:255a80be70488bdb879a6f492123b016b2aa7cd75ca3a5d6fe47e3e58d0a31e3"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/source-preparer.ts",
-      "bytes": 9153,
-      "sha256": "sha256:9f7935b18ddce04435529b50eb35bf26800cc89a21573f0f6bb7e66d849aab67"
+      "bytes": 9646,
+      "sha256": "sha256:b9ba8cb74c417d92fd33ece17849cb95b714310739dee977dfe56ed2dc64a564"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/source-validator.ts",
-      "bytes": 15129,
-      "sha256": "sha256:1bab7537e0330bd6d35a4836d25ded9d3330545d28dac748e4928d5c3fbb2329"
+      "bytes": 16995,
+      "sha256": "sha256:2613533c47cd3fca4b34e7aac71bdbadfb01971abeb6038b0a6dcdc44c410079"
     },
     {
       "path": "electron/main/apps/gui-build/product-modules/app-react.ts",
-      "bytes": 11795,
-      "sha256": "sha256:1eb39adbe8452dfc78bbb354330d9340a0f147a82bbb495081e3e3b0c5c23a48"
+      "bytes": 12847,
+      "sha256": "sha256:cd3175fa7a5455a14f9800a96963e1d9268d9ab48536b13081e9b34ca1e46a01"
     },
     {
       "path": "electron/main/apps/gui-build/product-modules/bootstrap.ts",
-      "bytes": 28345,
-      "sha256": "sha256:0c4e0ed64f27ac86fb285cd27d15ecfaf2a6c61b26e1b382e8c9a7c3f8fafc33"
+      "bytes": 31973,
+      "sha256": "sha256:e01e58487c09ff1e6987e1383b5e968079bbd724105bdc28fb1e36c79594114d"
     },
     {
       "path": "electron/main/apps/gui-build/product-modules/virtual-contracts.ts",
@@ -84,62 +84,62 @@
     },
     {
       "path": "electron/main/apps/gui-build/scaffold/contracts.ts",
-      "bytes": 2978,
-      "sha256": "sha256:8a32dcad0ffd86f5b5f5708e052d18e15acb691ede0525f49f6ab2060b0a02ef"
+      "bytes": 2971,
+      "sha256": "sha256:b2978ec858e781a349bb295c2239413e77a2b3c8bd12d8578d93f248bf7712a6"
     },
     {
       "path": "electron/main/apps/gui-build/service.ts",
-      "bytes": 8755,
-      "sha256": "sha256:193842450facc759afe2d1408de2e5276e23d611201d62869da40bf2db087933"
+      "bytes": 8693,
+      "sha256": "sha256:2ae390ac2ad9b9ee69201e839afd64eda2d85b211339494024e91bad31187697"
     },
     {
       "path": "electron/main/apps/gui-build/source-analysis.ts",
-      "bytes": 2227,
-      "sha256": "sha256:f88d067303dcc316b98ef9ff9cb5dcff30ae09739d64c10f32b913549372c17c"
+      "bytes": 3542,
+      "sha256": "sha256:821757cfd0d881cc2e19989b78b7d394e4470570da50d91d0f12969cb082bad6"
     },
     {
       "path": "electron/main/apps/gui-cutover/cohort.ts",
-      "bytes": 4396,
-      "sha256": "sha256:e8627568b017f57553f1123f464b4f07eaabc6bf77b2703b3116d6d393f0f6e0"
+      "bytes": 4216,
+      "sha256": "sha256:295ae08d5a6f48da747e0490603339daff0a2735b5cbe808f319730c4c1511e8"
     },
     {
       "path": "electron/main/apps/gui-cutover/coordinator.ts",
-      "bytes": 27212,
-      "sha256": "sha256:35d8a837b7a98b815878661105fee60be2e524e1c4856d1670cb3b46eab90480"
+      "bytes": 24819,
+      "sha256": "sha256:5d58fa2f7fdb3134bd52377c160850a310c514f9f17ee390436d33e86d111c86"
     },
     {
       "path": "electron/main/apps/gui-cutover/journal.ts",
-      "bytes": 8850,
-      "sha256": "sha256:0c579fffcce724a7fc6415e8951c8f5124a54949be7b5145096c1ea6e9c9f63e"
+      "bytes": 4702,
+      "sha256": "sha256:32777819bb8b65045bd6ec5d38bf03d08c537b86252795b19561ed7824a1d761"
     },
     {
       "path": "electron/main/apps/gui-cutover/participants.ts",
-      "bytes": 8999,
-      "sha256": "sha256:d4f6dd365190bca8ef5db5b8769076271fbca77c47f439bb685d0512a6809a37"
+      "bytes": 3189,
+      "sha256": "sha256:508b6cd8131fe1e4f1ca1cb6c27db841f35264e7a8b0c88fb97a4a9cec6de8cf"
     },
     {
       "path": "electron/main/apps/gui-cutover/side-effects.ts",
-      "bytes": 4797,
-      "sha256": "sha256:edff8d2de7ba8ac3596bff5b10f908876c2b33d9cd4cab89c85e09a9634eef73"
+      "bytes": 3467,
+      "sha256": "sha256:1880a8e16242c733f6cf7d898f25d721caa64df8f0639303e77054c9d6c7265f"
     },
     {
       "path": "shared/app-gui/contracts.ts",
-      "bytes": 8919,
-      "sha256": "sha256:14c4614f7cdf5da934eef4960f8f1c08acb85810c0f1b92af353b2b4833ce7e4"
+      "bytes": 8855,
+      "sha256": "sha256:1660e111b631c961eedc69c387300bf45bd5e2fc141497050fc896e364047aee"
     },
     {
       "path": "shared/app-gui/cutover.ts",
-      "bytes": 10417,
-      "sha256": "sha256:5e2018ce135c56338191f66b769e52633d1669d6109f5131ad5fab9c63298d31"
+      "bytes": 7108,
+      "sha256": "sha256:d0b29e4412b8846bcb8f5e6acda5a82f685642b97c9eb0ed34e4615a4cc226f3"
     },
     {
       "path": "shared/app-gui/support.ts",
-      "bytes": 4614,
-      "sha256": "sha256:43f70c24a7696795d628cdec8165d13d0239c8722d18743c770cc65bd229fc94"
+      "bytes": 4672,
+      "sha256": "sha256:47c9c3d8af63a5af62cb2abe2e60f20a1aa163c2ee680570eb68bce2d57c4fed"
     }
   ],
-  "runtimeSbomDigest": "sha256:a3abaf3617e189f10d9a967597dae00d85f934fede74ac3dfd12d628ed1f1a9f",
-  "noticesDigest": "sha256:7dc27a113790d97fb2987366cc07aadc80e28a164a265afa3b197892e27d9d54",
+  "runtimeSbomDigest": "sha256:65867776670c12b25af282c79cc4b738d08a3a5b859aee62d5bf2a2414fb6859",
+  "noticesDigest": "sha256:8980166ffd25731775e9a3e31571084ecb75752fc3b940c3a0f9a1cc11fcc35b",
   "authoringContracts": [
     "bottega-react-v1",
     "base-ui-authoring-v1"

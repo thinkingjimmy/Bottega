@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, lucide status/chevron/copy icons, UI Button, and caller-projected product copy
- * [OUTPUT]: Provides a reusable human-first failure alert on a neutral surface, with tone carried by the icon alone and a default-closed diagnostic disclosure outside the live region
+ * [OUTPUT]: Provides a reusable human-first failure alert on a neutral surface, with tone carried by the icon alone and a default-closed diagnostic disclosure whose icon-only copy action stays inside the diagnostic row
  * [POS]: Neutral renderer presentation primitive wrapped by domain-specific Agent and Chat-storage notices
  */
 
@@ -117,19 +117,22 @@ export function ProductFailureNotice({
             />
             {labels.technicalDetails}
           </summary>
-          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-background px-2.5 py-2 font-mono text-[11px] text-muted-foreground">
-            {copy.diagnostic}
-          </pre>
-          <Button
-            className="relative mt-2 touch-manipulation touch-target-44 [--touch-target-inset:-4px]"
-            onClick={() => void copyDiagnostic()}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
-            {copied ? labels.copiedDetails : labels.copyDetails}
-          </Button>
+          <div className="mt-2 flex min-w-0 items-start gap-2 rounded-md border bg-background p-2">
+            <pre className="max-h-40 min-w-0 flex-1 overflow-auto whitespace-pre-wrap break-words px-0.5 font-mono text-[11px] text-muted-foreground">
+              {copy.diagnostic}
+            </pre>
+            <Button
+              aria-label={copied ? labels.copiedDetails : labels.copyDetails}
+              className="relative touch-manipulation touch-target-44 [--touch-target-inset:-8px]"
+              onClick={() => void copyDiagnostic()}
+              size="icon-sm"
+              title={copied ? labels.copiedDetails : labels.copyDetails}
+              type="button"
+              variant="outline"
+            >
+              {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
+            </Button>
+          </div>
         </details>
       )}
     </div>

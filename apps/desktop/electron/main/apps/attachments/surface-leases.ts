@@ -11,7 +11,7 @@ import type {
 } from "../../../../shared/apps-ipc";
 import type { BaseMutationOperation } from "../../../../shared/bases-ipc";
 import type { ProjectStore } from "../../projects/store/project-store";
-import type { AppStore } from "../app-store";
+import type { AppStore } from "../store/app-store";
 import type { AppGrantAuthority } from "./grant-authority";
 import type { TrustedRendererContext } from "../../window/surfaces/trusted-renderer-context";
 import { surfaceWindowController } from "../../window/surfaces/surface-window-controller";
@@ -20,11 +20,11 @@ import type { EffectiveWorkspaceResolver } from "../../workspace-resolver";
 /* 这个 registry 只需要「这条 conversation 对这个 App 的有效 grant」与「App 的
    Base Project 是谁」两件事。把依赖收窄成端口而不是整个 Store：边界显式，
    fence 的每一条漂移也才能被单独驱动。 */
-export type SurfaceGrantSource = Pick<
+type SurfaceGrantSource = Pick<
   AppGrantAuthority,
   "effectiveGrant" | "studioSurfaceGrant"
 >;
-export type SurfaceProjectSource = Pick<ProjectStore, "findByAppId">;
+type SurfaceProjectSource = Pick<ProjectStore, "findByAppId">;
 
 export class AppAttachmentSurfaceLeaseRegistry {
   private readonly leases = new Map<string, {
@@ -255,12 +255,10 @@ export class AppAttachmentSurfaceLeaseRegistry {
     const stored = this.leases.get(surfaceLeaseId);
     if (!stored) {
       this.pruneTombstones();
-      throw statusError(
-        this.tombstones.has(surfaceLeaseId) ? 410 : 401,
-        this.tombstones.has(surfaceLeaseId)
-          ? "App surface lease 已撤销"
-          : "App surface lease 无效"
-      );
+      /* 撤销过 = 410 gone，从未存在 = 401：同一事实只查一次。 */
+      throw this.tombstones.has(surfaceLeaseId)
+        ? statusError(410, "App surface lease 已撤销")
+        : statusError(401, "App surface lease 无效");
     }
     const lease = stored.surface;
     if (stored.renderer) {

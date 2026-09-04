@@ -6,10 +6,10 @@
 
 import type { AppInstallEvent, AppRecord } from "../../../../../shared/apps-ipc";
 import { asError } from "../../../errors";
-import type { AppInstaller } from "../../app-installer";
-import { completeBaseAppSkill, failBaseAppSkill } from "../../app-skill-status";
-import type { AppStore } from "../../app-store";
-import type { MaintenanceGate } from "../../maintenance-gate";
+import type { AppInstaller } from "../../source/app-installer";
+import { completeBaseAppSkill, failBaseAppSkill } from "../../source/app-skill-status";
+import type { AppStore } from "../../store/app-store";
+import type { MaintenanceGate } from "../../maintenance/maintenance-gate";
 import { appTurnCompletionAction } from "../turn-action";
 
 type Ports = Readonly<{

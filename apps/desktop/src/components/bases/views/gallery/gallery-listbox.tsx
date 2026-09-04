@@ -145,6 +145,17 @@ export function GalleryListbox({
     () => new Map(items.map((item, index) => [item.id, index])),
     [items]
   );
+  /* 方向键曾对着一万条候选做 findIndex + rows.findIndex(…some…)：一次按键
+     O(n·m)，长按方向键就是一次次全表扫描。索引随 items/rows 建一次即可，
+     此后每次导航都只是两回哈希查找。 */
+  const rowIndexByItemId = useMemo(() => {
+    const index = new Map<string, number>();
+    rows.forEach((row, rowIndex) => {
+      if (row.kind !== "items") return;
+      for (const item of row.items) index.set(item.id, rowIndex);
+    });
+    return index;
+  }, [rows]);
   const virtualItems = virtualizer.getVirtualItems();
   const renderedIds = useMemo(
     () =>
@@ -165,17 +176,15 @@ export function GalleryListbox({
     : renderedIds.values().next().value ?? "";
 
   const focusBy = (delta: number) => {
-    const index = Math.max(0, items.findIndex((item) => item.id === activeId));
+    const index = indexById.get(activeId) ?? 0;
     const next = items[Math.min(items.length - 1, Math.max(0, index + delta))];
     if (!next) return;
     onFocusPins(new Set([activeId, next.id].filter(Boolean)));
     onActive(next.id);
-    const rowIndex = rows.findIndex(
-      (row) =>
-        row.kind === "items" &&
-        row.items.some((item) => item.id === next.id)
-    );
-    if (rowIndex >= 0) virtualizer.scrollToIndex(rowIndex, { align: "auto" });
+    const rowIndex = rowIndexByItemId.get(next.id);
+    if (rowIndex !== undefined) {
+      virtualizer.scrollToIndex(rowIndex, { align: "auto" });
+    }
   };
   const onKeyDown = (
     event: KeyboardEvent<HTMLDivElement>,

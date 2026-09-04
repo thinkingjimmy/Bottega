@@ -47,10 +47,16 @@ export function BaseRelationPicker({
 }) {
   const { t } = useAppTranslation();
   const [query, setQuery] = useState("");
-  const columns = [...context.columns.values()];
-  const labelColumn =
-    columns.find((candidate) => candidate.id === column.relation?.labelColumnId) ??
-    columns.find((candidate) => candidate.type === "text");
+  /* 标签列在整块 popover 的生命里只可能是同一列：把 context 的列表摊平并
+     选出它，随 context/column 各算一次即可，不必陪着每一次击键重来。 */
+  const labelColumn = useMemo(() => {
+    const columns = [...context.columns.values()];
+    return (
+      columns.find(
+        (candidate) => candidate.id === column.relation?.labelColumnId
+      ) ?? columns.find((candidate) => candidate.type === "text")
+    );
+  }, [column.relation?.labelColumnId, context]);
   /* 候选投影要跑遍全部 rows 取 label（relation 列还会递归求值），
      不 memo 就等于每敲一个字母重算一遍整张表。 */
   const options = useMemo(
@@ -70,9 +76,15 @@ export function BaseRelationPicker({
     : value
       ? deletedRelationText(value)
       : t("bases.relation.empty");
-  const matches = options.filter((option) =>
-    `${option.label}\n${option.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
-  );
+  /* 一万条候选 × 每次击键一次全表 toLocaleLowerCase：不 memo 就是把
+     「输入延迟」直接写死进候选规模。查询与候选都没变时，结果也不该重算。 */
+  const matches = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    if (!needle) return options;
+    return options.filter((option) =>
+      `${option.label}\n${option.id}`.toLocaleLowerCase().includes(needle)
+    );
+  }, [options, query]);
   const visible = matches.slice(0, RELATION_OPTION_LIMIT);
   return (
     <Popover>

@@ -45,6 +45,7 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
     origin: projectionInput.origin,
     disabledTools: input.policy.disabledTools,
     useSkill: false,
+    managedWorktreeCommit: input.context.managedWorktree,
   });
   const policyDigest =
     input.context.preparedProjectTools?.receipt.digest ??
@@ -93,6 +94,7 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
     origin: projectionInput.origin,
     disabledTools: input.policy.disabledTools,
     useSkill: snapshot.capable,
+    managedWorktreeCommit: input.context.managedWorktree,
   });
   const readOnlyRoots = input.context.filesystemAccess?.readOnlyRoots;
 

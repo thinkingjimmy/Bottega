@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Chat/adoption contracts, Chat metadata, Chat facts, and connection modes
- * [OUTPUT]: Provides the closed query/narrow-fact/mutation/import/continuation/maintenance command vocabulary, the keyset search-document cursor, result map, receipts, transport envelopes, and delegated runtime decoders
+ * [OUTPUT]: Provides the closed query/narrow-fact/mutation/import/continuation/maintenance command vocabulary whose history-import entry is always one whole source message, the keyset search-document cursor, result map, receipts, transport envelopes, and delegated runtime decoders
  * [POS]: Trust boundary between Electron main and the sole SQLite owner; arbitrary SQL can never cross this port
  */
 
@@ -129,8 +129,6 @@ export type HistoryImportEntryInput = Readonly<{
   content: string;
   createdAt?: number | null;
   payload?: unknown;
-  contentComplete: boolean;
-  incompleteReason?: string | null;
   searchText: string;
   projection?: Readonly<{
     codecVersion: 1;
@@ -454,7 +452,7 @@ export type MaintenanceGateReport = Readonly<{
   foreignKeys: number;
   domainInvariants: "ok";
   ftsRank: number;
-  sourceProjection: Readonly<{ documents: number }>;
+  sourceProjection: Readonly<{ documents: number; repaired: number }>;
 }>;
 
 export type UpsertResult = Readonly<{

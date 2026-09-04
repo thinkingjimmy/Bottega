@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on zod, DurableJson/quarantineDurableFile, MemorySpaceGate, core domain/scope and stable canonical digest
+ * [INPUT]: Depends on zod, DurableJson, MemorySpaceGate, core domain/scope and stable canonical digest
  * [OUTPUT]: Provides the Policy v4 durable store, installation-scoped owner/shared generations, consent bindings, queries, backfill grants, disable/revoke mutations, and immutable owner-effect receipts
  * [POS]: The only permanent source of truth for main/memory/policy; Delivery only consume quick photos and receipts and prohibits reverse reading authorizations
  */
@@ -13,8 +13,6 @@ import {
 } from "../../../../shared/settings-ipc";
 import {
   DurableJson,
-  DurableFileCorruptionError,
-  quarantineDurableFile,
 } from "../../persistence/durable-json";
 import {
   freezeMemoryValue,
@@ -208,24 +206,19 @@ export class MemoryPolicyStore {
   }
 
   async initialize() {
-    try {
-      /* 无真实用户：v3 不猜共享授权，直接断代为空 v4；provider 安装与 secret
-         在 Policy 根之外，因此不会被这次安全归零触碰。 */
-      await this.ledger.initialize((raw) =>
-        raw &&
-        typeof raw === "object" &&
-        !Array.isArray(raw) &&
-        (raw as { schemaVersion?: unknown }).schemaVersion === 3
-          ? emptyPolicyState()
-          : undefined
-      );
-      await this.compactLedger();
-      this.publish(this.ledger.snapshot(), null);
-    } catch (cause) {
-      if (!(cause instanceof DurableFileCorruptionError)) throw cause;
-      await quarantineDurableFile(this.filePath);
-      this.publish(emptyPolicyState(), "policy-store");
-    }
+    /* 无真实用户：v3 不猜共享授权，直接断代为空 v4；provider 安装与 secret
+       在 Policy 根之外，因此不会被这次安全归零触碰。读不出的档由 DurableJson
+       自己隔离重建；这里只把「曾经隔离」如实登记为 policy-store 失败。 */
+    const { quarantined } = await this.ledger.initialize((raw) =>
+      raw &&
+      typeof raw === "object" &&
+      !Array.isArray(raw) &&
+      (raw as { schemaVersion?: unknown }).schemaVersion === 3
+        ? emptyPolicyState()
+        : undefined
+    );
+    await this.compactLedger();
+    this.publish(this.ledger.snapshot(), quarantined ? "policy-store" : null);
     return this.snapshot();
   }
 

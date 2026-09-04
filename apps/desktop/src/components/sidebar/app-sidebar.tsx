@@ -1,7 +1,7 @@
 "use client";
 /**
  * [INPUT]: Depends on React, i18n, Sidebar UI, product stores/providers, shared active App target/origin, navigation, external-link IPC, and router
- * [OUTPUT]: Provides persistent navigation with asChild-stable row typography, pending-residence-safe generation-fenced Apps/global-pin/Project-alias targets, recovery, and status actions
+ * [OUTPUT]: Provides persistent navigation with asChild-stable row typography, pending-residence-safe generation-fenced Apps/global-pin/Project-alias targets, recovery, actionable store warnings with a GitHub report fallback, and status actions
  * [POS]: Sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  */
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
@@ -74,10 +74,10 @@ import {
   useApps,
 } from "@/components/providers/apps-provider";
 import { useChats } from "@/components/providers/chats-provider";
-import { useBases } from "@/components/providers/bases-provider";
+import { useBasesNavigation } from "@/components/providers/bases-provider";
 import { useProjects } from "@/components/providers/projects-provider";
 import { ownerRoute } from "@/components/bases/chrome/base-header-actions";
-import { SaveAsAppDialog } from "@/components/apps/save-as-app-dialog";
+import { SaveAsAppDialog } from "@/components/apps/dialogs/save-as-app-dialog";
 import { CommandPalette } from "./search/command-palette";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
 import { ownerFromKey } from "../../../shared/bases-ipc";
@@ -93,6 +93,7 @@ import {
   type SettingsOverlaySection,
 } from "@/lib/settings-navigation";
 import { openExternal } from "@/lib/agent-client";
+import { ReportIssueButton } from "@/components/report-issue-button";
 import { RELEASE_URL, updateStore } from "@/lib/update-client";
 import { PinnedApps } from "./apps/pinned-apps";
 import { appearsInRootChats } from "../../../shared/placement/sidebar";
@@ -214,10 +215,14 @@ function ChatsSection({
           failure={failure}
         />
       ))}
+      {/* 主进程的告警是一句事实，不是一句指令：这里补上「怎么办」，再给
+          一个去 GitHub 的兜底——灰字不能只是灰字。 */}
       {warning && (
-        <p role="alert" className="px-2 py-1.5 text-muted-foreground text-xs">
-          {warning}
-        </p>
+        <div role="alert" className="space-y-1.5 px-2 py-1.5 text-muted-foreground text-xs">
+          <p>{warning}</p>
+          <p>{t("chatStorage.warningResolution")}</p>
+          <ReportIssueButton body={warning} title={warning.split("\n")[0] ?? warning} />
+        </div>
       )}
     </SidebarCollapsibleGroup>
   );
@@ -227,7 +232,7 @@ function BasesSection({
   open,
   onOpenChange,
 }: {
-  bases: ReturnType<typeof useBases>["pinned"];
+  bases: ReturnType<typeof useBasesNavigation>["rootBases"];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -315,7 +320,7 @@ export function AppSidebar({
     resolvedThemeStore.getSnapshot
   );
   const { chats, warning, storageFailures } = useChats();
-  const { pinned } = useBases();
+  const { rootBases } = useBasesNavigation();
   /* 记忆告警常驻订阅：main 推送已按内容去重，静默时零重渲染。 */
   const memorySnapshot = useSyncExternalStore(
     memoryStore.subscribe,
@@ -683,7 +688,7 @@ export function AppSidebar({
                 onOpenChange={(open) => onGroupOpenChange("projects", open)}
               />
               <BasesSection
-                bases={pinned}
+                bases={rootBases}
                 open={groups.bases}
                 onOpenChange={(open) => onGroupOpenChange("bases", open)}
               />

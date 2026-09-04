@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Base snapshot/view/attachment DTOs, chart defaults, and browser FileReader
- * [OUTPUT]: Provides localized starter factories, view preparation, view-config transforms, Gallery CAS/upload preparation, visible-column projection, and file reads
+ * [OUTPUT]: Provides the shared baseEntityId generator, localized starter factories, view preparation, view-config transforms, Gallery CAS/upload preparation, visible-column projection, and file reads
  * [POS]: Stateless support layer for components/bases; BaseWorkbench owns effects and passes creation-time localized labels into these pure helpers
  */
 
@@ -30,19 +30,29 @@ const SUPPORTED_IMAGE_TYPES = new Set([
   "image/gif",
 ] as const);
 
-export function isSupportedImageType(
+/* 两枚只服务 prepareGalleryUpload 的私有工序：类型闸门与 FileReader 读取。
+   它们对外没有意义——上传的入口只有一个，判据也只该有一处。 */
+function isSupportedImageType(
   value: string
 ): value is "image/png" | "image/jpeg" | "image/webp" | "image/gif" {
   return SUPPORTED_IMAGE_TYPES.has(value as never);
 }
 
-export function fileDataUrl(file: File, fallbackMessage: string) {
+function fileDataUrl(file: File, fallbackMessage: string) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error ?? new Error(fallbackMessage));
     reader.onload = () => resolve(String(reader.result));
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Base 内部实体 id 的唯一出处：列、视图、图表各自抄一份 randomUUID 切片时，
+ * 长度与前缀迟早各自漂移一次——同一件事只该有一处写法。
+ */
+export function baseEntityId(prefix: string) {
+  return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
 }
 
 /** 六种视图只有一个工厂；Gallery 的列补齐与 config 永远作为同一份结果返回。 */

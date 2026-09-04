@@ -60,7 +60,6 @@ export function builtinToolDescription(
 
 const BASE_READ_TOOLS = [
   "base_describe",
-  "base_query",
   "read_base",
   "base_export_csv",
 ] as const;

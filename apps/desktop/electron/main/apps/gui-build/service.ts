@@ -117,11 +117,9 @@ export class AppGuiBuildService {
         nativePayloads: this.options.nativePayloads,
       });
       const outcome = await this.sandbox.compile({
-        operationId,
         snapshotRoot: source.snapshotRoot,
         outputRoot,
         tempRoot,
-        build: frozenManifest.gui.build,
         sourcePackageDigest: source.sourcePackageDigest,
         transformContractDigest: TRANSFORM_CONTRACT_DIGEST,
         platformCompilerCustodyDigest: custodyDigest,

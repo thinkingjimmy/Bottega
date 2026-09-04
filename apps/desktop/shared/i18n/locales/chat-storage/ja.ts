@@ -10,6 +10,8 @@ export const chatStorageJa: typeof chatStorageEn = {
   technicalDetails: "技術的な詳細",
   copyDetails: "技術的な詳細をコピー",
   copiedDetails: "技術的な詳細をコピーしました",
+  reportIssue: "GitHub で報告",
+  warningResolution: "Bottega を再起動してください。それでも表示される場合は GitHub で報告してください。",
   code: {
     "file-quarantined": {
       title: "一部の Chat を一時的に開けません",
@@ -25,6 +27,11 @@ export const chatStorageJa: typeof chatStorageEn = {
       title: "安全に復元できない Chat のコピーが見つかりました",
       explanation: "正しいコピーを判断できないため、Bottega はどのファイルも上書きまたは削除していません。",
       resolution: "ファイルをそのまま保持し、手動で変更する前に技術的な詳細をコピーしてサポートへ共有してください。",
+    },
+    "self-check-failed": {
+      title: "Chat の自己診断に失敗しました",
+      explanation: "Bottega は Chat データベースの整合性を定期的に確認します。今回の確認で問題が報告されましたが、Chat は引き続き読み取れ、Bottega はデータを変更していません。",
+      resolution: "Bottega を再起動して再度確認してください。それでも表示される場合は GitHub で報告してください。技術的な詳細は自動的に添付されます。",
     },
   },
 };

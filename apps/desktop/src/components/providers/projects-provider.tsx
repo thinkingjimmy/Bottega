@@ -66,7 +66,10 @@ type ProjectsContextValue = {
   revealProject: (projectId: string) => Promise<void>;
   releaseMissingProject: (projectId: string) => Promise<number>;
   setSortMode: (sortMode: ProjectsSortMode) => Promise<void>;
-  listBranches: (projectId: string) => Promise<GitBranchSnapshot | null>;
+  listBranches: (
+    projectId: string,
+    conversationId?: string
+  ) => Promise<GitBranchSnapshot | null>;
   checkoutBranch: (
     projectId: string,
     target: GitBranchTarget

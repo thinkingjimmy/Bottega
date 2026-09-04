@@ -11,7 +11,7 @@ import {
   type AppPlatformAdmission,
 } from "../../lifecycle/app-platform-admission";
 import type { ProjectStore } from "../../projects/store/project-store";
-import type { AppStore } from "../app-store";
+import type { AppStore } from "../store/app-store";
 import { resolveAppGrant } from "./grant-resolver";
 
 /** 转换成 App workspace 的两个入口形状：chat 迁入 App Project、Project 绑定 App。 */
@@ -19,7 +19,7 @@ export type AppConversionTarget =
   | { kind: "chat"; chatId: string }
   | { kind: "project"; projectId: string };
 
-export class AppAttachmentConflictError extends Error {
+class AppAttachmentConflictError extends Error {
   /** 业务拒绝，不是内部故障：调用方撤销/等待后重试即可。 */
   readonly status = 409;
 
@@ -188,7 +188,7 @@ export class AppAttachmentFence {
     const project = projectId
       ? this.dependencies.projects.get(projectId)?.grants ?? []
       : [];
-    this.addEffective(names, chat?.grants ?? [], project);
+    this.addEffective(names, chat?.grants ?? [], project, this.installed());
     for (const reference of this.dependencies.activeReferences(chatId)) {
       names.add(this.appName(reference.appId));
     }
@@ -198,11 +198,14 @@ export class AppAttachmentFence {
   private async projectConflicts(projectId: string) {
     const names = new Set<string>();
     const project = this.dependencies.projects.get(projectId)?.grants ?? [];
+    /* App 表与成员数无关，扫一次即可；放进 per-chat 循环等于按成员数
+       重复 structuredClone 整张表。 */
+    const installed = this.installed();
     /* 零成员 Project 仍消费 defaultGrant；Project disabled 则是合法 suppression。 */
-    this.addEffective(names, [], project);
+    this.addEffective(names, [], project, installed);
     for (const chatId of this.dependencies.chats.listByProject(projectId)) {
       const chat = this.dependencies.chats.getMetadata(chatId);
-      this.addEffective(names, chat?.grants ?? [], project);
+      this.addEffective(names, chat?.grants ?? [], project, installed);
       for (const reference of this.dependencies.activeReferences(chatId)) {
         names.add(this.appName(reference.appId));
       }
@@ -210,26 +213,34 @@ export class AppAttachmentFence {
     return names;
   }
 
+  /** 一次成表：id→record 与「带 defaultGrant 的 App」都只算一遍。 */
+  private installed() {
+    const apps = this.dependencies.apps.list();
+    return {
+      byId: new Map(apps.map((app) => [app.id, app])),
+      defaults: apps.filter((app) => app.defaultGrant).map((app) => app.id),
+    };
+  }
+
   private addEffective(
     names: Set<string>,
     directRecords: readonly AppGrantRecord[],
-    projectRecords: readonly AppGrantRecord[]
+    projectRecords: readonly AppGrantRecord[],
+    installed: ReturnType<AppAttachmentFence["installed"]>
   ) {
     const direct = new Map(directRecords.map((record) => [record.appId, record]));
     const project = new Map(projectRecords.map((record) => [record.appId, record]));
-    const apps = this.dependencies.apps.list();
     const ids = new Set([
       ...direct.keys(),
       ...project.keys(),
-      ...apps.filter((app) => app.defaultGrant).map((app) => app.id),
+      ...installed.defaults,
     ]);
     for (const appId of ids) {
-      const app = apps.find((record) => record.id === appId);
       if (resolveAppGrant({
         appId,
         chat: direct.get(appId),
         project: project.get(appId),
-        global: app?.defaultGrant,
+        global: installed.byId.get(appId)?.defaultGrant,
       }).effective) {
         names.add(this.appName(appId));
       }

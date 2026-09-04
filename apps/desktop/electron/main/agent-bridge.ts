@@ -48,6 +48,7 @@ import type {
 import { executableIdentity } from "./custody/identity";
 import { createTurnCallbacks } from "./agent/turn-callbacks";
 import { ensurePersistedForDrain } from "./agent/drain-guard";
+import { assertInstalledRuntime } from "./agent/runtime-gate";
 import {
   retryAgentSameSession,
   retryAgentWithoutSession,
@@ -178,11 +179,7 @@ async function spawnAgent(
     let runtimeGeneration: number | undefined;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const snapshot = await backendRuntimeRegistry.resolveForSpawn(backend.id);
-      if (snapshot.runtimeStatus !== "installed") {
-        throw new Error(
-          `未检测到 ${backend.displayName} CLI，请前往 Settings 安装或登录`
-        );
-      }
+      assertInstalledRuntime(snapshot, backend.displayName);
       assertBackendCapabilities(backend, payload, snapshot.capabilities);
       entry.processLease = await acquireAgentProcessLease(
         backend.id,
@@ -474,9 +471,7 @@ export async function startAgentPayload(
   );
   const backend = backendById(payload.turnOptions.backend);
   const snapshot = await backendRuntimeRegistry.resolve(backend.id);
-  if (snapshot.runtimeStatus !== "installed") {
-    throw new Error(`${backend.displayName} CLI 未安装或版本不受支持`);
-  }
+  assertInstalledRuntime(snapshot, backend.displayName);
   assertBackendCapabilities(backend, payload, snapshot.capabilities);
   await options.assertChatBackend?.(
     payload.scope.conversationId,

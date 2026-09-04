@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, shadcn Select, ui of cn and tailwind class
- * [OUTPUT]: Provides ViewConfigBar Set bar containers, ViewConfigSelect selector and viewConfigHitAreaClass ((28px Views / 44px live)
+ * [INPUT]: Depends on React, shadcn Select, ui cn, tailwind classes, and the editors EMPTY_SELECT_VALUE sentinel
+ * [OUTPUT]: Provides ViewConfigBar containers, the ViewConfigSelect control, and viewConfigHitAreaClass (28px visual / 44px hit area)
  * [POS]: bases/views are set to view in native language, map and galleryJust send the id intent and permanently to the workbench
  */
 
@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@ai-chat/ui/components/ui/select";
 import { cn } from "@ai-chat/ui/lib/utils";
+import { EMPTY_SELECT_VALUE } from "../editors/cells/base-cell-editor";
 
 /* ── 为何不画底线 ──────────────────────────────────────────────────
  * 分隔线是 chrome 的语言，它说的是「线之上是框，线之下是内容」。
@@ -57,14 +58,14 @@ export function ViewConfigSelect({
   disabled?: boolean;
   onChange(id: string): void;
 }) {
-  const selected = value || EMPTY_VIEW_CONFIG_VALUE;
+  const selected = value || EMPTY_SELECT_VALUE;
   return (
     <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
       <span>{label}</span>
       <Select
         disabled={disabled}
         onValueChange={(next) =>
-          onChange(next === EMPTY_VIEW_CONFIG_VALUE ? "" : next)
+          onChange(next === EMPTY_SELECT_VALUE ? "" : next)
         }
         value={selected}
       >
@@ -79,7 +80,7 @@ export function ViewConfigSelect({
         </SelectTrigger>
         <SelectContent>
           {placeholder !== undefined && (
-            <SelectItem value={EMPTY_VIEW_CONFIG_VALUE}>
+            <SelectItem value={EMPTY_SELECT_VALUE}>
               {placeholder}
             </SelectItem>
           )}
@@ -93,5 +94,3 @@ export function ViewConfigSelect({
     </div>
   );
 }
-
-const EMPTY_VIEW_CONFIG_VALUE = "__base-empty!__";

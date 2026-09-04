@@ -22,6 +22,7 @@ import type {
   BaseRowPatch,
 } from "../../../../../shared/bases-ipc";
 import {
+  baseCellText,
   cellValue,
   isBaseAttachmentValue,
 } from "../../../../../shared/bases-ipc";
@@ -30,7 +31,6 @@ import {
   BaseAttachmentPreview,
   BaseCellEditor,
 } from "../../editors/cells/base-cell-editor";
-import { baseCellText } from "../../editors/cells/base-cell-text";
 import { baseMenuItemHoverClass } from "../../chrome/base-toolbar";
 import { BaseRowHistoryDialog } from "../../editors/panels/base-row-history";
 import {

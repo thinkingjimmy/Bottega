@@ -7,7 +7,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { BrowserWindow } from "electron";
 import { z } from "zod";
-import { baseNavigationOf, ownerFromKey } from "../../../shared/bases-ipc";
+import { ownerFromKey } from "../../../shared/bases-ipc";
 import {
   SEARCH_JOB_CHANNEL,
   type GlobalSearchHit,
@@ -256,7 +256,7 @@ export class GlobalSearchService {
       const owner = ownerFromKey(ownerKey);
       const chat = owner.kind === "chat" ? summaries.get(owner.chatId) : undefined;
       if (!appearsInSearchBase(
-        baseNavigationOf(snapshot.meta),
+        snapshot.meta.navigation,
         owner.kind !== "chat" || Boolean(chat && searchDestination(chat))
       )) return [];
       const archivedRoute = owner.kind === "chat"

@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on Node path plus the shared Apps/Agent install DTOs it validates
- * [OUTPUT]: Provides the single `isContained` path fence, the credential-stripping login shell, `assertAddAppInput`, `createInstallingAppRecord`, and a re-exported `normalizeGithubRepoUrl`
- * [POS]: The apps module's only cross-cutting helper leaf; every caller shares one containment rule instead of a private copy, while status broadcast stays with AppStore.watch and error normalization with main/errors.ts
+ * [INPUT]: Depends on Node path/crypto plus the shared Apps/Agent install DTOs it validates
+ * [OUTPUT]: Provides the single `isContained` path fence, the credential-stripping login shell, `assertAddAppInput`, `createInstallingAppRecord`, the `appDigest` identity hash, the `AppRoutingFacts` derivation, and a re-exported `normalizeGithubRepoUrl`
+ * [POS]: The apps module's only cross-cutting helper leaf; every caller shares one containment rule and one identity hash instead of private copies, while status broadcast stays with AppStore.watch and error normalization with main/errors.ts
  */
 
+import { createHash } from "node:crypto";
 import { isAbsolute, relative, sep } from "node:path";
 import { type AddAppInput, type AppRecord } from "../../../shared/apps-ipc";
 import {
@@ -102,3 +103,50 @@ export const strippedShell = (command: string) => ({
   executable: "/bin/zsh",
   args: ["-lc", `${STRIP_SENSITIVE_ENV}\n${command}`],
 });
+
+// ============================================================
+// 纯派生：App 的持久身份摘要与路由事实
+// ============================================================
+
+/** App 持久身份的唯一摘要算法；turn 快照与删除归档共用，避免两套身份。 */
+export function appDigest(value: unknown): `sha256:${string}` {
+  return `sha256:${createHash("sha256")
+    .update(JSON.stringify(value))
+    .digest("hex")}`;
+}
+
+/** 路由判定只需要的那几条事实；不含 manifest/receipt，交出去也改不动真相。 */
+export type AppRoutingFacts = Readonly<{
+  lifecycleRevision: number;
+  activeGenerationId: string | null;
+  activeContentDigest: string | null;
+  pendingGeneration: boolean;
+  draining: ReadonlySet<string>;
+  generationIds: ReadonlySet<string>;
+}>;
+
+/* 记录在 Store 里是按对象整体替换的：每次提交都换一个新对象，所以按对象身份
+   记忆就等于「记录一变即失效」，不需要任何显式清除通道，也不会拖住旧记录。 */
+const routingFactsByRecord = new WeakMap<AppRecord, AppRoutingFacts>();
+
+/** 直接从记录派生路由事实——不做 structuredClone，同一条记录只算一次。 */
+export function appRoutingFacts(record: AppRecord): AppRoutingFacts {
+  const cached = routingFactsByRecord.get(record);
+  if (cached) return cached;
+  const active = record.generationBinding.active;
+  const facts: AppRoutingFacts = {
+    lifecycleRevision: record.lifecycleRevision,
+    activeGenerationId: active?.generationId ?? null,
+    activeContentDigest:
+      record.generations.find(
+        (generation) => generation.generationId === active?.generationId
+      )?.contentDigest ?? null,
+    pendingGeneration: Boolean(record.generationBinding.pending),
+    draining: new Set(record.generationBinding.drainingGenerationIds),
+    generationIds: new Set(
+      record.generations.map((generation) => generation.generationId)
+    ),
+  };
+  routingFactsByRecord.set(record, facts);
+  return facts;
+}

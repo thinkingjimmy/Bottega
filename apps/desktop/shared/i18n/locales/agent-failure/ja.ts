@@ -21,4 +21,8 @@ export const agentFailureJa: typeof agentFailureEn = {
     "runtime-unavailable": { title: "{{backend}} を起動できません", explanation: "ローカル Agent が未導入、古い、または起動確認に失敗しました。", resolution: "Agent 設定で {{backend}} をインストールまたは更新し、再確認してください。" },
     unknown: { title: "{{backend}} はリクエストを完了できませんでした", explanation: "Bottega が安全に分類できない問題を Agent が報告しました。", resolution: "もう一度試してください。続く場合は技術的な詳細を開いてコピーし、サポートへ共有してください。" },
   },
+  notice: {
+    title: "{{backend}} からのお知らせがあります",
+    explanation: "このお知らせは {{backend}} 自身からのもので、Bottega の問題ではありません。この返信には影響しません。",
+  },
 };

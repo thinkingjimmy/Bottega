@@ -5,7 +5,7 @@
  */
 
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type { BaseMutationOutcome } from "../../state/base-mutation-error";
 import { createPortal } from "react-dom";
@@ -103,10 +103,28 @@ export function BaseKanbanView({
   ): Promise<BaseMutationOutcome>;
 }) {
   const { t } = useAppTranslation();
-  const selectColumns = columns.filter((column) => column.type === "select");
-  const group =
-    selectColumns.find((column) => column.id === groupByColumnId) ??
-    selectColumns[0];
+  /* ── 投影全在 hook 里，早退在 hook 之后 ────────────────────────
+   * 分组、lane、卡面目录都只跟「列/行/上下文」走，与本次重渲染的成因无关。
+   * 它们此前写在 `if (!group) return` 之下，于是每一次无关重渲染都要重跑
+   * 一遍 groupBaseRows 与 kanbanFaceSpec——一万行的板上，这是一次全表扫描。
+   * ────────────────────────────────────────────────────────── */
+  const group = useMemo(() => {
+    const selectColumns = columns.filter((column) => column.type === "select");
+    return (
+      selectColumns.find((column) => column.id === groupByColumnId) ??
+      selectColumns[0]
+    );
+  }, [columns, groupByColumnId]);
+  const lanes = useMemo(
+    () => (group ? groupBaseRows(rows, group, context) : []),
+    [context, group, rows]
+  );
+  const laneIds = useMemo(() => new Set(lanes.map((lane) => lane.id)), [lanes]);
+  // 卡片投影目录整块视图只算一次：标题/封面/芯片列的划分与具体行无关
+  const spec = useMemo(
+    () => kanbanFaceSpec(columns, group?.id ?? "", visibleColumnIds),
+    [columns, group?.id, visibleColumnIds]
+  );
   /* 只读时不换传感器数组（hook 不许条件调用），把激活距离推到无穷远：
      拖拽从「被禁止」变成「永远不会开始」。 */
   const sensors = useSensors(
@@ -117,6 +135,14 @@ export function BaseKanbanView({
     })
   );
   const [activeRowId, setActiveRowId] = useState("");
+  const activeRow = useMemo(
+    () => (activeRowId ? rows.find((row) => row.id === activeRowId) : undefined),
+    [activeRowId, rows]
+  );
+  const activeFace = useMemo(
+    () => (activeRow ? kanbanCardFace(activeRow, spec, context) : null),
+    [activeRow, context, spec]
+  );
   if (!group) {
     return (
       <div className="grid flex-1 place-items-center p-8">
@@ -142,20 +168,15 @@ export function BaseKanbanView({
       </div>
     );
   }
-  const lanes = groupBaseRows(rows, group, context);
-  const laneIds = lanes.map((lane) => lane.id);
-  // 卡片投影目录整块视图只算一次：标题/封面/芯片列的划分与具体行无关
-  const spec = kanbanFaceSpec(columns, group.id, visibleColumnIds);
   const owner =
     chatId && incarnationId ? { chatId, incarnationId } : undefined;
-  const activeRow = rows.find((row) => row.id === activeRowId);
   const dragStart = (event: DragStartEvent) =>
     setActiveRowId(String(event.active.id));
   const dragEnd = (event: DragEndEvent) => {
     setActiveRowId("");
     const rowId = String(event.active.id);
     const laneId = event.over ? String(event.over.id) : "";
-    if (!laneIds.includes(laneId)) return;
+    if (!laneIds.has(laneId)) return;
     void onPatch?.(rowId, { [group.id]: laneId === "__none__" ? null : laneId });
   };
 
@@ -208,14 +229,11 @@ export function BaseKanbanView({
             给真实卡片，比用动画掩盖一次根本不存在的等待更诚实。 */}
       {createPortal(
         <DragOverlay dropAnimation={null}>
-          {activeRow ? (
+          {activeFace ? (
             <article
               className={`${KANBAN_CARD_CLASS} ${CARD_WIDTH_CLASS} cursor-grabbing shadow-md`}
             >
-              <KanbanCardBody
-                face={kanbanCardFace(activeRow, spec, context)}
-                owner={owner}
-              />
+              <KanbanCardBody face={activeFace} owner={owner} />
             </article>
           ) : null}
         </DragOverlay>,

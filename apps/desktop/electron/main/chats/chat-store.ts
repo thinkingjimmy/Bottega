@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node crypto, ProductFailure, chat lifecycle/projection collaborators, device identity, the typed SQLite worker client, the shared ChatStoreState cell with its read-model and history/continuation collaborators, Chat store paths, Project-to-App identity, and SerialQueue
- * [OUTPUT]: Provides the canonical ChatStore facade with receipt-gated SQLite mutations, external-history sync/continuation, the queued maintenance gate, SQLite runtime diagnostics, metadata cache, bounded timeline/search queries, and durable revisions
- * [POS]: Main-process Chat domain queue and metadata owner; the dedicated worker owns every durable write while pure transitions, read projections, and import/continuation sagas live in focused composed siblings
+ * [INPUT]: Depends on Node crypto, ProductFailure, chat lifecycle/projection collaborators, device identity, the typed SQLite worker client, and the shared ChatStoreState cell with read, history, fork, transition, and persistence collaborators
+ * [OUTPUT]: Provides the canonical ChatStore facade with receipt-gated SQLite mutations/forks, generation-fenced imported Fork prefixes, external-history sync/continuation, queued maintenance, runtime diagnostics, metadata cache, bounded reads, and durable revisions
+ * [POS]: Main-process Chat domain queue and metadata owner; durable writes, fork construction, pure transitions, read projections, and import/continuation sagas live in focused composed siblings
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -20,7 +20,6 @@ import {
   type UnsequencedUserMessage,
 } from "../../../shared/chats-ipc";
 import type {
-  AppCapabilityGrant,
   AppGrantRecord,
 } from "../../../shared/apps-ipc";
 import { metadataOf, type ChatFacts } from "./chat-summary";
@@ -43,6 +42,7 @@ import type { SearchDocumentCursor } from "./sqlite/database-protocol";
 import { ChatStoreState } from "./store/state";
 import { ChatReadModel } from "./store/read-api";
 import { ChatHistorySagaApi } from "./store/sqlite-api";
+import { ChatForkStoreApi, type ChatForkCreateInput } from "./store/fork-api";
 import {
   ChatMutationOutcomeUnknownError,
   type ChatMessageMutation,
@@ -67,6 +67,7 @@ import {
   persistRecordToStorage,
   persistTurnCommitToStorage,
 } from "./store/persistence";
+import type { ChatStorageFailure } from "../../../shared/product-failure";
 
 export {
   ChatMutationOutcomeUnknownError,
@@ -101,6 +102,7 @@ export class ChatStore {
   private readonly state: ChatStoreState;
   private readonly reads: ChatReadModel;
   private readonly history: ChatHistorySagaApi;
+  private readonly forks: ChatForkStoreApi;
   private readonly databasePath: string;
   private sqliteRuntimeFacts: ChatSqliteRuntimeFacts | null = null;
 
@@ -111,6 +113,7 @@ export class ChatStore {
     this.state = new ChatStoreState(userData, dependencies.now ?? Date.now);
     this.reads = new ChatReadModel(this.state);
     this.history = new ChatHistorySagaApi(this.state, this.reads);
+    this.forks = new ChatForkStoreApi(this.state);
     this.databasePath = chatDatabasePath(userData);
   }
 
@@ -180,6 +183,21 @@ export class ChatStore {
         storedMessage: clone(message),
       } satisfies ChatMessageMutation;
     });
+  }
+
+  /** Receipt-first fork replay delegates to the focused store collaborator. */
+  forkReplay(input: Parameters<ChatForkStoreApi["replay"]>[0]) {
+    return this.forks.replay(input);
+  }
+
+  /** Fork admission reads native and imported prefixes through one timeline fence. */
+  forkSource(input: Parameters<ChatForkStoreApi["source"]>[0]) {
+    return this.forks.source(input);
+  }
+
+  /** Durable fork creation delegates to the focused store collaborator. */
+  forkFromRecord(input: ChatForkCreateInput) {
+    return this.forks.create(input);
   }
 
   appendMessage(
@@ -372,10 +390,6 @@ export class ChatStore {
     );
   }
 
-  setAppGrant(chatId: string, grant: AppCapabilityGrant) {
-    return this.setAppGrantRecord(chatId, grant);
-  }
-
   setAppGrantRecord(chatId: string, grant: AppGrantRecord) {
     return this.updateFacts(chatId, (current) =>
       setGrantRecord(current, grant, this.dependencies.isAppProject)
@@ -528,6 +542,7 @@ export class ChatStore {
   getWarning() { return this.reads.getWarning(); }
   getStorageFailures() { return this.reads.getStorageFailures(); }
   pushWarning(message: string) { this.reads.pushWarning(message); }
+  pushStorageFailure(failure: ChatStorageFailure) { this.reads.pushStorageFailure(failure); }
   getProjectId(chatId: string) { return this.reads.getProjectId(chatId); }
   getChatRef(chatId: string) { return this.reads.getChatRef(chatId); }
   getIncarnationId(chatId: string) { return this.reads.getIncarnationId(chatId); }

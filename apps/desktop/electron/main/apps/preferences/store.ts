@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on DurableJson, manifest-owned schema/default identities, canonical preference validation, and cutover CAS identities
- * [OUTPUT]: Provides one profile-local preview read, CAS writes/reset with 409 conflict semantics, idempotent reset adoption, rollback-slot GC, and durable delete tombstones
+ * [OUTPUT]: Provides one allocation-free profile-local preview read, CAS writes/reset with 409 conflict semantics, idempotent reset adoption, a single all-App retention sweep that writes only when a slot actually changes, and durable delete tombstones
  * [POS]: App preferences durable authority; package/share and Base business state never enter this store
  */
 
@@ -72,8 +72,9 @@ export class AppPreferencesStore {
 
   /* 只有 preview 一个读入口：运行期读与切换预演本就是同一个问题的两个视角，
      多一个 read() 就多一份「当前 schema 是什么」的真相。 */
+  /* contract 在进入 runtime 缓存那一刻已经验过一次，且它是不可变的：每次读
+     都重跑 schema/默认值校验与规范化字节，是把常量当变量算。 */
   preview(appId: string, profileId: string, contract: PreferenceContract) {
-    assertContract(contract);
     const state = this.file.snapshot();
     assertNotDeleting(state, appId, profileId);
     const profile = findProfile(state, appId, profileId);
@@ -97,7 +98,7 @@ export class AppPreferencesStore {
     expectedRevision: number;
     value: unknown;
   }) {
-    assertContract(input.contract);
+    assertPreferenceContract(input.contract);
     assertValue(input.value, input.contract);
     return this.file.mutate((state) => {
       assertNotDeleting(state, input.appId, input.profileId);
@@ -125,7 +126,7 @@ export class AppPreferencesStore {
     contract: PreferenceContract;
     retainPreviousForGenerationId?: string;
   }) {
-    assertContract(input.contract);
+    assertPreferenceContract(input.contract);
     return this.file.mutate((state) => {
       assertNotDeleting(state, input.appId, input.profileId);
       const profile = findProfile(state, input.appId, input.profileId) ?? createProfile(state, input.appId, input.profileId);
@@ -172,17 +173,16 @@ export class AppPreferencesStore {
     });
   }
 
-  retainGenerations(appId: string, generationIds: ReadonlySet<string>) {
-    return this.file.mutate((state) => {
-      for (const profile of state.profiles.filter((item) => item.appId === appId)) {
-        profile.slots.forEach((slot) => {
-          slot.retainedByGenerationIds = slot.retainedByGenerationIds.filter((id) =>
-            generationIds.has(id)
-          );
-        });
-        profile.slots = profile.slots.filter((slot) =>
-          slot.schemaDigest === profile.activeSchemaDigest || slot.retainedByGenerationIds.length > 0
-        );
+  /* 启动期一次扫完所有 App，而且只在真的有槽位要收时才落一次盘。逐 App
+     mutate 会把 preferences.json 完整重写 N 遍，其中绝大多数轮次零变更。 */
+  async retainGenerations(retention: ReadonlyMap<string, ReadonlySet<string>>) {
+    const dryRun = this.file.snapshot().profiles.some((profile) =>
+      pruneRetention(profile, retention.get(profile.appId))
+    );
+    if (!dryRun) return;
+    await this.file.mutate((state) => {
+      for (const profile of state.profiles) {
+        pruneRetention(profile, retention.get(profile.appId));
       }
     });
   }
@@ -203,7 +203,8 @@ export class AppPreferencesStore {
   }
 }
 
-function assertContract(contract: PreferenceContract) {
+/** 契约进入 runtime 缓存时验一次；写路径再验一次，因为写才是不可逆的那一侧。 */
+export function assertPreferenceContract(contract: PreferenceContract) {
   if (!validatePreferenceSchema(contract.schema) || !validatePreferenceValue(contract.defaults, contract.schema)) {
     throw preferenceError("preference_schema_invalid");
   }
@@ -213,6 +214,27 @@ function assertContract(contract: PreferenceContract) {
 function assertValue(value: unknown, contract: PreferenceContract) {
   if (!validatePreferenceValue(value, contract.schema)) throw preferenceError("preference_value_invalid");
   if (preferenceBytes(value) > 65_536) throw preferenceError("preference_limit");
+}
+
+/** 同一段收敛逻辑既跑在快照上判「要不要写」，也跑在真状态上执行写。 */
+function pruneRetention(
+  profile: File["profiles"][number],
+  retained: ReadonlySet<string> | undefined
+) {
+  if (!retained) return false;
+  let changed = false;
+  for (const slot of profile.slots) {
+    const kept = slot.retainedByGenerationIds.filter((id) => retained.has(id));
+    if (kept.length === slot.retainedByGenerationIds.length) continue;
+    slot.retainedByGenerationIds = kept;
+    changed = true;
+  }
+  const slots = profile.slots.filter((slot) =>
+    slot.schemaDigest === profile.activeSchemaDigest || slot.retainedByGenerationIds.length > 0
+  );
+  if (slots.length !== profile.slots.length) changed = true;
+  profile.slots = slots;
+  return changed;
 }
 
 function findProfile(state: File, appId: string, profileId: string) {

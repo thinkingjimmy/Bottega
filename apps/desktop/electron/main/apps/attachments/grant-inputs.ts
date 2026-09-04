@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on zod, shared Apps grant DTO and Project id pattern
+ * [INPUT]: Depends on zod, the shared Apps grant DTO, the Project id pattern, and app-store-schema APP_ID_PATTERN
  * [OUTPUT]: Provides strict assertions for fenced grant candidates, grant/default/state targets, available-App queries, and staged GUI-ready messages
  * [POS]: Renderer input boundary for apps/attachments; durable authority accepts neither type assertions, broad objects, stale identities, nor malformed cohort nonces
  */
@@ -17,8 +17,9 @@ import type {
   SetDefaultAppGrantInput,
 } from "../../../../shared/apps-ipc";
 import { PROJECT_ID_PATTERN } from "../../../../shared/projects-ipc";
+import { APP_ID_PATTERN } from "../store/app-store-schema";
 
-const appId = z.string().regex(/^[a-z0-9]{10}$/);
+const appId = z.string().regex(APP_ID_PATTERN);
 const chatId = z.string().min(1).max(128);
 const target = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("chat"), chatId }).strict(),

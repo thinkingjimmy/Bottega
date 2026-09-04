@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on TypeScript syntax parsing, the shared runtime-authority analyzer, immutable source receipts, compiled GUI manifest, strict scaffold contracts, fixed author import metadata, and the preferences schema authority
- * [OUTPUT]: Provides compiled source layout, ABI, importer-domain, component-origin, preferences, CSS/SVG remote-reference, and raw-transport validation
+ * [INPUT]: Depends on the shared author-source analysis, the runtime-authority analyzer, immutable source receipts, compiled GUI manifest, strict scaffold contracts, fixed author import metadata, and the preferences schema authority
+ * [OUTPUT]: Provides compiled source layout, source-extension allowlist, canonical manifest, ABI, importer-domain, component-origin, preferences, CSS/SVG remote-reference, and raw-transport validation
  * [POS]: apps/gui-build/pipeline source policy; code policy runs on the syntax tree and only CSS/SVG keep a scoped byte check, so comments never fail a build
  */
 
@@ -12,6 +12,7 @@ import type {
   BaseGuiManifest,
 } from "../../../../../shared/apps-ipc";
 import type { SourceFreezeReceipt } from "../contracts";
+import type { AuthorSourceAnalysis } from "../source-analysis";
 import { authorPublicSpecifiers, canonicalJson, sha256 } from "../metadata";
 import {
   validatePreferenceSchema,
@@ -21,6 +22,7 @@ import {
   componentAuthorMirrorSchema,
   componentOriginsSchema,
 } from "../scaffold/contracts";
+import { appManifestSchema } from "../../install/manifest-schema";
 import { findForbiddenRuntimeAuthorities } from "./dynamic-code-policy";
 
 const FORBIDDEN_CONFIG = /(^|\/)(?:package(?:-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|tsconfig(?:\..+)?\.json|vite\.config\.[^/]+|postcss\.config\.[^/]+|tailwind\.config\.[^/]+)$/i;
@@ -31,10 +33,21 @@ const FORBIDDEN_CSS_DIRECTIVE = /@(plugin|config|source)\b/i;
 const CSS_REMOTE_REFERENCE = /(?:url\(|@import\s+(?:url\()?)\s*["']?\s*(?:https?:)?\/\/[^\s/?#]/i;
 const MARKUP_REMOTE_REFERENCE = /\b(?:xlink:href|href|src)\s*=\s*["']\s*(?:https?:)?\/\/[^\s/?#]/i;
 const SCANNED_ASSETS = [".css", ".svg"];
-const SCANNED_SOURCES = [".ts", ".tsx", ".js", ".jsx"];
+/* 白名单是「能存在」而不是「会被扫描」：一个 `gui/src/side.mjs` 既绕开动态
+   import 判死、也绕开裸导入白名单与远程资源检查，esbuild 却照样把它打进
+   封存产物。能存在的扩展名必须与策略覆盖的扩展名是同一张表。 */
+const SOURCE_EXTENSIONS = new Set([
+  ".ts", ".tsx",
+  ".css", ".svg",
+  ".png", ".jpg", ".jpeg", ".gif", ".webp",
+  ".woff", ".woff2",
+]);
+const LOCAL_MODULE_EXTENSIONS = [".ts", ".tsx", ".css", ".module.css", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".woff", ".woff2"];
+
 export async function validateCompiledGuiSource(
   receipt: SourceFreezeReceipt,
-  gui: BaseGuiManifest
+  gui: BaseGuiManifest,
+  analysis: AuthorSourceAnalysis
 ): Promise<readonly AppGuiBuildFinding[]> {
   const findings: AppGuiBuildFinding[] = [];
   const files = new Set(receipt.files.map((file) => file.path));
@@ -60,10 +73,38 @@ export async function validateCompiledGuiSource(
   for (const path of files) {
     if (FORBIDDEN_CONFIG.test(path)) add({ code: "GUI_BUILD_IMPORT_FORBIDDEN", file: path, message: "App-controlled build configuration is forbidden" });
   }
+  await validateManifestBytes(receipt, add);
   await validateComponents(receipt, gui, files, add);
   await validatePreferences(receipt, gui, files, add);
-  await validateSourceFiles(receipt, gui, add);
+  await validateSourceFiles(receipt, gui, analysis, add);
   return findings;
+}
+
+/* app.json 的字节是唯一权威：seal 摘要生字节，编译器曾摘要 zod 输出。两者一旦
+   分叉（`name` 的首尾空白被 trim 掉就够了），App 能编过却死在 seal，并且顶着
+   一条张冠李戴的 GUI_BUILD_RECEIPT_INVALID。这里让分叉根本无法成立：字节解析
+   出来的值必须已经等于它的规范化形态，缩进与键序仍由作者自由决定。 */
+async function validateManifestBytes(
+  receipt: SourceFreezeReceipt,
+  add: (finding: AppGuiBuildFinding) => void
+) {
+  const invalid = (message: string) =>
+    add({ code: "GUI_BUILD_MANIFEST_INVALID", file: "app.json", message });
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(join(receipt.snapshotRoot, "app.json"), "utf8"));
+  } catch {
+    invalid("file must contain valid JSON");
+    return;
+  }
+  const normalized = appManifestSchema.safeParse(raw);
+  if (!normalized.success) {
+    invalid("app.json does not satisfy the App manifest schema");
+    return;
+  }
+  if (canonicalJson(raw) !== canonicalJson(normalized.data)) {
+    invalid("app.json must already be normalized; its raw bytes are the sole manifest authority");
+  }
 }
 
 async function validateComponents(
@@ -148,40 +189,41 @@ async function validatePreferences(
 async function validateSourceFiles(
   receipt: SourceFreezeReceipt,
   gui: BaseGuiManifest,
+  analysis: AuthorSourceAnalysis,
   add: (finding: AppGuiBuildFinding) => void
 ) {
   if (!gui.build) return;
   const allowed = authorPublicSpecifiers(gui.build.iconLibrary);
-  const sourceFiles = receipt.files.filter((file) => file.path.startsWith("gui/src/"));
   const known = new Set(receipt.files.map((file) => file.path));
-  for (const file of sourceFiles) {
+  for (const file of receipt.files) {
+    if (!file.path.startsWith("gui/src/")) continue;
     const extension = extname(file.path).toLowerCase();
-    /* 二进制资产（png/woff/…）不参与文本策略：字节里偶然出现 `//` 不是取数。 */
-    if (!SCANNED_SOURCES.includes(extension) && !SCANNED_ASSETS.includes(extension)) continue;
-    const bytes = await readFile(join(receipt.snapshotRoot, file.path));
-    const source = bytes.toString("utf8");
-    if (SCANNED_ASSETS.includes(extension)) {
-      if (CSS_REMOTE_REFERENCE.test(source) || MARKUP_REMOTE_REFERENCE.test(source)) {
-        add({ code: "GUI_BUILD_REMOTE_RESOURCE", file: file.path, message: "remote resources are forbidden" });
-      }
-      if (extension === ".css" && FORBIDDEN_CSS_DIRECTIVE.test(source)) {
-        add({ code: "GUI_BUILD_CSS_DIRECTIVE_FORBIDDEN", file: file.path, message: "@plugin, @config, and @source are forbidden" });
-      }
+    if (!SOURCE_EXTENSIONS.has(extension)) {
+      add({ code: "GUI_BUILD_IMPORT_FORBIDDEN", file: file.path, message: "gui/src accepts only .ts/.tsx sources and declared static assets" });
       continue;
     }
-    const kind = file.path.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-    const tree = ts.createSourceFile(file.path, source, ts.ScriptTarget.ESNext, true, kind);
+    /* 二进制资产（png/woff/…）不参与文本策略：字节里偶然出现 `//` 不是取数。 */
+    if (!SCANNED_ASSETS.includes(extension)) continue;
+    const source = (await readFile(join(receipt.snapshotRoot, file.path))).toString("utf8");
+    if (CSS_REMOTE_REFERENCE.test(source) || MARKUP_REMOTE_REFERENCE.test(source)) {
+      add({ code: "GUI_BUILD_REMOTE_RESOURCE", file: file.path, message: "remote resources are forbidden" });
+    }
+    if (extension === ".css" && FORBIDDEN_CSS_DIRECTIVE.test(source)) {
+      add({ code: "GUI_BUILD_CSS_DIRECTIVE_FORBIDDEN", file: file.path, message: "@plugin, @config, and @source are forbidden" });
+    }
+  }
+  for (const { path, tree } of analysis.modules) {
     const syntaxDiagnostics = (tree as ts.SourceFile & {
       parseDiagnostics?: readonly ts.Diagnostic[];
     }).parseDiagnostics ?? [];
     if (syntaxDiagnostics.length) {
-      add({ code: "GUI_TYPECHECK_FAILED", file: file.path, message: "source contains syntax errors" });
+      add({ code: "GUI_TYPECHECK_FAILED", file: path, message: "source contains syntax errors" });
     }
     visitImports(tree, (specifier, node, dynamic, namespace) => {
       const location = tree.getLineAndCharacterOfPosition(node.getStart(tree));
       const finding = (code: AppGuiBuildFinding["code"], message: string) => add({
         code,
-        file: file.path,
+        file: path,
         line: location.line + 1,
         column: location.character + 1,
         message,
@@ -199,7 +241,7 @@ async function validateSourceFiles(
         return;
       }
       if (specifier.startsWith(".") || specifier.startsWith("@/")) {
-        if (!resolvesInsideSource(file.path, specifier, known)) finding("GUI_BUILD_IMPORTER_DOMAIN_VIOLATION", "local import escapes gui/src or does not resolve");
+        if (!resolvesInsideSource(path, specifier, known)) finding("GUI_BUILD_IMPORTER_DOMAIN_VIOLATION", "local import escapes gui/src or does not resolve");
         return;
       }
       if (!allowed.has(specifier)) {
@@ -210,9 +252,9 @@ async function validateSourceFiles(
     });
     for (const { node, code, message } of findForbiddenRuntimeAuthorities(tree)) {
       const location = tree.getLineAndCharacterOfPosition(node.getStart(tree));
-      add({ code, file: file.path, line: location.line + 1, column: location.character + 1, message });
+      add({ code, file: path, line: location.line + 1, column: location.character + 1, message });
     }
-    if (file.path === "gui/src/main.tsx") validateEntrySyntax(tree, add);
+    if (path === "gui/src/main.tsx") validateEntrySyntax(tree, add);
   }
 }
 
@@ -283,7 +325,13 @@ function resolvesInsideSource(importer: string, specifier: string, known: Readon
     ? `gui/src/${specifier.slice(2)}`
     : posix.normalize(posix.join(importerDirectory, specifier));
   if (!base.startsWith("gui/src/")) return false;
-  return [base, `${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}.jsx`, `${base}.css`, `${base}.module.css`, `${base}.png`, `${base}.jpg`, `${base}.jpeg`, `${base}.gif`, `${base}.webp`, `${base}.svg`, `${base}.woff`, `${base}.woff2`, `${base}/index.ts`, `${base}/index.tsx`].some((candidate) => known.has(candidate));
+  /* 候选表必须与 SOURCE_EXTENSIONS 同源：能解析的形状不能多于能存在的形状。 */
+  return [
+    base,
+    ...LOCAL_MODULE_EXTENSIONS.map((extension) => `${base}${extension}`),
+    `${base}/index.ts`,
+    `${base}/index.tsx`,
+  ].some((candidate) => known.has(candidate));
 }
 
 async function readJson(root: string, path: string, add: (finding: AppGuiBuildFinding) => void) {

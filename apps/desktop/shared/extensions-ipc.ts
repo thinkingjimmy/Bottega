@@ -473,24 +473,12 @@ export type ExtensionPreflightView = Readonly<{
   affectedApps: readonly ExtensionAffectedAppView[];
 }>;
 
-export type ExtensionDeliveryHealthStatus =
-  | "healthy"
-  | "degraded"
-  | "unavailable"
-  | "unknown";
-
 export type ExtensionBackendEligibilityView = Readonly<{
   backendId: AgentBackendId;
   channel: ExtensionTransport;
   eligible: boolean;
   strength: ExtensionDeliveryStrength;
   exclusionCode?: FrozenExtensionDeliveryEligibilityReason["code"];
-}>;
-
-export type ExtensionBackendHealthView = Readonly<{
-  backendId: AgentBackendId;
-  channel: ExtensionTransport;
-  status: ExtensionDeliveryHealthStatus;
 }>;
 
 export type ExtensionComponentView = Readonly<{
@@ -502,7 +490,6 @@ export type ExtensionComponentView = Readonly<{
   enabled: boolean;
   /** 全局页只放 per-backend 能力与健康；本轮生效是 conversation-scoped 事件。 */
   eligibility: readonly ExtensionBackendEligibilityView[];
-  deliveryHealth: readonly ExtensionBackendHealthView[];
 }>;
 
 /* disable 的收敛是四步，逐步落盘：崩溃后不重做已完成的步骤，也不跳过未完成的。

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on canonical static/Base GUI roots, Node fs/path/streams, gateway MIME/CSP policy, and optional trusted ReactGrab assets
+ * [INPUT]: Depends on canonical static/Base GUI roots, Node fs/path/streams, gateway MIME/CSP policy, and pre-escaped ReactGrab injection halves
  * [OUTPUT]: Provides contained no-follow static artifact delivery, Base GUI CSP delivery, HEAD handling, and nonce-bound non-Base HTML instrumentation
  * [POS]: Base GUI gateway file-serving leaf; AppGateway owns route/admission while this module owns byte projection
  */
@@ -20,6 +20,14 @@ export type GatewayStaticFileRoute = Readonly<{
   rootReal: string;
 }>;
 
+/* 注入片段在资产加载时就转义拼好，逐请求只剩把 nonce 插进 `<script` 与 `>`
+   之间的那道中缝。 */
+export type ReactGrabInjection = Readonly<{
+  enabled: boolean;
+  head: string;
+  tail: string;
+}>;
+
 export type GatewayBaseGuiFileRoute = Readonly<{
   type: "base-gui";
   surfaceId: string;
@@ -34,7 +42,7 @@ export async function serveGatewayFile(input: Readonly<{
   request: IncomingMessage;
   response: ServerResponse;
   baseGuiCsp: string;
-  reactGrab: Readonly<{ enabled: boolean; script: string; style: string }>;
+  reactGrab: ReactGrabInjection;
 }>) {
   const { route, pathname, request, response } = input;
   const lexical = resolve(route.root, `.${pathname}`);
@@ -89,13 +97,10 @@ export async function serveGatewayFile(input: Readonly<{
 function injectReactGrab(
   html: string,
   nonce: string | undefined,
-  assets: Readonly<{ enabled: boolean; script: string; style: string }>
+  assets: ReactGrabInjection
 ) {
   if (!assets.enabled) return html;
-  const style = assets.style.replace(/<\/style/gi, "<\\/style");
-  const script = assets.script.replace(/<\/script/gi, "<\\/script");
-  const nonceAttribute = nonce ? ` nonce="${nonce}"` : "";
-  const injection = `<style id="ai-chat-react-grab-style">${style}</style><script${nonceAttribute}>${script}</script>`;
+  const injection = `${assets.head}${nonce ? ` nonce="${nonce}"` : ""}${assets.tail}`;
   return html.includes("</head>")
     ? html.replace("</head>", `${injection}</head>`)
     : `${injection}${html}`;

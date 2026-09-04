@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on Node fs/path, user home, default root outside the KIMI_CODE_HOME syntax, and history-import adapter, public core
- * [OUTPUT]: Provides KimiHistoryAdapter with state metadata and turn-bounded wire.jsonl streaming for prompts, content parts, tools, results, and duration
+ * [OUTPUT]: Provides KimiHistoryAdapter with state metadata and turn-bounded wire.jsonl streaming for prompts (product-context envelope stripped), content parts, tools, results, duration, and one-assistant-per-turn folding
  * [POS]: The history-imported Kimi CLI format adapter; Read only ~/.kimi-code/sessions, session_index.jsonl
  */
 
 import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { ForeignHistoryBlock, ForeignHistoryMessage, ForeignToolEvent } from "../../../shared/history-import-ipc";
+import type { ForeignHistoryMessage, ForeignToolEvent } from "../../../shared/history-import-ipc";
 import {
   HISTORY_FILE_BYTES,
   HISTORY_PARSER_VERSION,
@@ -33,6 +33,7 @@ import {
   type ParsedHistory,
   type ScanDepth,
 } from "./adapter";
+import { foldHistoryTurns, stripProductContext } from "./turn-folding";
 
 type Json = Record<string, unknown>;
 
@@ -100,7 +101,7 @@ export class KimiHistoryAdapter implements HistoryAdapter {
    * 与 codex reasoning 同律不进正文。tool.call/result 按 toolCallId 配对，
    * turn.ended.durationMs 与 codex task_complete 同律挂本 turn 末条 assistant。 */
   parseBatches(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches {
-    return batchHistoryTurns(this.parseTurns(entry, signal), signal);
+    return batchHistoryTurns(foldHistoryTurns(this.parseTurns(entry, signal), signal), signal);
   }
 
   async parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory> {
@@ -112,7 +113,7 @@ export class KimiHistoryAdapter implements HistoryAdapter {
     signal?: AbortSignal
   ): HistoryBlockTurns {
     const source = streamStableJsonl(entry.sourcePath, entry.fingerprint, signal);
-    let blocks: ForeignHistoryBlock[] = [];
+    let blocks: ForeignHistoryMessage[] = [];
     const tools = new Map<string, ForeignToolEvent>();
     let buffer = "", bufferSeq = 0, bufferAt = 0;
     const flush = () => {
@@ -220,11 +221,12 @@ async function sessionDirectories(root: string): Promise<string[]> {
   } catch { return []; }
 }
 
+/* 与 codex/claude 同律：产品自己的 <product_context …> 信封不是用户说的话。 */
 function promptText(input: unknown): string {
-  if (typeof input === "string") return input.trim();
+  if (typeof input === "string") return stripProductContext(input).trim();
   if (!Array.isArray(input)) return "";
   return input
-    .map((item) => { const part = object(item); return part ? string(part.text) ?? "" : ""; })
+    .map((item) => { const part = object(item); return part ? stripProductContext(string(part.text) ?? "") : ""; })
     .filter(Boolean)
     .join("\n")
     .trim();

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, Base owner/attachment value and Gallery canonical occurrence/sourceRef; owner-native manual upload and read DTO of the receiving main/renderer
- * [OUTPUT]: Provides Gallery ledger Old three-section/raw four-section stored, compatible with migration inputs, per-section percent-encoded four-section canonical producer, date/automatic View marker, full fingerprint, owner-native upload request, four methods DTO and budget
+ * [OUTPUT]: Provides the Gallery ledger with canonical percent-encoded occurrence ids, date/auto View markers, full fingerprint, owner-native upload request carrying the optional App surface lease, method DTOs and budgets
  * [POS]: The only source of truth for shared/bases attachment protocols; BaseStore, ingestion, preload and renderer are shared, with no paths or workspace lease in the structure
  */
 
@@ -39,28 +39,6 @@ const canonicalOccurrenceId = z.union([
   manualOccurrenceIdSchema,
   transcriptGalleryOccurrenceIdSchema,
 ]);
-const legacyFourPartOccurrenceId = z
-  .string()
-  .min(1)
-  .max(512)
-  .regex(
-    /^[A-Za-z0-9_-]{1,128}:[A-Za-z0-9_-]{1,128}:\d+:[^:]{1,256}$/,
-    "Legacy four-part occurrenceId 格式无效"
-  );
-const legacyThreePartOccurrenceId = z
-  .string()
-  .min(1)
-  .max(512)
-  .regex(
-    /^[A-Za-z0-9_-]{1,128}:\d+:[^:]{1,256}$/,
-    "Legacy three-part occurrenceId 格式无效"
-  );
-// 仅供 stored ledger 启动迁移读取；renderer wire 与所有新 producer 不接受三段 id。
-const storedOccurrenceId = z.union([
-  canonicalOccurrenceId,
-  legacyFourPartOccurrenceId,
-  legacyThreePartOccurrenceId,
-]);
 const fingerprint = z.string().regex(/^[a-f0-9]{64}$/);
 
 export const baseAttachmentValueSchema = z
@@ -84,7 +62,7 @@ export const baseAttachmentValueSchema = z
 
 export const galleryOccurrenceSchema = z
   .object({
-    occurrenceId: storedOccurrenceId,
+    occurrenceId: canonicalOccurrenceId,
     blobId,
     attachmentId: id,
     logicalKey,
@@ -105,7 +83,7 @@ export const galleryOccurrenceSchema = z
 export const galleryAssociationSchema = z
   .object({
     galleryItemId: z.string().min(3).max(257),
-    occurrenceId: storedOccurrenceId,
+    occurrenceId: canonicalOccurrenceId,
     logicalKey,
     attachmentId: id,
     rowId: id,
@@ -125,7 +103,7 @@ export const galleryAssociationSchema = z
 
 export const galleryTombstoneSchema = z
   .object({
-    occurrenceId: storedOccurrenceId,
+    occurrenceId: canonicalOccurrenceId,
     deletedAt: z.number().int().nonnegative(),
     epoch: z.number().int().nonnegative(),
   })
@@ -139,7 +117,6 @@ export const baseGalleryLedgerSchema = z
     targetColumnId: id.optional(),
     targetDateColumnId: id.optional(),
     autoGalleryState: z.enum(["pending", "created", "suppressed"]).optional(),
-    migrationVersion: z.number().int().nonnegative().optional(),
     epoch: z.number().int().nonnegative(),
     associations: z.record(z.string(), galleryAssociationSchema),
     occurrences: z.record(z.string(), galleryOccurrenceSchema),
@@ -156,8 +133,6 @@ export const BASE_ATTACHMENT_ERROR_CODES = [
   "ATTACHMENT_CONFLICT",
   "ATTACHMENT_NOT_FOUND",
   "BUDGET_EXCEEDED",
-  "BASE_FROZEN",
-  "BASE_RETRY",
   "DECODE_FAILED",
   "EPOCH_MISMATCH",
   "INCARNATION_MISMATCH",
@@ -211,17 +186,10 @@ export const putAttachmentInputSchema = z
   })
   .strict();
 
+/* App window surface 的 lease；主窗口上传不带此字段。 */
 export const putAttachmentRequestSchema = putAttachmentInputSchema.extend({
-  authorityLeaseId: z.string().uuid(),
+  surfaceLeaseId: z.string().uuid().optional(),
 }).strict();
-
-export const readAttachmentInputSchema = z
-  .object({
-    ...chatOwnership,
-    attachmentId: id,
-    revision: z.string().min(1).max(256),
-  })
-  .strict();
 
 export const readAttachmentThumbnailInputSchema = z
   .object({
@@ -242,9 +210,6 @@ export const listGalleryEntriesInputSchema = z
 
 export type PutAttachmentInput = z.infer<typeof putAttachmentInputSchema>;
 export type PutAttachmentRequest = z.infer<typeof putAttachmentRequestSchema>;
-export type ReadAttachmentInput = z.infer<
-  typeof readAttachmentInputSchema
->;
 export type ReadAttachmentThumbnailInput = z.infer<
   typeof readAttachmentThumbnailInputSchema
 >;
@@ -266,23 +231,6 @@ export const putAttachmentResultSchema = result(
       galleryItemId: z.string().min(3).max(257),
       revision: z.string().min(1).max(256),
       idempotent: z.boolean(),
-    })
-    .strict()
-);
-
-export const readAttachmentResultSchema = result(
-  z
-    .object({
-      attachmentId: id,
-      filename: z.string().min(1).max(255),
-      mediaType: z.enum([
-        "image/png",
-        "image/jpeg",
-        "image/webp",
-        "image/gif",
-      ]),
-      dataUrl: z.string().min(1).max(12 * 1024 * 1024),
-      revision: z.string().min(1).max(256),
     })
     .strict()
 );
@@ -320,9 +268,6 @@ export const listGalleryEntriesResultSchema = result(
 );
 
 export type PutAttachmentResult = z.infer<typeof putAttachmentResultSchema>;
-export type ReadAttachmentResult = z.infer<
-  typeof readAttachmentResultSchema
->;
 export type ReadAttachmentThumbnailResult = z.infer<
   typeof readAttachmentThumbnailResultSchema
 >;

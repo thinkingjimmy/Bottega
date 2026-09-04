@@ -12,7 +12,7 @@ import type {
   ManagedSkillAgent,
   ManagedSkillImportOutcome,
 } from "../../../shared/unified-skills-ipc";
-import { DurableJson, initializeDurableJsonOrQuarantine } from "../persistence/durable-json";
+import { DurableJson } from "../persistence/durable-json";
 import { SerialQueue } from "../persistence/serial-queue";
 import {
   copySkillDirectory,
@@ -110,7 +110,7 @@ export class ManagedSkillsLibraryStore {
       await mkdir(this.stagingRoot, { recursive: true, mode: 0o700 });
       /* 旧代/损坏账本按不存在处理（预发布断代裁决）。packages/ 是内容寻址目录，
          孤儿代价只是磁盘字节；重导入同内容会校验后原地复用，不必随账本清扫。 */
-      await initializeDurableJsonOrQuarantine(this.file, upgradeLibraryStore);
+      await this.file.initialize(upgradeLibraryStore);
       await this.resumeDeletionsSerial(custody);
     });
   }

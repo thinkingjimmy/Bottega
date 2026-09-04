@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on react-router, Apps i18n/provider, Base detail, README/settings surfaces, Apps client, and Web App frame/edit/repair components
+ * [INPUT]: Depends on react-router, Apps i18n/provider, the main-owned AppRecordProjection, Base detail, README/settings surfaces, the shared useAppEditor command, Apps client, and Web App frame/edit/repair components
  * [OUTPUT]: Provides AppDetailView, residence-gated Base Studio rendering, App-window handoff, Editor navigation, Base/Web distribution, retry/cancel, README, and settings
  * [POS]: App detail route; web runtime start is gated by the positive servesWebRuntime predicate, and a nonresident main route renders a transfer card before any Base Studio hook or mutation surface mounts
  */
@@ -14,20 +14,20 @@ import {
   RefreshCw,
   Settings2,
 } from "lucide-react";
-import { AppReadmeAdornment } from "@/components/apps/app-readme-adornment";
-import { BaseAppDetail } from "@/components/apps/base-app-detail";
-import { AppSettingsPanel } from "@/components/apps/app-settings-panel";
+import { AppReadmeAdornment } from "@/components/apps/detail/app-readme-adornment";
+import { BaseAppDetail } from "@/components/apps/detail/base-app-detail";
+import { AppSettingsPanel } from "@/components/apps/settings/app-settings-panel";
 import { AppFailureCard } from "@/components/apps/app-failure-card";
-import { AppExtensionConsentCard } from "@/components/apps/app-extension-consent-card";
-import { AppFrame } from "@/components/apps/app-frame";
+import { AppExtensionConsentCard } from "@/components/apps/authorization/app-extension-consent-card";
+import { AppFrame } from "@/components/apps/surface/app-frame";
 import {
   isFailedState,
   shouldRedirectAppDetail,
 } from "@/components/apps/app-state";
-import { RepairConfirmDialog } from "@/components/apps/repair-dialog";
+import { RepairConfirmDialog } from "@/components/apps/dialogs/repair-dialog";
 import { PageShell } from "@/components/page-shell";
 import { useApps } from "@/components/providers/apps-provider";
-import { openApp, openAppEditor, readAppLog } from "@/lib/apps-client";
+import { openApp, readAppLog } from "@/lib/apps-client";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Card,
@@ -59,9 +59,13 @@ import {
   windowContext,
 } from "@/lib/window-surfaces-client";
 import { SurfaceAwayCard } from "@/components/apps/surface-away-card";
-import { servesWebRuntime, type AppRecord } from "../../shared/apps-ipc";
+import {
+  servesWebRuntime,
+  type AppRecord,
+  type AppRecordProjection,
+} from "../../shared/apps-ipc";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { productDestinationRoute } from "@/lib/product-navigation";
+import { useAppEditor } from "@/components/apps/use-app-editor";
 
 type FrameState =
   | { type: "idle" | "loading" | "stopped"; message?: string }
@@ -69,7 +73,7 @@ type FrameState =
   | { type: "error"; message: string };
 type RightSurface = "none" | "settings" | "log";
 
-function ResidentBaseAppDetail({ record }: { record: AppRecord }) {
+function ResidentBaseAppDetail({ record }: { record: AppRecordProjection }) {
   const { t } = useAppTranslation();
   const surface = appStudioSurface(record.id);
   const residence = useSurfaceResidence(surface);
@@ -105,6 +109,9 @@ export function AppDetailView() {
   const recordId = record?.id;
   const recordState = record?.state;
   const standalone = windowContext().role === "app-window";
+  /* 钩子不能挂在 record 之后：下面还有若干条提前 return。命令本身只在
+     record 存在且可编辑时才够得着，故空 id 永远不会被按到。 */
+  const openEditor = useAppEditor(recordId ?? "");
   /* 启 runtime 的资格必须正着问：manifest 是 active generation 的投影，成代前
      它是 null，反向的 `kind !== "base"` 会把「还不知道」读成「是 Web App」，
      于是这条 effect 会替 Base App 去开 web runtime，把它打成 update-failed。 */
@@ -232,19 +239,6 @@ export function AppDetailView() {
           message: errorMessage(cause, t("apps.detail.startFailed")),
         })
       );
-  };
-
-  const openEditor = async () => {
-    try {
-      const destination = await openAppEditor({
-        appId: record.id,
-        requestId: crypto.randomUUID(),
-        mode: "resume",
-      });
-      if (!standalone) navigate(productDestinationRoute(destination));
-    } catch (cause) {
-      toast.error(t("apps.detail.edit"), { description: errorMessage(cause) });
-    }
   };
 
   return (

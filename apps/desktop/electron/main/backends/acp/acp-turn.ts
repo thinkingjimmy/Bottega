@@ -97,7 +97,10 @@ export class AcpTurn implements AgentTurn {
     });
     this.sessionFailures = new AcpSessionFailureProjection(
       options.callbacks,
-      (message) => this.evidence.redact(message)
+      (message) => this.evidence.redact(message),
+      () => {
+        this.state.skillDescriptionsTruncated = true;
+      }
     );
     const backend = options.payload.turnOptions.backend;
     // 谁进 seatbelt 由围栏声明表回答，不在这里维护一份平行名单。

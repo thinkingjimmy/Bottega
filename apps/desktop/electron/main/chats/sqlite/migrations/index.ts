@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto, the connection transaction helper, typed ChatSchemaError, and immutable migration SQL modules
- * [OUTPUT]: Provides forward-only checksum-verified migration execution plus typed application_id/user_version future-version fences
+ * [OUTPUT]: Provides the schema version, the ordered immutable migration list, the single checksum algorithm, and forward-only checksum-verified execution plus typed application_id/user_version future-version fences
  * [POS]: SQLite schema evolution authority; worker initialization must pass through this runner before any repository query
  */
 
@@ -9,11 +9,13 @@ import type { SqliteDatabase } from "../connection";
 import { transaction } from "../connection";
 import { ChatSchemaError } from "../failure";
 import { CHAT_STORE_SCHEMA_V1 } from "./0001-chat-store";
+import { CHAT_STORE_SCHEMA_V2 } from "./0002-import-entry-completeness";
+import { CHAT_STORE_SCHEMA_V3 } from "./0003-chat-fork";
 
 export const CHAT_STORE_APPLICATION_ID = 0x424f5454;
-export const CHAT_STORE_SCHEMA_VERSION = 1;
+export const CHAT_STORE_SCHEMA_VERSION = 3;
 
-type Migration = Readonly<{
+export type Migration = Readonly<{
   version: number;
   name: string;
   sql: string;
@@ -21,9 +23,13 @@ type Migration = Readonly<{
 
 const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: "chat-store", sql: CHAT_STORE_SCHEMA_V1 },
+  { version: 2, name: "import-entry-completeness", sql: CHAT_STORE_SCHEMA_V2 },
+  { version: 3, name: "chat-fork", sql: CHAT_STORE_SCHEMA_V3 },
 ];
 
-const checksum = (migration: Migration) =>
+/* 校验和只有一份算法。回归用例要造一个"只应用到某一版"的旧库，就必须
+   用运行器自己的算法写 schema_migrations，否则它证明的是算术，不是迁移。 */
+export const migrationChecksum = (migration: Migration) =>
   createHash("sha256")
     .update(`${migration.version}\0${migration.name}\0${migration.sql}`)
     .digest("hex");
@@ -71,7 +77,7 @@ export function runMigrations(database: SqliteDatabase, now = Date.now) {
         `Unknown applied Chat migration ${row.version}:${row.name}`
       );
     }
-    if (row.checksum !== checksum(migration)) {
+    if (row.checksum !== migrationChecksum(migration)) {
       throw new ChatSchemaError(
         "corrupt",
         `Chat migration checksum mismatch at version ${row.version}`
@@ -90,7 +96,7 @@ export function runMigrations(database: SqliteDatabase, now = Date.now) {
         .run(
           migration.version,
           migration.name,
-          checksum(migration),
+          migrationChecksum(migration),
           now()
         );
       database.exec(`PRAGMA user_version = ${migration.version}`);

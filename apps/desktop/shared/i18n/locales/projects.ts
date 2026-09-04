@@ -1,6 +1,6 @@
 /**
  * [INPUT]: No runtime dependencies; defines five isomorphic locale objects for Sidebar Projects
- * [OUTPUT]: Provides Sidebar Projects text in five languages: grouping actions, App Edit hiding, Reveal failures, local removal/conditional archiving, 8 colors, 30 icons and appearance controls
+ * [OUTPUT]: Provides Sidebar Projects text in five languages: grouping actions, App Edit hiding, Reveal failures, managed-worktree-aware local removal/conditional archiving, 8 colors, 30 icons and appearance controls
  * [POS]: Projects feature catalog in shared/i18n/locales; color and icon IDs are defined by lib/project-appearance
  */
 
@@ -43,6 +43,8 @@ export const projectsEn = {
     "This Project owns a Project Base, so it can't be removed safely. Archive it instead to keep the Project, Base, files, and chats intact.",
   archiveInsteadMemory:
     "Shared group Memory belongs to this Project, so it can't be removed safely. Archive it instead to keep the Project, Memory, files, and chats intact.",
+  archiveInsteadManaged:
+    "This Project still owns a managed worktree chat, so its workspace can't be detached safely. Archive it instead, or permanently delete the managed chat first.",
   archiveInsteadBoth:
     "This Project owns a Project Base and shared group Memory, so it can't be removed safely. Archive it instead to keep all of its data intact.",
   archiveInsteadConfirm: "Archive project",
@@ -51,7 +53,7 @@ export const projectsEn = {
   archiveTitle: "Archive Project?",
   archiveDescription:
     "“{{name}}” and its {{chats}} chats will leave the sidebar. Restore or delete them permanently in Settings › Archive; external and App working folders are never deleted.",
-  archivePinned: "Pinned Bases archived with it: {{bases}}.",
+  archiveRootBases: "Root Bases archived with it: {{bases}}.",
   appearance: {
     trigger: "{{name}} appearance",
     colorGroup: "Project color",
@@ -142,6 +144,8 @@ export const projectsZhCN: ProjectsCatalog = {
     "此 Project 拥有 Project Base，无法安全移除。改为归档可完整保留 Project、Base、文件和聊天。",
   archiveInsteadMemory:
     "共享的 group Memory 归属于此 Project，无法安全移除。改为归档可完整保留 Project、Memory、文件和聊天。",
+  archiveInsteadManaged:
+    "此 Project 仍拥有 managed worktree 聊天，无法安全解绑工作目录。请改为归档，或先永久删除这些 managed 聊天。",
   archiveInsteadBoth:
     "此 Project 拥有 Project Base 和共享的 group Memory，无法安全移除。改为归档可完整保留全部数据。",
   archiveInsteadConfirm: "归档 Project",
@@ -150,7 +154,7 @@ export const projectsZhCN: ProjectsCatalog = {
   archiveTitle: "归档 Project？",
   archiveDescription:
     "「{{name}}」及其 {{chats}} 个聊天将从侧栏撤下。可在 Settings › Archive 恢复或永久删除；外部/App 工作目录永不删除。",
-  archivePinned: "一并归档的 pinned Base：{{bases}} 个。",
+  archiveRootBases: "一并归档的根级 Base：{{bases}} 个。",
   appearance: {
     trigger: "{{name}} 外观",
     colorGroup: "Project 颜色",
@@ -240,6 +244,8 @@ export const projectsJa: ProjectsCatalog = {
     "この Project は Project Base を所有しているため、安全に削除できません。代わりにアーカイブすると、Project、Base、ファイル、チャットがそのまま保持されます。",
   archiveInsteadMemory:
     "共有 group Memory はこの Project に属しているため、安全に削除できません。代わりにアーカイブすると、Project、Memory、ファイル、チャットがそのまま保持されます。",
+  archiveInsteadManaged:
+    "この Project には managed worktree チャットが残っているため、作業フォルダーを安全に解除できません。代わりにアーカイブするか、先に managed チャットを完全削除してください。",
   archiveInsteadBoth:
     "この Project は Project Base と共有 group Memory を所有しているため、安全に削除できません。代わりにアーカイブすると、すべてのデータがそのまま保持されます。",
   archiveInsteadConfirm: "Project をアーカイブ",
@@ -248,7 +254,7 @@ export const projectsJa: ProjectsCatalog = {
   archiveTitle: "Project をアーカイブしますか？",
   archiveDescription:
     "「{{name}}」と {{chats}} 件のチャットが Sidebar から外れます。Settings › Archive で復元または完全削除できます。外部および App の作業フォルダーは削除されません。",
-  archivePinned: "一緒にアーカイブされる固定 Base：{{bases}} 件。",
+  archiveRootBases: "一緒にアーカイブされるルート Base：{{bases}} 件。",
   appearance: {
     trigger: "{{name}} の外観",
     colorGroup: "Project の色",
@@ -338,6 +344,8 @@ export const projectsFr: ProjectsCatalog = {
     "Ce Project possède une Project Base et ne peut pas être retiré en toute sécurité. Archivez-le plutôt pour conserver le Project, la Base, les fichiers et les chats.",
   archiveInsteadMemory:
     "La mémoire de groupe partagée appartient à ce Project, qui ne peut donc pas être retiré en toute sécurité. Archivez-le plutôt pour conserver le Project, la mémoire, les fichiers et les chats.",
+  archiveInsteadManaged:
+    "Ce Project possède encore un chat avec worktree géré ; son dossier de travail ne peut pas être dissocié en toute sécurité. Archivez-le plutôt ou supprimez définitivement ce chat d’abord.",
   archiveInsteadBoth:
     "Ce Project possède une Project Base et une mémoire de groupe partagée ; il ne peut pas être retiré en toute sécurité. Archivez-le plutôt pour conserver toutes ses données.",
   archiveInsteadConfirm: "Archiver le Project",
@@ -346,7 +354,7 @@ export const projectsFr: ProjectsCatalog = {
   archiveTitle: "Archiver le Project ?",
   archiveDescription:
     "« {{name}} » et ses {{chats}} chats quitteront la Sidebar. Restaurez-les ou supprimez-les définitivement dans Settings › Archive ; les dossiers de travail externes ou liés à une App ne sont jamais supprimés.",
-  archivePinned: "Bases épinglées archivées avec lui : {{bases}}.",
+  archiveRootBases: "Bases racine archivées avec lui : {{bases}}.",
   appearance: {
     trigger: "Apparence de {{name}}",
     colorGroup: "Couleur du Project",
@@ -436,6 +444,8 @@ export const projectsEs: ProjectsCatalog = {
     "Este Project posee una Project Base y no se puede quitar de forma segura. Archívalo para conservar intactos el Project, la Base, los archivos y los chats.",
   archiveInsteadMemory:
     "La memoria de grupo compartida pertenece a este Project, por lo que no se puede quitar de forma segura. Archívalo para conservar intactos el Project, la memoria, los archivos y los chats.",
+  archiveInsteadManaged:
+    "Este Project aún posee un chat con worktree gestionado, por lo que su carpeta de trabajo no se puede desvincular de forma segura. Archívalo o elimina primero ese chat de forma permanente.",
   archiveInsteadBoth:
     "Este Project posee una Project Base y memoria de grupo compartida, por lo que no se puede quitar de forma segura. Archívalo para conservar todos sus datos.",
   archiveInsteadConfirm: "Archivar Project",
@@ -444,7 +454,7 @@ export const projectsEs: ProjectsCatalog = {
   archiveTitle: "¿Archivar el Project?",
   archiveDescription:
     "«{{name}}» y sus {{chats}} chats saldrán de la Sidebar. Puedes restaurarlos o eliminarlos definitivamente en Settings › Archive; las carpetas de trabajo externas o de una App nunca se eliminan.",
-  archivePinned: "Bases fijadas archivadas con él: {{bases}}.",
+  archiveRootBases: "Bases raíz archivadas con él: {{bases}}.",
   appearance: {
     trigger: "Apariencia de {{name}}",
     colorGroup: "Color del Project",

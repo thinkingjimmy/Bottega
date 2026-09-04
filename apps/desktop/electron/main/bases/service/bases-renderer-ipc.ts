@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow, shared Bases schemas, TrustedRendererContext, SurfaceWindowController, BasesService, and one-time renderer authority
- * [OUTPUT]: Provides registerBasesRendererIpc with per-channel roles, App-owned ownerKey/chat-residence fences, wire parsing, and structured mutation errors
+ * [INPUT]: Depends on Electron BrowserWindow, shared Bases schemas, TrustedRendererContext, SurfaceWindowController, BasesService, and the per-call renderer commit authority
+ * [OUTPUT]: Provides registerBasesRendererIpc with per-channel roles, App-owned ownerKey/chat-residence fences, caller-supplied App surface leases forwarded to authority minting, wire parsing, and structured mutation errors
  * [POS]: Bases renderer security boundary; global management remains main-only while App windows see only their resident Studio/use-chat projection
  */
 
@@ -8,10 +8,10 @@ import type { BrowserWindow } from "electron";
 import {
   BASES_CHANNEL,
   type BaseMutationError,
+  type BaseMutationOperation,
   type PutAttachmentRequest,
 } from "../../../../shared/bases-ipc";
 import {
-  baseAuthorizeMutationInputSchema,
   baseDeleteRowsInputSchema,
   baseExportCsvInputSchema,
   baseExportJsonInputSchema,
@@ -34,8 +34,6 @@ import {
   listGalleryEntriesResultSchema,
   putAttachmentRequestSchema,
   putAttachmentResultSchema,
-  readAttachmentInputSchema,
-  readAttachmentResultSchema,
   readAttachmentThumbnailInputSchema,
   readAttachmentThumbnailResultSchema,
 } from "../../../../shared/bases/gallery-attachments";
@@ -43,12 +41,16 @@ import { rendererIpc } from "../../ipc-registrar";
 import type { TrustedRendererContext } from "../../window/surfaces/trusted-renderer-context";
 import { surfaceWindowController } from "../../window/surfaces/surface-window-controller";
 import { errorMessage } from "../../errors";
-import type { BaseCommitAuthority } from "../base-commit-authority";
+import type { BaseCommitAuthority } from "./base-commit-authority";
 import type { BasesService } from "../bases-service";
 
 type RendererIpcAuthority = {
-  authorize(input: ReturnType<typeof baseAuthorizeMutationInputSchema.parse>): Promise<unknown>;
-  consume(leaseId: string): BaseCommitAuthority;
+  rendererAuthority(input: {
+    ownerKey: string;
+    operation: BaseMutationOperation;
+    expectedRevision: number | null;
+    surfaceLeaseId?: string;
+  }): Promise<BaseCommitAuthority>;
   putAttachment(input: PutAttachmentRequest): Promise<unknown>;
   promote(input: ReturnType<typeof basePromoteToProjectInputSchema.parse>): Promise<unknown>;
   closed(): void;
@@ -72,17 +74,16 @@ export function registerBasesRendererIpc(
     const currentAppId = appId(context);
     return currentAppId
       ? service.assertAppRendererOwnerKey(value, currentAppId)
-      : service.assertRendererOwnerKey(value);
+      : value;
   };
   const visibleBases = <T extends { ownerKey: string }>(
     context: TrustedRendererContext,
     bases: T[]
   ) => {
     const currentAppId = appId(context);
-    const visible = currentAppId
-      ? bases.filter((base) => base.ownerKey === service.appRendererOwnerKey(currentAppId))
-      : bases;
-    return service.navigationBases(visible);
+    if (!currentAppId) return bases;
+    const owned = service.appRendererOwnerKey(currentAppId);
+    return bases.filter((base) => base.ownerKey === owned);
   };
   const assertChat = (
     context: TrustedRendererContext,
@@ -92,6 +93,24 @@ export function registerBasesRendererIpc(
     conversationId: input.chatId,
     conversationIncarnationId: input.incarnationId,
   });
+  /* 写入资格的唯一入口：先过与读同一道 owner fence，再把调用方自带的
+     App surface lease 原样交给 service 去验活。lease 缺席不代表越权——
+     主窗口与 App window 的资格本来就由 ownerKey fence 判定；lease 只是
+     「我是某张活着的 App surface」这条额外声明。
+     revision 一律不预判：CAS 由 owner queue 内核裁决。 */
+  const mutationAuthority = (
+    context: TrustedRendererContext,
+    input: { ownerKey: string; surfaceLeaseId?: string },
+    operation: BaseMutationOperation
+  ) => {
+    ownerKey(context, input.ownerKey);
+    return authority.rendererAuthority({
+      ownerKey: input.ownerKey,
+      operation,
+      expectedRevision: null,
+      ...(input.surfaceLeaseId ? { surfaceLeaseId: input.surfaceLeaseId } : {}),
+    });
+  };
   const ipc = rendererIpc(window, rendererUrl, "Rejected unauthorized Bases request");
   ipc
     .roles("main", "app-window")
@@ -99,63 +118,45 @@ export function registerBasesRendererIpc(
       service.get(ownerKey(context, readOwnerKey(input))))
     .handleWithContext(BASES_CHANNEL.ensure, (context, input) =>
       service.ensure(ownerKey(context, readOwnerKey(input))))
-    .handleWithContext(BASES_CHANNEL.discardCorrupt, (context, input) =>
-      service.discardCorrupt(ownerKey(context, readOwnerKey(input)))
-    )
-    .handleWithContext(BASES_CHANNEL.listPinned, (context) => ({
-      bases: visibleBases(context, service.store.listPinned()),
-      ...(service.store.getWarning()
-        ? { warning: service.store.getWarning() }
-        : {}),
+    .handleWithContext(BASES_CHANNEL.listRoot, (context) => ({
+      bases: visibleBases(context, service.store.listRootBases()),
     }))
     .handleWithContext(BASES_CHANNEL.listProject, (context) => ({
       bases: visibleBases(context, service.store.listProjectBases()),
-      ...(service.store.getWarning()
-        ? { warning: service.store.getWarning() }
-        : {}),
     }))
-    .handleWithContext(BASES_CHANNEL.authorizeMutation, (context, input) => {
-      const parsed = baseAuthorizeMutationInputSchema.parse(input);
-      ownerKey(context, parsed.ownerKey);
-      return authority.authorize(parsed);
-    })
     .handleWithContext(BASES_CHANNEL.updateMeta, async (context, input) => {
-      const { authorityLeaseId, ...mutation } = baseUpdateMetaInputSchema.parse(input);
-      ownerKey(context, mutation.ownerKey);
+      const parsed = baseUpdateMetaInputSchema.parse(input);
+      const { surfaceLeaseId: _lease, ...mutation } = parsed;
+      const granted = await mutationAuthority(context, parsed, "meta");
       try {
-        const snapshot = await service.updateMeta({
-          ...mutation,
-          authority: authority.consume(authorityLeaseId),
-        });
+        const snapshot = await service.updateMeta({ ...mutation, authority: granted });
         return { ok: true as const, snapshot };
       } catch (cause) {
         return snapshotErrorResult(cause);
       }
     })
-    .handleWithContext(BASES_CHANNEL.insertRows, (context, input) => {
-      const { authorityLeaseId, ...mutation } = baseInsertRowsInputSchema.parse(input);
-      ownerKey(context, mutation.ownerKey);
+    .handleWithContext(BASES_CHANNEL.insertRows, async (context, input) => {
+      const parsed = baseInsertRowsInputSchema.parse(input);
+      const { surfaceLeaseId: _lease, ...mutation } = parsed;
       return service.insertRows({
         ...mutation,
-        authority: authority.consume(authorityLeaseId),
+        authority: await mutationAuthority(context, parsed, "row-insert"),
       });
     })
-    .handleWithContext(BASES_CHANNEL.patchRow, (context, input) => {
-      const { authorityLeaseId, ...mutation } = basePatchRowInputSchema.parse(input);
-      ownerKey(context, mutation.ownerKey);
+    .handleWithContext(BASES_CHANNEL.patchRow, async (context, input) => {
+      const parsed = basePatchRowInputSchema.parse(input);
+      const { surfaceLeaseId: _lease, ...mutation } = parsed;
       return service.patchRow({
         ...mutation,
-        authority: authority.consume(authorityLeaseId),
+        authority: await mutationAuthority(context, parsed, "row-patch"),
       });
     })
     .handleWithContext(BASES_CHANNEL.deleteRows, async (context, input) => {
-      const { authorityLeaseId, ...mutation } = baseDeleteRowsInputSchema.parse(input);
-      ownerKey(context, mutation.ownerKey);
+      const parsed = baseDeleteRowsInputSchema.parse(input);
+      const { surfaceLeaseId: _lease, ...mutation } = parsed;
+      const granted = await mutationAuthority(context, parsed, "row-delete");
       try {
-        const snapshot = await service.deleteRows({
-          ...mutation,
-          authority: authority.consume(authorityLeaseId),
-        });
+        const snapshot = await service.deleteRows({ ...mutation, authority: granted });
         return { ok: true as const, snapshot };
       } catch (cause) {
         return snapshotErrorResult(cause);
@@ -171,11 +172,11 @@ export function registerBasesRendererIpc(
     })
     .handleWithContext(BASES_CHANNEL.importJson, async (context, input) => {
       const parsed = baseImportJsonInputSchema.parse(input);
-      ownerKey(context, parsed.ownerKey);
+      const granted = await mutationAuthority(context, parsed, "json-import");
       try {
         const result = await service.importJsonForRenderer(
           parsed.ownerKey,
-          authority.consume(parsed.authorityLeaseId),
+          granted,
           parsed.expectedRevision
         );
         return { ok: true as const, ...result };
@@ -189,11 +190,11 @@ export function registerBasesRendererIpc(
     })
     .handleWithContext(BASES_CHANNEL.importXlsx, async (context, input) => {
       const parsed = baseImportXlsxInputSchema.parse(input);
-      ownerKey(context, parsed.ownerKey);
+      const granted = await mutationAuthority(context, parsed, "xlsx-import");
       try {
         const result = await service.importXlsxForRenderer(
           parsed.ownerKey,
-          authority.consume(parsed.authorityLeaseId),
+          granted,
           parsed.expectedRevision
         );
         return { ok: true as const, ...result };
@@ -210,19 +211,12 @@ export function registerBasesRendererIpc(
     })
     .handleWithContext(BASES_CHANNEL.putAttachment, async (context, input) => {
       const parsed = putAttachmentRequestSchema.parse(input);
+      /* 附件的 authority 由 service 自己签发（它还要对 ownerInstanceId
+         做一次 fence），这里只把同一道 owner fence 先关上。 */
       ownerKey(context, parsed.ownerKey);
       return (
       putAttachmentResultSchema.parse(
         await authority.putAttachment(parsed)
-      )
-      );
-    })
-    .handleWithContext(BASES_CHANNEL.readAttachment, async (context, input) => {
-      const parsed = readAttachmentInputSchema.parse(input);
-      assertChat(context, parsed);
-      return (
-      readAttachmentResultSchema.parse(
-        await service.readAttachment(parsed)
       )
       );
     })
@@ -257,20 +251,11 @@ export function registerBasesRendererIpc(
     .handle(BASES_CHANNEL.removeManaged, (input) => {
       const parsed = baseRemoveManagedInputSchema.parse(input);
       return service.removeManagedBase(
-        service.assertRendererOwnerKey(parsed.ownerKey),
+        parsed.ownerKey,
         parsed.ownerInstanceId
       );
     });
 
-  const migrationEvents = service.store.drainMigrationEvents();
-  const publishMigrations = () => {
-    for (const event of migrationEvents) service.publishEvent(event);
-  };
-  if (window.webContents.isLoadingMainFrame()) {
-    window.webContents.once("did-finish-load", publishMigrations);
-  } else {
-    queueMicrotask(publishMigrations);
-  }
   window.once("closed", authority.closed);
 }
 

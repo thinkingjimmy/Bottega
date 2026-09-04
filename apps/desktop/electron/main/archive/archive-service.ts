@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Electron IPC, Node crypto/fs, Chat/Project stores, ChatHome/Purge journals, Coordinator pending CreationIntent/conversation critical area, ProjectsService durable cleanup, ChatsService delete chain, and optional Memory rebuild port
- * [OUTPUT]: Provides ArchiveService: explicitly archived Agent-identified Chat projection carrying read-only capability, immutable local-only/cleanup-and-rebuild purge that refuses read-only Chats, short Project intent/CAS, canonical+pending member snapshot and verified/record-only tokenized preview
+ * [INPUT]: Depends on Electron IPC, Node crypto/fs, Chat/Project stores, ChatHome/Purge journals, Coordinator pending CreationIntent/conversation critical area, ProjectsService durable cleanup, ChatsService deletion-resource chain, and optional Memory rebuild port
+ * [OUTPUT]: Provides ArchiveService: explicitly archived Agent-identified Chat projection carrying read-only capability, admission-first immutable local-only/cleanup-and-rebuild purge that refuses read-only Chats, short Project intent/CAS, canonical+pending member snapshot, verified/record-only tokenized preview, and legacy Home convergence through the shared deletion helper
  * [POS]: The trans-book coordinator of the archive module; The product gate only packs intent/CAS, Memory receipt/drain/network both outside the gate and hold multiple conversation locks at different times
  */
 
@@ -76,7 +76,7 @@ export class ArchiveService {
     private readonly chatsService: ChatsService,
     private readonly projectsService: ProjectsService,
     private readonly now: () => number = Date.now,
-    private readonly countPinnedBases: (chatIds: ReadonlySet<string>) => number =
+    private readonly countRootBases: (chatIds: ReadonlySet<string>) => number =
       () => 0,
     private readonly memoryPurge?: ArchiveMemoryPurge
   ) {}
@@ -366,7 +366,7 @@ export class ArchiveService {
           : []
       ),
       retainedExternalBindings,
-      pinnedBaseCount: this.countPinnedBases(
+      rootBaseCount: this.countRootBases(
         new Set(members.map(({ chatId }) => chatId))
       ),
       blockedReasons,
@@ -419,6 +419,9 @@ export class ArchiveService {
       if (mode === "cleanup-and-rebuild" && !preview.memory) {
         throw new Error("当前 Memory 目标不可重建，请选择仅删除本机数据");
       }
+      await this.chatsService.admitDeletion(
+        preview.members.map((member) => member.chatId)
+      );
       await this.runPurge(
         preview.targets,
         preview.members,
@@ -501,12 +504,14 @@ export class ArchiveService {
       for (const member of members) {
         if (completed.has(member.chatId)) continue;
         if (!this.chats.has(member.chatId)) {
-          const ownership = this.chatHomes.ledger.get(member.chatId);
-          const trash = ownership && deletableHomes.has(member.chatId)
-            ? await this.chatHomes.moveOwnedHomeToTrash(ownership)
-            : undefined;
-          if (trash) trashPaths.add(trash);
-          await this.chatHomes.ledger.removeOwnership(member.chatId);
+          if (deletableHomes.has(member.chatId)) {
+            await this.chatHomes.releaseHomeForDeletion(
+              { id: member.chatId, incarnationId: member.incarnationId },
+              `${intentId}:legacy-home:${member.chatId}`
+            );
+          } else {
+            await this.chatHomes.ledger.removeOwnership(member.chatId);
+          }
           completed.add(member.chatId);
           await this.purgeJournal.patch(intentId, {
             phase: "relatedDeleted",
@@ -533,17 +538,19 @@ export class ArchiveService {
               phase: "recordDeleted",
               updatedAt: this.now(),
             });
-            const ownership = this.chatHomes.ledger.get(member.chatId);
-            const trash = ownership && deletableHomes.has(member.chatId)
-              ? await this.chatHomes.moveOwnedHomeToTrash(ownership)
-              : undefined;
-            if (trash) trashPaths.add(trash);
+            if (deletableHomes.has(member.chatId)) {
+              await this.chatHomes.releaseHomeForDeletion(
+                { id: member.chatId, incarnationId: member.incarnationId },
+                `delete:${member.chatId}:${member.incarnationId}`
+              );
+            } else {
+              await this.chatHomes.ledger.removeOwnership(member.chatId);
+            }
             await this.purgeJournal.patch(intentId, {
               phase: "homeMoved",
               trashPaths: [...trashPaths],
               updatedAt: this.now(),
             });
-            await this.chatHomes.ledger.removeOwnership(member.chatId);
             completed.add(member.chatId);
             await this.purgeJournal.patch(intentId, {
               phase: "relatedDeleted",

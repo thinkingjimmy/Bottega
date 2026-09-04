@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on focused repository reader/writer collaborators, canonical Chat schemas, SQLite transactions, optional import-blob storage, and the closed database protocol
- * [OUTPUT]: Provides transactional narrow turn/fact/presentation and aggregate Chat mutations including readonly removal, imported source_status marking, receipts, native-Memory reads, startup reaping of interrupted imports that also reclaims abandoned generations, immutable-generation GC, projection validation, and bounded timeline plus keyset search facades
+ * [OUTPUT]: Provides transactional narrow turn/fact/presentation and aggregate Chat mutations including readonly removal, imported source_status marking, receipts, native-Memory reads, startup reaping of interrupted imports that also reclaims abandoned generations, immutable-generation GC, self-healing search-projection reconciliation, and bounded timeline plus keyset search facades
  * [POS]: Chat domain SQL transaction authority inside the dedicated worker; row projection details live in repository collaborators
  */
 
@@ -311,7 +311,16 @@ export class ChatRepository {
            不在这里——否则删除 Project 与清空归档会半路夭折。 */
         const attachments = this.attachmentRows(command.chatId);
         this.database.prepare("DELETE FROM chats WHERE id = ?").run(command.chatId);
-        const result = { chatId: command.chatId, attachments };
+        /* Forks deliberately share ordinary attachment ids. Deletion therefore returns
+           only globally unreferenced blobs; the filesystem owner must never infer GC
+           eligibility from the deleted Chat alone. */
+        const referenced = this.database.prepare(
+          "SELECT 1 FROM chat_message_attachments WHERE attachment_id = ? LIMIT 1"
+        );
+        const reclaimable = attachments.filter(
+          (attachment) => !referenced.get(attachment.id)
+        );
+        const result = { chatId: command.chatId, attachments: reclaimable };
         return {
           status: "committed",
           receipt: this.commitReceipt(command, result, command.chatId),
@@ -591,38 +600,60 @@ export class ChatRepository {
     return this.imports.getRun(runId);
   }
 
-  validateSearchProjection() {
-    const documents = this.database.prepare(
-      `SELECT d.*, c.title,
-              m.message_id, m.seq, m.role, m.content, m.created_at, m.payload_json,
-              v.payload_json imported_payload_json
-         FROM chat_search_documents d
-         JOIN chats c ON c.id = d.chat_id
-         LEFT JOIN chat_messages m
-           ON d.document_kind = 'native' AND CAST(m.row_id AS TEXT) = d.source_row_id
-         LEFT JOIN chat_import_entry_versions v
-           ON d.document_kind = 'imported-version' AND v.entry_version_id = d.source_row_id
-        ORDER BY d.row_id`
-    ).iterate() as Iterable<Row>;
-    let count = 0;
-    for (const document of documents) {
-      const text = document.document_kind === "title"
-        ? normalizeSearchText(String(document.title ?? ""))
-        : document.document_kind === "native"
-          ? messageSearchText(messageFromRow(document))
-          : this.searchTextForImportedPayload(document.imported_payload_json);
-      const grams = gramTokens(text).join(" ");
-      if (
-        digest(text) !== document.search_text_digest ||
-        digest(grams) !== document.grams_digest ||
-        text !== document.search_text ||
-        grams !== document.grams_text
-      ) {
-        throw new Error(`search projection drift for row ${document.row_id}`);
+  /* ── 搜索投影是派生数据：漂移就重算，不只是判死刑 ─────────────────
+     chat_search_documents 的每一行都能从 chats.title、原生消息或导入 entry
+     的 payload 重新算出来。此前这里发现漂移只会抛错：维护闸门从此每 6 小时
+     失败一次，却没有任何路径会把它修好——写入口的修复只在来源再次变化时
+     才跑，来源不变的 begin 被收据回放直接短路。派生数据的正确姿势是可重建：
+     逐行比对，对不上的用同一个写入口重写（UPSERT，触发器同步 FTS，与正常
+     写入一字不差），闸门报告修了几行。先读完再写：游标开着时改同一张表，
+     SQLite 不给任何保证。 */
+  reconcileSearchProjection() {
+    return transaction(this.database, () => {
+      const documents = this.database.prepare(
+        `SELECT d.*, c.title,
+                m.message_id, m.seq, m.role, m.content, m.created_at, m.payload_json,
+                v.payload_json imported_payload_json
+           FROM chat_search_documents d
+           JOIN chats c ON c.id = d.chat_id
+           LEFT JOIN chat_messages m
+             ON d.document_kind = 'native' AND CAST(m.row_id AS TEXT) = d.source_row_id
+           LEFT JOIN chat_import_entry_versions v
+             ON d.document_kind = 'imported-version' AND v.entry_version_id = d.source_row_id
+          ORDER BY d.row_id`
+      ).iterate() as Iterable<Row>;
+      const drifted: Array<{
+        chatId: string;
+        kind: "title" | "native" | "imported-version";
+        sourceRowId: string;
+        text: string;
+      }> = [];
+      let count = 0;
+      for (const document of documents) {
+        count += 1;
+        const kind = String(document.document_kind) as "title" | "native" | "imported-version";
+        const text = kind === "title"
+          ? normalizeSearchText(String(document.title ?? ""))
+          : kind === "native"
+            ? messageSearchText(messageFromRow(document))
+            : this.searchTextForImportedPayload(document.imported_payload_json);
+        const grams = gramTokens(text).join(" ");
+        if (
+          digest(text) === document.search_text_digest &&
+          digest(grams) === document.grams_digest &&
+          text === document.search_text &&
+          grams === document.grams_text
+        ) continue;
+        drifted.push({
+          chatId: String(document.chat_id),
+          kind,
+          sourceRowId: String(document.source_row_id),
+          text,
+        });
       }
-      count += 1;
-    }
-    return { documents: count };
+      this.writer.writeSearchDocumentsBatch(drifted);
+      return { documents: count, repaired: drifted.length };
+    });
   }
 
   private searchTextForImportedPayload(value: unknown) {
@@ -725,4 +756,3 @@ export function exactSearchFilter(
 ) {
   return hits.filter((hit) => matchSearchTokens(hit.searchText, tokens));
 }
-

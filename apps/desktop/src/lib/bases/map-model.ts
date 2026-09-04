@@ -12,8 +12,9 @@ import {
   type BaseRow,
 } from "../../../shared/bases-ipc";
 
-export const OSM_TILE_URL =
-  "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+/* 瓦片地址不外露：它只是 createBaseMapStyle 的缺省实参，导出它等于邀请
+   调用方绕过 style 自己拼 URL——那样 attribution 就会在某处悄悄丢掉。 */
+const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 export function createBaseMapStyle(tileUrl = OSM_TILE_URL) {
   return {

@@ -70,6 +70,13 @@ export function reviseTailRecord(
   const last = current.messages.at(-1);
   const lastUser = current.messages.filter((message) => message.role === "user").at(-1);
   if (
+    superseded?.role === "user" &&
+    current.inheritedThroughSeq &&
+    superseded.seq <= current.inheritedThroughSeq
+  ) {
+    throw Object.assign(new Error("CHAT_FORK_INHERITED_HISTORY_IMMUTABLE"), { status: 409 });
+  }
+  if (
     superseded?.role !== "user" ||
     lastUser?.id !== superseded.id ||
     last?.seq !== input.supersedes.throughSeqEnd

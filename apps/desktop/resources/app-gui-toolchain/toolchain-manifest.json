@@ -8,11 +8,15 @@
     "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "10.0.0",
     "@phosphor-icons/react": "2.1.10",
-    "@tanstack/react-table": "8.21.3",
-    "@tanstack/react-virtual": "3.14.8",
     "@tailwindcss/node": "4.3.2",
     "@tailwindcss/oxide": "4.3.2",
+    "@tanstack/react-table": "8.21.3",
+    "@tanstack/react-virtual": "3.14.8",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
     "axe-core": "4.10.3",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
     "date-fns": "4.4.0",
     "echarts": "6.1.0",
     "esbuild": "0.28.1",
@@ -20,11 +24,12 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-hook-form": "7.87.0",
+    "tailwind-merge": "3.6.0",
     "tailwindcss": "4.3.2",
     "typescript": "5.9.3",
     "zod": "4.4.3"
   },
-  "lockfileDigest": "sha256:a6aa3241a788311febf6488dc011df016e9c76f40e08a7b344d9e3313cc08694",
+  "lockfileDigest": "sha256:01e7e864e7ba7dcaae1b9e3d0ddbf6857dbbbdbff116900770860773c8d3ef5c",
   "formalReleaseTrust": {
     "schema": "bottega.formal-release-trust/v1",
     "status": "unprovisioned",
@@ -61,15 +66,15 @@
     "gate-3"
   ],
   "sliceDigests": {
-    "gate-1": "sha256:db5f169c2333aaf2efc4642cea465c56fca2eb53318e7e4dac6620009e9b95e4",
-    "gate-2": "sha256:8f83508d5bc48b95c496f0d901fb1707b6b7e1305bc83f41a13b05af40ec120e",
-    "gate-3": "sha256:23ef5f0304e4187dd15adf1249bd0f2b78dbb9da91ed74ff30cbfc48a1fde9b2"
+    "gate-1": "sha256:4da5a57b58b3d6c610a63c70449b645ec3f273bb68e57a1b3c596a011f5848e4",
+    "gate-2": "sha256:11c3015da6f24753f26ea76db7f5c17d1c4e18cfd44947a4cf939ed6fa3f2f5c",
+    "gate-3": "sha256:b783f1b58a7d7a18d2b258909926b16af9ee9443450e948cd8a8e2757560b4c8"
   },
   "authoringCatalogDigest": "sha256:b16d45733d06dbf6bdbebb2d45b5798b8947a437af53afdc72c499843d000f62",
   "compatibilitySupportDigest": "sha256:5a876d99d1fef6e30040d49ea6283feabaecd97a871ee4955b98610a9cbbdba7",
   "performanceBaselineDigest": "sha256:73285c2d1c9ae2efd75ec1e2cfff400348361a2e6499a5db54479450e8818460",
-  "runtimeSbomDigest": "sha256:7d6082c0ad93663e87ea0908b6af3ad79799292ef1a694798801026359674487",
-  "noticesDigest": "sha256:b6929617d1d4b87d31305e527d3eb26048196916e72f0a005d366630e8cf6e00",
+  "runtimeSbomDigest": "sha256:8124ec5d6a485aa884460b6a597e5b5bc4cca58b0e7c2dc06b185d6e94efcb6b",
+  "noticesDigest": "sha256:c3ae6d4ea814e71fc29b7e69f93435d1d90fac52875b4835c8fa4d65843acab8",
   "artifactPaths": {
     "slices": "slices/",
     "authoringCatalog": "authoring-catalog.json",

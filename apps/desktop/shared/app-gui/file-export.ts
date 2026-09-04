@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 
-export const FILE_EXPORT_MEDIA_TYPES = [
+const FILE_EXPORT_MEDIA_TYPES = [
   "text/plain;charset=utf-8",
   "text/csv;charset=utf-8",
   "application/json",
@@ -15,7 +15,7 @@ export const FILE_EXPORT_MEDIA_TYPES = [
   "image/webp",
   "image/gif",
 ] as const;
-export type FileExportMediaTypeV1 = (typeof FILE_EXPORT_MEDIA_TYPES)[number];
+type FileExportMediaTypeV1 = (typeof FILE_EXPORT_MEDIA_TYPES)[number];
 
 export type BeginFileExportRequestV1 = Readonly<{
   version: 1;
@@ -33,7 +33,7 @@ export type WriteFileExportChunkHeaderV1 = Readonly<{
   seq: number;
   byteLength: number;
 }>;
-export type FileExportSurfaceV1 = Readonly<{
+type FileExportSurfaceV1 = Readonly<{
   appId: string;
   surfaceId: string;
   appSurfaceLeaseId: string;
@@ -80,7 +80,7 @@ export const writeFileExportChunkHeaderV1Schema: z.ZodType<WriteFileExportChunkH
   })
   .strict();
 
-export const fileExportSurfaceV1Schema: z.ZodType<FileExportSurfaceV1> = z
+const fileExportSurfaceV1Schema: z.ZodType<FileExportSurfaceV1> = z
   .object({
     appId: z.string().regex(/^[a-z0-9][a-z0-9_-]{2,127}$/),
     surfaceId: z.string().min(1).max(200),

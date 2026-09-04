@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto, zod and shared Base GUI generation/access identity
- * [OUTPUT]: Provides BaseGuiGrantStore plus BASE_GUI_PARTIAL_DECISION: stable compatibility-bound decision, all-or-nothing decide (exact request coverage or decline), idempotent migration binding, self-administered approved state, append-only revoke tombstone, durable revision CAS and freezing air after damage/disruption
+ * [OUTPUT]: Provides BaseGuiGrantStore plus BASE_GUI_PARTIAL_DECISION: stable compatibility-bound decision, all-or-nothing decide (exact request coverage or decline), idempotent compatibility-ref binding, self-administered approved state, append-only revoke tombstone, durable revision CAS on fsynced atomic replacement, and freezing air after damage/disruption
  * [POS]: authorized copywriter of apps/base-gui; The manifest only requests, and the active GUI writes only from the exact approved decision of the ledger
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { z } from "zod";
 import type {
   BaseGuiCapability,
@@ -16,6 +16,7 @@ import type {
 } from "../../../../shared/apps-ipc";
 import {
   DurableFileCorruptionError,
+  durableReplaceFile,
   quarantineDurableFile,
 } from "../../persistence/durable-json";
 
@@ -24,6 +25,9 @@ const digestSchema = z
   .regex(/^sha256:[a-f0-9]{64}$/)
   .transform((value) => value as `sha256:${string}`);
 
+/* `.strict()` 是断代的执行者：旧账本里那条已删除的迁移 revision 字段现在会被判为
+   多余字段，整份文件在 initialize() 里按损坏隔离后空态冷启动——预发布期没有真实
+   用户，重新授权一次比养一条永久的兼容读路径便宜得多。 */
 const decisionSchema: z.ZodType<BaseGuiCapabilityDecision> = z
   .object({
     decisionId: z.string().uuid(),
@@ -45,7 +49,6 @@ const decisionSchema: z.ZodType<BaseGuiCapabilityDecision> = z
       .strict()
       .default({}),
     compatibilityRefDigest: digestSchema.optional(),
-    compatibilityMigrationRevision: z.string().uuid().optional(),
     state: z.enum(["consent-required", "approved", "declined"]),
   })
   .strict()
@@ -149,7 +152,6 @@ export class BaseGuiGrantStore {
     requestedHostActions: readonly BaseGuiHostActionCapability[];
     requestedCapabilityScopes: BaseGuiCapabilityScopes;
     compatibilityRefDigest?: `sha256:${string}`;
-    compatibilityMigrationRevision?: string;
   }) {
     return this.mutate(() => {
       const existing = this.state.decisions.find(
@@ -291,7 +293,6 @@ export class BaseGuiGrantStore {
     appId: string;
     generationId: string;
     compatibilityRefDigest: `sha256:${string}`;
-    compatibilityMigrationRevision?: string;
   }) {
     return this.mutate(() => {
       const indices = this.state.decisions.flatMap((decision, index) =>
@@ -302,13 +303,7 @@ export class BaseGuiGrantStore {
       );
       for (const index of indices) {
         const decision = this.state.decisions[index]!;
-        if (
-          decision.compatibilityRefDigest === input.compatibilityRefDigest &&
-          decision.compatibilityMigrationRevision ===
-            input.compatibilityMigrationRevision
-        ) {
-          continue;
-        }
+        if (decision.compatibilityRefDigest === input.compatibilityRefDigest) continue;
         if (
           decision.compatibilityRefDigest &&
           decision.compatibilityRefDigest !== input.compatibilityRefDigest
@@ -318,12 +313,6 @@ export class BaseGuiGrantStore {
         this.state.decisions[index] = {
           ...decision,
           compatibilityRefDigest: input.compatibilityRefDigest,
-          ...(input.compatibilityMigrationRevision
-            ? {
-                compatibilityMigrationRevision:
-                  input.compatibilityMigrationRevision,
-              }
-            : {}),
           revision: this.nextRevision(),
         };
       }
@@ -402,13 +391,14 @@ export class BaseGuiGrantStore {
     }
   }
 
+  /* 授权账本的落盘不能只靠 rename：不 fsync 就只是「文件名换了」，掉电后可能
+     两份都不完整；固定的 .tmp 名字还会让并发写互相踩。durableReplaceFile 是
+     全仓统一的原子替换，同一条路径也就只剩一种失败模式。 */
   private async persist() {
-    await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
-    const temporary = `${this.filePath}.tmp`;
-    await writeFile(temporary, `${JSON.stringify(this.state, null, 2)}\n`, {
-      mode: 0o600,
-    });
-    await rename(temporary, this.filePath);
+    await durableReplaceFile(
+      this.filePath,
+      `${JSON.stringify(this.state, null, 2)}\n`
+    );
   }
 }
 
@@ -436,7 +426,7 @@ function conflict(message: string) {
 /* ── 全有或全无 ────────────────────────────────────────────────────
  * requested 三组（capability / host action / workspace scope）必须被
  * granted 三组逐项覆盖，才算 approved。少一项就不是「少批一点」，而是
- * 一份永远无法 promote 的死决定——见 store-commands/studio-grant.ts。
+ * 一份永远无法 promote 的死决定——见 ../store/studio-grant.ts。
  * ────────────────────────────────────────────────────────────── */
 function coversRequest(
   requested: Pick<

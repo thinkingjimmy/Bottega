@@ -57,8 +57,7 @@ export const chatSurfacesFr: typeof chatSurfacesEn = {
       unresolved: "Non résolu",
       configOverrideDiff: "Dérogation de configuration : {{value}}",
       eligible: "Éligibilité : {{value}}",
-      deliverySummary:
-        "État de livraison : {{delivery}} ; active pendant ce tour : {{active}}",
+      turnActive: "Active pendant ce tour : {{active}}",
     },
     appTab: {
       readFailed: "Impossible de lire l’état de l’App",

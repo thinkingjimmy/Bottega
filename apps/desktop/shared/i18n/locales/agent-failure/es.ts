@@ -21,4 +21,8 @@ export const agentFailureEs: typeof agentFailureEn = {
     "runtime-unavailable": { title: "No se pudo iniciar {{backend}}", explanation: "El Agent local falta, está desactualizado o no superó la comprobación de inicio.", resolution: "Abre los ajustes del Agent, instala o actualiza {{backend}} y vuelve a comprobarlo." },
     unknown: { title: "{{backend}} no pudo completar la solicitud", explanation: "El Agent informó de un problema que Bottega no puede clasificar de forma segura.", resolution: "Inténtalo una vez más. Si se repite, abre y copia los detalles técnicos para soporte." },
   },
+  notice: {
+    title: "{{backend}} envió un aviso",
+    explanation: "Este aviso procede del propio {{backend}}, no de Bottega. Esta respuesta no se ve afectada.",
+  },
 };

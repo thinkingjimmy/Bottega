@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AppStore pending/active generation truth, exact Base GUI decisions/Studio grants, durable cutover journal, sealed-generation preflight, live surface enumeration, request/effect barriers, preference adoption, and projection synchronization
- * [OUTPUT]: Provides production nullable App-global compiled-v3 cutover for zero-to-many frozen surface cohorts, independent App-CAS and previous-GUI identities, exact sealed/staged readiness and preferences, atomic publication, always-resolved transition outcomes, finally-safe reopening, barrier-time drain deadlines, and per-intent isolated crash recovery reported as findings instead of thrown startup failures
- * [POS]: gui-cutover orchestration authority; explicit preflight plus surface quorum replace the former digest-only participant pseudo-barrier, and the AppStore active CAS stays the single commit point the journal only writes ahead of
+ * [INPUT]: Depends on AppStore pending/active generation truth, exact Base GUI decisions/Studio grants, the two-state cutover journal, sealed-generation preflight, live surface enumeration keyed by logical lease, request/effect barriers, preference adoption, and projection synchronization
+ * [OUTPUT]: Provides production nullable App-global compiled-v3 cutover for zero-to-many frozen surface cohorts, independent App-CAS and previous-GUI identities, barrier-time drain deadlines restamped per wait, always-resolved transition outcomes, unconditional transition publication, finally-safe reopening, and per-intent isolated crash recovery reported as findings instead of thrown startup failures
+ * [POS]: gui-cutover orchestration authority; explicit preflight plus surface quorum gate promotion, and the AppStore active CAS stays the single commit point the journal only writes ahead of
  */
 
 import type {
@@ -12,22 +12,26 @@ import type {
   AppGuiGenerationAuthorityRef,
   AppGuiGenerationIntent,
   AppGuiPreferenceAdoptionSnapshot,
-  GuiCutoverParticipantEvidence,
 } from "../../../../shared/app-gui/cutover";
 import type { AppGuiInfoInput, AppSurfaceMode } from "../../../../shared/apps-ipc";
 import type { BaseGuiGrantStore } from "../base-gui/grant-store";
-import type { AppStore } from "../app-store";
+import type { AppStore } from "../store/app-store";
 import { asError } from "../../errors";
 import { AppGuiSurfaceCohort } from "./cohort";
 import { AppGuiCutoverJournal } from "./journal";
-import { canonicalDigest } from "../gui-build/metadata";
-import { deriveParticipantPlan, participantEvidence } from "./participants";
+import { deriveParticipantPlan } from "./participants";
+
+/* liveSurfaces 报的是逻辑租约，不是运行期派生租约：一次 cutover 之后投影会
+   用派生 id 重新注册这张面，而 renderer 永远只发稳定的逻辑 id。用派生 id
+   当键，第二次 cutover 就永远等不到它认识的成员。 */
+type LiveSurface = Readonly<{
+  input: AppGuiInfoInput;
+  logicalLeaseId: string;
+}>;
 
 type Ports = Readonly<{
   runExclusive<T>(appId: string, operation: () => Promise<T>): Promise<T>;
-  liveSurfaces(appId: string, generationId: string | null): readonly Readonly<{
-    input: AppGuiInfoInput;
-  }>[];
+  liveSurfaces(appId: string, generationId: string | null): readonly LiveSurface[];
   stageSurface(
     sourceLeaseId: string,
     generationId: string
@@ -38,7 +42,7 @@ type Ports = Readonly<{
   drain(appId: string, generationId: string | null, deadlineMs: number): Promise<void>;
   reopenAdmission(appId: string): void;
   syncProjection(appId: string, resetCapability: boolean): Promise<unknown>;
-  prepareAppParticipants(intent: AppGuiGenerationIntent): Promise<readonly GuiCutoverParticipantEvidence[]>;
+  prepareAppParticipants(intent: AppGuiGenerationIntent): Promise<void>;
   retireGeneration(appId: string, generationId: string): Promise<void>;
   previewPreferences(appId: string, generationId: string): Promise<AppGuiPreferenceAdoptionSnapshot | null>;
   validatePreferences(intent: AppGuiGenerationIntent): Promise<void>;
@@ -48,7 +52,7 @@ type Ports = Readonly<{
 
 /* 恢复结论：discarded/quarantined 已经出账，不会再来一次；retry 表示这条 intent
    仍留在账本里，等下一轮退避重试。三者都不是异常，都是被观察到的事实。 */
-export type GuiCutoverRecoveryFinding = Readonly<{
+type GuiCutoverRecoveryFinding = Readonly<{
   appId: string;
   cutoverId: string;
   outcome: "discarded" | "quarantined" | "retry";
@@ -56,16 +60,13 @@ export type GuiCutoverRecoveryFinding = Readonly<{
 }>;
 
 type TransitionOutcome = "committed" | "aborted";
-type StagedSurface = Readonly<{
-  logicalSurfaceId: string;
-  input: AppGuiInfoInput;
-  mode: AppSurfaceMode;
-}>;
 type Transition = {
   intent: AppGuiGenerationIntent;
   cohort: AppGuiSurfaceCohort;
   initial: Map<string, Readonly<{ previousRuntimeSurfaceId: string; previousLeaseId: string }>>;
-  staged: Map<string, StagedSurface>;
+  /* 逻辑面 → 它当前持有的 staging 运行期身份；键已经是逻辑 id，值再存一份
+     只会多出一个可以和键对不上的事实。 */
+  staged: Map<string, AppGuiInfoInput>;
   collection: Promise<void>;
   resolveCollection(): void;
   frozen: Promise<void>;
@@ -76,6 +77,7 @@ type Transition = {
   resolveOutcome(value: TransitionOutcome): void;
 };
 
+const COLLECTION_TIMEOUT_MS = 5_000;
 const READY_TIMEOUT_MS = 15_000;
 const DRAIN_TIMEOUT_MS = 30_000;
 
@@ -119,54 +121,32 @@ export class AppGuiCutoverCoordinator {
 
   async acquire(input: AppGuiInfoInput) {
     const transition = this.transitions.get(input.appId);
-    if (!transition) return { input, generationId: null, cutoverId: null };
+    if (!transition) return liveTarget(input);
     const logicalSurfaceId = input.appSurfaceLeaseId;
-    const snapshot = transition.cohort.snapshot();
     const existing = transition.staged.get(logicalSurfaceId);
-    if (existing) {
-      if (existing.input.surfaceId === input.surfaceId) {
-        return {
-          input: existing.input,
-          generationId: transition.intent.nextGenerationId,
-          cutoverId: transition.intent.cutoverId,
-        };
-      }
+    if (existing?.surfaceId === input.surfaceId) {
+      return {
+        input: existing,
+        generationId: transition.intent.nextGenerationId,
+        cutoverId: transition.intent.cutoverId,
+      };
     }
-    /* A status publication can request a replacement runtime surface while the
-       original member is already frozen and waiting for App-global commit. It
-       is a post-decision late join, not a second cohort vote. */
-    let lateJoin = Boolean(existing) || snapshot.admission !== "collecting";
-    if (lateJoin) {
-      const outcome = await transition.outcome;
-      if (outcome === "aborted") {
-        if (!transition.intent.previous) throw new Error("GUI_CUTOVER_FIRST_ACTIVATION_ABORTED");
-        return { input, generationId: null, cutoverId: null };
-      }
+    /* 冻结后到达、或为同一逻辑面申请替换运行期面：两者都是决议之后的迟到者。
+       它们不投票，也不领 staging 租约——领了就要在 transitions 还活着的时候
+       用掉，而那扇窗恰恰在 finally 里关。等到 App 全局结论，然后走活的投影。 */
+    if (existing || transition.cohort.snapshot().admission !== "collecting") {
+      return this.lateJoinTarget(transition, input);
     }
     const stagedLease = await this.ports.stageSurface(
       input.appSurfaceLeaseId,
       transition.intent.nextGenerationId
     );
-    const stagedInput = {
-      ...input,
-      appSurfaceLeaseId: stagedLease.surfaceLeaseId,
-    };
-    /* stageSurface 的 await 期间 cohort 可能刚好冻结：这张 surface 不在 frozen
-       revision 里，与冻结后到达的迟到者同命——它不投票，只等 App 全局结论。 */
-    if (!lateJoin && transition.cohort.snapshot().admission !== "collecting") {
-      if ((await transition.outcome) === "aborted") {
-        await this.ports.discardSurface(stagedInput).catch(() => undefined);
-        if (!transition.intent.previous) throw new Error("GUI_CUTOVER_FIRST_ACTIVATION_ABORTED");
-        return { input, generationId: null, cutoverId: null };
-      }
-      lateJoin = true;
-    }
-    if (lateJoin) {
-      return {
-        input: stagedInput,
-        generationId: transition.intent.nextGenerationId,
-        cutoverId: null,
-      };
+    const stagedInput = { ...input, appSurfaceLeaseId: stagedLease.surfaceLeaseId };
+    /* stageSurface 的 await 期间 cohort 可能刚好冻结：这张面不在 frozen
+       revision 里，与冻结后到达的迟到者同命。 */
+    if (transition.cohort.snapshot().admission !== "collecting") {
+      await this.ports.discardSurface(stagedInput).catch(() => undefined);
+      return this.lateJoinTarget(transition, input);
     }
     const previous = transition.initial.get(logicalSurfaceId);
     transition.cohort.join({
@@ -177,11 +157,7 @@ export class AppGuiCutoverCoordinator {
       stagedRuntimeSurfaceId: input.surfaceId,
       stagingLeaseId: stagedLease.surfaceLeaseId,
     });
-    transition.staged.set(logicalSurfaceId, {
-      logicalSurfaceId,
-      input: stagedInput,
-      mode: stagedLease.mode,
-    });
+    transition.staged.set(logicalSurfaceId, stagedInput);
     if (initialMembersObserved(transition)) transition.resolveCollection();
     return {
       input: stagedInput,
@@ -190,7 +166,7 @@ export class AppGuiCutoverCoordinator {
     };
   }
 
-  async ready(input: AppGuiInfoInput & { cutoverId: string; readyNonce: string }) {
+  async ready(input: AppGuiInfoInput & { cutoverId: string }) {
     const transition = this.transitions.get(input.appId);
     if (!transition || transition.intent.cutoverId !== input.cutoverId) {
       throw new Error("GUI_CUTOVER_READY_NOT_FOUND");
@@ -208,21 +184,7 @@ export class AppGuiCutoverCoordinator {
     if (transition.cohort.snapshot().frozenRevision === null) {
       await transition.frozen;
     }
-    transition.cohort.ready(member.logicalSurfaceId, canonicalDigest({
-      schema: "bottega.gui-ready-evidence/v1",
-      cutoverId: input.cutoverId,
-      frozenRevision: transition.cohort.snapshot().frozenRevision,
-      logicalSurfaceId: member.logicalSurfaceId,
-      stagedRuntimeSurfaceId: member.stagedRuntimeSurfaceId,
-      generationId: transition.intent.nextGenerationId,
-      stagingLeaseId: member.stagingLeaseId,
-      readyNonce: input.readyNonce,
-      participantEvidence: participantEvidence(transition.intent, "surface", {
-        logicalSurfaceId: member.logicalSurfaceId,
-        stagedRuntimeSurfaceId: member.stagedRuntimeSurfaceId,
-        stagingLeaseId: member.stagingLeaseId,
-      }),
-    }));
+    transition.cohort.ready(member.logicalSurfaceId);
     if (transition.cohort.hasReadyQuorum()) transition.resolveReadiness();
     return { outcome: await transition.outcome } as const;
   }
@@ -285,10 +247,11 @@ export class AppGuiCutoverCoordinator {
     return findings;
   }
 
+  /* 三个分支对应账本真正记得的三件事：Store 已经落在 next 上（只能前滚）、
+     intent 还没越过 active（中止安全）、以及两者互相矛盾（隔离）。 */
   private async converge(
-    initial: AppGuiGenerationIntent
+    intent: AppGuiGenerationIntent
   ): Promise<GuiCutoverRecoveryFinding | null> {
-    let intent = initial;
     /* 本进程正在推进它：恢复不能从活着的 cutover 手里把 intent 抢过去中止。 */
     if (this.transitions.has(intent.appId)) return null;
     const record = this.store.get(intent.appId);
@@ -299,46 +262,33 @@ export class AppGuiCutoverCoordinator {
       return recoveryFinding(intent, "discarded", "GUI_CUTOVER_RECOVERY_APP_MISSING");
     }
     const activeId = record.generationBinding.active?.generationId ?? null;
-    if (activeId === intent.nextGenerationId) {
-      /* CAS 已提交：只能向前收敛。任何前置校验都不该在这里把已提交的一代拦回去，
-         那只会让这个 App 永远卡在 admission 关闭、preference 未采纳的半途。 */
-      try {
-        if (phaseBeforeActive(intent.phase)) {
-          intent = await this.journal.advance(intent.cutoverId, intent.revision, "active");
-        }
+    try {
+      if (activeId === intent.nextGenerationId) {
+        /* CAS 已提交：只能向前收敛。任何前置校验都不该在这里把已提交的一代拦回去，
+           那只会让这个 App 永远卡在 admission 关闭、preference 未采纳的半途。 */
         await retryRecovery(() => this.ports.adoptPreferences(intent));
-        if (intent.phase !== "draining") {
-          intent = await this.journal.advance(intent.cutoverId, intent.revision, "draining");
-        }
         await retryRecovery(() => this.ports.syncProjection(intent.appId, false));
-        if (intent.expectedActiveGenerationId) {
+        const previousGenerationId = intent.expectedActiveGenerationId;
+        if (previousGenerationId) {
           await retryRecovery(() => this.ports.retireGeneration(
             intent.appId,
-            intent.expectedActiveGenerationId!
+            previousGenerationId
           ));
         }
-        await this.journal.advance(intent.cutoverId, intent.revision, "retired");
-      } finally {
-        this.ports.reopenAdmission(intent.appId);
+      } else if (intent.phase === "active") {
+        /* 越过 active 却不落在 next 上：账本与 Store 互相矛盾，既不能提交也不能
+           中止。隔离这一条并告警，其余 App 照常恢复。 */
+        await this.journal.discard(intent.cutoverId);
+        return recoveryFinding(intent, "quarantined", "GUI_CUTOVER_RECOVERY_AUTHORITY_MISMATCH");
       }
-      return null;
-    }
-    if (!phaseBeforeActive(intent.phase)) {
-      /* 越过 active 却不落在 next 上：账本与 Store 互相矛盾，既不能提交也不能
-         中止。隔离这一条并告警，其余 App 照常恢复。 */
+      /* active 之前：Store CAS 从未提交，中止就是安全的收敛方向。generation 已被
+         回收、previous GUI 丢失、participant plan 漂移都不改变这个结论——它们只是
+         中止的理由，不是崩溃的理由。 */
       await this.journal.discard(intent.cutoverId);
-      this.ports.reopenAdmission(intent.appId);
-      return recoveryFinding(intent, "quarantined", "GUI_CUTOVER_RECOVERY_AUTHORITY_MISMATCH");
-    }
-    /* active 之前：Store CAS 从未提交，中止就是安全的收敛方向。generation 已被
-       回收、previous GUI 丢失、participant plan 漂移都不改变这个结论——它们只是
-       中止的理由，不是崩溃的理由。 */
-    try {
-      await this.journal.advance(intent.cutoverId, intent.revision, "aborted");
+      return null;
     } finally {
       this.ports.reopenAdmission(intent.appId);
     }
-    return null;
   }
 
   private async cutover<T>(
@@ -357,12 +307,6 @@ export class AppGuiCutoverCoordinator {
       ? expectedActiveGeneration
       : null;
     const preferenceAdoption = await this.ports.previewPreferences(appId, generation.generationId);
-    const participantPlan = deriveParticipantPlan(
-      record,
-      previousGuiGeneration,
-      generation,
-      this.grants
-    );
     let intent = await this.journal.begin({
       appId,
       expectedActiveGenerationId,
@@ -370,10 +314,13 @@ export class AppGuiCutoverCoordinator {
         ? authorityRef(record, previousGuiGeneration, this.grants)
         : null,
       next: authorityRef(record, generation, this.grants),
-      participantPlan,
+      participantPlan: deriveParticipantPlan(
+        record,
+        previousGuiGeneration,
+        generation,
+        this.grants
+      ),
       preferenceAdoption,
-      readyDeadlineAt: Date.now() + READY_TIMEOUT_MS,
-      drainDeadlineAt: Date.now() + DRAIN_TIMEOUT_MS,
     });
     const transition = createTransition(
       intent,
@@ -382,96 +329,66 @@ export class AppGuiCutoverCoordinator {
     this.transitions.set(appId, transition);
     let admissionClosed = false;
     try {
-      intent = await this.journal.advance(intent.cutoverId, intent.revision, "staging");
-      transition.intent = intent;
-      const appEvidence = await this.ports.prepareAppParticipants(intent);
+      await this.ports.prepareAppParticipants(intent);
       if (transition.initial.size === 0) transition.resolveCollection();
       this.ports.emitTransition(appId);
       await bounded(
         transition.collection,
-        Math.min(intent.readyDeadlineAt, Date.now() + 5_000),
+        Date.now() + COLLECTION_TIMEOUT_MS,
         "GUI_CUTOVER_COHORT_COLLECTION_TIMEOUT"
       );
       transition.cohort.freeze();
-      intent = await this.journal.freezeCohort(
-        intent.cutoverId,
-        intent.revision,
-        Date.now() + READY_TIMEOUT_MS
-      );
-      transition.intent = intent;
       transition.resolveFrozen();
       if (transition.cohort.hasReadyQuorum()) transition.resolveReadiness();
+      /* 每一次等待都在开始的那一刻盖章自己的 deadline：继承上一段已经花掉的
+         预算，等于让 barrier 提前把额度用光。 */
       await bounded(
         transition.readiness,
-        intent.readyDeadlineAt,
+        Date.now() + READY_TIMEOUT_MS,
         "GUI_CUTOVER_READY_TIMEOUT"
       );
-      intent = await this.journal.participantsReady(
-        intent.cutoverId,
-        intent.revision,
-        appEvidence
-      );
-      transition.intent = intent;
-      /* deadline 在 barrier 真正开始的这一刻盖章：staging 与 ready 最多已吃掉
-         20 秒，继承 begin 时的预算等于把 drain 的额度提前花光。 */
-      intent = await this.journal.closeAdmission(
-        intent.cutoverId,
-        intent.revision,
-        Date.now() + DRAIN_TIMEOUT_MS
-      );
-      transition.intent = intent;
       admissionClosed = true;
       this.ports.closeAdmission(appId);
-      await this.ports.drain(appId, expectedActiveGenerationId, intent.drainDeadlineAt);
+      await this.ports.drain(
+        appId,
+        expectedActiveGenerationId,
+        Date.now() + DRAIN_TIMEOUT_MS
+      );
       await this.ports.validatePreferences(intent);
       const result = await operation();
       const activeId = this.store.get(appId)?.generationBinding.active?.generationId ?? null;
       if (activeId !== expectedNextGenerationId) {
         throw new Error("GUI_CUTOVER_ACTIVE_CAS_MISMATCH");
       }
-      intent = await this.journal.advance(intent.cutoverId, intent.revision, "active");
+      intent = await this.journal.markActive(intent.cutoverId);
       transition.intent = intent;
       await retryRecovery(() => this.ports.adoptPreferences(intent));
       transition.cohort.swap();
       transition.resolveOutcome("committed");
-      intent = await this.journal.advance(intent.cutoverId, intent.revision, "draining");
-      transition.intent = intent;
       await this.ports.syncProjection(appId, false);
       await this.drainPreviousSurfaces(
         appId,
         expectedActiveGenerationId,
-        intent.drainDeadlineAt
+        Date.now() + DRAIN_TIMEOUT_MS
       );
       if (expectedActiveGenerationId) {
         await this.ports.retireGeneration(appId, expectedActiveGenerationId);
       }
-      await this.journal.advance(intent.cutoverId, intent.revision, "retired");
+      await this.journal.discard(intent.cutoverId);
       return result;
     } catch (cause) {
       const activeId = this.store.get(appId)?.generationBinding.active?.generationId ?? null;
       if (activeId === expectedNextGenerationId) {
-        intent = this.journal.get(intent.cutoverId) ?? intent;
-        if (phaseBeforeActive(intent.phase)) {
-          intent = await this.journal.advance(intent.cutoverId, intent.revision, "active").catch(() =>
-            this.journal.get(intent.cutoverId) ?? intent
-          );
-        }
-        if (transition.cohort.snapshot().admission !== "closed") {
-          transition.cohort.swap();
-        }
+        /* CAS 已提交：结论必须先落地。swap() 在没有 ready quorum 时会抛，
+           而这个抛会一路走到 finally，把一次已经提交的切换重新写成 aborted。 */
         transition.resolveOutcome("committed");
-        if (intent.phase !== "draining") {
-          intent = await this.journal.advance(intent.cutoverId, intent.revision, "draining").catch(() =>
-            this.journal.get(intent.cutoverId) ?? intent
-          );
-        }
+        if (transition.cohort.hasReadyQuorum()) transition.cohort.swap();
         await this.ports.syncProjection(appId, false).catch(() => undefined);
         this.scheduleRecovery();
-      } else if (phaseBeforeActive(intent.phase)) {
+      } else if (intent.phase !== "active") {
         transition.resolveOutcome("aborted");
         await this.discardStaged(transition);
-        await this.journal.advance(intent.cutoverId, intent.revision, "aborted").catch(() => undefined);
-        this.ports.emitTransition(appId);
+        await this.journal.discard(intent.cutoverId).catch(() => undefined);
       } else {
         /* 第三态：intent 已越过 active，Store 却既不是 next 也不是预期的旧代
            （记录被删、被别的权威改写）。本地没有安全结论可下，交给 recover()
@@ -488,6 +405,9 @@ export class AppGuiCutoverCoordinator {
         if (admissionClosed) this.ports.reopenAdmission(appId);
       } finally {
         this.transitions.delete(appId);
+        /* 无条件发布：renderer 侧的候选帧只有靠这条事件才会重新取值。
+           只在中止分支发，就等于让「第三态」的失败永远停在旧候选帧上。 */
+        this.ports.emitTransition(appId);
       }
     }
   }
@@ -509,10 +429,18 @@ export class AppGuiCutoverCoordinator {
     this.recoveryTimer.unref();
   }
 
+  private async lateJoinTarget(transition: Transition, input: AppGuiInfoInput) {
+    const outcome = await transition.outcome;
+    if (outcome === "aborted" && !transition.intent.previous) {
+      throw new Error("GUI_CUTOVER_FIRST_ACTIVATION_ABORTED");
+    }
+    return liveTarget(input);
+  }
+
   private async discardStaged(transition: Transition) {
     await Promise.allSettled(
       [...transition.staged.values()].map((surface) =>
-        this.ports.discardSurface(surface.input)
+        this.ports.discardSurface(surface)
       )
     );
   }
@@ -537,9 +465,14 @@ export class AppGuiCutoverCoordinator {
   }
 }
 
+/** 没有在途 cutover 可等：调用方回到活的投影，由 AppStore 的 active 说了算。 */
+function liveTarget(input: AppGuiInfoInput) {
+  return { input, generationId: null, cutoverId: null } as const;
+}
+
 function createTransition(
   intent: AppGuiGenerationIntent,
-  surfaces: readonly Readonly<{ input: AppGuiInfoInput }>[]
+  surfaces: readonly LiveSurface[]
 ): Transition {
   const collection = deferred<void>();
   const frozen = deferred<void>();
@@ -549,8 +482,8 @@ function createTransition(
     previousRuntimeSurfaceId: string;
     previousLeaseId: string;
   }>>();
-  for (const { input } of surfaces) {
-    initial.set(input.appSurfaceLeaseId, {
+  for (const { input, logicalLeaseId } of surfaces) {
+    initial.set(logicalLeaseId, {
       previousRuntimeSurfaceId: input.surfaceId,
       previousLeaseId: input.appSurfaceLeaseId,
     });
@@ -648,16 +581,6 @@ function authorityRef(
       ? `studio:${record.id}:${record.studioGrantRevision ?? 0}`
       : null,
   };
-}
-
-function phaseBeforeActive(phase: AppGuiGenerationIntent["phase"]) {
-  return [
-    "prepared",
-    "staging",
-    "cohort-frozen",
-    "participants-ready",
-    "admission-closing",
-  ].includes(phase);
 }
 
 async function retryRecovery(operation: () => Promise<unknown>) {

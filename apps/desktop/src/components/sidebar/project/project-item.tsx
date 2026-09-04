@@ -40,7 +40,7 @@ import { useSidebarArchiveFeedback } from "../archive/archive-feedback";
 import { ProjectAppearancePicker } from "./appearance/project-appearance-picker";
 import { SidebarRowMark, SidebarRowTag, sidebarSubRowClass } from "../sidebar-row";
 import { useProjects } from "../../providers/projects-provider";
-import { useBases } from "../../providers/bases-provider";
+import { useBasesNavigation } from "../../providers/bases-provider";
 import { draftRoute, projectSettingsRoute } from "@/lib/draft-route";
 import { settingsStore } from "@/lib/settings-store";
 import { restoreArchiveTargets } from "@/lib/archive-client";
@@ -189,7 +189,7 @@ export function ProjectItem({
     revealProject,
     releaseMissingProject,
   } = useProjects();
-  const { pinned, projectBases } = useBases();
+  const { rootBases, projectBases } = useBasesNavigation();
   const history = useOptionalHistory();
   const { settings } = useSyncExternalStore(
     settingsStore.subscribe,
@@ -227,10 +227,10 @@ export function ProjectItem({
   const tooltip = missingRecord
     ? t("projects.missingRecord")
     : t("projects.missingFolder", { dir: project.dir });
-  const pinnedBaseCount = chats.filter((chat) =>
-    pinned.some((base) => base.ownerKey === `chat:${chat.id}`)
+  const rootBaseCount = chats.filter((chat) =>
+    rootBases.some((base) => base.ownerKey === `chat:${chat.id}`)
   ).length + Number(
-    pinned.some((base) => base.ownerKey === `project:${project.id}`)
+    rootBases.some((base) => base.ownerKey === `project:${project.id}`)
   );
   const projectBase = projectBases.find(
     (base) => base.ownerKey === `project:${project.id}`
@@ -257,7 +257,7 @@ export function ProjectItem({
 
   const lifecycle = useProjectLifecycle(project, {
     chats,
-    pinnedBaseCount,
+    rootBaseCount,
     hasProjectBase: Boolean(projectBase),
     groupMemory: memoryUsesProjectScope,
     onLeave: leaveProjectSurface,

@@ -34,6 +34,13 @@ import {
   type AppGrantCandidate,
   type AppGrantCommandTarget,
 } from "../../../../shared/apps-ipc";
+import {
+  APP_DATA_LEVELS,
+  APP_DATA_LEVEL_DETAIL_KEYS,
+  APP_DATA_LEVEL_KEYS,
+  APP_DATA_LEVEL_OUTCOME_KEYS,
+  type AppDataLevel,
+} from "../data-levels";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import {
   SettingsBadge,
@@ -46,29 +53,13 @@ import {
   setAppGrantState,
 } from "@/lib/apps-client";
 
-type DataLevel = "none" | "read" | "row-write";
 type AuthorizationMode = "inherited" | "custom";
 
-const DATA_LEVELS = ["none", "read", "row-write"] as const;
-/* 档位的措辞与后果句成对存在：一个枚举名不回答「按下去会发生什么」，
-   而这一屏正是用户唯一需要做安全判断的地方。 */
-const DATA_LEVEL_KEYS = {
-  none: "apps.authorization.dataNone",
-  read: "apps.authorization.dataRead",
-  "row-write": "apps.authorization.dataWrite",
-} as const;
-const DATA_LEVEL_DETAIL_KEYS = {
-  none: "apps.authorization.dataNoneDetail",
-  read: "apps.authorization.dataReadDetail",
-  "row-write": "apps.authorization.dataWriteDetail",
-} as const;
-const OUTCOME_KEYS = {
-  none: "apps.authorization.outcomeNone",
-  read: "apps.authorization.outcomeRead",
-  "row-write": "apps.authorization.outcomeWrite",
-} as const;
+/* 没有已开 App 时的空清单：默认参数每渲染一次就新造一个数组，而它曾落在
+   useMemo 的依赖里——恒等的空数组比一份「每次都新」的空数组诚实。 */
+const NO_OPEN_APPS: readonly string[] = [];
 
-export type AppAuthorizationDialogProps = Readonly<{
+type AppAuthorizationDialogProps = Readonly<{
   open: boolean;
   onOpenChange(open: boolean): void;
   target: AppGrantCommandTarget;
@@ -99,7 +90,7 @@ function AppAuthorizationDialogSession({
   target,
   mode,
   appId,
-  openAppIds = [],
+  openAppIds = NO_OPEN_APPS,
   onCommitted,
   onRemoved,
 }: AppAuthorizationDialogProps) {
@@ -119,7 +110,7 @@ function AppAuthorizationDialogSession({
   const [savedOperation, setSavedOperation] = useState<"committed" | "removed">("committed");
   const [authorizationMode, setAuthorizationMode] =
     useState<AuthorizationMode>("custom");
-  const [dataLevel, setDataLevel] = useState<DataLevel>("none");
+  const [dataLevel, setDataLevel] = useState<AppDataLevel>("none");
   const [delegated, setDelegated] = useState(false);
 
   useEffect(() => {
@@ -157,11 +148,6 @@ function AppAuthorizationDialogSession({
     [candidates, selectedId]
   );
 
-  const firstSelectableId = useMemo(
-    () => candidates.find((candidate) => !unavailable(candidate, openAppIds, stableTarget.kind))?.appId ?? "",
-    [candidates, openAppIds, stableTarget.kind]
-  );
-
   const unavailableReason = (candidate: AppGrantCandidate) => {
     if (candidate.state !== "ready") {
       return t("apps.authorization.lifecycleUnavailable", {
@@ -181,6 +167,10 @@ function AppAuthorizationDialogSession({
     }
     return "";
   };
+  /* 「能不能选」与「为什么不能选」是同一个判断的两次朗读：从前它们是两个
+     函数，条件逐字重写了一遍——两份都对，直到有一天只改了其中一份。 */
+  const firstSelectableId =
+    candidates.find((candidate) => !unavailableReason(candidate))?.appId ?? "";
 
   const close = () => {
     if (!busy) onOpenChange(false);
@@ -459,13 +449,13 @@ function AppAuthorizationDialogSession({
                         })}
                       </p>
                       <div className="mt-2" role="radiogroup" aria-label={t("apps.authorization.dataAccess")}>
-                        {DATA_LEVELS.map((level) => (
+                        {APP_DATA_LEVELS.map((level) => (
                           <SettingsChoiceRow
                             checked={dataLevel === level}
-                            description={t(DATA_LEVEL_DETAIL_KEYS[level])}
+                            description={t(APP_DATA_LEVEL_DETAIL_KEYS[level])}
                             disabled={busy}
                             key={level}
-                            label={t(DATA_LEVEL_KEYS[level])}
+                            label={t(APP_DATA_LEVEL_KEYS[level])}
                             labelMeta={
                               inheritedLevel === level ? (
                                 <SettingsBadge tone="muted">
@@ -520,7 +510,7 @@ function AppAuthorizationDialogSession({
                         )}
                       </p>
                       <p className="mt-1.5 text-xs leading-relaxed">
-                        {`${t(OUTCOME_KEYS[dataLevel], { name: selected.name })} ${t(
+                        {`${t(APP_DATA_LEVEL_OUTCOME_KEYS[dataLevel], { name: selected.name })} ${t(
                           delegated
                             ? dataLevel === "none"
                               ? "apps.authorization.outcomeAgentOnNoData"
@@ -637,7 +627,7 @@ function authorizationDraft(
   targetKind: AppGrantCommandTarget["kind"]
 ): Readonly<{
   mode: AuthorizationMode;
-  dataLevel: DataLevel;
+  dataLevel: AppDataLevel;
   delegated: boolean;
 }> {
   const localGrant =
@@ -657,22 +647,6 @@ function authorizationDraft(
 
 function hasDelegation(grant: AppCapabilityGrant | null) {
   return Boolean(grant?.agentDelegation.fileRead || grant?.agentDelegation.useData);
-}
-
-function unavailable(
-  candidate: AppGrantCandidate,
-  openAppIds: readonly string[],
-  targetKind: AppGrantCommandTarget["kind"]
-) {
-  return (
-    candidate.state !== "ready" ||
-    !candidate.generationId ||
-    openAppIds.includes(candidate.appId) ||
-    (targetKind === "project" &&
-      Boolean(
-        candidate.scopeRecord && isPositiveAppGrant(candidate.scopeRecord)
-      ))
-  );
 }
 
 function sourceLabel(

@@ -1,12 +1,12 @@
 /**
- * [INPUT]: Depends on Electron, shared chat contracts, ChatHomeService, outcome-aware ChatStore/AttachmentStore, ChatTitleJobs, renderer IPC/event adapters, pure guards, and deletion/removal controllers
- * [OUTPUT]: Provides the renderer/coordinator Chat facade, the startup attachment sweep, unknown-commit attachment compensation, adopted continuation, scoped reads/events, and convergent removal
+ * [INPUT]: Depends on Electron, shared chat contracts, typed service options, outcome-aware ChatStore/AttachmentStore, the focused fork service, ChatTitleJobs, renderer IPC/event adapters, pure guards, and deletion/removal controllers
+ * [OUTPUT]: Provides the renderer/coordinator Chat facade, delegated receipt-safe forks, attachment compensation, adopted continuation, scoped reads/events, global storage-failure publication, and convergent removal
  * [POS]: Main-process Chat service boundary; every new or adopted executable Chat is owned by a Chat Home creation saga
  */
 
 import { dirname, join } from "node:path";
 import { type BrowserWindow } from "electron";
-import type { AgentBackendId, AgentScope, SessionRef } from "../../../shared/agent-ipc";
+import type { AgentScope, SessionRef } from "../../../shared/agent-ipc";
 import { dataUrlByteSize } from "../../../shared/agent-ipc";
 import type { AppChatRole } from "../../../shared/chats-ipc";
 import {
@@ -26,7 +26,7 @@ import {
 import type { TrustedManualTurnSubmission as ManualTurnSubmission } from "../../../shared/sections-ipc";
 import { PROJECT_UNAVAILABLE } from "../../../shared/projects-ipc";
 import { AttachmentStore } from "./attachment-store";
-import { exportAttachmentFile, type AttachmentExportDependencies } from "./attachment-export";
+import { exportAttachmentFile } from "./attachment-export";
 import {
   ChatLedgerCorruptError,
   ChatMessageInvariantError,
@@ -42,12 +42,8 @@ import {
   isChatMutationOutcomeUnknown,
   type ChatMessageMutation,
 } from "./chat-store";
-import type { ChatHomeService } from "../chat-home/chat-home-service";
 import type { ConversationDeletionMode } from "../deletion/conversation-deletion-coordinator";
-import {
-  ChatDeletionDriver,
-  type ChatDeletionOptions,
-} from "./chat-deletion";
+import { ChatDeletionDriver } from "./chat-deletion";
 import { ChatRemovalController } from "./chat-removal";
 import { publishChatEvent, publishChatMutation } from "./chat-event-publisher";
 import { registerChatRendererIpc } from "./chat-renderer-ipc";
@@ -60,6 +56,9 @@ import {
   renameInputSchema,
   type ParsedAttachmentPayload,
 } from "./chat-input";
+import { ChatForkService } from "./chat-fork-service";
+import type { ChatStorageFailure } from "../../../shared/product-failure";
+import type { ChatsServiceOptions } from "./chats-service-options";
 import { createDormantAppChat, type DormantAppChatInput } from "./lifecycle/dormant-app-chat";
 import {
   beginAdoptedContinuation,
@@ -69,45 +68,7 @@ export { rejectLegacyRendererWrite } from "./chats-service-guards";
 
 const summaryOf = summaryOfChatLike;
 
-type ChatHomeCreationPort = Pick<ChatHomeService,
-  "identityForCreation" | "assertCanCreateChat" | "beginCreation" |
-  "markPrepared" | "commitCreation" | "rollbackCreation" |
-  "committedCreationEvidence" | "isolateCommittedCreation">;
-
-export type ChatsServiceOptions = ChatDeletionOptions & {
-  recoverTitleJobs?: boolean;
-  generateTitle: (firstMessage: string) => Promise<string>;
-  /** 附件文件仓根目录（决策 5：userData/chat-attachments） */
-  attachmentsRoot: string;
-  /** Agent 人工导出的独立私有根；运行时固定为 userData/exports。 */
-  exportsRoot?: string;
-  attachmentExportFs?: AttachmentExportDependencies;
-  withProject?: <T>(
-    projectId: string,
-    task: () => Promise<T>
-  ) => Promise<T>;
-  withConversationLifecycle: <T>(task: () => Promise<T>) => Promise<T>;
-  /** S2 fence 的删除面：Save 过渡中的 chat 是 saga 物证，拒删与 manual/archive 同源。 */
-  isConversationTransitioning?: (chatId: string) => Promise<boolean>;
-  cancelConversations: (conversationIds: Iterable<string>) => Promise<void>;
-  releaseConversations?: (conversationIds: Iterable<string>) => void;
-  /** 标题落盘后的 best-effort 同步（如 Base 名跟随）；失败只记日志，不阻塞改名。 */
-  onTitleChanged?: (record: Pick<ChatRecord, "id" | "incarnationId" | "title">) => Promise<void>;
-  resolveAppAgent?: (
-    appId: string,
-    projectId: string
-  ) => AgentBackendId | undefined;
-  assertAgentReady?: (agent: AgentBackendId) => Promise<void>;
-  chatHomes?: ChatHomeCreationPort;
-  isProjectArchived?: (projectId: string) => boolean;
-  isAppProject?: (projectId: string) => boolean;
-  onAppChatCreated?: (input: {
-    appId: string;
-    chatId: string;
-    appRole: AppChatRole;
-  }) => Promise<void>;
-  onAdoptedSessionBound?: (session: SessionRef, chatId: string) => void;
-};
+export type { ChatsServiceOptions } from "./chats-service-options";
 
 export class ChatsService {
   private readonly titleRecovery: Promise<void>;
@@ -116,6 +77,7 @@ export class ChatsService {
   private readonly removal: ChatRemovalController;
   private readonly exportsRoot: string;
   private readonly titles: ChatTitleJobs;
+  private readonly forks: ChatForkService;
   private window: BrowserWindow | null = null;
   private admission: "accepting" | "draining" | "closed" = "accepting";
 
@@ -147,6 +109,14 @@ export class ChatsService {
           console.error("[chats] durable title outbox recovery failed", cause);
         })
       : Promise.resolve();
+    this.forks = new ChatForkService({
+      store,
+      homes: options.chatHomes,
+      resolveProjectWorkspace: options.resolveProjectWorkspace,
+      withProject: options.withProject,
+      assertAdmission: () => this.assertAdmission(),
+      emit: (event) => this.emit(event),
+    });
   }
 
   register(window: BrowserWindow, rendererUrl: string) {
@@ -163,12 +133,27 @@ export class ChatsService {
         return summaryOf(record);
       },
       remove: (chatId) => this.remove(chatId),
+      forkPreflight: (input) => this.forkPreflight(input),
+      fork: (input) => this.forkChat(input),
+      commitManagedWorktree: (input) => this.commitManagedWorktree(input),
       readAttachment: (attachmentId) => this.attachments.read(attachmentId),
     });
 
     window.once("closed", () => {
       if (this.window === window) this.window = null;
     });
+  }
+
+  forkPreflight(input: Parameters<ChatForkService["preflight"]>[0]) {
+    return this.forks.preflight(input);
+  }
+
+  forkChat(input: Parameters<ChatForkService["fork"]>[0]) {
+    return this.forks.fork(input);
+  }
+
+  commitManagedWorktree(input: Parameters<ChatForkService["commit"]>[0]) {
+    return this.forks.commit(input);
   }
 
   async createUserChat(
@@ -426,11 +411,30 @@ export class ChatsService {
     });
   }
 
+  /* 维护闸门这类全局失败没有 chatId：先进 store 的失败清单（重新拉快照也
+     看得到），再广播给在线侧栏，两步一个入口，渲染层不必分先来后到。 */
+  publishStorageFailure(failure: ChatStorageFailure) {
+    this.store.pushStorageFailure(failure);
+    this.emit({ type: "storage-failure", failure });
+  }
+
   publishSessionInvalidated(record: Pick<ChatRecord, "id" | "incarnationId">) {
     this.emit({
       type: "session-invalidated",
       chatId: record.id,
       incarnationId: record.incarnationId,
+    });
+  }
+  publishRecoveryTruncated(
+    chatId: string,
+    currentMessageId: string,
+    inheritedThroughSeq: number
+  ) {
+    this.emit({
+      type: "recovery-truncated",
+      chatId,
+      currentMessageId,
+      inheritedThroughSeq,
     });
   }
   publishEffectiveArchive(
@@ -698,6 +702,10 @@ export class ChatsService {
     mode: ConversationDeletionMode = "local-only"
   ) {
     return this.removal.removeFromPurge(chatId, mode);
+  }
+
+  admitDeletion(chatIds: readonly string[]) {
+    return this.removal.admit(chatIds);
   }
 
   async removeByProject(projectId: string, projectLifecycle?: "held") { return this.removal.removeByProject(projectId, projectLifecycle); }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the signed App entry virtual-module identity, exact admitted gate slice, browser React/runtime primitives, and Gate-3-owned axe-core
- * [OUTPUT]: Provides deterministic gate-sliced trusted bootstrap source with token capture, fixed transport, closed critical registration, double-frame paint readiness, revision reconciliation, the sole React root, and an authenticated tokenless Workbench protocol with trusted TTI/DOM/long-task evidence
+ * [OUTPUT]: Provides deterministic gate-sliced trusted bootstrap source with token capture, fixed transport, shared in-flight query dedupe over a cursor-hashed cache, closed critical registration, double-frame paint readiness, metadata-checked revision reconciliation behind a subscription-only client surface, the sole React root, and an authenticated tokenless Workbench protocol with trusted TTI/DOM/long-task evidence
  * [POS]: gui-build/product-modules trusted runtime root; author source can consume its Provider but cannot import this module
  */
 
@@ -74,6 +74,7 @@ history.replaceState(null, "", location.pathname + location.search);
 const pendingActions = new Map();
 ${slice.data ? `const baseRevisionListeners = new Set();
 const baseQueryCache = new Map();
+const inFlightQueries = new Map();
 let baseQueryCacheBytes = 0;
 let lastBaseRevisionEvent = null;` : ""}
 const criticalStates = new Map();
@@ -135,6 +136,97 @@ addEventListener("message", (event) => {
   message.ok ? pending.resolve(message.value ?? { status: "accepted" }) : pending.reject(Object.assign(new Error(message.error || "Host action failed"), { code: "host_action_failed" }));
 });
 
+${sdkTransport ? `async function performRequest(operation, payload, signal) {
+  const routes = ${JSON.stringify(routes)};
+  const enabledOperations = new Set(${JSON.stringify(enabledOperations)});
+  let route = routes[operation];
+  let body = payload;
+  if (operation === "base.mutation") {
+    if (!enabledOperations.has(operation)) throw Object.assign(new Error("Unsupported SDK operation"), { code: "permission_denied" });
+    const methods = { insert: "POST", patch: "PATCH", delete: "DELETE" };
+    const method = methods[payload?.kind];
+    if (!method) throw Object.assign(new Error("Unsupported Base mutation"), { code: "invalid_envelope" });
+    route = [method, "/_api/base/rows"];
+    const { kind: _kind, ...envelope } = payload;
+    body = envelope;
+  } else if (operation === "attachment.read") {
+    if (!enabledOperations.has(operation)) throw Object.assign(new Error("Unsupported SDK operation"), { code: "permission_denied" });
+    if (!/^attachment_[a-f0-9]{24}$/.test(payload?.attachmentId ?? "")) throw Object.assign(new Error("Invalid attachment id"), { code: "invalid_envelope" });
+    route = ["GET", "/_api/base/attachments/" + payload.attachmentId];
+  }
+  if (!route) throw Object.assign(new Error("Unsupported SDK operation"), { code: "permission_denied" });
+  const response = await nativeFetch(route[1], {
+    method: route[0],
+    signal,
+    cache: "no-store",
+    headers: { authorization: "Bearer " + token, "content-type": "application/json", "x-bottega-surface-lease": leaseId },
+    ...(["POST", "PATCH", "DELETE"].includes(route[0]) ? { body: JSON.stringify(body ?? {}) } : {}),
+  });
+  if (operation === "attachment.read" && response.ok) return { value: new Uint8Array(await response.arrayBuffer()), bytes: 0 };
+  /* 页大小从响应文本量出来。把刚解析出的对象再 JSON.stringify 一遍只为数字节，
+     等于为每一页额外付一次完整序列化。 */
+  const text = await response.text();
+  let result;
+  try { result = JSON.parse(text); } catch { result = {}; }
+  if (!response.ok) {
+    const error = result.error ?? result;
+    throw Object.assign(new Error(error.message || "App SDK request failed"), { code: error.code || "unknown_outcome", outcome: error.outcome, currentRevision: error.currentRevision });
+  }
+  return { value: result, bytes: new TextEncoder().encode(text).byteLength };
+}` : ""}
+${slice.data ? `/* 游标是不透明的续页凭据，不该以明文长期躺在缓存键里。 */
+async function cursorIdentity(cursor) {
+  if (typeof cursor !== "string" || cursor === "") return "FIRST_PAGE";
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(cursor));
+  return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function queryCacheKey(payload) {
+  const page = payload?.page ?? {};
+  const { cursor: _cursor, ...rest } = page;
+  return JSON.stringify([payload?.shape ?? null, rest, await cursorIdentity(page.cursor)]);
+}
+function storeQueryPage(cacheKey, outcome) {
+  if (outcome.bytes > 700000) return;
+  const previous = baseQueryCache.get(cacheKey);
+  if (previous) baseQueryCacheBytes -= previous.bytes;
+  baseQueryCache.set(cacheKey, { value: outcome.value, bytes: outcome.bytes, storedAt: Date.now() });
+  baseQueryCacheBytes += outcome.bytes;
+  while (baseQueryCache.size > 32 || baseQueryCacheBytes > 8 * 1024 * 1024) {
+    const oldestKey = baseQueryCache.keys().next().value;
+    const oldest = baseQueryCache.get(oldestKey);
+    baseQueryCache.delete(oldestKey);
+    baseQueryCacheBytes -= oldest?.bytes ?? 0;
+  }
+}
+/* 两个 hook 挂载同一个查询，过去就是两次真请求。共享的那一次不带任何调用方的
+   signal：谁取消只取消谁的等待，剩下的订阅者照拿结果，缓存也照样填上。 */
+function sharedQuery(payload, signal) {
+  return queryCacheKey(payload).then((cacheKey) => {
+    const cached = baseQueryCache.get(cacheKey);
+    if (cached && Date.now() - cached.storedAt <= 5000) return untilSettledOrAborted(Promise.resolve(cached.value), signal);
+    let running = inFlightQueries.get(cacheKey);
+    if (!running) {
+      running = performRequest("base.query-v1", payload).then((outcome) => {
+        storeQueryPage(cacheKey, outcome);
+        return outcome.value;
+      });
+      running.catch(() => undefined);
+      inFlightQueries.set(cacheKey, running);
+      running.finally(() => { if (inFlightQueries.get(cacheKey) === running) inFlightQueries.delete(cacheKey); });
+    }
+    return untilSettledOrAborted(running, signal);
+  });
+}
+function untilSettledOrAborted(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}` : ""}
+
 const client = Object.freeze({
   environment,
   reportCritical(id, state) {
@@ -144,7 +236,9 @@ const client = Object.freeze({
   },
   releaseCritical(id) {
     if (criticalStates.delete(id)) criticalWatermark += 1;
-    for (const ids of previewCriticalIds.values()) ids.delete(id);
+    for (const [handle, ids] of previewCriticalIds) {
+      if (ids.delete(id) && ids.size === 0) previewCriticalIds.delete(handle);
+    }
     publishReady();
   },
   bindPreviewCritical(handle, id) {
@@ -164,70 +258,19 @@ const client = Object.freeze({
     criticalRegistrationClosed = true;
     publishReady();
   },
+  /* 客户端表面只暴露订阅：把 notifyBaseRevision 挂上去等于把「清空 SDK 缓存」
+     和「伪造修订事件」两把钥匙交给 App 代码，而 app-react 一次也没用过它们。 */
   ${slice.data ? `subscribeBaseRevision(listener) {
     baseRevisionListeners.add(listener);
     return () => baseRevisionListeners.delete(listener);
-  },
-  latestBaseRevision() { return lastBaseRevisionEvent; },
-  notifyBaseRevision,` : `subscribeBaseRevision() { return () => undefined; },
-  latestBaseRevision() { return null; },`}
+  },` : `subscribeBaseRevision() { return () => undefined; },`}
   async request(operation, payload, signal) {
     ${slice.workbench ? "if (workbench) return workbenchRequest(operation, payload, signal);" : ""}
     ${sdkTransport ? `
-    ${slice.data ? `const cacheKey = operation === "base.query-v1" ? JSON.stringify(payload ?? null) : null;
-    const cached = cacheKey ? baseQueryCache.get(cacheKey) : null;
-    if (cached && Date.now() - cached.storedAt <= 5000) {
-      if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
-      return cached.value;
-    }` : ""}
-    const routes = ${JSON.stringify(routes)};
-    const enabledOperations = new Set(${JSON.stringify(enabledOperations)});
-    let route = routes[operation];
-    let body = payload;
-    if (operation === "base.mutation") {
-      if (!enabledOperations.has(operation)) throw Object.assign(new Error("Unsupported SDK operation"), { code: "permission_denied" });
-      const methods = { insert: "POST", patch: "PATCH", delete: "DELETE" };
-      const method = methods[payload?.kind];
-      if (!method) throw Object.assign(new Error("Unsupported Base mutation"), { code: "invalid_envelope" });
-      route = [method, "/_api/base/rows"];
-      const { kind: _kind, ...envelope } = payload;
-      body = envelope;
-    } else if (operation === "attachment.read") {
-      if (!enabledOperations.has(operation)) throw Object.assign(new Error("Unsupported SDK operation"), { code: "permission_denied" });
-      if (!/^attachment_[a-f0-9]{24}$/.test(payload?.attachmentId ?? "")) throw Object.assign(new Error("Invalid attachment id"), { code: "invalid_envelope" });
-      route = ["GET", "/_api/base/attachments/" + payload.attachmentId];
-    }
-    if (!route) throw Object.assign(new Error("Unsupported SDK operation"), { code: "permission_denied" });
-    const response = await nativeFetch(route[1], {
-      method: route[0],
-      signal,
-      cache: "no-store",
-      headers: { authorization: "Bearer " + token, "content-type": "application/json", "x-bottega-surface-lease": leaseId },
-      ...(["POST", "PATCH", "DELETE"].includes(route[0]) ? { body: JSON.stringify(body ?? {}) } : {}),
-    });
-    if (operation === "attachment.read" && response.ok) return new Uint8Array(await response.arrayBuffer());
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = result.error ?? result;
-      throw Object.assign(new Error(error.message || "App SDK request failed"), { code: error.code || "unknown_outcome", outcome: error.outcome, currentRevision: error.currentRevision });
-    }
-    ${slice.data ? `if (cacheKey) {
-      const bytes = new TextEncoder().encode(JSON.stringify(result)).byteLength;
-      if (bytes <= 700000) {
-        const previous = baseQueryCache.get(cacheKey);
-        if (previous) baseQueryCacheBytes -= previous.bytes;
-        baseQueryCache.set(cacheKey, { value: result, bytes, storedAt: Date.now() });
-        baseQueryCacheBytes += bytes;
-        while (baseQueryCache.size > 32 || baseQueryCacheBytes > 8 * 1024 * 1024) {
-          const oldestKey = baseQueryCache.keys().next().value;
-          const oldest = baseQueryCache.get(oldestKey);
-          baseQueryCache.delete(oldestKey);
-          baseQueryCacheBytes -= oldest?.bytes ?? 0;
-        }
-      }
-    }
-    if (operation === "base.mutation") notifyBaseRevision(Object.freeze({ baseInstanceId: result.baseInstanceId, revision: result.revision, eventSeq: -1, reason: "mutation" }));` : ""}
-    return result;` : `throw Object.assign(new Error("Unsupported SDK operation"), { code: "permission_denied" });`}
+    ${slice.data ? `if (operation === "base.query-v1") return sharedQuery(payload, signal);` : ""}
+    const outcome = await performRequest(operation, payload, signal);
+    ${slice.data ? `if (operation === "base.mutation") notifyBaseRevision(Object.freeze({ baseInstanceId: outcome.value.baseInstanceId, revision: outcome.value.revision, eventSeq: -1, reason: "mutation" }));` : ""}
+    return outcome.value;` : `throw Object.assign(new Error("Unsupported SDK operation"), { code: "permission_denied" });`}
   },
   hostAction(action, timeoutMs = 5000) {
     ${slice.workbench ? 'if (workbench) return Promise.resolve(Object.freeze({ status: "declined", reason: "permission" }));' : ""}
@@ -497,16 +540,35 @@ async function captureWorkbenchDocument() {
   return { bytes, digest: "sha256:" + [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("") };
 }` : ""}
 
-${slice.data ? `let lastReconciledAt = 0;
-const reconcile = () => {
+${slice.data ? `/* 对账是「问一句有没有变」，不是「假设变了」。无条件 notifyBaseRevision 会清空
+   整个查询缓存、让每一个挂载中的 hook 重新取数——每 24 秒一次，外加每次聚焦与
+   可见性切换。先读一次 base.meta，修订确实前进了才广播。 */
+let lastReconciledAt = 0;
+let reconcileTimer = null;
+const reconcile = async () => {
   if (document.visibilityState !== "visible" || Date.now() - lastReconciledAt < 5000) return;
   lastReconciledAt = Date.now();
-  notifyBaseRevision(Object.freeze({ baseInstanceId: lastBaseRevisionEvent?.baseInstanceId ?? "", revision: lastBaseRevisionEvent?.revision ?? -1, eventSeq: lastBaseRevisionEvent?.eventSeq ?? -1, reason: "reconcile" }));
+  const meta = await client.request("base.meta", null).catch(() => null);
+  if (!meta || !Number.isSafeInteger(meta.revision)) return;
+  const previous = lastBaseRevisionEvent;
+  const observed = Object.freeze({ baseInstanceId: meta.baseInstanceId ?? "", revision: meta.revision, eventSeq: previous?.eventSeq ?? -1, reason: "reconcile" });
+  /* 第一次对账只是取基线：App 本来就是在这个修订上加载的，广播一次等于白清缓存。 */
+  if (!previous) { lastBaseRevisionEvent = observed; return; }
+  if (previous.revision === observed.revision && previous.baseInstanceId === observed.baseInstanceId) return;
+  notifyBaseRevision(observed);
 };
-const scheduleReconcile = () => setTimeout(() => { reconcile(); scheduleReconcile(); }, 20000 + Math.floor(Math.random() * 8000));
+/* 隐藏时链条停摆：定时器只在可见状态下续期，重新可见时由事件重新点火。 */
+const scheduleReconcile = () => {
+  if (reconcileTimer !== null || document.visibilityState !== "visible") return;
+  reconcileTimer = setTimeout(() => {
+    reconcileTimer = null;
+    void reconcile().finally(scheduleReconcile);
+  }, 20000 + Math.floor(Math.random() * 8000));
+};
+const onReconcileTrigger = () => { void reconcile().finally(scheduleReconcile); };
 scheduleReconcile();
-addEventListener("focus", reconcile);
-document.addEventListener("visibilitychange", reconcile);
+addEventListener("focus", onReconcileTrigger);
+document.addEventListener("visibilitychange", onReconcileTrigger);
 ` : ""}
 
 const root = document.getElementById("root");

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on renderer IPC, Electron shell reveal, strict Project command schemas, and the ProjectsService authority port
- * [OUTPUT]: Registers Project list/mutation/branch/reveal renderer commands for the main window; reveal accepts only Project ID
+ * [INPUT]: Depends on renderer IPC, Electron shell reveal, strict Project/Chat identity command schemas, and the ProjectsService authority port
+ * [OUTPUT]: Registers Project list/mutation/branch/reveal renderer commands for the main window; branch reads may target one main-validated conversation while mutations remain Project-scoped
  * [POS]: Renderer command adapter for projects-service.ts; store serialization, lifecycle fences, and cleanup remain owned by ProjectsService
  */
 
@@ -14,11 +14,13 @@ import {
 } from "../../../shared/projects-ipc";
 import { rendererIpc } from "../ipc-registrar";
 import { projectAppearanceSchema } from "./store/project-store";
+import { CHAT_ID_PATTERN } from "../chats/chat-schema";
 import { projectSnapshotForRenderer } from "./service/renderer-policy";
 import type { ProjectsService } from "./projects-service";
 
 const appIdSchema = z.string().regex(/^[a-z0-9]{10}$/);
 const projectIdSchema = z.string().regex(PROJECT_ID_PATTERN);
+const chatIdSchema = z.string().regex(CHAT_ID_PATTERN);
 const branchTargetSchema = z.object({
   name: z.string().min(1).max(1024),
   kind: z.enum(["local", "remote"]),
@@ -90,8 +92,13 @@ export function registerProjectsServiceIpc(
         return sortMode;
       })
     )
-    .handle(PROJECTS_CHANNEL.listBranches, (rawProjectId) =>
-      service.listBranches(projectIdSchema.parse(rawProjectId))
+    .handle(PROJECTS_CHANNEL.listBranches, (rawProjectId, rawConversationId) =>
+      service.listBranches(
+        projectIdSchema.parse(rawProjectId),
+        rawConversationId === undefined
+          ? undefined
+          : chatIdSchema.parse(rawConversationId)
+      )
     )
     .handle(PROJECTS_CHANNEL.checkoutBranch, (rawProjectId, rawTarget) =>
       service.checkoutBranch(

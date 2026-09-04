@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, Project/Chat queries, strict turn options, four history adapters, the dedicated import worker, Project/Memory coordinators, index/snapshot stores, and shared contracts
- * [OUTPUT]: Provides detection/refresh, stable identity, a separately scheduled off-main backpressured SQLite sync that skips adopted sources, forgets dangling routes, and marks vanished/returned sources missing/match within the scanned Project scope, canonical generation routing, registration-time snapshot republication, adoption, transcript export/search reads, Memory, and drain APIs
+ * [OUTPUT]: Provides detection/refresh with a warning that reflects only the latest sync attempt (a successful refresh or a fresh background run retires the previous complaint), Project-ownership stamping at the scan seam (adapters report no projectId), stable identity, a separately scheduled off-main backpressured SQLite sync that skips adopted sources, forgets dangling routes, and marks vanished/returned sources missing/match within the scanned Project scope, canonical generation routing, registration-time snapshot republication, adoption, transcript export/search reads, Memory, and drain APIs
  * [POS]: Canonical federated history and renderer-safe authority boundary; production SQLite ingestion parses outside main
  */
 
@@ -9,8 +9,7 @@ import type { BrowserWindow } from "electron";
 import { z } from "zod";
 import {
   HISTORY_IMPORT_CHANNEL,
-  type HistorySourceKind,
-  type ForeignHistoryBlock,
+  type ForeignHistoryMessage,
   type HistoryImportEvent,
   type HistoryImportSnapshot,
   type ForeignHistorySummary,
@@ -88,9 +87,9 @@ export type HistoryImportServiceOptions = {
     entry: AdapterEntry;
     summary: ForeignHistorySummary;
     blocks:
-      | readonly ForeignHistoryBlock[]
+      | readonly ForeignHistoryMessage[]
       | AsyncIterable<
-          readonly ForeignHistoryBlock[] |
+          readonly ForeignHistoryMessage[] |
           import("../chats/sqlite/database-protocol").PreparedHistoryImportBatch
         >;
     incompleteTail: boolean;
@@ -186,6 +185,11 @@ export class HistoryImportService {
      continuation.finalize 撞上代际围栏，saga 被隔离、Home 变孤儿。启动
      顺序是组合根的事，本服务只提供这一枚可被安排的入口。 */
   startBackgroundSync() {
+    /* 一次新的同步开跑，上一次的抱怨就作废：告警是「最近一次同步说了什么」，
+       不是一块永久墓碑。清在开头而不是结尾，是因为 detectAll 会把逐 Project
+       的失败自己吞成 setWarning——那些话说在这一行之后，因此照样留得住；
+       清在结尾反而会把本轮刚记下的真问题一起擦掉。 */
+    this.clearWarning();
     setImmediate(() => void this.detectAll()
       .then(() => this.syncStoredHistories())
       .catch((cause) => this.setWarning(cause)));
@@ -388,6 +392,9 @@ export class HistoryImportService {
         projectId, canonicalRoot: project.dir, membershipRevision: project.membershipRevision,
         counts: scans.map(sourceCount), sourceRevisions: sourceRevisions(scans), entries: scans.flatMap((scan) => scan.entries),
       });
+      /* 这一轮走完了：启动重放留下的那句抱怨到此为止。失败仍会当场重新
+         说话（refreshProject 直接抛给调用方），所以这里不会吞掉任何真相。 */
+      this.clearWarning();
       const state = this.projectState(this.index.project(projectId)!);
       this.publish({ type: "project", project: state });
       return state;
@@ -479,10 +486,20 @@ export class HistoryImportService {
   }
 
   private async scan(root: string, depth: ScanDepth) { return Promise.all(this.adapters.map((adapter) => adapter.scanProject(root, depth))); }
+  /* 归属在这里定案，也在这里落到条目上。适配器交出的 `projectId` 恒为空串
+     ——它读的是文件，不知道 Project 是什么；此处刚刚按 cwd 判过归属，正是
+     那个知道答案的人。少了这一笔盖章，`refreshProject` 会拿着 projectId=""
+     去 `syncHistory`，存储侧照单全收，把已有只读 Chat 的 local_project_id
+     整个清空——24 条导入历史当场掉出 Project，落进裸 Chats 列表。 */
   private async scanOwned(project: ProjectRef, depth: ScanDepth) {
     const scans = await this.scan(project.dir, depth);
     const roots = this.options.listProjects().filter((candidate) => candidate.workspaceBinding.kind === "external" && !candidate.archivedAt);
-    return scans.map((scan) => ({ ...scan, entries: scan.entries.filter((entry) => deepestOwner(entry.cwd, roots)?.id === project.id) }));
+    return scans.map((scan) => ({
+      ...scan,
+      entries: scan.entries
+        .filter((entry) => deepestOwner(entry.cwd, roots)?.id === project.id)
+        .map((entry) => ({ ...entry, projectId: project.id })),
+    }));
   }
   private stabilizeIncarnations(scans: AdapterScan[], previous: AdapterEntry[]) {
     const before = new Map(previous.map((entry) => [entry.sourcePath, entry]));
@@ -611,6 +628,12 @@ export class HistoryImportService {
     window.webContents.send(HISTORY_IMPORT_CHANNEL.event, event ?? { type: "snapshot", snapshot: this.snapshot() });
   }
   private setWarning(cause: unknown) { this.warning = cause instanceof Error ? cause.message : String(cause); this.publish(); }
+  /* 本来就没话说时不必广播：一次成功的刷新不该只为「无事发生」推一帧快照。 */
+  private clearWarning() {
+    if (this.warning === null) return;
+    this.warning = null;
+    this.publish();
+  }
 }
 
 function parseCommit(value: unknown) { return z.object({ token: z.string().min(1), importHistory: z.boolean(), previewMemory: z.boolean() }).strict().parse(value); }

@@ -6,7 +6,7 @@
 
 import { createHash } from "node:crypto";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
-import { baseNavigationOf, ownerFromKey } from "../../../shared/bases-ipc";
+import { ownerFromKey } from "../../../shared/bases-ipc";
 import {
   appearsInSearchBase,
   searchDestination,
@@ -156,7 +156,7 @@ async function* sourceEvents(
                   left.id.localeCompare(right.id)
               )[0];
       if (!appearsInSearchBase(
-        baseNavigationOf(snapshot.meta),
+        snapshot.meta.navigation,
         owner.kind !== "chat" || Boolean(member && searchDestination(member))
       )) continue;
       yield* scanBase(

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the constants and types of zod, bases-ipc, chart-payload of CHART_TYPES, base-aggregations, base-view-config and attachment schema of bases/gallery-attachments
- * [OUTPUT]: Provides Base owner/columns/rows/filters/six-category row-backed views/meta, stable XLSX issue report, all IPC input differential mutation result checker, and uniqueIds/Gallery column references shared across files
+ * [OUTPUT]: Provides the strict Base owner/columns/rows/filters/six-category row-backed view/meta schemas, stable XLSX issue reports, every IPC input and the discriminated mutation-result checker, plus uniqueIds/Gallery column refinements shared across files
  * [POS]: The shared Base Scanner is the single source of truth; With the agent-IPC/agent-schema and the same configuration as the base-ipc, only the type, constant and pure functions are left, the calibrator always stays here, and the renderer is not required to be the zod for IPC calibration
  */
 
@@ -31,7 +31,6 @@ import {
   BASE_FILTER_DEPTH_LIMIT,
   BASE_FILTER_NODE_LIMIT,
   BASE_INSERT_LIMIT,
-  BASE_MUTATION_OPERATIONS,
   BASE_NAME_LIMIT,
   BASE_OWNER_KEY_PATTERN,
   BASE_ROW_LIMIT,
@@ -410,12 +409,11 @@ export const baseViewSchema: z.ZodType<BaseView> = z
   })
   .strict();
 
-const strictBaseMetaSchema = z
+export const baseMetaSchema: z.ZodType<BaseMeta> = z
   .object({
     owner: baseOwnerSchema,
     ownerInstanceId: entityIdSchema,
     name: baseNameSchema,
-    pinned: z.boolean(),
     navigation: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("internal-app"), appId: z.string().min(1).max(128) }).strict(),
       z.object({ kind: z.literal("conversation-contained"), chatId: entityIdSchema }).strict(),
@@ -423,7 +421,7 @@ const strictBaseMetaSchema = z
       z
         .object({
           kind: z.literal("root-user-managed"),
-          source: z.enum(["legacy-pin", "retained-app-data"]),
+          source: z.literal("retained-app-data"),
           activatedAt: z.number().int().nonnegative(),
         })
         .strict(),
@@ -433,8 +431,8 @@ const strictBaseMetaSchema = z
     activeViewId: entityIdSchema,
     revision: z.number().int().nonnegative(),
     rowsGeneration: z.number().int().nonnegative(),
-    galleryGeneration: z.number().int().nonnegative().default(0),
-    historyGeneration: z.number().int().nonnegative().default(0),
+    galleryGeneration: z.number().int().nonnegative(),
+    historyGeneration: z.number().int().nonnegative(),
   })
   .strict()
   .superRefine((meta, context) => {
@@ -458,24 +456,7 @@ const strictBaseMetaSchema = z
         message: "activeViewId 必须指向现有视图",
       });
     }
-  });
-
-export const baseMetaSchema: z.ZodType<BaseMeta> = z.preprocess((raw) => {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
-  const meta = raw as Record<string, unknown>;
-  if ("navigation" in meta) return raw;
-  const owner = meta.owner as { kind?: unknown; chatId?: unknown; projectId?: unknown } | undefined;
-  const navigation = meta.pinned
-    ? {
-        kind: "root-user-managed" as const,
-        source: "legacy-pin" as const,
-        activatedAt: 0,
-      }
-    : owner?.kind === "project" && typeof owner.projectId === "string"
-      ? { kind: "project-contained" as const, projectId: owner.projectId }
-      : { kind: "conversation-contained" as const, chatId: String(owner?.chatId ?? "unknown") };
-  return { ...meta, navigation };
-}, strictBaseMetaSchema) as z.ZodType<BaseMeta>;
+  }) as z.ZodType<BaseMeta>;
 
 /** 供本文件与 base-snapshot 的 zod refine 共用；同一约束不写第二遍。 */
 export function uniqueIds(
@@ -546,16 +527,8 @@ export const baseRemoveManagedInputSchema = z
   })
   .strict();
 
-const authorityLeaseIdSchema = z.string().uuid();
-
-export const baseAuthorizeMutationInputSchema = z
-  .object({
-    ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
-    operation: z.enum(BASE_MUTATION_OPERATIONS),
-    expectedRevision: z.number().int().nonnegative().nullable(),
-    surfaceLeaseId: z.string().uuid().optional(),
-  })
-  .strict();
+/* App window surface 的 lease；主窗口不带此字段，缺席即「非 App surface」。 */
+const surfaceLeaseIdSchema = z.string().uuid().optional();
 
 export const baseUpdateMetaInputSchema = z
   .object({
@@ -564,13 +537,12 @@ export const baseUpdateMetaInputSchema = z
     patch: z
       .object({
         name: baseNameSchema.optional(),
-        // pinned 不在 patch 面：pin 已冻结，wire 上不留任何新写入口
         columns: z.array(baseColumnSchema).max(BASE_COLUMN_LIMIT).optional(),
         views: z.array(baseViewSchema).min(1).max(BASE_VIEW_LIMIT).optional(),
         activeViewId: entityIdSchema.optional(),
       })
       .strict(),
-    authorityLeaseId: authorityLeaseIdSchema,
+    surfaceLeaseId: surfaceLeaseIdSchema,
   })
   .strict();
 
@@ -578,7 +550,7 @@ export const baseInsertRowsInputSchema = z
   .object({
     ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
     rows: z.array(baseRowSchema).min(1).max(BASE_INSERT_LIMIT),
-    authorityLeaseId: authorityLeaseIdSchema,
+    surfaceLeaseId: surfaceLeaseIdSchema,
   })
   .strict();
 
@@ -587,7 +559,7 @@ export const basePatchRowInputSchema = z
     ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
     rowId: entityIdSchema,
     patch: z.record(entityIdSchema, baseCellValueSchema.nullable()),
-    authorityLeaseId: authorityLeaseIdSchema,
+    surfaceLeaseId: surfaceLeaseIdSchema,
   })
   .strict();
 
@@ -596,7 +568,7 @@ export const baseDeleteRowsInputSchema = z
     ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
     rowIds: z.array(entityIdSchema).min(1).max(BASE_DELETE_LIMIT),
     expectedRevision: z.number().int().nonnegative(),
-    authorityLeaseId: authorityLeaseIdSchema,
+    surfaceLeaseId: surfaceLeaseIdSchema,
   })
   .strict();
 
@@ -607,7 +579,7 @@ export const baseImportJsonInputSchema = z
   .object({
     ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
     expectedRevision: z.number().int().nonnegative(),
-    authorityLeaseId: authorityLeaseIdSchema,
+    surfaceLeaseId: surfaceLeaseIdSchema,
   })
   .strict();
 export const baseImportXlsxInputSchema = baseImportJsonInputSchema;
@@ -647,7 +619,6 @@ const baseMutationSnapshotSchema = z
   .object({
     meta: baseMetaSchema,
     rows: z.array(baseRowSchema).max(BASE_ROW_LIMIT),
-    warning: z.string().optional(),
   })
   .strict();
 

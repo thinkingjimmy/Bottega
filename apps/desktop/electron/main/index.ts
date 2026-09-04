@@ -40,7 +40,7 @@ import { SettingsStore } from "./settings-store";
 import { resolveAppLocale } from "../../shared/i18n/locale";
 import { resolvePlatformCapabilities } from "../../shared/platform-capabilities";
 import { BackendSetupService } from "./setup/backend-setup";
-import { runStateResetsThroughV6 } from "./state-reset";
+import { runStateResetsThroughV5 } from "./state-reset";
 import { ProjectStore } from "./projects/store/project-store";
 import { ProjectsService } from "./projects/projects-service";
 import { composeProjectsService } from "./projects/composition";
@@ -51,7 +51,7 @@ import { BasesService } from "./bases/bases-service";
 import { LifecycleIntentStore } from "./lifecycle/intent-store";
 import { configureAppMode } from "./apps/app-mode";
 import { AgentPluginInventory } from "./extensions/agent-plugin-inventory";
-import { sweepAppStaging } from "./apps/staging-sweep";
+import { sweepAppStaging } from "./apps/maintenance/staging-sweep";
 import { createBuiltinToolsets } from "./builtin-toolsets";
 import { BuiltinMcpBridge } from "./tools/bridge";
 import type { AgentTurnCustodyJournal } from "./backends/agent-turn-custody-journal";
@@ -115,11 +115,7 @@ import {
 import { ProjectToolsRuntime } from "./startup/project-tools-runtime";
 import { createBaseFileDialogs } from "./startup/base-file-dialogs";
 import { startChatStoreMaintenance, stopChatStoreMaintenance } from "./startup/chat-store-maintenance";
-import {
-  classifyLegacyBaseNavigation,
-  InformationArchitectureStartup,
-  runRequiredProjectPlacementGate,
-} from "./startup/information-architecture-startup";
+import { runRequiredProjectPlacementGate } from "./startup/project-placement-gate";
 import { presentAppAuthorityRepair } from "./startup/app-authority-repair";
 import { configureAppBaseRuntime } from "./startup/app-base-runtime";
 /* main 无首包预算，故一次性投喂全部五语言，`translate()` 保持同步。
@@ -191,7 +187,7 @@ if (!hasSingleInstanceLock) {
       } catch (cause) {
         console.warn("[acp-trace] startup cleanup unavailable", cause);
       }
-      await runStateResetsThroughV6(userData);
+      await runStateResetsThroughV5(userData);
       const titleWorkspace = join(userData, "codex-workspace");
       const agentInputStagingRoot = join(userData, "agent-input-staging");
       await mkdir(titleWorkspace, { recursive: true });
@@ -220,6 +216,7 @@ if (!hasSingleInstanceLock) {
         apps: () => appsService,
         chats: () => chatsService,
         chatStore: () => chatStore,
+        chatHomes: () => chatHomeService,
         bases: () => basesService,
         memory: () => memoryService,
         deletions: () => deletionCoordinator,
@@ -258,9 +255,6 @@ if (!hasSingleInstanceLock) {
       });
       if ((await appsService.initialize()) === "degraded-corrupt")
         return presentAppAuthorityRepair(appsService.store, currentLocale());
-      const informationArchitectureMigration =
-        await InformationArchitectureStartup.create(userData);
-      await informationArchitectureMigration.appFacts(appsService.store.list());
       /* 上一条命的 backend 必须先收敛；否则空的内存引用会误导
          App/Extension 回收仍被活进程使用的 generation。 */
       const recoveredCustody = await recoverAgentTurnCustody({
@@ -287,7 +281,6 @@ if (!hasSingleInstanceLock) {
         skillsCatalog?.invalidate();
       });
       await projectStore.initialize();
-      await informationArchitectureMigration.projects(projectStore.list());
       await projectToolsRuntime.initialize(settingsStore);
       await projectsService.initialize();
       await chatStore.initialize();
@@ -340,11 +333,8 @@ if (!hasSingleInstanceLock) {
             .listBaseIdentities()
             .map((identity) => [identity.chatId, identity])
         ),
-        new Set(projectStore.list().map((project) => project.id)),
-        (meta) => classifyLegacyBaseNavigation(meta, (id) => projectStore!.get(id))
+        new Set(projectStore.list().map((project) => project.id))
       );
-      await informationArchitectureMigration.bases(baseStore.listAll());
-      await informationArchitectureMigration.chats(chatStore.list());
       globalSearch = new GlobalSearchService(
         chatStore,
         baseStore,
@@ -603,12 +593,6 @@ if (!hasSingleInstanceLock) {
           projectsService!.publishProjectUpserts(projectIds),
       });
       reportLifecycleReconciliation(lifecycleReport);
-      await informationArchitectureMigration.complete({
-        apps: appsService.store.list(),
-        projects: projectStore.list(),
-        bases: baseStore.listAll(),
-        chats: chatStore.list(),
-      });
       await appMode.saveAsApp.recoverPendingSkills();
       // probe/share/preset staging 的内存映射不跨进程：pending intent 之外的
       // 一律孤儿（pending 配置副本含 secret），失败只警告不阻断启动
@@ -700,7 +684,7 @@ if (!hasSingleInstanceLock) {
         update: updateService,
       });
       openMainWindow();
-      startChatStoreMaintenance(chatStore);
+      startChatStoreMaintenance(chatStore, (failure) => chatsService?.publishStorageFailure(failure));
       updateService.start();
       if (platformSupport.capabilities.memory) {
         continueMemoryRebuildRecovery(memoryService);

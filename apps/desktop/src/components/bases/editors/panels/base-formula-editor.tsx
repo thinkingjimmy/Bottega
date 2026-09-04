@@ -163,7 +163,7 @@ const FORMULA_ERROR_KEYS = {
   "#LIMIT!": "bases.formula.error.limit",
 } as const;
 
-export function formulaErrorKey(code: BaseFormulaErrorCode) {
+function formulaErrorKey(code: BaseFormulaErrorCode) {
   return FORMULA_ERROR_KEYS[code];
 }
 

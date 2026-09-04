@@ -8,6 +8,8 @@ export const chatStorageEn = {
   technicalDetails: "Technical details",
   copyDetails: "Copy technical details",
   copiedDetails: "Technical details copied",
+  reportIssue: "Report on GitHub",
+  warningResolution: "Restart Bottega. If this keeps appearing, report it on GitHub so we can look into it.",
   code: {
     "file-quarantined": {
       title: "A chat is temporarily unavailable",
@@ -23,6 +25,11 @@ export const chatStorageEn = {
       title: "Bottega found chat copies it cannot safely restore",
       explanation: "Bottega could not determine which copy is correct, so it did not overwrite or remove any of them.",
       resolution: "Keep the files, then copy the technical details for support before making any manual changes.",
+    },
+    "self-check-failed": {
+      title: "The chat self-check did not pass",
+      explanation: "Bottega periodically checks its chat database for consistency. This check reported a problem, but your chats stay readable and Bottega did not change any data.",
+      resolution: "Restart Bottega to run the check again. If this keeps appearing, report it on GitHub; the technical details are attached automatically.",
     },
   },
 };

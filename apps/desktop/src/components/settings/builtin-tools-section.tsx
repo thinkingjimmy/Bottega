@@ -44,7 +44,6 @@ export const BUILTIN_TOOL_COPY = {
   spawn_subagent: { domain: "Subagents" },
   convert_chat_to_project: { domain: "Projects" },
   base_describe: { domain: "Bases" },
-  base_query: { domain: "Bases" },
   read_base: { domain: "Bases" },
   base_export_csv: { domain: "Bases" },
   base_set_view: { domain: "Bases" },
@@ -87,7 +86,7 @@ const DOMAIN_KEYS: Record<BuiltinToolCopy["domain"], string> = {
 };
 
 /* 分域只是清单的一种读法，与设置状态无关：索引在模块求值时建一次，
-   渲染期就没有「每帧把 27 项过八遍」这回事，也不必在 JSX 里嵌 filter。 */
+   渲染期就没有「每帧把 26 项过八遍」这回事，也不必在 JSX 里嵌 filter。 */
 const DOMAINS = DOMAIN_ORDER.map((domain) => ({
   domain,
   tools: Object.entries(BUILTIN_TOOL_COPY).filter(
@@ -186,7 +185,7 @@ export function BuiltinToolsSection({
       alert={port.error || undefined}
     >
       {/* ── 八域从平铺改成页签 ──────────────────────────────────────
-          27 项 8 组平铺约 2.4 屏，是这一页唯一「读到底才算读完」的长尾：
+          26 项 8 组平铺约 2.4 屏，是这一页唯一「读到底才算读完」的长尾：
           它把同页另外那段挤到折叠线以下，而它自己也没因此好读——没人
           真的从 Sections 一路滚到 Apps，人只想看自己此刻关心的那一域。
 

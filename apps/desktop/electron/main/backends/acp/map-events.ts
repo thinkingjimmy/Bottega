@@ -53,6 +53,7 @@ export type AcpEventState = {
   turnFinalized: boolean;
   /** Claude 的限流快照走 usage_update 带外到达，失败分类时才用得上 */
   rateLimit?: unknown;
+  /** 由 session-failure 识别 Codex 的 typed skills 预算 notice 后置位；文本块不再特判 */
   skillDescriptionsTruncated?: true;
 };
 
@@ -267,13 +268,6 @@ export function mapAcpUpdate(
   if (update.sessionUpdate === "agent_message_chunk") {
     const text = textContent(update.content);
     if (!text) return [];
-    /* ACP gives this warning the same kind as genuine assistant prose. The
-       prefix is therefore deliberately brittle: an upstream copy change is
-       allowed to leak noise, while a broad match must never swallow prose. */
-    if (text.startsWith("Warning: Skill descriptions were shortened to fit the ")) {
-      state.skillDescriptionsTruncated = true;
-      return [];
-    }
     const thought = flushAcpThought(state);
     const changed =
       Boolean(state.currentMessageId && update.messageId) &&

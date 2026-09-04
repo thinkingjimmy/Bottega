@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Base value/view/attachment contracts and the canonical BaseCellContext evaluation kernel
- * [OUTPUT]: Provides Base owner/IPC DTOs, limits, mutation results, events, and context-required filter/project/group functions with language-neutral group descriptors
+ * [OUTPUT]: Provides Base owner/IPC DTOs with required navigation, limits, mutation results, change/removed/moved/warning events, and context-required filter/project/group functions with language-neutral group descriptors
  * [POS]: The shared Base wire and projection authority used by main, renderer, and the builtin-tool server; projection never manufactures its own partial evaluation context
  */
 
@@ -19,8 +19,6 @@ import type {
   ListGalleryEntriesResult,
   PutAttachmentRequest,
   PutAttachmentResult,
-  ReadAttachmentInput,
-  ReadAttachmentResult,
   ReadAttachmentThumbnailInput,
   ReadAttachmentThumbnailResult,
 } from "./bases/gallery-attachments";
@@ -164,52 +162,32 @@ export type BaseMeta = {
   owner: BaseOwner;
   ownerInstanceId: string;
   name: string;
-  pinned: boolean;
-  /** Optional only on legacy/browser wire inputs; canonical main snapshots always materialize it. */
-  navigation?: BaseNavigation;
+  /** 根可见性的唯一真相；不存在「缺省再推导」的第二条路。 */
+  navigation: BaseNavigation;
   columns: BaseColumn[];
   views: BaseView[];
   activeViewId: string;
   revision: number;
   rowsGeneration: number;
-  /** v0 meta 读取时缺失；BaseStore 首次 commit 会物化。 */
-  galleryGeneration?: number;
-  /** v0 meta 读取时缺失；BaseStore 首次 commit 会物化。 */
-  historyGeneration?: number;
+  galleryGeneration: number;
+  historyGeneration: number;
 };
 
 export type BaseSnapshot = {
   meta: BaseMeta;
   rows: BaseRow[];
-  warning?: string;
 };
 
-export type BasePinnedSummary = {
+export type BaseNavigationSummary = {
   ownerKey: string;
   ownerInstanceId: string;
   name: string;
   revision: number;
-  /** Missing only for a pre-v1 bridge; consumers must derive the conservative owner-contained fallback. */
-  navigation?: BaseNavigation;
+  navigation: BaseNavigation;
 };
 
-export function baseNavigationOf(
-  value: Pick<BaseMeta, "owner" | "pinned" | "navigation">
-): BaseNavigation {
-  if (value.navigation) return value.navigation;
-  if (value.pinned) {
-    return { kind: "root-user-managed", source: "legacy-pin", activatedAt: 0 };
-  }
-  return value.owner.kind === "chat"
-    ? { kind: "conversation-contained", chatId: value.owner.chatId }
-    : { kind: "project-contained", projectId: value.owner.projectId };
-}
-
 export type BaseMetaPatch = Partial<
-  Pick<
-    BaseMeta,
-    "name" | "pinned" | "columns" | "views" | "activeViewId"
-  >
+  Pick<BaseMeta, "name" | "columns" | "views" | "activeViewId">
 >;
 
 export type BaseRowPatch = Record<string, BaseCellValue | null>;
@@ -225,12 +203,11 @@ export const BASE_MUTATION_OPERATIONS = [
   "xlsx-import",
 ] as const;
 export type BaseMutationOperation = (typeof BASE_MUTATION_OPERATIONS)[number];
-export type BaseCommitAuthorityLeaseId = string;
 
 export type BaseResolvedTarget = {
   ownerKey: string;
   ownerInstanceId: string;
-  status: "healthy" | "corrupt" | "absent";
+  status: "healthy" | "absent";
 };
 
 export type BasePromotionReceipt = {
@@ -249,14 +226,6 @@ export type BaseChangedEvent = {
   removedRowIds?: string[];
 };
 
-export type BaseMigrationEvent = {
-  type: "base-migrated";
-  ownerKey: string;
-  ownerInstanceId: string;
-  revision: number;
-  migration: "row-backed-gallery-v1";
-};
-
 /**
  * renderer 应用规则：
  * 1. (ownerKey, ownerInstanceId) 生命周期 fence 失配立即丢弃；
@@ -265,7 +234,6 @@ export type BaseMigrationEvent = {
  */
 export type BasesEvent =
   | BaseChangedEvent
-  | BaseMigrationEvent
   | {
       type: "removed";
       ownerKey: string;
@@ -317,12 +285,10 @@ export type BaseImportMutationResult =
 export const BASES_CHANNEL = {
   get: "bases:get",
   ensure: "bases:ensure",
-  discardCorrupt: "bases:discard-corrupt",
-  listPinned: "bases:list-pinned",
+  listRoot: "bases:list-root",
   listProject: "bases:list-project",
   removeManaged: "bases:remove-managed",
   updateMeta: "bases:update-meta",
-  authorizeMutation: "bases:authorize-mutation",
   insertRows: "bases:insert-rows",
   patchRow: "bases:patch-row",
   deleteRows: "bases:delete-rows",
@@ -333,7 +299,6 @@ export const BASES_CHANNEL = {
   importXlsx: "bases:import-xlsx",
   rowHistory: "bases:row-history",
   putAttachment: "bases:put-attachment",
-  readAttachment: "bases:read-attachment",
   readAttachmentThumbnail: "bases:read-attachment-thumbnail",
   listGalleryEntries: "bases:list-gallery-entries",
   resolveForSection: "bases:resolve-for-section",
@@ -344,43 +309,36 @@ export const BASES_CHANNEL = {
 export type BasesBridgeApi = {
   get(input: { ownerKey: string }): Promise<BaseSnapshot | null>;
   ensure(input: { ownerKey: string }): Promise<BaseSnapshot>;
-  /** 仅用于显式确认放弃已隔离数据；正常 Base 不可通过此入口删除。 */
-  discardCorrupt(input: { ownerKey: string }): Promise<BaseSnapshot>;
-  listPinned(): Promise<{ bases: BasePinnedSummary[]; warning?: string }>;
-  listProjectBases(): Promise<{ bases: BasePinnedSummary[]; warning?: string }>;
+  listRootBases(): Promise<{ bases: BaseNavigationSummary[] }>;
+  listProjectBases(): Promise<{ bases: BaseNavigationSummary[] }>;
   removeManaged(input: {
     ownerKey: string;
     ownerInstanceId: string;
   }): Promise<{ removed: boolean }>;
-  authorizeMutation(input: {
-    ownerKey: string;
-    operation: BaseMutationOperation;
-    expectedRevision: number | null;
-    surfaceLeaseId?: string;
-  }): Promise<BaseCommitAuthorityLeaseId>;
+  /** surfaceLeaseId 只有 App window surface 会带；主窗口一律省略。 */
   updateMeta(input: {
     ownerKey: string;
     expectedRevision: number;
     patch: BaseMetaPatch;
-    authorityLeaseId: BaseCommitAuthorityLeaseId;
+    surfaceLeaseId?: string;
   }): Promise<BaseMutationSnapshotResult>;
   insertRows(input: {
     ownerKey: string;
     rows: BaseRow[];
-    authorityLeaseId: BaseCommitAuthorityLeaseId;
+    surfaceLeaseId?: string;
   }): Promise<BaseSnapshot>;
   /** 字段级 LWW；null 表示清空单元格。 */
   patchRow(input: {
     ownerKey: string;
     rowId: string;
     patch: BaseRowPatch;
-    authorityLeaseId: BaseCommitAuthorityLeaseId;
+    surfaceLeaseId?: string;
   }): Promise<BaseSnapshot>;
   deleteRows(input: {
     ownerKey: string;
     rowIds: string[];
     expectedRevision: number;
-    authorityLeaseId: BaseCommitAuthorityLeaseId;
+    surfaceLeaseId?: string;
   }): Promise<BaseMutationSnapshotResult>;
   exportCsv(input: { ownerKey: string }): Promise<BaseExportResult>;
   exportJson(input: { ownerKey: string }): Promise<BaseExportResult>;
@@ -388,12 +346,12 @@ export type BasesBridgeApi = {
   importJson(input: {
     ownerKey: string;
     expectedRevision: number;
-    authorityLeaseId: BaseCommitAuthorityLeaseId;
+    surfaceLeaseId?: string;
   }): Promise<BaseImportMutationResult>;
   importXlsx(input: {
     ownerKey: string;
     expectedRevision: number;
-    authorityLeaseId: BaseCommitAuthorityLeaseId;
+    surfaceLeaseId?: string;
   }): Promise<BaseImportMutationResult>;
   rowHistory(input: {
     ownerKey: string;
@@ -405,7 +363,6 @@ export type BasesBridgeApi = {
     requestId: string;
   }): Promise<BasePromotionReceipt>;
   putAttachment?(input: PutAttachmentRequest): Promise<PutAttachmentResult>;
-  readAttachment?(input: ReadAttachmentInput): Promise<ReadAttachmentResult>;
   readAttachmentThumbnail?(
     input: ReadAttachmentThumbnailInput
   ): Promise<ReadAttachmentThumbnailResult>;

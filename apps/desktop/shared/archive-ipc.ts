@@ -46,7 +46,7 @@ export type PurgeMemoryPreview = {
 export type PurgePreview = {
   deletePaths: string[];
   retainedExternalBindings: string[];
-  pinnedBaseCount: number;
+  rootBaseCount: number;
   blockedReasons: string[];
   memory: PurgeMemoryPreview | null;
   executionToken: string;

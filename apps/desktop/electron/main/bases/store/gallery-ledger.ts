@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Gallery ledger/attachment schema and Base meta/rows; Receiving immutable occurrence payload
- * [OUTPUT]: Provides empty/parse/put/remove/validate Pure state machine, rows attachment blob, reference collection, automatic Gallery Delete suppression, redirect to GalleryLedgerConflictError
+ * [OUTPUT]: Provides empty/parse/put/remove/validate Pure state machine over a caller-supplied row index, rows attachment blob reference collection, automatic Gallery Delete suppression, redirect to GalleryLedgerConflictError
  * [POS]: The core of the Gallery ledger for bases/stores; The full fingerprint is the only proof of the existence of any conflict written in IO before zero
  */
 
@@ -38,7 +38,6 @@ export function emptyGalleryLedger(
     incarnationId,
     epoch: 0,
     autoGalleryState: "pending",
-    migrationVersion: 3,
     associations: {},
     occurrences: {},
     tombstones: {},
@@ -114,18 +113,6 @@ export function putGalleryOccurrence(
   return { ledger, idempotent: false };
 }
 
-export function removeGalleryRows(
-  current: BaseGalleryLedger,
-  rowIds: ReadonlySet<string>,
-  now: number
-) {
-  return removeAssociations(
-    current,
-    (association) => rowIds.has(association.rowId),
-    now
-  );
-}
-
 export function removeGalleryColumns(
   current: BaseGalleryLedger,
   columnIds: ReadonlySet<string>,
@@ -158,23 +145,21 @@ export function removeGalleryCells(
 }
 
 /**
- * 从 rows/meta 前后差分派生 Gallery 删除（cell 覆写、删行、删列）；
+ * 从「谁被动过」的声明派生 Gallery 删除（cell 覆写、删行、删列）；
  * 无删除返回 null，调用方保持原 ledger identity。
+ *
+ * 判据只走 association 与新 rows 索引：ledger 条目数就是这趟的代价上限，
+ * 与表长无关。删行不必单列一路——行没了，它那格自然不再是同一张附件。
  */
 export function deriveGalleryRemovals(
-  current: {
-    gallery: BaseGalleryLedger;
-    rows: readonly BaseRow[];
-    meta: BaseMeta;
-  },
-  next: { rows: readonly BaseRow[]; meta: BaseMeta },
+  current: { gallery: BaseGalleryLedger; meta: BaseMeta },
+  next: { rowsById: ReadonlyMap<string, BaseRow>; meta: BaseMeta },
   now: number
 ): BaseGalleryLedger | null {
-  const nextRows = new Map(next.rows.map((row) => [row.id, row]));
   const removedCells = new Set(
     Object.values(current.gallery.associations)
       .filter((association) => {
-        const value = nextRows.get(association.rowId)?.values[
+        const value = next.rowsById.get(association.rowId)?.values[
           association.columnId
         ];
         return (
@@ -183,12 +168,6 @@ export function deriveGalleryRemovals(
         );
       })
       .map((association) => association.galleryItemId)
-  );
-  const nextRowIds = new Set(next.rows.map((row) => row.id));
-  const removedRows = new Set(
-    current.rows
-      .filter((row) => !nextRowIds.has(row.id))
-      .map((row) => row.id)
   );
   const nextColumnIds = new Set(next.meta.columns.map((column) => column.id));
   const removedColumns = new Set(
@@ -200,25 +179,29 @@ export function deriveGalleryRemovals(
     current.gallery.autoGalleryState === "created" &&
     current.meta.views.some((view) => view.config.type === "gallery") &&
     !next.meta.views.some((view) => view.config.type === "gallery");
-  if (
-    !removedRows.size &&
-    !removedColumns.size &&
-    !removedCells.size &&
-    !autoGalleryDeleted
-  ) {
+  if (!removedColumns.size && !removedCells.size && !autoGalleryDeleted) {
     return null;
   }
   const gallery = removeGalleryColumns(
-    removeGalleryRows(
-      removeGalleryCells(current.gallery, removedCells, now),
-      removedRows,
-      now
-    ),
+    removeGalleryCells(current.gallery, removedCells, now),
     removedColumns,
     now
   );
   if (autoGalleryDeleted) gallery.autoGalleryState = "suppressed";
   return gallery;
+}
+
+/**
+ * ledger 空到「删什么都不会有变化」时，派生本身就不必发生。
+ * 绝大多数 Base 从不碰附件，这一句让它们的每次提交都少走一趟。
+ */
+export function galleryCanLoseEntries(ledger: BaseGalleryLedger) {
+  return Boolean(
+    ledger.targetColumnId ||
+      ledger.targetDateColumnId ||
+      ledger.autoGalleryState === "created" ||
+      Object.keys(ledger.associations).length
+  );
 }
 
 /**
@@ -237,7 +220,8 @@ export function collectRowAttachmentBlobIds(rows: readonly BaseRow[]) {
 
 export function validateGalleryLedger(
   meta: BaseMeta,
-  rows: readonly BaseRow[],
+  /** 行索引由调用方提供：提交路径本就有一份，不该在这里再建一次。 */
+  rowsById: ReadonlyMap<string, BaseRow>,
   ledger: BaseGalleryLedger,
   /** owner 投影由调用方经 base-files 的 galleryOwnerId 提供——此处不反向依赖文件层。 */
   ownerId: string
@@ -249,7 +233,6 @@ export function validateGalleryLedger(
     throw new Error("Gallery ledger 与 Base identity 不一致");
   }
   const columns = new Map(meta.columns.map((column) => [column.id, column]));
-  const rowMap = new Map(rows.map((row) => [row.id, row]));
   for (const association of Object.values(ledger.associations)) {
     const occurrence = ledger.occurrences[association.occurrenceId];
     if (!occurrence) {
@@ -266,7 +249,7 @@ export function validateGalleryLedger(
         `Gallery association 指向无效 attachment 列 ${association.columnId}`
       );
     }
-    const cell = rowMap.get(association.rowId)?.values[association.columnId];
+    const cell = rowsById.get(association.rowId)?.values[association.columnId];
     if (
       !isBaseAttachmentValue(cell) ||
       cell.attachmentId !== association.attachmentId ||

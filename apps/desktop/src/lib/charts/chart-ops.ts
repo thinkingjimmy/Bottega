@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Accepts the latest chart view config and the renderer generates the id level intent op
- * [OUTPUT]: Provides ChartOp, applyChartOpToConfig, 409 Repositioning retryChartOp and stripChartSorts
+ * [OUTPUT]: Provides ChartOp, applyChartOpToConfig, and stripChartSorts
  * [POS]: The lib/charts syntax is also usedThe workbench is read/commit only and does not directly reconfigure the old array
  */
 
@@ -73,22 +73,4 @@ export function stripChartSorts(
   if (config.type !== "chart" || config.sorts === undefined) return config;
   const { sorts: _sorts, ...rest } = config;
   return rest;
-}
-
-export async function retryChartOp<TLatest, TResult>(
-  read: () => Promise<TLatest>,
-  submit: (latest: TLatest) => Promise<TResult>,
-  isConflict: (cause: unknown) => boolean,
-  attempts = 3
-) {
-  let lastCause: unknown;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      return await submit(await read());
-    } catch (cause) {
-      lastCause = cause;
-      if (!isConflict(cause)) throw cause;
-    }
-  }
-  throw lastCause;
 }

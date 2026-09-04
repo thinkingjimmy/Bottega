@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node: child_process execFile, node: fs/os/path, backends/sandbox/SBPL with main/errors
- * [OUTPUT]: Provides the sole bounded Git execution border, including an explicit pre-spawn platform gate for owned mutations
+ * [OUTPUT]: Provides the sole bounded Git execution border with canonical repository-identity mutation gates and a macOS sandbox for owned worktrees
  * [POS]: The Git single spawn point for projects; git-branches From here, do not create execFile or spell shell
  */
 
@@ -390,11 +390,18 @@ export async function runGitNulRecords(
   });
 }
 
+/** Git 对"这里不是仓库"的唯一预期回答；超时、溢出、权限与损坏都不算。 */
+export const isNotRepositoryFailure = (cause: unknown) =>
+  cause instanceof GitCommandError &&
+  cause.code === "GIT_COMMAND_FAILED" &&
+  /not a git repository/i.test(`${cause.message}\n${cause.detail.stderr ?? ""}`);
+
 export async function tryGit(workspace: string, args: readonly string[]) {
   try {
     return await runGit(workspace, args);
-  } catch {
-    return null;
+  } catch (cause) {
+    if (isNotRepositoryFailure(cause)) return null;
+    throw cause;
   }
 }
 
@@ -411,7 +418,7 @@ export async function runProjectGitMutation(
   options: Omit<GitRunOptions, "sandbox"> = {}
 ) {
   const cwd = requireAbsolute(workspace, "Git cwd");
-  return mutationGate.run(cwd, () => spawnGit(cwd, args, options));
+  return withGitMutationGate(cwd, undefined, () => spawnGit(cwd, args, options));
 }
 
 export type GitSandboxSpec = Readonly<{
@@ -436,11 +443,42 @@ export async function runOwnedGitMutation(
   sandbox: GitSandboxSpec,
   options: Omit<GitRunOptions, "sandbox"> = {}
 ) {
-  assertOwnedGitMutationPlatform(process.platform, { argv: args, cwd: workspace });
+  return runOwnedGitMutationSequence(
+    workspace,
+    sandbox,
+    args,
+    (run) => run(args, options)
+  );
+}
+
+/* 一个 canonical common-dir gate 包住完整的 owned mutation 决策。
+   task 可执行只读检查；所有写入必须使用注入 runner，使身份验证、ignored 扫描、
+   mutation 与事后验证不能被同仓库的另一项产品 Git mutation 穿插。 */
+export async function runOwnedGitMutationSequence<T>(
+  workspace: string,
+  sandbox: GitSandboxSpec,
+  operationArgs: readonly string[],
+  task: (
+    run: (
+      args: readonly string[],
+      options?: Omit<GitRunOptions, "sandbox">
+    ) => Promise<string>,
+    identity: GitRepositoryIdentity
+  ) => Promise<T>
+) {
+  assertOwnedGitMutationPlatform(process.platform, {
+    argv: operationArgs,
+    cwd: workspace,
+  });
   const cwd = requireAbsolute(workspace, "Git cwd");
   const commonDir = canonicalPath(sandbox.commonDir, "Git common dir");
-  return mutationGate.run(commonDir, () =>
-    spawnGit(cwd, args, { ...options, sandbox: { ...sandbox, commonDir } })
+  const scoped = { ...sandbox, commonDir };
+  return withGitMutationGate(cwd, { commonDir }, (identity) =>
+    task(
+      (nextArgs, options = {}) =>
+        spawnGit(cwd, nextArgs, { ...options, sandbox: scoped }),
+      identity
+    )
   );
 }
 
@@ -489,6 +527,47 @@ export class GitMutationGate {
 }
 
 const mutationGate = new GitMutationGate();
+
+export type GitRepositoryIdentity = Readonly<{
+  topLevel: string;
+  commonDir: string;
+}>;
+
+export async function resolveGitIdentity(workspace: string): Promise<GitRepositoryIdentity> {
+  const [topLevel, commonDir] = await Promise.all([
+    resolveGitTopLevel(workspace),
+    resolveGitCommonDir(workspace),
+  ]);
+  return { topLevel, commonDir };
+}
+
+/* 锁外只解析排队 key；真正 mutation 前必须在锁内重新解析身份。 */
+export async function withGitMutationGate<T>(
+  workspace: string,
+  expected: Partial<GitRepositoryIdentity> | undefined,
+  task: (identity: GitRepositoryIdentity) => Promise<T>
+): Promise<T> {
+  const first = await resolveGitIdentity(workspace);
+  if (
+    (expected?.topLevel && expected.topLevel !== first.topLevel) ||
+    (expected?.commonDir && expected.commonDir !== first.commonDir)
+  ) {
+    throw new GitCommandError("GIT_IDENTITY_DRIFT", "GIT_IDENTITY_DRIFT: Git repository identity changed", {
+      argv: [],
+      cwd: workspace,
+    });
+  }
+  return mutationGate.run(first.commonDir, async () => {
+    const current = await resolveGitIdentity(workspace);
+    if (current.topLevel !== first.topLevel || current.commonDir !== first.commonDir) {
+      throw new GitCommandError("GIT_IDENTITY_DRIFT", "GIT_IDENTITY_DRIFT: Git repository identity changed", {
+        argv: [],
+        cwd: workspace,
+      });
+    }
+    return task(current);
+  });
+}
 
 /* ============================================================
  * 6. Git 工具链解析
@@ -680,105 +759,6 @@ async function sandboxedInvocation(
       ...gitArgs,
     ],
   };
-}
-
-/* ============================================================
- * 8. 有效 config 枚举与可执行 config 审计
- * ============================================================ */
-export type GitConfigEntry = Readonly<{
-  origin: string;
-  key: string;
-  value: string;
-}>;
-
-/** `--show-origin -z` 的记录形如 `origin\0key\nvalue\0`。 */
-export async function listGitConfig(workspace: string) {
-  const raw = await runGit(workspace, [
-    "config",
-    "--list",
-    "--show-origin",
-    "-z",
-  ]);
-  const entries: GitConfigEntry[] = [];
-  const tokens = raw.split("\0");
-  for (let index = 0; index + 1 < tokens.length; index += 2) {
-    const origin = tokens[index]!;
-    const record = tokens[index + 1]!;
-    const separator = record.indexOf("\n");
-    entries.push(
-      separator < 0
-        ? { origin, key: record, value: "" }
-        : {
-            origin,
-            key: record.slice(0, separator),
-            value: record.slice(separator + 1),
-          }
-    );
-  }
-  return entries;
-}
-
-export type GitConfigBlocker = Readonly<{
-  code: string;
-  key: string;
-  origin: string;
-  message: string;
-}>;
-
-const BOOLEAN_FALSE = new Set(["", "false", "0", "no", "off"]);
-const BOOLEAN_TRUE = new Set(["true", "1", "yes", "on"]);
-
-/**
- * v1 的可执行 config 判据。只有两类进 blocker：
- *
- * 1. `filter.<name>.(clean|smudge|process|required)`——checkout/add/commit/diff
- *    都会把它当程序跑，而 filter 名字是任意的，`-c` 压不住一个未知集合；
- * 2. 外部 `core.fsmonitor`（指向 hook 而非布尔值）与 `core.alternateRefsCommand`
- *    ——同样是「读一次就执行一个程序」，且不在受控 config 的固定值覆盖范围内。
- *
- * 其余能执行外部程序的键都已经被 §2 的固定值压死（hooksPath/pager/editor/
- * gpgsign）或被 diff 家族的 `--no-ext-diff --no-textconv` 关掉；credential
- * helper 与 `core.sshCommand` 只在网络操作里出现，而 v1 从不 fetch/push。
- * 不在这两张表上的键，说明 v1 的命令集碰不到它——这就是「显式允许」。
- */
-export function auditExecutableGitConfig(
-  entries: readonly GitConfigEntry[]
-): GitConfigBlocker[] {
-  const blockers: GitConfigBlocker[] = [];
-  for (const entry of entries) {
-    const key = entry.key.toLowerCase();
-    const filter = /^filter\.(.+)\.(clean|smudge|process|required)$/.exec(key);
-    if (filter) {
-      blockers.push({
-        code: "GIT_CONFIG_FILTER_DRIVER",
-        key: entry.key,
-        origin: entry.origin,
-        message: `仓库有效配置声明了 filter 驱动 ${filter[1]}（${entry.key}，来自 ${entry.origin}）；v1 不在自动化里执行仓库配置的外部程序。请为该仓库停用它后重试。`,
-      });
-      continue;
-    }
-    if (key === "core.fsmonitor") {
-      const value = entry.value.trim().toLowerCase();
-      if (!BOOLEAN_FALSE.has(value) && !BOOLEAN_TRUE.has(value)) {
-        blockers.push({
-          code: "GIT_CONFIG_EXTERNAL_FSMONITOR",
-          key: entry.key,
-          origin: entry.origin,
-          message: `仓库配置了外部 fsmonitor 钩子（${entry.value}，来自 ${entry.origin}）；v1 不执行仓库配置的外部程序。`,
-        });
-      }
-      continue;
-    }
-    if (key === "core.alternaterefscommand") {
-      blockers.push({
-        code: "GIT_CONFIG_ALTERNATE_REFS_COMMAND",
-        key: entry.key,
-        origin: entry.origin,
-        message: `仓库配置了 core.alternateRefsCommand（来自 ${entry.origin}）；v1 不执行仓库配置的外部程序。`,
-      });
-    }
-  }
-  return blockers;
 }
 
 /** canonical Git common dir：mutation gate 的键与围栏读根都用它。 */

@@ -9,7 +9,7 @@ import type { Sha256Digest } from "../extensions-ipc";
 export const APP_GUI_PRESET = "bottega-react-v1" as const;
 export const LEGACY_BASE_GUI_SDK_VERSION = "base-gui-legacy-v1" as const;
 
-export type AppGuiIconLibrary = "lucide" | "phosphor";
+type AppGuiIconLibrary = "lucide" | "phosphor";
 
 export type BaseGuiBuildManifest = Readonly<{
   preset: typeof APP_GUI_PRESET;
@@ -133,12 +133,11 @@ export const APP_GUI_FINDING_CODES = [
   "GUI_BUILD_RECEIPT_INVALID",
   "GUI_CUTOVER_CONFLICT",
   "GUI_CUTOVER_PARTICIPANT_PLAN_INVALID",
-  "GUI_CUTOVER_PARTICIPANTS_READY_PHASE_INVALID",
   "GUI_CUTOVER_READY_TIMEOUT",
   "GUI_COMPATIBILITY_UNSUPPORTED",
 ] as const;
 
-export type AppGuiFindingCode = (typeof APP_GUI_FINDING_CODES)[number];
+type AppGuiFindingCode = (typeof APP_GUI_FINDING_CODES)[number];
 export type AppGuiBuildFinding = Readonly<{
   code: AppGuiFindingCode;
   file: string;

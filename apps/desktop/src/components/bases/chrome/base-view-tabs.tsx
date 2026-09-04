@@ -5,7 +5,7 @@
  */
 
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type { BaseMutationOutcome } from "../state/base-mutation-error";
 import {
@@ -80,6 +80,12 @@ export function BaseViewTabs({
   const [renameViewId, setRenameViewId] = useState("");
   const [deleteViewId, setDeleteViewId] = useState("");
   const deleteView = views.find((view) => view.id === deleteViewId);
+  /* order 是持久化的显示序，不是渲染时才决定的事：每次重渲染重排一遍
+     （还得先复制一份数组以免就地改 props）纯属白做工。 */
+  const orderedViews = useMemo(
+    () => [...views].sort((left, right) => left.order - right.order),
+    [views]
+  );
   const tablistRef = useRef<HTMLDivElement>(null);
   // active tab 溢出视口时自动滚入视野（新增视图默认排尾，最易被裁掉）
   useEffect(() => {
@@ -95,33 +101,31 @@ export function BaseViewTabs({
         className="flex min-w-0 items-center gap-0.5 overflow-x-auto"
         role="tablist"
       >
-        {[...views]
-          .sort((a, b) => a.order - b.order)
-          .map((view) =>
-            view.id === renameViewId ? (
-              <InlineNameInput
-                key={view.id}
-                ariaLabel={t("bases.view.rename")}
-                autoFocus
-                className="h-6 w-32 shrink-0 text-xs"
-                name={view.name}
-                onDone={() => setRenameViewId("")}
-                onRename={(name) => onRenameView(view.id, name)}
-              />
-            ) : (
-              <ViewTab
-                key={view.id}
-                active={view.id === activeViewId}
-                busy={busy}
-                canDelete={editable && views.length > 1}
-                editable={editable}
-                onDelete={() => setDeleteViewId(view.id)}
-                onRename={() => setRenameViewId(view.id)}
-                onSelect={() => onSelect(view.id)}
-                view={view}
-              />
-            )
-          )}
+        {orderedViews.map((view) =>
+          view.id === renameViewId ? (
+            <InlineNameInput
+              key={view.id}
+              ariaLabel={t("bases.view.rename")}
+              autoFocus
+              className="h-6 w-32 shrink-0 text-xs"
+              name={view.name}
+              onDone={() => setRenameViewId("")}
+              onRename={(name) => onRenameView(view.id, name)}
+            />
+          ) : (
+            <ViewTab
+              key={view.id}
+              active={view.id === activeViewId}
+              busy={busy}
+              canDelete={editable && views.length > 1}
+              editable={editable}
+              onDelete={() => setDeleteViewId(view.id)}
+              onRename={() => setRenameViewId(view.id)}
+              onSelect={() => onSelect(view.id)}
+              view={view}
+            />
+          )
+        )}
       </SlimScroller>
       {editable && <DropdownMenu>
         <DropdownMenuTrigger asChild>

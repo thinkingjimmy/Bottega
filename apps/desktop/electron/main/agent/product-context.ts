@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on final turn kind/allowedTools, App contributor source, EffectiveSkillSnapshot prompt rows, and shared Base/Chart snippets
- * [OUTPUT]: Provides SkillSummary, FinalTurnProjection, and exact capable/fallback Skills prompt templates with metadata sanitization and an independent 20480-byte budget
+ * [OUTPUT]: Provides SkillSummary, FinalTurnProjection, and exact capable/fallback Skills prompt templates with metadata sanitization (300-character description cap) and an independent 20480-byte budget
  * [POS]: Final trusted product-context composer; author-controlled Skill metadata is rendered only as sanitized data inside the application envelope
  */
 
@@ -20,6 +20,11 @@ export type SkillSummary = Readonly<{
 
 export const FIXED_CONTEXT_BUDGET_BYTES = 900;
 export const SKILLS_CONTEXT_BUDGET_BYTES = 20_480;
+/* ── 描述封顶：模型靶描述判断该不该用一个 Skill ──────────────────
+   160 字符只够作者写完触发词的前半句；Codex 原生目录给到约 240。
+   放到 300：68 项库存实测约 14KB，仍在 20480 预算之内，超出部分
+   由 composeSkills 按优先级弹出并如实报"未列出"，不会静默丢失。 */
+export const SKILL_DESCRIPTION_CHAR_CAP = 300;
 export const NON_APP_CONTEXT_BUDGET_BYTES = 1_400;
 const CONTEXT_HEADER = [
   '<product_context source="application" trust="trusted">',
@@ -166,8 +171,8 @@ export function sanitizeSkillMetadata(value: string) {
     .replace(/\s+/gu, " ")
     .trim();
   const characters = [...flattened];
-  return characters.length > 160
-    ? `${characters.slice(0, 160).join("")}…`
+  return characters.length > SKILL_DESCRIPTION_CHAR_CAP
+    ? `${characters.slice(0, SKILL_DESCRIPTION_CHAR_CAP).join("")}…`
     : flattened;
 }
 

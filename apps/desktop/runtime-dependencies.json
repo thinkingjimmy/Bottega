@@ -1,0 +1,328 @@
+{
+  "schema": "bottega.runtime-dependencies/v1",
+  "description": "Single authority for every npm package the packaged desktop app resolves at runtime. package.json dependencies must equal this package set (scripts/check-dependency-manifest.mjs); metadata.ts, admission.ts and generate-app-gui-toolchain-metadata.mjs derive their tables from it; smoke-dist verifies the packaged ASAR against it. roles: main = required by out/main at runtime, appGui = resolved by the offline App GUI compiler from the packaged node_modules, adapter = ACP adapter chain. runtimeGates = toolchain slice membership; authorAdmission = which author import allowlist the bare package name belongs to (core or gate-3; base-ui/icons are informational because their allowlists are subpath-level in metadata.ts).",
+  "packages": {
+    "@agentclientprotocol/claude-agent-acp": {
+      "version": "0.70.0",
+      "roles": [
+        "adapter"
+      ]
+    },
+    "@agentclientprotocol/codex-acp": {
+      "version": "1.6.2",
+      "roles": [
+        "adapter"
+      ]
+    },
+    "@agentclientprotocol/sdk": {
+      "version": "1.3.0",
+      "roles": [
+        "main",
+        "adapter"
+      ]
+    },
+    "@anthropic-ai/claude-agent-sdk": {
+      "version": "0.3.232",
+      "roles": [
+        "main",
+        "adapter"
+      ],
+      "mustEqualDependencyOf": "@agentclientprotocol/claude-agent-acp"
+    },
+    "@base-ui/react": {
+      "version": "1.7.0",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ],
+      "authorAdmission": "base-ui"
+    },
+    "@dnd-kit/core": {
+      "version": "6.3.1",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-3"
+      ],
+      "authorAdmission": "gate-3"
+    },
+    "@dnd-kit/sortable": {
+      "version": "10.0.0",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-3"
+      ],
+      "authorAdmission": "gate-3"
+    },
+    "@phosphor-icons/react": {
+      "version": "2.1.10",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ],
+      "authorAdmission": "icons"
+    },
+    "@tailwindcss/node": {
+      "version": "4.3.2",
+      "roles": [
+        "main",
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ]
+    },
+    "@tailwindcss/oxide": {
+      "version": "4.3.2",
+      "roles": [
+        "main",
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ]
+    },
+    "@tanstack/react-table": {
+      "version": "8.21.3",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-3"
+      ],
+      "authorAdmission": "gate-3"
+    },
+    "@tanstack/react-virtual": {
+      "version": "3.14.8",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-3"
+      ],
+      "authorAdmission": "gate-3"
+    },
+    "@types/react": {
+      "version": "19.2.17",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ],
+      "note": "semanticTypecheck resolves react types through @types; react ships none"
+    },
+    "@types/react-dom": {
+      "version": "19.2.3",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ],
+      "note": "paired with @types/react for the product bootstrap module typings"
+    },
+    "axe-core": {
+      "version": "4.10.3",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-3"
+      ]
+    },
+    "class-variance-authority": {
+      "version": "0.7.1",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ],
+      "authorAdmission": "core"
+    },
+    "clsx": {
+      "version": "2.1.1",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ],
+      "authorAdmission": "core"
+    },
+    "date-fns": {
+      "version": "4.4.0",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-2",
+        "gate-3"
+      ],
+      "authorAdmission": "gate-3"
+    },
+    "echarts": {
+      "version": "6.1.0",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-3"
+      ]
+    },
+    "electron-updater": {
+      "version": "6.8.9",
+      "roles": [
+        "main"
+      ]
+    },
+    "esbuild": {
+      "version": "0.28.1",
+      "roles": [
+        "main",
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ]
+    },
+    "exceljs": {
+      "version": "4.4.0",
+      "roles": [
+        "main"
+      ]
+    },
+    "http-proxy": {
+      "version": "1.18.1",
+      "roles": [
+        "main"
+      ]
+    },
+    "i18next": {
+      "version": "26.3.6",
+      "roles": [
+        "main"
+      ]
+    },
+    "lucide-react": {
+      "version": "1.24.0",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ],
+      "authorAdmission": "icons"
+    },
+    "nanoid": {
+      "version": "6.0.0",
+      "roles": [
+        "main"
+      ]
+    },
+    "react": {
+      "version": "19.2.4",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1",
+        "gate-2",
+        "gate-3"
+      ],
+      "authorAdmission": "core"
+    },
+    "react-dom": {
+      "version": "19.2.4",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1",
+        "gate-2",
+        "gate-3"
+      ]
+    },
+    "react-hook-form": {
+      "version": "7.87.0",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-3"
+      ],
+      "authorAdmission": "gate-3"
+    },
+    "sharp": {
+      "version": "0.34.5",
+      "roles": [
+        "main"
+      ]
+    },
+    "tailwind-merge": {
+      "version": "3.6.0",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ],
+      "authorAdmission": "core"
+    },
+    "tailwindcss": {
+      "version": "4.3.2",
+      "roles": [
+        "main",
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ]
+    },
+    "typescript": {
+      "version": "5.9.3",
+      "roles": [
+        "main",
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1"
+      ]
+    },
+    "zod": {
+      "version": "4.4.3",
+      "roles": [
+        "appGui"
+      ],
+      "runtimeGates": [
+        "gate-1",
+        "gate-2",
+        "gate-3"
+      ],
+      "authorAdmission": "gate-3"
+    }
+  },
+  "virtualSpecifiers": {
+    "@bottega/app-react": {
+      "authorAdmission": "core"
+    },
+    "@bottega/app-blocks": {
+      "authorAdmission": "gate-3"
+    },
+    "@bottega/charts": {
+      "authorAdmission": "gate-3"
+    }
+  },
+  "excludedGlobs": [
+    "**/node_modules/@openai/codex-*/**",
+    "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+  ]
+}

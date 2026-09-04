@@ -14,14 +14,6 @@ export const basesJa: BasesCatalog = {
     reloadFailed: "Base {{ownerKey}} の再読み込みに失敗しました：{{message}}",
     retiredResult: "Base {{ownerKey}} が廃止済みの世代を返しました。",
   },
-  quarantined: "この Base は隔離されています",
-  quarantinedDescription:
-    "復元可能なファイルは保持されています。バックアップを手動で復元するか、破棄して新しい空の Base を作成してください。",
-  discardData: "隔離データを破棄",
-  discardAndRecreate: "破棄して再作成",
-  discardDescription:
-    "隔離されたメタデータと保持中の行世代を完全に削除し、新しい空の Base を作成します。",
-  discardTitle: "復元可能な Base データを破棄しますか？",
   loading: "Base を読み込み中…",
   loadingMap: "地図を読み込み中…",
   pageTitle: "Base",

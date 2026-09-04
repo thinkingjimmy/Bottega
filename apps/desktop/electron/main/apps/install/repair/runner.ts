@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on fs/path, codex-runtime/process-group, apps/support, store/runtime/maintenance gate, site strategy, journal/supervisor and the installed gate capacity
- * [OUTPUT]: Provides RepairRunner, sorting the pre-lock after note, seven-step journal, fail-closed, harvest, submit and orphan recovery
- * [POS]: The transaction coordinator installed/repair, arranging security timing only; staging/copy Difference in site.ts, manifest/command strategy inserted by adapter
+ * [INPUT]: Depends on fs/path, codex-runtime/process-group, apps/support, the store/runtime/maintenance gate, the site strategy, and the journal/supervisor pair
+ * [OUTPUT]: Provides RepairRunner: lock-before-journal ordering, the seven-phase journal, fail-closed harvesting, idempotent commit, per-App startup recovery that never wedges the rest, orphan disposal, and `discard` for clean reinstall
+ * [POS]: The install/repair transaction coordinator; it arranges safe ordering only, staging-vs-copy lives in site.ts, and manifest/command policy is injected by the adapter
  */
 
 import { rm } from "node:fs/promises";
@@ -11,9 +11,9 @@ import type {
   AppManifest,
   AppRecord,
 } from "../../../../../shared/apps-ipc";
-import type { MaintenanceGate } from "../../maintenance-gate";
-import type { AppRuntime } from "../../app-runtime";
-import type { AppStore } from "../../app-store";
+import type { MaintenanceGate } from "../../maintenance/maintenance-gate";
+import type { AppRuntime } from "../../server/app-runtime";
+import type { AppStore } from "../../store/app-store";
 import { sanitizedProcessEnvironment } from "../../../codex-runtime";
 import { stopProcessGroup } from "../../../process-group";
 import { asError } from "../../../errors";
@@ -465,18 +465,32 @@ export class RepairRunner {
         await this.lockFailed(record, "repair journal 缺少 finalManifest");
       }
     } catch (cause) {
+      /* 已经把这个 App 锁死并留下 journal，处置就到此为止：再往上抛会打断
+         recoverAll，让排在后面的 App 连恢复的机会都没有，最终整个启动崩溃。 */
       retainLock = true;
+      const message = asError(cause).message;
       const record = this.deps.store.get(journal.appId);
       if (record) {
-        await this.lockFailed(
-          record,
-          `修复恢复失败，已保留 journal：${asError(cause).message}`
-        );
+        await this.lockFailed(record, `修复恢复失败，已保留 journal：${message}`);
       }
-      throw cause;
+      console.error(`[apps] ${journal.appId} 的修复恢复失败，已保留现场`, cause);
     } finally {
       if (!retainLock) this.deps.gate.release(journal.appId, journal.runId);
     }
+  }
+
+  /**
+   * 干净重装的前置清场：journal / workspace / trash 与维护锁全部作废。
+   * 不清就是把一份「描述已经不存在的那棵树」的账本留给下次启动重放——
+   * 它会把刚重装好的 App 重新标记为失败，或把上一代 manifest 再发布一次。
+   */
+  async discard(appId: string) {
+    const journal = await this.journals.read(appId);
+    if (!journal) return;
+    await rm(journal.workspace, { recursive: true, force: true });
+    if (journal.trash) await rm(journal.trash, { recursive: true, force: true });
+    await this.journals.remove(appId);
+    this.deps.gate.release(appId, journal.runId);
   }
 
   /** swapping 崩溃现场处置：locked 锁定 / rollback 复位并走 fail / forward 推进。 */

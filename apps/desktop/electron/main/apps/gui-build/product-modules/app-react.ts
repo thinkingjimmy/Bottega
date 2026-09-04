@@ -1,22 +1,34 @@
 /**
  * [INPUT]: Depends on React hooks and the trusted bootstrap client injected through the App SDK provider
- * [OUTPUT]: Provides the immutable @bottega/app-react runtime source consumed as a virtual module
+ * [OUTPUT]: Provides the immutable @bottega/app-react runtime source consumed as a virtual module; every host registration happens in layout effects, never during render
  * [POS]: gui-build/product-modules SDK runtime snapshot; its bytes hash into every compiled-v3 receipt sdkDigest
  */
 
 export const SDK_RUNTIME_SOURCE = `
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 const Context = createContext(null);
 export function __AppGuiProvider({ client, children }) { return React.createElement(Context.Provider, { value: client }, children); }
 function useClient() { const client = useContext(Context); if (!client) throw new Error("App SDK Provider is missing"); return client; }
 function useResource(operation, payload, critical = true) {
   const client = useClient();
   const key = JSON.stringify([operation, payload]);
-  const payloadRef = useRef(payload); payloadRef.current = payload;
+  const payloadRef = useRef(payload);
   const [state, setState] = useState({ status: "loading" });
   const criticalId = useRef(crypto.randomUUID());
-  if (critical) client.reportCritical(criticalId.current, state.status);
-  const latest = useRef({ key, sequence: 0, controller: null }); latest.current.key = key;
+  const latest = useRef({ key, sequence: 0, controller: null });
+  /* 渲染阶段不写宿主：ref 同步、critical 注册与释放全部落在 layout effect 里。
+     用 layout 而不是 passive，是因为 publishReady 的双帧检查跑在 rAF 上，而
+     passive effect 在 paint 之后才执行——那一帧的空窗足够让 ready 抢跑。 */
+  useLayoutEffect(() => { payloadRef.current = payload; latest.current.key = key; }, [key]);
+  /* 释放只挂在 critical/client 上：key 变化时条目原地改状态，不出现空窗。 */
+  useLayoutEffect(() => {
+    if (!critical) return;
+    const id = criticalId.current;
+    return () => client.releaseCritical(id);
+  }, [client, critical]);
+  useLayoutEffect(() => {
+    if (critical) client.reportCritical(criticalId.current, state.status);
+  }, [client, critical, state.status]);
   const run = useCallback((preserve = false) => {
     latest.current.controller?.abort();
     const controller = new AbortController();
@@ -38,7 +50,6 @@ function useResource(operation, payload, critical = true) {
     return () => {
       unsubscribe();
       latest.current.controller?.abort();
-      if (critical) client.releaseCritical(criticalId.current);
     };
   }, [client, operation, run]);
   const retry = useCallback(() => run(state.status === "success"), [run, state.status]);
@@ -51,11 +62,14 @@ export function useAttachment(input, options = {}) { return useResource("attachm
 export function useAppPreferences(options = {}) {
   const client = useClient();
   const resource = useResource("preferences.read", null, options.critical ?? true);
-  const resourceRef = useRef(resource); resourceRef.current = resource;
+  const resourceRef = useRef(resource);
   const queue = useRef({ timer: null, pending: null, chain: Promise.resolve(), revision: null });
-  if (resource.status === "success" && Number.isSafeInteger(resource.data.revision)) {
-    queue.current.revision = resource.data.revision;
-  }
+  useLayoutEffect(() => {
+    resourceRef.current = resource;
+    if (resource.status === "success" && Number.isSafeInteger(resource.data?.revision)) {
+      queue.current.revision = resource.data.revision;
+    }
+  }, [resource]);
   const flush = useCallback(() => {
     const current = queue.current;
     const pending = current.pending;
@@ -123,17 +137,20 @@ export function useWorkspacePreview(target, options = {}) {
   const handle = resource.status === "success"
     ? resource.data?.handle ?? resource.data
     : null;
-  if (critical) {
+  /* 渲染阶段登记会在每一次重渲染把 previewReady 刚置成的 success 打回 loading，
+     ready 于是永远发不出去。只在真正的状态/句柄变化上登记一次。 */
+  useLayoutEffect(() => {
+    if (!critical) return;
     client.reportCritical(
       criticalId.current,
       resource.status === "error" ? "error" : "loading"
     );
-    if (typeof handle === "string") {
-      client.bindPreviewCritical(handle, criticalId.current);
-    }
-  }
-  useEffect(() => () => {
-    if (critical) client.releaseCritical(criticalId.current);
+    if (typeof handle === "string") client.bindPreviewCritical(handle, criticalId.current);
+  }, [client, critical, resource.status, handle]);
+  useLayoutEffect(() => {
+    if (!critical) return;
+    const id = criticalId.current;
+    return () => client.releaseCritical(id);
   }, [client, critical]);
   return useMemo(
     () => resource.status === "success" ? { ...resource, data: handle } : resource,

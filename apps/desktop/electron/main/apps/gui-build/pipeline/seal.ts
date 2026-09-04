@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on one immutable source freeze receipt, one validated compiler runtime, canonical build receipt bytes, and a generation-owned final root
- * [OUTPUT]: Provides atomic local compiled-v3 source/runtime/metadata sealing and four-digest startup verification
+ * [OUTPUT]: Provides atomic local compiled-v3 source/runtime/metadata sealing in one read per file and four-digest startup verification that hashes each subtree once
  * [POS]: apps/gui-build/pipeline content-layout-v3 custody boundary; Gateway receives only runtime/gui while source and receipt remain unreachable metadata
  */
 
@@ -20,7 +20,7 @@ export type CompiledV3DigestSet = Readonly<{
   buildReceiptDigest: Sha256Digest;
 }>;
 
-export type CompiledV3SealInput = Readonly<{
+type CompiledV3SealInput = Readonly<{
   source: SourceFreezeReceipt;
   compilerRuntimeRoot: string;
   finalRoot: string;
@@ -39,8 +39,8 @@ export async function sealCompiledV3Artifact(input: CompiledV3SealInput) {
   const temporary = join(dirname(input.finalRoot), `.${basename(input.finalRoot)}.compiled-${randomUUID()}`);
   try {
     await mkdir(temporary, { recursive: false, mode: 0o700 });
-    await copySourceProjection(input.source, join(temporary, "source"));
-    await copyRuntimeProjection(input.source, input.compilerRuntimeRoot, join(temporary, "runtime"));
+    await projectFrozenSource(input.source, temporary);
+    await projectCompilerRuntime(input.compilerRuntimeRoot, join(temporary, "runtime"));
     const metadataRoot = join(temporary, "metadata");
     await mkdir(metadataRoot, { recursive: true, mode: 0o700 });
     await writeSynced(join(metadataRoot, "gui-build-receipt.json"), Buffer.from(`${canonicalJson(input.receipt)}\n`, "utf8"));
@@ -66,8 +66,12 @@ export async function verifyCompiledV3Artifact(
   const receiptPath = join(root, "metadata/gui-build-receipt.json");
   const receipt = parseReceipt(await readFile(receiptPath, "utf8"));
   const sourceFiles = await walk(sourceRoot);
-  const runtimeGuiFiles = await walk(join(runtimeRoot, "gui"));
   const runtimeFiles = await walk(runtimeRoot);
+  /* runtime/gui 是 runtime 的子树：单独再走一遍等于把同一批字节重读重哈希。
+     递归遍历按目录逐层排序，所以过滤保序，与直接遍历子树同形。 */
+  const runtimeGuiFiles = runtimeFiles
+    .filter((file) => file.path.startsWith("gui/"))
+    .map((file) => ({ ...file, path: file.path.slice("gui/".length) }));
   const manifest = JSON.parse(await readFile(join(runtimeRoot, "app.json"), "utf8")) as AppManifest;
   const actual: CompiledV3DigestSet = {
     manifestDigest: canonicalDigest(manifest),
@@ -112,32 +116,28 @@ async function assertPrepared(input: CompiledV3SealInput) {
   }
 }
 
-async function copySourceProjection(receipt: SourceFreezeReceipt, targetRoot: string) {
-  await mkdir(targetRoot, { recursive: true, mode: 0o700 });
+/* 一次读取喂两个投影：source/ 收全部冻结字节，runtime/ 收其中的非 GUI 保留项。
+   分成两轮读等于把整棵快照又读了一遍，只为写出同一批字节。 */
+async function projectFrozenSource(receipt: SourceFreezeReceipt, temporaryRoot: string) {
+  const sourceRoot = join(temporaryRoot, "source");
+  const runtimeRoot = join(temporaryRoot, "runtime");
+  await mkdir(sourceRoot, { recursive: true, mode: 0o700 });
+  await mkdir(runtimeRoot, { recursive: true, mode: 0o700 });
   for (const file of ordered(receipt.files)) {
     const bytes = await readFile(join(receipt.snapshotRoot, file.path));
     if (bytes.byteLength !== file.bytes || sha256(bytes) !== file.sha256) {
       throw invalid(`immutable source changed before seal: ${file.path}`);
     }
-    await writeSynced(join(targetRoot, file.path), bytes);
+    await writeSynced(join(sourceRoot, file.path), bytes);
+    if (file.path === "data/base.json" || file.path.startsWith("gui/")) continue;
+    await writeSynced(join(runtimeRoot, file.path), bytes);
   }
 }
 
-async function copyRuntimeProjection(
-  source: SourceFreezeReceipt,
-  compilerRuntimeRoot: string,
-  targetRoot: string
-) {
-  await mkdir(targetRoot, { recursive: true, mode: 0o700 });
-  for (const file of ordered(source.files)) {
-    if (file.path === "data/base.json" || file.path.startsWith("gui/")) continue;
-    await writeSynced(join(targetRoot, file.path), await readFile(join(source.snapshotRoot, file.path)));
-  }
-  for (const file of await walk(compilerRuntimeRoot)) {
+async function projectCompilerRuntime(compilerRuntimeRoot: string, targetRoot: string) {
+  for (const file of await readTree(compilerRuntimeRoot)) {
     if (!file.path.startsWith("gui/")) throw invalid(`compiler runtime escaped gui/: ${file.path}`);
-    const bytes = await readFile(join(compilerRuntimeRoot, file.path));
-    if (sha256(bytes) !== file.sha256) throw invalid(`compiler runtime changed before seal: ${file.path}`);
-    await writeSynced(join(targetRoot, file.path), bytes);
+    await writeSynced(join(targetRoot, file.path), file.content);
   }
 }
 
@@ -153,7 +153,11 @@ async function writeSynced(path: string, bytes: Buffer) {
 }
 
 async function walk(root: string) {
-  const files: Array<{ path: string; bytes: number; sha256: Sha256Digest }> = [];
+  return (await readTree(root)).map(({ path, bytes, sha256: digest }) => ({ path, bytes, sha256: digest }));
+}
+
+async function readTree(root: string) {
+  const files: Array<{ path: string; bytes: number; sha256: Sha256Digest; content: Buffer }> = [];
   const visit = async (directory: string) => {
     const entries = await readdir(directory, { withFileTypes: true });
     entries.sort((left, right) => Buffer.compare(Buffer.from(left.name), Buffer.from(right.name)));
@@ -161,8 +165,13 @@ async function walk(root: string) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) await visit(path);
       else if (entry.isFile()) {
-        const bytes = await readFile(path);
-        files.push({ path: relative(root, path).split(sep).join("/"), bytes: bytes.byteLength, sha256: sha256(bytes) });
+        const content = await readFile(path);
+        files.push({
+          path: relative(root, path).split(sep).join("/"),
+          bytes: content.byteLength,
+          sha256: sha256(content),
+          content,
+        });
       } else {
         throw invalid("compiled-v3 projections allow only regular files and directories");
       }

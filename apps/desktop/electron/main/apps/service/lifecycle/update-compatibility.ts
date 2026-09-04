@@ -6,7 +6,7 @@
 
 import type { AppGuiCompatibilitySupport } from "../../../../../shared/app-gui/support";
 import { evaluateAppGuiCompatibility } from "../../../../../shared/app-gui/support";
-import type { AppStore } from "../../app-store";
+import type { AppStore } from "../../store/app-store";
 
 type RuntimePort = Readonly<{
   quarantine(appId: string): Promise<void>;

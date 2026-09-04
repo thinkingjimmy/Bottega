@@ -1,20 +1,19 @@
 /**
- * [INPUT]: Depends on Node fs/path/module, user home and history-import adapter
- * [OUTPUT]: Provides CodexHistoryAdapter with active/archive scans and constant-memory metadata plus bounded two-pass JSONL streaming for response/event selection, tools, task duration, and state metadata
+ * [INPUT]: Depends on Node fs/path/module, user home, the history-import adapter kernel and the shared turn-folding seam
+ * [OUTPUT]: Provides CodexHistoryAdapter with active/archive scans and constant-memory metadata plus bounded two-pass JSONL streaming for response/event selection, tools, task duration, state metadata, one-assistant-per-turn folding, and product-context envelope stripping in both messages and titles
  * [POS]: the history-import Codex CLI format adapter; SQLite is open with readOnly and as an independent source revision
  */
 
 import { createRequire } from "node:module";
 import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { ForeignHistoryBlock, ForeignHistoryMessage, ForeignToolEvent } from "../../../shared/history-import-ipc";
+import type { ForeignHistoryMessage, ForeignToolEvent } from "../../../shared/history-import-ipc";
 import {
   HISTORY_FILE_BYTES,
   HISTORY_PARSER_VERSION,
   batchHistoryTurns,
   collectHistoryBatches,
   digest,
-  escapedUnsupported,
   fingerprint,
   attachPendingTools,
   attachWorkedFor,
@@ -36,6 +35,7 @@ import {
   type ParsedHistory,
   type ScanDepth,
 } from "./adapter";
+import { foldHistoryTurns, stripProductContext } from "./turn-folding";
 
 type Json = Record<string, unknown>;
 type StateMeta = { id: string; title?: string; path?: string };
@@ -97,20 +97,24 @@ export class CodexHistoryAdapter implements HistoryAdapter {
   }
 
   parseBatches(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches {
-    return batchHistoryTurns(this.parseTurns(entry, signal), signal);
+    return batchHistoryTurns(foldHistoryTurns(this.parseTurns(entry, signal), signal), signal);
   }
 
   async parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory> {
     return collectHistoryBatches(this.parseBatches(entry, signal));
   }
 
+  /* rollout 是 runtime 的日志，不是对话稿：session_meta/turn_context/
+     event_msg/world_state/compacted 都是运行时记录，不是谁说过的话。
+     这里不列白名单——凡不是用户/助手消息的记录一律跳过，Codex 明天新增
+     的第六种记录不需要我们再改一行代码。 */
   private async *parseTurns(
     entry: AdapterEntry,
     signal?: AbortSignal
   ): HistoryBlockTurns {
     const hasResponseMessages = await containsResponseMessages(entry, signal);
     const source = streamStableJsonl(entry.sourcePath, entry.fingerprint, signal);
-    let blocks: ForeignHistoryBlock[] = [];
+    let blocks: ForeignHistoryMessage[] = [];
     const toolCalls = new Map<string, ForeignToolEvent>();
     const flush = () => {
       if (!blocks.length) return [];
@@ -132,10 +136,7 @@ export class CodexHistoryAdapter implements HistoryAdapter {
       try { raw = JSON.parse(line) as Json; }
       catch { raw = {}; }
       const payload = object(raw.payload);
-      if (!Object.keys(raw).length) {
-        blocks.push(unsupported(line, seq, "invalid-json"));
-        continue;
-      }
+      if (!Object.keys(raw).length) continue;
       if (raw.type === "response_item") {
         const block = responseItem(payload, raw.timestamp, seq, entry, toolCalls);
         if (block) {
@@ -166,8 +167,6 @@ export class CodexHistoryAdapter implements HistoryAdapter {
         }
         continue;
       }
-      if (["session_meta", "turn_context", "event_msg"].includes(String(raw.type))) continue;
-      blocks.push(unsupported(line, seq, "unsupported-record"));
     }
   }
 }
@@ -266,7 +265,7 @@ function responseItem(payload: Json | null, recordTimestamp: unknown, seq: numbe
   if (payload.type === "message") {
     const role = payload.role === "assistant" ? "assistant" : payload.role === "user" ? "user" : null;
     if (!role) return null;
-    const content = contentText(payload.content);
+    const content = stripProductContext(contentText(payload.content));
     if (!content.trim() || injected(content)) return null;
     const id = string(payload.id) ?? `${role}-${seq}`;
     return { kind: "message", id, nativeTurnId: id, deliverySeq: seq, role, content, createdAt: timestamp(recordTimestamp ?? payload.timestamp, entry.createdAt) };
@@ -286,7 +285,7 @@ function responseItem(payload: Json | null, recordTimestamp: unknown, seq: numbe
 function eventMessage(payload: Json | null, recordTimestamp: unknown, seq: number, entry: AdapterEntry): ForeignHistoryMessage | null {
   if (!payload) return null;
   const role = payload.type === "agent_message" ? "assistant" : payload.type === "user_message" ? "user" : null;
-  const content = string(payload.message) ?? string(payload.text) ?? "";
+  const content = stripProductContext(string(payload.message) ?? string(payload.text) ?? "");
   if (!role || !content.trim() || injected(content)) return null;
   const id = string(payload.id) ?? `${role}-${seq}`;
   return { kind: "message", id, nativeTurnId: id, deliverySeq: seq, role, content, createdAt: timestamp(recordTimestamp ?? payload.timestamp, entry.createdAt) };
@@ -322,12 +321,12 @@ const requireSqlite = () => createRequire(import.meta.url)("node:sqlite") as { D
 const first = (names: Set<string>, candidates: string[]) => candidates.find((name) => names.has(name));
 async function rolloutFiles(root: string): Promise<string[]> { try { const entries = await readdir(root, { withFileTypes: true }); const nested = await Promise.all(entries.map((entry) => { const path = join(root, entry.name); return entry.isDirectory() ? rolloutFiles(path) : entry.isFile() && entry.name.endsWith(".jsonl") ? [path] : []; })); return nested.flat(); } catch { return []; } }
 const rolloutStem = (path: string) => basename(path, ".jsonl").split("-").at(-1) ?? basename(path, ".jsonl");
-function codexMessageText(raw: Json, role: string) { const payload = object(raw.payload); return raw.type === "response_item" && payload?.type === "message" && payload.role === role ? contentText(payload.content) : raw.type === "event_msg" && payload?.type === `${role}_message` ? string(payload.message) ?? "" : ""; }
+/* 标题只认用户自己写下的那句话：产品信封先剥，剥空即换下一条候选。 */
+function codexMessageText(raw: Json, role: string) { const payload = object(raw.payload); return stripProductContext(raw.type === "response_item" && payload?.type === "message" && payload.role === role ? contentText(payload.content) : raw.type === "event_msg" && payload?.type === `${role}_message` ? string(payload.message) ?? "" : ""); }
 function contentText(value: unknown): string { if (typeof value === "string") return value; if (!Array.isArray(value)) return ""; return value.map((item) => { const part = object(item); if (!part || part.type === "reasoning" || part.type === "encrypted_content") return ""; return string(part.text) ?? string(part.output_text) ?? string(part.input_text) ?? ""; }).filter(Boolean).join("\n"); }
 const injected = (value: string) => /<environment_context>|<developer>|<system>|# AGENTS\.md instructions/i.test(value);
 /** subagent 线程（guardian 审批评估、thread_spawn worker）是运行时内部产物，不是用户会话 */
 const subagentThread = (payload: Json | null) => payload?.thread_source === "subagent" || !!object(payload?.source)?.subagent;
-function unsupported(line: string, seq: number, reason: string) { return { kind: "unsupported" as const, id: `unsupported-${seq}`, deliverySeq: seq, createdAt: 0, reason, escapedPreview: escapedUnsupported(line) }; }
 const object = (value: unknown) => value && typeof value === "object" && !Array.isArray(value) ? value as Json : null;
 const string = (value: unknown) => typeof value === "string" && value ? value : null;
 const safeJson = (value: unknown) => { try { return JSON.stringify(value); } catch { return "[unserializable]"; } };

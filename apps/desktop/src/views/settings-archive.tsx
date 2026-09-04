@@ -165,7 +165,7 @@ export function PurgePreviewDescription({
   const memory = preview.memory;
   const rebuilding = mode === "cleanup-and-rebuild";
   const hasFolders = preview.deletePaths.length > 0;
-  const hasBases = preview.pinnedBaseCount > 0;
+  const hasBases = preview.rootBaseCount > 0;
   const hasRetained = preview.retainedExternalBindings.length > 0;
   return (
     <>
@@ -189,7 +189,7 @@ export function PurgePreviewDescription({
           {hasBases && (
             <PurgeFact
               label={t("archive.basesDeletedLabel")}
-              value={preview.pinnedBaseCount}
+              value={preview.rootBaseCount}
             />
           )}
           {hasRetained && (

@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, the locale catalog, shared BaseOwner changed/moved/migration Event rules, and lib/bases client
- * [OUTPUT]: Provides BasesProvider/useBases with moved/changed snapshots, an explicit Project Base baseline-loaded fence, and revision-bound Base commands
+ * [INPUT]: Depends on React Context, the locale catalog, shared BaseOwner changed/moved/removed Event rules, and lib/bases client
+ * [OUTPUT]: Provides BasesProvider plus the split useBasesNavigation/useBaseSnapshots hooks, bounded move/retire ledgers, an explicit Project Base baseline-loaded fence, and revision-bound Base commands
  * [POS]: The single source of truth for the Base real-time state of the renderer; All IPC returns, navigation baseline, delta meta and event pull are through the ownerInstance/revision fence
  */
 
@@ -17,24 +17,19 @@ import {
 } from "react";
 import type {
   BaseMetaPatch,
-  BasePinnedSummary,
+  BaseNavigationSummary,
   BaseRow,
   BaseRowPatch,
   BasesEvent,
   BaseSnapshot,
 } from "../../../shared/bases-ipc";
-import {
-  baseNavigationOf,
-  ownerFromKey,
-  ownerKeyOf,
-} from "../../../shared/bases-ipc";
+import { ownerFromKey, ownerKeyOf } from "../../../shared/bases-ipc";
 import {
   appearsInProjectBase,
   appearsInRootBases,
 } from "../../../shared/placement/base";
 import {
   deleteBaseRows,
-  discardCorruptBase,
   ensureBase,
   exportBaseCsv,
   exportBaseJson,
@@ -44,7 +39,7 @@ import {
   insertBaseRows,
   importBaseJson,
   importBaseXlsx,
-  listPinnedBases,
+  listRootBases,
   listProjectBases,
   onBasesEvent,
   patchBaseRow,
@@ -56,17 +51,31 @@ import {
 import { errorMessage } from "@/lib/errors";
 import { useAppTranslation } from "./i18n-provider";
 
-type BasesContextValue = {
-  snapshots: Readonly<Record<string, BaseSnapshot>>;
+/* ============================================================================
+ * 为什么是两个 Context 而不是一个
+ *
+ * 侧栏只关心「有哪些 Base、它们叫什么」；Workbench 关心「这一张表此刻的
+ * 每一行」。合成一个值时，任何一次单元格编辑都会让侧栏、Project 设置页、
+ * 面板 tab 条一起重渲染——它们读到的东西一个字都没变。切成导航相与快照相
+ * 之后，行事件只推动真正读行的那批消费者。
+ * 需要两者的组件（Workbench、头部动作）各调一次 hook，而不是由 Provider
+ * 每次渲染合成一个新对象把这份隔离又还回去。
+ * ========================================================================== */
+type BasesNavigationValue = {
   movedOwners: Readonly<Record<string, string>>;
-  pinned: BasePinnedSummary[];
-  projectBases: BasePinnedSummary[];
+  rootBases: BaseNavigationSummary[];
+  projectBases: BaseNavigationSummary[];
   projectBasesLoaded: boolean;
   warning: string;
-  get(ownerKey: string): Promise<BaseSnapshot | null>;
   ensure(ownerKey: string): Promise<BaseSnapshot>;
-  discardCorrupt(ownerKey: string): Promise<BaseSnapshot>;
   removeManaged(ownerKey: string, ownerInstanceId: string): Promise<boolean>;
+  resolveForSection: typeof resolveBaseForSection;
+  promoteToProject: typeof promoteBaseToProject;
+};
+
+type BaseSnapshotsValue = {
+  snapshots: Readonly<Record<string, BaseSnapshot>>;
+  get(ownerKey: string): Promise<BaseSnapshot | null>;
   updateMeta(input: {
     ownerKey: string;
     expectedRevision: number;
@@ -101,11 +110,10 @@ type BasesContextValue = {
     ownerKey: string,
     rowId: string
   ): ReturnType<typeof getBaseRowHistory>;
-  resolveForSection: typeof resolveBaseForSection;
-  promoteToProject: typeof promoteBaseToProject;
 };
 
-const BasesContext = createContext<BasesContextValue | null>(null);
+const BasesNavigationContext = createContext<BasesNavigationValue | null>(null);
+const BaseSnapshotsContext = createContext<BaseSnapshotsValue | null>(null);
 
 type BaseReloadFlight = {
   targetOwnerInstance: string | null;
@@ -121,6 +129,15 @@ type BaseReloadContext = {
   ) => BaseSnapshot | null;
   current: (ownerKey: string) => BaseSnapshot | undefined;
 };
+
+/* 转发表与墓碑表都随会话生长，故都必须有上界：它们服务的是「刚刚发生的
+   那次搬迁/删除」，一个长跑的窗口里攒下几千条陈年记录只会白占内存。
+   两者都按插入序淘汰最旧的一条。 */
+const MOVED_OWNER_LIMIT = 64;
+const RETIRED_OWNER_LIMIT = 128;
+
+const retiredKey = (ownerKey: string, ownerInstanceId: string) =>
+  `${ownerKey}\u0000${ownerInstanceId}`;
 
 export function mergeBaseEvent(
   current: BaseSnapshot | undefined,
@@ -218,22 +235,24 @@ export function moveBaseSnapshot(
   return { snapshots: next, applied: true };
 }
 
-export function createBaseReloader(
-  load: BaseReloadContext["load"],
-  remember: BaseReloadContext["remember"],
-  current: (ownerKey: string) => BaseSnapshot | undefined
-) {
-  const context = {
-    flights: new Map<string, BaseReloadFlight>(),
-    load,
-    remember,
-    current,
-  };
-  return (ownerKey: string, requestedOwnerInstance?: string) =>
-    requestBaseReload(context, ownerKey, requestedOwnerInstance);
+/**
+ * 记住一次搬迁，并保持转发表有界。旧键不能在目标落地时就删——用户可能仍站在
+ * 旧路由上，转发表正是那一刻唯一能把他带到新 Base 的东西；故按容量淘汰。
+ */
+export function rememberMovedOwner(
+  current: Readonly<Record<string, string>>,
+  from: string,
+  to: string
+): Record<string, string> {
+  const next = { ...current, [from]: to };
+  const keys = Object.keys(next);
+  for (let index = 0; index + MOVED_OWNER_LIMIT < keys.length; index += 1) {
+    delete next[keys[index]!];
+  }
+  return next;
 }
 
-function requestBaseReload(
+export function requestBaseReload(
   context: BaseReloadContext,
   ownerKey: string,
   requestedOwnerInstance?: string
@@ -306,7 +325,7 @@ export async function reloadBaseEvent(
   }
 }
 
-function sortPinned(values: Iterable<BasePinnedSummary>) {
+function sortSummaries(values: Iterable<BaseNavigationSummary>) {
   return [...values].sort(
     (left, right) =>
       left.name.localeCompare(right.name) ||
@@ -314,32 +333,109 @@ function sortPinned(values: Iterable<BasePinnedSummary>) {
   );
 }
 
+/* 导航清单的内容相等即身份相等：一次不影响清单的行编辑不该让侧栏重渲染。
+   navigation 不参与比较——它住在 meta 里，改动必然抬高 revision。 */
+function sameSummaries(
+  left: readonly BaseNavigationSummary[],
+  right: readonly BaseNavigationSummary[]
+) {
+  return (
+    left.length === right.length &&
+    left.every((item, index) => {
+      const other = right[index]!;
+      return (
+        item.ownerKey === other.ownerKey &&
+        item.ownerInstanceId === other.ownerInstanceId &&
+        item.name === other.name &&
+        item.revision === other.revision
+      );
+    })
+  );
+}
+
+function summaryOf(snapshot: BaseSnapshot): BaseNavigationSummary {
+  return {
+    ownerKey: ownerKeyOf(snapshot.meta.owner),
+    ownerInstanceId: snapshot.meta.ownerInstanceId,
+    name: snapshot.meta.name,
+    revision: snapshot.meta.revision,
+    navigation: snapshot.meta.navigation,
+  };
+}
+
+/** 一份 summary 只被判读一次：root 清单与 project 清单是同一个 navigation 的两个答案。 */
+function placeSummary(
+  summary: BaseNavigationSummary,
+  root: Map<string, BaseNavigationSummary>,
+  project: Map<string, BaseNavigationSummary>
+) {
+  const navigation = summary.navigation;
+  if (appearsInRootBases(navigation)) root.set(summary.ownerKey, summary);
+  else root.delete(summary.ownerKey);
+  if (
+    navigation.kind === "project-contained" &&
+    appearsInProjectBase(navigation, navigation.projectId)
+  ) {
+    project.set(summary.ownerKey, summary);
+  } else {
+    project.delete(summary.ownerKey);
+  }
+}
+
 export function BasesProvider({ children }: { children: React.ReactNode }) {
   const { t } = useAppTranslation();
   const [snapshots, setSnapshots] = useState<Record<string, BaseSnapshot>>({});
   const [movedOwners, setMovedOwners] = useState<Record<string, string>>({});
-  const [pinned, setPinned] = useState<BasePinnedSummary[]>([]);
-  const [projectBases, setProjectBases] = useState<BasePinnedSummary[]>([]);
+  const [rootBases, setRootBases] = useState<BaseNavigationSummary[]>([]);
+  const [projectBases, setProjectBases] = useState<BaseNavigationSummary[]>([]);
   const [projectBasesLoaded, setProjectBasesLoaded] = useState(false);
   const [warning, setWarning] = useState("");
   const snapshotsRef = useRef<Record<string, BaseSnapshot>>({});
-  const pinnedRef = useRef(new Map<string, BasePinnedSummary>());
-  const projectBasesRef = useRef(new Map<string, BasePinnedSummary>());
-  const removedRef = useRef(new Map<string, Set<string>>());
+  const rootBasesRef = useRef(new Map<string, BaseNavigationSummary>());
+  const projectBasesRef = useRef(new Map<string, BaseNavigationSummary>());
+  const retiredRef = useRef(new Set<string>());
   const initializingRef = useRef(true);
   const bufferedEventsRef = useRef<BasesEvent[]>([]);
   const reloadFlightsRef = useRef(new Map<string, BaseReloadFlight>());
+  /* 文案取「说这句话的那一刻」的语言，故走 ref：让 t 进订阅 effect 的依赖，
+     等于每次切换语言都退订、重订、重跑两条清单 IPC——语言与事件流无关。
+     取用时一律先落成局部 t，i18n 门禁按 t(key) 这一种写法认目录引用。 */
+  const translateRef = useRef(t);
+  useEffect(() => {
+    translateRef.current = t;
+  }, [t]);
+
+  const publishSummaries = useCallback(() => {
+    setRootBases((current) => {
+      const next = sortSummaries(rootBasesRef.current.values());
+      return sameSummaries(current, next) ? current : next;
+    });
+    setProjectBases((current) => {
+      const next = sortSummaries(projectBasesRef.current.values());
+      return sameSummaries(current, next) ? current : next;
+    });
+  }, []);
+
+  /** 退役一个 owner instance：迟到的 snapshot 不得复活它。表按容量淘汰。 */
+  const retire = useCallback((ownerKey: string, ownerInstanceId: string) => {
+    const key = retiredKey(ownerKey, ownerInstanceId);
+    retiredRef.current.delete(key);
+    retiredRef.current.add(key);
+    for (const oldest of retiredRef.current) {
+      if (retiredRef.current.size <= RETIRED_OWNER_LIMIT) break;
+      retiredRef.current.delete(oldest);
+    }
+  }, []);
 
   const remember = useCallback((
     snapshot: BaseSnapshot,
     expectedOwnerInstance?: string | null
   ): BaseSnapshot | null => {
-    if (snapshot.warning) setWarning(snapshot.warning);
     const ownerKey = ownerKeyOf(snapshot.meta.owner);
     if (
-      removedRef.current
-        .get(ownerKey)
-        ?.has(snapshot.meta.ownerInstanceId)
+      retiredRef.current.has(
+        retiredKey(ownerKey, snapshot.meta.ownerInstanceId)
+      )
     ) {
       return snapshotsRef.current[ownerKey] ?? null;
     }
@@ -355,31 +451,14 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       [ownerKey]: merged,
     };
     setSnapshots(snapshotsRef.current);
-    const summary = {
-      ownerKey,
-      ownerInstanceId: merged.meta.ownerInstanceId,
-      name: merged.meta.name,
-      revision: merged.meta.revision,
-      navigation: baseNavigationOf(merged.meta),
-    };
-    const navigation = baseNavigationOf(merged.meta);
-    if (appearsInRootBases(navigation)) {
-      pinnedRef.current.set(ownerKey, summary);
-    } else {
-      pinnedRef.current.delete(ownerKey);
-    }
-    setPinned(sortPinned(pinnedRef.current.values()));
-    if (
-      navigation.kind === "project-contained" &&
-      appearsInProjectBase(navigation, navigation.projectId)
-    ) {
-      projectBasesRef.current.set(ownerKey, summary);
-    } else {
-      projectBasesRef.current.delete(ownerKey);
-    }
-    setProjectBases(sortPinned(projectBasesRef.current.values()));
+    placeSummary(
+      summaryOf(merged),
+      rootBasesRef.current,
+      projectBasesRef.current
+    );
+    publishSummaries();
     return merged;
-  }, []);
+  }, [publishSummaries]);
 
   const reload = useCallback(
     (
@@ -401,26 +480,20 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
 
   const handleReloadEvent = useCallback(
     async (event: Extract<BasesEvent, { type: "base-changed" }>) => {
+      const t = translateRef.current;
       const reloadWarning = await reloadBaseEvent(reload, event, (values) =>
         t("bases.provider.reloadFailed", values)
       );
       if (reloadWarning) setWarning(reloadWarning);
     },
-    [reload, t]
+    [reload]
   );
 
   const applyEvent = useCallback(
     (event: BasesEvent) => {
       if (event.type === "warning") return setWarning(event.message);
-      if (event.type === "base-migrated") {
-        void reload(event.ownerKey, event.ownerInstanceId);
-        return;
-      }
       if (event.type === "removed") {
-        const removed =
-          removedRef.current.get(event.ownerKey) ?? new Set<string>();
-        removed.add(event.ownerInstanceId);
-        removedRef.current.set(event.ownerKey, removed);
+        retire(event.ownerKey, event.ownerInstanceId);
         if (
           snapshotsRef.current[event.ownerKey]?.meta.ownerInstanceId ===
           event.ownerInstanceId
@@ -431,37 +504,33 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
           setSnapshots(next);
         }
         if (
-          pinnedRef.current.get(event.ownerKey)?.ownerInstanceId ===
+          rootBasesRef.current.get(event.ownerKey)?.ownerInstanceId ===
           event.ownerInstanceId
         ) {
-          pinnedRef.current.delete(event.ownerKey);
-          setPinned(sortPinned(pinnedRef.current.values()));
+          rootBasesRef.current.delete(event.ownerKey);
         }
         if (
           projectBasesRef.current.get(event.ownerKey)?.ownerInstanceId ===
           event.ownerInstanceId
         ) {
           projectBasesRef.current.delete(event.ownerKey);
-          setProjectBases(sortPinned(projectBasesRef.current.values()));
         }
+        publishSummaries();
         return;
       }
       if (event.type === "base-moved") {
         const moved = moveBaseSnapshot(snapshotsRef.current, event);
         if (!moved.applied) return;
-        const retired =
-          removedRef.current.get(event.from.ownerKey) ?? new Set<string>();
-        retired.add(event.from.ownerInstanceId);
-        removedRef.current.set(event.from.ownerKey, retired);
+        retire(event.from.ownerKey, event.from.ownerInstanceId);
         const next = moved.snapshots;
         snapshotsRef.current = next;
         setSnapshots(next);
-        setMovedOwners((current) => ({
-          ...current,
-          [event.from.ownerKey]: event.to.ownerKey,
-        }));
-        pinnedRef.current.delete(event.from.ownerKey);
+        setMovedOwners((current) =>
+          rememberMovedOwner(current, event.from.ownerKey, event.to.ownerKey)
+        );
+        rootBasesRef.current.delete(event.from.ownerKey);
         projectBasesRef.current.delete(event.from.ownerKey);
+        publishSummaries();
         if (next[event.to.ownerKey]) remember(next[event.to.ownerKey]);
         void reload(event.to.ownerKey, event.to.ownerInstanceId);
         return;
@@ -475,21 +544,28 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       }
       if (merged.kind === "apply") remember(merged.snapshot!);
     },
-    [handleReloadEvent, reload, remember]
+    [handleReloadEvent, publishSummaries, reload, remember, retire]
   );
 
   useEffect(() => {
     let active = true;
     initializingRef.current = true;
     bufferedEventsRef.current = [];
-    const unsubscribe = onBasesEvent((event) => {
-      if (!active) return;
-      if (initializingRef.current) {
-        bufferedEventsRef.current.push(event);
-        return;
-      }
-      applyEvent(event);
-    });
+    /* 桥缺席是装配错误，不是一种可运行的模式：这里只保证渲染树不当场崩塌，
+       原因本身由紧随其后的两条清单 IPC 以同一条 warning 路径说出来。 */
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = onBasesEvent((event) => {
+        if (!active) return;
+        if (initializingRef.current) {
+          bufferedEventsRef.current.push(event);
+          return;
+        }
+        applyEvent(event);
+      });
+    } catch {
+      // 清单 IPC 会以同一个原因失败并落到 warning
+    }
     const finishInitialization = () => {
       if (!active) return;
       initializingRef.current = false;
@@ -498,7 +574,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       bufferedEventsRef.current = [];
       buffered.forEach(applyEvent);
     };
-    void Promise.all([listPinnedBases(), listProjectBases()])
+    void Promise.all([listRootBases(), listProjectBases()])
       .then(([result, projectResult]) => {
         if (!active) return;
         const baseline = new Map(
@@ -507,55 +583,27 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
         const projectBaseline = new Map(
           projectResult.bases.map((item) => [item.ownerKey, item])
         );
+        /* 已在手的 snapshot 永远压过清单：它更新，且判读规则与 remember 同一份。 */
         for (const snapshot of Object.values(snapshotsRef.current)) {
-          const ownerKey = ownerKeyOf(snapshot.meta.owner);
-          const summary = {
-            ownerKey,
-            ownerInstanceId: snapshot.meta.ownerInstanceId,
-            name: snapshot.meta.name,
-            revision: snapshot.meta.revision,
-            navigation: baseNavigationOf(snapshot.meta),
-          };
-          const navigation = baseNavigationOf(snapshot.meta);
-          if (appearsInRootBases(navigation)) {
-            baseline.set(ownerKey, summary);
-          } else {
-            baseline.delete(ownerKey);
-          }
-          if (
-            navigation.kind === "project-contained" &&
-            appearsInProjectBase(navigation, navigation.projectId)
-          ) {
-            projectBaseline.set(ownerKey, summary);
-          } else {
-            projectBaseline.delete(ownerKey);
+          placeSummary(summaryOf(snapshot), baseline, projectBaseline);
+        }
+        for (const summaries of [baseline, projectBaseline]) {
+          for (const [ownerKey, summary] of summaries) {
+            if (
+              retiredRef.current.has(
+                retiredKey(ownerKey, summary.ownerInstanceId)
+              )
+            ) {
+              summaries.delete(ownerKey);
+            }
           }
         }
-        for (const [ownerKey, ownerInstances] of removedRef.current) {
-          if (
-            ownerInstances.has(
-              baseline.get(ownerKey)?.ownerInstanceId ?? ""
-            )
-          ) {
-            baseline.delete(ownerKey);
-          }
-          if (
-            ownerInstances.has(
-              projectBaseline.get(ownerKey)?.ownerInstanceId ?? ""
-            )
-          ) {
-            projectBaseline.delete(ownerKey);
-          }
-        }
-        pinnedRef.current = baseline;
-        setPinned(sortPinned(baseline.values()));
+        rootBasesRef.current = baseline;
         projectBasesRef.current = projectBaseline;
-        setProjectBases(sortPinned(projectBaseline.values()));
-        if (result.warning || projectResult.warning) {
-          setWarning(result.warning ?? projectResult.warning ?? "");
-        }
+        publishSummaries();
       })
       .catch((cause) => {
+        const t = translateRef.current;
         if (active) {
           setWarning(
             t("bases.provider.loadFailed", { message: errorMessage(cause) })
@@ -567,13 +615,14 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       active = false;
       unsubscribe();
     };
-  }, [applyEvent, t]);
+  }, [applyEvent, publishSummaries]);
 
   const wrap = useCallback(
     async (
       ownerKey: string,
       operation: () => Promise<BaseSnapshot>
     ) => {
+      const t = translateRef.current;
       const expectedOwnerInstance =
         snapshotsRef.current[ownerKey]?.meta.ownerInstanceId ?? null;
       try {
@@ -590,15 +639,10 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
         throw cause;
       }
     },
-    [remember, t]
+    [remember]
   );
   const ensure = useCallback(
     (ownerKey: string) => wrap(ownerKey, () => ensureBase(ownerKey)),
-    [wrap]
-  );
-  const discardCorrupt = useCallback(
-    (ownerKey: string) =>
-      wrap(ownerKey, () => discardCorruptBase(ownerKey)),
     [wrap]
   );
   const removeManaged = useCallback(
@@ -661,18 +705,33 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
     [remember]
   );
 
-  const value = useMemo<BasesContextValue>(
+  const navigation = useMemo<BasesNavigationValue>(
     () => ({
-      snapshots,
       movedOwners,
-      pinned,
+      rootBases,
       projectBases,
       projectBasesLoaded,
       warning,
-      get: reload,
       ensure,
-      discardCorrupt,
       removeManaged,
+      resolveForSection: resolveBaseForSection,
+      promoteToProject: promoteBaseToProject,
+    }),
+    [
+      ensure,
+      movedOwners,
+      projectBases,
+      projectBasesLoaded,
+      removeManaged,
+      rootBases,
+      warning,
+    ]
+  );
+
+  const snapshotsValue = useMemo<BaseSnapshotsValue>(
+    () => ({
+      snapshots,
+      get: reload,
       updateMeta,
       insertRows,
       patchRow,
@@ -683,34 +742,36 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       importJson,
       importXlsx,
       rowHistory: getBaseRowHistory,
-      resolveForSection: resolveBaseForSection,
-      promoteToProject: promoteBaseToProject,
     }),
     [
       deleteRows,
-      discardCorrupt,
-      ensure,
       insertRows,
       importJson,
       importXlsx,
-      movedOwners,
-      removeManaged,
       patchRow,
-      pinned,
-      projectBases,
-      projectBasesLoaded,
       reload,
       snapshots,
       updateMeta,
-      warning,
     ]
   );
 
-  return <BasesContext.Provider value={value}>{children}</BasesContext.Provider>;
+  return (
+    <BasesNavigationContext.Provider value={navigation}>
+      <BaseSnapshotsContext.Provider value={snapshotsValue}>
+        {children}
+      </BaseSnapshotsContext.Provider>
+    </BasesNavigationContext.Provider>
+  );
 }
 
-export function useBases() {
-  const context = useContext(BasesContext);
-  if (!context) throw new Error("useBases 必须在 BasesProvider 内使用");
+export function useBasesNavigation() {
+  const context = useContext(BasesNavigationContext);
+  if (!context) throw new Error("useBasesNavigation 必须在 BasesProvider 内使用");
+  return context;
+}
+
+export function useBaseSnapshots() {
+  const context = useContext(BaseSnapshotsContext);
+  if (!context) throw new Error("useBaseSnapshots 必须在 BasesProvider 内使用");
   return context;
 }

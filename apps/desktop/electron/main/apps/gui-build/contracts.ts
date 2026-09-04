@@ -7,16 +7,22 @@
 import type {
   AppGuiBuildFinding,
   AppGuiBuildReceipt,
-  BaseGuiBuildManifest,
 } from "../../../../shared/apps-ipc";
 import type { Sha256Digest } from "../../../../shared/extensions-ipc";
 
+/* 单文件上限不在这里：真正生效的是 share/package-contract.ts 的
+   PACKAGE_BUDGET.fileBytes = 512 KiB，由 inspectPackage 在 AppSourcePreparer.freeze
+   里先行判死。这里的 sourceFiles/sourceBytes 只管总量。 */
 export const APP_GUI_BUILD_BUDGET = Object.freeze({
   sourceFiles: 512,
   sourceBytes: 16 * 1024 * 1024,
   sourceDepth: 6,
   wallTimeMs: 15_000,
-  rssBytes: 512 * 1024 * 1024,
+  /* 实测（Apple Silicon，2026-09-03，生产编译子进程）：一个 Starter 构建的进程树
+     RSS 求和峰值 ≈ 540 MiB，单进程峰值 ≈ 320 MiB。求和会把共享页重复计数，所以
+     supervisor 记的是单进程最大值，预算按它留一倍余量。这个数必须随构建侧基线
+     收据重新推导，不能凭手感调。 */
+  rssBytes: 768 * 1024 * 1024,
   cpuTimeMs: 15_000,
   processCount: 4,
   generatedJsBytes: 4 * 1024 * 1024,
@@ -46,11 +52,9 @@ export type AppSourcePreparePort = Readonly<{
 }>;
 
 export type SealedCompilerInput = Readonly<{
-  operationId: string;
   snapshotRoot: string;
   outputRoot: string;
   tempRoot: string;
-  build: BaseGuiBuildManifest;
   sourcePackageDigest: Sha256Digest;
   transformContractDigest: Sha256Digest;
   platformCompilerCustodyDigest: Sha256Digest;

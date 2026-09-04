@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import type {
-  ForeignHistoryBlock,
+  ForeignHistoryMessage,
   ForeignHistorySummary,
 } from "../../../shared/history-import-ipc";
 import type { ChatStore } from "../chats/chat-store";
@@ -140,7 +140,7 @@ export async function initializeHistoryImportService({
           publicHistoryEntry(entry),
           snapshot.schemaVersion === 2 ? snapshot.incompleteTail : "unknown"
         ),
-        snapshot.blocks as ForeignHistoryBlock[]
+        snapshot.blocks as ForeignHistoryMessage[]
       );
       const chatId = imported?.chatId ?? `chat_${randomUUID().replaceAll("-", "")}`;
       /* 只读 Chat 已经有身份；收养沿用它，绝不换代——换代会让刚刚还在看的

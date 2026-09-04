@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the injectable rendererIpc registrar, Apps shared channels/input assertions, trusted Studio residence and renderer identity, generic store/runtime/grant/package ports, and the delegated Design registrar
- * [OUTPUT]: Registers Apps management, fenced grant-candidate queries, main-owned typed App Use history/open/switch, recordless delete retry, Editor destination channels, structured add rejection, symmetric Studio authorize/decline/revoke, the studioSurfaceReady list projection, exact staged GUI readiness, renderer-owned GUI teardown, and fixed-App Studio channels
+ * [OUTPUT]: Registers Apps management, fenced grant-candidate queries, main-owned typed App Use history/open/switch, recordless delete retry, Editor destination channels, structured add rejection, symmetric Studio authorize/decline/revoke, the studioSurfaceReady list projection, exact staged GUI readiness, renderer-owned GUI teardown, and fixed-App Studio channels; navigation, GUI runtime, and Design arrive as whole leaves rather than per-method delegations
  * [POS]: apps/service generic renderer adapter; Design command parsing and authority live in integrations/design-ipc.ts
  */
 
@@ -20,7 +20,6 @@ import {
   type AppGuiReadyResult,
   type AppInstallEvent,
   type AppRecord,
-  type AppRuntimeStatus,
   type AppRecordProjection,
   type AppsProjectionSnapshot,
   type EnsureAppChatSlotInput,
@@ -29,10 +28,6 @@ import {
   type SaveAsAppResult,
   type SetAppAgentInput,
   type BeginFileExportInputV1,
-  type BeginFileExportResultV1,
-  type CompleteFileExportInputV1,
-  type CompleteFileExportResultV1,
-  type WriteFileExportChunkInputV1,
   beginFileExportInputV1Schema,
   completeFileExportInputV1Schema,
   parseWriteFileExportChunkInputV1,
@@ -42,14 +37,15 @@ import {
   type RendererIpc,
   type RendererIpcRegistrar,
 } from "../../ipc-registrar";
-import { rendererIdentity } from "../../window/renderer-identity";
-import type { AppDeleteService } from "../app-delete";
-import type { AppInstaller } from "../app-installer";
-import type { AppRuntime } from "../app-runtime";
-import type { AppStore } from "../app-store";
+import type { AppDeleteService } from "../conversion/app-delete";
+import type { AppInstaller } from "../source/app-installer";
+import type { AppRuntime } from "../server/app-runtime";
+import type { AppStore } from "../store/app-store";
+import type { AppNavigationService } from "../turn/app-navigation";
+import type { AppGuiRuntimeService } from "./gui-runtime-service";
+import { originWithoutStart } from "./lifecycle/runtime-operations";
 import type { AppGrantAuthority } from "../attachments/grant-authority";
 import {
-  assertAppGrantTarget,
   assertAppGrantCandidatesInput,
   assertAppGuiInfoInput,
   assertAppGuiReadyInput,
@@ -60,9 +56,8 @@ import {
   assertSetDefaultAppGrantInput,
   assertSurfaceLeaseId,
 } from "../attachments/grant-inputs";
-import type { AppManagementLeaseRegistry } from "../attachments/management-leases";
 import type { AppAttachmentSurfaceLeaseRegistry } from "../attachments/surface-leases";
-import { SaveAsAppRejectedError, type SaveAsAppService } from "../save-as-app";
+import { SaveAsAppRejectedError, type SaveAsAppService } from "../conversion/save-as-app";
 import {
   assertAppId,
   assertChatSlotInput,
@@ -99,18 +94,11 @@ type AppsIpcDependencies = DesignIpcDependencies & {
   gatewayWarning(): string | null;
   grantAuthority(): AppGrantAuthority;
   surfaceLeases(): AppAttachmentSurfaceLeaseRegistry;
-  managementLeases(): AppManagementLeaseRegistry;
   saveAsApp(): SaveAsAppService | null;
   appDelete(): AppDeleteService | null;
   emit(event: AppInstallEvent): void;
   requireRecord(appId: string): AppRecord;
   stop(appId: string): Promise<void>;
-  runtimeStatus(appId: string): AppRuntimeStatus;
-  originWithoutStart(appId: string): {
-    origin: string;
-    generationId?: string;
-    activationId?: string;
-  } | null;
   extensionStatus(appId: string): AppExtensionStatus;
   capabilities(appId: string): Promise<AppCapabilitiesSnapshot>;
   authorizeStudioAccess(appId: string): Promise<AppRecord>;
@@ -124,19 +112,24 @@ type AppsIpcDependencies = DesignIpcDependencies & {
   setAgent(input: SetAppAgentInput): Promise<AppRecord>;
   rename(input: RenameAppInput): Promise<AppRecord>;
   ensureChatSlot(input: EnsureAppChatSlotInput): unknown;
-  listUseHistory(input: import("../../../../shared/apps-ipc").ListAppUseHistoryInput): unknown;
-  openUseChat(input: import("../../../../shared/apps-ipc").OpenAppUseChatInput): unknown;
-  newUseChat(appId: string, requestId: string): unknown;
-  openEditor(input: import("../../../../shared/apps-ipc").OpenAppEditorInput): unknown;
-  openEditorChat(input: import("../../../../shared/apps-ipc").OpenAppEditorChatInput): unknown;
-  hideEditor(appId: string): unknown;
+  /* Use/Edit 的六条导航同属一个叶子，逐条转手只会让签名抄两遍。 */
+  navigation(): Pick<
+    AppNavigationService,
+    | "listAppUseHistory"
+    | "openAppUseChat"
+    | "newAppUseChat"
+    | "openAppEditor"
+    | "openAppEditorChat"
+    | "hideAppEditor"
+  >;
   guiInfo(input: AppGuiInfoInput, context: TrustedRendererContext): Promise<AppGuiInfo>;
   guiReady(input: AppGuiReadyInput): Promise<AppGuiReadyResult>;
   releaseGuiSurface(input: AppGuiInfoInput, context: TrustedRendererContext): Promise<void>;
-  fileExportBegin(input: BeginFileExportInputV1): Promise<BeginFileExportResultV1>;
-  fileExportWrite(input: WriteFileExportChunkInputV1): Promise<unknown>;
-  fileExportFinalize(input: CompleteFileExportInputV1): Promise<CompleteFileExportResultV1>;
-  fileExportCancel(input: CompleteFileExportInputV1): Promise<CompleteFileExportResultV1>;
+  /** file export 的四段同属 GUI runtime 的 export custody，一并交出去。 */
+  guiRuntime: Pick<
+    AppGuiRuntimeService,
+    "beginExport" | "writeExport" | "finalizeExport" | "cancelExport"
+  >;
   resolveMaintenanceBackend(requested: AgentBackendId | "auto"): Promise<{
     id: AgentBackendId;
     version?: string;
@@ -257,11 +250,6 @@ export function registerAppsIpc(
     .handle(APPS_CHANNEL.grant, (input) =>
       deps.grantAuthority().grant(assertSetAppGrantInput(input))
     )
-    .handle(APPS_CHANNEL.revokeGrant, (target, rawId) =>
-      deps
-        .grantAuthority()
-        .revoke(assertAppGrantTarget(target), assertAppId(rawId))
-    )
     .handle(APPS_CHANNEL.setGrantState, (input) =>
       deps.grantAuthority().setState(assertSetAppGrantStateInput(input))
     )
@@ -291,15 +279,6 @@ export function registerAppsIpc(
     )
     .handle(APPS_CHANNEL.capabilities, (rawId) =>
       deps.capabilities(assertAppId(rawId))
-    )
-    .handle(APPS_CHANNEL.acquireManagementLease, (rawId) => ({
-      managementLeaseId: deps.managementLeases().issue({
-        appId: assertAppId(rawId),
-        ...rendererIdentity(window.webContents.id),
-      }).managementLeaseId,
-    }))
-    .handle(APPS_CHANNEL.releaseManagementLease, (leaseId) =>
-      deps.managementLeases().release(assertSurfaceLeaseId(leaseId))
     )
     .handle(APPS_CHANNEL.authorizeStudioAccess, (rawId) =>
       deps.authorizeStudioAccess(assertAppId(rawId))
@@ -406,15 +385,10 @@ export function registerAppsIpc(
       assertFixedAppStudio(context, appId);
       return openRuntime(deps, appId);
     })
-    .handleWithContext(APPS_CHANNEL.status, (context, rawId) => {
-      const appId = assertAppId(rawId);
-      assertFixedAppStudio(context, appId);
-      return deps.runtimeStatus(appId);
-    })
     .handleWithContext(APPS_CHANNEL.originWithoutStart, (context, rawId) => {
       const appId = assertAppId(rawId);
       assertFixedAppStudio(context, appId);
-      return deps.originWithoutStart(appId);
+      return originWithoutStart(deps.store, deps.runtime, appId);
     })
     .handleWithContext(APPS_CHANNEL.listPresets, (context) =>
       context.role === "app-window" ? [] : deps.packages.presets.list()
@@ -452,12 +426,12 @@ export function registerAppsIpc(
     .handleWithContext(APPS_CHANNEL.listUseHistory, (context, value) => {
       const input = assertListAppUseHistoryInput(value);
       assertFixedAppStudio(context, input.appId);
-      return deps.listUseHistory(input);
+      return deps.navigation().listAppUseHistory(input);
     })
     .handleWithContext(APPS_CHANNEL.openUseChat, (context, value) => {
       const input = assertOpenAppUseChatInput(value);
       assertFixedAppStudio(context, input.appId);
-      return deps.openUseChat(input);
+      return deps.navigation().openAppUseChat(input);
     })
     .handleWithContext(APPS_CHANNEL.newUseChat, (context, rawId, rawRequestId) => {
       const appId = assertAppId(rawId);
@@ -469,22 +443,22 @@ export function registerAppsIpc(
       ) {
         throw new Error("App Use New Chat requestId 无效");
       }
-      return deps.newUseChat(appId, rawRequestId);
+      return deps.navigation().newAppUseChat(appId, rawRequestId);
     })
     .handleWithContext(APPS_CHANNEL.openEditor, (context, value) => {
       const input = assertOpenAppEditorInput(value);
       assertFixedAppStudio(context, input.appId);
-      return deps.openEditor(input);
+      return deps.navigation().openAppEditor(input);
     })
     .handleWithContext(APPS_CHANNEL.openEditorChat, (context, value) => {
       const input = assertOpenAppEditorChatInput(value);
       assertFixedAppStudio(context, input.appId);
-      return deps.openEditorChat(input);
+      return deps.navigation().openAppEditorChat(input);
     })
     .handleWithContext(APPS_CHANNEL.hideEditor, (context, rawId) => {
       const appId = assertAppId(rawId);
       assertFixedAppStudio(context, appId);
-      return deps.hideEditor(appId);
+      return deps.navigation().hideAppEditor(appId);
     })
     .handleWithContext(APPS_CHANNEL.guiInfo, async (context, raw) => {
       const input = assertAppGuiInfoInput(raw);
@@ -521,22 +495,22 @@ export function registerAppsIpc(
     .handleWithContext(APPS_CHANNEL.fileExportBegin, async (context, raw) => {
       const input = beginFileExportInputV1Schema.parse(raw);
       await assertFileExportSurface(context, input.surface, deps);
-      return deps.fileExportBegin(input);
+      return deps.guiRuntime.beginExport(input);
     })
     .handleWithContext(APPS_CHANNEL.fileExportWrite, async (context, raw) => {
       const input = parseWriteFileExportChunkInputV1(raw);
       await assertFileExportSurface(context, input.surface, deps);
-      return deps.fileExportWrite(input);
+      return deps.guiRuntime.writeExport(input);
     })
     .handleWithContext(APPS_CHANNEL.fileExportFinalize, async (context, raw) => {
       const input = completeFileExportInputV1Schema.parse(raw);
       await assertFileExportSurface(context, input.surface, deps);
-      return deps.fileExportFinalize(input);
+      return deps.guiRuntime.finalizeExport(input);
     })
     .handleWithContext(APPS_CHANNEL.fileExportCancel, async (context, raw) => {
       const input = completeFileExportInputV1Schema.parse(raw);
       await assertFileExportSurface(context, input.surface, deps);
-      return deps.fileExportCancel(input);
+      return deps.guiRuntime.cancelExport(input);
     });
 
   registerDesignIpc(studioIpc, deps);

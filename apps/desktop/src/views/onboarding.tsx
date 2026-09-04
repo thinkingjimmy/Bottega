@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on React, react-router navigation, useAppTranslation onboarding catalog, SetupProvider judgments, shared AgentFailureNotice, Library-first Skills discovery/import, settingsStore, brand assets, SetupBackendRow and Settings/UI primitives
- * [OUTPUT]: Provides required Chat Home/Agent onboarding with structured Agent failures, followed by optional Skills discovery and Memory setup
- * [POS]: Insensible main-owned onboarding pages of views; The sequence of steps and blockages are all derived from the same judgment as the onboarding-gate, and the page itself is no longer a threshold
+ * [OUTPUT]: Provides an adaptive three-step required Chat Home/Agent onboarding with structured Agent failures and one optional Skills/Memory enhancement screen with focused descriptions
+ * [POS]: Main-owned onboarding surface of views; required gates derive from onboarding-gate while its compact rail and container-aware enhancement rows preserve usable reading width
  */
 
-import { ChevronLeft, Check, FolderOpen } from "lucide-react";
+import { Brain, ChevronLeft, Check, FolderOpen, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
@@ -33,22 +33,26 @@ import {
   listUnifiedSkillCandidates,
   listUnifiedSkills,
 } from "@/lib/unified-skills-client";
-import { ONBOARDING_REQUIREMENTS } from "@/lib/onboarding-gate";
+import {
+  ONBOARDING_REQUIREMENTS,
+  type OnboardingRequirementId,
+} from "@/lib/onboarding-gate";
 import { AGENT_BACKEND_ORDER } from "../../shared/agent-ipc";
 
 /* ============================================================
  * 步骤表由门槛清单长出来，不是另抄一份。
  *
  * 前两步就是 ONBOARDING_REQUIREMENTS 本身——顺序、阻塞判据、i18n 取键
- * 全部同源；记忆缀在末尾，它永远不进 missing，也就永远不拦人。新增一条
- * 门槛只改 onboarding-gate，这里自动多一页。
+ * 全部同源；末尾只有一个 extras，它承载 Skills 与 Memory，但永远不进
+ * missing，也就永远不拦人。新增门槛仍只改 onboarding-gate。
  * ============================================================ */
-const WIZARD_STEPS = [...ONBOARDING_REQUIREMENTS, "skills", "memory"] as const;
+const OPTIONAL_STEP = "extras" as const;
+const WIZARD_STEPS = [...ONBOARDING_REQUIREMENTS, OPTIONAL_STEP] as const;
 type WizardStepId = (typeof WIZARD_STEPS)[number];
 
-/** 记忆是可选的，故只有前两步会拦住「继续」。 */
-const isRequired = (id: WizardStepId): id is "chat-home" | "agent" =>
-  id === "chat-home" || id === "agent";
+/** 唯一的 extras 是可选步；所有 gate requirement 自动保持必做。 */
+const isRequired = (id: WizardStepId): id is OnboardingRequirementId =>
+  id !== OPTIONAL_STEP;
 
 /* ============================================================
  * 左侧品牌栏：近黑暖调，不随主题变。
@@ -70,9 +74,9 @@ function StepMark({
     return (
       <span
         aria-hidden="true"
-        className="grid size-7 shrink-0 place-items-center rounded-full bg-emerald-400/20 text-emerald-400 ring-1 ring-emerald-400/45 ring-inset"
+        className="grid size-6 shrink-0 place-items-center rounded-full bg-emerald-400/20 text-emerald-400 ring-1 ring-emerald-400/45 ring-inset"
       >
-        <Check className="size-3" strokeWidth={3} />
+        <Check className="size-2.5" strokeWidth={3} />
       </span>
     );
   }
@@ -80,7 +84,7 @@ function StepMark({
     <span
       aria-hidden="true"
       className={cn(
-        "grid size-7 shrink-0 place-items-center rounded-full font-medium text-[13px]",
+        "grid size-6 shrink-0 place-items-center rounded-full font-medium text-xs",
         state === "current"
           ? "bg-white text-[oklch(0.185_0.004_88)]"
           : "text-white/50 ring-1 ring-white/20 ring-inset"
@@ -95,7 +99,7 @@ function BrandRail({ cursor }: { cursor: number }) {
   const { t } = useAppTranslation();
   return (
     <aside
-      className="relative flex w-[552px] shrink-0 flex-col overflow-hidden px-12 pt-[78px] pb-11"
+      className="relative flex w-[clamp(17rem,34vw,25rem)] shrink-0 flex-col overflow-hidden px-8 pt-16 pb-8 xl:px-10 xl:pt-[72px] xl:pb-10"
       style={{ background: INK }}
     >
       {/* 单图形放大到 624px、透明度 3.5%：只做质感，不做图形——
@@ -114,23 +118,23 @@ function BrandRail({ cursor }: { cursor: number }) {
           下面 stepper 的左缘永远对不上。 */}
       <img
         alt={PRODUCT_NAME}
-        className="pointer-events-none relative h-[46px] w-auto shrink-0 select-none self-start object-contain object-left"
+        className="pointer-events-none relative h-10 w-auto shrink-0 select-none self-start object-contain object-left"
         draggable={false}
         height={PRODUCT_LOGO_SIZE.height}
         src={PRODUCT_LOGO_URLS.dark}
         width={PRODUCT_LOGO_SIZE.width}
       />
-      <ol className="relative mt-[68px] flex flex-col gap-1.5">
+      <ol className="relative mt-14 flex flex-col gap-1">
         {WIZARD_STEPS.map((id, index) => {
           const state =
             index < cursor ? "done" : index === cursor ? "current" : "todo";
           return (
             <li key={id}>
               {index > 0 && (
-                <div aria-hidden="true" className="flex w-7 justify-center py-1">
+                <div aria-hidden="true" className="flex w-6 justify-center py-0.5">
                   <span
                     className={cn(
-                      "h-[22px] w-px",
+                      "h-[18px] w-px",
                       index <= cursor ? "bg-white/30" : "bg-white/15"
                     )}
                   />
@@ -138,13 +142,13 @@ function BrandRail({ cursor }: { cursor: number }) {
               )}
               <div
                 aria-current={state === "current" ? "step" : undefined}
-                className="flex items-start gap-3.5"
+                className="flex items-start gap-3"
               >
                 <StepMark index={index + 1} state={state} />
                 <div className="min-w-0 pt-1">
                   <p
                     className={cn(
-                      "font-medium text-sm",
+                      "font-medium text-[13px]",
                       state === "current"
                         ? "text-white"
                         : state === "done"
@@ -153,7 +157,7 @@ function BrandRail({ cursor }: { cursor: number }) {
                     )}
                   >
                     {t(`onboarding.step.${id}`)}
-                    {(id === "skills" || id === "memory") && (
+                    {!isRequired(id) && (
                       <span className="ml-2 rounded-sm bg-white/10 px-1.5 py-px font-medium text-[11px] text-white/60">
                         {t("onboarding.optional")}
                       </span>
@@ -169,7 +173,7 @@ function BrandRail({ cursor }: { cursor: number }) {
                   </p>
                   <p
                     className={cn(
-                      "mt-[3px] text-[11px]",
+                      "mt-0.5 text-[10px]",
                       state === "current" ? "text-white/60" : "text-white/30"
                     )}
                   >
@@ -197,7 +201,7 @@ function StepHeading({ id, optional }: { id: WizardStepId; optional?: boolean })
           </span>
         )}
       </h1>
-      <p className="max-w-[32rem] text-muted-foreground text-sm/[22px]">
+      <p className="max-w-[44rem] text-muted-foreground text-sm/[22px]">
         {t(`onboarding.description.${id}`)}
       </p>
     </div>
@@ -314,7 +318,7 @@ function AgentStep() {
   );
 }
 
-function SkillsStep() {
+function SkillsOptionRow({ disabled }: { disabled: boolean }) {
   const { t } = useAppTranslation();
   const { settings, error: settingsError } = useSyncExternalStore(
     settingsStore.subscribe,
@@ -358,99 +362,130 @@ function SkillsStep() {
     }
   };
 
-  const skip = () => settingsStore.update(
-    { skillsOnboarding: "skipped" },
-    t("onboarding.skillsUpdateFailed")
-  );
-
   return (
     <>
-      <StepHeading id="skills" optional />
-      <div className={cn(surface, "flex items-center gap-4 p-5")}>
-        <span className="grid size-10 shrink-0 place-items-center rounded-md bg-sunken text-lg">
-          $
+      <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 p-5 @max-[40rem]/extras:grid-cols-[2.5rem_minmax(0,1fr)]">
+        <span className="grid size-10 shrink-0 place-items-center rounded-md bg-sunken text-muted-foreground">
+          <Sparkles className="size-[18px]" />
         </span>
         <div className="min-w-0 flex-1">
           <p className="font-medium text-sm">
+            {t("onboarding.extras.skills")}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
             {busy
               ? t("onboarding.skillsScanning")
               : imported
                 ? t("onboarding.skillsDone")
-                : t("onboarding.skillsFound", { count })}
-          </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {t("onboarding.skillsHint")}
+                : count > 0
+                  ? t("onboarding.skillsFound", { count })
+                  : t("onboarding.skillsNone")}
           </p>
         </div>
         {!imported && count > 0 && (
-          <Button disabled={busy} onClick={() => void importAll()} size="lg">
+          <Button
+            className="@max-[40rem]/extras:col-start-2 @max-[40rem]/extras:justify-self-start"
+            disabled={busy || disabled}
+            onClick={() => void importAll()}
+            size="lg"
+            variant="outline"
+          >
             {busy && <Spinner className="size-3.5" />}
             {t("onboarding.skillsImportAll")}
           </Button>
         )}
-        {!imported && settings?.skillsOnboarding === "pending" && (
-          <Button disabled={busy} onClick={() => void skip()} size="lg" variant="ghost">
-            {t("onboarding.skillsSkip")}
-          </Button>
-        )}
       </div>
       {(error || settingsError) && (
-        <p role="alert" className="text-destructive text-xs">{error || settingsError}</p>
+        <p role="alert" className="px-5 pb-4 text-destructive text-xs">
+          {error || settingsError}
+        </p>
       )}
     </>
   );
 }
 
-function MemoryStep({ onLeave }: { onLeave: () => void }) {
+function MemoryOptionRow({
+  disabled,
+  onSetUp,
+}: {
+  disabled: boolean;
+  onSetUp: () => void;
+}) {
   const { t } = useAppTranslation();
-  const navigate = useNavigate();
   const { settings } = useSyncExternalStore(
     settingsStore.subscribe,
     settingsStore.getSnapshot
   );
   const enabled = Boolean(settings?.memory.enabled);
   return (
-    <>
-      <StepHeading id="memory" optional />
-      <div className={cn(surface, "flex items-center gap-3.5 p-5")}>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-sm">
-            {t(enabled ? "onboarding.memoryOn" : "onboarding.memoryOff")}
-          </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {t(
-              enabled ? "onboarding.memoryEnabled" : "onboarding.memoryDisabled"
-            )}
-          </p>
-        </div>
-        <Button
-          size="lg"
-          variant="outline"
-          onClick={() => {
-            onLeave();
-            void navigate(MEMORY_SETTINGS_PATH);
-          }}
-        >
-          {t("onboarding.memoryAction")}
-        </Button>
+    <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 p-5 @max-[40rem]/extras:grid-cols-[2.5rem_minmax(0,1fr)]">
+      <span className="grid size-10 shrink-0 place-items-center rounded-md bg-sunken text-muted-foreground">
+        <Brain className="size-[18px]" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-sm">
+          {t("onboarding.extras.memory")}
+        </p>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {t(
+            enabled ? "onboarding.memoryEnabled" : "onboarding.memoryDisabled"
+          )}
+        </p>
       </div>
-      {/* 这一步没有单独的「跳过」：主按钮就是跳过。多一颗 Skip 只会和它抢。 */}
-      <p className="text-[11px] text-muted-foreground">
-        {t("onboarding.memorySkip")}
-      </p>
+      <Button
+        className="@max-[40rem]/extras:col-start-2 @max-[40rem]/extras:justify-self-start"
+        disabled={disabled}
+        size="lg"
+        variant="outline"
+        onClick={onSetUp}
+      >
+        {t("onboarding.memoryAction")}
+      </Button>
+    </div>
+  );
+}
+
+function ExtrasStep({
+  finishing,
+  onSetUpMemory,
+}: {
+  finishing: boolean;
+  onSetUpMemory: () => void;
+}) {
+  return (
+    <>
+      <StepHeading id={OPTIONAL_STEP} optional />
+      <div
+        className={cn(
+          surface,
+          "@container/extras divide-y divide-border overflow-hidden"
+        )}
+      >
+        <SkillsOptionRow disabled={finishing} />
+        <MemoryOptionRow disabled={finishing} onSetUp={onSetUpMemory} />
+      </div>
     </>
   );
 }
 
 export function OnboardingView() {
   const { t } = useAppTranslation();
+  const navigate = useNavigate();
   const setup = useSetup();
   const [cursor, setCursor] = useState(0);
+  const [finishing, setFinishing] = useState(false);
   const { facts, settled } = setup.onboarding;
-  const { settings } = useSyncExternalStore(
-    settingsStore.subscribe,
-    settingsStore.getSnapshot
-  );
+
+  /* 自动引导最初由「存在必做缺口」打开；用户补齐最后一个缺口时，gate
+     会自然判成 app。页面在首次挂载后把本次会话提升为 forced，直到统一
+     完成动作显式 leave，才能保证可选页一定有机会出现。ref 把这件事收敛
+     为一次性进入动作，finish 触发的 provider 更新不会反向重开页面。 */
+  const entered = useRef(false);
+  useEffect(() => {
+    if (entered.current) return;
+    entered.current = true;
+    setup.openOnboarding();
+  }, [setup]);
 
   /* 落定后把光标停在第一个未满足的必做步：Agent 通常首启就已就绪，
      从头走一遍只是空转。只做一次——之后光标归用户，补齐某一步不该
@@ -484,17 +519,33 @@ export function OnboardingView() {
   }, []);
 
   const step = WIZARD_STEPS[cursor];
-  const last = cursor === WIZARD_STEPS.length - 1;
+  const last = step === OPTIONAL_STEP;
   const blocked = isRequired(step) && facts[step] !== "satisfied";
-  const advance = async () => {
-    if (step === "skills" && settings?.skillsOnboarding === "pending") {
+
+  /* 两个离场入口只走这一条路：pending Skills 先明确退休，再进入应用或
+     Memory Settings。写失败就留在原屏展示 settingsStore 的错误，绝不让
+     一次失败在主界面重新长成第二张 onboarding 卡。 */
+  const finish = async (destination?: typeof MEMORY_SETTINGS_PATH) => {
+    if (finishing) return;
+    setFinishing(true);
+    const current = settingsStore.getSnapshot().settings;
+    if (current?.skillsOnboarding === "pending") {
       await settingsStore.update(
         { skillsOnboarding: "skipped" },
         t("onboarding.skillsUpdateFailed")
       );
+      if (
+        settingsStore.getSnapshot().settings?.skillsOnboarding === "pending"
+      ) {
+        setFinishing(false);
+        return;
+      }
     }
-    setCursor((value) => value + 1);
+    setup.leaveOnboarding();
+    if (destination) void navigate(destination);
   };
+
+  const advance = () => setCursor((value) => value + 1);
 
   return (
     <TooltipProvider>
@@ -507,24 +558,27 @@ export function OnboardingView() {
         <BrandRail cursor={cursor} />
         <section className="flex min-w-0 flex-1 flex-col">
           {isApplePlatform() && <div className="h-10 shrink-0" />}
-          <SlimScroller className="flex min-h-0 flex-1 flex-col overflow-y-auto px-16 pb-6">
+          <SlimScroller className="flex min-h-0 flex-1 flex-col overflow-y-auto px-[clamp(2rem,5vw,4rem)] pb-6">
             <div className="my-auto flex w-full flex-col gap-6">
               {step === "chat-home" && <ChatHomeStep />}
               {step === "agent" && <AgentStep />}
-              {step === "skills" && <SkillsStep />}
-              {step === "memory" && (
-                <MemoryStep onLeave={setup.leaveOnboarding} />
+              {step === OPTIONAL_STEP && (
+                <ExtrasStep
+                  finishing={finishing}
+                  onSetUpMemory={() => void finish(MEMORY_SETTINGS_PATH)}
+                />
               )}
             </div>
           </SlimScroller>
           {/* 动作条固定在右栏底部：位置永不随内容跳，三页共用同一条几何。
               没有逃生门——两个门槛没补齐就是进不去。 */}
-          <div className="flex h-[76px] shrink-0 items-center gap-4 border-t px-16">
+          <div className="flex h-[76px] shrink-0 items-center gap-4 border-t px-[clamp(2rem,5vw,4rem)]">
             {/* 第一步无处可退，就不画 Back——一颗禁用态的占位按钮看着像坏了。 */}
             {cursor > 0 && (
               <Button
                 variant="ghost"
                 className="text-muted-foreground"
+                disabled={finishing}
                 onClick={() => setCursor((value) => value - 1)}
               >
                 <ChevronLeft />
@@ -547,13 +601,10 @@ export function OnboardingView() {
               <Button
                 size="lg"
                 className="px-5"
-                disabled={blocked}
-                onClick={
-                  last
-                    ? setup.leaveOnboarding
-                    : () => void advance()
-                }
+                disabled={blocked || finishing}
+                onClick={last ? () => void finish() : advance}
               >
+                {finishing && last && <Spinner className="size-3.5" />}
                 {t(last ? "onboarding.start" : "onboarding.next")}
               </Button>
             </div>

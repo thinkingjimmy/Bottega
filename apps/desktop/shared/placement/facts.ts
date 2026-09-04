@@ -208,6 +208,6 @@ export type BaseNavigation =
   | { kind: "project-contained"; projectId: string }
   | {
       kind: "root-user-managed";
-      source: "legacy-pin" | "retained-app-data";
+      source: "retained-app-data";
       activatedAt: number;
     };

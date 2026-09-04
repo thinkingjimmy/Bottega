@@ -14,9 +14,7 @@ import type {
   AppGrantCandidate,
   AppGrantCandidatesInput,
   AppGrantSourcesSnapshot,
-  AppGrantTarget,
   AppInstallEvent,
-  AppManagementLeaseRef,
   AppOpenResult,
   AppUseHistoryPage,
   ListAppUseHistoryInput,
@@ -25,7 +23,6 @@ import type {
   OpenAppUseChatInput,
   AppRecord,
   AppRepoProbeResult,
-  AppRuntimeStatus,
   AvailableAttachedApp,
   AvailableAppsInput,
   EnsureAppChatSlotInput,
@@ -81,11 +78,9 @@ export const APPS_CHANNEL = {
   remove: "apps:remove",
   list: "apps:list",
   open: "apps:open",
-  status: "apps:status",
   originWithoutStart: "apps:origin-without-start",
   stop: "apps:stop",
   grant: "apps:grant",
-  revokeGrant: "apps:grant:revoke",
   setGrantState: "apps:grant:state",
   setDefaultGrant: "apps:grant:default",
   listGrantSources: "apps:grant:sources",
@@ -93,8 +88,6 @@ export const APPS_CHANNEL = {
   listAvailable: "apps:available",
   acquireSurface: "apps:surface:acquire",
   releaseSurface: "apps:surface:release",
-  acquireManagementLease: "apps:management-lease:acquire",
-  releaseManagementLease: "apps:management-lease:release",
   event: "apps:event",
   reveal: "apps:reveal",
   cancelInstall: "apps:cancel-install",
@@ -158,11 +151,12 @@ export const APPS_CHANNEL = {
  * 与 surface 放行读同一组事实。它是派生量，故不进持久化 schema，只出现在
  * 这条 wire 上——AppRecord 依旧是账本，投影只是账本上的一次朗读。
  *
- * 字段可选，因为老桥接与测试 fixture 递进来的是裸 AppRecord；缺席读作
- * false，与「尚未授权」同义，不会替任何人补权。
+ * 字段必填：可选时 `record: AppRecord` 也能编译通过，于是渲染层可以一路
+ * 传裸账本而类型系统一声不吭——真正丢的是「这一读是 main 念的」这件事。
+ * 必填之后，谁要读投影就得先拿到投影。
  * ============================================================ */
 export type AppRecordProjection = AppRecord &
-  Readonly<{ studioSurfaceReady?: boolean }>;
+  Readonly<{ studioSurfaceReady: boolean }>;
 
 export type AppsProjectionSnapshot = Readonly<{
   apps: AppRecordProjection[];
@@ -175,11 +169,9 @@ export type AppsBridgeApi = {
   remove: (appId: string, mode?: RemoveAppMode, requestId?: string) => Promise<void>;
   list: () => Promise<AppsProjectionSnapshot>;
   open: (appId: string) => Promise<AppOpenResult>;
-  status: (appId: string) => Promise<AppRuntimeStatus>;
   originWithoutStart: (appId: string) => Promise<AppOpenResult | null>;
   stop: (appId: string) => Promise<void>;
   grant: (input: SetAppGrantInput) => Promise<AppGrantSnapshot>;
-  revokeGrant: (target: AppGrantTarget, appId: string) => Promise<AppGrantSnapshot>;
   setGrantState: (input: SetAppGrantStateInput) => Promise<AppGrantSnapshot>;
   setDefaultGrant: (input: SetDefaultAppGrantInput) => Promise<AppRecord>;
   listGrantSources: () => Promise<AppGrantSourcesSnapshot>;
@@ -187,8 +179,6 @@ export type AppsBridgeApi = {
   listAvailable: (input: AvailableAppsInput) => Promise<AvailableAttachedApp[]>;
   acquireSurface: (input: AppSurfaceAcquireInput) => Promise<AppAttachmentSurface>;
   releaseSurface: (surfaceLeaseId: string) => Promise<void>;
-  acquireManagementLease: (appId: string) => Promise<AppManagementLeaseRef>;
-  releaseManagementLease: (managementLeaseId: string) => Promise<void>;
   reveal: (appId: string) => Promise<void>;
   cancelInstall: (appId: string) => Promise<void>;
   readLog: (appId: string) => Promise<string>;

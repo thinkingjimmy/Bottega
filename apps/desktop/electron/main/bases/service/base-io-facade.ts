@@ -15,7 +15,7 @@ import type { BaseOwnerIdentity, BaseStore } from "../base-store";
 import type {
   BaseCommitAuthority,
   BaseMutationOperation,
-} from "../base-commit-authority";
+} from "./base-commit-authority";
 import { BaseJsonService } from "../io/base-json";
 import { writeBaseCsvArtifact, writeBaseCsvForRenderer } from "../io/base-csv";
 import { BaseXlsxService } from "../io/base-xlsx";

@@ -36,7 +36,7 @@ export const componentAuthorMirrorSchema = z.object({
   components: z.array(componentId).max(32).default([]),
 }).strict();
 
-export const componentOriginEntrySchema = z.object({
+const componentOriginEntrySchema = z.object({
   componentId,
   path: z.string().regex(/^gui\/src\/components\/ui\/[a-z0-9-]+\.tsx$/),
   originSnapshotDigest: digest,

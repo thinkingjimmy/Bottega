@@ -1,13 +1,14 @@
 /**
- * [INPUT]: Depends on node:fs/promises atomic write and v1 backup, node:crypto identity/digest, persistence/serial-queue, and intent-types current/legacy schemas, claims, and hashes
+ * [INPUT]: Depends on persistence/durable-json durableReplaceFile for fsync-backed publication, node:fs/promises for reads and the v1 backup, node:crypto identity/digest, persistence/serial-queue, and intent-types current/legacy schemas, claims, and hashes
  * [OUTPUT]: Provides LifecycleIntentStore with safe v1-to-v2 terminal-install migration, CRUD/recovery/compaction operations, and LifecycleJournalCorruptError
  * [POS]: Owns userData/lifecycle/intents.json; completed legacy install intents migrate to tombstones while pending legacy authority and damaged or post-history-missing journals stay fail-closed
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { access, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { z } from "zod";
+import { durableReplaceFile } from "../persistence/durable-json";
 import { SerialQueue } from "../persistence/serial-queue";
 import {
   INTENT_PHASES,
@@ -494,14 +495,10 @@ export class LifecycleIntentStore {
     }
   }
 
+  /** 掉电语义由 durableReplaceFile 承担:临时文件与父目录都 fsync 后才算提交。 */
   private async persist(): Promise<void> {
     const state = this.require();
-    const tmp = `${this.filePath}.tmp`;
-    await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
-    await writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, {
-      mode: 0o600,
-    });
-    await rename(tmp, this.filePath);
+    await durableReplaceFile(this.filePath, `${JSON.stringify(state, null, 2)}\n`);
   }
 
   private async backupV1(raw: string): Promise<void> {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared ProductFailure, Agent backend identity, and renderer translation functions
- * [OUTPUT]: Provides the single ProductFailure-to-human-copy projection, safe diagnostic extraction, login commands, and renderer-side fallback construction
+ * [OUTPUT]: Provides the single ProductFailure-to-human-copy projection (terminal code copy for danger tone, provider-neutral notice copy for warning tone), safe diagnostic extraction, login commands, and renderer-side fallback construction
  * [POS]: Renderer presentation seam shared by transcript, Setup, Settings, and model-catalog failures
  */
 
@@ -37,7 +37,11 @@ export type AgentSurfaceFailure = Readonly<{
 export function agentFailureCopy(
   t: Translate,
   failure: ProductFailure,
-  options: { backend: string; backendId?: AgentBackendId }
+  options: {
+    backend: string;
+    backendId?: AgentBackendId;
+    tone?: "danger" | "warning";
+  }
 ): AgentFailureCopy {
   if (failure.domain !== "agent-runtime") {
     return {
@@ -53,13 +57,27 @@ export function agentFailureCopy(
       ? AGENT_LOGIN_COMMAND[options.backendId]
       : "the Agent login command",
   };
+  const diagnostic =
+    failure.safeDetails.kind === "diagnostic"
+      ? { diagnostic: failure.safeDetails.message }
+      : {};
+  /* ── warning 是提示，不是死因 ────────────────────────────────────
+     code→文案表全是为"这轮为什么没完成"写的（重试、联系支持）。Agent 的
+     warning 级 notice 走到这里只说明它想提醒一句，本轮照常进行；套终态
+     文案会把一条提醒画成事故。提示的原句留在技术详情里，不翻译不改写。 */
+  if (options.tone === "warning") {
+    return {
+      title: t("agentFailure.notice.title", values),
+      explanation: t("agentFailure.notice.explanation", values),
+      resolution: "",
+      ...diagnostic,
+    };
+  }
   return {
     title: t(`agentFailure.code.${code}.title`, values),
     explanation: t(`agentFailure.code.${code}.explanation`, values),
     resolution: t(`agentFailure.code.${code}.resolution`, values),
-    ...(failure.safeDetails.kind === "diagnostic"
-      ? { diagnostic: failure.safeDetails.message }
-      : {}),
+    ...diagnostic,
   };
 }
 

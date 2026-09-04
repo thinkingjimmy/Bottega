@@ -1,19 +1,19 @@
 /**
  * [INPUT]: Depends on shared/apps-ipc and preload exposed window.apps
- * [OUTPUT]: Provides typed renderer calls for installation, presets, save/rename/Pin/chat slots, README/configuration/sharing, fenced grant candidates and mutations, symmetric Studio authorize/decline/revoke, App-scoped Extensions, surfaces, logs, and removal
+ * [OUTPUT]: Provides AppsRendererEvent plus typed renderer calls for installation, presets, save/rename/Pin/chat slots, README/configuration/sharing, fenced grant candidates and mutations, symmetric Studio authorize/decline, App-scoped Extensions, surfaces, logs, and removal
  * [POS]: Renderer Apps transport adapter; structured business rejections become typed errors while transport failures stay untouched
  */
 
 import type {
   AddAppInput,
   AppConfigValue,
+  AppRecordProjection,
   AppGuiInfo,
   AppGuiInfoInput,
   AppsBridgeApi,
   AppInstallEvent,
   AppGrantSourcesSnapshot,
   AppGrantCandidatesInput,
-  AppGrantTarget,
   AppSurfaceAcquireInput,
   DesignAutoOpenInput,
   DeleteDesignDataInput,
@@ -305,10 +305,6 @@ export const grantApp = (input: SetAppGrantInput) => {
   if (!window.apps) throw new Error("当前环境不支持 App 授权");
   return window.apps.grant(input);
 };
-export const revokeAppGrant = (target: AppGrantTarget, appId: string) => {
-  if (!window.apps) throw new Error("当前环境不支持撤销 App 授权");
-  return window.apps.revokeGrant(target, appId);
-};
 export const setAppGrantState = (input: SetAppGrantStateInput) => {
   if (!window.apps) throw new Error("当前环境不支持 App 授权状态");
   return window.apps.setGrantState(input);
@@ -342,5 +338,19 @@ export const releaseAppSurface = (surfaceLeaseId: string) =>
 
 export const readAppLog = (appId: string) =>
   window.apps?.readLog(appId) ?? Promise.resolve("");
-export const onAppsEvent = (callback: (event: AppInstallEvent) => void) =>
-  window.apps?.onEvent(callback) ?? (() => {});
+/* ============================================================
+ * 到达渲染层的 status 恒携带投影
+ *
+ * main 只有一个 status 发源地——AppsService 的 store.watch 把每条记录过一遍
+ * projectRecord 再广播。因此渲染层收到的每一条 status 都带着
+ * studioSurfaceReady；事件类型本身仍是账本形状，因为 main 侧还有别的构造点。
+ *
+ * 收窄放在这一处，整条渲染链此后都拿投影说话，没有哪个组件再有机会自己推
+ * 一遍授权。窄化只此一次，且与 main 的发源地同真——两处都改才谈得上漂移。
+ * ============================================================ */
+export type AppsRendererEvent =
+  | Exclude<AppInstallEvent, { type: "status" }>
+  | Readonly<{ appId: string; type: "status"; record: AppRecordProjection }>;
+
+export const onAppsEvent = (callback: (event: AppsRendererEvent) => void) =>
+  window.apps?.onEvent(callback as (event: AppInstallEvent) => void) ?? (() => {});

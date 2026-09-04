@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The sequencing type of shared Agent/Settings only
- * [OUTPUT]: Provides external session identity, fingerprints, canonical routing, adoption, and Memory snapshot contracts
+ * [OUTPUT]: Provides external session identity, fingerprints, canonical routing, one-message-per-turn foreign history blocks (folded `process` statements plus the Codex `plan` marker), foreignMessageText, adoption, and Memory snapshot contracts
  * [POS]: The single source of truth for the shared history-import wire; the renderer never receives a source file path and cannot forge a SessionRef
  */
 
@@ -65,6 +65,26 @@ export type ForeignToolEvent = Readonly<{
   output?: string;
 }>;
 
+/* ── 一 turn 一条 assistant：被折进来的中间陈述 ──────────────────
+ * 源里一个 turn 常有多条 assistant 消息——中间陈述（「我先扫一遍结构」）
+ * 穿插工具，末条才是最终回复。逐条落成一条 entry，渲染就长出一串计时头，
+ * 中间陈述裸奔成正文；产品正史是「一 turn 一条 assistant 消息」，导入
+ * 历史必须与它同构。适配器在 turn 收尾时把中间陈述按源序折进末条的
+ * process，读侧再逐项摊回过程区——折叠发生在规范化之前，存储与渲染
+ * 因此都只认识一种形状。
+ * ────────────────────────────────────────────────────────── */
+export type ForeignProcessStep = Readonly<{
+  text: string;
+  tools?: ForeignToolEvent[];
+}>;
+
+/* ── 导入历史里只有消息 ────────────────────────────────────────
+ * 这里曾并列过一个 `unsupported` 块：适配器把任何不认识的 JSONL 记录
+ * 整行转义后当成一块交出去，SQLite 侧再把它当 assistant 正文落盘——
+ * Codex 新增 `world_state` 那天起，每一段导入历史顶上都顶着一行原始
+ * JSON。运行时记录不是对话内容，适配器直接跳过即可；能消失的分支
+ * 永远比能写对的分支更优雅。
+ * ────────────────────────────────────────────────────────── */
 export type ForeignHistoryMessage = Readonly<{
   kind: "message";
   id: string;
@@ -76,20 +96,23 @@ export type ForeignHistoryMessage = Readonly<{
   tools?: ForeignToolEvent[];
   /** 源自带的 turn 工时账（codex task_complete.duration_ms）；缺席即源无此账（claude），不得推导。 */
   workedForMs?: number;
+  /** 折进本条的中间 assistant 陈述，按源序；末条自己的正文不在其中。 */
+  process?: ReadonlyArray<ForeignProcessStep>;
+  /** 正文来自 <proposed_plan> 计划正文；读侧据此走产品的 PlanCard 一路。 */
+  plan?: true;
 }>;
 
-export type UnsupportedHistoryBlock = Readonly<{
-  kind: "unsupported";
-  id: string;
-  deliverySeq: number;
-  createdAt: number;
-  reason: string;
-  escapedPreview: string;
-}>;
-
-export type ForeignHistoryBlock =
-  | ForeignHistoryMessage
-  | UnsupportedHistoryBlock;
+/**
+ * 折叠后一条 assistant 的全部文本：过程陈述在前，最终正文在后。
+ * Memory 快照与 Section 摘录都按「这条 turn 说过的话」取用——折叠只是
+ * 渲染形状的改变，不是内容的删除，任何消费正文的地方都必须走这里。
+ */
+export function foreignMessageText(block: ForeignHistoryMessage): string {
+  return [...(block.process ?? []).map((step) => step.text), block.content]
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
 
 export type HistorySourceCount = Readonly<{
   sourceKind: HistorySourceKind;

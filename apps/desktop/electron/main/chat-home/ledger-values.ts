@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod and shared Archive/Settings type
- * [OUTPUT]: Provides ChatHome/Purge Two types of durable wire schema, immutable, deleting mode, Purge Home deleting authorized snapshot, derivative type and empty state
+ * [OUTPUT]: Provides ChatHome/Purge durable schemas, including optional managed-worktree creation identity and immutable deletion authorization
  * [POS]: The pure schema of the chat-home module is true source, and the IO owner only consumes verified status
  */
 
@@ -35,6 +35,16 @@ export const chatHomeRecordSchema = z
     submissionHash: z.string().regex(/^[a-f0-9]{64}$/),
     workspaceScope: z.unknown(),
     stagingOwner: z.string().min(1).max(128).optional(),
+    worktree: z
+      .object({
+        kind: z.literal("managed-worktree"),
+        projectId: id,
+        baseCommit: z.string().regex(/^[a-f0-9]{40,64}$/),
+        branch: z.string().min(1).max(240),
+        relativePath: z.literal("worktree"),
+      })
+      .strict()
+      .optional(),
     terminalAt: z.number().int().nonnegative().optional(),
   })
   .strict();

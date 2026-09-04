@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on Node fs/path and electron-builder.yml productName/linux executableName facts
- * [OUTPUT]: Provides readPackagedProduct and locateCurrentPlatformArtifact for deterministic macOS, Windows, and Linux unpacked-output selection
- * [POS]: Single artifact-layout adapter shared by dist orchestration and packaged smoke; product names are never hard-coded in either caller
+ * [INPUT]: Depends on Node fs/path/crypto, electron-builder.yml productName/linux executableName facts, and package.json version
+ * [OUTPUT]: Provides readPackagedProduct, locateCurrentPlatformArtifact for deterministic macOS, Windows, and Linux unpacked-output selection, and locateInstallers/INSTALLER_IDS mapping the four canonical installer ids (darwin-arm64.dmg, darwin-arm64.zip, win32-x64.nsis, linux-x64.appimage) to exact fresh files with bytes and sha256
+ * [POS]: Single artifact-layout adapter shared by dist orchestration, packaged smoke, and the payload verifier; product names and installer filenames are never hard-coded in any caller
  */
 
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
@@ -71,4 +72,52 @@ export function locateCurrentPlatformArtifact(desktop, startedAt, platform = pro
     resourcesPath: layout.resources(selected.appPath, selected.appOutDir),
     executable: layout.executable(selected.appPath),
   };
+}
+
+/* ------------------------------------------------------------------------- *
+ *  四个规范化 installer id。文件名由 electron-builder 的默认模式（mac）与 yml 的
+ *  artifactName（win/linux）决定；linux 的 ${arch} 对 x64 展开为 x86_64，不是 x64。
+ *  精确名 + 新鲜度 + 恰好一个三条缺一不可：release/ 里会躺着改名前的残留。
+ * ------------------------------------------------------------------------- */
+const INSTALLERS = Object.freeze({
+  "darwin-arm64.dmg": { platform: "darwin", file: (product, version) => `${product}-${version}-arm64.dmg` },
+  "darwin-arm64.zip": { platform: "darwin", file: (product, version) => `${product}-${version}-arm64-mac.zip` },
+  "win32-x64.nsis": { platform: "win32", file: (product, version) => `${product}-${version}-windows-x64.exe` },
+  "linux-x64.appimage": { platform: "linux", file: (product, version) => `${product}-${version}-linux-x86_64.AppImage` },
+});
+
+export const INSTALLER_IDS = Object.freeze(Object.keys(INSTALLERS));
+
+export function installerFileName(id, productName, version) {
+  const spec = INSTALLERS[id];
+  if (!spec) throw new Error(`未知的 installer id ${id}`);
+  return spec.file(productName, version);
+}
+
+function sha256File(path) {
+  return `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`;
+}
+
+export function locateInstallers(desktop, startedAt, platform = process.platform) {
+  const release = join(desktop, "release");
+  const { productName } = readPackagedProduct(desktop);
+  const { version } = JSON.parse(readFileSync(join(desktop, "package.json"), "utf8"));
+  const names = readdirSync(release);
+  return Object.fromEntries(
+    Object.entries(INSTALLERS)
+      .filter(([, spec]) => spec.platform === platform)
+      .map(([id, spec]) => {
+        const expected = spec.file(productName, version);
+        const matches = names.filter((name) => name === expected);
+        if (matches.length !== 1) {
+          throw new Error(`本次 dist 应恰好生成一个 ${id}（${expected}），实际 ${matches.length}`);
+        }
+        const path = join(release, expected);
+        const stat = statSync(path);
+        if (!stat.isFile() || stat.mtimeMs < startedAt - 2_000) {
+          throw new Error(`${id} 早于本次 dist：${expected}`);
+        }
+        return [id, { path, bytes: stat.size, sha256: sha256File(path) }];
+      })
+  );
 }

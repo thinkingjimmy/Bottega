@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, lucide, sort icon, cn, renderer, current Intl locale, shared Base column/value/ strict date with the editors baseCellText/useBaseAttachmentThumbnail
- * [OUTPUT]: Provides projectListColumns Line projection, selectOptionTone color, listChipText/listDateText Text projection with ListSelectDot/ListPropertyChip/ListDateStamp original language
+ * [INPUT]: Depends on React, lucide, cn, the current Intl locale, shared Base column/value/date contracts plus baseCellText, and the editors useBaseAttachmentThumbnail
+ * [OUTPUT]: Provides projectListColumns row projection, selectOptionTone color, listChipText text projection, and the ListSelectDot/ListPropertyChip/ListDateStamp primitives
  * [POS]: The list of attributes of the view/list; Just answer "what a row looks like at a fixed height", without knowing the window layout, grouping and editing mode
  */
 
@@ -16,7 +16,7 @@ import {
   parseBaseDate,
 } from "../../../../../shared/bases-ipc";
 import { useBaseAttachmentThumbnail } from "../../editors/cells/base-cell-editor";
-import { baseCellText } from "../../editors/cells/base-cell-text";
+import { baseCellText } from "../../../../../shared/bases-ipc";
 
 /* ── 行位投影 ──────────────────────────────────────────────────
  * 密集行只有四个位置：标题、状态点、尾部属性、最右日期。
@@ -100,7 +100,7 @@ export function listChipText(
 }
 
 /** 本年只给「Jul 31」，跨年才补年份——年份是例外信息，不该恒占宽度。 */
-export function listDateText(value: BaseCellValue | undefined) {
+function listDateText(value: BaseCellValue | undefined) {
   const date = parseBaseDate(value);
   if (!date) return typeof value === "string" ? value : "";
   const format = new Intl.DateTimeFormat(intlLocale(), {

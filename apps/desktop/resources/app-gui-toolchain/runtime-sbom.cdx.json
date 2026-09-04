@@ -11,7 +11,7 @@
     "properties": [
       {
         "name": "bottega:pnpm-lockfile-sha256",
-        "value": "sha256:a6aa3241a788311febf6488dc011df016e9c76f40e08a7b344d9e3313cc08694"
+        "value": "sha256:01e7e864e7ba7dcaae1b9e3d0ddbf6857dbbbdbff116900770860773c8d3ef5c"
       }
     ]
   },
@@ -668,6 +668,32 @@
     },
     {
       "type": "library",
+      "name": "@types/react-dom",
+      "version": "19.2.3",
+      "bom-ref": "pkg:npm/%40types%2Freact-dom@19.2.3",
+      "purl": "pkg:npm/%40types%2Freact-dom@19.2.3",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "d4a217d4bf36ee677bfe0a545246c0d9141cb0f51e3844870f13c59e682a19d5"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "@types/react",
       "version": "19.2.17",
       "bom-ref": "pkg:npm/%40types%2Freact@19.2.17",
@@ -719,6 +745,58 @@
         {
           "name": "bottega:license:LICENSE-3RD-PARTY.txt:sha256",
           "value": "sha256:4f8563870d0fca38bbc3e00b6f670cb7fa9f380ba9f26a7f7d1184a6b18b1653"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "class-variance-authority",
+      "version": "0.7.1",
+      "bom-ref": "pkg:npm/class-variance-authority@0.7.1",
+      "purl": "pkg:npm/class-variance-authority@0.7.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8e6c91a17639030b33eb6e0e286a7007f90a420b14ace2d9409ae6bd933fc00a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE:sha256",
+          "value": "sha256:0ccbf956cffc8dcf515809433cb5242ee67c94513d46e48c261d68d0880de406"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "clsx",
+      "version": "2.1.1",
+      "bom-ref": "pkg:npm/clsx@2.1.1",
+      "purl": "pkg:npm/clsx@2.1.1",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e0960ea098168a5e9a5e0537e9dbf4a843ce5964cda9d71f87b9880e7b1d1b1e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:license:sha256",
+          "value": "sha256:9a9edad7baae52622bddf3c15b2ef8a33d2c89f2d25408ad13e8a7481c6b0c97"
         }
       ]
     },
@@ -1196,6 +1274,32 @@
     },
     {
       "type": "library",
+      "name": "tailwind-merge",
+      "version": "3.6.0",
+      "bom-ref": "pkg:npm/tailwind-merge@3.6.0",
+      "purl": "pkg:npm/tailwind-merge@3.6.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1ccb5cc859eb14d657a90b882ec183b51d423f1fa1436b1a2b56ded6ca75b752"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "properties": [
+        {
+          "name": "bottega:license:LICENSE.md:sha256",
+          "value": "sha256:d4c70c7ce38cea8778f0aed3fc0bef0a9dbd27f13bd8b6773cbd6d37941971e5"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "tailwindcss",
       "version": "4.3.2",
       "bom-ref": "pkg:npm/tailwindcss@4.3.2",
@@ -1415,7 +1519,11 @@
         "pkg:npm/%40tailwindcss%2Foxide@4.3.2",
         "pkg:npm/%40tanstack%2Freact-table@8.21.3",
         "pkg:npm/%40tanstack%2Freact-virtual@3.14.8",
+        "pkg:npm/%40types%2Freact-dom@19.2.3",
+        "pkg:npm/%40types%2Freact@19.2.17",
         "pkg:npm/axe-core@4.10.3",
+        "pkg:npm/class-variance-authority@0.7.1",
+        "pkg:npm/clsx@2.1.1",
         "pkg:npm/date-fns@4.4.0",
         "pkg:npm/echarts@6.1.0",
         "pkg:npm/esbuild@0.28.1",
@@ -1423,6 +1531,7 @@
         "pkg:npm/react-dom@19.2.4",
         "pkg:npm/react-hook-form@7.87.0",
         "pkg:npm/react@19.2.4",
+        "pkg:npm/tailwind-merge@3.6.0",
         "pkg:npm/tailwindcss@4.3.2",
         "pkg:npm/typescript@5.9.3",
         "pkg:npm/zod@4.4.3"
@@ -1604,6 +1713,12 @@
       "dependsOn": []
     },
     {
+      "ref": "pkg:npm/%40types%2Freact-dom@19.2.3",
+      "dependsOn": [
+        "pkg:npm/%40types%2Freact@19.2.17"
+      ]
+    },
+    {
       "ref": "pkg:npm/%40types%2Freact@19.2.17",
       "dependsOn": [
         "pkg:npm/csstype@3.2.3"
@@ -1611,6 +1726,16 @@
     },
     {
       "ref": "pkg:npm/axe-core@4.10.3",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/class-variance-authority@0.7.1",
+      "dependsOn": [
+        "pkg:npm/clsx@2.1.1"
+      ]
+    },
+    {
+      "ref": "pkg:npm/clsx@2.1.1",
       "dependsOn": []
     },
     {
@@ -1701,6 +1826,10 @@
     },
     {
       "ref": "pkg:npm/source-map-js@1.2.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "pkg:npm/tailwind-merge@3.6.0",
       "dependsOn": []
     },
     {

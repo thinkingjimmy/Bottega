@@ -189,12 +189,7 @@ export function AppGrantNotice({
                       })}
                     </p>
                     <p>
-                      {t("chat.sidePanel.appGrant.deliverySummary", {
-                        delivery:
-                          requirement.deliveryHealth
-                            .map((item) => `${item.backendId}=${item.status}`)
-                            .join("｜") ||
-                          t("chat.sidePanel.appGrant.unknown"),
+                      {t("chat.sidePanel.appGrant.turnActive", {
                         active: visibility
                           ? active
                             ? t("chat.sidePanel.appGrant.yes")

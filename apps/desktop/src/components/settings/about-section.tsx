@@ -40,9 +40,8 @@ import {
 import { openExternal, writeClipboardText } from "@/lib/agent-client";
 import { PRODUCT_MARK_SIZE, PRODUCT_MARK_URL, PRODUCT_NAME } from "@/lib/brand";
 import { appInfoStore, RELEASE_URL, updateStore } from "@/lib/update-client";
+import { ISSUES_URL, REPOSITORY_URL } from "@/lib/report-issue";
 
-const REPOSITORY_URL = "https://github.com/thinkingjimmy/Bottega";
-const ISSUES_URL = `${REPOSITORY_URL}/issues`;
 /* 仓库行的说明位就是它的去处本身，故不进 i18n 目录：域名不是文案。 */
 const REPOSITORY_HOST = REPOSITORY_URL.replace(/^https:\/\//, "");
 

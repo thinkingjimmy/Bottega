@@ -4,18 +4,18 @@
   "files": [
     {
       "path": "electron/main/apps/file-export/controller.ts",
-      "bytes": 5769,
-      "sha256": "sha256:07fd72d37fd0350d1e409eff0f4a9875e215d562f1affc90f7163dea38d4ecfc"
+      "bytes": 5661,
+      "sha256": "sha256:589c0fb90f1107378263a754e4440aeefd0b4c64760e91a2f447a9bfbd560265"
     },
     {
       "path": "electron/main/apps/file-export/intent-store.ts",
-      "bytes": 2474,
-      "sha256": "sha256:da9c663c52dd9558fa0305776abac8a9575e0184c86aef02a1acbd86f1f3e7ba"
+      "bytes": 2453,
+      "sha256": "sha256:480cb6a85cc55d33bbf204dfea008789db57bb4c47ad066bf6abcd63c8116d35"
     },
     {
       "path": "electron/main/apps/file-export/manager.ts",
-      "bytes": 16628,
-      "sha256": "sha256:17361fa3bb3b36e9256ccdc3732ac5df1b15ebcc9b5fbaf12b304f656157a0b1"
+      "bytes": 18208,
+      "sha256": "sha256:a15e0751e145bd9bc805f02eb96827f799542295ca3957ccb66f73e4e1762f52"
     },
     {
       "path": "electron/main/apps/gui-build/product-modules/blocks.ts",
@@ -24,16 +24,16 @@
     },
     {
       "path": "shared/app-gui/file-export.ts",
-      "bytes": 4170,
-      "sha256": "sha256:2e4d0d75df9d35a9a405b6d8e9672a15d7f241f0ccdf53d13cdaf107cb0327c8"
+      "bytes": 4142,
+      "sha256": "sha256:a5ec9d396c5fb5d2e17d8e3b4924a1c89f58bacb48b3064221290523ee91f478"
     },
     {
-      "path": "src/components/apps/app-workbench.tsx",
-      "bytes": 16113,
-      "sha256": "sha256:ce64b856adc6e5e35f633d604a4242e6f7448a903a577d2c556cbee64b68cff4"
+      "path": "src/components/apps/detail/app-workbench.tsx",
+      "bytes": 19975,
+      "sha256": "sha256:b12d603b6284d0e593fa8c94d88ef385fe6b5a3c0ba393387848222606fa8d75"
     }
   ],
-  "runtimeSbomDigest": "sha256:b360fa1b3ef04758d59908b33cc2cd57bad5fdfdd191a7b6ef5677b9abd100e2",
+  "runtimeSbomDigest": "sha256:6c8ca760235bdc93e3cc5badb56d65e69b001fba0591bbdacf89e70a9f791547",
   "noticesDigest": "sha256:46f9cb58165526708c463acfa3eb6a3fb53039518fde20de9ae74ddc641b681a",
   "authoringContracts": [
     "bottega-ui-blocks-v1",

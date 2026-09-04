@@ -151,7 +151,7 @@ export async function deliverRelaySaga(
             messages!,
             currentInput,
             claimed.userMessageId
-          ),
+          ).input,
     };
     await dependencies.startTurn(
       payload,

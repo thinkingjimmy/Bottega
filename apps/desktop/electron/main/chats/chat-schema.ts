@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the zod, shared/agent-ipc and the limiting constant for chats-ipc, shared/projects-ipc PROJECT_ID_PATTERN
- * [OUTPUT]: Provides the strict chat fact schema, the chat record schema v12 above it, and its readonly twin that admits an empty imported segment, with ProductFailure-aware assistant messages and warnings, the read-only imported-segment marker, sessions, branches, external snapshots with their presentation facts, grants, and subagents
+ * [OUTPUT]: Provides strict schema v13 Chat facts with atomic fork lineage and managed-worktree execution bindings, canonical records, and readonly imported records
  * [POS]: Durable Chat record authority; SQLite is the only backend and no legacy file envelope precedes it
  */
 
@@ -11,19 +11,22 @@ import {
   ATTACHMENT_FILENAME_BYTE_LIMIT,
   ATTACHMENT_LIMIT,
   SESSION_ID_BYTE_LIMIT,
-  TOOL_DETAIL_BYTE_LIMIT,
 } from "../../../shared/agent-ipc";
 import {
   MESSAGE_BYTE_LIMIT,
   MESSAGE_PART_LIMIT,
   SUPERSEDED_BRANCH_LIMIT,
   SUBAGENT_BYTE_LIMIT,
-  type ChatPart,
-  type ChatAttachmentMeta,
-  type ChatToolPart,
   type PersistedSubagent,
   noticeMessageContent,
 } from "../../../shared/chats-ipc";
+import {
+  chatPartSchema,
+  importedPartSchema,
+  messageBytes,
+  overNativeDetail,
+  utf8Length,
+} from "./chat-part-schema";
 import { PROJECT_ID_PATTERN } from "../../../shared/projects-ipc";
 import { HISTORY_SOURCE_KINDS } from "../../../shared/history-import-ipc";
 import { productFailureSchema } from "../../../shared/product-failure";
@@ -66,9 +69,17 @@ export const CHAT_BYTE_LIMIT = 2 * 1024 * 1024;
 export const CHAT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const INCARNATION_ID_PATTERN = /^[a-f0-9]{32}$/;
 export const ATTACHMENT_ID_PATTERN = /^[A-Za-z0-9_-]{10,64}$/;
-export const PART_TITLE_CHAR_LIMIT = 1000;
 
-export const utf8Length = (value: string) => Buffer.byteLength(value, "utf8");
+/* 过程条目的形状与限额住在 chat-part-schema.ts：这份文件讲的是「一条记录长
+   什么样」，那份讲的是「一条过程条目长什么样」。旧调用点从这里取用即可，
+   接缝不外泄。 */
+export {
+  PART_TITLE_CHAR_LIMIT,
+  chatPartInputSchema,
+  chatPartSchema,
+  messageBytes,
+  utf8Length,
+} from "./chat-part-schema";
 
 /** load 与 commit 重建共用的唯一 subagent 总预算不变量。 */
 export function assertSubagentBudget(
@@ -81,85 +92,6 @@ export function assertSubagentBudget(
     throw new Error("subagents 总量不能超过 2 MB");
   }
 }
-
-// ─── 工具词表：zod 是运行时值，无法从类型自动生成，只能人工列举 ───
-// 但漏项会让整轮结果写不进账本（实测：新增 kind 未同步此处 → "无法安全写入本地账本"）。
-// 下方穷尽守卫把这个运行时事故前移成编译错误：少一项即 typecheck 失败。
-const TOOL_KINDS = [
-  "command",
-  "file-change",
-  "file-read",
-  "web-search",
-  "image",
-  "reasoning",
-  "agent-failure",
-  "user-input",
-  "other",
-] as const;
-
-type MissingToolKind = Exclude<ChatToolPart["tool"], (typeof TOOL_KINDS)[number]>;
-const _toolKindsExhaustive: MissingToolKind extends never ? true : never = true;
-void _toolKindsExhaustive;
-
-// 双层限额同构生成（Review 修复）：IPC 入口用宽限额只验形状，normalizeMessage
-// 在入口与存储之间做截断/收敛，入口不拒真实数据。决策 7 的 4KB 只限工具 detail；
-// 中间文本（ChatTextPart）只受 32KB 消息预算约束，不做单独截断。
-const partSchemasWithLimit = (detailLimit: number, titleLimit: number) => {
-  const tool = z
-    .object({
-      type: z.literal("tool"),
-      itemId: z.string().min(1).max(256),
-      tool: z.enum(TOOL_KINDS),
-      title: z.string().min(1).max(titleLimit),
-      detail: z
-        .string()
-        .min(1)
-        .refine((value) => utf8Length(value) <= detailLimit, {
-          message: "工具输出超出限制",
-        })
-        .optional(),
-      status: z.enum(["completed", "failed"]),
-      failure: productFailureSchema.optional(),
-      severity: z.enum(["warning", "error"]).optional(),
-    })
-    .strict();
-  const text = z
-    .object({
-      type: z.literal("text"),
-      itemId: z.string().min(1).max(256),
-      text: z
-        .string()
-        .min(1)
-        .refine((value) => utf8Length(value) <= MESSAGE_BYTE_LIMIT, {
-          message: "过程文本超出消息预算",
-        }),
-      kind: z.literal("plan").optional(),
-    })
-    .strict();
-  const subagent = z
-    .object({
-      type: z.literal("subagent"),
-      itemId: z.string().min(1).max(256),
-      agentThreadId: z.string().min(1).max(256),
-      name: z.string().min(1).max(256),
-      status: z.enum(["completed", "failed"]),
-      origin: z.enum(["native", "spawn"]).optional(),
-      agent: agentBackendIdSchema.optional(),
-    })
-    .strict();
-  return z.discriminatedUnion("type", [tool, text, subagent]);
-};
-
-/** 存储层严格 schema：detail ≤ 4KB（决策 7）、title ≤ 1000 字符 */
-export const chatPartSchema = partSchemasWithLimit(
-  TOOL_DETAIL_BYTE_LIMIT,
-  PART_TITLE_CHAR_LIMIT
-);
-/** IPC 入口宽限 schema：detail/title 放宽只验形状，截断交给 normalizeMessage */
-export const chatPartInputSchema = partSchemasWithLimit(
-  MESSAGE_BYTE_LIMIT,
-  100_000
-);
 
 const attachmentMetaSchema = z
   .object({
@@ -208,29 +140,6 @@ export const subagentsSchema = z
       }
     }
   });
-
-/** 消息真实体积 = 最终回复 + 过程条目 + 附件元数据（决策 7 预算口径） */
-export function messageBytes(message: {
-  content: string;
-  parts?: ChatPart[];
-  attachments?: ChatAttachmentMeta[];
-}) {
-  let total = utf8Length(message.content);
-  for (const part of message.parts ?? []) {
-    total +=
-      part.type === "text"
-        ? utf8Length(part.text)
-        : part.type === "subagent"
-          ? utf8Length(part.name) + utf8Length(part.agentThreadId)
-          : utf8Length(part.title) +
-            (part.detail ? utf8Length(part.detail) : 0) +
-            (part.failure ? utf8Length(JSON.stringify(part.failure)) : 0);
-  }
-  for (const attachment of message.attachments ?? []) {
-    total += utf8Length(attachment.filename) + utf8Length(attachment.mediaType);
-  }
-  return total;
-}
 
 // 限流窗口只收词表内的值；resetsAt 必须是正整数毫秒，越界即整体拒收，
 // 宁可退回"无恢复时间"的诚实卡片，也不让脏时间戳渲染成假倒计时。
@@ -295,7 +204,8 @@ const assistantMessageSchema = z
     ...messageBaseFields,
     role: z.literal("assistant"),
     kind: z.literal("plan").optional(),
-    parts: z.array(chatPartSchema).min(1).max(MESSAGE_PART_LIMIT).optional(),
+    /* 形状按导入段的宽口径收，原生那 4 KiB 由 overNativeDetail 按段补回。 */
+    parts: z.array(importedPartSchema).min(1).max(MESSAGE_PART_LIMIT).optional(),
     durationMs: z.number().int().nonnegative().optional(),
     isError: z.boolean().optional(),
     failureKind: z
@@ -320,6 +230,9 @@ const assistantMessageSchema = z
         path: ["parts"],
         message: "消息（含过程条目）不能超过 32 KB",
       });
+    }
+    if (overNativeDetail(message)) {
+      context.addIssue({ code: "custom", path: ["parts"], message: "工具输出超出限制" });
     }
   });
 
@@ -444,6 +357,13 @@ const canonicalRecordFields = {
     .max(2048)
     .refine(isAbsolute, "homeDir 必须是绝对路径")
     .nullable(),
+  executionDir: z
+    .string()
+    .min(1)
+    .max(2048)
+    .refine(isAbsolute, "executionDir 必须是绝对路径")
+    .nullable()
+    .optional(),
   archivedAt: z.number().int().nonnegative().optional(),
 };
 
@@ -601,6 +521,11 @@ const {
 const chatFactFields = {
   ...factCanonicalFields,
   ...appGrantFields,
+  parentChatId: z.string().regex(CHAT_ID_PATTERN).nullable().optional(),
+  parentIncarnationId: z.string().regex(INCARNATION_ID_PATTERN).nullable().optional(),
+  parentMessageId: z.string().regex(MESSAGE_ID_PATTERN).nullable().optional(),
+  inheritedThroughSeq: z.number().int().positive().nullable().optional(),
+  executionKind: z.literal("managed-worktree").nullable().optional(),
   projectId: z.string().regex(PROJECT_ID_PATTERN).nullable(),
     appRole: z.enum(["edit", "use"]).nullable(),
     context: conversationContextSchema,
@@ -657,6 +582,29 @@ function validateFacts(
   record: z.infer<typeof strictChatFactsSchema>,
   context: z.core.$RefinementCtx
 ) {
+  const lineage = [
+    record.parentChatId,
+    record.parentIncarnationId,
+    record.parentMessageId,
+    record.inheritedThroughSeq,
+  ];
+  const lineageCount = lineage.filter((value) => value !== null && value !== undefined).length;
+  if (lineageCount !== 0 && lineageCount !== lineage.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["parentChatId"],
+      message: "fork lineage facts must be all-null or all-present",
+      input: record,
+    });
+  }
+  if (Boolean(record.executionDir) !== Boolean(record.executionKind)) {
+    context.addIssue({
+      code: "custom",
+      path: ["executionDir"],
+      message: "managed-worktree executionDir and executionKind must coexist",
+      input: record,
+    });
+  }
   if (record.createdAt > record.updatedAt) {
     context.addIssue({
       code: "custom",

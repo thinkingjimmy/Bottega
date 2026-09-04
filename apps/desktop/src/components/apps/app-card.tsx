@@ -48,8 +48,8 @@ import {
   isWorkingState,
   retryLabelKey,
 } from "./app-state";
-import { AppDeleteDialog } from "./delete-dialog";
-import { RepairConfirmDialog } from "./repair-dialog";
+import { AppDeleteDialog } from "./dialogs/delete-dialog";
+import { RepairConfirmDialog } from "./dialogs/repair-dialog";
 import { errorMessage } from "@/lib/errors";
 import { appStudioSurface } from "../../../shared/window-surfaces-ipc";
 import {

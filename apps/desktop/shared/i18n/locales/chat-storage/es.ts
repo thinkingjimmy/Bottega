@@ -10,6 +10,8 @@ export const chatStorageEs: typeof chatStorageEn = {
   technicalDetails: "Detalles técnicos",
   copyDetails: "Copiar detalles técnicos",
   copiedDetails: "Detalles técnicos copiados",
+  reportIssue: "Informar en GitHub",
+  warningResolution: "Reinicia Bottega. Si sigue apareciendo, infórmalo en GitHub para que podamos revisarlo.",
   code: {
     "file-quarantined": {
       title: "Un Chat no está disponible temporalmente",
@@ -25,6 +27,11 @@ export const chatStorageEs: typeof chatStorageEn = {
       title: "Hay copias de Chat que no se pueden restaurar con seguridad",
       explanation: "Bottega no puede determinar qué copia es correcta, así que no sobrescribió ni eliminó ningún archivo.",
       resolution: "Conserva los archivos y copia los detalles técnicos para soporte antes de hacer cambios manuales.",
+    },
+    "self-check-failed": {
+      title: "La autocomprobación de Chats no se superó",
+      explanation: "Bottega comprueba periódicamente la coherencia de su base de datos de Chats. Esta comprobación informó de un problema, pero tus Chats siguen siendo legibles y Bottega no modificó ningún dato.",
+      resolution: "Reinicia Bottega para repetir la comprobación. Si sigue apareciendo, infórmalo en GitHub; los detalles técnicos se adjuntan automáticamente.",
     },
   },
 };

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the lock version of Claude ACP adapter, Registry first-valid flight, user CLI, buildtinTools, oracle, ACP models/turn, authorized processEnv, Native Installer, headless/maintenance and system Skill
- * [OUTPUT]: Provides Claude backend: Unified ACP chat, authorization environment, model, Effort, Plan, image, version control Section, runtime/auth and backend extension
- * [POS]: The only installation point for the Claude descriptor; No pre-checking, no reading, no isolating of the copy of user credentials
+ * [INPUT]: Depends on the lock version of Claude ACP adapter, Registry first-valid flight, user CLI, the managed-policy pre-reader in policy.ts, buildtinTools, oracle, ACP models/turn, authorized processEnv, Native Installer, headless/maintenance and system Skill
+ * [OUTPUT]: Provides Claude backend: Unified ACP chat, authorization environment, model, Effort, Plan, image, version control Section, runtime/auth, policy-aware detectRuntime/confirmRuntime (createClaudeRuntimeDetection) and backend extension
+ * [POS]: The only installation point for the Claude descriptor; No pre-checking, no reading, no isolating of the copy of user credentials; managed-policy validation is best-effort because the adapter re-reads the policy in its own process
  */
 
 import { homedir } from "node:os";
@@ -18,8 +18,11 @@ import {
   runtimeVersionAtLeast,
 } from "../runtime-probe";
 import type {
+  AgentRuntime,
   BackendDescriptor,
   BackendTurnOptions,
+  ResolvedRuntime,
+  RuntimeConfirmation,
 } from "../types";
 import { checkClaudeAuth } from "./auth";
 import { claudeAcpLaunch, validateClaudeSessionId } from "./environment";
@@ -29,14 +32,58 @@ import {
 } from "./headless";
 import { createClaudeMaintenance } from "./maintenance";
 import { isClaudeModelId, listClaudeModels } from "./models";
+import {
+  describeClaudePolicyRejection,
+  readClaudeExecutablePolicy,
+  type ClaudeExecutablePolicy,
+} from "./policy";
 import { SESSION_CAPABILITY_POLICY } from "../acp/session/client-capabilities";
 
 const PERMISSIONS = new Set(["ask-for-approval", "approve-for-me"]);
 const MINIMUM_VERSION = "2.1.216";
 const INSTALL_COMMAND =
   "curl -fsSL https://claude.ai/install.sh | bash";
-const findClaudeRuntime = (signal?: AbortSignal) =>
-  probeRuntimeCandidatesAsync({ command: "claude", signal });
+/* 企业 managed policy 可以改写 adapter 进程里的 CLAUDE_CODE_EXECUTABLE，那条路径
+   才是将被 spawn 的路径。发现阶段就让它成为唯一候选，走同一套 identity/版本校验；
+   快照复用前再读一次，路径变了就作废重发现。adapter 自己还会再读第三次，
+   这中间的毫秒级窗口是"不 patch adapter"裁决下的已知 best-effort 边界。 */
+export function createClaudeRuntimeDetection(
+  readPolicy: (signal?: AbortSignal) => Promise<ClaudeExecutablePolicy> = (
+    signal
+  ) => readClaudeExecutablePolicy(undefined, signal),
+  probe: (signal?: AbortSignal) => Promise<AgentRuntime[]> = (signal) =>
+    probeRuntimeCandidatesAsync({ command: "claude", signal })
+) {
+  const detectRuntime = async (
+    signal?: AbortSignal
+  ): Promise<AgentRuntime[]> => {
+    const policy = await readPolicy(signal);
+    if (policy.kind === "unset") return probe(signal);
+    if (policy.kind === "path") {
+      return [{ executable: policy.executable, path: process.env.PATH ?? "" }];
+    }
+    throw new Error(describeClaudePolicyRejection());
+  };
+  const confirmRuntime = async (
+    runtime: ResolvedRuntime,
+    signal?: AbortSignal
+  ): Promise<RuntimeConfirmation> => {
+    const policy = await readPolicy(signal);
+    if (policy.kind === "unset") return { status: "confirmed" };
+    if (policy.kind === "path" && policy.executable === runtime.executable) {
+      return { status: "confirmed" };
+    }
+    return {
+      status: "rejected",
+      reason:
+        policy.kind === "path"
+          ? `Claude managed policy 已将可执行路径改为 ${policy.executable}，重新探测`
+          : describeClaudePolicyRejection(),
+    };
+  };
+  return { detectRuntime, confirmRuntime };
+}
+const claudeRuntimeDetection = createClaudeRuntimeDetection();
 const claudeMaintenance = createClaudeMaintenance();
 
 function validate(value: unknown): asserts value is ClaudeTurnOptions {
@@ -93,7 +140,7 @@ const capabilities: Omit<
  *
  * `settingSources` 只去掉 `local`。**`project` 是留着的，而且是有代价的**：
  * 它同时是 `CLAUDE.md` 的加载开关（SDK 明文如此），而 App 协议要求工作区
- * `CLAUDE.md` 恒为 `@AGENTS.md`（见 apps/validate-app.ts，缺失即判 error）。
+ * `CLAUDE.md` 恒为 `@AGENTS.md`（见 apps/source/validate-app.ts，缺失即判 error）。
  * 去掉 project 就等于让所有 App 聊天的 skill 协议静默失效。
  * 于是残留边界必须说明白而不是假装关上了：**工作区根部的
  * `.claude/settings.json` 里的 hooks 仍会执行**。压制它的是另一半——交互
@@ -150,7 +197,8 @@ export const claudeBackend: BackendDescriptor = {
   workspaceDirName: "claude-workspace",
   sessionCapabilityPolicy: SESSION_CAPABILITY_POLICY.claude,
   serviceTier: CLAUDE_SERVICE_TIER,
-  detectRuntime: findClaudeRuntime,
+  detectRuntime: claudeRuntimeDetection.detectRuntime,
+  confirmRuntime: claudeRuntimeDetection.confirmRuntime,
   validateRuntime: (runtime) =>
     runtimeVersionAtLeast(runtime.version, MINIMUM_VERSION)
       ? { status: "installed" }

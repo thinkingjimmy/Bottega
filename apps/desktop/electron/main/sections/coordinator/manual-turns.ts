@@ -25,7 +25,11 @@ import type {
   ManualTurnIntent,
   RelayLedger,
 } from "./relay-ledger";
-import { recoveryInput, stableId } from "./coordinator-values";
+import {
+  FORK_RECOVERY_POLICY,
+  recoveryInput,
+  stableId,
+} from "./coordinator-values";
 import type { TurnOrigin } from "../../agent/bridge-types";
 import {
   hydratePreparedTurn,
@@ -492,17 +496,31 @@ export async function runManualTurn(
     ? null
     : await dependencies.chats.store.getNativeMessages(record.id);
   if (!session && !messages) throw new Error("人工 turn 的 canonical context 缺失");
+  const firstForkTurn = Boolean(
+    !session &&
+    record.inheritedThroughSeq &&
+    !messages?.some(
+      (message) =>
+        message.id !== expected.id &&
+        message.role !== "notice" &&
+        message.seq > record.inheritedThroughSeq!
+    )
+  );
+  const recovery = session
+    ? null
+    : recoveryInput(
+        messages!,
+        submission.turn.input,
+        expected.id,
+        firstForkTurn ? FORK_RECOVERY_POLICY : undefined
+      );
   const payload: AgentSendPayload = {
     ...submission.turn,
     preparedSkillSelection: prepared.skillSelection,
     ...(session ? { session } : { session: undefined }),
     input: session
       ? submission.turn.input
-      : recoveryInput(
-          messages!,
-          submission.turn.input,
-          expected.id
-        ),
+      : recovery!.input,
     turnOptions,
   };
   const resolvedInput = resolvedInputForFinalPayload(
@@ -531,6 +549,13 @@ export async function runManualTurn(
       projectLifecycleHeld,
       hydrated.projectTools
     );
+    if (firstForkTurn && recovery?.truncated && record.inheritedThroughSeq) {
+      dependencies.chats.publishRecoveryTruncated(
+        record.id,
+        expected.id,
+        record.inheritedThroughSeq
+      );
+    }
     await dependencies.ledger.markManualDispatched(intent.id);
   } catch (cause) {
     await dependencies.ledger.markManualDispatchUnknown(intent.id);

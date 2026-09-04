@@ -9,7 +9,12 @@ import type {
   GitBranchSnapshot,
   GitBranchTarget,
 } from "../../../../shared/projects-ipc";
-import { runGit, runProjectGitMutation, tryGit } from "./git-runner";
+import {
+  GitCommandError,
+  runGit,
+  runProjectGitMutation,
+  tryGit,
+} from "./git-runner";
 
 type LocalBranch = GitBranchRef & {
   kind: "local";
@@ -74,8 +79,18 @@ function parseBranches(output: string, head: string, detached: boolean) {
 async function readState(workspace: string): Promise<BranchState | null> {
   const inside = await tryGit(workspace, ["rev-parse", "--is-inside-work-tree"]);
   if (inside?.trim() !== "true") return null;
-  const symbolic = await tryGit(workspace, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
-  const detached = symbolic === null;
+  const symbolic = await runGit(
+    workspace,
+    ["symbolic-ref", "--quiet", "--short", "HEAD"]
+  ).catch((cause) => {
+    if (
+      cause instanceof GitCommandError &&
+      cause.code === "GIT_COMMAND_FAILED" &&
+      cause.detail.exitCode === 1
+    ) return "";
+    throw cause;
+  });
+  const detached = symbolic === "";
   const head = detached
     ? (await runGit(workspace, ["rev-parse", "--short", "HEAD"])).trim()
     : symbolic.trim();

@@ -25,7 +25,7 @@ description: 用图表、统计、占比、趋势或 chart 展示数据，在聊
 - 单图 `JSON.stringify(payload)` 的 UTF-8 字节数不超过 12KB；每条回复最多 2 图。
 - pie 恰好 1 序列；scatter 恰好 2 序列；heatmap 每条序列必须命名。
 - 多序列全部命名且唯一。至少一个非 null 数据点。
-- 数据来自 Base 时先用 `base_query` 汇总；不要把原始明细行塞进图表。
+- 数据来自 Base 时先用 `read_base` 汇总；不要把原始明细行塞进图表。
 
 ## 七型最小示例
 

@@ -21,4 +21,8 @@ export const agentFailureFr: typeof agentFailureEn = {
     "runtime-unavailable": { title: "Impossible de démarrer {{backend}}", explanation: "L’Agent local est absent, obsolète ou a échoué au contrôle de démarrage.", resolution: "Ouvrez les réglages de l’Agent, installez ou mettez à jour {{backend}}, puis relancez le contrôle." },
     unknown: { title: "{{backend}} n’a pas pu terminer la demande", explanation: "L’Agent a signalé un problème que Bottega ne peut pas classer de façon sûre.", resolution: "Réessayez une fois. Si cela se reproduit, ouvrez et copiez les détails techniques pour le support." },
   },
+  notice: {
+    title: "{{backend}} a envoyé un avis",
+    explanation: "Cet avis provient de {{backend}} lui-même, pas de Bottega. Cette réponse n’est pas affectée.",
+  },
 };

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React/router, runtime controller, Chat composer i18n, canonical Project Settings routing, workspace candidate/image transaction hooks, Gallery store/freeze/focus, PromptInputProvider and RichInput
- * [OUTPUT]: Provides localized ChatComposer with rich submission, capability-aware controls, exact-Project settings entry, Gallery/Section image gates, and the explicit safe Resume Failure decision surface
+ * [OUTPUT]: Provides localized ChatComposer with rich submission, managed-worktree permission ceiling, capability-aware controls, Gallery gates, and safe Resume Failure decisions
  * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
 
@@ -37,14 +37,7 @@ import {
   type RichInputHandle,
   type RichInputProps,
 } from "@ai-chat/ui/components/ai-elements/rich-input";
-import {
-  FileUpIcon,
-  ImagesIcon,
-  LightbulbIcon,
-  PlusIcon,
-  Settings,
-  XIcon,
-} from "lucide-react";
+import { FileUpIcon, ImagesIcon, LightbulbIcon, PlusIcon, Settings, XIcon } from "lucide-react";
 import {
   ATTACHMENT_BYTE_LIMIT,
   ATTACHMENT_LIMIT,
@@ -58,6 +51,7 @@ import { ChatBackendUnavailable } from "./chat-backend-unavailable";
 import { ChatBranchSelector } from "./chat-branch-selector";
 import { ChatModelListSelector } from "./chat-model-list-selector";
 import { ChatModelSelector } from "./chat-model-selector";
+import { ChatManagedWorktreeRow } from "./chat-managed-worktree-row";
 import { ChatPlanChip } from "./chat-plan-chip";
 import { ChatPlanDecision } from "./chat-plan-decision";
 import { ChatPermissionSelector } from "./chat-permission-selector";
@@ -157,11 +151,13 @@ function ChatComposerContent({
   focusOnReady = false,
   enableSidePanel = true,
   collapseWhenIdle = false,
+  managedWorktree = false,
 }: {
   controller: ChatSessionController["composer"];
   focusOnReady?: boolean;
   enableSidePanel?: boolean;
   collapseWhenIdle?: boolean;
+  managedWorktree?: boolean;
 }) {
   const { t } = useAppTranslation();
   const inputRef = useRef<RichInputHandle>(null);
@@ -511,6 +507,9 @@ function ChatComposerContent({
             )}
           </div>
         )}
+      {!controller.loading && managedWorktree && (
+        <ChatManagedWorktreeRow controller={controller} />
+      )}
       {unavailableBackend ? (
         <ChatBackendUnavailable
           backend={unavailableBackend}
@@ -672,8 +671,15 @@ function ChatComposerContent({
                   permissionMode,
                 })
               }
-              allowedModes={controller.selectedBackend?.capabilities.permissionModes}
+              allowedModes={controller.selectedBackend?.capabilities.permissionModes.filter(
+                (mode) => !managedWorktree || mode !== "full-access"
+              )}
             />
+            {managedWorktree && (
+              <span className="hidden text-[11px] text-muted-foreground @lg/composer:inline">
+                {t("chat.fork.worktreePermission")}
+              </span>
+            )}
             {controller.planMode && (
               <>
                 <Separator
@@ -766,6 +772,7 @@ export const ChatComposer = memo(function ChatComposer(props: {
   enableSidePanel?: boolean;
   /** 全屏 Base dock：闲置时收成单行，避免空输入框占掉两行悬浮面积 */
   collapseWhenIdle?: boolean;
+  managedWorktree?: boolean;
 }) {
   return (
     <PromptInputProvider

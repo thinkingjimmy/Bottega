@@ -80,7 +80,7 @@ import "@ai-chat/ui/globals.css";
 import "@/appearance.css";
 // 组件级 css 统一在入口引入：node --test 的 tsx loader 无 css 处理，组件内 import 会炸 DOM 测试
 import "@/components/sidebar/sidebar-row.css";
-import { AppWindowShell } from "@/components/apps/app-window-shell";
+import { AppWindowShell } from "@/components/apps/use/app-window-shell";
 import {
   installWindowSurfaceRuntime,
   windowContext,

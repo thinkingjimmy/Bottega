@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on BasesProvider snapshots/mutations, i18n, the six row-backed views, owner-native uploads, chart operations, and Base chrome
- * [OUTPUT]: Provides BaseWorkbench with canonical context, localized creation defaults, structured mutation recovery, CAS operations, and six view projections
+ * [INPUT]: Depends on BasesProvider navigation/snapshot slices, i18n, the six row-backed views, owner-native uploads, chart operations, and Base chrome
+ * [OUTPUT]: Provides BaseWorkbench with canonical context, localized creation defaults, structured mutation recovery, one revision-CAS channel, and a view-type registry
  * [POS]: Renderer Base composition root; it owns translation/state orchestration and passes explicit context to every view/editor pipeline
  */
 
@@ -25,6 +25,7 @@ import type {
   BaseRow,
   BaseRowPatch,
   BaseSelectOption,
+  BaseSnapshot,
   BaseSort,
   BaseView,
   BaseViewConfig,
@@ -35,14 +36,16 @@ import {
   projectBaseRows,
 } from "../../../shared/bases-ipc";
 import { renumberViews } from "../../../shared/base-views";
-import { useBases } from "@/components/providers/bases-provider";
+import {
+  useBaseSnapshots,
+  useBasesNavigation,
+} from "@/components/providers/bases-provider";
 import { errorMessage } from "@/lib/errors";
 import {
   isBaseRevisionConflict,
   recoverBaseMutationError,
   type BaseMutationOutcome,
 } from "./state/base-mutation-error";
-import { BaseQuarantineNotice } from "./base-quarantine-notice";
 import { BaseToolbar } from "./chrome/base-toolbar";
 import { BaseViewTabs } from "./chrome/base-view-tabs";
 import { BaseTableView } from "./views/table/base-table-view";
@@ -53,18 +56,14 @@ import {
   BaseChartView,
   guessChartItem,
 } from "./views/chart/base-chart-view";
-import {
-  applyChartOpToConfig,
-  retryChartOp,
-  stripChartSorts,
-  type ChartOp,
-} from "@/lib/charts/chart-ops";
+import { applyChartOpToConfig, stripChartSorts, type ChartOp } from "@/lib/charts/chart-ops";
 import { BaseGalleryView } from "./views/gallery/base-gallery-view";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { BaseRecordEditor } from "./editors/cells/base-record-editor";
 import { putBaseAttachment } from "@/lib/bases/client";
 import { useGalleryRunningOverlay } from "@/lib/gallery/overlay";
 import {
+  baseEntityId,
   patchLatestGalleryConfig,
   prepareGalleryUpload,
   prepareNewView,
@@ -107,14 +106,13 @@ export function BaseWorkbench({
   surfaceLeaseId,
 }: BaseWorkbenchProps) {
   const { t } = useAppTranslation();
-  const bases = useBases();
+  const { ensure } = useBasesNavigation();
+  const bases = useBaseSnapshots();
   const galleryOverlay = useGalleryRunningOverlay(attachmentOwner?.chatId);
-  const ensure = bases.ensure;
   const snapshot = bases.snapshots[ownerKey];
   const [loading, setLoading] = useState(!snapshot);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [corrupt, setCorrupt] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
   // 乐观视图切换：pending 立即翻转 UI，持久化在后台单飞；
   // provider 在 updateMeta resolve 前已合并新 snapshot，故持久化收尾清 pending 不会闪回
@@ -140,10 +138,7 @@ export function BaseWorkbench({
     let active = true;
     void ensure(ownerKey)
       .catch((cause) => {
-        if (!active) return;
-        const message = errorMessage(cause);
-        setError(message);
-        setCorrupt(message.includes("BASE_CORRUPT"));
+        if (active) setError(errorMessage(cause));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -197,15 +192,6 @@ export function BaseWorkbench({
     <div className="flex h-full min-h-0 flex-col bg-background">{children}</div>
   );
 
-  if (corrupt && !snapshot) {
-    return shell(
-      <BaseQuarantineNotice
-        onDiscarded={() => setCorrupt(false)}
-        ownerKey={ownerKey}
-      />
-    );
-  }
-
   if (loading || !snapshot || !activeView || !cellContext) {
     return shell(
       <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground text-sm">
@@ -258,30 +244,34 @@ export function BaseWorkbench({
         () => null,
         (cause: unknown) => errorMessage(cause)
       );
-  const updateMeta = (patch: BaseMetaPatch) =>
-    run(() =>
+  /* ── meta 变更的唯一 CAS 通道 ────────────────────────────────
+   * expectedRevision 取 provider 手上的 snapshot：它已经是本机最新的真相
+   * ——每一次提交的返回与每一条 base-changed 事件都会把它推进。改一次列宽
+   * 就先发一次全量 get 的旧写法，等于用一次 IPC 去问一个自己已经知道的数。
+   * 只有真撞上 revision_conflict（别的窗口或 Agent 抢先写）才回载一次、
+   * 重试一次；再撞就交给 run() 的恢复层，由它决定是否整体回载。 */
+  const commitMeta = async (
+    build: (latest: BaseSnapshot) => BaseMetaPatch,
+    base: BaseSnapshot = snapshot
+  ): Promise<BaseSnapshot> => {
+    const submit = (latest: BaseSnapshot) =>
       bases.updateMeta({
-        ownerKey,
-        expectedRevision: snapshot.meta.revision,
-        patch,
-        surfaceLeaseId,
-      })
-    );
-  // 提交前读取最新 snapshot：视图级 CAS 都走这一条路径
-  const updateLatestMeta = (
-    build: (latest: NonNullable<Awaited<ReturnType<typeof bases.get>>>) =>
-      BaseMetaPatch
-  ) =>
-    run(async () => {
-      const latest = await bases.get(ownerKey);
-      if (!latest) throw new Error("Base 尚未创建");
-      return bases.updateMeta({
         ownerKey,
         expectedRevision: latest.meta.revision,
         patch: build(latest),
         surfaceLeaseId,
       });
-    });
+    try {
+      return await submit(base);
+    } catch (cause) {
+      if (!isBaseRevisionConflict(cause)) throw cause;
+      const latest = await bases.get(ownerKey);
+      if (!latest) throw cause;
+      return submit(latest);
+    }
+  };
+  const updateLatestMeta = (build: (latest: BaseSnapshot) => BaseMetaPatch) =>
+    run(() => commitMeta(build));
   // 切换视图：本地即时翻转 + 单飞持久化，末次点击胜出；不走 run()，永不置 busy
   const selectView = (viewId: string) => {
     flipViewLocal(viewId);
@@ -295,17 +285,13 @@ export function BaseWorkbench({
     if (persistingRef.current) return;
     persistingRef.current = true;
     try {
+      /* 提交的返回值就是下一轮的基准：循环里不再各发一次 get。 */
+      let latest = snapshot;
       for (;;) {
         const target = desiredViewRef.current;
-        const latest = await bases.get(ownerKey);
-        const exists = latest?.meta.views.some((view) => view.id === target);
-        if (!latest || !exists || latest.meta.activeViewId === target) break;
-        await bases.updateMeta({
-          ownerKey,
-          expectedRevision: latest.meta.revision,
-          patch: { activeViewId: target },
-          surfaceLeaseId,
-        });
+        const exists = latest.meta.views.some((view) => view.id === target);
+        if (!exists || latest.meta.activeViewId === target) break;
+        latest = await commitMeta(() => ({ activeViewId: target }), latest);
         if (desiredViewRef.current === target) break;
       }
       setPendingViewId("");
@@ -313,7 +299,7 @@ export function BaseWorkbench({
       persistingRef.current = false;
     }
   };
-  // 视图 config 的唯一 CAS 通道：filter/sorts/列宽/kanban 分组/map 列选择全走 builder；
+  // 视图 config 的唯一入口：filter/sorts/列宽/分组/map 列/chart op 全走 builder；
   // 目标锁定渲染期有效视图（含 pending），避免乐观切换窗口内打到旧视图
   const updateActiveViewConfig = (
     build: (config: BaseViewConfig) => BaseViewConfig
@@ -356,36 +342,13 @@ export function BaseWorkbench({
     columnId: string
   ) =>
     updateActiveViewConfig((config) => withMapColumn(config, key, columnId));
+  /* Chart op 不是第二套提交语义：它与列宽、分组一样，是「把当前视图的
+     config 换成另一份」，故共用同一条 CAS——冲突重试也就只有一份实现。 */
   const applyChartOp = (op: ChartOp) =>
-    run(() =>
-      retryChartOp(
-        async () => {
-          const latest = await bases.get(ownerKey);
-          if (!latest) throw new Error("Base 尚未创建");
-          return latest;
-        },
-        (latest) => {
-          const view = latest.meta.views.find(
-            (candidate) => candidate.id === activeView.id
-          );
-          if (!view || view.config.type !== "chart") {
-            throw new Error("Active Base view 不是 Chart");
-          }
-          const config = applyChartOpToConfig(view.config, op);
-          return bases.updateMeta({
-            ownerKey,
-            expectedRevision: latest.meta.revision,
-            patch: {
-              views: latest.meta.views.map((candidate) =>
-                candidate.id === view.id ? { ...candidate, config } : candidate
-              ),
-            },
-            surfaceLeaseId,
-          });
-        },
-        isBaseRevisionConflict
-      )
-    );
+    updateActiveViewConfig((config) => {
+      if (config.type !== "chart") throw new Error("Active Base view 不是 Chart");
+      return applyChartOpToConfig(config, op);
+    });
   const chartOp = intent(applyChartOp);
   const renameView = (viewId: string, name: string) =>
     updateLatestMeta((latest) => ({
@@ -445,70 +408,74 @@ export function BaseWorkbench({
     if (type === "formula" && !formula) {
       throw new Error("Formula metadata is required");
     }
-    const id = `col_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
-    const column: BaseColumn = {
-      id,
-      /* 默认列名与 select 选项都只在创建时取当前语言；既有 schema/row
-         没有迁移路径，也不会因用户后来切换语言而被改写。 */
-      name: `${t(`bases.columnType.${type}`, { defaultValue: type })} ${snapshot.meta.columns.length + 1}`,
-      type,
-      ...(type === "select"
-        ? {
-            options: starterSelectOptions({
-              todo: t("bases.starterStatus.todo"),
-              doing: t("bases.starterStatus.doing"),
-              done: t("bases.starterStatus.done"),
-            }),
-          }
-        : {}),
-      ...(type === "formula" ? { formula } : {}),
-      ...(type === "relation"
-        ? {
-            relation: {
-              labelColumnId:
-                snapshot.meta.columns.find((candidate) => candidate.type === "text")?.id ?? null,
-            },
-          }
-        : {}),
-    };
-    /* 新列必须进已物化的可见清单：清单是「显这些」而非「藏那些」，
-     * 不追加，新列就会在藏过字段的视图里默认隐身——用户没藏它，也没人告诉他。 */
-    await updateMeta({
-      columns: [...snapshot.meta.columns, column],
-      views: snapshot.meta.views.map((view) =>
-        isColumnScopedView(view.config) && view.config.visibleColumnIds?.length
+    const id = baseEntityId("col");
+    await updateLatestMeta((latest) => {
+      const column: BaseColumn = {
+        id,
+        /* 默认列名与 select 选项都只在创建时取当前语言；既有 schema/row
+           没有迁移路径，也不会因用户后来切换语言而被改写。 */
+        name: `${t(`bases.columnType.${type}`, { defaultValue: type })} ${latest.meta.columns.length + 1}`,
+        type,
+        ...(type === "select"
           ? {
-              ...view,
-              config: {
-                ...view.config,
-                visibleColumnIds: [...view.config.visibleColumnIds, id],
+              options: starterSelectOptions({
+                todo: t("bases.starterStatus.todo"),
+                doing: t("bases.starterStatus.doing"),
+                done: t("bases.starterStatus.done"),
+              }),
+            }
+          : {}),
+        ...(type === "formula" ? { formula } : {}),
+        ...(type === "relation"
+          ? {
+              relation: {
+                labelColumnId:
+                  latest.meta.columns.find((candidate) => candidate.type === "text")?.id ?? null,
               },
             }
-          : view
-      ),
+          : {}),
+      };
+      /* 新列必须进已物化的可见清单：清单是「显这些」而非「藏那些」，
+       * 不追加，新列就会在藏过字段的视图里默认隐身——用户没藏它，也没人告诉他。 */
+      return {
+        columns: [...latest.meta.columns, column],
+        views: latest.meta.views.map((view) =>
+          isColumnScopedView(view.config) && view.config.visibleColumnIds?.length
+            ? {
+                ...view,
+                config: {
+                  ...view.config,
+                  visibleColumnIds: [...view.config.visibleColumnIds, id],
+                },
+              }
+            : view
+        ),
+      };
     });
   };
   const addView = async (type: BaseViewConfig["type"]) => {
-    const id = `view_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
-    const prepared = prepareNewView(type, snapshot.meta.columns, {
-      image: t("bases.columnDefaults.image"),
-      createdAt: t("bases.columnDefaults.createdAt"),
-    });
-    const view: BaseView = {
-      id,
-      /* 新视图的默认名按当前语言取一次：它是落盘的数据，此后不再随语言变。 */
-      name: `${t(`bases.viewType.${type}`, { defaultValue: type })} ${snapshot.meta.views.length + 1}`,
-      order: snapshot.meta.views.length,
-      config: prepared.config,
-    };
+    const id = baseEntityId("view");
     // 新增即选中：同步 pending，防残留的乐观切换视觉覆盖新视图；落盘后交还真相源
     desiredViewRef.current = id;
     setPendingViewId(id);
     try {
-      await updateMeta({
-        columns: prepared.columns,
-        views: renumberViews([...snapshot.meta.views, view]),
-        activeViewId: id,
+      await updateLatestMeta((latest) => {
+        const prepared = prepareNewView(type, latest.meta.columns, {
+          image: t("bases.columnDefaults.image"),
+          createdAt: t("bases.columnDefaults.createdAt"),
+        });
+        const view: BaseView = {
+          id,
+          /* 新视图的默认名按当前语言取一次：它是落盘的数据，此后不再随语言变。 */
+          name: `${t(`bases.viewType.${type}`, { defaultValue: type })} ${latest.meta.views.length + 1}`,
+          order: latest.meta.views.length,
+          config: prepared.config,
+        };
+        return {
+          columns: prepared.columns,
+          views: renumberViews([...latest.meta.views, view]),
+          activeViewId: id,
+        };
       });
     } finally {
       setPendingViewId("");
@@ -564,6 +531,181 @@ export function BaseWorkbench({
         surfaceLeaseId
       )
     );
+
+  /* ── 视图类型 → 组件 ────────────────────────────────────────
+     六种视图曾是一串六层嵌套三元：加一种就要在括号迷宫里找位置，
+     读一种就要先数清自己在第几层。switch 把它摊平成一行一种。 */
+  const renderActiveView = () => {
+    const config = activeView.config;
+    switch (config.type) {
+      case "gallery":
+        return (
+          <BaseGalleryView
+            busy={busy}
+            context={cellContext}
+            columns={snapshot.meta.columns}
+            composerChatId={attachmentOwner?.chatId}
+            composerIncarnationId={attachmentOwner?.incarnationId}
+            config={config}
+            ephemeralItems={galleryOverlay}
+            onConfigPatch={
+              /* 不走 intent 的 reject 消费者：gallery 持有就地错误 UI（announceError），
+                 错因随 rejection 下传，与顶部横幅同源。 */
+              canStructure
+                ? (configPatch) =>
+                    updateLatestMeta((latest) =>
+                      patchLatestGalleryConfig(
+                        latest,
+                        activeView.id,
+                        configPatch
+                      )
+                    ).then(() => undefined)
+                : undefined
+            }
+            ownerInstanceId={snapshot.meta.ownerInstanceId}
+            ownerKey={ownerKey}
+            rows={rows}
+          />
+        );
+      case "table":
+        return (
+          <BaseTableView
+            busy={busy}
+            chatId={attachmentOwner?.chatId}
+            columnAggregations={config.columnAggregations}
+            columnWidths={config.columnWidths}
+            columns={visibleColumns(snapshot.meta.columns, activeView)}
+            context={cellContext}
+            incarnationId={attachmentOwner?.incarnationId}
+            compact={compact}
+            groupByColumnId={config.groupByColumnId}
+            onAddColumn={
+              canStructure && snapshot.meta.columns.length < 64
+                ? intent(addColumn)
+                : undefined
+            }
+            onDelete={canMutateRows ? intent(remove) : undefined}
+            onDeleteColumn={canStructure ? intent(deleteColumn) : undefined}
+            onColumnWidthChange={
+              canStructure ? intent(resizeTableColumn) : undefined
+            }
+            onAggregationChange={
+              canStructure ? intent(setTableAggregation) : undefined
+            }
+            onPatch={canMutateRows ? intent(patch) : undefined}
+            onRenameColumn={canStructure ? intent(renameColumn) : undefined}
+            ownerKey={ownerKey}
+            relationOptions={snapshot.rows}
+            onSortsChange={
+              canStructure
+                ? intent((sorts: BaseSort[]) =>
+                    updateActiveViewConfig((current) => ({
+                      ...current,
+                      sorts,
+                    }))
+                  )
+                : undefined
+            }
+            rows={rows}
+            sorts={config.sorts ?? []}
+          />
+        );
+      case "list":
+        return (
+          <BaseListView
+            busy={busy}
+            chatId={attachmentOwner?.chatId}
+            columns={visibleColumns(snapshot.meta.columns, activeView)}
+            context={cellContext}
+            groupByColumnId={config.groupByColumnId}
+            incarnationId={attachmentOwner?.incarnationId}
+            ownerKey={ownerKey}
+            relationOptions={snapshot.rows}
+            onCreateRow={canMutateRows ? intent(addRow) : undefined}
+            onDelete={canMutateRows ? intent(remove) : undefined}
+            onPatch={canMutateRows ? intent(patch) : undefined}
+            rows={rows}
+          />
+        );
+      case "kanban":
+        return (
+          <BaseKanbanView
+            busy={busy}
+            chatId={attachmentOwner?.chatId}
+            columns={snapshot.meta.columns}
+            context={cellContext}
+            groupByColumnId={config.groupByColumnId}
+            incarnationId={attachmentOwner?.incarnationId}
+            onAddColumn={
+              canStructure && snapshot.meta.columns.length < 64
+                ? intent(addColumn)
+                : undefined
+            }
+            onAddRow={canMutateRows ? intent(addRow) : undefined}
+            onPatch={canMutateRows ? intent(patch) : undefined}
+            onUpdateOption={canStructure ? intent(updateSelectOption) : undefined}
+            rows={rows}
+            visibleColumnIds={config.visibleColumnIds}
+          />
+        );
+      case "map":
+        return (
+          <Suspense
+            fallback={
+              <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground text-sm">
+                <span className="flex items-center gap-2">
+                  <LoaderCircleIcon className="size-4 animate-spin" />
+                  {t("bases.loadingMap")}
+                </span>
+              </div>
+            }
+          >
+            <BaseMapView
+              busy={busy}
+              columns={snapshot.meta.columns}
+              context={cellContext}
+              labelColumnId={config.labelColumnId}
+              locationColumnId={config.locationColumnId}
+              onAddColumn={
+                canStructure && snapshot.meta.columns.length < 64
+                  ? intent(addColumn)
+                  : undefined
+              }
+              onLabelColumnChange={
+                canStructure
+                  ? intent((columnId: string) =>
+                      setMapColumn("labelColumnId", columnId)
+                    )
+                  : undefined
+              }
+              onLocationColumnChange={
+                canStructure
+                  ? intent((columnId: string) =>
+                      setMapColumn("locationColumnId", columnId)
+                    )
+                  : undefined
+              }
+              rows={rows}
+            />
+          </Suspense>
+        );
+      case "chart":
+        return (
+          <BaseChartView
+            busy={busy}
+            charts={config.charts}
+            columns={snapshot.meta.columns}
+            context={cellContext}
+            compact={compact}
+            onOp={canStructure ? (op) => void chartOp(op) : undefined}
+            rows={rows}
+            viewFilterScrubbed={config.viewFilterScrubbed}
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
   return shell(
     <>
@@ -635,160 +777,7 @@ export function BaseWorkbench({
         onSave={saveGalleryRow}
         open={recordOpen && activeView.config.type === "gallery"}
       />
-      {activeView.config.type === "gallery" ? (
-        <BaseGalleryView
-          busy={busy}
-          context={cellContext}
-          columns={snapshot.meta.columns}
-          composerChatId={attachmentOwner?.chatId}
-          composerIncarnationId={attachmentOwner?.incarnationId}
-          config={activeView.config}
-          ephemeralItems={galleryOverlay}
-          onConfigPatch={
-            /* 不走 intent 的 reject 消费者：gallery 持有就地错误 UI（announceError），
-               错因随 rejection 下传，与顶部横幅同源。 */
-            canStructure
-              ? (configPatch) =>
-                  updateLatestMeta((latest) =>
-                    patchLatestGalleryConfig(
-                      latest,
-                      activeView.id,
-                      configPatch
-                    )
-                  ).then(() => undefined)
-              : undefined
-          }
-          ownerInstanceId={snapshot.meta.ownerInstanceId}
-          ownerKey={ownerKey}
-          revision={snapshot.meta.revision}
-          rows={rows}
-        />
-      ) : activeView.config.type === "table" ? (
-        <BaseTableView
-          busy={busy}
-          chatId={attachmentOwner?.chatId}
-          columnAggregations={activeView.config.columnAggregations}
-          columnWidths={activeView.config.columnWidths}
-          columns={visibleColumns(snapshot.meta.columns, activeView)}
-          context={cellContext}
-          incarnationId={attachmentOwner?.incarnationId}
-          compact={compact}
-          groupByColumnId={activeView.config.groupByColumnId}
-          onAddColumn={
-            canStructure && snapshot.meta.columns.length < 64
-              ? intent(addColumn)
-              : undefined
-          }
-          onDelete={canMutateRows ? intent(remove) : undefined}
-          onDeleteColumn={canStructure ? intent(deleteColumn) : undefined}
-          onColumnWidthChange={
-            canStructure ? intent(resizeTableColumn) : undefined
-          }
-          onAggregationChange={
-            canStructure ? intent(setTableAggregation) : undefined
-          }
-          onPatch={canMutateRows ? intent(patch) : undefined}
-          onRenameColumn={canStructure ? intent(renameColumn) : undefined}
-          ownerKey={ownerKey}
-          relationOptions={snapshot.rows}
-          onSortsChange={
-            canStructure
-              ? intent((sorts: BaseSort[]) =>
-                  updateActiveViewConfig((config) => ({
-                    ...config,
-                    sorts,
-                  }))
-                )
-              : undefined
-          }
-          rows={rows}
-          sorts={activeView.config.sorts ?? []}
-        />
-      ) : activeView.config.type === "list" ? (
-        <BaseListView
-          busy={busy}
-          chatId={attachmentOwner?.chatId}
-          columns={visibleColumns(snapshot.meta.columns, activeView)}
-          context={cellContext}
-          groupByColumnId={activeView.config.groupByColumnId}
-          incarnationId={attachmentOwner?.incarnationId}
-          ownerKey={ownerKey}
-          relationOptions={snapshot.rows}
-          onCreateRow={canMutateRows ? intent(addRow) : undefined}
-          onDelete={canMutateRows ? intent(remove) : undefined}
-          onPatch={canMutateRows ? intent(patch) : undefined}
-          rows={rows}
-        />
-      ) : activeView.config.type === "kanban" ? (
-        <BaseKanbanView
-          busy={busy}
-          chatId={attachmentOwner?.chatId}
-          columns={snapshot.meta.columns}
-          context={cellContext}
-          groupByColumnId={activeView.config.groupByColumnId}
-          incarnationId={attachmentOwner?.incarnationId}
-          onAddColumn={
-            canStructure && snapshot.meta.columns.length < 64
-              ? intent(addColumn)
-              : undefined
-          }
-          onAddRow={canMutateRows ? intent(addRow) : undefined}
-          onPatch={canMutateRows ? intent(patch) : undefined}
-          onUpdateOption={canStructure ? intent(updateSelectOption) : undefined}
-          rows={rows}
-          visibleColumnIds={activeView.config.visibleColumnIds}
-        />
-      ) : activeView.config.type === "map" ? (
-        <Suspense
-          fallback={
-            <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground text-sm">
-              <span className="flex items-center gap-2">
-                <LoaderCircleIcon className="size-4 animate-spin" />
-                  {t("bases.loadingMap")}
-              </span>
-            </div>
-          }
-        >
-          <BaseMapView
-            busy={busy}
-            columns={snapshot.meta.columns}
-            context={cellContext}
-            labelColumnId={activeView.config.labelColumnId}
-            locationColumnId={activeView.config.locationColumnId}
-            onAddColumn={
-              canStructure && snapshot.meta.columns.length < 64
-                ? intent(addColumn)
-                : undefined
-            }
-            onLabelColumnChange={
-              canStructure
-                ? intent((columnId: string) =>
-                    setMapColumn("labelColumnId", columnId)
-                  )
-                : undefined
-            }
-            onLocationColumnChange={
-              canStructure
-                ? intent((columnId: string) =>
-                    setMapColumn("locationColumnId", columnId)
-                  )
-                : undefined
-            }
-            rows={rows}
-          />
-        </Suspense>
-      ) : activeView.config.type === "chart" ? (
-        <BaseChartView
-          busy={busy}
-          charts={activeView.config.charts}
-          columns={snapshot.meta.columns}
-          context={cellContext}
-          compact={compact}
-          onOp={canStructure ? (op) => void chartOp(op) : undefined}
-          rows={rows}
-          viewFilterScrubbed={activeView.config.viewFilterScrubbed}
-        />
-      ) : null}
+      {renderActiveView()}
     </>
   );
 }

@@ -10,7 +10,7 @@ import type {
   ChatMessage,
   ChatRecord,
 } from "../../../../shared/chats-ipc";
-import type { ForeignHistoryBlock } from "../../../../shared/history-import-ipc";
+import type { ForeignHistoryMessage } from "../../../../shared/history-import-ipc";
 import type { PreparedHistoryImportBatch } from "../sqlite/database-protocol";
 import type { ChatStartState, ConversationContext } from "../../../../shared/placement/facts";
 import type { AppGrantRecord } from "../../../../shared/apps-ipc";
@@ -122,8 +122,8 @@ export class ChatHistorySagaApi {
   async syncExternalHistory(
     source: HistoryImportSource,
     blocks:
-      | readonly ForeignHistoryBlock[]
-      | AsyncIterable<readonly ForeignHistoryBlock[] | PreparedHistoryImportBatch>,
+      | readonly ForeignHistoryMessage[]
+      | AsyncIterable<readonly ForeignHistoryMessage[] | PreparedHistoryImportBatch>,
     signal?: AbortSignal
   ) {
     return this.state.queue.enqueue(async () => {

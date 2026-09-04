@@ -1,14 +1,13 @@
 /**
  * [INPUT]: Depends on canonical Base navigation facts, stored Base states, and shared sidebar summary projections
- * [OUTPUT]: Provides root/project Base lists, compact owner summaries, and canonical navigation mutations
+ * [OUTPUT]: Provides root/project Base lists, compact owner summaries, and canonical navigation mutations that declare zero touched rows
  * [POS]: Bases navigation policy module; BaseStore delegates pure visibility projection and metadata mutation here
  */
 
 import {
-  baseNavigationOf,
   ownerKeyOf,
   type BaseSnapshot,
-  type BasePinnedSummary,
+  type BaseNavigationSummary,
 } from "../../../../shared/bases-ipc";
 import {
   appearsInProjectBase,
@@ -17,6 +16,7 @@ import {
 import type { BaseNavigation } from "../../../../shared/placement/facts";
 import {
   baseNavigationSummary,
+  NO_ROWS_CHANGED,
   type BaseStoreMutation,
   type StoredBase,
 } from "../base-store-model";
@@ -38,9 +38,9 @@ export function baseOwnerSummaries(states: ReadonlyMap<string, StoredBase>) {
 
 export function rootBaseSummaries(
   states: Iterable<StoredBase>
-): BasePinnedSummary[] {
+): BaseNavigationSummary[] {
   return [...states]
-    .filter(({ meta }) => appearsInRootBases(baseNavigationOf(meta)))
+    .filter(({ meta }) => appearsInRootBases(meta.navigation))
     .sort(
       (left, right) =>
         left.meta.name.localeCompare(right.meta.name) ||
@@ -51,10 +51,10 @@ export function rootBaseSummaries(
 
 export function projectBaseSummaries(
   states: Iterable<StoredBase>
-): BasePinnedSummary[] {
+): BaseNavigationSummary[] {
   return [...states]
     .filter(({ meta }) => {
-      const navigation = baseNavigationOf(meta);
+      const navigation = meta.navigation;
       return (
         navigation.kind === "project-contained" &&
         appearsInProjectBase(navigation, navigation.projectId)
@@ -75,11 +75,11 @@ export function navigationMutation(
     meta: {
       ...current.meta,
       navigation,
-      pinned: navigation.kind === "root-user-managed",
       revision: current.meta.revision + 1,
     },
+    /* 导航改的是 meta：rows 原样交回，引用相等即「这次没碰行」的证明。 */
     rows: current.rows,
-    rowsChanged: false,
+    changedRowIds: NO_ROWS_CHANGED,
     actor: "system",
     operation: "navigation-change",
   };

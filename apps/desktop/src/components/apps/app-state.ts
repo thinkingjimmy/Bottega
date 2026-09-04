@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the type of AppRecord/AppOperation shared/apps-ipc
- * [OUTPUT]: Provides lifecycle/progress translation maps, effective operation/cancellation predicates, failed/working/pending-import/awaiting-generation predicates, the record-level badge key, and detail redirect rules
+ * [OUTPUT]: Provides lifecycle/progress translation maps, effective operation/cancellation predicates, failed/working/pending-import/awaiting-generation predicates, declaresBaseGui, the record-level badge key, and detail redirect rules
  * [POS]: Pure Apps lifecycle semantics shared by cards, progress, and failure surfaces; locale copy remains in the Apps catalog
  */
 
@@ -9,7 +9,7 @@ import type { AppOperation, AppRecord } from "../../../shared/apps-ipc";
 type AppState = AppRecord["state"];
 type FailedState = "install-failed" | "update-failed" | "delete-failed";
 
-export const stateLabelKey: Record<AppState, string> = {
+const stateLabelKey: Record<AppState, string> = {
   creating: "apps.state.creating",
   installing: "apps.state.installing",
   ready: "apps.state.ready",
@@ -34,7 +34,7 @@ export const retryLabelKey: Record<FailedState, string> = {
   "delete-failed": "apps.state.retryDelete",
 };
 
-export type CancelableAppOperation = Exclude<AppOperation, "delete">;
+type CancelableAppOperation = Exclude<AppOperation, "delete">;
 
 export const cancelOperationLabelKey: Record<CancelableAppOperation, string> = {
   install: "apps.state.cancelInstall",
@@ -108,3 +108,12 @@ export const appStateLabelKey = (record: AppRecord) =>
 
 export const shouldRedirectAppDetail = (state: AppState) =>
   state === "creating" || state === "installing";
+
+/**
+ * 声明与已授权是两件事：manifest 里有 gui，这款 App 才谈得上 Studio 面。
+ * 同一句判据从前在三处各写一遍——设置页的授权行、详情体的同意闸、
+ * Use chat 的常驻开关。三处都对，但没有一处说了算，于是任何一次
+ * manifest 形状的改动都得靠人记得改满三遍。
+ */
+export const declaresBaseGui = (record: Pick<AppRecord, "manifest">) =>
+  record.manifest?.kind === "base" && Boolean(record.manifest.gui);

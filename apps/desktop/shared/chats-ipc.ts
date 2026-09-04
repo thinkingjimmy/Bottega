@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on shared Agent, ProductFailure, project, and submission contracts
- * [OUTPUT]: Provides schema v12 messages/notices with the read-only imported-segment marker, message-free renderer runtime context, ProductFailure-aware snapshots/events, import origin, fenced timeline/around/outline/find pagination, revisions, branches, grants, commits, and Chats bridge
+ * [OUTPUT]: Provides schema v13 messages/notices with fork lineage and managed-worktree execution facts, transcript-backed image provenance, message-free renderer runtime context, ProductFailure-aware snapshots/events, fenced timeline queries, revisions, and Chats bridge
  * [POS]: Backend-independent durable Chat wire authority shared by main, preload, and renderer
  */
 
@@ -21,6 +21,7 @@ import type {
   ChatTitleSource,
   ConversationContext,
 } from "./placement/facts";
+import type { TranscriptGallerySourceRef } from "./gallery-media-ipc";
 
 export const MESSAGE_BYTE_LIMIT = 32 * 1024;
 /** 单条消息过程条目上限：reducer 产出、IPC 校验与存储 schema 共用同一真相 */
@@ -45,6 +46,8 @@ export type ChatToolPart = {
   /** agent-failure only: renderer-localized warning/error semantics. */
   failure?: ProductFailure;
   severity?: "warning" | "error";
+  /** 已完成图片的 provenance；Fork child 保留 source 坐标但不复制 bytes。 */
+  mediaSource?: TranscriptGallerySourceRef;
 };
 
 export type ChatTextPart = {
@@ -178,7 +181,7 @@ export function noticeMessageContent(notice: ChatNotice) {
     return "应用重启，这条消息的回复已中断，请重新发送。";
   }
   if (notice.kind === "skill-descriptions-truncated") {
-    return "本轮部分 Skill 描述因上下文预算被截短。";
+    return "Codex 提示：为适配上下文预算，本轮部分 Skill 描述被截短。Codex 仍可使用全部 Skill，本轮回复不受影响。这条提示来自 Codex 自身，不是 Bottega 的问题。";
   }
   if (notice.kind === "relay-failed") {
     return `Section 接力失败（relay ${notice.relayId}）。`;
@@ -276,6 +279,13 @@ export type ChatSummary = {
   preview: string | null;
   /** 导入前传身份；缺席表示原生 Product Chat。 */
   importOrigin?: ChatImportOrigin | null;
+  /** Fork lineage 是原子事实：四项要么全部存在，要么全部为空。 */
+  parentChatId?: string | null;
+  parentIncarnationId?: string | null;
+  parentMessageId?: string | null;
+  inheritedThroughSeq?: number | null;
+  /** Renderer 可见的 capability fact；真实执行路径始终只属于 main。 */
+  executionKind?: "managed-worktree" | null;
   /** 显式归档时间；父 Project 归档不会覆写本字段。 */
   archivedAt?: number;
   /** main 计算的父子合并投影。 */
@@ -331,6 +341,8 @@ export type ChatRecord = Omit<
   incarnationId: string;
   /** v6 canonical 恒为绝对路径；null/undefined 仅用于 v5 只读窗口与非持久测试投影。 */
   homeDir?: string | null;
+  /** managed Fork 的 device-local 执行根；绝不通过 ChatSummary 暴露。 */
+  executionDir?: string | null;
   session: SessionRef | null;
   /** 收养前缀身份；缺席表示原生 Product Chat。 */
   importOrigin?: ChatImportOrigin | null;
@@ -390,7 +402,52 @@ export type ChatsEvent =
       incarnationId: string;
     }
   | { type: "storage-failure"; failure: ChatStorageFailure }
+  | {
+      type: "recovery-truncated";
+      chatId: string;
+      currentMessageId: string;
+      inheritedThroughSeq: number;
+    }
   | { type: "warning"; message: string };
+
+export type ChatForkMode = "same-workspace" | "new-worktree";
+
+export type ForkChatPreflightInput = Readonly<{
+  sourceChatId: string;
+  sourceIncarnationId: string;
+  anchorMessageId: string;
+  anchorSeq: number;
+  mode: ChatForkMode;
+}>;
+
+export type ForkChatRequest = ForkChatPreflightInput & Readonly<{
+  requestId: string;
+  childChatId: string;
+}>;
+
+/** preflight 只回答"能不能"与就地风险；标题、预览等展示事实一律不外露。 */
+export type ForkChatPreflight = Readonly<{
+  worktree?: Readonly<{
+    supported: boolean;
+    dirty: Readonly<{
+      staged: boolean;
+      unstaged: boolean;
+      untracked: boolean;
+      ignored: boolean;
+    }>;
+  }>;
+}>;
+
+export type CommitManagedWorktreeInput = Readonly<{
+  chatId: string;
+  incarnationId: string;
+  message: string;
+}>;
+
+export type CommitManagedWorktreeResult = Readonly<{
+  committed: boolean;
+  commit: string | null;
+}>;
 
 export type ChatMessagesSnapshot = {
   chatId: string;
@@ -571,6 +628,9 @@ export const CHATS_CHANNEL = {
   create: "chats:create",
   createForApp: "chats:create-for-app",
   append: "chats:append",
+  forkPreflight: "chats:fork-preflight",
+  fork: "chats:fork",
+  commitManagedWorktree: "chats:commit-managed-worktree",
   rename: "chats:rename",
   remove: "chats:remove",
   readAttachment: "chats:read-attachment",
@@ -588,6 +648,11 @@ export type ChatsBridgeApi = {
   createForApp: (input: CreateAppChatInput) => Promise<ChatRecord>;
   /** 返回存储后的消息（含主进程生成的附件元数据与截断结果），renderer 以其为准 */
   append: (input: AppendChatMessageInput) => Promise<ChatMessage>;
+  forkPreflight: (input: ForkChatPreflightInput) => Promise<ForkChatPreflight>;
+  fork: (input: ForkChatRequest) => Promise<ChatRecord>;
+  commitManagedWorktree: (
+    input: CommitManagedWorktreeInput
+  ) => Promise<CommitManagedWorktreeResult>;
   rename: (input: RenameChatInput) => Promise<ChatSummary>;
   remove: (chatId: string) => Promise<void>;
   readAttachment: (attachmentId: string) => Promise<string>;

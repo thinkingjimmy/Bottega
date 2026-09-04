@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node crypto and AppManifest's three-field server contract, time and status provided by the receiving caller
- * [OUTPUT]: Provides token/ack, awakens judgment, canonical, covenant fingerprint, deck, token barrel, withdrawal and submersion of pure functions
- * [POS]: The events driven server of apps/runtime is pure kernel, no files read, no watcher created, no timer held
+ * [INPUT]: Depends on Node crypto and the three-field server contract on AppManifest; the caller supplies the clock and the current state
+ * [OUTPUT]: Provides the pure serve kernel: trigger tokens, ack validity, canonical JSON, the contract fingerprint, the debounce window, the token bucket, and retry backoff
+ * [POS]: The pure kernel of the apps/runtime event-driven serve loop; it reads no files, creates no watcher, and holds no timer
  */
 
 import { createHash } from "node:crypto";
@@ -48,12 +48,6 @@ export type TokenBucketState = {
 export type RetryState = {
   failures: number;
   retryAt: number;
-};
-
-export type TurnReduction = {
-  retry: RetryState;
-  shouldAck: boolean;
-  shouldChase: boolean;
 };
 
 export function decideWake(
@@ -193,12 +187,3 @@ export function failRetry(state: RetryState, now: number): RetryState {
   return { failures: state.failures + 1, retryAt: now + delay };
 }
 
-export function reduceTurnResult(
-  state: RetryState,
-  now: number,
-  result: "success" | "failure"
-): TurnReduction {
-  return result === "success"
-    ? { retry: createRetryState(), shouldAck: true, shouldChase: true }
-    : { retry: failRetry(state, now), shouldAck: false, shouldChase: false };
-}

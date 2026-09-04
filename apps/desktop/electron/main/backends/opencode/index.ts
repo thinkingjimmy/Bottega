@@ -77,11 +77,11 @@ function validate(value: unknown): asserts value is OpencodeTurnOptions {
   ) {
     throw new Error("OpenCode Effort 格式无效");
   }
-  /* 档位的值词表是**逐模型涌现**的（variants），脱离 model 无从判定；而本
-     后端有意不声明默认模型（目录全员 isDefault:false，默认在用户自己的
-     config 里）。两件事合起来意味着「带 Effort 不带 model」是一条根本无法
-     兑现的 turn——在这里当场说清楚，而不是放它走到下游，让「找不到默认
-     模型」冒充成一句与事实无关的「模型不在可信候选列表中」。 */
+  /* 档位的值词表是**逐模型涌现**的（variants）。目录能用
+     session/new 说清当下默认是谁，但「带 Effort 不带 model」仍不是
+     一个稳定的 turn 合同：目录与发送之间默认可变，档位就会失去归属。
+     renderer 在用户显式改 Effort 时会一并固化当前模型；这里继续 fail-close
+     作为最后一道合同闸。 */
   if (options.reasoningEffort !== undefined && options.model === undefined) {
     throw new Error("OpenCode Effort 必须与模型一同指定");
   }

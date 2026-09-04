@@ -58,7 +58,6 @@ export type BaseGuiCapabilityDecision = Readonly<{
   requestedCapabilityScopes: BaseGuiCapabilityScopes;
   grantedCapabilityScopes: BaseGuiCapabilityScopes;
   compatibilityRefDigest?: Sha256Digest;
-  compatibilityMigrationRevision?: string;
   state: "consent-required" | "approved" | "declined";
 }>;
 
@@ -162,10 +161,8 @@ export type AppGuiInfo = {
   hostActions: readonly BaseGuiHostActionCapability[];
   /** Exact runtime surface lease; differs from the logical lease while staging. */
   appSurfaceLeaseId?: string;
-  cutover?: Readonly<{
-    cutoverId: string;
-    lifecycle: "staging" | "active";
-  }>;
+  /** Present only while this surface is a staged cohort member owing a ready vote. */
+  cutoverId?: string;
   error?: string;
 };
 

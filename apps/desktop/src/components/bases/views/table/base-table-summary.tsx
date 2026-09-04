@@ -136,13 +136,15 @@ function SummaryCell({
     aggregationSetting === undefined && column.type === "number"
       ? defaultNumberAggregation()
       : aggregationSetting ?? undefined;
-  const values = useMemo(
-    () =>
-      aggregation || open
-        ? calculateBaseAggregations(rows, column, context)
-        : null,
-    [aggregation, column, context, open, rows]
-  );
+  /* 聚合只跟（列，行集，上下文）三者走。此前 open 也在依赖里：一次打开
+     popover 就丢掉整份结果，关掉再打开又全表重算一遍——而那三样一个都没变。
+     惰性求值把「要不要算」与「算过没有」分开：不显示时一次都不算，
+     显示过一次后，开合与任何无关重渲染都只是再读一次同一份结果。 */
+  const computeValues = useMemo(() => {
+    let cached: ReturnType<typeof calculateBaseAggregations> | null = null;
+    return () => (cached ??= calculateBaseAggregations(rows, column, context));
+  }, [column, context, rows]);
+  const values = aggregation || open ? computeValues() : null;
   const select = (next?: BaseAggregation) => {
     setOpen(false);
     void onAggregationChange?.(column.id, next);

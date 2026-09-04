@@ -4,7 +4,7 @@
  * [POS]: Bases navigation lifecycle owner; BasesService delegates retained-data policy instead of embedding it among row and IO methods
  */
 
-import { baseNavigationOf, type BasesEvent } from "../../../../shared/bases-ipc";
+import type { BasesEvent } from "../../../../shared/bases-ipc";
 import type { BaseStore } from "../base-store";
 
 type Dependencies = Readonly<{
@@ -32,7 +32,7 @@ export class RetainedBaseNavigation {
   async remove(ownerKey: string, ownerInstanceId: string) {
     const snapshot = this.store.get(ownerKey, ownerInstanceId);
     if (!snapshot) return { removed: false };
-    const navigation = baseNavigationOf(snapshot.meta);
+    const navigation = snapshot.meta.navigation;
     if (
       navigation.kind !== "root-user-managed" ||
       navigation.source !== "retained-app-data" ||

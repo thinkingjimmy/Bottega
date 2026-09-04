@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on live GUI bindings, Electron save dialogs, FileExportManager custody, and generation-fenced side-effect permits
+ * [INPUT]: Depends on live GUI bindings, Electron save dialogs, FileExportManager custody, and App-scoped side-effect permits
  * [OUTPUT]: Provides renderer-facing begin/write/finalize/cancel operations with active-surface and file.export grant enforcement
  * [POS]: Trusted main-process adapter between Apps IPC and native file-export custody
  */
@@ -42,11 +42,7 @@ export class AppFileExportController {
         return result.canceled ? null : result.filePath;
       },
       startPermit: (permit) => this.effectsFor(permit.appId).start(permit),
-      completePermit: (permit, result) => {
-        const effects = this.effectsFor(permit.appId);
-        effects.complete(permit, result);
-        effects.deliver(permit);
-      },
+      completePermit: (permit) => this.effectsFor(permit.appId).settle(permit),
       audit: (event) => console.info("[app-gui:file-export]", JSON.stringify(event)),
     });
   }
@@ -66,8 +62,9 @@ export class AppFileExportController {
   async begin(input: BeginFileExportInputV1) {
     const binding = this.requireBinding(input.surface);
     const surfaceLeaseId = binding.appSurfaceLeaseId;
-    const decisionId = binding.capabilityDecisionId;
-    if (!surfaceLeaseId || !decisionId) {
+    /* capabilityDecisionId 的存在性由 requireBinding 逐次核对——begin、write、
+       finalize、cancel 每一步都重新解析活体 binding，所以这里不必再抄一遍。 */
+    if (!surfaceLeaseId) {
       throw Object.assign(new Error("FILE_EXPORT_SURFACE_INVALID"), { status: 401 });
     }
     const effects = this.effectsFor(binding.appId);
@@ -75,8 +72,6 @@ export class AppFileExportController {
       appId: binding.appId,
       generationId: binding.generationId,
       surfaceId: binding.surfaceId,
-      kind: "file-export",
-      ttlMs: 60_000,
     });
     try {
       const result = await this.manager.begin({
@@ -86,8 +81,6 @@ export class AppFileExportController {
           generationId: binding.generationId,
           surfaceLeaseId,
           runtimeSurfaceId: binding.surfaceId,
-          decisionId,
-          cutoverRevision: binding.lifecycleRevision,
         },
         permit,
         granted: binding.hostActions.includes("file.export"),
@@ -135,7 +128,7 @@ export class AppFileExportController {
   }
 
   reopenAdmission(appId: string) {
-    this.effectsFor(appId).reopenWithNewOwner();
+    this.effectsFor(appId).reopenAdmission();
   }
 
   private requireBinding(surface: BeginFileExportInputV1["surface"]) {

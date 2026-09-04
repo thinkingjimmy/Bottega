@@ -1,15 +1,15 @@
 /**
- * [INPUT]: Depends on node: fs/path Atom writing with shared AppRequirement; Configure rooted in userData/app-config
- * [OUTPUT]: Provides AppConfigStore, deriveAgentConfigEnvironment; 0600 Save value with agentReadableKeys, default zero injection
- * [POS]: confidential boundaries for apps/share configuration; Workspace, AGENTS, share packages are not allowed to access the configuration values
+ * [INPUT]: Depends on persistence/durable-json for fsync-backed writes, node:fs/promises for reads and removals, app-store-schema APP_ID_PATTERN, and the shared AppRequirement type; rooted at userData/app-config
+ * [OUTPUT]: Provides AppConfigStore, EMPTY_APP_CONFIG, deriveAgentConfigEnvironment, safeConfigKey, validateConfigRequirements
+ * [POS]: The confidentiality boundary of apps/share: config values live at 0600 and only agentReadableKeys reach an agent process, so workspace files, AGENTS.md and share packages never see them
  */
 
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { AppRequirement } from "../../../../shared/apps-ipc";
-
-const APP_ID = /^[a-z0-9]{10}$/;
+import { durableReplaceFile } from "../../persistence/durable-json";
+import { APP_ID_PATTERN } from "../store/app-store-schema";
 const configSchema = z
   .object({
     values: z.record(z.string().min(1).max(128), z.string().max(8 * 1024)),
@@ -22,15 +22,8 @@ export const EMPTY_APP_CONFIG: AppConfig = {
   values: {},
   agentReadableKeys: [],
 };
-export const APP_CONFIG_MAX_KEYS = 16;
-export const APP_CONFIG_ENV_BYTE_LIMIT = 8 * 1024;
-export const RESERVED_ENV_NAMES = [
-  "PATH",
-  "NODE_OPTIONS",
-  "ELECTRON_RUN_AS_NODE",
-  "LD_",
-  "DYLD_",
-] as const;
+const APP_CONFIG_MAX_KEYS = 16;
+const APP_CONFIG_ENV_BYTE_LIMIT = 8 * 1024;
 
 export class AppConfigStore {
   private readonly root: string;
@@ -70,7 +63,7 @@ export class AppConfigStore {
 
   stagePending(reference: string, value: AppConfig) {
     assertReference(reference);
-    return this.writeFile(this.pendingPath(reference), value);
+    return this.writeFile(this.pendingPath(reference), configSchema.parse(value));
   }
 
   async readPending(reference: string) {
@@ -99,18 +92,13 @@ export class AppConfigStore {
     return join(this.root, `pending-${reference}.json`);
   }
 
-  private async writeFile(path: string, value: AppConfig) {
-    const config = configSchema.parse(value);
+  /** 入参已由调用方 parse 过一次;此处只校验交叉约束并落盘。 */
+  private async writeFile(path: string, config: AppConfig) {
     const unknown = config.agentReadableKeys.find(
       (key) => !(key in config.values)
     );
     if (unknown) throw new Error(`Agent 可读配置 ${unknown} 没有对应值`);
-    await mkdir(this.root, { recursive: true, mode: 0o700 });
-    const temporary = `${path}.tmp-${process.pid}-${Date.now()}`;
-    await writeFile(temporary, `${JSON.stringify(config, null, 2)}\n`, {
-      mode: 0o600,
-    });
-    await rename(temporary, path);
+    await durableReplaceFile(path, `${JSON.stringify(config, null, 2)}\n`);
     return structuredClone(config);
   }
 }
@@ -146,16 +134,10 @@ export function deriveAgentConfigEnvironment(
   return environment;
 }
 
+/** 注入名恒为 APP_CONFIG_ 前缀,撞不到任何系统变量,故不需要保留字名单。 */
 export function safeConfigKey(value: string) {
   const key = value.toUpperCase().replace(/[^A-Z0-9_]/g, "_").slice(0, 64);
   if (!key) throw new Error("configKey 无法映射到安全环境变量");
-  if (
-    RESERVED_ENV_NAMES.some(
-      (reserved) => key === reserved || key.startsWith(reserved)
-    )
-  ) {
-    throw new Error(`configKey 命中保留环境变量：${key}`);
-  }
   return key;
 }
 
@@ -174,7 +156,7 @@ export function validateConfigRequirements(
 }
 
 function assertAppId(appId: string) {
-  if (!APP_ID.test(appId)) throw new Error("App id 无效");
+  if (!APP_ID_PATTERN.test(appId)) throw new Error("App id 无效");
 }
 
 function assertReference(reference: string) {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared ProductFailure, Agent copy projection, renderer i18n, and ProductFailureNotice
- * [OUTPUT]: Provides the AgentFailureNotice domain wrapper for human-first Agent failure presentation
+ * [OUTPUT]: Provides the AgentFailureNotice domain wrapper for human-first Agent failure presentation; tone selects the copy family (danger → terminal code copy, warning → notice copy) as well as the icon
  * [POS]: Agent-specific copy adapter shared by transcript, Setup, Settings, and model-catalog surfaces
  */
 
@@ -27,7 +27,7 @@ export function AgentFailureNotice({
   children?: ReactNode;
 }) {
   const { t } = useAppTranslation();
-  const copy = agentFailureCopy(t, failure, { backend, backendId });
+  const copy = agentFailureCopy(t, failure, { backend, backendId, tone });
   return (
     <ProductFailureNotice
       compact={compact}

@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on owner routes, Chats/Projects/Bases navigation providers, localized Base titles, PageShell, BaseWorkbench, session hosting, and Base header actions
+ * [INPUT]: Depends on owner routes, Chats/Projects providers and the Base navigation slice, localized Base titles, PageShell, BaseWorkbench, session hosting, and Base header actions
  * [OUTPUT]: Provides BaseDetailView with owner validation, retained-data custody bypass, move/archival redirects, localized titles, and Project chat fallback hosting
  * [POS]: Full-page Base route boundary; visible retained Bases remain usable even though their custody Project is intentionally absent from Project navigation
  */
 
+import { useMemo } from "react";
 import { DatabaseIcon } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { Navigate, useParams } from "react-router";
@@ -16,7 +17,7 @@ import { BaseDetailSessionHost } from "@/components/chat/dock/base-detail-sessio
 import { PageShell } from "@/components/page-shell";
 import { useChats } from "@/components/providers/chats-provider";
 import { useProjects } from "@/components/providers/projects-provider";
-import { useBases } from "@/components/providers/bases-provider";
+import { useBasesNavigation } from "@/components/providers/bases-provider";
 import { chatExitRoute, projectAlive } from "@/lib/draft-route";
 
 export function BaseDetailView() {
@@ -24,7 +25,30 @@ export function BaseDetailView() {
   const { ownerKind, ownerId } = useParams();
   const { chats, loading } = useChats();
   const { projects, loading: projectsLoading } = useProjects();
-  const { movedOwners, pinned, projectBasesLoaded } = useBases();
+  const { movedOwners, rootBases, projectBasesLoaded } = useBasesNavigation();
+  const directChat =
+    ownerKind === "chat"
+      ? chats.find((candidate) => candidate.id === ownerId)
+      : undefined;
+  const project =
+    ownerKind === "project"
+      ? projects.find((candidate) => candidate.id === ownerId)
+      : directChat?.projectId
+        ? projects.find((candidate) => candidate.id === directChat.projectId)
+        : undefined;
+  /* 承办会话的挑选是一次全量过滤 + 排序：路由守卫之上先算，一来 hook 不许
+     写在早退之后，二来它只跟「这个 Project 现存哪些会话」有关，与本次重渲染
+     的成因无关——每敲一个字就重排一遍全部会话，代价与收益完全不成比例。 */
+  const hostChat = useMemo(
+    () =>
+      chats
+        .filter(
+          (candidate) =>
+            candidate.projectId === project?.id && !candidate.effectiveArchived
+        )
+        .sort((left, right) => right.updatedAt - left.updatedAt)[0],
+    [chats, project?.id]
+  );
   if (
     !ownerId ||
     (ownerKind !== "chat" && ownerKind !== "project")
@@ -41,24 +65,19 @@ export function BaseDetailView() {
   const ownerKey = `${ownerKind}:${ownerId}`;
   const movedTo = movedOwners[ownerKey];
   if (movedTo) return <Navigate replace to={ownerRoute(movedTo)} />;
-  const retainedBase = pinned.find(
-    (base) => {
-      const navigation = base.navigation;
-      return base.ownerKey === ownerKey &&
-        navigation?.kind === "root-user-managed" &&
-        navigation.source === "retained-app-data";
-    }
-  );
-  const directChat =
-    ownerKind === "chat"
-      ? chats.find((candidate) => candidate.id === ownerId)
-      : undefined;
-  const project =
+  /* 留存托管只可能挂在 Project owner 上：chat 路由下扫一遍全部根级 Base
+     只为了得到一个必然的 undefined。 */
+  const retainedBase =
     ownerKind === "project"
-      ? projects.find((candidate) => candidate.id === ownerId)
-      : directChat?.projectId
-        ? projects.find((candidate) => candidate.id === directChat.projectId)
-        : undefined;
+      ? rootBases.find((base) => {
+          const navigation = base.navigation;
+          return (
+            base.ownerKey === ownerKey &&
+            navigation?.kind === "root-user-managed" &&
+            navigation.source === "retained-app-data"
+          );
+        })
+      : undefined;
   /* 已删除或已归档都留不住这个 owner。chat owner 的离场判据与目的地与
      ChatRoute 同源：归档的若只是这条 chat，用户落回它所属 Project 的空白
      页；owner 是 Project 且它自己失效，根级才是唯一去处。 */
@@ -67,14 +86,7 @@ export function BaseDetailView() {
       ? (retainedBase || projectAlive(project) ? null : "/")
       : (directChat ? chatExitRoute(directChat, projects) : "/");
   if (exitRoute) return <Navigate replace to={exitRoute} />;
-  const chat =
-    directChat ??
-    chats
-      .filter(
-        (candidate) =>
-          candidate.projectId === project?.id && !candidate.effectiveArchived
-      )
-      .sort((left, right) => right.updatedAt - left.updatedAt)[0];
+  const chat = directChat ?? hostChat;
   const title =
     t("bases.detail.title", {
       name:

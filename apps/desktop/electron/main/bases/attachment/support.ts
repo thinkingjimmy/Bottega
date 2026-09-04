@@ -53,25 +53,12 @@ export function assertReplayCompatible(
       previous.sourceIncarnationId !== incoming.sourceIncarnationId) ||
     (previous.dateColumnId !== undefined &&
       previous.dateColumnId !== incoming.dateColumnId);
-  if (
-    drifted ||
-    sourceDrifted ||
-    !compatibleLogicalKey(previous.logicalKey, incoming.logicalKey)
-  ) {
+  if (drifted || sourceDrifted || previous.logicalKey !== incoming.logicalKey) {
     throw attachmentError(
       "ATTACHMENT_CONFLICT",
       `Occurrence ${previous.occurrenceId} immutable payload 冲突`
     );
   }
-}
-
-/** 只放行 v1 transcript:key → v2 transcript:chat:incarnation:key 的一次升级。 */
-function compatibleLogicalKey(previous: string, incoming: string) {
-  if (previous === incoming) return true;
-  if (!previous.startsWith("transcript:") || !incoming.startsWith("transcript:")) {
-    return false;
-  }
-  return incoming.endsWith(`:${previous.slice("transcript:".length)}`);
 }
 
 export function chooseAttachmentColumn(
@@ -194,8 +181,4 @@ export function galleryFailure(
       message: error.message,
     },
   };
-}
-
-export function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }

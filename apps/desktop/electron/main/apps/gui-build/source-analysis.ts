@@ -1,26 +1,59 @@
 /**
- * [INPUT]: Depends on TypeScript source trees and the fixed @bottega/app-react author module
- * [OUTPUT]: Provides one runtime import/re-export analysis for admission and receipt slicing
- * [POS]: gui-build source-semantics authority; admission and compiler consume the same binding truth
+ * [INPUT]: Depends on TypeScript, the immutable source freeze receipt, and the fixed @bottega/app-react author module
+ * [OUTPUT]: Provides one parse of the author source per snapshot — syntax trees plus aggregated import/re-export and App React binding sets
+ * [POS]: gui-build source-semantics authority; admission, the source validator, and compiler receipts consume the same trees and the same binding truth
  */
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import ts from "typescript";
+import type { SourceFreezeReceipt } from "./contracts";
 
-export type AuthorModuleUsage = Readonly<{
+export type AuthorSourceModule = Readonly<{ path: string; tree: ts.SourceFile }>;
+
+export type AuthorSourceAnalysis = Readonly<{
+  modules: readonly AuthorSourceModule[];
   specifiers: ReadonlySet<string>;
   appReactBindings: ReadonlySet<string>;
 }>;
 
-export function analyzeAuthorModuleUsage(tree: ts.SourceFile): AuthorModuleUsage {
+/* 作者代码在一次构建里曾被解析三到四遍（准入、校验、收据、TypeChecker）。
+   语法树是纯函数产物，谁先算出来谁就是权威；这里算一次，其余人只消费。 */
+const AUTHOR_MODULE = /^gui\/src\/.+\.tsx?$/;
+
+export async function analyzeAuthorSource(
+  receipt: SourceFreezeReceipt
+): Promise<AuthorSourceAnalysis> {
+  const modules: AuthorSourceModule[] = [];
   const specifiers = new Set<string>();
   const appReactBindings = new Set<string>();
+  for (const file of receipt.files) {
+    if (!AUTHOR_MODULE.test(file.path)) continue;
+    const source = await readFile(join(receipt.snapshotRoot, file.path), "utf8");
+    const tree = ts.createSourceFile(
+      file.path,
+      source,
+      ts.ScriptTarget.ESNext,
+      true,
+      file.path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+    );
+    modules.push({ path: file.path, tree });
+    collectModuleUsage(tree, specifiers, appReactBindings);
+  }
+  return { modules, specifiers, appReactBindings };
+}
+
+function collectModuleUsage(
+  tree: ts.SourceFile,
+  specifiers: Set<string>,
+  appReactBindings: Set<string>
+) {
   for (const node of tree.statements) {
     const specifier = moduleSpecifier(node);
     if (!specifier || isTypeOnly(node)) continue;
     specifiers.add(specifier);
     if (specifier === "@bottega/app-react") collectBindings(node, appReactBindings);
   }
-  return { specifiers, appReactBindings };
 }
 
 function moduleSpecifier(node: ts.Statement) {

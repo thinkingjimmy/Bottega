@@ -34,7 +34,7 @@ import {
 import { cn } from "@ai-chat/ui/lib/utils";
 import { baseTabActionButtonClass } from "@/components/bases/chrome/base-tab-chrome";
 import { panelChromeClassName } from "@/components/page-shell";
-import { SaveAsAppDialog } from "@/components/apps/save-as-app-dialog";
+import { SaveAsAppDialog } from "@/components/apps/dialogs/save-as-app-dialog";
 import type { BrowserTabProjection } from "../../../../shared/browser-ipc";
 import type { ConversationImageSource } from "../runtime/chat-session-model";
 import { useAppTranslation } from "@/components/providers/i18n-provider";

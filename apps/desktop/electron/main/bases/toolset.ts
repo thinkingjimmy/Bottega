@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on BasesService, base-read only projection kernel, shared ownerKey/Base mutation and incarnation-bound tools context
- * [OUTPUT]: Provides current chat to write nine handler of the target Base and assign a reading path across the Section read_base to no-create owner-aware
+ * [INPUT]: Depends on BasesService, base-read only projection kernel, shared ownerKey/Base mutation and incarnation-bound tools context, plus the shared statusError constructor from main/errors
+ * [OUTPUT]: Provides nine Base handlers over the current chat's writable Base, plus the single owner-aware `read_base` path that never creates a Base
  * [POS]: The base area is the combination and mutation layer of the common built-in tool platform; Owner Parsing/Authorization only in service
  */
 
@@ -15,21 +15,12 @@ import {
 } from "../../../shared/bases-ipc";
 import type { BuiltinToolContext, BuiltinToolset } from "../tools/registry";
 import {
-  BASE_QUERY_ENVELOPE_RESERVE,
   BASE_QUERY_RESULT_BYTE_LIMIT,
-  queryBase,
   readBase,
-  type QueryArgs,
   type ReadArgs,
 } from "./base-read";
 import type { BasesService } from "./bases-service";
-
-function queryByteLimit(context: BuiltinToolContext) {
-  return Math.min(
-    BASE_QUERY_RESULT_BYTE_LIMIT,
-    context.lease.resultByteBudget - BASE_QUERY_ENVELOPE_RESERVE
-  );
-}
+import { statusError } from "../errors";
 
 export function createBaseToolset(
   service: BasesService,
@@ -57,7 +48,7 @@ export function createBaseToolset(
     args: Record<string, unknown>,
     context: BuiltinToolContext,
     base: BaseSnapshot,
-    operation: import("./base-commit-authority").BaseMutationOperation
+    operation: import("./service/base-commit-authority").BaseMutationOperation
   ) => service.issueToolMutationAuthority({
     ownerKey: ownerKeyOf(base.meta.owner),
     lease: context.lease,
@@ -68,28 +59,31 @@ export function createBaseToolset(
   return {
     base_describe: async (args, context) =>
       describe(await snapshot(args, context)),
-    base_query: async (args, context) =>
-      queryBase(
-        await snapshot(args, context),
-        args as QueryArgs,
-        queryByteLimit(context)
-      ),
+    /* 三种寻址一条路径：省略 section_id/target 即当前 chat 的可写 Base。
+       读永远 ensure=false —— 没有 Base 就是 404，读工具不负责建表。 */
     read_base: async (args, context) => {
       const appId = appIdOf(args);
+      const sectionId = args.section_id as string | undefined;
       const base = appId
         ? await service.snapshotForApp(appId, context.lease, false)
-        : await service.snapshotForRead(args.section_id as string);
-      return ({
-      ...(readBase(
-        base,
-        args as ReadArgs,
-        Math.min(BASE_QUERY_RESULT_BYTE_LIMIT, context.lease.resultByteBudget) -
-          128
-      ) as Record<string, unknown>),
-      effective_archived: appId
-        ? false
-        : isEffectiveArchived(args.section_id as string),
-    });
+        : sectionId
+          ? await service.snapshotForRead(sectionId)
+          : await service.snapshotForLease(
+              context.lease.chatId,
+              context.lease.incarnationId,
+              false
+            );
+      return {
+        ...(readBase(
+          base,
+          args as ReadArgs,
+          Math.min(BASE_QUERY_RESULT_BYTE_LIMIT, context.lease.resultByteBudget) -
+            128
+        ) as Record<string, unknown>),
+        effective_archived: appId
+          ? false
+          : isEffectiveArchived(sectionId ?? context.lease.chatId),
+      };
     },
     base_export_csv: async (args, context) => {
       const base = await snapshot(args, context);
@@ -211,7 +205,6 @@ function describe(base: BaseSnapshot) {
     ownerKey: ownerKeyOf(base.meta.owner),
     ownerInstanceId: base.meta.ownerInstanceId,
     name: base.meta.name,
-    pinned: base.meta.pinned,
     revision: base.meta.revision,
     rowCount: base.rows.length,
     columns: base.meta.columns,
@@ -230,8 +223,4 @@ function assertNewColumns(base: BaseSnapshot, columns: BaseColumn[]) {
 
 function rowMutationResult(base: BaseSnapshot) {
   return { revision: base.meta.revision, rowCount: base.rows.length };
-}
-
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }

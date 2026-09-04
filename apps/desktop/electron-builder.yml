@@ -1,18 +1,40 @@
-# [INPUT]: Depends on electron-vite output, test-receipt exclusion, root LICENSE, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons, entitlements, and pinned react-grab assets
-# [OUTPUT]: Produces Bottega macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage artifacts with an offline fail-closed App GUI compiler and no test-only receipt
+# [INPUT]: Depends on electron-vite output, test-receipt exclusion, the keep-node-module-types hook, root LICENSE, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons, entitlements, and pinned react-grab assets
+# [OUTPUT]: Produces Bottega macOS arm64 DMG (UDBZ) / ZIP (deflate -9), Windows x64 NSIS, and Linux x64 AppImage (gzip squashfs) artifacts whose packaged app.name is Bottega (own userData, never the dev directory), with an offline fail-closed App GUI compiler, no test-only receipt, TypeScript declaration files kept and the whole node_modules tree unpacked next to the ASAR for the packaged compiler, and no vendored Codex/Claude CLI platform packages (the product only spawns the user's own CLI)
 # [POS]: The only desktop packaging configuration; release signing is fail-closed in release scripts while ordinary CI packaging remains unsigned
 
 appId: com.jimmywong.bottega
 productName: Bottega
+# 打包件的 Electron app.name 取自 asar 里的 package.json，而 package.json 的 name
+# 是 npm 包名 @ai-chat/desktop。不注入 productName，打包件与 pnpm dev 就共用同一个
+# userData 目录，两个 schema 世代会互相隔离对方的账本。只注入打包件：写进
+# package.json 会连 dev 一起改名，又撞回同一个目录。
+extraMetadata:
+  productName: Bottega
+# maximum 只改三处：DMG UDZO→UDBZ（bzip2）、mac zip -7→-9；NSIS 因差分打包强制 normal，
+# 零影响。AppImage 在默认 FUSE2 toolset 下会被 maximum 自动切成 xz（冷启动每次多解压），
+# 所以下面 appImage.compression 显式钉住 gzip，等 Linux 真机实测后再决定是否改 xz。
+compression: maximum
 directories:
   output: release
 files:
   - out/**
   - "!out/.e2e-build-receipt.json"
   - "!out/renderer/.chart-module-report.json"
+  # 两个 ACP adapter 的依赖链各带一份平台 CLI 原生二进制（codex 271 MB、claude 257 MB）。
+  # 产品只 spawn 用户本机 CLI（CODEX_PATH / CLAUDE_CODE_EXECUTABLE），它们从未被执行。
+  # 负模式作用于 electron-builder 收集后的 node_modules 相对路径；`**/` 同时覆盖嵌套放置。
+  - "!**/node_modules/@openai/codex-*/**"
+  - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+# electron-builder 默认把 node_modules 里的 *.d.ts 全部剔除。打包态 App GUI 编译器要在 asar 内
+# 对作者源码做 typecheck（typescript/lib 与各包声明），没有它们每次打包态编译都死在
+# "Cannot find global type 'Array'"——首个打包态编译 smoke（2026-09-04）暴露的第三个死点。
+onNodeModuleFile: ./scripts/keep-node-module-types.cjs
+# 整个 node_modules 以 unpacked 形式落盘：打包态 App GUI 编译器把 require.resolve 得到的
+# 依赖路径交给原生 esbuild 子进程，而 esbuild 读不到 app.asar 里的虚拟路径——首个打包态
+# 编译 smoke（2026-09-04）暴露的第四个死点。unpack 不改变字节数：asar 头仍列出全部条目、
+# Node 侧读取透明，只是文件真身放在 app.asar.unpacked 下，esbuild/Oxide 原生载荷随之覆盖。
 asarUnpack:
-  - node_modules/@esbuild/**
-  - node_modules/@tailwindcss/oxide*/**
+  - node_modules/**
 extraResources:
   - from: ../../LICENSE
     to: LICENSE
@@ -62,6 +84,8 @@ linux:
   category: Utility
   executableName: bottega
   artifactName: ${productName}-${version}-linux-${arch}.${ext}
+appImage:
+  compression: gzip
 publish:
   provider: github
   owner: thinkingjimmy

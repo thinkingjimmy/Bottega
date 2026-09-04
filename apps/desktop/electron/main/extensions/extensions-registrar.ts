@@ -272,11 +272,6 @@ async function projectSnapshot(
                 : {}),
             };
           }),
-          deliveryHealth: SETTINGS_BACKENDS.map((backendId) => ({
-            backendId,
-            channel: component.transport,
-            status: "unknown" as const,
-          })),
         })),
       retainedGenerations: item.generations
         .filter((generation) => generation.packageGenerationId !== activeId)

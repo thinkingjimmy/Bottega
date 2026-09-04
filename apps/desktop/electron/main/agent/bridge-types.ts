@@ -75,6 +75,8 @@ export type TurnProjectionInput = Readonly<{
 
 export type AgentContext = {
   workspace: string;
+  /** main 证明的执行类型；只授权 exact-issued、Chat-scoped commit 工具。 */
+  managedWorktree?: boolean;
   projectContext?: TurnProjectContext;
   /** Durable main-owned manual selection; runtime capability may narrow channels but never reselect owners. */
   preparedSkillSelection?: PreparedSkillSelectionReceipt;

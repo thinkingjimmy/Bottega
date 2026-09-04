@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on shared apps-ipc/agent-ipc list of input types and backend
- * [OUTPUT]: Provides strict parsers for App id, pin, agent, rename, chat-slot, Use history/open, Editor open, Save-as-App, and removal inputs
- * [POS]: The IPC of the apps module is in the input layer; The app is a state-free function, and AppsService is only a domain assignment, not a format check
+ * [INPUT]: Depends on zod, app-store-schema APP_ID_PATTERN, the shared agent backend order, and the apps-ipc input DTOs
+ * [OUTPUT]: Provides strict parsers for App id, pin, agent, rename, chat slot, Use history/open, Editor open, Save as App, and removal inputs
+ * [POS]: The input boundary of the apps IPC layer; every parser is a pure function so AppsService only decides domain outcomes and never re-checks shapes
  */
 
+import { z } from "zod";
 import {
   type EnsureAppChatSlotInput,
   type ListAppUseHistoryInput,
@@ -16,216 +17,108 @@ import {
   type SetAppAgentInput,
   type SetAppPinnedInput,
 } from "../../../shared/apps-ipc";
-import {
-  AGENT_BACKEND_ORDER,
-  type AgentBackendId,
-} from "../../../shared/agent-ipc";
+import { AGENT_BACKEND_ORDER } from "../../../shared/agent-ipc";
+import { APP_ID_PATTERN } from "./store/app-store-schema";
 
-const APP_ID_PATTERN = /^[a-z0-9]{10}$/;
+/* ── 共用字面量:同一个概念只允许有一份形状定义 ───────────────────── */
+const appId = z.string().regex(APP_ID_PATTERN);
+const requestId = z.string().min(1).max(256);
+const chatId = z.string().min(1);
+const incarnationId = z.string().regex(/^[a-f0-9]{32}$/);
+const backend = z.enum(AGENT_BACKEND_ORDER);
+
+/** zod 只判形状,报错文案仍归领域所有——渲染进程按这句话认错，不按 zod 的路径认错。 */
+function parse<T>(schema: z.ZodType<T>, value: unknown, message: string): T {
+  const result = schema.safeParse(value);
+  if (!result.success) throw new Error(message);
+  return result.data;
+}
+
+const setPinned = z.object({ appId, pinned: z.boolean() }).strict();
+const setAgent = z.object({
+  appId,
+  role: z.enum(["interactive", "maintenance"]),
+  agent: z.union([z.literal("auto"), backend]),
+});
+const rename = z.object({ appId, name: z.string() });
+const chatSlot = z.object({
+  appId,
+  role: z.enum(["edit", "use"]),
+  requestId,
+  mode: z.enum(["reuse", "new"]).optional(),
+});
+const useHistory = z.object({
+  appId,
+  cursor: z.string().max(256).optional(),
+  pageSize: z.number().int().min(1).max(50).optional(),
+  expectedSnapshotRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+});
+const openUseChat = z.object({ appId, chatId, incarnationId, requestId });
+const openEditor = z.object({
+  appId,
+  requestId,
+  mode: z.enum(["resume", "new"]).optional(),
+});
+const openEditorChat = z.object({
+  appId,
+  projectId: z.string().min(1).max(128),
+  chatId: z.string().min(1).max(128),
+  incarnationId,
+  requestId,
+});
+/** Save as App 参数的唯一裁判点:IPC 与 SaveAsAppService 都只认这一份。 */
+const saveAsApp = z.object({
+  chatId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+  name: z.string().trim().min(1).max(120),
+  icon: z.string().trim().min(1).max(16),
+  requestId: z.string().min(1),
+});
 
 export function assertAppId(value: unknown) {
-  if (typeof value !== "string" || !APP_ID_PATTERN.test(value)) {
-    throw new Error("appId 格式无效");
-  }
-  return value;
+  return parse(appId, value, "appId 格式无效");
 }
 
 export function assertSetPinnedInput(value: unknown): SetAppPinnedInput {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("App pin 参数无效");
-  }
-  const input = value as { appId?: unknown; pinned?: unknown };
-  if (
-    Object.keys(input).length !== 2 ||
-    typeof input.pinned !== "boolean"
-  ) {
-    throw new Error("App pin 参数无效");
-  }
-  return { appId: assertAppId(input.appId), pinned: input.pinned };
-}
-
-export function isBackendId(value: unknown): value is AgentBackendId {
-  return AGENT_BACKEND_ORDER.some((id) => id === value);
+  return parse(setPinned, value, "App pin 参数无效");
 }
 
 export function assertSetAgentInput(value: unknown): SetAppAgentInput {
-  if (!value || typeof value !== "object") {
-    throw new Error("App Agent 设置参数无效");
-  }
-  const input = value as Partial<SetAppAgentInput>;
-  const appId = assertAppId(input.appId);
-  if (
-    (input.role !== "interactive" && input.role !== "maintenance") ||
-    !(input.agent === "auto" || isBackendId(input.agent))
-  ) {
-    throw new Error("App Agent 设置参数无效");
-  }
-  return { appId, role: input.role, agent: input.agent };
+  return parse(setAgent, value, "App Agent 设置参数无效");
 }
 
 export function assertRenameInput(value: unknown): RenameAppInput {
-  if (!value || typeof value !== "object") throw new Error("App 改名参数无效");
-  const input = value as Partial<RenameAppInput>;
-  if (typeof input.name !== "string") throw new Error("App 改名参数无效");
-  return { appId: assertAppId(input.appId), name: input.name };
+  return parse(rename, value, "App 改名参数无效");
 }
 
 export function assertChatSlotInput(value: unknown): EnsureAppChatSlotInput {
-  if (!value || typeof value !== "object") {
-    throw new Error("App chat 槽位参数无效");
-  }
-  const input = value as Partial<EnsureAppChatSlotInput>;
-  if (
-    (input.role !== "edit" && input.role !== "use") ||
-    (input.mode !== undefined &&
-      input.mode !== "reuse" &&
-      input.mode !== "new") ||
-    typeof input.requestId !== "string" ||
-    input.requestId.length < 1 ||
-    input.requestId.length > 256
-  ) {
-    throw new Error("App chat 槽位参数无效");
-  }
-  return {
-    appId: assertAppId(input.appId),
-    role: input.role,
-    requestId: input.requestId,
-    ...(input.mode ? { mode: input.mode } : {}),
-  };
+  return parse(chatSlot, value, "App chat 槽位参数无效");
 }
 
-export function assertListAppUseHistoryInput(value: unknown): ListAppUseHistoryInput {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("App Use History 参数无效");
-  }
-  const input = value as Partial<ListAppUseHistoryInput>;
-  if (
-    (input.cursor !== undefined &&
-      (typeof input.cursor !== "string" || input.cursor.length > 256)) ||
-    (input.expectedSnapshotRevision !== undefined &&
-      (typeof input.expectedSnapshotRevision !== "string" ||
-        !/^[a-f0-9]{64}$/.test(input.expectedSnapshotRevision))) ||
-    (input.pageSize !== undefined &&
-      (!Number.isInteger(input.pageSize) || input.pageSize < 1 || input.pageSize > 50))
-  ) {
-    throw new Error("App Use History 参数无效");
-  }
-  return {
-    appId: assertAppId(input.appId),
-    ...(input.cursor ? { cursor: input.cursor } : {}),
-    ...(input.pageSize ? { pageSize: input.pageSize } : {}),
-    ...(input.expectedSnapshotRevision
-      ? { expectedSnapshotRevision: input.expectedSnapshotRevision }
-      : {}),
-  };
+export function assertListAppUseHistoryInput(
+  value: unknown
+): ListAppUseHistoryInput {
+  return parse(useHistory, value, "App Use History 参数无效");
 }
 
 export function assertOpenAppUseChatInput(value: unknown): OpenAppUseChatInput {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("App Use destination 参数无效");
-  }
-  const input = value as Partial<OpenAppUseChatInput>;
-  if (
-    typeof input.chatId !== "string" ||
-    !input.chatId ||
-    typeof input.incarnationId !== "string" ||
-    !/^[a-f0-9]{32}$/.test(input.incarnationId) ||
-    typeof input.requestId !== "string" ||
-    !input.requestId ||
-    input.requestId.length > 256
-  ) {
-    throw new Error("App Use destination 参数无效");
-  }
-  return {
-    appId: assertAppId(input.appId),
-    chatId: input.chatId,
-    incarnationId: input.incarnationId,
-    requestId: input.requestId,
-  };
+  return parse(openUseChat, value, "App Use destination 参数无效");
 }
 
 export function assertOpenAppEditorInput(value: unknown): OpenAppEditorInput {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("App Editor destination 参数无效");
-  }
-  const input = value as Partial<OpenAppEditorInput>;
-  if (
-    (input.mode !== undefined && input.mode !== "resume" && input.mode !== "new") ||
-    typeof input.requestId !== "string" ||
-    !input.requestId ||
-    input.requestId.length > 256
-  ) {
-    throw new Error("App Editor destination 参数无效");
-  }
-  return {
-    appId: assertAppId(input.appId),
-    requestId: input.requestId,
-    ...(input.mode ? { mode: input.mode } : {}),
-  };
+  return parse(openEditor, value, "App Editor destination 参数无效");
 }
 
 export function assertOpenAppEditorChatInput(
   value: unknown
 ): OpenAppEditorChatInput {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("App Editor chat destination 参数无效");
-  }
-  const input = value as Partial<OpenAppEditorChatInput>;
-  if (
-    typeof input.projectId !== "string" ||
-    !input.projectId ||
-    input.projectId.length > 128 ||
-    typeof input.chatId !== "string" ||
-    !input.chatId ||
-    input.chatId.length > 128 ||
-    typeof input.incarnationId !== "string" ||
-    !/^[a-f0-9]{32}$/.test(input.incarnationId) ||
-    typeof input.requestId !== "string" ||
-    !input.requestId ||
-    input.requestId.length > 256
-  ) {
-    throw new Error("App Editor chat destination 参数无效");
-  }
-  return {
-    appId: assertAppId(input.appId),
-    projectId: input.projectId,
-    chatId: input.chatId,
-    incarnationId: input.incarnationId,
-    requestId: input.requestId,
-  };
+  return parse(openEditorChat, value, "App Editor chat destination 参数无效");
 }
 
 export function assertSaveAsAppInput(value: unknown): SaveAsAppInput {
-  if (!value || typeof value !== "object") {
-    throw new Error("Save as App 参数无效");
-  }
-  const input = value as Partial<SaveAsAppInput>;
-  if (
-    typeof input.chatId !== "string" ||
-    !input.chatId ||
-    typeof input.name !== "string" ||
-    !input.name.trim() ||
-    input.name.trim().length > 120 ||
-    typeof input.icon !== "string" ||
-    !input.icon.trim() ||
-    input.icon.trim().length > 16 ||
-    typeof input.requestId !== "string" ||
-    !input.requestId
-  ) {
-    throw new Error("Save as App 参数无效");
-  }
-  return {
-    chatId: input.chatId,
-    name: input.name.trim(),
-    icon: input.icon.trim(),
-    requestId: input.requestId,
-  };
+  return parse(saveAsApp, value, "Save as App 参数无效");
 }
 
 export function assertRemoveMode(value: unknown): RemoveAppMode | undefined {
   if (value === undefined) return undefined;
-  if (value !== "cascade" && value !== "retain-data") {
-    throw new Error("App 删除策略无效");
-  }
-  return value;
+  return parse(z.enum(["cascade", "retain-data"]), value, "App 删除策略无效");
 }

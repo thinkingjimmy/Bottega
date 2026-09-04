@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on TypeScript, esbuild local CSS modules, Tailwind Node/Oxide, immutable source validation, and fixed toolchain metadata
- * [OUTPUT]: Provides strict semantic typecheck plus exact local-alias/CSS-module resolution, deterministic React/Tailwind compiled-v3 runtime, and canonical receipt generation
+ * [INPUT]: Depends on TypeScript, esbuild local CSS modules, Tailwind Node/Oxide, one shared author-source analysis, immutable source validation, and fixed toolchain metadata
+ * [OUTPUT]: Provides strict semantic typecheck plus exact local-alias/CSS-module resolution, asar-to-unpacked dependency path mapping for the native esbuild child, deterministic React/Tailwind compiled-v3 runtime, and canonical receipt generation whose manifest digest covers the raw app.json bytes
  * [POS]: apps/gui-build/pipeline transform kernel; sandbox child invokes it and generation code consumes only validated output
  */
 import { createRequire } from "node:module";
@@ -45,7 +45,7 @@ import {
   bootstrapSource,
   type BootstrapRuntimeSlice,
 } from "../product-modules/bootstrap";
-import { analyzeAuthorModuleUsage } from "../source-analysis";
+import { analyzeAuthorSource, type AuthorSourceAnalysis } from "../source-analysis";
 import { requiredGates } from "../admission";
 import { loadReceiptMetadata } from "./receipt-metadata";
 
@@ -57,21 +57,24 @@ const BOOTSTRAP_MODULE = "bottega:bootstrap";
 const APP_ENTRY_MODULE = "bottega:app-entry";
 
 export async function compilePreparedAppGui(input: SealedCompilerInput): Promise<CompilerArtifact> {
-  const manifest = appManifestSchema.parse(
-    JSON.parse(await readFile(join(input.snapshotRoot, "app.json"), "utf8"))
-  );
+  /* 生字节是唯一的 manifest 权威：seal 摘要磁盘上的 app.json，编译器摘要同一个
+     值。validateManifestBytes 已证明它等于自己的规范化形态，所以 zod 输出只用来
+     读字段，永远不进摘要。 */
+  const rawManifest: unknown = JSON.parse(await readFile(join(input.snapshotRoot, "app.json"), "utf8"));
+  const manifest = appManifestSchema.parse(rawManifest);
   if (manifest.kind !== "base" || !manifest.gui?.build) {
     throw findingsError([{ code: "GUI_BUILD_MANIFEST_INVALID", file: "app.json", message: "compiled GUI build manifest is required" }]);
   }
   const sourceReceipt = await sourceReceiptFromSnapshot(input.snapshotRoot, input.sourcePackageDigest);
-  const structural = await validateCompiledGuiSource(sourceReceipt, manifest.gui);
+  const analysis = await analyzeAuthorSource(sourceReceipt);
+  const structural = await validateCompiledGuiSource(sourceReceipt, manifest.gui, analysis);
   if (structural.length) throw findingsError(structural);
   const diagnostics = semanticTypecheck(input.snapshotRoot, input.tempRoot);
   if (diagnostics.length) throw findingsError(diagnostics);
-  const gates = await requiredGates(sourceReceipt, manifest);
-  const compatibility = await compatibilityRef(
+  const gates = requiredGates(analysis, manifest);
+  const compatibility = compatibilityRef(
     manifest,
-    sourceReceipt,
+    analysis,
     input.transformContractDigest
   );
   const receiptMetadata = await loadReceiptMetadata(gates);
@@ -117,10 +120,10 @@ export async function compilePreparedAppGui(input: SealedCompilerInput): Promise
     file.path === "gui/component-origins.json" ||
     file.path.startsWith("gui/.bottega/origin-blobs/sha256/")
   );
-  const manifestDigest = canonicalDigest(manifest);
+  const manifestDigest = canonicalDigest(rawManifest);
   const sourceGuiDigest = treeDigest("bottega.app-gui-source/v1", sourceGuiFiles);
   const runtimeGuiDigest = treeDigest("bottega.app-gui-runtime/v1", runtimeFiles);
-  const contentDigest = await compiledRuntimeContentDigest(input.snapshotRoot, manifest, runtimeFiles);
+  const contentDigest = compiledRuntimeContentDigest(sourceReceipt.files, runtimeFiles);
   const receipt: AppGuiBuildReceipt = {
     preset: "bottega-react-v1",
     transformContractDigest: input.transformContractDigest,
@@ -274,7 +277,6 @@ async function bundleReact(
     sourcemap: false,
     charset: "utf8",
     write: false,
-    metafile: true,
     outdir: join(outputRoot, "gui/assets"),
     entryNames: "[name]-[hash]",
     chunkNames: "chunk-[hash]",
@@ -291,7 +293,7 @@ async function bundleReact(
       ".module.css": "local-css",
       ".css": "css",
     },
-    nodePaths: [dirname(require.resolve("react/package.json")) + "/.."],
+    nodePaths: [realDependencyPath(dirname(require.resolve("react/package.json")) + "/..")],
     plugins: [resolverPlugin(snapshotRoot, manifest, compatibility, gates)],
   });
   return output.outputFiles.map((file) => ({
@@ -338,11 +340,11 @@ function resolverPlugin(
           [BLOCKS_MODULE]: ["react", "react/jsx-runtime", "@tanstack/react-virtual"],
         };
         return graph[args.importer]?.includes(args.path)
-          ? { path: require.resolve(args.path) }
+          ? { path: realDependencyPath(require.resolve(args.path)) }
           : { errors: [{ text: `product dependency edge is not signed: ${args.importer} -> ${args.path}` }] };
       });
       build.onResolve({ filter: /^@\// }, (args) => {
-        if (!args.importer.startsWith(sourceRoot)) return;
+        if (args.importer !== sourceRoot && !args.importer.startsWith(`${sourceRoot}${sep}`)) return;
         const path = resolve(sourceRoot, args.path.slice(2));
         if (!path.startsWith(`${sourceRoot}${sep}`)) {
           return { errors: [{ text: "author alias escaped gui/src" }] };
@@ -377,8 +379,10 @@ function resolverPlugin(
   };
 }
 
+/* 候选表与 source-validator 的 SOURCE_EXTENSIONS 同源：能被 esbuild 解析的形状
+   不能多于能存在于 gui/src 的形状。 */
 function resolveLocalModule(path: string) {
-  return [path, `${path}.ts`, `${path}.tsx`, `${path}.js`, `${path}.jsx`, join(path, "index.ts"), join(path, "index.tsx")]
+  return [path, `${path}.ts`, `${path}.tsx`, join(path, "index.ts"), join(path, "index.tsx")]
     .find((candidate) => existsSync(candidate));
 }
 
@@ -387,18 +391,30 @@ function resolveAuthorSpecifier(specifier: string) {
   if (specifier.startsWith(phosphorPrefix)) {
     const icon = specifier.slice(phosphorPrefix.length);
     if (!/^[A-Z][A-Za-z0-9]*$/.test(icon)) throw new Error("invalid Phosphor icon subpath");
-    return join(dirname(require.resolve("@phosphor-icons/react/package.json")), "dist/csr", `${icon}.es.js`);
+    return realDependencyPath(join(dirname(require.resolve("@phosphor-icons/react/package.json")), "dist/csr", `${icon}.es.js`));
   }
-  return require.resolve(specifier);
+  return realDependencyPath(require.resolve(specifier));
 }
 
-async function compatibilityRef(
+/* Node 侧的 require.resolve 在打包件里返回 app.asar 内的虚拟路径；esbuild 是原生子进程，
+   只认真实文件。electron-builder 把 node_modules 整体 unpack 后，同一路径在
+   app.asar.unpacked 下有真身——交给 esbuild 的每一个依赖路径都先经这里换成真身，
+   开发树里没有 asar 段则原样返回。 */
+function realDependencyPath(path: string) {
+  const marker = `${sep}app.asar${sep}`;
+  const index = path.indexOf(marker);
+  if (index < 0) return path;
+  const candidate = `${path.slice(0, index)}${sep}app.asar.unpacked${sep}${path.slice(index + marker.length)}`;
+  return existsSync(candidate) ? candidate : path;
+}
+
+function compatibilityRef(
   manifest: BaseAppManifest,
-  sourceReceipt: SourceFreezeReceipt,
+  analysis: AuthorSourceAnalysis,
   transformContractDigest: Sha256Digest
-): Promise<AppGuiCompiledV3CompatibilityRef> {
+): AppGuiCompiledV3CompatibilityRef {
   const gui = manifest.gui!;
-  const sdkImports = await importedAppReactBindings(sourceReceipt);
+  const sdkImports = analysis.appReactBindings;
   const dataBindings = new Set([
     "useBaseMeta",
     "useBaseRows",
@@ -451,25 +467,6 @@ function runtimeSlice(
   };
 }
 
-async function importedAppReactBindings(receipt: SourceFreezeReceipt) {
-  const bindings = new Set<string>();
-  for (const file of receipt.files) {
-    if (!file.path.startsWith("gui/src/") || !/\.[jt]sx?$/.test(file.path)) continue;
-    const source = await readFile(join(receipt.snapshotRoot, file.path), "utf8");
-    const tree = ts.createSourceFile(
-      file.path,
-      source,
-      ts.ScriptTarget.ESNext,
-      false,
-      ts.ScriptKind.TSX
-    );
-    analyzeAuthorModuleUsage(tree).appReactBindings.forEach((binding) =>
-      bindings.add(binding)
-    );
-  }
-  return bindings;
-}
-
 async function sourceReceiptFromSnapshot(snapshotRoot: string, digest: Sha256Digest): Promise<SourceFreezeReceipt> {
   const files = await walk(snapshotRoot);
   return { snapshotRoot, sourcePackageDigest: digest, files };
@@ -505,13 +502,13 @@ async function walk(root: string) {
   return files;
 }
 
-async function compiledRuntimeContentDigest(
-  snapshotRoot: string,
-  manifest: BaseAppManifest,
+/* 快照已经被 walk 过一次，收据里每个文件都带着 {path, bytes, sha256}。再走一遍
+   目录树只是把同一批字节重读重哈希一次。 */
+function compiledRuntimeContentDigest(
+  sourceFiles: readonly { path: string; bytes: number; sha256: Sha256Digest }[],
   runtimeGuiFiles: readonly { path: string; bytes: number; sha256: Sha256Digest }[]
 ) {
-  const source = await walk(snapshotRoot);
-  const retained = source.filter((file) =>
+  const retained = sourceFiles.filter((file) =>
     file.path !== "data/base.json" &&
     !file.path.startsWith("gui/")
   );

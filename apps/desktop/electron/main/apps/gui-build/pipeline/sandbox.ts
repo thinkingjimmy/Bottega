@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on an exact hashed Node/Electron-as-Node runtime, packaged compiler child, explicit release-metadata root, OS-native sandbox executables, fixed build budgets, and private source/output/temp roots
- * [OUTPUT]: Provides fail-closed macOS Seatbelt, Linux bubblewrap, and Windows native-wrapper compiler adapters with executable authority, a live out-of-sandbox loopback control, RSS, CPU, timeout, and process-tree probes, plus payload-identity-cached evidence
+ * [OUTPUT]: Provides fail-closed macOS Seatbelt, Linux bubblewrap, and Windows native-wrapper compiler adapters with executable authority, an asar-aware payload assertion (dependency roots inside app.asar are probed with stat, never access), the runtime bundle root (.app on macOS, the executable directory elsewhere) as an implicit read root so the Electron-as-Node child can load its own framework, a live out-of-sandbox loopback control, planted-secret environment falsifiability, peak-single-process RSS, CPU, timeout, and PID-reuse-guarded process-tree custody, plus payload-identity-cached evidence recorded from observed probe results
  * [POS]: apps/gui-build/pipeline OS authority boundary; no compiled App transform may invoke the compiler child without this supervisor
  */
 
@@ -59,7 +59,9 @@ const NEGATIVE_PROBES = [
   "environment-secret",
   "process-spawn",
 ] as const;
-const REQUIRED_PROBES = [...NEGATIVE_PROBES, "process-tree-custody", "rss-budget", "cpu-budget", "timeout-budget"] as const;
+const PROBE_SECRET = "BOTTEGA_COMPILER_PROBE_SECRET";
+/* 内存超支不需要 100ms 分辨率，而每一次采样都要在主进程里 fork 一个 /bin/ps。 */
+const SAMPLE_INTERVAL_MS = 500;
 
 export class NativeCompilerSandbox implements CompilerSandboxPort {
   readonly platform: SandboxPlatform;
@@ -74,15 +76,20 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
       ...options,
       platform,
       compilerEntry: resolve(options.compilerEntry),
-      dependencyRoots: options.dependencyRoots.map((path) => resolve(path)),
+      dependencyRoots: dedupe([
+        ...options.dependencyRoots.map((path) => resolve(path)),
+        runtimeReadRoot(resolve(options.nodeExecutable ?? process.execPath)),
+      ]),
       nodeExecutable: resolve(options.nodeExecutable ?? process.execPath),
       linuxBubblewrap: resolve(options.linuxBubblewrap ?? "/usr/bin/bwrap"),
       windowsWrapper: resolve(options.windowsWrapper ?? join(dirname(process.execPath), "bottega-compiler-sandbox.exe")),
     };
   }
 
-  /* 探针要跑满五类否定证据，成本 2-5 秒。载荷身份（路径 + size + mtimeMs）不变
-     即字节不变，证据也不变；每次 prepare 重跑一遍只是在给每次构建加税。 */
+  /* 探针要跑满五类否定证据，成本 2-5 秒。载荷身份是每条 payload 路径自己的
+     (size, mtimeMs)——依赖根取的是目录项的时间戳而不是子树内容，所以它是「有没有
+     被换过」的身份检查，不是内容哈希；编译器入口的真实字节另有 fileDigest 进
+     evidenceDigest。发布载荷在运行期不可变，身份不变即重跑探针只是加税。 */
   async probe(): Promise<CompilerSandboxEvidence> {
     const identity = await this.payloadIdentity();
     if (this.evidence && this.evidenceIdentity === identity) return this.evidence;
@@ -133,6 +140,11 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
     /* 回环探针必须有正对照：连一个没人监听的端口，ECONNREFUSED 什么也证明不了。
        监听器活在沙箱外，子进程连上即证明围栏漏了，连不上才是真的隔离证据。 */
     const loopback = await openLoopbackControl();
+    /* 环境探针必须可证伪：supervisor 自己不持有秘密时，「子进程看不见它」
+       是恒真句。探针期间把秘密种进本进程环境，explicitEnvironment 一旦退化成
+       `...process.env`，子进程立刻看得见，探针随之翻红。 */
+    const previousSecret = process.env[PROBE_SECRET];
+    process.env[PROBE_SECRET] = randomUUID();
     try {
       const request = Buffer.from(JSON.stringify({
         mode: "probe",
@@ -152,7 +164,9 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
       if (result.exitCode !== 0) throw unavailable(`compiler sandbox probe exited ${result.exitCode}: ${result.stderr}`);
       const parsed = parseJson<{ probes: readonly { id: string; denied: boolean }[] }>(result.stdout, "sandbox probe");
       const byId = new Map(parsed.probes.map((probe) => [probe.id, probe.denied]));
-      if (!NEGATIVE_PROBES.every((id) => byId.get(id) === true)) {
+      const observed: Array<{ id: string; denied: boolean }> =
+        NEGATIVE_PROBES.map((id) => ({ id: id as string, denied: byId.get(id) === true }));
+      if (!observed.every((probe) => probe.denied)) {
         throw unavailable("compiler sandbox negative probe did not deny every required authority");
       }
       const custodyRequest = Buffer.from(JSON.stringify({
@@ -169,9 +183,11 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
       const custody = await supervise(custodyLaunch, undefined, 2_000);
       const wrapperContained = custody.exitCode === 0 &&
         parseJson<{ contained?: boolean }>(custody.stdout, "process custody probe").contained === true;
-      if (custody.limit !== "process" && !wrapperContained) {
+      const custodyDenied = custody.limit === "process" || wrapperContained;
+      if (!custodyDenied) {
         throw unavailable("compiler sandbox did not contain its recursive process tree");
       }
+      observed.push({ id: "process-tree-custody", denied: custodyDenied });
       for (const probe of [
         { kind: "rss", expected: "rss", wallTimeMs: 3_000, limits: { rssBytes: 256 * 1024 * 1024, cpuTimeMs: 5_000 } },
         { kind: "cpu", expected: "cpu", wallTimeMs: 3_000, limits: { rssBytes: APP_GUI_BUILD_BUDGET.rssBytes, cpuTimeMs: 500 } },
@@ -194,8 +210,11 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
             `compiler sandbox ${probe.kind} probe expected ${probe.expected} but observed ${resource.limit ?? `exit-${resource.exitCode}`}: ${bounded(resource.stderr)}`
           );
         }
+        observed.push({ id: `${probe.kind}-budget`, denied: resource.limit === probe.expected });
       }
-      const probes = REQUIRED_PROBES.map((id) => ({ id, denied: true as const }));
+      /* 证据摘要必须覆盖真的看见了什么。从常量表生成一串 denied:true，等于把
+         「我跑过探针」写成「探针通过了」。 */
+      const probes = observed.map((probe) => Object.freeze({ ...probe }));
       return {
         supported: true,
         platform: this.platform,
@@ -209,6 +228,8 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
         probes,
       };
     } finally {
+      if (previousSecret === undefined) delete process.env[PROBE_SECRET];
+      else process.env[PROBE_SECRET] = previousSecret;
       await loopback.close();
       await rm(probeRoot, { recursive: true, force: true });
     }
@@ -256,7 +277,10 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
       assertExecutable(this.options.nodeExecutable!),
       assertExecutable(platformAdapter),
       access(this.options.compilerEntry, constants.R_OK),
-      ...this.options.dependencyRoots.map((root) => access(root, constants.R_OK)),
+      /* 依赖根之一是 asar 内的 out/main。Electron 的 asar fs 对目录不支持 access
+         （getFileInfo 只认文件，直接 ENOENT），stat 才认目录；打包态编译此前
+         正是死在这里——首个打包态编译 smoke（2026-09-04）暴露的。 */
+      ...this.options.dependencyRoots.map((root) => assertDirectory(root)),
     ]).catch((cause) => {
       throw unavailable(`compiler payload is incomplete: ${cause instanceof Error ? cause.message : String(cause)}`);
     });
@@ -395,15 +419,15 @@ async function supervise(
     const next = Buffer.concat([current, chunk]);
     if (next.byteLength > maximum && !limit) {
       limit = name;
-      terminateTree(child, knownPids);
+      void terminateTree(child, knownPids);
     }
     return next.subarray(0, maximum);
   };
   child.stdout.on("data", (chunk: Buffer) => { stdout = collect(stdout, chunk, APP_GUI_BUILD_BUDGET.stdoutBytes, "stdout"); });
   child.stderr.on("data", (chunk: Buffer) => { stderr = collect(stderr, chunk, APP_GUI_BUILD_BUDGET.stderrBytes, "stderr"); });
-  const abort = () => { if (!limit) limit = "aborted"; terminateTree(child, knownPids); };
+  const abort = () => { if (!limit) limit = "aborted"; void terminateTree(child, knownPids); };
   signal?.addEventListener("abort", abort, { once: true });
-  const wallTimer = setTimeout(() => { if (!limit) limit = "wall"; terminateTree(child, knownPids); }, timeoutMs);
+  const wallTimer = setTimeout(() => { if (!limit) limit = "wall"; void terminateTree(child, knownPids); }, timeoutMs);
   const resourceTimer = setInterval(async () => {
     if (process.platform === "win32" || child.exitCode !== null || sampling) return;
     sampling = (async () => {
@@ -416,10 +440,10 @@ async function supervise(
       } catch {
         if (!limit && child.exitCode === null) limit = "custody";
       }
-      if (limit) terminateTree(child, knownPids);
+      if (limit) await terminateTree(child, knownPids);
     })().finally(() => { sampling = null; });
     await sampling;
-  }, 100);
+  }, SAMPLE_INTERVAL_MS);
   const exitCode = await new Promise<number>((resolveExit, reject) => {
     child.once("error", reject);
     child.once("exit", (code) => resolveExit(code ?? 1));
@@ -438,20 +462,44 @@ async function supervise(
   return { exitCode, stdout: stdout.toString("utf8"), stderr: stderr.toString("utf8"), limit };
 }
 
-function terminateTree(child: ChildProcess, knownPids: ReadonlySet<number>) {
+/* 进程组一击是同步的，逃逸出组的残留才需要逐个补刀——而 knownPids 是一份记忆，
+   PID 会被系统回收再分配。补刀前先看一眼当前 ps 快照：只杀此刻仍然在树里的
+   进程，记忆里已经消失的那些一律不动。 */
+async function terminateTree(child: ChildProcess, knownPids: Set<number>) {
+  if (!child.pid) return;
+  killGroup(child);
+  const survivors = await liveDescendants(child.pid, knownPids).catch(() => new Set<number>());
+  for (const pid of survivors) {
+    if (pid === child.pid) continue;
+    try { process.kill(pid, "SIGKILL"); } catch { /* Already exited. */ }
+  }
+}
+
+function killGroup(child: ChildProcess) {
   if (!child.pid) return;
   try {
     process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGKILL");
   } catch {
     child.kill("SIGKILL");
   }
-  for (const pid of knownPids) {
-    if (pid === child.pid) continue;
-    try { process.kill(pid, "SIGKILL"); } catch { /* Already exited. */ }
-  }
 }
 
 async function processTreeUsage(pid: number | undefined, knownPids = new Set<number>()) {
+  const tree = await processTree(pid, knownPids);
+  return {
+    /* 每个进程的 RSS 都把共享页算了一遍，求和于是把 fork 出来的 esbuild/tsc
+       重复计费。预算问的是「有没有一个进程失控」，答案是单进程最大值。 */
+    rss: tree.reduce((peak, row) => Math.max(peak, row.rss), 0),
+    cpuMs: tree.reduce((sum, row) => sum + row.cpuMs, 0),
+    processes: tree.length,
+  };
+}
+
+async function liveDescendants(pid: number, knownPids: Set<number>) {
+  return new Set((await processTree(pid, knownPids)).map((row) => row.pid));
+}
+
+async function processTree(pid: number | undefined, knownPids: Set<number>) {
   if (!pid) throw unavailable("compiler process identity is unavailable");
   const result = await new Promise<string>((resolveOutput, reject) => {
     const ps = spawn("/bin/ps", ["-a", "-x", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "rss=", "-o", "time="], { stdio: ["ignore", "pipe", "pipe"] });
@@ -485,21 +533,18 @@ async function processTreeUsage(pid: number | undefined, knownPids = new Set<num
   }
   const tree = rows.filter((row) => owned.has(row.pid));
   tree.forEach((row) => knownPids.add(row.pid));
-  return {
-    rss: tree.reduce((sum, row) => sum + row.rss, 0),
-    cpuMs: tree.reduce((sum, row) => sum + row.cpuMs, 0),
-    processes: tree.length,
-  };
+  return tree;
 }
 
 async function ensureProcessTreeExit(pid: number | undefined, knownPids: ReadonlySet<number>) {
   if (!pid || process.platform === "win32") return;
   try { process.kill(-pid, "SIGKILL"); } catch { /* The group already exited. */ }
-  for (const processId of knownPids) {
-    try { process.kill(processId, "SIGKILL"); } catch { /* Already exited. */ }
-  }
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    if ((await processTreeUsage(pid, new Set(knownPids))).processes === 0) return;
+    const survivors = await liveDescendants(pid, new Set(knownPids));
+    if (survivors.size === 0) return;
+    for (const processId of survivors) {
+      try { process.kill(processId, "SIGKILL"); } catch { /* Already exited. */ }
+    }
     await new Promise((resolveWait) => setTimeout(resolveWait, 25));
   }
   throw unavailable("compiler process tree did not terminate as one custody unit");
@@ -600,6 +645,27 @@ async function openLoopbackControl() {
 
 async function assertExecutable(path: string) {
   await access(path, process.platform === "win32" ? constants.F_OK : constants.X_OK);
+}
+
+/* 编译子进程就是 Electron-as-Node 自己：dyld 要从 .app 的 Contents/Frameworks 装载
+   Electron Framework，Linux/Windows 则从可执行文件同目录装载共享库。开发树里它恰好
+   落在 node_modules 根之下，打包后不在任何依赖根里——首个打包态编译 smoke
+   （2026-09-04）暴露的第二个死点。 */
+function runtimeReadRoot(nodeExecutable: string) {
+  if (process.platform === "darwin") {
+    let current = dirname(nodeExecutable);
+    while (current !== dirname(current)) {
+      if (current.endsWith(".app")) return current;
+      current = dirname(current);
+    }
+  }
+  return dirname(nodeExecutable);
+}
+
+async function assertDirectory(path: string) {
+  if (!(await stat(path)).isDirectory()) {
+    throw new Error(`dependency root is not a directory: ${path}`);
+  }
 }
 
 async function exists(path: string) {

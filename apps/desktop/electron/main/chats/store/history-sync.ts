@@ -5,7 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { ForeignHistoryBlock } from "../../../../shared/history-import-ipc";
+import type { ForeignHistoryMessage } from "../../../../shared/history-import-ipc";
 import type { ChatDatabaseClient } from "../sqlite/database-client";
 import type {
   DatabaseResults,
@@ -46,8 +46,8 @@ export async function syncExternalHistory(input: {
   deviceId: string;
   source: HistoryImportSource;
   blocks:
-    | readonly ForeignHistoryBlock[]
-    | AsyncIterable<readonly ForeignHistoryBlock[] | PreparedHistoryImportBatch>;
+    | readonly ForeignHistoryMessage[]
+    | AsyncIterable<readonly ForeignHistoryMessage[] | PreparedHistoryImportBatch>;
   signal?: AbortSignal;
   clock?: () => number;
   onProgress?(value: Readonly<{
@@ -235,8 +235,8 @@ async function pumpBatches(
    自然也没有判词，返回 null。 */
 async function* normalizedBatches(
   blocks:
-    | readonly ForeignHistoryBlock[]
-    | AsyncIterable<readonly ForeignHistoryBlock[] | PreparedHistoryImportBatch>,
+    | readonly ForeignHistoryMessage[]
+    | AsyncIterable<readonly ForeignHistoryMessage[] | PreparedHistoryImportBatch>,
   signal?: AbortSignal
 ): AsyncGenerator<HistoryImportEntryInput[], boolean | null, void> {
   signal?.throwIfAborted();
@@ -267,16 +267,16 @@ async function* normalizedBatches(
 }
 
 function isPreparedBatch(
-  value: readonly ForeignHistoryBlock[] | PreparedHistoryImportBatch
+  value: readonly ForeignHistoryMessage[] | PreparedHistoryImportBatch
 ): value is PreparedHistoryImportBatch {
   return !Array.isArray(value) &&
     (value as PreparedHistoryImportBatch).kind === "prepared-history-import";
 }
 
 function isAsyncBlocks(
-  value: readonly ForeignHistoryBlock[] |
-    AsyncIterable<readonly ForeignHistoryBlock[] | PreparedHistoryImportBatch>
-): value is AsyncIterable<readonly ForeignHistoryBlock[] | PreparedHistoryImportBatch> {
+  value: readonly ForeignHistoryMessage[] |
+    AsyncIterable<readonly ForeignHistoryMessage[] | PreparedHistoryImportBatch>
+): value is AsyncIterable<readonly ForeignHistoryMessage[] | PreparedHistoryImportBatch> {
   return typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator]
     === "function";
 }

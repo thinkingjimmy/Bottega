@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the App/Base/Project store, base sample, compiled source-only exporter/verifier, package-contract, templates, README positioning, fixed git/gh subprocesses (runner can be injected) and lifecycle gate
  * [OUTPUT]: Provides ShareFlow preview/publish/discard/recover with ShareCommandRunner; compiled shares prove their outer source matches the sealed export before publication and never carry foreign runtime/receipt bytes
- * [POS]: The GitHub external side effects saga of apps/share; Agent is completely uninvolved, staging is pending while recovering evidence cannot be removed, and the crash is resumed by share-publish intent
+ * [POS]: The GitHub side-effect saga of apps/share; no Agent is involved, an unfinished publish's staging directory is recovery evidence and is never swept, a business rejection drops both the staging directory and its preview, and a crash resumes from the share-publish intent
  */
 
 import { execFile } from "node:child_process";
@@ -32,19 +32,21 @@ import type { LifecycleIntentStore } from "../../lifecycle/intent-store";
 import type { AdmissionGate, SagaResult } from "../../lifecycle/admission-gate";
 import type { ProjectStore } from "../../projects/store/project-store";
 import { sanitizedProcessEnvironment } from "../../codex-runtime";
-import type { AppStore } from "../app-store";
-import { README_SKELETON_HINT } from "../templates";
+import type { AppStore } from "../store/app-store";
+import { README_SKELETON_HINT } from "../source/templates";
 import {
   copyPackage,
   inspectPackage,
   packageDigest,
-} from "./package-contract";
+} from "./package/package-contract";
 import {
   exportPortableCompiledSource,
   verifyPortableCompiledSource,
 } from "../gui-build/pipeline/portable";
 
 type StoredPreview = {
+  /** 恢复重入时没有预览条目可指——那条路径合成的 preview 用 null。 */
+  previewId: string | null;
   appId: string;
   dataMode: SharePreviewInput["dataMode"];
   digest: string;
@@ -155,6 +157,7 @@ export class ShareFlow {
         ? (await this.run("git", ["rev-parse", "HEAD"], worktree)).trim()
         : null;
       this.previews.set(previewId, {
+        previewId,
         appId: record.id,
         dataMode: input.dataMode,
         digest,
@@ -288,6 +291,7 @@ export class ShareFlow {
 
   recover(intent: LifecycleIntent) {
     return this.execute(intent, {
+      previewId: null,
       appId: String(intent.input.appId),
       dataMode:
         intent.input.mode === "full" ||
@@ -454,10 +458,12 @@ export class ShareFlow {
   }
 
   /** 业务终态统一清 staging：intent 已终结的物证就是垃圾，不留给「也许会来」的 discard。 */
+  /** 业务拒绝即预览作废:只删 staging 而留下条目,下一次 publish 会指向空目录。 */
   private async rejectAndClean(
     preview: StoredPreview,
     error: { code: string; message: string }
   ): Promise<SagaResult<AppRecord>> {
+    if (preview.previewId) this.previews.delete(preview.previewId);
     await rm(preview.staging, { recursive: true, force: true });
     return { status: "business-rejected", error };
   }

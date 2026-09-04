@@ -33,7 +33,6 @@ import {
   failRetry,
   noteDebounce,
   observeTokenBucket,
-  reduceTurnResult,
   SERVE_ACK_VERSION,
   type DebounceState,
   type ServeAck,
@@ -143,6 +142,7 @@ export function createServeLoop(deps: ServeLoopDependencies): ServeLoop {
   let retry = createRetryState();
   let watcherFailures = 0;
   let consecutiveFailures = 0;
+  let lastFailureAt: number | null = null;
   let failureTimes: number[] = [];
   let halted = false;
   let lastWarning: string | null = null;
@@ -317,7 +317,6 @@ export function createServeLoop(deps: ServeLoopDependencies): ServeLoop {
     await deps.appendLog(
       `[agent] 触发变化，启动单轮 sha256=${turnStart.sha256.slice(0, 12)} size=${turnStart.size}`
     );
-    const turnStartedAt = now();
     try {
       await deps.runAgentTurn();
       if (disposed) {
@@ -326,22 +325,26 @@ export function createServeLoop(deps: ServeLoopDependencies): ServeLoop {
           .catch(() => undefined);
         return;
       }
-      const reduction = reduceTurnResult(retry, now(), "success");
-      retry = reduction.retry;
-      if (now() - turnStartedAt >= SERVE_HEALTHY_RESET_MS) {
+      retry = createRetryState();
+      /* 「连续失败」计的是最近这一串，不是这个 App 一辈子的失败总数：离上次
+         失败已经过了健康窗口，那一串就断了。真正的抖动由 1h 内 5 次的滚动
+         预算兜底——把两者混成一个计数器，等于给每个 App 发三条命就永久停机。 */
+      if (
+        lastFailureAt !== null &&
+        now() - lastFailureAt >= SERVE_HEALTHY_RESET_MS
+      ) {
         consecutiveFailures = 0;
+        lastFailureAt = null;
       }
-      if (reduction.shouldAck) {
-        await writeAck(serveAckPath(deps.userData, deps.appId), {
-          version: SERVE_ACK_VERSION,
-          watchPath,
-          sha256: turnStart.sha256,
-          size: turnStart.size,
-          contractFingerprint: fingerprint,
-        });
-      }
+      await writeAck(serveAckPath(deps.userData, deps.appId), {
+        version: SERVE_ACK_VERSION,
+        watchPath,
+        sha256: turnStart.sha256,
+        size: turnStart.size,
+        contractFingerprint: fingerprint,
+      });
       await setWarning(null);
-      if (reduction.shouldChase && !disposed) pending = true;
+      if (!disposed) pending = true;
     } catch (cause) {
       if (disposed) {
         await deps
@@ -351,6 +354,7 @@ export function createServeLoop(deps: ServeLoopDependencies): ServeLoop {
       }
       retry = failRetry(retry, now());
       consecutiveFailures += 1;
+      lastFailureAt = now();
       failureTimes = failureTimes
         .filter((timestamp) => now() - timestamp < SERVE_RESTART_WINDOW_MS)
         .concat(now());

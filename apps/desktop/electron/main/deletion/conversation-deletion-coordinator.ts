@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node durable fs, ChatRecord/attachment metadata; Policy/Delivery receipt, reservation drain, incarnation, CAS main file removal and resource release steps
- * [OUTPUT]: Provides immutable mode/old-Space capsule, per-journal claim, per effect checkpoint, deleted-proven/unknown, decreases the failure of determination and clearance
+ * [INPUT]: Depends on Node durable fs, ChatRecord/attachment metadata; Policy/Delivery receipt, reservation drain, incarnation, journaled pre-Chat release, CAS main file removal and post-Chat resource release steps
+ * [OUTPUT]: Provides immutable mode/old-Space capsule, per-journal claim, pre/post resource checkpoints, deleted-proven/unknown, and convergent cleanup
  * [POS]: The main deleted the only source of truth that proves it; Intent before Policy→drain→ Delivery→Chat bytes, receipt/checkpoint collapsed by operationId
  */
 
@@ -24,6 +24,7 @@ type Stage =
   | "policy-applied"
   | "drained"
   | "delivery-applied"
+  | "pre-chat-resources-released"
   | "chat-removed"
   | "resources-released"
   | "cleaned";
@@ -44,8 +45,14 @@ export type ConversationDeletionResource = {
   release(
     record: DeletionRecord,
     attachments: readonly ChatAttachmentMeta[],
-    proof: "deleted-proven"
+    proof: "deleted-proven",
+    operationId: string
   ): Promise<void>;
+};
+
+export type ConversationDeletionPreResource = {
+  id: string;
+  release(record: DeletionRecord, operationId: string): Promise<void>;
 };
 
 type Journal = {
@@ -57,6 +64,7 @@ type Journal = {
   attachments: ChatAttachmentMeta[];
   policyReceiptDigest: string | null;
   deliveryReceiptDigests: string[];
+  releasedPreChatResources: string[];
   releasedResources: string[];
   stage: Stage;
   updatedAt: number;
@@ -83,6 +91,7 @@ type DeletionCallbacks = {
   removeChat(record: DeletionRecord): Promise<void>;
   onChatRemoved(record: DeletionRecord): void;
   onCleanupError(record: DeletionRecord, cause: unknown): void;
+  preResources?: readonly ConversationDeletionPreResource[];
   resources: readonly ConversationDeletionResource[];
 };
 
@@ -92,6 +101,7 @@ const ORDER: Stage[] = [
   "policy-applied",
   "drained",
   "delivery-applied",
+  "pre-chat-resources-released",
   "chat-removed",
   "resources-released",
   "cleaned",
@@ -158,6 +168,7 @@ export class ConversationDeletionCoordinator {
         ),
         policyReceiptDigest: null,
         deliveryReceiptDigests: [],
+        releasedPreChatResources: [],
         releasedResources: [],
         stage: "prepared",
         updatedAt: Date.now(),
@@ -269,6 +280,15 @@ export class ConversationDeletionCoordinator {
           journal.deliveryReceiptDigests,
           journal.mode
         );
+      for (const resource of callbacks.preResources ?? []) {
+        if (journal.releasedPreChatResources.includes(resource.id)) continue;
+        await resource.release(journal.record, journal.operationId);
+        journal.releasedPreChatResources.push(resource.id);
+        await this.write(journal);
+      }
+      await this.advance(journal, "pre-chat-resources-released");
+    }
+    if (journal.stage === "pre-chat-resources-released") {
       await callbacks.removeChat(journal.record);
       await this.advance(journal, "chat-removed");
       callbacks.onChatRemoved(journal.record);
@@ -277,11 +297,12 @@ export class ConversationDeletionCoordinator {
       for (const resource of callbacks.resources) {
         if (journal.releasedResources.includes(resource.id)) continue;
         try {
-          await resource.release(
-            journal.record,
-            journal.attachments,
-            "deleted-proven"
-          );
+        await resource.release(
+          journal.record,
+          journal.attachments,
+          "deleted-proven",
+          journal.operationId
+        );
         } catch (cause) {
           callbacks.onCleanupError(journal.record, cause);
           return { cleanupPending: true as const };
@@ -324,10 +345,13 @@ export class ConversationDeletionCoordinator {
         (raw.policyReceiptDigest !== null &&
           typeof raw.policyReceiptDigest !== "string") ||
         !Array.isArray(raw.deliveryReceiptDigests) ||
-        !Array.isArray(raw.releasedResources)
+        !Array.isArray(raw.releasedResources) ||
+        (raw.releasedPreChatResources !== undefined &&
+          !Array.isArray(raw.releasedPreChatResources))
       ) {
         return null;
       }
+      raw.releasedPreChatResources ??= [];
       return raw as Journal;
     } catch {
       return null;

@@ -31,7 +31,7 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-dev-kanban.git",
-    catalogPin: "2213e8983ce46c8804c96950af21bd1f3cde1200",
+    catalogPin: "4f74284da540e01316b82a246fbfc3a98a482ca5",
     sourceDirectory: "Bottega-app-dev-kanban",
   },
   {
@@ -40,7 +40,7 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-expense-tracker.git",
-    catalogPin: "910eb2939d5eee9784f315b9823cc57d7cc6bea3",
+    catalogPin: "55cec96e81619f90164a00bc18c5ca7c3c8b5e23",
     sourceDirectory: "Bottega-app-expense-tracker",
   },
   {
@@ -49,7 +49,7 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-fitness-log.git",
-    catalogPin: "8b95e845bdb517dfe40fa264fd02c3188eb3d2b6",
+    catalogPin: "0470aa1420a6dfb2699a700f15dc529de42ec10a",
     sourceDirectory: "Bottega-app-fitness-log",
   },
 ] as const satisfies readonly PresetCatalogEntry[];

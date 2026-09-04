@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Base value/attachment contracts, thumbnail loading, mutation outcomes, and relation context plus canonical row options
- * [OUTPUT]: Provides BaseCellEditor, attachment preview/thumbnail helpers, typed editors, and relation editing without rebuilding evaluation context
+ * [OUTPUT]: Provides BaseCellEditor, attachment preview plus a 200-entry LRU-backed thumbnail hook, typed editors, the EMPTY_SELECT_VALUE Select sentinel, and relation editing without rebuilding evaluation context
  * [POS]: The single cell-editor dispatcher shared by Table and List; view layout stays outside while canonical relation semantics enter explicitly
  */
 
@@ -302,6 +302,34 @@ export function BaseAttachmentPreview({
   );
 }
 
+/* ── 缩略图 LRU ────────────────────────────────────────────────
+ * key 已经说清「这就是同一张图」：owner、attachmentId、revision、maxEdge
+ * 全在里面，撞上即同一份像素。可窗口化会把同一张封面反复卸载再装回来，
+ * 没有缓存时，每一次滚回去都是一次 IPC——滚动越流畅，IPC 打得越密。
+ * 200 条上界让它是一块缓存而不是一次泄漏；Map 的迭代序天然就是插入序，
+ * 读命中时重新插入一遍，最久未用者永远排在队首，无须另建链表。
+ * 只活在本次会话：图变则 revision 变、key 变，旧条目自动失去索引。
+ * ────────────────────────────────────────────────────────── */
+const THUMBNAIL_CACHE_LIMIT = 200;
+const thumbnailCache = new Map<string, string>();
+
+/** 命中即「最近使用」：删了再插，队首永远是最久没人要的那张。 */
+function touchThumbnailCache(key: string) {
+  const cached = thumbnailCache.get(key);
+  if (cached === undefined) return false;
+  thumbnailCache.delete(key);
+  thumbnailCache.set(key, cached);
+  return true;
+}
+
+function writeThumbnailCache(key: string, dataUrl: string) {
+  thumbnailCache.delete(key);
+  thumbnailCache.set(key, dataUrl);
+  if (thumbnailCache.size > THUMBNAIL_CACHE_LIMIT) {
+    thumbnailCache.delete(thumbnailCache.keys().next().value!);
+  }
+}
+
 /**
  * 行内缩略图的唯一读取路径：owner 与 revision 一变即换 key，
  * 旧值在新 key 落地前一律读作空，避免上一张图在新单元格里逗留。
@@ -317,9 +345,13 @@ export function useBaseAttachmentThumbnail(
   const incarnationId = owner?.incarnationId;
   const key = `${chatId ?? ""}/${incarnationId ?? ""}/${value.attachmentId}/${value.revision}/${maxEdge}`;
   const [thumbnail, setThumbnail] = useState({ key: "", dataUrl: "" });
+  /* 缓存是渲染期就能读的事实，不是一次需要 setState 去追平的异步结果：
+     命中即首帧直出，滚回来的卡片不再闪一下占位图。 */
+  const cached = thumbnailCache.get(key);
   useEffect(() => {
-    let active = true;
     if (!chatId || !incarnationId) return () => undefined;
+    if (touchThumbnailCache(key)) return () => undefined;
+    let active = true;
     void readBaseAttachmentThumbnail({
       chatId,
       incarnationId,
@@ -328,15 +360,15 @@ export function useBaseAttachmentThumbnail(
       maxEdge,
       requestVersion: 0,
     }).then((result) => {
-      if (active && result.ok) {
-        setThumbnail({ key, dataUrl: result.value.dataUrl });
-      }
+      if (!result.ok) return;
+      writeThumbnailCache(key, result.value.dataUrl);
+      if (active) setThumbnail({ key, dataUrl: result.value.dataUrl });
     });
     return () => {
       active = false;
     };
   }, [chatId, incarnationId, key, maxEdge, value.attachmentId, value.revision]);
-  return thumbnail.key === key ? thumbnail.dataUrl : "";
+  return thumbnail.key === key ? thumbnail.dataUrl : cached ?? "";
 }
 
 function DateCellEditor({
@@ -493,7 +525,12 @@ function ScalarCellEditor({
 const CELL_CONTROL_CLASS =
   "h-9 w-full rounded-none border-0 bg-transparent px-2 shadow-none outline-none focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/30";
 
-const EMPTY_SELECT_VALUE = "__base-empty!__";
+/* ── 「什么都没选」的哨兵 ────────────────────────────────────────
+ * Radix Select 不接受空串作为 item value——空串是它内部表示「未选择」的值。
+ * 于是每一处「可以不选」的下拉都需要一枚不可能与真实 id 相撞的替身。
+ * 单元格编辑器与视图设置条共用这一枚：留一份，让它没得分叉。 */
+export const EMPTY_SELECT_VALUE = "__base-empty!__";
+
 
 function display(value: BaseCellValue | undefined) {
   if (value === undefined) return "";

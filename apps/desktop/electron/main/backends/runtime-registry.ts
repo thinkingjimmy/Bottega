@@ -18,6 +18,7 @@ import type {
   AgentRuntime,
   BackendDescriptor,
   ResolvedRuntime,
+  RuntimeConfirmation,
 } from "./types";
 import {
   acquireAgentProcessLease,
@@ -258,7 +259,7 @@ export class BackendRuntimeRegistry {
       stored?.generation === generation &&
       stored.authStatus !== "checking"
     ) {
-      return Promise.resolve(stored);
+      return this.confirmStored(backend, stored);
     }
     const controller = new AbortController();
     const promise = this.discover(
@@ -279,6 +280,31 @@ export class BackendRuntimeRegistry {
       });
     this.flights.set(backend, { generation, controller, promise });
     return promise;
+  }
+
+  /* 缓存命中不等于仍可启动：descriptor 可以在快照被复用前重读外部真相。
+     被拒就作废并重新发现——新路径经完整校验入册，这里不替发现层裁决。
+     confirm 抛错同样按拒绝处理，fail-closed。 */
+  private async confirmStored(
+    backend: AgentBackendId,
+    stored: BackendRuntimeSnapshot
+  ): Promise<BackendRuntimeSnapshot> {
+    const descriptor = this.dependencies.descriptorFor(backend);
+    if (stored.runtimeStatus !== "installed" || !descriptor.confirmRuntime) {
+      return stored;
+    }
+    let confirmation: RuntimeConfirmation;
+    try {
+      confirmation = await descriptor.confirmRuntime(stored.runtime);
+    } catch (cause) {
+      confirmation = {
+        status: "rejected",
+        reason: cause instanceof Error ? cause.message : String(cause),
+      };
+    }
+    if (confirmation.status === "confirmed") return stored;
+    if (this.generation(backend) === stored.generation) this.invalidate(backend);
+    return this.resolve(backend);
   }
 
   async resolveForSpawn(

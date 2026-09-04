@@ -4,7 +4,7 @@
  * [POS]: apps/service read projection; keeps lifecycle-state branching out of the AppsService composition root
  */
 
-import type { AppStore } from "../../app-store";
+import type { AppStore } from "../../store/app-store";
 
 export function resolveRunnableApp(store: AppStore, appId: string) {
   const record = store.get(appId);

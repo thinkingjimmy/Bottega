@@ -38,7 +38,7 @@ export function useProjectLifecycle(
   project: Project,
   options: {
     chats: ChatSummary[];
-    pinnedBaseCount: number;
+    rootBaseCount: number;
     hasProjectBase: boolean;
     groupMemory: boolean;
     onLeave(archiveMembers: boolean): void;
@@ -93,7 +93,7 @@ export function useProjectLifecycle(
   return {
     project,
     chats: options.chats,
-    pinnedBaseCount: options.pinnedBaseCount,
+    rootBaseCount: options.rootBaseCount,
     archiveOpen,
     localDetachOpen,
     localDetachReasons,
@@ -132,7 +132,7 @@ export function ProjectLifecycleDialogs({
   const {
     project,
     chats,
-    pinnedBaseCount,
+    rootBaseCount,
     archiveOpen,
     localDetachOpen,
     localDetachReasons,
@@ -150,8 +150,8 @@ export function ProjectLifecycleDialogs({
                 name: project.name,
                 chats: chats.length,
               })}
-              {pinnedBaseCount > 0 &&
-                ` ${t("projects.archivePinned", { bases: pinnedBaseCount })}`}
+              {rootBaseCount > 0 &&
+                ` ${t("projects.archiveRootBases", { bases: rootBaseCount })}`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -177,7 +177,9 @@ export function ProjectLifecycleDialogs({
         description={
           <>
             {t(
-              localDetachReasons.length === 2
+              localDetachReasons.includes("managed-worktree")
+                ? "projects.archiveInsteadManaged"
+                : localDetachReasons.length === 2
                 ? "projects.archiveInsteadBoth"
                 : localDetachReasons[0] === "project-base"
                   ? "projects.archiveInsteadBase"

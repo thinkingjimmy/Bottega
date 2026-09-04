@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, and all shared renderer IPC contracts
- * [OUTPUT]: Denies WebRTC in every frame main world, then exposes role-filtered typed bridges including a read-only file-manager fact, ID-only Project Reveal, bounded Chat timeline/find queries, fenced App grants, surface navigation, App Pin, exact-Project Tools, and scoped MCP only in trusted top frames
+ * [OUTPUT]: Denies WebRTC in every frame main world, then exposes role-filtered typed bridges including a read-only file-manager fact, ID-only Project Reveal, conversation-scoped branch reads, bounded Chat timeline/fork/find queries, fenced App grants, surface navigation, App Pin, exact-Project Tools, and scoped MCP only in trusted top frames
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge
  */
 
@@ -368,13 +368,10 @@ contextBridge.exposeInMainWorld("apps", {
     ipcRenderer.invoke(APPS_CHANNEL.remove, appId, mode, requestId),
   list: () => ipcRenderer.invoke(APPS_CHANNEL.list),
   open: (appId: string) => ipcRenderer.invoke(APPS_CHANNEL.open, appId),
-  status: (appId: string) => ipcRenderer.invoke(APPS_CHANNEL.status, appId),
   originWithoutStart: (appId: string) =>
     ipcRenderer.invoke(APPS_CHANNEL.originWithoutStart, appId),
   stop: (appId: string) => ipcRenderer.invoke(APPS_CHANNEL.stop, appId),
   grant: (input) => ipcRenderer.invoke(APPS_CHANNEL.grant, input),
-  revokeGrant: (target, appId) =>
-    ipcRenderer.invoke(APPS_CHANNEL.revokeGrant, target, appId),
   setGrantState: (input) =>
     ipcRenderer.invoke(APPS_CHANNEL.setGrantState, input),
   setDefaultGrant: (input) =>
@@ -388,10 +385,6 @@ contextBridge.exposeInMainWorld("apps", {
     ipcRenderer.invoke(APPS_CHANNEL.acquireSurface, input),
   releaseSurface: (surfaceLeaseId) =>
     ipcRenderer.invoke(APPS_CHANNEL.releaseSurface, surfaceLeaseId),
-  acquireManagementLease: (appId) =>
-    ipcRenderer.invoke(APPS_CHANNEL.acquireManagementLease, appId),
-  releaseManagementLease: (managementLeaseId) =>
-    ipcRenderer.invoke(APPS_CHANNEL.releaseManagementLease, managementLeaseId),
   reveal: (appId: string) => ipcRenderer.invoke(APPS_CHANNEL.reveal, appId),
   cancelInstall: (appId: string) =>
     ipcRenderer.invoke(APPS_CHANNEL.cancelInstall, appId),
@@ -501,6 +494,11 @@ contextBridge.exposeInMainWorld("chats", {
   createForApp: (input) =>
     ipcRenderer.invoke(CHATS_CHANNEL.createForApp, input),
   append: (input) => ipcRenderer.invoke(CHATS_CHANNEL.append, input),
+  forkPreflight: (input) =>
+    ipcRenderer.invoke(CHATS_CHANNEL.forkPreflight, input),
+  fork: (input) => ipcRenderer.invoke(CHATS_CHANNEL.fork, input),
+  commitManagedWorktree: (input) =>
+    ipcRenderer.invoke(CHATS_CHANNEL.commitManagedWorktree, input),
   rename: (input) => ipcRenderer.invoke(CHATS_CHANNEL.rename, input),
   remove: (chatId: string) => ipcRenderer.invoke(CHATS_CHANNEL.remove, chatId),
   readAttachment: (attachmentId: string) =>
@@ -521,14 +519,10 @@ contextBridge.exposeInMainWorld("galleryMedia", {
 contextBridge.exposeInMainWorld("bases", {
   get: (input) => ipcRenderer.invoke(BASES_CHANNEL.get, input),
   ensure: (input) => ipcRenderer.invoke(BASES_CHANNEL.ensure, input),
-  discardCorrupt: (input) =>
-    ipcRenderer.invoke(BASES_CHANNEL.discardCorrupt, input),
-  listPinned: () => ipcRenderer.invoke(BASES_CHANNEL.listPinned),
+  listRootBases: () => ipcRenderer.invoke(BASES_CHANNEL.listRoot),
   listProjectBases: () => ipcRenderer.invoke(BASES_CHANNEL.listProject),
   removeManaged: (input) =>
     ipcRenderer.invoke(BASES_CHANNEL.removeManaged, input),
-  authorizeMutation: (input) =>
-    ipcRenderer.invoke(BASES_CHANNEL.authorizeMutation, input),
   updateMeta: (input) => ipcRenderer.invoke(BASES_CHANNEL.updateMeta, input),
   insertRows: (input) => ipcRenderer.invoke(BASES_CHANNEL.insertRows, input),
   patchRow: (input) => ipcRenderer.invoke(BASES_CHANNEL.patchRow, input),
@@ -541,8 +535,6 @@ contextBridge.exposeInMainWorld("bases", {
   rowHistory: (input) => ipcRenderer.invoke(BASES_CHANNEL.rowHistory, input),
   putAttachment: (input) =>
     ipcRenderer.invoke(BASES_CHANNEL.putAttachment, input),
-  readAttachment: (input) =>
-    ipcRenderer.invoke(BASES_CHANNEL.readAttachment, input),
   readAttachmentThumbnail: (input) =>
     ipcRenderer.invoke(BASES_CHANNEL.readAttachmentThumbnail, input),
   listGalleryEntries: (input) =>
@@ -570,8 +562,8 @@ contextBridge.exposeInMainWorld("projects", {
     ipcRenderer.invoke(PROJECTS_CHANNEL.releaseMissing, projectId),
   setSortMode: (sortMode) =>
     ipcRenderer.invoke(PROJECTS_CHANNEL.setSortMode, sortMode),
-  listBranches: (projectId: string) =>
-    ipcRenderer.invoke(PROJECTS_CHANNEL.listBranches, projectId),
+  listBranches: (projectId: string, conversationId?: string) =>
+    ipcRenderer.invoke(PROJECTS_CHANNEL.listBranches, projectId, conversationId),
   checkoutBranch: (projectId, target) =>
     ipcRenderer.invoke(PROJECTS_CHANNEL.checkoutBranch, projectId, target),
   createBranch: (projectId, name) =>

@@ -14,14 +14,6 @@ export const basesEs: BasesCatalog = {
     reloadFailed: "No se pudo recargar la Base {{ownerKey}}: {{message}}",
     retiredResult: "La Base {{ownerKey}} devolvió una generación retirada.",
   },
-  quarantined: "Esta Base está en cuarentena",
-  quarantinedDescription:
-    "Los archivos recuperables se conservan. Restaura la copia manualmente o descártalos para crear una Base vacía.",
-  discardData: "Descartar datos en cuarentena",
-  discardAndRecreate: "Descartar y volver a crear",
-  discardDescription:
-    "Esto elimina permanentemente los metadatos aislados y las generaciones de filas conservadas, y crea una Base vacía.",
-  discardTitle: "¿Descartar los datos recuperables de la Base?",
   loading: "Cargando Base…",
   loadingMap: "Cargando el mapa…",
   pageTitle: "Base",

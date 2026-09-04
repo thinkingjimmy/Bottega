@@ -1,11 +1,10 @@
 /**
- * [INPUT]: Depends on Node fs/path, shared owner-aware Base/Gallery schema and durableAtomicWrite; Receive v2 root, read/write input and warning/error plants
- * [OUTPUT]: Provides ownerKey→v2 File name, Base meta/rows/gallery bounded IO, generation GC, unknown Save and family of files
+ * [INPUT]: Depends on Node fs/path, shared owner-aware Base/Gallery schema and durableAtomicWrite; receives the v2 root plus optional read/write injections
+ * [OUTPUT]: Provides ownerKey→v2 file naming, bounded meta/rows/gallery/history IO, generation GC, and family delete/isolate
  * [POS]: The v2 file layout of bases/store borders on the IO; BaseStore only holds the status machine and submit order
  */
 
-import { copyFile, readFile, readdir, rename, rm, stat } from "node:fs/promises";
-import { constants } from "node:fs";
+import { readFile, readdir, rename, rm, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import {
   BASE_META_BYTE_LIMIT,
@@ -41,8 +40,6 @@ const bytes = (value: string) => Buffer.byteLength(value, "utf8");
 type BaseFileOptions = {
   readText?: (path: string) => Promise<string>;
   atomicWrite?: (path: string, content: string) => Promise<void>;
-  corrupt(message: string): Error;
-  warn(message: string): void;
 };
 
 export class BaseStoreFiles {
@@ -50,7 +47,7 @@ export class BaseStoreFiles {
 
   constructor(
     private readonly root: string,
-    private readonly options: BaseFileOptions
+    private readonly options: BaseFileOptions = {}
   ) {
     this.readText =
       options.readText ?? ((path) => readFile(path, "utf8"));
@@ -77,7 +74,7 @@ export class BaseStoreFiles {
       this.rowsPath(ownerKeyOf(meta.owner), meta.rowsGeneration)
     )).size;
     if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes > BASE_ROWS_BYTE_LIMIT) {
-      throw this.options.corrupt("Base rows durable byte identity is invalid");
+      throw new Error("Base rows durable byte identity is invalid");
     }
     return bytes;
   }
@@ -107,7 +104,7 @@ export class BaseStoreFiles {
       );
     } catch (cause) {
       if (isCode(cause, "ENOENT")) {
-        throw this.options.corrupt(
+        throw new Error(
           `meta 引用的 rows 世代 ${meta.rowsGeneration} 不存在`
         );
       }
@@ -115,13 +112,13 @@ export class BaseStoreFiles {
     }
     const raw = JSON.parse(content) as unknown;
     if (!Array.isArray(raw) || raw.length > BASE_ROW_LIMIT) {
-      throw this.options.corrupt("Base rows 结构或行数无效");
+      throw new Error("Base rows 结构或行数无效");
     }
     return raw.map((row) => baseRowSchema.parse(row));
   }
 
   async readGallery(meta: BaseMeta) {
-    const generation = meta.galleryGeneration ?? 0;
+    const generation = meta.galleryGeneration;
     try {
       const content = await this.readBounded(
         this.galleryPath(ownerKeyOf(meta.owner), generation),
@@ -136,14 +133,14 @@ export class BaseStoreFiles {
       if (generation === 0 && isCode(cause, "ENOENT")) {
         return emptyGalleryLedger(galleryOwnerId(meta), meta.ownerInstanceId);
       }
-      throw this.options.corrupt(
+      throw new Error(
         `meta 引用的 Gallery 世代 ${generation} 无效：${errorMessage(cause)}`
       );
     }
   }
 
   async readHistory(meta: BaseMeta) {
-    const generation = meta.historyGeneration ?? 0;
+    const generation = meta.historyGeneration;
     try {
       const content = await this.readBounded(
         this.historyPath(ownerKeyOf(meta.owner), generation),
@@ -154,26 +151,9 @@ export class BaseStoreFiles {
       if (generation === 0 && isCode(cause, "ENOENT")) {
         return emptyHistoryLedger();
       }
-      throw this.options.corrupt(
+      throw new Error(
         `meta 引用的 History 世代 ${generation} 无效：${errorMessage(cause)}`
       );
-    }
-  }
-
-  async readLegacyGalleryTarget(ownerKey: string, generation: number) {
-    try {
-      const raw = JSON.parse(
-        await this.readBounded(
-          this.galleryPath(ownerKey, generation),
-          BASE_GALLERY_LEDGER_BYTE_LIMIT
-        )
-      ) as { targetColumnId?: unknown };
-      return typeof raw.targetColumnId === "string"
-        ? raw.targetColumnId
-        : undefined;
-    } catch (cause) {
-      if (generation === 0 && isCode(cause, "ENOENT")) return undefined;
-      throw cause;
     }
   }
 
@@ -205,10 +185,6 @@ export class BaseStoreFiles {
     return join(this.root, `${ownerFileStem(ownerKey)}.json`);
   }
 
-  corruptPath(ownerKey: string) {
-    return join(this.root, `${ownerFileStem(ownerKey)}.corrupt.json`);
-  }
-
   rowsPath(ownerKey: string, generation: number) {
     return join(this.root, `${ownerFileStem(ownerKey)}.rows.${generation}.json`);
   }
@@ -233,25 +209,6 @@ export class BaseStoreFiles {
     });
   }
 
-  async backupBeforeRowGalleryMigration(ownerKey: string, meta: BaseMeta) {
-    const sources = [
-      this.metaPath(ownerKey),
-      this.rowsPath(ownerKey, meta.rowsGeneration),
-      this.galleryPath(ownerKey, meta.galleryGeneration ?? 0),
-    ];
-    await Promise.all(sources.map(async (source) => {
-      await copyFile(
-        source,
-        `${source}.pre-row-gallery.bak`,
-        constants.COPYFILE_EXCL
-      ).catch((cause) => {
-        if (isCode(cause, "EEXIST")) return;
-        if (source.includes(".gallery.") && isCode(cause, "ENOENT")) return;
-        throw cause;
-      });
-    }));
-  }
-
   /** 清理 durableAtomicWrite 崩溃遗留的 `*.tmp`；仅在 initialize 串行窗口调用。 */
   async sweepTemporaryFiles() {
     const entries = await readdir(this.root, { withFileTypes: true });
@@ -260,7 +217,7 @@ export class BaseStoreFiles {
         .filter((entry) => entry.isFile() && entry.name.endsWith(".tmp"))
         .map((entry) =>
           rm(join(this.root, entry.name), { force: true }).catch(() =>
-            this.options.warn(`Base tmp 清理失败：${entry.name}`)
+            console.warn(`Base tmp 清理失败：${entry.name}`)
           )
         )
     );
@@ -298,24 +255,10 @@ export class BaseStoreFiles {
     );
   }
 
-  async retainUnownedGenerations(metaIds: ReadonlySet<string>) {
-    const entries = await readdir(this.root, { withFileTypes: true });
-    for (const entry of entries) {
-      const match =
-        /^((?:chat|project)-[A-Za-z0-9_-]{1,128})\.(?:rows|gallery|history)\.\d+\.json$/.exec(
-          entry.name
-        );
-      if (!entry.isFile() || !match || metaIds.has(match[1]!)) continue;
-      this.options.warn(
-        `Base 世代 ${entry.name} 缺少可验证所有者，按 unknown 保留`
-      );
-    }
-  }
-
   async removeFamilyFiles(ownerKey: string) {
     const entries = await readdir(this.root, { withFileTypes: true });
     const pattern = new RegExp(
-      `^${escapePattern(ownerFileStem(ownerKey))}(?:\\.json(?:\\.bak-\\d+|\\.pre-row-gallery\\.bak)?|\\.corrupt\\.json|\\.(?:rows|gallery|history)\\.\\d+\\.json(?:\\.pre-row-gallery\\.bak)?)$`
+      `^${escapePattern(ownerFileStem(ownerKey))}(?:\\.json|\\.(?:rows|gallery|history)\\.\\d+\\.json)$`
     );
     await Promise.all(
       entries
@@ -330,7 +273,7 @@ export class BaseStoreFiles {
     const entries = await readdir(this.root, { withFileTypes: true });
     const stem = ownerFileStem(ownerKey);
     const pattern = new RegExp(
-      `^${escapePattern(stem)}(?:\\.json(?:\\.bak-\\d+|\\.pre-row-gallery\\.bak)?|\\.corrupt\\.json|\\.(?:rows|gallery|history)\\.\\d+\\.json(?:\\.pre-row-gallery\\.bak)?)$`
+      `^${escapePattern(stem)}(?:\\.json|\\.(?:rows|gallery|history)\\.\\d+\\.json)$`
     );
     for (const entry of entries) {
       if (!entry.isFile() || !pattern.test(entry.name)) continue;

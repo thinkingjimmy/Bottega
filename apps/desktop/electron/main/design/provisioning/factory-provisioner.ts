@@ -14,7 +14,7 @@ import {
   inspectPackage,
   packageDigest,
   removePackageArtifact,
-} from "../../apps/share/package-contract";
+} from "../../apps/share/package/package-contract";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const trustSchema = z

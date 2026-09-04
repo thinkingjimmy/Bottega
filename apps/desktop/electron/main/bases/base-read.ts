@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on immutable Base snapshots, the shared canonical cell context/projection kernel, crypto scope hashes, and tool-result budgets
- * [OUTPUT]: Provides legacy base_query plus bounded read_base projections with formula modes, cursors, and column metadata
- * [POS]: The main Base read boundary; it builds one canonical context from the full snapshot and never performs Base mutations
+ * [OUTPUT]: Provides the bounded three-mode `read_base` projection plus the App GUI legacy rows query, both with formula modes, cursors, and column metadata
+ * [POS]: The only main-process Base read boundary; it builds one canonical context from the full snapshot and never performs Base mutations
  */
 
 import { createHash } from "node:crypto";
@@ -20,21 +20,19 @@ import { builtinCallToolResultBytes } from "../tools/result";
 export const BASE_QUERY_RESULT_BYTE_LIMIT = 700 * 1024;
 export const BASE_QUERY_ENVELOPE_RESERVE = 4 * 1024;
 
-type QuerySort = { column_id: string; direction: "asc" | "desc" };
-export type QueryArgs = {
+export type ReadArgs = {
   filter?: BaseFilter;
-  sort?: QuerySort[];
+  sort?: Array<{ column_id: string; direction: "asc" | "desc" }>;
   columns?: string[];
   cursor?: string;
   limit: number;
-};
-export type ReadArgs = QueryArgs & {
-  section_id: string;
+  /** 省略即当前 chat 可写的 Base；它同时构成 cursor 作用域的一部分。 */
+  section_id?: string;
   row_ids?: string[];
   options_for?: string;
 };
 
-export function selectRows(base: BaseSnapshot, args: QueryArgs) {
+export function selectRows(base: BaseSnapshot, args: ReadArgs) {
   const known = new Set(base.meta.columns.map((column) => column.id));
   const columns = args.columns ?? base.meta.columns.map((column) => column.id);
   for (const id of columns) assertColumn(known, id, "投影");
@@ -62,7 +60,8 @@ export function selectRows(base: BaseSnapshot, args: QueryArgs) {
   };
 }
 
-export function queryBase(base: BaseSnapshot, args: QueryArgs, byteLimit: number) {
+/* App GUI 的 legacy rows 端点仍走这条 offset 游标查询；read_base 已不再使用。 */
+export function queryBase(base: BaseSnapshot, args: ReadArgs, byteLimit: number) {
   const selectedRows = selectRows(base, args);
   const cursor = decodeLegacyCursor(args.cursor);
   if (cursor.revision !== undefined && cursor.revision !== base.meta.revision) {
@@ -105,7 +104,7 @@ export function readBase(base: BaseSnapshot, args: ReadArgs, byteLimit: number) 
 function readQuery(base: BaseSnapshot, args: ReadArgs, byteLimit: number) {
   const selection = selectRows(base, args);
   const scope = scopeHash({
-    section_id: args.section_id,
+    section_id: args.section_id ?? null,
     filter: args.filter ?? null,
     sort: args.sort ?? null,
     columns: args.columns ?? null,
@@ -227,7 +226,7 @@ function readOptions(base: BaseSnapshot, args: ReadArgs, byteLimit: number) {
   const column = base.meta.columns.find((item) => item.id === args.options_for);
   if (!column) throw statusError(400, `未知 options_for 列 ${args.options_for}`);
   if (column.type !== "select") throw statusError(400, `列 ${column.id} 不是 select`);
-  const scope = scopeHash({ section_id: args.section_id, column_id: column.id });
+  const scope = scopeHash({ section_id: args.section_id ?? null, column_id: column.id });
   const offset = decodeReadCursor(
     args.cursor,
     "options",

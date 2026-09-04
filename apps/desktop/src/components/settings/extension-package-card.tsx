@@ -304,11 +304,7 @@ function eligibilityStatus(
 function hasDeliveryDifference(
   component: ExtensionPackageView["components"][number]
 ) {
-  return (
-    component.eligibility.some((item) => !item.eligible) ||
-    (component.kind === "mcp-server" &&
-      component.deliveryHealth.some((item) => item.status !== "healthy"))
-  );
+  return component.eligibility.some((item) => !item.eligible);
 }
 
 function deliveryDifferenceFacts(
@@ -325,18 +321,5 @@ function deliveryDifferenceFacts(
         })
       )
       .join(" | "),
-    component.kind === "mcp-server"
-      ? component.deliveryHealth
-          .filter((item) => item.status !== "healthy")
-          .map((item) =>
-            t("settings.extensions.package.healthEntry", {
-              backend: item.backendId,
-              status: t(
-                `settings.extensions.package.deliveryHealth.${item.status}`
-              ),
-            })
-          )
-          .join(" | ")
-      : "",
   ].filter(Boolean);
 }

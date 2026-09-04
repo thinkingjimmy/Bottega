@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on chat-turn/chats/codex contracts, canonical Project scope, Extension generation identities, and Project Tools session receipts
- * [OUTPUT]: Provides presentation-free multi-backend DTOs, ProductFailure-aware terminal and warning lifecycle, structured usage-limit facts, MCP-plan-bound SessionRef, durable Skill receipts, runtime/auth/Steer contracts, structured input, CAS, and budgets
+ * [OUTPUT]: Provides presentation-free multi-backend DTOs, ProductFailure-aware terminal and warning lifecycle, structured usage-limit facts, MCP-plan-bound SessionRef, durable Skill receipts, runtime/auth/Steer contracts, structured input, CAS, and budgets (native vs imported tool-detail caps included)
  * [POS]: Shared Agent wire truth connecting Electron main, preload, and renderer without exposing mutable scope authority
  */
 
@@ -272,6 +272,14 @@ export const SECTION_ATTACHMENT_TOTAL_BYTE_LIMIT = 8 * 1024 * 1024;
 
 /** 工具 detail / 过程文本单条截断上限（决策 7），协议层与持久化层共用 */
 export const TOOL_DETAIL_BYTE_LIMIT = 4 * 1024;
+
+/* ── 导入历史的工具详情另有一档 ──────────────────────────────────
+ * 4 KiB 是原生 turn 的落盘约定：过程条目由我们自己生成，截短一点无非
+ * 少看几行。导入历史不是：那是当年真实跑过的一屏 `git diff`、一段构建
+ * 日志，剪到 4 KiB 就等于把证据剪掉一半。它仍在 32 KiB 的消息预算之内，
+ * 只是把这一格让给真正需要的一方。
+ * ────────────────────────────────────────────────────────── */
+export const IMPORTED_TOOL_DETAIL_BYTE_LIMIT = 16 * 1024;
 
 export const ATTACHMENT_LIMIT = 8;
 export const ATTACHMENT_BYTE_LIMIT = 8 * 1024 * 1024;

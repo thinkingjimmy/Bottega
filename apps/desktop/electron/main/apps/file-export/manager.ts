@@ -1,12 +1,15 @@
 /**
- * [INPUT]: Depends on native destination selection, durable exact-path intents, Node file/hash custody, active surface binding, and side-effect lifecycle ports
- * [OUTPUT]: Provides begin/write/finalize/cancel/surface-close/crash-recovery for file.export V1 with atomic dialog-slot admission, one-unacknowledged-chunk backpressure, and 20 MiB integrity limits
+ * [INPUT]: Depends on native destination selection, durable exact-path intents, Node file/hash custody, node:util's TextDecoder, active surface binding, and side-effect lifecycle ports
+ * [OUTPUT]: Provides begin/write/finalize/cancel/surface-close/crash-recovery for file.export V1 with atomic dialog-slot admission, one-unacknowledged-chunk backpressure, streaming content validation, and 20 MiB integrity limits
  * [POS]: file-export Host authority; App runtimes never receive destination paths or reusable file handles
  */
 
 import { createHash, randomUUID } from "node:crypto";
 import { open, rename, rm } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
+/* TextDecoder 显式取自 node:util：主进程编译不含 DOM lib，私有树里它能当
+   类型用只是 @types/jsdom 顺手带进来的副作用，公开树没有这层运气。 */
+import { TextDecoder } from "node:util";
 import type { FileHandle } from "node:fs/promises";
 import {
   beginFileExportRequestV1Schema,
@@ -27,15 +30,24 @@ const WINDOWS_RESERVED = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 
 /* 曾经这里有 logicalSurfaceId 与 leaseId 两个字段，装配处把同一个
    appSurfaceLeaseId 用非空断言填进去两次——两个名字、一份事实、零校验。
-   现在只留它真正携带的东西：surface 租约 id。 */
-export type FileExportBinding = Readonly<{
+   decisionId 与 cutoverRevision 是同一种病的第二季：写进来、从不比对，
+   README 却宣称会话被它们绑住。会话真正的代际闸门是 side-effect permit
+   （随 cutover 关闭准入、drain、按面取消），surface 身份则由 assertSurface
+   逐次核对。留一个没人读的字段，只会让下一个人以为它在守护什么。 */
+type FileExportBinding = Readonly<{
   appId: string;
   generationId: string;
   surfaceLeaseId: string;
   runtimeSurfaceId: string;
-  decisionId: string;
-  cutoverRevision: number;
 }>;
+
+/* 校验载荷不能靠攒下整份文件：20 MiB 的 text/* 会先被 concat 复制一份，再
+   解成一个同样大的字符串。UTF-8 是流式可判定的，逐块喂给同一个 fatal 解码
+   器即可；只有 JSON 必须看到全文才能 parse。 */
+type Validation =
+  | Readonly<{ kind: "utf8"; decoder: TextDecoder }>
+  | Readonly<{ kind: "json"; chunks: Buffer[] }>
+  | Readonly<{ kind: "signature" }>;
 
 type Session = {
   exportId: string;
@@ -49,7 +61,7 @@ type Session = {
   bytes: number;
   seq: number;
   firstBytes: Buffer;
-  validationBytes: Buffer[];
+  validation: Validation;
   startedAt: number;
   touchedAt: number;
   timer: NodeJS.Timeout;
@@ -58,7 +70,7 @@ type Session = {
   terminal: boolean;
 };
 
-export type FileExportPorts = Readonly<{
+type FileExportPorts = Readonly<{
   chooseDestination(input: { suggestedName: string; mediaType: string }): Promise<string | null>;
   startPermit(permit: GuiSideEffectPermit): void;
   completePermit(permit: GuiSideEffectPermit, result: CompleteFileExportResultV1): void;
@@ -174,7 +186,7 @@ export class FileExportManager {
         bytes: 0,
         seq: 0,
         firstBytes: Buffer.alloc(0),
-        validationBytes: [],
+        validation: validationFor(request.mediaType),
         startedAt,
         touchedAt: startedAt,
         timer: setTimeout(() => this.cancel(exportId, "timeout").catch(() => undefined), IDLE_TIMEOUT_MS),
@@ -214,14 +226,13 @@ export class FileExportManager {
         session.seq += 1;
         try {
           await writeChunk(session.file, chunk, offset);
+          absorb(session, chunk);
         } catch (cause) {
           await this.finish(session, { status: "failed", code: exportFailureCode(cause) }, true);
           throw cause;
         }
         session.hash.update(chunk);
         session.touchedAt = this.now();
-        session.firstBytes = Buffer.concat([session.firstBytes, chunk]).subarray(0, 16);
-        if (isStructuredText(session.request.mediaType)) session.validationBytes.push(chunk);
         this.arm(session);
         return { exportId: session.exportId, seq: parsed.seq, acceptedBytes: chunk.byteLength };
       });
@@ -372,17 +383,50 @@ function validateSuggestedName(name: string, mediaType: BeginFileExportRequestV1
   return extension ? name : `${name}${suffix}`;
 }
 
+function validationFor(mediaType: BeginFileExportRequestV1["mediaType"]): Validation {
+  if (mediaType === "application/json") return { kind: "json", chunks: [] };
+  return mediaType.startsWith("text/")
+    ? { kind: "utf8", decoder: new TextDecoder("utf-8", { fatal: true }) }
+    : { kind: "signature" };
+}
+
+/* 每块只留它可能贡献的那点东西：签名要的前 16 字节最多再拷 16 字节，
+   UTF-8 逐块判定，JSON 才留全文。 */
+function absorb(session: Session, chunk: Buffer) {
+  if (session.firstBytes.length < 16) {
+    session.firstBytes = Buffer.concat([session.firstBytes, chunk.subarray(0, 16)]).subarray(0, 16);
+  }
+  const validation = session.validation;
+  if (validation.kind === "json") validation.chunks.push(chunk);
+  if (validation.kind !== "utf8") return;
+  try {
+    validation.decoder.decode(chunk, { stream: true });
+  } catch {
+    throw exportError("FILE_EXPORT_TYPE");
+  }
+}
+
 function validateContent(session: Session) {
+  const validation = session.validation;
+  if (validation.kind === "utf8") {
+    /* 收尾解码不能省：断在半个码点上的文件在流式阶段是「还没读完」，只有
+       这一下 flush 能把它判成非法。 */
+    try {
+      validation.decoder.decode();
+    } catch {
+      throw exportError("FILE_EXPORT_TYPE");
+    }
+    return;
+  }
+  if (validation.kind === "json") {
+    try {
+      JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(validation.chunks)));
+    } catch {
+      throw exportError("FILE_EXPORT_TYPE");
+    }
+    return;
+  }
   const mediaType = session.request.mediaType;
-  if (mediaType === "text/plain;charset=utf-8" || mediaType === "text/csv;charset=utf-8") {
-    new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(session.validationBytes));
-    return;
-  }
-  if (mediaType === "application/json") {
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(session.validationBytes));
-    JSON.parse(text);
-    return;
-  }
   const signatures: Record<string, readonly number[]> = {
     "image/png": [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
     "image/jpeg": [0xff, 0xd8, 0xff],
@@ -394,10 +438,6 @@ function validateContent(session: Session) {
   if (mediaType === "image/webp" && session.firstBytes.subarray(8, 12).toString("ascii") !== "WEBP") {
     throw exportError("FILE_EXPORT_TYPE");
   }
-}
-
-function isStructuredText(mediaType: string) {
-  return mediaType.startsWith("text/") || mediaType === "application/json";
 }
 
 async function writeChunk(file: FileHandle, chunk: Buffer, offset: number) {

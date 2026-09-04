@@ -24,9 +24,9 @@ import type { SkillsCatalog } from "../skills-catalog";
 import type { SkillsTurnCustodyStore } from "../skills-management/turn-custody";
 import type { ExtensionRuntimeHolder } from "../extensions/lifecycle/disable-convergence";
 import type { ExtensionProjectionLedger } from "../extensions/lifecycle/projection-ledger";
-import { AppDeleteService } from "./app-delete";
-import { AppChatSlots } from "./app-chat-slots";
-import { AppNavigationService } from "./app-navigation";
+import { AppDeleteService } from "./conversion/app-delete";
+import { AppChatSlots } from "./turn/app-chat-slots";
+import { AppNavigationService } from "./turn/app-navigation";
 import { windowRegistry } from "../window/surfaces/window-registry";
 import { surfaceWindowController } from "../window/surfaces/surface-window-controller";
 import { WINDOW_SURFACES_CHANNEL } from "../../../shared/window-surfaces-ipc";
@@ -37,9 +37,8 @@ import {
 import { AppAttachmentFence } from "./attachments/attachment-fence";
 import { AppGrantAuthority } from "./attachments/grant-authority";
 import { AppAttachmentSurfaceLeaseRegistry } from "./attachments/surface-leases";
-import { AppManagementLeaseRegistry } from "./attachments/management-leases";
 import type { AppsService } from "./apps-service";
-import { SaveAsAppService } from "./save-as-app";
+import { SaveAsAppService } from "./conversion/save-as-app";
 import { BaseAppImporter } from "./install/import-base-app";
 import { ShareFlow } from "./share/share-flow";
 import { AppGenerationDrainProviderRegistry } from "../lifecycle/app-generation-drain-providers";
@@ -147,11 +146,6 @@ export function configureAppMode(dependencies: AppModeDependencies) {
     grantAuthority
   );
   dependencies.apps.configureSurfaceLeases(surfaceLeases);
-  /* 管理会话与 attachment surface 是同一层「App-hosted UI capability」的两半：
-     一半绑 conversation，一半绑 App 详情页。它们共用同一批撤销点。 */
-  dependencies.apps.configureManagementLeases(
-    new AppManagementLeaseRegistry(dependencies.apps.store)
-  );
   dependencies.bases.configureAppSurfaceValidator(surfaceLeases);
   dependencies.bases.ownerResolver.configureAppAttachments({
     effectiveGrant: (chatId, appId) =>

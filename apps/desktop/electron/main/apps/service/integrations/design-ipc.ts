@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on trusted renderer context/residence, Design shared DTOs, surface leases, and narrow AppsService Design ports
+ * [INPUT]: Depends on trusted renderer context/residence, Design shared DTOs, surface leases, and the AppDesignIntegration leaf itself
  * [OUTPUT]: Provides registerDesignIpc plus strict parsers for trusted import-candidate/import/history/restore, auto-open, visibility, and custody deletion; owner migration has no renderer channel
  * [POS]: apps/service/integrations Design renderer boundary; destructive owner identity comes only from main Project rebind evidence
  */
@@ -8,7 +8,6 @@ import {
   APPS_CHANNEL,
   type DesignAutoOpenInput,
   type DesignCanvasVersion,
-  type DesignDataStatus,
 } from "../../../../../shared/apps-ipc";
 import type { RendererIpc } from "../../../ipc-registrar";
 import { surfaceWindowController } from "../../../window/surfaces/surface-window-controller";
@@ -17,31 +16,28 @@ import type { AppAttachmentSurfaceLeaseRegistry } from "../../attachments/surfac
 import { assertSurfaceLeaseId } from "../../attachments/grant-inputs";
 import { assertAppId } from "../../service-inputs";
 import { isCanonicalDesignPath } from "../../../design/storage/canvas-registry";
+import type { AppDesignIntegration } from "./design-integration";
 
 type InternalDesignVersion = Omit<DesignCanvasVersion, "file"> & {
   canonicalRelativePath: string;
 };
 
+/* 直接收下 Design 那一面的叶子。九个逐条转手的委托方法只是把同一组签名再抄
+   一遍，抄错一处就是一条静默走空的通道；类型在这里替我们盯住它们。 */
 export type DesignIpcDependencies = Readonly<{
   surfaceLeases(): AppAttachmentSurfaceLeaseRegistry;
-  importDesignCanvas(surfaceLeaseId: string, file: string): Promise<{ file: string }>;
-  listDesignImportCandidates(surfaceLeaseId: string): Promise<readonly string[]>;
-  listDesignFiles(surfaceLeaseId: string): Promise<readonly string[]>;
-  listDesignVersions(surfaceLeaseId: string, file: string): Promise<readonly InternalDesignVersion[]>;
-  restoreDesignVersion(surfaceLeaseId: string, versionId: string): Promise<InternalDesignVersion>;
-  setDesignAutoOpen(input: {
-    appId: string;
-    chatId: string;
-    conversationIncarnationId: string;
-    suppressed: boolean;
-  }): Promise<boolean>;
-  designDataStatus(appId: string): DesignDataStatus;
-  deleteDesignData(input: {
-    appId: string;
-    dataCustodyId: string;
-    confirmed: true;
-  }): Promise<boolean>;
-  setDesignEnabled(appId: string, enabled: boolean): Promise<unknown>;
+  design: Pick<
+    AppDesignIntegration,
+    | "importCanvas"
+    | "listImportCandidates"
+    | "listSurfaceFiles"
+    | "listSurfaceVersions"
+    | "restoreSurfaceVersion"
+    | "setAutoOpen"
+    | "dataStatus"
+    | "deleteData"
+    | "setEnabled"
+  >;
 }>;
 
 export function registerDesignIpc(ipc: RendererIpc, deps: DesignIpcDependencies) {
@@ -49,29 +45,29 @@ export function registerDesignIpc(ipc: RendererIpc, deps: DesignIpcDependencies)
     .handleWithContext(APPS_CHANNEL.listDesignFiles, async (context, raw) => {
       const input = assertDesignSurfaceObject(raw, ["appId", "appSurfaceLeaseId"]);
       await assertTrustedSurface(context, input, deps);
-      return deps.listDesignFiles(input.appSurfaceLeaseId);
+      return deps.design.listSurfaceFiles(input.appSurfaceLeaseId);
     })
     .handleWithContext(APPS_CHANNEL.listDesignImportCandidates, async (context, raw) => {
       const input = assertDesignSurfaceObject(raw, ["appId", "appSurfaceLeaseId"]);
       await assertTrustedSurface(context, input, deps);
-      return deps.listDesignImportCandidates(input.appSurfaceLeaseId);
+      return deps.design.listImportCandidates(input.appSurfaceLeaseId);
     })
     .handleWithContext(APPS_CHANNEL.importDesignCanvas, async (context, raw) => {
       const input = assertDesignFileInput(raw);
       await assertTrustedSurface(context, input, deps);
-      return deps.importDesignCanvas(input.appSurfaceLeaseId, input.file);
+      return deps.design.importCanvas(input.appSurfaceLeaseId, input.file);
     })
     .handleWithContext(APPS_CHANNEL.listDesignVersions, async (context, raw) => {
       const input = assertDesignFileInput(raw);
       await assertTrustedSurface(context, input, deps);
-      return (await deps.listDesignVersions(input.appSurfaceLeaseId, input.file))
+      return (await deps.design.listSurfaceVersions(input.appSurfaceLeaseId, input.file))
         .map(publicVersion);
     })
     .handleWithContext(APPS_CHANNEL.restoreDesignVersion, async (context, raw) => {
       const input = assertDesignRestoreInput(raw);
       await assertTrustedSurface(context, input, deps);
       return publicVersion(
-        await deps.restoreDesignVersion(input.appSurfaceLeaseId, input.versionId)
+        await deps.design.restoreSurfaceVersion(input.appSurfaceLeaseId, input.versionId)
       );
     })
     .handleWithContext(APPS_CHANNEL.setDesignAutoOpen, (context, raw) => {
@@ -81,7 +77,7 @@ export function registerDesignIpc(ipc: RendererIpc, deps: DesignIpcDependencies)
         conversationId: input.conversationId,
         conversationIncarnationId: input.conversationIncarnationId,
       });
-      return deps.setDesignAutoOpen({
+      return deps.design.setAutoOpen({
         appId: input.appId,
         chatId: input.conversationId,
         conversationIncarnationId: input.conversationIncarnationId,
@@ -91,17 +87,17 @@ export function registerDesignIpc(ipc: RendererIpc, deps: DesignIpcDependencies)
     .handleWithContext(APPS_CHANNEL.designDataStatus, (context, rawAppId) => {
       const appId = assertAppId(rawAppId);
       surfaceWindowController.assertAppStudioMutation(context, appId);
-      return deps.designDataStatus(appId);
+      return deps.design.dataStatus(appId);
     })
     .handleWithContext(APPS_CHANNEL.deleteDesignData, (context, raw) => {
       const input = assertDeleteDesignData(raw);
       surfaceWindowController.assertAppStudioMutation(context, input.appId);
-      return deps.deleteDesignData(input);
+      return deps.design.deleteData(input);
     })
     .handleWithContext(APPS_CHANNEL.setDesignEnabled, (context, raw) => {
       const input = assertDesignEnabled(raw);
       surfaceWindowController.assertAppStudioMutation(context, input.appId);
-      return deps.setDesignEnabled(input.appId, input.enabled);
+      return deps.design.setEnabled(input.appId, input.enabled);
     });
 }
 

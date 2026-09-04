@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppStore generation artifacts, sealed preference manifests, App-global cutover intents, canonical digests, and AppPreferencesStore
- * [OUTPUT]: Provides digest-keyed cached generation contracts, staging-frozen cutover adoption/validation, active-generation-only reset self-heal, durable-retirement reconciliation, first-install adoption, profile-local reads, and CAS writes/reset
+ * [OUTPUT]: Provides digest-keyed cached generation contracts validated once on cache entry, staging-frozen cutover adoption/validation, active-generation-only reset self-heal, one-sweep durable-retirement reconciliation, first-install adoption, profile-local reads, and CAS writes/reset
  * [POS]: Runtime bridge between a live Base GUI binding and the durable preference authority
  */
 
@@ -10,9 +10,13 @@ import type { BaseGuiLiveBinding } from "../../../../shared/apps-ipc";
 import type { AppGuiGenerationIntent } from "../../../../shared/app-gui/cutover";
 import type { AppGuiPreferenceAdoptionSnapshot } from "../../../../shared/app-gui/cutover";
 import { canonicalJson, sha256 } from "../gui-build/metadata";
-import type { AppStore } from "../app-store";
+import type { AppStore } from "../store/app-store";
 import type { PreferenceJsonSchema } from "./schema";
-import { AppPreferencesStore, type PreferenceContract } from "./store";
+import {
+  AppPreferencesStore,
+  assertPreferenceContract,
+  type PreferenceContract,
+} from "./store";
 
 /* 生成物是封存的，同一个 (generationId, schemaDigest, defaultsDigest) 三元组
    永远对应同一份磁盘字节；缓存键带上 digest，manifest 一变键就变，缓存自己
@@ -35,13 +39,13 @@ export class AppPreferencesRuntime {
     return this.store.closeAndFlush();
   }
 
-  async reconcileGenerationRetention() {
-    for (const record of this.apps.list()) {
-      await this.store.retainGenerations(
+  reconcileGenerationRetention() {
+    return this.store.retainGenerations(
+      new Map(this.apps.list().map((record) => [
         record.id,
-        new Set(record.generationBinding.drainingGenerationIds)
-      );
-    }
+        new Set(record.generationBinding.drainingGenerationIds),
+      ]))
+    );
   }
 
   async read(binding: BaseGuiLiveBinding) {
@@ -195,6 +199,9 @@ export class AppPreferencesRuntime {
       schema: schema as PreferenceJsonSchema,
       defaults,
     };
+    /* 校验属于「契约进入缓存」这一刻，不属于每一次读：contract 不可变，
+       同一份字节验一万遍也只会得到同一个结论。 */
+    assertPreferenceContract(contract);
     this.contracts.set(key, contract);
     while (this.contracts.size > CONTRACT_CACHE_LIMIT) {
       this.contracts.delete(this.contracts.keys().next().value as string);
@@ -206,12 +213,11 @@ export class AppPreferencesRuntime {
      已由 activeGenerationId 判等挡住，而 draining 可能长期存在，拿它当闸门
      会把自愈永久关死。 */
   private assertSelfHealAdmissible(binding: BaseGuiLiveBinding) {
-    const record = this.apps.get(binding.appId);
-    const active = record?.generationBinding.active;
-    if (!record || active?.generationId !== binding.generationId) {
-      throw preferenceError("preference_transitioning", 409);
-    }
-    if (record.generationBinding.pending) {
+    const facts = this.apps.routingFacts(binding.appId);
+    if (
+      facts?.activeGenerationId !== binding.generationId ||
+      facts.pendingGeneration
+    ) {
       throw preferenceError("preference_transitioning", 409);
     }
   }

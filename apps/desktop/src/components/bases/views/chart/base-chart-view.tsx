@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on projected Base rows/columns, the canonical BaseCellContext, ChartItem limits, dnd-kit, ResizeObserver, packing, and ChartCard
+ * [INPUT]: Depends on projected Base rows/columns, the canonical BaseCellContext, ChartItem limits, dnd-kit, ResizeObserver, packing, ChartCard, and the shared baseEntityId generator
  * [OUTPUT]: Provides BaseChartView with context-aware cards, 4/2-column packing, add/drag/resize/reset actions, and bounded dashboard states
  * [POS]: The Base Chart dashboard host; it owns layout interactions while ChartCard/model own canonical value projection
  */
@@ -37,6 +37,9 @@ import {
   packCharts,
 } from "@/lib/charts/chart-pack";
 import type { ChartOp } from "@/lib/charts/chart-ops";
+/* id 生成与 workbench 共用一份：这条 import 与 support 的 guessChartItem
+   互为环，但两端都只在调用期取用，模块求值期互不依赖。 */
+import { baseEntityId } from "../../base-workbench-support";
 import type { ChartComponent } from "@/components/charts/chart-viewport";
 import { ChartCard } from "./chart-card";
 
@@ -86,7 +89,7 @@ export function guessChartItem(columns: readonly BaseColumn[]): ChartItem {
     columns.find((column) => column.type === "text");
   const value = columns.find((column) => column.type === "number");
   return {
-    id: `chart_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`,
+    id: baseEntityId("chart"),
     chartType: "bar",
     dimensionColumnId: dimension?.id,
     valueColumnIds: value ? [value.id] : undefined,

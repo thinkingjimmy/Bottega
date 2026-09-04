@@ -12,7 +12,7 @@ import {
 
 type Source = "chat" | "project" | "global";
 
-export type GrantResolution = Readonly<{
+type GrantResolution = Readonly<{
   effective: AppCapabilityGrant | null;
   provenance: Readonly<{
     effectiveSource: Source | null;

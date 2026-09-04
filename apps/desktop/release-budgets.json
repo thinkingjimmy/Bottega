@@ -1,0 +1,11 @@
+{
+  "schema": "bottega.release-budgets/v1",
+  "description": "Upper bounds asserted by scripts/verify-packaged-payload.mjs for the current platform. Values are the first measured build after the 2026-09-04 size reduction with node_modules unpacked beside the ASAR and TypeScript declarations kept for the packaged App GUI compiler (DMG UDBZ 173103249; ZIP deflate-9 214292444; darwin unpackedPayloadBytes 627186432) plus 10%. The unpacked layout costs the per-file-deflated ZIP about 20 MiB versus a packed ASAR; that is the price of a working packaged compiler. Platforms without keys are measure-only until a real machine verifies them.",
+  "installers": {
+    "darwin-arm64.dmg": 190413574,
+    "darwin-arm64.zip": 235721689
+  },
+  "unpackedPayload": {
+    "darwin-arm64": 689905076
+  }
+}

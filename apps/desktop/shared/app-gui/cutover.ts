@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod and shared SHA-256 digest primitives
- * [OUTPUT]: Provides strict App-global cutover journal, cohort, and side-effect permit contracts with independent App CAS and previous-GUI authority identities, absolute-time barrier deadlines, and no persisted mirror of the live side-effect fence
- * [POS]: Shared app-gui cutover state machine; main persists the journal as a write-ahead intent ledger while the AppStore active CAS stays the single commit point, including first-GUI activation over an existing non-GUI App generation
+ * [OUTPUT]: Provides the two-state App-global cutover intent (pre-active versus active), independent App CAS and previous-GUI authority identities, the frozen preference-adoption snapshot, the fixed participant id plan, and the 0..N surface cohort contract
+ * [POS]: Shared app-gui cutover state machine; main persists the intent as a write-ahead record while the AppStore active CAS stays the single commit point, including first-GUI activation over an existing non-GUI App generation
  */
 
 import { z } from "zod";
@@ -13,60 +13,21 @@ const digestSchema = z
   .transform((value) => value as Sha256Digest);
 const idSchema = z.string().trim().min(1).max(200);
 
-export const GUI_STAGING_OPERATIONS = [
-  "bootstrap.first-paint",
-  "base.meta",
-  "base.query-v1",
-  "attachment.read",
-  "base.revision-event",
-  "preferences.preview",
-  "workspace.files",
-  "workspace.versions",
-  "workspace.source-line",
-  "workspace.opaque-preview",
-] as const;
-
-export const GUI_SIDE_EFFECT_KINDS = [
-  "legacy-base-mutation",
-  "legacy-navigation",
-  "legacy-compose-text",
-  "base-mutation",
-  "preferences-write",
-  "preferences-adopt",
-  "host-navigation",
-  "host-compose-text",
-  "file-export",
-] as const;
-
-export type GuiStagingOperationV1 = (typeof GUI_STAGING_OPERATIONS)[number];
-export type GuiSideEffectKindV1 = (typeof GUI_SIDE_EFFECT_KINDS)[number];
-
+/* 计划只剩「谁参与了这次切换」这一件事实。曾经每条 entry 还背着
+   contractVersion / stagingOperations / sideEffectKinds 三份载荷，
+   而请求期没有任何读者——它们只被算进一个从不比对的摘要里。 */
 export const GUI_CUTOVER_PARTICIPANT_IDS = [
   "core-projection-v1",
   "core-bootstrap-v1",
-  "legacy-side-effects-v1",
   "base-query-v1",
   "base-revision-event-v1",
-  "base-mutation-v1",
   "preferences-v1",
   "workspace-read-v1",
-  "host-actions-v1",
   "file-export-v1",
 ] as const;
 
 export type GuiCutoverParticipantIdV1 =
   (typeof GUI_CUTOVER_PARTICIPANT_IDS)[number];
-export type GuiCutoverParticipantPlanEntry = Readonly<{
-  participantId: GuiCutoverParticipantIdV1;
-  contractVersion: string;
-  scope: "app" | "surface" | "app-and-surface";
-  stagingOperations: readonly GuiStagingOperationV1[];
-  sideEffectKinds: readonly GuiSideEffectKindV1[];
-}>;
-export type GuiCutoverParticipantEvidence = Readonly<{
-  participantId: GuiCutoverParticipantIdV1;
-  evidenceDigest: Sha256Digest;
-}>;
 
 export type AppGuiGenerationAuthorityRef = Readonly<{
   generationId: string;
@@ -91,25 +52,12 @@ export type AppGuiGenerationIntent = Readonly<{
   nextGenerationId: string;
   previous: AppGuiGenerationAuthorityRef | null;
   next: AppGuiGenerationAuthorityRef;
-  participantPlan: readonly GuiCutoverParticipantPlanEntry[];
-  participantPlanDigest: Sha256Digest;
-  appParticipantEvidence: readonly GuiCutoverParticipantEvidence[];
+  participantPlan: readonly GuiCutoverParticipantIdV1[];
   preferenceAdoption: AppGuiPreferenceAdoptionSnapshot | null;
-  phase:
-    | "prepared"
-    | "staging"
-    | "cohort-frozen"
-    | "participants-ready"
-    | "admission-closing"
-    | "active"
-    | "draining"
-    | "retired"
-    | "aborted";
-  revision: number;
-  /* 绝对墙钟时刻（epoch ms），不是时长：deadline 在真正开始等待的那一刻盖章，
-     否则 barrier 会继承前面阶段已经花掉的预算。 */
-  readyDeadlineAt: number;
-  drainDeadlineAt: number;
+  /* 恢复只分得清两件事：Store CAS 之前（中止安全）与之后（只能前滚）。
+     九个阶段名里另外七个从来没有读者，deadline 也一样——崩溃后重来的
+     barrier 用的是新预算，不是上一条命剩下的。 */
+  phase: "pending" | "active";
 }>;
 
 export type AppGuiSurfaceTransitionMember = Readonly<{
@@ -119,7 +67,6 @@ export type AppGuiSurfaceTransitionMember = Readonly<{
   previousLeaseId: string | null;
   stagedRuntimeSurfaceId: string;
   stagingLeaseId: string | null;
-  readyEvidenceDigest: Sha256Digest | null;
   /* 成员只有四态：冻结前入列的 staging、投票后的 ready、随时可能的 closed，
      以及提交后的 swapped。没有 failed——成员失败没有信道能送达 main，
      真正的失败信号是 ready deadline；也没有 joining——冻结后不再有人入列。 */
@@ -152,29 +99,6 @@ const preferenceAdoptionSchema = z.object({
   defaultsDigest: digestSchema,
 }).strict();
 
-export const guiCutoverParticipantPlanEntrySchema: z.ZodType<GuiCutoverParticipantPlanEntry> = z
-  .object({
-    participantId: z.enum(GUI_CUTOVER_PARTICIPANT_IDS),
-    contractVersion: idSchema,
-    scope: z.enum(["app", "surface", "app-and-surface"]),
-    stagingOperations: z.array(z.enum(GUI_STAGING_OPERATIONS)).max(GUI_STAGING_OPERATIONS.length),
-    sideEffectKinds: z.array(z.enum(GUI_SIDE_EFFECT_KINDS)).max(GUI_SIDE_EFFECT_KINDS.length),
-  })
-  .strict()
-  .superRefine((entry, context) => {
-    if (new Set(entry.stagingOperations).size !== entry.stagingOperations.length) {
-      context.addIssue({ code: "custom", path: ["stagingOperations"], message: "participant staging operations must be unique" });
-    }
-    if (new Set(entry.sideEffectKinds).size !== entry.sideEffectKinds.length) {
-      context.addIssue({ code: "custom", path: ["sideEffectKinds"], message: "participant side effects must be unique" });
-    }
-  });
-
-const participantEvidenceSchema: z.ZodType<GuiCutoverParticipantEvidence> = z.object({
-  participantId: z.enum(GUI_CUTOVER_PARTICIPANT_IDS),
-  evidenceDigest: digestSchema,
-}).strict();
-
 export const appGuiGenerationIntentSchema: z.ZodType<AppGuiGenerationIntent> = z
   .object({
     cutoverId: idSchema,
@@ -183,24 +107,12 @@ export const appGuiGenerationIntentSchema: z.ZodType<AppGuiGenerationIntent> = z
     nextGenerationId: idSchema,
     previous: authoritySchema.nullable(),
     next: authoritySchema,
-    participantPlan: z.array(guiCutoverParticipantPlanEntrySchema).min(2).max(GUI_CUTOVER_PARTICIPANT_IDS.length),
-    participantPlanDigest: digestSchema,
-    appParticipantEvidence: z.array(participantEvidenceSchema).max(GUI_CUTOVER_PARTICIPANT_IDS.length),
+    participantPlan: z
+      .array(z.enum(GUI_CUTOVER_PARTICIPANT_IDS))
+      .min(2)
+      .max(GUI_CUTOVER_PARTICIPANT_IDS.length),
     preferenceAdoption: preferenceAdoptionSchema.nullable(),
-    phase: z.enum([
-      "prepared",
-      "staging",
-      "cohort-frozen",
-      "participants-ready",
-      "admission-closing",
-      "active",
-      "draining",
-      "retired",
-      "aborted",
-    ]),
-    revision: z.number().int().nonnegative(),
-    readyDeadlineAt: z.number().int().positive(),
-    drainDeadlineAt: z.number().int().positive(),
+    phase: z.enum(["pending", "active"]),
   })
   .strict()
   .superRefine((intent, context) => {
@@ -228,17 +140,12 @@ export const appGuiGenerationIntentSchema: z.ZodType<AppGuiGenerationIntent> = z
         message: "next generation identity mismatch",
       });
     }
-    const participantIds = intent.participantPlan.map((entry) => entry.participantId);
-    if (new Set(participantIds).size !== participantIds.length) {
-      context.addIssue({ code: "custom", path: ["participantPlan"], message: "participant plan ids must be unique" });
-    }
-    const appIds = new Set(intent.participantPlan
-      .filter((entry) => entry.scope !== "surface")
-      .map((entry) => entry.participantId));
-    for (const [index, evidence] of intent.appParticipantEvidence.entries()) {
-      if (!appIds.has(evidence.participantId)) {
-        context.addIssue({ code: "custom", path: ["appParticipantEvidence", index], message: "evidence is not owned by an app-scoped participant" });
-      }
+    if (new Set(intent.participantPlan).size !== intent.participantPlan.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["participantPlan"],
+        message: "participant plan ids must be unique",
+      });
     }
   });
 
@@ -256,7 +163,6 @@ export const appGuiSurfaceTransitionCohortSchema: z.ZodType<AppGuiSurfaceTransit
         previousLeaseId: idSchema.nullable(),
         stagedRuntimeSurfaceId: idSchema,
         stagingLeaseId: idSchema.nullable(),
-        readyEvidenceDigest: digestSchema.nullable(),
         state: z.enum(["staging", "ready", "closed", "swapped"]),
       }).strict()
     ).max(64),

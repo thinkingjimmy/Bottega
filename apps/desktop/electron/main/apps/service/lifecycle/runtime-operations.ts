@@ -1,20 +1,20 @@
 /**
  * [INPUT]: Depends on App store/runtime/delete services, Base GUI projection, gateway request barriers, generation-fenced side effects, and extension integration
- * [OUTPUT]: Provides focused runtime status, no-pre-revoke GUI cutover with request/effect drain, symmetric Studio authorize/decline, extension grant revocation, and destructive App lifecycle operations
+ * [OUTPUT]: Provides the live origin lookup, no-pre-revoke GUI cutover with request/effect drain, symmetric Studio authorize/decline, extension grant revocation, and destructive App lifecycle operations
  * [POS]: apps/service operation layer; removes transactional mechanics from the AppsService composition root
  */
 
 import { randomUUID } from "node:crypto";
-import type { AppRuntimeStatus, AppRecord, RemoveAppMode } from "../../../../../shared/apps-ipc";
+import type { AppRecord, RemoveAppMode } from "../../../../../shared/apps-ipc";
 import { asError } from "../../../errors";
 import type { AppExtensionIntegration } from "../../../extensions/integration/app-extension-composition";
-import type { AppDeleteService } from "../../app-delete";
-import { shouldMarkDeleteFailed } from "../../app-delete";
-import type { AppGateway } from "../../app-gateway";
-import type { AppRuntime } from "../../app-runtime";
-import type { AppStore } from "../../app-store";
-import type { AppGuiProjection } from "../../gui-projection";
-import type { MaintenanceGate } from "../../maintenance-gate";
+import type { AppDeleteService } from "../../conversion/app-delete";
+import { shouldMarkDeleteFailed } from "../../conversion/app-delete";
+import type { AppGateway } from "../../gateway/app-gateway";
+import type { AppRuntime } from "../../server/app-runtime";
+import type { AppStore } from "../../store/app-store";
+import type { AppGuiProjection } from "../../generation/gui-projection";
+import type { MaintenanceGate } from "../../maintenance/maintenance-gate";
 
 type GuiCutoverPorts = Readonly<{
   runExclusive<T>(appId: string, operation: () => Promise<T>): Promise<T>;
@@ -178,28 +178,6 @@ export async function rebuildExtensionGeneration(store: AppStore, appId: string)
   return store.migrateGeneration(appId, randomUUID());
 }
 
-export function runtimeStatus(
-  store: AppStore,
-  runtime: AppRuntime,
-  appId: string
-): AppRuntimeStatus {
-  const record = requireRecord(store, appId);
-  const generationId = record.generationBinding.active?.generationId ?? null;
-  const generation = record.generations.find((item) => item.generationId === generationId);
-  const running = runtime.isRunning(appId);
-  return {
-    appId,
-    state: record.state,
-    lifecycleRevision: record.lifecycleRevision,
-    generationId,
-    contentDigest: generation?.contentDigest ?? null,
-    runtime: running ? "running" : record.lastError?.phase === "start" ? "crashed" : "stopped",
-    activationId: running && generationId ? `activation:${appId}:${generationId}` : null,
-    origin: running ? runtime.getOrigin(appId) : null,
-    quarantined: record.state === "quarantined",
-  };
-}
-
 export function originWithoutStart(store: AppStore, runtime: AppRuntime, appId: string) {
   if (!runtime.isRunning(appId)) return null;
   const generationId = requireRecord(store, appId).generationBinding.active?.generationId;
@@ -237,6 +215,7 @@ export async function removeApp(input: {
     if (shouldMarkDeleteFailed({
       state: input.store.get(input.appId)?.state,
       hasResidual: stalled,
+      rejectionCode: (cause as { code?: unknown } | null)?.code,
     })) {
       await input.markDeleteStalled(asError(cause).message);
     }

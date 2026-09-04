@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on projected assistant messages, structured Agent failures, localized copy, and a prebuilt process timeline
- * [OUTPUT]: Provides RegularChatTurn, the final-response/error/usage-limit presentation for non-plan assistant turns
+ * [INPUT]: Depends on projected assistant messages, structured Agent failures, localized copy/fork action, and a prebuilt process timeline
+ * [OUTPUT]: Provides RegularChatTurn, the final-response/error/usage-limit presentation and optional fork action for non-plan assistant turns
  * [POS]: Chat transcript terminal renderer; keeps user-facing failure projection separate from the process-heavy turn renderer
  */
 
@@ -27,6 +27,8 @@ export function RegularChatTurn({
   onContinue,
   onRetry,
   process,
+  onFork,
+  forkDisabledReason,
 }: {
   backendDisplayName: string;
   backendId?: AgentBackendId;
@@ -35,6 +37,8 @@ export function RegularChatTurn({
   onContinue: () => void;
   onRetry: () => void;
   process: ReactNode;
+  onFork?: () => void;
+  forkDisabledReason?: string;
 }) {
   const { t } = useAppTranslation();
   const legacyCode =
@@ -94,6 +98,8 @@ export function RegularChatTurn({
         content={content}
         contextReceipt={message.contextReceipt}
         createdAt={message.createdAt}
+        onFork={onFork}
+        forkDisabledReason={forkDisabledReason}
         role="assistant"
       />
     </Message>

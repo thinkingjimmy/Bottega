@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Apps/Projects providers, explicit positive Project grants, the shared App authorization dialog, fenced grant commands, shared Card/DropdownMenu primitives, Settings list primitives, and i18n
+ * [INPUT]: Depends on Apps/Projects providers, explicit positive Project grants, the shared App authorization dialog, the shared data-level wording, fenced grant commands, shared Card/DropdownMenu primitives, Settings list primitives, and i18n
  * [OUTPUT]: Provides the Project App section — its own SettingsSection, an AppCard-shaped grid, direct Pin/Unpin, and a per-App menu holding permissions and Project removal
  * [POS]: Contextual Project App manager shared by Project Settings and the Sidebar Project shortcut; the card anatomy is the Apps page's, so one App wears one face everywhere
  */
@@ -48,12 +48,13 @@ import {
   SettingsEmpty,
   SettingsSection,
 } from "@/components/settings/settings-layout";
+import { APP_DATA_LEVEL_KEYS } from "@/components/apps/data-levels";
 import { setAppGrantState } from "@/lib/apps-client";
 import { errorMessage } from "@/lib/errors";
 
-export type AppsSnapshotState = "loading" | "failed" | "ready";
+type AppsSnapshotState = "loading" | "failed" | "ready";
 
-export type ProjectAppPlacementRow = Readonly<{
+type ProjectAppPlacementRow = Readonly<{
   appId: string;
   record: AppRecord | undefined;
   pinned: boolean;
@@ -360,15 +361,6 @@ function ProjectAppCard({
   );
 }
 
-/* 档位的措辞只有一处真相：apps.authorization.data*。这三句从前在产品里
-   有三套说法——弹窗一套、App 授权面一套、这里的摘要还借了第三套——三套
-   都不算错，只是没有一个地方说了算。 */
-const DATA_LEVEL_KEY = {
-  none: "apps.authorization.dataNone",
-  read: "apps.authorization.dataRead",
-  "row-write": "apps.authorization.dataWrite",
-} as const;
-
 function grantSummary(
   grant: AppGrantRecord | undefined,
   t: (key: string, values?: Record<string, unknown>) => string
@@ -377,7 +369,7 @@ function grantSummary(
     return t("projectSettings.general.placements.noGrant");
   }
   return t("projectSettings.general.placements.grantSummary", {
-    grant: t(DATA_LEVEL_KEY[grant.data?.level ?? "none"]),
+    grant: t(APP_DATA_LEVEL_KEYS[grant.data?.level ?? "none"]),
     agent: t(
       grant.agentDelegation.fileRead || grant.agentDelegation.useData
         ? "projectSettings.general.placements.agentOn"

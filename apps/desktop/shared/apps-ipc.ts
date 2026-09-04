@@ -1,6 +1,6 @@
 /**
  * [INPUT]: type-only AgentBackendId from agent-ipc, placement facts, and Extension identity vocabulary
- * [OUTPUT]: Provides sealed App manifests, v15 Editor/Use residence/source facts, fenced contextual grant candidates carrying the App's own icon so one App wears one face on every surface, compact effective provenance, compatibility-bound Studio authorization/grants, durable pinnedAt records, operation types, generation/grant/reference records and migration revisions, the canonical defaultAppGrantRequest payload, runtime eligibility, Design events, and the bridge/surface/navigation/install buckets it re-exports
+ * [OUTPUT]: Provides sealed App manifests, v15 Editor/Use residence/source facts, fenced contextual grant candidates carrying the App's own icon so one App wears one face on every surface, compact effective provenance, compatibility-bound Studio authorization/grants, durable pinnedAt records, operation types, generation/grant/reference records, the canonical defaultAppGrantRequest payload, runtime eligibility, Design events, and the bridge/surface/navigation/install buckets it re-exports
  * [POS]: Single shared Apps wire truth and the barrel over its sibling buckets; navigation, surface, acquisition (apps-install-ipc), authorization, generation and Agent custody remain explicitly separate contracts
  */
 
@@ -25,7 +25,6 @@ import type {
 import type {
   AppExtensionRequirementManifestField,
   ExtensionBackendEligibilityView,
-  ExtensionBackendHealthView,
   ExtensionPackageGenerationRef,
   FrozenAppExtensionRequirementSetV1,
   Sha256Digest,
@@ -111,7 +110,6 @@ export type AppStudioGrant = {
   baseGuiDecisionId: string | null;
   baseGuiDecisionRevision: number;
   compatibilityRefDigest?: Sha256Digest;
-  compatibilityMigrationRevision?: string;
   grantedAt: number;
 };
 
@@ -180,18 +178,16 @@ export type AppGenerationRuntimeBinding =
 export type AppGeneration = Readonly<{
   generationId: string;
   generationBuildId: string;
-  /** v1 读取期仅为迁移兼容；所有新 generation 必须同时持有三个 v2 digest。 */
-  manifestDigest?: Sha256Digest;
-  sourcePackageDigest?: Sha256Digest;
+  manifestDigest: Sha256Digest;
+  sourcePackageDigest: Sha256Digest;
   contentDigest: Sha256Digest;
   /** Required by content-layout-v3 and absent from legacy generations. */
   buildReceiptDigest?: Sha256Digest;
   compatibilityRefDigest?: Sha256Digest;
   compatibilityRef?: AppGuiCompatibilityRef;
-  compatibilityMigrationRevision?: string;
   manifest: AppManifest;
   extensionRequirementResolution: AppExtensionResolutionBinding;
-  contentLayoutVersion: 1 | 2 | 3;
+  contentLayoutVersion: 2 | 3;
   createdAt: number;
   retiredAt?: number;
 }>;
@@ -217,7 +213,6 @@ export type AppGenerationBinding = {
       requestedHostActions: readonly BaseGuiHostActionCapability[];
       requestedCapabilityScopes: BaseGuiCapabilityScopes;
       compatibilityRefDigest?: Sha256Digest;
-      compatibilityMigrationRevision?: string;
       state: "consent-required" | "approved" | "declined";
     }>;
     extensionState?: "consent-required" | "ready-to-promote";
@@ -263,7 +258,6 @@ export type AppExtensionRequirementStatus = Readonly<{
     | Readonly<{ state: "revoked"; revokedAt: number }>
     | Readonly<{ state: "not-applicable" }>;
   eligibility: readonly ExtensionBackendEligibilityView[];
-  deliveryHealth: readonly ExtensionBackendHealthView[];
 }>;
 
 export type AppExtensionStatus = Readonly<{
@@ -499,37 +493,10 @@ export type AppInstallEvent =
   | { type: "agent-visibility"; visibility: AppAgentVisibility }
   | { type: "runtime-warning"; message: string };
 
-/* ------------------------------------------------------------------------- *
- *  两条 warning 各有归属：页面横幅与预设区。挤进一个标量就只能靠 `??` 短路
- *  ——网关降级时坏预设包的告警被永久吞掉，视图层也只剩「有告警就别显示空
- *  状态」这种猜法，猜的结果是一个什么都不渲染的空网格。分槽后各归各位。
- *
- *  没有「列表读不出来」这一槽：主档损坏时 AppStore.load() 直接 fail-closed
- *  抛出，产品根本起不来，main 不存在「列表可疑但我还活着」这种状态。
- *  renderer 侧那条 listWarning 只对应它自己的 IPC 失败，不上 wire。
- * ------------------------------------------------------------------------- */
-export type AppsListSnapshot = {
-  apps: AppRecord[];
-  /** 网关降级：列表可信，但 App 跑不起来 */
-  runtimeWarning: string | null;
-};
-
 export type AppOpenResult = {
   origin: string;
   activationId?: string;
   generationId?: string;
-};
-
-export type AppRuntimeStatus = {
-  appId: string;
-  state: AppRecord["state"];
-  lifecycleRevision: number;
-  generationId: string | null;
-  contentDigest: Sha256Digest | null;
-  runtime: AppRuntimeState;
-  activationId: string | null;
-  origin: string | null;
-  quarantined: boolean;
 };
 
 export type AppGrantTarget =
@@ -640,12 +607,6 @@ export type AppGrantCandidatesInput = Readonly<{
 }>;
 
 export type AvailableAppsInput = { conversationId: string; conversationIncarnationId: string };
-/**
- * renderer 只拿一个 opaque id：管理会话的闭合 scope（generation/digest/lifecycle
- * 与 webContents/session 绑定）是 main-only，绝不做成可回传的 DTO。
- */
-export type AppManagementLeaseRef = Readonly<{ managementLeaseId: string }>;
-
 export type SetAppAgentInput = {
   appId: string;
   role: "interactive" | "maintenance";

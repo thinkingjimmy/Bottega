@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat and readonly-record schemas, preview projection, SQLite connection, aggregate admission, the shared imported-entry SQL, closed commands, and repository codecs
- * [OUTPUT]: Provides all-Chat or single-Chat metadata that never projects a readonly Chat without an active generation, budgeted aggregates including empty readonly records, and byte-bounded native/imported timeline projections while delegating transcript navigation queries
+ * [OUTPUT]: Provides all-Chat or single-Chat metadata that never projects a readonly Chat without an active generation, budgeted aggregates including empty readonly records, and byte-bounded native/imported timeline projections (one canonical turn per imported assistant entry: folded process statements unfold into text/tool parts, a plan payload becomes kind "plan") while delegating transcript navigation queries
  * [POS]: Read-only query layer beneath the ChatRepository facade
  */
 
@@ -15,8 +15,11 @@ import type {
   SupersededChatBranch,
 } from "../../../../../shared/chats-ipc";
 import { MESSAGE_BYTE_LIMIT } from "../../../../../shared/chats-ipc";
-import type { ForeignToolEvent } from "../../../../../shared/history-import-ipc";
-import { projectForeignTools } from "../import/foreign-projection";
+import type {
+  ForeignProcessStep,
+  ForeignToolEvent,
+} from "../../../../../shared/history-import-ipc";
+import { projectForeignParts } from "../import/foreign-projection";
 import {
   assertSubagentBudget,
   chatRecordSchema,
@@ -115,6 +118,7 @@ export class ChatRepositoryReader {
               m.archived_at local_archived_at,
               b.state binding_state, b.home_dir, b.session_backend, b.session_id,
               b.session_tool_plan_json, b.start_state_json,
+              b.execution_dir, b.execution_kind,
               u.app_role, u.context_json, u.grants_json, u.grant_revision,
               u.read_only_reason, t.job_json,
               o.source_kind, o.storage_fingerprint, o.canonical_native_id,
@@ -202,6 +206,12 @@ export class ChatRepositoryReader {
       session,
       importOrigin,
       snapshotDigest: row.snapshot_digest ?? null,
+      parentChatId: row.parent_chat_id ?? null,
+      parentIncarnationId: row.parent_incarnation_id ?? null,
+      parentMessageId: row.parent_message_id ?? null,
+      inheritedThroughSeq: row.inherited_through_seq ?? null,
+      executionDir: row.binding_state === "ready" ? row.execution_dir ?? null : null,
+      executionKind: row.binding_state === "ready" ? row.execution_kind ?? null : null,
       projectId: row.local_project_id ?? null,
       appRole: row.app_role ?? null,
       context: parseJson(row.context_json, "authority context"),
@@ -243,6 +253,12 @@ export class ChatRepositoryReader {
       session: null,
       importOrigin,
       snapshotDigest: null,
+      parentChatId: null,
+      parentIncarnationId: null,
+      parentMessageId: null,
+      inheritedThroughSeq: null,
+      executionDir: null,
+      executionKind: null,
       projectId: row.local_project_id === null ? null : String(row.local_project_id),
       appRole: null,
       context: { kind: "ordinary" },
@@ -272,7 +288,8 @@ export class ChatRepositoryReader {
       `SELECT c.*,
               a.aggregate_revision, a.timeline_revision, m.local_project_id,
               m.archived_at local_archived_at,
-              b.home_dir, b.session_backend, b.session_id, b.session_tool_plan_json,
+              b.state binding_state, b.home_dir, b.session_backend, b.session_id,
+              b.execution_dir, b.execution_kind, b.session_tool_plan_json,
               b.start_state_json, u.app_role, u.context_json, u.grants_json,
               u.grant_revision, u.read_only_reason, t.job_json,
               o.source_kind, o.storage_fingerprint, o.canonical_native_id,
@@ -339,6 +356,12 @@ export class ChatRepositoryReader {
       session,
       importOrigin,
       snapshotDigest: core.snapshot_digest ?? null,
+      parentChatId: core.parent_chat_id ?? null,
+      parentIncarnationId: core.parent_incarnation_id ?? null,
+      parentMessageId: core.parent_message_id ?? null,
+      inheritedThroughSeq: core.inherited_through_seq ?? null,
+      executionDir: core.binding_state === "ready" ? core.execution_dir ?? null : null,
+      executionKind: core.binding_state === "ready" ? core.execution_kind ?? null : null,
       projectId: core.local_project_id ?? null,
       appRole: core.app_role ?? null,
       context: parseJson(core.context_json, "authority context"),
@@ -389,6 +412,12 @@ export class ChatRepositoryReader {
       session: null,
       importOrigin: this.readonlyImportOrigin(core),
       snapshotDigest: null,
+      parentChatId: null,
+      parentIncarnationId: null,
+      parentMessageId: null,
+      inheritedThroughSeq: null,
+      executionDir: null,
+      executionKind: null,
       projectId: core.local_project_id === null ? null : String(core.local_project_id),
       appRole: null,
       context: { kind: "ordinary" },
@@ -693,15 +722,26 @@ export class ChatRepositoryReader {
     const payload = parseJson(row.payload_json, "imported payload") as {
       tools?: unknown;
       workedForMs?: unknown;
+      process?: unknown;
+      plan?: unknown;
     };
-    const parts = projectForeignTools(
-      Array.isArray(payload.tools) ? payload.tools as ForeignToolEvent[] : undefined,
-      Math.max(0, MESSAGE_BYTE_LIMIT - Buffer.byteLength(content, "utf8"))
-    );
+    /* 一 turn 一条 assistant：被折进来的中间陈述逐条摊开（每步先它之前那些
+       工具、再它的陈述），末条自己的工具殿后——与产品 TurnParts 逐结构
+       同构，渲染层零分支。 */
+    const parts = projectForeignParts({
+      process: Array.isArray(payload.process)
+        ? payload.process as ForeignProcessStep[]
+        : undefined,
+      tools: Array.isArray(payload.tools) ? payload.tools as ForeignToolEvent[] : undefined,
+      budgetBytes: Math.max(0, MESSAGE_BYTE_LIMIT - Buffer.byteLength(content, "utf8")),
+      itemIdPrefix: String(row.entry_version_id),
+    });
     return {
       ...common,
       role: "assistant",
       ...(parts.length ? { parts } : {}),
+      /* 计划正文是本轮权威产出：与原生 planMessageKind 同律，空正文不成卡片。 */
+      ...(payload.plan === true && content.trim() ? { kind: "plan" as const } : {}),
       ...(typeof payload.workedForMs === "number" && payload.workedForMs >= 0
         ? { durationMs: Math.trunc(payload.workedForMs) }
         : {}),

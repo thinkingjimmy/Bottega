@@ -37,7 +37,7 @@ const RAW_TRANSPORT_MARKERS = [
 const ABSOLUTE_REMOTE = /https?:\/\/[^\s/?#]/i;
 const PROTOCOL_RELATIVE_REMOTE = /^\/\/[^\s/?#]/;
 
-export type RuntimePolicyCode =
+type RuntimePolicyCode =
   | "GUI_BUILD_IMPORT_FORBIDDEN"
   | "GUI_BUILD_RAW_SDK_FORBIDDEN"
   | "GUI_BUILD_REMOTE_RESOURCE";

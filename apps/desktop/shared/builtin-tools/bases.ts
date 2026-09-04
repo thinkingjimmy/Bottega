@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod, shared Base schemas, and builtin-tools platform queries/annotations/spec contracts
- * [OUTPUT]: Provides Base read/mutation/export specs, six row-backed view schemas, Gallery/Chart configuration, and `$ref`-free wire schemas; disk export is explicitly side-effecting and Plan-excluded
+ * [OUTPUT]: Provides the single `read_base` read spec plus Base mutation/export specs, six row-backed view schemas, Gallery/Chart configuration, and `$ref`-free wire schemas; disk export is explicitly side-effecting and Plan-excluded
  * [POS]: The builtin-tools Base-domain authority; it maps Base permissions separately from environmental side-effect annotations
  */
 
@@ -23,7 +23,7 @@ import {
 import { CHART_TYPES } from "../chart-payload";
 import {
   baseFilterWireSchema,
-  baseQueryShape,
+  readBaseShape,
   entityId,
   mutation,
   read,
@@ -138,7 +138,7 @@ const updateColumnsSchema = z
   });
 
 const readBaseSchema = (filter: z.ZodType) =>
-  baseQueryShape(filter)
+  readBaseShape(filter)
     .extend({
       section_id: sectionId.optional(),
       target: appTarget,
@@ -146,11 +146,11 @@ const readBaseSchema = (filter: z.ZodType) =>
       options_for: entityId.optional(),
     })
     .superRefine((value, context) => {
-      if (Boolean(value.section_id) === Boolean(value.target)) {
+      if (value.section_id && value.target) {
         context.addIssue({
           code: "custom",
           path: ["target"],
-          message: "section_id 与 target 必须且只能提供一个",
+          message: "section_id 与 target 最多提供一个",
         });
       }
       const hasQuery =
@@ -189,21 +189,11 @@ export const BASE_TOOL_SPECS = [
     annotations: read,
   },
   {
-    name: "base_query",
-    domainId: "bases",
-    access: "read",
-    description:
-      "分页查询当前 chat 可写的 Base；支持 Filter AST、排序和 columns 投影，返回 nextCursor。",
-    inputSchema: baseQueryShape(baseFilterSchema).extend({ target: appTarget }),
-    wireInputSchema: baseQueryShape(baseFilterWireSchema).extend({ target: appTarget }),
-    annotations: read,
-  },
-  {
     name: "read_base",
     domainId: "bases",
     access: "read",
     description:
-      "跨 Section 读取 Base，三种模式互斥：默认按 filter/sort/columns 查询；row_ids 按给定顺序直取并以 missing_row_ids/remaining_row_ids 保证续读前进；options_for 分页读取 select 列完整 options。column_meta 只覆盖投影列，options_truncated 时改用 options_for。",
+      "读取 Base，三种寻址形式最多选一：省略 section_id 与 target＝当前 chat 可写的 Base（尚未建表时 404，读不建表）；section_id＝跨 Section 读另一条 Section 的 Base；target:\"app:<id>\"＝本轮已附加 App 的 Base。三种模式互斥：默认按 filter/sort/columns 分页查询并返回 nextCursor；row_ids 按给定顺序直取并以 missing_row_ids/remaining_row_ids 保证续读前进；options_for 分页读取 select 列完整 options。column_meta 只覆盖投影列，options_truncated 时改用 options_for。",
     inputSchema: readBaseSchema(baseFilterSchema),
     wireInputSchema: readBaseSchema(baseFilterWireSchema),
     annotations: read,

@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on Apps plus narrow Chat metadata stores, Sections pending CreateIntent, shared AppLocale/local detachment causes, Agent conversation lifecycle, Memory rebind fence, Design rebind observer, ProjectStore, ProjectResourceCleanupCoordinator, and ProjectsService
- * [OUTPUT]: Provides composeProjectsService, which wires authoritative App-directory reveal, Project-held lifecycle callbacks, Base-custody existence/cleanup, unified record cleanup, stale-session release, and main-owned rebind evidence into Memory and Design convergence
+ * [INPUT]: Depends on Apps plus narrow Chat metadata/managed-worktree stores, Sections pending CreateIntent, shared AppLocale/local detachment causes, Agent conversation lifecycle, Memory rebind fence, Design rebind observer, ProjectStore, ProjectResourceCleanupCoordinator, and ProjectsService
+ * [OUTPUT]: Provides composeProjectsService, which wires authoritative App-directory reveal, managed-worktree rebind blockers, Project-held lifecycle callbacks, Base-custody existence/cleanup, unified record cleanup, stale-session release, and main-owned rebind evidence into Memory and Design convergence
  * [POS]: The main composition of the projects module; ProjectsService maintains a domain-specific index that is only responsible for lifecycle and instance order
  */
 
 import type { AppsService } from "../apps/apps-service";
+import { join } from "node:path";
 import {
   cancelConversations,
   hasConversationActivity,
@@ -15,6 +16,7 @@ import type { ChatsService } from "../chats/chats-service";
 import type { BasesService } from "../bases/bases-service";
 import type { MemoryService } from "../memory/service/memory-service";
 import type { ConversationDeletionCoordinator } from "../deletion/conversation-deletion-coordinator";
+import type { ChatHomeService } from "../chat-home/chat-home-service";
 import type { ProjectStore } from "./store/project-store";
 import { ProjectsService } from "./projects-service";
 import { ProjectRebindJournal } from "./rebind/rebind-journal";
@@ -28,6 +30,7 @@ export function composeProjectsService(input: {
   apps: () => AppsService | null;
   chats: () => ChatsService | null;
   chatStore: () => ChatStore | null;
+  chatHomes?: () => ChatHomeService | null;
   bases: () => BasesService | null;
   memory?: () => MemoryService | null;
   deletions?: () => ConversationDeletionCoordinator | null;
@@ -89,6 +92,35 @@ export function composeProjectsService(input: {
       input.chats()!.publishUpserted(summary),
     listChatsByProject: (projectId) =>
       input.chatStore()?.listByProject(projectId) ?? [],
+    hasManagedWorktreesForProject: (projectId) => {
+      const store = input.chatStore();
+      const retained = Boolean(store?.listByProject(projectId).some(
+        (chatId) => store.getMetadata(chatId)?.executionKind === "managed-worktree"
+      ));
+      const pending = input.chatHomes?.()?.ledger.list().some((record) =>
+        record.worktree?.projectId === projectId &&
+        record.phase !== "rolledBack"
+      ) ?? false;
+      return retained || pending;
+    },
+    resolveConversationBranchWorkspace: async (projectId, conversationId) => {
+      const store = input.chatStore();
+      const record = store?.getMetadata(conversationId);
+      if (
+        !record ||
+        record.projectId !== projectId ||
+        record.executionKind !== "managed-worktree" ||
+        !record.executionDir
+      ) return undefined;
+      const owned = await input.chatHomes?.()?.verifyOwnership(conversationId);
+      if (
+        !owned?.worktree ||
+        owned.worktree.projectId !== projectId ||
+        record.incarnationId !== owned.incarnationId ||
+        record.executionDir !== join(owned.homeDir, owned.worktree.relativePath)
+      ) return undefined;
+      return record.executionDir;
+    },
     hasPendingProjectCreation: input.hasPendingProjectCreation,
     localDetachReasons: input.localDetachReasons,
     releaseChatProject: async (chatId) => {

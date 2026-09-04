@@ -30,13 +30,13 @@ import type { AdmissionGate, SagaResult } from "../../lifecycle/admission-gate";
 import type { LifecycleIntent } from "../../lifecycle/intent-types";
 import type { LifecycleIntentStore } from "../../lifecycle/intent-store";
 import type { ProjectsService } from "../../projects/projects-service";
-import type { AppStore } from "../app-store";
+import type { AppStore } from "../store/app-store";
 import {
   AppConfigStore,
   validateConfigRequirements,
 } from "../share/app-config-store";
 import { detectCliRequirements } from "../share/cli-detectors";
-import { inspectPackage, packageDigest } from "../share/package-contract";
+import { inspectPackage, packageDigest } from "../share/package/package-contract";
 import { appManifestSchema } from "./manifest-schema";
 import { digestCanonical } from "../../extensions/registry-store";
 import type { ExtensionInstaller } from "../../extensions/install/installer";

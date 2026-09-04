@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto/timers and shared history-import contracts
- * [OUTPUT]: Provides the read-only HistoryAdapter port, 4-GiB constant-memory block streams, separately capped compatibility reads, stable JSONL streaming, two-depth scans, fingerprints, containment, per-line limits, titles, abort checkpoints, and compatibility collection
- * [POS]: Mechanistic history-import adapter kernel shared by main projections and the dedicated parser worker
+ * [OUTPUT]: Provides the read-only HistoryAdapter port, 4-GiB constant-memory message streams, separately capped compatibility reads, stable JSONL streaming, two-depth scans, fingerprints, containment, per-line limits, titles, abort checkpoints, and compatibility collection
+ * [POS]: Mechanistic history-import adapter kernel shared by main projections and the dedicated parser worker; its parser version is what retires every generation an older parser produced, and its entries carry no Project ownership — HistoryImportService.scanOwned stamps that
  */
 
 import { createHash } from "node:crypto";
@@ -14,7 +14,7 @@ import {
 } from "node:timers/promises";
 import type {
   ExternalSessionKey,
-  ForeignHistoryBlock,
+  ForeignHistoryMessage,
   ForeignHistorySummary,
   ForeignToolEvent,
   HistoryFileFingerprint,
@@ -22,8 +22,18 @@ import type {
   HistorySourceKind,
 } from "../../../shared/history-import-ipc";
 
-export const HISTORY_PARSER_VERSION = 1;
-export const UNSUPPORTED_PREVIEW_BYTES = 4 * 1024;
+/* 解析器输出的形状变了就必须换版本：v1 会把 world_state 这类运行时记录
+   物化成一条 assistant 正文，v2 只收消息，v3 还把一个 turn 折成一条 assistant
+   （中间陈述进 process、计划正文拆出标签、产品信封剥离、过程流按真实时序）。
+   版本号是 fingerprint 的一部分，指纹一变，启动检测就把 Project 判为「有
+   变更」；真正以新代际重导发生在用户点侧栏那枚刷新图标之后——与源文件变更
+   走的是同一道确认流程，我们不替他重写已经导入的历史。
+
+   v2 → v3 不是因为形状又变了一次，而是因为 v2 这个号在开发机上被用脏了：
+   折叠/plan/信封/时序四次修改都发生在 v2 的号底下，同一个 sourceKey 上因此
+   躺着一批半成品 begin 收据（同 operationId、不同 requestHash）。换号即换
+   sourceKey，那批收据永远不会再被重放。 */
+export const HISTORY_PARSER_VERSION = 3;
 export const HISTORY_COMPAT_FILE_BYTES = 64 * 1024 * 1024;
 export const HISTORY_FILE_BYTES = 4 * 1024 * 1024 * 1024;
 export const HISTORY_STREAM_LINE_BYTES = 64 * 1024 * 1024;
@@ -37,6 +47,10 @@ const INCOMPLETE_TAIL_RETRY_MS = [8, 24, 48] as const;
  */
 export type ScanDepth = "identity" | "full";
 
+/* `projectId` 在这一层恒为空串：适配器读的是文件，不知道 Project 是什么。
+   盖章的人是 `HistoryImportService.scanOwned`——它刚按 cwd 判过归属。类型上
+   它不可选，是因为同一个 summary 形状要一路走到 wire；空串是「尚未盖章」，
+   不是「不属于任何 Project」。 */
 export type AdapterEntry = ForeignHistorySummary & {
   /** 仅 main/index 可见；append 保持，truncate/replace/parser 变化时轮换。 */
   sourceIncarnation: string;
@@ -82,18 +96,18 @@ export type HistoryBinding = Readonly<{
 }>;
 
 export type ParsedHistory = Readonly<{
-  blocks: ForeignHistoryBlock[];
+  blocks: ForeignHistoryMessage[];
   incompleteTail: boolean;
 }>;
 
 export type HistoryBlockBatches = AsyncGenerator<
-  ForeignHistoryBlock[],
+  ForeignHistoryMessage[],
   boolean,
   void
 >;
 
 export type HistoryBlockTurns = AsyncGenerator<
-  readonly ForeignHistoryBlock[],
+  readonly ForeignHistoryMessage[],
   boolean,
   void
 >;
@@ -123,7 +137,7 @@ export const HISTORY_IMPORT_PARSE_BATCH_POLICY = Object.freeze({
 export async function collectHistoryBatches(
   source: HistoryBlockBatches
 ): Promise<ParsedHistory> {
-  const blocks: ForeignHistoryBlock[] = [];
+  const blocks: ForeignHistoryMessage[] = [];
   while (true) {
     const next = await source.next();
     if (next.done) return { blocks, incompleteTail: next.value };
@@ -136,7 +150,7 @@ export async function* batchHistoryTurns(
   source: HistoryBlockTurns,
   signal?: AbortSignal
 ): HistoryBlockBatches {
-  let batch: ForeignHistoryBlock[] = [];
+  let batch: ForeignHistoryMessage[] = [];
   let bytes = 0;
   let startedAt = Date.now();
   const reset = () => {
@@ -377,17 +391,6 @@ export async function yieldHistoryParse(signal?: AbortSignal) {
   await yieldToEventLoop(undefined, { signal });
 }
 
-export function escapedUnsupported(value: string) {
-  const bytes = Buffer.from(value, "utf8");
-  const clipped = bytes.subarray(0, UNSUPPORTED_PREVIEW_BYTES).toString("utf8");
-  return clipped
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
 export function timestamp(value: unknown, fallback: number) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value < 10_000_000_000 ? Math.round(value * 1_000) : Math.round(value);
@@ -420,15 +423,14 @@ export function drainTools(tools: Map<string, ForeignToolEvent>) {
 }
 
 /** 悬空工具挂到最近一条 assistant；找不到（无 assistant）则丢弃。 */
-export function attachPendingTools(blocks: ForeignHistoryBlock[], tools: Map<string, ForeignToolEvent>) {
+export function attachPendingTools(blocks: ForeignHistoryMessage[], tools: Map<string, ForeignToolEvent>) {
   if (!tools.size) return;
   let lastAssistant = -1;
   blocks.forEach((block, index) => {
-    if (block.kind === "message" && block.role === "assistant") lastAssistant = index;
+    if (block.role === "assistant") lastAssistant = index;
   });
-  if (lastAssistant < 0) return;
-  const block = blocks[lastAssistant];
-  if (block?.kind !== "message") return;
+  const block = lastAssistant < 0 ? null : blocks[lastAssistant];
+  if (!block) return;
   blocks[lastAssistant] = { ...block, tools: [...(block.tools ?? []), ...drainTools(tools)] };
 }
 
@@ -438,12 +440,12 @@ export function attachPendingTools(blocks: ForeignHistoryBlock[], tools: Map<str
  * （审批中止等），账无处可挂便丢弃——只报源里真有的账，不发明。重试 turn 的
  * 第二次账覆盖前账，报的是最后一次执行。
  */
-export function attachWorkedFor(blocks: ForeignHistoryBlock[], durationMs: unknown) {
+export function attachWorkedFor(blocks: ForeignHistoryMessage[], durationMs: unknown) {
   const ms = typeof durationMs === "number" && Number.isFinite(durationMs) ? Math.max(0, Math.round(durationMs)) : null;
   if (ms === null) return;
   for (let index = blocks.length - 1; index >= 0; index--) {
     const block = blocks[index];
-    if (block?.kind !== "message") continue;
+    if (!block) continue;
     if (block.role === "user") return;
     blocks[index] = { ...block, workedForMs: ms };
     return;

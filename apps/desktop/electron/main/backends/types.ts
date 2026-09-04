@@ -68,6 +68,11 @@ export type RuntimeValidation =
   | { status: "installed" }
   | { status: "unsupported"; reason: string };
 
+/** 缓存快照复用前的二次确认；rejected 只表示"外部真相变了"，新路径的裁决交回发现。 */
+export type RuntimeConfirmation =
+  | { status: "confirmed" }
+  | { status: "rejected"; reason: string };
+
 // 判别联合而非可选字段：usage-limit 必然带窗口信息，
 // 类型上就不存在"声称限流却说不出是哪个窗口"的中间态。
 export type BackendFailure =
@@ -480,6 +485,15 @@ export type ConnectionDescriptor = {
    * 建目录、落缓存，与真实 turn 各说各话。
    */
   versionEnvironment?(runtime: AgentRuntime): NodeJS.ProcessEnv;
+  /**
+   * Registry 每次复用缓存的 installed 快照前调用。发现之后外部真相可能已变
+   * （Claude 的企业 managed policy 会改写 adapter 将 spawn 的路径），被拒即
+   * 作废快照并重新发现，让新路径走完整的 identity/版本校验，而不是在这里裁决。
+   */
+  confirmRuntime?(
+    runtime: ResolvedRuntime,
+    signal?: AbortSignal
+  ): RuntimeConfirmation | Promise<RuntimeConfirmation>;
   validateTurnOptions(value: unknown): void;
   validateSessionId(sessionId: string): boolean;
   createTurn(options: BackendTurnOptions): AgentTurn;

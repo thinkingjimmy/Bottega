@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the installed production dependency graph and lockfile, package/license bytes, compiler/query/preferences/workspace/export/Workbench source slices, signed Base UI components, UI Blocks, Starter bytes, and externally provisioned release/platform public keys
+ * [INPUT]: Depends on apps/desktop/runtime-dependencies.json (slice membership and appGui package set), the installed production dependency graph and lockfile, package/license bytes, compiler/query/preferences/workspace/export/Workbench source slices, signed Base UI components, UI Blocks, Starter bytes, and externally provisioned release/platform public keys
  * [OUTPUT]: Deterministically writes or checks gate-isolated manifests, recursive CycloneDX SBOMs, whitespace-canonical full-license NOTICE bundles, performance requirements, authoring/compatibility metadata, and fail-closed formal-release trust anchors
  * [POS]: App GUI release metadata authority; receipts consume generated digests instead of hand-maintained placeholders
  */
@@ -18,20 +18,26 @@ const desktopRequire = createRequire(join(desktopRoot, "package.json"));
 const check = process.argv.includes("--check");
 const desktopPackage = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
 
-const dependencyNames = [
-  "@base-ui/react", "@dnd-kit/core", "@dnd-kit/sortable", "@phosphor-icons/react",
-  "@tanstack/react-table", "@tanstack/react-virtual", "@tailwindcss/node", "@tailwindcss/oxide",
-  "axe-core", "date-fns", "echarts", "esbuild", "lucide-react", "react", "react-dom",
-  "react-hook-form", "tailwindcss", "typescript", "zod",
-];
-const gateDependencyNames = {
-  "gate-1": ["@base-ui/react", "@phosphor-icons/react", "@tailwindcss/node", "@tailwindcss/oxide", "esbuild", "lucide-react", "react", "react-dom", "tailwindcss", "typescript", "zod"],
-  "gate-2": ["date-fns", "react", "react-dom", "zod"],
-  "gate-3": ["@dnd-kit/core", "@dnd-kit/sortable", "@tanstack/react-table", "@tanstack/react-virtual", "axe-core", "date-fns", "echarts", "react", "react-dom", "react-hook-form", "zod"],
-};
-const dependencies = Object.fromEntries(dependencyNames.map((name) => [name, desktopPackage.dependencies[name]]));
-if (Object.values(dependencies).some((version) => typeof version !== "string" || /[~^*]/.test(version))) {
-  throw new Error("App GUI dependencies must be exact versions");
+/* 单一权威：清单里 roles 含 appGui 的包是编译器运行时集合，runtimeGates 是 slice 成员。
+   metadata.ts 从同一份 JSON 派生版本表，package.json 的一致性由
+   check-dependency-manifest.mjs 在构建前保证；这里只再核一次版本相等，
+   让任何一处分叉在生成与 --check 两条路径上都立刻失败。 */
+const runtimeDependencies = JSON.parse(await readFile(join(desktopRoot, "runtime-dependencies.json"), "utf8"));
+const appGuiPackages = Object.entries(runtimeDependencies.packages)
+  .filter(([, entry]) => entry.roles.includes("appGui"))
+  .sort(([left], [right]) => compareText(left, right));
+const dependencyNames = appGuiPackages.map(([name]) => name);
+const gateDependencyNames = Object.fromEntries(
+  ["gate-1", "gate-2", "gate-3"].map((gate) => [
+    gate,
+    appGuiPackages.filter(([, entry]) => (entry.runtimeGates ?? []).includes(gate)).map(([name]) => name),
+  ])
+);
+const dependencies = Object.fromEntries(appGuiPackages.map(([name, entry]) => [name, entry.version]));
+for (const [name, version] of Object.entries(dependencies)) {
+  if (desktopPackage.dependencies[name] !== version) {
+    throw new Error(`${name}: runtime-dependencies.json says ${version}, package.json says ${desktopPackage.dependencies[name]}`);
+  }
 }
 
 const gateFiles = {
@@ -66,23 +72,23 @@ const gateFiles = {
   ],
   "gate-2": [
     "electron/main/app-gui-query-worker-entry.ts",
-    "electron/main/apps/base-gui/api/query-executor.ts",
-    "electron/main/apps/base-gui/api/query-v1.ts",
-    "electron/main/apps/base-gui/api/query-worker.ts",
+    "electron/main/apps/base-gui/api/query/query-executor.ts",
+    "electron/main/apps/base-gui/api/query/query-v1.ts",
+    "electron/main/apps/base-gui/api/query/query-worker.ts",
     "electron/main/apps/base-gui/compiled-workspace.ts",
     "electron/main/apps/base-gui/workspace-preview.ts",
     "electron/main/apps/preferences/schema.ts",
     "electron/main/apps/preferences/store.ts",
     "electron/main/apps/preferences/runtime.ts",
     "shared/app-gui/query.ts",
-    "src/components/apps/app-gui-surface.tsx",
+    "src/components/apps/surface/app-gui-surface.tsx",
   ],
   "gate-3": [
     "electron/main/apps/file-export/intent-store.ts",
     "electron/main/apps/file-export/manager.ts",
     "electron/main/apps/file-export/controller.ts",
     "electron/main/apps/gui-build/product-modules/blocks.ts",
-    "src/components/apps/app-workbench.tsx",
+    "src/components/apps/detail/app-workbench.tsx",
     "shared/app-gui/file-export.ts",
   ],
 };
@@ -270,11 +276,14 @@ async function collectInstalledGraph(rootNames) {
 }
 
 async function resolvePackageRoot(name, issuerRoot) {
-  const adjacent = issuerRoot ? join(owningNodeModules(issuerRoot), name) : null;
-  if (adjacent) {
-    const resolved = await realpath(adjacent).catch(() => null);
-    if (resolved && await packageHasName(resolved, name)) return resolved;
-  }
+  /* 纯类型包（@types/react）的 exports 没有 "." 入口，require.resolve(name) 会抛
+     ERR_PACKAGE_PATH_NOT_EXPORTED；根包与传递依赖一样先按相邻 node_modules 目录
+     定位，require.resolve 只作 hoist 兜底。 */
+  const adjacent = issuerRoot
+    ? join(owningNodeModules(issuerRoot), name)
+    : join(desktopRoot, "node_modules", name);
+  const resolved = await realpath(adjacent).catch(() => null);
+  if (resolved && await packageHasName(resolved, name)) return resolved;
   const scopedRequire = issuerRoot ? createRequire(join(issuerRoot, "package.json")) : desktopRequire;
   let current = dirname(scopedRequire.resolve(name));
   while (current !== dirname(current)) {

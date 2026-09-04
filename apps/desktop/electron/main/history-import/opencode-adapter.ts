@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on Node module/path, user home(XDG_DATA_HOME missing ~/.local/share) with history-import adapter Public core
- * [OUTPUT]: Provides OpencodeHistoryAdapter with read-only session scans and transaction-fenced paged message streams, revision checks, limits, tools, and duration
+ * [OUTPUT]: Provides OpencodeHistoryAdapter with read-only session scans and transaction-fenced paged message streams, revision checks, limits, tools, duration, product-context envelope stripping, and one-assistant-per-turn folding
  * [POS]: The history-import OpenCode format adapter; The session_message migration target is empty and can be switched to todo/08-22-kimi-opencode-history-import.md L1); WAL search for read to keep single-generation snapshots
  */
 
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import type { ForeignHistoryBlock, ForeignHistoryMessage, ForeignToolEvent } from "../../../shared/history-import-ipc";
+import type { ForeignHistoryMessage, ForeignToolEvent } from "../../../shared/history-import-ipc";
 import {
   HISTORY_PARSER_VERSION,
   batchHistoryTurns,
@@ -28,6 +28,7 @@ import {
   type ScanDepth,
   yieldHistoryParse,
 } from "./adapter";
+import { foldHistoryTurns, stripProductContext } from "./turn-folding";
 import { HISTORY_FILE_BYTES } from "./adapter";
 
 type Json = Record<string, unknown>;
@@ -105,7 +106,7 @@ export class OpencodeHistoryAdapter implements HistoryAdapter {
   }
 
   parseBatches(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches {
-    return batchHistoryTurns(this.parseTurns(entry, signal), signal);
+    return batchHistoryTurns(foldHistoryTurns(this.parseTurns(entry, signal), signal), signal);
   }
 
   async parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory> {
@@ -163,7 +164,7 @@ export class OpencodeHistoryAdapter implements HistoryAdapter {
 }
 
 function consumeRows(page: Row[], state: ParseState, entry: AdapterEntry) {
-  const blocks: ForeignHistoryBlock[] = [];
+  const blocks: ForeignHistoryMessage[] = [];
   for (const row of page) {
     const messageId = asString(row.message_id);
     if (!messageId) continue;
@@ -191,8 +192,9 @@ function takeMessage(state: ParseState, entry: AdapterEntry): ForeignHistoryMess
   const data = parseJson(row.data);
   const role = data?.role === "assistant" ? "assistant" : data?.role === "user" ? "user" : null;
   if (!role) return null;
+  /* 与 codex/claude 同律：产品自己的 <product_context …> 信封不是用户说的话。 */
   const content = row.parts.filter((part) => part.type === "text")
-    .map((part) => asString(part.text) ?? "").filter(Boolean).join("\n").trim();
+    .map((part) => stripProductContext(asString(part.text) ?? "")).filter(Boolean).join("\n").trim();
   const tools = role === "assistant" ? toolEvents(row.parts) : [];
   if (!content && !tools.length) return null;
   const time = object(data?.time);

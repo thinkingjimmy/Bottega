@@ -9,7 +9,6 @@ import { mkdir, readdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   DurableJson,
-  DurableFileCorruptionError,
   quarantineDurableFile,
 } from "../../persistence/durable-json";
 import { memorySpaceGate } from "../space-gate";
@@ -88,13 +87,9 @@ export class DeliveryStoreMaintenance {
       await this.archiveV2();
       await this.openLedger();
     } catch (cause) {
-      if (
-        !(cause instanceof DurableFileCorruptionError) &&
-        !(cause instanceof LedgerInvariantError)
-      ) {
-        throw cause;
-      }
-      /* 交付水位账本损坏：隔离原件后从空账本重走同一初始化路径（≡冷启动）。
+      if (!(cause instanceof LedgerInvariantError)) throw cause;
+      /* 读不出的档 DurableJson 已自行隔离；这里只剩领域不变量失败——档能读、
+         却自相矛盾。同样隔离原件后从空账本重走同一初始化路径（≡冷启动）。
          后果：stream 水位、reservation、cleanup/rebuild 与 receipt 全部清零，
          交付流水从头重新记账。这比让异常上抛置 ownerFailure 粘死整个
          Memory 子系统（召回+capture 全灭）便宜得多；隔离件留证可追溯。 */

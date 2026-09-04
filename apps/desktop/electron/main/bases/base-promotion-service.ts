@@ -12,7 +12,8 @@ import type { AdmissionGate, SagaResult } from "../lifecycle/admission-gate";
 import type { LifecycleIntentStore } from "../lifecycle/intent-store";
 import type { LifecycleIntent } from "../lifecycle/intent-types";
 import type { BaseStore } from "./base-store";
-import type { BaseOwnerResolver } from "./base-owner-resolver";
+import type { BaseOwnerResolver } from "./service/base-owner-resolver";
+import { statusError } from "../errors";
 
 type PromotionOptions = {
   runConversationExclusive<T>(
@@ -37,7 +38,7 @@ export class BasePromotionService {
     requestId: string;
   }): Promise<BasePromotionReceipt> {
     const chat = await this.resolver.chat(input.chatId);
-    if (!chat.projectId) throw conflict("当前 chat 尚未加入 Project");
+    if (!chat.projectId) throw statusError(409, "当前 chat 尚未加入 Project");
     const projectId = chat.projectId;
     await this.resolver.identityForOwnerKey(`project:${projectId}`);
     let fromInstanceId = chat.incarnationId;
@@ -81,11 +82,8 @@ export class BasePromotionService {
     const chatId = stringField(intent.input, "chatId");
     const projectId = stringField(intent.input, "projectId");
     const targetKey = `project:${projectId}`;
-    const location = this.store.locate(targetKey);
-    if (
-      location.status !== "healthy" ||
-      location.ownerInstanceId !== intent.intentId
-    ) {
+    const current = this.store.peek(targetKey);
+    if (current?.meta.ownerInstanceId !== intent.intentId) {
       await this.store.rollbackPromotion(projectId, intent.intentId);
       return {
         status: "business-rejected",
@@ -95,8 +93,6 @@ export class BasePromotionService {
         },
       };
     }
-    const target = this.store.get(targetKey, intent.intentId);
-    if (!target) throw new Error("Project Base 对账状态漂移");
     const snapshot = await this.store.finalizePromotion(
       chatId,
       projectId,
@@ -135,7 +131,8 @@ export class BasePromotionService {
       if (child.terminal.status === "done" && child.terminal.receipt) {
         return child.terminal.receipt as BasePromotionReceipt;
       }
-      throw conflict(
+      throw statusError(
+        409,
         child.terminal.error?.message ?? "Base 子升级已回滚"
       );
     }
@@ -173,7 +170,7 @@ export class BasePromotionService {
         status: "rolled-back",
         error: result.error,
       });
-      throw conflict(result.error.message);
+      throw statusError(409, result.error.message);
     }
     throw new Error("Base 子升级被中断，将在启动时恢复");
   }
@@ -258,7 +255,7 @@ function receiptFromOutcome(
       : outcome.result.status === "business-rejected"
         ? outcome.result.error.message
         : "Base 升级未完成，将在启动时恢复";
-  throw conflict(message ?? "Base 升级失败");
+  throw statusError(409, message ?? "Base 升级失败");
 }
 
 function rejected(code: string, message: string) {
@@ -276,7 +273,5 @@ function stringField(value: Record<string, unknown>, key: string) {
   return field;
 }
 
-const conflict = (message: string) =>
-  Object.assign(new Error(message), { status: 409 });
 const errorText = (cause: unknown) =>
   cause instanceof Error ? cause.message : String(cause);

@@ -7,7 +7,9 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
-import type { BaseGuiLiveBinding } from "../../../../shared/apps-ipc";
+import type { AppGuiRuntimeErrorCode, BaseGuiLiveBinding } from "../../../../shared/apps-ipc";
+import { APP_GUI_RUNTIME_ERROR_CODES } from "../../../../shared/app-gui/contracts";
+import { workspaceSourceLine } from "./design-source-line";
 import type { WorkspacePreviewPort } from "./workspace-preview";
 
 const TOKEN_TTL_MS = 5 * 60_000;
@@ -41,19 +43,16 @@ const previewSchema = z.object({
   critical: z.boolean().optional(),
 }).strict();
 
+/* ref 里不留 digest：它曾经存在，却没有任何读者，而 parentVersionRef 那一处
+   还是用子版本的 digest 铸出来的——一个没人读的字段说错了话，比没有这个
+   字段更危险。listing 里的 digest 直接来自 port，与 ref 身份无关。 */
 type RefEntry = Readonly<{
   binding: BaseGuiLiveBinding;
   bindingKey: string;
   expiresAt: number;
 }> & (
-  | Readonly<{ kind: "file"; path: string; digest: string; revision: number }>
-  | Readonly<{
-      kind: "version";
-      path: string;
-      versionId: string;
-      digest: string;
-      revision: number;
-    }>
+  | Readonly<{ kind: "file"; path: string; revision: number }>
+  | Readonly<{ kind: "version"; path: string; versionId: string; revision: number }>
   | Readonly<{
       kind: "cursor";
       operation: "files" | "versions";
@@ -72,6 +71,8 @@ type RefEntry = Readonly<{
 
 export class CompiledWorkspaceFacade {
   private readonly refs = new Map<string, RefEntry>();
+  /* 每个 binding 的在册 ref 数：配额判定只读一个计数器，不再整表过滤。 */
+  private readonly counts = new Map<string, number>();
 
   constructor(private readonly port: WorkspacePreviewPort) {}
 
@@ -163,7 +164,6 @@ export class CompiledWorkspaceFacade {
       fileRef: this.issue(binding, {
         kind: "file",
         path: item.file,
-        digest: item.digest,
         revision: listing.revision,
       }),
       displayName: displayName(item.file),
@@ -208,7 +208,6 @@ export class CompiledWorkspaceFacade {
         kind: "version",
         path: file.path,
         versionId: version.versionId,
-        digest: version.digest,
         revision: listing.revision,
       }),
       digest: version.digest,
@@ -218,7 +217,6 @@ export class CompiledWorkspaceFacade {
             kind: "version",
             path: file.path,
             versionId: version.parentVersion,
-            digest: version.digest,
             revision: listing.revision,
           })
         : null,
@@ -249,10 +247,7 @@ export class CompiledWorkspaceFacade {
     const body = await this.port.read(binding, file.path);
     if (body === null) throw tagged(404, "workspace_not_found");
     const source = Buffer.isBuffer(body) ? body.toString("utf8") : body;
-    const matches = matchingOpeningTags(source, input.htmlHint);
-    return { sourceLine: matches.length === 1
-      ? source.slice(0, matches[0]).split("\n").length
-      : null };
+    return { sourceLine: workspaceSourceLine(source, input.htmlHint) };
   }
 
   private async preview(
@@ -301,16 +296,19 @@ export class CompiledWorkspaceFacade {
     return ref;
   }
 
+  /* TTL 按条目现场判定，不再整表清扫：过期即当作不存在，内存则由下面两道
+     FIFO 上限兜住。一次列表要铸 100 个 ref，每铸一个都扫全表是纯粹的浪费。 */
   private resolve<K extends RefEntry["kind"]>(token: string, kind: K) {
-    this.prune();
     const entry = this.refs.get(token);
-    return entry?.kind === kind
-      ? entry as Extract<RefEntry, { kind: K }>
-      : null;
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      this.forget(token, entry);
+      return null;
+    }
+    return entry.kind === kind ? entry as Extract<RefEntry, { kind: K }> : null;
   }
 
   private issue(binding: BaseGuiLiveBinding, value: Omit<RefEntry, keyof RefEntry>) {
-    this.prune();
     const token = randomUUID();
     const key = bindingKey(binding);
     this.refs.set(token, {
@@ -319,27 +317,32 @@ export class CompiledWorkspaceFacade {
       bindingKey: key,
       expiresAt: Date.now() + TOKEN_TTL_MS,
     } as RefEntry);
+    this.counts.set(key, (this.counts.get(key) ?? 0) + 1);
     /* 先按 binding 配额淘汰，再收全局上限：只有全局 FIFO 时，一个 App 一路
-       翻页就能把别的 App 仍在用的 ref 挤掉——回收压力必须留在制造它的人身上。 */
-    this.evict((entry) => entry.bindingKey === key, BINDING_TOKEN_LIMIT);
-    this.evict(() => true, TOKEN_LIMIT);
+       翻页就能把别的 App 仍在用的 ref 挤掉——回收压力必须留在制造它的人身上。
+       每次至多超出一个名额，所以删掉最早的那一个就够。 */
+    if (this.counts.get(key)! > BINDING_TOKEN_LIMIT) {
+      this.evictOldest((entry) => entry.bindingKey === key);
+    }
+    if (this.refs.size > TOKEN_LIMIT) this.evictOldest(() => true);
     return token;
   }
 
-  private evict(match: (entry: RefEntry) => boolean, limit: number) {
-    const owned = [...this.refs].filter(([, entry]) => match(entry));
-    for (const [token] of owned.slice(0, Math.max(0, owned.length - limit))) {
-      this.refs.delete(token);
-    }
-  }
-
-  private prune() {
-    const now = Date.now();
+  /* Map 的迭代顺序就是插入顺序，所以「最早的一个」是第一个命中的条目。 */
+  private evictOldest(match: (entry: RefEntry) => boolean) {
     for (const [token, entry] of this.refs) {
-      if (entry.expiresAt <= now) this.refs.delete(token);
+      if (!match(entry)) continue;
+      this.forget(token, entry);
+      return;
     }
   }
 
+  private forget(token: string, entry: RefEntry) {
+    this.refs.delete(token);
+    const remaining = (this.counts.get(entry.bindingKey) ?? 1) - 1;
+    if (remaining > 0) this.counts.set(entry.bindingKey, remaining);
+    else this.counts.delete(entry.bindingKey);
+  }
 }
 
 function bindingKey(binding: BaseGuiLiveBinding) {
@@ -387,18 +390,6 @@ function compareText(left: string, right: string) {
   return Buffer.compare(Buffer.from(left.normalize("NFC")), Buffer.from(right.normalize("NFC")));
 }
 
-function matchingOpeningTags(source: string, hint: string) {
-  const exact = source.indexOf(hint);
-  if (exact >= 0) return source.indexOf(hint, exact + hint.length) < 0
-    ? [exact]
-    : [exact, exact];
-  const tag = /^<([a-z][a-z0-9:-]*)\b/i.exec(hint)?.[1];
-  if (!tag) return [];
-  const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return [...source.matchAll(new RegExp(`<${escaped}(?:\\s[^<>]*?)?>`, "gi"))]
-    .map((match) => match.index);
-}
-
 function injectPreviewBridge(html: string, handle: string) {
   const script = `<script>(()=>{const handle=${JSON.stringify(handle)};const mode=new URLSearchParams(location.search).get("mode")||"browse";let last=0;let start=null;const clamp=(v,n)=>String(v||"").trim().slice(0,n);const send=selection=>{const now=performance.now();if(now-last<50)return;last=now;parent.postMessage({channel:"bottega:workspace-selection",handle,selection},"*")};const stop=event=>{event.preventDefault();event.stopPropagation()};const selector=node=>node.id?"#"+CSS.escape(node.id):node.tagName.toLowerCase();addEventListener("click",event=>{if(mode!=="element"||!(event.target instanceof Element))return;stop(event);const node=event.target;send({kind:"element",selector:clamp(selector(node),512),tagName:clamp(node.tagName.toLowerCase(),64),htmlHint:clamp((node.outerHTML.match(/^<[^>]+>/)||[""])[0],180),sourceLine:null})},true);addEventListener("pointerdown",event=>{if(mode!=="region"||event.button!==0)return;stop(event);start={x:Math.round(event.clientX),y:Math.round(event.clientY)}},true);addEventListener("pointerup",event=>{if(mode!=="region"||!start)return;stop(event);const end={x:Math.round(event.clientX),y:Math.round(event.clientY)};send({kind:"region",rect:{x:Math.min(start.x,end.x),y:Math.min(start.y,end.y),width:Math.max(1,Math.abs(end.x-start.x)),height:Math.max(1,Math.abs(end.y-start.y))}});start=null},true);requestAnimationFrame(()=>parent.postMessage({channel:"bottega:workspace-preview-ready",handle},"*"))})();</script>`;
   return /<head(?:\s[^>]*)?>/i.test(html)
@@ -443,7 +434,7 @@ function respondJson(response: ServerResponse, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
-function failure(response: ServerResponse, status: number, code: string) {
+function failure(response: ServerResponse, status: number, code: AppGuiRuntimeErrorCode) {
   response.statusCode = status;
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("cache-control", "no-store");
@@ -451,7 +442,7 @@ function failure(response: ServerResponse, status: number, code: string) {
   response.end(JSON.stringify({ error: { code, message: code } }));
 }
 
-function tagged(status: number, code: string) {
+function tagged(status: number, code: AppGuiRuntimeErrorCode) {
   return Object.assign(new Error(code), { status, code });
 }
 
@@ -461,9 +452,15 @@ function statusOf(cause: unknown) {
   return cause instanceof z.ZodError ? 400 : 500;
 }
 
-function codeOf(cause: unknown, status: number) {
+/* 宿主错误带的是 ENOENT/EACCES 这类 errno，不是契约 code。原样透传等于让
+   App 收到一个共享联合体里根本不存在的名字：只有本模块自己 tagged 出来的
+   code 才算契约，其余一律落成读失败。 */
+const RUNTIME_ERROR_CODES: ReadonlySet<string> = new Set(APP_GUI_RUNTIME_ERROR_CODES);
+
+function codeOf(cause: unknown, status: number): AppGuiRuntimeErrorCode {
   const code = (cause as { code?: unknown } | null)?.code;
-  return typeof code === "string" ? code : status === 400
-    ? "workspace_invalid_request"
-    : "workspace_read_failed";
+  if (typeof code === "string" && RUNTIME_ERROR_CODES.has(code)) {
+    return code as AppGuiRuntimeErrorCode;
+  }
+  return status === 400 ? "workspace_invalid_request" : "workspace_read_failed";
 }

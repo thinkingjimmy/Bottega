@@ -69,7 +69,7 @@ export class ExtensionContentStore {
   }
 
   initialize() {
-    this.initialization ??= this.file.initialize();
+    this.initialization ??= this.file.initialize().then(() => undefined);
     return this.initialization;
   }
 

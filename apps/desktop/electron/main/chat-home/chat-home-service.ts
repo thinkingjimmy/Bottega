@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto/fs/path, shared ChatHome status, SettingsStore/ChatStore port and ChatHomeLedger
- * [OUTPUT]: Provides ChatHomeService root selection, exact-marker creation ownership, committed dev/ino evidence, non-destructive committed isolation, rollback recovery, and read-only root snapshots
+ * [OUTPUT]: Provides ChatHomeService root selection, fork-worktree-aware ownership, canonical-record recovery, rollback compensation, deletion admission/release, and containment-correct read-only roots
  * [POS]: Chat Home ownership coordinator; cross-store SQLite continuation state remains in the Chat saga
  */
 
@@ -11,12 +11,13 @@ import {
   readFile,
   readdir,
   realpath,
+  rm,
   rename,
   rmdir,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import {
   CHAT_HOME_NOT_READY,
   type ChatHomeStatus,
@@ -47,10 +48,13 @@ type CreationInput = {
   submission: unknown;
   workspaceScope: AgentWorkspaceScope;
   stagingOwner?: string;
+  worktree?: ChatHomeRecord["worktree"];
 };
 
 export class ChatHomeService {
   private readonly listeners = new Set<(status: ChatHomeStatus) => void>();
+  private worktreeCleanup?: (record: ChatHomeRecord) => Promise<"absent" | "removed" | "recovery">;
+  private worktreeAdmission?: (record: ChatHomeRecord) => Promise<"absent" | "clean" | "recovery">;
 
   constructor(
     private readonly settings: SettingsStore,
@@ -135,6 +139,7 @@ export class ChatHomeService {
       submissionHash,
       workspaceScope: input.workspaceScope,
       ...(input.stagingOwner ? { stagingOwner: input.stagingOwner } : {}),
+      ...(input.worktree ? { worktree: input.worktree } : {}),
     });
     if (planned.phase === "planned") {
       try {
@@ -218,6 +223,8 @@ export class ChatHomeService {
       incarnationId: record.incarnationId,
       homeDir: record.homeDir,
       intentId: record.intentId,
+      phase: record.phase,
+      worktree: record.worktree,
     };
   }
 
@@ -227,6 +234,18 @@ export class ChatHomeService {
         ["committed", "rolledBack"].includes(record.phase) ||
         liveManualIntentIds.has(record.intentId)
       ) {
+        continue;
+      }
+      const canonical = this.chats.getMetadata(record.chatId);
+      if (
+        canonical?.incarnationId === record.incarnationId &&
+        canonical.homeDir === record.homeDir &&
+        (!record.worktree ||
+          (canonical.executionKind === "managed-worktree" &&
+            canonical.executionDir === join(record.homeDir, record.worktree.relativePath)))
+      ) {
+        await this.markPrepared(record.chatId);
+        await this.commitCreation(record.chatId);
         continue;
       }
       await this.rollbackCreation(record.chatId).catch((cause) => {
@@ -246,11 +265,29 @@ export class ChatHomeService {
     ) {
       return;
     }
+    const canonical = this.chats.getMetadata(current.chatId);
+    if (
+      canonical?.incarnationId === current.incarnationId &&
+      canonical.homeDir === current.homeDir &&
+      (!current.worktree ||
+        (canonical.executionKind === "managed-worktree" &&
+          canonical.executionDir === join(current.homeDir, current.worktree.relativePath)))
+    ) {
+      await this.markPrepared(current.chatId);
+      await this.commitCreation(current.chatId);
+      return;
+    }
     await this.ledger.transition(
       chatId,
       ["planned", "materialized", "prepared", "rollingBack"],
       "rollingBack"
     );
+    if (current.worktree) {
+      const cleanup = await this.worktreeCleanup?.(current);
+      if (!cleanup || cleanup === "recovery") {
+        throw new Error("Managed worktree requires recovery before Chat Home rollback");
+      }
+    }
     const moved = await this.moveOwnedHomeToTrash(current, true);
     if (!moved && await this.pathExists(current.homeDir)) {
       throw new Error("Chat Home 所有权无法验证，补偿将在稍后重试");
@@ -262,10 +299,86 @@ export class ChatHomeService {
   }
 
   readOnlyRoots(excludeWorkspace?: string) {
+    const workspace = excludeWorkspace ? resolve(excludeWorkspace) : undefined;
     return this.ledger
       .validHomes()
-      .filter((path) => path !== excludeWorkspace)
+      .filter((path) => {
+        if (!workspace) return true;
+        /* 自身 Home 与它的祖先都不是"另一个 Chat Home"：worktree Chat 的
+           workspace 是 <home>/worktree，字符串相等判不出这层包含关系。 */
+        const child = relative(resolve(path), workspace);
+        return child !== "" && (child.startsWith("..") || isAbsolute(child));
+      })
       .sort();
+  }
+
+  configureWorktreeCleanup(
+    cleanup: (record: ChatHomeRecord) => Promise<"absent" | "removed" | "recovery">
+  ) {
+    this.worktreeCleanup = cleanup;
+  }
+
+  configureWorktreeAdmission(
+    inspect: (record: ChatHomeRecord) => Promise<"absent" | "clean" | "recovery">
+  ) {
+    this.worktreeAdmission = inspect;
+  }
+
+  async assertDeletionAdmissible(
+    records: readonly Readonly<{ id: string; incarnationId: string }>[]
+  ) {
+    for (const candidate of records) {
+      const record = this.ledger.get(candidate.id);
+      if (!record || record.incarnationId !== candidate.incarnationId || !record.worktree) continue;
+      const result = await this.worktreeAdmission?.(record);
+      if (!result || result === "recovery") {
+        throw Object.assign(
+          new Error(`Chat ${candidate.id} 的 managed worktree 有未提交内容或身份异常；请先 commit 或恢复后再删除`),
+          { status: 409 }
+        );
+      }
+    }
+  }
+
+  async releaseWorktreeForDeletion(candidate: Readonly<{ id: string; incarnationId: string }>) {
+    const record = this.ledger.get(candidate.id);
+    if (!record || record.incarnationId !== candidate.incarnationId || !record.worktree) return;
+    const result = await this.worktreeCleanup?.(record);
+    if (!result || result === "recovery") {
+      throw new Error("Managed worktree cleanup requires recovery");
+    }
+  }
+
+  async releaseHomeForDeletion(
+    candidate: Readonly<{ id: string; incarnationId: string }>,
+    operationId: string
+  ) {
+    const record = this.ledger.get(candidate.id);
+    if (!record || record.incarnationId !== candidate.incarnationId) return;
+    const trashRoot = join(record.canonicalRoot, ".trash");
+    const suffix = createHash("sha256").update(operationId).digest("hex").slice(0, 20);
+    const target = join(trashRoot, `${record.chatId}-${suffix}`);
+    const [homePresent, targetPresent] = await Promise.all([
+      this.pathExists(record.homeDir),
+      this.pathExists(target),
+    ]);
+    if (homePresent && targetPresent) {
+      throw new Error("Chat Home deletion found both live and trash paths");
+    }
+    if (homePresent) {
+      const verified = await this.verifyRecordOwnership(record, false);
+      if (!verified) {
+        // 未获证明的目录不是产品资产；只撤销账本声明，绝不猜测删除。
+        await this.ledger.removeOwnership(candidate.id);
+        return;
+      }
+      await mkdir(trashRoot, { recursive: true, mode: 0o700 });
+      await rename(record.homeDir, target);
+    }
+    if (homePresent || targetPresent) {
+      await rm(target, { recursive: true });
+    }
+    await this.ledger.removeOwnership(candidate.id);
   }
 
   async verifyOwnership(chatId: string) {

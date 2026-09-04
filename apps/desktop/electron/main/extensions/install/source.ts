@@ -10,7 +10,7 @@ import { chmod, mkdir, opendir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Sha256Digest } from "../../../../shared/extensions-ipc";
 import { sanitizedProcessEnvironment } from "../../codex-runtime";
-import { isSafePackagePath } from "../../apps/share/package-contract";
+import { isSafePackagePath } from "../../apps/share/package/package-contract";
 import { digestCanonical } from "../registry-store";
 import type { ExtensionSourceProvenance } from "../registry-store";
 import {

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on SetupProvider, i18n setup directory, agent-backends brand icons and instructions for keystrokes, backend-parts markup/icon action/action determination, settings-layout SettingsButton
- * [OUTPUT]: Provides SetupBackendRow with localized recovery guidance and explicitly disclosed technical diagnostics for Backends settings and Onboarding
- * [POS]: The setup module's row form; now the only form after the card was retired, sharing its criteria and parts with backend-parts
+ * [INPUT]: Depends on SetupProvider, the setup i18n catalog, agent-backends brand/guide keys, backend-parts' unified presentation projection, and SettingsButton
+ * [OUTPUT]: Provides SetupBackendRow with honest runtime/auth status, contextual login actions, localized recovery guidance, and disclosed diagnostics
+ * [POS]: The setup module's only row form, consumed by Backends Settings and Onboarding without reinterpreting backend state
  */
 
 import { Download, Info, LogIn, RefreshCw, Terminal } from "lucide-react";
@@ -13,7 +13,7 @@ import type { BackendInfo } from "../../../shared/agent-ipc";
 import {
   BackendIconAction,
   BackendStatusBadge,
-  backendActionFlags,
+  backendSetupPresentation,
 } from "./backend-parts";
 
 /* ============================================================
@@ -31,10 +31,10 @@ export function SetupBackendRow({ backend }: { backend: BackendInfo }) {
   const setup = useSetup();
   const { t } = useAppTranslation();
   const busy = Boolean(setup.busy[backend.id]);
-  const { ready, canInstall, canLogin, canUpdate } = backendActionFlags(backend);
+  const presentation = backendSetupPresentation(backend);
   /* 指令是产品的话（随语言变），诊断是 CLI 的原文（永不翻译）。两者都不
      定长，故都不上行内——行高于是不是文案长度的函数，而是结构常量。 */
-  const guide = ready ? "" : t(backendGuideKey(backend));
+  const guide = presentation.showGuide ? t(backendGuideKey(backend)) : "";
 
   return (
     <div className="flex min-h-[52px] items-center gap-3 px-4 py-2.5">
@@ -45,8 +45,8 @@ export function SetupBackendRow({ backend }: { backend: BackendInfo }) {
       {/* 徽标紧跟名字：状态是名字的限定语（「Codex——未安装」），不是行尾
           的一枚孤立标签。名字定宽，故一列徽标从同一个 x 起排，扫一眼就知道
           哪几家不可用；从前它被 ml-auto 甩到最右，与真正该在右侧的动作抢位。 */}
-      <BackendStatusBadge ready={ready}>
-        {t(`setup.status.${backend.status}`)}
+      <BackendStatusBadge tone={presentation.tone}>
+        {t(`setup.status.${presentation.status}`)}
       </BackendStatusBadge>
       {/* 版本是安装位置的对外身份；完整路径只在 hover 时兑现，不占版面 */}
       <span
@@ -59,7 +59,7 @@ export function SetupBackendRow({ backend }: { backend: BackendInfo }) {
         {/* 卡片里 Install 是实心的——一张卡只有一颗，实心正好。行列表里四颗
             并排，实心就成了页面上最重的一片黑，反而压过底部真正的下一步。
             行内三个动作统一 outline，主行动的位置只留给动作条。 */}
-        {canInstall && (
+        {presentation.canInstall && (
           <SettingsButton
             variant="outline"
             disabled={busy}
@@ -68,16 +68,19 @@ export function SetupBackendRow({ backend }: { backend: BackendInfo }) {
             <Download /> {t("setup.install")}
           </SettingsButton>
         )}
-        {canLogin && (
+        {presentation.loginAction && (
           <SettingsButton
             variant="outline"
             disabled={busy}
             onClick={() => void setup.terminalAction(backend.id, "login")}
           >
-            <LogIn /> {t("setup.login")}
+            <LogIn />
+            {presentation.loginAction === "manage"
+              ? t("setup.manageLogin")
+              : t("setup.login")}
           </SettingsButton>
         )}
-        {canUpdate && (
+        {presentation.canUpdate && (
           <SettingsButton
             aria-label={t("setup.updateAria", { backend: backend.displayName })}
             variant="outline"

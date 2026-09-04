@@ -21,10 +21,10 @@ import {
   backendRuntimeRegistry,
   orderedBackends,
 } from "../../backends";
-import { installLogPath } from "../app-cleanup";
-import type { AppInstaller } from "../app-installer";
-import type { MaintenanceGate } from "../maintenance-gate";
-import type { AppStore } from "../app-store";
+import { installLogPath } from "../maintenance/app-cleanup";
+import type { AppInstaller } from "../source/app-installer";
+import type { MaintenanceGate } from "../maintenance/maintenance-gate";
+import type { AppStore } from "../store/app-store";
 import type { AppPackageController } from "../share/app-package-controller";
 import { detectCliRequirements } from "../share/cli-detectors";
 import type { AgentToolInventory } from "../runtime/agent-tools";

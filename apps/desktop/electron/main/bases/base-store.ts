@@ -1,14 +1,14 @@
 /**
- * [INPUT]: Depends on shared owner-aware Base/Gallery/navigation schemas, commit-kernel, attachments, startup recovery, and SerialQueue
- * [OUTPUT]: Provides owner-key indexed Base storage, rows/gallery/history, canonical navigation mutation, pre-copy query snapshot byte identity, generation commits, migration events, corruption recovery, and promotion
- * [POS]: Durable Base authority; startup and lifecycle services classify visibility here while renderer projections only consume summaries
+ * [INPUT]: Depends on shared owner-aware Base/Gallery/navigation schemas, durable file IO, attachments, startup loading, and SerialQueue
+ * [OUTPUT]: Provides owner-key indexed frozen Base storage with an id index, rows/gallery/history, canonical navigation mutation, pre-copy query snapshot byte identity, declaration-scoped generation commits, and promotion primitives
+ * [POS]: Durable Base authority; lifecycle services classify visibility here while renderer projections only consume summaries
  */
 import { join } from "node:path";
 import {
   BASE_OWNER_KEY_PATTERN,
   ownerKeyOf,
-  type BaseMigrationEvent,
   type BaseMeta,
+  type BaseRow,
   type BaseSnapshot,
 } from "../../../shared/bases-ipc";
 import type { BaseNavigation } from "../../../shared/placement/facts";
@@ -21,17 +21,14 @@ import type { BaseHistoryLedger } from "../../../shared/bases/history-ledger-sch
 import { errorMessage } from "../errors";
 import { SerialQueue } from "../persistence/serial-queue";
 import { BaseAttachmentStore } from "./store/attachments";
-import {
-  BaseAmbiguousCommitError,
-  BaseNotPublishedCommitError,
-  publishMeta,
-} from "./store/commit-kernel";
 import { BaseStoreFiles, ownerFileStem } from "./store/base-files";
 import {
   collectRowAttachmentBlobIds,
   deriveGalleryRemovals,
   emptyGalleryLedger,
+  galleryCanLoseEntries,
   parseGalleryLedger,
+  validateGalleryLedger,
 } from "./store/gallery-ledger";
 import {
   appendHistoryEntry,
@@ -39,25 +36,27 @@ import {
   emptyHistoryLedger,
   historyForRow,
 } from "./store/history-ledger";
-import { prepareProjectBase } from "./base-promotion";
+import { prepareProjectBase } from "./store/base-promotion";
+import { initializeBaseStoreStartup } from "./store/startup";
 import {
-  initializeBaseStoreStartup,
-  type BaseStartupBlocked,
-} from "./store/startup-migration";
-import {
-  BaseCorruptError,
+  ALL_ROWS_CHANGED,
+  NO_ROWS_CHANGED,
+  BaseConflictError,
   BaseIncarnationError,
   BaseNotFoundError,
-  BaseStoreConflictError,
   chatOwnerIdentity,
   galleryOwnerId,
+  mutationTouchesRows,
   projectOwnerIdentity,
-  validateStoredBase,
+  storedBase,
+  validateBaseShape,
+  validateStoredRows,
   type BaseIdentity,
+  type BaseMutationRowIds,
   type BaseOwnerIdentity,
   type BaseStoreDependencies,
   type BaseStoreMutation,
-  type CorruptTombstone,
+  type IndexedBaseSnapshot,
   type ReadonlyBaseSnapshot,
   type StoredBase,
 } from "./base-store-model";
@@ -68,23 +67,26 @@ import {
   rootBaseSummaries,
 } from "./navigation/store-projection";
 export {
-  BaseCorruptError,
+  BaseConflictError,
   BaseIncarnationError,
   BaseNotFoundError,
-  BaseStoreConflictError,
   chatOwnerIdentity,
   projectOwnerIdentity,
 };
+export { ALL_ROWS_CHANGED, NO_ROWS_CHANGED };
 export type {
   BaseIdentity,
+  BaseMutationRowIds,
   BaseOwnerIdentity,
   BaseStoreDependencies,
   BaseStoreMutation,
+  IndexedBaseSnapshot,
   ReadonlyBaseSnapshot,
 };
 const clone = <T>(value: T): T => structuredClone(value);
 const same = (left: unknown, right: unknown) =>
   JSON.stringify(left) === JSON.stringify(right);
+const NO_BLOBS: ReadonlySet<string> = new Set<string>();
 export class BaseStore {
   readonly basesRoot: string;
   readonly root: string;
@@ -92,11 +94,6 @@ export class BaseStore {
   readonly attachments: BaseAttachmentStore;
   private readonly queue = new SerialQueue();
   private readonly states = new Map<string, StoredBase>();
-  private readonly corrupt = new Map<string, CorruptTombstone>();
-  private readonly warnings: string[] = [];
-  private readonly migrationEvents: BaseMigrationEvent[] = [];
-  private readonly frozen = new Map<string, BaseAmbiguousCommitError>();
-  private readonly startupBlocked = new Map<string, BaseStartupBlocked>();
   private readonly files: BaseStoreFiles;
   private readonly now: () => number;
   constructor(
@@ -112,14 +109,11 @@ export class BaseStore {
     this.files = new BaseStoreFiles(this.root, {
       readText: dependencies.readText,
       atomicWrite: dependencies.atomicWrite,
-      corrupt: (message) => new BaseCorruptError(message),
-      warn: (message) => this.warn(message),
     });
   }
   async initialize(
     chats: ReadonlyMap<string, BaseIdentity>,
-    projectIds: ReadonlySet<string> = new Set(),
-    navigationOf?: (meta: BaseMeta) => BaseNavigation
+    projectIds: ReadonlySet<string> = new Set()
   ) {
     await this.queue.enqueue(() =>
       initializeBaseStoreStartup({
@@ -128,95 +122,23 @@ export class BaseStore {
         files: this.files,
         attachments: this.attachments,
         states: this.states,
-        corrupt: this.corrupt,
-        frozen: this.frozen,
-        startupBlocked: this.startupBlocked,
-        warnings: this.warnings,
-        migrationEvents: this.migrationEvents,
         chats,
         projectIds,
         now: this.now,
       })
     );
-    if (!navigationOf) return;
-    for (const [ownerKey, state] of [...this.states.entries()]) {
-      const navigation = navigationOf(state.meta);
-      if (JSON.stringify(navigation) === JSON.stringify(state.meta.navigation)) {
-        continue;
-      }
-      await this.transact(ownerKey, state.meta.ownerInstanceId, (current) => ({
-        meta: {
-          ...current.meta,
-          navigation,
-          pinned: navigation.kind === "root-user-managed",
-          revision: current.meta.revision + 1,
-        },
-        rows: current.rows,
-        rowsChanged: false,
-        actor: "system",
-        operation: "navigation-migration",
-      }));
-    }
   }
-  getWarning() {
-    return this.warnings.join("\n") || undefined;
-  }
-
-  drainMigrationEvents() {
-    return this.migrationEvents.splice(0).map(clone);
-  }
-
-  pushWarning(message: string) {
-    this.warn(message);
-  }
-  locate(ownerKey: string, fallbackInstanceId = "") {
-    this.assertOwnerKey(ownerKey);
-    const state = this.states.get(ownerKey);
-    if (state) {
-      return {
-        status: "healthy" as const,
-        ownerInstanceId: state.meta.ownerInstanceId,
-      };
-    }
-    const tombstone = this.corrupt.get(ownerKey);
-    if (tombstone) {
-      return {
-        status: "corrupt" as const,
-        ownerInstanceId:
-          tombstone.ownerInstanceId ?? fallbackInstanceId,
-      };
-    }
-    const blocked = this.startupBlocked.get(ownerKey);
-    if (blocked) {
-      return {
-        status: "corrupt" as const,
-        ownerInstanceId: blocked.ownerInstanceId,
-      };
-    }
-    return {
-      status: "absent" as const,
-      ownerInstanceId: fallbackInstanceId,
-    };
-  }
+  /** 唯一查表面：在册即状态，不在册即 null。没有第三种存在方式。 */
   get(ownerKey: string, ownerInstanceId?: string): BaseSnapshot | null {
-    this.assertNotCorrupt(ownerKey, ownerInstanceId);
-    const state = this.states.get(ownerKey);
-    if (!state) return null;
-    if (ownerInstanceId) this.assertInstance(state.meta, ownerInstanceId);
-    return this.snapshot(state);
+    const state = this.lookup(ownerKey, ownerInstanceId);
+    return state && this.snapshot(state);
   }
-  peek(ownerKey: string, ownerInstanceId?: string): ReadonlyBaseSnapshot | null {
-    this.assertNotCorrupt(ownerKey, ownerInstanceId);
-    const state = this.states.get(ownerKey);
-    if (!state) return null;
-    if (ownerInstanceId) this.assertInstance(state.meta, ownerInstanceId);
-    return state;
+  peek(ownerKey: string, ownerInstanceId?: string): IndexedBaseSnapshot | null {
+    return this.lookup(ownerKey, ownerInstanceId);
   }
   async describeQuerySnapshot(ownerKey: string, ownerInstanceId?: string) {
-    this.assertNotCorrupt(ownerKey, ownerInstanceId);
-    const state = this.states.get(ownerKey);
+    const state = this.lookup(ownerKey, ownerInstanceId);
     if (!state) return null;
-    if (ownerInstanceId) this.assertInstance(state.meta, ownerInstanceId);
     return {
       baseInstanceId: state.meta.ownerInstanceId,
       revision: state.meta.revision,
@@ -228,17 +150,17 @@ export class BaseStore {
     baseInstanceId: string;
     revision: number;
   }) {
-    this.assertNotCorrupt(input.ownerKey, input.baseInstanceId);
+    this.assertOwnerKey(input.ownerKey);
     const state = this.states.get(input.ownerKey);
     const changed = !state || state.meta.ownerInstanceId !== input.baseInstanceId ||
       state.meta.revision !== input.revision;
     if (changed) {
-      throw new BaseStoreConflictError("Base query snapshot revision changed before copy");
+      throw new BaseConflictError("Base query snapshot revision changed before copy");
     }
     return this.snapshot(state);
   }
   /** 全量只读枚举（search 扫描源）；提交是整对象替换，引用无需克隆即版本一致。 */
-  listAll(): Array<{ ownerKey: string; snapshot: ReadonlyBaseSnapshot }> {
+  listAll(): Array<{ ownerKey: string; snapshot: IndexedBaseSnapshot }> {
     return [...this.states.entries()].map(([ownerKey, snapshot]) => ({
       ownerKey,
       snapshot,
@@ -247,7 +169,7 @@ export class BaseStore {
   baseSummaries() {
     return baseOwnerSummaries(this.states);
   }
-  listPinned() {
+  listRootBases() {
     return rootBaseSummaries(this.states.values());
   }
   listProjectBases() {
@@ -321,40 +243,6 @@ export class BaseStore {
       )
     );
   }
-  discardCorrupt(identity: BaseOwnerIdentity): Promise<BaseSnapshot> {
-    return this.queue.enqueue(async () => {
-      const ownerKey = ownerKeyOf(identity.owner);
-      const tombstone = this.corrupt.get(ownerKey);
-      const blocked = this.startupBlocked.get(ownerKey);
-      if (!tombstone && !blocked) {
-        throw new BaseStoreConflictError("Base 没有待丢弃的损坏数据");
-      }
-      const blockedInstanceId =
-        tombstone?.ownerInstanceId ?? blocked?.ownerInstanceId;
-      if (
-        blockedInstanceId &&
-        blockedInstanceId !== identity.ownerInstanceId
-      ) {
-        throw new BaseIncarnationError("损坏 Base 生命周期与 owner 不一致");
-      }
-      const rebuild =
-        identity.owner.kind === "project"
-          ? {
-              ...projectOwnerIdentity(identity.owner.projectId, identity.title),
-              ...(identity.navigation ? { navigation: identity.navigation } : {}),
-            }
-          : identity;
-      await this.files.removeFamilyFiles(ownerKey);
-      await this.attachments.releaseFamily(
-        ownerFileStem(ownerKey),
-        identity.ownerInstanceId,
-        "deleted-proven"
-      );
-      this.corrupt.delete(ownerKey);
-      this.startupBlocked.delete(ownerKey);
-      return this.ensureLocked(rebuild);
-    });
-  }
   remove(ownerKey: string, ownerInstanceId?: string): Promise<boolean> {
     return this.queue.enqueue(() =>
       this.removeLocked(ownerKey, ownerInstanceId)
@@ -375,7 +263,7 @@ export class BaseStore {
       const existing = this.states.get(toKey);
       if (existing) {
         if (existing.meta.ownerInstanceId !== intentId) {
-          throw new BaseStoreConflictError("Project 已有 Base");
+          throw new BaseConflictError("Project 已有 Base");
         }
         return this.snapshot(existing);
       }
@@ -391,8 +279,8 @@ export class BaseStore {
         intentId,
         files: this.files,
         attachments: this.attachments,
-        publishMeta: (ownerKey, content) =>
-          this.publishSerializedNewMeta(ownerKey, content),
+        writeMeta: (ownerKey, content) =>
+          this.files.atomicWrite(this.files.metaPath(ownerKey), content),
       });
       this.states.set(toKey, state);
       return this.snapshot(state);
@@ -416,14 +304,6 @@ export class BaseStore {
   rollbackPromotion(projectId: string, intentId: string) {
     return this.queue.enqueue(async () => {
       const ownerKey = `project:${projectId}`;
-      const tombstone = this.corrupt.get(ownerKey);
-      const blocked = this.startupBlocked.get(ownerKey);
-      if (
-        (tombstone?.ownerInstanceId ?? blocked?.ownerInstanceId) &&
-        (tombstone?.ownerInstanceId ?? blocked?.ownerInstanceId) !== intentId
-      ) {
-        throw new BaseIncarnationError("待回滚 Project Base 生命周期已变化");
-      }
       const state = this.states.get(ownerKey);
       if (state && state.meta.ownerInstanceId !== intentId) {
         throw new BaseIncarnationError("待回滚 Project Base 生命周期已变化");
@@ -435,10 +315,7 @@ export class BaseStore {
         "deleted-proven"
       );
       this.states.delete(ownerKey);
-      this.corrupt.delete(ownerKey);
-      this.startupBlocked.delete(ownerKey);
-      this.frozen.delete(ownerKey);
-      return Boolean(state || tombstone || blocked);
+      return Boolean(state);
     });
   }
 
@@ -451,41 +328,29 @@ export class BaseStore {
     this.queue.reopen();
   }
 
+  private lookup(ownerKey: string, ownerInstanceId?: string) {
+    this.assertOwnerKey(ownerKey);
+    const state = this.states.get(ownerKey);
+    if (!state) return null;
+    if (ownerInstanceId) this.assertInstance(state.meta, ownerInstanceId);
+    return state;
+  }
+
+  /**
+   * 快照不再复制：存量对象自提交起即冻结，读者与 kernel 拿到的是同一份真相。
+   * IPC 出境本来就要再序列化一次，进程内再深拷一次纯属白工；而「meta-only
+   * 提交不得改 rows」也因此退化成一次引用比较——最贵的守卫变成最便宜的那个。
+   */
   private snapshot(state: StoredBase): BaseSnapshot {
-    return {
-      meta: clone(state.meta),
-      rows: clone(state.rows),
-      ...(this.getWarning() ? { warning: this.getWarning() } : {}),
-    };
+    return { meta: state.meta, rows: state.rows };
   }
 
   private requireState(ownerKey: string, ownerInstanceId: string) {
-    this.assertNotCorrupt(ownerKey, ownerInstanceId);
-    const frozen = this.frozen.get(ownerKey);
-    if (frozen) throw frozen;
+    this.assertOwnerKey(ownerKey);
     const state = this.states.get(ownerKey);
     if (!state) throw new BaseNotFoundError("Base 不存在");
     this.assertInstance(state.meta, ownerInstanceId);
     return state;
-  }
-
-  private assertNotCorrupt(ownerKey: string, ownerInstanceId?: string) {
-    this.assertOwnerKey(ownerKey);
-    const tombstone = this.corrupt.get(ownerKey);
-    if (
-      tombstone &&
-      !(
-        ownerInstanceId &&
-        tombstone.ownerInstanceId &&
-        tombstone.ownerInstanceId !== ownerInstanceId
-      )
-    ) {
-      throw new BaseCorruptError(
-        `BASE_CORRUPT: Base ${ownerKey} 已因损坏隔离；恢复备份或确认丢弃后才能继续`
-      );
-    }
-    const blocked = this.startupBlocked.get(ownerKey);
-    if (blocked) throw blocked.error;
   }
 
   private assertInstance(meta: BaseMeta, ownerInstanceId: string) {
@@ -503,9 +368,6 @@ export class BaseStore {
   private async ensureLocked(identity: BaseOwnerIdentity) {
     const ownerKey = ownerKeyOf(identity.owner);
     this.assertOwnerKey(ownerKey);
-    this.assertNotCorrupt(ownerKey, identity.ownerInstanceId);
-    const frozen = this.frozen.get(ownerKey);
-    if (frozen) throw frozen;
     const existing = this.states.get(ownerKey);
     if (existing) {
       this.assertInstance(existing.meta, identity.ownerInstanceId);
@@ -521,7 +383,6 @@ export class BaseStore {
       owner: identity.owner,
       ownerInstanceId: identity.ownerInstanceId,
       name: identity.title?.trim() || "Untitled Base",
-      pinned: false,
       navigation: identity.navigation ?? (
         identity.owner.kind === "project"
           ? { kind: "project-contained", projectId: identity.owner.projectId }
@@ -542,7 +403,7 @@ export class BaseStore {
       galleryGeneration: 0,
       historyGeneration: 0,
     });
-    const rows: import("../../../shared/bases-ipc").BaseRow[] = [];
+    const rows: BaseRow[] = [];
     const gallery = emptyGalleryLedger(
       galleryOwnerId(meta),
       meta.ownerInstanceId
@@ -560,44 +421,21 @@ export class BaseStore {
       this.files.historyPath(ownerKey, 0),
       this.files.serializeHistory(history)
     );
-    await this.publishNewMeta(ownerKey, meta);
-    const state = { meta, rows, gallery, history };
+    await this.files.atomicWrite(
+      this.files.metaPath(ownerKey),
+      this.files.serializeMeta(meta)
+    );
+    const state = storedBase({ meta, rows, gallery, history });
     this.states.set(ownerKey, state);
     return this.snapshot(state);
   }
 
-  private async publishNewMeta(ownerKey: string, meta: BaseMeta) {
-    return this.publishSerializedNewMeta(
-      ownerKey,
-      this.files.serializeMeta(meta)
-    );
-  }
-
-  private async publishSerializedNewMeta(
-    ownerKey: string,
-    serializedMeta: string
-  ) {
-    try {
-      const publish = await publishMeta(
-        this.files.metaPath(ownerKey),
-        null,
-        serializedMeta,
-        { write: this.dependencies.atomicWrite }
-      );
-      if (publish === "not-published") {
-        throw new BaseNotPublishedCommitError(this.files.metaPath(ownerKey));
-      }
-    } catch (cause) {
-      if (cause instanceof BaseNotPublishedCommitError) throw cause;
-      const ambiguous =
-        cause instanceof BaseAmbiguousCommitError
-          ? cause
-          : new BaseAmbiguousCommitError(this.files.metaPath(ownerKey), cause);
-      this.frozen.set(ownerKey, ambiguous);
-      throw ambiguous;
-    }
-  }
-
+  /**
+   * 一次提交的代价必须与「改了多少」成正比，不与「表有多长」成正比。
+   * kernel 交上来的 changedRowIds/removedRowIds 就是这份正比关系的凭据：
+   * 校验、历史差分、Gallery 派生、附件 GC 全部只认它。整表改写照旧全量体检，
+   * 但那时候本来就该付全量的钱。
+   */
   private async commitLocked(
     ownerKey: string,
     ownerInstanceId: string,
@@ -607,15 +445,23 @@ export class BaseStore {
     if (input.meta.revision !== current.meta.revision + 1) {
       throw new Error("Base commit revision 必须恰好递增 1");
     }
-    const generation = input.rowsChanged
+    const rowsChanged = mutationTouchesRows(input);
+    if (!rowsChanged && input.rows !== current.rows) {
+      throw new Error("meta-only commit 不允许修改 rows");
+    }
+    const generation = rowsChanged
       ? current.meta.rowsGeneration + 1
       : current.meta.rowsGeneration;
+    const next = rowsChanged
+      ? parseCommittedRows(input)
+      : { rows: current.rows, rowsById: current.rowsById, changed: [] };
+
     let galleryChanged = Boolean(input.galleryChanged);
     let galleryInput = input.gallery;
-    if (!galleryChanged) {
+    if (!galleryChanged && galleryCanLoseEntries(current.gallery)) {
       const derived = deriveGalleryRemovals(
         current,
-        { rows: input.rows, meta: input.meta },
+        { rowsById: next.rowsById, meta: input.meta },
         this.now()
       );
       if (derived) {
@@ -623,31 +469,30 @@ export class BaseStore {
         galleryChanged = !same(derived, current.gallery);
       }
     }
-    const galleryGeneration = galleryChanged
-      ? (current.meta.galleryGeneration ?? 0) + 1
-      : current.meta.galleryGeneration ?? 0;
+    const galleryGeneration = current.meta.galleryGeneration +
+      Number(galleryChanged);
     let history: BaseHistoryLedger = current.history;
     try {
       history = appendHistoryEntry(
         current.history,
-        createHistoryEntry(
-          current.rows,
-          input.rows,
-          this.now(),
-          input.actor ?? "system",
-          input.operation ?? "mutation"
-        )
+        createHistoryEntry({
+          before: current.rowsById,
+          after: next.rowsById,
+          candidateRowIds: historyCandidates(input, current, next.rowsById),
+          at: this.now(),
+          actor: input.actor ?? "system",
+          operation: input.operation ?? "mutation",
+        })
       );
     } catch (cause) {
       // 条目「生成」失败是有损审计的可接受降级：丢条目、业务照常。
-      this.warn(
+      console.warn(
         `Base ${ownerKey} history 条目生成失败，业务提交继续：${errorMessage(cause)}`
       );
     }
     const historyChanged = history !== current.history;
-    const historyGeneration = historyChanged
-      ? (current.meta.historyGeneration ?? 0) + 1
-      : current.meta.historyGeneration ?? 0;
+    const historyGeneration = current.meta.historyGeneration +
+      Number(historyChanged);
     const meta = baseMetaSchema.parse({
       ...input.meta,
       owner: current.meta.owner,
@@ -656,7 +501,6 @@ export class BaseStore {
       galleryGeneration,
       historyGeneration,
     });
-    const rows = input.rows.map((row) => baseRowSchema.parse(row));
     const gallery = galleryChanged
       ? parseGalleryLedger(
           galleryInput,
@@ -667,15 +511,23 @@ export class BaseStore {
     if (!galleryChanged && galleryInput && !same(galleryInput, current.gallery)) {
       throw new Error("galleryChanged=false 不允许修改 Gallery ledger");
     }
-    this.validateState(meta, rows, gallery);
+    validateBaseShape(meta, next.rows.length);
+    validateStoredRows(
+      next.changed,
+      new Set(meta.columns.map((column) => column.id))
+    );
+    const metaContent = this.files.serializeMeta(meta);
+    // rows 只序列化一次：预算判定与落盘字节是同一串。
+    const rowsContent = rowsChanged
+      ? this.files.serializeRows(next.rows)
+      : null;
+    validateGalleryLedger(meta, next.rowsById, gallery, galleryOwnerId(meta));
 
-    if (input.rowsChanged) {
+    if (rowsContent !== null) {
       await this.files.atomicWrite(
         this.files.rowsPath(ownerKey, generation),
-        this.files.serializeRows(rows)
+        rowsContent
       );
-    } else if (!same(rows, current.rows)) {
-      throw new Error("meta-only commit 不允许修改 rows");
     }
     if (galleryChanged) {
       await this.files.atomicWrite(
@@ -691,56 +543,66 @@ export class BaseStore {
         this.files.serializeHistory(history)
       );
     }
-    try {
-      const publish = await publishMeta(
-        this.files.metaPath(ownerKey),
-        this.files.serializeMeta(current.meta),
-        this.files.serializeMeta(meta),
-        { write: this.dependencies.atomicWrite }
-      );
-      if (publish === "not-published") {
-        throw new BaseNotPublishedCommitError(this.files.metaPath(ownerKey));
-      }
-    } catch (cause) {
-      if (cause instanceof BaseNotPublishedCommitError) throw cause;
-      const ambiguous =
-        cause instanceof BaseAmbiguousCommitError
-          ? cause
-          : new BaseAmbiguousCommitError(this.files.metaPath(ownerKey), cause);
-      this.frozen.set(ownerKey, ambiguous);
-      throw ambiguous;
+    // meta 是发布点：写不下去就整单不提交，内存状态原样保留。
+    await this.files.atomicWrite(this.files.metaPath(ownerKey), metaContent);
+    const attachmentBlobIds = this.trackAttachments(current, meta, next.rows);
+    const committed = storedBase({
+      meta,
+      rows: next.rows,
+      rowsById: next.rowsById,
+      attachmentBlobIds,
+      gallery,
+      history,
+    });
+    this.states.set(ownerKey, committed);
+    // 引用集没有收缩就没有孤儿：readdir + rm + stat 一趟全家族不该白跑。
+    if ([...current.attachmentBlobIds].some((id) => !attachmentBlobIds.has(id))) {
+      await this.gcAttachments(ownerKey, ownerInstanceId, attachmentBlobIds);
     }
-    const next = { meta, rows, gallery, history };
-    this.states.set(ownerKey, next);
-    if (input.rowsChanged || galleryChanged) {
-      await this.gcAttachments(ownerKey, ownerInstanceId, rows);
+    if (
+      generation !== current.meta.rowsGeneration ||
+      galleryGeneration !== current.meta.galleryGeneration ||
+      historyGeneration !== current.meta.historyGeneration
+    ) {
+      await this.files
+        .gcGenerations(
+          ownerKey,
+          generation,
+          galleryGeneration,
+          historyGeneration
+        )
+        .catch((cause) =>
+          console.warn(`Base ${ownerKey} 旧世代清理失败：${errorMessage(cause)}`)
+        );
     }
-    await this.files
-      .gcGenerations(
-        ownerKey,
-        generation,
-        galleryGeneration,
-        historyGeneration
-      )
-      .catch((cause) =>
-        this.warn(`Base ${ownerKey} 旧世代清理失败：${errorMessage(cause)}`)
-      );
-    return this.snapshot(next);
+    return this.snapshot(committed);
+  }
+
+  /**
+   * 附件引用集只在「这张表可能有附件」时重算：没有 attachment 列、
+   * 历史上也没引用过任何 blob 的 Base，永远不必为附件走一趟全表。
+   */
+  private trackAttachments(
+    current: StoredBase,
+    meta: BaseMeta,
+    rows: readonly BaseRow[]
+  ): ReadonlySet<string> {
+    if (rows === current.rows) return current.attachmentBlobIds;
+    const possible =
+      current.attachmentBlobIds.size > 0 ||
+      meta.columns.some((column) => column.type === "attachment");
+    return possible ? collectRowAttachmentBlobIds(rows) : NO_BLOBS;
   }
 
   private async gcAttachments(
     ownerKey: string,
     ownerInstanceId: string,
-    rows: readonly import("../../../shared/bases-ipc").BaseRow[]
+    referenced: ReadonlySet<string>
   ) {
     await this.attachments
-      .gcFamily(
-        ownerFileStem(ownerKey),
-        ownerInstanceId,
-        collectRowAttachmentBlobIds(rows)
-      )
+      .gcFamily(ownerFileStem(ownerKey), ownerInstanceId, referenced)
       .catch((cause) =>
-        this.warn(`Base ${ownerKey} attachment GC 失败：${errorMessage(cause)}`)
+        console.warn(`Base ${ownerKey} attachment GC 失败：${errorMessage(cause)}`)
       );
   }
 
@@ -754,23 +616,7 @@ export class BaseStore {
     ) {
       return false;
     }
-    const blocked = this.startupBlocked.get(ownerKey);
-    if (
-      blocked &&
-      ownerInstanceId &&
-      blocked.ownerInstanceId !== ownerInstanceId
-    ) {
-      return false;
-    }
-    const tombstone = this.corrupt.get(ownerKey);
-    if (
-      tombstone?.ownerInstanceId &&
-      ownerInstanceId &&
-      tombstone.ownerInstanceId !== ownerInstanceId
-    ) {
-      return false;
-    }
-    if (!state && !blocked) {
+    if (!state) {
       const diskMeta = await this.files.readMetaIfPresent(ownerKey);
       if (
         diskMeta &&
@@ -781,11 +627,7 @@ export class BaseStore {
       }
     }
     await this.files.removeFamilyFiles(ownerKey);
-    const instance =
-      state?.meta.ownerInstanceId ??
-      tombstone?.ownerInstanceId ??
-      blocked?.ownerInstanceId ??
-      ownerInstanceId;
+    const instance = state?.meta.ownerInstanceId ?? ownerInstanceId;
     if (instance) {
       await this.attachments.releaseFamily(
         ownerFileStem(ownerKey),
@@ -794,25 +636,51 @@ export class BaseStore {
       );
     }
     this.states.delete(ownerKey);
-    this.corrupt.delete(ownerKey);
-    this.startupBlocked.delete(ownerKey);
-    this.frozen.delete(ownerKey);
-    return Boolean(state || tombstone || blocked);
+    return Boolean(state);
   }
+}
 
-  private validateState(
-    meta: BaseMeta,
-    rows: import("../../../shared/bases-ipc").BaseRow[],
-    gallery: BaseGalleryLedger
-  ) {
-    validateStoredBase(meta, rows, gallery, {
-      meta: (value) => this.files.serializeMeta(value),
-      rows: (value) => this.files.serializeRows(value),
-      gallery: (value) => this.files.serializeGallery(value),
-    });
+/**
+ * 只把被声明动过的行送进 schema 归一：其余行仍是上一版那批冻结对象，
+ * 它们在写入自己那一代时已经体检过，再 parse 一次只是重复付钱。
+ * 顺手产出 id 索引——唯一性检查与索引本就是同一趟循环的两个副产品。
+ */
+function parseCommittedRows(input: BaseStoreMutation) {
+  const rows = input.rows.slice();
+  const rowsById = new Map<string, BaseRow>();
+  const positions = new Map<string, number>();
+  for (const [index, row] of rows.entries()) {
+    if (rowsById.has(row.id)) throw new Error(`Base row id 重复：${row.id}`);
+    rowsById.set(row.id, row);
+    positions.set(row.id, index);
   }
+  const changed: BaseRow[] = [];
+  const normalize = (index: number) => {
+    const parsed = baseRowSchema.parse(rows[index]!);
+    rows[index] = parsed;
+    rowsById.set(parsed.id, parsed);
+    changed.push(parsed);
+  };
+  if (input.changedRowIds === ALL_ROWS_CHANGED) {
+    for (let index = 0; index < rows.length; index += 1) normalize(index);
+  } else {
+    for (const rowId of input.changedRowIds) {
+      const index = positions.get(rowId);
+      if (index !== undefined) normalize(index);
+    }
+  }
+  return { rows, rowsById, changed };
+}
 
-  private warn(message: string) {
-    this.warnings.push(message);
+/** 历史差分的候选集：声明变更 + 声明删除；整表改写才回到前后并集。 */
+function historyCandidates(
+  input: BaseStoreMutation,
+  current: StoredBase,
+  nextById: ReadonlyMap<string, BaseRow>
+): Iterable<string> {
+  if (input.changedRowIds === ALL_ROWS_CHANGED) {
+    return new Set([...current.rowsById.keys(), ...nextById.keys()]);
   }
+  if (!input.removedRowIds?.size) return input.changedRowIds;
+  return [...input.changedRowIds, ...input.removedRowIds];
 }

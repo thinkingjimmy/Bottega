@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on AppsProvider pinned records, exclusive App target/origin state, shared App activation, root-aligned Sidebar primitives, window intents, dropdown menu, and sonner
- * [OUTPUT]: Provides PinnedApps and route matching for exclusively active root App rows with generation-fenced activation, AppWindow, and direct Unpin
+ * [OUTPUT]: Provides PinnedApps: exclusively active root App rows with generation-fenced activation, AppWindow, and direct Unpin
  * [POS]: components/sidebar/apps projection aligned with the parent Apps row; durable pin truth remains in the main-owned AppStore and App windows never own this management surface
  */
 
@@ -43,11 +43,6 @@ import {
 
 const pinnedRowClass =
   "cursor-pointer pr-14 font-normal! group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-accent-foreground group-has-[:focus-visible]/menu-item:bg-sidebar-accent group-has-[:focus-visible]/menu-item:text-sidebar-accent-foreground";
-
-export function isPinnedAppRoute(activePath: string, appId: string) {
-  if (activePath.includes("#app-use:")) return false;
-  return activePath === `/apps/${appId}` || activePath.startsWith(`/apps/${appId}/`);
-}
 
 export function PinnedApps() {
   const { t } = useAppTranslation();

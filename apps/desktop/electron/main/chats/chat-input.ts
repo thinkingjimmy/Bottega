@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, shared chat/agent/project Limit, renderer ManualTurn and main-only Trusted adopt
- * [OUTPUT]: Provides App edit/use/adopt inputs with optional MCP tool-plan session binding, append/revision CAS, attachment validation, reusable user envelopes, and sorted attachment load types
+ * [OUTPUT]: Provides strict create/adopt/append/revision/fork/worktree-commit inputs, attachment validation, reusable user envelopes, and sorted attachment load types
  * [POS]: The input boundary of the chats module; renderer cannot construct an adopt, main trusted path to parse without performing perpetuation or lifecycle side effects
  */
 
@@ -16,7 +16,10 @@ import {
 import {
   MESSAGE_BYTE_LIMIT,
   type AdoptChatInput,
+  type CommitManagedWorktreeInput,
   type CreateAppChatInput,
+  type ForkChatPreflightInput,
+  type ForkChatRequest,
 } from "../../../shared/chats-ipc";
 import { HISTORY_SOURCE_KINDS } from "../../../shared/history-import-ipc";
 import { PROJECT_ID_PATTERN } from "../../../shared/projects-ipc";
@@ -215,5 +218,33 @@ export const renameInputSchema = z
     title: z.string().trim().min(1).max(200),
   })
   .strict();
+
+const forkAnchorFields = {
+  sourceChatId: z.string().regex(CHAT_ID_PATTERN),
+  sourceIncarnationId: z.string().regex(/^[a-f0-9]{32}$/),
+  anchorMessageId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+  anchorSeq: z.number().int().positive(),
+  mode: z.enum(["same-workspace", "new-worktree"]),
+};
+
+export const forkPreflightInputSchema = z
+  .object(forkAnchorFields)
+  .strict() satisfies z.ZodType<ForkChatPreflightInput>;
+
+export const forkChatInputSchema = z
+  .object({
+    requestId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+    childChatId: z.string().regex(CHAT_ID_PATTERN),
+    ...forkAnchorFields,
+  })
+  .strict() satisfies z.ZodType<ForkChatRequest>;
+
+export const commitManagedWorktreeInputSchema = z
+  .object({
+    chatId: z.string().regex(CHAT_ID_PATTERN),
+    incarnationId: z.string().regex(/^[a-f0-9]{32}$/),
+    message: z.string().trim().min(1).max(200),
+  })
+  .strict() satisfies z.ZodType<CommitManagedWorktreeInput>;
 
 export type ParsedAttachmentPayload = z.infer<typeof attachmentPayloadSchema>;

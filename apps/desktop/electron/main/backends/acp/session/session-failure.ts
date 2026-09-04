@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on provider-neutral JetBrains AIR sessionFailure metadata, backend turn callbacks, a transport redactor, and shared ProductFailure constructors
- * [OUTPUT]: Provides strict parsing, semantic projection, coarse terminal facts, monotonic revision tracking, and callback-ready notice/terminal projection
+ * [INPUT]: Depends on provider-neutral JetBrains AIR sessionFailure metadata, backend turn callbacks, a transport redactor, a turn-fact sink, and shared ProductFailure constructors
+ * [OUTPUT]: Provides strict parsing, semantic projection, coarse terminal facts, monotonic revision tracking, callback-ready notice/terminal projection, and routing of the Codex skills-context-budget notice into the turn fact instead of a transcript item
  * [POS]: ACP session extension boundary; adapters may describe incidents, but only this file decides which product failure users see
  */
 
@@ -99,6 +99,22 @@ export function parseAcpSessionFailure(meta: unknown): AcpSessionFailure | undef
   };
 }
 
+/* ── Codex skills 目录预算告警 ─────────────────────────────────────
+   协商 typed sessionFailure 后，Codex 的 `warning` 通知经 codex-acp 以
+   category:"unknown" / severity:"warning" 的 notice 到达，title 即原句。
+   这一条说的是 Codex 自己的技能目录超预算、描述被截短，不是本轮故障：
+   它只置位 turn 事实（→ skill-descriptions-truncated 软 notice），
+   不进 agent-failure 条目。通知标题不是正文，子串匹配吞不掉 prose。 */
+const SKILLS_CONTEXT_BUDGET_MARKER = "skills context budget";
+
+export function isSkillsContextBudgetNotice(failure: AcpSessionFailure) {
+  return (
+    failure.severity === "warning" &&
+    failure.failure.safeDetails.kind === "diagnostic" &&
+    failure.failure.safeDetails.message.includes(SKILLS_CONTEXT_BUDGET_MARKER)
+  );
+}
+
 export function terminalFactsForSessionFailure(failure: ProductFailure): {
   failureKind: FailureKind;
   usageLimit?: UsageLimitInfo;
@@ -137,7 +153,8 @@ export class AcpSessionFailureProjection {
 
   constructor(
     private readonly callbacks: SessionFailureCallbacks,
-    private readonly redact: (message: string) => string
+    private readonly redact: (message: string) => string,
+    private readonly onSkillDescriptionsTruncated: () => void
   ) {}
 
   projectPrompt(meta: unknown): ProductFailure | undefined {
@@ -153,7 +170,12 @@ export class AcpSessionFailureProjection {
 
   projectUpdate(meta: unknown) {
     const failure = this.tracker.accept(meta);
-    if (failure) this.emit(failure);
+    if (!failure) return;
+    if (isSkillsContextBudgetNotice(failure)) {
+      this.onSkillDescriptionsTruncated();
+      return;
+    }
+    this.emit(failure);
   }
 
   private emit(failure: AcpSessionFailure) {

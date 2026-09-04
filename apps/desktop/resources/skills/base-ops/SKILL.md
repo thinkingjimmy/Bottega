@@ -1,7 +1,7 @@
 ---
 name: base-ops
 displayName: Base 数据操作
-description: 在当前 chat 可写的自有或 Project 共享 Base 中设计列、管理视图（含 Chart dashboard）、分页查询、采集记账，并导出 CSV artifact。
+description: 在当前 chat 可写的自有或 Project 共享 Base 中设计列、管理视图（含 Chart dashboard）、用 read_base 分页查询、采集记账，并导出 CSV artifact。
 requires: tools: bases:mutate
 ---
 
@@ -16,7 +16,7 @@ Base 工具作用域已由当前 chat 的 lease 固定：优先使用 chat 自�
 3. 采集/记账为每行生成稳定 `id` 再 `base_insert_rows`：同 id 同内容幂等成功，同 id 异内容 409。
 4. 改数据用 `base_patch_rows`（字段级 LWW，`null` 清空，单批 ≤100 行）；删行用 `base_delete_rows`（不存在即 no-op）。
 5. meta 变更遇 409 必须重新 describe 后重放，不要盲重试。
-6. 查询用 `base_query`（每页 100 行，携带 `nextCursor` 直到缺失）；**同一分页期间 Base revision 变化会得到 409「请从第一页重新查询」，必须弃掉旧 cursor 从头再来**。跨 Section 读别的 Base 用 `search_bases` 定位 + `read_base` 直读。
+6. 查询用 `read_base`：省略 `section_id` 与 `target` 即读当前 chat 可写的 Base（尚未建表返回 404，读不建表），每页 100 行、携带 `nextCursor` 直到缺失；**同一分页期间 Base revision 变化会得到 409「请重新读取」，必须弃掉旧 cursor 从头再来**。跨 Section 读别的 Base 用 `search_bases` 定位后给 `read_base` 传 `section_id`；读本轮附加 App 的 Base 传 `target`。
 7. 全量导出用 `base_export_csv`，返回 `{path,bytes,rowCount}` artifact 元数据。
 
 ## 视图协议

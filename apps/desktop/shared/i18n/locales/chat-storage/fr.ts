@@ -10,6 +10,8 @@ export const chatStorageFr: typeof chatStorageEn = {
   technicalDetails: "Détails techniques",
   copyDetails: "Copier les détails techniques",
   copiedDetails: "Détails techniques copiés",
+  reportIssue: "Signaler sur GitHub",
+  warningResolution: "Redémarrez Bottega. Si cela continue d’apparaître, signalez-le sur GitHub pour que nous puissions l’examiner.",
   code: {
     "file-quarantined": {
       title: "Un Chat est temporairement indisponible",
@@ -25,6 +27,11 @@ export const chatStorageFr: typeof chatStorageEn = {
       title: "Des copies de Chat ne peuvent pas être restaurées en toute sécurité",
       explanation: "Bottega ne peut pas déterminer quelle copie est correcte et n’a donc écrasé ni supprimé aucun fichier.",
       resolution: "Conservez les fichiers et copiez les détails techniques pour le support avant toute modification manuelle.",
+    },
+    "self-check-failed": {
+      title: "L’autocontrôle des Chats a échoué",
+      explanation: "Bottega vérifie régulièrement la cohérence de sa base de Chats. Cette vérification a signalé un problème, mais vos Chats restent lisibles et Bottega n’a modifié aucune donnée.",
+      resolution: "Redémarrez Bottega pour relancer la vérification. Si cela continue d’apparaître, signalez-le sur GitHub ; les détails techniques sont joints automatiquement.",
     },
   },
 };

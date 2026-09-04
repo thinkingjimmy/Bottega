@@ -40,6 +40,7 @@ export const CHAT_STORAGE_FAILURE_CODES = [
   "file-quarantined",
   "backup-failed",
   "recovery-conflict",
+  "self-check-failed",
 ] as const;
 
 export type AgentRuntimeFailureCode =

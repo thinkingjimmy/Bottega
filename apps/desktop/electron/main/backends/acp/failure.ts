@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on unknown ACP/JSON-RPC original cause and outbound access to the limited stream snapshot
- * [OUTPUT]: Provides exact structured ACP/HTTP classification into coarse terminal kind plus Agent ProductFailure semantics; arbitrary prose remains unknown
+ * [OUTPUT]: Provides exact structured ACP/HTTP classification into coarse terminal kind plus Agent ProductFailure semantics, including the four pinned upstream executable-unavailable literals (adapter claudeCliPath, SDK startup, executable_not_found, executable_launch_failed) surfaced through -32603 data.details as runtime-unavailable; arbitrary prose remains unknown
  * [POS]: ACP transport failure classifier; renderer owns localized explanations and recovery instructions
  */
 
@@ -26,6 +26,28 @@ const LOCKED_AUTH_MESSAGES = new Set([
   "Authentication required.",
 ]);
 const ACP_REQUEST_CANCELLED = -32800;
+
+/* 锁版上游字面量契约（claude-agent-acp 0.70.0 / claude-agent-sdk 0.3.232）：
+   adapter 把 SDK 的启动错误包成 `-32603 "Internal error"` 并把原文放进
+   data.details，errorClass 不上线。四段文本各对应一个"可执行文件不可用"的
+   形状，由 acp-executable-failure.test.ts 钉在 dist 字节上；升版改文案即红灯。
+   顺序只影响诊断标签，四者同归 runtime-unavailable。 */
+const EXECUTABLE_UNAVAILABLE_LITERALS = [
+  "exists but failed to launch", // SDK executable_launch_failed
+  "Native CLI binary for", // SDK 启动期：平台包缺失
+  "Claude native binary not found for", // adapter claudeCliPath()
+  "options.pathToClaudeCodeExecutable", // SDK executable_not_found 兜底
+] as const;
+
+function launchDetails(data: unknown) {
+  const details = record(data)?.details;
+  return typeof details === "string" ? details : undefined;
+}
+
+function executableUnavailable(message: string, details: string | undefined) {
+  const text = details ? `${message}\n${details}` : message;
+  return EXECUTABLE_UNAVAILABLE_LITERALS.some((literal) => text.includes(literal));
+}
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -222,6 +244,11 @@ export function classifyAcpFailure(
   }
   if (typeof codexCode === "string" && CODEX_FAILURE_CODES[codexCode]) {
     return backendFailure(CODEX_FAILURE_CODES[codexCode], message);
+  }
+  const details = launchDetails(data);
+  if (executableUnavailable(message, details)) {
+    // details 才是原文；message 只是无信息的 "Internal error"
+    return backendFailure("runtime-unavailable", details ?? message);
   }
   const wireCode = stringCode(source, data);
   if (wireCode && CONNECTION_CODES.has(wireCode.toUpperCase())) {

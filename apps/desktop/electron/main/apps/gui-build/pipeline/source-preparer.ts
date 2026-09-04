@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node descriptor-level filesystem primitives, package inspection, and GUI build budgets
- * [OUTPUT]: Provides the only ancestor-identity/no-follow/no-hardlink immutable App source snapshot implementation
+ * [OUTPUT]: Provides the only ancestor-identity/no-follow/no-hardlink immutable App source snapshot implementation, with package-budget rejections typed as GUI_BUILD_SOURCE_FREEZE_UNSAFE
  * [POS]: apps/gui-build/pipeline ingress security boundary; every manifest, validator, compiler, digest, and seal reads its snapshot
  */
 
@@ -9,7 +9,7 @@ import { constants } from "node:fs";
 import { chmod, lstat, mkdir, open, readdir, realpath, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { Sha256Digest } from "../../../../../shared/extensions-ipc";
-import { inspectPackage } from "../../share/package-contract";
+import { inspectPackage } from "../../share/package/package-contract";
 import { APP_GUI_BUILD_BUDGET, type AppSourcePreparePort, type SourceFreezeReceipt } from "../contracts";
 
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
@@ -23,7 +23,12 @@ export class AppSourcePreparer implements AppSourcePreparePort {
     compiled: boolean;
   }>): Promise<SourceFreezeReceipt> {
     const canonicalLiveRoot = await realpath(input.liveRoot);
-    const inspection = await inspectPackage(canonicalLiveRoot);
+    /* 单文件 512 KiB 的权威在 share/package-contract.ts，inspectPackage 判死时抛的
+       是无类型 Error，一路裸奔到 renderer 就变成一条没有 code 的构建失败。冻结是
+       这条路径上唯一知道「这是 App 源码」的地方，类型化必须在这里补上。 */
+    const inspection = await inspectPackage(canonicalLiveRoot).catch((cause) => {
+      throw unsafe(cause instanceof Error ? cause.message : String(cause));
+    });
     const sourceFiles = inspection.files.filter(
       (file) => !file.path.startsWith(".bottega/")
     );

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, node:crypto SHA-256, and the shared five-locale enum
- * [OUTPUT]: Provides current and migration-only LifecycleIntent schemas for seven saga inputs, including App deletion's durable placement-decision phase, frozen Studio-only install authorization, locale, tombstone, stableInputHash, provenance, fulfillment, and consent claims
+ * [OUTPUT]: Provides current and migration-only LifecycleIntent schemas for seven saga inputs (decoding normalizes a terminal intent's retired phase to its kind's last phase, while a non-terminal unknown phase stays fail-closed), the shared monotonic phase comparison (phaseReached/reached), frozen Studio-only install authorization, locale, tombstone, stableInputHash, provenance, fulfillment, and consent claims
  * [POS]: The type truth source of the lifecycle domain, covenant v3, second paragraph of the machine image; consumed by intent-store/admission-gate in a single direction
  */
 
@@ -16,7 +16,6 @@ export const INTENT_PHASES = {
     "proposed",
     "admitted",
     "record-created",
-    "scaffolded",
     "project-ensured",
     "chat-migrated",
     "promotion-created",
@@ -40,8 +39,6 @@ export const INTENT_PHASES = {
     "generations-retired",
     "grants-settled",
     "data-settled",
-    "placements-clearing",
-    "placements-settled",
   ],
   "chat-slot": ["proposed", "allocated"],
   "base-import": ["proposed", "delivered", "project-ensured", "base-seeded"],
@@ -57,6 +54,24 @@ export const INTENT_PHASES = {
 
 export type LifecycleKind = keyof typeof INTENT_PHASES;
 export const PROPOSED_PHASE = "proposed";
+
+/* ── phase 单调序只有一个裁判:各 saga 问「跑到哪了」,不各自抄一份序表。 ── */
+export function phaseReached(
+  kind: LifecycleKind,
+  phase: string,
+  target: string
+) {
+  const phases = INTENT_PHASES[kind] as readonly string[];
+  return phases.indexOf(phase) >= phases.indexOf(target);
+}
+
+export function reached(
+  kind: LifecycleKind,
+  intent: { phase: string },
+  target: string
+) {
+  return phaseReached(kind, intent.phase, target);
+}
 
 const kindSchema = z.enum(
   Object.keys(INTENT_PHASES) as [LifecycleKind, ...LifecycleKind[]]
@@ -186,10 +201,30 @@ const lifecycleIntentEnvelopeSchema = z
     }
   });
 
-/** v1 迁移只用的信封 schema：验证事务骨架，不把历史 input 视为当前授权。 */
-export const legacyLifecycleIntentSchema = lifecycleIntentEnvelopeSchema;
+/* ── 退役阶段归一(只对终态):阶段名册允许演进——app-delete 的 placements-*
+ * 已随编排收束而退役——但已完成的意图不该有能力阻断启动,终态语义不变,
+ * 归一到该 kind 的末档即可。非终态的未知 phase 仍是真损坏(待跑的工作停在
+ * 无人认识的状态,续跑必然越权),照旧 fail-closed。 ── */
+function retireUnknownPhase(value: unknown): unknown {
+  if (typeof value !== "object" || value === null) return value;
+  const row = value as Record<string, unknown>;
+  const phases: readonly string[] | undefined =
+    INTENT_PHASES[row.kind as LifecycleKind];
+  if (!phases || !row.terminal || phases.includes(row.phase as string)) {
+    return value;
+  }
+  return { ...row, phase: phases[phases.length - 1] };
+}
 
-export const lifecycleIntentSchema = lifecycleIntentEnvelopeSchema.superRefine(
+const decodedIntentEnvelopeSchema = z.preprocess(
+  retireUnknownPhase,
+  lifecycleIntentEnvelopeSchema
+);
+
+/** v1 迁移只用的信封 schema：验证事务骨架，不把历史 input 视为当前授权。 */
+export const legacyLifecycleIntentSchema = decodedIntentEnvelopeSchema;
+
+export const lifecycleIntentSchema = decodedIntentEnvelopeSchema.superRefine(
   (intent, ctx) => {
     const parsed = INTENT_INPUT_SCHEMAS[intent.kind].safeParse(intent.input);
     if (!parsed.success) {

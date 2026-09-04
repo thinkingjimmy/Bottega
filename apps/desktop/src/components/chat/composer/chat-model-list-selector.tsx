@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, lucide Icons, ui DropdownMenu(Sub/RadioGroup/Portal) /Skeleton/SlimScroller, shared list-only Model directory and chat-model-selection Pure rules
- * [OUTPUT]: Provides ChatModelListSelector with structured model-catalog failures, Model/Effort controls, and an optional Speed row that preserves preference while showing effective fallback and reason
+ * [OUTPUT]: Provides ChatModelListSelector with concrete default projection, model-bound Effort commits, structured catalog failures, and an optional Speed row that preserves preference while showing effective fallback and reason
  * [POS]: The list-only model controller for chat/composer; Separated from the Codex Rapid Panel, but using its trigger formatting and dual-column option visual language
  */
 
@@ -357,6 +357,10 @@ export function ChatModelListSelector({
                     onValueChange={(next) =>
                       commitAndClose({
                         ...value,
+                        /* 首用时 value 仍可保持 model 缺省；用户一旦显式改 Effort，
+                           就必须把眼前这一个默认模型一同冻结进偏好，否则档位失去
+                           归属，OpenCode 也无法证明它属于真正执行的模型。 */
+                        ...(current ? { model: current.slug } : {}),
                         reasoningEffort: next,
                       } as AgentTurnOptions)
                     }

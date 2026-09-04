@@ -39,7 +39,7 @@ export const previewPurge = (targets: ArchiveTarget[]) =>
   Promise.resolve({
     deletePaths: [],
     retainedExternalBindings: [],
-    pinnedBaseCount: 0,
+    rootBaseCount: 0,
     blockedReasons: ["浏览器演示模式不执行删除"],
     memory: null,
     executionToken: "",

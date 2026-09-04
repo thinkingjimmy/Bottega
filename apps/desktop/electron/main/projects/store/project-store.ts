@@ -12,7 +12,7 @@ import {
   type ProjectsSortMode,
 } from "../../../../shared/projects-ipc";
 import type { TurnProjectContext } from "../../../../shared/resource-scope";
-import type { AppCapabilityGrant, AppGrantRecord } from "../../../../shared/apps-ipc";
+import type { AppGrantRecord } from "../../../../shared/apps-ipc";
 import { errorMessage } from "../../errors";
 import { SerialQueue } from "../../persistence/serial-queue";
 import {
@@ -777,8 +777,6 @@ export class ProjectStore {
     return this.workspace.setBinding(projectId, binding, externalDir);
   }
   setArchivedAt(projectId: string, archivedAt: number | undefined) { return this.workspace.setArchivedAt(projectId, archivedAt); }
-
-  setAppGrant(projectId: string, grant: AppCapabilityGrant) { return this.setAppGrantRecord(projectId, grant); }
 
   setAppGrantRecord(projectId: string, grant: AppGrantRecord) { return this.workspace.setAppGrant(projectId, grant); }
 

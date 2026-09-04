@@ -80,7 +80,6 @@ type ReceiptAliasSnapshot = {
 export function BaseGalleryView({
   ownerKey,
   ownerInstanceId,
-  revision,
   rows,
   columns,
   context,
@@ -93,7 +92,6 @@ export function BaseGalleryView({
 }: {
   ownerKey: string;
   ownerInstanceId: string;
-  revision: number;
   rows: BaseRow[];
   columns: BaseColumn[];
   context: BaseCellContext;
@@ -117,6 +115,35 @@ export function BaseGalleryView({
       }),
     [columns, config, context, ownerInstanceId, ownerKey, rows]
   );
+  /* ── 收据请求的真实输入 ────────────────────────────────────────
+   * 收据把「会话里刚生成的那张图」认成「Base 里已落盘的这一格」，因而它
+   * 只关心附件格局：哪一格挂着哪张图。把这张格局压成一个字符串，它就是
+   * 这只视图看得见的 galleryGeneration——改标题、改日期、改任何别的列都
+   * 不会让它变，IPC 也就不再跟着每一次提交空转一遍。
+   * ────────────────────────────────────────────────────────── */
+  const durableCells = useMemo(
+    () =>
+      durableItems.flatMap(
+        (item): Array<readonly [string, ReadyGalleryItem]> =>
+          item.phase === "ready" && item.sourceRef.kind === "attachment"
+            ? [
+                [
+                  `${item.sourceRef.rowId}:${item.sourceRef.columnId}`,
+                  item,
+                ] as const,
+              ]
+            : []
+      ),
+    [durableItems]
+  );
+  const galleryGeneration = useMemo(
+    () => durableCells.map(([cell, item]) => `${cell}=${item.id}`).join("|"),
+    [durableCells]
+  );
+  const durableByCell = useMemo(
+    () => new Map<string, ReadyGalleryItem>(durableCells),
+    [durableCells]
+  );
   const stateKey = composerChatId ?? ownerKey;
   const state = useGalleryState(stateKey);
   const [mode, setMode] = useState<GalleryMode>("browse");
@@ -126,6 +153,7 @@ export function BaseGalleryView({
   const [focusPins, setFocusPins] = useState<ReadonlySet<string>>(new Set());
   const [announcement, setAnnouncement] = useState("");
   const ephemeralItemsRef = useRef(ephemeralItems);
+  const durableByCellRef = useRef(durableByCell);
   const receiptRequestKey =
     composerChatId && composerIncarnationId
       ? JSON.stringify([
@@ -133,8 +161,8 @@ export function BaseGalleryView({
           composerIncarnationId,
           ownerKey,
           ownerInstanceId,
-          revision,
           config.attachmentColumnId,
+          galleryGeneration,
         ])
       : "";
   const [receiptSnapshot, setReceiptSnapshot] =
@@ -171,23 +199,6 @@ export function BaseGalleryView({
       }),
     [config.dateBucket, config.groupByDateColumnId, items, t]
   );
-  const durableByCell = useMemo(
-    () =>
-      new Map<string, ReadyGalleryItem>(
-        durableItems.flatMap(
-          (item): Array<readonly [string, ReadyGalleryItem]> =>
-            item.phase === "ready" && item.sourceRef.kind === "attachment"
-              ? [
-                  [
-                    `${item.sourceRef.rowId}:${item.sourceRef.columnId}`,
-                    item,
-                  ] as const,
-                ]
-              : []
-        )
-      ),
-    [durableItems]
-  );
   const currentSourceKeys = useMemo(
     () =>
       new Set([
@@ -196,14 +207,21 @@ export function BaseGalleryView({
       ]),
     [items, receiptSnapshot.sourceKeys, receiptsReady]
   );
+  const itemIds = useMemo(
+    () => new Set(items.map((item) => item.id)),
+    [items]
+  );
   const currentActiveId =
-    activeId && items.some((item) => item.id === activeId)
-      ? activeId
-      : items.at(-1)?.id ?? "";
+    activeId && itemIds.has(activeId) ? activeId : items.at(-1)?.id ?? "";
 
   useEffect(() => {
     ephemeralItemsRef.current = ephemeralItems;
   }, [ephemeralItems]);
+  /* 表本身不进 effect 依赖：它每次投影都换身份，可收据只该跟内容走。
+     ref 让 then 回调读到的永远是解析那一刻最新的一张表。 */
+  useEffect(() => {
+    durableByCellRef.current = durableByCell;
+  }, [durableByCell]);
   useEffect(() => {
     if (!composerChatId || !composerIncarnationId || !receiptRequestKey) return;
     let active = true;
@@ -222,7 +240,7 @@ export function BaseGalleryView({
           composerIncarnationId
         );
         for (const logicalKey of receiptKeys) sourceKeys.add(logicalKey);
-        const ready = durableByCell.get(association.galleryItemId);
+        const ready = durableByCellRef.current.get(association.galleryItemId);
         if (!ready) continue;
         for (const logicalKey of receiptKeys) {
           aliases.set(logicalKey, ready);
@@ -250,7 +268,6 @@ export function BaseGalleryView({
     composerChatId,
     composerIncarnationId,
     config.attachmentColumnId,
-    durableByCell,
     receiptRequestKey,
   ]);
   useEffect(() => {

@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on trusted Apps client Design candidate/import/list/restore IPC, React identity refs, UI Dialog/Button/DropdownMenu, and localized copy
- * [OUTPUT]: Provides useDesignHistory plus DesignCanvasMenuItems, DesignHistoryDialog and DesignHistoryButton — the App-level home for import and restore, with stale-response fencing and lease-safe convergence preserved
+ * [OUTPUT]: Provides DesignCanvasMenuItems, DesignHistoryDialog and DesignHistoryButton — the App-level home for import and restore, with per-surface lists, stale-response fencing and lease-safe convergence preserved
  * [POS]: Trusted Design chrome; it is the only renderer mutation entry for canvas history, now mounted in App chrome rather than over the canvas
  */
 
@@ -38,23 +38,32 @@ import type { DesignCanvasVersion } from "../../../../shared/apps-ipc";
 
 type Lease = { appId: string; appSurfaceLeaseId: string };
 
-/* 文件与候选的实时清单：两处入口（App 菜单与侧栏按钮）各自持有一份，
-   因为它们从不同时挂载，共享 store 只会多一个需要失效的真相源。 */
-function useDesignCanvases({ appId, appSurfaceLeaseId }: Lease) {
-  const [files, setFiles] = useState<string[]>([]);
-  const [candidates, setCandidates] = useState<string[]>([]);
+const EMPTY_LIST: readonly string[] = [];
+
+/* ============================================================
+ * 一个入口只取它自己要念的那一份
+ *
+ * 两处入口（App 菜单与侧栏按钮）各自持有一份实时清单，因为它们从不同时
+ * 挂载，共享 store 只会多一个需要失效的真相源。
+ *
+ * 但「一份」不等于「同一条 IPC 拉两样东西」：⋯ 菜单只问「有什么可导入」，
+ * 已托管文件是恢复弹窗的问题。两条绑在一起，等于每次展开菜单都替一个没
+ * 打开的弹窗取一次数。load 由调用方以模块级函数传入——身份恒定，effect
+ * 因而不会因为父级重渲染再拉一遍。
+ * ============================================================ */
+function useDesignCanvasList(
+  { appId, appSurfaceLeaseId }: Lease,
+  load: (lease: Lease) => Promise<string[]>
+) {
+  const [items, setItems] = useState<readonly string[]>(EMPTY_LIST);
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
     const refresh = async () => {
       try {
-        const [nextFiles, nextCandidates] = await Promise.all([
-          listDesignFiles({ appId, appSurfaceLeaseId }),
-          listDesignImportCandidates({ appId, appSurfaceLeaseId }),
-        ]);
+        const next = await load({ appId, appSurfaceLeaseId });
         if (!active) return;
-        setFiles(nextFiles);
-        setCandidates(nextCandidates);
+        setItems(next);
         setError("");
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : String(cause));
@@ -68,8 +77,8 @@ function useDesignCanvases({ appId, appSurfaceLeaseId }: Lease) {
       active = false;
       unsubscribe();
     };
-  }, [appId, appSurfaceLeaseId]);
-  return { files, candidates, error, setError };
+  }, [appId, appSurfaceLeaseId, load]);
+  return { items, error };
 }
 
 /** ⋯ 菜单里的两项。导入是子菜单——它只要一个坐标，不值得一个弹窗。 */
@@ -80,7 +89,10 @@ export function DesignCanvasMenuItems({
   onOpenHistory,
 }: Lease & { onImported(): void; onOpenHistory(): void }) {
   const { t } = useAppTranslation();
-  const { candidates } = useDesignCanvases({ appId, appSurfaceLeaseId });
+  const { items: candidates } = useDesignCanvasList(
+    { appId, appSurfaceLeaseId },
+    listDesignImportCandidates
+  );
   const runImport = (file: string) => {
     void importDesignCanvas({ appId, appSurfaceLeaseId, file }).then(onImported);
   };
@@ -154,7 +166,10 @@ export function DesignHistoryDialog({
   onOpenChange,
 }: Lease & { onRestored(): void; open: boolean; onOpenChange(open: boolean): void }) {
   const { t } = useAppTranslation();
-  const { files, error: listError } = useDesignCanvases({ appId, appSurfaceLeaseId });
+  const { items: files, error: listError } = useDesignCanvasList(
+    { appId, appSurfaceLeaseId },
+    listDesignFiles
+  );
   const [file, setFile] = useState("");
   const [versions, setVersions] = useState<DesignCanvasVersion[]>([]);
   const [versionsFile, setVersionsFile] = useState("");

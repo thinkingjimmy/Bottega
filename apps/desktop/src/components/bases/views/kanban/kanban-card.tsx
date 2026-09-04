@@ -4,6 +4,7 @@
  * [POS]: The card rendering layer of views/kanban; Canban-fields only show the face, not the column type
  */
 
+import { useMemo } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { ImageIcon } from "lucide-react";
@@ -51,6 +52,12 @@ export function KanbanCard({
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: row.id,
   });
+  /* 卡面是一次投影而不是一次读取：relation 要回查目标行、formula 要求值。
+     不 memo 就等于每一次无关重渲染都替整屏卡片重算一遍。 */
+  const face = useMemo(
+    () => kanbanCardFace(row, spec, cellContext),
+    [cellContext, row, spec]
+  );
   /* 被测量的是外层槽位而非卡片本身：虚拟化按 item.start 摆放、item 高度即
    * measureElement 的读数，两者一旦同体，卡片就首尾相接、连一条缝都没有。
    * 把 pb-2 放进槽位，间距便计入测量，卡片之间自然透气——而不是靠给每张卡
@@ -70,10 +77,7 @@ export function KanbanCard({
         className={`${KANBAN_CARD_CLASS} cursor-grab transition-shadow hover:shadow-sm active:cursor-grabbing`}
         style={{ opacity: isDragging ? 0.35 : 1 }}
       >
-        <KanbanCardBody
-          face={kanbanCardFace(row, spec, cellContext)}
-          owner={owner}
-        />
+        <KanbanCardBody face={face} owner={owner} />
       </article>
     </div>
   );

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the portable column, view, row schema, Gallery column references refine with unique Ids, and the budget constants for shared/bases-ipc
- * [OUTPUT]: Provides BaseSnapshotFilev2, compatible with BaseSnapshotFile input, strict v2 baseSnapshotFileSchema, v1→v2
- * [POS]: The only agreement shared by base.json; The new file only writes v2, v1 only in border mechanical migration, legacy embed explicitly refuses, and when running owner/revision never leaks
+ * [OUTPUT]: Provides BaseSnapshotFile/BaseSnapshotFileV2 and the strict portable baseSnapshotFileSchema
+ * [POS]: The only agreement shared by base.json; one portable body, schemaVersion 1 or 2 on read, always 2 on write, and owner/revision never leak into it
  */
 
 import { z } from "zod";
@@ -31,9 +31,15 @@ export const BASE_SNAPSHOT_FILE_BYTE_LIMIT =
 const utf8Bytes = (value: unknown) =>
   new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
-const portableV2Schema = z
+/**
+ * v1 与 v2 的可移植正文完全同构：v1 里唯一真正不同的东西（embed 视图、
+ * 缺 attachmentColumnId 的 gallery）本来就过不了 strict 视图 schema。
+ * 于是「版本」退化成一个允许两个字面量的字段，读侧不需要第二条通道，
+ * 写侧一律落 2。
+ */
+const portableSchema = z
   .object({
-    schemaVersion: z.literal(2),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
     name: baseNameSchema,
     columns: z.array(baseColumnSchema).max(BASE_COLUMN_LIMIT),
     views: z.array(baseViewSchema).min(1).max(BASE_VIEW_LIMIT),
@@ -42,41 +48,7 @@ const portableV2Schema = z
   .strict()
   .superRefine(refinePortableSnapshot);
 
-const legacyV1EnvelopeSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    name: baseNameSchema,
-    columns: z.array(baseColumnSchema).max(BASE_COLUMN_LIMIT),
-    views: z.array(z.unknown()).min(1).max(BASE_VIEW_LIMIT),
-    rows: z.array(baseRowSchema).max(BASE_ROW_LIMIT),
-  })
-  .strict()
-  .superRefine((snapshot, context) => {
-    let hasEmbed = false;
-    snapshot.views.forEach((view, index) => {
-      if (legacyViewType(view) !== "embed") return;
-      hasEmbed = true;
-      context.addIssue({
-        code: "custom",
-        path: ["views", index, "config", "type"],
-        message: "base.json v1 的 embed 视图不可移植；请先在旧版本中删除该视图后重试",
-      });
-    });
-    if (hasEmbed) return;
-    const migrated = portableV2Schema.safeParse(migrateLegacySnapshot(snapshot));
-    if (migrated.success) return;
-    migrated.error.issues.forEach((issue) => context.addIssue({
-      code: "custom",
-      path: issue.path,
-      message: issue.message,
-    }));
-  });
-
-/** v1 只是一条受控输入通道；transform 后的所有消费者只看 v2。 */
-export const baseSnapshotFileSchema = z.union([
-  portableV2Schema,
-  legacyV1EnvelopeSchema.transform(migrateLegacySnapshot),
-]);
+export const baseSnapshotFileSchema = portableSchema;
 
 type PortableBody = {
   name: string;
@@ -85,93 +57,19 @@ type PortableBody = {
   rows: BaseRow[];
 };
 
-/** @deprecated 仅供仍构造 v1 fixture 的调用方；运行时 parse 结果永远是 v2。 */
-export type BaseSnapshotFileV1 = PortableBody & { schemaVersion: 1 };
 export type BaseSnapshotFileV2 = PortableBody & { schemaVersion: 2 };
-export type BaseSnapshotFile = BaseSnapshotFileV1 | BaseSnapshotFileV2;
+export type BaseSnapshotFile = PortableBody & { schemaVersion: 1 | 2 };
 
+/** 导出永远写 2；读侧接受 1 只是为了不给存量包再造一次迁移。 */
 export function baseSnapshotFile(snapshot: BaseSnapshot): BaseSnapshotFileV2 {
-  return baseSnapshotFileSchema.parse({
+  const file = baseSnapshotFileSchema.parse({
     schemaVersion: 2,
     name: snapshot.meta.name,
     columns: snapshot.meta.columns,
     views: snapshot.meta.views,
     rows: snapshot.rows,
   });
-}
-
-function migrateLegacySnapshot(
-  snapshot: z.infer<typeof legacyV1EnvelopeSchema>
-): BaseSnapshotFileV2 {
-  const columns = structuredClone(snapshot.columns);
-  const views = structuredClone(snapshot.views).map((raw) => {
-    const view = raw as BaseView;
-    if (legacyViewType(view) !== "gallery") return view;
-    const config = view.config as unknown as Record<string, unknown>;
-    if (typeof config.attachmentColumnId === "string") return view;
-    const attachmentColumnId =
-      columns.find((column) => column.type === "attachment")?.id ??
-      appendLegacyColumn(columns, "image", "Image", "attachment");
-    const groupByDateColumnId =
-      ensureLegacyColumn(columns, "created_at", "Created at", "date");
-    return {
-      ...view,
-      config: {
-        ...config,
-        type: "gallery",
-        attachmentColumnId,
-        groupByDateColumnId,
-        dateBucket: "minute",
-      },
-    } as BaseView;
-  });
-  return {
-    schemaVersion: 2,
-    name: snapshot.name,
-    columns,
-    views,
-    rows: structuredClone(snapshot.rows),
-  };
-}
-
-function appendLegacyColumn(
-  columns: BaseColumn[],
-  preferredId: string,
-  name: string,
-  type: BaseColumn["type"]
-) {
-  const ids = new Set(columns.map((column) => column.id));
-  let id = preferredId;
-  for (let suffix = 2; ids.has(id); suffix += 1) {
-    id = `${preferredId}_${suffix}`;
-  }
-  columns.push({ id, name, type });
-  return id;
-}
-
-function ensureLegacyColumn(
-  columns: BaseColumn[],
-  preferredId: string,
-  name: string,
-  type: BaseColumn["type"]
-) {
-  for (let suffix = 1; suffix <= BASE_COLUMN_LIMIT; suffix += 1) {
-    const id = suffix === 1 ? preferredId : `${preferredId}_${suffix}`;
-    const column = columns.find((candidate) => candidate.id === id);
-    if (column?.type === type) return id;
-    if (!column) {
-      columns.push({ id, name, type });
-      return id;
-    }
-  }
-  throw new Error(`无法分配 ${preferredId} id`);
-}
-
-function legacyViewType(view: unknown) {
-  if (!view || typeof view !== "object") return undefined;
-  const config = (view as { config?: unknown }).config;
-  if (!config || typeof config !== "object") return undefined;
-  return (config as { type?: unknown }).type;
+  return { ...file, schemaVersion: 2 };
 }
 
 function refinePortableSnapshot(
