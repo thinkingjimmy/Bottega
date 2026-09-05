@@ -21,14 +21,12 @@ import {
   type StoredBase,
 } from "../base-store-model";
 
-const clone = <T>(value: T): T => structuredClone(value);
-
 export function baseOwnerSummaries(states: ReadonlyMap<string, StoredBase>) {
   return new Map(
     [...states.entries()].map(([ownerKey, { meta, rows }]) => [
       ownerKey,
       {
-        owner: clone(meta.owner),
+        owner: structuredClone(meta.owner),
         ownerInstanceId: meta.ownerInstanceId,
         rowCount: rows.length,
       },

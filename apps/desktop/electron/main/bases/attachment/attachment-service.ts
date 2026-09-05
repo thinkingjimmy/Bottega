@@ -55,7 +55,6 @@ import {
   galleryFailure,
 } from "./support";
 
-const clone = <T>(value: T): T => structuredClone(value);
 const same = (left: unknown, right: unknown) =>
   JSON.stringify(left) === JSON.stringify(right);
 
@@ -415,7 +414,7 @@ export class BaseAttachmentService {
             `Base revision 已变化：期望 ${input.expectedRevision}，实际 ${snapshot.meta.revision}`
           );
         }
-        const meta = clone(snapshot.meta);
+        const meta = structuredClone(snapshot.meta);
         const columnId = chooseAttachmentColumn(
           meta,
           gallery.targetColumnId,
@@ -625,7 +624,7 @@ export class BaseAttachmentService {
         if (gallery.autoGalleryState && gallery.autoGalleryState !== "pending") {
           return null;
         }
-        const nextGallery = clone(gallery);
+        const nextGallery = structuredClone(gallery);
         const alreadyExists = snapshot.meta.views.some(
           (view) => view.config.type === "gallery"
         );

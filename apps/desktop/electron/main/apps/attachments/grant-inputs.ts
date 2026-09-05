@@ -6,7 +6,6 @@
 
 import { z } from "zod";
 import type {
-  AppGrantTarget,
   AppGrantCandidatesInput,
   AppGuiInfoInput,
   AppGuiReadyInput,
@@ -21,15 +20,6 @@ import { APP_ID_PATTERN } from "../store/app-store-schema";
 
 const appId = z.string().regex(APP_ID_PATTERN);
 const chatId = z.string().min(1).max(128);
-const target = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("chat"), chatId }).strict(),
-  z
-    .object({
-      kind: z.literal("project"),
-      projectId: z.string().regex(PROJECT_ID_PATTERN),
-    })
-    .strict(),
-]);
 const commandTarget = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("chat"),
@@ -98,8 +88,6 @@ export const assertSetAppGrantStateInput = (value: unknown) =>
   setGrantState.parse(value) as SetAppGrantStateInput;
 export const assertSetDefaultAppGrantInput = (value: unknown) =>
   setDefaultGrant.parse(value) as SetDefaultAppGrantInput;
-export const assertAppGrantTarget = (value: unknown) =>
-  target.parse(value) as AppGrantTarget;
 export const assertAvailableAppsInput = (value: unknown) =>
   available.parse(value) as AvailableAppsInput;
 export const assertAppGrantCandidatesInput = (value: unknown) =>

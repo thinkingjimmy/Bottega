@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppStore active static-v2/compiled-v3 generation, compiled-v3 artifact verification, BaseGuiGrantStore exact projection, AppGateway, trusted renderer identity, GUI token/scanning/API factories, and Node fs realpath
- * [OUTPUT]: Provides sealed-only active or staged Base GUI projection, digest-keyed sealed-generation scan memoisation, cutover artifact/root/binding preflight, logical-lease-keyed surface registration, renderer-owned scoped tokens, and origin worker/cache clearing on capability changes
+ * [OUTPUT]: Provides sealed-only active or staged Base GUI projection, cutover preflight before initial promotion, digest-keyed scan memoisation, renderer-owned scoped tokens, and origin worker/cache clearing
  * [POS]: The apps module Base GUI capability owner; route, metadata, token, renderer ownership, and handler consume the same generation binding
  */
 
@@ -87,7 +87,8 @@ export class AppGuiProjection {
       buildReceiptDigest: generation.buildReceiptDigest,
     });
     const [{ pages, root }, binding] = await Promise.all([
-      this.inspectGeneration(appId, generationId),
+      // Initial installation becomes ready only after this sealed-artifact preflight.
+      this.scan(appId, generationId),
       Promise.resolve(this.bindingForGeneration(appId, generationId)),
     ]);
     if (!root || pages.length === 0 || !binding) {

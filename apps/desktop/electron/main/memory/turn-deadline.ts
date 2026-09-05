@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AbortSignal, Node timer and crypto; The only deadline to receive the message is
- * [OUTPUT]: Provides deadline race, turn/subsystem signal merged with canonical SHA-256
- * [POS]: The main/memory statusless time limit tool; All recall phases share the same budget, with the recall party responsible for releasing the controller
+ * [INPUT]: Depends on AbortSignal, Node timers, and crypto
+ * [OUTPUT]: Provides rejection-safe deadline races, immediate propagation of cancelled/expired signals, and canonical SHA-256
+ * [POS]: Stateless Memory deadline and digest primitives shared by recall, Policy, and Delivery; callers dispose their signal controllers
  */
 
 import { createHash } from "node:crypto";
@@ -15,11 +15,11 @@ export async function raceMemoryDeadline<T>(
   signal: AbortSignal,
   deadlineAt: number
 ) {
-  if (signal.aborted) throw new MemoryAbortError();
-  if (deadlineAt <= Date.now()) throw new MemoryDeadlineError();
   /* race 输掉后 task 的迟到 rejection 不得变成 unhandledRejection——
      迟到值（含错误）不进入任何 turn 或日志。 */
   task.catch(() => undefined);
+  if (signal.aborted) throw new MemoryAbortError();
+  if (deadlineAt <= Date.now()) throw new MemoryDeadlineError();
   const remaining = deadlineAt - Date.now();
   let timer: NodeJS.Timeout | null = null;
   let abort: (() => void) | null = null;
@@ -49,6 +49,7 @@ export function combineMemorySignals(
   subsystem.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(abort, Math.max(0, deadlineAt - Date.now()));
   timer.unref?.();
+  if (turn.aborted || subsystem.aborted || deadlineAt <= Date.now()) abort();
   return {
     signal: controller.signal,
     dispose: () => {

@@ -19,15 +19,13 @@ import {
   validateBaseModel,
 } from "../validation/base-mutation-validation";
 
-const clone = <T>(value: T): T => structuredClone(value);
-
 export function applyAppBaseDataMigration(
   snapshot: BaseSnapshot,
   file: AppBaseDataMigrationFile
 ) {
-  const columns = clone(snapshot.meta.columns);
-  const views = clone(snapshot.meta.views);
-  const rows = clone(snapshot.rows);
+  const columns = structuredClone(snapshot.meta.columns);
+  const views = structuredClone(snapshot.meta.views);
+  const rows = structuredClone(snapshot.rows);
   const changedRows = new Set<string>();
   let columnsChanged = false;
 
@@ -46,7 +44,7 @@ export function applyAppBaseDataMigration(
           `Base 已有 ${columns.length} 列，无法执行 ${migration.id}；请先导出 CSV/JSON 并人工精简列`
         );
       }
-      columns.push(clone(declared));
+      columns.push(structuredClone(declared));
       appendVisibleColumn(views, declared.id);
       columnsChanged = true;
     }
@@ -69,7 +67,7 @@ export function applyAppBaseDataMigration(
     for (const row of rows) {
       for (const [columnId, value] of Object.entries(migration.defaultValues)) {
         if (row.values[columnId] !== undefined) continue;
-        row.values[columnId] = clone(value);
+        row.values[columnId] = structuredClone(value);
         changedRows.add(row.id);
       }
       for (const alias of migration.aliases) {
@@ -104,7 +102,7 @@ function mergeSelectOptions(existing: BaseColumn, declared: BaseColumn) {
   const known = new Set((existing.options ?? []).map((option) => option.id));
   const missing = (declared.options ?? []).filter((option) => !known.has(option.id));
   if (!missing.length) return false;
-  existing.options = [...(existing.options ?? []), ...clone(missing)];
+  existing.options = [...(existing.options ?? []), ...structuredClone(missing)];
   return true;
 }
 

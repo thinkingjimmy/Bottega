@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on PromptInputMessage, PreparedSubmissionV1/schema/comment templates and a per-chat Gallery snapshot with backend/epoch
+ * [INPUT]: Depends on the shared RichInput wire projection, PromptInputMessage, PreparedSubmissionV1/schema/comment templates and a per-chat Gallery snapshot with backend/epoch
  * [OUTPUT]: Provides synchronized freeze GalleryDraft, freezes sourceRef/token/backend/epoch and injects comment text in the first await
  * [POS]: The lib/gallery submission boundaries are frozen; direct, queue, steer and ambiguous share message.submissionData
  */
@@ -20,7 +20,7 @@ import {
   type PreparedSubmissionV1,
 } from "../../../shared/gallery-submission";
 import type { ComposerFile } from "../chat-composer-store";
-import { richValueWireItemCount } from "../rich-input-serialize";
+import { projectRichInput } from "../../../shared/rich-input-projection";
 import { readGalleryState } from "./store";
 
 type IdentifiedFile = PromptInputFilePart &
@@ -74,7 +74,7 @@ export function freezeGalleryDraft(
     message.input.kind === "rich"
       ? injectText(message.input.value, originalText, displayText)
       : [{ id: crypto.randomUUID(), type: "text" as const, value: displayText }];
-  if (richValueWireItemCount(richValue) + files.length > AGENT_INPUT_LIMIT) {
+  if (projectRichInput(richValue).length + files.length > AGENT_INPUT_LIMIT) {
     throw Object.assign(new Error("消息结构项最多 32 个"), {
       code: "AGENT_INPUT_LIMIT",
     });

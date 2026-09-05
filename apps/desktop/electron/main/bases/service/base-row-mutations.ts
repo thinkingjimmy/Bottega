@@ -37,7 +37,6 @@ import {
 } from "../validation/base-mutation-validation";
 import { statusError } from "../../errors";
 
-const clone = <T>(value: T): T => structuredClone(value);
 const same = (left: unknown, right: unknown) =>
   JSON.stringify(left) === JSON.stringify(right);
 const canonicalRow = (row: BaseRow) => ({
@@ -151,7 +150,7 @@ export class BaseRowMutations {
             current.meta.revision
           );
         }
-        const rawMeta = { ...current.meta, ...clone(input.patch) };
+        const rawMeta = { ...current.meta, ...structuredClone(input.patch) };
         assertStableColumnTypes(current.meta.columns, rawMeta.columns);
         const removed = new Set(
           current.meta.columns
@@ -307,7 +306,7 @@ export class BaseRowMutations {
         additions = [];
         for (const row of input.rows) {
           const existing = byId.get(row.id);
-          if (!existing) additions.push(clone(row));
+          if (!existing) additions.push(structuredClone(row));
           else if (!sameRow(existing, row)) {
             throw mutationConflict(
               this.options.conflict("row id 已存在且内容不同"),
@@ -455,7 +454,7 @@ export class BaseRowMutations {
             if (value === null) delete values[columnId];
             else {
               validateBaseCell(column, value, "external", relationTargets);
-              values[columnId] = clone(value);
+              values[columnId] = structuredClone(value);
             }
           }
           const next = { ...row, values };

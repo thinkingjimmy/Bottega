@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the signed App entry virtual-module identity, exact admitted gate slice, browser React/runtime primitives, and Gate-3-owned axe-core
- * [OUTPUT]: Provides deterministic gate-sliced trusted bootstrap source with token capture, fixed transport, shared in-flight query dedupe over a cursor-hashed cache, closed critical registration, double-frame paint readiness, metadata-checked revision reconciliation behind a subscription-only client surface, the sole React root, and an authenticated tokenless Workbench protocol with trusted TTI/DOM/long-task evidence
+ * [OUTPUT]: Provides deterministic gate-sliced trusted bootstrap source with token capture, fixed transport, shared query dedupe, closed critical registration, stable readiness with a hidden-frame timer fallback, metadata-checked revision reconciliation, the sole React root, and authenticated Workbench evidence
  * [POS]: gui-build/product-modules trusted runtime root; author source can consume its Provider but cannot import this module
  */
 
@@ -19,6 +19,7 @@ export function bootstrapSource(
   const routes = {
     ...(slice.data ? {
       "base.meta": ["GET", "/_api/base/meta"],
+      "base.rows": ["GET", "/_api/base/rows"],
       "base.query-v1": ["POST", "/_api/base/query-v1"],
     } : {}),
     ...(slice.preferences ? {
@@ -84,6 +85,16 @@ let criticalRegistrationClosed = false;
 let criticalWatermark = 0;
 let readyPublished = false;
 let readyCheckScheduled = false;
+/* Hidden candidate iframes can stop receiving animation frames in Chromium. */
+const afterBootstrapFrame = (callback) => {
+  const finish = () => {
+    cancelAnimationFrame(frame);
+    clearTimeout(timer);
+    callback();
+  };
+  const frame = requestAnimationFrame(finish);
+  const timer = setTimeout(finish, 100);
+};
 const publishReady = () => {
   if (
     readyPublished ||
@@ -94,7 +105,7 @@ const publishReady = () => {
   ) return;
   const watermark = criticalWatermark;
   readyCheckScheduled = true;
-  requestAnimationFrame(() => requestAnimationFrame(() => {
+  afterBootstrapFrame(() => afterBootstrapFrame(() => {
     readyCheckScheduled = false;
     if (
       readyPublished ||
@@ -155,6 +166,11 @@ ${sdkTransport ? `async function performRequest(operation, payload, signal) {
     route = ["GET", "/_api/base/attachments/" + payload.attachmentId];
   }
   if (!route) throw Object.assign(new Error("Unsupported SDK operation"), { code: "permission_denied" });
+  if (operation === "base.rows") {
+    const query = new URLSearchParams({ limit: "500" });
+    if (payload?.cursor) query.set("cursor", payload.cursor);
+    route = ["GET", route[1] + "?" + query];
+  }
   const response = await nativeFetch(route[1], {
     method: route[0],
     signal,
@@ -170,7 +186,12 @@ ${sdkTransport ? `async function performRequest(operation, payload, signal) {
   try { result = JSON.parse(text); } catch { result = {}; }
   if (!response.ok) {
     const error = result.error ?? result;
-    throw Object.assign(new Error(error.message || "App SDK request failed"), { code: error.code || "unknown_outcome", outcome: error.outcome, currentRevision: error.currentRevision });
+    throw Object.assign(new Error(error.message || "App SDK request failed"), {
+      status: response.status, code: error.code || "unknown_outcome",
+      outcome: error.outcome ?? (response.status >= 500 ? "unknown" : "not-committed"),
+      issues: error.issues ?? [], currentRevision: error.currentRevision,
+      retryAfter: response.headers.get("retry-after"),
+    });
   }
   return { value: result, bytes: new TextEncoder().encode(text).byteLength };
 }` : ""}
@@ -373,6 +394,15 @@ async function workbenchRequest(operation, payload, signal) {
     capabilities: Object.freeze({ rowInsert: false, rowPatch: false, rowDelete: false, attachmentRead: false }),
     fixture: Object.freeze({ id: "base-v1", rows: rowCount, columns: WORKBENCH_COLUMNS.length, maximumRowsJsonBytes: 20 * 1024 * 1024 }),
   });
+  if (operation === "base.rows") {
+    const offset = Math.max(0, Number.parseInt(payload?.cursor || "0", 10) || 0);
+    const count = Math.min(500, Math.max(0, rowCount - offset));
+    const rows = Array.from({ length: count }, (_, index) => ({
+      id: "fixture_" + (offset + index),
+      values: Object.fromEntries(WORKBENCH_COLUMNS.map((column) => [column.id, fixtureValue(column.id, offset + index)])),
+    }));
+    return { revision: 7, rows, ...(offset + count < rowCount ? { nextCursor: String(offset + count) } : {}) };
+  }
   if (operation === "base.query-v1") {
     const shape = payload?.shape ?? {};
     const offset = Math.max(0, Number.parseInt(payload?.page?.cursor || "0", 10) || 0);

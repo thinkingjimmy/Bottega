@@ -14,8 +14,8 @@
     },
     {
       "path": "electron/main/apps/file-export/manager.ts",
-      "bytes": 18208,
-      "sha256": "sha256:a15e0751e145bd9bc805f02eb96827f799542295ca3957ccb66f73e4e1762f52"
+      "bytes": 18464,
+      "sha256": "sha256:bcb5a190333b5a2352d9948c42d0b002497ce30a01d761f05b9cc8cf11a48d9a"
     },
     {
       "path": "electron/main/apps/gui-build/product-modules/blocks.ts",

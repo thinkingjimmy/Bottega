@@ -40,7 +40,6 @@ export type ProjectStoreDependencies = {
   createId?: () => string;
 };
 
-const clone = <T>(value: T): T => structuredClone(value);
 export class ProjectStore {
   readonly filePath: string;
   readonly backupPath: string;
@@ -118,13 +117,13 @@ export class ProjectStore {
 
   list(): StoredProject[] {
     this.assertReady();
-    return clone(this.state.projects);
+    return structuredClone(this.state.projects);
   }
 
   get(projectId: string) {
     this.assertReady();
     const project = this.state.projects.find((item) => item.id === projectId);
-    return project ? clone(project) : undefined;
+    return project ? structuredClone(project) : undefined;
   }
 
   isDeleting(projectId: string) {
@@ -160,7 +159,7 @@ export class ProjectStore {
         "Project lifecycle 已变化，请刷新后重试"
       );
     }
-    return clone(project);
+    return structuredClone(project);
   }
 
   runWithLifecycle<T>(
@@ -187,7 +186,7 @@ export class ProjectStore {
     if (project.projectLifecycleRevision !== expectedRevision) {
       throw conflict("Project lifecycle 已变更");
     }
-    return clone(project);
+    return structuredClone(project);
   }
 
   acquireResourceAdmission(
@@ -211,7 +210,7 @@ export class ProjectStore {
         ) {
           throw conflict("Project resource admission identity 已漂移");
         }
-        return clone(existing);
+        return structuredClone(existing);
       }
       const admission: ProjectResourceAdmission = structuredClone(input);
       const project = storedProjectSchema.parse({
@@ -219,7 +218,7 @@ export class ProjectStore {
         resourceAdmissions: [...current.resourceAdmissions, admission],
       });
       await this.replace(project);
-      return clone(admission);
+      return structuredClone(admission);
     });
   }
 
@@ -243,7 +242,7 @@ export class ProjectStore {
     ) {
       throw conflict("Project resource admission 已失效");
     }
-    return clone(admission);
+    return structuredClone(admission);
   }
 
   releaseResourceAdmission(
@@ -289,7 +288,7 @@ export class ProjectStore {
   findByDir(dir: string) {
     this.assertReady();
     const project = this.state.projects.find((item) => item.dir === dir);
-    return project ? clone(project) : undefined;
+    return project ? structuredClone(project) : undefined;
   }
 
   findByAppId(appId: string) {
@@ -299,7 +298,7 @@ export class ProjectStore {
         item.workspaceBinding.kind === "app" &&
         item.workspaceBinding.appId === appId
     );
-    return project ? clone(project) : undefined;
+    return project ? structuredClone(project) : undefined;
   }
 
   listDirs() {
@@ -312,7 +311,7 @@ export class ProjectStore {
   add(input: { name: string; dir: string; appId?: string | null }) {
     return this.queue.enqueue(async () => {
       const existing = this.state.projects.find((item) => item.dir === input.dir);
-      if (existing) return clone(existing);
+      if (existing) return structuredClone(existing);
       const now = this.now();
       const project = storedProjectSchema.parse({
         id: this.createId(),
@@ -349,7 +348,7 @@ export class ProjectStore {
         projects: [...this.state.projects, project],
         workspaceCapabilities: capabilities,
       });
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -390,7 +389,7 @@ export class ProjectStore {
         lifecycleSequence: project.projectLifecycleRevision,
         projects: [...this.state.projects, project],
       });
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -410,7 +409,7 @@ export class ProjectStore {
         if (input.projectId && bound.id !== input.projectId) {
           throw new Error("App Project 身份与 lifecycle intent 不一致");
         }
-        return clone(bound);
+        return structuredClone(bound);
       }
       const sameDir = this.state.projects.find((item) => item.dir === input.dir);
       if (sameDir?.workspaceBinding.kind === "app") {
@@ -431,7 +430,7 @@ export class ProjectStore {
           updatedAt: this.now(),
         });
         await this.replace(project);
-        return clone(project);
+        return structuredClone(project);
       }
       return this.addUnlocked({
         ...input,
@@ -445,7 +444,7 @@ export class ProjectStore {
     return this.queue.enqueue(async () => {
       const current = this.require(projectId);
       if (source === "app" && current.nameSource === "user") {
-        return clone(current);
+        return structuredClone(current);
       }
       const project = storedProjectSchema.parse({
         ...current,
@@ -454,7 +453,7 @@ export class ProjectStore {
         updatedAt: this.now(),
       });
       await this.replace(project);
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -468,7 +467,7 @@ export class ProjectStore {
       /* Appearance is presentation metadata, so it must not advance updatedAt. */
       const project = storedProjectSchema.parse({ ...current, appearance });
       await this.replace(project);
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -493,7 +492,7 @@ export class ProjectStore {
             `Project cleanup operation 已冻结为 ${current.deletionCheckpoint.operation}`
           );
         }
-        return clone(current);
+        return structuredClone(current);
       }
       const projectLifecycleRevision = this.state.lifecycleSequence + 1;
       const project = storedProjectSchema.parse({
@@ -507,7 +506,7 @@ export class ProjectStore {
           requiredParticipants: [...plan.requiredParticipants],
           phase: "closing-admission",
           completedParticipants: [],
-          frozenResourceAdmissions: clone(current.resourceAdmissions),
+          frozenResourceAdmissions: structuredClone(current.resourceAdmissions),
           blocked: null,
         },
       });
@@ -518,7 +517,7 @@ export class ProjectStore {
           item.id === projectId ? project : item
         ),
       });
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -571,7 +570,7 @@ export class ProjectStore {
         },
       });
       await this.replace(project);
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -607,7 +606,7 @@ export class ProjectStore {
           item.id === projectId ? project : item
         ),
       });
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -731,7 +730,7 @@ export class ProjectStore {
       projects: [...this.state.projects, project],
       workspaceCapabilities,
     });
-    return clone(project);
+    return structuredClone(project);
   }
 
   private require(projectId: string) {

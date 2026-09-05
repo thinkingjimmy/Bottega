@@ -49,7 +49,7 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-fitness-log.git",
-    catalogPin: "0470aa1420a6dfb2699a700f15dc529de42ec10a",
+    catalogPin: "706a9c970d2a78376b5012646e1d83e0b6fe7e76",
     sourceDirectory: "Bottega-app-fitness-log",
   },
 ] as const satisfies readonly PresetCatalogEntry[];

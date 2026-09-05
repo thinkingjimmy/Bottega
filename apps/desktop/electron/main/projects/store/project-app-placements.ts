@@ -31,8 +31,6 @@ export type ProjectPlacementCleanup = Readonly<{
 }>;
 
 const APP_ID_PATTERN = /^[a-z0-9]{10}$/;
-const clone = <T>(value: T): T => structuredClone(value);
-
 export class ProjectAppPlacements {
   constructor(private readonly ports: ProjectAppPlacementPorts) {}
 
@@ -73,7 +71,7 @@ export class ProjectAppPlacements {
         );
       }
       if (Boolean(existing) === pinned) {
-        return { project: clone(current), changed: false };
+        return { project: structuredClone(current), changed: false };
       }
       const appPlacements = pinned
         ? [...current.appPlacements, { appId, pinnedAt: this.ports.now() }]
@@ -86,7 +84,7 @@ export class ProjectAppPlacements {
         ),
       });
       await this.replaceMany([project]);
-      return { project: clone(project), changed: true };
+      return { project: structuredClone(project), changed: true };
     });
   }
 

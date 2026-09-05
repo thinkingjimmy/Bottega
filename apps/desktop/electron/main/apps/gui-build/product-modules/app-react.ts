@@ -1,11 +1,14 @@
 /**
- * [INPUT]: Depends on React hooks and the trusted bootstrap client injected through the App SDK provider
+ * [INPUT]: Depends on React hooks, the cursor-complete snapshot reader, and the trusted bootstrap client injected through the App SDK provider
  * [OUTPUT]: Provides the immutable @bottega/app-react runtime source consumed as a virtual module; every host registration happens in layout effects, never during render
  * [POS]: gui-build/product-modules SDK runtime snapshot; its bytes hash into every compiled-v3 receipt sdkDigest
  */
 
+import { BASE_SNAPSHOT_RUNTIME_SOURCE } from "./base-snapshot";
+
 export const SDK_RUNTIME_SOURCE = `
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+${BASE_SNAPSHOT_RUNTIME_SOURCE}
 const Context = createContext(null);
 export function __AppGuiProvider({ client, children }) { return React.createElement(Context.Provider, { value: client }, children); }
 function useClient() { const client = useContext(Context); if (!client) throw new Error("App SDK Provider is missing"); return client; }
@@ -35,16 +38,29 @@ function useResource(operation, payload, critical = true) {
     latest.current.controller = controller;
     const sequence = ++latest.current.sequence;
     if (!preserve) setState({ status: "loading" });
-    client.request(operation, payloadRef.current, controller.signal).then(
-      (data) => { if (latest.current.key === key && latest.current.sequence === sequence) setState({ status: "success", data }); },
-      (error) => { if (!controller.signal.aborted && latest.current.key === key && latest.current.sequence === sequence) setState({ status: "error", error: { code: error.code || "unknown_outcome", message: error.message, retryable: error.code !== "permission_denied" } }); }
+    const request = operation === "base.snapshot"
+      ? readBaseSnapshot(client.request.bind(client), controller.signal)
+      : client.request(operation, payloadRef.current, controller.signal);
+    return request.then(
+      (data) => {
+        controller.signal.throwIfAborted();
+        if (latest.current.key !== key || latest.current.sequence !== sequence) throw new DOMException("Superseded", "AbortError");
+        setState({ status: "success", data });
+        return data;
+      },
+      (error) => {
+        if (!controller.signal.aborted && latest.current.key === key && latest.current.sequence === sequence) {
+          setState({ status: "error", error: { ...error, code: error.code || "unknown_outcome", message: error.message, retryable: ![401, 403, 404, 410].includes(error.status) && error.code !== "permission_denied" } });
+        }
+        throw error;
+      }
     );
   }, [client, key, operation]);
   useEffect(() => {
-    run(false);
-    const unsubscribe = operation === "base.meta" || operation === "base.query-v1"
+    void run(false).catch(() => undefined);
+    const unsubscribe = ["base.meta", "base.query-v1", "base.snapshot"].includes(operation)
       ? client.subscribeBaseRevision(() => {
-          if (operation === "base.meta" || document.visibilityState === "visible") run(true);
+          if (operation === "base.meta" || document.visibilityState === "visible") void run(true).catch(() => undefined);
         })
       : () => undefined;
     return () => {
@@ -52,12 +68,26 @@ function useResource(operation, payload, critical = true) {
       latest.current.controller?.abort();
     };
   }, [client, operation, run]);
-  const retry = useCallback(() => run(state.status === "success"), [run, state.status]);
-  return useMemo(() => ({ ...state, retry, critical }), [state, retry, critical]);
+  const retry = useCallback(() => { void run(state.status === "success").catch(() => undefined); }, [run, state.status]);
+  const refresh = useCallback(() => run(true), [run]);
+  return useMemo(() => ({ ...state, retry, refresh, critical }), [state, retry, refresh, critical]);
 }
 export function useAppEnvironment() { return useClient().environment; }
 export function useBaseMeta(options = {}) { return useResource("base.meta", null, options.critical ?? true); }
 export function useBaseRows(query, options = {}) { return useResource("base.query-v1", query, options.critical ?? true); }
+export function useBaseSnapshot(options = {}) {
+  const result = useResource("base.snapshot", null, options.critical ?? true);
+  const unhealthy = result.status === "error" && result.error.retryable;
+  useEffect(() => {
+    if (!unhealthy) return;
+    const recover = () => { if (document.visibilityState === "visible") result.retry(); };
+    const timer = setInterval(recover, 5000);
+    addEventListener("focus", recover);
+    document.addEventListener("visibilitychange", recover);
+    return () => { clearInterval(timer); removeEventListener("focus", recover); document.removeEventListener("visibilitychange", recover); };
+  }, [unhealthy, result.retry]);
+  return result;
+}
 export function useAttachment(input, options = {}) { return useResource("attachment.read", input, options.critical ?? false); }
 export function useAppPreferences(options = {}) {
   const client = useClient();

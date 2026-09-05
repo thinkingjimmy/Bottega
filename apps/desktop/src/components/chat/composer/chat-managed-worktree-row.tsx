@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, lucide icons, the Chat composer runtime controller, conversation-scoped read-only branch reads, composer context styling, and Chat composer i18n
- * [OUTPUT]: Provides the persisted managed-worktree branch context row with a read-only branch/uncommitted status chip and no mutation control
+ * [OUTPUT]: Provides the persisted managed-worktree branch context row with a read-only branch/uncommitted status chip whose state resets with its Project/Chat identity and no mutation control
  * [POS]: Narrow composer context sibling; draft Project selection and managed permission policy stay in ChatComposer, Project branch mutations in ChatBranchSelector
  */
 
@@ -25,26 +25,26 @@ function ManagedWorktreeBranchChip({
   ) => Promise<GitBranchSnapshot | null>;
 }) {
   const { t } = useAppTranslation();
-  const [snapshot, setSnapshot] = useState<GitBranchSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [result, setResult] = useState<
+    | { status: "ready"; snapshot: GitBranchSnapshot | null }
+    | { status: "error"; cause: unknown }
+    | null
+  >(null);
   useEffect(() => {
     let live = true;
-    setLoading(true);
     listBranches(projectId, chatId)
-      .then((next) => {
-        if (!live) return;
-        setSnapshot(next);
-        setError("");
+      .then((snapshot) => {
+        if (live) setResult({ status: "ready", snapshot });
       })
       .catch((cause) => {
-        if (live) setError(errorMessage(cause, t("chat.composer.branch.loadFailed")));
-      })
-      .finally(() => {
-        if (live) setLoading(false);
+        if (live) setResult({ status: "error", cause });
       });
     return () => { live = false; };
-  }, [chatId, listBranches, projectId, t]);
+  }, [chatId, listBranches, projectId]);
+  const snapshot = result?.status === "ready" ? result.snapshot : null;
+  const error = result?.status === "error"
+    ? errorMessage(result.cause, t("chat.composer.branch.loadFailed"))
+    : undefined;
   const label = snapshot?.head ?? t("chat.composer.branch.fallback");
   return (
     <div
@@ -53,7 +53,7 @@ function ManagedWorktreeBranchChip({
       role="status"
       title={error || undefined}
     >
-      {loading && !snapshot ? (
+      {!result ? (
         <LoaderCircle className="size-4 animate-spin" />
       ) : (
         <GitBranch className="size-4" />
@@ -77,6 +77,7 @@ export function ChatManagedWorktreeRow({
   return (
     <div className="relative z-0 mx-3 -mb-px flex min-w-0 items-center gap-2 rounded-t-2xl bg-muted px-2 py-[calc(1rem/3)]">
       <ManagedWorktreeBranchChip
+        key={JSON.stringify([controller.selectedProjectId, controller.chatId])}
         chatId={controller.chatId}
         listBranches={controller.listBranches}
         projectId={controller.selectedProjectId}

@@ -16,8 +16,6 @@ import {
 } from "./ledger-values";
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
-const clone = <T>(value: T): T => structuredClone(value);
-
 export class PurgeJournal {
   readonly filePath: string;
   private readonly queue = new SerialQueue();
@@ -59,7 +57,7 @@ export class PurgeJournal {
   listActive() {
     return Object.values(this.state.intents)
       .filter((intent) => !["completed"].includes(intent.phase))
-      .map(clone);
+      .map((value) => structuredClone(value));
   }
 
   hasActiveProject(projectId: string) {
@@ -75,11 +73,11 @@ export class PurgeJournal {
     return this.queue.enqueue(async () => {
       const parsed = purgeIntentSchema.parse(intent);
       const current = this.state.intents[parsed.intentId];
-      if (current) return clone(current);
-      const next = clone(this.state);
+      if (current) return structuredClone(current);
+      const next = structuredClone(this.state);
       next.intents[parsed.intentId] = parsed;
       await this.commit(next);
-      return clone(parsed);
+      return structuredClone(parsed);
     });
   }
 
@@ -91,10 +89,10 @@ export class PurgeJournal {
         throw new Error("PurgeIntent 删除模式不可变");
       }
       const intent = purgeIntentSchema.parse({ ...current, ...patch });
-      const next = clone(this.state);
+      const next = structuredClone(this.state);
       next.intents[intentId] = intent;
       await this.commit(next);
-      return clone(intent);
+      return structuredClone(intent);
     });
   }
 

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React external-store hooks, lib/brand identity, lib/about-view verdicts, Settings layout primitives, update-client stores, app external-link/clipboard IPC, ui Collapsible/Button, lucide glyphs, and About i18n
- * [OUTPUT]: Provides AboutSection with a product identity block, an on-demand update receipt, the bundled MIT license behind an inline trigger, and three external link rows
+ * [OUTPUT]: Provides AboutSection with a product identity block, an on-demand update receipt whose failure alert carries its own resolution sentence, the bundled MIT license behind an inline trigger, and three external link rows
  * [POS]: Settings › About business component; main owns the facts, lib/about-view owns the verdicts, this file only renders them and invokes typed commands
  */
 
@@ -263,7 +263,16 @@ export function AboutSection() {
 
             {alarming && (
               <div className="mt-3">
-                <SettingsAlert>{message}</SettingsAlert>
+                {/* 出路跟着报错走，不另起一条 alert：它是同一件事的下半句，
+                    分成两块红框只会让人以为出了两个问题。 */}
+                <SettingsAlert>
+                  {message}
+                  {view.resolutionKey && (
+                    <span className="mt-1 block opacity-80">
+                      {t(view.resolutionKey)}
+                    </span>
+                  )}
+                </SettingsAlert>
               </div>
             )}
           </div>

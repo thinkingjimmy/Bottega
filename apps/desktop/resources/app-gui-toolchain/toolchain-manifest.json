@@ -66,9 +66,9 @@
     "gate-3"
   ],
   "sliceDigests": {
-    "gate-1": "sha256:4da5a57b58b3d6c610a63c70449b645ec3f273bb68e57a1b3c596a011f5848e4",
+    "gate-1": "sha256:ddb1d7c44e6b24921d1b70f98767abd669d407aff9bd5b16dabb7d67399d3511",
     "gate-2": "sha256:11c3015da6f24753f26ea76db7f5c17d1c4e18cfd44947a4cf939ed6fa3f2f5c",
-    "gate-3": "sha256:b783f1b58a7d7a18d2b258909926b16af9ee9443450e948cd8a8e2757560b4c8"
+    "gate-3": "sha256:512b1846a9d4059dc71eb1f8ede2d67ae7608bb0ec09d1bbe346c8177fdea992"
   },
   "authoringCatalogDigest": "sha256:b16d45733d06dbf6bdbebb2d45b5798b8947a437af53afdc72c499843d000f62",
   "compatibilitySupportDigest": "sha256:5a876d99d1fef6e30040d49ea6283feabaecd97a871ee4955b98610a9cbbdba7",

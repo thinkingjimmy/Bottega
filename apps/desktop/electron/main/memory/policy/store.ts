@@ -4,7 +4,7 @@
  * [POS]: The only permanent source of truth for main/memory/policy; Delivery only consume quick photos and receipts and prohibits reverse reading authorizations
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { z } from "zod";
 import {
@@ -21,6 +21,7 @@ import {
   type MemorySpaceRef,
 } from "../core/domain";
 import { memorySpaceForSubject } from "../core/memory-scope";
+import { stableMemoryDigest } from "../turn-deadline";
 
 const id = z.string().min(1).max(256);
 const revision = z.number().int().nonnegative();
@@ -159,22 +160,6 @@ function emptyPolicyState(): MemoryPolicyState {
     tombstones: {},
     effects: {},
   };
-}
-
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => [key, canonical(entry)])
-  );
-}
-
-function digest(value: unknown) {
-  return createHash("sha256")
-    .update(JSON.stringify(canonical(value)))
-    .digest("hex");
 }
 
 function subjectKey(subject: MemoryScopeSubject) {
@@ -594,7 +579,7 @@ export class MemoryPolicyStore {
     const receipt = this.receipt(operationId);
     if (!receipt || receipt.receiptDigest !== receiptDigest) return false;
     const { receiptDigest: _stored, ...base } = receipt;
-    return digest(base) === receiptDigest;
+    return stableMemoryDigest(base) === receiptDigest;
   }
 
   closeAndFlush() {
@@ -639,7 +624,7 @@ export class MemoryPolicyStore {
         inputDigest,
         generation: input.receiptGeneration?.(state) ?? null,
       };
-      const receipt = { ...base, receiptDigest: digest(base) };
+      const receipt = { ...base, receiptDigest: stableMemoryDigest(base) };
       state.effects[input.operationId] = receipt;
       return receipt;
     });
@@ -661,7 +646,7 @@ export class MemoryPolicyStore {
     spaceId: string;
     payload: unknown;
   }) {
-    return digest({
+    return stableMemoryDigest({
       effectKind: input.effectKind,
       subjectRef: input.subjectRef,
       spaceId: input.spaceId,

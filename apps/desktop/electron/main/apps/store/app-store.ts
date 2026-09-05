@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on App store schema/recovery, durable JSON quarantine/replacement, static-v2/compiled-v3 generation planning/building, the Studio grant command leaf, shared App contracts, participant ledgers, Base GUI grants, compiler service, and server cutover ports
- * [OUTPUT]: Provides the AppStore v15-only single-writer facade, clone-free routing facts, foreign-schema quarantine with empty-catalog cold start, startup authority repair barrier, Editor/Use/source facts, generation-bound Studio grants, durable commits/retirement, immutable artifact roots, bounded artifact collection, and record subscriptions
- * [POS]: Canonical App record and broadcast authority; schema, recovery, generation sagas, and policy commands live in focused siblings while this facade serializes mutations and prevents stale renderer projections
+ * [INPUT]: Depends on App store schema/recovery and authority-owned durable catalog replacement, static-v2/compiled-v3 generation planning/building, the Studio grant command leaf, shared App contracts, participant ledgers, Base GUI grants, compiler service, and server cutover ports
+ * [OUTPUT]: Provides the AppStore v15-only single-writer facade, clone-free routing facts, authority-gated loading, Editor/Use/source facts, generation-bound Studio grants, durable commits/retirement, immutable artifact roots, bounded artifact collection, and record subscriptions
+ * [POS]: Canonical App record and broadcast authority; its authority sibling exclusively classifies and replaces startup catalog bytes while this facade loads established v15 state, serializes mutations, and prevents stale renderer projections
  */
 
 import { mkdir, readFile } from "node:fs/promises";
@@ -15,10 +15,7 @@ import type {
 } from "../../../../shared/apps-ipc";
 import { errorMessage } from "../../errors";
 import { SerialQueue } from "../../persistence/serial-queue";
-import {
-  durableReplaceFile,
-  quarantineDurableFile,
-} from "../../persistence/durable-json";
+import { durableReplaceFile } from "../../persistence/durable-json";
 import type { AppGenerationBuildLedger } from "../generation/app-generation-build-ledger";
 import type {
   AppServerCutoverPort,
@@ -221,8 +218,9 @@ export class AppStore {
     const inspection = await this.authorityEvidence.inspectCanonical({
       filePath: this.filePath,
       emptyContent,
-      validate: (content) => {
-        const parsed = parseStore(JSON.parse(content));
+      schemaVersion: SCHEMA_VERSION,
+      validate: (raw) => {
+        const parsed = parseStore(raw);
         this.assertDerivedPaths(parsed.apps);
         return parsed.apps.length;
       },
@@ -238,7 +236,6 @@ export class AppStore {
   }
 
   async load() {
-    await this.quarantineForeignSchema();
     if ((await this.inspectAuthority()) === "degraded-corrupt") return;
     const freshInstall = this.freshInstallPendingLoad;
     const parsed = parseStore(JSON.parse(await readFile(this.filePath, "utf8")));
@@ -257,37 +254,6 @@ export class AppStore {
     ]);
     if (!freshInstall) await this.recovery.reconcileArtifacts();
     this.freshInstallPendingLoad = false;
-  }
-
-  /**
-   * 非 v15 是断代不是损坏：隔离留证 + 空目录冷启动，与 build ledger / grant store
-   * 走同一条路径。读不出或解析不出的字节留给 authority 的 Repair 面处理——那才是
-   * 「损坏」，需要 receipt 才准覆盖。
-   *
-   * 必须真的把空目录写回去：`inspectCanonical` 只在 catalog 与 marker 双双缺席时
-   * 自举，隔离后留一个空洞会被判成 degraded 而锁死写入。
-   */
-  private async quarantineForeignSchema() {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(await readFile(this.filePath, "utf8"));
-    } catch {
-      return;
-    }
-    const version = (raw as { schemaVersion?: unknown } | null)?.schemaVersion;
-    if (version === SCHEMA_VERSION) return;
-    console.warn(
-      `[apps] apps.json schemaVersion ${String(version)} 不是 v${SCHEMA_VERSION}，隔离原件后按空目录冷启动`
-    );
-    await quarantineDurableFile(this.filePath);
-    await durableReplaceFile(
-      this.filePath,
-      `${JSON.stringify(
-        { schemaVersion: SCHEMA_VERSION, apps: [], retiredIds: [] },
-        null,
-        2
-      )}\n`
-    );
   }
 
   /**

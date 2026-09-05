@@ -24,8 +24,6 @@ import type { SearchDocumentCursor } from "../sqlite/database-protocol";
 import type { ChatStoreState } from "./state";
 import type { ChatStorageFailure } from "../../../../shared/product-failure";
 
-const clone = <T>(value: T): T => structuredClone(value);
-
 export class ChatReadModel {
   constructor(private readonly state: ChatStoreState) {}
 
@@ -36,7 +34,7 @@ export class ChatReadModel {
   getMetadata(chatId: string): ChatMetadata | null {
     assertChatId(chatId);
     const record = this.state.metadata.get(chatId);
-    return record ? clone(record) : null;
+    return record ? structuredClone(record) : null;
   }
 
   async getNativeMessage(
@@ -101,9 +99,9 @@ export class ChatReadModel {
     assertChatId(chatId);
     if (!this.state.metadata.has(chatId)) return null;
     if (this.state.activeRecord?.record.id === chatId) {
-      return clone(this.state.activeRecord.record);
+      return structuredClone(this.state.activeRecord.record);
     }
-    return clone(await this.state.readRecord(chatId));
+    return structuredClone(await this.state.readRecord(chatId));
   }
 
   timelinePage(input: ChatTimelinePageInput): Promise<ChatTimelinePage | null> {
@@ -155,13 +153,13 @@ export class ChatReadModel {
   }
 
   getWarning() { return this.state.warnings.join("\n") || undefined; }
-  getStorageFailures() { return clone(this.state.storageFailures); }
+  getStorageFailures() { return structuredClone(this.state.storageFailures); }
   pushWarning(message: string) { this.state.warnings.push(message); }
   /* 闸门每 6 小时跑一次，同一条失败反复推只留一份：按内容去重，快照不长尾巴。 */
   pushStorageFailure(failure: ChatStorageFailure) {
     const key = JSON.stringify(failure);
     if (this.state.storageFailures.some((existing) => JSON.stringify(existing) === key)) return;
-    this.state.storageFailures.push(clone(failure));
+    this.state.storageFailures.push(structuredClone(failure));
   }
   getProjectId(chatId: string) { return this.state.projection.projectId(chatId); }
   getChatRef(chatId: string) { return this.state.projection.chatRef(chatId); }

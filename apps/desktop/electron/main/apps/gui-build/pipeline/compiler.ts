@@ -46,6 +46,7 @@ import {
   type BootstrapRuntimeSlice,
 } from "../product-modules/bootstrap";
 import { analyzeAuthorSource, type AuthorSourceAnalysis } from "../source-analysis";
+import { guiImportCandidates } from "../source-imports";
 import { requiredGates } from "../admission";
 import { loadReceiptMetadata } from "./receipt-metadata";
 
@@ -167,6 +168,7 @@ function semanticTypecheck(
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     jsx: ts.JsxEmit.ReactJSX,
     strict: true,
+    resolveJsonModule: true,
     noEmit: true,
     noUncheckedIndexedAccess: true,
     exactOptionalPropertyTypes: true,
@@ -311,12 +313,19 @@ function resolverPlugin(
   /* macOS /var is a symlink to /private/var. esbuild canonicalizes importer paths;
      the policy root must use the same identity or every legitimate author import
      looks foreign while compiling a temporary snapshot. */
-  const sourceRoot = realpathSync(join(snapshotRoot, "gui/src"));
+  const packageRoot = realpathSync(snapshotRoot);
+  const sourceRoot = join(packageRoot, "gui/src");
   const entry = join(sourceRoot, "main.tsx");
   const allowed = authorPublicSpecifiers(manifest.gui!.build!.iconLibrary);
   return {
     name: "bottega-app-gui-resolver",
     setup(build) {
+      build.onResolve({ filter: /.*/, namespace: "bottega-asset-url" }, (args) => ({ path: args.path, namespace: "file" }));
+      build.onLoad({ filter: /.*/, namespace: "bottega-asset-url" }, (args) => ({
+        contents: `import asset from ${JSON.stringify(args.path)}; export default new URL(asset, import.meta.url).href;`,
+        loader: "js",
+        resolveDir: dirname(args.path),
+      }));
       build.onResolve({ filter: /^bottega:/ }, (args) => ({ path: args.path, namespace: "bottega-product" }));
       build.onResolve({ filter: /^@bottega\/app-react$/ }, () => ({ path: APP_REACT_MODULE, namespace: "bottega-product" }));
       build.onResolve({ filter: /^@bottega\/charts$/ }, () => ({ path: CHARTS_MODULE, namespace: "bottega-product" }));
@@ -343,16 +352,15 @@ function resolverPlugin(
           ? { path: realDependencyPath(require.resolve(args.path)) }
           : { errors: [{ text: `product dependency edge is not signed: ${args.importer} -> ${args.path}` }] };
       });
-      build.onResolve({ filter: /^@\// }, (args) => {
-        if (args.importer !== sourceRoot && !args.importer.startsWith(`${sourceRoot}${sep}`)) return;
-        const path = resolve(sourceRoot, args.path.slice(2));
-        if (!path.startsWith(`${sourceRoot}${sep}`)) {
-          return { errors: [{ text: "author alias escaped gui/src" }] };
-        }
-        const resolved = resolveLocalModule(path);
-        return resolved
-          ? { path: resolved }
-          : { errors: [{ text: `author alias does not resolve: ${args.path}` }] };
+      build.onResolve({ filter: /^(?:@\/|\.)/ }, (args) => {
+        if (!args.importer.startsWith(`${sourceRoot}${sep}`)) return;
+        const importer = relative(packageRoot, args.importer).split(sep).join("/");
+        const path = guiImportCandidates(importer, args.path)
+          .map((candidate) => join(packageRoot, candidate))
+          .find((candidate) => existsSync(candidate));
+        if (!path) return { errors: [{ text: "author import escapes declared GUI source/assets or does not resolve" }] };
+        const asset = /\.(?:png|jpe?g|gif|webp|svg|woff2?)$/i.test(path);
+        return { path, ...(asset && args.kind !== "url-token" ? { namespace: "bottega-asset-url" } : {}) };
       });
       build.onResolve({ filter: /^[^./].*/ }, (args) => {
         const authorOwned = [args.importer, args.resolveDir].some((path) =>
@@ -377,13 +385,6 @@ function resolverPlugin(
       });
     },
   };
-}
-
-/* 候选表与 source-validator 的 SOURCE_EXTENSIONS 同源：能被 esbuild 解析的形状
-   不能多于能存在于 gui/src 的形状。 */
-function resolveLocalModule(path: string) {
-  return [path, `${path}.ts`, `${path}.tsx`, join(path, "index.ts"), join(path, "index.tsx")]
-    .find((candidate) => existsSync(candidate));
 }
 
 function resolveAuthorSpecifier(specifier: string) {
@@ -417,6 +418,7 @@ function compatibilityRef(
   const sdkImports = analysis.appReactBindings;
   const dataBindings = new Set([
     "useBaseMeta",
+    "useBaseSnapshot",
     "useBaseRows",
     "useAttachment",
     "useBaseMutation",
@@ -586,4 +588,3 @@ function findingsError(findings: readonly AppGuiBuildFinding[]) {
 }
 
 const PREPAINT_SOURCE = `(function(){"use strict";var p=new URLSearchParams(location.hash.slice(1));var d=document.documentElement;var c=p.get("colorScheme")==="dark"?"dark":"light";d.classList.toggle("dark",c==="dark");d.style.colorScheme=c;d.lang=p.get("lang")||"en";d.dataset.locale=p.get("locale")||d.lang;d.dataset.timeZone=p.get("timeZone")||"UTC";d.dataset.density=p.get("density")==="compact"?"compact":"comfortable";d.dataset.reducedMotion=p.get("reducedMotion")==="true"?"true":"false";})();\n`;
-

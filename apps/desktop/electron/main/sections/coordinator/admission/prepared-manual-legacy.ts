@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on legacy/manual submission contracts, Section incarnation lookup, canonical hashing, and prepared turn types
- * [OUTPUT]: Normalizes legacy submissions, creates text-only prepared turns, strips binary payloads, and validates prepared content hashes
- * [POS]: Compatibility and text-only fixture boundary for prepared-manual-turn; binary staging and hydration stay in the primary admission module
+ * [OUTPUT]: Normalizes legacy submissions, creates text-only prepared turns, and strips binary payloads
+ * [POS]: Compatibility and text-only fixture boundary for prepared-manual-turn; binary staging and hydration live in the primary admission module and prepared/ respectively
  */
 
 import type {
@@ -119,13 +119,6 @@ export function binaryFreeSubmissionContent(
       }),
     },
   });
-}
-
-export function assertPreparedContentHash(prepared: PreparedManualTurn) {
-  const { contentHash, ...body } = prepared;
-  if (contentHash !== canonicalHash(body)) {
-    throw new Error("PreparedManualTurn content hash 冲突");
-  }
 }
 
 export function emptyPreparedSkillSelection(

@@ -5,7 +5,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { extname, join, posix } from "node:path";
+import { extname, join } from "node:path";
 import ts from "typescript";
 import type {
   AppGuiBuildFinding,
@@ -23,6 +23,7 @@ import {
   componentOriginsSchema,
 } from "../scaffold/contracts";
 import { appManifestSchema } from "../../install/manifest-schema";
+import { GUI_SOURCE_EXTENSIONS, guiImportCandidates } from "../source-imports";
 import { findForbiddenRuntimeAuthorities } from "./dynamic-code-policy";
 
 const FORBIDDEN_CONFIG = /(^|\/)(?:package(?:-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|tsconfig(?:\..+)?\.json|vite\.config\.[^/]+|postcss\.config\.[^/]+|tailwind\.config\.[^/]+)$/i;
@@ -36,13 +37,7 @@ const SCANNED_ASSETS = [".css", ".svg"];
 /* 白名单是「能存在」而不是「会被扫描」：一个 `gui/src/side.mjs` 既绕开动态
    import 判死、也绕开裸导入白名单与远程资源检查，esbuild 却照样把它打进
    封存产物。能存在的扩展名必须与策略覆盖的扩展名是同一张表。 */
-const SOURCE_EXTENSIONS = new Set([
-  ".ts", ".tsx",
-  ".css", ".svg",
-  ".png", ".jpg", ".jpeg", ".gif", ".webp",
-  ".woff", ".woff2",
-]);
-const LOCAL_MODULE_EXTENSIONS = [".ts", ".tsx", ".css", ".module.css", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".woff", ".woff2"];
+const SOURCE_EXTENSIONS = new Set(GUI_SOURCE_EXTENSIONS);
 
 export async function validateCompiledGuiSource(
   receipt: SourceFreezeReceipt,
@@ -196,7 +191,11 @@ async function validateSourceFiles(
   const allowed = authorPublicSpecifiers(gui.build.iconLibrary);
   const known = new Set(receipt.files.map((file) => file.path));
   for (const file of receipt.files) {
-    if (!file.path.startsWith("gui/src/")) continue;
+    if (file.path.startsWith("gui/media/") && file.path.endsWith(".svg")) {
+      const markup = await readFile(join(receipt.snapshotRoot, file.path), "utf8");
+      if (MARKUP_REMOTE_REFERENCE.test(markup)) add({ code: "GUI_BUILD_REMOTE_RESOURCE", file: file.path, message: "remote resources are forbidden" });
+    }
+    if (!file.path.startsWith("gui/src/") || file.path.endsWith("/README.md")) continue;
     const extension = extname(file.path).toLowerCase();
     if (!SOURCE_EXTENSIONS.has(extension)) {
       add({ code: "GUI_BUILD_IMPORT_FORBIDDEN", file: file.path, message: "gui/src accepts only .ts/.tsx sources and declared static assets" });
@@ -241,7 +240,7 @@ async function validateSourceFiles(
         return;
       }
       if (specifier.startsWith(".") || specifier.startsWith("@/")) {
-        if (!resolvesInsideSource(path, specifier, known)) finding("GUI_BUILD_IMPORTER_DOMAIN_VIOLATION", "local import escapes gui/src or does not resolve");
+        if (!resolvesInsideSource(path, specifier, known)) finding("GUI_BUILD_IMPORTER_DOMAIN_VIOLATION", "local import escapes declared GUI source/assets or does not resolve");
         return;
       }
       if (!allowed.has(specifier)) {
@@ -320,18 +319,7 @@ function validateEntrySyntax(tree: ts.SourceFile, add: (finding: AppGuiBuildFind
 }
 
 function resolvesInsideSource(importer: string, specifier: string, known: ReadonlySet<string>) {
-  const importerDirectory = posix.dirname(importer);
-  const base = specifier.startsWith("@/")
-    ? `gui/src/${specifier.slice(2)}`
-    : posix.normalize(posix.join(importerDirectory, specifier));
-  if (!base.startsWith("gui/src/")) return false;
-  /* 候选表必须与 SOURCE_EXTENSIONS 同源：能解析的形状不能多于能存在的形状。 */
-  return [
-    base,
-    ...LOCAL_MODULE_EXTENSIONS.map((extension) => `${base}${extension}`),
-    `${base}/index.ts`,
-    `${base}/index.tsx`,
-  ].some((candidate) => known.has(candidate));
+  return guiImportCandidates(importer, specifier).some((candidate) => known.has(candidate));
 }
 
 async function readJson(root: string, path: string, add: (finding: AppGuiBuildFinding) => void) {

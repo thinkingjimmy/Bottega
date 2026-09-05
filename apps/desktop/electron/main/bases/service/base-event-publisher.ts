@@ -15,8 +15,6 @@ import {
 } from "../../../../shared/bases-ipc";
 import { rendererEventBus } from "../../window/surfaces/renderer-event-bus";
 
-const clone = <T>(value: T): T => structuredClone(value);
-
 export class BaseEventPublisher {
   private window: BrowserWindow | null = null;
 
@@ -39,7 +37,7 @@ export class BaseEventPublisher {
       ownerKey: ownerKeyOf(snapshot.meta.owner),
       ownerInstanceId: snapshot.meta.ownerInstanceId,
       revision: snapshot.meta.revision,
-      ...clone(delta),
+      ...structuredClone(delta),
     };
     this.publish(
       Buffer.byteLength(JSON.stringify(full), "utf8") <= BASE_EVENT_BYTE_LIMIT
@@ -54,7 +52,7 @@ export class BaseEventPublisher {
   }
 
   publish(event: BasesEvent) {
-    this.onEvent?.(clone(event));
+    this.onEvent?.(structuredClone(event));
     const delivered = rendererEventBus.broadcast(BASES_CHANNEL.event, event);
     if (!delivered && this.window && !this.window.isDestroyed()) {
       this.window.webContents.send(BASES_CHANNEL.event, event);

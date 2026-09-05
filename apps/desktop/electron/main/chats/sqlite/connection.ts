@@ -158,14 +158,6 @@ async function assertSameDatabaseFile(path: string, expected: Awaited<ReturnType
   }
 }
 
-const pragmaInteger = (database: SqliteDatabase, name: string) => {
-  const value = pragmaValue(database, name);
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    throw new Error(`SQLite ${name} is not an integer`);
-  }
-  return value;
-};
-
 export class ChatSqliteConnection {
   readonly database: SqliteDatabase;
   private closed = false;

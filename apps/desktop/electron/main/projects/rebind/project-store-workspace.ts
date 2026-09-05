@@ -27,15 +27,13 @@ type ProjectWorkspacePorts = {
   now(): number;
 };
 
-const clone = <T>(value: T): T => structuredClone(value);
-
 export class ProjectStoreWorkspace {
   constructor(private readonly ports: ProjectWorkspacePorts) {}
 
   convertToBaseCustody(projectId: string) {
     return this.ports.enqueue(async () => {
       const current = this.ports.require(projectId);
-      if (current.role === "base-custody") return clone(current);
+      if (current.role === "base-custody") return structuredClone(current);
       const project = storedProjectSchema.parse({
         ...current,
         dir: "",
@@ -50,7 +48,7 @@ export class ProjectStoreWorkspace {
         updatedAt: this.ports.now(),
       });
       await this.replace(project);
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -82,7 +80,7 @@ export class ProjectStoreWorkspace {
           item.id === projectId ? project : item
         ),
       });
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -95,7 +93,7 @@ export class ProjectStoreWorkspace {
         updatedAt: this.ports.now(),
       });
       await this.replace(project);
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -111,7 +109,7 @@ export class ProjectStoreWorkspace {
         ...current,
         grants: [
           ...current.grants.filter((item) => item.appId !== grant.appId),
-          clone(grant),
+          structuredClone(grant),
         ],
         appPlacements: isPositiveAppGrant(grant)
           ? current.appPlacements
@@ -120,7 +118,7 @@ export class ProjectStoreWorkspace {
         updatedAt: this.ports.now(),
       });
       await this.replace(project);
-      return clone(project);
+      return structuredClone(project);
     });
   }
 
@@ -128,7 +126,7 @@ export class ProjectStoreWorkspace {
     return this.ports.enqueue(async () => {
       const current = this.ports.require(projectId);
       const grants = current.grants.filter((item) => item.appId !== appId);
-      if (grants.length === current.grants.length) return clone(current);
+      if (grants.length === current.grants.length) return structuredClone(current);
       const project = storedProjectSchema.parse({
         ...current,
         grants,
@@ -139,7 +137,7 @@ export class ProjectStoreWorkspace {
         updatedAt: this.ports.now(),
       });
       await this.replace(project);
-      return clone(project);
+      return structuredClone(project);
     });
   }
 

@@ -17,8 +17,6 @@ export type PublishedRecord = Readonly<{
   revision: number;
 }>;
 
-const clone = <T>(value: T): T => structuredClone(value);
-
 /* 一个可变格子，三个协作者：ChatStore 排队并发布，ChatReadModel 只读投影，
    ChatHistorySagaApi 走 import/continuation 命令。以前它们靠继承互相摸到
    对方的字段——十三个 protected abstract 只是把耦合写成了类型。 */
@@ -86,6 +84,6 @@ export class ChatStoreState {
     this.metadata.set(record.id, record);
     this.messageRevisions.set(record.id, record.chatMessageRevision);
     this.storeRevision += 1;
-    return clone(record);
+    return structuredClone(record);
   }
 }

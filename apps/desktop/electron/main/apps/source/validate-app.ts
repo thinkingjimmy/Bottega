@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on strict appManifestSchema, white list inspectPackage, base snapshot/App data migration schema, skill frontmatter parser, config requirement, and templates are ranked
- * [OUTPUT]: Provides validate AppPackage ((dir): Structured errors/warnings, proof of GUI capability/fixed input/external scripts and skill description Budget
+ * [INPUT]: Depends on package inspection, manifest/Base schemas, skill conventions, and the shared frozen-source React GUI validator
+ * [OUTPUT]: Provides structured package findings for static HTML or compiled React source without changing the App
  * [POS]: The app's self-check check-point is installed, shared with Agent, and is self-check-backed using the same set of checks, and that's not the second truth
  */
 
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AppManifest } from "../../../../shared/apps-ipc";
 import { baseSnapshotFileSchema } from "../../../../shared/base-snapshot";
@@ -18,6 +19,9 @@ import { appManifestSchema } from "../install/manifest-schema";
 import { validateConfigRequirements } from "../share/app-config-store";
 import { inspectPackage } from "../share/package/package-contract";
 import { APP_SKILL_PLACEHOLDER, README_SKELETON_HINT } from "./templates";
+import { AppSourcePreparer } from "../gui-build/pipeline/source-preparer";
+import { validateCompiledGuiSource } from "../gui-build/pipeline/source-validator";
+import { analyzeAuthorSource } from "../gui-build/source-analysis";
 
 export type AppFinding = { file: string; reason: string };
 export type AppValidation = {
@@ -217,6 +221,22 @@ async function checkGui(
   manifest: AppManifest | null | undefined,
   report: Report
 ) {
+  if (manifest?.kind === "base" && manifest.gui?.build) {
+    const root = await mkdtemp(join(tmpdir(), "validate-compiled-gui-"));
+    const preparer = new AppSourcePreparer();
+    let source: Awaited<ReturnType<AppSourcePreparer["freeze"]>> | undefined;
+    try {
+      source = await preparer.freeze({ appId: "validation", liveRoot: dir, stagingParent: root, compiled: true });
+      const findings = await validateCompiledGuiSource(source, manifest.gui, await analyzeAuthorSource(source));
+      for (const finding of findings) report.error(finding.file, `${finding.code}: ${finding.message}`);
+    } catch (cause) {
+      report.error("gui/src", errorMessage(cause));
+    } finally {
+      if (source) await preparer.discard(source);
+      await rm(root, { recursive: true, force: true });
+    }
+    return;
+  }
   const html = files.filter(
     (file) => file.path.startsWith("gui/") && file.path.endsWith(".html")
   );

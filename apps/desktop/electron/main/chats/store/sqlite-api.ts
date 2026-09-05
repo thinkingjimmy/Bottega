@@ -28,8 +28,6 @@ import type { ChatStoreState } from "./state";
 
 const hash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const clone = <T>(value: T): T => structuredClone(value);
-
 function resultOf<T>(outcome: MutationOutcome<T>) {
   if (outcome.status === "committed") return outcome.receipt.result;
   if (outcome.status === "outcome_unknown") {
@@ -135,7 +133,7 @@ export class ChatHistorySagaApi {
         signal,
       });
       const metadata = await this.state.refreshMetadata(result.chatId);
-      return { ...clone(result), metadata };
+      return { ...structuredClone(result), metadata };
     });
   }
 

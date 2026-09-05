@@ -44,7 +44,6 @@ export type ChatForkCreateInput = ForkIdentity & Readonly<{
   executionDir?: string | null;
 }>;
 
-const clone = <T>(value: T): T => structuredClone(value);
 const requestHash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -113,7 +112,7 @@ export class ChatForkStoreApi {
       this.state.messageRevisions.set(record.id, record.chatMessageRevision);
       this.state.remember(record, record.chatMessageRevision);
       this.state.touch();
-      return clone(record);
+      return structuredClone(record);
     });
   }
 
@@ -157,7 +156,7 @@ export class ChatForkStoreApi {
       }
       cursor = page.olderCursor;
     }
-    const { preview: _preview, ...facts } = clone(metadata);
+    const { preview: _preview, ...facts } = structuredClone(metadata);
     const source = { ...facts, messages } as ChatRecord;
     requireForkAnchor(source, input);
     return source;
@@ -198,6 +197,6 @@ export class ChatForkStoreApi {
       (existing.executionKind === "managed-worktree") ===
         (input.mode === "new-worktree");
     if (!exact) throw Object.assign(new Error("CHAT_FORK_REQUEST_CONFLICT"), { status: 409 });
-    return clone(existing);
+    return structuredClone(existing);
   }
 }

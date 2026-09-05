@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on apps/desktop/runtime-dependencies.json (slice membership and appGui package set), the installed production dependency graph and lockfile, package/license bytes, compiler/query/preferences/workspace/export/Workbench source slices, signed Base UI components, UI Blocks, Starter bytes, and externally provisioned release/platform public keys
+ * [INPUT]: Depends on apps/desktop/runtime-dependencies.json (package slice membership and appGui set), the installed production dependency graph and lockfile, package/license bytes, explicit compiler/import-policy/snapshot/query/preferences/workspace/export/Workbench source slices, signed components, Starters, and external release/platform public keys
  * [OUTPUT]: Deterministically writes or checks gate-isolated manifests, recursive CycloneDX SBOMs, whitespace-canonical full-license NOTICE bundles, performance requirements, authoring/compatibility metadata, and fail-closed formal-release trust anchors
  * [POS]: App GUI release metadata authority; receipts consume generated digests instead of hand-maintained placeholders
  */
@@ -45,11 +45,13 @@ const gateFiles = {
     "electron/main/app-gui-compiler-entry.ts",
     "electron/main/apps/gui-build/admission.ts",
     "electron/main/apps/gui-build/source-analysis.ts",
+    "electron/main/apps/gui-build/source-imports.ts",
     "electron/main/apps/gui-build/pipeline/compiler.ts",
     "electron/main/apps/gui-build/pipeline/dynamic-code-policy.ts",
     "electron/main/apps/gui-build/contracts.ts",
     "electron/main/apps/gui-build/metadata.ts",
     "electron/main/apps/gui-build/product-modules/app-react.ts",
+    "electron/main/apps/gui-build/product-modules/base-snapshot.ts",
     "electron/main/apps/gui-build/product-modules/bootstrap.ts",
     "electron/main/apps/gui-build/product-modules/virtual-contracts.ts",
     "electron/main/apps/gui-build/pipeline/portable.ts",

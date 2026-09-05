@@ -52,6 +52,8 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 
 [Download the latest release →](https://github.com/thinkingjimmy/Bottega/releases/latest)
 
+**Upgrading from 0.1.0 or 0.1.1?** Install [0.1.2](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.2) manually once to receive the updater fix.
+
 | Platform | Download |
 | --- | --- |
 | macOS (Apple silicon) | DMG or ZIP |
@@ -71,7 +73,7 @@ xattr -rd com.apple.quarantine /Applications/Bottega.app
 **Linux (x64).** Make the AppImage executable and run it:
 
 ```bash
-chmod +x Bottega-0.1.1-linux-x86_64.AppImage && ./Bottega-0.1.1-linux-x86_64.AppImage
+chmod +x Bottega-0.1.2-linux-x86_64.AppImage && ./Bottega-0.1.2-linux-x86_64.AppImage
 ```
 
 Bottega drives the Codex, Claude Code, Kimi Code, and OpenCode CLIs already installed and logged in on your machine. On first launch, pick a Chat Homes directory, let Bottega detect the CLIs, create a task, and choose its Agent before sending the first message. The [getting-started guide](./docs/getting-started/README.md) lists the supported CLI versions.

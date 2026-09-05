@@ -95,8 +95,16 @@ forbidden. Source owns `gui/src/main.tsx`; Bottega generates runtime
   the fragment, raw globals, `/_sdk`, or `/_api`.
 - Prefer Bottega UI Blocks for loading, empty, error, permission, conflict,
   unknown-outcome, forms, detail, attachment, export, and virtual tables.
-- Large data uses bounded Query V1 plus virtualization; never fetch, sort,
-  aggregate, or render the entire Base in the iframe.
+- Use bounded Query V1 plus virtualization for large data. When a workflow needs
+  complete row identity (such as reconciling a frozen batch), `useBaseSnapshot({
+  critical? })` returns async state and `refresh(): Promise<BaseSnapshot>`. It
+  reads every cursor and verifies Base instance/revision before publishing, with
+  cancellation and bounded conflict backoff. Keep DOM rendering paginated.
+- SDK errors preserve `status`, `outcome`, `issues`, `currentRevision`, and
+  `retryAfter`; an unknown write outcome requires reconciliation before retry.
+- Executable imports stay in `gui/src`; static JSON may also come from `gui/data`
+  and media from `gui/media`. Import each asset statically so the compiler emits
+  a module-relative URL. Source `README.md` files are non-executable documentation.
 - Tailwind scans only `gui/src`. Use complete static class names. Put dynamic
   values in CSS variables. `@plugin`, `@config`, `@source`, external URLs, and
   executable config are rejected.

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the shared UpdateSnapshot contract only — no React, no IPC, no i18n runtime
  * [OUTPUT]: Provides UpdateTone, UpdateGlyph, UpdateView, describeUpdate and formatAppDiagnostics
- * [POS]: Settings › About 的结论层：更新快照到「说不说话、说什么、多重、给哪颗按钮」只判一次，与 lib/memory-view 同一族
+ * [POS]: Settings › About 的结论层：更新快照到「说不说话、说什么、多重、给哪颗按钮、失败后怎么办」只判一次，与 lib/memory-view 同一族
  */
 
 import type { UpdateSnapshot } from "../../shared/update-ipc";
@@ -29,6 +29,7 @@ type UpdateMessageKey =
 type UpdateActionKey =
   | "settings.about.upgrade"
   | "settings.about.manualUpgrade";
+type UpdateResolutionKey = "settings.about.failedResolution";
 
 export type UpdateView = Readonly<{
   /** 完整 i18n 键；null = 静息态，这一行只剩一颗按钮。 */
@@ -42,6 +43,10 @@ export type UpdateView = Readonly<{
   blocked: boolean;
   /** 升级按钮的文案键；null = 这一档不给升级按钮。 */
   upgradeKey: UpdateActionKey | null;
+  /** 报错之后那句「怎么办」；null = 这一档没有出路可指。
+      它与 tone 分开判：后台失败同样是 danger，但那条通路还没断，
+      用户此刻无事可做，硬塞一句行动指令只是噪音。 */
+  resolutionKey: UpdateResolutionKey | null;
 }>;
 
 const SILENT: UpdateView = Object.freeze({
@@ -52,6 +57,7 @@ const SILENT: UpdateView = Object.freeze({
   percent: null,
   blocked: false,
   upgradeKey: null,
+  resolutionKey: null,
 });
 
 /* 每一档只写它与静息态的差集：默认值集中在 SILENT 一处，
@@ -121,6 +127,10 @@ export function describeUpdate(
         messageVars: update.error ? { message: update.error } : {},
         glyph: "alert",
         tone: "danger",
+        /* 报错原文只说「坏了」。这次更新装不上时，人还剩两件能做的事：
+           去 Releases 页手动下载，或去 GitHub 报告。不写出来，那条
+           红字就是一个死胡同。 */
+        resolutionKey: "settings.about.failedResolution",
       });
     case "not-available":
       return checkedHere

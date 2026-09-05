@@ -194,9 +194,6 @@ export const productFailed = <T = never>(failure: ProductFailure): ProductResult
   failure: productFailureSchema.parse(failure),
 });
 
-export const isProductFailure = (value: unknown): value is ProductFailure =>
-  productFailureSchema.safeParse(value).success;
-
 export class ProductFailureError extends Error {
   constructor(readonly failure: ProductFailure) {
     super(`${failure.domain}/${failure.code}`);

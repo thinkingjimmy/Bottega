@@ -14,8 +14,6 @@ import { storedBase, type StoredBase } from "../base-store-model";
 import type { BaseAttachmentStore } from "./attachments";
 import { ownerFileStem, type BaseStoreFiles } from "./base-files";
 
-const clone = <T>(value: T): T => structuredClone(value);
-
 export async function prepareProjectBase(input: {
   source: StoredBase;
   fromKey: string;
@@ -31,7 +29,7 @@ export async function prepareProjectBase(input: {
     projectId: input.projectId,
   };
   const meta = baseMetaSchema.parse({
-    ...clone(input.source.meta),
+    ...structuredClone(input.source.meta),
     owner,
     ownerInstanceId: input.intentId,
     // 升格产物回到 Project 容器；根可见性由用户后续显式动作决定。
@@ -41,13 +39,13 @@ export async function prepareProjectBase(input: {
     galleryGeneration: 0,
     historyGeneration: 0,
   });
-  const rows = clone(input.source.rows);
+  const rows = structuredClone(input.source.rows);
   const gallery = {
-    ...clone(input.source.gallery),
+    ...structuredClone(input.source.gallery),
     chatId: ownerFileStem(input.toKey),
     incarnationId: input.intentId,
   };
-  const history = clone(input.source.history);
+  const history = structuredClone(input.source.history);
   await input.attachments.copyFamily(
     ownerFileStem(input.fromKey),
     input.source.meta.ownerInstanceId,

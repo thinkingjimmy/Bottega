@@ -36,6 +36,8 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 每个 release 都会在 [Releases 页面](https://github.com/thinkingjimmy/Bottega/releases)发布三个平台的安装包。
 
+如果当前安装的是 0.1.0 或 0.1.1，请先手动下载并安装一次 [0.1.2](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.2)。旧版本的更新器存在问题，修复会在安装新版二进制后生效；Windows 继续通过手动下载安装包升级。
+
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
 | macOS（Apple 芯片） | `Bottega-<version>-arm64.dmg` 或 `-arm64-mac.zip` | 主要目标平台，仅支持 Apple 芯片。 |

@@ -9,8 +9,8 @@
     },
     {
       "path": "electron/main/apps/gui-build/admission.ts",
-      "bytes": 3456,
-      "sha256": "sha256:9307162194fcf656c1eea46de5397d769e5ef9c24b2fdf1b8a952f7436356d9d"
+      "bytes": 3477,
+      "sha256": "sha256:72921f05efaac2bc63a3f3aac6c4ea2d7d63636fb1678cda73961e78f1a064d4"
     },
     {
       "path": "electron/main/apps/gui-build/contracts.ts",
@@ -19,13 +19,13 @@
     },
     {
       "path": "electron/main/apps/gui-build/metadata.ts",
-      "bytes": 7958,
-      "sha256": "sha256:2059fc7a03019b8acad929c2809776e190b0f91a0eb9198778e2f9cf584b50bb"
+      "bytes": 8100,
+      "sha256": "sha256:92c53b54e8223abfe202386f356f302c5bf5775f7c601c6111886e7d3bc60fcc"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/compiler.ts",
-      "bytes": 28837,
-      "sha256": "sha256:b3cd891f23ab6df916a5b331d2540f1eb331682018de4415165068014b70ffb3"
+      "bytes": 29196,
+      "sha256": "sha256:26de959f0c6769e134c3451cd44bde2d412e50e706c7e33a12355334a252804c"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/dynamic-code-policy.ts",
@@ -59,23 +59,28 @@
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/source-validator.ts",
-      "bytes": 16995,
-      "sha256": "sha256:2613533c47cd3fca4b34e7aac71bdbadfb01971abeb6038b0a6dcdc44c410079"
+      "bytes": 16766,
+      "sha256": "sha256:7eaf2ac5de2c34cc2c28c3e34c547f04db4570c008378627bd897f6ed35a0794"
     },
     {
       "path": "electron/main/apps/gui-build/product-modules/app-react.ts",
-      "bytes": 12847,
-      "sha256": "sha256:cd3175fa7a5455a14f9800a96963e1d9268d9ab48536b13081e9b34ca1e46a01"
+      "bytes": 14233,
+      "sha256": "sha256:0923a3df06a50ae40ff627b4907a28015272fb937cfade08f1951cc2c387478e"
+    },
+    {
+      "path": "electron/main/apps/gui-build/product-modules/base-snapshot.ts",
+      "bytes": 2623,
+      "sha256": "sha256:267ea63fad7be53dba9cb9fe9023fa79af86d05e1d63e21bc741295f4521aba0"
     },
     {
       "path": "electron/main/apps/gui-build/product-modules/bootstrap.ts",
-      "bytes": 31973,
-      "sha256": "sha256:e01e58487c09ff1e6987e1383b5e968079bbd724105bdc28fb1e36c79594114d"
+      "bytes": 33153,
+      "sha256": "sha256:8973feb443857e3cdc599c888bf7667df3484c56da35179afdc73577462062c1"
     },
     {
       "path": "electron/main/apps/gui-build/product-modules/virtual-contracts.ts",
-      "bytes": 5885,
-      "sha256": "sha256:96e574612c0fc8d77d348435f5eef9d734191186ba7ba29a815cbd1362817864"
+      "bytes": 6738,
+      "sha256": "sha256:759f94de26dee4c0e045e518e83613fc2ac4b3001c91b89310204ba26ca91b1a"
     },
     {
       "path": "electron/main/apps/gui-build/scaffold/component-scaffolder.ts",
@@ -98,6 +103,11 @@
       "sha256": "sha256:821757cfd0d881cc2e19989b78b7d394e4470570da50d91d0f12969cb082bad6"
     },
     {
+      "path": "electron/main/apps/gui-build/source-imports.ts",
+      "bytes": 1348,
+      "sha256": "sha256:e0a3d0117e0368ec6bc8f3fa3cbc9ad6aa8002299ab77aa3cb84f7d496a4a1a8"
+    },
+    {
       "path": "electron/main/apps/gui-cutover/cohort.ts",
       "bytes": 4216,
       "sha256": "sha256:295ae08d5a6f48da747e0490603339daff0a2735b5cbe808f319730c4c1511e8"
@@ -109,8 +119,8 @@
     },
     {
       "path": "electron/main/apps/gui-cutover/journal.ts",
-      "bytes": 4702,
-      "sha256": "sha256:32777819bb8b65045bd6ec5d38bf03d08c537b86252795b19561ed7824a1d761"
+      "bytes": 4643,
+      "sha256": "sha256:4e1a5187e7b8e48a1611cf5094cdfb1e4917f3d59e24412340697c56e2980f8f"
     },
     {
       "path": "electron/main/apps/gui-cutover/participants.ts",

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node filesystem/crypto paths and durable atomic text/byte replacement
- * [OUTPUT]: Provides typed marker/catalog authority inspection plus receipt-gated, byte-preserving App catalog repair
- * [POS]: AppStore authority witness; separates catalog damage from marker I/O and forbids canonical replacement without durable evidence
+ * [INPUT]: Depends on Node filesystem/crypto paths, the current App catalog schema version, and durable atomic text/byte replacement
+ * [OUTPUT]: Provides typed marker/catalog authority inspection, receipt-gated byte-preserving repair, and foreign-schema quarantine followed by an empty current-schema publication
+ * [POS]: AppStore authority witness and sole startup catalog replacement owner; separates schema discontinuity, catalog damage, and marker I/O while forbidding canonical replacement without durable evidence
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -30,6 +30,11 @@ type CatalogInspection =
   | Readonly<{ kind: "valid"; count: number }>
   | Readonly<{ kind: "missing" }>
   | Readonly<{
+      kind: "foreign";
+      schemaVersion: unknown;
+      quarantine: QuarantineReceipt | null;
+    }>
+  | Readonly<{
       kind: "invalid";
       cause: unknown;
       quarantine: QuarantineReceipt | null;
@@ -57,10 +62,15 @@ export class AppStoreAuthorityEvidence {
   async inspectCanonical(input: Readonly<{
     filePath: string;
     emptyContent: string;
-    validate(content: string): number;
+    schemaVersion: number;
+    validate(raw: unknown): number;
   }>): Promise<AppStoreAuthorityInspection> {
     let marker = await this.inspectMarker();
-    const catalog = await this.inspectCatalog(input.filePath, input.validate);
+    const catalog = await this.inspectCatalog(
+      input.filePath,
+      input.schemaVersion,
+      input.validate
+    );
     if (catalog.kind === "valid") {
       if (marker.kind === "missing") {
         try {
@@ -73,6 +83,37 @@ export class AppStoreAuthorityEvidence {
       if (marker.kind === "valid") return established(catalog, marker, false);
       this.warnMarker(marker.cause);
       return degraded("marker", catalog, marker);
+    }
+    if (catalog.kind === "foreign") {
+      console.warn(
+        `[apps] apps.json schemaVersion ${String(catalog.schemaVersion)} 不是 v${input.schemaVersion}，隔离原件后按空目录冷启动`
+      );
+      if (!catalog.quarantine) {
+        console.warn("[apps] foreign App catalog 无 durable 原字节隔离 receipt，禁止覆盖");
+        return degraded("catalog", catalog, marker);
+      }
+      if (marker.kind === "missing") {
+        try {
+          await this.establish();
+          marker = { kind: "valid" };
+        } catch (cause) {
+          marker = { kind: "invalid", cause };
+        }
+      }
+      if (marker.kind !== "valid") {
+        this.warnMarker(marker.cause);
+        return degraded("marker", catalog, marker);
+      }
+      try {
+        /* 隔离件先持久化，再紧邻覆盖动作复验 canonical；即使另一个进程在
+           inspection 中途换了字节，这个 writer 也没有资格抹掉新真相。 */
+        await this.assertReceipt(input.filePath, catalog.quarantine);
+        await durableReplaceFile(input.filePath, input.emptyContent);
+        return established({ kind: "valid", count: 0 }, marker, false);
+      } catch (cause) {
+        console.warn("[apps] foreign App catalog empty publication failed", cause);
+        return degraded("catalog", catalog, marker);
+      }
     }
     if (catalog.kind === "missing" && marker.kind === "missing") {
       try {
@@ -110,7 +151,7 @@ export class AppStoreAuthorityEvidence {
       return { state: stateForCount(catalog.count), rebuiltCatalog: false };
     }
     await this.establish();
-    if (catalog.kind === "invalid") {
+    if (catalog.kind === "invalid" || catalog.kind === "foreign") {
       if (!catalog.quarantine) {
         throw new Error("App catalog 没有 durable 原字节隔离 receipt，拒绝 Repair 覆盖");
       }
@@ -137,7 +178,8 @@ export class AppStoreAuthorityEvidence {
 
   private async inspectCatalog(
     filePath: string,
-    validate: (content: string) => number
+    schemaVersion: number,
+    validate: (raw: unknown) => number
   ): Promise<CatalogInspection> {
     let bytes: Buffer;
     try {
@@ -149,17 +191,37 @@ export class AppStoreAuthorityEvidence {
     }
     try {
       const content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      return { kind: "valid", count: validate(content) };
+      const raw = JSON.parse(content) as unknown;
+      const foundVersion = schemaVersionOf(raw);
+      if (foundVersion !== schemaVersion) {
+        const quarantine = await this.quarantineBytes(
+          filePath,
+          bytes,
+          "quarantine"
+        ).catch(() => null);
+        return {
+          kind: "foreign",
+          schemaVersion: foundVersion,
+          quarantine,
+        };
+      }
+      return { kind: "valid", count: validate(raw) };
     } catch (cause) {
-      const quarantine = await this.quarantineBytes(filePath, bytes).catch(
-        () => null
-      );
+      const quarantine = await this.quarantineBytes(
+        filePath,
+        bytes,
+        "corrupt"
+      ).catch(() => null);
       return { kind: "invalid", cause, quarantine };
     }
   }
 
-  private async quarantineBytes(filePath: string, bytes: Buffer) {
-    const path = `${filePath}.corrupt-${Date.now()}-${randomUUID()}`;
+  private async quarantineBytes(
+    filePath: string,
+    bytes: Buffer,
+    suffix: "corrupt" | "quarantine"
+  ) {
+    const path = `${filePath}.${suffix}-${Date.now()}-${randomUUID()}`;
     await durableReplaceBytes(path, bytes);
     const persisted = await readFile(path);
     if (!persisted.equals(bytes)) throw new Error("App quarantine byte receipt mismatch");
@@ -189,6 +251,12 @@ export class AppStoreAuthorityEvidence {
 
 function digest(bytes: Uint8Array) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function schemaVersionOf(raw: unknown) {
+  return raw && typeof raw === "object"
+    ? (raw as { schemaVersion?: unknown }).schemaVersion
+    : undefined;
 }
 
 function stateForCount(count: number) {

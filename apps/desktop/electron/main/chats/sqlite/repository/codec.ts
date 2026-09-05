@@ -13,7 +13,6 @@ import type { MutationReceipt } from "../database-protocol";
 import type { SqliteDatabase, SqliteStatement } from "../connection";
 
 export const SEARCH_CODEC_VERSION = 1;
-export const DIGEST_CODEC_VERSION = 1;
 export type Row = Record<string, unknown>;
 
 export const json = (value: unknown) => JSON.stringify(value);

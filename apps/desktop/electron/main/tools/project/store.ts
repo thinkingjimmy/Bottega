@@ -68,7 +68,6 @@ const emptyFile = (): StoreFile => ({
   projectRevisions: {},
   policies: {},
 });
-const clone = <T>(value: T): T => structuredClone(value);
 const byteLength = (value: string) => Buffer.byteLength(value, "utf8");
 
 export class ProjectToolPolicyStore {
@@ -121,7 +120,7 @@ export class ProjectToolPolicyStore {
     return {
       storeRevision: this.state.revision,
       projectRevision: this.state.projectRevisions[projectId] ?? 0,
-      policy: clone(this.state.policies[projectId] ?? EMPTY_POLICY),
+      policy: structuredClone(this.state.policies[projectId] ?? EMPTY_POLICY),
     };
   }
 
@@ -188,7 +187,7 @@ export class ProjectToolPolicyStore {
         .filter(([, policy]) => Object.hasOwn(policy.globalMcpOverrides, serverId))
         .map(([projectId]) => projectId);
       if (!affected.length) return [];
-      const policies = clone(this.state.policies);
+      const policies = structuredClone(this.state.policies);
       const projectRevisions = { ...this.state.projectRevisions };
       for (const projectId of affected) {
         delete policies[projectId]!.globalMcpOverrides[serverId];
@@ -230,8 +229,8 @@ export class ProjectToolPolicyStore {
     assertProjectId(projectId);
     return this.mutate(async () => {
       this.assertRevision(projectId, expectedRevision);
-      const policies = clone(this.state.policies);
-      const policy = clone(policies[projectId] ?? EMPTY_POLICY);
+      const policies = structuredClone(this.state.policies);
+      const policy = structuredClone(policies[projectId] ?? EMPTY_POLICY);
       edit(policy);
       if (this.dependencies.globalMcpServerExists) {
         for (const serverId of Object.keys(policy.globalMcpOverrides)) {
@@ -264,7 +263,7 @@ export class ProjectToolPolicyStore {
   private async pruneMissingGlobalMcpOverrides() {
     const exists = this.dependencies.globalMcpServerExists;
     if (!exists) return;
-    const policies = clone(this.state.policies);
+    const policies = structuredClone(this.state.policies);
     const projectRevisions = { ...this.state.projectRevisions };
     const affected: string[] = [];
     for (const [projectId, policy] of Object.entries(policies)) {
@@ -320,11 +319,11 @@ export class ProjectToolPolicyStore {
 
   private accept(state: StoreFile) {
     this.state = state;
-    this.previousValidated = clone(state);
+    this.previousValidated = structuredClone(state);
   }
 
   private snapshotState() {
-    return clone(this.state);
+    return structuredClone(this.state);
   }
 
   private async atomicWrite(path: string, content: string) {

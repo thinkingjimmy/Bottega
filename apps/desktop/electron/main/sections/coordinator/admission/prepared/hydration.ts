@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on durable PreparedManualTurn shapes, workspace/submission schemas, sealed Project Tools hydration, canonical backend runtime identity, staged blob bytes, and shared staging custody
+ * [INPUT]: Depends on durable PreparedManualTurn shapes, workspace/submission schemas, sealed Project Tools hydration, canonical backend runtime identity, staged blob bytes, exact Skill receipts, and shared staging custody
  * [OUTPUT]: Provides PreparedManualTurn hydration into canonical submission, resolved Agent input, runtime-reprojected frozen Project Tools, and static custody-backed release
  * [POS]: Prepared admission read boundary; the sibling staging primitive owns integrity/release while prepared-manual-turn owns writes
  */
@@ -18,6 +18,7 @@ import { workspacePreconditionSchema } from "../../../../../../shared/submission
 import type { ResolvedAgentInput } from "../../../../backends/types";
 import { backendRuntimeRegistry } from "../../../../backends";
 import { hydrateProjectToolsReceipt } from "../prepared-project-tools";
+import { assertPreparedSkillReferences } from "../prepared-skill-reference-custody";
 import type { PreparedManualTurn } from "../prepared-manual-turn";
 import {
   assertPreparedContentHash,
@@ -47,8 +48,7 @@ export async function resolveProjectToolsRuntimeIdentity(
 
 export async function hydratePreparedTurn(
   prepared: PreparedManualTurn,
-  resolveRuntimeIdentity: ProjectToolsRuntimeIdentityResolver =
-    resolveProjectToolsRuntimeIdentity
+  resolveRuntimeIdentity: ProjectToolsRuntimeIdentityResolver = resolveProjectToolsRuntimeIdentity
 ) {
   assertPreparedContentHash(prepared);
   if (
@@ -58,9 +58,29 @@ export async function hydratePreparedTurn(
   ) {
     throw new Error("PreparedManualTurn 缺少合法 lifecycle Project 身份");
   }
-  const workspacePrecondition = workspacePreconditionSchema.parse(
-    prepared.workspacePrecondition
-  );
+  if (
+    !prepared.projectContext ||
+    prepared.projectContext.projectId !== prepared.lifecycleProjectId ||
+    (prepared.projectContext.projectId === null
+      ? prepared.projectContext.projectLifecycleRevision !== null
+      : !Number.isSafeInteger(
+          prepared.projectContext.projectLifecycleRevision
+        ) || prepared.projectContext.projectLifecycleRevision! <= 0)
+  ) {
+    throw new Error("PreparedManualTurn 缺少合法 Project lifecycle receipt");
+  }
+  if (
+    !prepared.skillSelection ||
+    prepared.skillSelection.backend !== prepared.turn.turnOptions.backend ||
+    prepared.skillSelection.planMode !== Boolean(prepared.turn.planMode) ||
+    prepared.skillSelection.projectContext.projectId !==
+      prepared.projectContext.projectId ||
+    prepared.skillSelection.projectContext.projectLifecycleRevision !==
+      prepared.projectContext.projectLifecycleRevision
+  ) {
+    throw new Error("PreparedManualTurn 缺少合法 Skills selection receipt");
+  }
+  await assertPreparedSkillReferences(prepared.skillSelection);
   const backendId = prepared.turn.turnOptions.backend;
   const backendRuntimeIdentity = await resolveRuntimeIdentity(backendId);
   const projectTools = await hydrateProjectToolsReceipt(
@@ -72,10 +92,15 @@ export async function hydratePreparedTurn(
   );
   if (
     projectTools.receipt.projectContext.projectId !==
-    prepared.lifecycleProjectId
+      prepared.projectContext.projectId ||
+    projectTools.receipt.projectContext.projectLifecycleRevision !==
+      prepared.projectContext.projectLifecycleRevision
   ) {
     throw new Error("PROJECT_TOOLS_LIFECYCLE_MISMATCH");
   }
+  const workspacePrecondition = workspacePreconditionSchema.parse(
+    prepared.workspacePrecondition
+  );
   const input: AgentUserInput[] = [];
   const resolved: ResolvedAgentInput["input"] = [];
   for (const item of prepared.input) {
@@ -98,7 +123,11 @@ export async function hydratePreparedTurn(
       if (!item.resolvedOnly) {
         input.push({ type: "text", text: `${item.name}（staged resource）` });
       }
-      resolved.push({ type: item.type, name: item.name, path: item.blob.path });
+      resolved.push({
+        type: item.type,
+        name: item.name,
+        path: item.blob.path,
+      });
     }
   }
   return {

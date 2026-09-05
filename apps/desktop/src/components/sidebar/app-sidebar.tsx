@@ -1,7 +1,7 @@
 "use client";
 /**
- * [INPUT]: Depends on React, i18n, Sidebar UI, product stores/providers, shared active App target/origin, navigation, external-link IPC, and router
- * [OUTPUT]: Provides persistent navigation with asChild-stable row typography, pending-residence-safe generation-fenced Apps/global-pin/Project-alias targets, recovery, actionable store warnings with a GitHub report fallback, and status actions
+ * [INPUT]: Depends on React, i18n, Sidebar UI, product stores/providers, shared active App target/origin, navigation, the footer update affordance, and router
+ * [OUTPUT]: Provides persistent navigation with asChild-stable row typography, pending-residence-safe generation-fenced Apps/global-pin/Project-alias targets, recovery, actionable store warnings with a GitHub report fallback, and a footer that mounts the Memory alert and SidebarUpdateButton without owning either verdict
  * [POS]: Sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  */
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
@@ -13,7 +13,6 @@ import {
   Bell,
   ChartNoAxesColumnIncreasing,
   Database,
-  Download,
   Info,
   Keyboard,
   LayoutGrid,
@@ -92,10 +91,9 @@ import {
   type SettingsDestination,
   type SettingsOverlaySection,
 } from "@/lib/settings-navigation";
-import { openExternal } from "@/lib/agent-client";
 import { ReportIssueButton } from "@/components/report-issue-button";
-import { RELEASE_URL, updateStore } from "@/lib/update-client";
 import { PinnedApps } from "./apps/pinned-apps";
+import { SidebarUpdateButton } from "./sidebar-update-button";
 import { appearsInRootChats } from "../../../shared/placement/sidebar";
 import { ChatStorageFailureNotice } from "../chat-storage-failure-notice";
 import {
@@ -327,13 +325,8 @@ export function AppSidebar({
     memoryStore.getSnapshot
   );
   const memoryStatus = memorySnapshot.status;
-  const updateSnapshot = useSyncExternalStore(
-    updateStore.subscribe,
-    updateStore.getSnapshot
-  );
   useEffect(() => {
     memoryStore.ensureLoaded();
-    updateStore.ensureLoaded();
   }, []);
   const memoryAttention = memoryNeedsAttention(memoryStatus);
   const memoryBusy = Object.values(memorySnapshot.runtimes).some(
@@ -704,7 +697,9 @@ export function AppSidebar({
           </SidebarContent>
           {/* ====== 底部：Settings 入口（记忆异常时紧随文本挂告警，直达 Memory）。
                   告警是独立兄弟按钮而非 SidebarMenuAction：后者绝对定位在行尾，
-                  且自带 hover:text-accent 会把 amber 压成前景黑。 ====== */}
+                  且自带 hover:text-accent 会把 amber 压成前景黑。
+                  更新按钮同理是兄弟按钮，其相位判断整条住在
+                  lib/sidebar-update-view，这一层只留一个挂载点。 ====== */}
           <SidebarFooter className="p-0.5">
             <SidebarMenu>
               <SidebarMenuItem className="flex items-center">
@@ -732,51 +727,9 @@ export function AppSidebar({
                       : <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />}
                   </button>
                 )}
-                {["available", "downloading", "installing"].includes(
-                  updateSnapshot.phase
-                ) && (
-                  <button
-                    type="button"
-                    aria-label={
-                      updateSnapshot.phase === "available"
-                        ? updateSnapshot.automaticInstall
-                          ? t("settings.about.upgrade")
-                          : t("settings.about.manualUpgrade")
-                        : updateSnapshot.phase === "downloading"
-                          ? t("settings.about.downloading", {
-                              version:
-                                updateSnapshot.availableVersion ??
-                                updateSnapshot.currentVersion,
-                              percent: Math.round(
-                                updateSnapshot.progress?.percent ?? 0
-                              ),
-                            })
-                          : t("settings.about.installing")
-                    }
-                    disabled={updateSnapshot.phase !== "available"}
-                    className="ml-1 flex size-11 shrink-0 touch-manipulation cursor-pointer items-center justify-center rounded-md bg-blue-600 text-white outline-none transition-colors hover:bg-blue-500 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar disabled:cursor-wait disabled:opacity-80 motion-reduce:transition-none dark:bg-blue-500 dark:hover:bg-blue-400"
-                    onClick={() => {
-                      if (updateSnapshot.automaticInstall) {
-                        void updateStore.downloadAndInstall();
-                      } else {
-                        void openExternal(RELEASE_URL);
-                      }
-                    }}
-                  >
-                    {updateSnapshot.phase === "available" ? (
-                      <Download aria-hidden className="size-4" />
-                    ) : updateSnapshot.phase === "downloading" ? (
-                      <span className="text-[10px] font-semibold tabular-nums">
-                        {Math.round(updateSnapshot.progress?.percent ?? 0)}%
-                      </span>
-                    ) : (
-                      <Loader2
-                        aria-hidden
-                        className="size-4 motion-safe:animate-spin"
-                      />
-                    )}
-                  </button>
-                )}
+                <SidebarUpdateButton
+                  onOpenAbout={() => onSelectSettings("about")}
+                />
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarFooter>

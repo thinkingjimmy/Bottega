@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared Agent/Chat/Project/Submission contracts, PromptInput, rich-input serialization, and transcript recovery helpers
+ * [INPUT]: Depends on the shared RichInput wire projection, shared Agent/Chat/Project/Submission contracts, PromptInput, and transcript recovery helpers
  * [OUTPUT]: Provides the React-free session controller model, structured user-input errors, strict PanelSessionContext, App conversation-context projection, derived identity keys, eligibility reasons, open commands, and composer/transcript contracts
  * [POS]: The canonical type and pure-policy layer for chat/runtime
  */
@@ -21,9 +21,7 @@ import type { WorkspacePrecondition } from "../../../../shared/submission";
 import type { PromptInputMessage } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { buildRecoveryInput } from "@/lib/chat-transcript";
 import type { PendingUserInputState } from "@/lib/chat-user-input-state";
-import { serializeRichValue } from "@/lib/rich-input-serialize";
-
-export { serializeRichValue } from "@/lib/rich-input-serialize";
+import { projectRichInput } from "../../../../shared/rich-input-projection";
 
 export type { PendingUserInputState } from "@/lib/chat-user-input-state";
 
@@ -399,7 +397,7 @@ export function serializeCurrentInput(args: {
 }): AgentUserInput[] {
   const structured: AgentUserInput[] =
     args.message.input.kind === "rich"
-      ? serializeRichValue(args.message.input.value)
+      ? projectRichInput(args.message.input.value)
       : [{ type: "text", text: args.message.input.displayText }];
   return [...structured, ...args.attachmentInput];
 }

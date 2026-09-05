@@ -83,7 +83,6 @@ export type {
   IndexedBaseSnapshot,
   ReadonlyBaseSnapshot,
 };
-const clone = <T>(value: T): T => structuredClone(value);
 const same = (left: unknown, right: unknown) =>
   JSON.stringify(left) === JSON.stringify(right);
 const NO_BLOBS: ReadonlySet<string> = new Set<string>();
@@ -217,7 +216,7 @@ export class BaseStore {
       const state = this.requireState(ownerKey, ownerInstanceId);
       const current = {
         snapshot: this.snapshot(state),
-        gallery: clone(state.gallery),
+        gallery: structuredClone(state.gallery),
       };
       const changed = await mutate(current);
       if (!changed) return { snapshot: current.snapshot, result: null };
@@ -233,10 +232,10 @@ export class BaseStore {
     });
   }
   gallery(ownerKey: string, ownerInstanceId: string) {
-    return clone(this.requireState(ownerKey, ownerInstanceId).gallery);
+    return structuredClone(this.requireState(ownerKey, ownerInstanceId).gallery);
   }
   rowHistory(ownerKey: string, ownerInstanceId: string, rowId: string) {
-    return clone(
+    return structuredClone(
       historyForRow(
         this.requireState(ownerKey, ownerInstanceId).history,
         rowId

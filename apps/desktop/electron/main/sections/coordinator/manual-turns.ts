@@ -92,12 +92,13 @@ export function bindAdoptedSessionPlan(
 }
 
 export async function manualSubmission(
-  intent: DeepReadonly<ManualTurnIntent>
+  intent: DeepReadonly<ManualTurnIntent>,
+  resolveRuntimeIdentity?: CoordinatorDependencies["resolveProjectToolsRuntimeIdentity"]
 ) {
   if (intent.payload === undefined) {
     throw new Error("ManualTurnIntent 已压缩，不再包含可执行 payload");
   }
-  return hydratePreparedTurn(intent.payload as PreparedManualTurn);
+  return hydratePreparedTurn(intent.payload as PreparedManualTurn, resolveRuntimeIdentity);
 }
 
 export async function userMessagePersisted(
@@ -385,7 +386,7 @@ export async function runManualTurn(
   dependencies: ManualTurnDependencies,
   projectLifecycleHeld = false
 ) {
-  const hydrated = await manualSubmission(intent);
+  const hydrated = await manualSubmission(intent, dependencies.resolveProjectToolsRuntimeIdentity);
   const submission = bindAdoptedSessionPlan(hydrated.submission, {
     planDigest: hydrated.projectTools.sessionPlanDigest,
     projectId: hydrated.projectTools.receipt.projectContext.projectId,

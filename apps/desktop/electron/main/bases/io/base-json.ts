@@ -35,7 +35,6 @@ import {
 } from "../validation/base-mutation-validation";
 import { statusError } from "../../errors";
 
-const clone = <T>(value: T): T => structuredClone(value);
 const same = (left: unknown, right: unknown) =>
   JSON.stringify(left) === JSON.stringify(right);
 
@@ -123,7 +122,7 @@ export class BaseJsonService {
           imported.columns
         );
         const incomingRows = new Map(
-          imported.rows.map((row) => [row.id, clone(row)])
+          imported.rows.map((row) => [row.id, structuredClone(row)])
         );
         const seen = new Set<string>();
         const rows = current.rows.map((row) => {
@@ -133,7 +132,7 @@ export class BaseJsonService {
           return incoming;
         });
         for (const row of imported.rows) {
-          if (!seen.has(row.id)) rows.push(clone(row));
+          if (!seen.has(row.id)) rows.push(structuredClone(row));
         }
         const columnIndex = baseColumnIndex(columns);
         const relationTargets = baseRowIdSet(rows);
@@ -149,7 +148,7 @@ export class BaseJsonService {
           ...current.meta,
           name: imported.name,
           columns,
-          views: clone(imported.views),
+          views: structuredClone(imported.views),
           activeViewId,
           revision: current.meta.revision + 1,
         };
@@ -194,7 +193,7 @@ export function mergeImportedColumns(
   const incomingById = new Map(incoming.map((column) => [column.id, column]));
   const merged = current.map((column) => {
     const next = incomingById.get(column.id);
-    if (!next) return clone(column);
+    if (!next) return structuredClone(column);
     incomingById.delete(column.id);
     if (next.type !== column.type) {
       throw statusError(
@@ -202,18 +201,18 @@ export function mergeImportedColumns(
         `列 ${column.id} 类型冲突：${column.type} → ${next.type}`
       );
     }
-    if (next.type !== "select") return clone(next);
+    if (next.type !== "select") return structuredClone(next);
     const options = new Map(
       [...(column.options ?? []), ...(next.options ?? [])].map((option) => [
         option.id,
         option,
       ])
     );
-    return { ...clone(next), options: [...options.values()] };
+    return { ...structuredClone(next), options: [...options.values()] };
   });
   return [
     ...merged,
-    ...[...incomingById.values()].map((column) => clone(column)),
+    ...[...incomingById.values()].map((column) => structuredClone(column)),
   ];
 }
 

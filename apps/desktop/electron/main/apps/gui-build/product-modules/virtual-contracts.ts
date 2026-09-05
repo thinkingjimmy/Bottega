@@ -17,12 +17,19 @@ export const SDK_TYPES_SOURCE = `
 declare module "@bottega/app-react" {
   import type { ReactElement } from "react";
   export type RuntimeErrorCode = ${RUNTIME_ERROR_CODE_UNION};
-  export type RuntimeError = Readonly<{ code: RuntimeErrorCode; message: string; retryable: boolean }>;
+  export type RuntimeError = Readonly<{ code: RuntimeErrorCode; message: string; retryable: boolean; status?: number; outcome?: "not-committed" | "unknown"; issues?: readonly unknown[]; currentRevision?: number; retryAfter?: string | null }>;
   export type AsyncState<T> =
     | Readonly<{ status: "loading"; retry(): void; critical: boolean }>
     | Readonly<{ status: "success"; data: T; retry(): void; critical: boolean }>
     | Readonly<{ status: "error"; error: RuntimeError; retry(): void; critical: boolean }>;
   export function useAppEnvironment(): Readonly<{ language: string; locale: string; timeZone: string; colorScheme: "light" | "dark"; reducedMotion: boolean; density: "comfortable" | "compact"; viewport: Readonly<{ width: number; height: number }> }>;
+  export type BaseColumn = Readonly<{ id: string; type: string; name?: string; options?: readonly Readonly<{ id: string; name?: string }>[] }>;
+  export type BaseRow = Readonly<{ id: string; values: Readonly<Record<string, unknown>> }>;
+  export type BaseSnapshot = Readonly<{
+    meta: Readonly<{ baseInstanceId: string; revision: number; columns: readonly BaseColumn[]; rowCount?: number; activeViewId?: string; capabilities?: Readonly<{ rowInsert?: boolean; rowPatch?: boolean; rowDelete?: boolean; attachmentRead?: boolean }> }>;
+    rows: readonly BaseRow[];
+  }>;
+  export function useBaseSnapshot(options?: { critical?: boolean }): AsyncState<BaseSnapshot> & Readonly<{ refresh(): Promise<BaseSnapshot> }>;
   export function useBaseMeta(options?: { critical?: boolean }): AsyncState<unknown>;
   export function useBaseRows<T = unknown>(query: unknown, options?: { critical?: boolean }): AsyncState<T>;
   export type BaseMutation = Readonly<{ kind: "insert"; expectedBaseInstanceId: string; expectedRevision: number; rows: readonly Readonly<{ id: string; values: Readonly<Record<string, unknown>> }>[] }> | Readonly<{ kind: "patch"; expectedBaseInstanceId: string; expectedRevision: number; patches: readonly Readonly<{ rowId: string; patch: Readonly<Record<string, unknown>> }>[] }> | Readonly<{ kind: "delete"; expectedBaseInstanceId: string; expectedRevision: number; rowIds: readonly string[] }>;

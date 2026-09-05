@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on SQLite timeline/search rows, immutable import generations, and shared outline/find cursor contracts
+ * [INPUT]: Depends on shared UTF-8 byte-budget truncation, SQLite timeline/search rows, immutable import generations, and shared outline/find cursor contracts
  * [OUTPUT]: Provides generation/incarnation-fenced tail-first outline pages (newest first, native tail then imported prefix, each page ascending) and byte-bounded in-chat find pages whose exact filter, returned text, and total all speak one corpus: message content
  * [POS]: Narrow transcript-navigation query collaborator beneath ChatRepositoryReader
  */
 
+import { truncateUtf8 } from "../../../../../shared/truncate-utf8";
 import type {
   ChatMessage,
   ChatOutlineCursor,
@@ -38,12 +39,6 @@ const IMPORTED_CONTENT_SQL = `(SELECT GROUP_CONCAT(content, '') FROM (
       AND c.field_kind = 'content'
     ORDER BY c.ordinal
  ))`;
-
-function truncateUtf8(value: string, limit: number) {
-  const bytes = Buffer.from(value, "utf8");
-  if (bytes.length <= limit) return value;
-  return `${bytes.subarray(0, limit).toString("utf8").replace(/\uFFFD$/u, "")}…`;
-}
 
 export class ChatOutlineReader {
   constructor(private readonly database: SqliteDatabase) {}
@@ -138,7 +133,7 @@ export class ChatOutlineReader {
           messageId: message.id,
           seq: message.seq,
           role: message.role,
-          text: truncateUtf8(content, FIND_TEXT_BYTE_LIMIT),
+          text: truncateUtf8(content, FIND_TEXT_BYTE_LIMIT, "…").value,
         });
       }
     }

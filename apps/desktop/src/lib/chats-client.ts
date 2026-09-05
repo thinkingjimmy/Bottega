@@ -16,8 +16,6 @@ import type {
   ChatsBridgeApi,
   ChatsEvent,
   ChatsSnapshot,
-  CommitManagedWorktreeInput,
-  CommitManagedWorktreeResult,
   CreateChatInput,
   CreateAppChatInput,
   ForkChatPreflight,
@@ -35,9 +33,8 @@ declare global {
 
 const browserChats = new Map<string, ChatRecord>();
 const browserListeners = new Set<(event: ChatsEvent) => void>();
-const clone = <T>(value: T): T => structuredClone(value);
 const emit = (event: ChatsEvent) => {
-  for (const listener of browserListeners) listener(clone(event));
+  for (const listener of browserListeners) listener(structuredClone(event));
 };
 const summaryOf = ({
   id,
@@ -109,7 +106,7 @@ const runtimeContextOf = (
     supersededBranches: _branches,
     supersededBranchesTrimmedThroughSeq: _branchWatermark,
     ...context
-  } = clone(record);
+  } = structuredClone(record);
   return context;
 };
 
@@ -134,7 +131,7 @@ export const getChatMessagesSnapshot = async (chatId: string) => {
         incarnationId: record.incarnationId,
         revision: 0,
         chatMessageRevision: record.chatMessageRevision,
-        messages: clone(record.messages),
+        messages: structuredClone(record.messages),
       }
     : null;
 };
@@ -153,7 +150,7 @@ export const getChatTimelinePage = (input: ChatTimelinePageInput) => {
     incarnationId: record.incarnationId,
     nativeMessageRevision: record.chatMessageRevision,
     activeGenerationId: null,
-    messages: clone(messages),
+    messages: structuredClone(messages),
     hasMoreBefore,
     olderCursor: hasMoreBefore ? {
       segment: "native" as const,
@@ -200,7 +197,7 @@ export const createChat = async (input: CreateChatInput) => {
     createdAt: input.firstMessage.createdAt,
     updatedAt: input.firstMessage.createdAt,
     nextSeq: 2,
-    messages: [{ ...clone(input.firstMessage), seq: 1 }],
+    messages: [{ ...structuredClone(input.firstMessage), seq: 1 }],
     titleJob: {
       state: "pending",
       jobId: crypto.randomUUID(),
@@ -211,7 +208,7 @@ export const createChat = async (input: CreateChatInput) => {
   };
   browserChats.set(input.id, record);
   emit({ type: "upserted", summary: summaryOf(record) });
-  return clone(record);
+  return structuredClone(record);
 };
 
 export const createAppChat = async (input: CreateAppChatInput) => {
@@ -239,7 +236,7 @@ export const createAppChat = async (input: CreateAppChatInput) => {
   };
   browserChats.set(input.id, next);
   emit({ type: "upserted", summary: summaryOf(next) });
-  return clone(next);
+  return structuredClone(next);
 };
 
 export const appendChatMessage = async (
@@ -249,7 +246,7 @@ export const appendChatMessage = async (
   const record = browserChats.get(input.chatId);
   if (!record) throw new Error("聊天不存在");
   const stored: ChatMessage = {
-    ...clone(input.message),
+    ...structuredClone(input.message),
     seq: record.nextSeq,
   };
   const next = {
@@ -262,7 +259,7 @@ export const appendChatMessage = async (
   };
   browserChats.set(input.chatId, next);
   emit({ type: "upserted", summary: summaryOf(next) });
-  return clone(stored);
+  return structuredClone(stored);
 };
 
 export const renameChat = async (
@@ -293,15 +290,6 @@ export const preflightChatFork = (
 export const forkChat = (input: ForkChatRequest): Promise<ChatRecord> => {
   if (!window.chats) return Promise.reject(new Error("Chat fork is unavailable"));
   return window.chats.fork(input);
-};
-
-export const commitChatWorktree = (
-  input: CommitManagedWorktreeInput
-): Promise<CommitManagedWorktreeResult> => {
-  if (!window.chats) {
-    return Promise.reject(new Error("Managed worktree commit is unavailable"));
-  }
-  return window.chats.commitManagedWorktree(input);
 };
 
 export const onChatsEvent = (callback: (event: ChatsEvent) => void) => {

@@ -26,15 +26,14 @@ declare global {
 const browserProjects = new Map<string, Project>();
 const browserListeners = new Set<(event: ProjectsEvent) => void>();
 let browserSortMode: ProjectsSortMode = "manual";
-const clone = <T>(value: T): T => structuredClone(value);
 const emit = (event: ProjectsEvent) => {
-  for (const listener of browserListeners) listener(clone(event));
+  for (const listener of browserListeners) listener(structuredClone(event));
 };
 
 export const listProjects = (): Promise<ProjectsSnapshot> =>
   window.projects?.list() ??
   Promise.resolve({
-    projects: [...browserProjects.values()].map(clone),
+    projects: [...browserProjects.values()].map((value) => structuredClone(value)),
     sortMode: browserSortMode,
   });
 
@@ -43,7 +42,7 @@ export const ensureProjectForApp = async (appId: string) => {
   const existing = [...browserProjects.values()].find(
     (project) => appIdFromBinding(project) === appId
   );
-  if (existing) return clone(existing);
+  if (existing) return structuredClone(existing);
   const now = Date.now();
   const project: Project = {
     id: `project_${appId}`.slice(0, 64),
@@ -62,7 +61,7 @@ export const ensureProjectForApp = async (appId: string) => {
   };
   browserProjects.set(project.id, project);
   emit({ type: "upserted", project });
-  return clone(project);
+  return structuredClone(project);
 };
 
 export const renameProject = async (projectId: string, name: string) => {
@@ -72,7 +71,7 @@ export const renameProject = async (projectId: string, name: string) => {
   const project = { ...current, name, updatedAt: Date.now() };
   browserProjects.set(projectId, project);
   emit({ type: "upserted", project });
-  return clone(project);
+  return structuredClone(project);
 };
 
 export const setProjectAppearance = async (
@@ -88,7 +87,7 @@ export const setProjectAppearance = async (
   const project = { ...current, appearance };
   browserProjects.set(projectId, project);
   emit({ type: "upserted", project });
-  return clone(project);
+  return structuredClone(project);
 };
 
 export const setProjectAppPinned = async (
@@ -104,7 +103,7 @@ export const setProjectAppPinned = async (
     (placement) => placement.appId === input.appId
   );
   if (Boolean(existing) === input.pinned) {
-    return { project: clone(current), changed: false };
+    return { project: structuredClone(current), changed: false };
   }
   const project: Project = {
     ...current,
@@ -116,7 +115,7 @@ export const setProjectAppPinned = async (
   };
   browserProjects.set(project.id, project);
   emit({ type: "upserted", project });
-  return { project: clone(project), changed: true };
+  return { project: structuredClone(project), changed: true };
 };
 
 export const detachLocalProject = (projectId: string) => {

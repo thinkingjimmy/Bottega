@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron lifecycle, Node filesystem, shared five-locale translation, and every main-owned service, including signed-update compatibility, scoped Extensions, Project cleanup/Tools, Agent policy, Chat continuation recovery, coordinator/custody, Apps, Design, browser, and usage
- * [OUTPUT]: Provides the desktop composition root, pre-Project App authority repair, signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown
+ * [OUTPUT]: Provides the desktop composition root, pre-Project App authority repair, the trust-gated signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown
  * [POS]: The root lifecycle owner of the desktop main process
  */
 import { mkdir, realpath } from "node:fs/promises";
@@ -192,9 +192,12 @@ if (!hasSingleInstanceLock) {
       const agentInputStagingRoot = join(userData, "agent-input-staging");
       await mkdir(titleWorkspace, { recursive: true });
       const canonicalUserData = await realpath(userData);
-      updateService = createDesktopUpdateService(app, () => safeQuit.prepare("update"), process.env, (matrix) => {
-        if (!appsService) throw new Error("GUI_COMPATIBILITY_PREFLIGHT_UNAVAILABLE");
-        return appsService.applyCandidateCompatibility(matrix);
+      updateService = createDesktopUpdateService(app, {
+        prepareSafeQuit: () => safeQuit.prepare("update"),
+        applyCandidateCompatibility: (matrix) => {
+          if (!appsService) throw new Error("GUI_COMPATIBILITY_PREFLIGHT_UNAVAILABLE");
+          return appsService.applyCandidateCompatibility(matrix);
+        },
       });
       browserRuntime = installBrowserPanel(
         defaultChromeRoot(app.getPath("home"))

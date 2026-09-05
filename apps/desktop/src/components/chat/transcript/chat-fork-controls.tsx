@@ -4,7 +4,7 @@
  * [POS]: Fork-specific transcript interaction sibling; ChatTranscript decides eligibility and owns the selected anchor
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowsSplitIcon } from "@phosphor-icons/react";
 import type {
   AssistantChatMessage,
@@ -167,10 +167,10 @@ export function ForkChatDialog({
   const [preflights, setPreflights] = useState<Partial<Record<ChatForkMode, PreflightResult>>>({});
   const [busyMode, setBusyMode] = useState<ChatForkMode | null>(null);
   const [submitError, setSubmitError] = useState<{ mode: ChatForkMode; message: string } | null>(null);
-  const failureText = (cause: unknown) => {
+  const failureText = useCallback((cause: unknown) => {
     const copy = FORK_FAILURE_COPY[failureCode(cause) as keyof typeof FORK_FAILURE_COPY];
     return copy ? t(`chat.fork.${copy}`) : errorMessage(cause, t("chat.fork.unavailable"));
-  };
+  }, [t]);
   const [identity] = useState(() => ({
     requestId: `fork_${crypto.randomUUID().replaceAll("-", "")}`,
     childChatId: `chat_${crypto.randomUUID().replaceAll("-", "")}`,
@@ -202,7 +202,7 @@ export function ForkChatDialog({
     load("same-workspace");
     load("new-worktree");
     return () => { live = false; };
-  }, [base, preflightKey]);
+  }, [base, failureText, preflightKey]);
   const resultFor = (mode: ChatForkMode) => preflights[mode]?.key === preflightKey
     ? preflights[mode]
     : undefined;

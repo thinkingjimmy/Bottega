@@ -42,7 +42,6 @@ export type ReviseTailInput = {
   intentId?: string;
 };
 
-const clone = <T>(value: T): T => structuredClone(value);
 const sessionKey = (session: SessionRef) => `${session.backend}:${session.id}`;
 const sameSession = (left: SessionRef | null, right: SessionRef | null) =>
   left?.backend === right?.backend && left?.id === right?.id;
@@ -85,7 +84,7 @@ export function reviseTailRecord(
   const message = normalizeMessage({
     ...input.message,
     ...(superseded.attachments?.length
-      ? { attachments: clone(superseded.attachments) }
+      ? { attachments: structuredClone(superseded.attachments) }
       : {}),
     seq: input.reservedSeq ?? current.nextSeq,
   } as ChatMessage);
@@ -94,7 +93,7 @@ export function reviseTailRecord(
     supersededAt: now,
     supersedesUserMessageId: superseded.id,
     throughSeqEnd: last.seq,
-    messages: clone(current.messages.slice(index)),
+    messages: structuredClone(current.messages.slice(index)),
   };
   const prefix = current.messages.slice(0, index);
   const archive = pruneSupersededBranches(
@@ -200,7 +199,7 @@ export function setGrantRecord<T extends ChatFacts>(
   }
   return {
     ...current,
-    grants: [...current.grants.filter((item) => item.appId !== grant.appId), clone(grant)],
+    grants: [...current.grants.filter((item) => item.appId !== grant.appId), structuredClone(grant)],
     grantRevision: current.grantRevision + 1,
   };
 }

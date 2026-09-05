@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node filesystem/path, canonical coordinator hashes, read-only snapshot removal, and the type-only PreparedManualTurn contract
+ * [INPUT]: Depends on Node filesystem/path, canonical coordinator hashes, read-only snapshot removal, exact Skill reference release, and the type-only PreparedManualTurn contract
  * [OUTPUT]: Provides staged-byte reservation/release, prepared hash verification, idempotent staging disposal, usage accounting, and startup reconciliation
  * [POS]: Prepared admission custody primitive statically shared by the write-side stager and read-side hydrator without importing either at runtime
  */
@@ -8,6 +8,7 @@ import { mkdir, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { removeReadonlySnapshot } from "../../../../agent-input";
 import { canonicalHash } from "../../coordinator-values";
+import { releasePreparedSkillReferences } from "../prepared-skill-reference-custody";
 import type { PreparedManualTurn } from "../prepared-manual-turn";
 
 const STAGED_BLOB_QUOTA = 2 * 1024 * 1024 * 1024;
@@ -61,6 +62,7 @@ export async function discardPreparedStaging(directory: string) {
 
 export async function releasePreparedStaging(prepared: PreparedManualTurn) {
   assertPreparedContentHash(prepared);
+  await releasePreparedSkillReferences(prepared.skillSelection);
   await discardPreparedStaging(prepared.stagingDir);
 }
 

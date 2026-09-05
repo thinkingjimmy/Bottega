@@ -33,7 +33,13 @@ export const settingsAboutEn = {
   installing: "Update downloaded · restarting to install",
   failed: "Update failed: {{message}}",
   failedUnknown: "The update failed for an unknown reason.",
+  failedFallback:
+    "Update could not be installed automatically. Open the Releases page to download version {{version}}.",
+  failedResolution:
+    "Download the new version from the Releases page, or report the problem on GitHub.",
   backgroundFailed: "The last automatic check failed",
+  backgroundFailedOpen:
+    "Automatic update checks are failing; open About for details",
   check: "Check for updates",
   upgrade: "Update now",
   manualUpgrade: "Open download page",
@@ -79,7 +85,10 @@ export const settingsAboutZhCN: SettingsAboutCatalog = {
   installing: "更新已下载 · 即将重启安装",
   failed: "更新失败：{{message}}",
   failedUnknown: "更新失败，原因未知。",
+  failedFallback: "自动更新未能完成。请打开 Releases 页面下载 {{version}}。",
+  failedResolution: "请从 Releases 页面下载新版本，或在 GitHub 反馈问题。",
   backgroundFailed: "上次自动检查失败",
+  backgroundFailedOpen: "自动检查更新持续失败，点击查看详情",
   check: "检查更新",
   upgrade: "立即升级",
   manualUpgrade: "打开下载页",
@@ -123,7 +132,12 @@ export const settingsAboutJa: SettingsAboutCatalog = {
   installing: "更新をダウンロードしました · 再起動してインストールします",
   failed: "更新に失敗しました: {{message}}",
   failedUnknown: "不明な理由で更新に失敗しました。",
+  failedFallback:
+    "自動更新を完了できませんでした。Releases ページを開いてバージョン {{version}} をダウンロードしてください。",
+  failedResolution:
+    "Releases ページから新しいバージョンをダウンロードするか、GitHub で問題を報告してください。",
   backgroundFailed: "前回の自動確認に失敗しました",
+  backgroundFailedOpen: "更新の自動確認に失敗しています。詳細を開く",
   check: "更新を確認",
   upgrade: "今すぐ更新",
   manualUpgrade: "ダウンロードページを開く",
@@ -167,7 +181,13 @@ export const settingsAboutFr: SettingsAboutCatalog = {
   installing: "Mise à jour téléchargée · redémarrage pour l’installer",
   failed: "Échec de la mise à jour : {{message}}",
   failedUnknown: "La mise à jour a échoué pour une raison inconnue.",
+  failedFallback:
+    "La mise à jour n'a pas pu être installée automatiquement. Ouvrez la page Releases pour télécharger la version {{version}}.",
+  failedResolution:
+    "Téléchargez la nouvelle version depuis la page Releases, ou signalez le problème sur GitHub.",
   backgroundFailed: "La dernière vérification automatique a échoué",
+  backgroundFailedOpen:
+    "Les vérifications automatiques des mises à jour échouent ; ouvrir les détails",
   check: "Rechercher les mises à jour",
   upgrade: "Mettre à jour",
   manualUpgrade: "Ouvrir la page de téléchargement",
@@ -211,7 +231,13 @@ export const settingsAboutEs: SettingsAboutCatalog = {
   installing: "Actualización descargada · reiniciando para instalarla",
   failed: "Error de actualización: {{message}}",
   failedUnknown: "La actualización falló por un motivo desconocido.",
+  failedFallback:
+    "La actualización no pudo instalarse automáticamente. Abre la página de Releases para descargar la versión {{version}}.",
+  failedResolution:
+    "Descarga la nueva versión desde la página de Releases, o informa del problema en GitHub.",
   backgroundFailed: "La última comprobación automática falló",
+  backgroundFailedOpen:
+    "Las comprobaciones automáticas de actualizaciones están fallando; abrir detalles",
   check: "Buscar actualizaciones",
   upgrade: "Actualizar ahora",
   manualUpgrade: "Abrir página de descarga",

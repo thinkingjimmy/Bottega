@@ -1,16 +1,16 @@
 /**
- * [INPUT]: Depends on Delivery maintenance store, MemorySpaceGate and runtime-owned provider instance identity
+ * [INPUT]: Depends on the shared stableMemoryDigest primitive, Delivery maintenance store, MemorySpaceGate and runtime-owned provider instance identity
  * [OUTPUT]: Provides Delivery v4 is a stream, target, capture reservation, cleanup, gap, rebuild job, current shared range flow selection/counting and receipt
  * [POS]: The only permanent source of truth for main/memory/delivery; No active provIDer, no instance ID, no return Policy
  */
 
+import { stableMemoryDigest } from "../turn-deadline";
 import type { MemorySharingMode } from "../../../../shared/settings-ipc";
 import { memorySpaceBelongsToSharingScope } from "../core/memory-scope";
 import { memorySpaceGate } from "../space-gate";
 import {
   type CaptureReservation,
   type DeliveryInstance,
-  digest,
   instanceOf,
 } from "./schema";
 import {
@@ -30,7 +30,6 @@ export type {
   DeliveryInstance,
   DeliveryOwnerEffectReceipt,
   DeliveryV4State,
-  DeliveryV3State,
 } from "./schema";
 
 type CountableStream = Pick<
@@ -75,7 +74,7 @@ export class MemoryDeliveryStore extends DeliveryStoreMaintenance {
       if (instance.quiesced && !input.allowQuiesced) {
         throw new Error("Provider instance 已 quiesce");
       }
-      const targetId = digest({
+      const targetId = stableMemoryDigest({
         instance: input.providerDataInstanceId,
         space: input.memorySpaceId,
         source: input.sourceSessionKey,
@@ -90,7 +89,7 @@ export class MemoryDeliveryStore extends DeliveryStoreMaintenance {
       };
       instance.captureAttemptSequence += 1;
       const attemptId = `${input.attemptId}:${instance.captureAttemptSequence}`;
-      const reservationId = digest({
+      const reservationId = stableMemoryDigest({
         runtimeEpoch: state.runtimeEpoch,
         attemptId,
       });
@@ -325,7 +324,7 @@ export class MemoryDeliveryStore extends DeliveryStoreMaintenance {
       subjectRef: input.memorySpaceId,
       payload: input,
       mutate: (instance, now) => {
-        const requestId = digest({
+        const requestId = stableMemoryDigest({
           instance: input.providerDataInstanceId,
           operationId: input.operationId,
           space: input.memorySpaceId,
@@ -428,7 +427,7 @@ export class MemoryDeliveryStore extends DeliveryStoreMaintenance {
       instance.deliveryGeneration += 1;
       job.deliveryGeneration = instance.deliveryGeneration;
       const attention = instance.attentions[
-        digest({ kind: "rebuild-failed", operationId })
+        stableMemoryDigest({ kind: "rebuild-failed", operationId })
       ];
       if (attention) attention.resolvedAt = Date.now();
       instance.revision += 1;

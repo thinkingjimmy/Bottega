@@ -89,7 +89,6 @@ const emptyFile = (): StoreFile => ({
   scopeRevisions: { global: 0 },
   servers: [],
 });
-const clone = <T>(value: T): T => structuredClone(value);
 const byteLength = (value: string) => Buffer.byteLength(value, "utf8");
 
 export class ManualMcpServersStore {
@@ -275,7 +274,7 @@ export class ManualMcpServersStore {
     };
     await this.commitFile({ servers, scopeRevisions }, {
       version: {
-        scope: clone(scope),
+        scope: structuredClone(scope),
         projectLifecycleRevision: null,
         scopeRevision: scopeRevisions[key]!,
       },
@@ -343,7 +342,7 @@ export class ManualMcpServersStore {
 
   private accept(state: StoreFile) {
     this.state = state;
-    this.previousValidated = clone(state);
+    this.previousValidated = structuredClone(state);
   }
 
   private async atomicWrite(path: string, content: string) {
@@ -489,7 +488,7 @@ function projectServer(server: StoredServer): ManualMcpServerView {
   const base = {
     serverId: server.serverId as `manual:${string}`,
     source: "manual" as const,
-    owner: clone(server.scope),
+    owner: structuredClone(server.scope),
     displayName: server.displayName,
     configuredEnabled: server.enabled,
     enabled: server.enabled,
@@ -507,7 +506,7 @@ function projectServer(server: StoredServer): ManualMcpServerView {
 }
 
 function resolveServer(server: StoredServer): ResolvedManualMcpServer {
-  return { ...clone(server), configDigest: digest(server.config), eligibility: eligibilityOf(server) };
+  return { ...structuredClone(server), configDigest: digest(server.config), eligibility: eligibilityOf(server) };
 }
 
 function maskedSecrets(values: Record<string, string>) {

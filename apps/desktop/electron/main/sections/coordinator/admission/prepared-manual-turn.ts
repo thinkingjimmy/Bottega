@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node filesystem/crypto, manual submission contracts, canonical Project context, frozen Project Tools and Skill selections, fresh input resolution, Section snapshots, and workspace preconditions
- * [OUTPUT]: Provides hash-sealed PreparedManualTurn staging with exact Project/Tools/Skill receipts plus hydration, release, quota accounting, and reconciliation
+ * [INPUT]: Depends on Node filesystem/crypto, manual submission contracts, canonical Project context, frozen Project Tools and Skill selections, fresh input resolution, Section snapshots, workspace preconditions, and prepared staging custody
+ * [OUTPUT]: Provides hash-sealed PreparedManualTurn staging with exact Project/Tools/Skill receipts; hydration and custody are delegated to prepared/
  * [POS]: Coordinator admission boundary; durable workspace, Project tool policy, and Extension generation identity precede every manual backend turn
  */
 
@@ -8,8 +8,6 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
   readFile,
-  readdir,
-  stat,
   writeFile,
 } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -27,14 +25,11 @@ import type {
   TrustedManualTurnPersistence as ManualTurnPersistence,
   TrustedManualTurnSubmission as ManualTurnSubmission,
 } from "../../../../../shared/sections-ipc";
-import {
-  workspacePreconditionSchema,
-  type IncarnationPrecondition,
-  type SubmissionContentV1,
-  type WorkspacePrecondition,
+import type {
+  IncarnationPrecondition,
+  SubmissionContentV1,
+  WorkspacePrecondition,
 } from "../../../../../shared/submission";
-import type { ResolvedAgentInput } from "../../../backends/types";
-import { backendRuntimeRegistry } from "../../../backends";
 import type {
   FileAuthorizationStore,
   FileReservation,
@@ -54,33 +49,36 @@ import {
 import { canonicalHash } from "../coordinator-values";
 import type { TurnProjectContext } from "../../../../../shared/product-resource-scope";
 import { skillsTurnOwnerId } from "../../../skills-management/turn-custody";
+import { acquirePreparedSkillReferences } from "./prepared-skill-reference-custody";
 import {
-  acquirePreparedSkillReferences,
-  assertPreparedSkillReferences,
-  releasePreparedSkillReferences,
-} from "./prepared-skill-reference-custody";
-import {
-  assertPreparedContentHash,
   binaryFreeSubmissionContent,
   emptyPreparedSkillSelection,
   normalizeManualSubmission,
 } from "./prepared-manual-legacy";
 import {
   emptyProjectToolsSnapshot,
-  hydrateProjectToolsReceipt,
   stageProjectToolsReceipt,
   type ExplicitSkillRequirementReceipt,
   type FrozenProjectToolsReceipt,
   type ProjectToolsPreparationSnapshot,
 } from "./prepared-project-tools";
 
+import {
+  discardPreparedStaging,
+  releasePreparedStaging,
+  releasePreparedStagingBytes,
+  reservePreparedStagingBytes,
+} from "./prepared/staging";
+
 export { configurePreparedSkillReferenceCustody } from "./prepared-skill-reference-custody";
+export { prepareTextOnlyManualTurn } from "./prepared-manual-legacy";
+export { hydratePreparedTurn } from "./prepared/hydration";
 export {
   assertPreparedContentHash,
-  prepareTextOnlyManualTurn,
-} from "./prepared-manual-legacy";
-
-const STAGED_BLOB_QUOTA = 2 * 1024 * 1024 * 1024;
+  preparedStagingUsageBytes,
+  reconcilePreparedStaging,
+  releasePreparedStaging,
+} from "./prepared/staging";
 
 type StagedBlobRef = {
   blobId: string;
@@ -183,37 +181,6 @@ export type PreparationDependencies = {
   };
 };
 
-let stagedBytes = 0;
-let quotaTail = Promise.resolve();
-
-const withQuotaLock = async <T>(task: () => T | Promise<T>) => {
-  const previous = quotaTail;
-  let release!: () => void;
-  quotaTail = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await previous;
-  try {
-    return await task();
-  } finally {
-    release();
-  }
-};
-
-async function reserveBytes(bytes: number) {
-  await withQuotaLock(() => {
-    if (stagedBytes + bytes > STAGED_BLOB_QUOTA) {
-      throw new Error("staged blob 磁盘额度已满");
-    }
-    stagedBytes += bytes;
-  });
-}
-
-const releaseBytes = (bytes: number) =>
-  withQuotaLock(() => {
-    stagedBytes = Math.max(0, stagedBytes - bytes);
-  });
-
 const digest = (content: Uint8Array) =>
   createHash("sha256").update(content).digest("hex");
 
@@ -227,7 +194,7 @@ async function writeBlob(
   mediaType: string,
   content: Uint8Array
 ) {
-  await reserveBytes(content.byteLength);
+  await reservePreparedStagingBytes(content.byteLength);
   const blobId = randomUUID();
   const path = join(directory, `${blobId}-${safeFilename(filename)}`);
   try {
@@ -242,7 +209,7 @@ async function writeBlob(
       sha256: digest(content),
     } satisfies StagedBlobRef;
   } catch (cause) {
-    await releaseBytes(content.byteLength);
+    await releasePreparedStagingBytes(content.byteLength);
     throw cause;
   }
 }
@@ -303,7 +270,7 @@ async function stageAuthorizedFile(
     item.name
   );
   reservations.push(reservation);
-  await reserveBytes(reservation.byteSize);
+  await reservePreparedStagingBytes(reservation.byteSize);
   const blobId = randomUUID();
   const path = join(directory, `${blobId}-${safeFilename(reservation.name)}`);
   try {
@@ -323,7 +290,7 @@ async function stageAuthorizedFile(
       sha256: await fileHash(path),
     } satisfies StagedBlobRef;
   } catch (cause) {
-    await releaseBytes(reservation.byteSize);
+    await releasePreparedStagingBytes(reservation.byteSize);
     throw cause;
   }
 }
@@ -340,7 +307,7 @@ async function stageSkill(
     const staged = await stageSkillPackageSnapshot(skill, packageRoot);
     const path = staged.path;
     byteSize = staged.totalBytes;
-    await reserveBytes(byteSize);
+    await reservePreparedStagingBytes(byteSize);
     reserved = true;
     return {
       blobId,
@@ -353,7 +320,7 @@ async function stageSkill(
     } satisfies StagedBlobRef;
   } catch (cause) {
     await removeReadonlySnapshot(packageRoot);
-    if (reserved) await releaseBytes(byteSize);
+    if (reserved) await releasePreparedStagingBytes(byteSize);
     throw cause;
   }
 }
@@ -564,7 +531,7 @@ export async function prepareManualTurn(
         dependencies.projectTools ??
         emptyProjectToolsSnapshot(projectContext),
       explicitSkills,
-      quota: { reserve: reserveBytes, release: releaseBytes },
+      quota: { reserve: reservePreparedStagingBytes, release: releasePreparedStagingBytes },
     });
     const skillSelection = dependencies.freezeSkillSelection
       ? await dependencies.freezeSkillSelection({
@@ -613,114 +580,9 @@ export async function prepareManualTurn(
     };
   } catch (cause) {
     reservations.forEach((reservation) => reservation.rollback());
-    const bytes = await directoryBytes(stagingDir);
-    await removeReadonlySnapshot(stagingDir);
-    await releaseBytes(bytes);
+    await discardPreparedStaging(stagingDir);
     throw cause;
   }
-}
-
-export async function hydratePreparedTurn(prepared: PreparedManualTurn) {
-  assertPreparedContentHash(prepared);
-  if (
-    !("lifecycleProjectId" in prepared) ||
-    (prepared.lifecycleProjectId !== null &&
-      !/^[A-Za-z0-9_-]{1,128}$/.test(prepared.lifecycleProjectId))
-  ) {
-    throw new Error("PreparedManualTurn 缺少合法 lifecycle Project 身份");
-  }
-  if (
-    !prepared.projectContext ||
-    prepared.projectContext.projectId !== prepared.lifecycleProjectId ||
-    (prepared.projectContext.projectId === null
-      ? prepared.projectContext.projectLifecycleRevision !== null
-      : !Number.isSafeInteger(
-          prepared.projectContext.projectLifecycleRevision
-        ) || prepared.projectContext.projectLifecycleRevision! <= 0)
-  ) {
-    throw new Error("PreparedManualTurn 缺少合法 Project lifecycle receipt");
-  }
-  if (
-    !prepared.skillSelection ||
-    prepared.skillSelection.backend !== prepared.turn.turnOptions.backend ||
-    prepared.skillSelection.planMode !== Boolean(prepared.turn.planMode) ||
-    prepared.skillSelection.projectContext.projectId !==
-      prepared.projectContext.projectId ||
-    prepared.skillSelection.projectContext.projectLifecycleRevision !==
-      prepared.projectContext.projectLifecycleRevision
-  ) {
-    throw new Error("PreparedManualTurn 缺少合法 Skills selection receipt");
-  }
-  await assertPreparedSkillReferences(prepared.skillSelection);
-  const backendId = prepared.turn.turnOptions.backend;
-  const runtime = await backendRuntimeRegistry.resolve(backendId);
-  const backendRuntimeIdentity = runtime.runtimeStatus === "installed"
-    ? `${backendId}@${runtime.runtime.version}`
-    : undefined;
-  const projectTools = await hydrateProjectToolsReceipt(
-    prepared.projectTools,
-    backendId,
-    Boolean(prepared.turn.planMode),
-    backendRuntimeIdentity,
-    prepared.stagingDir === ""
-  );
-  if (
-    projectTools.receipt.projectContext.projectId !==
-      prepared.projectContext.projectId ||
-    projectTools.receipt.projectContext.projectLifecycleRevision !==
-      prepared.projectContext.projectLifecycleRevision
-  ) {
-    throw new Error("PROJECT_TOOLS_LIFECYCLE_MISMATCH");
-  }
-  const workspacePrecondition = workspacePreconditionSchema.parse(
-    prepared.workspacePrecondition
-  );
-  const input: AgentUserInput[] = [];
-  const resolved: ResolvedAgentInput["input"] = [];
-  for (const item of prepared.input) {
-    if (item.type === "text") {
-      if (item.originalSection) input.push(item.originalSection);
-      else if (!item.resolvedOnly) input.push({ type: "text", text: item.text });
-      resolved.push({ type: "text", text: item.text });
-    } else if (item.type === "image") {
-      const dataUrl = await blobDataUrl(item.blob);
-      if (!item.resolvedOnly) {
-        input.push({ type: "image", dataUrl, filename: item.blob.filename });
-      }
-      resolved.push({
-        type: "image",
-        dataUrl,
-        filename: item.blob.filename,
-        ...(item.resolvedOnly ? { resolvedOnly: true as const } : {}),
-      });
-    } else {
-      if (!item.resolvedOnly) {
-        input.push({ type: "text", text: `${item.name}（staged resource）` });
-      }
-      resolved.push({
-        type: item.type,
-        name: item.name,
-        path: item.blob.path,
-      });
-    }
-  }
-  return {
-    submission: {
-      intentId: prepared.intentId,
-      persistence: await hydratePersistence(prepared.persistence),
-      content: prepared.content,
-      precondition: prepared.precondition,
-      workspacePrecondition,
-      turn: { ...prepared.turn, input },
-    } satisfies ManualTurnSubmission,
-    resolvedInput: {
-      input: resolved,
-      commit() {},
-      rollback() {},
-      release: () => releasePreparedStaging(prepared),
-    } satisfies ResolvedAgentInput,
-    projectTools,
-  };
 }
 
 function fallbackProjectContext(
@@ -734,84 +596,4 @@ function fallbackProjectContext(
     : { projectId: null, projectLifecycleRevision: null };
 }
 
-async function hydratePersistence(
-  persistence: PreparedPersistence
-): Promise<ManualTurnPersistence> {
-  const payloads = await Promise.all(
-    (persistence.input.attachmentPayloads ?? []).map(async (blob) => ({
-      filename: blob.filename,
-      mediaType: blob.mediaType,
-      dataUrl: await blobDataUrl(blob),
-    }))
-  );
-  const input = {
-    ...persistence.input,
-    attachmentPayloads:
-      persistence.kind === "append" && persistence.input.revise
-        ? undefined
-        : payloads.length
-          ? payloads
-          : undefined,
-  };
-  return { kind: persistence.kind, input } as ManualTurnPersistence;
-}
-
-async function blobDataUrl(blob: StagedBlobRef) {
-  const content = await readFile(blob.path);
-  if (digest(content) !== blob.sha256) throw new Error("staged blob hash 冲突");
-  return `data:${blob.mediaType};base64,${content.toString("base64")}`;
-}
-
 const fileHash = async (path: string) => digest(await readFile(path));
-
-const directoryBytes = async (directory: string): Promise<number> => {
-  try {
-    const entries = await readdir(directory, { withFileTypes: true });
-    const sizes = await Promise.all(
-      entries.map((entry) => {
-        const path = join(directory, entry.name);
-        return entry.isDirectory()
-          ? directoryBytes(path)
-          : entry.isFile()
-            ? stat(path).then((value) => value.size)
-            : 0;
-      })
-    );
-    return sizes.reduce((total, size) => total + size, 0);
-  } catch {
-    return 0;
-  }
-};
-
-export async function releasePreparedStaging(prepared: PreparedManualTurn) {
-  assertPreparedContentHash(prepared);
-  await releasePreparedSkillReferences(prepared.skillSelection);
-  if (!prepared.stagingDir) return;
-  await withQuotaLock(async () => {
-    const bytes = await directoryBytes(prepared.stagingDir);
-    await removeReadonlySnapshot(prepared.stagingDir);
-    stagedBytes = Math.max(0, stagedBytes - bytes);
-  });
-}
-
-export const preparedStagingUsageBytes = () => stagedBytes;
-
-export async function reconcilePreparedStaging(
-  root: string,
-  liveOwners: ReadonlySet<string>
-) {
-  await mkdir(root, { recursive: true, mode: 0o700 });
-  stagedBytes = 0;
-  const entries = await readdir(root, { withFileTypes: true });
-  for (const entry of entries) {
-    const path = join(root, entry.name);
-    if (!entry.isDirectory() || !liveOwners.has(entry.name)) {
-      await removeReadonlySnapshot(path);
-      continue;
-    }
-    stagedBytes += await directoryBytes(path);
-  }
-  if (stagedBytes > STAGED_BLOB_QUOTA) {
-    throw new Error("staged blob 存量超过磁盘额度");
-  }
-}

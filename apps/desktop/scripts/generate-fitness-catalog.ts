@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the exact local exercises-dataset checkout Git HEAD, data/exercises.json, LICENSE, NOTICE.md and 180×180 GIF under videos/; Parameters are checkout, expected commit, output directory
- * [OUTPUT]: Definition generates 72 non-media directories, provenance/license and general `migrations/base.json` The first is the "Mapping" aliasAll business claims prior to staged renaming failed to cover existing products.The zone registry belongs to generate-fitness-bodymap.ts All, this script only consumes ZONES to make a unified and covering claim
+ * [OUTPUT]: Generates 72 exercises, provenance/licenses, unchanged Base migrations, licensed GIFs, and their static React import index
  * [POS]: The development period of the scripts is offline supply chain entry; The government is not connected to the internet, it is not following branchesGym visual media distributed independently licensed packages, and the 180×180 test was completed with the signature of the player
  */
 
@@ -165,6 +165,7 @@ export async function generateFitnessCatalog() {
     { path: join(output, "gym-visual.NOTICE.md"), bytes: noticeBytes },
     { path: join(output, "source.json"), bytes: sourceBytes },
     { path: join(migrationRoot, "base.json"), bytes: migrationBytes },
+    { path: resolve(output, "../src/lib/media.ts"), bytes: Buffer.from(renderMediaImports(exercises)) },
     ...media.map((item) => ({ path: join(mediaRoot, item.name), bytes: item.bytes })),
   ];
   for (const artifact of artifacts) {
@@ -175,6 +176,19 @@ export async function generateFitnessCatalog() {
     `${basename(output)}: 72 exercises; ${media.length} GIF ` +
       `(${Math.round(media.reduce((sum, item) => sum + item.bytes.byteLength, 0) / 1024)}KB); ${coverage(exercises)}\n`
   );
+}
+
+export function renderMediaImports(exercises: readonly { id: string }[]): string {
+  assertSourceIdsUnique(exercises);
+  for (const { id } of exercises) if (!/^\d+$/.test(id)) throw new Error("Invalid exercise media ID");
+  return [
+    "/**", " * [INPUT]: Canonical catalog GIF files (generated static imports)",
+    " * [OUTPUT]: Bundler-owned URLs indexed by exact exercise id",
+    " * [POS]: Offline media import index; checked against the catalog",
+    ...exercises.map(({ id }) => `import gif${id} from "../../media/${id}.gif";`), "",
+    "export const media: Record<string, string> = {",
+    ...exercises.map(({ id }) => `  "${id}": gif${id},`), "};", "",
+  ].join("\n");
 }
 
 /* ---------------------------------------------------------------------- media

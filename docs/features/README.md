@@ -24,6 +24,8 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 
 - Install static, server, or Base-backed Apps from immutable Git revisions.
 - Use the bundled Bottega Design Canvas to create self-contained HTML directions, compare live and historical versions, and send numbered visual anchors back to the Agent without granting the preview network or storage access.
+- Use the bundled Fitness Log to explore 72 exercises across 17 muscle regions, view animated demonstrations, and manage training plans in five languages through the host React interface.
+- Read complete, revision-consistent Base snapshots through the App SDK, with recoverable loading and explicit retry states.
 - Bind Apps to Chats and Projects while keeping use, editing, and authorization separate.
 - Expose an App GUI next to its structured data surface through a constrained product SDK.
 - Grant read, insert, patch, delete, and attachment access independently for an exact App generation.

@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on zod, crypto and the new version of Memory Space's instance/stream/rebuild attempt data constraints
- * [OUTPUT]: Provides the following Delivery v4 schema, type, status, stable digest and instance constructor
+ * [OUTPUT]: Provides the following Delivery v4 schema, type, status and instance constructor
  * [POS]: The definition of the main/memory/delivery durable structure; store.ts only retains status conversions and I/O
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 export const id = z.string().min(1).max(512);
@@ -144,12 +144,10 @@ export const stateSchema = z.object({
 
 export type DeliveryOwnerEffectReceipt = z.infer<typeof receiptSchema>;
 export type DeliveryV4State = z.infer<typeof stateSchema>;
-/** 内部兼容别名只避免无意义的机械重命名；磁盘 schema 已明确断代为 v4。 */
-export type DeliveryV3State = DeliveryV4State;
 export type DeliveryInstance = z.infer<typeof instanceSchema>;
 export type CaptureReservation = z.infer<typeof reservationSchema>;
 
-export function emptyState(): DeliveryV3State {
+export function emptyState(): DeliveryV4State {
   return {
     schemaVersion: 4,
     revision: 0,
@@ -158,24 +156,8 @@ export function emptyState(): DeliveryV3State {
   };
 }
 
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => [key, canonical(entry)])
-  );
-}
-
-export function digest(value: unknown) {
-  return createHash("sha256")
-    .update(JSON.stringify(canonical(value)))
-    .digest("hex");
-}
-
 export function instanceOf(
-  state: DeliveryV3State,
+  state: DeliveryV4State,
   instanceId: string,
   providerId: string
 ) {

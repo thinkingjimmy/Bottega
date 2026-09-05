@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DurableJson corruption classification/quarantine, the Delivery v4 schema, MemorySpaceGate, and atomic filesystem rename
+ * [INPUT]: Depends on the shared stableMemoryDigest primitive, DurableJson corruption classification/quarantine, the Delivery v4 schema, MemorySpaceGate, and atomic filesystem rename
  * [OUTPUT]: Provides Delivery initialization, validated invariant recovery, migration, compaction, attention cleanup, effect receipts, and reservation draining
  * [POS]: The durable Delivery maintenance owner; only classified corruption may enter quarantine while ordinary I/O fails closed
  */
@@ -12,11 +12,11 @@ import {
   quarantineDurableFile,
 } from "../../persistence/durable-json";
 import { memorySpaceGate } from "../space-gate";
+import { stableMemoryDigest } from "../turn-deadline";
 import {
   type CaptureReservation,
   type DeliveryInstance,
-  type DeliveryV3State,
-  digest,
+  type DeliveryV4State,
   emptyState,
   instanceOf,
   stateSchema,
@@ -49,7 +49,7 @@ export const captureAttentionId = (input: {
   memorySpaceId: string;
   sourceSessionKey: string;
   assistantSeq: number;
-}) => digest({ kind: "capture-gap", ...input });
+}) => stableMemoryDigest({ kind: "capture-gap", ...input });
 
 export class LedgerInvariantError extends Error {
   constructor(message: string) {
@@ -66,7 +66,7 @@ const attentionActions = {
 } as const;
 
 export class DeliveryStoreMaintenance {
-  protected readonly ledger: DurableJson<DeliveryV3State>;
+  protected readonly ledger: DurableJson<DeliveryV4State>;
   protected readonly reservationSignals = new Map<string, Set<() => void>>();
   private initialized = false;
 
@@ -139,7 +139,7 @@ export class DeliveryStoreMaintenance {
       for (const receipt of Object.values(instance.effects)) {
         if (receipt.receiptDigest !== receiptDigest) continue;
         const { receiptDigest: _stored, ...base } = receipt;
-        return digest(base) === receiptDigest;
+        return stableMemoryDigest(base) === receiptDigest;
       }
     }
     return false;
@@ -287,7 +287,7 @@ export class DeliveryStoreMaintenance {
         current.completedAt = now;
         current.error = null;
         const attention = instance.attentions[
-          digest({ kind: "cleanup-failed", requestId: request.id })
+          stableMemoryDigest({ kind: "cleanup-failed", requestId: request.id })
         ];
         if (attention) attention.resolvedAt = now;
       },
@@ -305,7 +305,7 @@ export class DeliveryStoreMaintenance {
       if (!instance || !request) throw new Error("Cleanup request 不存在");
       request.state = "failed";
       request.error = detail.slice(0, 2_000);
-      const attentionId = digest({ kind: "cleanup-failed", requestId });
+      const attentionId = stableMemoryDigest({ kind: "cleanup-failed", requestId });
       instance.attentions[attentionId] = {
         id: attentionId,
         kind: "cleanup-failed",
@@ -349,7 +349,7 @@ export class DeliveryStoreMaintenance {
       .filter((request) => request.state !== "completed")
       .map((request) => request.id)
       .sort();
-    return pending.length ? `activation-cleanup:${digest(pending)}` : null;
+    return pending.length ? `activation-cleanup:${stableMemoryDigest(pending)}` : null;
   }
 
   closeAndFlush() {
@@ -370,7 +370,7 @@ export class DeliveryStoreMaintenance {
     if (input.memorySpaceId) {
       memorySpaceGate.assertHeld(spaceId, "Delivery Space effect");
     }
-    const inputDigest = digest({
+    const inputDigest = stableMemoryDigest({
       effectKind: input.effectKind,
       subjectRef: input.subjectRef,
       spaceId,
@@ -408,7 +408,7 @@ export class DeliveryStoreMaintenance {
         committedAt,
         inputDigest,
       };
-      const receipt = { ...base, receiptDigest: digest(base) };
+      const receipt = { ...base, receiptDigest: stableMemoryDigest(base) };
       instance.effects[input.operationId] = receipt;
       return receipt;
     });
@@ -446,7 +446,7 @@ export class DeliveryStoreMaintenance {
   }
 
   protected recordCaptureGap(
-    _state: DeliveryV3State,
+    _state: DeliveryV4State,
     instance: DeliveryInstance,
     reservation: CaptureReservation
   ) {
@@ -502,7 +502,7 @@ export class DeliveryStoreMaintenance {
           reservation.finishedAt = Date.now();
           this.recordCaptureGap(state, instance, reservation);
           const operationId = `drain-timeout:${state.runtimeEpoch}:${reservation.id}`;
-          const cleanupId = digest({ instance: instance.id, operationId });
+          const cleanupId = stableMemoryDigest({ instance: instance.id, operationId });
           instance.cleanupRequests[cleanupId] ??= {
             id: cleanupId,
             operationId,
@@ -528,7 +528,7 @@ export class DeliveryStoreMaintenance {
       Object.keys(instance.cleanupRequests).length +
       Object.keys(instance.rebuildJobs).length +
       Object.keys(instance.effects).length;
-    const id = digest({ kind: "capacity-pressure", instance: instance.id });
+    const id = stableMemoryDigest({ kind: "capacity-pressure", instance: instance.id });
     if (retained > 12_000) {
       instance.attentions[id] = {
         id,
@@ -550,7 +550,7 @@ export class DeliveryStoreMaintenance {
     state: "completed" | "failed",
     attempt: number
   ) {
-    const id = digest({ kind: "rebuild-failed", operationId });
+    const id = stableMemoryDigest({ kind: "rebuild-failed", operationId });
     if (state === "failed") {
       instance.attentions[id] = {
         id,
@@ -606,7 +606,7 @@ export class DeliveryStoreMaintenance {
             );
           }
           const operationId = `orphan:${previous}:${reservation.id}`;
-          const cleanupId = digest({ instance: instance.id, operationId });
+          const cleanupId = stableMemoryDigest({ instance: instance.id, operationId });
           instance.cleanupRequests[cleanupId] ??= {
             id: cleanupId,
             operationId,

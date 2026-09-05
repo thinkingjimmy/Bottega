@@ -5,7 +5,6 @@
  */
 
 import type {
-  AgentBackendId,
   AgentTurnOptions,
   AgentUserInput,
 } from "./agent-ipc";
@@ -260,8 +259,4 @@ export type HistoryImportBridgeApi = {
 
 export function sessionAliases(key: ExternalSessionKey) {
   return new Set([key.canonicalNativeId, key.resumeAlias, ...key.aliases]);
-}
-
-export function historyBackend(source: HistorySourceKind): AgentBackendId {
-  return source;
 }

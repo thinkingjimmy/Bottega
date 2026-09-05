@@ -178,7 +178,7 @@ export class LifecycleIntentStore {
         s0.intents.push(intent);
       });
       void state;
-      return { created: true, intent: clone(intent) };
+      return { created: true, intent: structuredClone(intent) };
     });
   }
 
@@ -216,7 +216,7 @@ export class LifecycleIntentStore {
           child.requestId === input.requestId
         ) {
           assertSameHash(child.inputHash, incomingHash, child.kind, child.requestId);
-          return clone(child);
+          return structuredClone(child);
         }
         if (child) {
           throw new IntentConflictError(
@@ -259,7 +259,7 @@ export class LifecycleIntentStore {
         p0.updatedAt = this.now();
         s0.intents.push(child);
       });
-      return clone(child);
+      return structuredClone(child);
     });
   }
 
@@ -291,7 +291,7 @@ export class LifecycleIntentStore {
         }
         i0.updatedAt = this.now();
       });
-      return clone(this.require().intents.find((i) => i.intentId === intentId)!);
+      return structuredClone(this.require().intents.find((i) => i.intentId === intentId)!);
     });
   }
 
@@ -309,7 +309,7 @@ export class LifecycleIntentStore {
       const state = this.require();
       const intent = state.intents.find((i) => i.intentId === intentId);
       if (!intent) throw new IntentConflictError(`intent ${intentId} 不存在`);
-      if (intent.terminal) return clone(intent);
+      if (intent.terminal) return structuredClone(intent);
       const livingChild = state.intents.find(
         (i) => i.parentIntentId === intentId && !i.terminal
       );
@@ -323,7 +323,7 @@ export class LifecycleIntentStore {
         i0.terminal = { ...terminal, settledAt: this.now() };
         i0.updatedAt = this.now();
       });
-      return clone(this.require().intents.find((i) => i.intentId === intentId)!);
+      return structuredClone(this.require().intents.find((i) => i.intentId === intentId)!);
     });
   }
 
@@ -339,21 +339,21 @@ export class LifecycleIntentStore {
             i.parentIntentId === undefined &&
             i.claims.some((c) => wanted.has(c))
         )
-        .map(clone);
+        .map((value) => structuredClone(value));
     });
   }
 
   async getById(intentId: string): Promise<LifecycleIntent | null> {
     return this.queue.enqueue(async () => {
       const found = this.require().intents.find((i) => i.intentId === intentId);
-      return found ? clone(found) : null;
+      return found ? structuredClone(found) : null;
     });
   }
 
   async listPending(): Promise<LifecycleIntent[]> {
     return this.queue.enqueue(async () => {
       const state = this.require();
-      return state.intents.filter((i) => !i.terminal).map(clone);
+      return state.intents.filter((i) => !i.terminal).map((value) => structuredClone(value));
     });
   }
 
@@ -423,7 +423,7 @@ export class LifecycleIntentStore {
           intentId: live.intentId,
         };
       }
-      return { state: "pending", intent: clone(live) };
+      return { state: "pending", intent: structuredClone(live) };
     }
     const tomb = state.tombstones.find(
       (t) => t.kind === kind && t.requestId === requestId
@@ -620,8 +620,4 @@ function assertSameHash(
       `(${kind}, ${requestId}) 已绑定不同入参;requestId 不可复用于不同意图`
     );
   }
-}
-
-function clone<T>(value: T): T {
-  return structuredClone(value);
 }

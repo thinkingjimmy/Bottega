@@ -11,7 +11,7 @@ import type {
   ContinuationSagaSnapshot,
   DatabaseCommand,
 } from "../database-protocol";
-import type { SqliteDatabase, SqliteValue } from "../connection";
+import type { SqliteDatabase } from "../connection";
 import {
   changes,
   json,

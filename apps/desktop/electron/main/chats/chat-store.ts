@@ -90,7 +90,6 @@ export type ChatSqliteRuntimeFacts = Readonly<{
   startupMs: number;
 }>;
 
-const clone = <T>(value: T): T => structuredClone(value);
 const sessionKey = (session: SessionRef) =>
   `${session.backend}:${session.id}`;
 const requestHash = (value: unknown) =>
@@ -177,10 +176,10 @@ export class ChatStore {
       const revision = record.chatMessageRevision;
       this.state.remember(record, revision);
       return {
-        record: clone(record),
+        record: structuredClone(record),
         revision,
-        appended: clone(record.messages),
-        storedMessage: clone(message),
+        appended: structuredClone(record.messages),
+        storedMessage: structuredClone(message),
       } satisfies ChatMessageMutation;
     });
   }
@@ -246,11 +245,11 @@ export class ChatStore {
         this.state.remember(record, revision);
       }
       return {
-        record: clone(record),
+        record: structuredClone(record),
         revision,
-        appended: clone(appended),
+        appended: structuredClone(appended),
         ...(result.storedMessage
-          ? { storedMessage: clone(result.storedMessage) }
+          ? { storedMessage: structuredClone(result.storedMessage) }
           : {}),
       } satisfies ChatMessageMutation;
     });
@@ -272,10 +271,10 @@ export class ChatStore {
       const transition = reviseTailRecord(current, input, this.state.now());
       if (transition.kind === "replay") {
         return {
-          record: clone(current),
+          record: structuredClone(current),
           revision: this.state.revisionOf(input.chatId),
           appended: [],
-          storedMessage: clone(transition.message),
+          storedMessage: structuredClone(transition.message),
         } satisfies ChatMessageMutation;
       }
       const { record, message } = transition;
@@ -285,10 +284,10 @@ export class ChatStore {
       this.state.messageRevisions.set(input.chatId, revision);
       this.state.remember(record, revision);
       return {
-        record: clone(record),
+        record: structuredClone(record),
         revision,
-        appended: [clone(message)],
-        storedMessage: clone(message),
+        appended: [structuredClone(message)],
+        storedMessage: structuredClone(message),
         mode: "replace",
       } satisfies ChatMessageMutation;
     });
@@ -346,11 +345,11 @@ export class ChatStore {
         this.state.remember(record, revision);
       }
       return {
-        record: clone(record),
+        record: structuredClone(record),
         revision,
-        appended: clone(appended),
+        appended: structuredClone(appended),
         ...(result.storedMessage
-          ? { storedMessage: clone(result.storedMessage) }
+          ? { storedMessage: structuredClone(result.storedMessage) }
           : {}),
       } satisfies ChatMessageMutation;
     });
@@ -496,7 +495,7 @@ export class ChatStore {
       if (this.state.activeRecord?.record.id === chatId) {
         this.state.activeRecord = undefined;
       }
-      return clone(outcome.receipt.result.attachments);
+      return structuredClone(outcome.receipt.result.attachments);
     });
   }
 
@@ -611,11 +610,11 @@ export class ChatStore {
 
   private async loadRecord(chatId: string) {
     if (this.state.activeRecord?.record.id === chatId) {
-      return clone(this.state.activeRecord.record);
+      return structuredClone(this.state.activeRecord.record);
     }
     const record = await this.state.readRecord(chatId);
     this.state.remember(record, this.state.revisionOf(chatId));
-    return clone(record);
+    return structuredClone(record);
   }
 
   /* 事实变更不再借道整聚合：手里的 metadata 就是 current，写入只碰事实行，
@@ -630,7 +629,7 @@ export class ChatStore {
       if (!metadata) throw new ChatNotFoundError("聊天不存在");
       const { preview, ...current } = metadata;
       const candidate = update(current);
-      if (candidate === current) return clone(metadata);
+      if (candidate === current) return structuredClone(metadata);
       const facts = chatFactsSchema.parse(
         withFactRevision(current, candidate as ChatFacts)
       ) as ChatFacts;
@@ -647,7 +646,7 @@ export class ChatStore {
       if (this.state.activeRecord?.record.id === chatId) {
         this.state.activeRecord = undefined;
       }
-      return clone(next);
+      return structuredClone(next);
     });
   }
 
@@ -693,7 +692,7 @@ export class ChatStore {
   }
 
   getSqliteRuntimeFacts() {
-    return this.sqliteRuntimeFacts ? clone(this.sqliteRuntimeFacts) : null;
+    return this.sqliteRuntimeFacts ? structuredClone(this.sqliteRuntimeFacts) : null;
   }
 
   private async openDatabase() {

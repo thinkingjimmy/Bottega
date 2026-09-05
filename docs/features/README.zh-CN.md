@@ -24,6 +24,8 @@ Bottega 把 Agent 对话视为一个可持续、本地工作空间的控制面�
 
 - 从不可变 Git revision 安装 static、server 或 Base-backed App。
 - 使用随包交付的 Bottega Design Canvas 创建自包含 HTML 方向、比较 Live/History 版本，并把编号视觉锚点送回 Agent；预览不获得网络或存储权限。
+- 使用随包交付的 Fitness Log 浏览 17 个肌肉区域的 72 个动作、查看动作动图并管理训练计划，宿主 React 界面支持五语言。
+- 通过 App SDK 读取完整、版本一致的 Base 快照，并获得可恢复的加载状态和显式重试入口。
 - 把 App 绑定到 Chat 与 Project，同时分离使用、编辑和授权。
 - 通过受约束的产品 SDK，在结构化数据旁呈现 App GUI。
 - 针对精确 App generation，分别授权 read、insert、patch、delete 与 attachment 能力。

@@ -373,17 +373,6 @@ function isHistoryRevisionChange(cause: unknown) {
   return (cause as { code?: unknown })?.code === "HISTORY_REVISION_CHANGED";
 }
 
-/** 搜索解析每 256 行把控制权交还 main loop，使 cancel/页截止能中止 CPU 扫描。 */
-export async function historyParseCheckpoint(
-  signal: AbortSignal | undefined,
-  index: number
-) {
-  if (!signal) return;
-  signal.throwIfAborted();
-  if (index % 256 !== 0) return;
-  await yieldHistoryParse(signal);
-}
-
 /** SQLite 等同步批次每批都必须让出 main loop，不能只在批次前看 signal。 */
 export async function yieldHistoryParse(signal?: AbortSignal) {
   if (!signal) return;

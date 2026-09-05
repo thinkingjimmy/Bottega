@@ -36,6 +36,8 @@ Authenticate with the CLI provider before starting Bottega. Bottega never asks f
 
 Every release publishes installers for three platforms on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases).
 
+If you are upgrading from 0.1.0 or 0.1.1, download and install [0.1.2](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.2) manually once. The older installed versions contain an updater bug; the fix takes effect after the new binary is installed. Windows continues to use manual installer downloads.
+
 | Platform | Asset | Notes |
 | --- | --- | --- |
 | macOS (Apple silicon) | `Bottega-<version>-arm64.dmg` or `-arm64-mac.zip` | Primary target. Apple silicon only. |

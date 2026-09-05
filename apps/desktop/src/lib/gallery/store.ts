@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React external-store, Agent limits, Gallery model/media IPC, typed target/CAS and chat-composer-store
+ * [INPUT]: Depends on the shared RichInput wire projection, React external-store, Agent limits, Gallery model/media IPC, typed target/CAS and chat-composer-store
  * [OUTPUT]: Provides per-chat Gallery FSM, backend/capability epoch, occurrence-scoped, submit attachments, receive promotion fence, accurate consumption/source clearance and comment snapshot
  * [POS]: The renderer is the only owner of the unperpetuated Gallery Logic status; ChatView and the full-screen host Base are responsible for mount only
  */
@@ -10,7 +10,7 @@ import {
   ATTACHMENT_LIMIT,
   type AgentBackendId,
 } from "../../../shared/agent-ipc";
-import { richValueWireItemCount } from "../rich-input-serialize";
+import { projectRichInput } from "../../../shared/rich-input-projection";
 import {
   galleryOccurrenceKey,
   type GalleryMediaSourceRef,
@@ -599,7 +599,7 @@ function assertSelectionCapacity(
     throwGalleryError("ATTACHMENT_LIMIT", "附件最多 8 个");
   }
   if (
-    richValueWireItemCount(composer.richValue) +
+    projectRichInput(composer.richValue).length +
       manualFiles +
       galleryCount >
     AGENT_INPUT_LIMIT

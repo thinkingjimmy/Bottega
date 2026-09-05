@@ -15,6 +15,7 @@ export type AppGuiAdmissionGate = (typeof APP_GUI_ADMISSION_GATES)[number];
 const GATE_3_IMPORTS = new Set<string>(GATE_3_AUTHOR_SPECIFIERS);
 const GATE_2_SDK_BINDINGS = new Set([
   "useBaseMeta",
+  "useBaseSnapshot",
   "useBaseRows",
   "useBaseMutation",
   "useAttachment",

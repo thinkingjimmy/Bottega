@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Base view/filter/column DTO, aggregation matrix and filter column
- * [OUTPUT]: Provides six row-backed column references/type fail-closed column references/type fail-closed column references/type fail-closed column references/type fail-closed column references/view/formulae delete column scrub and Gallery required attachment
+ * [OUTPUT]: Validates view/column references, filters, and Gallery attachment fields, and scrubs references to removed columns and formulas
  * [POS]: The view-model rules of bases/validation; BasesService only organizes transactions, not cross-view branches
  */
 
@@ -15,8 +15,6 @@ import {
   type BaseView,
 } from "../../../../shared/bases-ipc";
 import type { ChartItem } from "../../../../shared/base-view-config";
-
-const clone = <T>(value: T): T => structuredClone(value);
 
 export function validateBaseView(
   view: BaseView,
@@ -213,7 +211,7 @@ export function scrubBaseView(
   removed: ReadonlySet<string>
 ): BaseView {
   if (!removed.size) return view;
-  const config = clone(view.config);
+  const config = structuredClone(view.config);
   const viewFilterRemoved = [...removed].some((id) =>
     filterReferencesColumn(config.filter, id)
   );
@@ -349,7 +347,7 @@ function scrubChart(
   item: ChartItem,
   removed: ReadonlySet<string>
 ) {
-  const next = clone(item);
+  const next = structuredClone(item);
   if (removed.has(next.dimensionColumnId ?? "")) {
     delete next.dimensionColumnId;
   }

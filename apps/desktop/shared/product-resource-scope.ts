@@ -36,12 +36,6 @@ export function sameProductResourceScope(
   return productResourceScopeKey(left) === productResourceScopeKey(right);
 }
 
-export function scopeForTurn(context: TurnProjectContext): ProductResourceScope {
-  return context.projectId
-    ? { kind: "project", projectId: context.projectId }
-    : GLOBAL_PRODUCT_RESOURCE_SCOPE;
-}
-
 export function assertProductResourceScope(value: unknown): ProductResourceScope {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Resource scope invalid");

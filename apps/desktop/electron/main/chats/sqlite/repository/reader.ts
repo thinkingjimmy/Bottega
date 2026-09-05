@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on canonical Chat and readonly-record schemas, preview projection, SQLite connection, aggregate admission, the shared imported-entry SQL, closed commands, and repository codecs
+ * [INPUT]: Depends on shared UTF-8 byte-budget truncation, canonical Chat and readonly-record schemas, preview projection, SQLite connection, aggregate admission, the shared imported-entry SQL, closed commands, and repository codecs
  * [OUTPUT]: Provides all-Chat or single-Chat metadata that never projects a readonly Chat without an active generation, budgeted aggregates including empty readonly records, and byte-bounded native/imported timeline projections (one canonical turn per imported assistant entry: folded process statements unfold into text/tool parts, a plan payload becomes kind "plan") while delegating transcript navigation queries
  * [POS]: Read-only query layer beneath the ChatRepository facade
  */
 
+import { truncateUtf8 } from "../../../../../shared/truncate-utf8";
 import type {
   ChatMessage,
   ChatOutlineCursor,
@@ -43,12 +44,6 @@ import { ChatOutlineReader } from "./outline";
 import { assertFullAggregateBudget } from "./readers/aggregate-budget";
 
 const TIMELINE_PAGE_BYTE_LIMIT = 512 * 1024;
-
-function truncateUtf8(value: string, limit: number) {
-  const bytes = Buffer.from(value, "utf8");
-  if (bytes.length <= limit) return value;
-  return `${bytes.subarray(0, limit).toString("utf8").replace(/\uFFFD$/u, "")}…`;
-}
 
 const messageBytes = (message: ChatMessage) =>
   Buffer.byteLength(JSON.stringify(message), "utf8");
@@ -753,7 +748,7 @@ export class ChatRepositoryReader {
       return String(row.content_text ?? "");
     }
     const payload = parseJson(row.payload_json, "imported payload") as { preview?: unknown };
-    const preview = truncateUtf8(String(payload.preview ?? ""), IMPORTED_MESSAGE_BYTE_LIMIT / 2);
+    const preview = truncateUtf8(String(payload.preview ?? ""), IMPORTED_MESSAGE_BYTE_LIMIT / 2, "…").value;
     return `${preview}\n\n[Imported content retained outside the renderer: ${Number(row.byte_size)} bytes]`;
   }
 

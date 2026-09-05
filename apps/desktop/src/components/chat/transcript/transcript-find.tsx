@@ -2,11 +2,11 @@
 
 /**
  * [INPUT]: Depends on React, surface visibility, demand-paged Chat find pages, jumpTo, shortcut matching, and UI controls
- * [OUTPUT]: Provides Cmd/Ctrl-F with one-page-at-a-time lookup, the ledger's exact hits and total, loading/error/retry states, demand navigation that pages past the loaded tail, and focus restoration
+ * [OUTPUT]: Provides Cmd/Ctrl-F with one-page-at-a-time lookup, the ledger's exact hits and total, loading/error/retry states, demand navigation that pages past the loaded tail, explicit retry after failure, stale-response rejection, and focus restoration
  * [POS]: The demand-driven text search controller for chat/transcript; the ledger is the only matcher, the renderer only navigates
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import type { ChatFindCursor } from "../../../../shared/chats-ipc";
 import { Input } from "@ai-chat/ui/components/ui/input";
@@ -29,83 +29,65 @@ export function TranscriptFind({
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [index, setIndex] = useState(0);
-  /* 账本给的是「命中」，不是「候选」：这里再筛一遍，只会用另一片语料
-     （已加载消息的正文）去覆盖账本的判定，于是计数与导航各说各话。 */
-  const [matches, setMatches] = useState<string[]>([]);
-  const [nativeCursor, setNativeCursor] = useState<ChatFindCursor | null>(null);
-  /* 总数由账本给出：已加载的语料只是它的前缀，用前缀数数会一直少报。 */
-  const [nativeTotal, setNativeTotal] = useState<number | null>(null);
-  const [nativeStatus, setNativeStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [result, setResult] = useState<{
+    key: string;
+    matches: string[];
+    cursor: ChatFindCursor | null;
+    total: number | null;
+    failed: boolean;
+  } | null>(null);
   const [nativeRetry, setNativeRetry] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
-  const nativeGeneration = useRef(0);
+  const value = debounced.trim();
+  const searchKey = JSON.stringify([chatId, value, nativeRetry]);
+  const current = result?.key === searchKey ? result : null;
+  const matches = current?.matches ?? [];
+  const nativeTotal = current?.total ?? null;
+  const total = nativeTotal ?? matches.length;
+  const position = total ? ((index % total) + total) % total : 0;
+  const target = matches[position];
+  const cursor = position >= matches.length ? current?.cursor ?? null : null;
+  const needsPage = Boolean(open && value && !current?.failed && (!current || cursor));
+  const nativeStatus = current?.failed ? "error" : needsPage ? "loading" : "ready";
+
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query), 120);
     return () => window.clearTimeout(timer);
   }, [query]);
 
+  /* 请求由查询身份和导航位置派生；失败停在当前页，只有显式重试才再次请求。 */
   useEffect(() => {
-    const generation = ++nativeGeneration.current;
-    const value = debounced.trim();
-    if (!open || !value) {
-      queueMicrotask(() => {
-        if (generation !== nativeGeneration.current) return;
-        setMatches([]);
-        setNativeCursor(null);
-        setNativeTotal(null);
-        setNativeStatus("idle");
+    if (!needsPage) return;
+    let live = true;
+    void findChatMessages({ chatId, query: value, limit: 100, ...(cursor ? { cursor } : {}) })
+      .then((page) => {
+        if (!live) return;
+        setResult((previous) => ({
+          key: searchKey,
+          matches: [...new Set([
+            ...(cursor && previous?.key === searchKey ? previous.matches : []),
+            ...(page?.items ?? []).map((item) => item.messageId),
+          ])],
+          cursor: page?.nextCursor ?? null,
+          total: page?.total ?? null,
+          failed: false,
+        }));
+      })
+      .catch((cause) => {
+        if (!live) return;
+        setResult((previous) => ({
+          key: searchKey,
+          matches: previous?.key === searchKey ? previous.matches : [],
+          cursor,
+          total: previous?.key === searchKey ? previous.total : null,
+          failed: true,
+        }));
+        console.error(cause);
       });
-      return;
-    }
-    const controller = new AbortController();
-    queueMicrotask(() => {
-      if (generation === nativeGeneration.current) setNativeStatus("loading");
-    });
-    void (async () => {
-      if (controller.signal.aborted) throw controller.signal.reason;
-      const page = await findChatMessages({ chatId, query: value, limit: 100 });
-      if (generation !== nativeGeneration.current) return;
-      setMatches((page?.items ?? []).map((item) => item.messageId));
-      setNativeCursor(page?.nextCursor ?? null);
-      setNativeTotal(page?.total ?? null);
-      setNativeStatus("ready");
-    })().catch((cause) => {
-      if (generation !== nativeGeneration.current || controller.signal.aborted) return;
-      setNativeStatus("error");
-      console.error(cause);
-    });
-    return () => controller.abort();
-  }, [chatId, debounced, nativeRetry, open]);
-
-  const loadNextNative = useCallback(async () => {
-    if (!nativeCursor || nativeStatus === "loading") return false;
-    const generation = nativeGeneration.current;
-    setNativeStatus("loading");
-    try {
-      const page = await findChatMessages({
-        chatId,
-        query: debounced.trim(),
-        cursor: nativeCursor,
-        limit: 100,
-      });
-      if (generation !== nativeGeneration.current) return false;
-      setMatches((current) => {
-        const merged = new Set(current);
-        for (const item of page?.items ?? []) merged.add(item.messageId);
-        return [...merged];
-      });
-      setNativeCursor(page?.nextCursor ?? null);
-      setNativeTotal(page?.total ?? null);
-      setNativeStatus("ready");
-      return Boolean(page?.items.length);
-    } catch (cause) {
-      if (generation === nativeGeneration.current) setNativeStatus("error");
-      console.error(cause);
-      return false;
-    }
-  }, [chatId, debounced, nativeCursor, nativeStatus]);
+    return () => { live = false; };
+  }, [chatId, cursor, needsPage, searchKey, value]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -127,21 +109,9 @@ export function TranscriptFind({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, surfaceVisible]);
 
-  /* index 是全量里的逻辑位置，不是已加载数组的下标：越过已加载的尾巴
-     就按需再取一页，取不到才停在那里。 */
-  const total = nativeTotal ?? matches.length;
-  const position = total ? ((index % total) + total) % total : 0;
-  const target = matches[position];
   useEffect(() => {
-    if (!open) return;
-    if (target) { jumpTo(target); return; }
-    if (position >= matches.length && nativeCursor && nativeStatus !== "loading") {
-      void loadNextNative();
-    }
-  }, [
-    jumpTo, loadNextNative, matches.length, nativeCursor, nativeStatus,
-    open, position, target,
-  ]);
+    if (open && target) jumpTo(target);
+  }, [jumpTo, open, target]);
 
   if (!open) return null;
   const move = (delta: number) => {

@@ -4,6 +4,17 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-09-05 — v0.1.2
+
+**Upgrading from 0.1.0 or 0.1.1:** download and install 0.1.2 manually from the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.2). Those versions contain the updater bug fixed here, so they cannot receive this fix through their existing update button.
+
+- Fixed update downloads being blocked by an unavailable release compatibility key in unsigned builds. The sidebar now distinguishes automatic installation from manual download, shows download progress, and keeps a route to Releases or About when an update or background check fails.
+- Rebuilt Fitness Log on the host React interface. It keeps 72 exercises, 17 muscle regions, five languages, animated demonstrations, training plans, and responsive light/dark layouts while using the shared component and data APIs.
+- Made App data loading complete and recoverable. Base snapshots read every page and publish one consistent revision; Fitness plan submissions retain their original row IDs through retries and uncertain outcomes, preventing duplicate submissions.
+- Fixed in-chat Find retry and navigation behavior. A failed page waits for an explicit retry, stale responses cannot replace a newer query, and switching chats no longer leaves the previous managed-worktree branch visible.
+- Repaired App catalog startup for older schema versions: preserve the original bytes in a quarantine copy, then establish an empty current catalog. Corrupt current-format catalogs still require the explicit repair flow. Also tightened staged-turn recovery and Memory cancellation handling.
+- Published macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage installers. These builds remain unsigned; the existing [first-launch steps](../getting-started/README.md) still apply.
+
 ## 2026-09-04 — v0.1.1
 
 - Published the v0.1.1 installers: a macOS arm64 DMG and ZIP, a Windows x64 NSIS installer, and a Linux x64 AppImage. These builds are still unsigned, so the one-time step each platform asks for on first launch is unchanged from 0.1.0 and stays documented in the [getting-started guide](../getting-started/README.md).

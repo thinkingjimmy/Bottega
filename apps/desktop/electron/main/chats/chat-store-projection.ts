@@ -8,8 +8,6 @@ import type { SessionRef } from "../../../shared/agent-ipc";
 import { summaryOfChat, type ChatMetadata } from "./chat-summary";
 import { assertChatId } from "./chat-guards";
 
-const clone = <T>(value: T): T => structuredClone(value);
-
 export class ChatStoreProjection {
   constructor(private readonly metadata: ReadonlyMap<string, ChatMetadata>) {}
 
@@ -38,7 +36,7 @@ export class ChatStoreProjection {
           archivedAt: meta.archivedAt,
           projectId: meta.projectId,
           appRole: meta.appRole,
-          context: clone(meta.context),
+          context: structuredClone(meta.context),
         }
       : null;
   }
@@ -52,7 +50,7 @@ export class ChatStoreProjection {
   }
 
   importOrigin(chatId: string) {
-    return clone(this.get(chatId)?.importOrigin ?? null);
+    return structuredClone(this.get(chatId)?.importOrigin ?? null);
   }
 
   executionDir(chatId: string) {

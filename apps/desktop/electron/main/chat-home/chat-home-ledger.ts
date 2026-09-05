@@ -16,8 +16,6 @@ import {
 } from "./ledger-values";
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
-const clone = <T>(value: T): T => structuredClone(value);
-
 export class ChatHomeLedger {
   readonly filePath: string;
   private readonly queue = new SerialQueue();
@@ -59,11 +57,11 @@ export class ChatHomeLedger {
 
   get(chatId: string) {
     const record = this.state.chats[chatId];
-    return record ? clone(record) : undefined;
+    return record ? structuredClone(record) : undefined;
   }
 
   list() {
-    return Object.values(this.state.chats).map(clone);
+    return Object.values(this.state.chats).map((value) => structuredClone(value));
   }
 
   validHomes() {
@@ -90,12 +88,12 @@ export class ChatHomeLedger {
         ) {
           throw new Error("CreationIntent 与已有 Chat Home ownership 冲突");
         }
-        if (existing.phase !== "rolledBack") return clone(existing);
+        if (existing.phase !== "rolledBack") return structuredClone(existing);
       }
-      const next = clone(this.state);
+      const next = structuredClone(this.state);
       next.chats[parsed.chatId] = parsed;
       await this.commit(next);
-      return clone(parsed);
+      return structuredClone(parsed);
     });
   }
 
@@ -109,23 +107,23 @@ export class ChatHomeLedger {
       const current = this.state.chats[chatId];
       if (!current) throw new Error("CreationIntent 不存在");
       const phases = Array.isArray(expected) ? expected : [expected];
-      if (!phases.includes(current.phase)) return clone(current);
+      if (!phases.includes(current.phase)) return structuredClone(current);
       const record = chatHomeRecordSchema.parse({
         ...current,
         ...patch,
         phase,
       });
-      const next = clone(this.state);
+      const next = structuredClone(this.state);
       next.chats[chatId] = record;
       await this.commit(next);
-      return clone(record);
+      return structuredClone(record);
     });
   }
 
   removeOwnership(chatId: string) {
     return this.queue.enqueue(async () => {
       if (!this.state.chats[chatId]) return;
-      const next = clone(this.state);
+      const next = structuredClone(this.state);
       delete next.chats[chatId];
       await this.commit(next);
     });
