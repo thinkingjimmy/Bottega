@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React useState, I18n, ProjectAppearance of shared, lib/project-appearance of two directories with the analyzer, popover/button original, cn and usePointerOpenedMenu
+ * [INPUT]: Depends on React useState, i18n, the shared ProjectAppearance type, lib/project-appearance's color/glyph resolvers, ui Popover/Button primitives, cn, and usePointerOpenedMenu
  * [OUTPUT]: Provides the Sidebar-specific ProjectAppearancePicker trigger and reusable ProjectAppearancePanel grid/commit body
  * [POS]: Project appearance surface shared by the Sidebar row and Project Settings while each consumer owns its appropriate trigger
  */

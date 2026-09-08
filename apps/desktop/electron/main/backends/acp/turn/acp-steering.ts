@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ACP ContentBlock, back-end structured input and error grouping tool
- * [OUTPUT]: Provides input block conversion, steering outcome, overtime stop loss requests and obstacles to flight operation
- * [POS]: The ACP turn transport's steering core is unstable; AcpTurn only holds session lifecycle and call times
+ * [INPUT]: Depends on ACP ContentBlock, BackendTurnOptions structured input, and the shared asError helper
+ * [OUTPUT]: Provides resolvedInputBlocks, normalizeSteerOutcome, requestAcpSteering with a timeout, and SteeringOperationGate to serialize in-flight steer requests
+ * [POS]: ACP turn transport's steering core; AcpTurn only owns session lifecycle and call sequencing
  */
 
 import type { ContentBlock } from "@agentclientprotocol/sdk";

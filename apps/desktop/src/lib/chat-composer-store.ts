@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React external store, nanoid, PromptInput/RichInput, Gallery origin, attachments, message queues and file authorization release
  * [OUTPUT]: Provides per-chat composer draft/files/queue/pending-ACK state, exact blank-line host append, plus epoch-fenced clone-safe window migration export/commit/restore with one active sender
- * [POS]: the uncommitted entry of a single owner of lib, together with its identity; Unlike retrievable message caches, the store prohibits the removal of LRU and "generation unknown" cannot pretend to replace it
+ * [POS]: lib's single-owner store for uncommitted composer drafts and their identity; unlike the retrievable message caches, this store never LRU-evicts, and a generation-unknown snapshot can never silently replace a known one
  */
 
 import { useCallback, useSyncExternalStore } from "react";
@@ -63,6 +63,9 @@ const emptyComposer = (incarnationId = ""): ComposerState => ({
 const EMPTY_COMPOSER: ComposerState = emptyComposer();
 
 const entries = new Map<string, ComposerState>();
+const revisions = new Map<string, number>();
+export const composerRevision = (chatId: string) => revisions.get(chatId) ?? 0;
+export const composerMigrating = (chatId: string) => [...ackTransfers.values()].some((transfer) => transfer.chatId === chatId && transfer.epoch === ownershipEpoch(chatId));
 const listeners = new Map<string, Set<() => void>>();
 type PendingComposerAck = {
   kind: "manual" | "steer";
@@ -173,6 +176,7 @@ export async function exportComposerCapsule(
     .filter((ack) => ack.chatId === chatId)
     .map(({ kind, id }) => ({ kind, id }));
   const capsule: SurfaceComposerCapsule = {
+    revision: composerRevision(chatId) + 1,
     chatId,
     incarnationId: current.incarnationId,
     workspaceIdentityKey: current.workspaceIdentityKey,
@@ -184,10 +188,7 @@ export async function exportComposerCapsule(
     queuePaused: current.queue.paused,
   };
   claimAckTransfer(transactionId, capsule);
-  updateComposer(chatId, (state) => ({
-    ...state,
-    queue: state.queue.paused ? state.queue : { ...state.queue, paused: true },
-  }));
+  publish(chatId, { ...current, queue: { ...current.queue, paused: true } });
   return capsule;
 }
 
@@ -244,6 +245,13 @@ function discardSupersededTransfer(
   return true;
 }
 
+export function validateComposerCapsuleExport(transactionId: string, capsule: SurfaceComposerCapsule) {
+  const transfer = assertAckTransfer(transactionId, capsule);
+  if (transfer.epoch !== ownershipEpoch(capsule.chatId) || capsule.revision !== composerRevision(capsule.chatId)) {
+    throw new Error("COMPOSER_SOURCE_REVISION_CONFLICT");
+  }
+}
+
 /** Commit source retirement only after residence ownership has moved. */
 export function commitComposerCapsuleExport(
   transactionId: string,
@@ -277,9 +285,15 @@ export function restoreComposerCapsuleExport(
 }
 
 /** Hydrate before ChatView mounts; existing main custody ids remain ambiguous and therefore cannot be resent. */
-export function importComposerCapsule(capsule: SurfaceComposerCapsule) {
-  advanceOwnershipEpoch(capsule.chatId);
+export function importComposerCapsule(capsule: SurfaceComposerCapsule, transactionId?: string, expectedRevision?: number) {
+  if (expectedRevision !== undefined && expectedRevision !== composerRevision(capsule.chatId)) throw new Error("COMPOSER_TARGET_REVISION_CONFLICT");
   const current = readComposer(capsule.chatId);
+  if (transactionId && entries.has(capsule.chatId) &&
+      ((current.incarnationId && current.incarnationId !== capsule.incarnationId) ||
+        richInputDisplayText(current.draft.richValue).trim() || current.draft.richValue.some((node) => node.type !== "text") || current.draft.files.length || current.queue.items.length)) {
+    throw new Error("COMPOSER_MIGRATION_CONFLICT");
+  }
+  advanceOwnershipEpoch(capsule.chatId);
   const richValue = structuredClone(capsule.richValue) as RichValue;
   const expectedRefs = new Set(capsule.attachmentRefs);
   const fileResources = new Map<string, FileResource>();
@@ -340,6 +354,7 @@ const migratedQueueState = (item: QueueItem): "queued" | "ambiguous" =>
     : "queued";
 
 const publish = (chatId: string, next: ComposerState) => {
+  revisions.set(chatId, composerRevision(chatId) + 1);
   entries.set(chatId, next);
   for (const listener of listeners.get(chatId) ?? []) listener();
   return next;
@@ -354,6 +369,7 @@ export function updateComposer(
 ) {
   const current = readComposer(chatId);
   const next = updater(current);
+  if (composerMigrating(chatId) && next.draft !== current.draft) throw new Error("COMPOSER_MIGRATION_ACTIVE");
   return next === current ? current : publish(chatId, next);
 }
 

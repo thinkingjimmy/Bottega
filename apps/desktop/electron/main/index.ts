@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on Electron lifecycle, Node filesystem, shared five-locale translation, and every main-owned service, including signed-update compatibility, scoped Extensions, Project cleanup/Tools, Agent policy, Chat continuation recovery, coordinator/custody, Apps, Design, browser, and usage
- * [OUTPUT]: Provides the desktop composition root, pre-Project App authority repair, the trust-gated signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown
+ * [INPUT]: Depends on Electron lifecycle, Node filesystem, shared five-locale translation, and every main-owned service, including signed-update compatibility, scoped Extensions, Project cleanup/Tools, Agent policy, Chat continuation recovery, coordinator/custody, Apps, Design, browser, and usage, presence lifecycle/composition and crash-aware main readiness.
+ * [OUTPUT]: Provides the desktop composition root, pre-Project App authority repair, the trust-gated signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown, background retention, shared quit authorization, and task status startup.
  * [POS]: The root lifecycle owner of the desktop main process
  */
 import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { app, dialog } from "electron";
+import { waitForMainWindowReady } from "./presence/lifecycle/main-window-readiness";
 import { AppsService } from "./apps/apps-service";
 import { ChatStore } from "./chats/chat-store";
 import type { ChatsService } from "./chats/chats-service";
@@ -40,7 +41,6 @@ import { SettingsStore } from "./settings-store";
 import { resolveAppLocale } from "../../shared/i18n/locale";
 import { resolvePlatformCapabilities } from "../../shared/platform-capabilities";
 import { BackendSetupService } from "./setup/backend-setup";
-import { runStateResetsThroughV5 } from "./state-reset";
 import { ProjectStore } from "./projects/store/project-store";
 import { ProjectsService } from "./projects/projects-service";
 import { composeProjectsService } from "./projects/composition";
@@ -88,10 +88,9 @@ import {
 import { initializeHistoryImportService } from "./startup/history-import-runtime";
 import { createUnifiedSkillsService } from "./startup/unified-skills-runtime";
 import type { UnifiedSkillsService } from "./skills-management/service";
-import { runSkillsCutover } from "./skills-management/cutover";
 import { SkillsTurnCustodyStore } from "./skills-management/turn-custody";
 import { PreparedSkillReferenceLedger } from "./skills-management/prepared-reference-ledger";
-import { configurePreparedSkillReferenceCustody } from "./sections/coordinator/admission/prepared-manual-turn";
+import { configurePreparedSkillReferenceCustody } from "./sections/coordinator/admission/prepared-skill-reference-custody";
 import type { ExtensionRegistryStore } from "./extensions/registry-store";
 import {
   createMainWindowLauncher,
@@ -121,8 +120,19 @@ import { configureAppBaseRuntime } from "./startup/app-base-runtime";
 /* main 无首包预算，故一次性投喂全部五语言，`translate()` 保持同步。
    放在组合根的模块作用域：晚于它的任何 translate 都已有母语目录，早于
    它的则退化为英文而非裸 key——降级方向由 runtime 的英文常驻担保。 */
+import { createPresenceRuntime } from "./presence/composition";
+import { createApplicationPresence } from "./presence/lifecycle/application";
+import { taskStartFence, uniqueStopOperations } from "./presence/lifecycle/start-fence";
+import { agentStopOperations } from "./agent-bridge";
 registerAllCatalogs();
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+let presenceRuntime: ReturnType<typeof createPresenceRuntime> | null = null;
+const stopOperations = () => uniqueStopOperations([...agentStopOperations(), ...(sectionCoordinator?.pendingStopOperations() ?? [])]);
+const presenceLifecycle = createApplicationPresence({ safeQuit: () => safeQuit, locale: () => currentLocale(), snapshot: stopOperations,
+  enabled: () => presenceRuntime?.service.snapshot().retention.status === "enabled",
+  refresh: () => { void presenceRuntime?.service.refresh(); }, changed: () => presenceRuntime?.service.notifyLifecycle() });
+const { loginItem, openedAtLogin, retention: windowRetention, requestQuit: requestUserQuit } = presenceLifecycle;
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock({ launchSource: openedAtLogin ? "login" : "user" });
 let appsService: AppsService | null = null;
 let chatStore: ChatStore | null = null;
 let chatsService: ChatsService | null = null;
@@ -170,10 +180,7 @@ const setupService = new BackendSetupService(currentLocale);
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    const main = windowRegistry.main();
-    if (main) windowRegistry.focus(main.windowId);
-  });
+  presenceLifecycle.bindActivation();
 
   void app
     .whenReady()
@@ -187,13 +194,17 @@ if (!hasSingleInstanceLock) {
       } catch (cause) {
         console.warn("[acp-trace] startup cleanup unavailable", cause);
       }
-      await runStateResetsThroughV5(userData);
       const titleWorkspace = join(userData, "codex-workspace");
       const agentInputStagingRoot = join(userData, "agent-input-staging");
       await mkdir(titleWorkspace, { recursive: true });
       const canonicalUserData = await realpath(userData);
       updateService = createDesktopUpdateService(app, {
-        prepareSafeQuit: () => safeQuit.prepare("update"),
+        resolveAppRequirement: (requestId) => {
+          if (!appsService) throw new Error("APP_COMPATIBILITY_REQUEST_UNAVAILABLE");
+          return appsService.compatibilityRequests.require(requestId);
+        },
+        prepareSafeQuit: (_reason, interactive) => presenceLifecycle.prepareUpdate(updateService?.snapshot().availableVersion ?? null, interactive),
+        hasStopOperations: () => stopOperations().length > 0,
         applyCandidateCompatibility: (matrix) => {
           if (!appsService) throw new Error("GUI_COMPATIBILITY_PREFLIGHT_UNAVAILABLE");
           return appsService.applyCandidateCompatibility(matrix);
@@ -286,7 +297,7 @@ if (!hasSingleInstanceLock) {
       await projectStore.initialize();
       await projectToolsRuntime.initialize(settingsStore);
       await projectsService.initialize();
-      await chatStore.initialize();
+      await chatStore.initialize(settingsStore.get().defaultChatOptionsByBackend);
       lifecycleIntents = new LifecycleIntentStore(userData);
       await lifecycleIntents.initialize();
       const galleryRuntime = await initializeGalleryRuntime(
@@ -508,11 +519,6 @@ if (!hasSingleInstanceLock) {
         },
       });
       extensionRegistry = appMode.extensions.registry;
-      await projectsService.recoverResourceCleanup();
-      await runSkillsCutover({
-        userData,
-        registry: appMode.extensions.registry,
-      });
       unifiedSkillsService = await createUnifiedSkillsService({
         userData,
         userHome: app.getPath("home"),
@@ -686,7 +692,15 @@ if (!hasSingleInstanceLock) {
         globalSearch,
         update: updateService,
       });
-      openMainWindow();
+      windowRetention.configure(() => waitForMainWindowReady(openMainWindow(), windowRegistry));
+      surfaceWindowController.configurePresence({ beforeAppClose: (record) => windowRetention.beforeAppClose(record),
+        ensureMain: () => windowRetention.ensureMain(), closeFailure: () => dialog.showErrorBox(translate(currentLocale(), "settings.presence.title"), translate(currentLocale(), "settings.presence.closeFailed")) });
+      presenceRuntime = createPresenceRuntime({ mainDirectory: __dirname, settings: settingsStore, chats: chatsService,
+        update: updateService, coordinator: activeCoordinator, login: loginItem, retention: windowRetention, locale: currentLocale, quitting: () => safeQuit.requested, quit: () => { void requestUserQuit(); } });
+      await presenceRuntime.initialize();
+      const restartHidden = await presenceLifecycle.consumeRestartPresentation();
+      await windowRetention.initialize((restartHidden || (openedAtLogin && settingsStore.get().launchAtLogin)) && presenceRuntime.service.snapshot().retention.status === "enabled");
+      presenceLifecycle.bindPower();
       startChatStoreMaintenance(chatStore, (failure) => chatsService?.publishStorageFailure(failure));
       updateService.start();
       if (platformSupport.capabilities.memory) {
@@ -695,9 +709,7 @@ if (!hasSingleInstanceLock) {
       /* 注册这一句本身就是「服务全就绪」的证明：它排在全部装配之后，任何
          中途返回都到不了这里。此前那串十八项 `&&` 因此恒为真——它读起来
          像一道闸门，实际上只是同一件事的第二种说法。 */
-      app.on("activate", () => {
-        if (!windowRegistry.main()) openMainWindow();
-      });
+
     })
     .catch((cause) => {
       const error = asError(cause);
@@ -740,6 +752,7 @@ async function reopenChatDependencies() {
 }
 
 async function closeTerminalOwners() {
+  presenceRuntime?.close(); presenceLifecycle.close();
   await closeTerminalOwnerSequence({
     irreversible: () => shutdownRecovery.runIrreversible(() => {
       chatsService?.closeAdmission(); basesService?.closeAdmission();
@@ -756,9 +769,12 @@ async function closeTerminalOwners() {
 }
 
 const safeQuit = installApplicationQuit(app, dialog, {
+  requestUserQuit: presenceLifecycle.requestBeforeQuit,
+  acquireStartHold: () => taskStartFence.acquire(),
+  snapshotStopOperations: stopOperations,
   stopAdmission: stopChatAdmission,
   settleWindows: () => surfaceWindowController.settleAll(),
-  quiesceAgents: () => shutdownAllAgents(),
+  quiesceAgents: async () => { await Promise.all([shutdownAllAgents(), sectionCoordinator?.drainDispatches()]); },
   closeOwners: closeTerminalOwners,
   recover: (reason) =>
     shutdownRecovery.recover(

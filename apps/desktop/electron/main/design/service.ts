@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on Design custody/enabled/registry/history/lifecycle journals/shared storage operations/provisioning/workspace/watcher modules, effective-workspace and live-surface adapters, and explicit deletion filesystem authority
+ * [INPUT]: Depends on Design custody/enabled/registry/history/lifecycle journals/shared storage operations/provisioning/workspace/watcher modules, effective-workspace and live-surface adapters, and explicit deletion filesystem authority, and statusError from main/errors
  * [OUTPUT]: Provides DesignService, factory lifecycle, preview/history ports, serialized turn capture and factory custody transitions with retired-owner fencing, main-evidence Project owner migration, and crash-recoverable custody deletion/replacement
  * [POS]: Design's composition root; installation, Project rebind, and renderer layers consume narrow methods instead of reaching into durable ledgers
  */
 
 import { rm } from "node:fs/promises";
+import { statusError } from "../errors";
 import type { EffectiveWorkspaceResolver } from "../workspace-resolver";
 import {
   CanvasRegistry,
@@ -268,7 +269,7 @@ export class DesignService {
       this.assertOwnerWritable(resolved.stableWorkspaceOwnerId);
       const { version, content } = await this.history.readVersion(versionId);
       if (version.stableWorkspaceOwnerId !== resolved.stableWorkspaceOwnerId) {
-        throw Object.assign(new Error("Canvas version workspace 不匹配"), { status: 403 });
+        throw statusError(403, "Canvas version workspace 不匹配");
       }
       await access.writeRegistered(
         resolved,
@@ -302,7 +303,7 @@ export class DesignService {
         resolved.stableWorkspaceOwnerId,
         relativePath
       );
-      if (!entry) throw Object.assign(new Error("Canvas 未登记"), { status: 404 });
+      if (!entry) throw statusError(404, "Canvas 未登记");
       return this.history.list(
         resolved.stableWorkspaceOwnerId,
         entry.canonicalRelativePath
@@ -316,7 +317,7 @@ export class DesignService {
       this.assertOwnerWritable(resolved.stableWorkspaceOwnerId);
       const version = await this.history.readVersion(versionId);
       if (version.version.stableWorkspaceOwnerId !== resolved.stableWorkspaceOwnerId) {
-        throw Object.assign(new Error("Canvas version workspace 不匹配"), { status: 403 });
+        throw statusError(403, "Canvas version workspace 不匹配");
       }
       return version;
     });
@@ -479,9 +480,7 @@ export class DesignService {
       .find((candidate) => candidate.dataCustodyId === input.dataCustodyId);
     if (!entry || entry.state === "explicitly-deleted") return null;
     if (entry.appId !== input.appId || entry.state !== "active") {
-      throw Object.assign(new Error("Design data custody 不属于当前 App"), {
-        status: 403,
-      });
+      throw statusError(403, "Design data custody 不属于当前 App");
     }
     const deletion = await this.custodyDeletions.delete(entry);
     const replacement = deletion.replacementDataCustodyId
@@ -541,14 +540,10 @@ export class DesignService {
 
   private assertOwnerWritable(stableWorkspaceOwnerId: string) {
     if (this.ownerMigrations.isOwnerRetired(stableWorkspaceOwnerId)) {
-      throw Object.assign(new Error("Design workspace owner 已因 Project rebind 退役"), {
-        status: 410,
-      });
+      throw statusError(410, "Design workspace owner 已因 Project rebind 退役");
     }
     if (this.custodyDeletions.isOwnerFenced(stableWorkspaceOwnerId)) {
-      throw Object.assign(new Error("Design workspace custody 已进入删除 intent"), {
-        status: 410,
-      });
+      throw statusError(410, "Design workspace custody 已进入删除 intent");
     }
   }
 }

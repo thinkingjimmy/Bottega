@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared ChartPayload, ChartTheme, Clear animation/unobstructed color strategy and ECharts pure type
- * [OUTPUT]: Provides ChartRenderPolicy with buildChartOption
- * [POS]: The pixel configuration kernel of lib/charts; No import of ECharts, no host title when running
+ * [INPUT]: Depends on the shared ChartPayload, ChartTheme, the ChartRenderPolicy animation/accessible-color strategy, and ECharts' pure types
+ * [OUTPUT]: Provides ChartRenderPolicy and buildChartOption
+ * [POS]: The pure chart-option builder for lib/charts; it only imports ECharts' types (never its runtime) and holds no reference to a host DOM element
  */
 
 import type { EChartsCoreOption } from "echarts/core";

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on i18n, shared BackendInfo, Agent icon/name and ui/button
  * [OUTPUT]: Provides ChatBackendUnavailable to replace the non-recovered history chat input area with read-only tip bars
- * [POS]: The back of the composer fails to border; No editable, permissible or model controls
+ * [POS]: Composer fallback shown when the backend is unavailable; a read-only notice with configure/retry actions, no editable, permission, or model controls
  */
 
 import { RefreshCwIcon } from "lucide-react";

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: No external dependence
  * [OUTPUT]: Provides GALLERY_ZOOM_OPTIONS, the five-step zoom vocabulary shared by Gallery and the conversation image tab
- * [POS]: The basis for the accuracy of the scaled vocabulary of bases/views/gallery; The two views consume only, not replicate arrays
+ * [POS]: The single source of the zoom-level vocabulary for bases/views/gallery; both consumers read this array rather than duplicating it
  */
 
 /* 刻度只有一种对外形态：Select 要的 {id,name}。把裸数组也导出去，

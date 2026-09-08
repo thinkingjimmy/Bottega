@@ -13,7 +13,8 @@ import type {
 } from "../../../../../shared/apps-ipc";
 import type { SourceFreezeReceipt } from "../contracts";
 import type { AuthorSourceAnalysis } from "../source-analysis";
-import { authorPublicSpecifiers, canonicalJson, sha256 } from "../metadata";
+import { authorPublicSpecifiers } from "../metadata";
+import { canonicalJson, sha256 } from "../../support";
 import {
   validatePreferenceSchema,
   validatePreferenceValue,

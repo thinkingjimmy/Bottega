@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Accepts Unbelievable codec stdin/stdout
- * [OUTPUT]: Provides 4-byte BE length forward forward DATA/TERMINAL decoding and exceeding, intercepting, trailing-byte refusing
- * [POS]: The basic rules of the database are: Any host implementation must first interpret the image bytes using this protocol
+ * [INPUT]: Accepts untrusted codec stdin/stdout byte streams
+ * [OUTPUT]: Provides encodeCodecFrames/decodeCodecFrames: 4-byte big-endian length-prefixed DATA/TERMINAL framing that rejects oversize frames and trailing bytes
+ * [POS]: Base wire protocol for bases/media-host; every host implementation must frame image bytes through this protocol before use
  */
 
-export const CODEC_FRAME_BYTE_LIMIT = 16 * 1024 * 1024;
-export const CODEC_STREAM_BYTE_LIMIT = 64 * 1024 * 1024;
+const CODEC_FRAME_BYTE_LIMIT = 16 * 1024 * 1024;
+const CODEC_STREAM_BYTE_LIMIT = 64 * 1024 * 1024;
 const TERMINAL = 0;
 
 export function encodeCodecFrames(

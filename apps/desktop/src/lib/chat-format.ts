@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on renderer Current Intl locale ((AssistantChatMessage is type-only, not dependent on running)
- * [OUTPUT]: Provides formatMessageTime (formatDuration) with workedForLabel (null means headless; imported turns with process rows but no source duration report the plain worked label)
- * [POS]: lib's chat shows a formatted pure function, which is run by a message action and consumed by ChatTurn, which is released from React and returns independently
+ * [INPUT]: Depends on the renderer's current Intl locale; AssistantChatMessage is a type-only import
+ * [OUTPUT]: Provides formatMessageTime, formatDuration, and workedForLabel (null for headless turns; imported turns with process rows but no source duration fall back to the plain "Worked for" label)
+ * [POS]: Pure chat-timestamp/duration formatting functions in lib, consumed by ChatTurn; independent of React
  */
 
 import type { AssistantChatMessage } from "../../shared/chats-ipc";

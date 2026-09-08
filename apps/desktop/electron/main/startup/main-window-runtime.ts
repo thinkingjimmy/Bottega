@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the main-window combination parameters, AppsService, effective-workspace resolver, system Skill resources, BuiltinToolRegistry, and chat incarnation reader
- * [OUTPUT]: Provides reusable main window launcher and environment-gated Browser/App/Design E2E drivers, including exact Gateway lease evidence plus request-bound Design settlement, suppression, and explicit-$design lifecycle probes
- * [POS]: The startup window is separated from the E2E combination layer; Remove the parameter duplication of the activate path, E2E rebuild Reuse production explicit generation cutover, no service lifecycle
+ * [OUTPUT]: Provides the main window launcher and environment-gated Browser/App/Design drivers, including real compiler component/probe evidence and Gateway/Design lifecycle evidence
+ * [POS]: Startup composition for the main window launcher; the Browser/App/Design E2E drivers are test-only instrumentation gated by env vars and own no service lifecycle
  */
 
 import { randomUUID } from "node:crypto";
@@ -30,6 +30,7 @@ type BrowserE2eDriver = {
 };
 
 type AppGuiE2eDriver = {
+  compilerEvidence(): ReturnType<AppsService["store"]["probeAppGuiCompiler"]>;
   rebuild(appId: string, conversationId: string): Promise<void>;
   gatewayRequests(appId: string): Readonly<{ total: number; generations: readonly Readonly<{ generationId: string; count: number }>[]; evidence: readonly unknown[] }>;
 };
@@ -71,6 +72,7 @@ export function installAppGuiE2eDriver(service: AppsService) {
     __aiChatAppGuiE2E?: AppGuiE2eDriver;
   };
   scope.__aiChatAppGuiE2E = {
+    compilerEvidence() { return service.store.probeAppGuiCompiler(); },
     gatewayRequests(appId) {
       const record = service.store.get(appId);
       return {

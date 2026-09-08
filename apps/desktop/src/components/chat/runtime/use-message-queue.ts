@@ -41,12 +41,10 @@ import {
   claimNext,
   canSteerQueueItem,
   createQueueItem,
-  editableItem,
   enqueue as enqueueItem,
   markAmbiguous,
   markManualCustody,
   moveItem,
-  promote,
   queuedPrompt,
   registerOwner,
   releaseOwner,
@@ -143,6 +141,19 @@ export function useMessageQueue({
     },
     [chatId, ports]
   );
+  const flushAcks = useCallback(
+    () =>
+      flushPendingComposerAcks({
+        manual: ports.ackManual,
+        steer: ports.ackSteer,
+      }),
+    [ports]
+  );
+  const ackSteer = useCallback(
+    (outboxRef: string) =>
+      registerPendingComposerAck({ kind: "steer", id: outboxRef, chatId }),
+    [chatId]
+  );
 
   useEffect(() => {
     const owner = ownerRef.current;
@@ -216,10 +227,7 @@ export function useMessageQueue({
         }
         return { ...current, queue };
       });
-      void flushPendingComposerAcks({
-        manual: ports.ackManual,
-        steer: ports.ackSteer,
-      });
+      void flushAcks();
       if (result.kind === "accepted" && ports.outcome && ports.ackOutcome) {
         void ports
           .outcome(frozen.intentId)
@@ -253,6 +261,7 @@ export function useMessageQueue({
     canDrain,
     chatId,
     failEditable,
+    flushAcks,
     ports,
     state.queue.items.length,
     state.queue.paused,
@@ -273,18 +282,11 @@ export function useMessageQueue({
       });
       if (ack) void ports.ackOutcome?.(ack).catch(() => undefined);
       if (steerAck) {
-        registerPendingComposerAck({
-          kind: "steer",
-          id: steerAck,
-          chatId,
-        });
-        void flushPendingComposerAcks({
-          manual: ports.ackManual,
-          steer: ports.ackSteer,
-        });
+        ackSteer(steerAck);
+        void flushAcks();
       }
     },
-    [chatId, ports]
+    [ackSteer, chatId, flushAcks, ports]
   );
 
   const outcomePortsRef = useRef(ports);
@@ -318,10 +320,7 @@ export function useMessageQueue({
           ? { ...current, handledSteerIntents: new Set() }
           : current
       );
-      void flushPendingComposerAcks({
-        manual: ports.ackManual,
-        steer: ports.ackSteer,
-      });
+      void flushAcks();
       return;
     }
     updateComposer(chatId, (current) => {
@@ -345,11 +344,7 @@ export function useMessageQueue({
         }
       );
       for (const outboxRef of reconciled.acknowledgements) {
-        registerPendingComposerAck({
-          kind: "steer",
-          id: outboxRef,
-          chatId,
-        });
+        ackSteer(outboxRef);
         handled.add(outboxRef);
       }
       const handledChanged =
@@ -365,12 +360,9 @@ export function useMessageQueue({
             handledSteerIntents: handled,
           };
     });
-    void flushPendingComposerAcks({
-      manual: ports.ackManual,
-      steer: ports.ackSteer,
-    });
+    void flushAcks();
     retainComposerResources(chatId);
-  }, [chatId, noticeCurrent, ports, steerIntents]);
+  }, [ackSteer, chatId, flushAcks, noticeCurrent, steerIntents]);
 
   const enqueue = useCallback((message: PromptInputMessage) => {
     let reason: QueueError | undefined;
@@ -514,23 +506,18 @@ export function useMessageQueue({
           result
         );
         if (settled.ack) {
-          registerPendingComposerAck({
-            kind: "steer",
-            id: outboxRef,
-            chatId,
-          });
+          ackSteer(outboxRef);
         }
         if (settled.notice) noticeCurrent(settled.notice);
         return { ...current, queue: settled.queue };
       });
-      void flushPendingComposerAcks({
-        manual: ports.ackManual,
-        steer: ports.ackSteer,
-      });
+      void flushAcks();
       retainComposerResources(chatId);
     })();
   }, [
+    ackSteer,
     chatId,
+    flushAcks,
     isTurnRunning,
     noticeCurrent,
     ports,
@@ -593,15 +580,8 @@ export function useMessageQueue({
                 kind: "admission",
               });
               if (item.outboxRef) {
-                registerPendingComposerAck({
-                  kind: "steer",
-                  id: item.outboxRef,
-                  chatId,
-                });
-                void flushPendingComposerAcks({
-                  manual: ports.ackManual,
-                  steer: ports.ackSteer,
-                });
+                ackSteer(item.outboxRef);
+                void flushAcks();
               }
               retainComposerResources(chatId);
               return;
@@ -627,15 +607,8 @@ export function useMessageQueue({
                   kind: "recovery-installed",
                 });
                 if (item.outboxRef) {
-                  registerPendingComposerAck({
-                    kind: "steer",
-                    id: item.outboxRef,
-                    chatId,
-                  });
-                  void flushPendingComposerAcks({
-                    manual: ports.ackManual,
-                    steer: ports.ackSteer,
-                  });
+                  ackSteer(item.outboxRef);
+                  void flushAcks();
                 }
               }
               return;
@@ -679,18 +652,11 @@ export function useMessageQueue({
               (result.outcome === "injected" &&
                 result.persistState === "persisted");
             if (terminal) {
-              registerPendingComposerAck({
-                kind: "steer",
-                id: item.outboxRef!,
-                chatId,
-              });
+              ackSteer(item.outboxRef!);
             }
             return { ...current, queue };
           });
-          void flushPendingComposerAcks({
-            manual: ports.ackManual,
-            steer: ports.ackSteer,
-          });
+          void flushAcks();
           retainComposerResources(chatId);
         })
         .catch((cause) => {
@@ -703,7 +669,7 @@ export function useMessageQueue({
           }));
         });
     },
-    [chatId, noticeCurrent, ports, reconcileManualOutcome, t]
+    [ackSteer, chatId, flushAcks, noticeCurrent, ports, reconcileManualOutcome, t]
   );
 
   const mutate = useCallback(
@@ -725,7 +691,6 @@ export function useMessageQueue({
       retainComposerResources(chatId);
     },
     move: (from: number, to: number) => mutate((queue) => moveItem(queue, from, to)),
-    promote: (id: string) => mutate((queue) => promote(queue, id)),
     steer,
     edit,
     pause: () => mutate((queue) => setQueuePaused(queue, true)),
@@ -740,7 +705,6 @@ export function useMessageQueue({
       canSteerQueueItem(item, isTurnRunning),
     resendAmbiguous: (id: string) => decideAmbiguous(id, "resend"),
     removeAmbiguous: (id: string) => decideAmbiguous(id, "dismiss"),
-    editable: editableItem,
   }), [
     chatId,
     decideAmbiguous,

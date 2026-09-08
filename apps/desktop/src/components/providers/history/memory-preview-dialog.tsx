@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on HistoryMemoryPreview, I18n, ConfirmationDialog with the single-use Grant commit
- * [OUTPUT]: Provides HistoryMemoryPreviewDialog; Delta after manual refreshment can only be delivered by second confirmation via abstract/digest
- * [POS]: The shared Memory license of providers/histories; Not preserving future authorization, not submitting when closed
+ * [INPUT]: Depends on HistoryMemoryPreview, i18n, and ConfirmationDialog for a single-use grant commit
+ * [OUTPUT]: Provides HistoryMemoryPreviewDialog; a delta refreshed after opening must pass a second confirmation against its snapshot digest before commit
+ * [POS]: Shared Memory-grant confirmation for providers/history; grants apply once and are neither persisted nor submitted on close
  */
 
 import { useState } from "react";

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, and all shared renderer IPC contracts
- * [OUTPUT]: Denies WebRTC in every frame main world, then exposes role-filtered typed bridges including a read-only file-manager fact, ID-only Project Reveal, conversation-scoped branch reads, bounded Chat timeline/fork/find queries, fenced App grants, surface navigation, App Pin, exact-Project Tools, and scoped MCP only in trusted top frames
+ * [OUTPUT]: Exposes validated renderer bridges and fixed-purpose panel opening, preserving manual/adopt retry intent and fixed-purpose Agent management while rejecting extra navigation arguments.
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge
  */
 
@@ -10,6 +10,7 @@ import {
   webUtils,
   type IpcRendererEvent,
 } from "electron";
+import { PRESENCE_CHANNEL, type PresenceBridge } from "../../shared/presence-ipc";
 import {
   APP_CHANNEL,
   systemFileManagerForPlatform,
@@ -20,11 +21,7 @@ import {
   type AddAppInput,
   type AppsBridgeApi,
 } from "../../shared/apps-ipc";
-import {
-  AGENT_CHANNEL,
-  type AgentBridgeApi,
-  type AgentSendPayload,
-} from "../../shared/agent-ipc";
+import { AGENT_CHANNEL, type AgentBridgeApi } from "../../shared/agent-ipc";
 import {
   CHATS_CHANNEL,
   type ChatsBridgeApi,
@@ -254,8 +251,6 @@ contextBridge.exposeInMainWorld("projectPersonalization", {
 } satisfies ProjectPersonalizationBridgeApi);
 
 contextBridge.exposeInMainWorld("agent", {
-  send: (payload: AgentSendPayload) =>
-    ipcRenderer.invoke(AGENT_CHANNEL.send, payload),
   cancel: (requestId: string) =>
     ipcRenderer.send(AGENT_CHANNEL.cancel, requestId),
   respondApproval: (response) =>
@@ -303,9 +298,25 @@ contextBridge.exposeInMainWorld("app", {
     ipcRenderer.invoke(APP_CHANNEL.releaseFile, fileRef),
 } satisfies AppBridgeApi);
 
+contextBridge.exposeInMainWorld("presence", {
+  snapshot: () => ipcRenderer.invoke(PRESENCE_CHANNEL.snapshot),
+  refresh: () => ipcRenderer.invoke(PRESENCE_CHANNEL.refresh),
+  observe: () => ipcRenderer.invoke(PRESENCE_CHANNEL.observe),
+  setLaunchAtLogin: (enabled) => ipcRenderer.invoke(PRESENCE_CHANNEL.setLaunchAtLogin, enabled),
+  setWindowRetention: (enabled) => ipcRenderer.invoke(PRESENCE_CHANNEL.setWindowRetention, enabled),
+  openPanel: () => ipcRenderer.invoke(PRESENCE_CHANNEL.openPanel),
+  togglePanel: () => ipcRenderer.invoke(PRESENCE_CHANNEL.togglePanel),
+  openSystemSettings: () => ipcRenderer.invoke(PRESENCE_CHANNEL.openSystemSettings),
+  presented: (value) => ipcRenderer.invoke(PRESENCE_CHANNEL.presented, value),
+  onChanged: subscribe(PRESENCE_CHANNEL.changed), onConsumed: subscribe(PRESENCE_CHANNEL.consumed),
+} satisfies PresenceBridge);
+
 contextBridge.exposeInMainWorld("update", {
   snapshot: () => ipcRenderer.invoke(UPDATE_CHANNEL.snapshot),
   check: () => ipcRenderer.invoke(UPDATE_CHANNEL.check),
+  checkForApp: (requestId) => ipcRenderer.invoke(UPDATE_CHANNEL.checkForApp, requestId),
+  dismissAppRequirement: () => ipcRenderer.invoke(UPDATE_CHANNEL.dismissAppRequirement),
+  installNow: (candidateId) => ipcRenderer.invoke(UPDATE_CHANNEL.installNow, candidateId),
   downloadAndInstall: () =>
     ipcRenderer.invoke(UPDATE_CHANNEL.downloadAndInstall),
   appInfo: () => ipcRenderer.invoke(UPDATE_CHANNEL.appInfo),
@@ -340,6 +351,7 @@ contextBridge.exposeInMainWorld("workspaceFiles", {
 } satisfies WorkspaceFilesBridgeApi);
 
 contextBridge.exposeInMainWorld("sections", {
+  agentSwitchEligibility: (chatId) => ipcRenderer.invoke(SECTIONS_CHANNEL.agentSwitchEligibility, chatId),
   submitManualTurn: (input) =>
     ipcRenderer.invoke(SECTIONS_CHANNEL.submitManualTurn, input),
   cancelManualTurn: (requestId) =>
@@ -422,6 +434,7 @@ contextBridge.exposeInMainWorld("apps", {
     ipcRenderer.invoke(APPS_CHANNEL.revokeExtensionGrant, appId),
   rebuildExtensionGeneration: (appId) =>
     ipcRenderer.invoke(APPS_CHANNEL.rebuildExtensionGeneration, appId),
+  checkAgentTools: (appId) => ipcRenderer.invoke(APPS_CHANNEL.checkAgentTools, appId),
   capabilities: (appId) =>
     ipcRenderer.invoke(APPS_CHANNEL.capabilities, appId),
   guiInfo: (input) => ipcRenderer.invoke(APPS_CHANNEL.guiInfo, input),
@@ -457,6 +470,11 @@ contextBridge.exposeInMainWorld("apps", {
     ipcRenderer.invoke(APPS_CHANNEL.setDesignEnabled, input),
   readReadme: (appId) =>
     ipcRenderer.invoke(APPS_CHANNEL.readReadme, appId),
+  onCompatibilityChanged: (callback) => subscribe(APPS_CHANNEL.compatibilityChanged)(callback),
+  compatibilityRequests: () => ipcRenderer.invoke(APPS_CHANNEL.compatibilityRequests),
+  resumeCompatibility: (requestId) => ipcRenderer.invoke(APPS_CHANNEL.resumeCompatibility, requestId),
+  applyCompatibility: (requestId) => ipcRenderer.invoke(APPS_CHANNEL.applyCompatibility, requestId),
+  forgetCompatibility: (requestId) => ipcRenderer.invoke(APPS_CHANNEL.forgetCompatibility, requestId),
   probeRepo: (repoUrl) =>
     ipcRenderer.invoke(APPS_CHANNEL.probeRepo, repoUrl),
   discardProbe: (preflightId) =>
@@ -490,10 +508,6 @@ contextBridge.exposeInMainWorld("chats", {
   timelineAround: (input) => ipcRenderer.invoke(CHATS_CHANNEL.timelineAround, input),
   outlinePage: (input) => ipcRenderer.invoke(CHATS_CHANNEL.outlinePage, input),
   findMessages: (input) => ipcRenderer.invoke(CHATS_CHANNEL.findMessages, input),
-  create: (input) => ipcRenderer.invoke(CHATS_CHANNEL.create, input),
-  createForApp: (input) =>
-    ipcRenderer.invoke(CHATS_CHANNEL.createForApp, input),
-  append: (input) => ipcRenderer.invoke(CHATS_CHANNEL.append, input),
   forkPreflight: (input) =>
     ipcRenderer.invoke(CHATS_CHANNEL.forkPreflight, input),
   fork: (input) => ipcRenderer.invoke(CHATS_CHANNEL.fork, input),
@@ -620,15 +634,9 @@ contextBridge.exposeInMainWorld("settings", {
   listBackends: () => ipcRenderer.invoke(SETTINGS_CHANNEL.listBackends),
   listModels: (backend, scope) =>
     ipcRenderer.invoke(SETTINGS_CHANNEL.listModels, backend, scope),
-  resolveChatOptions: (scope, backend) =>
-    ipcRenderer.invoke(SETTINGS_CHANNEL.resolveChatOptions, scope, backend),
-  setChatOptions: (scope, options, resetSessionEffective) =>
-    ipcRenderer.invoke(
-      SETTINGS_CHANNEL.setChatOptions,
-      scope,
-      options,
-      resetSessionEffective
-    ),
+  getBackendDefaults: (backend) => ipcRenderer.invoke(SETTINGS_CHANNEL.getBackendDefaults, backend),
+  rememberChatDefaults: (options) => ipcRenderer.invoke(SETTINGS_CHANNEL.rememberChatDefaults, options),
+  patchChatOptions: (input, reset) => ipcRenderer.invoke(SETTINGS_CHANNEL.patchChatOptions, input, reset),
 } satisfies SettingsBridgeApi);
 
 contextBridge.exposeInMainWorld("projectTools", {
@@ -676,7 +684,15 @@ contextBridge.exposeInMainWorld("setup", {
     ipcRenderer.invoke(SETUP_CHANNEL.refreshLatest, backend),
   terminalAction: (backend, action) =>
     ipcRenderer.invoke(SETUP_CHANNEL.terminalAction, { backend, action }),
-  onEvent: subscribe(SETUP_CHANNEL.event),
+  cancelCheck: (backend) => ipcRenderer.invoke(SETUP_CHANNEL.cancelCheck, backend),
+  openManagement: (...args: unknown[]) => args.length
+    ? Promise.reject(new Error("Agent management accepts no route or URL"))
+    : ipcRenderer.invoke(SETUP_CHANNEL.openManagement),
+  onEvent: (callback) => {
+    const release = subscribe<import("../../shared/setup-ipc").SetupEvent>(SETUP_CHANNEL.event)(callback);
+    void ipcRenderer.invoke(SETUP_CHANNEL.watch).catch(() => undefined);
+    return release;
+  },
 } satisfies SetupBridgeApi);
 
 contextBridge.exposeInMainWorld("usage", {

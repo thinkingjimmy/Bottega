@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on source staging, admission/disclosure, scoped Registry CAS, durable Project resource admission, lifecycle/owner receipts, epoch storage, and App migration ports
+ * [INPUT]: Depends on source staging, admission/disclosure, scoped Registry CAS, durable Project resource admission, lifecycle/owner receipts, epoch storage, and App migration ports, and statusError from main/errors
  * [OUTPUT]: Provides scope-frozen preflight→Project claim→authorization→seal→activate→migration with crash-released durable admission
  * [POS]: Extension install ordering and trust boundary; confirm accepts only the frozen preflight identity/content receipt and never accepts scope
  */
@@ -15,8 +15,9 @@ import {
   productResourceScopeKey,
   type ProductResourceScope,
 } from "../../../../shared/product-resource-scope";
+import { statusError } from "../../errors";
 import {
-  admitAnyExtensionPackage,
+  admitExtensionPackageWithAdapter,
   type ExtensionAdapterId,
   type ExtensionAdmission,
 } from "../admission";
@@ -139,14 +140,12 @@ export class ExtensionInstaller {
     private readonly registry: ExtensionRegistryStore,
     private readonly ledger: ExtensionLifecycleLedger,
     private readonly epochs: PluginDataEpochStore,
-    _legacyValidatorFixtureDigest: Sha256Digest,
     /* 取源是机制、可注入；来源白名单是政策，恒在下面那一行执行。 */
     private readonly fetchSource = fetchExtensionSource,
     private readonly faults: ExtensionInstallerFaults = {},
     private readonly projectAuthority: ExtensionProjectInstallAuthority =
       missingProjectInstallAuthority
   ) {
-    void _legacyValidatorFixtureDigest;
     this.stagingRoot = join(userData, "agent-extensions", "staging");
     this.packagesRoot = join(userData, "agent-extensions", "packages");
     this.contentStore = extensionContentStore(this.packagesRoot);
@@ -227,7 +226,7 @@ export class ExtensionInstaller {
         (operation.kind === "install" || operation.kind === "update") &&
         operation.phase === "aborted"
       ) {
-        await this.resources.collectStagedContent(operation.contentDigest);
+        if (operation.contentDigest) await this.resources.collectStagedContent();
       }
     }
     /* completed 是「不会再写 Registry/Data」的 durable checkpoint；若崩在
@@ -237,7 +236,7 @@ export class ExtensionInstaller {
         (operation.kind === "install" || operation.kind === "update") &&
         operation.phase === "completed"
       ) {
-        await this.registry.releaseInstallReservation(operation.operationId);
+        await this.registry.installs.releaseInstallReservation(operation.operationId);
         await this.resources.releaseProjectAdmission(operation);
       }
     }
@@ -264,7 +263,7 @@ export class ExtensionInstaller {
           operation.installAuthorizationState === "prepared"
         ) {
           await this.resumePreparedAuthorization(operation).catch(async (cause) => {
-            if (this.registry.installReservation(operation.operationId)) {
+            if (this.registry.installs.installReservation(operation.operationId)) {
               await this.ledger.block(operation.operationId, {
                 code: "authorization-incomplete",
                 message: cause instanceof Error ? cause.message : String(cause),
@@ -279,20 +278,20 @@ export class ExtensionInstaller {
         if (operation.phase === "sealing" && sealed) {
           /* 恢复拿不到那次预检的能力 diff，所以只走最保守的一档：新代回到
              inert，用户重新逐项启用。少启用永远比多启用安全。 */
-          await this.registry.activateGeneration(sealed);
+          await this.registry.installs.activateGeneration(sealed);
           const current = this.ledger.find(operation.operationId)!;
           await this.ledger.advance(
             operation.operationId,
             current.revision,
             "completed"
           );
-          await this.registry.releaseInstallReservation(operation.operationId);
+          await this.registry.installs.releaseInstallReservation(operation.operationId);
           await this.resources.releaseProjectAdmission(operation);
           continue;
         }
-        await this.registry.releaseInstallReservation(operation.operationId);
+        await this.registry.installs.releaseInstallReservation(operation.operationId);
         await this.ledger.abort(operation.operationId);
-        await this.resources.collectStagedContent(operation.contentDigest);
+        if (operation.contentDigest) await this.resources.collectStagedContent();
         await this.resources.releaseProjectAdmission(operation);
       }
     }
@@ -336,9 +335,9 @@ export class ExtensionInstaller {
       if (operation.phase !== "completed" && operation.phase !== "aborted") {
         await this.ledger.abort(operation.operationId);
       }
-      await this.registry.releaseInstallReservation(operation.operationId);
-      if (operation.phase !== "completed") {
-        await this.resources.collectStagedContent(operation.contentDigest);
+      await this.registry.installs.releaseInstallReservation(operation.operationId);
+      if (operation.phase !== "completed" && operation.contentDigest) {
+        await this.resources.collectStagedContent();
       }
       await this.projectAuthority.release({
         projectId,
@@ -361,9 +360,9 @@ export class ExtensionInstaller {
     try {
       const sourceIdentity = sourceIdentityOf(staged.provenance);
       const installIdentity = installIdentityOf(request.scope, staged.provenance);
-      const owner = this.registry.packageInventory(installIdentity);
+      const owner = this.registry.lifecycle.packageInventory(installIdentity);
       const expectedActiveGenerationRef = owner?.activeGenerationRef ?? null;
-      this.registry.assertInstallCas(
+      this.registry.lifecycle.assertInstallCas(
         installIdentity,
         expectedActiveGenerationRef,
         staged.adapterId,
@@ -376,10 +375,10 @@ export class ExtensionInstaller {
         staged.packageRoot,
         staged.contentDigest
       );
-      const evidence = await admitAnyExtensionPackage(
+      const evidence = await admitExtensionPackageWithAdapter(
+        staged.adapterId,
         packageRoot,
-        staged.provenance,
-        staged.adapterId
+        staged.provenance
       );
       const admission = evidence.admission;
       if (!admission.valid) {
@@ -406,9 +405,9 @@ export class ExtensionInstaller {
             previousGenerationId: previous.packageGenerationId,
             ...diffCapabilities(
               await discloseInstalledGeneration({
-                packageRoot: this.resources.contentRoot(previous.contentDigest),
+                packageRoot: this.contentStore.contentRoot(previous.contentDigest),
                 adapterId: asAdapterId(previous.admissionEvidence.adapterId),
-                source: this.registry.generationSource(
+                source: this.registry.installs.generationSource(
                   previous.packageGenerationId
                 )!,
               }),
@@ -482,7 +481,7 @@ export class ExtensionInstaller {
       if (contentClaimId && ledgerOutcomeKnown) {
         await this.contentStore.releaseClaim(contentClaimId);
         contentClaimId = null;
-        await this.resources.collectStagedContent(staged.contentDigest);
+        await this.resources.collectStagedContent();
       }
       throw cause;
     } finally {
@@ -504,9 +503,7 @@ export class ExtensionInstaller {
       held.contentDigest !== input.expectedContentDigest ||
       held.source.resolvedCommit !== input.expectedResolvedCommit
     ) {
-      throw Object.assign(new Error("扩展预检已失效或与冻结提交不一致"), {
-        status: 409,
-      });
+      throw statusError(409, "扩展预检已失效或与冻结提交不一致");
     }
     const migrate = input.migrateAppIds ?? [];
     const known = new Set(held.affectedApps.map((item) => item.appId));
@@ -548,7 +545,7 @@ export class ExtensionInstaller {
       );
       this.lifecycleOwnershipTransfers.delete(input.preflightId);
       await this.faults.beforeReservation?.(held.operationId);
-      await this.registry.reserveInstall({
+      await this.registry.installs.reserveInstall({
         operationId: held.operationId,
         packageGenerationId: prepared.identities.packageGenerationId,
         installIdentity: held.installIdentity,
@@ -571,11 +568,11 @@ export class ExtensionInstaller {
          fresh process can reconcile the two ledgers. */
       if (
         (cause as { status?: number }).status === 409 &&
-        !this.registry.installReservation(held.operationId)
+        !this.registry.installs.installReservation(held.operationId)
       ) {
         try {
           await this.ledger.abort(held.operationId);
-          await this.resources.collectStagedContent(held.contentDigest);
+          await this.resources.collectStagedContent();
           if (projectAdmissionAcquired) {
             await this.resources.releaseProjectAdmission(held);
           }
@@ -622,7 +619,7 @@ export class ExtensionInstaller {
     }
     const settled = this.ledger.find(operationId)!;
     await this.ledger.advance(operationId, settled.revision, "completed");
-    await this.registry.releaseInstallReservation(operationId);
+    await this.registry.installs.releaseInstallReservation(operationId);
     await this.resources.releaseProjectAdmission(operation);
     return generation;
   }
@@ -640,10 +637,10 @@ export class ExtensionInstaller {
     } catch (cause) {
       if (
         (cause as { status?: number }).status === 409 &&
-        !this.registry.installReservation(operation.operationId)
+        !this.registry.installs.installReservation(operation.operationId)
       ) {
         await this.ledger.abort(operation.operationId);
-        await this.resources.collectStagedContent(operation.contentDigest);
+        if (operation.contentDigest) await this.resources.collectStagedContent();
         await this.resources.releaseProjectAdmission(operation);
       }
       throw cause;
@@ -657,7 +654,7 @@ export class ExtensionInstaller {
     operation: ExtensionLifecycleOperation,
     replay: AuthorizedExtensionInstall
   ) {
-    return this.registry.reserveInstall({
+    return this.registry.installs.reserveInstall({
       operationId: operation.operationId,
       packageGenerationId: operation.identities.packageGenerationId,
       installIdentity: operation.installIdentity,
@@ -689,7 +686,7 @@ export class ExtensionInstaller {
       displayLabel: replay.displayName,
       sourceLabel: replay.source.normalizedUrl,
     });
-    const existing = this.resources.generationRecord(
+    const existing = this.registry.lifecycle.generationRecordById(
       operation.identities.packageGenerationId
     );
     if (
@@ -701,7 +698,7 @@ export class ExtensionInstaller {
     }
     const generation =
       existing ??
-      (await this.registry.sealGeneration({
+      (await this.registry.installs.sealGeneration({
         packageGenerationId: operation.identities.packageGenerationId,
         installIdentity: operation.installIdentity,
         scope: replay.scope,
@@ -723,7 +720,7 @@ export class ExtensionInstaller {
        后者才是启用。不 activate 的话 inventory 里连 component 都列不出来，用户
        将面对一个没有任何可启用项的包——那不是「默认 inert」，那是装坏了。
        扩权的更新必须重新逐项启用；能力未变才允许沿用旧代的启用集合。 */
-    await this.registry.activateGeneration(
+    await this.registry.installs.activateGeneration(
       {
         packageGenerationId: generation.packageGenerationId,
         recordDigest: generation.recordDigest,
@@ -747,7 +744,7 @@ export class ExtensionInstaller {
       operation.phase !== "staged" ||
       operation.installAuthorizationState !== "none" ||
       operation.authorizedInstall ||
-      this.registry.installReservation(operation.operationId)
+      this.registry.installs.installReservation(operation.operationId)
     ) {
       /* Prepared/committed/uncertain operations belong to startup recovery.
          Dropping renderer state is not evidence that either durable store did
@@ -757,7 +754,7 @@ export class ExtensionInstaller {
     }
     this.held.delete(preflightId);
     await this.ledger.abort(held.operationId);
-    await this.resources.collectStagedContent(held.contentDigest);
+    await this.resources.collectStagedContent();
   }
 
 }

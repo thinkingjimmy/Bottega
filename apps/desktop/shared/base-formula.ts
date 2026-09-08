@@ -7,10 +7,10 @@
 import type { BaseCellValue, BaseColumn } from "./base-values";
 
 export const BASE_FORMULA_EXPRESSION_LIMIT = 4_096;
-export const BASE_FORMULA_TOKEN_LIMIT = 512;
-export const BASE_FORMULA_DEPTH_LIMIT = 32;
-export const BASE_FORMULA_STEP_LIMIT = 2_048;
-export const BASE_FORMULA_OUTPUT_BYTE_LIMIT = 16 * 1024;
+const BASE_FORMULA_TOKEN_LIMIT = 512;
+const BASE_FORMULA_DEPTH_LIMIT = 32;
+const BASE_FORMULA_STEP_LIMIT = 2_048;
+const BASE_FORMULA_OUTPUT_BYTE_LIMIT = 16 * 1024;
 export const BASE_FORMULA_MEMO_LIMIT = 1_024;
 
 export type BaseFormulaResultType = "number" | "text" | "boolean";

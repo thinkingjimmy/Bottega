@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on crypto/fs/path and the SQLite blob reference tables
+ * [INPUT]: Depends on crypto/fs/path, the persistence errno predicate, and the SQLite blob reference tables
  * [OUTPUT]: Provides ImportBlobStore: content-addressed publication of oversized imported content with an identity check on every existing file, plus best-effort unlinking
  * [POS]: The filesystem half of HistoryImportRepository; nothing above it knows a blob is a file
  */
@@ -20,6 +20,7 @@ import {
 import { join } from "node:path";
 import type { SqliteDatabase } from "../connection";
 import { digest } from "./codec";
+import { isErrnoCode } from "../../../persistence/durable-json";
 
 /* 超过阈值的导入正文不进 chunk 表，进一个以内容摘要命名的文件。同一份内容
    写第二次时不重写，只核对现场那个文件确实还是它自称的那份内容——名字是
@@ -51,7 +52,7 @@ export class ImportBlobStore {
     for (const contentDigest of contentDigests) {
       try { unlinkSync(join(this.root, contentDigest)); }
       catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+        if (!isErrnoCode(cause, "ENOENT")) throw cause;
       }
     }
   }
@@ -67,7 +68,7 @@ export class ImportBlobStore {
       }
       return destination;
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+      if (!isErrnoCode(cause, "ENOENT")) throw cause;
     }
     const temporary = join(root, `.blob-${randomUUID()}`);
     const file = openSync(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
@@ -77,7 +78,7 @@ export class ImportBlobStore {
     } finally { closeSync(file); }
     try { linkSync(temporary, destination); }
     catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
+      if (!isErrnoCode(cause, "EEXIST")) throw cause;
     } finally { unlinkSync(temporary); }
     const published = lstatSync(destination);
     if (

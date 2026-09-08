@@ -11,11 +11,6 @@ export const chatComposerEs: typeof chatComposerEn = {
     defaultEffort: "Predeterminado",
     standardSpeed: "Estándar",
   },
-  agent: {
-    current: "Agent actual: {{backend}}",
-    checking: "Comprobando el estado de {{backend}}",
-    selectCurrent: "Elegir Agent; actual: {{backend}}",
-  },
   approval: {
     requestChanges: "Solicitar cambios",
     decline: "Rechazar",
@@ -54,7 +49,6 @@ export const chatComposerEs: typeof chatComposerEn = {
   },
   surface: {
     plan: "Plan",
-    imageUnsupported: "El Agent actual no admite imágenes. Las selecciones de la galería están pausadas; vuelve a añadir imágenes locales cuando se recupere la compatibilidad.",
     authorizeFileFailed: "No se pudo autorizar {{file}}",
     branchBusy: "Espera a que termine la operación de rama antes de enviar.",
     fileAuthorizationBusy: "Espera a que termine la autorización del archivo antes de enviar.",

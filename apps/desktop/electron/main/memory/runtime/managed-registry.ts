@@ -17,7 +17,7 @@ import {
   type MemoryRuntimeConfigMutation,
 } from "../../../../shared/memory-ipc";
 import { rendererIpc, type RendererIpcRegistrar } from "../../ipc-registrar";
-import { MEMORY_PROVIDER_MODULES } from "../providers/registry";
+import { assertMemoryProviderId, MEMORY_PROVIDER_MODULES } from "../providers/registry";
 import {
   ManagedRuntimeCoordinator,
   type CoordinatorOptions,
@@ -227,30 +227,30 @@ export class ManagedRuntimeRegistry {
   ) {
     assertPlatformCapability(this.platformSupport, "memory");
     this.window = window;
-    registrar(window, rendererUrl, "拒绝非主窗口的 Memory 请求")
+    registrar(rendererUrl, "拒绝非主窗口的 Memory 请求")
       .handle(MEMORY_CHANNEL.runtimeGet, (raw) =>
-        this.snapshot(assertProviderId(raw))
+        this.snapshot(assertMemoryProviderId(raw))
       )
       .handle(MEMORY_CHANNEL.runtimeRefresh, (raw) =>
-        this.refresh(assertProviderId(raw))
+        this.refresh(assertMemoryProviderId(raw))
       )
       .handle(MEMORY_CHANNEL.runtimeCheckUpdates, (raw) => {
         const input = assertObject(raw);
         if (typeof input.force !== "boolean") {
           throw new Error("Memory 版本检查参数无效");
         }
-        return this.require(assertProviderId(input.providerId)).checkUpdates(
+        return this.require(assertMemoryProviderId(input.providerId)).checkUpdates(
           input.force
         );
       })
       .handle(MEMORY_CHANNEL.runtimeVersions, (raw) =>
-        this.listVersions(assertProviderId(raw))
+        this.listVersions(assertMemoryProviderId(raw))
       )
       .handle(MEMORY_CHANNEL.runtimeRun, (raw) => {
         const input = assertObject(raw);
         const operation = assertMemoryRuntimeRendererCommand(input.operation);
         return this.run(
-          assertProviderId(input.providerId),
+          assertMemoryProviderId(input.providerId),
           operation,
           typeof input.version === "string" ? input.version : undefined
         );
@@ -258,14 +258,14 @@ export class ManagedRuntimeRegistry {
       .handle(MEMORY_CHANNEL.runtimeConfig, (raw) => {
         const input = assertObject(raw);
         return this.writeConfig(
-          assertProviderId(input.providerId),
+          assertMemoryProviderId(input.providerId),
           assertValues(input.values),
           assertOptionalAuthorityToken(input.authorityToken)
         );
       })
       .handle(MEMORY_CHANNEL.runtimeConfigPreview, (raw) => {
         const input = assertObject(raw);
-        const providerId = assertProviderId(input.providerId);
+        const providerId = assertMemoryProviderId(input.providerId);
         const mutation = assertConfigMutation(input.mutation);
         assertMutationProvider(providerId, mutation);
         return mutation.kind === "write"
@@ -274,7 +274,7 @@ export class ManagedRuntimeRegistry {
       })
       .handle(MEMORY_CHANNEL.runtimeConfigAuthority, (raw) => {
         const input = assertObject(raw);
-        const providerId = assertProviderId(input.providerId);
+        const providerId = assertMemoryProviderId(input.providerId);
         const mutation = assertConfigMutation(input.mutation);
         assertMutationProvider(providerId, mutation);
         const digest = assertDigest(input.previewDigest);
@@ -297,7 +297,7 @@ export class ManagedRuntimeRegistry {
       .handle(MEMORY_CHANNEL.requestDestructiveAuthority, (raw) => {
         const input = assertObject(raw);
         return this.requireLifecycle().requestDestructiveAuthority(
-          assertProviderId(input.providerId),
+          assertMemoryProviderId(input.providerId),
           assertMemoryDestructiveOperation(input.operation)
         );
       })
@@ -341,7 +341,7 @@ function assertConfigIssue(value: unknown): MemoryConfigIssue {
     return item;
   };
   return {
-    providerId: assertProviderId(input.providerId),
+    providerId: assertMemoryProviderId(input.providerId),
     instanceId: text("instanceId", /^[a-f0-9]{32}$/),
     file: text("file", /^[A-Za-z0-9._-]{1,255}$/),
     expectedHash: text("expectedHash", /^[a-f0-9]{64}$/),
@@ -404,13 +404,6 @@ function assertObject(value: unknown): Record<string, unknown> {
     throw new Error("Memory 运行时参数无效");
   }
   return value as Record<string, unknown>;
-}
-
-function assertProviderId(value: unknown) {
-  if (typeof value !== "string" || !/^[a-z0-9-]{1,64}$/.test(value)) {
-    throw new Error("Memory provider id 无效");
-  }
-  return value;
 }
 
 function assertOptionalAuthorityToken(value: unknown) {

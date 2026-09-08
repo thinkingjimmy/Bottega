@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/path, shared GUI page Binds to generation-bound Base GUI binding
- * [OUTPUT]: Provides scoped GuiTokenRegistry, collectGuiPages, and redirects capability-aware BaseGuiApi to the factory and port
- * [POS]: GUI token/page scanning of the door of the apps module; HTTP contract sinks ../base-gui/api, owner with durable mutation to inject port
+ * [INPUT]: Depends on Node crypto/fs/path, the shared BaseGuiLiveBinding type, and the shared isValidGuiPage validator
+ * [OUTPUT]: Provides GuiTokenRegistry (per-surface, in-memory, constant-time-verified GUI tokens), collectGuiPages (bounded, symlink-safe gui/ directory scan), and re-exports createBaseGuiApi/GuiBasePort/GUI_MUTATION_BODY_TIMEOUT_MS from base-gui/api
+ * [POS]: GUI token minting and page scanning for the apps module's generation layer; the HTTP contract itself lives in base-gui/api, this file only owns token custody and page discovery
  */
 
 import { randomBytes, timingSafeEqual } from "node:crypto";

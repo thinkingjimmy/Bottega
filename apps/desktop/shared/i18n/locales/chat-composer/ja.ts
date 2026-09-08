@@ -11,11 +11,6 @@ export const chatComposerJa: typeof chatComposerEn = {
     defaultEffort: "既定",
     standardSpeed: "標準",
   },
-  agent: {
-    current: "現在の Agent：{{backend}}",
-    checking: "{{backend}} の状態を確認中",
-    selectCurrent: "Agent を選択。現在は {{backend}}",
-  },
   approval: {
     requestChanges: "変更を依頼",
     decline: "拒否",
@@ -54,7 +49,6 @@ export const chatComposerJa: typeof chatComposerEn = {
   },
   surface: {
     plan: "Plan",
-    imageUnsupported: "現在の Agent は画像に対応していません。ギャラリーの選択は一時停止されています。画像対応が戻ったらローカル画像を追加し直してください。",
     authorizeFileFailed: "{{file}} を承認できませんでした",
     branchBusy: "ブランチ操作が完了してから送信してください。",
     fileAuthorizationBusy: "ファイル承認が完了してから送信してください。",

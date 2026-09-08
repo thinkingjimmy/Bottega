@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod plus shared Project, App grant, and workspace identity contracts
- * [OUTPUT]: Provides strict projects.json v8 plus frozen v4/v5/v6/v7 readers, Project App placement/grant invariants, hidden Base custody, lifecycle cleanup, and monotonic generations
- * [POS]: Project persistence schema boundary; ProjectStore owns mutations while this module owns validation and deterministic legacy migration
+ * [OUTPUT]: Provides the strict projects.json v8 grammar, Project App placement/grant invariants, hidden Base custody, lifecycle cleanup, and monotonic generations
+ * [POS]: Project persistence schema boundary; ProjectStore owns mutations while this module owns validation, and any other schemaVersion is corruption
  */
 
 import { isAbsolute } from "node:path";
@@ -95,19 +95,6 @@ const projectAppPlacementsSchema = z
     }
   });
 
-const storedProjectV4Schema = z
-  .object({
-    ...projectIdentityFields,
-    appearance: projectAppearanceSchema.optional(),
-    workspaceBinding: workspaceBindingSchema,
-    grants: grantsSchema,
-    grantRevision: z.number().int().nonnegative(),
-    membershipRevision: z.number().int().nonnegative(),
-    archivedAt: z.number().int().nonnegative().optional(),
-  })
-  .strict()
-  .superRefine(assertWorkspaceProjection);
-
 const projectResourceAdmissionSchema = z
   .object({
     kind: z.literal("extension-install"),
@@ -127,7 +114,7 @@ const projectRemovalOperationSchema = z.enum([
   "convert-compensation",
 ]);
 
-export const projectDeletionCheckpointSchema = z
+const projectDeletionCheckpointSchema = z
   .object({
     projectLifecycleRevision: z.number().int().positive(),
     operation: projectRemovalOperationSchema,
@@ -210,65 +197,6 @@ const workspaceCapabilitiesSchema = z.record(
   z.string().min(1).refine(isAbsolute, "Workspace capability must be absolute")
 );
 
-const storedProjectV5Schema = z
-  .object({
-    ...projectIdentityFields,
-    appearance: projectAppearanceSchema.optional(),
-    workspaceBinding: workspaceBindingSchema,
-    grants: grantsSchema,
-    grantRevision: z.number().int().nonnegative(),
-    membershipRevision: z.number().int().nonnegative(),
-    projectLifecycleRevision: z.number().int().positive(),
-    deletionCheckpoint: projectDeletionCheckpointSchema.optional(),
-    resourceAdmissions: z.array(projectResourceAdmissionSchema).max(64).default([]),
-    archivedAt: z.number().int().nonnegative().optional(),
-  })
-  .strict()
-  .superRefine((project, context) =>
-    assertStoredProject(project, context, false)
-  );
-
-const storedProjectV6Schema = z
-  .object({
-    ...projectIdentityFields,
-    appearance: projectAppearanceSchema.optional(),
-    workspaceBinding: workspaceBindingSchema,
-    role: z.enum(["workspace", "base-custody"]).default("workspace"),
-    nameSource: z.enum(["app", "user"]).default("user"),
-    grants: grantsSchema,
-    grantRevision: z.number().int().nonnegative(),
-    membershipRevision: z.number().int().nonnegative(),
-    projectLifecycleRevision: z.number().int().positive(),
-    deletionCheckpoint: projectDeletionCheckpointSchema.optional(),
-    resourceAdmissions: z.array(projectResourceAdmissionSchema).max(64).default([]),
-    archivedAt: z.number().int().nonnegative().optional(),
-  })
-  .strict()
-  .superRefine((project, context) =>
-    assertStoredProject(project, context, false)
-  );
-
-const storedProjectV7Schema = z
-  .object({
-    ...projectIdentityFields,
-    appearance: projectAppearanceSchema.optional(),
-    workspaceBinding: workspaceBindingSchema,
-    role: z.enum(["workspace", "base-custody"]).default("workspace"),
-    nameSource: z.enum(["app", "user"]).default("user"),
-    appPlacements: projectAppPlacementsSchema,
-    grants: grantsSchema,
-    grantRevision: z.number().int().nonnegative(),
-    membershipRevision: z.number().int().nonnegative(),
-    projectLifecycleRevision: z.number().int().positive(),
-    deletionCheckpoint: projectDeletionCheckpointSchema.optional(),
-    resourceAdmissions: z.array(projectResourceAdmissionSchema).max(64).default([]),
-    archivedAt: z.number().int().nonnegative().optional(),
-  })
-  .strict()
-  .superRefine((project, context) =>
-    assertStoredProject(project, context, true, false)
-  );
-
 export const storedProjectSchema = z
   .object({
     ...projectIdentityFields,
@@ -286,9 +214,7 @@ export const storedProjectSchema = z
     archivedAt: z.number().int().nonnegative().optional(),
   })
   .strict()
-  .superRefine((project, context) =>
-    assertStoredProject(project, context, true, true)
-  );
+  .superRefine(assertStoredProject);
 
 export const projectFileSchema = z
   .object({
@@ -323,54 +249,6 @@ export const projectFileSchema = z
     }
   });
 
-export const projectFileV4Schema = z
-  .object({
-    schemaVersion: z.literal(4),
-    sortMode: projectSortModeSchema.default("manual"),
-    projects: z.array(storedProjectV4Schema),
-    workspaceCapabilities: z.record(
-      capabilityIdSchema,
-      z.string().min(1).refine(isAbsolute, "Workspace capability 必须指向绝对路径")
-    ),
-  })
-  .strict();
-
-export const projectFileV5Schema = z
-  .object({
-    schemaVersion: z.literal(5),
-    commitGeneration: z.number().int().nonnegative(),
-    lifecycleSequence: z.number().int().nonnegative(),
-    sortMode: projectSortModeSchema.default("manual"),
-    projects: z.array(storedProjectV5Schema),
-    deletionReceipts: z.array(projectDeletionReceiptSchema).default([]),
-    workspaceCapabilities: workspaceCapabilitiesSchema,
-  })
-  .strict();
-
-export const projectFileV6Schema = z
-  .object({
-    schemaVersion: z.literal(6),
-    commitGeneration: z.number().int().nonnegative(),
-    lifecycleSequence: z.number().int().nonnegative(),
-    sortMode: projectSortModeSchema.default("manual"),
-    projects: z.array(storedProjectV6Schema),
-    deletionReceipts: z.array(projectDeletionReceiptSchema).default([]),
-    workspaceCapabilities: workspaceCapabilitiesSchema,
-  })
-  .strict();
-
-export const projectFileV7Schema = z
-  .object({
-    schemaVersion: z.literal(7),
-    commitGeneration: z.number().int().nonnegative(),
-    lifecycleSequence: z.number().int().nonnegative(),
-    sortMode: projectSortModeSchema.default("manual"),
-    projects: z.array(storedProjectV7Schema),
-    deletionReceipts: z.array(projectDeletionReceiptSchema).default([]),
-    workspaceCapabilities: workspaceCapabilitiesSchema,
-  })
-  .strict();
-
 export type ProjectDeletionCheckpoint = z.infer<
   typeof projectDeletionCheckpointSchema
 >;
@@ -386,16 +264,14 @@ function assertStoredProject(
   project: {
     workspaceBinding: { kind: string };
     dir: string;
-    role?: "workspace" | "base-custody";
+    role: "workspace" | "base-custody";
     grants: readonly unknown[];
-    appPlacements?: readonly Readonly<{ appId: string }>[];
+    appPlacements: readonly Readonly<{ appId: string }>[];
     resourceAdmissions: readonly ProjectResourceAdmission[];
     deletionCheckpoint?: ProjectDeletionCheckpoint;
     projectLifecycleRevision: number;
   },
-  context: z.RefinementCtx,
-  enforcePlacements: boolean,
-  enforcePlacementGrants = false
+  context: z.RefinementCtx
 ) {
   assertWorkspaceProjection(project, context);
   if (
@@ -409,7 +285,7 @@ function assertStoredProject(
       message: "Project cleanup checkpoint 与 lifecycle revision 不一致",
     });
   }
-  if (enforcePlacementGrants && project.appPlacements?.length) {
+  if (project.appPlacements.length) {
     const positiveGrantIds = new Set(
       (
         project.grants as readonly Readonly<{
@@ -442,8 +318,7 @@ function assertStoredProject(
     });
   }
   if (
-    enforcePlacements &&
-    project.appPlacements?.length &&
+    project.appPlacements.length &&
     (project.role === "base-custody" || project.workspaceBinding.kind === "app")
   ) {
     context.addIssue({

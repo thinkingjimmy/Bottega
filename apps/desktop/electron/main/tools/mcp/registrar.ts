@@ -16,6 +16,7 @@ import {
 } from "../../../../shared/mcp-servers-ipc";
 import type { ProductResourceScope } from "../../../../shared/resource-scope";
 import { rendererIpc } from "../../ipc-registrar";
+import { storeError } from "../json-cas-store";
 import type { ProjectStore } from "../../projects/store/project-store";
 import type { ProjectToolPolicyStore } from "../project/store";
 import type { ManualMcpServersStore } from "./store";
@@ -110,7 +111,7 @@ export function registerManualMcpServers(
     );
   };
 
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的 MCP server 请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的 MCP server 请求")
     .roles("main")
     .handle(MCP_SERVERS_CHANNEL.list, (raw) => {
       const input = raw as McpServersQuery | undefined;
@@ -132,8 +133,4 @@ export function registerManualMcpServers(
       return project(input.scope);
     });
   return publish;
-}
-
-function storeError(code: string, message: string) {
-  return Object.assign(new Error(message), { code, status: 409 });
 }

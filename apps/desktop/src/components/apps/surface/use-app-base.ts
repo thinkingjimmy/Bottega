@@ -3,7 +3,7 @@
 /**
  * [INPUT]: Depends on Apps v5 record, Apps i18n, and app workspace bindings from ProjectsProvider
  * [OUTPUT]: Provides useAppBase, which stably parses Base App to the exclusive Project and project ownerKey
- * [POS]: The Base ownership leaf of components/apps/surface, consumed by detail/base-app-detail; The Project/Base relationship is not self-guided
+ * [POS]: The Base ownership leaf of components/apps/surface, consumed by detail/base-app-detail; it derives the Project/Base relationship rather than reading it from a stored field
  */
 
 import { useMemo } from "react";

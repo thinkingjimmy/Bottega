@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on sealed package digests, shared App/Extension contracts, and canonical App schema identities
+ * [INPUT]: Depends on sealed package digests, shared App/Extension contracts, and canonical App schema identities, and statusError from main/errors
  * [OUTPUT]: Provides pure generation planning, static-v2/compiled-v3 compatibility sealing, pending/active binding, promotion, and capability-decision projection
  * [POS]: Immutable App generation planning kernel; AppStore owns serialization and durable participant orchestration
  */
@@ -21,7 +21,9 @@ import {
   requestedBaseGuiCapabilityScopes,
   requestedBaseGuiHostActions,
 } from "../../../../shared/apps-ipc";
+import { LEGACY_BASE_GUI_SDK_VERSION } from "../../../../shared/app-gui/contracts";
 import type { AppExtensionRequirementDeclaration, Sha256Digest } from "../../../../shared/extensions-ipc";
+import { statusError } from "../../errors";
 import type { AppExtensionGenerationConsent, AppExtensionGenerationHandoff } from "./app-extension-generation";
 import type { PreparedCompiledAppGui } from "../gui-build/service";
 import { LEGACY_BASE_GUI_SDK_DIGEST } from "../gui-build/metadata";
@@ -163,7 +165,7 @@ export function sealGeneration(
     ? {
         kind: "static-v2" as const,
         legacySdkDigest: LEGACY_BASE_GUI_SDK_DIGEST,
-        legacyBaseApiVersion: "base-gui-legacy-v1" as const,
+        legacyBaseApiVersion: LEGACY_BASE_GUI_SDK_VERSION,
         grantContractVersion: "studio-grant-v1" as const,
         requiredHostActions: [
           "open-data" as const,
@@ -262,7 +264,7 @@ export function promoteBinding(
 }
 
 export function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }
 
 /* pending 代不是 active：manifest 投影必须停在旧代，否则 DTO 会宣称尚未授权的字节

@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on the Apps/Setup providers, App config read/write IPC, AgentSelect, AppRequirementsForm, SidebarRenameDialog, the Design danger section, and Settings primitives
- * [OUTPUT]: Provides GeneralTab — identity, the two Agent roles, machine configuration, and the Design danger zone
+ * [OUTPUT]: Supports pending install configuration without an active manifest. Provides GeneralTab — identity, the two Agent roles, machine configuration, and the Design danger zone
  * [POS]: The first body of components/apps/settings; it reads App config and nothing else, so opening another tab costs no IPC here
  */
 
@@ -38,7 +38,7 @@ export function GeneralTab({ record, busy, fail, run }: AppSettingsTabProps) {
   const { renameApp, setAgent } = useApps();
   const { t } = useAppTranslation();
   const setup = useSetup();
-  const requirements = record.manifest?.requirements?.tools ?? [];
+  const requirements = record.manifest?.requirements?.tools ?? record.pendingInstallRequirements?.tools ?? [];
   const [config, setConfig] = useState<AppConfigValue>(EMPTY_CONFIG);
   const [renaming, setRenaming] = useState(false);
 
@@ -118,7 +118,7 @@ export function GeneralTab({ record, busy, fail, run }: AppSettingsTabProps) {
                   disabled={busy}
                   label={t("apps.settingsMaintenanceAgent")}
                   onChange={(value) => updateAgent("maintenance", value)}
-                  options={maintenanceCapableBackends(setup.status?.backends ?? [])}
+                  options={maintenanceCapableBackends(setup.status?.backends ?? [], setup.now)}
                   size="lg"
                   value={record.maintenanceAgent}
                 />

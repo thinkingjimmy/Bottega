@@ -1,27 +1,26 @@
 /**
- * [INPUT]: Depends on Node path/crypto plus the shared Apps/Agent install DTOs it validates
- * [OUTPUT]: Provides the single `isContained` path fence, the credential-stripping login shell, `assertAddAppInput`, `createInstallingAppRecord`, the `appDigest` identity hash, the `AppRoutingFacts` derivation, and a re-exported `normalizeGithubRepoUrl`
+ * [INPUT]: Depends on Node path/crypto/fs, the shared Sha256Digest shape, and shared App install/Agent input contracts
+ * [OUTPUT]: Provides containment, strict install-mode admission, consent-free declared-install seeds, stable App identity projections, the sha256/canonicalJson/canonicalDigest primitives, and the isDirectory/syncDirectory filesystem primitives
  * [POS]: The apps module's only cross-cutting helper leaf; every caller shares one containment rule and one identity hash instead of private copies, while status broadcast stays with AppStore.watch and error normalization with main/errors.ts
  */
 
 import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
 import { isAbsolute, relative, sep } from "node:path";
 import { type AddAppInput, type AppRecord } from "../../../shared/apps-ipc";
+import type { Sha256Digest } from "../../../shared/extensions-ipc";
 import {
   AGENT_BACKEND_ORDER,
   type AgentBackendId,
 } from "../../../shared/agent-ipc";
-
-// 归一化单源在 shared/github-repo；这里保留 apps 模块内的既有引用路径
-
-
-export { normalizeGithubRepoUrl } from "../../../shared/github-repo";
 
 export function assertAddAppInput(value: unknown): AddAppInput {
   if (!value || typeof value !== "object") throw new Error("App 添加参数无效");
   const input = value as Partial<AddAppInput>;
   if (
     typeof input.repoUrl !== "string" ||
+    (input.candidateCommitSha !== undefined && (typeof input.candidateCommitSha !== "string" || !/^[0-9a-f]{40}$/.test(input.candidateCommitSha))) ||
+    (input.installStrategy !== undefined && !["author-manifest", "agent-analysis"].includes(input.installStrategy)) ||
     !(
       input.maintenanceAgent === "auto" ||
       AGENT_BACKEND_ORDER.some((id) => id === input.maintenanceAgent)
@@ -37,12 +36,16 @@ export function createInstallingAppRecord(input: {
   dir: string;
   repoUrl: string;
   displayName: string;
-  maintenance: { id: AgentBackendId; version?: string };
+  maintenance: { id: AgentBackendId; version?: string } | null;
+  agent?: AgentBackendId;
+  installStrategy?: AddAppInput["installStrategy"];
   addedAt: number;
+  installCandidate?: AppRecord["installCandidate"];
 }): AppRecord {
   return {
     id: input.id,
     sourceRepoUrl: input.repoUrl,
+    ...(input.installCandidate ? { installCandidate: input.installCandidate } : {}),
     publishedRepoUrl: null,
     origin: "github",
     displayName: input.displayName,
@@ -50,13 +53,14 @@ export function createInstallingAppRecord(input: {
     state: "installing",
     lastError: null,
     agentWarning: null,
-    agent: input.maintenance.id,
-    maintenanceAgent: input.maintenance.id,
-    headlessConsent: {
+    agent: input.agent ?? input.maintenance?.id ?? "codex",
+    maintenanceAgent: input.maintenance?.id ?? "auto",
+    installStrategy: input.installStrategy ?? "author-manifest",
+    headlessConsent: input.maintenance && input.installStrategy === "agent-analysis" ? {
       backend: input.maintenance.id,
       version: input.maintenance.version,
       consentAt: input.addedAt,
-    },
+    } : null,
     bindingRevision: 0,
     lifecycleRevision: 0,
     defaultGrant: null,
@@ -92,19 +96,6 @@ export const isContained = (root: string, target: string) => {
 };
 
 // ============================================================
-// 第三方命令一律先剥离 Codex/OpenAI 凭证，防止环境泄漏
-// ============================================================
-
-const STRIP_SENSITIVE_ENV =
-  "unset CODEX_HOME CODEX_API_KEY OPENAI_API_KEY OPENAI_ORG_ID OPENAI_PROJECT_ID";
-
-/** 构造登录 shell 命令：凭证剥离前缀 + 用户命令，唯一拼装点。 */
-export const strippedShell = (command: string) => ({
-  executable: "/bin/zsh",
-  args: ["-lc", `${STRIP_SENSITIVE_ENV}\n${command}`],
-});
-
-// ============================================================
 // 纯派生：App 的持久身份摘要与路由事实
 // ============================================================
 
@@ -116,7 +107,7 @@ export function appDigest(value: unknown): `sha256:${string}` {
 }
 
 /** 路由判定只需要的那几条事实；不含 manifest/receipt，交出去也改不动真相。 */
-export type AppRoutingFacts = Readonly<{
+type AppRoutingFacts = Readonly<{
   lifecycleRevision: number;
   activeGenerationId: string | null;
   activeContentDigest: string | null;
@@ -150,3 +141,40 @@ export function appRoutingFacts(record: AppRecord): AppRoutingFacts {
   routingFactsByRecord.set(record, facts);
   return facts;
 }
+
+// ============================================================
+// Shared digest primitives: one byte-ordered canonical form and one SHA-256 shape
+// ============================================================
+
+export function sha256(bytes: Uint8Array): Sha256Digest {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+/**
+ * Byte-ordered keys (never localeCompare) so the same value hashes identically
+ * on every machine; `undefined` members are dropped like JSON.stringify does.
+ */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).filter(([, item]) => item !== undefined);
+    entries.sort(([left], [right]) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+export function canonicalDigest(value: unknown): Sha256Digest {
+  return sha256(Buffer.from(canonicalJson(value), "utf8"));
+}
+
+// ============================================================
+// Shared filesystem primitives: directory probe and directory fsync
+// ============================================================
+
+/** Missing or unreadable paths read as "not a directory"; callers that must distinguish ENOENT inspect stat themselves. */
+export function isDirectory(path: string) {
+  return stat(path).then((entry) => entry.isDirectory(), () => false);
+}
+
+export { syncDirectory } from "../persistence/durable-json";

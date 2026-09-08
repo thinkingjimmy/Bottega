@@ -6,6 +6,7 @@
 
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { buildSync } from "esbuild";
 import { defineConfig } from "electron-vite";
 import { relative, resolve, sep } from "node:path";
 import type { Plugin } from "vite";
@@ -38,6 +39,20 @@ function productionCsp(): Plugin {
           },
         ],
       };
+    },
+  };
+}
+
+function auxiliaryPreload(): Plugin {
+  const entry = resolve(__dirname, "electron/preload/task-panel.ts");
+  return {
+    name: "self-contained-task-panel-preload",
+    generateBundle() {
+      // Sandboxed preloads can require Electron, but cannot load sibling chunks.
+      const result = buildSync({ entryPoints: [entry], bundle: true, write: false,
+        platform: "node", format: "cjs", target: "node22", external: ["electron"], metafile: true });
+      for (const file of Object.keys(result.metafile!.inputs)) this.addWatchFile(resolve(file));
+      this.emitFile({ type: "asset", fileName: "task-panel.js", source: result.outputFiles[0]!.text });
     },
   };
 }
@@ -123,6 +138,7 @@ export default defineConfig({
     },
   },
   preload: {
+    plugins: [auxiliaryPreload()],
     build: {
       /* preload 变更同样必须触发 renderer full reload。生产 build 会由
          electron-vite 自动清空 watch，不会把 watcher 带进发行产物。 */
@@ -131,7 +147,7 @@ export default defineConfig({
         exclude: ["zod"],
       },
       rollupOptions: {
-        input: resolve(__dirname, "electron/preload/index.ts"),
+        input: { index: resolve(__dirname, "electron/preload/index.ts") },
       },
     },
   },
@@ -145,7 +161,7 @@ export default defineConfig({
     plugins: [react(), tailwindcss(), productionCsp(), chartModuleReport()],
     build: {
       rollupOptions: {
-        input: resolve(__dirname, "src/index.html"),
+        input: { index: resolve(__dirname, "src/index.html"), "task-panel": resolve(__dirname, "src/task-panel.html") },
       },
     },
   },

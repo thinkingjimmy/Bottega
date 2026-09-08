@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared Project/App capability contracts, project schemas/policy, and injected ProjectStore queue/state/commit ports
+ * [INPUT]: Depends on shared Project/App capability contracts, project schemas/policy, main/errors, and injected ProjectStore queue/state/commit ports
  * [OUTPUT]: Provides ProjectStoreWorkspace for custody conversion, workspace rebinding, archival, and App grant mutations
  * [POS]: The ProjectStore workspace/capability subdomain; ProjectStore retains persistence authority and delegates serialized mutations here
  */
@@ -18,6 +18,7 @@ import {
   type StoredProject,
 } from "../store/project-store-schema";
 import { planWorkspaceRebind } from "./project-workspace-policy";
+import { statusError } from "../../errors";
 
 type ProjectWorkspacePorts = {
   enqueue<T>(operation: () => Promise<T>): Promise<T>;
@@ -101,9 +102,7 @@ export class ProjectStoreWorkspace {
     return this.ports.enqueue(async () => {
       const current = this.ports.require(projectId);
       if (current.workspaceBinding.kind === "app") {
-        throw Object.assign(new Error("App Project 不能再附加 App"), {
-          status: 403,
-        });
+        throw statusError(403, "App Project 不能再附加 App");
       }
       const project = storedProjectSchema.parse({
         ...current,

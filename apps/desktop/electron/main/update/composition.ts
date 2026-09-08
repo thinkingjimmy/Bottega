@@ -4,6 +4,8 @@
  * [POS]: main/update assembly; the composition root owns lifecycle order while this file owns what "the updater for this app" means
  */
 
+import type { AppCompatibilityFailure } from "../../../shared/app-host/contract";
+import type { SafeQuitResult } from "../startup/safe-quit";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { App } from "electron";
@@ -19,7 +21,9 @@ import {
 const E2E_FALLBACK_VERSION = "0.1.1";
 
 export type DesktopUpdateServiceOptions = Readonly<{
-  prepareSafeQuit(reason: "update"): Promise<boolean>;
+  resolveAppRequirement?(requestId: string): Promise<AppCompatibilityFailure>;
+  prepareSafeQuit(reason: "update", interactive?: boolean): Promise<SafeQuitResult>;
+  hasStopOperations?(): boolean;
   env?: NodeJS.ProcessEnv;
   applyCandidateCompatibility?: (
     matrix: AppGuiCompatibilitySupport
@@ -46,9 +50,10 @@ export function createDesktopUpdateService(
         /* 打包产物永远走真 updater：注入开关只在未打包时被看一眼。 */
         e2eEnabled: !app.isPackaged && env.BOTTEGA_UPDATE_E2E === "1",
         fakeVersion: env.BOTTEGA_UPDATE_E2E_VERSION,
-        onFakeInstall: () => publishE2eInstallReceipt(env),
+        onFakeInstall: (version) => publishE2eInstallReceipt(env, version),
       }),
     currentVersion: app.getVersion(),
+    resolveAppRequirement: options.resolveAppRequirement,
     electronVersion: process.versions.electron,
     platform: process.platform,
     /* 打包后 LICENSE 在 asar 之外的 resources；开发态回到仓库根，根
@@ -62,6 +67,7 @@ export function createDesktopUpdateService(
        导向 Release 页，由用户自己核对签名后安装。 */
     automaticInstall: process.platform !== "win32",
     prepareSafeQuit: options.prepareSafeQuit,
+    hasStopOperations: options.hasStopOperations,
     forceExit: (code) => app.exit(code),
   });
 }
@@ -92,7 +98,7 @@ function candidateCompatibility(
  * 安装交接是不可返回的，E2E 里没有第二次机会去问「装了没有」。落一份
  * 磁盘 receipt，让断言观察的是主进程真的走到了那一步，而不是界面文案。
  */
-function publishE2eInstallReceipt(env: NodeJS.ProcessEnv) {
+function publishE2eInstallReceipt(env: NodeJS.ProcessEnv, version: string) {
   const target = globalThis as typeof globalThis & {
     __bottegaUpdateE2eInstalled?: boolean;
   };
@@ -101,7 +107,7 @@ function publishE2eInstallReceipt(env: NodeJS.ProcessEnv) {
   if (!receipt) return;
   const installed = {
     installed: true,
-    version: env.BOTTEGA_UPDATE_E2E_VERSION ?? E2E_FALLBACK_VERSION,
+    version: version || E2E_FALLBACK_VERSION,
   };
   writeFileSync(receipt, `${JSON.stringify(installed)}\n`, {
     encoding: "utf8",

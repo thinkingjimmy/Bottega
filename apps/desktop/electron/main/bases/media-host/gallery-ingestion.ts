@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the TurnEventsBroker durable journal, GalleryMediaCache app-owned custody, ImageCodecHost, BasesService attachment ingestion/event publication, and main/errors
- * [OUTPUT]: Provides cache-first completion Auto-inbox, immutable revision saving, successful intergenerational CAS ACK, recovery window GC with the start-up period canonical reissueLease reconcile
- * [POS]: The database is a database of databases and media hostsDo not look at the TurnRegistry, do not accept the bare path, copy the original to the app-owned cache and decode it
+ * [OUTPUT]: Provides GalleryIngestion: cache-first auto-ingestion of completed images via ingest(), an idempotent ACK on success or deterministic conflict, and reconcile()/reconcileAll() that reissue broker leases to recover any window missed at startup
+ * [POS]: bases/media-host's ingestion boundary; never touches TurnRegistry directly and never accepts a bare filesystem path — it copies the source into the app-owned cache before decoding
  */
 
 import type { BasesService } from "../bases-service";
@@ -33,16 +33,11 @@ export class GalleryIngestion {
     );
     if (!result.ok) {
       this.warn(`图片 ${event.logicalKey} 自动入库失败：${result.error.message}`);
-      // 确定性冲突（tombstone/指纹）重试永不改变结果，ACK 掉避免每次
-      // 启动 reconcile 重复告警；可重试错误保留 journal 待下次收敛。
-      if (result.error.code === "ATTACHMENT_CONFLICT") {
-        if (await this.broker.acknowledge(event)) {
-          await this.releaseAfterReceipt(event);
-        }
-      }
-      return result;
     }
-    if (await this.broker.acknowledge(event)) {
+    // 确定性冲突（tombstone/指纹）重试永不改变结果，ACK 掉避免每次
+    // 启动 reconcile 重复告警；可重试错误保留 journal 待下次收敛。
+    const settled = result.ok || result.error.code === "ATTACHMENT_CONFLICT";
+    if (settled && (await this.broker.acknowledge(event))) {
       await this.releaseAfterReceipt(event);
     }
     return result;

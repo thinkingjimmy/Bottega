@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on router, i18n, Chats/Projects/Setup providers, canonical chat context, the exact App Editor route gate, draft routing/residence, PageShell, side-panel capability policy, and ChatView
- * [OUTPUT]: Provides ChatRoute for ordinary/adopted/imported chats resolved through canonical history routes, imported-segment Fork context and composer locks, main-approved App Editor chats, fixed Editor drafts, legacy App Use replacement, post-send navigation, Project guards, and context-safe side-panel commands while draft Project actions stay in Composer context
+ * [OUTPUT]: Composes native/imported/App Chat views, shared availability identity and same-source adoption preflight with explicit retry intent.
  * [POS]: The sole product chat route adapter in views
  */
 
@@ -20,6 +20,7 @@ import {
 import { PageShell, panelChromeClassName } from "@/components/page-shell";
 import { useChats } from "@/components/providers/chats-provider";
 import { useProjects } from "@/components/providers/projects-provider";
+import { projectAvailability, submissionDecision } from "../../shared/agent-availability/projection";
 import { useSetup } from "@/components/providers/setup-provider";
 import { useHistory } from "@/components/providers/history/history-provider";
 import { AgentBackendIcon } from "@/lib/agent-backends";
@@ -182,9 +183,10 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
   ) : (
     summary?.title ?? t("chat.newTask")
   );
-  const backendStatus = setup.status?.backends.find(
-    (backend) => backend.id === summary?.agent
-  )?.status;
+  const backend = setup.status?.backends.find(
+    (candidate) => candidate.id === summary?.agent
+  );
+  const backendState = projectAvailability(backend, setup.now).state;
   const editorDestination =
     summaryContext?.kind === "app-edit" && summary?.incarnationId
       ? {
@@ -224,10 +226,11 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
           <AgentBackendIcon
             backend={summary.agent}
             /* 未就绪时状态压过身份：整枚交给 currentColor 随语境变灰。 */
-            tone={backendStatus === "ready" ? "brand" : "mono"}
+            tone="brand"
+            aria-label={`${summary.agent} · ${t(`agentAvailability.state.${backendState}`)}`}
             className={cn(
               "size-4",
-              backendStatus !== "ready" && "text-muted-foreground"
+              backendState !== "ready" && "text-muted-foreground"
             )}
           />
         ) : undefined
@@ -334,7 +337,9 @@ function ImportedChatView({
   const navigate = useNavigate();
   const session = useChatSession({ scope: { conversationId: chatId }, project });
   const { turnOptions, selectedBackend, planMode } = session.composer;
-  const submit = useCallback(async (message: PromptInputMessage) => {
+  const submit = useCallback(async (message: PromptInputMessage, options?: { authenticationRetry?: import("../../shared/agent-availability/types").AuthenticationRetryIntent }) => {
+    const decision = submissionDecision(selectedBackend, Date.now());
+    if (decision.decision !== "allow" && !(options?.authenticationRetry && decision.reason === "auth-required")) throw new Error(t("agentAvailability.blocked", { backend: selectedBackend?.displayName ?? turnOptions.backend }));
     const submission = assembleFirstTurnPayload({
       message,
       chatId,
@@ -344,19 +349,19 @@ function ImportedChatView({
     });
     if (!submission.displayText && !submission.attachmentPayloads?.length) return;
     const receipt = await adoptHistory({
+      ...(options?.authenticationRetry ? { authenticationRetry: options.authenticationRetry } : {}),
       opaqueId: history.opaqueId,
       expectedHistoryRevision: history.historyRevision,
       submission,
       turnOptions,
     });
     await navigate(`/chat/${encodeURIComponent(receipt.chatId)}`, { replace: true });
-  }, [chatId, history.historyRevision, history.opaqueId, navigate, planMode, selectedBackend, turnOptions]);
+  }, [chatId, history.historyRevision, history.opaqueId, navigate, planMode, selectedBackend, t, turnOptions]);
   const composer = useMemo(() => ({
     ...session.composer,
     persisted: true,
     inputDisabled: session.composer.inputDisabled || !history.canResume,
     handleSubmit: submit,
-    handleQueueOrSubmit: submit,
   }), [history.canResume, session.composer, submit]);
   const controller = useMemo(() => ({ ...session, composer }), [composer, session]);
   return (

@@ -3,7 +3,11 @@
  * [OUTPUT]: Provides the complete French catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
  * [POS]: French desktop locale; compile-time structure must match English exactly
  */
+import { appHostFr } from "./app-host/fr";
+import { agentAvailabilityFr } from "./agent-availability/fr";
 
+
+import { chatAgentSwitchFr } from "./chat-agent-switch/fr";
 import type { Catalog } from "./en";
 import { basesFr } from "./bases/fr";
 import { archiveFr } from "./archive";
@@ -19,6 +23,7 @@ import { settingsToolsFr } from "./settings/tools";
 import { settingsUsageFr } from "./settings/usage";
 import { settingsPersonalizationFr } from "./settings/personalization";
 import { settingsShortcutsFr } from "./settings/shortcuts";
+import { presenceFr } from "./presence/fr";
 import { settingsAboutFr } from "./settings/about";
 import { historyFr } from "./history";
 import { chatRevisionFr } from "./chat-revision";
@@ -32,6 +37,8 @@ import { agentFailureFr } from "./agent-failure/fr";
 import { chatStorageFr } from "./chat-storage/fr";
 
 export const fr: Catalog = {
+  appHost: appHostFr,
+  agentAvailability: agentAvailabilityFr,
   common: {
     auto: "Auto",
     light: "Clair",
@@ -112,6 +119,7 @@ export const fr: Catalog = {
   projectSettings: projectSettingsFr,
   settings: {
     about: settingsAboutFr,
+    presence: presenceFr,
     personalization: settingsPersonalizationFr,
     shortcuts: settingsShortcutsFr,
     skills: settingsSkillsFr,
@@ -209,6 +217,7 @@ export const fr: Catalog = {
     tools: settingsToolsFr,
   },
   chat: {
+    agentSwitch: chatAgentSwitchFr,
     ...chatFr,
     runtime: chatRuntimeFr,
     generatingTitle: "Génération du titre",
@@ -549,8 +558,6 @@ export const fr: Catalog = {
   ui: {
     cancel: "Annuler",
     uploadFiles: "Téléverser des fichiers",
-    previousBranch: "Branche précédente",
-    nextBranch: "Branche suivante",
     loadingRichContent: "Chargement du contenu enrichi",
     loading: "Chargement",
     close: "Fermer",
@@ -559,7 +566,6 @@ export const fr: Catalog = {
     toggleSidebar: "Afficher ou masquer la barre latérale",
     resizeSidebar: "Redimensionner la barre latérale",
     resizeSidebarHint: "Faites glisser pour redimensionner la barre latérale",
-    addAttachments: "Ajouter des pièces jointes",
     attachment: "Pièce jointe",
     previewAttachment: "Prévisualiser la pièce jointe",
     removeAttachment: "Supprimer la pièce jointe",
@@ -567,7 +573,6 @@ export const fr: Catalog = {
     submit: "Envoyer",
     message: "Message",
     askAnything: "Posez toutes vos questions",
-    branchOf: "sur",
     submissionFailed: "Échec de l’envoi. Réessayez.",
     skillSuggestionsEmpty: "Aucun Skill disponible",
     skillSuggestionsNoMatch: "Aucun Skill correspondant",

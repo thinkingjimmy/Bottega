@@ -4,6 +4,9 @@
  * [POS]: Main-process Chat domain queue and metadata owner; durable writes, fork construction, pure transitions, read projections, and import/continuation sagas live in focused composed siblings
  */
 
+import { patchChatOptions, prepareSwitchCommand, switchChatAgent } from "./store/agent-switch/store";
+import { readSwitchReservation, reserveAgentSwitchSequences } from "./store/agent-switch/reservation";
+import type { ChatOptionsPatch } from "../../../shared/chat-agent/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import type { AgentBackendId, SessionRef } from "../../../shared/agent-ipc";
 import {
@@ -84,7 +87,7 @@ export type ChatStoreDependencies = {
   databaseClient?: () => ChatDatabaseClient;
 };
 
-export type ChatSqliteRuntimeFacts = Readonly<{
+type ChatSqliteRuntimeFacts = Readonly<{
   sqliteVersion: string;
   compileOptions: readonly string[];
   startupMs: number;
@@ -116,7 +119,7 @@ export class ChatStore {
     this.databasePath = chatDatabasePath(userData);
   }
 
-  async initialize() {
+  async initialize(defaults: import("../../../shared/settings-ipc").DefaultChatOptionsByBackend = {}) {
     await this.state.queue.enqueue(async () => {
       const state = this.state;
       state.metadata.clear();
@@ -127,7 +130,7 @@ export class ChatStore {
       this.sqliteRuntimeFacts = null;
 
       state.deviceId = await new DeviceIdentityStore(state.userData).loadOrCreate();
-      const initialization = await this.openDatabase();
+      const initialization = await this.openDatabase(defaults);
       this.sqliteRuntimeFacts = Object.freeze({
         sqliteVersion: initialization.sqliteVersion,
         compileOptions: Object.freeze([...initialization.compileOptions]),
@@ -292,6 +295,23 @@ export class ChatStore {
       } satisfies ChatMessageMutation;
     });
   }
+
+  prepareHistory(chatId: string, nativeBeforeSeq: number) {
+    return this.state.requireDatabase().execute({ kind: "prepare-chat-history", chatId, nativeBeforeSeq,
+      deviceId: this.state.requireDeviceId() });
+  }
+  readHistory(input: import("../../../shared/chat-agent/history").HistoryReadCommand) {
+    return this.state.requireDatabase().execute({ kind: "read-chat-history", input,
+      deviceId: this.state.requireDeviceId() });
+  }
+
+  patchOptions(input: ChatOptionsPatch) {
+    return this.updateFacts(input.chatId, current => patchChatOptions(current, input));
+  }
+  prepareAgentSwitch(input: Parameters<typeof prepareSwitchCommand>[1]) { return prepareSwitchCommand(this.state, input); }
+  switchAgent(command: Parameters<typeof switchChatAgent>[1]) { return switchChatAgent(this.state, command); }
+  reserveAgentSwitchSequences(input: Parameters<typeof reserveAgentSwitchSequences>[1]) { return reserveAgentSwitchSequences(this.state, input); }
+  agentSwitchReservation(input: Parameters<typeof readSwitchReservation>[1]) { return readSwitchReservation(this.state, input); }
 
   async reserveSequences(chatId: string, count: number) {
     if (!Number.isInteger(count) || count < 1) {
@@ -695,7 +715,7 @@ export class ChatStore {
     return this.sqliteRuntimeFacts ? structuredClone(this.sqliteRuntimeFacts) : null;
   }
 
-  private async openDatabase() {
+  private async openDatabase(defaults: import("../../../shared/settings-ipc").DefaultChatOptionsByBackend = {}) {
     if (!this.state.deviceId) throw new Error("Chat device identity is unavailable");
     const database = this.dependencies.databaseClient?.() ?? new ChatDatabaseClient();
     const initialization = await database.initialize({
@@ -703,6 +723,7 @@ export class ChatStore {
       databasePath: this.databasePath,
       deviceId: this.state.deviceId,
       mode: "canonical",
+      backendDefaults: defaults,
     });
     this.state.database = database;
     return initialization;

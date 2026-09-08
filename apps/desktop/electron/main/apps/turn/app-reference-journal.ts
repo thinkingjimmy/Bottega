@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on DurableJson, Crypto and shared AppReferenceJournalEntry
  * [OUTPUT]: Provides AppReferenceJournal; acquire-many single commit, prepared→active CAS, release-as-forget, and durable per-generation counts
- * [POS]: App generation 字节/容量托管的唯一真相源；内存里的桥接缓存替代不了这本账，它才是「引用归零」的证明
+ * [POS]: Sole source of truth for App generation reference counts backing artifact-byte custody; an in-memory bridging cache cannot substitute for this ledger — only it proves references have reached zero
  */
 
 import { createHash, randomUUID } from "node:crypto";

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React use LayoutEffect/useState with arbitrary controller field objects
  * [OUTPUT]: Provides useStableController; Only the last committed snapshot, layout commit, is rendered to release the new object
- * [POS]: The same security controller identity for chat/runtime; The following is a list of the most common types of data breaches in the United States
+ * [POS]: Stable object-identity helper for chat/runtime, shared by controller hooks that need Object.is-stable field sets across renders
  */
 
 import { useLayoutEffect, useState } from "react";

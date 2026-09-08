@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, lucide TriangleAlert/Pencil/RotateCcw/Trash2, lib/shortcuts (truth table, resolver, capture, conflicts, glyphs), lib/settings-store (overrides persistence), lib/platform, settings-layout primitives, ui Button/Kbd/Tooltip, cn and i18n
- * [OUTPUT]: Provides KeyboardShortcutsSection (7 rows: read-only keycap display, pencil recorder, disabled pill beside the name, always-present disable button, reset/restore-defaults, conflict warning tips)
- * [POS]: The Settings › Keyboard shortcuts control surface; owns recorder interaction state only — bindings truth lives in lib/shortcuts defaults ⊕ settings.json overrides, writes go through settingsStore functional mutations
+ * [OUTPUT]: Provides KeyboardShortcutsSection (macOS task-panel and product rows: read-only keycap display, pencil recorder, disabled pill beside the name, always-present disable button, reset/restore-defaults, conflict warning tips)
+ * [POS]: The Settings › Keyboard shortcuts control surface; owns recorder interaction state only — bindings truth lives in lib/shortcuts shared defaults ⊕ settings.json overrides, writes go through settingsStore functional mutations
  */
 
 import {
@@ -45,6 +45,7 @@ const SCOPE_HINT_IDS = new Set<ShortcutId>([
   "saveInstructions",
   "findInFile",
   "findInChat",
+  "taskPanel",
 ]);
 
 type RejectReason = Extract<CaptureResult, { kind: "reject" }>["reason"];
@@ -85,7 +86,7 @@ export function KeyboardShortcutsSection() {
       }
     >
       <SettingsList>
-        {SHORTCUT_IDS.map((id) => (
+        {SHORTCUT_IDS.filter((id) => id !== "taskPanel" || isApplePlatform()).map((id) => (
           <ShortcutRow
             key={id}
             id={id}

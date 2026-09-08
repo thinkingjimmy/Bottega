@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on AppRecord's pending frozen manifest, the shared consent disclosure/state machine, and the main-owned unified Studio authorization command
+ * [INPUT]: Depends on shared appDisplayName, AppRecord's pending frozen manifest, the shared consent disclosure/state machine, and the main-owned unified Studio authorization command
  * [OUTPUT]: Provides AppExtensionConsentCard: the complete requested set (data capabilities + host actions + workspace scope) with symmetric allow/decline and a neutral declined state
  * [POS]: Recovery/update authorization card in App detail; main re-derives the complete requested set before grant and promotion
  */
 
+import { appDisplayName } from "../../../../shared/apps-ipc";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type { AppRecord } from "../../../../shared/apps-ipc";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
@@ -54,7 +55,7 @@ export function AppExtensionConsentCard({ record }: { record: AppRecord }) {
     <section className="m-4 rounded-lg border bg-card p-4 text-sm">
       <h3 className="font-medium">
         {t("apps.baseGuiConsent.simpleTitle", {
-          name: generation?.manifest?.name ?? record.displayName,
+          name: appDisplayName({ displayName: record.displayName, manifest: generation?.manifest ?? record.manifest }),
         })}
       </h3>
       <p className="mt-1 text-muted-foreground text-xs">

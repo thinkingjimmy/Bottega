@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the zod and the type of spec for the builtin-tools/platform
  * [OUTPUT]: Provides convert_chat_to_project and exact-issued commit_managed_worktree built-in tool static specs
- * [POS]: The project is a true source of builtin-tools; Just down the platform
+ * [POS]: Single-tool builtin-tools spec for the projects domain; depends only on platform.ts
  */
 
 import { z } from "zod";

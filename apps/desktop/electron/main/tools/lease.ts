@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node crypto, shared builtin-tool registry, per-turn server/socket path, and optional frozen Skills custody
+ * [INPUT]: Depends on Node crypto, shared builtin-tool registry, per-turn server/socket path, and optional frozen Skills custody, and statusError from main/errors
  * [OUTPUT]: Provides incarnation-bound BuiltinMcpLease, launcher/budgets, ready/revoke signals, `(token, domainId)` rate control, and custody release after invocation drain
  * [POS]: Tool-platform authorization core; subprocesses hold only random tokens, while main holds the live lease and turn custody
  */
@@ -14,6 +14,7 @@ import {
   type BuiltinToolName,
 } from "../../../shared/builtin-tools";
 import type { AgentBackendId } from "../../../shared/agent-ipc";
+import { statusError } from "../errors";
 
 export type BuiltinMcpServerSpec = {
   name: "ai-chat-tools";
@@ -32,6 +33,7 @@ export type BuiltinMcpLease = {
   initiatorBackend: AgentBackendId;
   /** References the resource-owning Skills turn custody; the lease owns no Skill bytes or Registry refs. */
   skillsCustodyId?: string;
+  historyBinding?: import("../../../shared/chat-agent/history").HistoryBinding;
   /** 发起方 CLI 的 MCP client 对最终 CallToolResult 的可见上限。 */
   resultByteBudget: number;
   socketToken: string;
@@ -93,6 +95,7 @@ export class BuiltinMcpLeaseStore {
     initiatorBackend: AgentBackendId;
     resultByteBudget?: number;
     skillsCustodyId?: string;
+  historyBinding?: import("../../../shared/chat-agent/history").HistoryBinding;
   }): IssuedBuiltinMcp {
     const socketToken = randomBytes(32).toString("hex");
     const allowedTools = [...new Set(input.allowedTools)].filter((name) =>
@@ -131,39 +134,27 @@ export class BuiltinMcpLeaseStore {
     };
   }
 
-  get(token: string) {
-    return this.byToken.get(token);
-  }
-
   authorize(token: string, tool: BuiltinToolName) {
     const lease = this.byToken.get(token);
     if (!lease || lease.state === "revoked") {
-      throw Object.assign(new Error("内置 MCP lease 无效或已撤销"), {
-        status: 401,
-      });
+      throw statusError(401, "内置 MCP lease 无效或已撤销");
     }
     if (!lease.allowedTools.includes(tool)) {
-      throw Object.assign(
-        new Error(`当前 turn 无权调用 ${tool}；Plan/read 访问不允许 mutation`),
-        { status: 403 }
-      );
+      throw statusError(403, `当前 turn 无权调用 ${tool}；Plan/read 访问不允许 mutation`);
     }
     return lease;
   }
 
   consume(token: string, tool: BuiltinToolName, now = Date.now()) {
     const spec = builtinToolSpec(tool);
-    if (!spec) throw Object.assign(new Error("未知内置工具"), { status: 400 });
+    if (!spec) throw statusError(400, "未知内置工具");
     const domain = BUILTIN_TOOL_DOMAINS[spec.domainId];
     const key = `${token}\0${domain.id}`;
     const calls = (this.calls.get(key) ?? []).filter(
       (timestamp) => now - timestamp < domain.rateWindowMs
     );
     if (calls.length >= domain.rateLimit) {
-      throw Object.assign(
-        new Error(`${domain.id} 工具调用过于频繁，请稍后再试`),
-        { status: 429 }
-      );
+      throw statusError(429, `${domain.id} 工具调用过于频繁，请稍后再试`);
     }
     calls.push(now);
     this.calls.set(key, calls);

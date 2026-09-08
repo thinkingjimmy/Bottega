@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on attachment display primitives, prompt-input attachment hooks, dialog controls, and host-injected shared UI text
- * [OUTPUT]: Provides localized PromptInputAttachments preview/remove controls and the attachment-selection trigger
+ * [OUTPUT]: Provides localized PromptInputAttachments preview/remove controls with an image lightbox
  * [POS]: The attachment visual layer of ai-elements PromptInput; The attachment status and blob URL lifecycle are in context/hooks, not here
  */
 
@@ -16,16 +16,14 @@ import {
   AttachmentTitle,
 } from "@ai-chat/ui/components/ui/attachment";
 import {
-  PromptInputButton,
   PromptInputHeader,
   usePromptInputAttachments,
-  type PromptInputButtonProps,
 } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { AppDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
 import { Dialog, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useUiText } from "@ai-chat/ui/lib/ui-text";
-import { FileIcon, PlusIcon, XIcon } from "lucide-react";
+import { FileIcon, XIcon } from "lucide-react";
 import { useState, type ComponentProps } from "react";
 
 // ─── 输入框附件预览条：删除默认可见，仅细指针 hover 环境允许静置隐藏 ───
@@ -157,33 +155,5 @@ export const PromptInputAttachments = ({
         </AppDialogContent>
       </Dialog>
     </PromptInputHeader>
-  );
-};
-
-// ─── 加号按钮：点击直接弹文件选择器（不经菜单） ───
-
-export type PromptInputAttachmentsTriggerProps = PromptInputButtonProps;
-
-export const PromptInputAttachmentsTrigger = ({
-  className,
-  children,
-  onClick,
-  ...props
-}: PromptInputAttachmentsTriggerProps) => {
-  const attachments = usePromptInputAttachments();
-  const label = useUiText("addAttachments", "Add attachments");
-  return (
-    <PromptInputButton
-      aria-label={label}
-      className={cn("rounded-full", className)}
-      tooltip={label}
-      onClick={(event) => {
-        onClick?.(event);
-        if (!event.defaultPrevented) attachments.openFileDialog();
-      }}
-      {...props}
-    >
-      {children ?? <PlusIcon className="size-4" />}
-    </PromptInputButton>
   );
 };

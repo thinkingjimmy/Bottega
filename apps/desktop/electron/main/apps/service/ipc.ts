@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the injectable rendererIpc registrar, Apps shared channels/input assertions, trusted Studio residence and renderer identity, generic store/runtime/grant/package ports, and the delegated Design registrar
- * [OUTPUT]: Registers Apps management, fenced grant-candidate queries, main-owned typed App Use history/open/switch, recordless delete retry, Editor destination channels, structured add rejection, symmetric Studio authorize/decline/revoke, the studioSurfaceReady list projection, exact staged GUI readiness, renderer-owned GUI teardown, and fixed-App Studio channels; navigation, GUI runtime, and Design arrive as whole leaves rather than per-method delegations
+ * [INPUT]: Depends on typed Apps IPC, main-owned services and explicit author-manifest or Agent-analysis install intents
+ * [OUTPUT]: Registers strict App lifecycle and residence-fenced operations, including the explicit tool inventory check.
  * [POS]: apps/service generic renderer adapter; Design command parsing and authority live in integrations/design-ipc.ts
  */
 
@@ -72,11 +72,8 @@ import {
   assertSetPinnedInput,
 } from "../service-inputs";
 import type { AppPackageController } from "../share/app-package-controller";
-import {
-  assertAddAppInput,
-  createInstallingAppRecord,
-  normalizeGithubRepoUrl,
-} from "../support";
+import { assertAddAppInput, createInstallingAppRecord } from "../support";
+import { normalizeGithubRepoUrl } from "../../../../shared/github-repo";
 import type { AppLifecycleAdmissionGate } from "../../lifecycle/app-platform-admission";
 import { surfaceWindowController } from "../../window/surfaces/surface-window-controller";
 import type { TrustedRendererContext } from "../../window/surfaces/trusted-renderer-context";
@@ -100,6 +97,7 @@ type AppsIpcDependencies = DesignIpcDependencies & {
   requireRecord(appId: string): AppRecord;
   stop(appId: string): Promise<void>;
   extensionStatus(appId: string): AppExtensionStatus;
+  checkAgentTools?(appId: string): Promise<void>;
   capabilities(appId: string): Promise<AppCapabilitiesSnapshot>;
   authorizeStudioAccess(appId: string): Promise<AppRecord>;
   declineStudioAccess(appId: string): Promise<AppRecord>;
@@ -192,19 +190,17 @@ export function registerAppsIpc(
   registerIpc: RendererIpcRegistrar = rendererIpc
 ) {
   const mainIpc = registerIpc(
-    window,
     rendererUrl,
     "拒绝非主窗口的 Apps 管理请求"
   );
   const studioIpc = registerIpc(
-    window,
     rendererUrl,
     "拒绝非受信窗口的 App Studio 请求"
   ).roles("main", "app-window");
 
   registerAppPinIpc(mainIpc, deps.store);
 
-  mainIpc.handle(APPS_CHANNEL.add, async (value) => {
+  mainIpc.handle(APPS_CHANNEL.add, (value) => deps.packages.compatibility.guard(async () => {
       const input = assertAddAppInput(value);
       const normalized = normalizeGithubRepoUrl(input.repoUrl);
       const duplicate = deps.store
@@ -225,9 +221,11 @@ export function registerAppsIpc(
         });
         return { status: "done", record } satisfies AddAppResult;
       }
-      const maintenance = await deps.resolveMaintenanceBackend(
-        input.maintenanceAgent
-      );
+      const admission = await deps.packages.probeAdmission(normalized.repoUrl, input.candidateCommitSha);
+      if (admission.kind === "compatibility-blocked") return admission;
+      if (admission.kind === "base") throw new Error("APP_PREFLIGHT_REQUIRED");
+      const maintenance = input.installStrategy === "agent-analysis"
+        ? await deps.resolveMaintenanceBackend(input.maintenanceAgent) : null;
       let id = createAppId();
       while (deps.store.hasRetiredId(id)) id = createAppId();
       await deps.store.reserveId(id);
@@ -236,16 +234,20 @@ export function registerAppsIpc(
         dir: join(deps.store.appsRoot, id),
         repoUrl: normalized.repoUrl,
         displayName: normalized.displayName,
-        maintenance: {
-          id: maintenance.id,
-          ...(maintenance.version ? { version: maintenance.version } : {}),
-        },
+        installStrategy: input.installStrategy ?? "author-manifest",
+        ...(input.maintenanceAgent !== "auto" ? { agent: input.maintenanceAgent } : {}),
+        maintenance: maintenance ? { id: maintenance.id, ...(maintenance.version ? { version: maintenance.version } : {}) } : null,
         addedAt: Date.now(),
+        installCandidate: { commitSha: admission.commitSha, declarationDigest: admission.declarationDigest },
       });
+      /* 记录先落盘，配置随后：配置文件的回收只经由 App 删除（app-cleanup），
+         没有记录的配置就是一份无主的 secret。写配置失败时记录停在 installing，
+         启动 normalizeStartupStates 会把它转成 install-failed 交给重试 UI。 */
       const saved = await deps.store.set(record);
+      if (input.config) await deps.packages.configs.write(id, input.config);
       deps.installer.enqueue(id);
       return { status: "done", record: saved } satisfies AddAppResult;
-    })
+    }))
     .handle(APPS_CHANNEL.stop, (rawId) => deps.stop(assertAppId(rawId)))
     .handle(APPS_CHANNEL.grant, (input) =>
       deps.grantAuthority().grant(assertSetAppGrantInput(input))
@@ -275,13 +277,14 @@ export function registerAppsIpc(
       return deps.revokeExtensionGrant(appId);
     })
     .handle(APPS_CHANNEL.rebuildExtensionGeneration, (rawId) =>
-      deps.rebuildExtensionGeneration(assertAppId(rawId))
+      deps.packages.compatibility.guard(() => deps.rebuildExtensionGeneration(assertAppId(rawId)))
     )
+    .handle(APPS_CHANNEL.checkAgentTools, (rawId) => deps.checkAgentTools?.(assertAppId(rawId)))
     .handle(APPS_CHANNEL.capabilities, (rawId) =>
       deps.capabilities(assertAppId(rawId))
     )
     .handle(APPS_CHANNEL.authorizeStudioAccess, (rawId) =>
-      deps.authorizeStudioAccess(assertAppId(rawId))
+      deps.packages.compatibility.guard(() => deps.authorizeStudioAccess(assertAppId(rawId)))
     )
     /* 拒绝与同意走同一道门：一个 appId 进去，一份新记录出来。丢弃 pending
        会改变 GUI 可见性，故与撤权一样广播 `gui`。 */
@@ -295,17 +298,14 @@ export function registerAppsIpc(
       deps.emit({ appId: saved.id, type: "gui" });
       return saved;
     })
-    .handle(APPS_CHANNEL.retry, async (rawId) => {
-      const appId = assertAppId(rawId);
-      await retryAppOperation(deps, appId);
-    })
-    .handle(APPS_CHANNEL.repair, async (rawId) => {
+    .handle(APPS_CHANNEL.retry, (rawId) => deps.packages.compatibility.guard(() => retryAppOperation(deps, assertAppId(rawId))))
+    .handle(APPS_CHANNEL.repair, (rawId) => deps.packages.compatibility.guard(async () => {
       const record = deps.requireRecord(assertAppId(rawId));
       if (!repairSite(record)) {
         throw new Error("当前失败阶段不能使用 Agent 修复");
       }
       await deps.installer.enqueueRepair(record.id);
-    })
+    }))
     .handle(APPS_CHANNEL.cancelInstall, async (rawId) => {
       const appId = assertAppId(rawId);
       if (await deps.packages.cancelPendingImport(appId)) {
@@ -589,5 +589,3 @@ function assertSurfaceMutation(
     conversationIncarnationId: surface.conversationIncarnationId,
   });
 }
-
-

@@ -74,7 +74,7 @@ function registerChromeImport(
   const support = resolvePlatformCapabilities(process.platform);
   const requireChromeImport = () =>
     assertPlatformCapability(support, "chromeImport");
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的浏览器导入请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的浏览器导入请求")
     .roles("main")
     .handle(BROWSER_IMPORT_CHANNEL.availability, () => ({
       available: support.capabilities.chromeImport,

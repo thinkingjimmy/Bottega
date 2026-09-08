@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on apps/desktop/runtime-dependencies.json (package slice membership and appGui set), the installed production dependency graph and lockfile, package/license bytes, explicit compiler/import-policy/snapshot/query/preferences/workspace/export/Workbench source slices, signed components, Starters, and external release/platform public keys
- * [OUTPUT]: Deterministically writes or checks gate-isolated manifests, recursive CycloneDX SBOMs, whitespace-canonical full-license NOTICE bundles, performance requirements, authoring/compatibility metadata, and fail-closed formal-release trust anchors
+ * [OUTPUT]: Generates and checks exact-source toolchain metadata including shared transport, Windows policy, and Linux trust/locator/installer/payload identities
  * [POS]: App GUI release metadata authority; receipts consume generated digests instead of hand-maintained placeholders
  */
 
@@ -49,6 +49,31 @@ const gateFiles = {
     "electron/main/apps/gui-build/pipeline/compiler.ts",
     "electron/main/apps/gui-build/pipeline/dynamic-code-policy.ts",
     "electron/main/apps/gui-build/contracts.ts",
+    "electron/main/apps/execution/schema.ts",
+    "electron/main/apps/execution/source-file.ts",
+    "electron/main/apps/share/package/package-contract.ts",
+    "electron/main/apps/share/package/command-sources.ts",
+    "electron/main/apps/install/manifest-schema.ts",
+    "shared/apps-execution.ts",
+    "electron/main/apps/gui-build/transport/request.ts",
+    "electron/main/apps/gui-build/transport/windows-policy.ts",
+    "electron/main/apps/gui-build/transport/windows-supervisor.ts",
+    "electron/main/apps/gui-build/native/linux/trust.ts",
+    "electron/main/apps/gui-build/native/linux/locator.ts",
+    "electron/main/apps/gui-build/native/linux/lease.ts",
+    "electron/main/apps/gui-build/native/linux/exec-policy.ts",
+    "electron/main/apps/gui-build/native/linux/profile.ts",
+    "electron/main/apps/gui-build/native/linux/launch.ts",
+    "electron/main/apps/gui-build/native/probe-control.ts",
+    "electron/main/apps/gui-build/composition.ts",
+    "resources/app-gui-toolchain/native/linux-x64/trust-manifest.json",
+    "resources/app-gui-toolchain/native/linux-x64/bwrap",
+    "resources/app-gui-toolchain/native/linux-x64/bwrap.apparmor",
+    "resources/app-gui-toolchain/native/linux-x64/install.py",
+    "resources/app-gui-toolchain/native/linux-x64/NOTICE.txt",
+    "resources/app-gui-toolchain/native/linux-x64/exec-policy",
+    "resources/app-gui-toolchain/native/linux-x64/exec-policy-build.json",
+    "resources/app-gui-toolchain/native/linux-x64/src/exec-policy.c",
     "electron/main/apps/gui-build/metadata.ts",
     "electron/main/apps/gui-build/product-modules/app-react.ts",
     "electron/main/apps/gui-build/product-modules/base-snapshot.ts",

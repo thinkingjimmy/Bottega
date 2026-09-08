@@ -1,14 +1,14 @@
 /**
- * [INPUT]: Depends on BrowserWebContentsPort/session; The receiving page is automatically redirected/navigated, window.open, permissions check/request and download events
- * [OUTPUT]: Provides secureBrowserContents, a dual path denial of authorization and unified disruption scheme, download and window.open
- * [POS]: The main/browser web security boundaries; The main defense of the programmed load URL is still single-pointed by BrowserPanelService
+ * [INPUT]: Depends on the BrowserWebContentsPort/session seam and its will-navigate/will-redirect, window.open, permission check/request, and will-download events
+ * [OUTPUT]: Provides secureBrowserContents: HTTP(S)-only navigation and redirects, double rejection of permission checks and requests, blocked downloads, and safe `window.open` routed to a product tab
+ * [POS]: main/browser's web security boundary; BrowserPanelService remains the single point that decides which URL gets programmatically loaded
  */
 
 import type { BrowserWebContentsPort } from "./browser-service";
 
 const securedSessions = new WeakSet<object>();
 
-export function isSafeBrowserUrl(value: string) {
+function isSafeBrowserUrl(value: string) {
   try {
     const protocol = new URL(value).protocol;
     return protocol === "http:" || protocol === "https:";
@@ -32,12 +32,8 @@ export function secureBrowserContents(
       event.preventDefault();
     });
   }
-  const preventUnsafeNavigation = (
-    event: { preventDefault(): void; url?: string },
-    legacyUrl?: string
-  ) => {
-    const url = event.url ?? legacyUrl ?? "";
-    if (!isSafeBrowserUrl(url)) event.preventDefault();
+  const preventUnsafeNavigation = (event: { preventDefault(): void; url?: string }) => {
+    if (!isSafeBrowserUrl(event.url ?? "")) event.preventDefault();
   };
   contents.on("will-navigate", preventUnsafeNavigation);
   contents.on("will-redirect", preventUnsafeNavigation);

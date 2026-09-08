@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on SetupProvider, the setup i18n catalog, agent-backends brand/guide keys, backend-parts' unified presentation projection, and SettingsButton
- * [OUTPUT]: Provides SetupBackendRow with honest runtime/auth status, contextual login actions, localized recovery guidance, and disclosed diagnostics
+ * [OUTPUT]: Renders Agent settings/onboarding rows with the shared clock and state vocabulary, fixed repair actions and folded diagnostics.
  * [POS]: The setup module's only row form, consumed by Backends Settings and Onboarding without reinterpreting backend state
  */
 
+import { projectAvailability } from "../../../shared/agent-availability/projection";
 import { Download, Info, LogIn, RefreshCw, Terminal } from "lucide-react";
 import { useSetup } from "@/components/providers/setup-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
@@ -46,7 +47,7 @@ export function SetupBackendRow({ backend }: { backend: BackendInfo }) {
           的一枚孤立标签。名字定宽，故一列徽标从同一个 x 起排，扫一眼就知道
           哪几家不可用；从前它被 ml-auto 甩到最右，与真正该在右侧的动作抢位。 */}
       <BackendStatusBadge tone={presentation.tone}>
-        {t(`setup.status.${presentation.status}`)}
+        {t(`agentAvailability.state.${projectAvailability(backend, setup.now).state}`)}
       </BackendStatusBadge>
       {/* 版本是安装位置的对外身份；完整路径只在 hover 时兑现，不占版面 */}
       <span

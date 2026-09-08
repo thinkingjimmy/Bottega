@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared Project placement/grant contracts, the strict v8 schema, and injected ProjectStore queue/state/commit ports
+ * [INPUT]: Depends on shared Project placement/grant contracts, the strict v8 schema, main/errors, and injected ProjectStore queue/state/commit ports
  * [OUTPUT]: Provides positive-grant-gated Pin/Unpin, exact affected-Project planning, single-commit held App cleanup, and orphan reconciliation over the canonical ProjectFile
  * [POS]: ProjectStore placement collaborator; owns placement atoms without owning a second ledger or re-entering ProjectsService
  */
@@ -11,6 +11,7 @@ import {
   type ProjectFile,
   type StoredProject,
 } from "./project-store-schema";
+import { statusError } from "../../errors";
 
 type ProjectAppPlacementPorts = {
   enqueue<T>(operation: () => Promise<T>): Promise<T>;
@@ -20,12 +21,12 @@ type ProjectAppPlacementPorts = {
   now(): number;
 };
 
-export type ProjectPlacementMutation = Readonly<{
+type ProjectPlacementMutation = Readonly<{
   project: StoredProject;
   changed: boolean;
 }>;
 
-export type ProjectPlacementCleanup = Readonly<{
+type ProjectPlacementCleanup = Readonly<{
   changed: boolean;
   affectedProjectIds: readonly string[];
 }>;
@@ -53,7 +54,7 @@ export class ProjectAppPlacements {
       assertAppId(appId);
       const current = this.ports.require(projectId);
       if (current.projectLifecycleRevision !== expectedProjectLifecycleRevision) {
-        throw Object.assign(new Error("Project lifecycle 已变更"), { status: 409 });
+        throw statusError(409, "Project lifecycle 已变更");
       }
       assertPlacementOwner(current);
       const existing = current.appPlacements.find(

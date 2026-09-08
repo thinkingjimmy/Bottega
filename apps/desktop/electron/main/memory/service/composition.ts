@@ -69,12 +69,9 @@ export function composeMemoryControllers(dependencies: Dependencies) {
     delivery: dependencies.delivery,
     network: dependencies.network,
     readChat: dependencies.readChat,
-    trustedProviderReady: (context) => dependencies.trusted(context, false),
-    trustedRebuildProviderReady: (context) => dependencies.trusted(context, true),
+    trustedProviderReady: dependencies.trusted,
     validateContext: dependencies.validateContext,
-    validateFrozen: (context, proof) => dependencies.validate(context, proof, false),
-    validateRebuildFrozen: (context, proof) =>
-      dependencies.validate(context, proof, true),
+    validateFrozen: dependencies.validate,
     providerId: dependencies.providerId,
     captured: dependencies.captured,
   });

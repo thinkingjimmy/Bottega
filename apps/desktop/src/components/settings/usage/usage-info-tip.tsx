@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on lucide Info icons and ui Tooltip
- * [OUTPUT]: Provides a user info tip for the user info tip; The document was entered by the caller via i18n
- * [POS]: The settings/usage sub-module is not usedshared caching tips from Est. cost and SourceRail by StatRow
+ * [OUTPUT]: Provides UsageInfoTip, an accessible inline info affordance whose text is supplied by the caller via i18n
+ * [POS]: settings/usage's shared info tip; reused by Est. cost in StatRow and by SourceRail
  */
 
 import { Info } from "lucide-react";

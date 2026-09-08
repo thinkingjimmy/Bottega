@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Electron session, Node fs, Backends, maintains port clearance and serve ack clearance
- * [OUTPUT]: Provides cleanup AppFiles and install LogPath and remove the full amount of files from the App
- * [POS]: The apps module's ** unmanaged** delete the cleanlist single source; The new feature must be registered here, and AppsService only calls without routing.The server data epoch is the AppDataCutoverLedger, the archive is the AppDataArchiveStore, and the data is not deleted by the user `settleDeleteData` Cascade by Cascade|Keep data and activate the bytes
+ * [INPUT]: Depends on Electron session storage clearing, Node fs, backendById for maintenance-agent cleanup, and removeServeAck from apps/runtime/serve-loop
+ * [OUTPUT]: Provides installLogPath and cleanupAppFiles, which removes every unowned file or state left behind by a deleted App
+ * [POS]: apps module's single unowned-file cleanup list for App deletion; every new unowned path must be registered here. Ledger-backed data (`app-data/<appId>`) is out of scope — it is disposed by `settleDeleteData` via cascade discard or, under retain-data, archived into `app-data-archives/<archiveId>`
  */
 
 import { readdir, rm } from "node:fs/promises";

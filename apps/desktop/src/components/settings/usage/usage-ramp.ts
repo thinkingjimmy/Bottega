@@ -1,6 +1,6 @@
 /**
- * [INPUT]: dependence when not in operation; Color values are the Tailwind diameters, which are recognizable by the scanner
- * [OUTPUT]: Provides two projections of the neutral color stages (a square background / area fill) with two rank tables "facing backwards, linearly into a file"
+ * [INPUT]: No runtime dependencies; color values are literal Tailwind classes so the compiler's static scanner can find them
+ * [OUTPUT]: Provides USAGE_RAMP_BG and USAGE_RAMP_FILL, two five-step neutral color ramps for cell backgrounds and SVG area fills
  * [POS]: The settings/usage sub-module is a single truth source in the color stages; The heat graph, the curve area and the proportional fraction share it
  */
 

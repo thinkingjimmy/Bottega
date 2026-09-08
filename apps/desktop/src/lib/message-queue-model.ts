@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on manual-turn, shared/submission of SubmissionContentV1, PromptInput/RichInput and Gallery attachment origin/submissionData
- * [OUTPUT]: Provides Gallery-token queue DTOs, structured catalog errors, budget/workspace identity fencing, workspace-file Steer custody, CAS claims, and pure state transitions
- * [POS]: The message queue machine image of lib; React/store is only responsible for maintaining status and executing side effects
+ * [INPUT]: Depends on shared ManualTurnSubmission, shared SubmissionContentV1, PromptInput/RichInput types, and GalleryAttachmentOrigin
+ * [OUTPUT]: Provides QueuedAttachment/QueuedPrompt/MessageQueue DTOs, typed QueueError classification, budget and workspace-identity fencing, Steer custody over workspace files, CAS-based ownership claims, and pure queue state-transition functions (enqueue/removeItem/moveItem/etc.)
+ * [POS]: lib's message-queue state machine; React/store layers are only responsible for holding state and executing side effects
  */
 
 import type {
@@ -308,12 +308,6 @@ export function moveItem(queue: MessageQueue, from: number, to: number) {
   const [item] = items.splice(from, 1);
   items.splice(to, 0, item);
   return revise(queue, { items });
-}
-
-export function promote(queue: MessageQueue, id: string) {
-  const index = queue.items.findIndex((item) => item.id === id);
-  if (index <= 0 || !editableItem(queue.items[index])) return queue;
-  return moveItem(queue, index, 0);
 }
 
 export type ClaimResult = { queue: MessageQueue; item?: QueueItem };

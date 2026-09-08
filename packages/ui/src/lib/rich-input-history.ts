@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on PromptInput RichNode/RichValue type and editor history snapshot
  * [OUTPUT]: Provides discardedRichNodes, calculating the truly inaccessible atomic nodes from throughout history
- * [POS]: The RichInput resource availability rules of ui/lib; Remove current aluminum from aluminum and permanently discard aluminum clearly separate
+ * [POS]: RichInput resource-lifetime rules in ui/lib; clearly separates nodes removed from the current value from nodes permanently discarded across history
  */
 
 import type {

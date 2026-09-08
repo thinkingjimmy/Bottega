@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React useEffect/useMemo/useRef/useSyncExternalStore, lib/platform's isApplePlatform, lib/settings-store's live keyboardShortcuts overrides and shared/settings-ipc's ShortcutBinding
- * [OUTPUT]: Provides ShortcutId/SHORTCUT_IDS/SHORTCUT_DEFAULTS, resolveShortcut/matchesBinding/matchShortcut, bindingGlyphs/shortcutKeys, useShortcutBindings/useShortcutKeys, conflictingShortcutIds, RESERVED_SHORTCUT_KEYS/captureBinding and useGlobalShortcuts
- * [POS]: The only truth table of renderer-wide shortcuts: defaults live here, user overrides live in settings.json (absent=default, null=disabled), resolution happens at event/render time so there is no stale closure; matching is exact on shift because rebinding lets any combo gain a second owner
+ * [OUTPUT]: Provides ShortcutId/SHORTCUT_IDS/SHORTCUT_DEFAULTS, resolveShortcut/matchesBinding/matchShortcut, bindingGlyphs/shortcutKeys, useShortcutBindings/useShortcutKeys, conflictingShortcutIds, captureBinding and useGlobalShortcuts
+ * [POS]: Renderer shortcut matching and controls: defaults live in shared/shortcuts/bindings, user overrides live in settings.json (absent=default, null=disabled), resolution happens at event/render time so there is no stale closure; matching is exact on shift because rebinding lets any combo gain a second owner
  */
 
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
@@ -11,41 +11,9 @@ import { settingsStore } from "./settings-store";
 
 export type { ShortcutBinding };
 
-export type ShortcutId =
-  | "search"
-  | "newChat"
-  | "settings"
-  | "saveInstructions"
-  | "findInFile"
-  | "toggleSidebar"
-  | "findInChat";
-
-/** settings.json 里的稀疏覆写：缺席=默认，null=停用，未知 id 被无视。 */
-export type ShortcutOverrides = Readonly<Record<string, ShortcutBinding | null>>;
-
-/* ── 一张表,所有消费者 ────────────────────────────────────────────
- * 这里的绑定既是 matchShortcut 拿去比对 event 的那个,也是键帽渲染、
- * 设置页列表、冲突判定读的那个。分成多处写,屏幕上印着 ⌘N、实现却绑在
- * 别的键上——这种错不会报错,只会让人觉得「快捷键坏了」。
- *
- * findInFile 与 findInChat 默认同为 f 是有意的:两者作用域互斥
- * (个性化页 vs 聊天面),同键合法;设置页据 conflictingShortcutIds
- * 对这类共键行亮警告,解释而非禁止。
- * ────────────────────────────────────────────────────────────── */
-export const SHORTCUT_DEFAULTS: Readonly<Record<ShortcutId, ShortcutBinding>> = {
-  search: { key: "k", shift: false },
-  newChat: { key: "n", shift: false },
-  settings: { key: ",", shift: false },
-  /* 后两个只在 Personalization 那一页有主人。作用域由 useGlobalShortcuts
-     收不收 handler 决定,没给 handler 就不 preventDefault,键照常落回系统。 */
-  saveInstructions: { key: "s", shift: false },
-  findInFile: { key: "f", shift: false },
-  toggleSidebar: { key: "b", shift: false },
-  findInChat: { key: "f", shift: false },
-};
-
-/** 设置页行序也用它：声明序即展示序。 */
-export const SHORTCUT_IDS = Object.keys(SHORTCUT_DEFAULTS) as ShortcutId[];
+import { SHORTCUT_DEFAULTS, SHORTCUT_IDS, resolveShortcut, type ShortcutId, type ShortcutOverrides } from "../../shared/shortcuts/bindings";
+export { SHORTCUT_DEFAULTS, SHORTCUT_IDS, resolveShortcut };
+export type { ShortcutId, ShortcutOverrides };
 
 const EMPTY_OVERRIDES: ShortcutOverrides = {};
 
@@ -54,14 +22,6 @@ function liveOverrides(): ShortcutOverrides {
   return (
     settingsStore.getSnapshot().settings?.keyboardShortcuts ?? EMPTY_OVERRIDES
   );
-}
-
-export function resolveShortcut(
-  id: ShortcutId,
-  overrides: ShortcutOverrides
-): ShortcutBinding | null {
-  const override = overrides[id];
-  return override === undefined ? SHORTCUT_DEFAULTS[id] : override;
 }
 
 /* ⌥ 组合一律不认:那一片是系统与别家应用的地盘,把它也吃下来等于偷键。
@@ -167,7 +127,7 @@ export function conflictingShortcutIds(
  * macOS 下这些组合根本到不了 window keydown(菜单先吃),这道拦截
  * 主要防 Windows/Linux;录制中按 ⌘Q 仍会退出应用,无菜单手术不可避免。
  * ────────────────────────────────────────────────────────────── */
-export const RESERVED_SHORTCUT_KEYS: ReadonlySet<string> = new Set([
+const RESERVED_SHORTCUT_KEYS: ReadonlySet<string> = new Set([
   "q",
   "w",
   "r",

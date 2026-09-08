@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on package inspection, manifest/Base schemas, skill conventions, and the shared frozen-source React GUI validator
  * [OUTPUT]: Provides structured package findings for static HTML or compiled React source without changing the App
- * [POS]: The app's self-check check-point is installed, shared with Agent, and is self-check-backed using the same set of checks, and that's not the second truth
+ * [POS]: Apps package validator; the same checks back the validate_app tool exposed to the Agent, so there is one validation truth, not a separate human-facing one
  */
 
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -11,10 +11,8 @@ import type { AppManifest } from "../../../../shared/apps-ipc";
 import { baseSnapshotFileSchema } from "../../../../shared/base-snapshot";
 import { appBaseDataMigrationFileSchema } from "../../../../shared/app-data-migration";
 import { errorMessage } from "../../errors";
-import {
-  SKILL_FRONTMATTER_PATTERN,
-  parseSkillFrontmatter,
-} from "../../skills-catalog";
+import { parseSkillFrontmatter } from "../../skills-catalog-scan";
+import { SKILL_FRONTMATTER_PATTERN } from "../../skills-management/skill-frontmatter";
 import { appManifestSchema } from "../install/manifest-schema";
 import { validateConfigRequirements } from "../share/app-config-store";
 import { inspectPackage } from "../share/package/package-contract";
@@ -23,8 +21,8 @@ import { AppSourcePreparer } from "../gui-build/pipeline/source-preparer";
 import { validateCompiledGuiSource } from "../gui-build/pipeline/source-validator";
 import { analyzeAuthorSource } from "../gui-build/source-analysis";
 
-export type AppFinding = { file: string; reason: string };
-export type AppValidation = {
+type AppFinding = { file: string; reason: string };
+type AppValidation = {
   errors: AppFinding[];
   warnings: AppFinding[];
 };

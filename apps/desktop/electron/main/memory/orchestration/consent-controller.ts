@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on canonical Chat summaries, native-only segment pages, Policy v4 shared generation, runtime-owned target/destination, scope resolver, and zod durable intent
- * [OUTPUT]: Provides paged one-time reason/mode/generation/history boundary authority, recoverable product history intent, and rebuild Consent/Grant for the current shared generation
- * [POS]: The main/memory/orchestration consent controller is usedSettings only save intent, permanently disclose the bul value here
+ * [OUTPUT]: Provides MemoryConsentController: preview/request/consume for one-time reason/mode/generation consent, product-history commit/preview, and rebuild consent for the current shared generation
+ * [POS]: The main/memory/orchestration consent controller; Settings only persists user intent, this file is where that intent is turned into durable consent grants
  */
 
 import { randomUUID } from "node:crypto";

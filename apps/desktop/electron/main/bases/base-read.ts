@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on immutable Base snapshots, the shared canonical cell context/projection kernel, crypto scope hashes, and tool-result budgets
+ * [INPUT]: Depends on immutable Base snapshots, the shared canonical cell context/projection kernel and filter walker, crypto scope hashes, tool-result budgets, and statusError from main/errors
  * [OUTPUT]: Provides the bounded three-mode `read_base` projection plus the App GUI legacy rows query, both with formula modes, cursors, and column metadata
  * [POS]: The only main-process Base read boundary; it builds one canonical context from the full snapshot and never performs Base mutations
  */
@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import {
   cellValue,
   createBaseCellContext,
+  filterColumnIds,
   projectBaseRows,
   type BaseColumn,
   type BaseFilter,
@@ -15,6 +16,7 @@ import {
   type BaseSelectOption,
   type BaseSnapshot,
 } from "../../../shared/bases-ipc";
+import { statusError } from "../errors";
 import { builtinCallToolResultBytes } from "../tools/result";
 
 export const BASE_QUERY_RESULT_BYTE_LIMIT = 700 * 1024;
@@ -361,19 +363,6 @@ function projectRow(
   };
 }
 
-function* filterColumnIds(filter?: BaseFilter): Generator<string> {
-  if (!filter) return;
-  if (filter.kind === "condition") {
-    yield filter.columnId;
-    return;
-  }
-  if (filter.kind === "not") {
-    yield* filterColumnIds(filter.filter);
-    return;
-  }
-  for (const child of filter.filters) yield* filterColumnIds(child);
-}
-
 function assertColumn(known: ReadonlySet<string>, id: string, use: string) {
   if (!known.has(id)) throw statusError(400, `未知${use}列 ${id}`);
 }
@@ -448,8 +437,4 @@ function assertWithinBudget(value: unknown, byteLimit: number) {
   if (builtinCallToolResultBytes(value) > byteLimit) {
     throw statusError(413, "read_base 最终封套超过结果预算");
   }
-}
-
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }

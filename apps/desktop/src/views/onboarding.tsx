@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React, react-router navigation, useAppTranslation onboarding catalog, SetupProvider judgments, shared AgentFailureNotice, Library-first Skills discovery/import, settingsStore, brand assets, SetupBackendRow and Settings/UI primitives
+ * [INPUT]: Depends on React, react-router navigation, useAppTranslation onboarding catalog, SetupProvider judgments, shared AgentFailureNotice, Library-first Skills discovery/import, settingsStore, brand assets, SetupBackendRow, backendSetupPresentation and Settings/UI primitives
  * [OUTPUT]: Provides an adaptive three-step required Chat Home/Agent onboarding with structured Agent failures and one optional Skills/Memory enhancement screen with focused descriptions
  * [POS]: Main-owned onboarding surface of views; required gates derive from onboarding-gate while its compact rail and container-aware enhancement rows preserve usable reading width
  */
@@ -10,6 +10,7 @@ import { useNavigate } from "react-router";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useSetup } from "@/components/providers/setup-provider";
 import { SetupBackendRow } from "@/components/setup/backend-row";
+import { backendSetupPresentation } from "@/components/setup/backend-parts";
 import { AgentFailureNotice } from "@/components/agent-failure-notice";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
@@ -25,7 +26,6 @@ import {
   PRODUCT_NAME,
 } from "@/lib/brand";
 import { MEMORY_SETTINGS_PATH } from "@/lib/settings-navigation";
-import { hasSettingsBridge } from "@/lib/settings-client";
 import { isApplePlatform } from "@/lib/platform";
 import { settingsStore } from "@/lib/settings-store";
 import {
@@ -256,7 +256,7 @@ function ChatHomeStep() {
           <Button
             size="lg"
             variant={chosen ? "outline" : "default"}
-            disabled={chatHomesRootBusy || !settings || !hasSettingsBridge()}
+            disabled={chatHomesRootBusy || !settings}
             onClick={() => void settingsStore.chooseChatHomesRoot()}
           >
             {chatHomesRootBusy && <Spinner className="size-3.5" />}
@@ -288,7 +288,7 @@ function AgentStep() {
   const { t } = useAppTranslation();
   const setup = useSetup();
   const anyActionable = setup.status?.backends.some(
-    (backend) => backend.status !== "ready"
+    (backend) => backendSetupPresentation(backend).showGuide
   );
   return (
     <>

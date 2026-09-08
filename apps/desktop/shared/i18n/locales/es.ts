@@ -3,7 +3,11 @@
  * [OUTPUT]: Provides the complete Spanish catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
  * [POS]: Spanish desktop locale; compile-time structure must match English exactly
  */
+import { appHostEs } from "./app-host/es";
+import { agentAvailabilityEs } from "./agent-availability/es";
 
+
+import { chatAgentSwitchEs } from "./chat-agent-switch/es";
 import type { Catalog } from "./en";
 import { basesEs } from "./bases/es";
 import { archiveEs } from "./archive";
@@ -19,6 +23,7 @@ import { settingsToolsEs } from "./settings/tools";
 import { settingsUsageEs } from "./settings/usage";
 import { settingsPersonalizationEs } from "./settings/personalization";
 import { settingsShortcutsEs } from "./settings/shortcuts";
+import { presenceEs } from "./presence/es";
 import { settingsAboutEs } from "./settings/about";
 import { historyEs } from "./history";
 import { chatRevisionEs } from "./chat-revision";
@@ -32,6 +37,8 @@ import { agentFailureEs } from "./agent-failure/es";
 import { chatStorageEs } from "./chat-storage/es";
 
 export const es: Catalog = {
+  appHost: appHostEs,
+  agentAvailability: agentAvailabilityEs,
   common: {
     auto: "Auto",
     light: "Claro",
@@ -112,6 +119,7 @@ export const es: Catalog = {
   projectSettings: projectSettingsEs,
   settings: {
     about: settingsAboutEs,
+    presence: presenceEs,
     personalization: settingsPersonalizationEs,
     shortcuts: settingsShortcutsEs,
     skills: settingsSkillsEs,
@@ -209,6 +217,7 @@ export const es: Catalog = {
     tools: settingsToolsEs,
   },
   chat: {
+    agentSwitch: chatAgentSwitchEs,
     ...chatEs,
     runtime: chatRuntimeEs,
     generatingTitle: "Generando título",
@@ -549,8 +558,6 @@ export const es: Catalog = {
   ui: {
     cancel: "Cancelar",
     uploadFiles: "Subir archivos",
-    previousBranch: "Rama anterior",
-    nextBranch: "Rama siguiente",
     loadingRichContent: "Cargando contenido enriquecido",
     loading: "Cargando",
     close: "Cerrar",
@@ -559,7 +566,6 @@ export const es: Catalog = {
     toggleSidebar: "Alternar barra lateral",
     resizeSidebar: "Cambiar tamaño de la barra lateral",
     resizeSidebarHint: "Arrastra para cambiar el tamaño de la barra lateral",
-    addAttachments: "Añadir archivos adjuntos",
     attachment: "Archivo adjunto",
     previewAttachment: "Previsualizar archivo adjunto",
     removeAttachment: "Eliminar archivo adjunto",
@@ -567,7 +573,6 @@ export const es: Catalog = {
     submit: "Enviar",
     message: "Mensaje",
     askAnything: "Pregunta lo que quieras",
-    branchOf: "de",
     submissionFailed: "Error al enviar. Inténtalo de nuevo.",
     skillSuggestionsEmpty: "No hay Skills disponibles",
     skillSuggestionsNoMatch: "No hay Skills coincidentes",

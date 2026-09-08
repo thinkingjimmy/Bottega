@@ -62,7 +62,7 @@ export function verifyUpdateFeed({
  * `files:` 是缩进块，顶层 `path`/`sha512` 与块内同名键靠缩进区分：块内恒有
  * 前导空白，顶层恒无——因此遇到任何顶层键就结束当前条目。
  */
-export function feedFiles(text) {
+function feedFiles(text) {
   const files = [];
   let current = null;
   for (const line of text.split(/\r?\n/)) {

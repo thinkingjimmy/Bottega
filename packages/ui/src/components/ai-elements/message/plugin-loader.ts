@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on streamdown Plugin type with dynamic input from @streamdown/code/math/mermaid
- * [OUTPUT]: Provides Markdown capability testing, flow requested, plug-in selection, single-flight loaders and product-level sharing instances
- * [POS]: When selective rich text of ai-elements/message is running; Manage the plug-in load status only, not participate in React rendering
+ * [OUTPUT]: Provides detectOptionalPlugins (Markdown feature detection), selectOptionalPlugins, and createOptionalPluginLoader — a single-flight, process-wide-shared loader for the code/math/mermaid plugins
+ * [POS]: Runtime plugin-selection layer for ai-elements/message's rich-text rendering; manages plugin load state only and never touches React rendering itself
  */
 
 import type { PluginConfig } from "streamdown";

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node net/fs/crypto, custody line protocol and socket path asserted by shared/builtin-tools
- * [OUTPUT]: Provides GuardianControlChannel: 0600 Native socket, per-custody token, the constant time between the pairs, hello/activated/failed routes and activate/stand-downs
- * [POS]: The main side control of the custody; The only agreement is to move, not know the journal phase, not decide who to kill
+ * [OUTPUT]: Provides GuardianControlChannel: a 0600 Unix socket server with per-custody tokens, constant-time authentication, hello/activated/failed message routing, and activate/stand-down commands
+ * [POS]: Custody's main-process control channel; only carries the wire protocol — it knows nothing of journal phase and decides nothing about which process to kill
  */
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -17,7 +17,7 @@ import {
   type GuardianLaunch,
 } from "./protocol";
 
-export type GuardianHandlers = {
+type GuardianHandlers = {
   onHello(identity: ProcessIdentity): void;
   onActivated(backendPid: number): void;
   onFailed(reason: string): void;

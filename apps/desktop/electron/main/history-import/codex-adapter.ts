@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/path/module, user home, the history-import adapter kernel and the shared turn-folding seam
  * [OUTPUT]: Provides CodexHistoryAdapter with active/archive scans and constant-memory metadata plus bounded two-pass JSONL streaming for response/event selection, tools, task duration, state metadata, one-assistant-per-turn folding, and product-context envelope stripping in both messages and titles
- * [POS]: the history-import Codex CLI format adapter; SQLite is open with readOnly and as an independent source revision
+ * [POS]: The history-import adapter for the Codex CLI format; state_5.sqlite is opened read-only and tracked as an independent source revision
  */
 
 import { createRequire } from "node:module";
@@ -19,7 +19,7 @@ import {
   attachWorkedFor,
   drainTools,
   fingerprintRevision,
-  humanTitle,
+  storageFingerprint,
   initialSourceIncarnation,
   isWithin,
   normalizedAliases,
@@ -35,7 +35,7 @@ import {
   type ParsedHistory,
   type ScanDepth,
 } from "./adapter";
-import { foldHistoryTurns, stripProductContext } from "./turn-folding";
+import { envelopeFreeTitle, foldHistoryTurns, stripProductEnvelopes } from "./turn-folding";
 
 type Json = Record<string, unknown>;
 type StateMeta = { id: string; title?: string; path?: string };
@@ -75,7 +75,9 @@ export class CodexHistoryAdapter implements HistoryAdapter {
           } as const;
           entries.push({
             opaqueId: opaqueSessionId(key), projectId: "", sourceKind: this.sourceKind, key,
-            title: humanTitle(db?.title || meta.title || "Codex 会话"), cwd: meta.cwd,
+            /* state 库的标题是另一路来路：它没走正文那条剥离路径，产品信封会
+               原样爬进侧栏——剥完为空就退回消息正文推出的标题。 */
+            title: envelopeFreeTitle(db?.title, meta.title, "Codex 会话"), cwd: meta.cwd,
             createdAt: meta.createdAt, updatedAt: meta.updatedAt,
             historyRevision: digest(`${fingerprintRevision(value)}:${state.revision}`),
             canResume: true, archived, incompleteTail: meta.incompleteTail,
@@ -265,7 +267,7 @@ function responseItem(payload: Json | null, recordTimestamp: unknown, seq: numbe
   if (payload.type === "message") {
     const role = payload.role === "assistant" ? "assistant" : payload.role === "user" ? "user" : null;
     if (!role) return null;
-    const content = stripProductContext(contentText(payload.content));
+    const content = stripProductEnvelopes(contentText(payload.content));
     if (!content.trim() || injected(content)) return null;
     const id = string(payload.id) ?? `${role}-${seq}`;
     return { kind: "message", id, nativeTurnId: id, deliverySeq: seq, role, content, createdAt: timestamp(recordTimestamp ?? payload.timestamp, entry.createdAt) };
@@ -285,7 +287,7 @@ function responseItem(payload: Json | null, recordTimestamp: unknown, seq: numbe
 function eventMessage(payload: Json | null, recordTimestamp: unknown, seq: number, entry: AdapterEntry): ForeignHistoryMessage | null {
   if (!payload) return null;
   const role = payload.type === "agent_message" ? "assistant" : payload.type === "user_message" ? "user" : null;
-  const content = stripProductContext(string(payload.message) ?? string(payload.text) ?? "");
+  const content = stripProductEnvelopes(string(payload.message) ?? string(payload.text) ?? "");
   if (!role || !content.trim() || injected(content)) return null;
   const id = string(payload.id) ?? `${role}-${seq}`;
   return { kind: "message", id, nativeTurnId: id, deliverySeq: seq, role, content, createdAt: timestamp(recordTimestamp ?? payload.timestamp, entry.createdAt) };
@@ -322,7 +324,7 @@ const first = (names: Set<string>, candidates: string[]) => candidates.find((nam
 async function rolloutFiles(root: string): Promise<string[]> { try { const entries = await readdir(root, { withFileTypes: true }); const nested = await Promise.all(entries.map((entry) => { const path = join(root, entry.name); return entry.isDirectory() ? rolloutFiles(path) : entry.isFile() && entry.name.endsWith(".jsonl") ? [path] : []; })); return nested.flat(); } catch { return []; } }
 const rolloutStem = (path: string) => basename(path, ".jsonl").split("-").at(-1) ?? basename(path, ".jsonl");
 /* 标题只认用户自己写下的那句话：产品信封先剥，剥空即换下一条候选。 */
-function codexMessageText(raw: Json, role: string) { const payload = object(raw.payload); return stripProductContext(raw.type === "response_item" && payload?.type === "message" && payload.role === role ? contentText(payload.content) : raw.type === "event_msg" && payload?.type === `${role}_message` ? string(payload.message) ?? "" : ""); }
+function codexMessageText(raw: Json, role: string) { const payload = object(raw.payload); return stripProductEnvelopes(raw.type === "response_item" && payload?.type === "message" && payload.role === role ? contentText(payload.content) : raw.type === "event_msg" && payload?.type === `${role}_message` ? string(payload.message) ?? "" : ""); }
 function contentText(value: unknown): string { if (typeof value === "string") return value; if (!Array.isArray(value)) return ""; return value.map((item) => { const part = object(item); if (!part || part.type === "reasoning" || part.type === "encrypted_content") return ""; return string(part.text) ?? string(part.output_text) ?? string(part.input_text) ?? ""; }).filter(Boolean).join("\n"); }
 const injected = (value: string) => /<environment_context>|<developer>|<system>|# AGENTS\.md instructions/i.test(value);
 /** subagent 线程（guardian 审批评估、thread_spawn worker）是运行时内部产物，不是用户会话 */
@@ -331,4 +333,3 @@ const object = (value: unknown) => value && typeof value === "object" && !Array.
 const string = (value: unknown) => typeof value === "string" && value ? value : null;
 const safeJson = (value: unknown) => { try { return JSON.stringify(value); } catch { return "[unserializable]"; } };
 const emptyScan = (): AdapterScan => ({ sourceKind: "codex", installed: false, entries: [], sourceRevision: "missing" });
-async function storageFingerprint(root: string) { try { const value = await fingerprint(root); return digest(`${value.device}:${value.inode}`); } catch { return null; } }

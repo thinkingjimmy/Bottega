@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent/Chat contracts, Chat Home ownership, attachment export dependencies, fork-home capabilities, and deletion policy
- * [OUTPUT]: Provides the complete dependency contract used to compose ChatsService
+ * [OUTPUT]: Defines Chat persistence ports, adoption readiness context and title generation/eligibility subscriptions.
  * [POS]: Type-only composition boundary separating service wiring from runtime Chat orchestration
  */
 
@@ -18,7 +18,8 @@ type ChatHomeCreationPort = ChatForkHomePort & Pick<ChatHomeService,
 
 export type ChatsServiceOptions = ChatDeletionOptions & {
   recoverTitleJobs?: boolean;
-  generateTitle: (firstMessage: string) => Promise<string>;
+  generateTitle: (firstMessage: string, context?: { chatId: string }) => Promise<string>;
+  subscribeTitleEligibility?(wake: () => void): () => void;
   attachmentsRoot: string;
   exportsRoot?: string;
   attachmentExportFs?: AttachmentExportDependencies;
@@ -31,7 +32,9 @@ export type ChatsServiceOptions = ChatDeletionOptions & {
     record: Pick<ChatRecord, "id" | "incarnationId" | "title">
   ) => Promise<void>;
   resolveAppAgent?: (appId: string, projectId: string) => AgentBackendId | undefined;
-  assertAgentReady?: (agent: AgentBackendId) => Promise<void>;
+  assertAgentReady?: (agent: AgentBackendId, operation?: {
+    conversationId: string; requestId: string; cwd: string; model?: string;
+  }) => Promise<void>;
   chatHomes?: ChatHomeCreationPort;
   isProjectArchived?: (projectId: string) => boolean;
   isAppProject?: (projectId: string) => boolean;

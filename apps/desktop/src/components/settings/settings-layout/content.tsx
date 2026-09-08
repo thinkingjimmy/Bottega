@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React ReactNode/ComponentProps, Lucide ArrowUpRight, and @ai-chat/ui styling primitives
- * [OUTPUT]: Provides SettingsSurface, SettingsList, tone-aware SettingsRow, SettingsBadge, SettingsLinkRow, SettingsNoteList and SettingsEmpty -- what "a piece of content" looks like inside the frame
+ * [OUTPUT]: Provides settingsSurface, SettingsList, tone-aware SettingsRow, SettingsBadge, SettingsLinkRow, SettingsNoteList and SettingsEmpty -- what "a piece of content" looks like inside the frame
  * [POS]: The content third of settings-layout/; a surface earns its ring only by holding rows, and each row's shape follows whether it can be acted on
  */
 
@@ -104,6 +104,7 @@ export function SettingsRow({
         </div>
         {description && (
           <p
+            id={htmlFor ? `${htmlFor}-description` : undefined}
             className={cn(
               "mt-1 text-xs leading-relaxed",
               tone === "destructive" ? "text-destructive" : "text-muted-foreground"

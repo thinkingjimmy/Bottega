@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path/crypto and zod
- * [OUTPUT]: Provides hosted root layout, v3 manifest, last-known-good/three-phase durable version change + dataEpoch + managed/manual configuration status, restore dataRoot marker, runtime journal, secure root and plug-in unloading
- * [POS]: The main/memory/runtime/managed status layer is permanentlyOutbox does not have any wipe WAL, rebuildJob only keeps operationId references
+ * [INPUT]: Depends on durable JSON, managed ownership facts and the platform venv executable mapper
+ * [OUTPUT]: Provides managed roots, Windows Scripts/POSIX bin paths and the existing version/recovery/ownership journals
+ * [POS]: The main/memory/runtime/managed durable status layer; wipe/uninstall crash-safety comes from an append-only journal plus quarantine-then-delete, callers only ever hold back an operationId to trace it
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -18,6 +18,8 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { z } from "zod";
 import { durableReplaceFile } from "../../../persistence/durable-json";
+
+import { venvExecutable } from "./archives/uv-assets";
 
 const MARKER_FILE = ".ai-chat-owner";
 
@@ -96,7 +98,7 @@ export class ManagedRoots {
   }
 
   venvBinary(executable: string) {
-    return join(this.installRoot, "venv", "bin", executable);
+    return venvExecutable(join(this.installRoot, "venv"), executable);
   }
 
   async ensure() {

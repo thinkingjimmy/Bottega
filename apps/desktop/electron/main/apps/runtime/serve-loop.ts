@@ -65,7 +65,7 @@ export type ServeLoop = {
   dispose: () => void;
 };
 
-export type ServeLoopDependencies = {
+type ServeLoopDependencies = {
   appId: string;
   userData: string;
   appDir: string;
@@ -88,7 +88,7 @@ type SafeLocation = {
   warning: string | null;
 };
 
-export type ServeRootIdentity = {
+type ServeRootIdentity = {
   dev: number;
   ino: number;
   realPath: string;

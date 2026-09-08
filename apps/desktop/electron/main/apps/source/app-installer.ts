@@ -1,10 +1,14 @@
 /**
- * [INPUT]: Depends on Node process/fs/path, backend execution, install/repair kernels, AppSourceMonitor, the shared AppMutationCoordinator, packet contract fingerprint, MaintenanceGate, AppStore, AppRuntime, and support assistant
- * [OUTPUT]: Provides serialized per-App install/repair/edit rebuilds, held-lane source reconciliation, stale-receipt rejection, cancellation, extension confirmation, legacy runtime delivery, and compiled Base staging without stop-before-build
+ * [INPUT]: Depends on AppStore, HEAD-and-byte candidate identities, compatibility receipts, source custody, joined process execution, maintenance admission and generation publication.
+ * [OUTPUT]: Executes authorized App install/update/repair work with target-specific maintenance eligibility and the existing source, publication and permission fences.
  * [POS]: Apps supply-chain coordinator; it turns mutable source trees into validated runtime generations while AppSourceMonitor owns observation inside the same mutation lane
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { AppCompatibilityError, readCompatibility, revalidateCompatibility, recordCandidate, revalidateCompatibility as verifyDeclaration } from "../compatibility/read";
+import { readWorkspaceCandidate } from "../compatibility/candidate";
+import { RepoProbeService } from "../share/package/repo-probe";
+import type { AppCompatibilityFailure } from "../../../../shared/app-host/contract";
+import { executeInstallProcess } from "./install-process";
 import {
   access,
   mkdir,
@@ -15,7 +19,6 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { createInterface } from "node:readline";
 import {
   appSourceStateOf,
   repairSite,
@@ -25,9 +28,7 @@ import {
   type AppManifest,
   type AppRecord,
 } from "../../../../shared/apps-ipc";
-import {
-  sanitizedProcessEnvironment,
-} from "../../codex-runtime";
+import { sanitizedProcessEnvironment } from "../../backends/runtime-probe";
 import { backendById, backendRuntimeRegistry } from "../../backends";
 import { headlessExecutor } from "../../backends/headless-executor";
 import { acquireAgentProcessLease } from "../../agent-process-supervisor";
@@ -35,14 +36,12 @@ import { stopProcessGroup } from "../../process-group";
 import { AppRuntime } from "../server/app-runtime";
 import { AppStore } from "../store/app-store";
 import { createInstallAnalysisPrompt } from "../install/install-prompt";
-import {
-  APP_MANIFEST_JSON_SCHEMA,
-  appManifestSchema,
-} from "../install/manifest-schema";
+import { APP_MANIFEST_JSON_SCHEMA, appManifestSchema } from "../install/manifest-schema";
 import { finalizeInstall } from "../install/finalize";
 import {
   declineExtension,
   inspectExtension,
+  verifyExtensionPlan,
   type ExtensionDecision,
   type ExtensionPlan,
 } from "../install/extension";
@@ -57,7 +56,10 @@ import { RepairAdapter } from "../install/repair/adapter";
 import { type RepairContext, RepairRunner } from "../install/repair/runner";
 import { MaintenanceGate } from "../maintenance/maintenance-gate";
 import { asError } from "../../errors";
-import { isContained, strippedShell } from "../support";
+import { isContained } from "../support";
+import { admitWebInstallManifest, readAuthorManifest, writeInstallManifest } from "../execution/author-manifest";
+import { appCommandLabel, resolveConfiguredAppCommand } from "../execution/command";
+import type { AppCommand } from "../../../../shared/apps-execution";
 import {
   AppMutationCoordinator,
   assertAppSourceReceipt,
@@ -65,26 +67,11 @@ import {
 import { AppSourceMonitor } from "./app-source-monitor";
 
 const INSTALL_TIMEOUT_MS = 30 * 60_000;
-const NAMING_STUDIO_URL =
-  "https://github.com/thinkingjimmy/codex-naming-studio";
-
-type ExecuteOptions = {
-  cwd: string;
-  env: NodeJS.ProcessEnv;
-  task: InstallTask;
-  stdin?: string;
-  allowFailure?: boolean;
-  onStdout?: (line: string) => void;
-  onStderr?: (line: string) => void;
-};
-
-type ExecuteResult = {
-  code: number;
-  stdout: string;
-  stderr: string;
-};
+const NAMING_STUDIO_URL = "https://github.com/thinkingjimmy/codex-naming-studio";
 
 export class AppInstaller {
+  private compatibilityReporter: ((failure: AppCompatibilityFailure) => Promise<unknown>) | null = null;
+  configureCompatibilityReporter(reporter: (failure: AppCompatibilityFailure) => Promise<unknown>) { this.compatibilityReporter = reporter; }
   private readonly tasks = new SerialTaskQueue();
   private readonly sourceMonitor: AppSourceMonitor;
   private readonly repairs: RepairRunner;
@@ -104,7 +91,13 @@ export class AppInstaller {
     private readonly maintenanceGate: MaintenanceGate,
     readLogTail: (appId: string) => Promise<string>,
     private readonly mutations = new AppMutationCoordinator(),
-    sourceMonitorIntervalMs = 30_000
+    sourceMonitorIntervalMs = 30_000,
+    private readonly probeSource = async (repo: string, commit?: string) => {
+      const probe = new RepoProbeService(userData, store.hostVersion);
+      const result = await probe.probe(repo, commit);
+      if (result.kind === "base") await probe.discard(result.preflightId);
+      return result;
+    }
   ) {
     this.schemaPath = join(userData, "manifest-schema.json");
     this.sourceMonitor = new AppSourceMonitor(
@@ -177,6 +170,7 @@ export class AppInstaller {
 
   async enqueueRepair(appId: string) {
     if (this.tasks.has(appId)) throw new Error("该 App 已在任务队列中");
+    await this.assertCompatibility(appId);
     await this.repairs.assertCanEnqueue(appId);
     const record = this.store.get(appId);
     if (!record) throw new Error("App 不存在");
@@ -216,6 +210,41 @@ export class AppInstaller {
     await task.settled;
   }
 
+  async assertCompatibility(appId: string) {
+    const record = this.store.get(appId);
+    if (!record) throw new Error("App does not exist");
+    if (record.state === "install-failed" && record.sourceRepoUrl) {
+      const result = await this.probeSource(record.sourceRepoUrl, record.installCandidate?.commitSha);
+      if (result.kind === "compatibility-blocked") throw new AppCompatibilityError({
+        ...result.compatibility, candidate: { ...result.compatibility.candidate, appId, hasUsableVersion: false },
+      });
+      return;
+    }
+    return readCompatibility(record.dir, await this.workspaceCandidate(record, this.localTask()), this.store.hostVersion());
+  }
+
+  private workspaceCandidate(record: AppRecord, task: InstallTask) {
+    return readWorkspaceCandidate(record, (args) => this.execute("git", args, { cwd: record.dir, env: sanitizedProcessEnvironment(), task }).then((result) => result.stdout));
+  }
+
+  async resumeCompatibility(appId: string, expectedDigest: string) {
+    const record = this.store.get(appId);
+    if (!record) return { kind: "candidate-unavailable" } as const;
+    if (record.state === "install-failed") {
+      await this.assertCompatibility(appId);
+      return { kind: "installed-update", appId } as const;
+    }
+    const candidate = await this.workspaceCandidate(record, this.localTask());
+    if (candidate.contentDigest !== expectedDigest) return { kind: "candidate-unavailable" } as const;
+    await readCompatibility(record.dir, candidate, this.store.hostVersion());
+    return { kind: "installed-update", appId } as const;
+  }
+
+  async applyCompatibility(appId: string, expectedDigest: string) {
+    if (this.store.get(appId)?.state === "install-failed") return this.retryInstall(appId);
+    return this.rebuildAfterEdit(appId, true, expectedDigest);
+  }
+
   async retryInstall(appId: string) {
     const record = this.store.get(appId);
     if (!record || record.state !== "install-failed") {
@@ -223,6 +252,7 @@ export class AppInstaller {
     }
     /* 干净重装会把目录整棵删掉重 clone：上一轮 journal 描述的那棵树从此不存在，
        留着它下次启动就会被重放到新装的 App 头上；维护锁也必须一并释放。 */
+    await this.assertCompatibility(appId);
     await this.repairs.discard(appId);
     await this.store.update(appId, (current) => ({
       ...current,
@@ -242,9 +272,9 @@ export class AppInstaller {
     await this.rebuildAfterEdit(appId, true);
   }
 
-  rebuildAfterEdit(appId: string, force = false) {
+  rebuildAfterEdit(appId: string, force = false, expectedDigest?: string) {
     return this.serializeMutation(appId, () =>
-      this.rebuildAfterEditLocked(appId, force)
+      this.rebuildAfterEditLocked(appId, force, expectedDigest)
     );
   }
 
@@ -256,16 +286,20 @@ export class AppInstaller {
     await this.sourceMonitor.reconcileHeld(appId);
   }
 
-  private async rebuildAfterEditLocked(appId: string, force = false) {
+  private async rebuildAfterEditLocked(appId: string, force = false, expectedDigest?: string) {
     if (this.maintenanceGate.isLocked(appId)) throw new Error("App 修复中");
     const record = this.store.get(appId);
     if (!record?.manifest || !["ready", "update-failed"].includes(record.state)) {
       throw new Error("App 尚未就绪");
     }
     const task = this.localTask();
+    const candidateIdentity = await this.workspaceCandidate(record, task);
+    if (expectedDigest && candidateIdentity.contentDigest !== expectedDigest) throw new Error("APP_CANDIDATE_CHANGED");
     let changedPaths: string[] = [];
+    let compatibilityBlocked = false;
     try {
       const changes = await this.sourceMonitor.inspect(record, task);
+      const compatibility = await readCompatibility(record.dir, candidateIdentity, this.store.hostVersion());
       changedPaths = changes.paths;
       await this.sourceMonitor.persist(appId, changes.fingerprint);
       const previousFingerprint = await this.sourceMonitor.readBaseline(appId);
@@ -320,6 +354,7 @@ export class AppInstaller {
         appId,
         publishFingerprint.fingerprint
       );
+      await revalidateCompatibility(record.dir, candidateIdentity, compatibility, this.store.hostVersion());
       const ready = await this.store.publishGeneration(appId, (current) => {
         assertAppSourceReceipt(appSourceStateOf(current), sourceReceipt);
         return {
@@ -335,6 +370,15 @@ export class AppInstaller {
       const applied = await this.sourceMonitor.inspect(ready, task);
       await this.sourceMonitor.writeBaseline(appId, applied.fingerprint);
     } catch (cause) {
+      if (cause instanceof AppCompatibilityError) {
+        compatibilityBlocked = true;
+        if (this.store.get(appId) !== record) {
+          await this.store.update(appId, () => record);
+          if (servesWebRuntime(record.manifest)) await this.runtime.ensureRunning(appId);
+        }
+        await this.compatibilityReporter?.(cause.compatibility);
+        throw cause;
+      }
       const error = asError(cause);
       await this.store.update(appId, (current) => ({
         ...current,
@@ -345,7 +389,7 @@ export class AppInstaller {
       throw error;
     } finally {
       const latest = this.store.get(appId);
-      if (latest) {
+      if (latest && !compatibilityBlocked) {
         await this.sourceMonitor.inspect(latest, task)
           .then((value) => this.sourceMonitor.persist(appId, value.fingerprint))
           .catch((cause) =>
@@ -388,6 +432,7 @@ export class AppInstaller {
 
   private async runWorkLocked(appId: string, task: InstallTask, work: QueuedWork) {
     if (work.kind === "install") return this.installOne(appId, task);
+    await this.assertCompatibility(appId);
     const timeout = setTimeout(() =>
       task.controller.abort(new Error("修复超过 30 分钟")), INSTALL_TIMEOUT_MS);
     try {
@@ -410,7 +455,6 @@ export class AppInstaller {
     try {
       await this.appendLog(appId, `\n===== 安装 ${new Date().toISOString()} =====`);
       await rm(staging, { recursive: true, force: true });
-      await rm(finalDir, { recursive: true, force: true });
       await mkdir(staging, { recursive: true, mode: 0o700 });
 
       this.emit({ appId, type: "progress", step: "正在克隆仓库", operation: "install" });
@@ -432,9 +476,22 @@ export class AppInstaller {
         }
       );
 
+      if (record.installCandidate) {
+        const options = { cwd: staging, env: sanitizedProcessEnvironment(), task };
+        await this.execute("git", ["fetch", "--depth", "1", "origin", record.installCandidate.commitSha], options);
+        await this.execute("git", ["checkout", "--detach", record.installCandidate.commitSha], options);
+        const head = await this.execute("git", ["rev-parse", "HEAD"], options);
+        if (head.stdout.trim() !== record.installCandidate.commitSha) throw new Error("APP_CANDIDATE_CHANGED");
+      }
+      const candidateIdentity = recordCandidate(record);
+      const compatibility = record.installCandidate
+        ? await verifyDeclaration(staging, candidateIdentity, { declaration: null, declarationDigest: record.installCandidate.declarationDigest }, this.store.hostVersion())
+        : await readCompatibility(staging, candidateIdentity, this.store.hostVersion());
       phase = "manifest";
-      const candidate = await this.analyze(record, staging, task);
+      const candidate = record.installStrategy !== "author-manifest"
+        ? await this.analyze(record, staging, task) : await readAuthorManifest(staging);
       const manifest = await finalizeInstall(staging, candidate, {
+        onManifest: (manifest) => this.store.update(appId, (current) => ({ ...current, pendingInstallRequirements: manifest.requirements ?? undefined })),
         runInstall: async (command) => {
           phase = "install";
           await this.runShell(appId, command, staging, task, "正在安装依赖");
@@ -445,12 +502,17 @@ export class AppInstaller {
         },
         validateStatic: (value) => this.validateStaticArtifact(staging, value),
       });
+      await revalidateCompatibility(staging, candidateIdentity, compatibility, this.store.hostVersion());
+      await writeInstallManifest(staging, manifest);
       const plan = await inspectExtension(staging);
       const decision = plan
         ? await this.confirmExtension(record, plan)
         : "none";
       const deliveredManifest =
         decision === "declined" ? declineExtension(manifest) : manifest;
+      if (decision === "declined") await writeInstallManifest(staging, deliveredManifest);
+      await revalidateCompatibility(staging, candidateIdentity, compatibility, this.store.hostVersion());
+      await rm(finalDir, { recursive: true, force: true });
       await rename(staging, finalDir);
       // marketplace source 会被 Codex 固化为绝对路径，扩展必须在交付目录上注册。
       if (plan && decision === "approved") {
@@ -469,10 +531,12 @@ export class AppInstaller {
           state: "ready",
           lastError: null,
           manifest: deliveredManifest,
+          pendingInstallRequirements: undefined,
         };
       }, { generationSourceDir: finalDir });
       this.emit({ appId, type: "progress", step: "安装完成", operation: "install" });
     } catch (cause) {
+      if (cause instanceof AppCompatibilityError) await this.compatibilityReporter?.(cause.compatibility);
       const signalReason = task.controller.signal.reason;
       const error = task.controller.signal.aborted
         ? asError(signalReason ?? "用户取消")
@@ -488,11 +552,7 @@ export class AppInstaller {
     }
   }
 
-  private async analyze(
-    record: AppRecord,
-    staging: string,
-    task: InstallTask
-  ) {
+  private async analyze(record: AppRecord, staging: string, task: InstallTask) {
     if (record.maintenanceAgent === "auto") {
       throw new Error("App 尚未钉住维护 Agent");
     }
@@ -500,7 +560,7 @@ export class AppInstaller {
     if (!descriptor.maintenance || !descriptor.headless) {
       throw new Error(`${descriptor.displayName} 不支持 App 安装分析`);
     }
-    const runtime = await this.maintenanceRuntime(descriptor.id);
+    const runtime = await this.maintenanceRuntime(descriptor.id, staging);
     const session = await descriptor.maintenance.open({
       userData: this.userData,
       appId: record.id,
@@ -533,9 +593,8 @@ export class AppInstaller {
     try {
       const result = await run.result;
       await this.appendLog(record.id, `[manifest] ${result.text}`);
-      return appManifestSchema.parse(
-        result.json ?? JSON.parse(result.text)
-      );
+      const candidate = result.json ?? JSON.parse(result.text);
+      return record.installStrategy === undefined ? appManifestSchema.parse(candidate) : admitWebInstallManifest(candidate);
     } finally {
       task.controller.signal.removeEventListener("abort", cancel);
     }
@@ -576,14 +635,16 @@ export class AppInstaller {
     plan: ExtensionPlan,
     repairContext?: RepairContext
   ) {
-    if (record.maintenanceAgent === "auto") {
-      throw new Error("App 尚未钉住维护 Agent");
+    await verifyExtensionPlan(appDir, plan);
+    if (plan.files.every(({ path }) => /^(skills|\.agents\/skills)\//.test(path.replaceAll("\\", "/")))) {
+      await this.appendLog(record.id, "[agent] 已批准仓库 Skill 文件，随 App 交付");
+      return;
     }
-    const descriptor = backendById(record.maintenanceAgent);
+    const descriptor = backendById(record.maintenanceAgent === "auto" ? record.agent : record.maintenanceAgent);
     if (!descriptor.maintenance) {
       throw new Error(`${descriptor.displayName} 不支持 App 扩展配置`);
     }
-    const runtime = await this.maintenanceRuntime(descriptor.id);
+    const runtime = await this.maintenanceRuntime(descriptor.id, appDir);
     const session = await descriptor.maintenance.open({
       userData: this.userData,
       appId: record.id,
@@ -623,13 +684,13 @@ export class AppInstaller {
   }
 
   private async maintenanceRuntime(
-    backend: Parameters<typeof backendById>[0]
+    backend: Parameters<typeof backendById>[0], cwd: string
   ) {
     const descriptor = backendById(backend);
     const snapshot = await backendRuntimeRegistry.resolveForSpawn(backend);
     if (
       snapshot.runtimeStatus !== "installed" ||
-      snapshot.authStatus !== "authenticated" ||
+      (await backendRuntimeRegistry.operationEligibility(backend, "install-analysis", { cwd, ignoreUserConfig: true }, snapshot)).decision !== "allow" ||
       !snapshot.capabilities.maintenance
     ) {
       throw new Error(`${descriptor.displayName} 当前不可用于 App 维护`);
@@ -686,9 +747,9 @@ export class AppInstaller {
     }
   }
 
-  private runShell(
+  private async runShell(
     appId: string,
-    command: string,
+    command: AppCommand,
     cwd: string,
     task: InstallTask,
     step: string,
@@ -697,96 +758,20 @@ export class AppInstaller {
     this.emit({
       appId,
       type: "progress",
-      step: `${step}：${command.slice(0, 80)}`,
+      step: `${step}：${appCommandLabel(command)}`,
       operation,
     });
-    const shell = strippedShell(command);
+    const shell = await resolveConfiguredAppCommand(command, { root: cwd, userData: this.userData, appId, signal: task.controller.signal });
     return this.execute(shell.executable, shell.args, {
-      cwd,
-      env: sanitizedProcessEnvironment(),
+      cwd: shell.cwd,
+      env: shell.env,
       task,
       onStdout: (line) => void this.appendLog(appId, `[command] ${line}`),
       onStderr: (line) => void this.appendLog(appId, `[command:stderr] ${line}`),
     });
   }
 
-  private execute(
-    executable: string,
-    args: string[],
-    options: ExecuteOptions
-  ) {
-    return new Promise<ExecuteResult>((resolvePromise, reject) => {
-      if (options.task.controller.signal.aborted) {
-        reject(asError(options.task.controller.signal.reason ?? "操作已取消"));
-        return;
-      }
-      let child: ChildProcessWithoutNullStreams;
-      try {
-        child = spawn(executable, args, {
-          cwd: options.cwd,
-          detached: true,
-          env: options.env,
-        });
-      } catch (cause) {
-        reject(asError(cause));
-        return;
-      }
-      let stdout = "";
-      let stderr = "";
-      let spawned = false;
-      const onAbort = () => {
-        const pid = child.pid;
-        if (pid) void stopProcessGroup(pid);
-      };
-      options.task.controller.signal.addEventListener("abort", onAbort, {
-        once: true,
-      });
-      child.stdout.on("data", (chunk) => {
-        stdout += String(chunk);
-      });
-      child.stderr.on("data", (chunk) => {
-        stderr += String(chunk);
-      });
-      const stdoutLines = createInterface({ input: child.stdout });
-      const stderrLines = createInterface({ input: child.stderr });
-      stdoutLines.on("line", (line) => options.onStdout?.(line));
-      stderrLines.on("line", (line) => options.onStderr?.(line));
-      child.once("spawn", () => {
-        spawned = true;
-        if (child.pid) options.task.pids.add(child.pid);
-        if (options.stdin !== undefined) child.stdin.end(options.stdin);
-        else child.stdin.end();
-      });
-      child.once("error", (error) => {
-        options.task.controller.signal.removeEventListener("abort", onAbort);
-        reject(error);
-      });
-      child.once("close", (code) => {
-        options.task.controller.signal.removeEventListener("abort", onAbort);
-        const pid = child.pid;
-        if (pid) options.task.pids.delete(pid);
-        void (async () => {
-          if (pid) await stopProcessGroup(pid);
-          const result = { code: code ?? 1, stdout, stderr };
-          if (options.task.controller.signal.aborted) {
-            reject(
-              asError(options.task.controller.signal.reason ?? "操作已取消")
-            );
-          } else if (result.code === 0 || options.allowFailure) {
-            resolvePromise(result);
-          } else {
-            const detail = stderr.trim() || stdout.trim();
-            reject(
-              new Error(
-                `${executable} 退出 code=${result.code}${detail ? `：${detail.slice(-1_000)}` : ""}`
-              )
-            );
-          }
-        })().catch(reject);
-      });
-      if (!spawned && options.task.controller.signal.aborted) onAbort();
-    });
-  }
+  private readonly execute = executeInstallProcess;
 
 }
 

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React focus/effect, Button and ready GalleryItem; Receiving controlled comment text/coordinates
- * [OUTPUT]: Provides GalleryCommentEditor with GalleryCommentEditorValue, with initial focus, keyboard coordinates and submit/cancel
- * [POS]: The comments layer of bases/views/gallery; Focus returns is the responsibility of the interactive roots
+ * [INPUT]: Depends on React focus/effect, Button, and a ready-phase GalleryItem; receives controlled comment text/coordinates from the caller
+ * [OUTPUT]: Provides GalleryCommentEditor with GalleryCommentEditorValue, initial focus, keyboard-driven coordinate adjustment, and submit/cancel
+ * [POS]: The comment-editing layer of bases/views/gallery; returning focus on close is the caller's responsibility
  */
 
 import { useEffect, useRef } from "react";

@@ -12,7 +12,7 @@ import type { AppServerCustodyRuntime } from "../runtime/server-custody";
 /** drain 的上限：等不到零就如实 409，绝不拿「等够久了」冒充已排空。 */
 const DRAIN_TIMEOUT_MS = 30_000;
 
-export type ServerLifecycleDependencies = {
+type ServerLifecycleDependencies = {
   custody: AppServerCustodyRuntime;
   cutover: AppServerDataCutover;
   lifecycleGate: AppLifecycleAdmissionGate;
@@ -27,7 +27,6 @@ export type ServerLifecycleDependencies = {
   activeServerBinding(
     appId: string
   ): Readonly<{ generationId: string; dataEpochId: string }> | null;
-  appDir(appId: string): string | null;
 };
 
 export function composeServerLifecycle(deps: ServerLifecycleDependencies) {
@@ -71,7 +70,6 @@ export function composeServerLifecycle(deps: ServerLifecycleDependencies) {
     stopRuntime: (appId) => deps.stopRuntime(appId),
     unsettledCustody: (appId) => deps.unsettledCustody(appId),
     activeServerBinding: (appId) => deps.activeServerBinding(appId),
-    appDir: (appId) => deps.appDir(appId),
   };
 
   /**

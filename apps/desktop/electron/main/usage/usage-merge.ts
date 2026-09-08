@@ -1,8 +1,8 @@
 /**
  * [INPUT]: Depends on shared usage-calendar and usage-ipc
  * [OUTPUT]: Provides normalized usage event/file types, bucket limits, Codex request roots, merge precedence, pricing cutoffs, and pure aggregation functions
- * [POS]: The use module's accuracy is the nucleus of the cluster; Parser only the facts, scope, dispute settlement, date and cost calibre are completed at this time
- * [NOTE]: mergeKey is a constant-belt source advantage, cross-source never collides with a combine MergeResults are therefore an exact equivalent rather than approximate
+ * [POS]: The usage domain's accuracy core; source adapters report only raw facts, while scope resolution, conflict handling, day-bucketing, and pricing all happen here
+ * [NOTE]: mergeKey prefixes every key with its source, so cross-source keys never collide — combineMergeResults is therefore an exact sum, not an approximation
  */
 
 import { addDays, dayKey } from "../../../shared/usage-calendar";
@@ -15,7 +15,7 @@ import { priceEvent, type PricingTable } from "./pricing/pricing";
 import { buildTable } from "./pricing/pricing";
 import { seedCatalog } from "./pricing/model-pricing.data";
 
-export const SESSION_GAP_MS = 30 * 60_000;
+const SESSION_GAP_MS = 30 * 60_000;
 
 export type UsageBuckets = {
   input: number;
@@ -357,7 +357,7 @@ export function combineMergeResults(results: MergeResult[]): MergeResult {
   };
 }
 
-export function longestSegment(perFileTs: Map<string, number[]>) {
+function longestSegment(perFileTs: Map<string, number[]>) {
   let longest = 0;
   for (const timestamps of perFileTs.values()) {
     const ordered = timestamps.filter(Number.isFinite).sort((a, b) => a - b);

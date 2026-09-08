@@ -12,10 +12,13 @@ import type {
 
 export class FakeUpdateAdapter implements UpdateAdapter {
   private readonly events = new EventEmitter();
+  private checks = 0;
+  private candidate: string | null = null;
+  private downloaded: string | null = null;
 
   constructor(
     private readonly version = "0.1.1",
-    private readonly installed: () => void = () => undefined,
+    private readonly installed: (version: string) => void = () => undefined,
     private readonly stepDelayMs = 40
   ) {}
 
@@ -33,27 +36,36 @@ export class FakeUpdateAdapter implements UpdateAdapter {
     this.events.off(event, listener);
   }
 
-  async checkForUpdates() {
+  async checkForUpdates(operationId?: number) {
     this.events.emit("checking-for-update");
     await Promise.resolve();
-    this.events.emit("update-available", { version: this.version });
+    const versions = this.version.split(",");
+    this.candidate = versions[Math.min(this.checks++, versions.length - 1)]!;
+    this.events.emit("update-available", { version: this.candidate, operationId });
   }
 
-  async downloadUpdate() {
+  async downloadUpdate(operationId?: number) {
+    if (!this.candidate) throw new Error("UPDATE_CANDIDATE_STALE");
+    const version = this.candidate;
     for (const percent of [12, 58, 100]) {
       this.events.emit("download-progress", {
-        percent,
+        percent, operationId,
         transferred: percent,
         total: 100,
       });
       await new Promise((resolve) => setTimeout(resolve, this.stepDelayMs));
     }
-    this.events.emit("update-downloaded", { version: this.version });
+    this.downloaded = version;
+    this.events.emit("update-downloaded", { version, operationId });
   }
 
   quitAndInstall() {
-    this.installed();
+    if (!this.downloaded || this.downloaded !== this.candidate) throw new Error("UPDATE_CANDIDATE_STALE");
+    this.installed(this.downloaded);
   }
+
+  async validateDownloadedCandidate(version?: string) { return this.downloaded === version && version === this.candidate; }
+  invalidateCandidate() { this.candidate = null; this.downloaded = null; }
 
   fail(error: Error) {
     this.events.emit("error", error);

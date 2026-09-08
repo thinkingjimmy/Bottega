@@ -10,7 +10,6 @@ import { app, BrowserWindow, nativeTheme } from "electron";
 import {
   INITIAL_DARK_ARGUMENT,
   INITIAL_LANGUAGE_ARGUMENT,
-  SETTINGS_CHANNEL,
 } from "../../../shared/settings-ipc";
 import { resolveAppLocale } from "../../../shared/i18n/locale";
 import { registerAgentBridge, resetThreadServiceTierEffective } from "../agent-bridge";
@@ -54,7 +53,7 @@ import type { TurnEventsBroker } from "../gallery/turn-events-broker";
 import { resolveConversationContext } from "../workspace-resolver";
 import { lockNavigation } from "./security";
 import type { AgentTurnCustodyRuntime } from "../backends/agent-turn-custody-runtime";
-import { windowBackgroundColor } from "./native-theme";
+import { bindWindowTheme, windowBackgroundColor } from "./native-theme";
 import type { BrowserRuntime } from "../browser/bootstrap";
 import type { ManualMcpServersStore } from "../tools/mcp/store";
 import type { HistoryImportService } from "../history-import/service";
@@ -65,7 +64,7 @@ import { registerProjectTools } from "../tools/project/registrar";
 import { projectBuiltinInventory } from "../tools/project/resolver";
 import type { ProjectToolPolicyStore } from "../tools/project/store";
 import { projectManualMcpServerViews } from "../extensions/component-health";
-import { digestCanonical } from "../extensions/registry-store";
+import { digestCanonical } from "../extensions/registry-canonical";
 import { resolveAppIconPath } from "./app-icon";
 import type { UpdateService } from "../update/service";
 import { resolvePlatformCapabilities } from "../../../shared/platform-capabilities";
@@ -77,6 +76,9 @@ import {
   projectBuiltinBackendSupport,
   projectManualMcpBackendSupport,
 } from "./project-tools-runtime";
+import { historyLookupAvailability } from "../agent/history/availability";
+import { buildHandoff } from "../agent/history/builder";
+import { isOriginalAdoptedBinding } from "../../../shared/chat-agent/contracts";
 import { createExtensionSessionHandoff } from "./extension-session-handoff";
 import {
   acquireTurnAppsForPolicy,
@@ -168,6 +170,7 @@ export function createMainWindow({
     process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(productionEntry).href;
   const platformSupport = resolvePlatformCapabilities(process.platform);
   const window = new BrowserWindow({
+    show: false,
     icon: resolveAppIconPath(),
     width: 1280,
     height: 800,
@@ -216,19 +219,7 @@ export function createMainWindow({
     resolveWorkspace,
   });
 
-  /* 一条监听同时覆盖「用户切主题」与「系统外观变化」两路：两者都以
-     nativeTheme updated 到达，底色与 renderer 因此都不需要第二个分支。
-     renderer 收到的是解析好的布尔——themeSource 实测改不动它的
-     prefers-color-scheme，让它自己感知就会永远停在系统那一档。 */
-  const syncTheme = () => {
-    window.setBackgroundColor(windowBackgroundColor());
-    window.webContents.send(
-      SETTINGS_CHANNEL.themeResolved,
-      nativeTheme.shouldUseDarkColors
-    );
-  };
-  nativeTheme.on("updated", syncTheme);
-  window.on("closed", () => nativeTheme.off("updated", syncTheme));
+  bindWindowTheme(window);
 
   const currentLocale = () =>
     resolveAppLocale(
@@ -261,7 +252,7 @@ export function createMainWindow({
   chats.register(window, rendererUrl);
   bases.register(window, rendererUrl);
   historyImport.register(window, rendererUrl);
-  globalSearch.register(window, rendererUrl);
+  globalSearch.register(rendererUrl);
   update.register(window, rendererUrl);
   galleryMedia.register(window, rendererUrl);
   registerSettings(
@@ -272,10 +263,11 @@ export function createMainWindow({
     memorySettingsOwner,
     chatHomes,
     platformSupport,
-    resetThreadServiceTierEffective
+    resetThreadServiceTierEffective,
+    chats
   );
-  registerPersonalization(window, rendererUrl);
-  registerProjectPersonalization(window, rendererUrl, projects);
+  registerPersonalization(rendererUrl);
+  registerProjectPersonalization(rendererUrl, projects);
   const publishMcpServers = registerManualMcpServers(
     window,
     rendererUrl,
@@ -318,7 +310,7 @@ export function createMainWindow({
   archive.register(window, rendererUrl);
   skills.register(window, rendererUrl);
   registerUnifiedSkills(window, rendererUrl, unifiedSkills);
-  workspaceFiles.register(window, rendererUrl);
+  workspaceFiles.register(rendererUrl);
   const invalidateWorkspaceFiles = () => workspaceFiles.invalidateAll();
   window.on("focus", invalidateWorkspaceFiles);
   window.once("closed", () =>
@@ -329,7 +321,6 @@ export function createMainWindow({
 
   registerAgentBridge(window, rendererUrl, {
     platformSupport,
-    acceptRendererSend: false,
     traceDirectory,
     freezeBackendSessionConfig: async (backend) => {
       if (backend !== "claude") return undefined;
@@ -599,15 +590,25 @@ export function createMainWindow({
       apps.onAppTurnFailed(appId, conversationId, requestId),
     assertChatBackend: (conversationId, backend) =>
       chats.store.assertBackend(conversationId, backend),
+    conversationIncarnation: (conversationId) => chats.store.getIncarnationId(conversationId),
     assertTurnAdmission: (payload) => {
       const chat = chats.store.getMetadata(payload.scope.conversationId);
       assertManagedWorktreePermission(chat, payload.turnOptions.permissionMode);
+      if (!chat || (payload.agentRevision !== undefined && chat.agentRevision !== payload.agentRevision) || chat.agent !== payload.turnOptions.backend) throw new Error("AGENT_REVISION_STALE");
       if (
         payload.turnOptions.permissionMode === "full-access" &&
         settings.get().fullAccessAcknowledgedAt === null
       ) {
         throw new Error("FULL_ACCESS_ACK_REQUIRED: 请先确认 Full Access 风险");
       }
+    },
+    prepareFreshRetry: async (payload) => {
+      const chat = chats.store.getMetadata(payload.scope.conversationId);
+      if (!chat || (payload.agentRevision !== undefined && chat.agentRevision !== payload.agentRevision)) throw new Error("AGENT_REVISION_STALE");
+      if (payload.handoff) return { ...payload.handoff, binding: { ...payload.handoff.binding,
+        view: { ...payload.handoff.binding.view, nativeMessageRevision: chat.chatMessageRevision } } };
+      const history = await chats.store.prepareHistory(chat.id, chat.nextSeq);
+      return history ? buildHandoff(history, payload.input, historyLookupAvailability(payload.turnOptions.backend, settings.get().disabledBuiltinTools)) : undefined;
     },
     reserveAssistantSequence: async (conversationId) =>
       (await chats.store.reserveSequences(conversationId, 1))[0]!,
@@ -621,13 +622,14 @@ export function createMainWindow({
       coordinator.residenceIndex().steerOutbox(outboxRef),
     ...createExtensionSessionHandoff({ apps, extensions, chats }),
     assertRetryWithoutSession: (conversationId) => {
-      if (chats.store.getImportOrigin(conversationId)) {
+      const record = chats.store.getMetadata(conversationId);
+      if (record && isOriginalAdoptedBinding(record)) {
         throw new Error("IMPORTED_RESUME_REQUIRED: 收养会话不能丢弃原生 Session 后重试；请修复来源 CLI 登录或恢复能力后再试");
       }
     },
     projectTurnSnapshot: (conversationId, snapshot) =>
       projectTurnAllowedActions(
-        { importOrigin: chats.store.getImportOrigin(conversationId) },
+        chats.store.getMetadata(conversationId),
         snapshot
       ),
     resolveInput: (payload, workspace, capabilities, context) =>
@@ -687,6 +689,7 @@ export function createMainWindow({
           payload.turnOptions.backend
         ),
         skillsCustodyId: context.skillsCustodyId,
+        historyBinding: payload.handoff?.binding,
       });
     },
     resolveThirdPartyMcpPlan: ({

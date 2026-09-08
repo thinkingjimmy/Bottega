@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the shared RichInput wire projection, shared Agent/Chat/Project/Submission contracts, PromptInput, and transcript recovery helpers
- * [OUTPUT]: Provides the React-free session controller model, structured user-input errors, strict PanelSessionContext, App conversation-context projection, derived identity keys, eligibility reasons, open commands, and composer/transcript contracts
+ * [INPUT]: Depends on the shared RichInput wire projection, shared Agent/Chat/Project/Submission contracts, and PromptInput
+ * [OUTPUT]: Defines independent hydration/edit/send/steer/Stop access and shared Chat/App runtime contracts.
  * [POS]: The canonical type and pure-policy layer for chat/runtime
  */
 
@@ -19,7 +19,6 @@ import type { GallerySourceRef } from "../../../../shared/gallery-media-ipc";
 import type { Project } from "../../../../shared/projects-ipc";
 import type { WorkspacePrecondition } from "../../../../shared/submission";
 import type { PromptInputMessage } from "@ai-chat/ui/components/ai-elements/prompt-input";
-import { buildRecoveryInput } from "@/lib/chat-transcript";
 import type { PendingUserInputState } from "@/lib/chat-user-input-state";
 import { projectRichInput } from "../../../../shared/rich-input-projection";
 
@@ -218,12 +217,11 @@ export function composerGates(input: ComposerGateInput): ComposerGates {
     !input.settingsLoading &&
     !input.settingsSaving &&
     !input.planCapabilityChecking &&
-    input.hydrationReady &&
-    input.backendReady;
+    input.hydrationReady;
   return {
     inputDisabled: !sessionReady,
     turnControlsDisabled: !sessionReady || input.turnRunning,
-    canDrain: sessionReady && !input.turnRunning && !input.awaitingUser,
+    canDrain: sessionReady && input.backendReady && !input.turnRunning && !input.awaitingUser,
   };
 }
 
@@ -400,17 +398,4 @@ export function serializeCurrentInput(args: {
       ? projectRichInput(args.message.input.value)
       : [{ type: "text", text: args.message.input.displayText }];
   return [...structured, ...args.attachmentInput];
-}
-
-/** 浏览器 mock 没有 main coordinator，故只在此 fallback 保留 recovery 折叠。 */
-export function buildMockTurnInput(args: {
-  message: PromptInputMessage;
-  attachmentInput: AgentUserInput[];
-  history: ChatMessage[];
-  activeThreadId: string | undefined;
-}): AgentUserInput[] {
-  const current = serializeCurrentInput(args);
-  return args.history.length > 0 && !args.activeThreadId
-    ? buildRecoveryInput(args.history, current)
-    : current;
 }

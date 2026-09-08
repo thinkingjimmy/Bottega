@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DurableJson, manifest-owned schema/default identities, canonical preference validation, and cutover CAS identities
+ * [INPUT]: Depends on DurableJson, manifest-owned schema/default identities, canonical preference validation, and cutover CAS identities, and statusError from main/errors
  * [OUTPUT]: Provides one allocation-free profile-local preview read, CAS writes/reset with 409 conflict semantics, idempotent reset adoption, a single all-App retention sweep that writes only when a slot actually changes, and durable delete tombstones
  * [POS]: App preferences durable authority; package/share and Base business state never enter this store
  */
@@ -7,6 +7,7 @@
 import { join } from "node:path";
 import { z } from "zod";
 import type { Sha256Digest } from "../../../../shared/extensions-ipc";
+import { statusError } from "../../errors";
 import { DurableJson } from "../../persistence/durable-json";
 import {
   preferenceBytes,
@@ -265,8 +266,5 @@ function assertNotDeleting(state: File, appId: string, profileId: string) {
 const CONFLICT_CODES = new Set(["preference_conflict", "preference_schema_changed"]);
 
 function preferenceError(code: string) {
-  return Object.assign(new Error(code), {
-    code,
-    status: CONFLICT_CODES.has(code) ? 409 : 400,
-  });
+  return statusError(CONFLICT_CODES.has(code) ? 409 : 400, code, { code });
 }

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Accepts the width of a graph id and grid in an array of ordered arrays perpetuated
- * [OUTPUT]: Provides strict-order packCharts, clampSpan, real grid resize unit and span attachment
- * [POS]: The lib/charts definitive grid solver; The layout, DOM and keyboard sequence are all based on the results
+ * [INPUT]: Accepts an ordered array of {id, colSpan, rowSpan} items plus a 2/4-column grid, or a content width/gap/row-height for resize-unit derivation
+ * [OUTPUT]: Provides strict-order packCharts, chartGridResizeUnit for the live grid resize unit, and snapSpan for span snapping
+ * [POS]: The deterministic grid-packing solver for lib/charts; layout, DOM order, and keyboard navigation all follow its output
  */
 
 export type PackableChart = {
@@ -15,7 +15,7 @@ export type PackedChart = PackableChart & {
   row: number;
 };
 
-export function clampSpan(
+function clampSpan(
   item: Pick<PackableChart, "colSpan" | "rowSpan">,
   columns: 2 | 4
 ) {

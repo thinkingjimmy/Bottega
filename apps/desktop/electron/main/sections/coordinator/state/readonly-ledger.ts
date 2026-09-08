@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on JavaScript object/array running, not dependent on specific ledger schema
- * [OUTPUT]: Provides a deep freeze on the DeepReadonly type with dev committed state
- * [POS]: The coordinator/state's read-only boundary unit; Let the selector type assert consistency with the running
+ * [INPUT]: Depends only on generic JavaScript object/array structure, not any specific ledger schema
+ * [OUTPUT]: Provides the DeepReadonly mapped type and deepFreeze, used in development builds to enforce that committed ledger state is never mutated
+ * [POS]: Read-only boundary unit for coordinator/state; keeps selector types consistent with the runtime dev-mode freeze
  */
 
 export type DeepReadonly<T> = T extends (...args: never[]) => unknown

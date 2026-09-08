@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/path and AppManifest/ExtensionPlan/supervise process type
  * [OUTPUT]: Provides RepairJournalStore and RepairPhase/RepairJournal phase types
- * [POS]: The collapse consistency log of install/repair, with all the stages of change replaced by atomic perpetuation; The swapping matrix is determined at site.ts
+ * [POS]: install/repair's crash-recovery journal; each phase transition is written atomically so an interrupted repair can resume from its last recorded phase — the staging-vs-copy swap policy itself lives in site.ts
  */
 
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on node: child_process execFile, node: fs/os/path, backends/sandbox/SBPL with main/errors
  * [OUTPUT]: Provides the sole bounded Git execution border with canonical repository-identity mutation gates and a macOS sandbox for owned worktrees
- * [POS]: The Git single spawn point for projects; git-branches From here, do not create execFile or spell shell
+ * [POS]: Projects' sole Git spawn point; callers like git-branches.ts never call execFile directly or spawn a shell of their own
  */
 
 import { execFile, spawn } from "node:child_process";
@@ -189,7 +189,7 @@ function toGitError(
  * buffered 与 NUL stream 都在本模块内复用同一套 argv/env/config；调用方不得
  * 自建 Git 子进程。mutation 两档只额外决定「要不要串行」与「要不要围栏」。
  * ============================================================ */
-export type GitRunOptions = {
+type GitRunOptions = {
   timeoutMs?: number;
   maxBytes?: number;
   /** 只有围栏档使用；read/project 档恒为 undefined。 */
@@ -573,7 +573,7 @@ export async function withGitMutationGate<T>(
  * 6. Git 工具链解析
  * 围栏要放行「受信 Git 链路」，就必须先说得出它到底是哪几个文件。
  * ============================================================ */
-export type GitToolchain = Readonly<{
+type GitToolchain = Readonly<{
   /** PATH 解析到的入口（可能是 xcode-select 垫片） */
   entry: string;
   /** canonical 真身 */

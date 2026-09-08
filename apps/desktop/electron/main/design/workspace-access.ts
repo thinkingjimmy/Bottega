@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on live App surface descriptions, the shared effective-workspace resolver, DesignEnabled, CanvasRegistry, and Node no-follow file handles
+ * [INPUT]: Depends on live App surface descriptions, the shared effective-workspace resolver, DesignEnabled, CanvasRegistry, the main/errors statusError factory, and Node no-follow file handles
  * [OUTPUT]: Provides DesignWorkspaceAccess with surface-bound workspace resolution, pre-resolved read-mostly registered lists/reads, inode-bound strict-HTML reads, secure import, scans, and atomic restore writes
  * [POS]: Design's filesystem authority adapter; renderer paths never select a workspace and registry membership never replaces a live lease proof
  */
@@ -16,6 +16,7 @@ import {
   rm,
 } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
+import { statusError } from "../errors";
 import type { EffectiveWorkspaceResolver } from "../workspace-resolver";
 import {
   CanvasRegistry,
@@ -25,7 +26,7 @@ import {
 import type { DesignEnabled } from "./enabled";
 import { lintDesignHtml } from "./anti-slop";
 
-export const DESIGN_CANVAS_BYTE_LIMIT = 8 * 1024 * 1024;
+const DESIGN_CANVAS_BYTE_LIMIT = 8 * 1024 * 1024;
 
 export type DesignSurfaceBinding = Readonly<{ surfaceLeaseId: string }>;
 export type DesignSurface = Readonly<{
@@ -35,7 +36,7 @@ export type DesignSurface = Readonly<{
   conversationIncarnationId: string;
   workspaceAuthorityIdentity: string;
 }>;
-export type ResolvedDesignWorkspace = Readonly<{
+type ResolvedDesignWorkspace = Readonly<{
   surface: DesignSurface;
   workspace: string;
   authorityIdentity: string;
@@ -45,12 +46,12 @@ export type DesignWorkspaceIdentity = Pick<
   ResolvedDesignWorkspace,
   "workspace" | "authorityIdentity" | "stableWorkspaceOwnerId"
 >;
-export type DesignFileSnapshot = Readonly<{
+type DesignFileSnapshot = Readonly<{
   path: string;
   digest: string;
   content: Buffer;
 }>;
-export type DesignCandidateSnapshot = Readonly<{
+type DesignCandidateSnapshot = Readonly<{
   path: string;
   signature: string;
 }>;
@@ -422,8 +423,4 @@ function hasDisallowedControl(source: string) {
     }
   }
   return false;
-}
-
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }

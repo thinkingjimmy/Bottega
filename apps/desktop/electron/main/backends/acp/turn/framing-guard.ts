@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node Transform and ACP stdout
- * [OUTPUT]: Provides single-bar, cumulative bytes, number of events and speed budget tab before SDK decoding
- * [POS]: ACP turn the outermost layer of the security border; Unfiltered bytes never enter JSON decoder
+ * [OUTPUT]: Provides AcpFramingGuard, enforcing per-frame, cumulative-byte, event-count, and per-second rate budgets on raw ACP stdout before it reaches the SDK's JSON decoder
+ * [POS]: Outermost security boundary of an ACP turn; unfiltered bytes never reach the JSON decoder
  */
 
 import { Transform, type TransformCallback } from "node:stream";

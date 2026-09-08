@@ -54,16 +54,6 @@ import {
   toRuntimeFailure,
 } from "./skills-catalog-runtime";
 
-export { readStableSkill } from "./skills-catalog-runtime";
-
-export { SKILL_FRONTMATTER_PATTERN } from "./skills-management/skill-frontmatter";
-export { skillRequirementSatisfied } from "./skills-management/skill-requirements";
-export {
-  parseSkillFrontmatter,
-  scanSkillRoots,
-  scanSkillRootsResult,
-} from "./skills-catalog-scan";
-
 const CATALOG_REVALIDATE_MS = 30 * 60_000;
 
 /* token 的键必须带 workspace：library/extension 的 ref 是跨 workspace 的
@@ -183,21 +173,15 @@ export class SkillsCatalog {
 
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
-    rendererIpc(window, rendererUrl, "拒绝非主窗口的 Skills 请求")
-      .handle(SKILLS_CHANNEL.list, async (input) => {
-        try {
-          return productOk(await this.listView(input as SkillsListInput));
-        } catch (cause) {
-          return productFailed(toRuntimeFailure(cause));
-        }
-      })
-      .handle(SKILLS_CHANNEL.capabilities, async (scope) => {
-        try {
-          return productOk({ plan: (await this.snapshot(scope as SkillsScope)).plan });
-        } catch (cause) {
-          return productFailed(toRuntimeFailure(cause));
-        }
-      });
+    const guarded = <T>(operation: Promise<T>) =>
+      operation.then(productOk, (cause) => productFailed(toRuntimeFailure(cause)));
+    rendererIpc(rendererUrl, "拒绝非主窗口的 Skills 请求")
+      .handle(SKILLS_CHANNEL.list, (input) =>
+        guarded(this.listView(input as SkillsListInput))
+      )
+      .handle(SKILLS_CHANNEL.capabilities, (scope) =>
+        guarded(this.snapshot(scope as SkillsScope).then(({ plan }) => ({ plan })))
+      );
     window.once("closed", () => {
       if (this.window === window) this.window = null;
     });
@@ -497,61 +481,16 @@ export class SkillsCatalog {
 
   /** 丢扫描缓存但保留已签发 token；旧 turn 可继续 resolve，新列表强制重扫。 */
   invalidate() {
-    const workspaces = new Map(
-      [...this.tokens.values()].map((token) => [
-        workspaceScopeKey(token.workspace, token.projectContext),
-        { workspace: token.workspace, projectContext: token.projectContext },
-      ])
-    );
-    this.generation += 1;
-    this.cache.clear();
-    this.pending.clear();
-    for (const [key, target] of workspaces) {
-      this.pendingInvalidationWorkspaces.add(key);
-      void this.snapshotWorkspace(
-        target.workspace,
-        false,
-        target.projectContext
-      ).catch(() => {
-        if (this.pendingInvalidationWorkspaces.delete(key)) {
-          this.publishInvalidationDiff();
-        }
-      });
-    }
-    if (!workspaces.size) this.publishInvalidationDiff();
+    this.invalidateLanes(() => true, () => true);
   }
 
   /** Project policy changes invalidate only the affected workspace scan/token lane. */
   invalidateWorkspace(workspace: string) {
     if (!workspace) return;
-    const targets = new Map(
-      [...this.tokens.values()]
-        .filter((token) => token.workspace === workspace)
-        .map((token) => [
-          workspaceScopeKey(token.workspace, token.projectContext),
-          { workspace: token.workspace, projectContext: token.projectContext },
-        ])
+    this.invalidateLanes(
+      (token) => token.workspace === workspace,
+      (key) => key.includes(`\0${workspace}\0`)
     );
-    this.generation += 1;
-    for (const key of [...this.cache.keys()]) {
-      if (key.includes(`\0${workspace}\0`)) this.cache.delete(key);
-    }
-    for (const key of [...this.pending.keys()]) {
-      if (key.includes(`\0${workspace}\0`)) this.pending.delete(key);
-    }
-    for (const [key, target] of targets) {
-      this.pendingInvalidationWorkspaces.add(key);
-      void this.snapshotWorkspace(
-        target.workspace,
-        false,
-        target.projectContext
-      ).catch(() => {
-        if (this.pendingInvalidationWorkspaces.delete(key)) {
-          this.publishInvalidationDiff();
-        }
-      });
-    }
-    if (!targets.size) this.publishInvalidationDiff();
   }
 
   invalidateProject(projectId: string | null) {
@@ -559,31 +498,33 @@ export class SkillsCatalog {
       this.invalidate();
       return;
     }
+    this.invalidateLanes(
+      (token) => token.projectContext.projectId === projectId,
+      (key) => key.includes(`\0project:${projectId}:`)
+    );
+  }
+
+  /* Drops matching scan/pending lanes and rescans every scoped workspace that
+     still holds a token there; the diff is published once all rescans settle. */
+  private invalidateLanes(
+    affectsToken: (token: TokenEntry) => boolean,
+    affectsLane: (key: string) => boolean
+  ) {
     const targets = new Map(
       [...this.tokens.values()]
-        .filter((token) => token.projectContext.projectId === projectId)
+        .filter(affectsToken)
         .map((token) => [
           workspaceScopeKey(token.workspace, token.projectContext),
           { workspace: token.workspace, projectContext: token.projectContext },
         ])
     );
     this.generation += 1;
-    for (const key of [...this.cache.keys()]) {
-      if (key.includes(`\0project:${projectId}:`)) this.cache.delete(key);
-    }
-    for (const key of [...this.pending.keys()]) {
-      if (key.includes(`\0project:${projectId}:`)) this.pending.delete(key);
-    }
+    for (const key of [...this.cache.keys()]) if (affectsLane(key)) this.cache.delete(key);
+    for (const key of [...this.pending.keys()]) if (affectsLane(key)) this.pending.delete(key);
     for (const [key, target] of targets) {
       this.pendingInvalidationWorkspaces.add(key);
-      void this.snapshotWorkspace(
-        target.workspace,
-        false,
-        target.projectContext
-      ).catch(() => {
-        if (this.pendingInvalidationWorkspaces.delete(key)) {
-          this.publishInvalidationDiff();
-        }
+      void this.snapshotWorkspace(target.workspace, false, target.projectContext).catch(() => {
+        if (this.pendingInvalidationWorkspaces.delete(key)) this.publishInvalidationDiff();
       });
     }
     if (!targets.size) this.publishInvalidationDiff();
@@ -628,7 +569,7 @@ export class SkillsCatalog {
        join another force request, but must never reuse an older ordinary scan. */
     const pendingKey = forceReload ? `${key}\0force` : key;
     let query = this.pending.get(pendingKey);
-    const discoverRaw = this.dependencies.query
+    const discover: () => Promise<CatalogSnapshot> = this.dependencies.query
       ? () => this.dependencies.query!(workspace)
       : async () => {
           const discovered = await scanSkillsResult(
@@ -652,10 +593,6 @@ export class SkillsCatalog {
             ),
           };
         };
-    const discover = async (): Promise<CatalogSnapshot> => {
-      const snapshot = await discoverRaw();
-      return snapshot;
-    };
     query ??= discover()
       .then((unbound) => {
         /* 输掉 generation 竞争的扫描不许碰 token 表：改写会把仍有效的 ref
@@ -694,13 +631,7 @@ export class SkillsCatalog {
     this.pending.clear();
     this.cache.set(key, entry);
     this.pendingInvalidationWorkspaces.clear();
-    if (this.window && !this.window.isDestroyed()) {
-      this.window.webContents.send(SKILLS_CHANNEL.changed, {
-        generation: this.generation,
-        invalidatedRefs: [...this.invalidatedRefs],
-      });
-    }
-    this.invalidatedRefs.clear();
+    this.publishInvalidationDiff();
   }
 
   private publishInvalidationDiff() {

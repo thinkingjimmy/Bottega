@@ -31,6 +31,7 @@ import type {
   BaseViewConfig,
 } from "../../../shared/bases-ipc";
 import {
+  BASE_COLUMN_LIMIT,
   createBaseCellContext,
   isColumnScopedView,
   projectBaseRows,
@@ -580,7 +581,7 @@ export function BaseWorkbench({
             compact={compact}
             groupByColumnId={config.groupByColumnId}
             onAddColumn={
-              canStructure && snapshot.meta.columns.length < 64
+              canStructure && snapshot.meta.columns.length < BASE_COLUMN_LIMIT
                 ? intent(addColumn)
                 : undefined
             }
@@ -637,7 +638,7 @@ export function BaseWorkbench({
             groupByColumnId={config.groupByColumnId}
             incarnationId={attachmentOwner?.incarnationId}
             onAddColumn={
-              canStructure && snapshot.meta.columns.length < 64
+              canStructure && snapshot.meta.columns.length < BASE_COLUMN_LIMIT
                 ? intent(addColumn)
                 : undefined
             }
@@ -667,7 +668,7 @@ export function BaseWorkbench({
               labelColumnId={config.labelColumnId}
               locationColumnId={config.locationColumnId}
               onAddColumn={
-                canStructure && snapshot.meta.columns.length < 64
+                canStructure && snapshot.meta.columns.length < BASE_COLUMN_LIMIT
                   ? intent(addColumn)
                   : undefined
               }

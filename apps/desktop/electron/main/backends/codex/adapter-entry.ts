@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on node createRequire, locked @agentclientprotocol/codex-acp, local builtin server spec, frozen third-party plan and shared timeout contract
  * [OUTPUT]: Provides codexAcpEntry/codexAcpArgs, production launcher, sessionId validator and explicit CODEX_PATH/CODEX_CONFIG; builtin/third-party servers share one bounded config
- * [POS]: the borders of the Codex ACP supply chain; Only parse the lockfile. The input is installed, prohibiting npx/ network back-up
+ * [POS]: Boundary of the Codex ACP supply chain; resolves only from the installed lockfile entry, never falls back to npx or a network install
  */
 
 import { createRequire } from "node:module";
-import { codexEnvironment } from "../../codex-runtime";
+import { codexEnvironment } from "./environment";
 import type { AcpLauncher, ResolvedRuntime } from "../types";
 import type { BuiltinMcpServerSpec } from "../../tools/lease";
 import { BUILTIN_CLIENT_TIMEOUT_MS } from "../../../../shared/builtin-tools";

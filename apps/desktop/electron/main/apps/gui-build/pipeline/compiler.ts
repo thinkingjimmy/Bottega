@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on TypeScript, esbuild local CSS modules, Tailwind Node/Oxide, one shared author-source analysis, immutable source validation, and fixed toolchain metadata
+ * [INPUT]: Depends on TypeScript, esbuild local CSS modules, Tailwind Node/Oxide, one shared author-source analysis, immutable source validation, fixed toolchain metadata, and the apps/support digest primitives
  * [OUTPUT]: Provides strict semantic typecheck plus exact local-alias/CSS-module resolution, asar-to-unpacked dependency path mapping for the native esbuild child, deterministic React/Tailwind compiled-v3 runtime, and canonical receipt generation whose manifest digest covers the raw app.json bytes
  * [POS]: apps/gui-build/pipeline transform kernel; sandbox child invokes it and generation code consumes only validated output
  */
@@ -17,6 +17,7 @@ import type {
   AppGuiCompiledV3CompatibilityRef,
   BaseAppManifest,
 } from "../../../../../shared/apps-ipc";
+import { APP_GUI_PRESET } from "../../../../../shared/app-gui/contracts";
 import type { Sha256Digest } from "../../../../../shared/extensions-ipc";
 import { appManifestSchema } from "../../install/manifest-schema";
 import {
@@ -25,11 +26,8 @@ import {
   type SealedCompilerInput,
   type SourceFreezeReceipt,
 } from "../contracts";
-import {
-  authorPublicSpecifiers,
-  canonicalDigest,
-  sha256,
-} from "../metadata";
+import { authorPublicSpecifiers } from "../metadata";
+import { canonicalDigest, sha256 } from "../../support";
 import { validateCompiledGuiSource } from "./source-validator";
 import {
   BLOCKS_RUNTIME_SOURCE,
@@ -114,7 +112,7 @@ export async function compilePreparedAppGui(input: SealedCompilerInput): Promise
   const indexBytes = Buffer.from(renderIndex(prepaintName, cssName, basenameOf(bootstrap.path)), "utf8");
   await writeFile(join(runtimeGuiRoot, "index.html"), indexBytes, { mode: 0o600 });
 
-  const runtimeFiles = await runtimeGuiFiles(runtimeGuiRoot);
+  const runtimeFiles = await walk(runtimeGuiRoot);
   validateArtifactBudgets(runtimeFiles);
   const sourceGuiFiles = sourceReceipt.files.filter((file) => file.path.startsWith("gui/"));
   const componentFiles = sourceGuiFiles.filter((file) =>
@@ -126,7 +124,7 @@ export async function compilePreparedAppGui(input: SealedCompilerInput): Promise
   const runtimeGuiDigest = treeDigest("bottega.app-gui-runtime/v1", runtimeFiles);
   const contentDigest = compiledRuntimeContentDigest(sourceReceipt.files, runtimeFiles);
   const receipt: AppGuiBuildReceipt = {
-    preset: "bottega-react-v1",
+    preset: APP_GUI_PRESET,
     transformContractDigest: input.transformContractDigest,
     platformCompilerCustodyDigest: input.platformCompilerCustodyDigest,
     componentOriginsDigest: treeDigest("bottega.app-gui-component-origins/v1", componentFiles),
@@ -472,10 +470,6 @@ function runtimeSlice(
 async function sourceReceiptFromSnapshot(snapshotRoot: string, digest: Sha256Digest): Promise<SourceFreezeReceipt> {
   const files = await walk(snapshotRoot);
   return { snapshotRoot, sourcePackageDigest: digest, files };
-}
-
-async function runtimeGuiFiles(root: string) {
-  return walk(root);
 }
 
 /* 供给方（sandbox.ts prepareEmptyRoot）已保证 outputRoot 是空目录，这里只清子项。

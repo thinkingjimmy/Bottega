@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on locale type, static English directory and runtime catalogOf/registerCatalog
- * [OUTPUT]: Provides loadCatalog Plug in and register a single language directory as needed
- * [POS]: The i18n on the renderer side at the installation point as required; The two teams are playing against each other in the same runtime register
+ * [OUTPUT]: Provides loadCatalog, lazily importing and registering one locale's catalog on demand
+ * [POS]: Renderer-side i18n lazy-load point; each non-English locale ships as its own chunk after the English-only initial bundle, registered into the same runtime registry main populates eagerly via resources.ts
  */
 
 import type { AppLocale } from "./locale";

@@ -3,7 +3,11 @@
  * [OUTPUT]: Provides the complete Simplified Chinese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
  * [POS]: zh-CN desktop locale; compile-time structure must match English exactly
  */
+import { appHostZhCN } from "./app-host/zh-cn";
+import { agentAvailabilityZhCN } from "./agent-availability/zh-cn";
 
+
+import { chatAgentSwitchZhCN } from "./chat-agent-switch/zh-cn";
 import type { Catalog } from "./en";
 import { basesZhCN } from "./bases/zh-cn";
 import { archiveZhCN } from "./archive";
@@ -19,6 +23,7 @@ import { settingsToolsZhCN } from "./settings/tools";
 import { settingsUsageZhCN } from "./settings/usage";
 import { settingsPersonalizationZhCN } from "./settings/personalization";
 import { settingsShortcutsZhCN } from "./settings/shortcuts";
+import { presenceZhCN } from "./presence/zh-cn";
 import { settingsAboutZhCN } from "./settings/about";
 import { historyZhCN } from "./history";
 import { chatRevisionZhCN } from "./chat-revision";
@@ -32,6 +37,8 @@ import { agentFailureZhCN } from "./agent-failure/zh-cn";
 import { chatStorageZhCN } from "./chat-storage/zh-cn";
 
 export const zhCN: Catalog = {
+  appHost: appHostZhCN,
+  agentAvailability: agentAvailabilityZhCN,
   common: {
     auto: "自动",
     light: "浅色",
@@ -112,6 +119,7 @@ export const zhCN: Catalog = {
   projectSettings: projectSettingsZhCN,
   settings: {
     about: settingsAboutZhCN,
+    presence: presenceZhCN,
     personalization: settingsPersonalizationZhCN,
     shortcuts: settingsShortcutsZhCN,
     skills: settingsSkillsZhCN,
@@ -209,6 +217,7 @@ export const zhCN: Catalog = {
     tools: settingsToolsZhCN,
   },
   chat: {
+    agentSwitch: chatAgentSwitchZhCN,
     ...chatZhCN,
     runtime: chatRuntimeZhCN,
     generatingTitle: "正在生成标题",
@@ -545,8 +554,6 @@ export const zhCN: Catalog = {
   ui: {
     cancel: "取消",
     uploadFiles: "上传文件",
-    previousBranch: "上一个分支",
-    nextBranch: "下一个分支",
     loadingRichContent: "正在加载富内容",
     loading: "加载中",
     close: "关闭",
@@ -555,7 +562,6 @@ export const zhCN: Catalog = {
     toggleSidebar: "切换侧栏",
     resizeSidebar: "调整侧栏宽度",
     resizeSidebarHint: "拖动调整侧栏宽度",
-    addAttachments: "添加附件",
     attachment: "附件",
     previewAttachment: "预览附件",
     removeAttachment: "移除附件",
@@ -563,7 +569,6 @@ export const zhCN: Catalog = {
     submit: "发送",
     message: "消息",
     askAnything: "有问题，尽管问",
-    branchOf: "共",
     submissionFailed: "提交失败，请重试。",
     skillSuggestionsEmpty: "没有可用 Skill",
     skillSuggestionsNoMatch: "没有匹配的 Skill",

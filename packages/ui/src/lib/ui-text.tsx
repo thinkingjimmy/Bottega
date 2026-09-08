@@ -3,7 +3,7 @@
 /**
  * [INPUT]: Depends on React Context; The host inserts the key→text function
  * [OUTPUT]: Provides UiTextProvider/useUiText, allowing the sharing of native language default text without relying on specific i18n libraries
- * [POS]: The host document @ai-chat/ui is injected into the border; The Web does not insert the fallback in English, the desktop insert its own directory
+ * [POS]: @ai-chat/ui's host-injection boundary for UI text; the Web host falls back to English, the desktop host injects its own locale catalog
  */
 
 import { createContext, useContext, type ReactNode } from "react";

@@ -17,8 +17,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   BASE_ATTACHMENT_BYTE_LIMIT,
-} from "../../../../shared/bases/gallery-attachments";
-import {
   BASE_ATTACHMENT_JOB_LIMIT,
   BASE_ATTACHMENT_QUEUE_BYTES,
 } from "../../../../shared/bases/gallery-attachments";

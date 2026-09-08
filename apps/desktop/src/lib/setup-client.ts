@@ -1,9 +1,11 @@
 /**
  * [INPUT]: Depends on shared/setup-ipc, agent-ipc and preload window.setup
- * [OUTPUT]: Provides check/recheck/latest/ list of terminal actions renderer IPC packaging and browser mock
- * [POS]: The only output of the lib setup is theUI does not contact downloads, checksum, raw commands or credentials
+ * [OUTPUT]: Wraps passive setup reads, explicit recheck/cancel, fixed terminal actions and main Agent settings navigation with localized failure feedback.
+ * [POS]: Renderer's sole Setup IPC boundary; the UI never touches downloads, checksums, raw commands, or credentials directly
  */
 
+import { toast } from "@ai-chat/ui/components/ui/sonner";
+import { getI18n } from "react-i18next";
 import type { AgentBackendId } from "../../shared/agent-ipc";
 import type {
   SetupBridgeApi,
@@ -36,3 +38,12 @@ export const openBackendTerminalAction = (
   Promise.resolve({ launched: false, delivery: "clipboard" as const });
 export const onSetupEvent = (callback: (event: SetupEvent) => void) =>
   window.setup?.onEvent(callback) ?? (() => {});
+
+export const openAgentSettings = async () => {
+  try {
+    if (!window.setup) throw new Error("Main window unavailable");
+    await window.setup.openManagement();
+  } catch {
+    toast.error(getI18n().t("agentAvailability.managementUnavailable"));
+  }
+};

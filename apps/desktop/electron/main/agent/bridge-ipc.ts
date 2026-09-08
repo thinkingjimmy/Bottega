@@ -44,7 +44,6 @@ export type AgentBridgeIpcHandlers = {
   listActivity(): ChatActivitySnapshot[];
   conversationForRequest(requestId: string): string | undefined;
   conversationForOutboxRef(outboxRef: string): string | undefined;
-  send(payload: unknown): Promise<void>;
   retryWithoutSession(requestId: string, retryToken: string): Promise<void>;
   retrySameSession(requestId: string, retryToken: string): Promise<void>;
   respondApproval(response: AgentApprovalResponse): Promise<void>;
@@ -68,7 +67,6 @@ type AgentBridgeIpcRuntime = {
   listActivity(): ChatActivitySnapshot[];
   publishState(entry: TurnEntry<AgentTurn>): void;
   clearSafetyLock(backend: TurnEntry<AgentTurn>["backend"]): void;
-  send(payload: unknown): Promise<void>;
   retryWithoutSession(requestId: string, retryToken: string): Promise<void>;
   retrySameSession(requestId: string, retryToken: string): Promise<void>;
   cancel(requestId: string): void;
@@ -108,7 +106,6 @@ export function createAgentBridgeIpcHandlers(
     conversationForRequest: (requestId) =>
       runtime.turns.byRequest(requestId)?.conversationId,
     conversationForOutboxRef: runtime.conversationForOutboxRef,
-    send: runtime.send,
     retryWithoutSession: runtime.retryWithoutSession,
     retrySameSession: runtime.retrySameSession,
     respondApproval: async (response) => {
@@ -172,7 +169,7 @@ export function registerAgentBridgeIpc(
     if (!conversationId) throw new Error("steer outbox 不存在");
     assertConversation(context, conversationId);
   };
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的 Agent 请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的 Agent 请求")
     .roles("main", "app-window")
     .handleWithContext(
       AGENT_CHANNEL.turnAttach,
@@ -207,13 +204,6 @@ export function registerAgentBridgeIpc(
     .roles("main")
     .handle(AGENT_CHANNEL.activityList, () => handlers.listActivity())
     .roles("main", "app-window")
-    .handleWithContext(AGENT_CHANNEL.send, (context, payload) => {
-      const conversationId = (payload as {
-        scope?: { conversationId?: unknown };
-      } | null)?.scope?.conversationId;
-      assertConversation(context, assertConversationId(conversationId));
-      return handlers.send(payload);
-    })
     .handleWithContext(AGENT_CHANNEL.steer, (context, input) => {
       validateSteerInput(input);
       assertRequest(context, input.requestId);

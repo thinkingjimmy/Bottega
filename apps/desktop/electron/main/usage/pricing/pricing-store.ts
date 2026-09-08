@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path, catalog, conversion/overlay, built-in seed and pricing
- * [OUTPUT]: Provides PricingStore: synchronous reading tables, local seed, migration, 24h network refresh, double abstract persistence, revision, push and epoch drain
- * [POS]: The only IO/lifecycle owner of usage/pricing; Failure to maintain, close and reopen strict isolation
+ * [INPUT]: Depends on Node fs/path, catalog conversion/overlay helpers, the built-in seed, and pricing.ts
+ * [OUTPUT]: Provides PricingStore: synchronous table reads, seed/cache loading, 24h network refresh with retry backoff, atomic persistence, revision bumps, and change notification
+ * [POS]: The sole IO/lifecycle owner of usage/pricing; close/reopen strictly fences in-flight refresh and writes by epoch
  */
 
 import { readFileSync } from "node:fs";

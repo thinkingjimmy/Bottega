@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the durable state of the ledger-schema, terminal time and the constants of the unified retained window
- * [OUTPUT]: Provides normalize TerminalTimes with compactLedgerState, by reference to achievable local mark-and-sweep
- * [POS]: The coordinator/state is a pure compaction unit; No executIOn of IO file, no speculation of side effects completed status
+ * [OUTPUT]: Compacts terminal ledger records while retaining canonical commit custody in manual tombstones
+ * [POS]: Pure compaction unit of coordinator/state; performs no file IO, and retention decisions rely only on terminalAt already committed to state, never inferred side-effect completion
  */
 
 import type { RelayActionRecord } from "./pause-saga";
@@ -228,6 +228,7 @@ export function compactLedgerState(state: LedgerState, now: number) {
     state.intentTombstones[id] = {
       hash: intent.submissionHash!,
       outcome: intent.phase,
+      custody: state.submissionOutcomes[id]?.custody === "chat-persisted" || intent.phase === "settled" ? "chat-persisted" : "main-journal",
       deletedAt: now,
     };
     delete state.manualIntents[id];

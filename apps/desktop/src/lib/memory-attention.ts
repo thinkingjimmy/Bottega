@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared MemoryStatusSnapshot health, delivery/recall of police, apply and attention Facts
- * [OUTPUT]: Provides Sidebar should light the minimum pure projection of the Memory alert
- * [POS]: The eager Memory of the renderer is navigation projection; Separate from the Settings exclusive memory-view to avoid the entire set of settings being presented in the first package
+ * [INPUT]: Depends on the shared MemoryStatusSnapshot contract (health, warning/recallWarning, applyStatus, and attention facts)
+ * [OUTPUT]: Provides memoryNeedsAttention, the minimal pure projection deciding whether the Sidebar should light its Memory alert
+ * [POS]: Renderer's lightweight navigation-level Memory projection, kept separate from Settings' fuller lib/memory-view so the Sidebar doesn't pull in the whole Settings bundle
  */
 
 import type { MemoryStatusSnapshot } from "../../shared/memory-ipc";

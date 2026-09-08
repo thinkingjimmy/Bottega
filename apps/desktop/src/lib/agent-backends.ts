@@ -1,8 +1,10 @@
 /**
- * [INPUT]: Depends on packages/model-logos of the AGENT_LOGO_MARKUP interconnected phases, React with shared backend subgroup/DTO
- * [OUTPUT]: Provides backend id, defence, label, ready, candidate, title/maintenance candidate, setup command to take the key and AgentBackendIcon, with the asset itself colored; mono is a manifest degradation when the state presses over the identity)
- * [POS]: The back-end vision of the renderer is the only source of truth; Composer, Sidebar, Header, Settings are not allowed to hard-code each icon
+ * [INPUT]: Depends on React, inline brand logos, shared BackendInfo and pure availability projections.
+ * [OUTPUT]: Provides fixed backend identities, sendable candidates, startup admission, shared status predicates and purpose-qualified title/maintenance choices; branding stays independent of health.
+ * [POS]: The renderer's single source of backend presentation truth; Composer, Sidebar, Header, and Settings never hard-code backend icons or readiness rules
  */
+import { projectAvailability, submissionDecision } from "../../shared/agent-availability/projection";
+
 
 import { createElement, type ComponentProps } from "react";
 import { AGENT_LOGO_MARKUP } from "../../../../packages/model-logos/inline";
@@ -50,13 +52,13 @@ export const isAgentBackendId = (value: string): value is AgentBackendId =>
 
 export const backendLabel = (backend: AgentBackendId) => labels[backend];
 
-export const readyAgentBackends = (backends: BackendInfo[]) =>
-  backends.filter((backend) => backend.runtimeStatus === "installed");
+export const sendableAgentBackends = (backends: BackendInfo[]) =>
+  backends.filter((backend) => submissionDecision(backend, Date.now()).decision === "allow");
 
 export const agentSelectionEnabled = (
   backends: BackendInfo[],
   locked: boolean
-) => !locked && readyAgentBackends(backends).length > 1;
+) => !locked && sendableAgentBackends(backends).length > 0;
 
 /* 能力门禁只反映 descriptor 已开放的维护 purpose；具体围栏与风险例外由 main 负责 */
 const MAINTENANCE_PURPOSES: HeadlessPurpose[] = [
@@ -65,20 +67,9 @@ const MAINTENANCE_PURPOSES: HeadlessPurpose[] = [
   "serve",
 ];
 
-/* ============================================================
- * 后端状态的两条产品判据。都只读 runtimeStatus/authStatus 这组正交
- * 双轴——`status` 是展示投影，契约上禁止作准入（shared/agent-ipc）。
- * ============================================================ */
-
-/**
- * 能否入场。unknown 是一等入场态而非"还没查明白"：没有 auth 扩展的
- * 后端（凭据主权禁止读凭据文件）恒停在 unknown，登录态只能由首轮真实
- * turn 定夺。拦住 unknown 等于永远拦住这类后端。checking 不入场——
- * 那是有 auth 扩展的后端的瞬态，等一下就有结论，放行只会闪。
- */
+/** Startup waits for an active auth probe; an inconclusive result remains usable. */
 export const canEnterAgentBackend = (backend: BackendInfo) =>
-  backend.runtimeStatus === "installed" &&
-  (backend.authStatus === "authenticated" || backend.authStatus === "unknown");
+  backend.authStatus !== "checking" && submissionDecision(backend, Date.now()).decision === "allow";
 
 /**
  * 该不该给登录入口。这是一个确凿结论，不是"除已登录之外的一切"：
@@ -86,8 +77,11 @@ export const canEnterAgentBackend = (backend: BackendInfo) =>
  * 证实的谎。error 由状态徽章自陈，unknown 保持中性。
  */
 export const needsBackendLogin = (backend: BackendInfo) =>
-  backend.runtimeStatus === "installed" &&
-  backend.authStatus === "unauthenticated";
+  projectAvailability(backend, Date.now()).state === "sign-in";
+
+/** Confirmed submission blockers only; inconclusive authentication stays neutral. */
+export const backendUnavailable = (backend: BackendInfo) =>
+  submissionDecision(backend, Date.now()).decision === "block";
 
 const BACKEND_GUIDE_KEYS = {
   codex: { install: "setup.guide.codex.install", login: "setup.guide.codex.login" },
@@ -109,24 +103,28 @@ export const backendGuideKey = (
     backend.runtimeStatus === "installed" ? "login" : "install"
   ];
 
-/* 标题生成的候选与 main 侧真门同构（index.ts 的 generateTitle：
-   installed ∧ authenticated ∧ headless ∋ "title"）。authenticated 一项
-   不必在此重复——registry 已把非 authenticated 的 headless 清空后才
-   投影给 renderer，能力清单本身就是登录态的函数。 */
-export const titleCapableBackends = (backends: BackendInfo[]) =>
+function purposeAvailable(backend: BackendInfo, purpose: HeadlessPurpose, now: number) {
+  const evidence = backend.availability?.purposeEligibility?.[purpose];
+  return evidence ? evidence.decision === "allow" && (evidence.expiresAt === undefined || evidence.expiresAt > now)
+    : backend.authStatus === "authenticated";
+}
+
+const titleCapableBackends = (backends: BackendInfo[], now: number) =>
   backends.filter(
     (backend) =>
       backend.runtimeStatus === "installed" &&
-      backend.capabilities.headless.includes("title")
+      backend.capabilities.headless.includes("title") &&
+      purposeAvailable(backend, "title", now)
   );
 
 export type TitleAgent = AgentBackendId | "auto";
 
 export const titleAgentOptions = (
-  backends: BackendInfo[] | undefined
+  backends: BackendInfo[] | undefined,
+  now = Date.now()
 ): TitleAgent[] => [
   "auto",
-  ...titleCapableBackends(backends ?? []).map((backend) => backend.id),
+  ...titleCapableBackends(backends ?? [], now).map((backend) => backend.id),
 ];
 
 /**
@@ -137,29 +135,26 @@ export const titleAgentOptions = (
  */
 export const effectiveTitleAgent = (
   persisted: TitleAgent | undefined,
-  backends: BackendInfo[] | undefined
+  backends: BackendInfo[] | undefined,
+  now = Date.now()
 ): TitleAgent => {
   if (!persisted) return "auto";
   if (!backends) return persisted;
-  return titleAgentOptions(backends).includes(persisted) ? persisted : "auto";
+  return titleAgentOptions(backends, now).includes(persisted) ? persisted : "auto";
 };
 
-export const maintenanceCapableBackends = (backends: BackendInfo[]) =>
+export const maintenanceCapableBackends = (backends: BackendInfo[], now = Date.now()) =>
   backends.filter(
     (backend) =>
       backend.runtimeStatus === "installed" &&
-      backend.authStatus === "authenticated" &&
       backend.capabilities.maintenance &&
       MAINTENANCE_PURPOSES.every((purpose) =>
-        backend.capabilities.headless.includes(purpose)
+        backend.capabilities.headless.includes(purpose) &&
+        purposeAvailable(backend, purpose, now)
       )
   );
 
-/**
- * `mono` 是唯一保留的降级，且它表达的不是资产缺陷而是产品判断：当一枚
- * 标记正在承载健康状态（Sidebar 的「不可用」、Header 的「未就绪」），
- * 状态压过身份，整枚剪影交给 currentColor。常态下不必声明。
- */
+/** Brand identity is independent of health; mono remains an explicit visual option. */
 export type AgentIconTone = "brand" | "mono";
 
 export function AgentBackendIcon({

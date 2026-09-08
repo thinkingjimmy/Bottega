@@ -6,7 +6,7 @@
 
 import { runGit } from "./git-runner";
 
-export type GitConfigEntry = Readonly<{
+type GitConfigEntry = Readonly<{
   origin: string;
   key: string;
   value: string;
@@ -28,7 +28,7 @@ export async function listGitConfig(workspace: string) {
   return entries;
 }
 
-export type GitConfigBlocker = Readonly<{
+type GitConfigBlocker = Readonly<{
   code: string;
   key: string;
   origin: string;

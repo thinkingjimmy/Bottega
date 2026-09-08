@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Codex/chats
- * [OUTPUT]: Provides conversation SubagentRegistry level, source dirty, ledger, terminal-driven settle (turn done → completed, cancelled/error → interrupted), empty return, 128 live draft, sentry, spawn, atomic reservation, boundary hydration/shots and byte budget elimination
- * [POS]: The shared subagent state is a single truth source, main owner and renderer projection shared consumption
+ * [INPUT]: Depends on AgentTurnItem/live-subagent types from agent-ipc, the turn-draft reducer from chat-turn-reducer, and persisted subagent types/byte budgets from chats-ipc
+ * [OUTPUT]: Provides the SubagentRegistry class (dirty-tracked upsert/resume/applyItem/applyDelta, terminal-driven settle, a 128-live-draft cap with LRU draft reservation/eviction), plus serializeSubagent/hydrateSubagent and byte-budget pruning via prunePersistedSubagents
+ * [POS]: Single source of truth for shared subagent state; main owns writes and the renderer's live subagent panel consumes the same projection
  */
 
 import type { AgentTurnItem } from "./agent-ipc";
@@ -27,13 +27,11 @@ import type {
   AgentSubagentStatus,
 } from "./agent-ipc";
 
-export { slicePartsProtected } from "./chat-turn-reducer";
-
 const LIVE_SUBAGENT_BYTE_LIMIT = 256 * 1024;
 const byteLength = (value: unknown) =>
   new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
-export const persistedStatusOf: Record<AgentSubagentStatus, PersistedSubagentStatus> = {
+const persistedStatusOf: Record<AgentSubagentStatus, PersistedSubagentStatus> = {
   pendingInit: "interrupted",
   running: "interrupted",
   interrupted: "interrupted",
@@ -43,7 +41,7 @@ export const persistedStatusOf: Record<AgentSubagentStatus, PersistedSubagentSta
   notFound: "errored",
 };
 
-export const isTerminalSubagentStatus = (status: AgentSubagentStatus) =>
+const isTerminalSubagentStatus = (status: AgentSubagentStatus) =>
   !["pendingInit", "running"].includes(status);
 
 export type DraftSubagent = {
@@ -134,9 +132,10 @@ export function hydrateSubagent(agent: PersistedSubagent): DraftSubagent {
   } as DraftSubagent;
 }
 
-export const compareSubagentEviction = (
-  left: PersistedSubagent,
-  right: PersistedSubagent
+/** Oldest activity first, ties by thread id: the eviction order for both disk pruning and live draft demotion. */
+const byOldestActivity = (
+  left: { meta: { lastActivityAt: number; agentThreadId: string } },
+  right: { meta: { lastActivityAt: number; agentThreadId: string } }
 ) =>
   left.meta.lastActivityAt - right.meta.lastActivityAt ||
   left.meta.agentThreadId.localeCompare(right.meta.agentThreadId);
@@ -148,7 +147,7 @@ export function prunePersistedSubagents(
   const evictedAgentThreadIds: string[] = [];
   const ordered = () =>
     Object.entries(result).sort(([, left], [, right]) =>
-      compareSubagentEviction(left, right)
+      byOldestActivity(left, right)
     );
   while (
     byteLength(result) > SUBAGENT_BYTE_LIMIT
@@ -363,9 +362,5 @@ export class SubagentRegistry {
 }
 
 function oldest(entries: Array<[string, DraftSubagent]>) {
-  return entries.sort(
-    ([leftId, left], [rightId, right]) =>
-      left.meta.lastActivityAt - right.meta.lastActivityAt ||
-      leftId.localeCompare(rightId)
-  )[0];
+  return entries.sort(([, left], [, right]) => byOldestActivity(left, right))[0];
 }

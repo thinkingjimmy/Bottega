@@ -100,6 +100,7 @@ export function prepareTurnCommit(
       id: entry.messageId,
       seq: entry.assistantSeq,
       role: "assistant",
+      backend: entry.backend,
       content: result.content,
       ...(result.parts ? { parts: result.parts } : {}),
       durationMs: result.durationMs,

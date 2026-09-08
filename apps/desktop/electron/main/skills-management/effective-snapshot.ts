@@ -15,7 +15,7 @@ import {
   type SkillSlugAdmission,
 } from "./skill-slug";
 
-export const SKILL_SOURCE_PRIORITY = {
+const SKILL_SOURCE_PRIORITY = {
   library: 4,
   extension: 3,
   project: 2,
@@ -110,7 +110,7 @@ export function preparedSkillCandidates(
   }));
 }
 
-export function backendIsSkillCapable(facts: BackendSkillCapabilityFacts) {
+function backendIsSkillCapable(facts: BackendSkillCapabilityFacts) {
   return (
     facts.useSkillRegistered &&
     facts.exactIssued &&

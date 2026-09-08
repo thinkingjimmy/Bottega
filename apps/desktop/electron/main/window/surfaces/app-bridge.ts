@@ -21,7 +21,7 @@ export function registerAppBridge(
   resolveWorkspace: WorkspaceResolver,
   locale: () => ReturnType<typeof resolveAppLocale>
 ) {
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的应用级请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的应用级请求")
     .roles("main", "app-window")
     .handleWithContext(APP_CHANNEL.openExternal, async (context, rawUrl) => {
       if (typeof rawUrl !== "string") throw new Error("外链格式无效");

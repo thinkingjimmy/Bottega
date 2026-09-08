@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on crypto, HistorySnapshotStore, visible outsourced message logistics port, Memory Consent status, recoverable product intent and outsourced delivery port
- * [OUTPUT]: Provides MemoryGrantCoordinator: authorized delta preview bound to context, confirmed as accepted, access synchronized, delivery backstage) delivery, state projection, foreign/product single grant phase recovery, source revision, replacement, snapshot-only delivery with full front-stage water
- * [POS]: The Memory authorization state machine for history-import; License/Project eligibility Delete mandatory re-previewing, restart only the product phase that has been confirmed, and never silently re-post foreign content; Delivery failed by deliveryFailed projection, not reject Confirmed call
+ * [INPUT]: Depends on node:crypto, HistorySnapshotStore, visible-foreign-entries/materialize ports, Memory authorization state, product history intent, and provider commit/preview delivery ports
+ * [OUTPUT]: Provides MemoryGrantCoordinator: authorization-bound preview to commit, durable Grant creation and supersede, a background delivery pump with per-project activity tracking, source-watermark commit, and idempotent reconciliation of interrupted grants
+ * [POS]: The Memory authorization state machine for history-import; authorization or Project-eligibility drift forces a fresh preview, commit resumes only unconfirmed phases and never silently reposts foreign content, and delivery failures surface through deliveryFailed rather than rejecting the commit call
  */
 
 import { createHash, randomUUID } from "node:crypto";

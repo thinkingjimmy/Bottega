@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod, Agent backend identity and shared Bases schema/budget
  * [OUTPUT]: Provides built-in tool platform types, nine-domain budgets, Plan exclusion, cross-referencing, timeouts, common id schemas, the `read_base` query shape, and annotation constants
- * [POS]: The building of public buildings without assembly tools; The domain spec is only down-dependent on this document and does not depend on index reverse
+ * [POS]: Domain-neutral foundation of builtin-tools; domain specs depend only downward on this file and never on the index barrel
  */
 
 import { z } from "zod";
@@ -19,6 +19,7 @@ export type BuiltinToolDomainSpec = {
     | "bases"
     | "subagents"
     | "projects"
+    | "history"
     | "search"
     | "browser"
     | "design"
@@ -30,6 +31,7 @@ export type BuiltinToolDomainSpec = {
 };
 
 export const BUILTIN_TOOL_DOMAINS = {
+  history: { id: "history", rateLimit: 8, rateWindowMs: 60_000, logicalResultByteLimit: 16 * 1024 },
   sections: {
     id: "sections",
     rateLimit: 12,
@@ -96,7 +98,7 @@ export const BUILTIN_WIRE_BYTE_LIMITS: Record<AgentBackendId, number> = {
      limit until its backend-specific truncation line has a narrower measurement. */
   opencode: BASE_WIRE_BYTE_LIMIT,
 };
-export const BUILTIN_TOOL_TIMEOUT_MS = 600_000;
+const BUILTIN_TOOL_TIMEOUT_MS = 600_000;
 export const BUILTIN_CLIENT_TIMEOUT_MS = BUILTIN_TOOL_TIMEOUT_MS + 60_000;
 
 /**
@@ -112,7 +114,7 @@ export const BUILTIN_MCP_READY_TIMEOUT_MS = 10_000;
  * fail-closed。超限时 `listen()` 的表征是 EINVAL/ENAMETOOLONG 之类与「路径太长」
  * 毫无字面关系的错误，所以必须在建 socket 之前就点破。
  */
-export const UNIX_SOCKET_PATH_BYTE_LIMIT = 104;
+const UNIX_SOCKET_PATH_BYTE_LIMIT = 104;
 
 export function assertUnixSocketPath(path: string) {
   const bytes = Buffer.byteLength(path, "utf8");

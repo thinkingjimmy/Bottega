@@ -47,12 +47,8 @@ const Workbook = createRequire(import.meta.url)(
   "exceljs/lib/doc/workbook"
 ) as typeof ExcelWorkbook;
 
-export const XLSX_FILE_BYTE_LIMIT = 32 * 1024 * 1024;
-export const XLSX_ENTRY_LIMIT = 2_048;
-export const XLSX_TOTAL_UNPACKED_BYTE_LIMIT = 128 * 1024 * 1024;
-export const XLSX_ENTRY_UNPACKED_BYTE_LIMIT = 64 * 1024 * 1024;
-export const XLSX_COMPRESSION_RATIO_LIMIT = 200;
-export const XLSX_DIMENSION_CELL_LIMIT = 2_000_000;
+const XLSX_FILE_BYTE_LIMIT = 32 * 1024 * 1024;
+const XLSX_DIMENSION_CELL_LIMIT = 2_000_000;
 
 type ZipBudgetLimits = {
   entries: number;
@@ -62,10 +58,10 @@ type ZipBudgetLimits = {
 };
 
 const ZIP_BUDGET_LIMITS: ZipBudgetLimits = {
-  entries: XLSX_ENTRY_LIMIT,
-  totalUnpackedBytes: XLSX_TOTAL_UNPACKED_BYTE_LIMIT,
-  entryUnpackedBytes: XLSX_ENTRY_UNPACKED_BYTE_LIMIT,
-  compressionRatio: XLSX_COMPRESSION_RATIO_LIMIT,
+  entries: 2_048,
+  totalUnpackedBytes: 128 * 1024 * 1024,
+  entryUnpackedBytes: 64 * 1024 * 1024,
+  compressionRatio: 200,
 };
 
 type BaseXlsxServiceOptions = {

@@ -1,9 +1,13 @@
 /**
  * [INPUT]: Depends on Chat/Project/Setup ports, Conversation Coordinator, session-submission-payload, renderer locale/catalog runtime, errors, attachment sequencing, and Abort tools
- * [OUTPUT]: Provides createSessionSubmit/createSessionRevisionSubmit, compiles a single task, including workspace/live-view fence, canonical owner CAS, revision tail CAS and durable admission; Re-exported the only first-round installation function
+ * [OUTPUT]: Provides workspace-fenced manual submission/revision with availability and explicit authentication retry, keeping ambiguous switches in their original composer
  * [POS]: The limit of the submission of chat/runtime/session transactions; The main custody is not cancelled due to view switching, and the delayed return can only be written back to the still matched renderer generation
  */
+import { submissionDecision } from "../../../../../shared/agent-availability/projection";
 
+
+import { assertNoPendingAgent, bindAgentSubmission, rejectAgentSubmission } from "@/lib/chat-agent-draft/submission";
+import { readAgentDraft, consumeAgentSubmission, receiveCanonicalAgent } from "@/lib/chat-agent-draft/state";
 import type { MutableRefObject } from "react";
 import type { ChatStatus } from "ai";
 import {
@@ -38,8 +42,7 @@ import {
   respondAgentApproval,
   respondAgentUserInput,
   ackAgentSteerIntents,
-  sendToAgent,
-  type CodexRequest,
+  type AgentRequest,
 } from "@/lib/agent-client";
 import {
   flushPendingComposerAcks,
@@ -65,7 +68,6 @@ import {
 } from "@/lib/sections-client";
 import { splitChatAttachments } from "../chat-attachments";
 import {
-  buildMockTurnInput,
   messageId,
   serializeCurrentInput,
   submitBlocked,
@@ -77,12 +79,9 @@ import type { SessionSubmit } from "./use-session-interactions";
 import { gallerySnapshot, submissionContent } from "./session-submission-payload";
 export { assembleFirstTurnPayload } from "./session-submission-payload";
 
-type ChatsPort = Pick<
-  ReturnType<typeof useChats>,
-  "appendMessage" | "createAppChat" | "createChat" | "getChat"
->;
+type ChatsPort = Pick<ReturnType<typeof useChats>, "getChat">;
 type ProjectsPort = Pick<ReturnType<typeof useProjects>, "ensureForApp">;
-type SetupPort = Pick<ReturnType<typeof useSetup>, "openOnboarding">;
+type SetupPort = Pick<ReturnType<typeof useSetup>, "openAgentSettings">;
 type SettingsPort = Pick<
   ReturnType<typeof useChatSettings>,
   | "lockBackend"
@@ -117,8 +116,7 @@ export type SessionSubmitInput = {
   refs: {
     recordExists: MutableRefObject<boolean>;
     incarnationId?: MutableRefObject<string | null>;
-    request: MutableRefObject<CodexRequest | null>;
-    sessionAbort: MutableRefObject<AbortController>;
+    request: MutableRefObject<AgentRequest | null>;
     workspaceScopeKey: MutableRefObject<string>;
   };
   lifecycle: SessionSubmitLifecycle;
@@ -127,7 +125,7 @@ export type SessionSubmitInput = {
 export type SessionSubmissionPorts = {
   assembleSubmission(
     message: PromptInputMessage,
-    options?: { planIntent?: boolean; signal?: AbortSignal }
+    options?: Parameters<SessionSubmit>[1]
   ): Promise<ManualTurnSubmission>;
   admitSubmission(envelope: ManualTurnSubmission): Promise<AdmissionResult>;
   assembleSteer(
@@ -145,11 +143,7 @@ export type SessionSubmissionPorts = {
 };
 
 type AssemblyArtifacts = {
-  userMessage: UnsequencedUserMessage;
   previews: ReturnType<typeof splitChatAttachments>["previews"];
-  attachmentPayloads: ReturnType<typeof splitChatAttachments>["payloads"];
-  serialized: ReturnType<typeof serializeCurrentInput>;
-  message: PromptInputMessage;
 };
 
 type SubmissionFence = {
@@ -174,6 +168,31 @@ function workspaceFenceError(fence: SubmissionFence | undefined) {
   return fence?.required && fence.captured !== fence.current.current
     ? "Workspace 已变化，请重新选择文件或 Skill 后再发送"
     : null;
+}
+
+const flushAcks = () =>
+  flushPendingComposerAcks({
+    manual: ackManualIntents,
+    steer: ackAgentSteerIntents,
+  });
+
+/** Renderer handle for a main-custodied manual turn; dispose only severs local control. */
+function manualTurnRequest(requestId: string): AgentRequest {
+  let active = true;
+  const ended = () => Promise.reject(new Error("Agent 请求已结束"));
+  return {
+    requestId,
+    cancel: () => {
+      if (active) void cancelManualTurn(requestId);
+    },
+    dispose: () => {
+      active = false;
+    },
+    respondApproval: (approvalId, decision) =>
+      active ? respondAgentApproval(requestId, approvalId, decision) : ended(),
+    respondUserInput: (userInputId, answers) =>
+      active ? respondAgentUserInput(requestId, userInputId, answers) : ended(),
+  };
 }
 
 export function createSessionSubmissionPorts(
@@ -232,6 +251,9 @@ export function createSessionSubmissionPorts(
     };
     // seed 身份在首个 await 前冻结；后续 route/Project 解析只能填 wrapper，
     // 不能重铸 intent/request/incarnation。
+    const agentDraft = readAgentDraft(chatId);
+    if (agentDraft.pending?.submitting || agentDraft.pending?.stale) throw new Error(translate(effectiveLocale(), "chat.agentSwitch.stale"));
+    const switchIntent = agentDraft.pending?.intent;
     const intentId = `manual_${crypto.randomUUID().replaceAll("-", "")}`;
     const requestId = `request_${crypto.randomUUID().replaceAll("-", "")}`;
     const userCreatedAt = Date.now();
@@ -257,8 +279,10 @@ export function createSessionSubmissionPorts(
     ) {
       throw new Error("当前不能发送消息");
     }
+    const availability = submissionDecision(selectedBackend, Date.now());
+    if (availability.reason === "auth-required" && !options.authenticationRetry) throw new Error(translate(effectiveLocale(), "agentAvailability.blocked", { backend: selectedBackend?.displayName ?? "Agent" }));
     if (selectedBackend?.runtimeStatus !== "installed") {
-      setup.openOnboarding();
+      void setup.openAgentSettings();
       lifecycle.showLocalAssistant(
         translate(
           effectiveLocale(),
@@ -364,13 +388,16 @@ export function createSessionSubmissionPorts(
         : persistence;
     const envelope: ManualTurnSubmission = {
       intentId,
+      expectedAgentRevision: agentDraft.canonical?.agentRevision ?? 0,
+      ...(switchIntent ? { agentSwitch: switchIntent } : {}),
+      ...(options.authenticationRetry ? { authenticationRetry: options.authenticationRetry } : {}),
       persistence: durablePersistence,
       content,
       precondition,
       workspacePrecondition,
       turn: {
         requestId,
-        ...(agentSession ? { session: agentSession } : {}),
+        ...(agentSession && !switchIntent ? { session: agentSession } : {}),
         scope,
         turnOptions: settings.turnOptions,
         input: serialized,
@@ -379,13 +406,7 @@ export function createSessionSubmissionPorts(
     };
     assertWorkspaceFence();
     submissionFences.set(envelope, workspaceFence);
-    artifactsByIntent.set(intentId, {
-      userMessage,
-      previews: attachments.previews,
-      attachmentPayloads: attachments.payloads,
-      serialized,
-      message,
-    });
+    artifactsByIntent.set(intentId, { previews: attachments.previews });
     return envelope;
   };
 
@@ -395,15 +416,10 @@ export function createSessionSubmissionPorts(
       if (fenceFailure) {
         return { kind: "rejectedBeforeAdmission", reason: fenceFailure };
       }
-      const pending = submitManualTurn(envelope);
-      if (!pending) {
-        return {
-          kind: "rejectedBeforeAdmission",
-          reason: "当前环境没有 ConversationCoordinator",
-        };
-      }
       try {
-        const result = await pending;
+        bindAgentSubmission(envelope);
+        const result = await submitManualTurn(envelope);
+        if (result.kind === "rejectedBeforeAdmission") rejectAgentSubmission(chatId, envelope.intentId);
         // absent→create 被 main 录取即原子晋升 existing(P)：direct 与
         // queue drain 共用本 port，同一挂载内后续提交不再重复 create。
         if (
@@ -443,7 +459,8 @@ export function createSessionSubmissionPorts(
         message,
         chatId,
         settings.turnOptions.backend,
-        selectedBackend
+        selectedBackend,
+        "steer"
       );
       const attachments = splitChatAttachments(message.files);
       if (!displayText && attachments.input.length === 0) {
@@ -569,7 +586,8 @@ export function createSessionRevisionSubmit(
   input: SessionSubmitInput
 ): SessionRevisionSubmit {
   return async (messageId, content) => {
-    const ports = createSessionSubmissionPorts(input);
+    assertNoPendingAgent(input.snapshot.chatId);
+  const ports = createSessionSubmissionPorts(input);
     const envelope = await ports.assembleRevision(messageId, content);
     const result = await ports.admitSubmission(envelope);
     if (result.kind === "ambiguous") throw new Error(result.cause);
@@ -583,99 +601,20 @@ export function createSessionRevisionSubmit(
       id: envelope.intentId,
       chatId: input.snapshot.chatId,
     });
-    const flush = () =>
-      flushPendingComposerAcks({
-        manual: ackManualIntents,
-        steer: ackAgentSteerIntents,
-      });
     if (receipt.phase === "failed") {
-      await flush();
+      await flushAcks();
       if (!receipt.userPersisted) throw new Error(REVISION_STALE);
       return;
     }
     if (receipt.phase === "settled") {
-      await flush();
+      await flushAcks();
       return;
     }
     input.lifecycle.begin();
     input.lifecycle.accept(receipt, []);
-    void flush();
-    let active = true;
-    input.lifecycle.attachRequest({
-      requestId: envelope.turn.requestId,
-      started: Promise.resolve(),
-      cancel: () => {
-        if (active) void cancelManualTurn(envelope.turn.requestId);
-      },
-      dispose: () => {
-        active = false;
-      },
-      respondApproval: (approvalId, decision) =>
-        active
-          ? respondAgentApproval(envelope.turn.requestId, approvalId, decision)
-          : Promise.reject(new Error("Agent 请求已结束")),
-      respondUserInput: (userInputId, answers) =>
-        active
-          ? respondAgentUserInput(envelope.turn.requestId, userInputId, answers)
-          : Promise.reject(new Error("Agent 请求已结束")),
-    });
+    void flushAcks();
+    input.lifecycle.attachRequest(manualTurnRequest(envelope.turn.requestId));
   };
-}
-
-async function persistFallback(
-  input: SessionSubmitInput,
-  envelope: ManualTurnSubmission,
-  artifacts: AssemblyArtifacts,
-  signal: AbortSignal
-) {
-  const { chats, settings } = input.services;
-  let storedUser: ChatMessage;
-  let session = input.snapshot.agentSession;
-  if (envelope.persistence.kind === "create") {
-    const createInput = envelope.persistence.input;
-    const record = await awaitSubmissionStep(signal, () =>
-      chats.createChat(createInput)
-    );
-    const first = record.messages[0];
-    if (!first) throw new Error("新聊天缺少 canonical 首条消息");
-    storedUser = first;
-    session = record.session ?? undefined;
-  } else if (envelope.persistence.kind === "create-app") {
-    const createInput = envelope.persistence.input;
-    const record = await awaitSubmissionStep(signal, () =>
-      chats.createAppChat(createInput)
-    );
-    const first = record.messages[0];
-    if (!first) throw new Error("新 App 聊天缺少 canonical 首条消息");
-    storedUser = first;
-    session = record.session ?? undefined;
-  } else {
-    const appendInput = envelope.persistence.input;
-    storedUser = await awaitSubmissionStep(signal, () =>
-      chats.appendMessage(appendInput)
-    );
-  }
-  const fenceFailure = workspaceFenceError(submissionFences.get(envelope));
-  if (fenceFailure) throw new Error(fenceFailure);
-  input.lifecycle.projectFallback(storedUser, artifacts.previews);
-  const fallbackInput = buildMockTurnInput({
-    message: artifacts.message,
-    attachmentInput: envelope.turn.input.filter(
-      (item) => item.type === "image"
-    ),
-    history: input.snapshot.messages,
-    activeThreadId: session?.id,
-  });
-  const request = sendToAgent(
-    fallbackInput,
-    session,
-    input.snapshot.scope,
-    settings.turnOptions,
-    Boolean(envelope.turn.planMode),
-    input.refs.sessionAbort.current.signal
-  );
-  input.lifecycle.attachRequest(request);
-  await request.started;
 }
 
 export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
@@ -701,15 +640,12 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
       throw reportedFailure(new Error(fenceFailure));
     }
     input.lifecycle.clearAttachmentNotice();
-    if (!window.sections) {
-      input.lifecycle.begin();
-      await persistFallback(input, envelope, artifacts, signal);
-      return;
-    }
     const synchronizeAcceptedRecord = async () => {
       if (!input.lifecycle.isCurrent()) return;
       const record = await input.services.chats.getChat(input.snapshot.chatId);
       if (!record || !input.lifecycle.isCurrent()) return;
+      receiveCanonicalAgent(input.snapshot.chatId, record);
+      consumeAgentSubmission(input.snapshot.chatId, envelope.intentId, record);
       input.lifecycle.syncSession(record.session ?? undefined);
       if (record.agent !== input.services.settings.turnOptions.backend) {
         if (!input.lifecycle.isCurrent()) return;
@@ -720,6 +656,11 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
       ports.admitSubmission(envelope)
     );
     if (result.kind === "ambiguous") {
+      if (envelope.agentSwitch) {
+        retainComposerResources(input.snapshot.chatId);
+        input.lifecycle.holdAmbiguousAdmission(result.cause);
+        throw reportedFailure(new Error(translate(effectiveLocale(), "chat.agentSwitch.confirming")));
+      }
       updateComposer(input.snapshot.chatId, (current) => ({
         ...current,
         queue: adoptAmbiguousSubmission(
@@ -734,10 +675,16 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
       return;
     }
     if (result.kind === "rejectedBeforeAdmission") {
+      rejectAgentSubmission(input.snapshot.chatId, envelope.intentId);
       input.lifecycle.rejectBeforeAdmission(admissionReasonText(result));
       throw reportedFailure(new Error(result.reason));
     }
     const receipt = result.receipt;
+    if (envelope.agentSwitch && receipt.phase === "queued") {
+      input.lifecycle.holdAmbiguousAdmission(translate(effectiveLocale(), "chat.agentSwitch.recovering"));
+      throw reportedFailure(new Error(translate(effectiveLocale(), "chat.agentSwitch.recovering")));
+    }
+    if (envelope.agentSwitch && !(receipt.phase === "failed" && !receipt.userPersisted)) await synchronizeAcceptedRecord();
     registerPendingComposerAck({
       kind: "manual",
       id: envelope.intentId,
@@ -752,12 +699,8 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
             kind: "admission",
           })
     );
-    const flushAcks = () =>
-      flushPendingComposerAcks({
-        manual: ackManualIntents,
-        steer: ackAgentSteerIntents,
-      });
     if (receipt.phase === "failed" && !receipt.userPersisted) {
+      rejectAgentSubmission(input.snapshot.chatId, envelope.intentId);
       const reason = translate(effectiveLocale(), "chat.runtime.queue.notPersisted");
       input.lifecycle.rejectBeforeAdmission(reason);
       await flushAcks();
@@ -773,25 +716,6 @@ export function createSessionSubmit(input: SessionSubmitInput): SessionSubmit {
     void synchronizeAcceptedRecord().catch(
       input.lifecycle.reportAcceptedSyncFailure
     );
-    let active = true;
-    const request: CodexRequest = {
-      requestId: envelope.turn.requestId,
-      started: Promise.resolve(),
-      cancel: () => {
-        if (active) void cancelManualTurn(envelope.turn.requestId);
-      },
-      dispose: () => {
-        active = false;
-      },
-      respondApproval: (approvalId, decision) =>
-        active
-          ? respondAgentApproval(envelope.turn.requestId, approvalId, decision)
-          : Promise.reject(new Error("Agent 请求已结束")),
-      respondUserInput: (userInputId, answers) =>
-        active
-          ? respondAgentUserInput(envelope.turn.requestId, userInputId, answers)
-          : Promise.reject(new Error("Agent 请求已结束")),
-    };
-    input.lifecycle.attachRequest(request);
+    input.lifecycle.attachRequest(manualTurnRequest(envelope.turn.requestId));
   };
 }

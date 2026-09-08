@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on a single base64url compiler/probe request, a supervisor-owned live loopback control port, Node crypto/process primitives, the trusted GUI transform kernel, and OS sandbox authority supplied by the parent supervisor
- * [OUTPUT]: Emits one bounded JSON compiler outcome or errno-classified authority/resource probe report, including detached-session escape attempts, on stdout
+ * [INPUT]: Depends on a single versioned, 1 MiB length-prefixed stdin compiler/probe request, a supervisor-owned live loopback control port, Node crypto/process primitives, the trusted GUI transform kernel, and OS sandbox authority supplied by the parent supervisor
+ * [OUTPUT]: Emits one bounded compiler outcome or authority/resource probe report, including readable executable denial, observed Linux AppArmor profile and detached-session escape attempts
  * [POS]: Explicit Electron main utility entry for compiled App GUI work; it never runs App-authored code or chooses filesystem/network authority
  */
 
@@ -10,28 +10,19 @@ import { readFile, writeFile } from "node:fs/promises";
 import { lookup } from "node:dns/promises";
 import { connect } from "node:net";
 import type { AppGuiBuildFinding } from "../../shared/apps-ipc";
-import type { SealedCompilerInput } from "./apps/gui-build/contracts";
+import { readCompilerRequest, type CompilerRequest } from "./apps/gui-build/transport/request";
 import { compilePreparedAppGui } from "./apps/gui-build/pipeline/compiler";
 
-type Request =
-  | Readonly<{
-      mode: "probe";
-      forbiddenRead: string;
-      forbiddenWrite: string;
-      loopbackPort: number;
-      spawnExecutable: string;
-    }>
-  | Readonly<{ mode: "custody-probe"; processCount: number }>
-  | Readonly<{ mode: "resource-probe"; kind: "rss" | "cpu" | "timeout" }>
-  | Readonly<{ mode: "compile"; input: SealedCompilerInput }>;
-
 async function main() {
-  const encoded = process.argv[2];
-  if (!encoded || encoded.length > 128 * 1024) throw new Error("compiler request is missing or oversized");
-  const request = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as Request;
+  if (process.argv.length !== 2) throw new Error("compiler requests must use stdin");
+  const timer = setTimeout(() => process.stdin.destroy(new Error("compiler request timed out")), 5_000);
+  const request = await readCompilerRequest(process.stdin).finally(() => clearTimeout(timer));
   if (request.mode === "probe") {
     const probes = await runProbe(request);
-    process.stdout.write(JSON.stringify({ probes }));
+    const linuxProfile = process.platform === "linux"
+      ? (await readFile("/proc/self/attr/current", "utf8")).trim()
+      : undefined;
+    process.stdout.write(JSON.stringify({ probes, linuxProfile }));
     return;
   }
   if (request.mode === "custody-probe") {
@@ -107,7 +98,9 @@ const UNREACHABLE_DENIALS = new Set([...SANDBOX_DENIALS, "ENETDOWN", "ETIMEDOUT"
    回环栈不是宿主那一个。没有正对照时它什么都不证明，这正是旧实现的漏洞。 */
 const LOOPBACK_DENIALS = new Set([...SANDBOX_DENIALS, "ECONNREFUSED"]);
 
-async function runProbe(request: Extract<Request, { mode: "probe" }>) {
+async function runProbe(request: Extract<CompilerRequest, { mode: "probe" }>) {
+  // Reading must succeed before EACCES/EPERM can establish executable isolation.
+  await readFile(request.readableExecutable);
   const results = await Promise.all([
     denied("read-outside", () => readFile(request.forbiddenRead), SANDBOX_DENIALS),
     denied("write-outside", () => writeFile(request.forbiddenWrite, "forbidden"), SANDBOX_DENIALS),
@@ -118,6 +111,7 @@ async function runProbe(request: Extract<Request, { mode: "probe" }>) {
     denied("network-dns", () => lookup("example.com"), UNREACHABLE_DENIALS),
     Promise.resolve({ id: "environment-secret", denied: process.env.BOTTEGA_COMPILER_PROBE_SECRET === undefined }),
     denied("process-spawn", () => spawnProbe(request.spawnExecutable), SANDBOX_DENIALS),
+    denied("process-spawn-readable", () => spawnProbe(request.readableExecutable), new Set(["EPERM", "EACCES"])),
   ]);
   return results;
 }

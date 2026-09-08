@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on conversation scrolling context, the paged canonical Chat outline client, localized outline copy, pure outline projection, and loaded timeline messages
+ * [INPUT]: Depends on conversation scrolling context, the paged canonical Chat outline client, localized outline copy, pure outline projection, transcript anchor lookup/scroll primitives, and loaded timeline messages
  * [OUTPUT]: Provides a stale-retrying, tail-first self-paging canonical outline window bounded to the newest OUTLINE_WINDOW_LIMIT entries and a localized roving minimap whose entries stay in transcript order and jump through transcript anchors
  * [POS]: The session navigation layer of chat/transcript
  */
@@ -30,8 +30,8 @@ import {
 } from "@/lib/chat-outline";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { getChatOutlinePage } from "@/lib/chats-client";
+import { findTranscriptTarget, scrollTranscriptTo } from "./transcript-highlight";
 
-const anchorSelector = (id: string) => `[data-message-id="${CSS.escape(id)}"]`;
 
 const LENS_WIDTHS = ["w-5", "w-4", "w-3", "w-2.5"];
 const BASE_WIDTH = "w-2";
@@ -255,8 +255,8 @@ export const ChatOutline = memo(function ChatOutline({
     const measure = () => {
       const scrollerTop = scroller.getBoundingClientRect().top;
       const pairs = entries.flatMap((entry, index) => {
-        const anchor = scroller.querySelector(anchorSelector(entry.id));
-        return anchor instanceof HTMLElement
+        const anchor = findTranscriptTarget(entry.id, scroller);
+        return anchor
           ? [{
               index,
               top:
@@ -313,13 +313,9 @@ export const ChatOutline = memo(function ChatOutline({
       return;
     }
     const scroller = scrollRef.current;
-    const anchor = scroller?.querySelector(anchorSelector(id));
-    if (!scroller || !(anchor instanceof HTMLElement)) return;
-    const top =
-      anchor.getBoundingClientRect().top -
-      scroller.getBoundingClientRect().top +
-      scroller.scrollTop;
-    scroller.scrollTo({ top: Math.max(0, top - 16), behavior: "smooth" });
+    const anchor = scroller && findTranscriptTarget(id, scroller);
+    if (!scroller || !anchor) return;
+    scrollTranscriptTo(scroller, anchor, "smooth");
   }, [onJump, scrollRef]);
   const runtime = useMemo<DotRuntime>(
     () => ({

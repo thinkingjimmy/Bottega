@@ -11,11 +11,6 @@ export const chatComposerZhCN: typeof chatComposerEn = {
     defaultEffort: "默认",
     standardSpeed: "标准",
   },
-  agent: {
-    current: "当前 Agent：{{backend}}",
-    checking: "正在确认 {{backend}} 状态",
-    selectCurrent: "选择 Agent；当前为 {{backend}}",
-  },
   approval: {
     requestChanges: "要求修改",
     decline: "拒绝",
@@ -54,7 +49,6 @@ export const chatComposerZhCN: typeof chatComposerEn = {
   },
   surface: {
     plan: "Plan",
-    imageUnsupported: "当前 Agent 不支持图片。画廊选择已暂停；图片能力恢复后，请重新添加本地图片。",
     authorizeFileFailed: "无法授权文件 {{file}}",
     branchBusy: "请等待分支操作完成后再发送。",
     fileAuthorizationBusy: "请等待文件授权完成后再发送。",

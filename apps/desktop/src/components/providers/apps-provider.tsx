@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, the locale catalog, the shared AppRecordProjection/PresetAppSummary read models, apps-client, and an optional fixed App-window identity
+ * [INPUT]: Depends on React Context, the locale catalog, the shared AppRecordProjection/PresetAppSummary read models, the shared GitHub repo URL normalizer, apps-client, and an optional fixed App-window identity
  * [OUTPUT]: Provides AppsProvider/useApps/useOptionalApps carrying main's AppRecordProjection end to end, with epoch-fenced snapshot adoption, buffered App events, explicit list state, retryable refresh, durable global pins, deletion-aware cleanup, full main-window operations, or a fixed-App projection that never requests presets
  * [POS]: Renderer Apps state owner; fixed App windows retain one exact record while the main product owns global catalogs, management projections, and stale-operation eviction
  */
@@ -26,7 +26,7 @@ import type {
   EnsureAppChatSlotResult,
   InstallPresetInput,
   PresetAppSummary,
-  PresetProbeResult,
+  ReadyPresetProbeResult,
   RemoveAppMode,
   RenameAppInput,
   SaveAsAppInput,
@@ -37,7 +37,6 @@ import {
   addApp as addAppViaBridge,
   cancelAppInstall,
   discardPresetAppProbe,
-  hasAppsBridge,
   installPresetApp,
   probePresetApp,
   listApps,
@@ -55,16 +54,8 @@ import {
   retryAppSkill,
 } from "@/lib/apps-client";
 import { errorMessage } from "@/lib/errors";
-import { normalizeGithubRepoUrl as sharedNormalizeGithubRepoUrl } from "../../../shared/github-repo";
+import { normalizeGithubRepoUrl } from "../../../shared/github-repo";
 import { useAppTranslation } from "./i18n-provider";
-
-type AppInfo = {
-  id: string;
-  name: string;
-  description: string;
-  repoUrl: string;
-  icon: string;
-};
 
 type AppState = AppRecord["state"];
 type AppsResultNotice = "error" | "success" | null;
@@ -99,15 +90,12 @@ function noticeForTransition(
     : null;
 }
 
-export type AppListItem =
-  | ({ kind: "placeholder" } & AppInfo)
-  | {
-      kind: "installed";
-      record: AppRecordProjection;
-      step: string;
-      operation?: AppOperation;
-      runtimeState?: AppRuntimeState;
-    };
+export type AppListItem = {
+  record: AppRecordProjection;
+  step: string;
+  operation?: AppOperation;
+  runtimeState?: AppRuntimeState;
+};
 
 type AppsContextValue = {
   apps: AppListItem[];
@@ -115,7 +103,7 @@ type AppsContextValue = {
   pinnedRecords: AppRecordProjection[];
   presets: PresetAppSummary[];
   /** 三段协议：probe 冻结 → 用户确认 → install 携带 preflightId+digest；放弃即 discard */
-  probePreset: (presetId: string) => Promise<PresetProbeResult>;
+  probePreset: (presetId: string) => Promise<ReadyPresetProbeResult>;
   installPreset: (input: InstallPresetInput) => Promise<AppRecord>;
   discardPresetProbe: (preflightId: string) => Promise<void>;
   loading: boolean;
@@ -129,7 +117,7 @@ type AppsContextValue = {
   highlightedId: string;
   liveLogs: Record<string, string[]>;
   sidebarStatus: AppsSidebarStatus;
-  addApp: (input: AddAppInput) => Promise<AppRecord | AppInfo>;
+  addApp: (input: AddAppInput) => Promise<AppRecord>;
   setAgent: (input: SetAppAgentInput) => Promise<AppRecord>;
   saveAsApp: (input: SaveAsAppInput) => Promise<AppRecord>;
   renameApp: (input: RenameAppInput) => Promise<AppRecord>;
@@ -149,7 +137,7 @@ type AppsContextValue = {
 
 const AppsContext = createContext<AppsContextValue | null>(null);
 
-export function applyAppInventoryEvents(
+function applyAppInventoryEvents(
   base: readonly AppRecordProjection[],
   events: readonly AppsRendererEvent[]
 ) {
@@ -159,11 +147,6 @@ export function applyAppInventoryEvents(
     if (event.type === "removed") records.delete(event.appId);
   }
   return [...records.values()];
-}
-
-/** 归一化单源在 shared；renderer 侧历史消费的是纯 URL 字符串，这里收窄投影。 */
-export function normalizeGithubRepoUrl(value: string) {
-  return sharedNormalizeGithubRepoUrl(value).repoUrl;
 }
 
 export function AppsProvider({
@@ -177,7 +160,6 @@ export function AppsProvider({
   const [records, setRecords] = useState<AppRecordProjection[]>([]);
   const [presets, setPresets] = useState<PresetAppSummary[]>([]);
   const recordStates = useRef(new Map<string, AppState>());
-  const [browserApps, setBrowserApps] = useState<AppInfo[]>([]);
   const [steps, setSteps] = useState<Record<string, string>>({});
   const [operations, setOperations] = useState<Record<string, AppOperation>>({});
   const [runtimeStates, setRuntimeStates] = useState<
@@ -192,14 +174,13 @@ export function AppsProvider({
   const [highlightedId, setHighlightedId] = useState("");
   const [resultNotice, setResultNotice] =
     useState<AppsResultNotice>(null);
-  const [loading, setLoading] = useState(hasAppsBridge());
+  const [loading, setLoading] = useState(true);
   const [reloadRevision, setReloadRevision] = useState(0);
   const listEpoch = useRef(0);
   const listRefreshing = useRef(false);
   const bufferedEvents = useRef<AppsRendererEvent[]>([]);
 
   useEffect(() => {
-    if (!hasAppsBridge()) return;
     let active = true;
     const currentEpoch = ++listEpoch.current;
     listRefreshing.current = true;
@@ -348,20 +329,10 @@ export function AppsProvider({
     setReloadRevision((current) => current + 1);
   }, []);
 
-  const addApp = useCallback(async (input: AddAppInput) => {
-    const repoUrl = normalizeGithubRepoUrl(input.repoUrl);
-    if (hasAppsBridge()) return addAppViaBridge({ ...input, repoUrl });
-    const slug = repoUrl.split("/").pop() ?? "new-app";
-    const app = {
-      id: `${slug}-${Date.now()}`,
-      name: slug,
-      description: t("apps.provider.browserFallbackDescription", { url: repoUrl }),
-      repoUrl,
-      icon: "📦",
-    };
-    setBrowserApps((current) => [...current, app]);
-    return app;
-  }, [t]);
+  const addApp = useCallback((input: AddAppInput) => {
+    const { repoUrl } = normalizeGithubRepoUrl(input.repoUrl);
+    return addAppViaBridge({ ...input, repoUrl });
+  }, []);
 
   const highlightApp = useCallback((appId: string) => {
     setHighlightedId(appId);
@@ -380,18 +351,15 @@ export function AppsProvider({
 
   const apps = useMemo<AppListItem[]>(
     () =>
-      hasAppsBridge()
-        ? [...records]
-            .sort((left, right) => left.addedAt - right.addedAt)
-            .map((record) => ({
-              kind: "installed" as const,
-              record,
-              step: steps[record.id] ?? "",
-              operation: operations[record.id],
-              runtimeState: runtimeStates[record.id],
-            }))
-        : browserApps.map((app) => ({ ...app, kind: "placeholder" as const })),
-    [browserApps, operations, records, runtimeStates, steps]
+      [...records]
+        .sort((left, right) => left.addedAt - right.addedAt)
+        .map((record) => ({
+          record,
+          step: steps[record.id] ?? "",
+          operation: operations[record.id],
+          runtimeState: runtimeStates[record.id],
+        })),
+    [operations, records, runtimeStates, steps]
   );
 
   const pinnedRecords = useMemo(

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on ChatStoreState, strict fork contracts, generation-fenced timeline paging, pure fork construction policy, SQLite operation receipts, and explicit unknown-outcome errors
+ * [INPUT]: Depends on ChatStoreState, strict fork contracts, generation-fenced timeline paging, pure fork construction policy, SQLite operation receipts, explicit unknown-outcome errors, and main/errors
  * [OUTPUT]: Provides exact native/imported source-prefix reads, receipt-first replay, and durable creation for independent forked Chat records
  * [POS]: Focused fork mutation collaborator behind the ChatStore facade; it owns no queue or state outside the shared ChatStoreState cell
  */
@@ -22,6 +22,7 @@ import {
 } from "../chat-fork";
 import { ChatMutationOutcomeUnknownError } from "./mutation-outcome";
 import type { ChatStoreState } from "./state";
+import { statusError } from "../../errors";
 
 type ForkIdentity = Readonly<{
   requestId: string;
@@ -77,7 +78,7 @@ export class ChatForkStoreApi {
       });
       if (receipt) return this.replayReceipt(input, receipt.kind, receipt.targetId);
       if (this.state.metadata.has(input.childChatId)) {
-        throw Object.assign(new Error("CHAT_FORK_CHILD_EXISTS"), { status: 409 });
+        throw statusError(409, "CHAT_FORK_CHILD_EXISTS");
       }
       const source = await this.readSource(input);
       const title = allocateForkTitle(source.title, [...this.state.metadata.values()]
@@ -119,7 +120,7 @@ export class ChatForkStoreApi {
   private async readSource(input: ForkSourceIdentity): Promise<ChatRecord> {
     assertChatId(input.sourceChatId);
     const metadata = this.state.metadata.get(input.sourceChatId);
-    if (!metadata) throw Object.assign(new Error("CHAT_FORK_SOURCE_MISSING"), { status: 404 });
+    if (!metadata) throw statusError(404, "CHAT_FORK_SOURCE_MISSING");
     const database = this.state.requireDatabase();
     const around = await database.execute({
       kind: "get-timeline-around",
@@ -131,13 +132,13 @@ export class ChatForkStoreApi {
       deviceId: this.state.requireDeviceId(),
     });
     if (!around || around.incarnationId !== input.sourceIncarnationId) {
-      throw Object.assign(new Error("CHAT_FORK_ANCHOR_INELIGIBLE"), { status: 409 });
+      throw statusError(409, "CHAT_FORK_ANCHOR_INELIGIBLE");
     }
     const anchorIndex = around.messages.findIndex(
       (message) => message.id === input.anchorMessageId && message.seq === input.anchorSeq
     );
     if (anchorIndex < 0) {
-      throw Object.assign(new Error("CHAT_FORK_ANCHOR_INELIGIBLE"), { status: 409 });
+      throw statusError(409, "CHAT_FORK_ANCHOR_INELIGIBLE");
     }
     let messages = around.messages.slice(0, anchorIndex + 1);
     let cursor = this.olderCursor(around, messages[0]);
@@ -148,11 +149,11 @@ export class ChatForkStoreApi {
         deviceId: this.state.requireDeviceId(),
       });
       if (!page) {
-        throw Object.assign(new Error("CHAT_FORK_SOURCE_MISSING"), { status: 404 });
+        throw statusError(404, "CHAT_FORK_SOURCE_MISSING");
       }
       messages = [...page.messages, ...messages];
       if (messages.length > CHAT_MESSAGE_LIMIT) {
-        throw Object.assign(new Error("CHAT_FORK_PREFIX_TOO_LARGE"), { status: 409 });
+        throw statusError(409, "CHAT_FORK_PREFIX_TOO_LARGE");
       }
       cursor = page.olderCursor;
     }
@@ -196,7 +197,7 @@ export class ChatForkStoreApi {
       existing.parentMessageId === input.anchorMessageId &&
       (existing.executionKind === "managed-worktree") ===
         (input.mode === "new-worktree");
-    if (!exact) throw Object.assign(new Error("CHAT_FORK_REQUEST_CONFLICT"), { status: 409 });
+    if (!exact) throw statusError(409, "CHAT_FORK_REQUEST_CONFLICT");
     return structuredClone(existing);
   }
 }

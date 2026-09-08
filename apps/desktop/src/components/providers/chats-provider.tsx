@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, locale catalogs, shared chat/storage-failure contracts, clients, renderer stores, Agent activity, and toast
- * [OUTPUT]: Provides ChatsProvider/useChats with buffered chat events, structured storage failures, optional activity hydration, and mutation feedback
- * [POS]: The only source of truth is the chat summary of the providers; Draft Resource Cleaning at the provider level subscribe to one-time connections
+ * [INPUT]: Depends on React Context, locale catalogs, chat/storage-failure contracts, clients, renderer stores, ordered activity hydration, and toast.
+ * [OUTPUT]: Provides ChatsProvider/useChats with buffered chat events, structured storage failures, consumption-safe activity hydration, and mutation feedback.
+ * [POS]: Single source of truth for chat summaries in providers; owns one-time subscriptions and draft-resource cleanup at the provider level.
  */
 
 import {
@@ -15,14 +15,9 @@ import {
   useState,
 } from "react";
 import type {
-  AppendChatMessageInput,
-  ChatMessage,
-  ChatRecord,
   ChatRuntimeContext,
   ChatSummary,
   ChatsEvent,
-  CreateChatInput,
-  CreateAppChatInput,
   RenameChatInput,
 } from "../../../shared/chats-ipc";
 import type { ChatStorageFailure } from "../../../shared/product-failure";
@@ -30,14 +25,10 @@ import { receiveChatMessagesEvent } from "@/lib/chat-messages-store";
 import { receiveComposerChatEvent } from "@/lib/chat-composer-store";
 import {
   clearChatActivity,
-  primeChatActivity,
-  receiveChatActivity,
+  connectChatActivity,
 } from "@/lib/chat-activity-store";
 import { listAgentActivity, onAgentActivity } from "@/lib/agent-client";
 import {
-  appendChatMessage,
-  createChat as createChatViaClient,
-  createAppChat as createAppChatViaClient,
   deleteChat as deleteChatViaClient,
   getChat as getChatViaClient,
   listChats,
@@ -54,9 +45,6 @@ type ChatsContextValue = {
   warning: string;
   storageFailures: ChatStorageFailure[];
   loading: boolean;
-  createChat: (input: CreateChatInput) => Promise<ChatRecord>;
-  createAppChat: (input: CreateAppChatInput) => Promise<ChatRecord>;
-  appendMessage: (input: AppendChatMessageInput) => Promise<ChatMessage>;
   getChat: (chatId: string) => Promise<ChatRuntimeContext | null>;
   renameChat: (input: RenameChatInput) => Promise<ChatSummary>;
   archiveChat: (chatId: string) => Promise<void>;
@@ -173,56 +161,13 @@ export function ChatsProvider({
     };
   }, [t]);
 
-  // 会话活动：先订阅再补齐初始运行集，prime 只填空，不覆盖订阅期内收到的跃迁。
   useEffect(() => {
     if (!includeActivity) return;
-    let active = true;
-    const unsubscribe = onAgentActivity(receiveChatActivity);
-    void listAgentActivity()
-      .then((snapshots) => {
-        if (active) primeChatActivity(snapshots);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-      unsubscribe();
-    };
+    return connectChatActivity({ subscribe: onAgentActivity, read: listAgentActivity });
   }, [includeActivity]);
 
   /* 一次性操作失败走 toast；setWarning 只留给主进程事件流的持久告警，
      两种寿命不同的消息不共用同一条侧栏横幅。 */
-  const createChat = useCallback(async (input: CreateChatInput) => {
-    try {
-      return await createChatViaClient(input);
-    } catch (cause) {
-      toast.error(t("chat.provider.saveFailed", { message: errorMessage(cause) }));
-      throw cause;
-    }
-  }, [t]);
-
-  const createAppChat = useCallback(async (input: CreateAppChatInput) => {
-    try {
-      return await createAppChatViaClient(input);
-    } catch (cause) {
-      toast.error(t("chat.provider.appSaveFailed", { message: errorMessage(cause) }));
-      throw cause;
-    }
-  }, [t]);
-
-  const appendMessage = useCallback(
-    async (input: AppendChatMessageInput) => {
-      try {
-        return await appendChatMessage(input);
-      } catch (cause) {
-        toast.error(
-          t("chat.provider.messageSaveFailed", { message: errorMessage(cause) })
-        );
-        throw cause;
-      }
-    },
-    [t]
-  );
-
   const renameChat = useCallback(async (input: RenameChatInput) => {
     try {
       return await renameChatViaClient(input);
@@ -256,15 +201,12 @@ export function ChatsProvider({
       warning,
       storageFailures,
       loading,
-      createChat,
-      createAppChat,
-      appendMessage,
       getChat: getChatViaClient,
       renameChat,
       archiveChat,
       deleteChat,
     }),
-    [appendMessage, archiveChat, chats, createAppChat, createChat, deleteChat, loading, renameChat, storageFailures, warning]
+    [archiveChat, chats, deleteChat, loading, renameChat, storageFailures, warning]
   );
 
   return <ChatsContext.Provider value={value}>{children}</ChatsContext.Provider>;

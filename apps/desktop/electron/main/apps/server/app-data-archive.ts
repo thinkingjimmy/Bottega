@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on DurableJson, crypto and immutable snapshot/provenance digest
  * [OUTPUT]: Provides AppDataArchiveStore; archive-pending→ owned
- * [POS]: The data owner of the retained server is not a user of the apps; The archive is independently verifiable after the App record is deleted
+ * [POS]: apps server retained-data owner, independent of the App record; the archive stays independently verifiable after the App record is deleted
  */
 
 import { randomUUID } from "node:crypto";

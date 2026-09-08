@@ -53,6 +53,7 @@ export const BUILTIN_TOOL_COPY = {
   base_patch_rows: { domain: "Bases" },
   base_delete_rows: { domain: "Bases" },
   search_chat_history: { domain: "Search" },
+  read_chat_history: { domain: "Search" },
   search_bases: { domain: "Search" },
   browser_open: { domain: "Browser" },
   browser_snapshot: { domain: "Browser" },
@@ -287,7 +288,7 @@ export function BuiltinToolsSection({
                       <code className="font-mono text-[11px] text-muted-foreground/70">
                         {name}
                       </code>
-                      <BackendSupport support={tool.backendSupport} />
+                      <BackendSupportNote support={tool.backendSupport} />
                     </>
                   ) : t("common.loading")}
                   htmlFor={`builtin-tool-${name}`}
@@ -305,7 +306,8 @@ export function BuiltinToolsSection({
   );
 }
 
-function BackendSupport({
+/** Unsupported-backend footnote shared by built-in tool rows and manual MCP rows. */
+export function BackendSupportNote({
   support,
 }: {
   support: readonly ResourceBackendSupportView[];

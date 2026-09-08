@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on two controlled adapters, source provenance and nail-dead conformance feed
- * [OUTPUT]: Provides admitAnyExtensionPackage/admitExtensionPackageWithAdapter with full evidence triad
- * [POS]: The only dispatch registry for extensions admission; The adapter is the only adapter that is not backed up
+ * [INPUT]: Depends on the two frozen adapters (Agent Plugins, skill-repo), source provenance, and the pinned conformance corpus
+ * [OUTPUT]: Provides admitExtensionPackageWithAdapter with the full evidence triad (admission, schema digest, validator fixture digest), ExtensionAdapterId, and VALIDATOR_FIXTURE_DIGEST
+ * [POS]: The only admission dispatch point for extensions; every adapter is selected by explicit id, never guessed from package contents
  */
 
 import type { Sha256Digest } from "../../../shared/extensions-ipc";
@@ -13,7 +13,8 @@ import {
   admitExtensionPackage,
   type ExtensionPackageAdmission,
 } from "./manifest-adapter";
-import { digestCanonical, type ExtensionSourceProvenance } from "./registry-store";
+import { digestCanonical } from "./registry-canonical";
+import type { ExtensionSourceProvenance } from "./registry-schema";
 import {
   admitSkillRepoPackage,
   SKILL_REPO_ADAPTER_ID,
@@ -34,14 +35,6 @@ export type ExtensionAdmission = Readonly<{
 export const VALIDATOR_FIXTURE_DIGEST = digestCanonical(
   ADMISSION_CONFORMANCE_CORPUS
 );
-
-export async function admitAnyExtensionPackage(
-  root: string,
-  source: ExtensionSourceProvenance,
-  adapterId: ExtensionAdapterId
-): Promise<ExtensionAdmission> {
-  return admitExtensionPackageWithAdapter(adapterId, root, source);
-}
 
 export async function admitExtensionPackageWithAdapter(
   adapterId: ExtensionAdapterId,

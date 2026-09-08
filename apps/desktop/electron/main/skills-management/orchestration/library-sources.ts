@@ -128,7 +128,7 @@ export async function resolveLibrarySources(input: Readonly<{
           componentInstanceIdentity: component.componentInstanceIdentity,
           active: owner.administrativeState === "active",
         },
-        enabled: input.registry.isComponentEnabled(
+        enabled: input.registry.lifecycle.isComponentEnabled(
           component.componentInstanceIdentity
         ),
         local: null,

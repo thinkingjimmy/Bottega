@@ -1,0 +1,7 @@
+# Bottega fixed compiler namespace launcher.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bottega-bwrap-eae0872ccf73b720079278426e26a39985da286911c1010d4d3593a215669bfe /opt/bottega/runtime/bwrap/bwrap-eae0872ccf73b720079278426e26a39985da286911c1010d4d3593a215669bfe/bwrap flags=(unconfined) {
+  userns,
+}

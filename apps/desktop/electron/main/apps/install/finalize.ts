@@ -1,17 +1,20 @@
 /**
- * [INPUT]: Depends on fs/path/crypto, AppManifest schema and Agent requests mechanical replacement
- * [OUTPUT]: Provides Web App finalizeInstall with the difference validate together with ManifestSemantics, base type bypasses the installer
- * [POS]: The manifest of apps/install, the kernel of the definitive closure, the pre-testing of candidate data, the mechanical replenishment and execution
+ * [INPUT]: Depends on admitted manifests, structured command semantics and mechanical Agent requirement completion
+ * [OUTPUT]: Publishes admitted configuration requirements before executing; Provides one deterministic Web install/build validation path for author declarations and explicit Agent candidates
+ * [POS]: apps/install's finalize step; the last checkpoint before an installed App's manifest is admitted
  */
 
+import type { AppCommand } from "../../../../shared/apps-execution";
+import { commandUsesPort } from "../execution/command";
 import { isAbsolute, win32 } from "node:path";
 import type { AppManifest } from "../../../../shared/apps-ipc";
 import { appManifestSchema } from "./manifest-schema";
 import { completeAgentRequirements } from "./agent-requirements";
 
-export type FinalizeHooks = {
-  runInstall: (command: string) => Promise<void>;
-  runBuild: (command: string) => Promise<void>;
+type FinalizeHooks = {
+  onManifest?: (manifest: Exclude<AppManifest, { kind: "base" }>) => Promise<unknown>;
+  runInstall: (command: AppCommand) => Promise<void>;
+  runBuild: (command: AppCommand) => Promise<void>;
   validateStatic: (manifest: AppManifest) => Promise<void>;
 };
 
@@ -21,7 +24,7 @@ export function validateManifestSemantics(manifest: AppManifest) {
     assertRelativePath(manifest.staticDir);
     return;
   }
-  if (!manifest.startCmd.includes("{PORT}")) {
+  if (!commandUsesPort(manifest.startCmd)) {
     throw new Error("server App 的 startCmd 必须包含 {PORT}");
   }
   if (manifest.serveTrigger) assertRelativePath(manifest.serveTrigger.watchPath);
@@ -48,7 +51,8 @@ export async function finalizeInstall(
     throw new Error("base App 不经 Web 安装器 finalize");
   }
   validateManifestSemantics(parsed);
-  await hooks.runInstall(parsed.installCmd);
+  await hooks.onManifest?.(parsed);
+  if (parsed.installCmd) await hooks.runInstall(parsed.installCmd);
   if (parsed.buildCmd) await hooks.runBuild(parsed.buildCmd);
   const finalManifest = await completeAgentRequirements(parsed, appDir);
   if (finalManifest.kind === "static") {

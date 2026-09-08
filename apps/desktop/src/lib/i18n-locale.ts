@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared AppLocale; Written in the current valid language by the renderer I18nProvider
- * [OUTPUT]: Provides snapshots of the current language, Intl locale mapping and subscription interface
- * [POS]: Non-React locale boundaries of the renderer, allowing pure formatting functions to use the same valid language as React
+ * [INPUT]: Depends on shared AppLocale; set by the renderer I18nProvider to the current effective locale
+ * [OUTPUT]: Provides the current-locale snapshot, Intl locale mapping (intlLocale), and a subscription interface (useEffectiveLocale)
+ * [POS]: Non-React locale boundary in the renderer; lets pure formatting functions read the same effective locale as React components
  */
 
 import type { AppLocale } from "../../shared/i18n/locale";
@@ -32,7 +32,7 @@ export function intlLocale(locale = currentLocale) {
   return INTL_LOCALES[locale];
 }
 
-export function subscribeEffectiveLocale(listener: () => void) {
+function subscribeEffectiveLocale(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

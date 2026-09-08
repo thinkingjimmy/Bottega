@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the packaging mode of the Electron app, the application directory with macOS Dock, and the resources/icon.png distributed with the packaging
- * [OUTPUT]: Provides unified application icon path analysis, installed with the development mode macOS Dock icon** decoration level**** (without taking any icon only warn, never preventing initialization)
- * [POS]: The boundaries of the branded assets of the window module; Packaging and development share the same Bottega square main character
+ * [INPUT]: Depends on Electron app packaging mode, app path/resourcesPath, and the packaged resources/icon.png
+ * [OUTPUT]: Provides resolveAppIconPath for packaged/dev icon resolution, and applyDevelopmentDockIcon which sets the dev-mode macOS Dock icon as pure decoration — a missing icon only warns, never blocks initialization
+ * [POS]: Window module's branded-asset boundary; packaged and development builds resolve the same Bottega app icon
  */
 
 import { join } from "node:path";

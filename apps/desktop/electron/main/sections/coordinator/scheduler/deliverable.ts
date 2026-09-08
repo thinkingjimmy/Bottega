@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on RelayLedger conversation The index reads only selector, conversationId and durable sequence
+ * [INPUT]: Depends on RelayLedger's read-only conversation index selector, conversationId, and durable sequence ordering
  * [OUTPUT]: Provides nextDeliverable, isRunnableDeliverable, and blockedReceiptFor
  * [POS]: Pure sections/coordinator scheduler selector; it separates FIFO delivery eligibility from execution ordering
  */

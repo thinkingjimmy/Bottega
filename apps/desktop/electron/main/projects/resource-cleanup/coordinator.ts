@@ -9,28 +9,28 @@ import type {
   ProjectStore,
 } from "../store/project-store";
 
-export type ProjectResourceCleanupContext = Readonly<{
+type ProjectResourceCleanupContext = Readonly<{
   projectId: string;
   projectLifecycleRevision: number;
   resourceAdmissions: readonly import("../store/project-store").ProjectResourceAdmission[];
 }>;
 
-export type ProjectResourceCleanupParticipant = Readonly<{
+type ProjectResourceCleanupParticipant = Readonly<{
   id: string;
   cleanup(context: ProjectResourceCleanupContext): Promise<void>;
 }>;
 
-export type ProjectRuntimeCleanupHandler = (
+type ProjectRuntimeCleanupHandler = (
   context: ProjectResourceCleanupContext
 ) => Promise<void>;
 
-export type ProjectCleanupRecoveryFailure = Readonly<{
+type ProjectCleanupRecoveryFailure = Readonly<{
   projectId: string;
   operation: ProjectRemovalOperation;
   message: string;
 }>;
 
-export const PROJECT_RUNTIME_CLEANUP_PARTICIPANT = "project-runtime";
+const PROJECT_RUNTIME_CLEANUP_PARTICIPANT = "project-runtime";
 export const PROJECT_CLEANUP_PLAN = {
   version: 1,
   requiredParticipants: ["extensions", "tools"],

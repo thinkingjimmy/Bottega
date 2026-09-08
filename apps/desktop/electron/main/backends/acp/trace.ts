@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node files/flows/crypto originals, ACP mapped event, shared turn draft, canonical chat parts and caller literal secret set
- * [OUTPUT]: Provides default shutdown attempt-unique AcpTraceWriter, wire line tee, key+literal sharing diagnosis of dementia, five-layer skeleton recording, terminal self-certification and scroll cleaning
+ * [INPUT]: Depends on Node fs/crypto/stream primitives, ACP mapped events, shared TurnDraft/ChatMessage/ChatPart types, and the caller-supplied literal-secret set
+ * [OUTPUT]: Provides AcpTraceWriter with idempotent shutdown, AcpTraceTee for wire-line capture, key/value secret redaction, the structured trace-record schema, and trace-file rotation/cleanup
  * [POS]: local diagnostic recorder of ACP transport; BridgeEntry owns writer, AcpTurn only uses narrow trace sink
  */
 

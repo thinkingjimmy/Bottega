@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on reliable PricingCatalog and usage-merge UsageBuckets, UsageSourceId
- * [OUTPUT]: Provides unchanging PricingTable, Unified Ending Law Model Price by four barrels of dollars plus
- * [POS]: The use/pricing synchronous purity core; The key exists as an end, and null is a first-order cancellation rather than a fallback signal
+ * [INPUT]: Depends on PricingCatalog and usage-merge's UsageBuckets/UsageSourceId
+ * [OUTPUT]: Provides the immutable PricingTable and priceEvent, which prices one event's four token buckets in USD
+ * [POS]: usage/pricing's synchronous pure core; an explicit null match is a final unpriced result, only an undefined match falls through to alias/date-suffix lookup
  */
 
 import type { UsageSourceId } from "../../../../shared/usage-ipc";
@@ -89,7 +89,7 @@ export function buildTable(catalog: PricingCatalog): PricingTable {
   return structuredClone(catalog);
 }
 
-export function priceBuckets(rates: ModelRates, buckets: UsageBuckets) {
+function priceBuckets(rates: ModelRates, buckets: UsageBuckets) {
   return (
     rates.input * buckets.input +
     rates.cacheRead * buckets.cacheRead +

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Dependence when not running
+ * [INPUT]: No external dependencies
  * [OUTPUT]: Provides formatBytes in the binary unit B/KiB/MiB/GiB
- * [POS]: The volume of the renderer lib is the single source of truth; The Import volume of Skills and the instruction file volume of Personalization read the same measurement
+ * [POS]: The renderer's single source of truth for byte-size formatting; Skills import sizes and Personalization's instruction-file sizes both read this same measurement
  */
 
 /* ============================================================

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on BackendDescriptor headlessSpec, the platform capability matrix, macOS seatbelt, Node detached spawn, process-group and per-backend process supervisor
- * [OUTPUT]: Provides unique HeadlessExecutor: rejects unsupported platforms before lease/runtime access, then passes through admission/identity review/re-analysis and sync spawn/register window deadline signal; typified preflight abort; runtime snapshot; executor/confirmed backend OS fences (with spec readOnlyRoots only); asynchronous spec; prepared with the correct release (preflight failed to be recycled and refused; finalize recycled after process group clearance); output budget; 64KiB stderr evidence loop; close-independent cleanup finalizer for register hook; doubleThe result of the cancellation and cleanup is that the hook is not re-routed
- * [POS]: The host of the non-interactive process backends; The default unified seatbelt, only the enforcement matrix has been confirmed that the back end can declare the native OS sandbox
+ * [OUTPUT]: Freezes main-owned purpose eligibility before lease admission, then rechecks execution identity and permissions at spawn; expiry affects only new operations.
+ * [POS]: Host for backends' non-interactive processes; wraps every job in the shared macOS seatbelt by default, and a backend may declare its own native OS sandbox only once the platform capability matrix confirms it
  */
 
 import {
@@ -40,7 +40,8 @@ import type {
   HeadlessRun,
   ResolvedRuntime,
 } from "./types";
-import type { BackendRuntimeSnapshot } from "./runtime-registry";
+import { matchesTarget } from "../../../shared/agent-availability/projection";
+import type { BackendRuntimeRegistry, BackendRuntimeSnapshot } from "./runtime-registry";
 import {
   assertPlatformCapability,
   resolvePlatformCapabilities,
@@ -97,6 +98,7 @@ class EventQueue<T> implements AsyncIterable<T> {
 export class HeadlessExecutor {
   constructor(
     private readonly dependencies: {
+      runtimeRegistry?: BackendRuntimeRegistry;
       spawnProcess?: (
         command: string,
         args: readonly string[],
@@ -135,15 +137,19 @@ export class HeadlessExecutor {
     let lease: AgentProcessLease | undefined;
     const ready = Promise.resolve()
       .then(async () => {
+        const receipt = await this.runtimeForRun(descriptor, options.snapshot, signal, job);
         lease = await (
           this.dependencies.acquireLease ?? acquireAgentProcessLease
         )(descriptor.id, "background", signal);
         signal.throwIfAborted();
-        const runtime = await this.runtimeForRun(
-          descriptor,
-          options.snapshot,
-          signal
-        );
+        const runtime = receipt.runtime;
+        if (receipt.snapshot && receipt.target) {
+          const registry = this.dependencies.runtimeRegistry ?? backendRuntimeRegistry;
+          if (!await registry.confirmForSpawn(descriptor.id, receipt.snapshot, signal) ||
+            !matchesTarget(receipt.target, await registry.executionTarget(descriptor.id, receipt.snapshot, job))) {
+            throw new Error("Headless execution identity changed");
+          }
+        }
         signal.throwIfAborted();
         return this.runStarted(descriptor, job, runtime, signal);
       })
@@ -559,56 +565,31 @@ export class HeadlessExecutor {
     return run;
   }
 
-  private async resolveRuntime(
-    descriptor: BackendDescriptor,
-    signal: AbortSignal
-  ) {
-    const snapshot = await backendRuntimeRegistry.resolveForSpawn(
-      descriptor.id,
-      signal
-    );
-    if (
-      snapshot.runtimeStatus !== "installed" ||
-      snapshot.authStatus !== "authenticated"
-    ) {
-      throw new Error(
-        `${descriptor.displayName} 后台任务需要已安装且已认证的 CLI`
-      );
-    }
-    if (!snapshot.capabilities.headless.length) {
-      throw new Error(`${descriptor.displayName} 后台能力未开放`);
-    }
-    return snapshot.runtime;
-  }
-
   private async runtimeForRun(
     descriptor: BackendDescriptor,
-    snapshot: BackendRuntimeSnapshot | undefined,
-    signal: AbortSignal
+    provided: BackendRuntimeSnapshot | undefined,
+    signal: AbortSignal,
+    job: HeadlessJob
   ) {
-    if (snapshot?.runtimeStatus === "installed") {
-      if (
-        this.dependencies.spawnProcess ||
-        await backendRuntimeRegistry.confirmForSpawn(
-          descriptor.id,
-          snapshot,
-          signal
-        )
-      ) {
-        return snapshot.runtime;
-      }
+    const registry = this.dependencies.runtimeRegistry ?? backendRuntimeRegistry;
+    if (!this.dependencies.runtimeRegistry && this.dependencies.resolveRuntime) {
+      return { runtime: await this.dependencies.resolveRuntime(descriptor, signal), snapshot: undefined, target: undefined };
     }
-    if (this.dependencies.resolveRuntime) {
-      return this.dependencies.resolveRuntime(descriptor, signal);
+    if (!this.dependencies.runtimeRegistry && this.dependencies.spawnProcess) {
+      return { runtime: provided?.runtimeStatus === "installed" ? provided.runtime : {
+        executable: `/test/${descriptor.id}`, path: "/test", version: "999.999.999",
+      }, snapshot: undefined, target: undefined };
     }
-    if (this.dependencies.spawnProcess) {
-      return {
-        executable: `/test/${descriptor.id}`,
-        path: "/test",
-        version: "999.999.999",
-      };
+    const snapshot = provided?.runtimeStatus === "installed" &&
+      await registry.confirmForSpawn(descriptor.id, provided, signal)
+      ? provided : await registry.resolveForSpawn(descriptor.id, signal);
+    if (snapshot.runtimeStatus !== "installed" ||
+      (await registry.operationEligibility(descriptor.id, job.purpose, job, snapshot)).decision !== "allow") {
+      throw new Error(`${descriptor.displayName}: background operation authentication is not confirmed`);
     }
-    return this.resolveRuntime(descriptor, signal);
+    // Main owns this admission receipt. Time expiry affects the next operation only.
+    return Object.freeze({ runtime: snapshot.runtime, snapshot,
+      target: Object.freeze(await registry.executionTarget(descriptor.id, snapshot, job)) });
   }
 
 }

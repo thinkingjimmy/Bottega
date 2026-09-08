@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the browser ResizeObserver; Receiving multiple messages folding targets with their respective feedback
- * [OUTPUT]: Provides observeSharedResize, a method of creating a single observer and distributing it by target, retrieving it by target
- * [POS]: The shared size of the chat/transcript observer; Eliminate the linear cost of living of the exclusive observer for each user message
+ * [INPUT]: Depends on the browser ResizeObserver; multiplexes callbacks per observed target
+ * [OUTPUT]: Provides observeSharedResize, which lazily creates one shared observer and dispatches its entries to per-target callbacks
+ * [POS]: Shared-size observer for chat/transcript; avoids the linear overhead of a dedicated ResizeObserver per user message
  */
 
 type ResizeCallback = () => void;

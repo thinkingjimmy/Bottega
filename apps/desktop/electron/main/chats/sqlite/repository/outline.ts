@@ -4,6 +4,7 @@
  * [POS]: Narrow transcript-navigation query collaborator beneath ChatRepositoryReader
  */
 
+import { FIND_CANDIDATES_SQL } from "../history/search";
 import { truncateUtf8 } from "../../../../../shared/truncate-utf8";
 import type {
   ChatMessage,
@@ -90,26 +91,7 @@ export class ChatOutlineReader {
                 ie.delivery_seq, iv.entry_version_id, iv.role imported_role,
                 iv.created_at imported_created_at,
                 ${IMPORTED_CONTENT_SQL} imported_content
-           FROM chat_search_fts f
-           JOIN chat_search_documents d ON d.row_id = f.rowid
-           JOIN chat_local_memberships lm
-             ON lm.chat_id = d.chat_id AND lm.device_id = ?
-           LEFT JOIN chat_messages m
-             ON d.document_kind = 'native'
-            AND CAST(m.row_id AS TEXT) = d.source_row_id
-           LEFT JOIN chat_active_import_generations ag ON ag.chat_id = d.chat_id
-           LEFT JOIN chat_import_entry_versions iv
-             ON d.document_kind = 'imported-version'
-            AND iv.entry_version_id = d.source_row_id
-           LEFT JOIN chat_import_generation_entries ie
-             ON ie.chat_id = d.chat_id
-            AND ie.generation_id = ag.generation_id
-            AND ie.entry_version_id = iv.entry_version_id
-          WHERE chat_search_fts MATCH ? AND d.chat_id = ?
-            AND d.document_kind IN ('native', 'imported-version')
-            AND ${ACTIVE_GENERATION_DOCUMENT_FENCE}
-          ORDER BY CASE d.document_kind WHEN 'imported-version' THEN 0 ELSE 1 END,
-                   COALESCE(ie.delivery_seq, m.seq)
+${FIND_CANDIDATES_SQL}
           LIMIT ? OFFSET ?`
       ).all(input.deviceId, match, input.chatId, batch, offset) as Row[];
       offset += rows.length;

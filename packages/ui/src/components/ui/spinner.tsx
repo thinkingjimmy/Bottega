@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Lucide icon, style tool and shared UI text
- * [OUTPUT]: Provides Spinner original language with localized status name
+ * [OUTPUT]: Provides the Spinner primitive with a localized loading-status label
  * [POS]: Load status icons of components/ui, consumed by desktop and Web
  */
 

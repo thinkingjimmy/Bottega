@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on crypto, Project/History shared Contract with Injected directory selection, scan counting, Project commit port
- * [OUTPUT]: Provides ProjectImportCoordinator: prepare instantly return tokens, counts, asynchronously, TTL test and carry the only commit input for the created determination
- * [POS]: The history-import Project onboarding state machine; Service only sort the index and no longer holds the token added
+ * [OUTPUT]: Provides ProjectImportCoordinator: immediate preparation tokens, asynchronous preflight counts, TTL validation, and the sole commit input for created determination
+ * [POS]: History-import's Project-onboarding state machine; HistoryImportService owns indexing after commit, and the coordinator discards the token once it is used
  */
 
 import { randomUUID } from "node:crypto";
@@ -13,7 +13,7 @@ const PREPARE_TTL = 10 * 60_000;
 type PreparedProject = {
   canonicalRoot: string;
   name: string;
-  /** 后台侦测，弹窗不等它；renderer 经 counts(token) 领取。 */
+  /** 后台侦测；renderer 经 counts(token) 领取结果后决定直接添加或展示确认。 */
   counts: Promise<HistorySourceCount[]>;
   expiresAt: number;
 };
@@ -27,7 +27,7 @@ export class ProjectImportCoordinator {
     commit(input: { canonicalRoot: string; name: string }): Promise<{ project: Project; created: boolean }>;
   }) {}
 
-  /** 目录选定即返回；侦测计数在后台跑，确认弹窗零等待。 */
+  /** 目录选定即返回令牌；侦测计数在后台跑，renderer 独立领取预检结果。 */
   async prepare() {
     const selected = await this.ports.select();
     if (!selected) return null;

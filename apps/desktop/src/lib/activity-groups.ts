@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared ChatSummary, renderer locale/catalog runtime, and ChatActivity from chat-activity-store; callers provide chat/activity snapshots and a frozen clock
- * [OUTPUT]: Provides ActivityGroup, groupChatsByActivity and compareRecent is the only quality updatedAt reverses); The active mode is exclusive Priority, the rest is grouped by the last five local calendar days, the first letters of the date title are written by the current locale
- * [POS]: The Activity of the renderer lib is the purest model boundary; Isolation time zone/DST, exclusive and sequential rules, not dependent on React/Provider/DOM
+ * [OUTPUT]: Provides ActivityGroup, groupChatsByActivity, and compareRecent (the sole updatedAt-descending comparator); active chats form an exclusive Priority group, the rest are grouped by the last five local-calendar days with locale-formatted day titles
+ * [POS]: Pure model boundary for renderer chat-activity grouping; isolates time-zone/DST handling and the exclusive/ordering rules from React, Provider, and the DOM
  */
 
 import type { ChatSummary } from "../../shared/chats-ipc";

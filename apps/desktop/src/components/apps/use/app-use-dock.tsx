@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on use ChatSession's fixed-app use Chat with chat/dock's ChatSessionDock
- * [OUTPUT]: Provides AppUseDock: Paving the App usage session into a floating input bar at the bottom of the Base edge
- * [POS]: The apps module uses the dock form of the session; The two share the same chatId as AppUseChat
+ * [INPUT]: Depends on useChatSession's fixed-app chat controller and chat/dock's ChatSessionDock
+ * [OUTPUT]: Provides AppUseDock, which renders the App Use chat session as a floating dock input bar over the Base surface
+ * [POS]: Dock counterpart to the App Use session; shares the same chatId as AppUseChat
  */
 
 import { ChatSessionDock } from "@/components/chat/dock/chat-session-dock";

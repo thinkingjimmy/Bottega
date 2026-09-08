@@ -34,6 +34,7 @@ export function turnProjectionInput(
 ): TurnProjectionInput {
   return {
     conversationId,
+    handoff: payload.handoff, freshSession: !payload.session,
     requestId: payload.requestId,
     backendId: payload.turnOptions.backend,
     origin,

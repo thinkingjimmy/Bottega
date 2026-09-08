@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BackendDescriptor, HeadlessExecutor, the user-default credential contract, the no-tool read-only profile, and the shared UTF-8 budgets
- * [OUTPUT]: Provides the ephemeral user-default title job, sanitizeTitle, and the shutdown/reopen drain barrier
+ * [OUTPUT]: Provides source-Chat-bound ephemeral title jobs, sanitizeTitle, and the shutdown/reopen drain barrier
  * [POS]: Thin title policy of the chats module; untrusted text, tool denial, process budgets, cancellation, and cleanup all belong to the single HeadlessExecutor
  */
 
@@ -48,11 +48,13 @@ export class TitleGenerator {
     descriptor: BackendDescriptor,
     workspace: string,
     firstMessage: string,
-    model: string | null
+    model: string | null,
+    context?: { chatId: string }
   ) {
     if (this.shuttingDown) throw new Error("应用正在退出，不能生成新标题");
     const run = this.executor.run(descriptor, {
       purpose: "title",
+      ...(context ? { sourceConversationId: context.chatId } : {}),
       cwd: workspace,
       sandboxRoot: workspace,
       readRoots: [],
@@ -104,8 +106,9 @@ export const generateTitle = (
   descriptor: BackendDescriptor,
   workspace: string,
   firstMessage: string,
-  model: string | null
-) => defaultGenerator.generate(descriptor, workspace, firstMessage, model);
+  model: string | null,
+  context?: { chatId: string }
+) => defaultGenerator.generate(descriptor, workspace, firstMessage, model, context);
 
 export const shutdownTitleGenerators = () => defaultGenerator.shutdown();
 export const stopTitleGeneratorAdmission = () =>

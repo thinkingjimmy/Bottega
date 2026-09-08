@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node durable fs, ChatRecord/attachment metadata; Policy/Delivery receipt, reservation drain, incarnation, journaled pre-Chat release, CAS main file removal and post-Chat resource release steps
- * [OUTPUT]: Provides immutable mode/old-Space capsule, per-journal claim, pre/post resource checkpoints, deleted-proven/unknown, and convergent cleanup
- * [POS]: The main deleted the only source of truth that proves it; Intent before Policy→drain→ Delivery→Chat bytes, receipt/checkpoint collapsed by operationId
+ * [INPUT]: Depends on Node fs/promises durable-write primitives and shared ChatRecord/ChatAttachmentMeta types; drives caller-supplied DeletionCallbacks through fence, memory-policy, drain, delivery, and pre/post resource-release steps
+ * [OUTPUT]: Provides ConversationDeletionCoordinator: a monotonic-mode durable memory-intent journal, per-key claim serialization, pre/post resource-release checkpoints, deleted-proven/unknown proof, and idempotent resume-to-completion
+ * [POS]: Main process's sole source of truth for deletion proof; enforces fence→policy→drain→delivery→chat-removal ordering, with receipts and resource checkpoints keyed by operationId
  */
 
 import { randomUUID } from "node:crypto";

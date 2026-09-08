@@ -31,7 +31,7 @@ export function registerUnifiedSkills(
   const unsubscribeProgress = service.onProgress((progress: ManagedSkillJobProgress) => {
     if (!window.isDestroyed()) window.webContents.send(UNIFIED_SKILLS_CHANNEL.progress, progress);
   });
-  rendererIpc(window, rendererUrl, "Reject unified Skills requests outside the main window")
+  rendererIpc(rendererUrl, "Reject unified Skills requests outside the main window")
     .handle(UNIFIED_SKILLS_CHANNEL.list, (forceReload) =>
       guarded("list", () => service.list(forceReload === true)))
     .handle(UNIFIED_SKILLS_CHANNEL.candidates, (agent, forceReload) =>

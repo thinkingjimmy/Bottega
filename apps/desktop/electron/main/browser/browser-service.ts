@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shared Browser IPC, can be injected into WebContentsView/BrowserWindow seam and browser/security
- * [OUTPUT]: Provides BrowserPanelService: Universal tab pool, only active view, project event, chat release, single tab, only Agent batch and security destruction
+ * [INPUT]: Depends on shared Browser IPC, injectable native windows/views, browser security, and shared status errors.
+ * [OUTPUT]: Provides BrowserPanelService with a shared tab pool, replaceable host visibility tracking, renderer IPC, and Agent batch cancellation.
  * [POS]: Main/browser lifecycle truth source shared by renderer and tool callers
  */
 
@@ -19,6 +19,7 @@ import {
   type BrowserTabsSnapshot,
   type BrowserViewport,
 } from "../../../shared/browser-ipc";
+import { statusError } from "../errors";
 import { rendererIpc } from "../ipc-registrar";
 import { secureBrowserContents } from "./security";
 
@@ -108,6 +109,10 @@ export type BrowserWindowPort = {
     send(channel: string, value: unknown): void;
     once(event: "destroyed", listener: () => void): unknown;
   };
+  isVisible?(): boolean;
+  isMinimized?(): boolean;
+  on?(event: string, listener: (...args: unknown[]) => void): unknown;
+  removeListener?(event: string, listener: (...args: unknown[]) => void): unknown;
   isDestroyed(): boolean;
   once(event: "closed", listener: () => void): unknown;
 };
@@ -147,15 +152,40 @@ export class BrowserPanelService {
   private viewport: BrowserViewport = { x: 0, y: 0, width: 0, height: 0 };
   private selectedTabId: string | null = null;
   private visible = false;
+  private hostVisible = false;
+  private rendererGone = false;
+  private releaseHost: (() => void) | null = null;
 
   constructor(private readonly dependencies: BrowserPanelServiceDependencies) {
     this.tabLimit = dependencies.tabLimit ?? BROWSER_TAB_LIMIT;
   }
 
-  register(window: BrowserWindowPort, rendererUrl: string) {
+  attachHost(window: BrowserWindowPort) {
+    this.releaseHost?.();
     this.removeAttachedView();
     this.window = window;
-    rendererIpc(window, rendererUrl, "拒绝非主窗口的浏览器请求")
+    this.rendererGone = false;
+    const refreshHost = () => {
+      if (this.window !== window) return;
+      this.hostVisible = !this.rendererGone && !window.isDestroyed() &&
+        (window.isVisible?.() ?? false) && !(window.isMinimized?.() ?? false);
+      this.renderSelection(); this.emit();
+    };
+    this.hostVisible = !window.isDestroyed() && (window.isVisible?.() ?? false) && !(window.isMinimized?.() ?? false);
+    for (const event of ["show", "hide", "minimize", "restore", "closed"]) window.on?.(event, refreshHost);
+    const contents = window.webContents as typeof window.webContents & { on?(event: string, listener: () => void): void; removeListener?(event: string, listener: () => void): void };
+    const gone = () => { if (this.window === window) { this.rendererGone = true; refreshHost(); } };
+    contents.on?.("render-process-gone", gone);
+    this.releaseHost = () => {
+      for (const event of ["show", "hide", "minimize", "restore", "closed"]) window.removeListener?.(event, refreshHost);
+      contents.removeListener?.("render-process-gone", gone);
+    };
+    refreshHost();
+  }
+
+  register(window: BrowserWindowPort, rendererUrl: string) {
+    this.attachHost(window);
+    rendererIpc(rendererUrl, "拒绝非主窗口的浏览器请求")
       .roles("main")
       .handle(BROWSER_CHANNEL.createTab, (raw) => {
         const input = browserCreateTabSchema.parse(raw ?? {});
@@ -313,7 +343,8 @@ export class BrowserPanelService {
   }
 
   get activeTabId() {
-    return this.visible ? this.selectedTabId : null;
+    return this.visible && this.hostVisible && !this.window?.isDestroyed() &&
+      (this.window?.isVisible?.() ?? false) && !(this.window?.isMinimized?.() ?? false) ? this.selectedTabId : null;
   }
 
   getTab(tabId: string): Readonly<TabRecord> | undefined {
@@ -481,7 +512,7 @@ export class BrowserPanelService {
 
   private renderSelection() {
     const window = this.window;
-    if (!this.visible || !window || window.isDestroyed() || !this.selectedTabId) {
+    if (!this.visible || !this.hostVisible || !window || window.isDestroyed() || !this.selectedTabId) {
       this.removeAttachedView();
       return;
     }
@@ -537,8 +568,4 @@ export class BrowserPanelService {
       console.warn("[browser] projection publish failed", cause);
     }
   }
-}
-
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }

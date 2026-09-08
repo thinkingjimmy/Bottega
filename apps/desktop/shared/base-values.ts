@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on browser/Node shared Date, Base select with persistent attachments referring to the original value
- * [OUTPUT]: Provides Base unit/column/line type with attachment/formula, text-only projections, suspension relation, only words, first-id-wins select to be re-analysed/formatted with strict date
- * [POS]: The Base unit semantic module of shared values; bases-ipc redirects a stable API, main and renderer sharing the same truth
+ * [INPUT]: No dependency on Electron, Node, or DOM; parseBaseDate/formatBaseDate rely only on the standard Date API shared by browser and Node
+ * [OUTPUT]: Provides Base column/row/cell-value types including attachment and formula columns, the text-only baseCellText projection across all column types, deleted-relation placeholder text, first-id-wins option dedupe, and strict date parse/format
+ * [POS]: Shared semantic core for Base column and cell values; bases-ipc re-exports a stable subset so main and renderer consume identical types
  */
 
 export type BaseColumnType =

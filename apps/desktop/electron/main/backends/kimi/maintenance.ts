@@ -1,14 +1,13 @@
 /**
  * [INPUT]: Depends on Unified Maintenance job strategy, App tools, purely core and general maintenance session
  * [OUTPUT]: Provides create KimiMaintenance, create workspace jobs and mechanical verification project skills
- * [POS]: The Application is designed to support the development of the applicationKIMI_CODE_HOME is a unified file prepared by headless spec, which does not touch the certification file
+ * [POS]: backends/kimi's App-maintenance adapter; KIMI_CODE_HOME is prepared uniformly by the headless spec, and this file never touches credential files
  */
 
-import { buildAgentToolInventory } from "../../apps/runtime/agent-tools";
 import {
-  validateMaintenanceRequirements,
-  workspaceMaintenanceJob,
-} from "../maintenance-job";
+  buildAgentToolInventory,
+} from "../../apps/runtime/agent-tools";
+import { workspaceMaintenanceJob } from "../maintenance-job";
 import type { MaintenanceAdapter } from "../types";
 
 export function createKimiMaintenance(): MaintenanceAdapter {
@@ -26,7 +25,6 @@ export function createKimiMaintenance(): MaintenanceAdapter {
             '{"installed":[]}'
           );
         },
-        validateRequirements: validateMaintenanceRequirements,
       };
     },
     async cleanup() {},

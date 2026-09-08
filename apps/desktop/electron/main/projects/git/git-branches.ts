@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on git-runner's read-only/user-only warehouse mutation Execute the boundary with shared/projects-ipc's branch DTO
- * [OUTPUT]: Provides list of GitBranches/checkoutGitBranch/createGitBranch with GitBranchSnapshot
- * [POS]: The Git branch of the projects module is the definitive kernel; Read your own refs, don't fetch/stash/push, and don't build your own spawn
+ * [INPUT]: Depends on git-runner's read-only and user-gated repository-mutation execution boundary, and shared/projects-ipc's branch DTOs
+ * [OUTPUT]: Provides listGitBranches/checkoutGitBranch/createGitBranch with GitBranchSnapshot
+ * [POS]: Projects' authoritative Git-branch kernel; reads local refs only, never fetches/stashes/pushes, and never spawns git directly outside git-runner
  */
 
 import type {

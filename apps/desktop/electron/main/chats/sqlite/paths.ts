@@ -6,7 +6,7 @@
 
 import { join } from "node:path";
 
-export const CHAT_DATABASE_FILE = "bottega.sqlite3";
+const CHAT_DATABASE_FILE = "bottega.sqlite3";
 
 export const chatDatabasePath = (userData: string) =>
   join(userData, CHAT_DATABASE_FILE);

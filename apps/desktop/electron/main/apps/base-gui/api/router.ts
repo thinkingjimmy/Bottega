@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on generation-bound handler context, opaque token registry, active-generation fencing, legacy Base reads, durable pre-copy Query snapshot descriptors with live identity checks, compiled Query V1, mutation handlers and owner-scoped attachment port
  * [OUTPUT]: Provides GUIBasePort, pre-copy query source/current-identity contract, bounded query/preference body readers, client-disconnect AbortSignal plumbing, BaseGuiApi factory and strict token/method/capability/generation routing for legacy and compiled Base GUI endpoints
- * [POS]: The root of the apps/base-gui/api combination; token→binding→method→capability→active-write fence→handler
+ * [POS]: The composition root of apps/base-gui/api; token→binding→method→capability→active-write fence→handler
  */
 
 import { randomBytes } from "node:crypto";

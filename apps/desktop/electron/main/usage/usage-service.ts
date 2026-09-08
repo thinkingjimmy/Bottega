@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node homedir/stat, shared Usage, source domain agreement, three source parser, fact cache, pricing store and merge/stats
- * [OUTPUT]: Provides price revision pushed UsageService, UsageCancelledError and unreliable Usage IPC parameter scanning
- * [POS]: The user's long lifecycle owner; exclusive scan exchange, price snapshot, per-source memory, Summary IPC and dual store drain/reopen
+ * [INPUT]: Depends on Node homedir/stat, shared Usage IPC contracts, the three source adapters, UsageCache, PricingStore, and the merge/stats functions
+ * [OUTPUT]: Provides UsageService (pricing-revision-aware summary aggregation), UsageCancelledError, and assertUsageRequest for validating renderer usage-query params
+ * [POS]: The usage domain's long-lived service owner; coalesces per-source scans, holds the pricing snapshot and per-source result memoization, composes summaries for IPC, and drains/reopens the cache and pricing store across app lifecycle
  */
 
 import { homedir } from "node:os";
@@ -554,6 +554,24 @@ export class UsageService {
     let failedLines = 0;
     let scanned = 0;
     let lastProgressAt = 0;
+    const advance = () => {
+      scanned += 1;
+      const now = Date.now();
+      if (
+        scanned === paths.length ||
+        scanned % 25 === 0 ||
+        now - lastProgressAt >= 200
+      ) {
+        lastProgressAt = now;
+        this.publishProgress({
+          source,
+          scanId,
+          phase: "progress",
+          scanned,
+          total: paths.length,
+        });
+      }
+    };
 
     for (const path of paths) {
       signal.throwIfAborted();
@@ -565,17 +583,7 @@ export class UsageService {
         issues.push(
           sourceIssue(source, "file", `${path} 读取失败：${message}`, 1)
         );
-        scanned += 1;
-        this.maybePublishProgress(
-          source,
-          scanId,
-          scanned,
-          paths.length,
-          lastProgressAt,
-          (value) => {
-            lastProgressAt = value;
-          }
-        );
+        advance();
         continue;
       }
 
@@ -617,17 +625,7 @@ export class UsageService {
         }
       }
 
-      scanned += 1;
-      this.maybePublishProgress(
-        source,
-        scanId,
-        scanned,
-        paths.length,
-        lastProgressAt,
-        (value) => {
-          lastProgressAt = value;
-        }
-      );
+      advance();
     }
 
     if (failedLines > 0) {
@@ -668,27 +666,6 @@ export class UsageService {
       total: paths.length,
     });
     return { source, byFile, scannedFiles: paths.length, issues };
-  }
-
-  private maybePublishProgress(
-    source: UsageSourceId,
-    scanId: number,
-    scanned: number,
-    total: number,
-    lastProgressAt: number,
-    updateTime: (value: number) => void
-  ) {
-    const now = Date.now();
-    if (scanned === total || scanned % 25 === 0 || now - lastProgressAt >= 200) {
-      updateTime(now);
-      this.publishProgress({
-        source,
-        scanId,
-        phase: "progress",
-        scanned,
-        total,
-      });
-    }
   }
 
   private publishProgress(progress: UsageScanProgress) {

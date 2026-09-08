@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Agent/Chat/Settings/Relay ledger narrow ports, Project Tools runtime-identity resolution, Notice outbox, and stable ID/expectation pure functions
- * [OUTPUT]: Provides CoordinatorDependencies including workspace lifecycle, canonical runtime-aware manual hydration, session rebuild, and derived-loop ports
- * [POS]: the running time of sections/coordinator; Remove the main arbitrator from the combination root port and the derivative side effects of the response relay
+ * [OUTPUT]: Defines coordinator runtime ports, including shared manual availability admission and runtime-only queue dispatch qualification.
+ * [POS]: Composition-root port surface for sections/coordinator; keeps ConversationCoordinator's dependency wiring and derived side effects (cleanup, relay finish, availability) out of its scheduling core
  */
 
 import type { AgentSendPayload } from "../../../../shared/agent-ipc";
@@ -74,9 +74,13 @@ export type CoordinatorDependencies = {
   /** Testable seam; production omission awaits the canonical runtime registry. */
   resolveProjectToolsRuntimeIdentity?: ProjectToolsRuntimeIdentityResolver;
   assertProjectToolsContext?: (context: TurnProjectContext) => void;
+  onAgentSwitchCommitted?: (conversationId: string) => void | Promise<void>;
   cancelTurn(requestId: string): void;
+  switchActivityReason?(conversationId: string): import("../../../../shared/chat-agent/contracts").AgentSwitchBlockReason | null;
   hasActivity(conversationIds: Iterable<string>): boolean;
   reconcileMemory?: (ledger: RelayLedger) => Promise<void>;
+  canDispatchManual?: (turn: Omit<AgentSendPayload, "input">) => Promise<boolean>;
+  assertManualAvailability?: (submission: ManualTurnSubmission) => Promise<void>;
   prepareManual?: (
     submission: ManualTurnSubmission
   ) => Promise<PreparedManualLease>;

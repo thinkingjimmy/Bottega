@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on Node HTTP responses and the status/code/outcome/issues/currentRevision carried by main-side errors
+ * [INPUT]: Depends on Node HTTP responses and the status/code/outcome/issues/currentRevision carried by main-side errors, and statusError from main/errors
  * [OUTPUT]: Provides apiError, JSON and raw-byte responses, and route-aware (read versus write) error mapping that never leaks host detail
  * [POS]: The response boundary of apps/base-gui/api; every other module only throws structured errors at it
  */
 
 import type { ServerResponse } from "node:http";
+import { statusError } from "../../../errors";
 
 type GuiApiError = Error & {
   status: number;
@@ -20,8 +21,7 @@ export function apiError(
   message: string,
   issues?: unknown[]
 ): GuiApiError {
-  return Object.assign(new Error(message), {
-    status,
+  return statusError(status, message, {
     code,
     outcome: status >= 500 ? ("unknown" as const) : ("not-committed" as const),
     ...(issues ? { issues } : {}),

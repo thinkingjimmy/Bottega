@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BaseStore, base.json strict, contract, base mutation, system file selection, port of ownership and expected revision, plus the shared statusError constructor from main/errors
- * [OUTPUT]: Provides BaseJSONService with mergeImportedColumns to complete single file JSON storage, limited readings, and CAS upsert transactions that declare a whole-table rewrite only when a row is actually overwritten
+ * [OUTPUT]: Provides BaseJsonService (export/import with select-option merging) and readBoundedFile, with CAS upsert transactions that declare a whole-table rewrite only when a row is actually overwritten
  * [POS]: The JSON boundary of the bases module can be ported; BasesService only retains IPC sorting, where the format/budget/compound semantics are focused
  */
 
@@ -26,6 +26,7 @@ import {
   type BaseOwnerIdentity,
   type BaseStore,
 } from "../base-store";
+import { sameJson } from "../base-store-model";
 import type { BaseCommitAuthority } from "../service/base-commit-authority";
 import {
   baseColumnIndex,
@@ -34,9 +35,6 @@ import {
   validateBaseRow,
 } from "../validation/base-mutation-validation";
 import { statusError } from "../../errors";
-
-const same = (left: unknown, right: unknown) =>
-  JSON.stringify(left) === JSON.stringify(right);
 
 type BaseJsonServiceOptions = {
   chooseExportPath?(suggestedName: string): Promise<string | null>;
@@ -153,7 +151,7 @@ export class BaseJsonService {
           revision: current.meta.revision + 1,
         };
         validateBaseModel(meta, rows);
-        metaChanged = !same(
+        metaChanged = !sameJson(
           { ...meta, revision: current.meta.revision },
           current.meta
         );
@@ -162,7 +160,7 @@ export class BaseJsonService {
         );
         upserts = imported.rows.filter((row) => {
           const existing = currentById.get(row.id);
-          return !existing || !same(existing, row);
+          return !existing || !sameJson(existing, row);
         });
         if (!metaChanged && !upserts.length) return null;
         return {
@@ -186,7 +184,7 @@ export class BaseJsonService {
   }
 }
 
-export function mergeImportedColumns(
+function mergeImportedColumns(
   current: BaseColumn[],
   incoming: BaseColumn[]
 ) {
@@ -236,19 +234,7 @@ function parseSnapshotFile(
 }
 
 async function readBoundedSnapshot(path: string) {
-  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    const metadata = await file.stat();
-    if (!metadata.isFile() || metadata.size > BASE_SNAPSHOT_FILE_BYTE_LIMIT) {
-      throw statusError(
-        400,
-        `Base JSON 文件不能超过 ${BASE_SNAPSHOT_FILE_BYTE_LIMIT} 字节`
-      );
-    }
-    return (await readOpenedFile(file, metadata.size)).toString("utf8");
-  } finally {
-    await file.close();
-  }
+  return (await readBoundedFile(path, BASE_SNAPSHOT_FILE_BYTE_LIMIT)).toString("utf8");
 }
 
 export async function readBoundedFile(path: string, limit: number) {
@@ -258,26 +244,18 @@ export async function readBoundedFile(path: string, limit: number) {
     if (!metadata.isFile() || metadata.size > limit) {
       throw statusError(400, `文件不能超过 ${limit} 字节`);
     }
-    return readOpenedFile(file, metadata.size);
+    const content = await file.readFile();
+    if (content.byteLength !== metadata.size) {
+      throw statusError(400, "文件在读取期间发生变化");
+    }
+    return content;
   } finally {
     await file.close();
   }
 }
 
-async function readOpenedFile(
-  file: Awaited<ReturnType<typeof open>>,
-  expectedBytes: number
-) {
-  const content = await file.readFile();
-  if (content.byteLength !== expectedBytes) {
-    throw statusError(400, "文件在读取期间发生变化");
-  }
-  return content;
-}
-
 function mutationConflict(currentRevision: number) {
-  return Object.assign(new Error("Base revision 已变化"), {
-    status: 409,
+  return statusError(409, "Base revision 已变化", {
     code: "revision_conflict",
     outcome: "not-committed" as const,
     currentRevision,

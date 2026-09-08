@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on ImageShimmer, GalleryMediaSourceRef, share useGalleryThumbnail state machine, external retry signal and state playback
- * [OUTPUT]: Provides a bucket of non-interacting nodes to shorten the chart with a pending/loading/failed state projection
- * [POS]: Media leaf nodes in bases/views/gallery; I don't know what to do, comment and Composer
+ * [OUTPUT]: Provides GalleryThumbnail, a non-interactive image node that projects the pending/loading/failed state of a thumbnail load
+ * [POS]: Media leaf node in bases/views/gallery; consumed by both the comment layer and the Composer
  */
 
 import { useEffect } from "react";

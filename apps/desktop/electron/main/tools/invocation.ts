@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node crypto, built-in MCP tool names and JSON parameters
  * [OUTPUT]: Provides stableToolInvocationId, generates a reconstructed stable key by canonical parameter hash
- * [POS]: The tools platform's silicon-based values; SDK as a downgrade key when the tool-call id is not exposed
+ * [POS]: The tools platform's identity helper; used as the fallback idempotency key when an SDK does not expose its tool-call id
  */
 
 import { createHash } from "node:crypto";

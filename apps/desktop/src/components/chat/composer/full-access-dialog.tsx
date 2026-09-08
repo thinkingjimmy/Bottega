@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React Focus, Lucide icon, I18n and share the original AppDialogContent/Dialog/Button
- * [OUTPUT]: Provides FullAccessDialog, which presents Full Access risk disclosure, out-of-chain, cancellation and confirmation status
- * [POS]: The chat/composer's risk authorization confirmation view; Responsible only for access to visual interaction, not perpetuation
+ * [INPUT]: Depends on React (useRef for focus), lucide icons, i18n, and shared AppDialogContent/Dialog/Button primitives
+ * [OUTPUT]: Provides FullAccessDialog, which presents the Full Access risk disclosure with capability icons, a learn-more link, and cancel/confirm/busy/error states
+ * [POS]: The chat/composer risk-confirmation dialog; it only renders the confirmation UI and holds no persistence state itself
  */
 
 import { useRef, type ComponentType } from "react";

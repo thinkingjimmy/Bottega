@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, App i18n, BrowserTabsController projections, and UI Button/Input primitives
- * [OUTPUT]: Provides BrowserPanel: Address tabs/navigation, DIP viewpoints and Agent control status bar
- * [POS]: The chrome renderer of the chat/browser; The web tabs are mentioned above, and the web pixels are drawn by the main WebContentsView
+ * [OUTPUT]: Provides BrowserPanel: address bar with back/forward/reload/navigate, viewport bounds reporting to the main WebContentsView, and an Agent-active status bar with a stop control
+ * [POS]: Chrome renderer for chat/browser; the tab list lives in panel-tabs.tsx, while actual page pixels are painted by the main-process WebContentsView
  */
 
 import {

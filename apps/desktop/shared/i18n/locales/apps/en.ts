@@ -7,7 +7,6 @@
 export const appsEn = {
   provider: {
     listFailed: "Failed to load Apps: {{message}}",
-    browserFallbackDescription: "Browser fallback App from {{url}}",
   },
   presets: {
     designCanvas: {
@@ -142,12 +141,14 @@ export const appsEn = {
     aboutToInstall: "Ready to download and install",
     permissionsWarning: "Installation and runtime use your user privileges, including file read/write and network access.",
     trustedOnly: "Only add repositories you trust.",
+    authorManifestInstall: "Install from the author’s manifest",
+    agentAnalysis: "Use Agent analysis (optional)",
+    authorManifestHint: "Versioned App manifests install directly. Choose Agent analysis only when you want an authorized Agent to prepare the installation description.",
     runtimeAgent: "Runtime Agent",
     repositoryAddress: "Repository address",
     nextStep: "Next, Git objects are read without checkout to identify the package type. Repository code will not run and no App will be created during this step.",
   },
   card: {
-    browserFallback: "Browser fallback",
     preparing: "Preparing {{name}}",
     awaitingAuthorization: "Confirm access to continue",
     operationFailed: "Operation failed",
@@ -337,7 +338,6 @@ export const appsEn = {
   },
   detail: {
     startFailed: "App launch failed",
-    placeholder: "This demo placeholder cannot run. Use + in the upper-right to add a real GitHub App.",
     crashed: "The App process exited unexpectedly",
     stopped: "The App stopped",
     viewLog: "View log",

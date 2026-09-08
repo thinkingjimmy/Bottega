@@ -1,15 +1,17 @@
 /**
  * [INPUT]: Depends on the backend runtime registry
- * [OUTPUT]: Provides Section tool mutation Backend readiness in previous runtime
- * [POS]: Sections with single backends to avoid repeated static/dynamic capability within the coordinator
+ * [OUTPUT]: Applies shared runtime/availability admission to Section execution while preserving Project, model and capability checks.
+ * [POS]: Shared backend-readiness guard for sections/coordinator admission; callers check this once instead of duplicating runtime-status logic
  */
 
 import type { AgentBackendId } from "../../../shared/agent-ipc";
+import { assertAgentAvailable } from "../agent/runtime-gate";
 import { backendById, backendRuntimeRegistry } from "../backends";
 
 export async function assertSectionBackendReady(agent: AgentBackendId) {
   const descriptor = backendById(agent);
   const snapshot = await backendRuntimeRegistry.resolve(agent);
+  assertAgentAvailable(snapshot, descriptor.displayName);
   if (
     snapshot.runtimeStatus !== "installed" ||
     snapshot.capabilities.builtinTools === "none"

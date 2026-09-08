@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Chats and i18n Providers, chat-activity-store, global snapshot, activity-groups, pure model, ChatThreadItem, Sidebar-active-path useSidebarActivePath, shared Sidebar grouping title token, React and sidebar originals
+ * [INPUT]: Depends on Chats and i18n Providers, chat-activity-store, global snapshot, activity-groups, pure model, ChatThreadItem, shared Sidebar grouping title token, React and sidebar originals
  * [OUTPUT]: Provides SidebarActivity with localized empty state; renders permanent Priority plus the last five local date groups and passes chat.preview to two-row chat units
- * [POS]: The Sidebar Activity list compiler for components, only installed in Activity mode; Zero-point timers are responsible for day-to-day rearrangement
+ * [POS]: components/sidebar's Activity list compositor, mounted only in Activity mode; a local-midnight timer re-buckets rows day to day
  */
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -14,7 +14,6 @@ import {
   SidebarMenu,
 } from "@ai-chat/ui/components/ui/sidebar";
 import { ChatThreadItem } from "./chat/chat-thread-item";
-import { useSidebarActivePath } from "./active/active-path";
 import { SIDEBAR_GROUP_LABEL_CLASS_NAME } from "./sidebar-collapsible-group";
 import { useChats } from "../providers/chats-provider";
 import { useAppTranslation } from "../providers/i18n-provider";
@@ -40,7 +39,6 @@ const nextLocalMidnight = (now: number) => {
  * ────────────────────────────────────────────────────────── */
 export function SidebarActivity() {
   const { t } = useAppTranslation();
-  const activePath = useSidebarActivePath();
   const { chats } = useChats();
   const activity = useSyncExternalStore(
     subscribeAllChatActivity,
@@ -83,11 +81,6 @@ export function SidebarActivity() {
               <ChatThreadItem
                 key={chat.id}
                 chat={chat}
-                active={
-                  chat.context?.kind === "app-use"
-                    ? activePath.endsWith(`#app-use:${chat.id}`)
-                    : activePath === `/chat/${chat.id}`
-                }
                 preview={chat.preview ?? undefined}
               />
             ))}

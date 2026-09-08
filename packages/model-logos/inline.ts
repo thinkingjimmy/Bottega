@@ -1,9 +1,7 @@
 /**
- * [INPUT]: dependence when not in operation; The official.svg format is openai/claude-color/kimi-color/opencode
- * [OUTPUT]: Provides a tag string that can be directly connected to the DOM by the AGENT_LOGO_MARKUP string
- * [POS]: The model-logos are interconnected.The machine phase of the asset is.svg, the semantic phase is this file, and the two phases are
- *        apps/desktop/src/lib/agent-backends.test.ts claims to be byte-by-byte; Changed the picture
- *        The first is that the color of the red is not changed.
+ * [INPUT]: No runtime dependencies; inlines the official openai/claude-color/kimi-color/opencode .svg markup
+ * [OUTPUT]: Provides AGENT_LOGO_MARKUP, a record of inline SVG markup strings safe to inject directly into the DOM
+ * [POS]: The two phases of model-logos: the .svg files are the machine phase and this file is the semantic phase; apps/desktop/src/lib/agent-backends.test.ts asserts the two stay byte-for-byte in sync, so a changed logo must be updated in both places
  */
 
 /* ============================================================

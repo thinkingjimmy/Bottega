@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the provider Configuration panel/InstallSpec, ManagedRoots manifest/config, plist generators and Coordinator, shutdown/initialization/release narrow ports
- * [OUTPUT]: Provides ManagedRuntimeConfigController: Configuration by type one, white list entry, actual extraction destination, analysis, diagnosis of de-sensitivity, tri-Hashtag, and so on, managed/manual deployment with LaunchAgent
- * [POS]: The owner of the configuration status of memory/runtime/control; Coordinator only runs the lifecycle of the order and no longer holds the details of the implementation of the secrets/configIssue
+ * [INPUT]: Depends on the provider's config panel/InstallSpec, ManagedRoots manifest/config, plist generators, and a narrow initialize/stop-service/publish port into the coordinator
+ * [OUTPUT]: Provides ManagedRuntimeConfigController: config write/resolve, extraction-destination preview, redacted diagnostics, drift detection and resolution (regenerate/adopt-manual), and managed/manual LaunchAgent plist install
+ * [POS]: The owner of memory/runtime/control's configuration state; the coordinator only drives the lifecycle, this file owns secrets.json and configIssue details
  */
 
 import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";

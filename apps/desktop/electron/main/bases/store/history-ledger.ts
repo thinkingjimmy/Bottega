@@ -1,11 +1,13 @@
 /**
  * [INPUT]: Depends on shared Base row and historical schemas/budgets; receives the declared changed row ids with before/after row indexes and commitLocked-generated entries
  * [OUTPUT]: Provides deterministic row-diff entry construction over declared ids plus empty/parse/append/query operations; empty entries are not credited, and the oldest entries are discarded by count and UTF-8 byte budgets
- * [POS]: The database is a database of databases and storesNo IO, no participation in authorization, no rollback
+ * [POS]: bases/store's row-history ledger core; performs no IO, no authorization, and no rollback
  */
 
 import {
+  BASE_HISTORY_ENTRY_CELL_COLUMN_LIMIT,
   BASE_HISTORY_ENTRY_LIMIT,
+  BASE_HISTORY_ENTRY_ROW_LIMIT,
   BASE_HISTORY_LEDGER_BYTE_LIMIT,
   BASE_ROW_HISTORY_QUERY_LIMIT,
   baseHistoryEntrySchema,
@@ -37,14 +39,14 @@ export function createHistoryEntry(input: {
   const { before: beforeById, after: afterById, at, actor, operation } = input;
   const rowIds = [...new Set(input.candidateRowIds)]
     .filter((rowId) => !same(beforeById.get(rowId), afterById.get(rowId)))
-    .slice(0, 500);
+    .slice(0, BASE_HISTORY_ENTRY_ROW_LIMIT);
   if (!rowIds.length) return null;
   const cells = rowIds.flatMap((rowId) => {
     const left = beforeById.get(rowId)?.values ?? {};
     const right = afterById.get(rowId)?.values ?? {};
     const columnIds = [...new Set([...Object.keys(left), ...Object.keys(right)])]
       .filter((columnId) => !same(left[columnId], right[columnId]))
-      .slice(0, 64);
+      .slice(0, BASE_HISTORY_ENTRY_CELL_COLUMN_LIMIT);
     return columnIds.length ? [{ rowId, columnIds }] : [];
   });
   return { at, actor, operation, rowIds, ...(cells.length ? { cells } : {}) };
@@ -90,13 +92,9 @@ export function appendHistoryEntry(
   return { schemaVersion: 1 as const, entries };
 }
 
-export function historyForRow(
-  ledger: BaseHistoryLedger,
-  rowId: string,
-  limit = BASE_ROW_HISTORY_QUERY_LIMIT
-) {
+export function historyForRow(ledger: BaseHistoryLedger, rowId: string) {
   return ledger.entries
     .filter((entry) => entry.rowIds.includes(rowId))
-    .slice(-Math.min(limit, BASE_ROW_HISTORY_QUERY_LIMIT))
+    .slice(-BASE_ROW_HISTORY_QUERY_LIMIT)
     .reverse();
 }

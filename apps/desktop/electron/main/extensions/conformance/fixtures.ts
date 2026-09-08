@@ -1,7 +1,7 @@
 /**
- * [INPUT]: No running time dependence; The content of the content is a mix of the following:
- * [OUTPUT]: Provides ADMISSION_CONFORMANCE_CORPUS for use in pairs of test scores and evidence digest
- * [POS]: The only true source of extensions/conformance content; Subject change is admission evidence change
+ * [INPUT]: No runtime dependencies; the corpus is inline plugin/skill file literals with expected verdicts
+ * [OUTPUT]: Provides ADMISSION_CONFORMANCE_CORPUS, consumed by the conformance suite and digested into VALIDATOR_FIXTURE_DIGEST
+ * [POS]: The only source of truth for extensions/conformance content; any change to it is a change of admission evidence
  */
 
 const skill = (name = "fixture") =>

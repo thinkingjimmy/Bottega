@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared BaseSnapshot/cellValue/baseCellText with the call's exports root, clock and file writing port
- * [OUTPUT]: Provides buildBaseCSV with writeBaseCsvArtifact, performs formula column reading, selects tag subtraction, injects conversion and private CSV product drop-off
- * [POS]: The CSV format of the bases module; Separation with base-json to avoid serial details on the IPC door
+ * [OUTPUT]: Provides buildBaseCsv (formula-injection-safe CSV rendering with attachment-filename/lat-lng cell text), writeBaseCsvForRenderer (user-chosen save path), and writeBaseCsvArtifact (write into the app's private exports root)
+ * [POS]: CSV format layer of the bases module; kept separate from base-json so format details don't leak across the IPC boundary
  */
 
 import { randomUUID } from "node:crypto";

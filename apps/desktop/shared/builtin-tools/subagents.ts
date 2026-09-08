@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the zod and the type of spec for the builtin-tools/platform
  * [OUTPUT]: Provides spawn_subagent built-in tool static spec
- * [POS]: The truth about the Subagents field of builtin-tools; Just down the platform
+ * [POS]: Authoritative source for the Subagents domain of builtin-tools; depends only on platform.ts
  */
 
 import { z } from "zod";

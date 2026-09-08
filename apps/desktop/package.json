@@ -1,17 +1,17 @@
 {
   "name": "@ai-chat/desktop",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Bottega desktop workspace for local Codex, Claude Code, Kimi Code, and OpenCode CLIs",
   "author": "Jimmy Wong",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/presence/build-native.mjs && electron-vite dev",
     "pricing:update": "tsx scripts/update-model-pricing.ts",
     "pricing:check": "tsx scripts/update-model-pricing.ts --check",
     "assets:windows-icon": "node scripts/generate-windows-icon.mjs",
     "typecheck": "tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "build": "node scripts/check-dependency-manifest.mjs && pnpm typecheck && electron-vite build && node scripts/check-renderer-bundle.mjs --self-test",
+    "build": "node scripts/presence/build-native.mjs && node scripts/check-dependency-manifest.mjs && pnpm typecheck && electron-vite build && node scripts/presence/check-preloads.mjs && node scripts/check-renderer-bundle.mjs --self-test",
     "dist": "pnpm build && electron-builder --publish never",
     "dist:release:mac": "node scripts/release-signing-preflight.mjs && pnpm build && electron-builder --mac --arm64 --publish never -c.forceCodeSigning=true && node scripts/verify-macos-signing.mjs"
   },

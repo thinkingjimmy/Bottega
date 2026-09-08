@@ -4,6 +4,10 @@
  * [POS]: Chat domain SQL transaction authority inside the dedicated worker; row projection details live in repository collaborators
  */
 
+import { commitAgentSwitch } from "./agent-switch/commit";
+import { reserveSwitchSequences } from "./agent-switch/reserve";
+import type { SwitchSequenceReservation } from "./agent-switch/command";
+import type { AgentSwitchReceipt } from "../../../../shared/chat-agent/contracts";
 import type { ChatRecord } from "../../../../shared/chats-ipc";
 import {
   matchSearchTokens,
@@ -84,11 +88,11 @@ export class ChatRepository {
   constructor(
     private readonly database: SqliteDatabase,
     private readonly now: () => number = Date.now,
-    storage?: Readonly<{ importBlobsRoot?: string }>
+    storage?: Readonly<{ importBlobsRoot?: string; backendDefaults?: import("../../../../shared/settings-ipc").DefaultChatOptionsByBackend }>
   ) {
     this.reader = new ChatRepositoryReader(database);
     this.writer = new ChatRecordWriter(database, now);
-    this.imports = new HistoryImportRepository(database, now, storage?.importBlobsRoot);
+    this.imports = new HistoryImportRepository(database, now, storage?.importBlobsRoot, storage?.backendDefaults);
     this.continuations = new ContinuationSagaRepository(database, now);
     this.memory = new ChatMemoryReader(database);
     this.facts = new ChatFactReader(database);
@@ -139,6 +143,32 @@ export class ChatRepository {
 
   findMessages(command: Extract<DatabaseCommand, { kind: "find-messages" }>) {
     return this.reader.findMessages(command);
+  }
+
+  reserveSwitchSequences(command: Extract<DatabaseCommand, { kind: "reserve-switch-sequences" }>): MutationOutcome<SwitchSequenceReservation> {
+    try {
+      return transaction(this.database, () => {
+        const replay = this.replay<SwitchSequenceReservation>(command);
+        if (replay) return { status: "committed", receipt: replay };
+        const result = reserveSwitchSequences(this.reader, this.writer, command);
+        return { status: "committed", receipt: this.commitReceipt(command, result, command.chatId) };
+      });
+    } catch (cause) {
+      return { status: "rejected", failure: sqliteFailureOf(cause) };
+    }
+  }
+
+  switchAgent(command: Extract<DatabaseCommand, { kind: "switch-agent" }>): MutationOutcome<AgentSwitchReceipt> {
+    try {
+      return transaction(this.database, () => {
+        const replay = this.replay<AgentSwitchReceipt>(command);
+        if (replay) return { status: "committed", receipt: replay };
+        const result = commitAgentSwitch(this.database, this.reader, this.writer, command);
+        return { status: "committed", receipt: this.commitReceipt(command, result, command.chatId) };
+      });
+    } catch (cause) {
+      return { status: "rejected", failure: sqliteFailureOf(cause) };
+    }
   }
 
   upsertRecord(

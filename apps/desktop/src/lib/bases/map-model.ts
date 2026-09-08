@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Base location/row type and cellValue reading projection; Context with a readable definitive tile URL
- * [OUTPUT]: Provides OSM raster style, BaseMapLabel and Base rows→ GeoJSON FeatureCollection
- * [POS]: The Map data pipeline for lib/bases; Share the production view with local fixture testing without contact with DOM/MapLibre examples
+ * [INPUT]: Depends on the shared Base location/row types and the cellValue read projection, paired with a fixed, well-known OSM tile URL
+ * [OUTPUT]: Provides the OSM raster style, BaseMapLabel, and a Base rows → GeoJSON FeatureCollection converter
+ * [POS]: The Map data pipeline for lib/bases; production code and fixture-based tests share this module without touching DOM or MapLibre
  */
 
 import {

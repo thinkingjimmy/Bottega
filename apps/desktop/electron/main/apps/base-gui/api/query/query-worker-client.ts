@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on Node worker_threads, crypto request identities, per-request AbortSignals, and the shared API error factory
+ * [INPUT]: Depends on Node worker_threads, crypto request identities, per-request AbortSignals, and the shared API error factory, and statusError from main/errors
  * [OUTPUT]: Provides the lazy Query V1 worker transport: bounded FIFO, queue/wall deadlines, strict reply envelopes, abort-driven undispatch, and terminating custody that tells its owner when the cache must be dropped
  * [POS]: Transport leaf of api/query/ under query-executor.ts; it owns the worker thread and pending requests, never snapshots or byte budgets
  */
 
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
+import { statusError } from "../../../../errors";
 import { apiError } from "../errors";
 
 const MAX_PENDING = 32;
@@ -176,8 +177,7 @@ export class QueryWorkerClient {
     }
     this.pending.delete(reply.requestId);
     pending.dispose();
-    pending.reject(Object.assign(new Error(reply.error?.message ?? "Query worker failed"), {
-      status: reply.error?.status ?? 500,
+    pending.reject(statusError(reply.error?.status ?? 500, reply.error?.message ?? "Query worker failed", {
       code: reply.error?.code ?? "query_worker_failed",
       outcome: reply.error?.outcome ?? "unknown",
       ...(reply.error?.issues ? { issues: reply.error.issues } : {}),

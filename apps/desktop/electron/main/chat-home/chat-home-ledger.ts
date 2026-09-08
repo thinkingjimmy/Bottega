@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node atomic file IO, ledger-values schema and persistence/serial-queue
+ * [INPUT]: Depends on Node atomic file IO, ledger-values schema, persistence/serial-queue, and the persistence errno predicate
  * [OUTPUT]: Provides ChatHomeLedger v1 with exact replay identity, atomic ownership transitions, corruption isolation, and 30-day tombstone compaction
- * [POS]: The creation/ownership leaf of the chat-home lock; Access to any other lock during lock-up
+ * [POS]: chat-home's creation/ownership leaf lock; must not acquire any other lock while holding this one
  */
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -14,6 +14,7 @@ import {
   type ChatHomeLedgerState,
   type ChatHomeRecord,
 } from "./ledger-values";
+import { isErrnoCode } from "../persistence/durable-json";
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 export class ChatHomeLedger {
@@ -36,7 +37,7 @@ export class ChatHomeLedger {
           JSON.parse(await readFile(this.filePath, "utf8"))
         );
       } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+        if (isErrnoCode(cause, "ENOENT")) {
           this.state = emptyChatHomeLedger();
         } else {
           const isolated = this.filePath.replace(

@@ -116,7 +116,7 @@ export type HistoryImportSource = Readonly<{
   sourceIncarnation: string;
   sourceSize: number;
   sourceMtimeNs: string;
-  incompleteTail: boolean | "unknown";
+  incompleteTail: boolean;
   canResume: boolean;
   sourceStatus: "match" | "changed" | "missing";
 }>;
@@ -184,8 +184,13 @@ export type ContinuationHomeEvidence = Readonly<{
 }>;
 
 export type DatabaseCommand =
+  | { kind: "prepare-chat-history"; chatId: string; deviceId: string; nativeBeforeSeq: number }
+  | { kind: "read-chat-history"; deviceId: string; input: import("../../../../shared/chat-agent/history").HistoryReadCommand }
+  | import("./agent-switch/command").SwitchAgentCommand
+  | import("./agent-switch/command").ReserveSwitchSequencesCommand
   | {
       kind: "initialize";
+      backendDefaults?: import("../../../../shared/settings-ipc").DefaultChatOptionsByBackend;
       databasePath: string;
       deviceId: string;
       mode: ConnectionMode;
@@ -396,6 +401,7 @@ export type DatabaseCommand =
       incarnationId: string;
       homeDir: string;
       session: import("../../../../shared/agent-ipc").SessionRef;
+      options?: import("../../../../shared/agent-ipc").AgentTurnOptions;
       firstMessage: ChatMessage;
       adoptionSnapshotId: string;
       snapshotDigest: string;
@@ -447,7 +453,7 @@ export type DatabaseResponse =
     }>;
 
 /* 维护闸门的判决书：产品侧要能读懂它才谈得上「跑过一次维护」。 */
-export type MaintenanceGateReport = Readonly<{
+type MaintenanceGateReport = Readonly<{
   integrity: "ok";
   foreignKeys: number;
   domainInvariants: "ok";
@@ -467,6 +473,8 @@ export type RemoveResult = Readonly<{
 }>;
 
 export type DatabaseResults = {
+  "switch-agent": MutationOutcome<import("../../../../shared/chat-agent/contracts").AgentSwitchReceipt>;
+  "reserve-switch-sequences": MutationOutcome<import("./agent-switch/command").SwitchSequenceReservation>;
   initialize: {
     sqliteVersion: string;
     compileOptions: string[];
@@ -481,6 +489,8 @@ export type DatabaseResults = {
   "get-timeline-around": ChatTimelinePage | null;
   "get-outline-page": ChatOutlinePage | null;
   "find-messages": ChatFindPage | null;
+  "prepare-chat-history": import("../../../../shared/chat-agent/history").PreparedHistory | null;
+  "read-chat-history": import("../../../../shared/chat-agent/history").HistoryReadResult;
   "upsert-record": MutationOutcome<UpsertResult>;
   "update-chat-facts": MutationOutcome<UpsertResult>;
   "append-message": MutationOutcome<UpsertResult>;

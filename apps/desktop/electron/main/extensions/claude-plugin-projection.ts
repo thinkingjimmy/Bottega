@@ -18,7 +18,7 @@ import {
 } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { ExtensionInventorySnapshot } from "../../../shared/extensions-ipc";
-import { digestCanonical } from "./registry-store";
+import { digestCanonical } from "./registry-canonical";
 import { extensionPackageRoot } from "./skill-candidates";
 
 type ProjectionResult = Readonly<{

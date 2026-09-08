@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Accepts injectable ECharts Factory, ResizeObserver constructor, DOM node and option
  * [OUTPUT]: Provides createChartLifecycle, unified init/setOption/resize/pre-ordered to observe and then dispose of the chords
- * [POS]: The lifecycle core of the rendering instances of lib/charts; ChartCore is just React thin-skinned
+ * [POS]: The chart-instance lifecycle core for lib/charts; ChartCore is only a thin React wrapper around it
  */
 
 export type ChartLike = {

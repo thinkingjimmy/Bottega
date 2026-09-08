@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ConfirmationDialog, cn class name merged with main returns unofficial Consent preview
- * [OUTPUT]: Provides enable/cutover/sharing shared confirmation, four-tiered: this change → What to send/Where to send a single-line destination card) / Who can recall → The only option is History) → System boundary rules
- * [POS]: Consent Epoch for setting/memoryEach confirmation binds the instance to the preview digest, and does not preserve the permanent disclosure status
+ * [INPUT]: Depends on shared MemoryConsentPreview/Reason and MemorySharingMode contracts, i18n, ConfirmationDialog, and cn
+ * [OUTPUT]: Provides the shared enable/cutover/sharing confirmation dialog, laid out in four tiers: what changed → what's sent and where (a single-line destination card) → who can recall it → system boundary rules
+ * [POS]: settings/memory's consent gate; each confirmation is bound to its preview snapshot and does not persist as a standing disclosure
  */
 
 import type {

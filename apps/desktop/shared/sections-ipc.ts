@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Agent turn, Chats, Durable Submission DTO, and receiving artificial messages full journal payload and notice action
- * [OUTPUT]: Provides renderer ManualTurnPersistence with main-only TrustedManualTurnPersistence ((includes adopt) ✓Workspace CAS, receipt/ACK/outcome and Section chain action contract
- * [POS]: The Conversation Coordinator boundaries of shared; The renderer type cannot be configured to SessionRef adopt, nor directly append chat or claim Agent turn
+ * [INPUT]: Depends on AgentSendPayload from agent-ipc, ProductFailure, chat create/append/adopt input DTOs from chats-ipc, and the durable submission precondition/ACK/outcome contracts
+ * [OUTPUT]: Defines canonical manual submissions with an optional one-operation authentication retry intent and existing custody/recovery receipts.
+ * [POS]: Shared conversation-coordinator boundary; the renderer-facing type can never express adopting a SessionRef, appending a chat message, or claiming an Agent turn directly
  */
 
 import type { AgentSendPayload } from "./agent-ipc";
@@ -26,7 +26,7 @@ export type RelayActionInput = {
   expectedPauseEpoch: number;
 };
 
-export type RelayActionResult = "continued" | "discarded" | "stale";
+type RelayActionResult = "continued" | "discarded" | "stale";
 export type RelayStopResult = "stopped" | "not-relay" | "stale";
 export type RelayActionState =
   | "active"
@@ -58,6 +58,9 @@ export type TrustedManualTurnPersistence =
   | { kind: "adopt"; input: AdoptChatInput };
 
 export type ManualTurnSubmission = {
+  agentSwitch?: import("./chat-agent/contracts").AgentSwitchIntent;
+  expectedAgentRevision?: number;
+  authenticationRetry?: import("./agent-availability/types").AuthenticationRetryIntent;
   intentId: string;
   persistence: ManualTurnPersistence;
   /** 恒为当前消息的结构化 input；历史折叠由 main 按 canonical session 决策。 */
@@ -90,6 +93,7 @@ export type AdmissionResult =
   | { kind: "ambiguous"; cause: string };
 
 export const SECTIONS_CHANNEL = {
+  agentSwitchEligibility: "sections:agent-switch-eligibility",
   submitManualTurn: "sections:submit-manual-turn",
   cancelManualTurn: "sections:cancel-manual-turn",
   ackManualIntents: "sections:ack-manual-intents",
@@ -104,12 +108,13 @@ export const SECTIONS_CHANNEL = {
 } as const;
 
 export type SectionsBridgeApi = {
+  agentSwitchEligibility(chatId: string): Promise<import("./chat-agent/contracts").AgentSwitchEligibility>;
   submitManualTurn(input: ManualTurnSubmission): Promise<AdmissionResult>;
   cancelManualTurn(requestId: string): Promise<void>;
   ackManualIntents(intentIds: string[]): Promise<void>;
-  ackSubmission?(input: SubmissionAck): Promise<void>;
-  submissionOutcome?(intentId: string): Promise<SubmissionOutcome>;
-  onSubmissionOutcome?(
+  ackSubmission(input: SubmissionAck): Promise<void>;
+  submissionOutcome(intentId: string): Promise<SubmissionOutcome>;
+  onSubmissionOutcome(
     callback: (outcome: SubmissionOutcome) => void
   ): () => void;
   stopRelayChain(requestId: string): Promise<RelayStopResult>;

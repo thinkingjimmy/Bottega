@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the user's input of asynchronous permissions, current editor context, insert/release and error reset
- * [OUTPUT]: Provides FileAuthorizationQueue to isolate the result from the generation delay and simultaneously expose the current context pending
- * [POS]: The file authorization transaction kernel of chat/composer; React view only projects busy, without asymmetrical competitive branches
+ * [INPUT]: No external imports; depends only on constructor-injected authorize/discard/insert/onPendingChange/reportError callbacks
+ * [OUTPUT]: Provides FileAuthorizationQueue, which serializes per-file authorization with generation-fenced context switching and a live pending count
+ * [POS]: The file-authorization transaction core for chat/composer; the React view only reads the pending/busy projection, with no race-prone branching of its own
  */
 
 export type FileAuthorizationDependencies<FileValue, NodeValue> = {

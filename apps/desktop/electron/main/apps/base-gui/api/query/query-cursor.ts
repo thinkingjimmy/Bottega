@@ -6,7 +6,7 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { BaseCellValue } from "../../../../../../shared/bases-ipc";
-import { canonicalJson } from "../../../gui-build/metadata";
+import { canonicalJson } from "../../../support";
 import { apiError } from "../errors";
 
 export type QueryCursorV1 = Readonly<{

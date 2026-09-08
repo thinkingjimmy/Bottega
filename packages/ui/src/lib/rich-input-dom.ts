@@ -4,11 +4,9 @@
  * [POS]: The RichInput browser adaptation layer of ui/lib; Temporary DOM, pure models do not perceive Node/Range
  */
 
-import type {
-  RichNode,
-  RichValue,
-} from "@ai-chat/ui/components/ai-elements/prompt-input";
+import type { RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import {
+  newRichText,
   normalizeRichValue,
   type RichRange,
 } from "@ai-chat/ui/lib/rich-input-model";
@@ -47,18 +45,12 @@ export function keepRichSuggestionVisible(
   }
 }
 
-const newText = (value: string): RichNode => ({
-  id: crypto.randomUUID(),
-  type: "text",
-  value,
-});
-
 export function readRichEditor(editor: HTMLDivElement, source: RichValue) {
   const known = new Map(source.map((node) => [node.id, node]));
   const result: RichValue = [];
   const visit = (node: Node) => {
     if (node.nodeType === Node.TEXT_NODE) {
-      if (node.textContent) result.push(newText(node.textContent));
+      if (node.textContent) result.push(newRichText(node.textContent));
       return;
     }
     if (!(node instanceof HTMLElement)) return;
@@ -75,7 +67,7 @@ export function readRichEditor(editor: HTMLDivElement, source: RichValue) {
       return;
     }
     if (node.tagName === "BR") {
-      result.push(newText("\n"));
+      result.push(newRichText("\n"));
       return;
     }
     const before = result.length;
@@ -85,7 +77,7 @@ export function readRichEditor(editor: HTMLDivElement, source: RichValue) {
       result.length > before &&
       node.nextSibling
     ) {
-      result.push(newText("\n"));
+      result.push(newRichText("\n"));
     }
   };
   editor.childNodes.forEach(visit);

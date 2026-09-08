@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DurableJson, strict Extension generation refs, and Registry atomic ref batches
+ * [INPUT]: Depends on DurableJson, strict Extension generation refs, and Registry atomic ref batches, and statusError from main/errors
  * [OUTPUT]: Provides intent-before-ref prepared Skill custody, ready assertions, release, and startup bidirectional reconciliation
  * [POS]: Durable owner between manual-turn preparation and live SkillsTurnCustody; only the skills-turn owner namespace is swept
  */
@@ -10,6 +10,7 @@ import type {
   ExtensionPackageGenerationRef,
   Sha256Digest,
 } from "../../../shared/extensions-ipc";
+import { statusError } from "../errors";
 import { DurableJson } from "../persistence/durable-json";
 import type { ExtensionRegistryStore } from "../extensions/registry-store";
 
@@ -110,7 +111,7 @@ export class PreparedSkillReferenceLedger {
       });
     });
     await this.faults.afterIntent?.(ownerId);
-    await this.registry.acquireGenerationRefs(normalized, ownerId);
+    await this.registry.lifecycle.acquireGenerationRefs(normalized, ownerId);
     await this.faults.afterAcquire?.(ownerId);
     await this.mark(ownerId, "ready");
   }
@@ -123,7 +124,7 @@ export class PreparedSkillReferenceLedger {
     if (!entry) return;
     assertSameRefs(entry.refs, normalizeRefs(refs));
     await this.mark(ownerId, "release-pending");
-    await this.registry.releaseGenerationRefs(entry.refs, ownerId);
+    await this.registry.lifecycle.releaseGenerationRefs(entry.refs, ownerId);
     await this.file.mutate((state) => {
       state.entries = state.entries.filter((candidate) => candidate.ownerId !== ownerId);
     });
@@ -143,7 +144,7 @@ export class PreparedSkillReferenceLedger {
   async reconcile(liveOwnerIds: ReadonlySet<string>) {
     for (const entry of this.file.snapshot().entries) {
       if (liveOwnerIds.has(entry.ownerId)) {
-        await this.registry.acquireGenerationRefs(entry.refs, entry.ownerId);
+        await this.registry.lifecycle.acquireGenerationRefs(entry.refs, entry.ownerId);
         await this.mark(entry.ownerId, "ready");
       } else {
         await this.release(entry.ownerId, entry.refs);
@@ -154,12 +155,12 @@ export class PreparedSkillReferenceLedger {
         .snapshot()
         .entries.map((entry) => entry.ownerId)
     );
-    for (const held of this.registry.generationRefsHeldByOwnerPrefix(
+    for (const held of this.registry.lifecycle.generationRefsHeldByOwnerPrefix(
       "skills-turn:"
     )) {
       for (const ownerId of held.ownerIds) {
         if (!known.has(ownerId)) {
-          await this.registry.releaseGenerationRef(held.ref, ownerId);
+          await this.registry.lifecycle.releaseGenerationRef(held.ref, ownerId);
         }
       }
     }
@@ -216,5 +217,5 @@ function key(ref: ExtensionPackageGenerationRef) {
 }
 
 function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }

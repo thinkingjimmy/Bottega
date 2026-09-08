@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the production of four non-Electron side effects ACP launcher/session validator, shared inspection AcpSession, packing Electron Run-As-Node with a temporary hermetic runtime wrapper
- * [OUTPUT]: For dist smoke, the default is to provide a fail-closed 0 prompt four launcher initialize→session/new→cleanup; fixture runtime is only for fixed ACP/Codex app-server protocols
- * [POS]: The main distribution package is a unified private entry; No real accounts, no prompt, no external command/args input
+ * [INPUT]: Depends on the four production ACP launchers/session validators, the shared inspectAcpSession probe, and a temporary hermetic runtime wrapper that re-execs itself under ELECTRON_RUN_AS_NODE
+ * [OUTPUT]: Provides a fail-closed, zero-prompt smoke test running initialize→session/new→cleanup against all four backend launchers, backed by a fixture runtime that fakes ACP/Codex app-server responses
+ * [POS]: Standalone packaged-build entry gated by AI_CHAT_DIST_CONNECTIVITY_SMOKE; uses no real accounts, prompts, or externally supplied command/args
  */
 
 import { appendFileSync } from "node:fs";

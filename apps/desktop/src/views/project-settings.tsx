@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on router, canonical Projects/Chats/Setup providers, exact-Project Tools/MCP controllers, shared support projection, five Project tab sections, PageShell, and i18n
+ * [INPUT]: Depends on router, canonical Projects/Chats/Setup providers, the exact-Project Tools controller, useMcpServersPort, shared built-in support projection, five Project tab sections, PageShell, and i18n
  * [OUTPUT]: Provides guarded Project Settings with five URL-backed tabs, exact-scope Skills and Extensions, and live-runtime-reprojected Project Tool scope ports that preserve global inheritance
  * [POS]: The sole `/projects/:projectId/settings` route; keeps the application Sidebar in Library context
  */
@@ -23,23 +23,18 @@ import {
 } from "@/components/settings/builtin-tools-section";
 import {
   McpServersSection,
+  useMcpServersPort,
   type McpServersSectionPort,
 } from "@/components/settings/mcp-servers-section";
 import { SettingsCanvas } from "@/components/settings/settings-layout";
 import { ExtensionsContent } from "@/views/settings-extensions";
 import { draftRoute, projectAlive } from "@/lib/draft-route";
-import {
-  createProjectToolsController,
-} from "@/lib/project-tools-client";
-import { createMcpServersController } from "@/lib/mcp-servers-client";
+import { createProjectToolsController } from "@/lib/project-tools-client";
 import { PROJECT_TOOLS_BRIDGE_UNAVAILABLE } from "../../shared/project-tools-ipc";
-import { MCP_SERVERS_BRIDGE_UNAVAILABLE } from "../../shared/mcp-servers-ipc";
 import type { Project } from "../../shared/projects-ipc";
 import {
   projectEffectiveState,
-  projectManualMcpServerSupport,
   resolveBuiltinBackendSupportMatrix,
-  toolBackendFacts,
 } from "../../shared/tool-support";
 import {
   Tabs,
@@ -148,39 +143,24 @@ function ProjectToolsSettings({ project }: { project: Project }) {
     () => createProjectToolsController(project.id),
     [project.id]
   );
-  const mcpController = useMemo(
-    () => createMcpServersController({
-      kind: "project",
-      projectId: project.id,
-    }),
+  const mcpScope = useMemo(
+    () => ({ kind: "project" as const, projectId: project.id }),
     [project.id]
   );
+  const {
+    controller: mcpController,
+    backendFacts,
+    port: mcpBase,
+  } = useMcpServersPort(mcpScope);
   const tools = useSyncExternalStore(
     toolsController.subscribe,
     toolsController.getSnapshot
   );
-  const mcp = useSyncExternalStore(
-    mcpController.subscribe,
-    mcpController.getSnapshot
-  );
-  const backendFacts = useMemo(
-    () => (setup.status?.backends ?? []).map(toolBackendFacts),
-    [setup.status?.backends]
-  );
-  const projectedMcp = useMemo(() => mcp.value ? ({
-    ...mcp.value,
-    servers: mcp.value.servers.map((server) =>
-      projectManualMcpServerSupport(server, backendFacts)
-    ),
-  }) : null, [backendFacts, mcp.value]);
 
   useEffect(() => {
     void toolsController.load();
-    return () => {
-      toolsController.dispose();
-      mcpController.dispose();
-    };
-  }, [mcpController, toolsController]);
+    return () => toolsController.dispose();
+  }, [toolsController]);
 
   const policy = tools.value?.policy;
   const hasBuiltinOverrides = Boolean(
@@ -238,24 +218,9 @@ function ProjectToolsSettings({ project }: { project: Project }) {
   ]);
   const mcpPort = useMemo<McpServersSectionPort>(() => ({
     kind: "project",
-    snapshot: projectedMcp,
-    loading: mcp.loading,
-    error:
-      mcp.error === MCP_SERVERS_BRIDGE_UNAVAILABLE
-        ? t("settings.tools.mcp.bridgeMissing")
-        : mcp.error,
-    bridgeAvailable: mcp.bridgeAvailable,
-    pending: new Set([...mcp.pending, ...tools.pending]),
+    ...mcpBase,
+    pending: new Set([...mcpBase.pending, ...tools.pending]),
     hasPolicyOverrides: hasMcpOverrides,
-    load: mcpController.load,
-    save: async (draft, server) => {
-      const ok = await mcpController.save(draft, server);
-      return {
-        ok,
-        error: ok ? "" : mcpController.getSnapshot().error,
-      };
-    },
-    remove: mcpController.remove,
     setInheritedEnabled: async (serverId, enabled) => {
       const changed = await toolsController.setGlobalMcpOverride(
         serverId,
@@ -269,15 +234,7 @@ function ProjectToolsSettings({ project }: { project: Project }) {
       if (changed) await mcpController.load();
       return changed;
     },
-  }), [
-    hasMcpOverrides,
-    mcp,
-    mcpController,
-    projectedMcp,
-    t,
-    tools.pending,
-    toolsController,
-  ]);
+  }), [hasMcpOverrides, mcpBase, mcpController, tools.pending, toolsController]);
 
   return (
     <SettingsCanvas>

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on canonical Chat records/facts, metadata ownership projections, lifecycle helpers, and app capability facts
+ * [INPUT]: Depends on canonical Chat records/facts, metadata ownership projections, lifecycle helpers, app capability facts, and main/errors
  * [OUTPUT]: Provides pure Chat fact transitions, the aggregate tail revision, and the external-readonly presentation-only mutation guard for sessions, titles, grants, and project placement
  * [POS]: Mutation policy layer beneath ChatStore queue/persistence orchestration; contains no durable I/O
  */
@@ -23,6 +23,7 @@ import {
 } from "../chat-record-lifecycle";
 import { assertProjectRole, isAppProjectMember } from "../chat-guards";
 import type { ChatFacts, ChatMetadata } from "../chat-summary";
+import { statusError } from "../../errors";
 
 type ProjectDependencies = {
   isAppProject?: (projectId: string) => boolean;
@@ -31,7 +32,7 @@ type ProjectDependencies = {
     | null;
 };
 
-export type ReviseTailInput = {
+type ReviseTailInput = {
   chatId: string;
   supersedes: {
     supersedesUserMessageId: string;
@@ -73,7 +74,7 @@ export function reviseTailRecord(
     current.inheritedThroughSeq &&
     superseded.seq <= current.inheritedThroughSeq
   ) {
-    throw Object.assign(new Error("CHAT_FORK_INHERITED_HISTORY_IMMUTABLE"), { status: 409 });
+    throw statusError(409, "CHAT_FORK_INHERITED_HISTORY_IMMUTABLE");
   }
   if (
     superseded?.role !== "user" ||
@@ -192,10 +193,10 @@ export function setGrantRecord<T extends ChatFacts>(
   isAppProject?: (projectId: string) => boolean
 ) {
   if (current.appRole !== null) {
-    throw Object.assign(new Error("App chat 不能再附加 App"), { status: 403 });
+    throw statusError(403, "App chat 不能再附加 App");
   }
   if (isAppProjectMember(isAppProject, current.projectId)) {
-    throw Object.assign(new Error("App Project 的聊天不能再附加 App"), { status: 403 });
+    throw statusError(403, "App Project 的聊天不能再附加 App");
   }
   return {
     ...current,

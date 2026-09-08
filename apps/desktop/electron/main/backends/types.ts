@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared agent/MCP DTO, AbortSignal and Node subprocess environment type
- * [OUTPUT]: Provides descriptor/runtime/structured ProductFailure terminals, turn-level facts carried by every terminal exit, AgentTurn, prompt, productContext, sensitive contribution, frozen MCP/session config, the negotiated server-fact binding and trusted sandbox/maintenance contracts
- * [POS]: The module's behavior limits are backends; The name of the registry combination is expanded, transport and business organization are recognized only through this document
+ * [INPUT]: Depends on shared agent/MCP DTOs, the apps/runtime/agent-tools AgentToolInventory type, AbortSignal, and the Node subprocess environment type
+ * [OUTPUT]: Defines backend descriptors, structured failure targets, active capabilities, authentication progress and headless/maintenance execution contracts.
+ * [POS]: The backends contract module; runtime registry, transports, and product callers recognise each other only through the types declared here
  */
 
 import type {
@@ -27,6 +27,9 @@ import type {
 import type { ServerFactBinding } from "./acp/session/server-facts";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import type { CleanupResult } from "../process-group";
+import type {
+  AgentToolInventory,
+} from "../apps/runtime/agent-tools";
 import type {
   BuiltinMcpLease,
   BuiltinMcpServerSpec,
@@ -75,7 +78,7 @@ export type RuntimeConfirmation =
 
 // 判别联合而非可选字段：usage-limit 必然带窗口信息，
 // 类型上就不存在"声称限流却说不出是哪个窗口"的中间态。
-export type BackendFailure =
+export type BackendFailure = { target?: Partial<import("../../../shared/agent-availability/types").ExecutionTarget> } & (
   | {
       kind: "auth-required" | "unknown";
       message: string;
@@ -86,7 +89,7 @@ export type BackendFailure =
       message: string;
       limit: UsageLimitInfo;
       failure: ProductFailure;
-    };
+    });
 
 /**
  * 轮级事实：由 turn 观察得来，与失败分类正交，所以不进 BackendFailure 的判别
@@ -302,7 +305,7 @@ export type AuthCheckResult = {
 };
 
 export type AuthExtension = {
-  check(runtime: ResolvedRuntime, signal?: AbortSignal): Promise<AuthCheckResult>;
+  check(runtime: ResolvedRuntime, signal?: AbortSignal, onAuthenticationStarted?: () => void): Promise<AuthCheckResult>;
   /** provider 表示单次模型 turn 不能代表整个 backend 的认证态。 */
   turnEvidence?: "backend" | "provider";
 };
@@ -361,6 +364,7 @@ export type SkillsExtension = {
 };
 
 export type HeadlessJob = {
+  sourceConversationId?: string;
   purpose: HeadlessPurpose;
   cwd: string;
   sandboxRoot: string;
@@ -454,8 +458,7 @@ export type MaintenanceSession = {
     ) => Promise<{ stdout: string }>;
     appendLog: (line: string) => Promise<void>;
   }): Promise<void>;
-  inspectToolInventory(workspace: string): Promise<unknown>;
-  validateRequirements(requirements: unknown, inventory: unknown): void;
+  inspectToolInventory(workspace: string): Promise<AgentToolInventory>;
 };
 
 export type MaintenanceAdapter = {

@@ -9,8 +9,8 @@ import type { ProductResult } from "./product-failure";
 
 export type ManagedSkillAgent = AgentBackendId;
 export type ManagedSkillSourceKind = "local-folder" | "adopted" | "extension";
-export type ManagedSkillImportSource = ManagedSkillAgent | "local-folder" | "all";
-export type ManagedSkillAllowedAction =
+type ManagedSkillImportSource = ManagedSkillAgent | "local-folder" | "all";
+type ManagedSkillAllowedAction =
   | "delete"
   | "disable"
   | "enable"
@@ -63,7 +63,7 @@ export type ManagedSkillLibraryItem = Readonly<{
   allowedActions: readonly ManagedSkillAllowedAction[];
 }>;
 
-export type ManagedSkillCandidateStatus =
+type ManagedSkillCandidateStatus =
   | "new"
   | "update"
   | "current"
@@ -91,7 +91,7 @@ export type ManagedSkillCandidateError = Readonly<{
   reason: ManagedSkillReason;
 }>;
 
-export type ManagedSkillSourceStatus =
+type ManagedSkillSourceStatus =
   | "ok"
   | "missing"
   | "not-installed"
@@ -105,7 +105,7 @@ export type ManagedSkillSourceView = Readonly<{
   errors: readonly ManagedSkillCandidateError[];
 }>;
 
-export type ManagedSkillJobIssue = Readonly<{
+type ManagedSkillJobIssue = Readonly<{
   skillName: string;
   reason: ManagedSkillReason;
 }>;
@@ -180,7 +180,7 @@ export type ManagedSkillIntentInput =
       candidateRefs: readonly string[];
     }>;
 
-export type ManagedSkillConsent = Readonly<{
+type ManagedSkillConsent = Readonly<{
   kind: "delete";
   count: number;
 }>;

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on canonical Chat/Project's unchangeable identity snapshot with core/domain
- * [OUTPUT]: Provides the only MemoryScopeSubject resolver that requires explicit mode/owner/generation, shared range attribution determination, Policy generation upgrades and stable Space/peer assertions
- * [POS]: The main/memory/core product sharing boundaries; Workspace path, default compatibility with provider not to participate in identity derivatives
+ * [OUTPUT]: Provides resolveMemoryScopeSubject (mode/owner/snapshot to subject), memorySpaceBelongsToSharingScope, and memorySpaceForSubject/resolvedMemorySpace for deriving a Space id and expected peer id
+ * [POS]: The main/memory/core sharing-scope boundary; workspace path and provider defaults never participate in identity derivation
  */
 
 import {

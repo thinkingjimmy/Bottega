@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node stdin/stdout, lock edition sharp and codec framing; Only the parent process receives binary flow
- * [OUTPUT]: The output of single decryption data, single-byte, JPEG of ≤8 MiB ((no alpha) /PNG ((includes alpha, is synonymous with Electron thumbnail decoder) or explicitly rejected with exit=2
- * [POS]: Input of the isolation decoding process for bases/media-host; Businesses do not use routes or networks, and seatbelts only grant read-only and write-only permissions when operating temporary directories
+ * [OUTPUT]: Outputs a single decoded frame — JPEG (no alpha, ≤8 MiB) or PNG (with alpha), matching what Electron's nativeImage thumbnail decoder accepts — or exits with code 2 on rejection
+ * [POS]: Entry point of the isolated decode subprocess for bases/media-host; touches no filesystem paths or network, and runs under a seatbelt granting only the temp-directory read/write it needs
  */
 
 import sharp from "sharp";

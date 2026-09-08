@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on PromptInputMessage and shared AgentUserInput/Chat image attachment contract
- * [OUTPUT]: Provides image exclusive splitChatAttachments, LiveAttachmentPreview and unified with the interface preview
- * [POS]: The video conversion layer of chat/runtime; Non-pictures are exclusive to the RichInput file node and the main opaque license
+ * [OUTPUT]: Provides splitChatAttachments (splits an image-only submission into agent input/payload/preview) and the shared LiveAttachmentPreview type
+ * [POS]: Image-attachment boundary for chat/runtime; non-image files stay in RichInput's file-chip node and are authorized as opaque handles by main, never routed through this splitter
  */
 
 import type { PromptInputMessage } from "@ai-chat/ui/components/ai-elements/prompt-input";

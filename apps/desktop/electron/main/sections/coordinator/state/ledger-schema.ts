@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on zod, canonical Hash, shared Agent backend vocabulary, manual-only durable turn origin and PauseSaga action schema
- * [OUTPUT]: Provides ledger v6 run/seed CreateIntent ((seed with original promote) parameters abstract with full source provenance), manual/steer/outbox/capsule schema, retained window, derivative type and empty state; v6 is the only readable version
- * [POS]: The truth source of the coordinator/state durable wire; RelayLedger is only responsible for sorting atomic mutatIOn and IO files
+ * [OUTPUT]: Provides the ledger v7 schema: run/seed CreateIntent (seed carries full promote provenance — subagent thread, source chat, byte size, truncated flag), manual/steer/outbox/tombstone schemas, retention constants, derived types, and emptyLedgerState; v7 is the only version this module reads
+ * [POS]: Source of truth for the coordinator/state durable wire format; RelayLedger is responsible only for sequencing atomic mutations and file IO
  */
 
 import { z } from "zod";
+import { handoffSchema } from "../../../../../shared/chat-agent/history-schema";
 import { agentBackendIdSchema } from "../../../../../shared/agent-schema";
 import { canonicalHash } from "../coordinator-values";
 import { relayActionSchema } from "./pause-saga";
@@ -42,6 +43,7 @@ export const relaySchema = z
     createdAt: z.number().int().nonnegative(),
     sequence: z.number().int().nonnegative().default(0),
     deliveryPhase: phaseSchema,
+    handoff: handoffSchema.optional(),
     pauseEpoch: z.number().int().nonnegative(),
     pauseReason: z
       .enum(["budget", "chain-paused", "startup-recovered"])
@@ -198,8 +200,7 @@ export const manualIntentSchema = z
   .object({
     id: z.string().min(1).max(128),
     conversationId: z.string().min(1).max(128),
-    /** durable turn intent 只允许 manual；旧 workflow wire 由 state-reset.v3 清理，
-     * 存量文件里已写入的 `{kind:"manual"}` 继续可解析。 */
+    /** Durable turn intents only allow manual origins; any other kind fails the ledger parse. */
     origin: z
       .object({ kind: z.literal("manual") })
       .strict()
@@ -210,6 +211,7 @@ export const manualIntentSchema = z
     createdAt: z.number().int().nonnegative(),
     terminalAt: z.number().int().nonnegative().optional(),
     ackedAt: z.number().int().nonnegative().optional(),
+    noticeSeq: z.number().int().positive().optional(),
     userSeq: z.number().int().positive().optional(),
     assistantSeq: z.number().int().positive().optional(),
     sequence: z.number().int().nonnegative().default(0),
@@ -318,11 +320,12 @@ const intentTombstoneSchema = z
   .object({
     hash: z.string().regex(/^[a-f0-9]{64}$/),
     outcome: z.string().min(1).max(64),
+    custody: z.enum(["main-journal", "chat-persisted"]).optional(),
     deletedAt: z.number().int().nonnegative(),
   })
   .strict();
 
-export const submissionReservationSchema = z
+const submissionReservationSchema = z
   .object({
     intentId: z.string().min(1).max(128),
     conversationId: z.string().min(1).max(128),
@@ -340,7 +343,7 @@ export const submissionReservationSchema = z
   })
   .strict();
 
-export const manualResultOutboxSchema = z
+const manualResultOutboxSchema = z
   .object({
     intentId: z.string().min(1).max(128),
     conversationId: z.string().min(1).max(128),
@@ -353,7 +356,7 @@ export const manualResultOutboxSchema = z
   })
   .strict();
 
-export const retryCapsuleSchema = z
+const retryCapsuleSchema = z
   .object({
     intentId: z.string().min(1).max(128),
     conversationId: z.string().min(1).max(128),
@@ -364,7 +367,7 @@ export const retryCapsuleSchema = z
   })
   .strict();
 
-export const submissionOutcomeRecordSchema = z
+const submissionOutcomeRecordSchema = z
   .object({
     intentId: z.string().min(1).max(128),
     conversationId: z.string().min(1).max(128),
@@ -398,7 +401,7 @@ export const submissionOutcomeRecordSchema = z
 
 export const ledgerSchema = z
   .object({
-    schemaVersion: z.literal(6),
+    schemaVersion: z.literal(7),
     nextSequence: z.number().int().positive().default(1),
     chains: z.record(z.string(), chainSchema),
     relays: z.record(z.string(), relaySchema),
@@ -439,14 +442,6 @@ export type NoticeOutboxRecord = z.infer<typeof noticeOutboxSchema>;
 export type ManualAttempt = z.infer<
   typeof manualIntentSchema
 >["attempts"][number];
-export type SubmissionReservation = z.infer<
-  typeof submissionReservationSchema
->;
-export type ManualResultOutbox = z.infer<typeof manualResultOutboxSchema>;
-export type RetryCapsule = z.infer<typeof retryCapsuleSchema>;
-export type SubmissionOutcomeRecord = z.infer<
-  typeof submissionOutcomeRecordSchema
->;
 export type LedgerState = z.infer<typeof ledgerSchema>;
 export type RelayExpectation = {
   deliveryPhase:
@@ -471,7 +466,7 @@ export type RelayAdmissionInput = Omit<
 > & { limit: number };
 
 export const emptyLedgerState = (): LedgerState => ({
-  schemaVersion: 6,
+  schemaVersion: 7,
   nextSequence: 1,
   chains: {},
   relays: {},

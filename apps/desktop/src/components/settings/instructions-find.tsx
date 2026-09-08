@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: Depends on React, Lucide ChevronDown/ChevronUp/X, ui Input/Button with i18n
- * [OUTPUT]: Provides InstructionsFind The bar is attached to the instruction editor to find the bar, and the target is to locate the original choice area using the textarea
- * [POS]: The instruction editor attachments of settings; The shape is similar to TranscriptFind in chat/transcript, but the content is a string rather than a full transcript
+ * [OUTPUT]: Provides InstructionsFind: a find bar attached to the instruction editor that locates matches via the textarea's native selection
+ * [POS]: Settings' instruction-editor companion; shaped like TranscriptFind in chat/transcript, but operates on a plain string instead of a full transcript
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";

@@ -1,11 +1,10 @@
 /**
  * [INPUT]: Depends on shared/settings-ipc and preload exposed window.settings
- * [OUTPUT]: Provides settings get/set/subscriptions, Skills-onboarding, Memory and Chat Home controls, scoped chat options with explicit session-effective reset, and browser fallbacks
+ * [OUTPUT]: Provides settings get/set/subscriptions, Memory and Chat Home controls, initial language/theme facts, backend/model catalogs, and scoped chat options with explicit session-effective reset; throws when the bridge is absent
  * [POS]: The main process of lib sets the IPC's only output and unifies the default model, scope, consolidation and renderer to display semantics
  */
 
 import type {
-  AppSettings,
   MemorySettingsMutation,
   RendererSettingsPatch,
   SettingsBridgeApi,
@@ -13,13 +12,10 @@ import type {
 } from "../../shared/settings-ipc";
 import type {
   AgentBackendId,
-  AgentScope,
   AgentTurnOptions,
   AgentWorkspaceScope,
-  BackendInfo,
   BackendModelInfo,
 } from "../../shared/agent-ipc";
-import { resolveAppLocale } from "../../shared/i18n/locale";
 
 export const DEFAULT_TITLE_MODEL_VALUE = "__default__";
 
@@ -90,343 +86,49 @@ declare global {
   }
 }
 
-const browserDefaultChatOptions: AgentTurnOptions = {
-  backend: "codex",
-  model: "gpt-5.6-sol",
-  reasoningEffort: "xhigh",
-  serviceTier: "priority",
-  permissionMode: "approve-for-me",
+const bridge = (): SettingsBridgeApi => {
+  const api = window.settings;
+  if (!api) throw new Error("settings bridge unavailable");
+  return api;
 };
-let browserSettings: AppSettings = {
-  chatHomesRoot: null,
-  chatHomeState: "unconfigured",
-  allowCrossChatRead: false,
-  disabledBuiltinTools: [],
-  fullAccessAcknowledgedAt: null,
-  theme: "auto",
-  language: "auto",
-  titleAgent: "auto",
-  titleModelByBackend: { codex: null },
-  defaultChatOptionsByBackend: {
-    codex: browserDefaultChatOptions,
-    claude: { backend: "claude", permissionMode: "ask-for-approval" },
-    kimi: { backend: "kimi", permissionMode: "ask-for-approval" },
-    opencode: { backend: "opencode", permissionMode: "ask-for-approval" },
-  },
-  lastSelectedBackend: "codex",
-  autoRelayLimit: 25,
-  usagePricingAutoRefresh: true,
-  skillsOnboarding: "pending",
-  keyboardShortcuts: {},
-  memory: {
-    enabled: false,
-    paused: false,
-    provider: "openviking",
-    sharingMode: "chat",
-    pendingRevision: null,
-    applyStatus: null,
-  },
-};
-let browserRevision = 1;
-const browserChatOptions = new Map<string, AgentTurnOptions>();
 
-const scopeKey = (scope: AgentScope) => `general:${scope.conversationId}`;
+export const getSettings = (): Promise<SettingsEnvelope> => bridge().get();
 
-function optionsForNextConversation(options: AgentTurnOptions) {
-  if (
-    options.backend !== "claude" ||
-    options.reasoningEffort !== "max"
-  ) {
-    return options;
-  }
-  const defaults = { ...options };
-  delete defaults.reasoningEffort;
-  return defaults;
-}
-
-export const getSettings = (): Promise<SettingsEnvelope> =>
-  window.settings?.get() ??
-  Promise.resolve({ revision: browserRevision, settings: { ...browserSettings } });
-
-export const setSettings = async (
+export const setSettings = (
   patch: RendererSettingsPatch
-): Promise<SettingsEnvelope> => {
-  if (window.settings) return window.settings.set(patch);
-  browserSettings = { ...browserSettings, ...patch };
-  browserRevision += 1;
-  return { revision: browserRevision, settings: { ...browserSettings } };
-};
+): Promise<SettingsEnvelope> => bridge().set(patch);
 
 /* Memory 只有这一个出口：通用 set 在 type 与 main 运行时都已拒绝它。 */
-export const mutateMemorySettings = async (
+export const mutateMemorySettings = (
   mutation: MemorySettingsMutation
-): Promise<SettingsEnvelope> => {
-  if (window.settings) return window.settings.mutateMemory(mutation);
-  const memory = { ...browserSettings.memory };
-  if (mutation.kind === "enable-with-consent") {
-    memory.enabled = true;
-    memory.paused = false;
-  }
-  if (mutation.kind === "cutover-with-consent") {
-    memory.provider = mutation.providerId;
-    memory.enabled = true;
-    memory.paused = false;
-  }
-  if (mutation.kind === "set-paused") memory.paused = mutation.paused;
-  browserSettings = { ...browserSettings, memory };
-  browserRevision += 1;
-  return { revision: browserRevision, settings: { ...browserSettings } };
-};
+): Promise<SettingsEnvelope> => bridge().mutateMemory(mutation);
 
-/* 唯一在模块加载期就被调用的桥接口：store 单例在构造时即订阅。
-   纯 Node 测试里没有 window，触碰全局就会在 import 阶段炸掉。 */
 export const subscribeSettings = (
   listener: (envelope: SettingsEnvelope) => void
-) =>
-  (typeof window === "undefined" ? undefined : window.settings)?.onChanged(
-    listener
-  ) ?? (() => {});
+) => bridge().onChanged(listener);
 
-export const chooseChatHomesRoot = async () => {
-  if (!window.settings) return null;
-  const status = await window.settings.chooseChatHomesRoot();
-  browserSettings = (await window.settings.get()).settings;
-  return status;
-};
+export const chooseChatHomesRoot = () => bridge().chooseChatHomesRoot();
 
-export const acknowledgeFullAccess = async (): Promise<SettingsEnvelope> => {
-  if (!window.settings) {
-    browserSettings = {
-      ...browserSettings,
-      fullAccessAcknowledgedAt: Date.now(),
-    };
-    browserRevision += 1;
-    return { revision: browserRevision, settings: { ...browserSettings } };
-  }
-  return window.settings.acknowledgeFullAccess();
-};
+export const acknowledgeFullAccess = (): Promise<SettingsEnvelope> =>
+  bridge().acknowledgeFullAccess();
 
-export const hasSettingsBridge = () => Boolean(window.settings);
+export const initialAppLanguage = () => bridge().initialLanguage;
 
-export const initialAppLanguage = () =>
-  window.settings?.initialLanguage ??
-  resolveAppLocale("auto", globalThis.navigator?.languages ?? ["en"]);
-
-/* ── 有效主题：Electron 下由 main 解析后送来，浏览器下退回系统偏好 ──
-   两条路都只给「现在是不是深色」这一个布尔，调用方因此没有 auto 分支。 */
-const darkQuery = () =>
-  typeof window.matchMedia === "function"
-    ? window.matchMedia("(prefers-color-scheme: dark)")
-    : null;
-
-export const initialDarkTheme = () =>
-  window.settings?.initialDark ?? darkQuery()?.matches ?? false;
+/* 有效主题由 main 解析后送来：初值随建窗参数到达 preload，此后每次变化
+   都是同一个布尔广播，调用方因此没有 auto 分支。 */
+export const initialDarkTheme = () => bridge().initialDark;
 
 export const subscribeResolvedTheme = (
   callback: (isDark: boolean) => void
-) => {
-  if (window.settings) return window.settings.onThemeResolved(callback);
-  const query = darkQuery();
-  if (!query) return () => undefined;
-  const handler = (event: MediaQueryListEvent) => callback(event.matches);
-  query.addEventListener("change", handler);
-  return () => query.removeEventListener("change", handler);
-};
+) => bridge().onThemeResolved(callback);
 
-const browserBackends: BackendInfo[] = [
-  {
-    id: "codex",
-    displayName: "Codex",
-    status: "ready",
-    runtimeStatus: "installed",
-    authStatus: "authenticated",
-    capabilities: {
-      resume: true,
-      permissionModes: ["ask-for-approval", "approve-for-me", "full-access"],
-      modelOptions: "full",
-      imageInput: true,
-      planMode: true,
-      headless: ["install-analysis", "repair", "serve"],
-      maintenance: true,
-      builtinTools: "none",
-    },
-  },
-  ...(["claude", "kimi"] as const).map((id): BackendInfo => ({
-    id,
-    displayName: id === "claude" ? "Claude" : "Kimi",
-    status: "ready" as const,
-    runtimeStatus: "installed" as const,
-    authStatus: "authenticated" as const,
-    capabilities: {
-      resume: true,
-      permissionModes: ["ask-for-approval", "approve-for-me"],
-      modelOptions: "list-only",
-      imageInput: id === "claude",
-      planMode: true,
-      headless: [],
-      maintenance: false,
-      builtinTools: "none",
-    },
-  })),
-  /* OpenCode 在浏览器演示里保持它在真机上的形状：无 auth 扩展故
-     authStatus 恒 unknown（入场靠首轮试错），权限两档无 full-access，
-     模型目录为空——mock 若比真身宽松，演示就成了另一个产品。 */
-  {
-    id: "opencode",
-    displayName: "OpenCode",
-    status: "ready",
-    runtimeStatus: "installed",
-    authStatus: "unknown",
-    capabilities: {
-      resume: true,
-      permissionModes: ["ask-for-approval", "approve-for-me"],
-      modelOptions: "list-only",
-      imageInput: true,
-      planMode: true,
-      headless: [],
-      maintenance: false,
-      builtinTools: "none",
-    },
-  },
-];
-
-const browserModels: Partial<Record<AgentBackendId, BackendModelInfo[]>> = {
-  codex: [
-    {
-      slug: "gpt-5.6-sol",
-      displayName: "GPT-5.6 Sol",
-      isDefault: true,
-      defaultReasoningEffort: "xhigh",
-      supportedReasoningEfforts: [
-        { effort: "medium", displayName: "Medium", description: "" },
-        { effort: "high", displayName: "High", description: "" },
-        { effort: "xhigh", displayName: "X-High", description: "" },
-      ],
-    },
-    {
-      slug: "gpt-5.6-codex",
-      displayName: "GPT-5.6 Codex",
-      isDefault: false,
-      defaultReasoningEffort: "high",
-      supportedReasoningEfforts: [
-        { effort: "medium", displayName: "Medium", description: "" },
-        { effort: "high", displayName: "High", description: "" },
-      ],
-    },
-  ],
-  claude: [
-    {
-      slug: "claude-fable-5[1m]",
-      displayName: "Fable 5",
-      isDefault: false,
-    },
-    {
-      slug: "opus[1m]",
-      displayName: "Opus 5",
-      isDefault: true,
-      defaultReasoningEffort: "high",
-      supportedReasoningEfforts: [
-        { effort: "low", displayName: "Low", description: "" },
-        { effort: "medium", displayName: "Medium", description: "" },
-        { effort: "high", displayName: "High", description: "" },
-      ],
-    },
-    {
-      slug: "sonnet",
-      displayName: "Sonnet 5",
-      isDefault: false,
-      defaultReasoningEffort: "high",
-      supportedReasoningEfforts: [
-        { effort: "low", displayName: "Low", description: "" },
-        { effort: "medium", displayName: "Medium", description: "" },
-        { effort: "high", displayName: "High", description: "" },
-        { effort: "max", displayName: "Max", description: "" },
-      ],
-    },
-    {
-      slug: "haiku",
-      displayName: "Haiku 4.5",
-      isDefault: false,
-    },
-  ],
-  kimi: [
-    {
-      slug: "kimi-code/k3",
-      displayName: "K3",
-      isDefault: true,
-      defaultReasoningEffort: "high",
-      supportedReasoningEfforts: [
-        { effort: "low", description: "" },
-        { effort: "high", description: "" },
-        { effort: "max", description: "" },
-      ],
-    },
-    {
-      slug: "kimi-code/k3-256k",
-      displayName: "K3-256k",
-      isDefault: false,
-      defaultReasoningEffort: "high",
-      supportedReasoningEfforts: [
-        { effort: "low", description: "" },
-        { effort: "high", description: "" },
-        { effort: "max", description: "" },
-      ],
-    },
-  ],
-  /* 真机的 `opencode models` 无凭据时可能一行不吐；空目录是合法态，
-     模型选择器必须能在无默认项的目录上正常呈现（P0.8 验收面）。 */
-  opencode: [],
-};
-
-export const listBackends = () =>
-  window.settings?.listBackends() ??
-  Promise.resolve(structuredClone(browserBackends));
+export const listBackends = () => bridge().listBackends();
 
 export const listModels = (
   backend: AgentBackendId,
   scope: AgentWorkspaceScope
-) =>
-  window.settings?.listModels(backend, scope) ??
-  Promise.resolve(structuredClone(browserModels[backend] ?? []));
+) => bridge().listModels(backend, scope);
 
-export const resolveChatOptions = async (
-  scope: AgentScope,
-  backend?: AgentBackendId
-) => {
-  if (window.settings) return window.settings.resolveChatOptions(scope, backend);
-  const key = scopeKey(scope);
-  const current = browserChatOptions.get(key);
-  if (current) return { ...current };
-  const selected = backend ?? browserSettings.lastSelectedBackend;
-  const options =
-    browserSettings.defaultChatOptionsByBackend[selected] ??
-    browserDefaultChatOptions;
-  browserChatOptions.set(key, options);
-  return { ...options };
-};
-
-export const setChatOptions = async (
-  scope: AgentScope,
-  options: AgentTurnOptions,
-  resetSessionEffective = false
-) => {
-  if (window.settings) {
-    return window.settings.setChatOptions(
-      scope,
-      options,
-      resetSessionEffective
-    );
-  }
-  const next = { ...options };
-  const defaults = optionsForNextConversation(next);
-  browserChatOptions.set(scopeKey(scope), next);
-  browserSettings = {
-    ...browserSettings,
-    lastSelectedBackend: next.backend,
-    defaultChatOptionsByBackend: {
-      ...browserSettings.defaultChatOptionsByBackend,
-      [next.backend]: defaults,
-    },
-  };
-  return { ...next };
-};
+export const getBackendDefaults = (backend?: AgentBackendId) => bridge().getBackendDefaults(backend);
+export const rememberChatDefaults = (options: AgentTurnOptions) => bridge().rememberChatDefaults(options);
+export const patchChatOptions = (input: import("../../shared/chat-agent/contracts").ChatOptionsPatch, reset = false) => bridge().patchChatOptions(input, reset);

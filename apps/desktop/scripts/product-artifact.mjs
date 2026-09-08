@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto, electron-builder.yml productName/linux executableName facts, and package.json version
- * [OUTPUT]: Provides readPackagedProduct, locateCurrentPlatformArtifact for deterministic macOS, Windows, and Linux unpacked-output selection, and locateInstallers/INSTALLER_IDS mapping the four canonical installer ids (darwin-arm64.dmg, darwin-arm64.zip, win32-x64.nsis, linux-x64.appimage) to exact fresh files with bytes and sha256
+ * [OUTPUT]: Provides readPackagedProduct, locateCurrentPlatformArtifact for deterministic macOS, Windows, and Linux unpacked-output selection, and locateInstallers mapping the four canonical installer ids (darwin-arm64.dmg, darwin-arm64.zip, win32-x64.nsis, linux-x64.appimage) to exact fresh files with bytes and sha256
  * [POS]: Single artifact-layout adapter shared by dist orchestration, packaged smoke, and the payload verifier; product names and installer filenames are never hard-coded in any caller
  */
 
@@ -85,14 +85,6 @@ const INSTALLERS = Object.freeze({
   "win32-x64.nsis": { platform: "win32", file: (product, version) => `${product}-${version}-windows-x64.exe` },
   "linux-x64.appimage": { platform: "linux", file: (product, version) => `${product}-${version}-linux-x86_64.AppImage` },
 });
-
-export const INSTALLER_IDS = Object.freeze(Object.keys(INSTALLERS));
-
-export function installerFileName(id, productName, version) {
-  const spec = INSTALLERS[id];
-  if (!spec) throw new Error(`未知的 installer id ${id}`);
-  return spec.file(productName, version);
-}
 
 function sha256File(path) {
   return `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`;

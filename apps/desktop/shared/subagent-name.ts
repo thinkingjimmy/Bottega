@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Codex agent Path/threadName
  * [OUTPUT]: Provides displaySubagentName, which encloses internal paths/identifiers for human-readable headings
- * [POS]: Share the name of the Subagent displayed as pure function, main input and renderer historical projection shared consumption
+ * [POS]: Shared pure function for subagent display names; consumed by both main's input handling and the renderer's history projection
  */
 
 export function displaySubagentName(value: string) {

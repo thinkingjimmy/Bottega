@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on rendererIpc, shared Memory channel, Provider Register Projection with Consent
- * [OUTPUT]: Provides registerMemoryServiceIpc with assertMemoryProviderId, centrally registers the status of the Memory façade, source observation, data directory reveal and Consent renderer pathways
+ * [OUTPUT]: Provides registerMemoryServiceIpc, centrally registering the Memory façade status, source observation, data directory reveal and Consent renderer pathways
  * [POS]: The IPC adapter for main/memory/service; Service provides the ability to close, no longer connect protocols to the lifecycle of the window
  */
 
@@ -17,18 +17,10 @@ import {
   assertConsentPreviewInput,
 } from "../orchestration/consent-controller";
 import {
+  assertMemoryProviderId,
   MEMORY_CONFIG_PANELS,
   MEMORY_PROVIDER_DESCRIPTORS,
 } from "../providers/registry";
-
-/* reveal 会把这个字符串变成真实数据目录路径并交给 Finder 打开：注册表形状之外
-   一律在边界拒绝。禁止加 `m` 标志——多行模式下 `$` 认行尾，"everos\n" 会溜过去。 */
-export function assertMemoryProviderId(raw: unknown) {
-  if (typeof raw !== "string" || !/^[a-z0-9-]{1,64}$/.test(raw)) {
-    throw new Error("Memory provider id 无效");
-  }
-  return raw;
-}
 
 export function registerMemoryServiceIpc(
   window: BrowserWindow,
@@ -55,7 +47,7 @@ export function registerMemoryServiceIpc(
     closed(): void;
   }
 ) {
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的 Memory 请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的 Memory 请求")
     .roles("main")
     .handle(MEMORY_CHANNEL.providers, () =>
       structuredClone(MEMORY_PROVIDER_DESCRIPTORS)

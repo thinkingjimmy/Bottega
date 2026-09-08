@@ -7,7 +7,8 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 ## Multi-agent
 
 - Connect Codex, Claude Code, Kimi Code, and OpenCode through one backend-neutral ACP transport.
-- Keep each task bound to a stable Agent session while preserving the provider's own authentication and quota model.
+- Switch the next Agent in an idle chat while preserving its transcript, per-reply authors, and bounded history handoff. Each provider keeps its own authentication and quota model.
+- See runtime and authentication availability in the composer, with scoped installation, sign-in, and retry actions.
 - Use Plan mode, live steering, queued messages, and visible tool activity without hiding backend differences.
 - Create Sections and Subagents for parallel work, inspect their progress, pass bounded context between them, and promote useful results into durable Sections.
 - Search and adopt supported local CLI histories without silently rewriting their original records.
@@ -23,6 +24,8 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 ## App
 
 - Install static, server, or Base-backed Apps from immutable Git revisions.
+- Check each App's minimum Bottega version before installation, rebuilding, authorization, or activation; return to the original candidate after upgrading. All four first-party Apps require Bottega 0.1.3 or newer.
+- Rename an App without rebuilding its active version or changing its data and permissions.
 - Use the bundled Bottega Design Canvas to create self-contained HTML directions, compare live and historical versions, and send numbered visual anchors back to the Agent without granting the preview network or storage access.
 - Use the bundled Fitness Log to explore 72 exercises across 17 muscle regions, view animated demonstrations, and manage training plans in five languages through the host React interface.
 - Read complete, revision-consistent Base snapshots through the App SDK, with recoverable loading and explicit retry states.
@@ -45,6 +48,12 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Scope recall to one Chat, one Project group, or the user's personal workspace.
 - Separate trusted product instructions from recalled, untrusted facts before sending context to an Agent.
 - Show delivery, rebuild, source, version, and attention state instead of collapsing “unavailable” into “empty.”
+
+## Background activity on macOS
+
+- Independently opt into launch at login, keep running after closing the main window, and a floating task panel; all are off by default.
+- Follow running tasks and pending requests from the top of the screen, navigate with the keyboard, and return to the related chat.
+- Use the available menu-bar entry to reopen or quit Bottega while background activity is enabled.
 
 ## Product foundations
 

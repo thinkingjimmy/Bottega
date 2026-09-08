@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on Node/node:sqlite error shapes and the ChatDatabaseFailure union
- * [OUTPUT]: Provides ChatSchemaError, the errcode-based SQLite classifier including the domain conflict verdicts, and the worker-level failure projection
+ * [OUTPUT]: Provides ChatSchemaError, the errcode-based SQLite classifier including the domain conflict verdicts, and the worker-level failure projection that also honors a verdict already carried across the worker boundary
  * [POS]: Shared error boundary for repository outcomes and worker protocol failures
  */
 
@@ -48,6 +48,12 @@ export function sqliteFailureOf(cause: unknown): ChatDatabaseFailure {
 export function failureOf(cause: unknown): ChatDatabaseFailure {
   if (cause instanceof ChatSchemaError) {
     return { kind: cause.kind, message: cause.message };
+  }
+  /* The client re-throws a worker verdict as an Error carrying the typed
+     failure; that verdict is final and is never re-derived from its message. */
+  if (cause instanceof Error && cause.name === "ChatDatabaseError") {
+    const carried = (cause as { failure?: ChatDatabaseFailure }).failure;
+    if (carried && typeof carried.kind === "string") return carried;
   }
   return sqliteFailureOf(cause);
 }

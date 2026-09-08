@@ -163,11 +163,3 @@ export function listModelSpeedState(
     adjustable: options.some((entry) => entry.id !== "default"),
   };
 }
-
-export function optionsLabel(
-  options: CodexTurnOptions,
-  models: CodexModelInfo[]
-) {
-  const model = findModel(models, options.model);
-  return `${compactModelLabel(model?.displayName ?? options.model)} ${effortLabel(options.reasoningEffort)}`;
-}

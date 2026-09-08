@@ -132,6 +132,8 @@ export async function hydratePreparedTurn(
   }
   return {
     submission: {
+      agentSwitch: prepared.agentSwitch,
+      expectedAgentRevision: prepared.expectedAgentRevision,
       intentId: prepared.intentId,
       persistence: await hydratePersistence(prepared.persistence),
       content: prepared.content,

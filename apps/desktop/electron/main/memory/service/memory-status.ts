@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Memory IPC/Settings Projection type, current sharing scope/epoch, Recall/Delivery/Rebuild original memory replacement/Health owner only read port
- * [OUTPUT]: Provides full examples of the main frozen observationScope associated with rebuild + shared scope/double alert/expectedVersion status Projection, and empty/suspended/unavailable Recall Projection constructor
+ * [OUTPUT]: Provides projectMemoryStatus (frozen observation scope, rebuild, shared-scope, dual warning, expectedVersion) plus recallProjection/unavailableRecallProjection constructors
  * [POS]: The main/memory/service observation projection layer; Service just delivers the fact, the renderer snapshot is assembled here
  */
 
@@ -77,11 +77,15 @@ export function projectMemoryStatus(input: {
   };
 }
 
-export function emptyRecallProjection(requestId: string): MemoryRecallProjection {
+/** A recall projection with no prompt text; `prepared` carries the closed-set outcome. */
+export function recallProjection(
+  requestId: string,
+  prepared: MemoryRecallProjection["prepared"]
+): MemoryRecallProjection {
   return Object.freeze({
     requestId,
     promptText: "",
-    prepared: Object.freeze({ kind: "none" }),
+    prepared: Object.freeze(prepared),
     candidateRefs: Object.freeze([]),
   });
 }
@@ -89,20 +93,6 @@ export function emptyRecallProjection(requestId: string): MemoryRecallProjection
 export function unavailableRecallProjection(
   requestId: string,
   failureKind: MemoryFailureKind
-): MemoryRecallProjection {
-  return Object.freeze({
-    requestId,
-    promptText: "",
-    prepared: Object.freeze({ kind: "unavailable", failureKind }),
-    candidateRefs: Object.freeze([]),
-  });
-}
-
-export function pausedRecallProjection(requestId: string): MemoryRecallProjection {
-  return Object.freeze({
-    requestId,
-    promptText: "",
-    prepared: Object.freeze({ kind: "skipped", reason: "paused" }),
-    candidateRefs: Object.freeze([]),
-  });
+) {
+  return recallProjection(requestId, { kind: "unavailable", failureKind });
 }

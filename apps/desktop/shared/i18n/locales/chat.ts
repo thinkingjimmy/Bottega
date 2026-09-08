@@ -7,9 +7,6 @@
 export const chatEn = {
   provider: {
     listFailed: "Failed to load chats: {{message}}",
-    saveFailed: "Failed to save chat: {{message}}",
-    appSaveFailed: "Failed to save App chat: {{message}}",
-    messageSaveFailed: "Failed to save chat message: {{message}}",
     renameFailed: "Failed to rename chat: {{message}}",
     archiveFailed: "Failed to archive chat: {{message}}",
     deleteFailed: "Failed to delete chat: {{message}}",
@@ -21,9 +18,6 @@ export const chatEn = {
     running: "Generating",
     done: "Completed with a new reply",
     failed: "Run unsuccessful",
-    backendDetecting: "{{backend}} status is being checked",
-    backendUnavailable: "{{backend}} is currently unavailable",
-    backendAvailable: "{{backend}} is available",
     archiveChat: "Archive chat",
     moreActions: "More actions",
     archive: "Archive",
@@ -120,9 +114,6 @@ export const chatEn = {
 export const chatZhCN: typeof chatEn = {
   provider: {
     listFailed: "聊天列表加载失败：{{message}}",
-    saveFailed: "聊天保存失败：{{message}}",
-    appSaveFailed: "App 聊天保存失败：{{message}}",
-    messageSaveFailed: "聊天消息保存失败：{{message}}",
     renameFailed: "聊天重命名失败：{{message}}",
     archiveFailed: "聊天归档失败：{{message}}",
     deleteFailed: "聊天删除失败：{{message}}",
@@ -134,9 +125,6 @@ export const chatZhCN: typeof chatEn = {
     running: "正在生成",
     done: "已完成，有新回复",
     failed: "运行未成功",
-    backendDetecting: "正在检测 {{backend}} 状态",
-    backendUnavailable: "{{backend}} 当前不可用",
-    backendAvailable: "{{backend}} 可用",
     archiveChat: "归档聊天",
     moreActions: "更多操作",
     archive: "归档",
@@ -233,9 +221,6 @@ export const chatZhCN: typeof chatEn = {
 export const chatJa: typeof chatEn = {
   provider: {
     listFailed: "Chat 一覧の読み込みに失敗しました：{{message}}",
-    saveFailed: "Chat の保存に失敗しました：{{message}}",
-    appSaveFailed: "App Chat の保存に失敗しました：{{message}}",
-    messageSaveFailed: "Chat メッセージの保存に失敗しました：{{message}}",
     renameFailed: "Chat の名前変更に失敗しました：{{message}}",
     archiveFailed: "Chat のアーカイブに失敗しました：{{message}}",
     deleteFailed: "Chat の削除に失敗しました：{{message}}",
@@ -247,9 +232,6 @@ export const chatJa: typeof chatEn = {
     running: "生成中",
     done: "新しい返信があります",
     failed: "実行に失敗しました",
-    backendDetecting: "{{backend}} の状態を確認中",
-    backendUnavailable: "{{backend}} は現在利用できません",
-    backendAvailable: "{{backend}} は利用できます",
     archiveChat: "チャットをアーカイブ",
     moreActions: "その他の操作",
     archive: "アーカイブ",
@@ -341,9 +323,6 @@ export const chatJa: typeof chatEn = {
 export const chatFr: typeof chatEn = {
   provider: {
     listFailed: "Échec du chargement des chats : {{message}}",
-    saveFailed: "Échec de l’enregistrement du chat : {{message}}",
-    appSaveFailed: "Échec de l’enregistrement du chat de l’App : {{message}}",
-    messageSaveFailed: "Échec de l’enregistrement du message : {{message}}",
     renameFailed: "Échec du renommage du chat : {{message}}",
     archiveFailed: "Échec de l’archivage du chat : {{message}}",
     deleteFailed: "Échec de la suppression du chat : {{message}}",
@@ -355,9 +334,6 @@ export const chatFr: typeof chatEn = {
     running: "Génération en cours",
     done: "Nouvelle réponse disponible",
     failed: "Échec de l’exécution",
-    backendDetecting: "Vérification de l’état de {{backend}}",
-    backendUnavailable: "{{backend}} est actuellement indisponible",
-    backendAvailable: "{{backend}} est disponible",
     archiveChat: "Archiver le chat",
     moreActions: "Plus d’actions",
     archive: "Archiver",
@@ -449,9 +425,6 @@ export const chatFr: typeof chatEn = {
 export const chatEs: typeof chatEn = {
   provider: {
     listFailed: "No se pudieron cargar los chats: {{message}}",
-    saveFailed: "No se pudo guardar el chat: {{message}}",
-    appSaveFailed: "No se pudo guardar el chat de la App: {{message}}",
-    messageSaveFailed: "No se pudo guardar el mensaje del chat: {{message}}",
     renameFailed: "No se pudo renombrar el chat: {{message}}",
     archiveFailed: "No se pudo archivar el chat: {{message}}",
     deleteFailed: "No se pudo eliminar el chat: {{message}}",
@@ -463,9 +436,6 @@ export const chatEs: typeof chatEn = {
     running: "Generando",
     done: "Hay una respuesta nueva",
     failed: "La ejecución no se completó",
-    backendDetecting: "Comprobando el estado de {{backend}}",
-    backendUnavailable: "{{backend}} no está disponible actualmente",
-    backendAvailable: "{{backend}} está disponible",
     archiveChat: "Archivar chat",
     moreActions: "Más acciones",
     archive: "Archivar",

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on usage-view-state access restrictions/target paving, usage-client summaries/scanning/price subscriptions, renderer locale, shared i18n runtime, and errors
- * [OUTPUT]: Provides usageStore: module-level snapshot, mount-token activate, per-target seq, powerbrush and revision floor Active closure
- * [POS]: Usage renderer is the sole owner; View subscription-only, price push and no push high revision Summary
+ * [OUTPUT]: Provides usageStore: a module-level snapshot with mount-token activation, per-target sequence tracking, pricing refresh, and a revision floor that discards stale responses
+ * [POS]: Renderer's sole owner of Usage state; views only subscribe, and a summary can never overwrite a higher revision already applied
  */
 
 import type { UsageQueryTarget } from "../../shared/usage-ipc";

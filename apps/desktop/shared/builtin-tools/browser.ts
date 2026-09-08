@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod and builtin-tools/platform read/mutation annotations/spec
- * [OUTPUT]: Provides BrowserAction to distinguish between combined, non-$ref wire, and browser-based five tools static spec
- * [POS]: The source of the truth in the Browser domain of the builtin-tools; Batch processing DSL is the only protocol that the Agent can perform web actions on
+ * [OUTPUT]: Provides the discriminated BrowserAction schema, its loose wire counterpart for non-$ref tool input, and the five browser_* built-in tool specs
+ * [POS]: Authoritative source for the Browser domain of builtin-tools; the batched browser_act action DSL is the only channel through which the Agent performs web actions
  */
 
 import { z } from "zod";

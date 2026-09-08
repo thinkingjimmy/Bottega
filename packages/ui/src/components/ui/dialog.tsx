@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on Radix Dialog, Button, Lucide, icons, style tools and shared UI text
- * [OUTPUT]: Provides a localized closed name for Dialog
+ * [OUTPUT]: Provides Dialog, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, and DialogDescription with localized close controls
  * [POS]: The basic layer of the modular dialog box components/ui, unified Electron no-drag with accessible shutdown movements
  */
 
@@ -30,12 +30,6 @@ function DialogPortal({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
-}
-
-function DialogClose({
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Close>) {
-  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
 /* ── 为什么每个浮层都要写 no-drag ──────────────────────────────────
@@ -172,13 +166,10 @@ function DialogDescription({
 
 export {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogOverlay,
-  DialogPortal,
   DialogTitle,
   DialogTrigger,
 }

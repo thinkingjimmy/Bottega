@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared ChartItem/Base column/cluster, ChartOp, BaseFilterEditor, viewConfigHitAreaClass and shadcn
- * [OUTPUT]: Provides ChartEditor with chartTypeLabelKey (sample name by id see bases.chart.type*), which is responsible for configuring the forms, single-card unobstructed colors, failed recovery screens, and keyboard layout intent; Triggered to gain 28px vision / 44px Lifetime, the floating-layer interior is single-line with design system native density, the shell only rolls when shaped with the available height up to the indoor layer SlimScroller
- * [POS]: The basic rules for the use of the database are: No value, no pointer moves, just throw up the id level ChartOp
+ * [OUTPUT]: Provides ChartEditor (per-card type/aggregation/color/filter config form) with chartTypeLabelKey (type-id to catalog-key mapping, see bases.chart.type.*), a failure-recovery view, and keyboard move-up/move-down reordering intent; popover rows keep a 28px visual height inside a 44px hit target per design-system density, and the shell scrolls via SlimScroller only when the available height requires it
+ * [POS]: The Base Chart per-card configuration surface; it holds no chart state itself and performs no persistence — it only emits an id-scoped ChartOp for the caller to apply
  */
 
 import type { ReactNode } from "react";

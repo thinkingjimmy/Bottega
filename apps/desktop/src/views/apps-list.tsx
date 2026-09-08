@@ -4,6 +4,8 @@
  * [POS]: views `/apps` import of products; The page only tells you what's installed, the first App only enters from the empty shelf, the page head + goes straight to GitHub installation
  */
 
+import { CompatibilityRequests } from "@/components/apps/compatibility/requests";
+import type { AppCompatibilityFailure } from "../../shared/app-host/contract";
 import { useEffect, useState, type ReactNode } from "react";
 import { AddAppHint } from "@/components/apps/add-app-hint";
 import { AddAppDialog } from "@/components/apps/install/add-app-dialog";
@@ -19,7 +21,7 @@ import {
   type AppListItem,
   useApps,
 } from "@/components/providers/apps-provider";
-import { readAppLog } from "@/lib/apps-client";
+import { readAppLog, presentAppCompatibility } from "@/lib/apps-client";
 import {
   Sheet,
   SheetContent,
@@ -34,12 +36,11 @@ import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { canonicalAppSurfaceRoute } from "../../shared/window-surfaces-ipc";
 
-type InstalledApp = Extract<AppListItem, { kind: "installed" }>;
 /* epoch 让「再打开一次」成为一次新挂载：安装弹窗因此一次挂载只 probe 一次，
    而关闭不卸载它，退场动画得以完整播完。 */
-type PresetFlow = { preset: PresetAppSummary; epoch: number; open: boolean };
+type PresetFlow = { requestId?: string; preset: PresetAppSummary; epoch: number; open: boolean };
 
-function ProgressOverlay({ app }: { app: InstalledApp }) {
+function ProgressOverlay({ app }: { app: AppListItem }) {
   const { t } = useAppTranslation();
   const { cancelInstall, liveLogs } = useApps();
   const [logOpen, setLogOpen] = useState(false);
@@ -161,6 +162,7 @@ export function AppsListView() {
     listWarning,
     loading,
     probePreset,
+    presets,
     runtimeWarning,
     sidebarStatus,
   } = useApps();
@@ -168,6 +170,7 @@ export function AppsListView() {
     appId: "",
     revision: 0,
   });
+  const [repoResumeId, setRepoResumeId] = useState<string | undefined>();
   const [presetFlow, setPresetFlow] = useState<PresetFlow | null>(null);
   const navigationError =
     typeof (location.state as { appNavigationError?: unknown } | null)
@@ -175,8 +178,7 @@ export function AppsListView() {
       ? (location.state as { appNavigationError: string }).appNavigationError
       : "";
   const progressApp = apps.find(
-    (app): app is InstalledApp =>
-      app.kind === "installed" &&
+    (app) =>
       app.record.id === progressRequest.appId &&
       isWorkingState(app.record.state)
   );
@@ -191,10 +193,7 @@ export function AppsListView() {
   useEffect(() => {
     const appId = searchParams.get("progress");
     if (!appId || loading) return;
-    const requested = apps.find(
-      (app): app is InstalledApp =>
-        app.kind === "installed" && app.record.id === appId
-    );
+    const requested = apps.find((app) => app.record.id === appId);
     const timer = window.setTimeout(() => {
       if (requested && isWorkingState(requested.record.state)) {
         setProgressRequest((current) => ({
@@ -208,6 +207,13 @@ export function AppsListView() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [apps, loading, searchParams, setSearchParams]);
+
+  const resumeCompatibility = (failure: AppCompatibilityFailure) => {
+    if (failure.candidate.appId) { presentAppCompatibility(failure); return; }
+    const preset = presets.find((item) => item.id === failure.candidate.presetId);
+    if (preset) setPresetFlow((current) => ({ preset, epoch: (current?.epoch ?? 0) + 1, open: true, requestId: failure.requestId }));
+    else setRepoResumeId(failure.requestId);
+  };
 
   const openPreset = (preset: PresetAppSummary) => {
     setPresetFlow((current) => ({
@@ -226,9 +232,10 @@ export function AppsListView() {
       <PageShell
         title={t("common.apps")}
         icon={<LayoutGrid />}
-        actions={<AddAppDialog onInstallStarted={openProgress} />}
+        actions={<AddAppDialog onInstallStarted={openProgress} resumeRequestId={repoResumeId} onResumeClosed={() => setRepoResumeId(undefined)} />}
       >
         <SlimScroller className="h-full overflow-y-auto p-4">
+          <CompatibilityRequests onResume={resumeCompatibility} highlightedId={searchParams.get("compatibility")} />
           {navigationError && (
             <p
               role="alert"
@@ -261,7 +268,7 @@ export function AppsListView() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {apps.map((app) => (
                 <AppCard
-                  key={app.kind === "installed" ? app.record.id : app.id}
+                  key={app.record.id}
                   app={app}
                   onOpenProgress={openProgress}
                 />
@@ -272,6 +279,7 @@ export function AppsListView() {
       </PageShell>
       {presetFlow && (
         <PresetInstallDialog
+          compatibilityRequestId={presetFlow.requestId}
           discardPresetProbe={discardPresetProbe}
           key={`${presetFlow.preset.id}:${presetFlow.epoch}`}
           onInstall={async (input) => {

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on custody control protocols, Node net/child_process/fs and identity probe; socket/token/nonce only when spawn
- * [OUTPUT]: The process is backend-based, with the ability to activate the process as a process manager instead of the main, and the process is backend-based: return authentication, etc
- * [POS]: The custody is a separate guardian process input (Electron run-as-node); I don't understand the chat, the App or any product ledger
+ * [INPUT]: Depends on the custody protocol/identity probe, Node net/child_process/fs, and the socket/token/nonce env vars supplied at spawn time
+ * [OUTPUT]: Provides the guardian entry point: connects to the control socket, reports process identity, spawns the backend on activate with inherited stdio, propagates its exit code/signal verbatim, and self-terminates if the control channel drops before activation
+ * [POS]: Custody's standalone guardian process entry point (Electron run-as-node); knows nothing of chat, the App, or any product ledger
  */
 
 import { spawn, type ChildProcess } from "node:child_process";

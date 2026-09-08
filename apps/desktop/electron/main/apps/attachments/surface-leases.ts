@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on AppStore, ProjectStore, AppGrantAuthority ordinary/Studio projections, the canonical effective-workspace resolver, trusted renderer residence, and shared surface DTOs
- * [OUTPUT]: Provides AppAttachmentSurfaceLeaseRegistry with exact chat-tab/Studio authorization, cutover-derived runtime leases, read-only staging/draining generations, active-only mutation fencing, renderer ownership, drift revalidation, and bounded tombstones
+ * [INPUT]: Depends on AppStore, ProjectStore, AppGrantAuthority ordinary/Studio projections, the canonical effective-workspace resolver, trusted renderer residence, shared surface DTOs, and the main/errors statusError factory
+ * [OUTPUT]: Provides AppAttachmentSurfaceLeaseRegistry with exact authorization, staged runtime leases, active-only mutation fencing, renderer ownership, drift revalidation, and coded invalid/revoked lease failures
  * [POS]: Main-only UI capability registry for apps/attachments; a slot or grant never substitutes for a live surface lease
  */
 
 import { randomUUID } from "node:crypto";
+import { statusError } from "../../errors";
 import type {
   AppAttachmentSurface,
   AppSurfaceAcquireInput,
@@ -257,8 +258,8 @@ export class AppAttachmentSurfaceLeaseRegistry {
       this.pruneTombstones();
       /* 撤销过 = 410 gone，从未存在 = 401：同一事实只查一次。 */
       throw this.tombstones.has(surfaceLeaseId)
-        ? statusError(410, "App surface lease 已撤销")
-        : statusError(401, "App surface lease 无效");
+        ? statusError(410, "APP_SURFACE_LEASE_REVOKED: App surface lease has been revoked")
+        : statusError(401, "APP_SURFACE_LEASE_INVALID: Invalid App surface lease");
     }
     const lease = stored.surface;
     if (stored.renderer) {
@@ -279,7 +280,7 @@ export class AppAttachmentSurfaceLeaseRegistry {
       } catch {
         this.leases.delete(surfaceLeaseId);
         this.rememberGone(surfaceLeaseId);
-        throw statusError(410, "App surface lease 已因 surface residence 变化失效");
+        throw statusError(410, "APP_SURFACE_LEASE_REVOKED: App surface residence has changed");
       }
     }
     const app = this.apps.get(lease.appId);
@@ -315,7 +316,7 @@ export class AppAttachmentSurfaceLeaseRegistry {
       ) {
         this.leases.delete(surfaceLeaseId);
         this.rememberGone(surfaceLeaseId);
-        throw statusError(410, "App staging surface lease 已因 grant 变化失效");
+        throw statusError(410, "APP_SURFACE_LEASE_REVOKED: App staging surface grant has changed");
       }
       return structuredClone(lease);
     }
@@ -351,7 +352,7 @@ export class AppAttachmentSurfaceLeaseRegistry {
     ) {
       this.leases.delete(surfaceLeaseId);
       this.rememberGone(surfaceLeaseId);
-      throw statusError(410, "App surface lease 已因 grant/incarnation/generation 变化失效");
+      throw statusError(410, "APP_SURFACE_LEASE_REVOKED: App surface authorization or generation has changed");
     }
     return structuredClone(lease);
   }
@@ -440,8 +441,4 @@ function revisionKey(snapshot: {
     snapshot.studioGrantRevision ?? -1,
     snapshot.baseGuiDecisionRevision ?? -1,
   ].join(":");
-}
-
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }

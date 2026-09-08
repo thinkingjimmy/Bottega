@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on AppSettings, Memory consent/settings stores, sharing range IPC type and localization errors
- * [OUTPUT]: Provides useMemoryConsent: enable/cutover/sharing Common use preview→authority→mutation State machine, failed to save the pop-up window, historical selection and error ((third-level listing directly into openSharing, no longer mapped through two switches)
- * [POS]: The user can access the view-local interaction owner of views/settings-memoryPages combine only set lines and dialogs, not duplicate capability processes
+ * [OUTPUT]: Provides useMemoryConsent: a shared enable/cutover/sharing preview→confirm→mutation state machine with save-failure surfacing, history-inclusion choice, and error state; third-tier sharing options map directly into openSharing instead of two chained switches
+ * [POS]: views/settings-memory's view-local interaction owner; pages compose only rows and dialogs from it, never re-implementing its capability flow
  */
 
 import { useEffect, useState } from "react";

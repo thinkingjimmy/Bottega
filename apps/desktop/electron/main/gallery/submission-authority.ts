@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on SubmissionContentV1 strict schema, Agent backend/runtime snapshot with transcript/owner-native attachment source authority port
- * [OUTPUT]: Provides assertTrustedGallerySubmission, capability, conversation with the target Chat by invoke
- * [POS]: The entrance authority of the gallery; The renderer epoch is used only for the anti-competitive mode, and the actual facts determine whether or not the renderer epoch is accessed
+ * [INPUT]: Depends on the SubmissionContentV1 schema, shared AgentBackendId/BackendCapabilities/GalleryMediaSourceRef types, and caller-supplied runtime-resolution and source-authority ports
+ * [OUTPUT]: Provides assertTrustedGallerySubmission: validates gallery attachments belong to the target conversation, confirms the backend has imageInput capability installed, and authorizes each attachment source
+ * [POS]: Gallery's submission entry-point authority; ignores any renderer-reported epoch and decides purely from live runtime facts, not client-claimed state
  */
 
 import type {

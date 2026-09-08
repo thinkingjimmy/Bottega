@@ -1,7 +1,7 @@
 /**
- * [INPUT]: dependence when not in operation; 5 languages to share and build messages
+ * [INPUT]: No runtime dependencies; defines five isomorphic locale objects for chat message revision
  * [OUTPUT]: Provides chatRevisionEn/ZhCN/Ja/Fr/Es catalogs
- * [POS]: The new feature catalog for desktop i18n is modified and installed by five top-level locale
+ * [POS]: Message-edit/revision feature catalog for desktop i18n; assembled by each of the five top-level locales
  */
 
 export const chatRevisionEn = {

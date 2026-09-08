@@ -4,6 +4,7 @@
  * [POS]: chat/transcript control-message renderer; ordinary user and assistant content stays in the standard message bubble path
  */
 
+import { AgentSwitchNotice } from "../agent-switch/notice";
 import { memo, useEffect, useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type {
@@ -29,7 +30,7 @@ function localizedNoticeMessageContent(
   notice: ChatNoticeData,
   t: ReturnType<typeof useAppTranslation>["t"]
 ) {
-  if (notice.kind === "app-chat-ready") return "";
+  if (notice.kind === "app-chat-ready" || notice.kind === "agent-switched") return "";
   if (notice.kind === "manual-recovered") return t("notice.manualRecovered");
   if (notice.kind === "skill-descriptions-truncated") {
     return t("notice.skillDescriptionsTruncated");
@@ -146,6 +147,7 @@ export const ChatNotice = memo(function ChatNotice({
 }: {
   message: NoticeChatMessage;
 }) {
+  if (message.notice.kind === "agent-switched") return <AgentSwitchNotice notice={message.notice} />;
   return message.notice.kind === "app-chat-ready"
     ? null
     : <VisibleChatNotice message={message} />;

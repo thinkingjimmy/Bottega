@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Accepts ChatComposer and Gallery host Registered public focus action
+ * [INPUT]: Accepts focus callbacks registered by the ChatComposer and the Gallery host, keyed by chatId
  * [OUTPUT]: Provides a narrow controller for registering/calling composer and gallery focus by chatId
- * [POS]: The focus of the lib/gallery link; Hide the RichInput DOM ref to avoid Tab rotation and private ref collusion across components
+ * [POS]: The cross-component focus link for lib/gallery; it keeps the RichInput DOM ref private so components hand off focus without sharing refs directly
  */
 
 const composers = new Map<string, () => void>();

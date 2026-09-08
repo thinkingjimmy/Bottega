@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the Agent domain with clearly truncated facts PromotableResultSource narrow ports, ConversationCoordinator seed admission, current lease provenance and UTF-8 interceptor
- * [OUTPUT]: Provides promoteSubagentResult; The Number of bits is set by the "N-rendered must have N bits" (footer budget stashes to each piece), the first bits are perpetuated by D-D6 provenance, the last bits are given read_Section restored input, the restored bits are projected by admission and the book provenance is upgraded to idle section by default with the Subagent name
- * [POS]: The cross-domain authorization adapter for sections; Consuming narrow read ports only, not relying on Subagent SpawnService implementation
+ * [INPUT]: Depends on the Agent domain's PromotableResultSource (peeks a possibly-truncated subagent result), a narrow PromoteAdmissionPort into ConversationCoordinator's seed admission, the current tool-call lease's provenance, UTF-8-safe truncation, and main/errors' statusError
+ * [OUTPUT]: Provides promoteSubagentResult, which splits a subagent result into up to CHUNK_LIMIT 32 KiB messages via a fixed-point search over the chunk count (so the fixed per-message footer budget never changes which message is "last"), stamps promote provenance on the first message header, submits the chunks through PromoteAdmissionPort to admit/seed a Section, and returns section_id/promoted_bytes/truncated/first_turn
+ * [POS]: Cross-domain authorization adapter for sections; consumes only narrow read ports, never the SubagentSpawnService implementation directly
  */
 
 import type { PromotableResultSource } from "../agent/subagent-spawn";
@@ -9,6 +9,7 @@ import type { BuiltinToolContext } from "../tools/registry";
 import type { AgentBackendId } from "../../../shared/agent-ipc";
 import type { PersistedSubagentStatus } from "../../../shared/chats-ipc";
 import { truncateUtf8 } from "../../../shared/truncate-utf8";
+import { statusError } from "../errors";
 
 const PROMOTED_MESSAGE_BYTE_LIMIT = 32 * 1024;
 const CHUNK_LIMIT = 16;
@@ -158,9 +159,7 @@ function splitBodies(input: RenderInput, total: number) {
       - Buffer.byteLength(promotionHeader(input, index, total), "utf8")
       - Buffer.byteLength(promotionFooter(total), "utf8");
     if (bodyBudget <= 0) {
-      throw Object.assign(new Error("promote provenance 头超过消息预算"), {
-        status: 413,
-      });
+      throw statusError(413, "promote provenance 头超过消息预算");
     }
     const body = truncateUtf8(rest, bodyBudget).value;
     if (!body) break;

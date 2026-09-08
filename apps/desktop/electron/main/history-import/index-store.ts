@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod, Durable Json, shared history-import
- * [OUTPUT]: Provides history-index v1: Project visibility/Memory intent, per-source revision, file manifest, canonical Chat/generation route pointers with dangling-route forgetting, and legacy-divergence self-healing
- * [POS]: The history-import side of the product reads only index ledgers; Save only external source projections and fingerprints, not to transcribe CLI files or ChatStore
+ * [OUTPUT]: Provides history-index v1: Project visibility/Memory intent, per-source revision, file manifest, and canonical Chat/generation route pointers with dangling-route forgetting; a ledger the strict schema rejects is quarantined by DurableJson, never rewritten
+ * [POS]: History-import's durable index ledger; it stores only external-source projections and fingerprints, never a copy of CLI files or ChatStore
  */
 
 import { join } from "node:path";
@@ -28,9 +28,7 @@ const projectSchema = z.object({
   projectId: z.string().min(1), canonicalRoot: z.string().min(1), membershipRevision: z.number().int().nonnegative(),
   enabled: z.boolean(), memoryImportIntent: z.boolean().default(false), eligibilityRevision: z.number().int().nonnegative().default(0),
   generation: z.number().int().nonnegative(), hasChanges: z.boolean(),
-  /* partialRecord：源枚举扩家（两家→四家）时旧档案缺新键仍合法读入，
-   * 下次 publish 整体覆写即自愈——收紧 schema 不得把存量变成启动陷阱 */
-  counts: z.array(countSchema), sourceRevisions: z.partialRecord(z.enum(HISTORY_SOURCE_KINDS), z.string()),
+  counts: z.array(countSchema), sourceRevisions: z.record(z.enum(HISTORY_SOURCE_KINDS), z.string()),
   entries: z.array(entrySchema), detectedFingerprints: z.record(z.string(), fingerprintSchema),
 }).strict();
 const canonicalRouteSchema = z.object({
@@ -55,27 +53,7 @@ export class HistoryImportIndexStore {
     this.ledger = new DurableJson(join(userData, "history-import", "index-v1.json"), stateSchema, empty);
   }
 
-  /* 单步迁移：旧 v1 档案带两个已死字段——entry 上恒为 false 的 divergence，
-   * 以及顶层 sessionPrefs 呈现 overlay（改名/归档已全部转交 canonical Chat）。
-   * strict schema 收紧后旧档解析必失败，此处剥字段重发布一次即自愈；结构
-   * 陌生的真损坏返回 undefined，维持 DurableJson 的 fail-closed 上抛。 */
-  initialize() {
-    return this.ledger.initialize((raw) => {
-      if (!raw || typeof raw !== "object") return undefined;
-      const cloned = structuredClone(raw) as {
-        projects?: Record<string, { entries?: Array<Record<string, unknown>> }>;
-        sessionPrefs?: unknown;
-      };
-      delete cloned.sessionPrefs;
-      if (!cloned.projects || typeof cloned.projects !== "object") return undefined;
-      for (const project of Object.values(cloned.projects)) {
-        if (!Array.isArray(project?.entries)) return undefined;
-        for (const entry of project.entries) delete entry.divergence;
-      }
-      const migrated = stateSchema.safeParse(cloned);
-      return migrated.success ? migrated.data : undefined;
-    });
-  }
+  initialize() { return this.ledger.initialize(); }
   snapshot() { return this.ledger.snapshot(); }
 
   project(projectId: string): StoredHistoryProject | undefined {

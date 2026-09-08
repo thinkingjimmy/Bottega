@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the loopback of wire.ts JSON client with the assertor, memory provider port agreement, standardized baseUrl
- * [OUTPUT]: Provides OpenVikingProvider: Private combination /health+/ready, independent expression of runtime readiness with data aspect auth, strict recall wire, peer-only data aspect, task three methods with workspace purge
- * [POS]: async-task provider of main/memory; Only parse OpenViking wire and fail to unify to MemoryProviderError
+ * [INPUT]: Depends on wire.ts's LoopbackJsonClient/assertors and the MemoryProvider port contract, pinned to the OpenViking wire shape
+ * [OUTPUT]: Provides OpenVikingProvider: combined /health+/ready readiness, session lifecycle (ensure/dispose/purgeWorkspace), strict recall, and the async task port (capture/commit/getCommitStatus)
+ * [POS]: The async-task provider of main/memory; every wire-shape assumption lives here and every parse failure is normalized to MemoryProviderError
  */
 
 import {

@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Depends on node:crypto SHA-256 and node:fs readFile
- * [OUTPUT]: Provides the framed content-addressing primitives: canonicalJson, framedValueDigest, framedTreeDigest, and the paired source/runtime tree digest
+ * [INPUT]: Depends on node:crypto SHA-256, node:fs readFile, and canonicalJson from apps/support
+ * [OUTPUT]: Provides the framed content-addressing primitives: framedValueDigest, framedTreeDigest, the paired source/runtime tree digest, and the byte-ordered orderedByPath used by every sealed tree
  * [POS]: The digest algebra behind apps/share/package; package-contract.ts decides what belongs in a projection while this file decides what a projection hashes to
  */
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { canonicalJson } from "../../support";
 
 export function framedValueDigest(domain: string, version: number, value: unknown) {
   const hash = createHash("sha256");
@@ -70,7 +71,7 @@ const frames = (hash: ReturnType<typeof createHash>, parts: readonly Buffer[]) =
   for (const part of parts) frame(hash, part);
 };
 
-const orderedByPath = <T extends { path: string }>(files: readonly T[]) =>
+export const orderedByPath = <T extends { path: string }>(files: readonly T[]) =>
   [...files].sort((left, right) =>
     Buffer.compare(Buffer.from(left.path, "utf8"), Buffer.from(right.path, "utf8"))
   );
@@ -97,16 +98,3 @@ function frame(hash: ReturnType<typeof createHash>, bytes: Buffer) {
   hash.update(bytes);
 }
 
-export function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value).filter(([, item]) => item !== undefined);
-    entries.sort(([left], [right]) =>
-      Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"))
-    );
-    return `{${entries
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}

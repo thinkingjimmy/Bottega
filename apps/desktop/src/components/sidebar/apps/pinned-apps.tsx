@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * [INPUT]: Depends on AppsProvider pinned records, exclusive App target/origin state, shared App activation, root-aligned Sidebar primitives, window intents, dropdown menu, and sonner
+ * [INPUT]: Depends on shared appDisplayName, AppsProvider pinned records, the exclusive App target, shared Sidebar App activation, root-aligned Sidebar primitives, window intents, dropdown menu, and sonner
  * [OUTPUT]: Provides PinnedApps: exclusively active root App rows with generation-fenced activation, AppWindow, and direct Unpin
  * [POS]: components/sidebar/apps projection aligned with the parent Apps row; durable pin truth remains in the main-owned AppStore and App windows never own this management surface
  */
 
+import { appDisplayName } from "../../../../shared/apps-ipc";
 import { useState } from "react";
 import { AppWindowIcon, MoreHorizontal, PinOff } from "lucide-react";
 import { useNavigate } from "react-router";
@@ -33,8 +34,7 @@ import {
   canonicalAppSurfaceRoute,
 } from "../../../../shared/window-surfaces-ipc";
 import { useSidebarAppTarget } from "../active/app-target";
-import { sidebarAppOriginStore } from "../active/app-origin";
-import { activateAppSurface } from "./activate-app-surface";
+import { activateSidebarApp } from "./activate-app-surface";
 import {
   SidebarRowMark,
   SidebarRowTitle,
@@ -53,23 +53,11 @@ export function PinnedApps() {
 
   if (!pinnedRecords.length) return null;
 
-  const showApp = async (record: AppRecord) => {
-    const activation = sidebarAppOriginStore.beginActivation(record.id);
-    try {
-      await activation.ready;
-    } catch (cause) {
-      sidebarAppOriginStore.finishNavigation(activation.epoch);
-      toast.error(errorMessage(cause));
-      return;
-    }
-    if (!sidebarAppOriginStore.isCurrent(activation.epoch)) return;
-    await activateAppSurface(record, {
+  const showApp = (record: AppRecord) =>
+    activateSidebarApp(record, {
       navigate,
-      navigationIntentId: activation.intentId,
       onError: (cause) => toast.error(errorMessage(cause)),
     });
-    sidebarAppOriginStore.finishNavigation(activation.epoch);
-  };
 
   const openWindow = async (record: AppRecord) => {
     try {
@@ -134,7 +122,7 @@ function PinnedAppRow({
 }) {
   const { t } = useAppTranslation();
   const menu = usePointerOpenedMenu();
-  const name = record.manifest?.name ?? record.displayName;
+  const name = appDisplayName(record);
   const icon = record.manifest?.icon ?? "📦";
 
   return (

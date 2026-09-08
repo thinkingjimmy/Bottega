@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on the shared stableMemoryDigest primitive, DurableJson corruption classification/quarantine, the Delivery v4 schema, MemorySpaceGate, and atomic filesystem rename
- * [OUTPUT]: Provides Delivery initialization, validated invariant recovery, migration, compaction, attention cleanup, effect receipts, and reservation draining
+ * [INPUT]: Depends on the shared stableMemoryDigest primitive, DurableJson corruption classification/quarantine, the Delivery v4 schema, and MemorySpaceGate
+ * [OUTPUT]: Provides Delivery initialization, validated invariant recovery, compaction, attention cleanup, effect receipts, and reservation draining
  * [POS]: The durable Delivery maintenance owner; only classified corruption may enter quarantine while ordinary I/O fails closed
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, readdir, rename } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   DurableJson,
   quarantineDurableFile,
@@ -84,7 +83,6 @@ export class DeliveryStoreMaintenance {
 
   async initialize() {
     try {
-      await this.archiveV2();
       await this.openLedger();
     } catch (cause) {
       if (!(cause instanceof LedgerInvariantError)) throw cause;
@@ -104,16 +102,8 @@ export class DeliveryStoreMaintenance {
     return this.snapshot();
   }
 
-  /* v3 断代归零是既有升级路径；只有 parse/schema/恢复不变量失败才落入隔离。 */
   private async openLedger() {
-    await this.ledger.initialize((raw) =>
-      raw &&
-      typeof raw === "object" &&
-      !Array.isArray(raw) &&
-      (raw as { schemaVersion?: unknown }).schemaVersion === 3
-        ? emptyState()
-        : undefined
-    );
+    await this.ledger.initialize();
     await this.reconcileRuntimeEpoch();
     await this.compact();
   }
@@ -564,28 +554,6 @@ export class DeliveryStoreMaintenance {
     } else if (instance.attentions[id]) {
       instance.attentions[id]!.resolvedAt = Date.now();
     }
-  }
-
-  private async archiveV2() {
-    const legacy = join(this.root, "outbox.json");
-    await mkdir(dirname(legacy), { recursive: true, mode: 0o700 });
-    await this.isolateLegacy(legacy);
-    await this.isolateLegacy(`${legacy}.bak`);
-    const prefix = `${legacy.slice(legacy.lastIndexOf("/") + 1)}.`;
-    for (const entry of await readdir(this.root).catch(() => [])) {
-      if (
-        !entry.startsWith(prefix) ||
-        (!entry.endsWith(".tmp") && !entry.includes("quarantine")) ||
-        entry.includes(".v2-isolated")
-      ) continue;
-      await this.isolateLegacy(join(this.root, entry));
-    }
-  }
-
-  private async isolateLegacy(path: string) {
-    await rename(path, `${path}.v2-isolated`).catch((cause) => {
-      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
-    });
   }
 
   private async reconcileRuntimeEpoch() {

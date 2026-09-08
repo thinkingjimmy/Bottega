@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node execFile, ACP Share Diagnosis of hypersensitivity with feedback/environment injected at each end
- * [OUTPUT]: Provides createCLIAuthCheck to project the unauthenticated Unified CLI authentication probe core to verify the unlogged ((code=1 and non-kill/timeout)
- * [POS]: The CLI auth assessment mechanism layer of backends; Claude/Codex only declares subcommand, environment and newsletter judgments, and RIGOR is no longer home-based
+ * [INPUT]: Depends on Node execFile and the shared ACP diagnostic-redaction helper, with per-caller feedback/environment injection
+ * [OUTPUT]: Provides createCLIAuthCheck, a shared CLI auth probe that treats exit code 1 (non-killed, non-timeout) as the sole confirmed-logged-out signal
+ * [POS]: Shared CLI-auth probing mechanism for backends; Claude/Codex only declare their subcommand, environment, and logged-out-detection predicate, so neither backend re-implements its own probe
  */
 
 import { execFile } from "node:child_process";

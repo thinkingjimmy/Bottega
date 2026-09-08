@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ProjectsService workspace authority/exclusive queue, guarded Node filesystem primitives, Electron shell, renderer IPC, and shared Project Personalization contracts
- * [OUTPUT]: Provides ProjectPersonalizationService and registerProjectPersonalization with contained list/save/reveal and digest × workspaceRevision CAS
+ * [OUTPUT]: Provides projectPersonalizationService and registerProjectPersonalization with contained list/save/reveal and digest × workspaceRevision CAS
  * [POS]: Main-only Project instruction-file authority; App-bound files are read-only and renderer-supplied paths are never trusted
  */
 
@@ -15,7 +15,7 @@ import {
   stat,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
-import { shell, type BrowserWindow } from "electron";
+import { shell } from "electron";
 import {
   PERSONALIZATION_BYTE_LIMIT,
   PROJECT_PERSONALIZATION_CHANNEL,
@@ -391,12 +391,11 @@ async function durableReplaceFileNoMkdir(
 }
 
 export function registerProjectPersonalization(
-  window: BrowserWindow,
   rendererUrl: string,
   projects: ProjectsService,
   service = new ProjectPersonalizationService(projects)
 ) {
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的 Project 个性化请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的 Project 个性化请求")
     .roles("main")
     .handle(PROJECT_PERSONALIZATION_CHANNEL.list, (projectId) =>
       service.list(projectId as string)

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on PromptInput The order of the synchronized call for the event is the lifecycle of AbortSignal
- * [OUTPUT]: Provides synchronous submission of prohibited access, abortion checks and interruptible step-by-step instructions
- * [POS]: The unified kernel of ui/lib is submitted simultaneously; View projection busy, runtime repeat the same stop-loss meaning hold the wait boundary
+ * [OUTPUT]: Provides PromptInputSubmissionGate (a synchronous re-entrancy lock), throwIfSubmissionAborted, and awaitSubmissionStep, which wraps an async step so it rejects immediately on abort
+ * [POS]: ui/lib's shared submission-concurrency kernel; views project the busy state while the runtime enforces the same single-flight and abort boundary
  */
 
 export class PromptInputSubmissionGate {

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod plus shared Extension digest, generation-ref, and backend identity contracts
- * [OUTPUT]: Provides the v3 ThirdPartyMcpPlan durable schema, settled-v1 migration, inferred entry/binding types, and exact-ref helpers
- * [POS]: Persistence integrity and version-cutover authority for the per-turn App delivery plan ledger; the runtime ledger owns transitions
+ * [OUTPUT]: Provides the v3 ThirdPartyMcpPlan durable schema, inferred entry/binding types, and activePlanSessionRefs
+ * [POS]: Persistence integrity authority for the per-turn App delivery plan ledger; the runtime ledger owns transitions
  */
 
 import { z } from "zod";
@@ -10,6 +10,7 @@ import {
   type ExtensionPackageGenerationRef,
   type Sha256Digest,
 } from "../../../../shared/extensions-ipc";
+import { refKey } from "../registry-canonical";
 
 export const planDigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
   .transform((value) => value as Sha256Digest);
@@ -87,52 +88,9 @@ export const thirdPartyMcpPlanFileSchema = z.object({
   }
 });
 
-const legacyPlanBindingSchema = z.object({
-  deliveryInstanceId: z.string().min(1),
-  sourceIdentity: z.string().min(1),
-  generationRef: refSchema,
-  componentPlanLeaseId: z.string().min(1),
-  resolvedConfigDigest: planDigestSchema,
-}).strict();
-const legacyPlanEntrySchema = z.object({
-  requestId: z.string().min(1),
-  planInstanceId: z.string().min(1),
-  owner: z.string().regex(/^plan:[A-Za-z0-9._:-]+$/),
-  componentPlanLeaseIds: z.array(z.string().min(1)),
-  bindings: z.array(legacyPlanBindingSchema),
-  sourcePlanDigest: planDigestSchema,
-  executionPlanDigest: planDigestSchema.nullable(),
-  resolvedMcpDeliveryInstanceIds: z.array(z.string().min(1)),
-  phase: z.enum(["preparing", "active", "release-pending", "released"]),
-  revision: z.number().int().nonnegative(),
-}).strict();
-const legacyPlanFileSchema = z.object({
-  schemaVersion: z.literal(1),
-  revision: z.number().int().nonnegative(),
-  entries: z.array(legacyPlanEntrySchema),
-}).strict();
-
 export type ThirdPartyMcpPlanFile = z.infer<typeof thirdPartyMcpPlanFileSchema>;
 export type ThirdPartyMcpPlanEntry = ThirdPartyMcpPlanFile["entries"][number];
 export type ThirdPartyMcpPlanBinding = z.infer<typeof planBindingSchema>;
-
-/**
- * v1 cannot prove the backend/session identities required by v3. Only terminal
- * rows are safe to compact; any live legacy custody remains fail-closed.
- */
-export function upgradeThirdPartyMcpPlanFile(
-  raw: unknown
-): ThirdPartyMcpPlanFile | undefined {
-  const legacy = legacyPlanFileSchema.safeParse(raw);
-  if (!legacy.success || legacy.data.entries.some((entry) => entry.phase !== "released")) {
-    return undefined;
-  }
-  return {
-    schemaVersion: 3,
-    revision: legacy.data.revision + 1,
-    entries: [],
-  };
-}
 
 type ValidationAuthority = {
   requestIds: Set<string>;
@@ -249,8 +207,8 @@ function validatePhase(
   issue: ValidationAuthority["issue"]
 ) {
   const bindingRefs = new Set(entry.bindings.map((item) => refKey(item.generationRef)));
-  const retainedRefs = new Set(entry.retainedGenerationRefs.map(refKey));
-  const activeRefs = new Set(activePlanSessionRefs(entry).map(refKey));
+  const retainedRefs = new Set(entry.retainedGenerationRefs.map((ref) => refKey(ref)));
+  const activeRefs = new Set(activePlanSessionRefs(entry).map((ref) => refKey(ref)));
   if (
     retainedRefs.size !== entry.retainedGenerationRefs.length ||
     [...retainedRefs].some((item) => !bindingRefs.has(item))
@@ -286,12 +244,6 @@ export function activePlanSessionRefs(
     if (receipt.releasedAt === null) refs.set(refKey(receipt.generationRef), receipt.generationRef);
   }
   return [...refs.values()];
-}
-
-export const planGenerationRefKey = (ref: ExtensionPackageGenerationRef) => refKey(ref);
-
-function refKey(ref: ExtensionPackageGenerationRef) {
-  return `${ref.packageGenerationId}\0${ref.recordDigest}`;
 }
 
 function sameSet(left: ReadonlySet<string>, right: ReadonlySet<string>) {

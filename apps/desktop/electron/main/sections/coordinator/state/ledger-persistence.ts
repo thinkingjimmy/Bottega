@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Depends on Node Private Temporary Files, Rename, fsync with LedgerState
- * [OUTPUT]: Provides Section ledger Atomic release and release results unknown errors
- * [POS]: The coordinator/state's perpetuated boundaries; Pure mutation does not touch the file system, and RelayLedger is only responsible for submitting the status
+ * [INPUT]: Depends on Node private temporary files, rename, the persistence directory fsync, and LedgerState
+ * [OUTPUT]: Provides persistLedgerState (write-temp/fsync/rename/dir-sync atomic commit) and LedgerAmbiguousCommitError for a commit whose on-disk outcome could not be confirmed
+ * [POS]: Durable-persistence boundary of coordinator/state; owns all ledger file IO, while RelayLedger only decides when to commit
  */
 
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
+import { syncDirectory } from "../../../persistence/durable-json";
 import type { LedgerState } from "./ledger-schema";
 
 export class LedgerAmbiguousCommitError extends Error {
@@ -35,7 +36,7 @@ export async function persistLedgerState(path: string, state: LedgerState) {
   try {
     await rename(temporary, path);
     renamed = true;
-    await syncParent(path);
+    await syncDirectory(dirname(path));
   } catch (cause) {
     const actual = await readFile(path, "utf8").catch(() => null);
     if (actual === content) return;
@@ -45,23 +46,4 @@ export async function persistLedgerState(path: string, state: LedgerState) {
     }
     throw cause;
   }
-}
-
-async function syncParent(path: string) {
-  const directory = await open(dirname(path), "r");
-  try {
-    await directory.sync();
-  } catch (cause) {
-    if (!isCode(cause, "EINVAL") && !isCode(cause, "ENOTSUP")) throw cause;
-  } finally {
-    await directory.close();
-  }
-}
-
-function isCode(cause: unknown, code: string) {
-  return (
-    cause instanceof Error &&
-    "code" in cause &&
-    (cause as NodeJS.ErrnoException).code === code
-  );
 }

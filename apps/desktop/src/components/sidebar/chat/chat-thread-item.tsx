@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Sidebar/dropdown/skeleton/spinner primitives, shared row geometry/action tone, rename/archive feedback, Chats/Projects/Apps/Setup providers, archive restore client, typed product navigation, i18n, chat activity, and routing
- * [OUTPUT]: Provides ChatThreadItem with App-leading identity, typed App Use/exact Editor opening, title/preview/activity, rename, and direct archive actions with targeted View/Undo recovery
- * [POS]: The shared chat line unit of components/sidebar/chat, consumed by the Chats, Activity and Project sublists, unifies the two levels of hover/focus feedback and does not embed li
+ * [INPUT]: Depends on Sidebar/dropdown/skeleton/spinner primitives, shared row geometry/action tone, rename/archive feedback, the Sidebar active path, Chats/Projects/Apps/Setup providers, archive restore client, typed product navigation, i18n, chat activity, and routing
+ * [OUTPUT]: Renders canonical Chat rows with brand identity, shared availability tooltips and existing activity/archive/navigation contracts.
+ * [POS]: Shared chat row unit of components/sidebar/chat, consumed by the Chats, Activity, and Project sublists; unifies both hover/focus feedback levels and leaves list-item semantics to its caller
  */
 
+import { projectAvailability } from "../../../../shared/agent-availability/projection";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
@@ -42,13 +43,17 @@ import {
   useSidebarRenameMenu,
 } from "../rename/sidebar-rename-dialog";
 import { useSidebarArchiveFeedback } from "../archive/archive-feedback";
+import { useSidebarActivePath } from "../active/active-path";
 import type { ChatSummary } from "../../../../shared/chats-ipc";
 import { useChats } from "@/components/providers/chats-provider";
 import { useProjects } from "@/components/providers/projects-provider";
 import { useSetup } from "@/components/providers/setup-provider";
 import { useApps } from "@/components/providers/apps-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { AgentBackendIcon, backendLabel } from "@/lib/agent-backends";
+import {
+  AgentBackendIcon,
+  backendLabel,
+} from "@/lib/agent-backends";
 import { projectDraftRoute } from "@/lib/draft-route";
 import { restoreArchiveTargets } from "@/lib/archive-client";
 import {
@@ -60,7 +65,6 @@ import { openAppEditor } from "@/lib/apps-client";
 
 type ChatThreadItemProps = {
   chat: ChatSummary;
-  active: boolean;
   variant?: "root" | "sub";
   badge?: string;
   /** 最后一条发言的提炼；给了就长出零缩进的两行预览（Activity 独有）。 */
@@ -80,8 +84,7 @@ const rootMenuButtonClass =
 const menuActionToneClass =
   "cursor-pointer text-sidebar-foreground/35 hover:bg-transparent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground aria-expanded:text-sidebar-foreground";
 
-/** history 行与 chat 行共用同一 hover 显隐法则；导出以免两处各抄一份漂移。 */
-export const subMenuActionClass =
+const subMenuActionClass =
   `pointer-events-none opacity-0 ${menuActionToneClass} group-has-[:focus-visible]/menu-sub-item:pointer-events-auto group-has-[:focus-visible]/menu-sub-item:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 aria-expanded:pointer-events-auto aria-expanded:opacity-100`;
 
 /* ── 行首那一格只说一件事：这个会话此刻要你知道什么 ────────────────
@@ -100,14 +103,12 @@ function ActivityDot({ className, label }: { className: string; label: string })
 
 function ChatThreadIcon({
   chat,
-  unavailable,
-  detecting,
+  availabilityState,
   activity,
   appIdentity,
 }: {
   chat: ChatSummary;
-  unavailable: boolean;
-  detecting: boolean;
+  availabilityState: import("../../../../shared/agent-availability/types").AvailabilityState;
   activity?: ChatActivity;
   appIdentity?: { icon: string; name: string };
 }) {
@@ -153,31 +154,22 @@ function ChatThreadIcon({
   return (
     <AgentBackendIcon
       backend={chat.agent}
-      /* 不可用时红色剪影压过品牌身份：这一格图标承载的是健康，不是身份。 */
-      tone={unavailable ? "mono" : "brand"}
-      /* 只说颜色。尺寸是 SidebarRowMark 这一格的法则，不归痕迹所有 */
-      className={
-        unavailable ? "text-destructive/70" : "text-sidebar-foreground/55"
-      }
-      aria-label={
-        detecting
-          ? t("chat.sidebar.backendDetecting", { backend })
-          : unavailable
-          ? t("chat.sidebar.backendUnavailable", { backend })
-          : t("chat.sidebar.backendAvailable", { backend })
-      }
+      tone="brand"
+      className={availabilityState === "ready" ? "text-sidebar-foreground/55" : "text-muted-foreground"}
+      aria-label={`${backend} · ${t(`agentAvailability.state.${availabilityState}`)}`}
+
     />
   );
 }
 
 export function ChatThreadItem({
   chat,
-  active,
   variant = "root",
   badge,
   preview,
 }: ChatThreadItemProps) {
   const { t } = useAppTranslation();
+  const activePath = useSidebarActivePath();
   const { renameChat, archiveChat } = useChats();
   const { projects } = useProjects();
   const { records: apps } = useApps();
@@ -190,17 +182,21 @@ export function ChatThreadItem({
   const [busy, setBusy] = useState(false);
   const renameMenu = useSidebarRenameMenu(() => setRenameOpen(true));
   const appUseContext = context?.kind === "app-use" ? context : null;
+  /* App Use chats live on the App route, so their identity is the hash suffix;
+     every other chat is active exactly on its own /chat route. */
+  const active = appUseContext
+    ? activePath.endsWith(`#app-use:${chat.id}`)
+    : activePath === `/chat/${chat.id}`;
   const app = appUseContext
     ? apps.find((candidate) => candidate.id === appUseContext.appId)
     : undefined;
   const Item = variant === "sub" ? SidebarMenuSubItem : SidebarMenuItem;
   const MenuButton =
     variant === "sub" ? SidebarMenuSubButton : SidebarMenuButton;
-  const backendStatus = setup.status?.backends.find(
-    (backend) => backend.id === chat.agent
-  )?.status;
-  const backendUnavailable =
-    backendStatus !== undefined && backendStatus !== "ready";
+  const backend = setup.status?.backends.find(
+    (candidate) => candidate.id === chat.agent
+  );
+  const availabilityState = projectAvailability(backend, setup.now).state;
   const handleArchive = async () => {
     setBusy(true);
     try {
@@ -291,8 +287,7 @@ export function ChatThreadItem({
             <SidebarRowMark>
               <ChatThreadIcon
                 chat={chat}
-                unavailable={backendUnavailable}
-                detecting={backendStatus === undefined}
+                availabilityState={availabilityState}
                 activity={activity}
                 appIdentity={{
                   icon: app?.manifest?.icon ?? "📦",
@@ -321,8 +316,7 @@ export function ChatThreadItem({
               <SidebarRowMark>
                 <ChatThreadIcon
                   chat={chat}
-                  unavailable={backendUnavailable}
-                  detecting={backendStatus === undefined}
+                  availabilityState={availabilityState}
                   activity={activity}
                 />
               </SidebarRowMark>

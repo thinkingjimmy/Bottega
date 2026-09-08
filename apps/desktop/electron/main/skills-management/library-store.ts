@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DurableJson upgrade hooks, SerialQueue, package copy/verify helpers, Node fs/path/crypto, and shared agent/import-outcome types
+ * [INPUT]: Depends on DurableJson, SerialQueue, package copy/verify helpers, Node fs/path/crypto, and shared agent/import-outcome types, and statusError from main/errors
  * [OUTPUT]: Provides one serialized schema-v3 ManagedSkillsLibraryStore boundary for import/delete/GC filesystem effects, enabled/requires facts, immutable content generations, tombstone recovery, and idempotent imports
  * [POS]: Sole durable authority for adopted/local Skill bytes and user enablement; Agent home directories never receive library writes
  */
@@ -12,6 +12,7 @@ import type {
   ManagedSkillAgent,
   ManagedSkillImportOutcome,
 } from "../../../shared/unified-skills-ipc";
+import { statusError } from "../errors";
 import { DurableJson } from "../persistence/durable-json";
 import { SerialQueue } from "../persistence/serial-queue";
 import {
@@ -32,9 +33,8 @@ const generationSchema = z.object({
   packageDirectory: z.string().regex(/^[a-f0-9]{64}$/),
   importedAt: z.number().int().nonnegative(),
   /* 导入复核那一刻的来源 revision：候选超预算未哈希（digest=null）时，
-     「已是最新还是有更新」只能靠它比。可选是为了旧库文件——缺席条目在
-     一次同内容 no-op 导入时回填愈合，不必升 schemaVersion。 */
-  sourceRevision: z.string().min(1).optional(),
+     「已是最新还是有更新」只能靠它比。 */
+  sourceRevision: z.string().min(1),
 }).strict();
 const originSchema = z.object({
   agent: z.enum(["codex", "claude", "kimi", "opencode"]),
@@ -58,8 +58,6 @@ const entrySchema = z.object({
 const storeSchema = z.object({
   schemaVersion: z.literal(3),
   revision: z.number().int().nonnegative(),
-  /* 已废除的引导标记：旧档可能还带着，容忍读入、永不再写。 */
-  onboardingDismissed: z.boolean().optional(),
   entries: z.array(entrySchema),
 }).strict();
 
@@ -110,7 +108,7 @@ export class ManagedSkillsLibraryStore {
       await mkdir(this.stagingRoot, { recursive: true, mode: 0o700 });
       /* 旧代/损坏账本按不存在处理（预发布断代裁决）。packages/ 是内容寻址目录，
          孤儿代价只是磁盘字节；重导入同内容会校验后原地复用，不必随账本清扫。 */
-      await this.file.initialize(upgradeLibraryStore);
+      await this.file.initialize();
       await this.resumeDeletionsSerial(custody);
     });
   }
@@ -372,34 +370,12 @@ export class ManagedSkillsLibraryStore {
   }
 }
 
-function upgradeLibraryStore(raw: unknown): Store | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-  const value = raw as { schemaVersion?: unknown; revision?: unknown; entries?: unknown };
-  if (value.schemaVersion !== 2 || !Array.isArray(value.entries)) return undefined;
-  return {
-    schemaVersion: 3,
-    revision: typeof value.revision === "number" ? value.revision : 0,
-    entries: value.entries.map((candidate) => {
-      if (!candidate || typeof candidate !== "object") return candidate;
-      const entry = candidate as Record<string, unknown>;
-      const { onboardingDismissed: _retired, ...rest } = entry;
-      return {
-        ...rest,
-        enabled: true,
-        tombstoneAt: null,
-      };
-    }) as Store["entries"],
-  };
-}
-
 function requireLiveEntry(state: Store, libraryId: string) {
   const entry = state.entries.find(
     (item) => item.libraryId === libraryId && item.tombstoneAt === null
   );
   if (!entry) {
-    throw Object.assign(new Error("Skill library entry 不存在"), {
-      status: 409,
-    });
+    throw statusError(409, "Skill library entry 不存在");
   }
   return entry;
 }
@@ -462,7 +438,7 @@ function assertNamesDoNotConflict(
     const identity = privateSourceIdentity(candidate.source.sourcePath);
     const owner = seen.get(candidate.skill.name);
     if (owner && owner !== identity) {
-      throw Object.assign(new Error(`Skill 同名冲突：${candidate.skill.name}`), { status: 409 });
+      throw statusError(409, `Skill 同名冲突：${candidate.skill.name}`);
     }
     seen.set(candidate.skill.name, identity);
   }
@@ -487,5 +463,5 @@ async function assertStoredDigest(
 }
 
 function changedDuringImport() {
-  return Object.assign(new Error("Skill 来源或暂存字节在导入期间发生变化，请重新预览"), { status: 409 });
+  return statusError(409, "Skill 来源或暂存字节在导入期间发生变化，请重新预览");
 }

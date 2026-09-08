@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AbortController, Promise and the Hard Clock
- * [OUTPUT]: Provides Memory Network controller Registration, task tracking, draining→stopping Two-phase shutdown and border closure
- * [POS]: The owner of the main/memory/runtime network lifecycle; draining container controlled final flush, stopping before calling operation hard refused
+ * [INPUT]: Depends only on AbortController, Promise, and setTimeout
+ * [OUTPUT]: Provides MemoryNetworkRuntime: AbortController registration, in-flight task tracking, and a grace-timed drain-then-stop shutdown that aborts whatever remains
+ * [POS]: The owner of the main/memory/runtime network lifecycle; run()/controller() during draining allow only calls that opt in, and refuse outright once stopping
  */
 
 export class MemoryNetworkRuntime {

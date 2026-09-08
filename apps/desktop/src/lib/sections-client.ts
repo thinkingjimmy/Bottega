@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shared Sections IPC and preload window.sections
- * [OUTPUT]: Provides artificial admission, durable outcome query/ACK/events, chain action and browser obvious degradation
+ * [INPUT]: Depends on shared Sections IPC and the preload-exposed window.sections bridge
+ * [OUTPUT]: Provides manual-turn admission, durable outcome query/ACK/events and relay chain actions; throws when the bridge is absent
  * [POS]: Conversation Coordinator is the only export of renderer lib
  */
 
@@ -21,45 +21,39 @@ declare global {
   }
 }
 
+const bridge = (): SectionsBridgeApi => {
+  const api = window.sections;
+  if (!api) throw new Error("sections bridge unavailable");
+  return api;
+};
+
 export const submitManualTurn = (input: ManualTurnSubmission) =>
-  window.sections?.submitManualTurn(input) ?? null;
+  bridge().submitManualTurn(input);
 
 export const cancelManualTurn = (requestId: string) =>
-  window.sections?.cancelManualTurn(requestId) ?? Promise.resolve();
+  bridge().cancelManualTurn(requestId);
 
 export const ackManualIntents = (intentIds: string[]) =>
-  window.sections?.ackManualIntents(intentIds) ?? Promise.resolve();
+  bridge().ackManualIntents(intentIds);
 
 export const ackSubmissionOutcome = (input: SubmissionAck) =>
-  window.sections?.ackSubmission?.(input) ?? Promise.resolve();
+  bridge().ackSubmission(input);
 
-export const getSubmissionOutcome = (
-  intentId: string
-): Promise<SubmissionOutcome> =>
-  window.sections?.submissionOutcome?.(intentId) ??
-  Promise.resolve({
-    kind: "notFound",
-    intentId,
-    revision: 0,
-    // 无 bridge 的降级环境查不到 fence，绝不能伪造 absent 安全负证明。
-    reservation: "unknown",
-  });
+export const getSubmissionOutcome = (intentId: string) =>
+  bridge().submissionOutcome(intentId);
 
-export function subscribeSubmissionOutcomes(
+export const subscribeSubmissionOutcomes = (
   listener: (outcome: SubmissionOutcome) => void
-) {
-  return window.sections?.onSubmissionOutcome?.(listener) ?? (() => undefined);
-}
+) => bridge().onSubmissionOutcome(listener);
 
 export const stopRelayChain = (requestId: string) =>
-  window.sections?.stopRelayChain(requestId) ??
-  Promise.resolve("not-relay" as const);
+  bridge().stopRelayChain(requestId);
 
 export const continueRelay = (input: RelayActionInput) =>
-  window.sections?.continueRelay(input) ?? Promise.resolve("stale" as const);
+  bridge().continueRelay(input);
 
 export const discardRelay = (input: RelayActionInput) =>
-  window.sections?.discardRelay(input) ?? Promise.resolve("stale" as const);
+  bridge().discardRelay(input);
 
 let actions: RelayActionsSnapshot | null = null;
 let actionsStarted = false;
@@ -81,13 +75,9 @@ export function subscribeRelayActions(
 function startActionProjection() {
   if (actionsStarted) return;
   actionsStarted = true;
-  const bridge = window.sections;
-  if (!bridge) {
-    publishActions({ revision: 0, actions: {} });
-    return;
-  }
-  bridge.onActionsEvent(publishActions);
-  void bridge
+  const api = bridge();
+  api.onActionsEvent(publishActions);
+  void api
     .actionsSnapshot()
     .then(publishActions)
     .catch(() => publishActions({ revision: 0, actions: {} }));

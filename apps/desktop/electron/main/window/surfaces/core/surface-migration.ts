@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SurfaceResidenceLedger CAS, a main-validated target route, and bounded SurfaceCapsuleV1 exchange ports
- * [OUTPUT]: Provides SurfaceMigrationCoordinator with export→main-route normalization→CAS→hydrate→source-retire ordering, pre-hydrate rollback, transaction fencing, and drain
+ * [OUTPUT]: Provides surfaceMigrationCoordinator with export→main-route normalization→CAS→hydrate→source-retire ordering, pre-hydrate rollback, transaction fencing, and drain
  * [POS]: Window surfaces core migration state machine; successful target hydrate is the no-rollback ownership point, while source retirement is cleanup
  */
 
@@ -28,7 +28,8 @@ export type SurfaceMigrationPorts = Readonly<{
     targetWindowId: string,
     sourceWindowId: string,
     transactionId: string,
-    capsule: SurfaceCapsuleV1
+    capsule: SurfaceCapsuleV1,
+    mode?: "present" | "background"
   ): Promise<void>;
   restore(
     sourceWindowId: string,
@@ -41,6 +42,7 @@ export type SurfaceMigrationPorts = Readonly<{
 export type SurfaceMigrationInput = Readonly<{
   surface: SurfaceKey;
   targetRoute: string;
+  mode?: "present" | "background";
   /** 关窗/退出收回时目标路由取胶囊自述（用户停在 data 就回 data），意图式打开仍用显式路由。 */
   deriveRouteFromCapsule?: true;
   expectedRevision: number;
@@ -132,7 +134,8 @@ export class SurfaceMigrationCoordinator {
         input.targetWindowId,
         input.sourceWindowId,
         transactionId,
-        capsule
+        capsule,
+        input.mode
       );
     } catch (cause) {
       /* 回滚 CAS 可能撞上 crash 回收已推进的 revision——那时面已被安置回主窗，

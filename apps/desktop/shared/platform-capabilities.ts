@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends only on a NodeJS platform identifier
- * [OUTPUT]: Provides the immutable 0.1.0 platform-support matrix, the single refusal message, and fail-closed capability assertions
- * [POS]: Single product-policy truth for macOS first-class and Windows/Linux preview boundaries
+ * [INPUT]: Depends only on a NodeJS platform identifier and verified capability delivery facts
+ * [OUTPUT]: Provides the fail-closed support matrix and stable, redacted capability-not-ready diagnostics
+ * [POS]: Product admission boundary; App capabilities remain closed until native contracts are verified, while Chrome import retains its separate scope
  */
 
 export type PlatformCapabilityId =
@@ -52,9 +52,13 @@ export const resolvePlatformCapabilities = (
 export const platformCapabilityUnavailable = (
   capability: PlatformCapabilityId
 ) =>
-  new Error(
-    `PLATFORM_CAPABILITY_UNAVAILABLE: ${capability} is disabled in the 0.1.0 preview`
-  );
+  Object.assign(new Error(
+    `PLATFORM_CAPABILITY_UNAVAILABLE: ${capability} is disabled until its native runtime contract is verified`
+  ), {
+    code: "PLATFORM_CAPABILITY_UNAVAILABLE" as const,
+    capability,
+    readiness: capability === "chromeImport" ? "outside-app-parity-scope" as const : "native-runtime-unverified" as const,
+  });
 
 export function assertPlatformCapability(
   support: PlatformCapabilities,

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on zod; Receive the browser tabs, navigation, viewpoints, visibility and stop batch requests of the renderer
- * [OUTPUT]: Provides Browser IPC channel, https://www.pcc.org/URL/request schema, tab Projects with BrowserBridgeApi
- * [POS]: The user can access the server's server and the server's serverMain holds tabs Truth, the renderer only consumes projections
+ * [INPUT]: Depends on zod; validates renderer requests for browser tabs, navigation, viewport, visibility, and agent-batch cancellation
+ * [OUTPUT]: Provides the BROWSER_CHANNEL IPC channel names, URL/tab/viewport zod schemas, tab projection/snapshot types, and BrowserBridgeApi
+ * [POS]: Shared Browser wire truth; main owns tab state and agent batch execution, the renderer only consumes projections
  */
 
 import { z } from "zod";

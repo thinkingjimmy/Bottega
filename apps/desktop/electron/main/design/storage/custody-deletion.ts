@@ -42,7 +42,7 @@ const fileSchema = z.object({
 }).strict();
 
 export type CustodyDeletionPhase = z.infer<typeof phaseSchema>;
-export type CustodyDeletionEntry = z.infer<typeof entrySchema>;
+type CustodyDeletionEntry = z.infer<typeof entrySchema>;
 type CustodyDeletionFile = z.infer<typeof fileSchema>;
 
 export type CustodyDeletionPorts = Readonly<{

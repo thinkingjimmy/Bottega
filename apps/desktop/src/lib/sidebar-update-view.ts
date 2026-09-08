@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the shared UpdateSnapshot contract only — no React, no IPC, no i18n runtime
  * [OUTPUT]: Provides SidebarUpdateTone, SidebarUpdateGlyph, SidebarUpdateIntent, SidebarUpdateView and describeSidebarUpdate
- * [POS]: Sidebar 底部那颗更新按钮的结论层：更新快照到「出不出现、多重、什么字形、按下去做什么」只判一次，与 lib/about-view、lib/memory-view 同一族
+ * [POS]: Sidebar's bottom update button's conclusion layer — turns an UpdateSnapshot into whether to show, which glyph, and what the button does, decided once; same family as lib/about-view and lib/memory-view
  */
 
 import type { UpdateSnapshot } from "../../shared/update-ipc";
@@ -22,9 +22,11 @@ export type SidebarUpdateGlyph = "download" | "external" | "spinner" | "alert";
 
 /* 按下去到底发生什么。三条通路必须分开命名：曾经它们共用一颗下载图标，
    于是 Windows 上那颗「下载」按下去只是开了个网页。 */
-export type SidebarUpdateIntent = "install" | "releases" | "about";
+export type SidebarUpdateIntent = "install" | "restart" | "releases" | "about";
 
 type SidebarUpdateLabelKey =
+  | "appHost.waitingDownload" | "appHost.checking" | "appHost.unavailable" | "appHost.installBusy" | "appHost.retryError"
+  | "settings.presence.restart"
   | "settings.about.upgrade"
   | "settings.about.manualUpgrade"
   | "settings.about.downloading"
@@ -75,6 +77,11 @@ function show(
 export function describeSidebarUpdate(
   update: UpdateSnapshot
 ): SidebarUpdateView | null {
+  const requirement = update.appRequirement;
+  if (requirement && requirement.status !== "satisfied") {
+    const keys = { "waiting-download": "appHost.waitingDownload", checking: "appHost.checking", unavailable: "appHost.unavailable", "install-busy": "appHost.installBusy", error: "appHost.retryError" } as const;
+    return show({ glyph: ["waiting-download", "checking"].includes(requirement.status) ? "spinner" : "alert", labelKey: keys[requirement.status], intent: "about", tone: "quiet" });
+  }
   const version = update.availableVersion ?? update.currentVersion;
   switch (update.phase) {
     case "available":
@@ -101,6 +108,8 @@ export function describeSidebarUpdate(
         intent: null,
       });
     }
+    case "ready":
+      return show({ glyph: "download", intent: "restart", labelKey: "settings.presence.restart" });
     case "installing":
       return show({
         tone: "quiet",

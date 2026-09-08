@@ -53,6 +53,7 @@ import type {
   BaseMeta,
 } from "../../../../shared/bases-ipc";
 import {
+  BASE_COLUMN_LIMIT,
   dedupeSelectOptions,
   formulaExpressionForDisplay,
   isBaseAttachmentValue,
@@ -440,7 +441,7 @@ export function BaseToolbar({
             trigger={
               <Button
                 className="h-7 border-0 text-xs"
-                disabled={busy || meta.columns.length >= 64}
+                disabled={busy || meta.columns.length >= BASE_COLUMN_LIMIT}
                 size="sm"
                 type="button"
                 variant="ghost"

@@ -49,15 +49,26 @@ export class PresetInstallService {
     this.factory = factory;
   }
 
-  async probePreset(presetId: string): Promise<PresetProbeResult> {
+  async probePreset(presetId: string): Promise<PresetProbeResult>;
+  async probePreset(presetId: string, expectedCommitSha: string | undefined): Promise<PresetProbeResult | { kind: "candidate-unavailable" }>;
+  async probePreset(presetId: string, expectedCommitSha?: string): Promise<PresetProbeResult | { kind: "candidate-unavailable" }> {
     if (this.factory?.handles(presetId)) {
-      return this.factory.probePreset(presetId);
+      const result = await this.factory.probePreset(presetId);
+      const commit = result.kind === "base" ? result.commitSha : result.compatibility.candidate.commitSha;
+      if (expectedCommitSha && commit !== expectedCommitSha) {
+        if (result.kind === "base") await this.factory.discard(result.preflightId);
+        return { kind: "candidate-unavailable" };
+      }
+      return result;
     }
     const source = await this.resolver.resolve(presetId);
+    if (expectedCommitSha && source.expectedCommitSha !== expectedCommitSha) return { kind: "candidate-unavailable" };
     const result = await this.probes.probe(
       source.cloneLocator,
-      source.expectedCommitSha
+      source.expectedCommitSha,
+      presetId
     );
+    if (result.kind === "compatibility-blocked") return result;
     if (result.kind !== "base") throw new Error("首方预设必须是 Base App");
     if (result.commitSha !== source.expectedCommitSha) {
       await this.probes.discard(result.preflightId);
@@ -114,6 +125,7 @@ export class PresetInstallService {
         ref: input.presetId,
         digest: input.digest,
         packageRoot: frozen.packageRoot,
+        candidate: frozen.candidate,
         preset: {
           presetId: input.presetId,
           resolvedPin: current.expectedCommitSha,

@@ -12,10 +12,10 @@ export function createSelectedUpdateAdapter(input: {
   isPackaged: boolean;
   e2eEnabled: boolean;
   fakeVersion?: string;
-  onFakeInstall?: () => void;
+  onFakeInstall?: (version: string) => void;
 }, factories: {
   real(): UpdateAdapter;
-  fake(version?: string, installed?: () => void): UpdateAdapter;
+  fake(version?: string, installed?: (version: string) => void): UpdateAdapter;
 } = {
   real: createElectronUpdateAdapter,
   /* 400ms 让 renderer E2E 稳定观察每一档进度；单测直接构造 fake，

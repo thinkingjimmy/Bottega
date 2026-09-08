@@ -1,38 +1,25 @@
 /**
- * [INPUT]: Depends on Node crypto, the connection transaction helper, typed ChatSchemaError, and immutable migration SQL modules
- * [OUTPUT]: Provides the schema version, the ordered immutable migration list, the single checksum algorithm, and forward-only checksum-verified execution plus typed application_id/user_version future-version fences
- * [POS]: SQLite schema evolution authority; worker initialization must pass through this runner before any repository query
+ * [INPUT]: Depends on Node crypto, the connection transaction helper, typed ChatSchemaError, and the single Chat schema module
+ * [OUTPUT]: Provides CHAT_STORE_APPLICATION_ID, CHAT_STORE_SCHEMA_VERSION, and ensureChatSchema: install the current schema on a fresh database, or fail closed on any database that records a different one (an older schema chain, edited schema bytes, a foreign application_id, a newer user_version)
+ * [POS]: SQLite schema identity gate; worker initialization must pass through it before any repository query — there is no upgrade path, an older database is refused and left untouched
  */
 
 import { createHash } from "node:crypto";
 import type { SqliteDatabase } from "../connection";
 import { transaction } from "../connection";
 import { ChatSchemaError } from "../failure";
-import { CHAT_STORE_SCHEMA_V1 } from "./0001-chat-store";
-import { CHAT_STORE_SCHEMA_V2 } from "./0002-import-entry-completeness";
-import { CHAT_STORE_SCHEMA_V3 } from "./0003-chat-fork";
+import { CHAT_STORE_SCHEMA } from "./0001-chat-store";
 
 export const CHAT_STORE_APPLICATION_ID = 0x424f5454;
-export const CHAT_STORE_SCHEMA_VERSION = 3;
+export const CHAT_STORE_SCHEMA_VERSION = 5;
+const CHAT_STORE_SCHEMA_NAME = "chat-store";
 
-export type Migration = Readonly<{
-  version: number;
-  name: string;
-  sql: string;
-}>;
-
-const MIGRATIONS: readonly Migration[] = [
-  { version: 1, name: "chat-store", sql: CHAT_STORE_SCHEMA_V1 },
-  { version: 2, name: "import-entry-completeness", sql: CHAT_STORE_SCHEMA_V2 },
-  { version: 3, name: "chat-fork", sql: CHAT_STORE_SCHEMA_V3 },
-];
-
-/* 校验和只有一份算法。回归用例要造一个"只应用到某一版"的旧库，就必须
-   用运行器自己的算法写 schema_migrations，否则它证明的是算术，不是迁移。 */
-export const migrationChecksum = (migration: Migration) =>
-  createHash("sha256")
-    .update(`${migration.version}\0${migration.name}\0${migration.sql}`)
-    .digest("hex");
+/* The identity row binds a database to the exact schema bytes that created it.
+   A database whose row says anything else was made by another build of this
+   product; it is evidence, never input. */
+const CHAT_STORE_SCHEMA_CHECKSUM = createHash("sha256")
+  .update(`${CHAT_STORE_SCHEMA_VERSION}\0${CHAT_STORE_SCHEMA_NAME}\0${CHAT_STORE_SCHEMA}`)
+  .digest("hex");
 
 const integerPragma = (database: SqliteDatabase, name: string) => {
   const row = database.prepare(`PRAGMA ${name}`).get() as
@@ -45,7 +32,7 @@ const integerPragma = (database: SqliteDatabase, name: string) => {
   return value;
 };
 
-export function runMigrations(database: SqliteDatabase, now = Date.now) {
+export function ensureChatSchema(database: SqliteDatabase, now = Date.now) {
   const applicationId = integerPragma(database, "application_id");
   const userVersion = integerPragma(database, "user_version");
   if (applicationId !== 0 && applicationId !== CHAT_STORE_APPLICATION_ID) {
@@ -69,39 +56,45 @@ export function runMigrations(database: SqliteDatabase, now = Date.now) {
   const rows = database
     .prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version")
     .all() as Array<{ version: number; name: string; checksum: string }>;
-  for (const row of rows) {
-    const migration = MIGRATIONS.find((item) => item.version === row.version);
-    if (!migration || migration.name !== row.name) {
-      throw new ChatSchemaError(
-        "corrupt",
-        `Unknown applied Chat migration ${row.version}:${row.name}`
-      );
-    }
-    if (row.checksum !== migrationChecksum(migration)) {
-      throw new ChatSchemaError(
-        "corrupt",
-        `Chat migration checksum mismatch at version ${row.version}`
-      );
-    }
-  }
 
-  for (const migration of MIGRATIONS) {
-    if (rows.some((row) => row.version === migration.version)) continue;
+  if (rows.length === 0) {
+    if (userVersion !== 0) {
+      throw new ChatSchemaError(
+        "corrupt",
+        `SQLite schema ${userVersion} carries no Chat schema identity`
+      );
+    }
     transaction(database, () => {
-      database.exec(migration.sql);
+      database.exec(CHAT_STORE_SCHEMA);
       database
         .prepare(
           "INSERT INTO schema_migrations(version, name, checksum, applied_at) VALUES (?, ?, ?, ?)"
         )
         .run(
-          migration.version,
-          migration.name,
-          migrationChecksum(migration),
+          CHAT_STORE_SCHEMA_VERSION,
+          CHAT_STORE_SCHEMA_NAME,
+          CHAT_STORE_SCHEMA_CHECKSUM,
           now()
         );
-      database.exec(`PRAGMA user_version = ${migration.version}`);
+      database.exec(`PRAGMA user_version = ${CHAT_STORE_SCHEMA_VERSION}`);
       database.exec(`PRAGMA application_id = ${CHAT_STORE_APPLICATION_ID}`);
     });
+  } else {
+    const [row] = rows;
+    if (
+      rows.length !== 1 ||
+      row!.version !== CHAT_STORE_SCHEMA_VERSION ||
+      row!.name !== CHAT_STORE_SCHEMA_NAME
+    ) {
+      const recorded = rows.map((item) => `${item.version}:${item.name}`).join(",");
+      throw new ChatSchemaError(
+        "corrupt",
+        `Chat schema ${recorded} was created by another build and is never upgraded`
+      );
+    }
+    if (row!.checksum !== CHAT_STORE_SCHEMA_CHECKSUM) {
+      throw new ChatSchemaError("corrupt", "Chat schema checksum mismatch");
+    }
   }
 
   if (integerPragma(database, "user_version") !== CHAT_STORE_SCHEMA_VERSION) {

@@ -3,7 +3,11 @@
  * [OUTPUT]: Provides the complete English catalog and its Catalog type, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
  * [POS]: Reference and fallback locale for desktop i18n
  */
+import { appHostEn } from "./app-host/en";
+import { agentAvailabilityEn } from "./agent-availability/en";
 
+
+import { chatAgentSwitchEn } from "./chat-agent-switch/en";
 import { basesEn } from "./bases/en";
 import { archiveEn } from "./archive";
 import { memoryEn } from "./memory";
@@ -18,6 +22,7 @@ import { settingsToolsEn } from "./settings/tools";
 import { settingsUsageEn } from "./settings/usage";
 import { settingsPersonalizationEn } from "./settings/personalization";
 import { settingsShortcutsEn } from "./settings/shortcuts";
+import { presenceEn } from "./presence/en";
 import { settingsAboutEn } from "./settings/about";
 import { historyEn } from "./history";
 import { chatRevisionEn } from "./chat-revision";
@@ -31,6 +36,8 @@ import { agentFailureEn } from "./agent-failure/en";
 import { chatStorageEn } from "./chat-storage/en";
 
 export const en = {
+  appHost: appHostEn,
+  agentAvailability: agentAvailabilityEn,
   common: {
     auto: "Auto",
     light: "Light",
@@ -111,6 +118,7 @@ export const en = {
   projectSettings: projectSettingsEn,
   settings: {
     about: settingsAboutEn,
+    presence: presenceEn,
     personalization: settingsPersonalizationEn,
     shortcuts: settingsShortcutsEn,
     skills: settingsSkillsEn,
@@ -214,6 +222,7 @@ export const en = {
     tools: settingsToolsEn,
   },
   chat: {
+    agentSwitch: chatAgentSwitchEn,
     ...chatEn,
     runtime: chatRuntimeEn,
     generatingTitle: "Generating title",
@@ -558,8 +567,6 @@ export const en = {
   ui: {
     cancel: "Cancel",
     uploadFiles: "Upload files",
-    previousBranch: "Previous branch",
-    nextBranch: "Next branch",
     loadingRichContent: "Loading rich content",
     loading: "Loading",
     close: "Close",
@@ -568,7 +575,6 @@ export const en = {
     toggleSidebar: "Toggle Sidebar",
     resizeSidebar: "Resize sidebar",
     resizeSidebarHint: "Drag to resize sidebar",
-    addAttachments: "Add attachments",
     attachment: "Attachment",
     previewAttachment: "Preview attachment",
     removeAttachment: "Remove attachment",
@@ -576,7 +582,6 @@ export const en = {
     submit: "Submit",
     message: "Message",
     askAnything: "Ask anything",
-    branchOf: "of",
     submissionFailed: "Submission failed. Please try again.",
     skillSuggestionsEmpty: "No Skills available",
     skillSuggestionsNoMatch: "No matching Skills",

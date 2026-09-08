@@ -1,28 +1,22 @@
 /**
- * [INPUT]: Depends on nanoid, AbortSignal, shared Agent/App IPC, preload bridges, and browser mocks
- * [OUTPUT]: Provides attach/event subscriptions, send/steer/decision commands, same-session and fresh-session retry, abandon/cancel/cleanup confirmation, and the read-only system file-manager fact
- * [POS]: The renderer's narrow Agent IPC facade; local disposal never cancels a main-owned turn
+ * [INPUT]: Depends on nanoid, shared Agent/App IPC and the preload-exposed window.agent/window.app bridges
+ * [OUTPUT]: Provides attach/event subscriptions, steer/decision commands, same-session and fresh-session retry, abandon/cancel/cleanup confirmation, and the read-only system file-manager fact; throws when window.agent is absent
+ * [POS]: The renderer's narrow Agent IPC facade; manual turns enter through sections-client, local disposal never cancels a main-owned turn
  */
 
 import { nanoid } from "nanoid";
-import type { AgentUserInput } from "../../shared/agent-ipc";
 import type { AppBridgeApi } from "../../shared/app-ipc";
 import type {
   AgentBridgeApi,
   AgentEvent,
   AgentApprovalDecision,
-  AgentScope,
-  AgentTurnOptions,
   AgentUserInputResponse,
   ChatActivityEvent,
-  SessionRef,
   SteerAdmission,
   SteerDecision,
   SteerIpcReceipt,
   TurnAttachResult,
 } from "../../shared/agent-ipc";
-import { throwIfSubmissionAborted } from "@ai-chat/ui/lib/prompt-input-submission";
-import { createBrowserAgentBridge } from "./agent-client-mock";
 
 declare global {
   interface Window {
@@ -31,16 +25,14 @@ declare global {
   }
 }
 
-let browserBridge: AgentBridgeApi | undefined;
-
-// 真假 bridge 的唯一汇合点：Electron 走 preload，纯浏览器懒建 mock。
-// 此后所有导出直接调 bridge()，不再各自判断 window.agent。
-const bridge = (): AgentBridgeApi =>
-  window.agent ?? (browserBridge ??= createBrowserAgentBridge());
+const bridge = (): AgentBridgeApi => {
+  const api = window.agent;
+  if (!api) throw new Error("agent bridge unavailable");
+  return api;
+};
 
 export type AgentRequest = {
   requestId: string;
-  started: Promise<void>;
   cancel: () => void;
   dispose: () => void;
   respondApproval: (
@@ -53,55 +45,8 @@ export type AgentRequest = {
   ) => Promise<void>;
 };
 
-/** @deprecated renderer 正在迁移到 AgentRequest；仅保留源兼容，不进入 IPC。 */
-export type CodexRequest = AgentRequest;
-
 export const systemFileManager = () =>
   window.app?.systemFileManager ?? "file-manager";
-
-export function sendToAgent(
-  input: AgentUserInput[],
-  session: SessionRef | string | undefined,
-  scope: AgentScope,
-  turnOptions: AgentTurnOptions,
-  planMode: boolean,
-  signal?: AbortSignal
-): AgentRequest {
-  if (signal) throwIfSubmissionAborted(signal);
-  const api = bridge();
-  const requestId = nanoid();
-  let active = true;
-  const started = api.send({
-    requestId,
-    session:
-      typeof session === "string"
-        ? { backend: turnOptions.backend, id: session }
-        : session,
-    scope,
-    turnOptions,
-    input,
-    ...(planMode ? { planMode: true } : {}),
-  });
-
-  return {
-    requestId,
-    started,
-    cancel() {
-      if (active) api.cancel(requestId);
-    },
-    dispose() {
-      active = false;
-    },
-    respondApproval(approvalId, decision) {
-      if (!active) return Promise.reject(new Error("Agent 请求已结束"));
-      return api.respondApproval({ requestId, approvalId, decision });
-    },
-    respondUserInput(userInputId, answers) {
-      if (!active) return Promise.reject(new Error("Agent 请求已结束"));
-      return api.respondUserInput({ requestId, userInputId, answers });
-    },
-  };
-}
 
 export type CodexAttachment = {
   ready: Promise<void>;
@@ -169,11 +114,7 @@ export const retryAgentWithoutSession = (
 export const retryAgentSameSession = (
   requestId: string,
   retryToken: string
-) => {
-  const retry = bridge().retrySameSession;
-  if (!retry) throw new Error("same-session retry is unavailable");
-  return retry(requestId, retryToken);
-};
+) => bridge().retrySameSession(requestId, retryToken);
 
 export const cancelAgentRequest = (requestId: string) =>
   bridge().cancel(requestId);

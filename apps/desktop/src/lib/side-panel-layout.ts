@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on the browser localStorage, receives incredible versioning third-party layout JSON with ChatView available width
- * [OUTPUT]: Provides third-order size/dynamic constant, default values/dynamic geometry, parse sequencing and synchronous submission functions
- * [POS]: The renderer's Chat is horizontal layout data boundaries, perpetuating user preferences and giving the second row 360px minimum width priority
+ * [INPUT]: Depends on browser localStorage and the available ChatView container width; tolerates untrusted/malformed versioned JSON
+ * [OUTPUT]: Provides side-panel width constants, defaultSidePanelWidth/resolveSidePanelGeometry, versioned parse/serialize functions, and read/commit persistence
+ * [POS]: Renderer's persistence boundary for the Chat side panel's horizontal layout; persists the user's preferred width while always guaranteeing the main column its 360px minimum
  */
 
 export const CHAT_MAIN_COLUMN_MIN_WIDTH = 360;
-export const SIDE_PANEL_DEFAULT_VIEWPORT_RATIO = 0.42;
+const SIDE_PANEL_DEFAULT_VIEWPORT_RATIO = 0.42;
 export const SIDE_PANEL_MIN_WIDTH = 320;
 export const SIDE_PANEL_MAX_WIDTH = 960;
 export const SIDE_PANEL_TRANSITION_MS = 200;
@@ -108,7 +108,7 @@ export function readSidePanelLayout(
   }
 }
 
-export function writeSidePanelLayout(
+function writeSidePanelLayout(
   layout: SidePanelLayout,
   storage: SidePanelStorage = window.localStorage
 ) {

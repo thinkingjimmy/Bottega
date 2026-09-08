@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on i18n, shared AgentUsageSummary, renderer, current Intl locale, use-client, formatting/three-dimensional fees with the same directory UsageInfoTip
- * [OUTPUT]: Provides six indicators UsageStatRow: Lifetime tokens + cost with four lengths/days, width in a row of 6 grams
- * [POS]: The file band of the settings/usage sub-module, located at the end of the card; The price of the product is not recalculated
+ * [INPUT]: Depends on i18n, the shared AgentUsageSummary contract, the renderer's current Intl locale, lib/usage-client's tiered fee formatting, and the sibling UsageInfoTip
+ * [OUTPUT]: Provides UsageStatRow, six stat cells — lifetime tokens and cost plus four duration/day counts — laid out in one six-column row
+ * [POS]: settings/usage's stat band at the bottom of the card; it formats the totals it's given and never recomputes pricing itself
  */
 
 import type { AgentUsageSummary } from "../../../../shared/usage-ipc";

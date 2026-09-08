@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on lucide AlertTriangle, shared MemoryAttentionItem/Action, settings-layout by SettingsButton, lib/memory-view by the tag table and time projection by @ai-chat/ui, cn by
- * [OUTPUT]: Provides MemoryAttentionList purely displayed components: hanging in a row: * disease tag + evidence + relative/absolute time + restore button group)
- * [POS]: The following is a list of the most commonly used methods for calculating the value of a data setJust throw the id on the user's choice of action and restore the semantics to the main
+ * [INPUT]: Depends on lucide AlertTriangle, shared MemoryAttentionItem/Action, settings-layout's SettingsButton, lib/memory-view's tone/time projections, and @ai-chat/ui's cn
+ * [OUTPUT]: Provides MemoryAttentionList: one row per item with a tone tag, evidence, relative/absolute time, and a restore-action button group
+ * [POS]: settings/memory's list of items awaiting resolution; it only forwards the chosen id and action to onResolve — resolution semantics live with the caller
  */
 
 import { AlertTriangle } from "lucide-react";

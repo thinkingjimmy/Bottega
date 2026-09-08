@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on i18n, extensions-client preflight/confirm/discard, shared extended DTO, ui AppDialog two sets and SettingsButton/SettingsList/SettingsRow/SettingsNoteList/SettingsSwitch for Dialog/Input, settings-layout
- * [OUTPUT]: Provides ExtensionInstallDialog with ExtensionInstallSource: Source input → Capability disclosure → App migration options affected → Confirm, install and update sharing the same flow line
- * [POS]: Settings › is the only entry for the extension; The adapter family decides which part is dropped and the unconfirmed pre-check is discarded once the panel is unloaded
+ * [OUTPUT]: Provides ExtensionInstallDialog and ExtensionInstallSource: source input → capability disclosure → affected-App migration choices → confirm, with install and update sharing one flow
+ * [POS]: Settings' sole extension-install entry point; the adapter family decides what to discard, and any unconfirmed preflight is discarded once the dialog unmounts
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

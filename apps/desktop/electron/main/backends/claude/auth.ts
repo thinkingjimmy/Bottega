@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the unified CLI certification probe core and Claude's minimal non-credential environment
  * [OUTPUT]: Provides checkClaudeAuth and classifyClaudeAuthFailure; Only code=1 confirms the unauthenticated projection of the unlogged document
- * [POS]: The backends/claude certification is based on the installation of the backends/claudeJust repeat what the CLI says, and the login instructions go to the renderer directory
+ * [POS]: backends/claude's auth check only repeats what the CLI reports; login instructions are owned by the renderer, not produced here
  */
 
 import { homedir } from "node:os";

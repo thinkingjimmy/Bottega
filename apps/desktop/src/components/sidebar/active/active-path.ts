@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on react by createContext/useContext
  * [OUTPUT]: Provides SidebarActivePathContext and useSidebarActivePath
- * [POS]: The only reading point in the components/sidebar is "Which line is shining?"AppSidebar supplies, consumes units, and replaces their respective useLocation
+ * [POS]: Sole source of truth in components/sidebar for "which row is active"; AppSidebar provides the value and row units consume it instead of each calling useLocation
  */
 
 import { createContext, useContext } from "react";

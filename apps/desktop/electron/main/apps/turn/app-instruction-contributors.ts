@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on persisted AppDomainIdentity, generation-bound frozen effective capability, active App root bounded skill
- * [OUTPUT]: Provides bounded live skill scanning with closed AppInstructionContributorRegistry; Use chat/Base UI escape path and skill in packet direct reading path
- * [POS]: The main-only Agent instructions shell of apps; All Base shares common common contributor
+ * [INPUT]: Depends on persisted AppDomainIdentity, generation-bound frozen effective capability, active App root bounded skill, and skills-catalog-scan frontmatter parsing
+ * [OUTPUT]: Provides collectAppSkillEntries (live skill scan under an App's active root) and AppInstructionContributorRegistry, which projects per-App Agent instructions and routes disallowed actions to that App's Use chat or the Base UI
+ * [POS]: Main-only Agent-instructions layer for apps; every attached Base App shares the single "base/ordinary" contributor rather than each having its own
  */
 
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
@@ -10,7 +10,7 @@ import type { AppDomainIdentity } from "../../../../shared/apps-ipc";
 import type { FrozenAppReferenceCapability } from "../../../../shared/app-lifecycle";
 import type { BaseToolsAvailability } from "../../../../shared/builtin-tools";
 import { allocateAppInstructions } from "./grant-budget";
-import { parseSkillFrontmatter } from "../../skills-catalog";
+import { parseSkillFrontmatter } from "../../skills-catalog-scan";
 
 export const APP_SKILL_ENTRY_LIMIT = 8;
 const APP_SKILL_FILE_LIMIT = 128 * 1024;
@@ -33,7 +33,7 @@ export type AppInstructionContext = Readonly<{
   skillEntries: readonly AppSkillEntry[];
 }>;
 
-export type AppInstructionProjection =
+type AppInstructionProjection =
   | Readonly<{
       kind: "instruction";
       text: string;
@@ -43,7 +43,7 @@ export type AppInstructionProjection =
     }>
   | Readonly<{ kind: "omitted"; reason: "base-tools-disabled" }>;
 
-export type AppInstructionContributor = (
+type AppInstructionContributor = (
   context: AppInstructionContext
 ) => AppInstructionProjection;
 

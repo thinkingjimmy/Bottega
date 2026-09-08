@@ -7,7 +7,7 @@
 import type { ProductResourceScope } from "../../../../shared/product-resource-scope";
 import { productResourceScopeKey } from "../../../../shared/product-resource-scope";
 import type { ExtensionAdapterId } from "../admission";
-import { digestCanonical } from "../registry-store";
+import { digestCanonical } from "../registry-canonical";
 import type { ExtensionPackageAdmission } from "../manifest-adapter";
 import type { StagedExtensionSource } from "./source";
 

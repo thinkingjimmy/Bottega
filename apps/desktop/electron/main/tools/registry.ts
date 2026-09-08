@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared BuiltinTool Static spec, lease context and main toolset handler for each domain
- * [OUTPUT]: Provides BuiltinToolRegistry, starts the spec/handler test one by one, strict zod analysis, calls cancel the signal, logical results budget ((domain and lease issuer budget decreased) and calls by name
- * [POS]: The tools platform is rooted in the combination of tools and platformsbridge does not have any branch of business in any sector
+ * [INPUT]: Depends on the shared static BuiltinTool specs, the lease invocation context, and each domain's main toolset handlers, and statusError from main/errors
+ * [OUTPUT]: Provides BuiltinToolRegistry: one-to-one spec/handler validation, strict zod parameter parsing, cancellation signal propagation, result byte budgets (the smaller of the domain and lease-issued budgets), and dispatch by tool name
+ * [POS]: The tools platform's dispatch core between bridge and domain toolsets; it contains no business logic of any domain
  */
 
 import {
@@ -10,6 +10,7 @@ import {
   builtinToolSpec,
   type BuiltinToolName,
 } from "../../../shared/builtin-tools";
+import { statusError } from "../errors";
 import type { BuiltinMcpLease } from "./lease";
 
 export type BuiltinToolContext = {
@@ -74,6 +75,3 @@ export class BuiltinToolRegistry {
   }
 }
 
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
-}

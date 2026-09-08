@@ -4,6 +4,7 @@
  * [POS]: Cross-store continuation saga state machine beneath ChatRepository; committed Home evidence is never compensated by this layer
  */
 
+import { turnOptionsSchema } from "../../../../../shared/chat-agent/options";
 import { randomUUID } from "node:crypto";
 import { messageSchema } from "../../chat-schema";
 import { adoptInputSchema } from "../../chat-input";
@@ -167,7 +168,7 @@ export class ContinuationSagaRepository {
       throw new Error("Continuation finalization does not match committed Home evidence");
     }
     const chat = this.database.prepare(
-      `SELECT c.lifecycle_kind, c.incarnation_id, c.core_revision,
+      `SELECT c.lifecycle_kind, c.incarnation_id, c.core_revision, c.options_json,
               c.native_message_revision,
               a.aggregate_revision, a.timeline_revision,
               g.generation_id active_generation_id
@@ -208,12 +209,14 @@ export class ContinuationSagaRepository {
     ) + 1;
     const aggregateRevision = Number(chat.aggregate_revision) + 1;
     const timelineRevision = messageRevision;
+    if (command.options && command.options.backend !== command.session.backend) throw new Error("CHAT_OPTIONS_BACKEND_CONFLICT");
     this.database.prepare(
       `UPDATE chats
-          SET lifecycle_kind = 'external-managed', next_seq = 2,
+          SET lifecycle_kind = 'external-managed', next_seq = 2, options_json = ?,
               updated_at = ?, core_revision = ?, native_message_revision = ?
         WHERE id = ? AND lifecycle_kind = 'external-readonly'`
     ).run(
+      command.options ? json(turnOptionsSchema.parse(command.options)) : String(chat.options_json),
       command.now,
       coreRevision,
       messageRevision,

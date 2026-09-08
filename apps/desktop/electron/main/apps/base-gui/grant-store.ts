@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path/crypto, zod and shared Base GUI generation/access identity
- * [OUTPUT]: Provides BaseGuiGrantStore plus BASE_GUI_PARTIAL_DECISION: stable compatibility-bound decision, all-or-nothing decide (exact request coverage or decline), idempotent compatibility-ref binding, self-administered approved state, append-only revoke tombstone, durable revision CAS on fsynced atomic replacement, and freezing air after damage/disruption
- * [POS]: authorized copywriter of apps/base-gui; The manifest only requests, and the active GUI writes only from the exact approved decision of the ledger
+ * [INPUT]: Depends on Node fs/path/crypto, zod and shared Base GUI generation/access identity, and statusError from main/errors
+ * [OUTPUT]: Provides BaseGuiGrantStore plus BASE_GUI_PARTIAL_DECISION: durable compatibility-bound capability decisions, all-or-nothing decide (exact request coverage or decline), idempotent compatibility-ref binding, self-administered approval, append-only revoke tombstones, revision-CAS persistence via fsynced atomic replacement, and quarantine-on-corruption cold start
+ * [POS]: The authoritative grant ledger of apps/base-gui; App manifests only request capabilities, the live GUI is authorized only by the ledger's exact approved decision
  */
 
 import { randomUUID } from "node:crypto";
@@ -14,6 +14,7 @@ import type {
   BaseGuiCapabilityScopes,
   BaseGuiHostActionCapability,
 } from "../../../../shared/apps-ipc";
+import { statusError } from "../../errors";
 import {
   DurableFileCorruptionError,
   durableReplaceFile,
@@ -218,7 +219,7 @@ export class BaseGuiGrantStore {
         current.revision !== input.expectedRevision ||
         current.contentDigest !== input.contentDigest
       ) {
-        throw conflict("Base GUI capability decision fence 已变化");
+        throw statusError(409, "Base GUI capability decision fence 已变化");
       }
       const grantedCapabilities = uniqueCapabilities(input.grantedCapabilities).filter(
         (capability) => current.requestedCapabilities.includes(capability)
@@ -308,7 +309,7 @@ export class BaseGuiGrantStore {
           decision.compatibilityRefDigest &&
           decision.compatibilityRefDigest !== input.compatibilityRefDigest
         ) {
-          throw conflict("Base GUI compatibility ref digest 已变化");
+          throw statusError(409, "Base GUI compatibility ref digest 已变化");
         }
         this.state.decisions[index] = {
           ...decision,
@@ -419,10 +420,6 @@ function normalizeScopes(
     : {};
 }
 
-function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
-}
-
 /* ── 全有或全无 ────────────────────────────────────────────────────
  * requested 三组（capability / host action / workspace scope）必须被
  * granted 三组逐项覆盖，才算 approved。少一项就不是「少批一点」，而是
@@ -458,10 +455,7 @@ function coversRequest(
 export const BASE_GUI_PARTIAL_DECISION = "BASE_GUI_PARTIAL_DECISION";
 
 function partialDecision() {
-  return Object.assign(
-    new Error(
-      `${BASE_GUI_PARTIAL_DECISION}: Base GUI 授权只能整份批准或整份拒绝`
-    ),
-    { status: 409, code: BASE_GUI_PARTIAL_DECISION }
-  );
+  return statusError(409, `${BASE_GUI_PARTIAL_DECISION}: Base GUI 授权只能整份批准或整份拒绝`, {
+    code: BASE_GUI_PARTIAL_DECISION,
+  });
 }

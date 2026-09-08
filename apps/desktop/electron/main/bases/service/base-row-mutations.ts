@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on BaseStore single-owner queues, shared Base row/meta types, view scrubbing, and mutation validation, plus the shared statusError constructor from main/errors
+ * [INPUT]: Depends on BaseStore single-owner queues, base-store-model sameJson, shared Base row/meta types, view scrubbing, and mutation validation, plus the shared statusError constructor from main/errors
  * [OUTPUT]: Provides CAS row/meta mutations that declare the exact rows they touched, App GUI attachment rules, no-op detection, and event projection
  * [POS]: Base mutation core; BasesService owns authority and event order while this module owns canonical state transitions
  */
@@ -23,6 +23,7 @@ import {
   NO_ROWS_CHANGED,
   type BaseStore,
 } from "../base-store";
+import { sameJson } from "../base-store-model";
 import {
   scrubBaseFormulaColumns,
   scrubBaseRelationColumns,
@@ -37,8 +38,6 @@ import {
 } from "../validation/base-mutation-validation";
 import { statusError } from "../../errors";
 
-const same = (left: unknown, right: unknown) =>
-  JSON.stringify(left) === JSON.stringify(right);
 const canonicalRow = (row: BaseRow) => ({
   id: row.id,
   values: Object.fromEntries(
@@ -48,7 +47,7 @@ const canonicalRow = (row: BaseRow) => ({
   ),
 });
 const sameRow = (left: BaseRow, right: BaseRow) =>
-  same(canonicalRow(left), canonicalRow(right));
+  sameJson(canonicalRow(left), canonicalRow(right));
 
 type MutationIdentity = { ownerInstanceId: string };
 
@@ -86,7 +85,7 @@ export class BaseRowMutations {
     this.options.assertAdmission();
     const current = this.store.get(ownerKey);
     if (!current) {
-      throw Object.assign(new Error("App Base 不存在"), { status: 404 });
+      throw statusError(404, "App Base 不存在");
     }
     let changedRowIds = new Set<string>();
     let changed = false;
@@ -190,11 +189,11 @@ export class BaseRowMutations {
            照旧全查，行校验则只在列真的变了（含 select 选项增删）时才付。 */
         const columnsChanged =
           meta.columns !== current.meta.columns &&
-          !same(meta.columns, current.meta.columns);
+          !sameJson(meta.columns, current.meta.columns);
         validateBaseModel(meta, columnsChanged ? rows : []);
         const comparableMeta = { ...meta, revision: current.meta.revision };
         /* 没删列时 rows 就是原引用；引用相等即「行未变」，无须再逐字节比。 */
-        if (rows === current.rows && same(comparableMeta, current.meta)) {
+        if (rows === current.rows && sameJson(comparableMeta, current.meta)) {
           return null;
         }
         changed = true;
@@ -458,7 +457,7 @@ export class BaseRowMutations {
             }
           }
           const next = { ...row, values };
-          if (!same(row, next)) {
+          if (!sameJson(row, next)) {
             byId.set(row.id, next);
             changed.add(row.id);
           }

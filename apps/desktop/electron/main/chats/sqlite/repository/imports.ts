@@ -4,6 +4,9 @@
  * [POS]: External-history write model beneath ChatRepository; it never reads source files, stores nothing but whole source messages, and commits exactly one bounded batch at a time
  */
 
+import { writeHistoryParts } from "../history/parts";
+import { backendDefaults } from "../../../../../shared/chat-agent/options";
+import type { DefaultChatOptionsByBackend } from "../../../../../shared/settings-ipc";
 import { randomUUID } from "node:crypto";
 import { normalizeSearchText } from "../../../../../shared/search-text";
 import type {
@@ -17,7 +20,7 @@ import { reclaimRetiredGenerations } from "./import-gc";
 import { ImportBlobStore } from "./import-blobs";
 import { ChatRecordWriter } from "./writer";
 
-export const IMPORT_CHUNK_BYTES = 32 * 1024;
+const IMPORT_CHUNK_BYTES = 32 * 1024;
 export const IMPORT_BLOB_THRESHOLD_BYTES = 8 * 1024 * 1024;
 export const IMPORT_BATCH_ENTRY_LIMIT = 2_048;
 export const IMPORT_BATCH_BYTE_LIMIT = 4 * 1024 * 1024;
@@ -36,8 +39,7 @@ const IDLE_FTS_MERGE = {
   pgsz: 32_768,
 } as const;
 
-const booleanText = (value: boolean | "unknown") =>
-  value === "unknown" ? value : String(value);
+const booleanText = (value: boolean) => String(value);
 
 export const importTransactionBytes = (entry: HistoryImportEntryInput) => {
   const bytes = Buffer.byteLength(entry.content, "utf8");
@@ -89,7 +91,8 @@ export class HistoryImportRepository {
   constructor(
     private readonly database: SqliteDatabase,
     private readonly now: () => number,
-    importBlobsRoot?: string
+    importBlobsRoot?: string,
+    private readonly defaults: DefaultChatOptionsByBackend = {}
   ) {
     this.writer = new ChatRecordWriter(database, now);
     this.blobs = new ImportBlobStore(database, now, importBlobsRoot);
@@ -587,8 +590,8 @@ export class HistoryImportRepository {
       `INSERT INTO chats(
          id, lifecycle_kind, agent, title, title_source, created_at, updated_at,
          archived_at, incarnation_id, next_seq, trimmed_through_seq,
-         branches_trimmed_through_seq, core_revision, native_message_revision
-       ) VALUES (?, 'external-readonly', ?, ?, 'local-fallback', ?, ?, ?, ?, NULL, 0, 0, 1, 0)`
+         branches_trimmed_through_seq, core_revision, native_message_revision, options_json
+       ) VALUES (?, 'external-readonly', ?, ?, 'local-fallback', ?, ?, ?, ?, NULL, 0, 0, 1, 0, ?)`
     ).run(
       chatId,
       source.sourceKind,
@@ -596,7 +599,8 @@ export class HistoryImportRepository {
       source.createdAt,
       source.updatedAt,
       source.archivedAt ?? null,
-      incarnationId
+      incarnationId,
+      json(backendDefaults(this.defaults, source.sourceKind))
     );
     this.database.prepare(
       `INSERT INTO chat_local_aggregate_state(
@@ -696,6 +700,7 @@ export class HistoryImportRepository {
       contentDigest,
       byteSize
     );
+    writeHistoryParts(this.database, entryVersionId, entry.payload);
     if (byteSize > IMPORT_BLOB_THRESHOLD_BYTES) {
       this.blobs.write(entryVersionId, entry.content);
     } else {

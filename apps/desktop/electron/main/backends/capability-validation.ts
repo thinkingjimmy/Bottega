@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on BackendDescriptor, AgentSendPayload, runtime, AbortSignal and a credible model directory
  * [OUTPUT]: Provides capability gates plus separate model-identity and opaque-config value contracts
- * [POS]: The backends of the Unified Access Screener; Remove permissions, input, session and model combination examples before transport starts
+ * [POS]: Unified capability gate for backends; rejects unsupported permission/input/session/model combinations before transport starts
  */
 
 import type { AgentSendPayload } from "../../../shared/agent-ipc";

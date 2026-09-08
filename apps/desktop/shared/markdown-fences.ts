@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Accepts the independent Markdown clip; Scanning UTF-16 character deviations by CommonMark fencing rules
- * [OUTPUT]: Provides scanFences, capChartFences and MarkdownFragment, sharing the renderer quota and main security interrupt
- * [POS]: The Markdown Fence is the single source of shared truthI don't know about React, Electron or Perpetuation
+ * [INPUT]: Accepts a raw Markdown string; scans fence markers per CommonMark rules with UTF-16 offset accounting
+ * [OUTPUT]: Provides scanFences, capChartFences, and MarkdownFragment; capChartFences relabels chart fences beyond a limit as chart-overflow
+ * [POS]: Single source of truth for shared Markdown fence scanning, used by both the renderer's chart-render quota and main's commit-time chart-fence cap; no dependency on React, Electron, or persistence
  */
 
 export type MarkdownFragment = {
@@ -9,7 +9,7 @@ export type MarkdownFragment = {
   markdown: string;
 };
 
-export type MarkdownFence = {
+type MarkdownFence = {
   start: number;
   end: number;
   openerEnd: number;

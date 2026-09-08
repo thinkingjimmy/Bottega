@@ -4,6 +4,10 @@
  * [POS]: Process isolation boundary between Electron main and synchronous SQLite; it never accepts SQL text
  */
 
+import { HistorySource } from "./history/source";
+import { ChatHistoryReader } from "./history/reader";
+import { initializeHistoryParts } from "./history/parts";
+import { initializeChatOptions } from "./agent-switch/initialize";
 import type { MessagePort } from "node:worker_threads";
 import { parentPort } from "node:worker_threads";
 import { dirname } from "node:path";
@@ -26,6 +30,7 @@ const IMPORT_MAINTENANCE_BATCHES = 16;
 class DatabaseWorkerRuntime {
   private connection: ChatSqliteConnection | null = null;
   private repository: ChatRepository | null = null;
+  private history: ChatHistoryReader | null = null;
   private importBatchesSinceCheckpoint = 0;
   private mutationsSinceWalProbe = 0;
   private pendingMaintenance: (() => Promise<void>) | null = null;
@@ -64,8 +69,12 @@ class DatabaseWorkerRuntime {
       if (this.connection) throw new Error("database worker is already initialized");
       const startedAt = performance.now();
       this.connection = await ChatSqliteConnection.open(command.databasePath, command.mode);
+      initializeChatOptions(this.connection.database, command.backendDefaults);
+      initializeHistoryParts(this.connection.database);
+      this.history = new ChatHistoryReader(new HistorySource(this.connection.database, chatImportBlobsRoot(dirname(command.databasePath))));
       this.repository = new ChatRepository(this.connection.database, Date.now, {
         importBlobsRoot: chatImportBlobsRoot(dirname(command.databasePath)),
+        backendDefaults: command.backendDefaults,
       });
       const version = this.connection.database
         .prepare("SELECT sqlite_version() version")
@@ -89,6 +98,8 @@ class DatabaseWorkerRuntime {
     }
     const repository = this.repository;
     switch (command.kind) {
+      case "prepare-chat-history": return this.history!.prepare(command.chatId, command.deviceId, command.nativeBeforeSeq);
+      case "read-chat-history": return this.history!.read(command.input, command.deviceId);
       case "list-metadata": return repository.listMetadata(command.deviceId, command.chatId);
       case "get-record": return repository.getRecord(command.chatId, command.deviceId);
       case "get-native-message": return repository.getNativeMessage(command);
@@ -98,6 +109,8 @@ class DatabaseWorkerRuntime {
       case "get-timeline-around": return repository.getTimelineAround(command.input, command.deviceId);
       case "get-outline-page": return repository.getOutlinePage(command.chatId, command.cursor, command.limit, command.deviceId);
       case "find-messages": return repository.findMessages(command);
+      case "switch-agent": return this.mutated(repository.switchAgent(command));
+      case "reserve-switch-sequences": return this.mutated(repository.reserveSwitchSequences(command));
       case "upsert-record": return this.mutated(repository.upsertRecord(command));
       case "update-chat-facts": return this.mutated(repository.updateChatFacts(command));
       case "append-message": return this.mutated(repository.appendMessage(command));
@@ -162,7 +175,7 @@ class DatabaseWorkerRuntime {
   }
 }
 
-export function installDatabaseWorker(port: MessagePort) {
+function installDatabaseWorker(port: MessagePort) {
   const runtime = new DatabaseWorkerRuntime();
   let tail = Promise.resolve();
   port.on("message", (raw: unknown) => {

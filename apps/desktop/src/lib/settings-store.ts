@@ -127,14 +127,21 @@ export function createSettingsStoreOwner(
   };
 
   /* main 的每次落盘都会广播：renderer 据此 rebase 基线并刷新快照，
-     「外部改了设置但界面不知道」的窗口就此关闭。 */
-  const unsubscribe = dependencies.subscribe((envelope) => {
-    enqueueSettingsMutation.rebase(envelope);
-    settingsLoaded = true;
-    publish({ ...snapshot, settings: envelope.settings });
-  });
+     「外部改了设置但界面不知道」的窗口就此关闭。订阅在第一个消费者
+     到场时才建立，模块加载期不触碰 bridge。 */
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    dependencies.subscribe((envelope) => {
+      enqueueSettingsMutation.rebase(envelope);
+      settingsLoaded = true;
+      publish({ ...snapshot, settings: envelope.settings });
+    });
+  };
 
   const loadSettings = (force: boolean) => {
+    start();
     if (!force && (settingsLoaded || settingsLoading)) return;
     const epoch = ++settingsEpoch;
     settingsLoading = true;
@@ -231,6 +238,7 @@ export function createSettingsStoreOwner(
 
   return {
     subscribe: (listener: () => void) => {
+      start();
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
@@ -269,7 +277,6 @@ export function createSettingsStoreOwner(
         return false;
       }
     },
-    dispose: () => unsubscribe(),
     chooseChatHomesRoot: async () => {
       if (snapshot.chatHomesRootBusy) return;
       publish({

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod, shared Project binding, DurableJson and stable Project id
  * [OUTPUT]: Provides Project workspace rebind durable single-activated retain/new capsule, phase/checkpoint, restore listing and plug-in
- * [POS]: The project module is a re-binding saga bookletJust keep intent/checkpoint, not write Project/Policy/Delivery business facts
+ * [POS]: Projects' rebind-saga journal; it records only intent and checkpoint state, never Project/Policy/Delivery business facts
  */
 
 import { join } from "node:path";

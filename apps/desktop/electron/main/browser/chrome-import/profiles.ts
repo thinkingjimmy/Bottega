@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on only reading fs/path and Chrome Local State profile.info_cache
- * [OUTPUT]: Provides to detect ChromeProfiles and resolveChromeProfilePath; Missing/Damaged Chrome Returns to the Directory
- * [POS]: The profile detection of the browser/chrome-import with the path constraint layer; Never write a Chrome directory
+ * [OUTPUT]: Provides detectChromeProfiles and resolveChromeProfilePath; returns an empty list when Chrome's Local State is missing or malformed
+ * [POS]: browser/chrome-import's profile-detection and path-containment layer; never writes to a Chrome profile directory
  */
 
 import { readFile, stat } from "node:fs/promises";

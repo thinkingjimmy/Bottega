@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on React state/effect, shared AgentFailureNotice, UI Button, current Intl locale, structured ProductFailure/UsageLimitInfo, and five-language failure copy
- * [OUTPUT]: Provides RemainingDuration projection and UsageLimitCard with human-first rate/quota copy, folded diagnostics, reset time, duration, known window, and retry action
+ * [OUTPUT]: Renders localized quota/rate recovery and reset times using the shared renderer evidence clock.
  * [POS]: Usage-limit recovery surface in chat/transcript; wire DTOs provide machine facts while this renderer owns all presentation copy
  */
+import { useMinuteClock } from "@/components/providers/availability/use-evidence-clock";
 
-import { useEffect, useState } from "react";
+
 import { RotateCcwIcon } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type { UsageLimitInfo } from "../../../../shared/agent-ipc";
@@ -52,17 +53,6 @@ export function remainingDuration(
   return rest
     ? { kind: "hours-minutes", hours, minutes: rest }
     : { kind: "hours", hours };
-}
-
-/** 每分钟重算一次剩余时长——秒级刷新对"约 X 分钟"毫无意义，只是白烧帧 */
-function useMinuteClock(active: boolean) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(timer);
-  }, [active]);
-  return now;
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {

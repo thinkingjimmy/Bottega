@@ -14,7 +14,7 @@ import type {
   FrozenExtensionInventoryReason,
   Sha256Digest,
 } from "../../../../shared/extensions-ipc";
-import { digestCanonical } from "../registry-store";
+import { digestCanonical } from "../registry-canonical";
 
 export type ComponentConfigResolver = (input: {
   component: ExtensionComponentRecord;

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the browser DOM and the data-message-id conversion focus
- * [OUTPUT]: Provides findTranscriptTarget/highlightTranscriptTarget, a unified roll-in life 2 second ring with reduced-motion downgrade
- * [POS]: The first is the "Changes" of the "Changes" of the "Changes" of the "Changes"Outline, deep-chain and Find bar, without window extensions
+ * [INPUT]: Depends on the browser DOM and the data-message-id anchors rendered by transcript rows
+ * [OUTPUT]: Provides findTranscriptTarget, scrollTranscriptTo, and highlightTranscriptTarget (2 second ring with reduced-motion downgrade)
+ * [POS]: The single DOM-addressing primitive for chat/transcript, shared by the transcript, Outline, Find bar and deep links
  */
 
 export function findTranscriptTarget(id: string, root: ParentNode = document) {
@@ -9,6 +9,19 @@ export function findTranscriptTarget(id: string, root: ParentNode = document) {
     `[data-message-id="${CSS.escape(id)}"]`
   );
   return node instanceof HTMLElement ? node : null;
+}
+
+/** Scrolls `node` to sit 16px below the scroller's top edge. */
+export function scrollTranscriptTo(
+  scroller: HTMLElement,
+  node: HTMLElement,
+  behavior: ScrollBehavior
+) {
+  const top =
+    node.getBoundingClientRect().top -
+    scroller.getBoundingClientRect().top +
+    scroller.scrollTop;
+  scroller.scrollTo({ top: Math.max(0, top - 16), behavior });
 }
 
 export function highlightTranscriptTarget(node: HTMLElement) {

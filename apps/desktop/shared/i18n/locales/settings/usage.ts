@@ -1,7 +1,7 @@
 /**
- * [INPUT]: dependence when not in operation; The first is the installation of five local directories
+ * [INPUT]: No runtime dependencies; defines five isomorphic locale objects for Settings › Usage
  * [OUTPUT]: Provides five languages for Settings › Usage
- * [POS]: Usage feature catalog of shared/i18n/locales/settings; Dynamic CLI diagnoses not translated
+ * [POS]: Usage feature catalog of shared/i18n/locales/settings; dynamic CLI diagnostics are not translated
  */
 
 export const settingsUsageEn = {

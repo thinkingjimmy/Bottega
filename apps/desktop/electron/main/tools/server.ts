@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on MCP SDK stdio transport, shared static tools, specification/condition description, invoking hash and main Unix socket
- * [OUTPUT]: The independent process only registers the lease tools and forward calls; Model semantics are taken up in the context of tools/list description and prompt products
- * [POS]: The back end of tools is not connected to the MCP input; Just do the protocol adaptation, don't read the product storage, don't copy content/structuredContent
+ * [INPUT]: Depends on MCP SDK stdio transport, shared static tools, specification/condition description, invoking hash and main Unix socket, and statusError from main/errors
+ * [OUTPUT]: Provides the standalone MCP stdio process: registers only the lease-allowed builtin tools and forwards each call through the Unix-socket bridge; tools/list descriptions carry all model-facing semantics
+ * [POS]: The MCP-facing subprocess boundary; performs protocol adaptation only, never reads app storage directly, and forwards every call through bridge.ts
  */
 
 import { randomUUID } from "node:crypto";
@@ -15,6 +15,7 @@ import {
   builtinToolWireSchema,
   type BuiltinToolName,
 } from "../../../shared/builtin-tools";
+import { statusError } from "../errors";
 import { stableToolInvocationId } from "./invocation";
 import { toBuiltinCallToolResult } from "./result";
 
@@ -86,9 +87,7 @@ function bridgeRequest(
         const response = JSON.parse(pending.slice(0, newline)) as BridgeResponse;
         if (response.id !== id) throw new Error("内置 MCP bridge 响应串线");
         if (!response.ok) {
-          throw Object.assign(new Error(response.error), {
-            status: response.status,
-          });
+          throw statusError(response.status, response.error);
         }
         signal?.removeEventListener("abort", abort);
         settled = true;

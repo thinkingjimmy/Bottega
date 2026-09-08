@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node durable JSON, canonical JSON identity, and Registry generation refs with frozen requirement handoff sets
+ * [INPUT]: Depends on Node durable JSON, canonical JSON identity, and Registry generation refs with frozen requirement handoff sets, and statusError from main/errors
  * [OUTPUT]: Provides AppExtensionReservationLedger prepare/commit/abort/release with canonical frozen-set comparison and permanent generationBuildId tombstones
  * [POS]: Single writer of App×Extension durable handoffs; object insertion order never creates a false generation drift
  */
@@ -11,7 +11,9 @@ import type {
   ExtensionPackageGenerationRef,
   FrozenAppExtensionRequirementSetV1,
 } from "../../../../shared/extensions-ipc";
-import { canonicalJson, type ExtensionRegistryStore } from "../registry-store";
+import { statusError } from "../../errors";
+import { canonicalJson, refKey } from "../registry-canonical";
+import type { ExtensionRegistryStore } from "../registry-store";
 
 export type AppExtensionBuildFence = {
   generationBuildId: string;
@@ -108,7 +110,7 @@ export class AppExtensionReservationLedger {
       fence.reservationId = reservation.reservationId;
       await this.persist();
       for (const ref of packageGenerationRefs) {
-        await this.registry.acquireGenerationRef(ref, refOwner(reservation));
+        await this.registry.lifecycle.acquireGenerationRef(ref, refOwner(reservation));
       }
       return structuredClone(reservation);
     });
@@ -132,9 +134,7 @@ export class AppExtensionReservationLedger {
         canonicalJson(reservation.handoffFrozenSet) !==
           canonicalJson(input.appGenerationFrozenSet)
       ) {
-        throw Object.assign(new Error("App generation frozen handoff 不一致"), {
-          status: 409,
-        });
+        throw statusError(409, "App generation frozen handoff 不一致");
       }
       reservation.state = "committed";
       delete reservation.handoffFrozenSet;
@@ -197,14 +197,14 @@ export class AppExtensionReservationLedger {
     for (const reservation of this.state.reservations) {
       if (reservation.state === "released") continue;
       for (const ref of reservation.packageGenerationRefs) {
-        await this.registry.acquireGenerationRef(ref, refOwner(reservation));
+        await this.registry.lifecycle.acquireGenerationRef(ref, refOwner(reservation));
       }
     }
   }
 
   private async releaseRefs(reservation: AppPackageGenerationReservation) {
     for (const ref of reservation.packageGenerationRefs) {
-      await this.registry.releaseGenerationRef(ref, refOwner(reservation));
+      await this.registry.lifecycle.releaseGenerationRef(ref, refOwner(reservation));
     }
   }
 
@@ -287,7 +287,7 @@ export class AppExtensionReservationLedger {
 }
 
 function uniqueRefs(refs: readonly ExtensionPackageGenerationRef[]) {
-  return [...new Map(refs.map((ref) => [`${ref.packageGenerationId}:${ref.recordDigest}`, ref])).values()];
+  return [...new Map(refs.map((ref) => [refKey(ref), ref])).values()];
 }
 
 function refOwner(reservation: AppPackageGenerationReservation) {
@@ -295,7 +295,7 @@ function refOwner(reservation: AppPackageGenerationReservation) {
 }
 
 function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }
 
 function validateLedger(value: unknown): Ledger {

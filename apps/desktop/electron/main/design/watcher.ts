@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DurableJson, Node fs.watch/timers, resolved Design workspaces, and caller-supplied secure refresh callbacks
+ * [INPUT]: Depends on DurableJson, Node fs.watch/timers, resolved Design workspaces, and caller-supplied secure refresh callbacks, and statusError from main/errors
  * [OUTPUT]: Provides per-turn DesignWatcher lifecycles, raw drafting signals, suppression tombstones, rejection-safe finish barriers, and an awaitable permanent workspace fence for custody deletion
  * [POS]: Design's filesystem-to-product event bridge; each turn owns its dirty set while destructive custody lifecycle drains and blocks the resolved workspace
  */
@@ -8,6 +8,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { statusError } from "../errors";
 import { DurableJson } from "../persistence/durable-json";
 
 const tombstoneSchema = z
@@ -132,9 +133,7 @@ export class DesignWatcher {
     if (this.active.has(key)) await this.finish(key);
     const root = await realpath(input.workspace);
     if (this.fencedWorkspaces.has(root)) {
-      throw Object.assign(new Error("Design workspace custody 正在或已经删除"), {
-        status: 410,
-      });
+      throw statusError(410, "Design workspace custody 正在或已经删除");
     }
     const directory = join(root, "design");
     // 绝不预建 design/：Design 开启后每个 chat 都会 arm，若在此 mkdir，会在用户
@@ -146,7 +145,7 @@ export class DesignWatcher {
       throw cause;
     });
     if (observed !== null && observed !== directory) {
-      throw Object.assign(new Error("Design watcher 拒绝符号链接目录"), { status: 403 });
+      throw statusError(403, "Design watcher 拒绝符号链接目录");
     }
     const active: ActiveWatch = {
       arm: input,

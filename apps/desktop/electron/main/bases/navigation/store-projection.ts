@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Base navigation facts, stored Base states, and shared sidebar summary projections
- * [OUTPUT]: Provides root/project Base lists, compact owner summaries, and canonical navigation mutations that declare zero touched rows
+ * [OUTPUT]: Provides root/project Base lists and canonical navigation mutations that declare zero touched rows
  * [POS]: Bases navigation policy module; BaseStore delegates pure visibility projection and metadata mutation here
  */
 
@@ -17,22 +17,10 @@ import type { BaseNavigation } from "../../../../shared/placement/facts";
 import {
   baseNavigationSummary,
   NO_ROWS_CHANGED,
+  sameJson,
   type BaseStoreMutation,
   type StoredBase,
 } from "../base-store-model";
-
-export function baseOwnerSummaries(states: ReadonlyMap<string, StoredBase>) {
-  return new Map(
-    [...states.entries()].map(([ownerKey, { meta, rows }]) => [
-      ownerKey,
-      {
-        owner: structuredClone(meta.owner),
-        ownerInstanceId: meta.ownerInstanceId,
-        rowCount: rows.length,
-      },
-    ])
-  );
-}
 
 export function rootBaseSummaries(
   states: Iterable<StoredBase>
@@ -66,7 +54,7 @@ export function navigationMutation(
   current: BaseSnapshot,
   navigation: BaseNavigation
 ): BaseStoreMutation | null {
-  if (JSON.stringify(current.meta.navigation) === JSON.stringify(navigation)) {
+  if (sameJson(current.meta.navigation, navigation)) {
     return null;
   }
   return {

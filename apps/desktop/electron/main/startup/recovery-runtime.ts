@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Agent custody journals, App/Chat ownership probes, native-only Chat history segments, Memory owners, Project recovery, Settings, and the platform capability matrix
+ * [INPUT]: Depends on Agent custody journals, App/Chat ownership probes, native-only Chat history segments, Memory owners, Project recovery, Settings, the lifecycle RecoveryReport, and the platform capability matrix
  * [OUTPUT]: Provides ordered startup recovery for Agent custody and paged Memory history plus lifecycle reconciliation reporting
  * [POS]: The startup recovery composition boundary; index.ts retains lifecycle order while this module owns recovery-specific wiring
  */
@@ -11,6 +11,7 @@ import type { AppsService } from "../apps/apps-service";
 import { AgentTurnCustodyJournal } from "../backends/agent-turn-custody-journal";
 import { AgentTurnCustodyRuntime } from "../backends/agent-turn-custody-runtime";
 import type { ChatStore } from "../chats/chat-store";
+import type { RecoveryReport } from "../lifecycle/reconciliation";
 import { ManagedRuntimeRegistry } from "../memory/runtime/managed-registry";
 import { MemoryLifecycleOrchestrator } from "../memory/runtime/control/lifecycle-orchestrator";
 import { MemoryService } from "../memory/service/memory-service";
@@ -160,18 +161,7 @@ export function continueMemoryRebuildRecovery(memory: MemoryService) {
   });
 }
 
-type LifecycleReconciliationReport = Readonly<{
-  unhandled: ReadonlyArray<Readonly<{ kind: string }>>;
-  projectionFailures: ReadonlyArray<Readonly<{ name: string; message: string }>>;
-  failed: ReadonlyArray<Readonly<{ kind: string; intentId: string; message: string }>>;
-  skipped: ReadonlyArray<Readonly<{ kind: string; intentId: string; why: string }>>;
-  consumed: readonly unknown[];
-  compactedTerminals: number;
-}>;
-
-export function reportLifecycleReconciliation(
-  report: LifecycleReconciliationReport
-) {
+export function reportLifecycleReconciliation(report: RecoveryReport) {
   if (report.unhandled.length) {
     throw new Error(
       `存在未注册的 lifecycle intent：${report.unhandled

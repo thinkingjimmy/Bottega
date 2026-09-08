@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React PointerEvent/State, receiving the control panel's horizontal opening, width, direction and boundary
  * [OUTPUT]: Provides resolve HorizontalResize/useHorizontalResize, unified Pointer Capture, threshold capture and full path clearance
- * [POS]: The UI's horizontal scaling interaction kernel is shared by SidebarRail and desktop Chat Third-Pain
+ * [POS]: UI's horizontal-resize interaction kernel, shared by SidebarRail and desktop Chat's third (side) panel
  */
 
 import * as React from "react"

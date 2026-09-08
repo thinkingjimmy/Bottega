@@ -1,9 +1,11 @@
 /**
  * [INPUT]: Depends on React, renderer locale/catalog runtime and data providers, canonical chat/turn snapshots, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
- * [OUTPUT]: Provides the stable ChatSessionController with main-derived resume actions, revision eligibility/submission, injectable panel identity, canonical submission, and side-panel state
+ * [OUTPUT]: Composes stable Chat controllers, shared sendability, typed retry recovery and fixed Agent settings navigation while keeping active controls independent.
  * [POS]: The thin composition root of chat/runtime; durable authority remains in main while renderer owns view generation. Routing stays outside: post-send navigation is the chat route's draft-residence observation, not a session concern
  */
 
+import { assertNoPendingAgent } from "@/lib/chat-agent-draft/submission";
+import { readAgentDraft, undoAgentSelection } from "@/lib/chat-agent-draft/state";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatStatus } from "ai";
 import { richValueDisplayText, type RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";
@@ -18,7 +20,7 @@ import {
   cancelAgentRequest,
   retryAgentSameSession,
   retryAgentWithoutSession,
-  type CodexRequest,
+  type AgentRequest,
 } from "@/lib/agent-client";
 import { errorMessage } from "@/lib/errors";
 import { useEffectiveLocale } from "@/lib/i18n-locale";
@@ -83,7 +85,7 @@ export function useChatSession({
         : { kind: "selectable" },
     [fixedAppId, fixedAppRole, projectKind]
   );
-  const { chats, loading: chatsLoading, createChat, createAppChat, appendMessage, getChat } = useChats();
+  const { chats, loading: chatsLoading, getChat } = useChats();
   const { projects, loading: projectsLoading, addProject, ensureForApp, listBranches, checkoutBranch, createBranch } = useProjects();
   const captureView = useSessionViewFence(chatId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -107,7 +109,7 @@ export function useChatSession({
   const [subagents, setSubagents] = useState<Record<string, ProjectedSubagent>>({});
   const draftRef = useRef<TurnDraft | null>(null);
   const [livePreviews, setLivePreviews] = useState<ReadonlyMap<string, LiveAttachmentPreview[]>>(new Map());
-  const requestRef = useRef<CodexRequest | null>(null);
+  const requestRef = useRef<AgentRequest | null>(null);
   const submitRef = useRef<SessionSubmit | null>(null);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const sessionAbortRef = useRef(new AbortController());
@@ -147,12 +149,13 @@ export function useChatSession({
       appendProjected({
         id: messageId("assistant"),
         role: "assistant",
+        backend: readAgentDraft(chatId).options.backend,
         content,
         isError,
         createdAt: Date.now(),
         seq: (projectionRef.current.messages.at(-1)?.seq ?? 0) + 1,
       }),
-    [appendProjected]
+    [appendProjected, chatId]
   );
   const messageSnapshot = useSessionMessageProjection({
     chatId, hydratedChatId, projectionRef, messagesRef, setMessages,
@@ -204,6 +207,7 @@ export function useChatSession({
     [locale]
   );
   const interactions = useSessionInteractions({
+    chatId,
     activeRequestId,
     messages,
     requestRef,
@@ -245,6 +249,7 @@ export function useChatSession({
     respondPlanDecision,
     respondUserInput,
     retryTurn,
+    retryAuthentication,
     setApprovalBusy,
     setApprovalError,
     setApprovals,
@@ -371,6 +376,7 @@ export function useChatSession({
     [chatId, reconcileSidePanelRichValue]
   );
   const clearRichInput = useCallback(() => {
+    undoAgentSelection(chatId);
     updateComposer(chatId, (current) => ({
       ...current,
       draft: { ...current.draft, richValue: [] },
@@ -421,7 +427,7 @@ export function useChatSession({
         workspacePrecondition,
       },
       services: {
-        chats: { appendMessage, createAppChat, createChat, getChat },
+        chats: { getChat },
         projects: { ensureForApp },
         settings,
         setup,
@@ -432,7 +438,6 @@ export function useChatSession({
         recordExists: recordExistsRef,
         incarnationId: incarnationIdRef,
         request: requestRef,
-        sessionAbort: sessionAbortRef,
         workspaceScopeKey: workspaceScopeKeyRef,
       },
       lifecycle,
@@ -440,12 +445,9 @@ export function useChatSession({
   }, [
     agentSession,
     appendLocalAssistant,
-    appendMessage,
     appendProjected,
     captureView,
     chatId,
-    createAppChat,
-    createChat,
     ensureForApp,
     getChat,
     setCancelPending,
@@ -520,14 +522,14 @@ export function useChatSession({
   const dismissQueueError = pendingQueue.dismissError;
   const editQueueItem = pendingQueue.edit;
   const moveQueueItem = pendingQueue.move;
-  const pauseQueue = pendingQueue.pause;
   const queueError = pendingQueue.error;
   const queueItems = pendingQueue.items;
   const queuePaused = pendingQueue.paused;
   const removeAmbiguous = pendingQueue.removeAmbiguous;
   const removeQueueItem = pendingQueue.remove;
   const resendAmbiguous = pendingQueue.resendAmbiguous;
-  const resumeQueue = pendingQueue.resume;
+  const resumePendingQueue = pendingQueue.resume;
+  const resumeQueue = useCallback(() => { assertNoPendingAgent(chatId); return resumePendingQueue(); }, [chatId, resumePendingQueue]);
   const setQueueReorderLock = pendingQueue.setReorderLock;
   const steerQueueItem = pendingQueue.steer;
   const steerQueueSupported = pendingQueue.steerSupported;
@@ -550,10 +552,12 @@ export function useChatSession({
   const handleQueueOrSubmit = useCallback<SessionSubmit>(
     (message, options) => {
       if (sendDirectly) return handleSubmit(message, options);
+      assertNoPendingAgent(chatId);
+      if (backendState !== "ready" || options?.authenticationRetry) return Promise.reject(new Error("Agent is unavailable for queued messages"));
       enqueuePending(message);
       return Promise.resolve();
     },
-    [enqueuePending, handleSubmit, sendDirectly]
+    [chatId, backendState, enqueuePending, handleSubmit, sendDirectly]
   );
   const pausePending = pendingQueue.pause;
   const handleStop = useCallback(async () => {
@@ -615,19 +619,21 @@ export function useChatSession({
     [canAcknowledgeCleanup, chatId, locale, reportActionFailure]
   );
   const retryWithoutSession = useCallback(async () => {
+    assertNoPendingAgent(chatId);
     if (!resumeFailure?.allowedActions.freshSession) return;
     await retryAgentWithoutSession(
       resumeFailure.requestId,
       resumeFailure.retryToken
     );
-  }, [resumeFailure]);
+  }, [chatId, resumeFailure]);
   const retrySameSession = useCallback(async () => {
+    assertNoPendingAgent(chatId);
     if (!resumeFailure?.allowedActions.sameSession) return;
     await retryAgentSameSession(
       resumeFailure.requestId,
       resumeFailure.retryToken
     );
-  }, [resumeFailure]);
+  }, [chatId, resumeFailure]);
   const abandonResumeFailure = useCallback(() => {
     if (!resumeFailure?.allowedActions.abandon) return;
     cancelAgentRequest(resumeFailure.requestId);
@@ -680,6 +686,7 @@ export function useChatSession({
       canContinue,
       continueTurn,
       retryTurn,
+    retryAuthentication,
       openPlanPanel,
       openDraftPlanPanel,
       subagents,
@@ -724,7 +731,6 @@ export function useChatSession({
       respondApproval,
       pendingUserInput,
       respondUserInput,
-      hasPendingUserInput: Boolean(pendingUserInput),
       pendingPlanDecision,
       respondPlanDecision,
       planMode,
@@ -756,7 +762,6 @@ export function useChatSession({
       sectionsLoading: chatsLoading,
       richDisplayText,
       handleSubmit: handleQueueOrSubmit,
-      handleQueueOrSubmit,
       handleStop,
       queueItems,
       queuePaused,
@@ -768,7 +773,6 @@ export function useChatSession({
       editQueueItem,
       steerQueueItem,
       resumeQueue,
-      pauseQueue,
       dismissQueueError,
       resendAmbiguous,
       removeAmbiguous,
@@ -782,17 +786,14 @@ export function useChatSession({
       backendState,
       imageInputAvailable:
         selectedBackend?.capabilities.imageInput ?? false,
-      openSetup: setup.openOnboarding,
+      openSetup: setup.openAgentSettings,
+      retryAuthentication,
       resumeFailure,
       retryWithoutSession,
       retrySameSession,
       abandonResumeFailure,
     });
-  return useStableController({
-    transcript: transcriptController,
-    sidePanel: sidePanelController,
-    composer: composerController,
-  });
+  return useStableController({ transcript: transcriptController, sidePanel: sidePanelController, composer: composerController });
 }
 
 export type ChatSessionController = ReturnType<typeof useChatSession>;

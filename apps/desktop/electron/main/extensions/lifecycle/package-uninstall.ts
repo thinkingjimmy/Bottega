@@ -1,12 +1,10 @@
 /**
- * [INPUT]: Depends on exact-scope Registry removal fences, projection leases, retained-data owner receipts, App migration, and runtime custody ports
+ * [INPUT]: Depends on exact-scope Registry removal fences, projection leases, retained-data owner receipts, App migration, and runtime custody ports, and statusError from main/errors
  * [OUTPUT]: Provides scope-authorized package uninstall, durable reference convergence, byte reclamation, retained-owner projection, and explicit exact-owner data purge
  * [POS]: Extension physical uninstall coordinator; frozen generations retain code while install-owned data survives package removal until separately purged
  */
 
 import type {
-  ExtensionAffectedAppView,
-  ExtensionPackageGenerationRef,
   ExtensionScopeMutation,
   ExtensionUninstallStep,
   ExtensionUninstallView,
@@ -15,7 +13,9 @@ import {
   sameProductResourceScope,
   type ProductResourceScope,
 } from "../../../../shared/product-resource-scope";
+import { statusError } from "../../errors";
 import { extensionContentStore } from "../content-store";
+import type { ExtensionAppMigrationPort } from "../install/installer";
 import type { ExtensionRegistryStore } from "../registry-store";
 import type { ExtensionLifecycleLedger } from "./lifecycle-ledger";
 import type { PluginDataEpochStore } from "./plugin-data-epochs";
@@ -43,14 +43,6 @@ export type ExtensionRuntimeCustodyProbe = Readonly<{
   ): readonly string[] | Promise<readonly string[]>;
 }>;
 
-/** 迁移面；与更新共用同一个实现，卸载只是换了一份 authoritative snapshot */
-export type ExtensionUninstallMigrationPort = Readonly<{
-  boundApps(
-    refs: readonly ExtensionPackageGenerationRef[]
-  ): readonly ExtensionAffectedAppView[];
-  migrate(appId: string, migrationId: string): Promise<void>;
-}>;
-
 const STEPS = {
   references: "durable-references-resolved",
   custody: "runtime-custody-drained",
@@ -71,7 +63,7 @@ export type ExtensionPackageUninstallFaults = Readonly<{
 
 export class ExtensionPackageUninstall {
   private custody: ExtensionRuntimeCustodyProbe | null = null;
-  private migrations: ExtensionUninstallMigrationPort | null = null;
+  private migrations: ExtensionAppMigrationPort | null = null;
   private readonly contentStore: ReturnType<typeof extensionContentStore>;
 
   constructor(
@@ -87,7 +79,7 @@ export class ExtensionPackageUninstall {
 
   configure(ports: {
     custody: ExtensionRuntimeCustodyProbe;
-    migrations?: ExtensionUninstallMigrationPort;
+    migrations?: ExtensionAppMigrationPort;
   }) {
     this.custody = ports.custody;
     this.migrations = ports.migrations ?? null;
@@ -104,13 +96,13 @@ export class ExtensionPackageUninstall {
       ) {
         continue;
       }
-      await this.registry.resumeCancelPackageRemoval({
+      await this.registry.lifecycle.resumeCancelPackageRemoval({
         operationId: operation.operationId,
         installIdentity: operation.installIdentity,
         scope: operation.scope,
         sourceIdentity: operation.sourceIdentity,
       }).catch((cause) => {
-        if (this.registry.packageInventory(operation.installIdentity)) throw cause;
+        if (this.registry.lifecycle.packageInventory(operation.installIdentity)) throw cause;
       });
     }
     for (const operation of this.ledger.nonTerminal("uninstall")) {
@@ -129,20 +121,20 @@ export class ExtensionPackageUninstall {
    */
   async begin(input: ExtensionScopeMutation) {
     const { installIdentity } = input;
-    this.registry.assertScopeMutation(input);
+    this.registry.lifecycle.assertScopeMutation(input);
     await this.faults.afterInitialValidation?.("begin");
     const existing = this.operationOf(installIdentity);
     if (existing) {
-      await this.registry.runScopeMutation(input, async () => undefined);
+      await this.registry.lifecycle.runScopeMutation(input, async () => undefined);
       return this.converge(existing.operationId);
     }
-    const owner = this.registry.packageInventory(installIdentity);
+    const owner = this.registry.lifecycle.packageInventory(installIdentity);
     if (!owner) throw new Error("Extension package 不存在");
     if (owner.administrativeState !== "denied") {
       throw conflict("先停用并完成收敛，才能物理卸载这个 package");
     }
     let operation: ReturnType<ExtensionLifecycleLedger["find"]> = null;
-    await this.registry.beginPackageRemoval(input, async (authorizedOwner) => {
+    await this.registry.lifecycle.beginPackageRemoval(input, async (authorizedOwner) => {
         const staged = await this.ledger.stage({
           kind: "uninstall",
           installIdentity,
@@ -170,12 +162,12 @@ export class ExtensionPackageUninstall {
   async resolve(input: ExtensionScopeMutation & {
     migrateAppIds?: readonly string[];
   }) {
-    this.registry.assertScopeMutation(input);
+    this.registry.lifecycle.assertScopeMutation(input);
     await this.faults.afterInitialValidation?.("resolve");
     const operation = this.operationOf(input.installIdentity);
     if (!operation) throw new Error("该 package 没有进行中的卸载");
     const known = new Set(this.boundApps(input.installIdentity).map((item) => item.appId));
-    await this.registry.runScopeMutation(input, async () => {
+    await this.registry.lifecycle.runScopeMutation(input, async () => {
       for (const appId of input.migrateAppIds ?? []) {
         if (!this.migrations || !known.has(appId)) {
           throw new Error("迁移名单包含未绑定该 package 的 App");
@@ -192,11 +184,11 @@ export class ExtensionPackageUninstall {
   /** 放弃卸载：重开准入，包回到「已停用但仍安装」，一个字节都没少。 */
   async cancel(input: ExtensionScopeMutation) {
     const { installIdentity } = input;
-    this.registry.assertScopeMutation(input);
+    this.registry.lifecycle.assertScopeMutation(input);
     await this.faults.afterInitialValidation?.("cancel");
     const operation = this.operationOf(installIdentity);
     if (!operation) return;
-    await this.registry.cancelPackageRemoval(input, operation.operationId, async () => {
+    await this.registry.lifecycle.cancelPackageRemoval(input, operation.operationId, async () => {
       await this.ledger.abort(operation.operationId);
     });
   }
@@ -225,7 +217,7 @@ export class ExtensionPackageUninstall {
    */
   async retainedInstallData(scope: ProductResourceScope) {
     const installed = new Set(
-      this.registry.packageOwners(scope).map((item) => item.installIdentity)
+      this.registry.lifecycle.packageOwners(scope).map((item) => item.installIdentity)
     );
     const rows = [];
     for (const owner of await this.epochs.listOwners(scope)) {
@@ -252,11 +244,11 @@ export class ExtensionPackageUninstall {
       throw conflict("Extension scope revision 已变更");
     }
     await this.faults.afterInitialValidation?.("purge");
-    await this.registry.runScopeRevisionMutation(
+    await this.registry.lifecycle.runScopeRevisionMutation(
       input.expectedScope,
       input.expectedScopeRevision,
       async () => {
-        const installed = Boolean(this.registry.packageInventory(installIdentity));
+        const installed = Boolean(this.registry.lifecycle.packageInventory(installIdentity));
         if (installed) throw conflict("package 尚未回收，不能删除 install-owned 数据");
         if (!this.custody) throw new Error("未装配 custody 探针，拒绝冒充已归零");
         const outstanding = await this.custody.outstanding(installIdentity);
@@ -282,7 +274,7 @@ export class ExtensionPackageUninstall {
        闸的问题不再存在）就别再写一遍账——那会白白推高 inventory revision，更会
        在「代已删、字节未收」的恢复点上撞进「package 不存在」。 */
     if (!this.gateClosed(installIdentity)) {
-      await this.registry.resumePackageRemoval({
+      await this.registry.lifecycle.resumePackageRemoval({
         operationId,
         installIdentity,
         scope: started.scope,
@@ -353,7 +345,7 @@ export class ExtensionPackageUninstall {
 
   private async removeGenerations(operationId: string, installIdentity: string) {
     if (this.hasStep(operationId, STEPS.generations)) return;
-    await this.registry.removePackage(operationId, installIdentity);
+    await this.registry.lifecycle.removePackage(operationId, installIdentity);
     await this.ledger.recordStep(operationId, STEPS.generations);
   }
 
@@ -366,7 +358,7 @@ export class ExtensionPackageUninstall {
   private async collectBytes(operationId: string) {
     if (this.hasStep(operationId, STEPS.bytes)) return;
     const retained = new Set([
-      ...this.registry.referencedContentDigests(),
+      ...this.registry.lifecycle.referencedContentDigests(),
       ...this.ledger
         .nonTerminal()
         .flatMap((item) => (item.contentDigest ? [item.contentDigest] : [])),
@@ -381,21 +373,21 @@ export class ExtensionPackageUninstall {
      otherOwners 里，卸载因此停住，而不是把一个还有人用的包删掉。 */
   private boundApps(installIdentity: string) {
     return this.migrations
-      ? this.migrations.boundApps(this.registry.packageGenerationRefs(installIdentity))
+      ? this.migrations.boundApps(this.registry.lifecycle.packageGenerationRefs(installIdentity))
       : [];
   }
 
   private otherOwners(installIdentity: string) {
     const owners = this.registry
-      .packageGenerationRefs(installIdentity)
-      .flatMap((ref) => this.registry.blockers(ref));
+      .lifecycle.packageGenerationRefs(installIdentity)
+      .flatMap((ref) => this.registry.lifecycle.blockers(ref));
     return [...new Set(owners)]
       .filter((owner) => !this.migrations || !owner.startsWith(RESERVATION_OWNER))
       .sort();
   }
 
   private gateClosed(installIdentity: string) {
-    const owner = this.registry.packageInventory(installIdentity);
+    const owner = this.registry.lifecycle.packageInventory(installIdentity);
     if (!owner) return true;
     return owner.generations.every((item) =>
       owner.removalPendingGenerationIds.includes(item.packageGenerationId)
@@ -416,5 +408,5 @@ export class ExtensionPackageUninstall {
 }
 
 function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }

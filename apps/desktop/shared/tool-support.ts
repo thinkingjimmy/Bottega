@@ -50,7 +50,7 @@ export function toolBackendFactsFromRuntimeIdentity(
   };
 }
 
-export function resolveBuiltinBackendSupport(
+function resolveBuiltinBackendSupport(
   toolId: string,
   backend: ToolBackendRuntimeFacts
 ): ResourceBackendSupportView {

@@ -4,6 +4,7 @@
  * [POS]: Design provisioning's user-explicit reinstall adapter; startup ensure cannot consume its in-memory preflight authority
  */
 
+import { readCompatibility, runningBottegaVersion } from "../../apps/compatibility/read";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,7 +13,7 @@ import type {
   AppConfigValue,
   AppRecord,
   InstallPresetInput,
-  PresetProbeResult,
+  ReadyPresetProbeResult,
 } from "../../../../shared/apps-ipc";
 import { baseSnapshotFileSchema } from "../../../../shared/base-snapshot";
 import { appManifestSchema } from "../../apps/install/manifest-schema";
@@ -34,16 +35,17 @@ export class DesignFactoryPresetFlow implements PresetFactoryFlow {
   constructor(
     private readonly sourceRoot: string,
     private readonly trust: DesignFactoryTrust,
-    private readonly reinstall: () => Promise<AppRecord>
+    private readonly reinstall: () => Promise<AppRecord>,
+    private readonly hostVersion = runningBottegaVersion
   ) {}
 
   handles(presetId: string) {
     return presetId === this.trust.presetId;
   }
 
-  async probePreset(presetId: string): Promise<PresetProbeResult> {
+  async probePreset(presetId: string): Promise<ReadyPresetProbeResult> {
     if (!this.handles(presetId)) throw new Error("Factory preset identity 不匹配");
-    const result = await inspectFactoryPayload(this.sourceRoot, this.trust);
+    const result = await inspectFactoryPayload(this.sourceRoot, this.trust, this.hostVersion());
     this.frozen.set(result.preflightId, {
       digest: result.digest,
       trust: structuredClone(this.trust),
@@ -66,7 +68,7 @@ export class DesignFactoryPresetFlow implements PresetFactoryFlow {
       throw new Error("Design factory 不接受运行时配置");
     }
     const frozen = this.frozen.get(input.preflightId);
-    const current = await inspectFactoryPayload(this.sourceRoot, this.trust);
+    const current = await inspectFactoryPayload(this.sourceRoot, this.trust, this.hostVersion());
     if (
       !frozen ||
       frozen.digest !== input.digest ||
@@ -82,14 +84,16 @@ export class DesignFactoryPresetFlow implements PresetFactoryFlow {
 
 async function inspectFactoryPayload(
   sourceRoot: string,
-  trust: DesignFactoryTrust
-): Promise<PresetProbeResult> {
+  trust: DesignFactoryTrust,
+  hostVersion: string | null
+): Promise<ReadyPresetProbeResult> {
   const inspection = await inspectPackage(sourceRoot);
   if (inspection.ignored.length) throw new Error("Design factory payload 含未签名文件");
   const digest = await packageDigest(sourceRoot, inspection.files);
   if (`sha256:${digest}` !== trust.treeDigest) {
     throw new Error("Design factory treeDigest 不匹配");
   }
+  await readCompatibility(sourceRoot, { appName: "Design Canvas", presetId: trust.presetId, repoUrl: trust.repoUrl, commitSha: trust.catalogPin, contentDigest: trust.treeDigest }, hostVersion);
   const manifest = appManifestSchema.parse(
     JSON.parse(await readFile(join(sourceRoot, "app.json"), "utf8"))
   );

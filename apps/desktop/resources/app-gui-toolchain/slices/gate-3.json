@@ -4,18 +4,18 @@
   "files": [
     {
       "path": "electron/main/apps/file-export/controller.ts",
-      "bytes": 5661,
-      "sha256": "sha256:589c0fb90f1107378263a754e4440aeefd0b4c64760e91a2f447a9bfbd560265"
+      "bytes": 5689,
+      "sha256": "sha256:a4e51950c777f6f173fc5fd2712759a665d8acf673625b4b63aa9e0675d844c5"
     },
     {
       "path": "electron/main/apps/file-export/intent-store.ts",
-      "bytes": 2453,
-      "sha256": "sha256:480cb6a85cc55d33bbf204dfea008789db57bb4c47ad066bf6abcd63c8116d35"
+      "bytes": 2452,
+      "sha256": "sha256:914ca2277875660825f8c22a6a64fce9a8c975caf945e9c8d4932092b76e2d3e"
     },
     {
       "path": "electron/main/apps/file-export/manager.ts",
-      "bytes": 18464,
-      "sha256": "sha256:bcb5a190333b5a2352d9948c42d0b002497ce30a01d761f05b9cc8cf11a48d9a"
+      "bytes": 18521,
+      "sha256": "sha256:a8535a30e40e07236605a33a0f80c6dd50dbc39292fbe6a5791a5362a2669719"
     },
     {
       "path": "electron/main/apps/gui-build/product-modules/blocks.ts",

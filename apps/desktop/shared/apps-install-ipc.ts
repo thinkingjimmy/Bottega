@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on type-only AgentBackendId, Apps manifest/record/authorization primitives, product resource scope, and Extension disclosure/digest vocabulary
- * [OUTPUT]: Provides the App acquisition wire contracts — gh status, repo/preset probe results, extension install preflights, typed preset identities and install inputs, config values, share preview/publish, add/save-as/remove commands
+ * [INPUT]: Depends on stable App compatibility failures, type-only Agent/App/authorization primitives and existing Extension disclosure vocabulary.
+ * [OUTPUT]: Provides App acquisition IPC including explicit author-manifest/Agent-analysis selection, source preflight, configuration and existing import/share contracts
  * [POS]: Shared Apps wire leaf for the acquisition half (install, preset, share, removal); apps-ipc re-exports it while durable lifecycle and grant records stay in that file
  */
 
+import type { AppCompatibilityBlocked } from "./app-host/contract";
 import type { AgentBackendId } from "./agent-ipc";
 import type {
   AppInstallAuthorization,
@@ -20,7 +21,8 @@ export type GhStatus =
   | { state: "ready"; message: string };
 
 export type AppRepoProbeResult =
-  | { kind: "web"; repoUrl: string }
+  | AppCompatibilityBlocked
+  | { kind: "web"; repoUrl: string; commitSha: string; declarationDigest: string | null }
   | {
       kind: "base";
       repoUrl: string;
@@ -72,13 +74,13 @@ export type PresetAppSummary = {
   requirements: AppRequirement[];
 };
 
-export type PresetInstallRequest = {
+type PresetInstallRequest = {
   presetId: string;
   requestId: string;
   config?: AppConfigValue;
 };
 
-export type PresetProbeResult = Extract<
+export type ReadyPresetProbeResult = Extract<
   AppRepoProbeResult,
   { kind: "base" }
 > & {
@@ -86,6 +88,8 @@ export type PresetProbeResult = Extract<
   resolvedPin: string;
   channel: "release" | "dev";
 };
+
+export type PresetProbeResult = ReadyPresetProbeResult | AppCompatibilityBlocked;
 
 export type InstallPresetInput = PresetInstallRequest & {
   preflightId: string;
@@ -125,6 +129,8 @@ export type SharePublishInput = {
 export type AddAppInput = {
   repoUrl: string;
   maintenanceAgent: AgentBackendId | "auto";
+  candidateCommitSha?: string;
+  installStrategy?: import("./apps-execution").AppInstallStrategy;
   preflightId?: string;
   confirmedDigest?: string;
   config?: AppConfigValue;

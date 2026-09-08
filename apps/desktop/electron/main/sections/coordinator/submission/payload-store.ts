@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on private atomic file IO, shared attachment budgets, manual submissions, and canonical hashing
+ * [INPUT]: Depends on the persistence durable-replace/errno/directory-fsync helpers, private temp file IO, shared attachment budgets, manual submissions, canonical hashing, and coded errors
  * [OUTPUT]: Provides raw payload custody, opaque references, hydration/recovery/release markers, and recursive complete/incomplete adoption-reference projection across manifests and temp state
  * [POS]: The large-payload custody owner of coordinator submission
  */
@@ -13,7 +13,7 @@ import {
   rename,
   rm,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 import {
   ATTACHMENT_BYTE_LIMIT,
@@ -22,11 +22,9 @@ import {
   isValidImageDataUrl,
 } from "../../../../../shared/agent-ipc";
 import type { TrustedManualTurnSubmission as ManualTurnSubmission } from "../../../../../shared/sections-ipc";
-import {
-  SUBMISSION_CAPSULE_BYTE_LIMIT,
-  type SubmissionErrorCode,
-} from "../../../../../shared/submission";
-import { canonicalHash } from "../coordinator-values";
+import { SUBMISSION_CAPSULE_BYTE_LIMIT } from "../../../../../shared/submission";
+import { durableReplaceFile, isErrnoCode, syncDirectory } from "../../../persistence/durable-json";
+import { canonicalHash, codedError } from "../coordinator-values";
 import type { LedgerState } from "../state/ledger-schema";
 import { reserveSubmission } from "../submission-outcome";
 import type { ReferenceProjection } from "../../../history-import/memory-snapshot-store";
@@ -62,7 +60,7 @@ const releaseMarkerSchema = z
   })
   .strict();
 
-export type SubmissionPayloadReference = {
+type SubmissionPayloadReference = {
   kind: "submission-ref";
   value: {
     intentId: string;
@@ -86,7 +84,7 @@ export class SubmissionPayloadStore {
     const packed = packSubmission(submission, submissionHash);
     const target = this.directory(submission.intentId);
     const existing = await this.readManifest(target).catch((cause) => {
-      if (isCode(cause, "ENOENT")) return null;
+      if (isErrnoCode(cause, "ENOENT")) return null;
       throw cause;
     });
     if (existing) {
@@ -106,9 +104,9 @@ export class SubmissionPayloadStore {
       );
       try {
         await rename(temporary, target);
-        await fsyncDirectory(this.root);
+        await syncDirectory(this.root);
       } catch (cause) {
-        if (!isCode(cause, "EEXIST") && !isCode(cause, "ENOTEMPTY")) {
+        if (!isErrnoCode(cause, "EEXIST") && !isErrnoCode(cause, "ENOTEMPTY")) {
           throw cause;
         }
         const raced = await this.readManifest(target);
@@ -179,18 +177,18 @@ export class SubmissionPayloadStore {
 
   async remove(intentId: string) {
     await rm(this.directory(intentId), { recursive: true, force: true });
-    await fsyncDirectory(this.root);
+    await syncDirectory(this.root);
   }
 
   async markReleased(intentId: string) {
     const manifest = await this.readManifest(this.directory(intentId)).catch(
       (cause) => {
-        if (isCode(cause, "ENOENT")) return null;
+        if (isErrnoCode(cause, "ENOENT")) return null;
         throw cause;
       }
     );
     if (!manifest) return false;
-    await durableReplace(
+    await durableReplaceFile(
       this.releaseMarker(intentId),
       JSON.stringify(
         releaseMarkerSchema.parse({
@@ -212,7 +210,7 @@ export class SubmissionPayloadStore {
       await this.remove(intentId);
     }
     await rm(this.releaseMarker(intentId), { force: true });
-    await fsyncDirectory(this.root);
+    await syncDirectory(this.root);
   }
 
   async recoverLedgerState(state: LedgerState, now: number) {
@@ -390,7 +388,7 @@ export class SubmissionPayloadStore {
       if (!entry.isDirectory() || !entry.name.includes(".tmp")) continue;
       await rm(join(this.root, entry.name), { recursive: true, force: true });
     }
-    await fsyncDirectory(this.root);
+    await syncDirectory(this.root);
   }
 
   private directory(intentId: string) {
@@ -583,34 +581,4 @@ async function durableFile(path: string, content: string) {
   } finally {
     await file.close();
   }
-}
-
-async function durableReplace(path: string, content: string) {
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  await durableFile(temporary, content);
-  await rename(temporary, path);
-  await fsyncDirectory(dirname(path));
-}
-
-async function fsyncDirectory(path: string) {
-  const directory = await open(path, "r");
-  try {
-    await directory.sync();
-  } catch (cause) {
-    if (!isCode(cause, "EINVAL") && !isCode(cause, "ENOTSUP")) throw cause;
-  } finally {
-    await directory.close();
-  }
-}
-
-function isCode(cause: unknown, code: string) {
-  return (
-    cause instanceof Error &&
-    "code" in cause &&
-    (cause as NodeJS.ErrnoException).code === code
-  );
-}
-
-function codedError(code: SubmissionErrorCode) {
-  return Object.assign(new Error(code), { code });
 }

@@ -3,7 +3,11 @@
  * [OUTPUT]: Provides the complete Japanese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
  * [POS]: Japanese desktop locale; compile-time structure must match English exactly
  */
+import { appHostJa } from "./app-host/ja";
+import { agentAvailabilityJa } from "./agent-availability/ja";
 
+
+import { chatAgentSwitchJa } from "./chat-agent-switch/ja";
 import type { Catalog } from "./en";
 import { basesJa } from "./bases/ja";
 import { archiveJa } from "./archive";
@@ -19,6 +23,7 @@ import { settingsToolsJa } from "./settings/tools";
 import { settingsUsageJa } from "./settings/usage";
 import { settingsPersonalizationJa } from "./settings/personalization";
 import { settingsShortcutsJa } from "./settings/shortcuts";
+import { presenceJa } from "./presence/ja";
 import { settingsAboutJa } from "./settings/about";
 import { historyJa } from "./history";
 import { chatRevisionJa } from "./chat-revision";
@@ -32,6 +37,8 @@ import { agentFailureJa } from "./agent-failure/ja";
 import { chatStorageJa } from "./chat-storage/ja";
 
 export const ja: Catalog = {
+  appHost: appHostJa,
+  agentAvailability: agentAvailabilityJa,
   common: {
     auto: "自動",
     light: "ライト",
@@ -112,6 +119,7 @@ export const ja: Catalog = {
   projectSettings: projectSettingsJa,
   settings: {
     about: settingsAboutJa,
+    presence: presenceJa,
     personalization: settingsPersonalizationJa,
     shortcuts: settingsShortcutsJa,
     skills: settingsSkillsJa,
@@ -209,6 +217,7 @@ export const ja: Catalog = {
     tools: settingsToolsJa,
   },
   chat: {
+    agentSwitch: chatAgentSwitchJa,
     ...chatJa,
     runtime: chatRuntimeJa,
     generatingTitle: "タイトルを生成中",
@@ -548,8 +557,6 @@ export const ja: Catalog = {
   ui: {
     cancel: "キャンセル",
     uploadFiles: "ファイルをアップロード",
-    previousBranch: "前の分岐",
-    nextBranch: "次の分岐",
     loadingRichContent: "リッチコンテンツを読み込み中",
     loading: "読み込み中",
     close: "閉じる",
@@ -558,7 +565,6 @@ export const ja: Catalog = {
     toggleSidebar: "サイドバーを切り替え",
     resizeSidebar: "サイドバーの幅を変更",
     resizeSidebarHint: "ドラッグしてサイドバーの幅を変更",
-    addAttachments: "添付ファイルを追加",
     attachment: "添付ファイル",
     previewAttachment: "添付ファイルをプレビュー",
     removeAttachment: "添付ファイルを削除",
@@ -566,7 +572,6 @@ export const ja: Catalog = {
     submit: "送信",
     message: "メッセージ",
     askAnything: "何でも聞いてください",
-    branchOf: "/",
     submissionFailed: "送信に失敗しました。もう一度お試しください。",
     skillSuggestionsEmpty: "利用できる Skill はありません",
     skillSuggestionsNoMatch: "一致する Skill はありません",

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on generation/surface-bound Base GUI bindings, the custody-aware workspace port, Node HTTP streams, crypto, and strict shared workspace contracts
+ * [INPUT]: Depends on generation/surface-bound Base GUI bindings, the custody-aware workspace port, Node HTTP streams, crypto, and strict shared workspace contracts, and statusError from main/errors
  * [OUTPUT]: Provides compiled-v3 POST-only opaque file/version/cursor/preview refs with per-binding ref quotas, digest-required listings, revision re-verified preview serving, and cross-origin iframe-only preview documents without exposing paths, tokens, URLs, or source
  * [POS]: The compiled workspace-read-v1 adapter; legacy path-shaped routes remain isolated in workspace-preview.ts
  */
@@ -9,6 +9,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import type { AppGuiRuntimeErrorCode, BaseGuiLiveBinding } from "../../../../shared/apps-ipc";
 import { APP_GUI_RUNTIME_ERROR_CODES } from "../../../../shared/app-gui/contracts";
+import { statusError } from "../../errors";
 import { workspaceSourceLine } from "./design-source-line";
 import type { WorkspacePreviewPort } from "./workspace-preview";
 
@@ -443,7 +444,7 @@ function failure(response: ServerResponse, status: number, code: AppGuiRuntimeEr
 }
 
 function tagged(status: number, code: AppGuiRuntimeErrorCode) {
-  return Object.assign(new Error(code), { status, code });
+  return statusError(status, code, { code });
 }
 
 function statusOf(cause: unknown) {

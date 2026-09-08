@@ -4,6 +4,8 @@
  * [POS]: Design factory delivery state machine; it alone may auto-approve the factory grant set and never treats preset identity without exact bytes as trust
  */
 
+import { AppCompatibilityError, readCompatibility, runningBottegaVersion } from "../../apps/compatibility/read";
+import { appCompatibilityRequests, type AppCompatibilityRequests } from "../../apps/compatibility/requests";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
@@ -35,6 +37,7 @@ const phaseSchema = z.enum([
 ]);
 const conditionSchema = z.enum([
   "provisioning",
+  "waiting-host",
   "factory",
   "drifted",
   "pin-drift",
@@ -55,6 +58,8 @@ const fileSchema = z
     condition: conditionSchema,
     previousDigest: digestSchema.nullable(),
     error: z.string().max(3_500).nullable(),
+    compatibilityRequestId: z.string().uuid().optional(),
+    blockedHostVersion: z.string().nullable().optional(),
     deletedAt: z.number().int().nonnegative().nullable(),
     updatedAt: z.number().int().nonnegative(),
   })
@@ -96,13 +101,16 @@ export type DesignFactoryPorts = Readonly<{
 export class DesignFactoryProvisioner {
   private readonly root: string;
   private readonly file: DurableJson<FactoryFile>;
+  private readonly compatibilityRequests: AppCompatibilityRequests;
   private ports: DesignFactoryPorts | null = null;
 
   constructor(
     userData: string,
     private readonly now: () => number = Date.now,
-    private readonly createId: () => string = randomUUID
+    private readonly createId: () => string = randomUUID,
+    private readonly hostVersion = runningBottegaVersion
   ) {
+    this.compatibilityRequests = appCompatibilityRequests(userData);
     this.root = join(userData, "design", "provisioning");
     this.file = new DurableJson(join(this.root, "factory.json"), fileSchema, () => ({
       schemaVersion: 1,
@@ -133,15 +141,16 @@ export class DesignFactoryProvisioner {
     return this.file.snapshot();
   }
 
-  async ensure(sourceRoot: string, rawTrust: DesignFactoryTrust) {
+  async ensure(sourceRoot: string, rawTrust: DesignFactoryTrust, manual = false) {
     const trust = trustSchema.parse(rawTrust);
     const state = this.file.snapshot();
+    if (!manual && state.condition === "waiting-host" && state.blockedHostVersion === this.hostVersion()) return state;
     if (
       state.condition === "deleted" ||
       (state.condition === "failed" && state.deletedAt !== null)
     ) return state;
     try {
-      await assertSourceTrust(sourceRoot, trust);
+      await assertSourceTrust(sourceRoot, trust, this.hostVersion());
       let app = this.requirePorts().find(state.appId);
       // 拒绝静默复活是全局前置，不止 complete/factory 分支：一旦账本记过 appId 却查无
       // App（冷启动隔离/外部移除），任何 condition（drifted/pin-drift/reset-failed/…）
@@ -193,6 +202,10 @@ export class DesignFactoryProvisioner {
         error: null,
       });
     } catch (cause) {
+      if (cause instanceof AppCompatibilityError) {
+        const failure = await this.compatibilityRequests.remember(cause.compatibility);
+        return this.record({ condition: "waiting-host", compatibilityRequestId: failure.requestId, blockedHostVersion: this.hostVersion(), error: null });
+      }
       await this.record({
         condition: "failed",
         error: errorMessage(cause),
@@ -204,6 +217,7 @@ export class DesignFactoryProvisioner {
   async reinstall(sourceRoot: string, rawTrust: DesignFactoryTrust) {
     const trust = trustSchema.parse(rawTrust);
     const state = this.file.snapshot();
+    if (state.condition === "waiting-host" && state.appId === null) return this.ensure(sourceRoot, trust, true);
     const missingOwnerAppId = this.missingOwnerAppId(state);
     const retryingExplicitReinstall =
       state.condition === "failed" && state.deletedAt !== null;
@@ -218,7 +232,7 @@ export class DesignFactoryProvisioner {
     // 显式重装时才允许收敛此状态；先 orphan 旧 custody，再丢弃旧 appId。
     await this.orphanMissingOwner(missingOwnerAppId);
     await this.resetForReinstall(trust);
-    return this.ensure(sourceRoot, trust);
+    return this.ensure(sourceRoot, trust, true);
   }
 
   private missingOwnerAppId(state: FactoryFile) {
@@ -258,7 +272,7 @@ export class DesignFactoryProvisioner {
     if (current.condition === "deleted") throw new Error("Design factory 已被用户删除");
     const app = this.requirePorts().find(current.appId);
     if (!app?.ready || !app.defaultGrant) throw new Error("Design factory 不可重置");
-    await assertSourceTrust(sourceRoot, trust);
+    await assertSourceTrust(sourceRoot, trust, this.hostVersion());
     await this.record({
       condition: "resetting",
       previousDigest: digestSchema.nullable().parse(app.activeSourceDigest),
@@ -348,11 +362,12 @@ export class DesignFactoryProvisioner {
   }
 }
 
-async function assertSourceTrust(sourceRoot: string, trust: DesignFactoryTrust) {
+async function assertSourceTrust(sourceRoot: string, trust: DesignFactoryTrust, hostVersion: string | null) {
   const inspection = await inspectPackage(sourceRoot);
   if (inspection.ignored.length) throw new Error("Design factory payload 含未签名文件");
   const actual = `sha256:${await packageDigest(sourceRoot, inspection.files)}`;
   if (actual !== trust.treeDigest) throw new Error("Design factory treeDigest 不匹配");
+  await readCompatibility(sourceRoot, { appName: "Design Canvas", presetId: trust.presetId, repoUrl: trust.repoUrl, commitSha: trust.catalogPin, contentDigest: actual }, hostVersion);
 }
 
 function isTrustedFactory(app: DesignFactoryApp, trust: DesignFactoryTrust) {

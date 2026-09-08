@@ -4,6 +4,6 @@
 
 extends: ./electron-builder.yml
 publish:
-  provider: generic
-  url: ${env.BOTTEGA_STAGING_FEED_URL}
-  channel: staging
+  - provider: generic
+    url: ${env.BOTTEGA_STAGING_FEED_URL}
+    channel: staging

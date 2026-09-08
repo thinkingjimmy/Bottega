@@ -4,6 +4,7 @@
  * [POS]: The main-owned turn-binding device for chat/runtime; runtime facts and timeline bytes enter through separate bounded ports
  */
 
+import { readAgentDraft } from "@/lib/chat-agent-draft/state";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { ChatStatus } from "ai";
 import type { ChatMessage, ChatRuntimeContext } from "../../../../shared/chats-ipc";
@@ -15,7 +16,7 @@ import type {
   SteerOutboxProjection,
 } from "../../../../shared/agent-ipc";
 import type { TurnDraft } from "../../../../shared/chat-turn-reducer";
-import { attachToAgent, type CodexRequest } from "@/lib/agent-client";
+import { attachToAgent, type AgentRequest } from "@/lib/agent-client";
 import {
   applyTurnEvent,
   mergeChatMessages,
@@ -100,7 +101,7 @@ export type ChatAttachmentBinding = {
     projection: MutableRefObject<ChatTurnProjection>;
     messages: MutableRefObject<ChatMessage[]>;
     draft: MutableRefObject<TurnDraft | null>;
-    request: MutableRefObject<CodexRequest | null>;
+    request: MutableRefObject<AgentRequest | null>;
     recordExists: MutableRefObject<boolean>;
     incarnationId?: MutableRefObject<string | null>;
   };
@@ -137,7 +138,8 @@ const emptyProjection = (): ChatTurnProjection => ({
   steeringSupported: false,
 });
 
-const localError = (content: string): ChatMessage => ({
+const localError = (content: string, backend: AgentBackendId): ChatMessage => ({
+  backend,
   id: messageId("assistant"),
   role: "assistant",
   content,
@@ -168,7 +170,7 @@ export function bindChatAttachment(binding: ChatAttachmentBinding) {
     refs.projection.current = {
       ...refs.projection.current,
       messages: mergeChatMessages(refs.projection.current.messages, [
-        localError(content),
+        localError(content, readAgentDraft(binding.chatId).canonical?.agent ?? "codex"),
       ]),
     };
     refs.messages.current = refs.projection.current.messages;

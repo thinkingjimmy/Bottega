@@ -1,7 +1,7 @@
 /**
  * [INPUT]: type-only depends on the shared FrozenAppExtensionRequirementSetV1 and AppGenerationBinding pending shape
  * [OUTPUT]: Provides AppExtensionGenerationPort: handoff to copy, this generation consent decision and promote pre-review
- * [POS]: The only narrow port on the side of the Apps is AppX ExtensionAppStore therefore does not import any Extensions aggregate
+ * [POS]: The Apps-side boundary port toward Extensions; implemented by extensions/integration/app-extension-composition.ts so apps/generation never imports the Extensions aggregate directly
  */
 
 import type { AppGenerationBinding } from "../../../../shared/apps-ipc";

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on strict Chat fork IPC contracts, ChatStore generation-fenced native/imported prefixes and receipts, Chat Home creation ownership, Project lifecycle serialization, and managed Git worktree primitives
+ * [INPUT]: Depends on strict Chat fork IPC contracts, ChatStore generation-fenced native/imported prefixes and receipts, Chat Home creation ownership, Project lifecycle serialization, main/errors, and managed Git worktree primitives
  * [OUTPUT]: Provides native/imported fork preflight with native child-envelope validation, request-singleflight creation/replay, managed-worktree admission cleanup, and main-owned commits
  * [POS]: Focused fork orchestration boundary composed by ChatsService; ordinary Chat creation, attachments, titles, and removal remain outside it
  */
@@ -31,7 +31,7 @@ import {
   forkChatInputSchema,
   forkPreflightInputSchema,
 } from "./chat-input";
-import { statusError } from "./chats-service-guards";
+import { statusError } from "../errors";
 import { isChatMutationOutcomeUnknown, type ChatStore } from "./chat-store";
 import { summaryOfChatLike } from "./chat-summary";
 

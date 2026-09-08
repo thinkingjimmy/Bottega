@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on ACP ContentBlock/McpServer, Node spawn, BackendTurnOptions, session config and steering input and conversion
- * [OUTPUT]: Provides AcpSpawnConfig, missing process host, resume missing, determines, prompt block and MCP server installed
- * [POS]: The backends/acp/turn startup configuration and the pure projection layer; AcpTurn only retains the lifecycle of the protocol state machine and one turn
+ * [OUTPUT]: Provides AcpSpawnConfig, processHostOf (default process host), isResumeMissing, promptBlocks, and acpMcpServers
+ * [POS]: Startup configuration and pure projection layer for backends/acp/turn; AcpTurn retains only the protocol state machine and single-turn lifecycle
  */
 
 import type { ContentBlock, McpServer } from "@agentclientprotocol/sdk";

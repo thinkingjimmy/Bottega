@@ -5,6 +5,7 @@
  */
 
 import type { AppGenerationDrainCount } from "../../../shared/app-lifecycle";
+import { statusError } from "../errors";
 import type { AppGenerationDrainProviderRegistry } from "./app-generation-drain-providers";
 
 export type CoreGenerationDrainSource = {
@@ -24,10 +25,7 @@ export class AppGenerationRetirementCoordinator {
     ];
     const blockers = counts.filter((entry) => entry.count > 0);
     if (blockers.length) {
-      throw Object.assign(new Error("APP_GENERATION_DRAIN_BLOCKED"), {
-        status: 409,
-        blockers,
-      });
+      throw statusError(409, "APP_GENERATION_DRAIN_BLOCKED", { blockers });
     }
     return Object.freeze({ ...input, counts, retiredAt: Date.now() });
   }

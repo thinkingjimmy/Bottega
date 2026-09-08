@@ -1,7 +1,7 @@
 /**
- * [INPUT]: dependence when not in operation; The first is the installation of five local directories
- * [OUTPUT]: Provides five languages of syntax Settings › Personalization text file (see the editor's top-down action, premise slots, and the file to find the volume/recommended readings)
- * [POS]: The feature catalog of the global Agent instruction file shared/i18n/locales/settings; The unit symbol (KiB) is not in the international writing code catalog
+ * [INPUT]: No runtime dependencies; defines five isomorphic locale objects for Settings › Personalization
+ * [OUTPUT]: Provides five languages for Settings › Personalization: editor placeholder text, find-in-file, size/line-count metrics, and recommended-limit copy
+ * [POS]: Global Agent instruction-file feature catalog of shared/i18n/locales/settings; the KiB unit symbol is left untranslated
  */
 
 export const settingsPersonalizationEn = {

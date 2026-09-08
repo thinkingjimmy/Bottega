@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto/timers and shared history-import contracts
- * [OUTPUT]: Provides the read-only HistoryAdapter port, 4-GiB constant-memory message streams, separately capped compatibility reads, stable JSONL streaming, two-depth scans, fingerprints, containment, per-line limits, titles, abort checkpoints, and compatibility collection
+ * [OUTPUT]: Provides the read-only HistoryAdapter port, 4-GiB constant-memory message streams, separately capped compatibility reads, stable JSONL streaming, two-depth scans, file/storage fingerprints, the coded HISTORY_REVISION_CHANGED error, containment, per-line limits, titles, abort checkpoints, and compatibility collection
  * [POS]: Mechanistic history-import adapter kernel shared by main projections and the dedicated parser worker; its parser version is what retires every generation an older parser produced, and its entries carry no Project ownership — HistoryImportService.scanOwned stamps that
  */
 
@@ -32,11 +32,15 @@ import type {
    v2 → v3 不是因为形状又变了一次，而是因为 v2 这个号在开发机上被用脏了：
    折叠/plan/信封/时序四次修改都发生在 v2 的号底下，同一个 sourceKey 上因此
    躺着一批半成品 begin 收据（同 operationId、不同 requestHash）。换号即换
-   sourceKey，那批收据永远不会再被重放。 */
-export const HISTORY_PARSER_VERSION = 3;
-export const HISTORY_COMPAT_FILE_BYTES = 64 * 1024 * 1024;
+   sourceKey，那批收据永远不会再被重放。
+
+   v3 → v4：剥离的内容变了——产品的第二块信封 <memory_context …> 此前原样
+   躺在用户第一句话之前，v3 产出的正文因此都带着它。标题走 begin 路径的
+   改名在启动重放里自愈，正文只能靠新代际重导。 */
+export const HISTORY_PARSER_VERSION = 4;
+const HISTORY_COMPAT_FILE_BYTES = 64 * 1024 * 1024;
 export const HISTORY_FILE_BYTES = 4 * 1024 * 1024 * 1024;
-export const HISTORY_STREAM_LINE_BYTES = 64 * 1024 * 1024;
+const HISTORY_STREAM_LINE_BYTES = 64 * 1024 * 1024;
 export const QUICK_META_HEAD_BYTES = 64 * 1024;
 const INCOMPLETE_TAIL_RETRY_MS = [8, 24, 48] as const;
 
@@ -112,7 +116,7 @@ export type HistoryBlockTurns = AsyncGenerator<
   void
 >;
 
-export type StableJsonlLines = AsyncGenerator<
+type StableJsonlLines = AsyncGenerator<
   Readonly<{ line: string; index: number }>,
   boolean,
   void
@@ -127,7 +131,7 @@ export interface HistoryAdapter {
   parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory>;
 }
 
-export const HISTORY_IMPORT_PARSE_BATCH_POLICY = Object.freeze({
+const HISTORY_IMPORT_PARSE_BATCH_POLICY = Object.freeze({
   entryLimit: 1_024,
   byteLimit: 4 * 1024 * 1024,
   sliceMs: 50,
@@ -214,6 +218,16 @@ export function fingerprintRevision(value: HistoryFileFingerprint) {
   return digest(JSON.stringify(value));
 }
 
+/** Device+inode identity of a source root; null when the root does not exist yet. */
+export async function storageFingerprint(root: string) {
+  try {
+    const value = await fingerprint(root);
+    return digest(`${value.device}:${value.inode}`);
+  } catch {
+    return null;
+  }
+}
+
 export function sameFingerprint(
   left: HistoryFileFingerprint,
   right: HistoryFileFingerprint
@@ -236,7 +250,7 @@ export async function canonicalDirectory(path: string) {
   return realpath(path);
 }
 
-export async function readStableText(
+async function readStableText(
   path: string,
   expected?: HistoryFileFingerprint,
   signal?: AbortSignal
@@ -244,9 +258,7 @@ export async function readStableText(
   signal?.throwIfAborted();
   const before = await fingerprint(path, expected?.parserVersion);
   if (expected && !sameFingerprint(before, expected)) {
-    throw Object.assign(new Error("HISTORY_REVISION_CHANGED"), {
-      code: "HISTORY_REVISION_CHANGED",
-    });
+    throw historyRevisionChanged();
   }
   if (before.size > HISTORY_COMPAT_FILE_BYTES) {
     throw new Error("历史会话文件超过 64 MiB 安全上限");
@@ -257,9 +269,7 @@ export async function readStableText(
     signal?.throwIfAborted();
     const after = await fingerprint(path, before.parserVersion);
     if (!sameFingerprint(before, after)) {
-      throw Object.assign(new Error("HISTORY_REVISION_CHANGED"), {
-        code: "HISTORY_REVISION_CHANGED",
-      });
+      throw historyRevisionChanged();
     }
     return { body, fingerprint: after };
   } finally {
@@ -328,9 +338,7 @@ export async function* streamStableJsonl(
   signal?.throwIfAborted();
   const before = await fingerprint(path, expected?.parserVersion);
   if (expected && !sameFingerprint(before, expected)) {
-    throw Object.assign(new Error("HISTORY_REVISION_CHANGED"), {
-      code: "HISTORY_REVISION_CHANGED",
-    });
+    throw historyRevisionChanged();
   }
   if (before.size > HISTORY_FILE_BYTES) {
     throw new Error("流式历史会话文件超过 4 GiB 安全上限");
@@ -362,11 +370,15 @@ export async function* streamStableJsonl(
   }
   const after = await fingerprint(path, before.parserVersion);
   if (!sameFingerprint(before, after)) {
-    throw Object.assign(new Error("HISTORY_REVISION_CHANGED"), {
-      code: "HISTORY_REVISION_CHANGED",
-    });
+    throw historyRevisionChanged();
   }
   return pending.length > 0;
+}
+
+export function historyRevisionChanged() {
+  return Object.assign(new Error("HISTORY_REVISION_CHANGED"), {
+    code: "HISTORY_REVISION_CHANGED",
+  });
 }
 
 function isHistoryRevisionChange(cause: unknown) {

@@ -3,7 +3,7 @@
 /**
  * [INPUT]: Depends on the use-scroll-activity of the activity kernel, scrollbar-slim utility of globals.css, radix Slot and cn
  * [OUTPUT]: Provides SlimScroller rolling containers (includes asChild: rolling area can be any element such as pre/ul/span)
- * [POS]: ui is the only rolling zone input in the original language layer; Put the "style + concealment" in half and the caller writes the overflow and layout
+ * [POS]: ui's sole scroll-container primitive; it only owns the scrollbar's style and hiding behavior, callers still own overflow and layout
  */
 
 import type { ComponentProps } from "react";

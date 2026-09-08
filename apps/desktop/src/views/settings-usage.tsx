@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, PageShell, settings SettingsCanvas/Surface/List/Row/Switch, SourceRail/UsageToday/UsageRegion/StatRow/Heatmap, Module level usageStore/settingsStore, backendLabel, Button/Skeleton
- * [OUTPUT]: Provides UsageSettingsView: a page tag with three pages on the same surface ((Today's view → One year of activity → Full-time archives), skeleton loads, problem grading and automatic update switches for the price attributed to this page
- * [POS]: The Settings layer covers the Usage view; Conditions are uploaded so no snapshots are available, subscribe to usageStore and send intentions
+ * [OUTPUT]: Provides UsageSettingsView: one page hosting Today / year-long activity / lifetime archive views on the same surface, skeleton loading states, an issue banner for the active source, and the pricing auto-refresh switch
+ * [POS]: Settings layer's Usage view; holds no snapshot of its own — subscribes to usageStore and dispatches intents
  */
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
@@ -26,7 +26,6 @@ import {
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
 import { backendLabel } from "@/lib/agent-backends";
-import { hasSettingsBridge } from "@/lib/settings-client";
 import { settingsStore } from "@/lib/settings-store";
 import { usageStore } from "@/lib/usage-store";
 import {
@@ -164,7 +163,6 @@ function PricingRefreshRow() {
                 id="usage-pricing-auto-refresh"
                 label={t("settings.usage.pricingRefreshAria")}
                 checked={settings.usagePricingAutoRefresh}
-                disabled={!hasSettingsBridge()}
                 onToggle={(usagePricingAutoRefresh) =>
                   void settingsStore.update(
                     { usagePricingAutoRefresh },

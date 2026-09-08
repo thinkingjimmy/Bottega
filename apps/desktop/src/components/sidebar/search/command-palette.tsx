@@ -3,7 +3,7 @@
 /**
  * [INPUT]: Depends on React, router, I18n, shadcn Command/Kbd/Spinner, shared AgentBackendIcon, lib/search client, shared search hit and search-text, Chats/Projects Provider, chat-activity-store, activity-groups compareRecent and lib/shortcuts
  * [OUTPUT]: Provides CommandPalette; recent and searched Chat rows carry their Agent identity, empty-query rows are prevalidated executable destinations, query hits stream from main, and Quick actions retain reactive shortcut keycaps and locator routing
- * [POS]: The only command panel owner in the sidebar/search; 3 types of intent (near/hit/action) projected into the same PaletteRow, keyboard navigation handed over to cmdk
+ * [POS]: Sole command-palette owner in sidebar/search; recent/hit/action intents all project into the same PaletteRow, with keyboard navigation handed off to cmdk
  */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";

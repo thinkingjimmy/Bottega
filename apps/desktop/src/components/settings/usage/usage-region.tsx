@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React ReactNode
- * [OUTPUT]: Provides UsageRegion In the box, a section of the title is shown with a caption (title + limited language + right-hand action) and a caption
- * [POS]: The language of the settings/usage sub-module; The headings are the same as the headings in the SettingsSection, so the headings inside the page look the same as the headings between the pages
+ * [OUTPUT]: Provides UsageRegion, a section heading with title, optional meta qualifier, and an optional right-aligned action slot
+ * [POS]: settings/usage's section-heading primitive; mirrors SettingsSection's heading geometry so in-page and cross-page headings read identically
  */
 
 import type { ReactNode } from "react";

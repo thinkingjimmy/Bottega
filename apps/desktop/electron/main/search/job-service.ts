@@ -1,11 +1,10 @@
 /**
  * [INPUT]: Depends on Electron IPC, ChatStore gram-FTS candidates, BaseStore snapshots, archived Project facts, the exact query matcher, and shared SearchJob contracts
- * [OUTPUT]: Provides GlobalSearchService with per-hit-fenced lazy Agent-identified Product Chat→Base lanes that skip stale hits instead of failing the job, keyset Chat-document paging that a mid-scan write cannot shift, exact post-filtering before limits, bounded resident pages, backpressure, cancellation that always drains the iterator, and TTL
+ * [OUTPUT]: Provides GlobalSearchService with per-hit-fenced Chat/Base lanes, keyset paging, exact post-filtering, bounded resident pages, backpressure, cancellation, and TTL.
  * [POS]: Renderer search job owner; SQLite supplies Product Chat candidates while Base keeps its own bounded logical lane
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import type { BrowserWindow } from "electron";
 import { z } from "zod";
 import { ownerFromKey } from "../../../shared/bases-ipc";
 import {
@@ -102,8 +101,8 @@ export class GlobalSearchService {
     ) => number | null | undefined = () => null
   ) {}
 
-  register(window: BrowserWindow, rendererUrl: string) {
-    rendererIpc(window, rendererUrl, "拒绝非主窗口的全局搜索请求")
+  register(rendererUrl: string) {
+    rendererIpc(rendererUrl, "拒绝非主窗口的全局搜索请求")
       .roles("main")
       .handle(SEARCH_JOB_CHANNEL.start, (raw) =>
         this.start(inputSchema.parse(raw).query)

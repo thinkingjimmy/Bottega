@@ -160,17 +160,17 @@ export class ExtensionDisableConvergence {
   /* deny 与三道闸在同一次提交里生效，之后才是可重试的收敛。 */
   async beginDisable(input: ExtensionScopeMutation) {
     const { installIdentity } = input;
-    this.registry.assertScopeMutation(input);
+    this.registry.lifecycle.assertScopeMutation(input);
     await this.faults.afterInitialValidation?.();
     const existing = this.ledger
       .nonTerminal("disable")
       .find((item) => item.installIdentity === installIdentity);
     if (existing) {
-      await this.registry.runScopeMutation(input, async () => undefined);
+      await this.registry.lifecycle.runScopeMutation(input, async () => undefined);
       return this.converge(existing.operationId);
     }
     let operation: ReturnType<ExtensionLifecycleLedger["find"]> = null;
-    await this.registry.beginDisable(input, async (authorizedOwner) => {
+    await this.registry.lifecycle.beginDisable(input, async (authorizedOwner) => {
         const staged = await this.ledger.stage({
           kind: "disable",
           installIdentity,
@@ -198,7 +198,7 @@ export class ExtensionDisableConvergence {
     const installIdentity = started.installIdentity;
     /* 恢复路径可能停在 staged：deny 与 binding 撤销都要幂等地补上。 */
     if (this.administrativeState(installIdentity) === "active") {
-      await this.registry.resumeBeginDisable({
+      await this.registry.lifecycle.resumeBeginDisable({
         operationId,
         installIdentity,
         scope: started.scope,
@@ -224,7 +224,7 @@ export class ExtensionDisableConvergence {
       });
       return;
     }
-    await this.registry.completeDisable(operationId, installIdentity);
+    await this.registry.lifecycle.completeDisable(operationId, installIdentity);
     const settled = this.ledger.find(operationId)!;
     await this.ledger.advance(operationId, settled.revision, "completed");
   }
@@ -273,7 +273,7 @@ export class ExtensionDisableConvergence {
     }
     const operation = this.ledger.find(operationId)!;
     const workspaces = this.projections.affectedWorkspaces(operationId);
-    const owner = this.registry.packageInventory(operation.installIdentity);
+    const owner = this.registry.lifecycle.packageInventory(operation.installIdentity);
     if (!owner) throw new Error("停用收敛找不到 exact package owner");
     const holders = await this.custody.list({
       operationId,
@@ -303,7 +303,7 @@ export class ExtensionDisableConvergence {
   }
 
   private administrativeState(installIdentity: string) {
-    return this.registry.packageInventory(installIdentity)?.administrativeState;
+    return this.registry.lifecycle.packageInventory(installIdentity)?.administrativeState;
   }
 
   private pendingForTurn(context: TurnProjectContext) {

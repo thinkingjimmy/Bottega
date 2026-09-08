@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on five locale directories, Catalog type and runtime register Catalog
- * [OUTPUT]: Provides I18N_RESOURCES Full set, TranslationCatalog and registerAllCatalogs to throw in
- * [POS]: The i18n full-volume injection source on the main side; The renderer cannot be referenced (it is registered on request via catalogs.ts, see README Depends on Borders)
+ * [INPUT]: Depends on the five locale catalogs, AppLocale, and runtime registerCatalog
+ * [OUTPUT]: Provides the I18N_RESOURCES five-locale set and registerAllCatalogs, which feeds every entry of it into the runtime registry
+ * [POS]: Main-side i18n eager-load source; registers all five catalogs upfront since main has no first-bundle budget. The renderer must not import this file — it registers catalogs on demand via catalogs.ts instead
  */
 
-import { en, type Catalog } from "./locales/en";
+import type { AppLocale } from "./locale";
+import { en } from "./locales/en";
 import { es } from "./locales/es";
 import { fr } from "./locales/fr";
 import { ja } from "./locales/ja";
@@ -25,11 +26,7 @@ export const I18N_RESOURCES = {
  * 会怎样——而少了它只会退化成英文，正是最难被测试抓住的那种沉默失败。
  */
 export function registerAllCatalogs() {
-  registerCatalog("en", en);
-  registerCatalog("zh-CN", zhCN);
-  registerCatalog("ja", ja);
-  registerCatalog("fr", fr);
-  registerCatalog("es", es);
+  for (const [locale, { translation }] of Object.entries(I18N_RESOURCES)) {
+    registerCatalog(locale as AppLocale, translation);
+  }
 }
-
-export type TranslationCatalog = Catalog;

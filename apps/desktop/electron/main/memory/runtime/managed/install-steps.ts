@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on node child_process/fs/crypto, InstallSpec and ManagedRoots
- * [OUTPUT]: Provides runCommand/capture-only, install packet verification, model asset pre-emption/migration, staging, orphan clearance + cumulative progress calibre across assets, atom 0600 plist/JSON write, full action best-effort compensation with argv/builder, binary init, restore matrix
- * [POS]: Install the main/memory/runtime/managed language layer; Just take steps, not sequence the string to the state into the Coordinator
+ * [INPUT]: Depends on node:child_process/fs/crypto, InstallSpec, ManagedRoots, and explicit bounded archive-download policies
+ * [OUTPUT]: Provides the install primitives: run/runCaptured command wrappers, fetchVerifiedArtifacts, ensureModelAssets (staged download with cumulative progress and orphan cleanup), atomic 0600 plist/JSON writes, best-effort runCleanupActions compensation, and ensureInitialized
+ * [POS]: The install-step vocabulary of main/memory/runtime/managed; it only executes individual steps, the coordinator owns sequencing and state
  */
 
 import { spawn } from "node:child_process";
@@ -23,6 +23,7 @@ import type { ResolvedConfigValues } from "../../../../../shared/memory-ipc";
 import type { InstallSpec } from "../../core/provider";
 import type { ManagedRoots } from "./manifest";
 import { downloadToFile, type DownloadProgress } from "./streaming-download";
+import { downloadArchive, type ArchiveDownloadPolicy } from "./archives/download";
 
 export type RunCommand = (
   command: string,
@@ -40,7 +41,7 @@ export type RunCommandCaptured = (
   options: { timeoutMs: number; byteLimit?: number; env?: Record<string, string> }
 ) => Promise<{ stdout: string; stderr: string; code: number }>;
 
-export type Downloader = (url: string) => Promise<Buffer>;
+export type Downloader = (url: string, policy?: ArchiveDownloadPolicy) => Promise<Buffer>;
 
 export function defaultRunCommand(): RunCommand {
   return (command, args, options) =>
@@ -181,7 +182,8 @@ export async function runCleanupActions(
 const failureMessage = (cause: unknown) =>
   cause instanceof Error ? cause.message : String(cause);
 
-export const defaultDownloader: Downloader = async (url) => {
+export const defaultDownloader: Downloader = async (url, policy) => {
+  if (policy) return downloadArchive(url, policy);
   const response = await fetch(url, { redirect: "follow" });
   if (!response.ok) {
     throw new Error(`下载失败：HTTP ${response.status} ${url}`);
@@ -234,8 +236,8 @@ export async function fetchVerifiedArtifacts(
 /* ============================================================
  * 进度是一条曲线，不是每个资产各走一遍的锯齿：起帧总量与每一次
  * 增量都在这里由同一个 assets 数组算出来，调用方只负责把帧发出去。
- * 已就位与从旧缓存迁来的资产同样计入已完成字节——否则进度条会
- * 在「其实什么都不用下载」时永远停在 0。
+ * 已就位的资产同样计入已完成字节——否则进度条会在「其实什么都
+ * 不用下载」时永远停在 0。
  * ============================================================ */
 export async function ensureModelAssets(
   roots: ManagedRoots,
@@ -245,43 +247,27 @@ export async function ensureModelAssets(
     onInvalid?: (filename: string) => void;
     fetcher?: typeof fetch;
   } = {}
-) {
+): Promise<"ready" | "manual"> {
   const assets = spec.modelAssets ?? [];
-  if (!assets.length) return { state: "ready" as const, legacySources: [] };
+  if (!assets.length) return "ready";
   const manifest = await roots.readManifest();
   if (Object.values(manifest?.files ?? {}).some((file) => file.mode === "manual")) {
-    return { state: "manual" as const, legacySources: [] };
+    return "manual";
   }
   const targetRoot = join(roots.installRoot, "models");
-  const legacyRoot = join(roots.dataRoot, "models");
   await mkdir(targetRoot, { recursive: true, mode: 0o700 });
   await sweepStagingOrphans(targetRoot);
   const totalBytes = assets.reduce((total, asset) => total + asset.bytes, 0);
-  const legacySources: string[] = [];
   let settledBytes = 0;
   options.onProgress?.({ receivedBytes: 0, totalBytes });
   for (const asset of assets) {
     const target = join(targetRoot, asset.filename);
-    const advance = () => {
+    if (await assetMatches(target, asset)) {
       settledBytes += asset.bytes;
       options.onProgress?.({ receivedBytes: settledBytes, totalBytes });
-    };
-    if (await assetMatches(target, asset)) {
-      advance();
       continue;
     }
     if (await exists(target)) options.onInvalid?.(asset.filename);
-    const legacy = join(legacyRoot, asset.filename);
-    if (await assetMatches(legacy, asset)) {
-      await copyFile(legacy, target);
-      if (!(await assetMatches(target, asset))) {
-        await rm(target, { force: true });
-        throw new Error(`${asset.filename} 从旧缓存迁移后复验失败`);
-      }
-      legacySources.push(legacy);
-      advance();
-      continue;
-    }
     await downloadToFile(asset.url, target, {
       bytes: asset.bytes,
       sha256: asset.sha256,
@@ -293,7 +279,7 @@ export async function ensureModelAssets(
     });
     settledBytes += asset.bytes;
   }
-  return { state: "ready" as const, legacySources };
+  return "ready";
 }
 
 /** run() 单飞，没有并发下载：目录里的 *.download 一律是崩溃遗留的孤儿。 */

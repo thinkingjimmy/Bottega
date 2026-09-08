@@ -1,8 +1,10 @@
 /**
  * [INPUT]: Depends on React, ui/button and ui/tooltip, agent-backends authentication predicates, and the shared backend DTO
- * [OUTPUT]: Provides BackendStatusBadge, BackendIconAction, and the pure backendSetupPresentation projection
+ * [OUTPUT]: Projects shared availability states into neutral/positive/attention badges and independent installation/login recovery actions.
  * [POS]: The setup module's atomic presentation layer; it turns runtime/auth facts into one honest status and action model shared by Settings and Onboarding
  */
+import { projectAvailability } from "../../../shared/agent-availability/projection";
+
 
 import type { ComponentProps, ReactNode } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
@@ -23,7 +25,11 @@ import type { BackendInfo } from "../../../shared/agent-ipc";
  * Sign in 同时出现这种双重真相。
  * ============================================================ */
 export type BackendSetupStatus =
-  | BackendInfo["status"]
+  | "missing"
+  | "unsupported"
+  | "auth-required"
+  | "ready"
+  | "error"
   | "installed"
   | "checking";
 export type BackendStatusTone = "positive" | "attention" | "neutral";
@@ -37,14 +43,6 @@ export type BackendSetupPresentation = {
   loginAction: BackendLoginAction | null;
   canUpdate: boolean;
 };
-
-const AUTH_SETUP_STATUS = {
-  unknown: "installed",
-  checking: "checking",
-  authenticated: "ready",
-  unauthenticated: "auth-required",
-  error: "error",
-} as const satisfies Record<BackendInfo["authStatus"], BackendSetupStatus>;
 
 const STATUS_TONES = {
   ready: "positive",
@@ -62,10 +60,13 @@ const GUIDELESS_SETUP_STATUSES = new Set<BackendSetupStatus>([
   "checking",
 ]);
 
-const setupStatus = (backend: BackendInfo): BackendSetupStatus =>
-  backend.runtimeStatus === "installed"
-    ? AUTH_SETUP_STATUS[backend.authStatus]
-    : backend.runtimeStatus;
+const setupStatus = (backend: BackendInfo): BackendSetupStatus => {
+  const state = projectAvailability(backend, Date.now()).state;
+  if (state === "unverified") return "installed";
+  if (state === "sign-in") return "auth-required";
+  if (state === "cannot-check" || state === "cannot-start" || state === "usage-limit" || state === "recent-sign-in" || state === "connection" || state === "service") return "error";
+  return state;
+};
 
 const loginAction = (backend: BackendInfo): BackendLoginAction | null => {
   if (

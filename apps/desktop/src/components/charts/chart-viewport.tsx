@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, i18n, shared ChartPayload, ChartRenderPolicy, LazyChart, SlimScroller, and optional IntersectionObserver roots
- * [OUTPUT]: Provides ChartViewport, ChartComponent, and localized chartAriaLabel with deferred rendering, one-shot animation, accessible data tables, and corner reservation
+ * [OUTPUT]: Provides ChartViewport and ChartComponent with a localized figure label, deferred rendering, one-shot animation, accessible data tables, and corner reservation
  * [POS]: Eager host kernel for components/charts; it owns figure semantics and lifecycle while LazyChart owns the ECharts code boundary
  */
 
@@ -27,7 +27,7 @@ export type ChartComponent = ComponentType<{
   onReady?: () => void;
 }>;
 
-export function chartAriaLabel(payload: ChartPayload, t: TFunction) {
+function chartAriaLabel(payload: ChartPayload, t: TFunction) {
   const values = {
     type: t(`bases.chart.type.${payload.type}`),
     labels: t("bases.chart.render.labelCount", {

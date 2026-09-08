@@ -1,11 +1,14 @@
 /**
- * [INPUT]: Depends on git, fixed subprocesses, package-contract, Extension installer preflight, app-config-store, strict manifest/base.json schema and userData temporary root
- * [OUTPUT]: Provides RepoProbeService; no-checkout freeze App HEAD/digest and single-use delivery after disclosure of source-related extensionRequirements
- * [POS]: Pre-check the boundaries of the remote supply chain for apps/share/package; The package contract is strictly limited to kind: base packages, and web warehouses are not subject to regulation
+ * [INPUT]: Depends on frozen Git trees, bounded compatibility declarations, the main host version, package projection and existing manifest/Extension preflight authorities.
+ * [OUTPUT]: Provides source-bound Base/Web probes, typed compatibility rejection, unavailable-commit classification and single-use Base preflight custody.
+ * [POS]: Remote package admission: the stable host gate precedes manifest classification for every declared or first-party App.
  */
 
+import { FIRST_PARTY_PRESETS } from "../../../preset-catalog";
+import { APP_COMPATIBILITY_BYTE_LIMIT, APP_COMPATIBILITY_FILE, type AppCandidateIdentity } from "../../../../../shared/app-host/contract";
+import { AppCompatibilityError, checkCompatibilityBytes, firstPartySource, runningBottegaVersion, type CompatibilityReceipt } from "../../compatibility/read";
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   chmod,
   mkdir,
@@ -20,7 +23,7 @@ import type {
 import type { AppExtensionRequirementDeclaration } from "../../../../../shared/extensions-ipc";
 import { GLOBAL_PRODUCT_RESOURCE_SCOPE } from "../../../../../shared/product-resource-scope";
 import { baseSnapshotFileSchema } from "../../../../../shared/base-snapshot";
-import { sanitizedProcessEnvironment } from "../../../codex-runtime";
+import { sanitizedProcessEnvironment } from "../../../backends/runtime-probe";
 import { appManifestSchema } from "../../install/manifest-schema";
 import { validateConfigRequirements } from "../app-config-store";
 import {
@@ -30,7 +33,7 @@ import {
   PACKAGE_BUDGET,
 } from "./package-contract";
 import { detectCliRequirements } from "../cli-detectors";
-import { digestCanonical } from "../../../extensions/registry-store";
+import { digestCanonical } from "../../../extensions/registry-canonical";
 import type {
   ExtensionInstallPreflight,
   ExtensionInstaller,
@@ -42,6 +45,8 @@ type FrozenProbe = {
   commitSha: string;
   packageRoot: string;
   extensionPreflights: AppExtensionInstallPreflight[];
+  compatibility: CompatibilityReceipt;
+  candidate: AppCandidateIdentity;
 };
 
 type ExtensionProbePort = Pick<
@@ -57,12 +62,14 @@ type TreeEntry = {
   path: string;
 };
 
+export class AppCandidateUnavailableError extends Error {}
+
 export class RepoProbeService {
   private readonly root: string;
   private readonly probes = new Map<string, FrozenProbe>();
   private extensions: ExtensionProbePort | null = null;
 
-  constructor(userData: string) {
+  constructor(userData: string, private readonly hostVersion = runningBottegaVersion) {
     this.root = join(userData, "app-probes");
   }
 
@@ -73,7 +80,8 @@ export class RepoProbeService {
 
   async probe(
     repoUrl: string,
-    expectedCommitSha?: string
+    expectedCommitSha?: string,
+    presetId?: string
   ): Promise<AppRepoProbeResult> {
     const id = randomUUID();
     const staging = join(this.root, id);
@@ -92,7 +100,12 @@ export class RepoProbeService {
         await git(
           ["fetch", "--depth", "1", "origin", expectedCommitSha],
           repository
-        );
+        ).catch((cause: Error) => {
+          if (/not our ref|couldn.t find remote ref|unadvertised object|does not allow request/i.test(cause.message)) {
+            throw new AppCandidateUnavailableError("The frozen App commit is no longer available");
+          }
+          throw cause;
+        });
         commitSha = (await git(["rev-parse", "FETCH_HEAD"], repository)).trim();
       } else {
         await git(
@@ -105,24 +118,39 @@ export class RepoProbeService {
         throw new Error("远端返回 commit 与期望 pin 不一致");
       }
 
+      const entries = parseTree(await git(["ls-tree", "-r", "-l", "-z", commitSha], repository));
+      const preset = FIRST_PARTY_PRESETS.find((entry) => entry.id === presetId) ?? firstPartySource(repoUrl);
+      const candidate: AppCandidateIdentity = {
+        appName: preset?.sourceDirectory.replace("Bottega-app-", "") ?? repoUrl.split("/").at(-1)?.replace(/\.git$/, "") ?? "App",
+        repoUrl: preset?.canonicalRepoUrl ?? repoUrl,
+        presetId: presetId ?? preset?.id,
+        commitSha,
+        contentDigest: `sha256:${createHash("sha256").update(JSON.stringify(entries)).digest("hex")}`,
+      };
+      const compatEntry = entries.find((entry) => entry.path === APP_COMPATIBILITY_FILE);
+      if (compatEntry && (compatEntry.type !== "blob" || !["100644", "100755"].includes(compatEntry.mode) || compatEntry.bytes > APP_COMPATIBILITY_BYTE_LIMIT)) {
+        throw new AppCompatibilityError({ code: "APP_COMPATIBILITY_INVALID", candidate, currentVersion: this.hostVersion(), minBottegaVersion: null, declarationDigest: null });
+      }
+      const compatBytes = compatEntry
+        ? await gitBuffer(["cat-file", "blob", compatEntry.object], repository, APP_COMPATIBILITY_BYTE_LIMIT + 1)
+        : undefined;
+      const compatibility = checkCompatibilityBytes(compatBytes, candidate, this.hostVersion());
+
       /* 判型先行：app.json 缺失/非 JSON/kind≠base 一律走既有 web 安装流程
        * （其自带「将执行第三方代码」的总体风险确认）；包契约的严格面只属于
        * 承诺零执行的 base 包，web 仓库里的 symlink 或撞名 app.json 不在管辖内。 */
       const manifestJson = await readBaseManifestJson(repository, commitSha);
       if (manifestJson === null) {
         await rm(staging, { recursive: true, force: true });
-        return { kind: "web", repoUrl };
+        return { kind: "web", repoUrl, commitSha, declarationDigest: compatibility.declarationDigest };
       }
       const manifest = appManifestSchema.parse(manifestJson);
       if (manifest.kind !== "base") {
         await rm(staging, { recursive: true, force: true });
-        return { kind: "web", repoUrl };
+        return { kind: "web", repoUrl, commitSha, declarationDigest: compatibility.declarationDigest };
       }
       validateConfigRequirements(manifest.requirements?.tools ?? []);
 
-      const entries = parseTree(
-        await git(["ls-tree", "-r", "-l", "-z", commitSha], repository)
-      );
       const invalidPath = entries.find((entry) => !isSafePackagePath(entry.path));
       if (invalidPath) {
         throw new Error(`App 包路径无效：${JSON.stringify(invalidPath.path)}`);
@@ -206,6 +234,8 @@ export class RepoProbeService {
         commitSha,
         packageRoot,
         extensionPreflights,
+        compatibility,
+        candidate,
       });
       return {
         kind: "base",
@@ -232,6 +262,7 @@ export class RepoProbeService {
         )
       );
       await rm(staging, { recursive: true, force: true });
+      if (cause instanceof AppCompatibilityError) return { kind: "compatibility-blocked", compatibility: cause.compatibility };
       throw cause;
     }
   }

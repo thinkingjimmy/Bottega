@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React ReactNode, lucide status/homepage icons, shared descriptor/runtime agreement, settings-layout SettingsChoiceRow/SettingsLabelAction, external navigation, memory-view tone derivation and cn
  * [OUTPUT]: Provides MemoryEngineList: the page's only engine roster — one row per engine naming it, the release it holds or would install (its update reminder alongside) and its current status, whose name owns the project-homepage action, whose full width opens the management drawer, and whose radio knob alone switches which engine holds memory
- * [POS]: settings/memory 的引擎册。开关只说记不记，这里说存哪儿与怎么管；安装、升级、配置都收在这一处，不再有第二张列同一批引擎的表
+ * [POS]: The settings/memory engine roster; the toggle says whether to remember, this says where memories live and how they are managed, with install, upgrade, and configuration collected in one list
  */
 
 import type { ReactNode } from "react";

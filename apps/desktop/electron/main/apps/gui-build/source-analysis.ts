@@ -9,7 +9,7 @@ import { join } from "node:path";
 import ts from "typescript";
 import type { SourceFreezeReceipt } from "./contracts";
 
-export type AuthorSourceModule = Readonly<{ path: string; tree: ts.SourceFile }>;
+type AuthorSourceModule = Readonly<{ path: string; tree: ts.SourceFile }>;
 
 export type AuthorSourceAnalysis = Readonly<{
   modules: readonly AuthorSourceModule[];

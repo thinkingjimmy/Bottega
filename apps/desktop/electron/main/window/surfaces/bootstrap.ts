@@ -36,7 +36,6 @@ export function configureWindowSurfaces(input: Readonly<{
     window: input.window,
   });
   surfaceWindowController.configure(
-    input.window,
     input.rendererUrl,
     (appId, windowId, route) => createAppWindow({ ...input, appId, windowId, route }),
     (chatId) => {

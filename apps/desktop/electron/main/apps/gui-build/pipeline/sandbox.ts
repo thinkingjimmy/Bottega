@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on an exact hashed Node/Electron-as-Node runtime, packaged compiler child, explicit release-metadata root, OS-native sandbox executables, fixed build budgets, and private source/output/temp roots
- * [OUTPUT]: Provides fail-closed macOS Seatbelt, Linux bubblewrap, and Windows native-wrapper compiler adapters with executable authority, an asar-aware payload assertion (dependency roots inside app.asar are probed with stat, never access), the runtime bundle root (.app on macOS, the executable directory elsewhere) as an implicit read root so the Electron-as-Node child can load its own framework, a live out-of-sandbox loopback control, planted-secret environment falsifiability, peak-single-process RSS, CPU, timeout, and PID-reuse-guarded process-tree custody, plus payload-identity-cached evidence recorded from observed probe results
+ * [INPUT]: Depends on immutable compiler roots, the apps/support digest primitives, framed requests, actual probe budgets, admitted Linux component identities, kernel profile validation and native platform executables
+ * [OUTPUT]: Provides fail-closed native compiler adapters, fresh system AppArmor probes, stable component leases, resource supervision and verified Windows v2 result binding
  * [POS]: apps/gui-build/pipeline OS authority boundary; no compiled App transform may invoke the compiler child without this supervisor
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { constants } from "node:fs";
@@ -14,16 +14,24 @@ import { tmpdir } from "node:os";
 import type { ChildProcess } from "node:child_process";
 import type { CompilerOutcome, CompilerSandboxEvidence, CompilerSandboxPort, SealedCompilerInput } from "../contracts";
 import { APP_GUI_BUILD_BUDGET } from "../contracts";
-import { canonicalDigest } from "../metadata";
+import { canonicalDigest, sha256 } from "../../support";
+import { COMPILER_REQUEST_SCHEMA, encodeCompilerRequest, type CompilerRequest } from "../transport/request";
+import { createWindowsCompilerPolicy, type CompilerLimits } from "../transport/windows-policy";
+import { superviseWindowsCompiler } from "../transport/windows-supervisor";
+import type { LinuxSandboxIdentity } from "../native/linux/locator";
+import { acquireLinuxComponentLease } from "../native/linux/lease";
+import { linuxCompilerLaunch } from "../native/linux/launch";
+import { admittedLinuxProfile } from "../native/linux/profile";
+import { prepareExecutableControl } from "../native/probe-control";
 
 type SandboxPlatform = CompilerSandboxPort["platform"];
 
-export type CompilerSandboxOptions = Readonly<{
+type CompilerSandboxOptions = Readonly<{
   compilerEntry: string;
   dependencyRoots: readonly string[];
   esbuildExecutable?: string;
   metadataRoot?: string;
-  linuxBubblewrap?: string;
+  linuxResolver?: (stableOnly?: boolean) => Promise<LinuxSandboxIdentity>;
   windowsWrapper?: string;
   nodeExecutable?: string;
   platform?: SandboxPlatform;
@@ -34,11 +42,13 @@ type Launch = Readonly<{
   args: readonly string[];
   cwd: string;
   env: Readonly<Record<string, string>>;
+  stdin: Buffer;
+  windowsPolicy?: ReturnType<typeof createWindowsCompilerPolicy>;
 }>;
 
 type ChildEnvelope =
   | Readonly<{ ok: true; outcome: CompilerOutcome }>
-  | Readonly<{ ok: false; findings?: CompilerOutcome extends never ? never : readonly unknown[]; error: string }>;
+  | Readonly<{ ok: false; error: string }>;
 
 type SupervisionLimit =
   | "wall" | "cpu" | "rss" | "process" | "custody"
@@ -48,6 +58,7 @@ type SupervisionResult = Readonly<{
   stdout: string;
   stderr: string;
   limit: SupervisionLimit;
+  mechanism?: string;
 }>;
 
 const NEGATIVE_PROBES = [
@@ -58,6 +69,7 @@ const NEGATIVE_PROBES = [
   "network-dns",
   "environment-secret",
   "process-spawn",
+  "process-spawn-readable",
 ] as const;
 const PROBE_SECRET = "BOTTEGA_COMPILER_PROBE_SECRET";
 /* 内存超支不需要 100ms 分辨率，而每一次采样都要在主进程里 fork 一个 /bin/ps。 */
@@ -67,6 +79,7 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
   readonly platform: SandboxPlatform;
   private evidence: CompilerSandboxEvidence | null = null;
   private evidenceIdentity: string | null = null;
+  private preferStableLinux = false;
   private readonly options: Required<Pick<CompilerSandboxOptions, "compilerEntry" | "dependencyRoots">> & CompilerSandboxOptions;
 
   constructor(options: CompilerSandboxOptions) {
@@ -81,7 +94,6 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
         runtimeReadRoot(resolve(options.nodeExecutable ?? process.execPath)),
       ]),
       nodeExecutable: resolve(options.nodeExecutable ?? process.execPath),
-      linuxBubblewrap: resolve(options.linuxBubblewrap ?? "/usr/bin/bwrap"),
       windowsWrapper: resolve(options.windowsWrapper ?? join(dirname(process.execPath), "bottega-compiler-sandbox.exe")),
     };
   }
@@ -91,31 +103,68 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
      被换过」的身份检查，不是内容哈希；编译器入口的真实字节另有 fileDigest 进
      evidenceDigest。发布载荷在运行期不可变，身份不变即重跑探针只是加税。 */
   async probe(): Promise<CompilerSandboxEvidence> {
-    const identity = await this.payloadIdentity();
-    if (this.evidence && this.evidenceIdentity === identity) return this.evidence;
-    this.evidence = null;
-    const evidence = await this.runProbes();
-    this.evidence = evidence;
-    this.evidenceIdentity = identity;
-    return evidence;
+    try {
+      const linux = await this.selectLinux();
+      try { return await this.probeComponent(linux); }
+      catch (cause) {
+        if (linux?.source !== "system") throw cause;
+        this.preferStableLinux = true;
+        return await this.probeComponent(await this.selectLinux());
+      }
+    } catch (cause) {
+      if ((cause as { code?: string })?.code === "GUI_COMPILER_SANDBOX_UNAVAILABLE") throw cause;
+      throw unavailable(`Compiler authority probe failed: ${bounded(cause instanceof Error ? cause.message : String(cause))}`);
+    }
   }
 
-  private async payloadIdentity() {
+  private async probeComponent(linux?: LinuxSandboxIdentity): Promise<CompilerSandboxEvidence> {
+    const lease = linux?.leasePath ? await acquireLinuxComponentLease(linux.leasePath) : undefined;
+    try {
+      await this.assertLinuxIdentity(linux);
+      const identity = `${await this.payloadIdentity(linux)}\n${linux?.digest ?? ""}`;
+      lease?.assertHeld();
+      // System policy has no release-pinned file identity; recheck its actual kernel behavior.
+      if (linux?.source !== "system" && this.evidence && this.evidenceIdentity === identity) return this.evidence;
+      this.evidence = null;
+      const evidence = await this.runProbes(linux);
+      lease?.assertHeld();
+      await this.assertLinuxIdentity(linux);
+      this.evidence = evidence;
+      this.evidenceIdentity = identity;
+      return evidence;
+    } finally { await lease?.release(); }
+  }
+
+  private async selectLinux() {
+    if (this.platform !== "linux") return undefined;
+    if (!this.options.linuxResolver) throw unavailable("compiler payload is incomplete: trusted Linux component locator is unavailable");
+    return this.options.linuxResolver(this.preferStableLinux);
+  }
+
+  private async assertLinuxIdentity(expected?: LinuxSandboxIdentity) {
+    if (expected && (await this.selectLinux())?.digest !== expected.digest) {
+      throw unavailable("Linux compiler component changed during the operation");
+    }
+  }
+
+  private async payloadIdentity(linux?: LinuxSandboxIdentity) {
     const paths = dedupe([
       this.options.nodeExecutable!,
       this.options.compilerEntry,
+      ...(linux ? [linux.executable, linux.execPolicy, ...(linux.profilePath ? [linux.profilePath] : [])] : []),
+      ...(this.platform === "win32" ? [this.options.windowsWrapper!] : []),
       ...this.options.dependencyRoots,
       ...(this.options.esbuildExecutable ? [this.options.esbuildExecutable] : []),
     ]);
     const stamps = await Promise.all(paths.map(async (path) => {
       const info = await stat(path).catch(() => null);
-      return info ? `${path}:${info.size}:${info.mtimeMs}` : `${path}:missing`;
+      return info ? `${path}:${info.dev}:${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}` : `${path}:missing`;
     }));
     return stamps.join("\n");
   }
 
-  private async runProbes(): Promise<CompilerSandboxEvidence> {
-    await this.assertPayload();
+  private async runProbes(linux?: LinuxSandboxIdentity): Promise<CompilerSandboxEvidence> {
+    await this.assertPayload(linux);
     const requestedProbeRoot = join(tmpdir(), `bottega-gui-probe-${randomUUID()}`);
     const requestedInputRoot = join(requestedProbeRoot, "input");
     const requestedOutputRoot = join(requestedProbeRoot, "output");
@@ -146,40 +195,50 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
     const previousSecret = process.env[PROBE_SECRET];
     process.env[PROBE_SECRET] = randomUUID();
     try {
-      const request = Buffer.from(JSON.stringify({
+      const request: CompilerRequest = {
+        schema: COMPILER_REQUEST_SCHEMA,
         mode: "probe",
         forbiddenRead,
         forbiddenWrite,
         loopbackPort: loopback.port,
         spawnExecutable: platformProbeExecutable(this.platform),
-      })).toString("base64url");
+        readableExecutable: await prepareExecutableControl(platformProbeExecutable(this.platform), inputRoot),
+      };
       const launched = await this.launch({
         mode: "probe",
         request,
         snapshotRoot: inputRoot,
         outputRoot,
         tempRoot,
-      });
+      }, linux);
       const result = await supervise(launched, undefined, APP_GUI_BUILD_BUDGET.wallTimeMs);
       if (result.exitCode !== 0) throw unavailable(`compiler sandbox probe exited ${result.exitCode}: ${result.stderr}`);
-      const parsed = parseJson<{ probes: readonly { id: string; denied: boolean }[] }>(result.stdout, "sandbox probe");
+      const parsed = parseJson<{ probes: readonly { id: string; denied: boolean }[]; linuxProfile?: string }>(result.stdout, "sandbox probe");
       const byId = new Map(parsed.probes.map((probe) => [probe.id, probe.denied]));
       const observed: Array<{ id: string; denied: boolean }> =
         NEGATIVE_PROBES.map((id) => ({ id: id as string, denied: byId.get(id) === true }));
       if (!observed.every((probe) => probe.denied)) {
         throw unavailable("compiler sandbox negative probe did not deny every required authority");
       }
-      const custodyRequest = Buffer.from(JSON.stringify({
+      if (linux) {
+        if (!admittedLinuxProfile(linux, parsed.linuxProfile)) {
+          throw unavailable("Linux compiler did not enter its admitted AppArmor profile");
+        }
+        observed.push({ id: "linux-apparmor-profile", denied: true });
+      }
+      const custodyRequest: CompilerRequest = {
+        schema: COMPILER_REQUEST_SCHEMA,
         mode: "custody-probe",
         processCount: APP_GUI_BUILD_BUDGET.processCount,
-      })).toString("base64url");
+      };
       const custodyLaunch = await this.launch({
         mode: "probe",
         request: custodyRequest,
+        limits: { wallTimeMs: 2_000 },
         snapshotRoot: inputRoot,
         outputRoot,
         tempRoot,
-      });
+      }, linux);
       const custody = await supervise(custodyLaunch, undefined, 2_000);
       const wrapperContained = custody.exitCode === 0 &&
         parseJson<{ contained?: boolean }>(custody.stdout, "process custody probe").contained === true;
@@ -193,17 +252,19 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
         { kind: "cpu", expected: "cpu", wallTimeMs: 3_000, limits: { rssBytes: APP_GUI_BUILD_BUDGET.rssBytes, cpuTimeMs: 500 } },
         { kind: "timeout", expected: "wall", wallTimeMs: 250, limits: {} },
       ] as const) {
-        const resourceRequest = Buffer.from(JSON.stringify({
+        const resourceRequest: CompilerRequest = {
+          schema: COMPILER_REQUEST_SCHEMA,
           mode: "resource-probe",
           kind: probe.kind,
-        })).toString("base64url");
+        };
         const resourceLaunch = await this.launch({
           mode: "probe",
           request: resourceRequest,
+          limits: { ...probe.limits, wallTimeMs: probe.wallTimeMs },
           snapshotRoot: inputRoot,
           outputRoot,
           tempRoot,
-        });
+        }, linux);
         const resource = await supervise(resourceLaunch, undefined, probe.wallTimeMs, probe.limits);
         if (resource.limit !== probe.expected) {
           throw unavailable(
@@ -222,10 +283,12 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
           schema: "bottega.compiler-sandbox-evidence/v1",
           platform: this.platform,
           compilerEntryDigest: await fileDigest(this.options.compilerEntry),
-          adapter: adapterIdentity(this.options),
+          adapter: linux ?? await adapterIdentity(this.options, result.mechanism),
           probes,
+          ...(linux ? { linuxAppArmorProfile: parsed.linuxProfile } : {}),
         }),
         probes,
+        ...(linux ? { componentDigest: linux.digest, nativePayloads: linux.nativePayloads, linuxAppArmorProfile: parsed.linuxProfile } : {}),
       };
     } finally {
       if (previousSecret === undefined) delete process.env[PROBE_SECRET];
@@ -235,16 +298,27 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
     }
   }
 
-  async compile(input: SealedCompilerInput, signal: AbortSignal): Promise<CompilerOutcome> {
-    if (!this.evidence) await this.probe();
+  async compile(input: SealedCompilerInput, signal: AbortSignal, expectedEvidenceDigest?: string): Promise<CompilerOutcome> {
+    if (signal.aborted) return failed("GUI_BUILD_ABORTED", "App GUI compilation was aborted");
+    const evidence = await this.probe();
+    if (expectedEvidenceDigest && expectedEvidenceDigest !== evidence.evidenceDigest) {
+      return failed("GUI_COMPILER_SANDBOX_VIOLATION", "Compiler authority changed after receipt preparation");
+    }
     const snapshotRoot = await realpath(input.snapshotRoot);
     const outputRoot = await prepareEmptyRoot(input.outputRoot);
     const tempRoot = await prepareEmptyRoot(input.tempRoot);
     assertSeparated(snapshotRoot, outputRoot, tempRoot);
-    const request = Buffer.from(JSON.stringify({ mode: "compile", input: { ...input, snapshotRoot, outputRoot, tempRoot } })).toString("base64url");
-    const launched = await this.launch({ mode: "compile", request, snapshotRoot, outputRoot, tempRoot });
+    const request: CompilerRequest = { schema: COMPILER_REQUEST_SCHEMA, mode: "compile", input: { ...input, snapshotRoot, outputRoot, tempRoot } };
+    const linux = await this.selectLinux();
+    if (linux && evidence.componentDigest !== linux.digest) throw unavailable("Linux compiler component changed after probing");
+    const lease = linux?.leasePath ? await acquireLinuxComponentLease(linux.leasePath) : undefined;
     try {
+      await this.assertLinuxIdentity(linux);
+      lease?.assertHeld();
+      const launched = await this.launch({ mode: "compile", request, snapshotRoot, outputRoot, tempRoot }, linux);
       const result = await supervise(launched, signal, APP_GUI_BUILD_BUDGET.wallTimeMs);
+      lease?.assertHeld();
+      await this.assertLinuxIdentity(linux);
       if (result.limit === "aborted") return failed("GUI_BUILD_ABORTED", "App GUI compilation was aborted");
       if (result.limit === "wall") return failed("GUI_BUILD_TIMEOUT", "App GUI compilation exceeded the wall-time budget");
       if (result.limit === "cpu") return failed("GUI_BUILD_TIMEOUT", "App GUI compilation exceeded the CPU-time budget");
@@ -261,17 +335,17 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
         return failed("GUI_COMPILER_SANDBOX_VIOLATION", "App GUI compiler custody could not be verified");
       }
       return failed("GUI_BUILD_COMPILER_CRASH", bounded(cause instanceof Error ? cause.message : String(cause)));
-    }
+    } finally { await lease?.release(); }
   }
 
-  private async assertPayload() {
+  private async assertPayload(linux?: LinuxSandboxIdentity) {
     /* 平台围栏可执行文件与 payload 走同一个 typed catch：缺 bwrap/wrapper 必须是
        GUI_COMPILER_SANDBOX_UNAVAILABLE——probe() 在 compile() 的 try 之外，
        裸 ENOENT 会未经分类直接逃逸，击穿 composition 层的 fail-closed 合同。 */
     const platformAdapter = this.platform === "darwin"
       ? "/usr/bin/sandbox-exec"
       : this.platform === "linux"
-        ? this.options.linuxBubblewrap!
+        ? linux!.executable
         : this.options.windowsWrapper!;
     await Promise.all([
       assertExecutable(this.options.nodeExecutable!),
@@ -288,11 +362,12 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
 
   private async launch(input: Readonly<{
     mode: "probe" | "compile";
-    request: string;
+    request: CompilerRequest;
+    limits?: CompilerLimits;
     snapshotRoot: string;
     outputRoot: string;
     tempRoot: string;
-  }>): Promise<Launch> {
+  }>, linux?: LinuxSandboxIdentity): Promise<Launch> {
     const env = {
       ...explicitEnvironment(input.tempRoot),
       ...(this.options.esbuildExecutable
@@ -302,7 +377,8 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
         ? { BOTTEGA_APP_GUI_METADATA_ROOT: this.options.metadataRoot }
         : {}),
     };
-    const childArgs = [this.options.compilerEntry, input.request];
+    const childArgs = [this.options.compilerEntry];
+    const stdin = encodeCompilerRequest(input.request);
     if (this.platform === "darwin") {
       const profile = await darwinProfile({
         nodeExecutable: this.options.nodeExecutable!,
@@ -313,29 +389,21 @@ export class NativeCompilerSandbox implements CompilerSandboxPort {
         outputRoot: input.outputRoot,
         tempRoot: input.tempRoot,
       });
-      return { command: "/usr/bin/sandbox-exec", args: ["-p", profile, this.options.nodeExecutable!, ...childArgs], cwd: input.tempRoot, env };
+      return { command: "/usr/bin/sandbox-exec", args: ["-p", profile, this.options.nodeExecutable!, ...childArgs], cwd: input.tempRoot, env, stdin };
     }
     if (this.platform === "linux") {
-      const readRoots = [this.options.nodeExecutable!, this.options.compilerEntry, ...this.options.dependencyRoots, ...(this.options.esbuildExecutable ? [this.options.esbuildExecutable] : [])];
-      const args = ["--die-with-parent", "--new-session", "--unshare-all", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"];
-      for (const path of dedupe(readRoots)) args.push("--ro-bind", path, path);
-      for (const path of ["/usr/lib", "/usr/lib64", "/lib", "/lib64"]) {
-        if (await exists(path)) args.push("--ro-bind", path, path);
-      }
-      args.push("--ro-bind", input.snapshotRoot, input.snapshotRoot, "--bind", input.outputRoot, input.outputRoot, "--bind", input.tempRoot, input.tempRoot, "--chdir", input.tempRoot, "--", this.options.nodeExecutable!, ...childArgs);
-      return { command: this.options.linuxBubblewrap!, args, cwd: input.tempRoot, env };
+      if (!linux) throw unavailable("Linux compiler component was not admitted");
+      const launch = await linuxCompilerLaunch(linux, { ...input, ...this.options, nodeExecutable: this.options.nodeExecutable!, stdin });
+      return { ...launch, cwd: input.tempRoot, env };
     }
-    const policy = Buffer.from(JSON.stringify({
-      schema: "bottega.compiler-windows-policy/v1",
+    const windowsPolicy = createWindowsCompilerPolicy({
       readOnly: [input.snapshotRoot, this.options.compilerEntry, ...this.options.dependencyRoots],
       writable: [input.outputRoot, input.tempRoot],
-      executable: [this.options.nodeExecutable, this.options.esbuildExecutable].filter(Boolean),
-      network: "deny",
-      job: { childProcesses: APP_GUI_BUILD_BUDGET.processCount, memoryBytes: APP_GUI_BUILD_BUDGET.rssBytes, cpuTimeMs: APP_GUI_BUILD_BUDGET.cpuTimeMs },
-      limitExitCodes: { rss: 197, cpu: 198, process: 199 },
-      command: [this.options.nodeExecutable, ...childArgs],
-    })).toString("base64url");
-    return { command: this.options.windowsWrapper!, args: [policy], cwd: input.tempRoot, env };
+      executable: [this.options.nodeExecutable!, ...(this.options.esbuildExecutable ? [this.options.esbuildExecutable] : [])],
+      nodeExecutable: this.options.nodeExecutable!, compilerEntry: this.options.compilerEntry,
+      request: input.request, limits: input.limits,
+    });
+    return { command: this.options.windowsWrapper!, args: ["--stdio-v2"], cwd: input.tempRoot, env, stdin: windowsPolicy.frame, windowsPolicy };
   }
 }
 
@@ -403,13 +471,18 @@ async function supervise(
   timeoutMs: number,
   limits: Readonly<{ rssBytes?: number; cpuTimeMs?: number; processCount?: number }> = {}
 ): Promise<SupervisionResult> {
+  /* Windows 永远不进下面的 POSIX 监督：launch() 给它的是 wrapper policy，
+     进程树归属由 wrapper 的 Job 负责，Host 只校验它的释放报告。 */
+  if (launch.windowsPolicy) return superviseWindowsCompiler({ ...launch, windowsPolicy: launch.windowsPolicy }, signal);
   const child = spawn(launch.command, [...launch.args], {
     cwd: launch.cwd,
     env: { ...launch.env },
-    detached: process.platform !== "win32",
+    detached: true,
     windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
+  child.stdin.on("error", () => undefined);
+  child.stdin.end(launch.stdin);
   let stdout = Buffer.alloc(0);
   let stderr = Buffer.alloc(0);
   let limit: SupervisionLimit = null;
@@ -427,9 +500,10 @@ async function supervise(
   child.stderr.on("data", (chunk: Buffer) => { stderr = collect(stderr, chunk, APP_GUI_BUILD_BUDGET.stderrBytes, "stderr"); });
   const abort = () => { if (!limit) limit = "aborted"; void terminateTree(child, knownPids); };
   signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
   const wallTimer = setTimeout(() => { if (!limit) limit = "wall"; void terminateTree(child, knownPids); }, timeoutMs);
   const resourceTimer = setInterval(async () => {
-    if (process.platform === "win32" || child.exitCode !== null || sampling) return;
+    if (child.exitCode !== null || sampling) return;
     sampling = (async () => {
       try {
         const usage = await processTreeUsage(child.pid, knownPids);
@@ -453,11 +527,6 @@ async function supervise(
     signal?.removeEventListener("abort", abort);
   });
   if (sampling) await sampling;
-  if (process.platform === "win32" && !limit) {
-    if (exitCode === 197) limit = "rss";
-    else if (exitCode === 198) limit = "cpu";
-    else if (exitCode === 199) limit = "process";
-  }
   await ensureProcessTreeExit(child.pid, knownPids);
   return { exitCode, stdout: stdout.toString("utf8"), stderr: stderr.toString("utf8"), limit };
 }
@@ -478,7 +547,7 @@ async function terminateTree(child: ChildProcess, knownPids: Set<number>) {
 function killGroup(child: ChildProcess) {
   if (!child.pid) return;
   try {
-    process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGKILL");
+    process.kill(-child.pid, "SIGKILL");
   } catch {
     child.kill("SIGKILL");
   }
@@ -537,7 +606,7 @@ async function processTree(pid: number | undefined, knownPids: Set<number>) {
 }
 
 async function ensureProcessTreeExit(pid: number | undefined, knownPids: ReadonlySet<number>) {
-  if (!pid || process.platform === "win32") return;
+  if (!pid) return;
   try { process.kill(-pid, "SIGKILL"); } catch { /* The group already exited. */ }
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const survivors = await liveDescendants(pid, new Set(knownPids));
@@ -613,10 +682,13 @@ function normalizePlatform(platform: NodeJS.Platform): SandboxPlatform {
   throw unavailable(`compiled App GUI is unsupported on ${platform}`);
 }
 
-function adapterIdentity(options: CompilerSandboxOptions) {
-  if (options.platform === "darwin") return "seatbelt-v1";
-  if (options.platform === "linux") return "bubblewrap-v1";
-  return "windows-job-appcontainer-v1";
+async function adapterIdentity(options: CompilerSandboxOptions, mechanism?: string) {
+  if (options.platform === "linux") throw unavailable("Linux compiler identity must come from its admitted component");
+  const path = options.platform === "darwin" ? "/usr/bin/sandbox-exec"
+    : options.windowsWrapper!;
+  if (options.platform === "win32" && !mechanism) throw unavailable("Windows compiler mechanism was not verified");
+  return { mechanism: options.platform === "darwin" ? "seatbelt-v1" : mechanism,
+    componentDigest: await fileDigest(path), requestSchema: COMPILER_REQUEST_SCHEMA };
 }
 
 function platformProbeExecutable(platform: SandboxPlatform) {
@@ -625,7 +697,7 @@ function platformProbeExecutable(platform: SandboxPlatform) {
 }
 
 async function fileDigest(path: string) {
-  return `sha256:${createHash("sha256").update(await readFile(path)).digest("hex")}` as const;
+  return sha256(await readFile(path));
 }
 
 async function openLoopbackControl() {
@@ -666,10 +738,6 @@ async function assertDirectory(path: string) {
   if (!(await stat(path)).isDirectory()) {
     throw new Error(`dependency root is not a directory: ${path}`);
   }
-}
-
-async function exists(path: string) {
-  return access(path).then(() => true, () => false);
 }
 
 function dedupe(values: readonly string[]) {

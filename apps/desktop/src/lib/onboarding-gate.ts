@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared/agent-ipc's BackendInfo, shared/settings-ipc's ChatHomeState and canEnterAgentBackend for agent-backends
- * [OUTPUT]: Provides ONBOARDING_REQUIREMENTS, chatHomeRequirement/agentRequirement The fact that projection and loading/onboarding/app tri-state judgments (the absence of gaps is guided, no exemption); The last file of the caller that was not delivered at the time
- * [POS]: The only determination of the renderer's direction of start; SetupProvider's entry gateway and OnboardingView are the same as the steps of reading a conclusion.The gap is guided, no exemption file
+ * [INPUT]: Depends on shared BackendInfo (agent-ipc), ChatHomeState (settings-ipc), and canEnterAgentBackend from agent-backends
+ * [OUTPUT]: Owns startup and forced onboarding; preserves an existing workbench only while Chat Home remains satisfied, without a permanent entered-app flag.
+ * [POS]: Sole determiner of the renderer's startup routing; SetupProvider's entry gate and OnboardingView's step list both read the same verdict, so a missing requirement is always guided into onboarding with no exemption path
  */
 
 import type { BackendInfo } from "../../shared/agent-ipc";
@@ -60,7 +60,7 @@ export const agentRequirement = (
   if (backends?.some(canEnterAgentBackend)) return "satisfied";
   const pending =
     checking ||
-    Boolean(backends?.some((entry) => entry.authStatus === "checking"));
+    Boolean(backends?.some((entry) => entry.authStatus === "checking" || entry.runtimeStatus === "unknown"));
   return pending ? "unknown" : "missing";
 };
 
@@ -87,6 +87,7 @@ export function onboardingGate({
     ONBOARDING_REQUIREMENTS.every((id) => facts[id] === "satisfied");
   const decide = (): OnboardingPhase => {
     if (forced) return "onboarding";
+    if (held === "app" && facts["chat-home"] === "satisfied") return "app";
     if (!settled) return held;
     /* 没有豁免这一档：两个门槛没补齐就是进不去。从前这里还问一句
        「用户按过稍后配置没有」，而那颗按钮连同它背后的记号已经一并撤销

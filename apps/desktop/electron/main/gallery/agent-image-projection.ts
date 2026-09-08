@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Agent bridge Activities Turn queries, completed image item and main-only Gallery feedback
- * [OUTPUT]: Provides canonical savedPath projection, renderer DTO path clearance and occurrence verification of activity images; Delta was referring to the direct line, and the rest of the pre-zero-sum distribution detection and target image was reconstructed
- * [POS]: The gallery's Agent is on the line; canonical ChatStore keeps the retargeting detail and removes it from all renderer output unified
+ * [INPUT]: Depends on the shared AgentTurnItem type and the agent bridge's AgentBridgeOptions/BridgeEntry types
+ * [OUTPUT]: Provides projectAgentImage (invokes the completed-image callback for gallery ingestion), redactImageDetails (strips inline image detail from outbound wire payloads, fast-pathing text deltas), and isActiveImageOccurrence (checks whether an image item is still live in the entry's draft)
+ * [POS]: Gallery's projection point on the Agent delivery line; the canonical ChatStore retains full image detail, and this module strips it uniformly before it reaches renderer output
  */
 
 import type { AgentTurnItem } from "../../../shared/agent-ipc";

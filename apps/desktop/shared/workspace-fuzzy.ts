@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Accepts workspace relative path to user queries, without relying on platform API or module status
- * [OUTPUT]: Provides a linear boundary forwards/backwards with a more optimum linear boundary fuzzyScore
- * [POS]: The Workspace candidate blur matches the pure core of shared; Main Current consumption, renderer can be used as a replacement when ordered down
+ * [INPUT]: Accepts a workspace-relative path and a user query string; has no dependency on any platform API or module state
+ * [OUTPUT]: Provides fuzzyScore, taking the better of a forward and backward greedy character match to produce a rank-comparable score, or null when the query doesn't match
+ * [POS]: Shared pure core for fuzzy-matching workspace path candidates; main currently consumes it, kept dependency-free so the renderer can reuse it for local re-ranking if needed
  */
 
 const normalized = (value: string) => value.normalize("NFKC").toLowerCase();

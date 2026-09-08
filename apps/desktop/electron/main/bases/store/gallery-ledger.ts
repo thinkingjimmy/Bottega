@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Gallery ledger/attachment schema and Base meta/rows; Receiving immutable occurrence payload
- * [OUTPUT]: Provides empty/parse/put/remove/validate Pure state machine over a caller-supplied row index, rows attachment blob reference collection, automatic Gallery Delete suppression, redirect to GalleryLedgerConflictError
+ * [OUTPUT]: Provides the empty/parse/put/deriveRemovals/validate pure state machine over a caller-supplied row index, rows attachment blob reference collection, automatic Gallery delete suppression, and GalleryLedgerConflictError
  * [POS]: The core of the Gallery ledger for bases/stores; The full fingerprint is the only proof of the existence of any conflict written in IO before zero
  */
 
@@ -113,7 +113,7 @@ export function putGalleryOccurrence(
   return { ledger, idempotent: false };
 }
 
-export function removeGalleryColumns(
+function removeGalleryColumns(
   current: BaseGalleryLedger,
   columnIds: ReadonlySet<string>,
   now: number
@@ -132,7 +132,7 @@ export function removeGalleryColumns(
   return next;
 }
 
-export function removeGalleryCells(
+function removeGalleryCells(
   current: BaseGalleryLedger,
   galleryItemIds: ReadonlySet<string>,
   now: number

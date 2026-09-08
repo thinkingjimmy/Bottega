@@ -21,7 +21,7 @@ import type { BaseHistoryLedger } from "../../../shared/bases/history-ledger-sch
 import { errorMessage } from "../errors";
 import { SerialQueue } from "../persistence/serial-queue";
 import { BaseAttachmentStore } from "./store/attachments";
-import { BaseStoreFiles, ownerFileStem } from "./store/base-files";
+import { BaseStoreFiles, galleryOwnerId, ownerFileStem } from "./store/base-files";
 import {
   collectRowAttachmentBlobIds,
   deriveGalleryRemovals,
@@ -45,9 +45,9 @@ import {
   BaseIncarnationError,
   BaseNotFoundError,
   chatOwnerIdentity,
-  galleryOwnerId,
   mutationTouchesRows,
   projectOwnerIdentity,
+  sameJson,
   storedBase,
   validateBaseShape,
   validateStoredRows,
@@ -61,7 +61,6 @@ import {
   type StoredBase,
 } from "./base-store-model";
 import {
-  baseOwnerSummaries,
   navigationMutation,
   projectBaseSummaries,
   rootBaseSummaries,
@@ -83,8 +82,6 @@ export type {
   IndexedBaseSnapshot,
   ReadonlyBaseSnapshot,
 };
-const same = (left: unknown, right: unknown) =>
-  JSON.stringify(left) === JSON.stringify(right);
 const NO_BLOBS: ReadonlySet<string> = new Set<string>();
 export class BaseStore {
   readonly basesRoot: string;
@@ -164,9 +161,6 @@ export class BaseStore {
       ownerKey,
       snapshot,
     }));
-  }
-  baseSummaries() {
-    return baseOwnerSummaries(this.states);
   }
   listRootBases() {
     return rootBaseSummaries(this.states.values());
@@ -465,7 +459,7 @@ export class BaseStore {
       );
       if (derived) {
         galleryInput = derived;
-        galleryChanged = !same(derived, current.gallery);
+        galleryChanged = !sameJson(derived, current.gallery);
       }
     }
     const galleryGeneration = current.meta.galleryGeneration +
@@ -507,7 +501,7 @@ export class BaseStore {
           ownerInstanceId
         )
       : current.gallery;
-    if (!galleryChanged && galleryInput && !same(galleryInput, current.gallery)) {
+    if (!galleryChanged && galleryInput && !sameJson(galleryInput, current.gallery)) {
       throw new Error("galleryChanged=false 不允许修改 Gallery ledger");
     }
     validateBaseShape(meta, next.rows.length);

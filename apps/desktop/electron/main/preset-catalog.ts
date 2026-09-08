@@ -20,10 +20,10 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-design-canvas.git",
-    catalogPin: "1add29324e02b50f88d3a4b694281add30a440bf",
+    catalogPin: "8ef25085e43720d7359cdb9864c8d0db4ac920e0",
     sourceDirectory: "Bottega-app-design-canvas",
     factoryTreeDigest:
-      "sha256:ac7f7e798e59eee42160f1eedbacedc87b7275da8db15a22ea608f080b11bfc2",
+      "sha256:80f1f06330b000551114100705bde9d40a6a00f8a121fa5d9927ded10bd595ae",
   },
   {
     id: "dev-kanban",
@@ -31,7 +31,7 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-dev-kanban.git",
-    catalogPin: "4f74284da540e01316b82a246fbfc3a98a482ca5",
+    catalogPin: "43825844e726d89b52aeb789fff6df6a62b033b5",
     sourceDirectory: "Bottega-app-dev-kanban",
   },
   {
@@ -40,7 +40,7 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-expense-tracker.git",
-    catalogPin: "55cec96e81619f90164a00bc18c5ca7c3c8b5e23",
+    catalogPin: "88fd198eae486738a19c4304e1cc60d5f9497a80",
     sourceDirectory: "Bottega-app-expense-tracker",
   },
   {
@@ -49,7 +49,7 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-fitness-log.git",
-    catalogPin: "706a9c970d2a78376b5012646e1d83e0b6fe7e76",
+    catalogPin: "f50e4ae4036dc4d570267f9c9a4cb50fa94f49f7",
     sourceDirectory: "Bottega-app-fitness-log",
   },
 ] as const satisfies readonly PresetCatalogEntry[];

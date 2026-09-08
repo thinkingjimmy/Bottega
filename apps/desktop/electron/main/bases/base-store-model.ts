@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared owner-aware Base/Gallery/navigation types, schemas, budgets, and gallery-ledger facts
- * [OUTPUT]: Provides BaseStore identity/mutation types with declared row changes, the frozen stored entry factory, incremental row validation, the store error classes, and owner→Gallery identity
+ * [OUTPUT]: Provides BaseStore identity/mutation types with declared row changes, the frozen stored entry factory, incremental row validation, the store error classes, and the shared sameJson equality
  * [POS]: The base layer of the Store is pure model; base-store.ts holds the IO/ queue, and this file closes without any side effects rules
  */
 
@@ -15,7 +15,6 @@ import {
   type BaseOwner,
   type BaseNavigationSummary,
   type BaseRow,
-  type BaseSnapshot,
 } from "../../../shared/bases-ipc";
 import type { BaseGalleryLedger } from "../../../shared/bases/gallery-attachments";
 import type {
@@ -62,6 +61,10 @@ export const ALL_ROWS_CHANGED = "all";
 export type BaseMutationRowIds = ReadonlySet<string> | typeof ALL_ROWS_CHANGED;
 
 export const NO_ROWS_CHANGED: ReadonlySet<string> = new Set<string>();
+
+/** Structural equality by JSON serialization; the shared "did this commit change anything" test. */
+export const sameJson = (left: unknown, right: unknown) =>
+  JSON.stringify(left) === JSON.stringify(right);
 
 /**
  * 提交声明：kernel 必须说清自己动了哪些行，Store 只按声明付代价。
@@ -235,8 +238,6 @@ export function storedBase(input: {
   };
 }
 
-export { galleryOwnerId };
-
 export function chatOwnerIdentity(identity: BaseIdentity): BaseOwnerIdentity {
   return {
     owner: {
@@ -260,7 +261,3 @@ export function projectOwnerIdentity(
     title,
   };
 }
-
-export type SnapshotMutation = (
-  current: BaseSnapshot
-) => BaseStoreMutation | null;

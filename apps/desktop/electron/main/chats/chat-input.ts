@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { turnOptionsSchema } from "../../../shared/chat-agent/options";
 import { agentBackendIdSchema } from "../../../shared/agent-schema";
 import {
   ATTACHMENT_BYTE_LIMIT,
@@ -110,6 +111,7 @@ export const createInputSchema = z
     id: z.string().regex(CHAT_ID_PATTERN),
     agent: agentBackendIdSchema,
     firstMessage: userMessageInputSchema,
+    options: turnOptionsSchema.optional(),
     projectId: z.string().regex(PROJECT_ID_PATTERN).nullable().optional(),
     attachmentPayloads: attachmentPayloadsSchema,
     incarnationId: z.string().regex(/^[a-f0-9]{32}$/).optional(),
@@ -132,6 +134,7 @@ export const createAppInputSchema = z
     appRole: z.enum(["edit", "use"]),
     agent: agentBackendIdSchema.optional(),
     firstMessage: userMessageInputSchema,
+    options: turnOptionsSchema.optional(),
     attachmentPayloads: attachmentPayloadsSchema,
     incarnationId: z.string().regex(/^[a-f0-9]{32}$/).optional(),
   })
@@ -151,6 +154,7 @@ export const adoptInputSchema = z
     title: z.string().trim().min(1).max(200),
     agent: agentBackendIdSchema,
     firstMessage: userMessageInputSchema,
+    options: turnOptionsSchema.optional(),
     projectId: z.string().regex(PROJECT_ID_PATTERN),
     incarnationId: z.string().regex(/^[a-f0-9]{32}$/),
     session: z.object({

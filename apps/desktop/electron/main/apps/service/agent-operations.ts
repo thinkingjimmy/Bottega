@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the backend runtime registry, AppStore/Installer/PackageController, maintenance gate, Electron, and confirmation windows and log files
- * [OUTPUT]: AppAgent Operations, Unified Agent selection, structured capability, current testing, installation logs and Extension are available
- * [POS]: The single responsibility module for the Agent/operation of the apps/service; Don't participate in turn custody or delete saga
+ * [OUTPUT]: Projects static App tools and cached inventory, selects maintenance Agents by concrete purposes and gates interactive App binding with scoped authentication evidence.
+ * [POS]: apps/service Agent-operations module; excluded from turn custody and the delete saga
  */
 
 import { appendFile, mkdir, open, stat } from "node:fs/promises";
@@ -140,7 +140,7 @@ export class AppAgentOperations {
     const record = this.requireRecord(input.appId);
     if (input.role === "interactive") {
       if (input.agent === "auto") throw new Error("交互 Agent 不支持 Auto");
-      await this.requireReadyBackend(input.agent);
+      await this.requireReadyBackend(input.agent, record.dir);
       return this.deps.store.update(record.id, (current) => ({
         ...current,
         agent: input.agent as AgentBackendId,
@@ -199,7 +199,7 @@ export class AppAgentOperations {
       const capabilities = snapshot.capabilities;
       if (
         snapshot.runtimeStatus === "installed" &&
-        snapshot.authStatus === "authenticated" &&
+        (await Promise.all((["install-analysis", "repair", "serve"] as const).map((purpose) => backendRuntimeRegistry.operationEligibility(descriptor.id, purpose, { ignoreUserConfig: true }, snapshot)))).every((result) => result.decision === "allow") &&
         capabilities.maintenance &&
         ["install-analysis", "repair", "serve"].every((purpose) =>
           capabilities.headless.includes(
@@ -269,12 +269,12 @@ export class AppAgentOperations {
     return result.response === 1;
   }
 
-  private async requireReadyBackend(id: AgentBackendId) {
+  private async requireReadyBackend(id: AgentBackendId, cwd: string) {
     const descriptor = backendById(id);
     const snapshot = await backendRuntimeRegistry.resolve(id);
     if (
       snapshot.runtimeStatus !== "installed" ||
-      snapshot.authStatus !== "authenticated"
+      (await backendRuntimeRegistry.operationEligibility(id, "app-binding", { cwd }, snapshot)).decision !== "allow"
     ) {
       throw new Error(`${descriptor.displayName} 当前不可用`);
     }

@@ -26,7 +26,7 @@ import {
   createDraft,
   type TurnDraft,
 } from "../../../../../shared/chat-turn-reducer";
-import type { CodexRequest } from "@/lib/agent-client";
+import type { AgentRequest } from "@/lib/agent-client";
 import { errorMessage } from "@/lib/errors";
 import { effectiveLocale } from "@/lib/i18n-locale";
 import { translate } from "../../../../../shared/i18n/runtime";
@@ -68,7 +68,7 @@ type SessionSubmitLifecycleInput = {
   refs: {
     draft: MutableRefObject<TurnDraft | null>;
     recordExists: MutableRefObject<boolean>;
-    request: MutableRefObject<CodexRequest | null>;
+    request: MutableRefObject<AgentRequest | null>;
   };
   set: {
     activeRequestId: Setter<string | null>;
@@ -97,11 +97,7 @@ export type SessionSubmitLifecycle = {
     previews: LiveAttachmentPreview[]
   ) => void;
   reportAcceptedSyncFailure: (cause: unknown) => void;
-  attachRequest: (request: CodexRequest) => void;
-  projectFallback: (
-    message: ChatMessage,
-    previews: LiveAttachmentPreview[]
-  ) => void;
+  attachRequest: (request: AgentRequest) => void;
 };
 
 export function createSessionSubmitLifecycle({
@@ -135,6 +131,21 @@ export function createSessionSubmitLifecycle({
     refs.recordExists.current = true;
     set.persisted(true);
   };
+  const settleWithoutTurn = (
+    copyKey:
+      | "chat.runtime.submission.notSent"
+      | "chat.runtime.submission.stateUnknown",
+    message: string
+  ) => {
+    if (!isCurrent()) return;
+    refs.request.current = null;
+    set.activeRequestId(null);
+    set.cancelPending(false);
+    set.status("ready");
+    set.queued(false);
+    clearDraft();
+    appendLocalAssistant(translate(effectiveLocale(), copyKey, { message }), true);
+  };
 
   return {
     isCurrent,
@@ -148,34 +159,10 @@ export function createSessionSubmitLifecycle({
       set.attachmentNotice("");
     },
     rejectBeforeAdmission(message) {
-      if (!isCurrent()) return;
-      refs.request.current = null;
-      set.activeRequestId(null);
-      set.cancelPending(false);
-      set.status("ready");
-      set.queued(false);
-      clearDraft();
-      appendLocalAssistant(
-        translate(effectiveLocale(), "chat.runtime.submission.notSent", {
-          message,
-        }),
-        true
-      );
+      settleWithoutTurn("chat.runtime.submission.notSent", message);
     },
     holdAmbiguousAdmission(message) {
-      if (!isCurrent()) return;
-      refs.request.current = null;
-      set.activeRequestId(null);
-      set.cancelPending(false);
-      set.status("ready");
-      set.queued(false);
-      clearDraft();
-      appendLocalAssistant(
-        translate(effectiveLocale(), "chat.runtime.submission.stateUnknown", {
-          message,
-        }),
-        true
-      );
+      settleWithoutTurn("chat.runtime.submission.stateUnknown", message);
     },
     showLocalAssistant(content, isError) {
       if (!isCurrent()) return;
@@ -223,12 +210,6 @@ export function createSessionSubmitLifecycle({
       }
       refs.request.current = request;
       set.activeRequestId(request.requestId);
-    },
-    projectFallback(message, previews) {
-      if (!isCurrent()) return;
-      appendPreviews(message.id, previews);
-      appendProjected(message);
-      createTurnDraft();
     },
   };
 }

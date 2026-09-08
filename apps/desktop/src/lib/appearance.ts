@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on the browser localStorage and documentElement dataset
- * [OUTPUT]: Provides FontFamily/AppearancePreferences, versioning parsing sequencing, reading and writing with DOM application functions
- * [POS]: external boundaries of the renderer data set, isolating the persistence format from the React Provider
+ * [OUTPUT]: Provides FontFamily/AppearancePreferences types, versioned parsing, and the read/write/apply-to-DOM functions
+ * [POS]: Renderer's localStorage boundary for appearance preferences, isolating the persistence format from the React provider
  */
 
-export const FONT_FAMILIES = ["system", "maple-mono", "geist-sans"] as const;
+const FONT_FAMILIES = ["system", "maple-mono", "geist-sans"] as const;
 
 export type FontFamily = (typeof FONT_FAMILIES)[number];
 
@@ -47,7 +47,7 @@ export function serializeAppearance(appearance: AppearancePreferences) {
   return JSON.stringify({ version: 1, appearance } satisfies StoredAppearance);
 }
 
-export function readAppearance(
+function readAppearance(
   storage: AppearanceStorage = window.localStorage
 ): AppearancePreferences {
   try {

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/path, user home, default root outside the KIMI_CODE_HOME syntax, and history-import adapter, public core
  * [OUTPUT]: Provides KimiHistoryAdapter with state metadata and turn-bounded wire.jsonl streaming for prompts (product-context envelope stripped), content parts, tools, results, duration, and one-assistant-per-turn folding
- * [POS]: The history-imported Kimi CLI format adapter; Read only ~/.kimi-code/sessions, session_index.jsonl
+ * [POS]: The history-import adapter for the Kimi CLI format; reads only ~/.kimi-code/sessions and session_index.jsonl
  */
 
 import { readFile, readdir, stat } from "node:fs/promises";
@@ -18,7 +18,7 @@ import {
   drainTools,
   fingerprint,
   fingerprintRevision,
-  humanTitle,
+  storageFingerprint,
   initialSourceIncarnation,
   isWithin,
   normalizedAliases,
@@ -33,7 +33,7 @@ import {
   type ParsedHistory,
   type ScanDepth,
 } from "./adapter";
-import { foldHistoryTurns, stripProductContext } from "./turn-folding";
+import { envelopeFreeTitle, foldHistoryTurns, stripProductEnvelopes } from "./turn-folding";
 
 type Json = Record<string, unknown>;
 
@@ -73,7 +73,7 @@ export class KimiHistoryAdapter implements HistoryAdapter {
         } as const;
         entries.push({
           opaqueId: opaqueSessionId(key), projectId: "", sourceKind: this.sourceKind, key,
-          title: humanTitle(state.title || "Kimi 会话"), cwd: state.workDir,
+          title: envelopeFreeTitle(state.title, "Kimi 会话"), cwd: state.workDir,
           createdAt: timestamp(state.createdAt, mtimeMs),
           updatedAt: timestamp(state.updatedAt, mtimeMs),
           historyRevision: fingerprintRevision(value),
@@ -223,10 +223,10 @@ async function sessionDirectories(root: string): Promise<string[]> {
 
 /* 与 codex/claude 同律：产品自己的 <product_context …> 信封不是用户说的话。 */
 function promptText(input: unknown): string {
-  if (typeof input === "string") return stripProductContext(input).trim();
+  if (typeof input === "string") return stripProductEnvelopes(input).trim();
   if (!Array.isArray(input)) return "";
   return input
-    .map((item) => { const part = object(item); return part ? stripProductContext(string(part.text) ?? "") : ""; })
+    .map((item) => { const part = object(item); return part ? stripProductEnvelopes(string(part.text) ?? "") : ""; })
     .filter(Boolean)
     .join("\n")
     .trim();
@@ -236,4 +236,3 @@ const object = (value: unknown) => value && typeof value === "object" && !Array.
 const string = (value: unknown) => typeof value === "string" && value ? value : null;
 const safeJson = (value: unknown) => { try { return JSON.stringify(value); } catch { return "[unserializable]"; } };
 const emptyScan = (): AdapterScan => ({ sourceKind: "kimi", installed: false, entries: [], sourceRevision: "missing" });
-async function storageFingerprint(root: string) { try { const value = await fingerprint(root); return digest(`${value.device}:${value.inode}`); } catch { return null; } }

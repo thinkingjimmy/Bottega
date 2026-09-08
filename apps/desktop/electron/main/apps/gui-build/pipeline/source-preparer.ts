@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node descriptor-level filesystem primitives, package inspection, and GUI build budgets
+ * [INPUT]: Depends on Node descriptor-level filesystem primitives, the apps/support sha256/syncDirectory primitives, package inspection, and GUI build budgets
  * [OUTPUT]: Provides the only ancestor-identity/no-follow/no-hardlink immutable App source snapshot implementation, with package-budget rejections typed as GUI_BUILD_SOURCE_FREEZE_UNSAFE
  * [POS]: apps/gui-build/pipeline ingress security boundary; every manifest, validator, compiler, digest, and seal reads its snapshot
  */
@@ -11,6 +11,8 @@ import { dirname, join, resolve, sep } from "node:path";
 import type { Sha256Digest } from "../../../../../shared/extensions-ipc";
 import { inspectPackage } from "../../share/package/package-contract";
 import { APP_GUI_BUILD_BUDGET, type AppSourcePreparePort, type SourceFreezeReceipt } from "../contracts";
+import { orderedByPath } from "../../share/package/package-digest";
+import { sha256, syncDirectory } from "../../support";
 
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 const INVALID_WINDOWS_END = /[. ]$/;
@@ -47,7 +49,7 @@ export class AppSourcePreparer implements AppSourcePreparePort {
     const files: Array<{ path: string; bytes: number; sha256: Sha256Digest }> = [];
     try {
       await mkdir(temporary, { recursive: false, mode: 0o700 });
-      for (const file of ordered(sourceFiles)) {
+      for (const file of orderedByPath(sourceFiles)) {
         const from = join(canonicalLiveRoot, file.path);
         const to = join(temporary, file.path);
         await mkdir(dirname(to), { recursive: true, mode: 0o700 });
@@ -180,21 +182,13 @@ function validatePortablePaths(paths: readonly string[]) {
   }
 }
 
-function ordered<T extends { path: string }>(files: readonly T[]) {
-  return [...files].sort((left, right) => Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)));
-}
-
 function sourceDigest(files: readonly { path: string; bytes: number; sha256: string }[]) {
   const hash = createHash("sha256");
   hash.update("bottega.app-source-freeze/v1\0");
-  for (const file of ordered(files)) {
+  for (const file of orderedByPath(files)) {
     hash.update(`${Buffer.byteLength(file.path)}:${file.path}:${file.bytes}:${file.sha256}\n`);
   }
   return `sha256:${hash.digest("hex")}` as const;
-}
-
-function sha256(bytes: Buffer) {
-  return `sha256:${createHash("sha256").update(bytes).digest("hex")}` as const;
 }
 
 async function makeDirectoriesReadOnly(root: string): Promise<void> {
@@ -222,15 +216,6 @@ async function exists(path: string) {
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw cause;
-  }
-}
-
-async function syncDirectory(path: string) {
-  const handle = await open(path, constants.O_RDONLY);
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
   }
 }
 

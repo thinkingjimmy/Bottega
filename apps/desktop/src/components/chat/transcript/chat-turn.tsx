@@ -4,6 +4,7 @@
  * [POS]: Assistant-turn process renderer for chat/transcript; delegates non-plan terminal presentation to chat-regular-turn
  */
 
+import { AgentBackendIcon, backendLabel } from "@/lib/agent-backends";
 import {
   type ReactNode,
   useCallback,
@@ -616,7 +617,7 @@ export function ChatTurn(props: {
     () => projectAssistantTurn(props.message),
     [props.message]
   );
-  return message.kind === "plan" ? (
+  const content = message.kind === "plan" ? (
     <PlanTurn
       isExpanded={props.isPlanExpanded ?? false}
       message={message}
@@ -630,15 +631,15 @@ export function ChatTurn(props: {
     />
   ) : (
     <RegularChatTurn
-      backendDisplayName={props.backendDisplayName}
-      backendId={props.backendId}
+      backendDisplayName={backendLabel(props.message.backend)}
+      backendId={props.message.backend}
       message={message}
       onContinue={props.onContinue}
       onRetry={props.onRetry}
       process={
         <TurnProcess
-          backendDisplayName={props.backendDisplayName}
-          backendId={props.backendId}
+          backendDisplayName={backendLabel(props.message.backend)}
+          backendId={props.message.backend}
           imageSourceRef={imageSourceRef}
           message={message}
           onOpenImage={props.onOpenImage}
@@ -651,6 +652,7 @@ export function ChatTurn(props: {
       showContinue={props.showContinue}
     />
   );
+  return <div><div className="mb-1 flex items-center gap-1.5 text-muted-foreground text-xs"><AgentBackendIcon backend={props.message.backend} className="size-3" /><span>{backendLabel(props.message.backend)}</span></div>{content}</div>;
 }
 
 // ─── 流式草稿：活动分组强制展开实时渲染，末尾按决策 9 渲染 shimmer ───

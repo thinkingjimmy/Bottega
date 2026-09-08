@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path/zlib, renderer HTML/eager JS with Rollup Temporary chunk→module report
- * [OUTPUT]: The first package is tested and the first order is stated as a boundary (ECharts, non-en language directory) target is not empty, not entering entry, statically closed and only reachable across dynamic import; Each of these devices is a failure
- * [POS]: The first package of desktop builds with a mechanical access to the border; Delete not to distribution after reporting
+ * [INPUT]: Depends on Node fs/path/zlib, the built renderer index.html plus its eager module JS, and the temporary Rollup chunk→module report
+ * [OUTPUT]: Fails the build when eager JS exceeds the raw/gzip budget or when a declared lazy lane (ECharts, non-en locales) is empty, enters the entry's static closure, or is reachable without crossing a dynamic import; `--self-test` proves each lane's negative fixture turns red
+ * [POS]: Last segment of the desktop build script; the renderer first-load boundary is enforced mechanically here and the module report is deleted after checking so it never ships
  */
 
 import { readFileSync, rmSync } from "node:fs";

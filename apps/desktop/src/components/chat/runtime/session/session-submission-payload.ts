@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared Gallery/Submission schema, PromptInputMessage, chat attachment serializer with Gallery current epoch
- * [OUTPUT]: Provides submissionContent, gallery Snapshot and product first-round/outdoor adopts commonly used assembleFirstTurnPayload
- * [POS]: The first step is to create a new chat/runtime/sessionSubmitting transactions only decide the route to be sent and cannot copy the first round field packing
+ * [OUTPUT]: Provides submissionContent, route-aware Gallery snapshots and shared first-turn payload assembly; steer capability admission belongs to the main active turn.
+ * [POS]: First-turn payload assembly for chat/runtime/session; downstream submission logic only decides the send route and must not re-implement this first-round field packing
  */
 
 import type { BackendInfo } from "../../../../../shared/agent-ipc";
@@ -81,7 +81,8 @@ export function gallerySnapshot(
   message: PromptInputMessage,
   chatId: string,
   backend: BackendInfo["id"],
-  selectedBackend: BackendInfo | undefined
+  selectedBackend: BackendInfo | undefined,
+  delivery: "new-turn" | "steer" = "new-turn"
 ): PreparedSubmissionV1 | undefined {
   if (message.submissionData === undefined) return undefined;
   const gallery = preparedSubmissionV1Schema.parse(message.submissionData);
@@ -95,7 +96,7 @@ export function gallerySnapshot(
       attachment.sourceRef.kind === "transcript" &&
       attachment.sourceRef.chatId !== chatId
     ) ||
-    (gallery.galleryAttachments.length > 0 &&
+    (delivery === "new-turn" && gallery.galleryAttachments.length > 0 &&
       (selectedBackend?.runtimeStatus !== "installed" ||
         !selectedBackend.capabilities.imageInput))
   ) {

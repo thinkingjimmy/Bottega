@@ -47,7 +47,11 @@ import {
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { ChevronUp, Loader2, Trash2Icon } from "lucide-react";
 import { TranscriptFind } from "./transcript-find";
-import { highlightTranscriptTarget } from "./transcript-highlight";
+import {
+  findTranscriptTarget,
+  highlightTranscriptTarget,
+  scrollTranscriptTo,
+} from "./transcript-highlight";
 import { UserMessageEditor } from "./user-message-editor";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import {
@@ -250,10 +254,8 @@ function TranscriptRows({
     if (!scroller) return;
     const pendingCompensation = compensation.current;
     if (pendingCompensation) {
-      const node = scroller.querySelector(
-        `[data-message-id="${CSS.escape(pendingCompensation.id)}"]`
-      );
-      if (node instanceof HTMLElement) {
+      const node = findTranscriptTarget(pendingCompensation.id, scroller);
+      if (node) {
         scroller.scrollTop +=
           node.getBoundingClientRect().top - pendingCompensation.top;
       }
@@ -271,15 +273,9 @@ function TranscriptRows({
       restoreFocusAfterExpand.current = false;
     }
     if (pendingJumpId && !anchorWasClamped) {
-      const node = scroller.querySelector(
-        `[data-message-id="${CSS.escape(pendingJumpId)}"]`
-      );
-      if (node instanceof HTMLElement) {
-        const top =
-          node.getBoundingClientRect().top -
-          scroller.getBoundingClientRect().top +
-          scroller.scrollTop;
-        scroller.scrollTo({ top: Math.max(0, top - 16), behavior: "auto" });
+      const node = findTranscriptTarget(pendingJumpId, scroller);
+      if (node) {
+        scrollTranscriptTo(scroller, node, "auto");
         setPendingJumpId(null);
         highlightTranscriptTarget(node);
         const route = pendingRouteRef.current;
@@ -378,15 +374,9 @@ function TranscriptRows({
     const scroller = scrollRef.current;
     if (!scroller) return false;
     releaseScrollLock();
-    const node = scroller.querySelector(
-      `[data-message-id="${CSS.escape(id)}"]`
-    );
-    if (node instanceof HTMLElement) {
-      const top =
-        node.getBoundingClientRect().top -
-        scroller.getBoundingClientRect().top +
-        scroller.scrollTop;
-      scroller.scrollTo({ top: Math.max(0, top - 16), behavior: "smooth" });
+    const node = findTranscriptTarget(id, scroller);
+    if (node) {
+      scrollTranscriptTo(scroller, node, "smooth");
       highlightTranscriptTarget(node);
       return true;
     }

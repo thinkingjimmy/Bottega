@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/crypto, AppRecord and extended delivery directories
- * [OUTPUT]: Provides extended inspect/verify, semantic tree summaries, durable marketplace, build and declined conversions
- * [POS]: The back end of apps/install is the neutral expansion kernel; Plan Binding Delivery Load, Specific CLI Apply to Maintenance Adapter
+ * [OUTPUT]: Provides inspectExtension/verifyExtensionPlan (skills/MCP/plugin file hashing), declineExtension to null out serve fields on rejection, and buildPluginMarketplace to materialize a durable Codex plugin-marketplace directory
+ * [POS]: apps/install's backend-neutral extension (skills/MCP/plugin) inspection and Codex plugin-marketplace builder
  */
 
 import { createHash } from "node:crypto";

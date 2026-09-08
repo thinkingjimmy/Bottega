@@ -25,7 +25,7 @@ export const MCP_SERVERS_CHANNEL = {
   changed: "mcp-servers:changed",
 } as const;
 
-export type McpSecretView = Readonly<{
+type McpSecretView = Readonly<{
   name: string;
   hasValue: true;
   maskedValue: "••••••••";
@@ -43,7 +43,7 @@ export type McpServerHealthView = Readonly<{
   detail: string;
 }>;
 
-export type McpServerEffectiveSource =
+type McpServerEffectiveSource =
   | "global-default"
   | "project-override"
   | "project-owned";
@@ -151,7 +151,7 @@ export type McpServersBridgeApi = Readonly<{
   onChanged(listener: (event: McpServersChangedEvent) => void): () => void;
 }>;
 
-export type ThirdPartyMcpPlanSource =
+type ThirdPartyMcpPlanSource =
   | Readonly<{ kind: "manual"; scope: ProductResourceScope }>
   | Readonly<{ kind: "package-global"; generationRef: string }>
   | Readonly<{

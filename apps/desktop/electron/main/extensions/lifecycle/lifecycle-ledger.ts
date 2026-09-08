@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on DurableJson, zod, canonical Product scope, and Extension generation/source/admission contracts
- * [OUTPUT]: Provides exact-empty v1 migration, scope-frozen Extension lifecycle receipts, atomic authorization snapshots, pre-allocated identities, and phase/App checkpoints
+ * [INPUT]: Depends on DurableJson, zod, canonical Product scope, and Extension generation/source/admission contracts, and statusError from main/errors
+ * [OUTPUT]: Provides scope-frozen Extension lifecycle receipts, atomic authorization snapshots, pre-allocated identities, and phase/App checkpoints
  * [POS]: Durable single writer for Extension lifecycle; recovery trusts the frozen owner/lifecycle/scope CAS receipt rather than renderer input or filesystem guesses
  */
 
@@ -17,9 +17,10 @@ import {
   sameProductResourceScope as sameScope,
   type ProductResourceScope,
 } from "../../../../shared/product-resource-scope";
+import { statusError } from "../../errors";
 import type { ExtensionAdapterId } from "../admission";
 import type { ExtensionPackageAdmission } from "../manifest-adapter";
-import type { ExtensionSourceProvenance } from "../registry-store";
+import type { ExtensionSourceProvenance } from "../registry-schema";
 import {
   DurableJson,
   type DurableReplaceFileFaults,
@@ -319,18 +320,6 @@ const ledgerSchema = z
     }
   });
 
-const emptyLegacyLedgerSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    operations: z.array(z.never()).length(0),
-  })
-  .strict();
-
-function migrateEmptyLegacyLedger(raw: unknown) {
-  if (!emptyLegacyLedgerSchema.safeParse(raw).success) return undefined;
-  return { schemaVersion: 3 as const, operations: [] };
-}
-
 export type ExtensionLifecycleOperation = z.infer<typeof operationSchema>;
 export type ExtensionLifecycleKind = ExtensionLifecycleOperation["kind"];
 export type ExtensionLifecyclePhase = ExtensionLifecycleOperation["phase"];
@@ -387,7 +376,7 @@ export class ExtensionLifecycleLedger {
   }
 
   initialize() {
-    return this.file.initialize(migrateEmptyLegacyLedger);
+    return this.file.initialize();
   }
 
   /** 预分配身份并 fsync：此后每一步都能按 id 幂等重放。 */
@@ -610,5 +599,5 @@ function assertRevision(
 }
 
 function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }

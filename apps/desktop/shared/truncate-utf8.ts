@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on the UTF-8 byte syntax of the standard TextEncoder/Buffer
- * [OUTPUT]: Provides truncate Utf8, in the total byte budget, in full Unicode standard size
- * [POS]: UTF-8 interrupts shared only implementation, cross-process border replication, such as tooling results, Section snippets, and more
+ * [OUTPUT]: Provides truncateUtf8, clipping a string to a byte budget without splitting a Unicode code point or surrogate pair
+ * [POS]: The only shared implementation of UTF-8 byte truncation; used wherever text crosses a process byte budget, such as tool results and Section snippets
  */
 
-export type TruncatedUtf8 = { value: string; truncated: boolean; bytes: number };
+type TruncatedUtf8 = { value: string; truncated: boolean; bytes: number };
 
 export function truncateUtf8(
   value: string,

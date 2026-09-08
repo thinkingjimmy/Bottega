@@ -1,37 +1,18 @@
 /**
- * [INPUT]: Depends on Node fs/path/readline flow and usage-merge FileEvents
- * [OUTPUT]: Provides Kimi wire.jsonl found with turn-level model/limited four barrels, limited total usage.record Strict analysis
- * [POS]: The use of the Kimi Code fact adapter; The event is natural coga, tuple constant null
+ * [INPUT]: Depends on Node fs/path/readline streams, the shared source-files walker, and usage-merge FileEvents
+ * [OUTPUT]: Provides listKimiFiles (discovers ~/.kimi-code/sessions/<session>/agents/<agent>/wire.jsonl) and parseKimiFile, which extracts turn-scoped usage.record entries into token buckets
+ * [POS]: The Kimi Code usage-fact adapter; events carry no cross-file dedupe key, so tuple is always null
  */
 
 import { createReadStream } from "node:fs";
-import { readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { createInterface } from "node:readline";
+import { listFilesRecursively } from "./source-files";
 import { sealBuckets, type FileEvents, type UsageBuckets } from "./usage-merge";
-
-async function listWireFiles(root: string): Promise<string[]> {
-  try {
-    const entries = await readdir(root, { withFileTypes: true });
-    const nested = await Promise.all(
-      entries.map((entry) => {
-        const path = join(root, entry.name);
-        if (entry.isDirectory()) return listWireFiles(path);
-        return Promise.resolve(
-          entry.isFile() && entry.name === "wire.jsonl" ? [path] : []
-        );
-      })
-    );
-    return nested.flat();
-  } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw cause;
-  }
-}
 
 export async function listKimiFiles(home: string) {
   const root = join(home, ".kimi-code", "sessions");
-  const files = await listWireFiles(root);
+  const files = await listFilesRecursively(root, (name) => name === "wire.jsonl");
   return files
     .filter((path) => {
       const parts = relative(root, path).split(sep);

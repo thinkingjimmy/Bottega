@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node detached child_process, ACP JSONL, startup fixed byte tail loop, backend supervisor and process-group settled
- * [OUTPUT]: Provides ACP response to claims, raw code/data errors, Codex/Claude zero prompt unlocked matcher, and canceled monitored session inspector for external de-sensitivity late to stderr/sessionId
- * [POS]: Short process detection of the core of the ACP model directory; Subprocess registration/clearing before lease release, failure classification left to the descriptor
+ * [INPUT]: Depends on Node detached child_process/readline JSON-RPC framing, AcpProcessEvidence stderr tail, the agent process supervisor, and process-group cleanup
+ * [OUTPUT]: Provides AcpRequestError, protocol/session-id assertions, the Codex/Claude unpersisted-session-cleanup matcher, and inspectAcpSession — a cancellable, redacting ACP readiness probe with deterministic process cleanup
+ * [POS]: Core of ACP readiness probing — a short-lived handshake subprocess; registers/deregisters with the process supervisor before lease release and leaves failure classification to the backend descriptor
  */
 
 import {

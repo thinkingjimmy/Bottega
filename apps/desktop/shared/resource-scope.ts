@@ -11,7 +11,7 @@ export type {
   TurnProjectContext,
 } from "./product-resource-scope";
 
-export type ResourceBackendUnsupportedReason =
+type ResourceBackendUnsupportedReason =
   | "runtime-unavailable"
   | "builtin-tools-unsupported"
   | "transport-unsupported"

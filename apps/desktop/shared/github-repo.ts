@@ -1,7 +1,7 @@
 /**
- * [INPUT]: The unreliable pure function module
- * [OUTPUT]: Provides normalize GitHubRepoUrl The only unified truth about the GitHub warehouse homepage address
- * [POS]: Shared warehouse address contracts; The main and renderer are taken from here, and they are prohibited from copying the rules
+ * [INPUT]: No dependencies; pure function only
+ * [OUTPUT]: Provides normalizeGithubRepoUrl, the only source of truth for canonical GitHub repository URL and display-name normalization
+ * [POS]: Shared GitHub repository URL contract; main and renderer both import this instead of duplicating the parsing rule
  */
 
 const GITHUB_REPO_PATTERN =

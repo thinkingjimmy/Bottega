@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on DurableJson upgrades, Node crypto/path, zod, and shared Library-first job/report DTOs
- * [OUTPUT]: Provides jobs schema v2 with acquisition, enablement, deletion, restart checkpoints, inverse enablement facts, reports, and old activation-ledger abandonment
+ * [INPUT]: Depends on DurableJson, Node crypto/path, zod, and shared Library-first job/report DTOs, and statusError from main/errors
+ * [OUTPUT]: Provides jobs schema v2 with acquisition, enablement, deletion, restart checkpoints, inverse enablement facts, and reports
  * [POS]: Durable Skills mutation receipt; projection/native actions are unrepresentable in this generation
  */
 
@@ -13,6 +13,7 @@ import type {
   ManagedSkillReason,
   ManagedSkillTerminalReport,
 } from "../../../../shared/unified-skills-ipc";
+import { statusError } from "../../errors";
 import {
   DurableJson,
 } from "../../persistence/durable-json";
@@ -105,7 +106,6 @@ const storeSchema = z
   .object({
     schemaVersion: z.literal(2),
     jobs: z.array(jobSchema),
-    abandonedJobs: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -129,12 +129,12 @@ export class SkillsJobLedger {
     this.file = new DurableJson(
       join(userData, "unified-skills", "jobs.json"),
       storeSchema,
-      () => ({ schemaVersion: 2, jobs: [], abandonedJobs: 0 })
+      () => ({ schemaVersion: 2, jobs: [] })
     );
   }
 
   initialize() {
-    return this.file.initialize(upgradeJobs);
+    return this.file.initialize();
   }
 
   snapshot() {
@@ -155,7 +155,7 @@ export class SkillsJobLedger {
       .jobs.find((job) => job.planId === input.planId);
     if (replay) {
       if (replay.planDigest !== input.planDigest) {
-        throw conflict("plan digest changed");
+        throw statusError(409, "plan digest changed");
       }
       return replay;
     }
@@ -373,37 +373,6 @@ export function importIdempotencyKey(
   return `import:${hash(`${sourceIdentity}\0${name}\0${digest}`)}`;
 }
 
-function upgradeJobs(raw: unknown): Store | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
-  const value = raw as {
-    schemaVersion?: unknown;
-    jobs?: unknown;
-    abandonedJobs?: unknown;
-  };
-  if (value.schemaVersion === 2) {
-    return {
-      schemaVersion: 2,
-      jobs: Array.isArray(value.jobs) ? (value.jobs as Store["jobs"]) : [],
-      abandonedJobs:
-        typeof value.abandonedJobs === "number" ? value.abandonedJobs : 0,
-    };
-  }
-  if (value.schemaVersion !== 1 || !Array.isArray(value.jobs)) return undefined;
-  const abandoned = value.jobs.filter((job) => {
-    const status =
-      job && typeof job === "object"
-        ? (job as { status?: unknown }).status
-        : null;
-    return ![
-      "completed",
-      "completed-with-failures",
-      "failed",
-      "undone",
-    ].includes(String(status));
-  }).length;
-  return { schemaVersion: 2, jobs: [], abandonedJobs: abandoned };
-}
-
 function publicJob(job: StoredJob): ManagedSkillJobProgress {
   return {
     batchId: job.batchId,
@@ -456,8 +425,4 @@ function requireStep(job: StoredJob, stepId: string) {
 
 function hash(value: string): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
 }

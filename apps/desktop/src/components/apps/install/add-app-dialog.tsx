@@ -1,12 +1,15 @@
 "use client";
 
 /**
- * [INPUT]: Depends on repo preflight IPC, Apps i18n, the install grant card plus a local README disclosure, requirements, AgentSelect, Apps/Setup providers, and dialog primitives
- * [OUTPUT]: Provides AddAppDialog for no-checkout GitHub review, unchanged Web install, and Studio-authorized Base import with direct canonical-detail navigation
+ * [INPUT]: Depends on repo preflight IPC, the shared GitHub repo URL normalizer, Apps i18n, the install grant card plus a local README disclosure, requirements, AgentSelect, Apps/Setup providers, and dialog primitives
+ * [OUTPUT]: Provides source preflight and authorization with a request-bound host reminder, one-shot latest-candidate selection and focus restoration to the return entry.
  * [POS]: Sole Apps creation entry; renderer owns review UI while main owns submitted durable install intents
  */
 
-import { useRef, useState, type ReactNode } from "react";
+import { CompatibilityReminder } from "../compatibility/reminder";
+import { AppCompatibilityRequiredError, resumeAppCompatibility, forgetAppCompatibility, listAppCompatibilityRequests } from "@/lib/apps-client";
+import type { AppCompatibilityFailure } from "../../../../shared/app-host/contract";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { Plus } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
@@ -25,14 +28,12 @@ import {
   AgentSelect,
   type AgentSelectValue,
 } from "@/components/apps/install/agent-select";
-import {
-  normalizeGithubRepoUrl,
-  useApps,
-} from "@/components/providers/apps-provider";
+import { useApps } from "@/components/providers/apps-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useSetup } from "@/components/providers/setup-provider";
 import { maintenanceCapableBackends } from "@/lib/agent-backends";
 import { errorMessage } from "@/lib/errors";
+import { normalizeGithubRepoUrl } from "../../../../shared/github-repo";
 import {
   discardAppProbe,
   DuplicateAppError,
@@ -55,6 +56,8 @@ import { canonicalAppSurfaceRoute } from "../../../../shared/window-surfaces-ipc
 
 type AddAppDialogProps = {
   onInstallStarted?: (appId: string) => void;
+  resumeRequestId?: string;
+  onResumeClosed?(): void;
 };
 
 type Stage = "blocked" | "form" | "confirm" | "base-confirm";
@@ -141,7 +144,7 @@ function CapabilityBadge({ ok, text }: { ok: boolean; text: string }) {
   );
 }
 
-export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
+export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed }: AddAppDialogProps) {
   const { t } = useAppTranslation();
   const navigate = useNavigate();
   const { records, addApp, highlightApp } = useApps();
@@ -149,6 +152,9 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
   const [open, setOpen] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
   const [normalized, setNormalized] = useState("");
+  const [compatibility, setCompatibility] = useState<AppCompatibilityFailure | null>(null);
+  const [candidateUnavailable, setCandidateUnavailable] = useState(false);
+  const [candidateRequestId, setCandidateRequestId] = useState(resumeRequestId);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
@@ -158,13 +164,22 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
     agentReadableKeys: [],
   });
   const backends = setup.status?.backends ?? [];
-  const maintenanceBackends = maintenanceCapableBackends(backends);
+  const maintenanceBackends = maintenanceCapableBackends(backends, setup.now);
   const canInstall = maintenanceBackends.length > 0;
+  const [agentAnalysis, setAgentAnalysis] = useState(false);
   const [maintenanceAgent, setMaintenanceAgent] =
     useState<AgentSelectValue>("codex");
   const probeAttempt = useRef(0);
+  const resumeFocus = useRef<HTMLElement | null>(null);
   /* preflight 一旦提交给 main，ownership 已转入 durable import intent。 */
   const installing = useRef(false);
+  const rememberCompatibility = useCallback((failure: AppCompatibilityFailure) => {
+    setCompatibility(failure);
+    setCandidateRequestId(failure.requestId);
+    setRepoUrl(failure.candidate.repoUrl ?? "");
+    setProbe(null);
+    setCandidateUnavailable(false);
+  }, []);
 
   const reset = (discardPreflight = true) => {
     probeAttempt.current += 1;
@@ -172,6 +187,10 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
       void discardAppProbe(probe.preflightId);
     }
     installing.current = false;
+    setCompatibility(null);
+    setCandidateUnavailable(false);
+    setCandidateRequestId(undefined);
+    onResumeClosed?.();
     setRepoUrl("");
     setNormalized("");
     setError("");
@@ -180,7 +199,38 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
     setProbe(null);
     setConfig({ values: {}, agentReadableKeys: [] });
     setMaintenanceAgent("codex");
+    setAgentAnalysis(false);
   };
+
+  useEffect(() => {
+    if (!resumeRequestId) return;
+    let active = true;
+    resumeFocus.current = document.activeElement as HTMLElement | null;
+    // An external resume intent opens this dialog after capturing its return focus.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCandidateRequestId(resumeRequestId);
+    setOpen(true);
+    setProbing(true);
+    void listAppCompatibilityRequests().then(async (entries) => {
+      const saved = entries.find((entry) => entry.requestId === resumeRequestId);
+      if (active && saved?.candidate.repoUrl) setRepoUrl(saved.candidate.repoUrl);
+      return resumeAppCompatibility(resumeRequestId);
+    }).then((result) => {
+      if (!active) {
+        if (result.kind === "base") void discardAppProbe(result.preflightId);
+        return;
+      }
+      if (result.kind === "candidate-unavailable" || result.kind === "installed-update") { setCandidateUnavailable(true); setError(t("appHost.candidateUnavailable")); return; }
+      setProbe(result);
+      setRepoUrl(result.repoUrl);
+      setNormalized(result.repoUrl);
+    }).catch((cause) => {
+      if (!active) return;
+      if (cause instanceof AppCompatibilityRequiredError) rememberCompatibility(cause.compatibility);
+      else setError(errorMessage(cause, t("appHost.candidateUnavailable")));
+    }).finally(() => { if (active) setProbing(false); });
+    return () => { active = false; };
+  }, [resumeRequestId, t, rememberCompatibility]);
 
   const maintenanceReady = (backend: (typeof backends)[number]) =>
     maintenanceBackends.some((candidate) => candidate.id === backend.id);
@@ -193,12 +243,12 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
         ? t("apps.addDialog.backendReady")
         : t("apps.addDialog.backendBlocked");
 
-  const review = async () => {
+  const review = async (latest = false) => {
     if (probing) return;
     const attempt = ++probeAttempt.current;
     setProbing(true);
     try {
-      const next = normalizeGithubRepoUrl(repoUrl);
+      const next = normalizeGithubRepoUrl(repoUrl).repoUrl;
       const duplicate = records.find(
         (record) => record.sourceRepoUrl === next
       );
@@ -207,18 +257,23 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
         throw new Error(t("apps.addDialog.duplicateRepository"));
       }
       setNormalized(next);
-      const result = await probeAppRepo(next);
+      if (latest) setCandidateRequestId(undefined);
+      const result = candidateRequestId && !latest ? await resumeAppCompatibility(candidateRequestId) : await probeAppRepo(next);
       if (attempt !== probeAttempt.current) {
         if (result.kind === "base") {
           await discardAppProbe(result.preflightId).catch(() => undefined);
         }
         return;
       }
+      if (result.kind === "candidate-unavailable" || result.kind === "installed-update") { setCompatibility(null); setProbe(null); setCandidateUnavailable(true); setError(t("appHost.candidateUnavailable")); return; }
+      setCompatibility(null);
+      setCandidateUnavailable(false);
       setProbe(result);
       setError("");
     } catch (cause) {
       if (attempt !== probeAttempt.current) return;
-      setError(errorMessage(cause, t("apps.addDialog.invalidRepository")));
+      if (cause instanceof AppCompatibilityRequiredError) rememberCompatibility(cause.compatibility);
+      else setError(errorMessage(cause, t("apps.addDialog.invalidRepository")));
     } finally {
       if (attempt === probeAttempt.current) setProbing(false);
     }
@@ -226,7 +281,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
 
   const install = async () => {
     if (installing.current) return;
-    if (!setup.ready) {
+    if (!setup.ready && (probe?.kind !== "web" || agentAnalysis)) {
       setOpen(false);
       setup.openOnboarding();
       return;
@@ -239,6 +294,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
       const app = await addApp({
         repoUrl: normalized,
         maintenanceAgent,
+        ...(probe?.kind === "web" ? { candidateCommitSha: probe.commitSha, installStrategy: agentAnalysis ? "agent-analysis" as const : "author-manifest" as const } : {}),
         ...(probe?.kind === "base"
           ? {
               preflightId: probe.preflightId,
@@ -251,11 +307,15 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
             }
           : {}),
       });
+      for (const requestId of new Set([resumeRequestId, candidateRequestId])) {
+        if (requestId) await forgetAppCompatibility(requestId);
+      }
       setOpen(false);
       reset(false);
       if (installingBase) navigate(canonicalAppSurfaceRoute(app.id));
       else onInstallStarted?.(app.id);
     } catch (cause) {
+      if (cause instanceof AppCompatibilityRequiredError) { rememberCompatibility(cause.compatibility); return; }
       const duplicateId =
         cause instanceof DuplicateAppError ? cause.appId : null;
       if (duplicateId) highlightApp(duplicateId);
@@ -288,7 +348,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
     probe?.kind === "base"
       ? "base-confirm"
       : probe?.kind === "web"
-        ? canInstall
+        ? !agentAnalysis || canInstall
           ? "confirm"
           : "blocked"
         : "form";
@@ -324,9 +384,9 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
       primary: {
         label: probing
           ? t("apps.addDialog.preflighting")
-          : t("common.continue"),
+          : t(candidateUnavailable ? "appHost.checkLatest" : "common.continue"),
         disabled: probing || !repoUrl.trim(),
-        run: () => void review(),
+        run: () => void review(candidateUnavailable),
       },
     },
     confirm: {
@@ -395,7 +455,10 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
           <Plus />
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-md" onCloseAutoFocus={(event) => {
+        if (resumeFocus.current) { event.preventDefault(); resumeFocus.current.focus(); resumeFocus.current = null; }
+      }}>
+        {compatibility ? <CompatibilityReminder failure={compatibility} onClose={() => { setOpen(false); reset(); }} onRetry={() => { setCompatibility(null); void review(); }} /> : <>
         <DialogHeader>
           <DialogTitle>
             {t(
@@ -412,6 +475,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
 
         {stage === "blocked" ? (
           <div className="flex flex-col gap-3">
+            <Button variant="outline" onClick={() => setAgentAnalysis(false)}>{t("apps.addDialog.authorManifestInstall")}</Button>
             <p className="text-muted-foreground">
               {t("apps.addDialog.blockedDisclosure")}
             </p>
@@ -558,7 +622,13 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
               </strong>
               {" "}{t("apps.addDialog.trustedOnly")}
             </p>
-            <Field
+            <p className="text-muted-foreground text-xs">{t("apps.addDialog.authorManifestHint")}</p>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={agentAnalysis} disabled={!canInstall || saving}
+                onChange={(event) => setAgentAnalysis(event.target.checked)} />
+              {t("apps.addDialog.agentAnalysis")}
+            </label>
+            {agentAnalysis && <Field
               id="maintenance-agent"
               label={t("apps.addDialog.runtimeAgent")}
             >
@@ -568,7 +638,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
                 labelledBy="maintenance-agent-label"
                 onChange={setMaintenanceAgent}
               />
-            </Field>
+            </Field>}
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -586,6 +656,8 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
                 value={repoUrl}
                 onChange={(event) => {
                   setRepoUrl(event.target.value);
+                  setCandidateRequestId(undefined);
+                  setCandidateUnavailable(false);
                   setError("");
                 }}
                 onKeyDown={(event) => event.key === "Enter" && review()}
@@ -622,6 +694,7 @@ export function AddAppDialog({ onInstallStarted }: AddAppDialogProps) {
             {actions.primary.label}
           </Button>
         </DialogFooter>
+        </>}
       </DialogContent>
     </Dialog>
   );

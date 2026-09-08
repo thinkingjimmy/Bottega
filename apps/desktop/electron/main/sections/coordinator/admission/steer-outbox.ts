@@ -28,12 +28,12 @@ import {
 } from "../coordinator-values";
 import {
   assertPreparedContentHash,
-  hydratePreparedTurn,
-  prepareTextOnlyManualTurn,
   releasePreparedStaging,
   type PreparedManualLease,
   type PreparedManualTurn,
 } from "./prepared-manual-turn";
+import { hydratePreparedTurn } from "./prepared/hydration";
+import { prepareTextOnlyManualTurn } from "./prepared-manual-text";
 import {
   projectSteerIntent,
   steerDerivedIntentId,

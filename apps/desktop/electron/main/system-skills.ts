@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Electron app Packing mode, process.resourcesPath, bundle/source __dirname and Node path
- * [OUTPUT]: Provides dev/packaged Binary consistent product built-in skills Root path
- * [POS]: The main system resource location unit; Backend descriptor not guessing the resource path
+ * [INPUT]: Depends on Electron's app.isPackaged flag, process.resourcesPath, the bundle/source __dirname, and Node path
+ * [OUTPUT]: Provides systemSkillsPath, resolving the built-in skills root consistently across dev and packaged binaries
+ * [POS]: Electron main's single resource-location helper; backend descriptors read this path instead of guessing resource locations
  */
 
 import { app } from "electron";

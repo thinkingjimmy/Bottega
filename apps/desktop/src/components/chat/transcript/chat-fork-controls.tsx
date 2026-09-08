@@ -27,6 +27,7 @@ import {
   getChatTimelineAround,
   preflightChatFork,
 } from "@/lib/chats-client";
+import { AgentBackendIcon, backendLabel } from "@/lib/agent-backends";
 import { TranscriptDividerRow } from "./transcript-divider";
 
 export type ChatForkViewContext = Readonly<{
@@ -138,6 +139,7 @@ export function ForkLineageDivider({ context }: { context: ChatForkViewContext }
   }, [lineageKey, parent, summary.parentIncarnationId, summary.parentMessageId]);
   return (
     <TranscriptDividerRow role="separator">
+      {summary.forkAgent && <span className="inline-flex items-center gap-1.5"><AgentBackendIcon backend={summary.forkAgent} className="size-3.5" />{backendLabel(summary.forkAgent)}</span>}
       <button
         aria-label={available && parent
           ? t("chat.fork.openSource", { title: parent.title ?? t("chat.newTask") })

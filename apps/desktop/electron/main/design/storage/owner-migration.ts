@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on DurableJson, DesignStorageOperations, and CanvasRegistry/VersionHistory idempotent owner-migration primitives
+ * [INPUT]: Depends on DurableJson, DesignStorageOperations, and CanvasRegistry/VersionHistory idempotent owner-migration primitives, and statusError from main/errors
  * [OUTPUT]: Provides OwnerMigrationJournal with idempotent, crash-resumable two-ledger migration, per-project concurrency guard, post-registry-only source-owner retirement, a terminal failed phase for deterministic conflicts, and startup-resilient resume, all derived only from a main Project rebind receipt
  * [POS]: Design storage's coordination ledger; it binds one Project rebind operation to exact source/target capability owners and prevents old turns from recreating migrated Registry/History truth
  */
 
 import { join } from "node:path";
 import { z } from "zod";
+import { statusError } from "../../errors";
 import { DurableJson } from "../../persistence/durable-json";
 import type { CanvasRegistry } from "./canvas-registry";
 import type { DesignStorageOperations } from "./operations";
@@ -42,7 +43,7 @@ const fileSchema = z
   .strict();
 
 type OwnerMigrationFile = z.infer<typeof fileSchema>;
-export type OwnerMigrationEntry = z.infer<typeof entrySchema>;
+type OwnerMigrationEntry = z.infer<typeof entrySchema>;
 
 export class OwnerMigrationJournal {
   private readonly file: DurableJson<OwnerMigrationFile>;
@@ -114,9 +115,7 @@ export class OwnerMigrationJournal {
             replay.sourceCapabilityId !== sourceCapabilityId ||
             replay.targetCapabilityId !== targetCapabilityId
           ) {
-            throw Object.assign(new Error("Project rebind receipt 与既有 Design migration 不匹配"), {
-              status: 409,
-            });
+            throw statusError(409, "Project rebind receipt 与既有 Design migration 不匹配");
           }
           return replay;
         }
@@ -126,9 +125,7 @@ export class OwnerMigrationJournal {
           (entry) => isPending(entry) && entry.projectId === projectId
         );
         if (pending) {
-          throw Object.assign(new Error("Design owner migration 已在进行"), {
-            status: 409,
-          });
+          throw statusError(409, "Design owner migration 已在进行");
         }
         const timestamp = this.now();
         const entry: OwnerMigrationEntry = {

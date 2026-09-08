@@ -87,7 +87,7 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
     snapshot,
     runtimeRoot,
   });
-  const allowedTools = projectBuiltinTools({
+  const projectedTools = projectBuiltinTools({
     builtinTools: input.policy.builtinTools,
     backend: projectionInput.backendId,
     planMode: projectionInput.planMode,
@@ -96,6 +96,7 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
     useSkill: snapshot.capable,
     managedWorktreeCommit: input.context.managedWorktree,
   });
+  const allowedTools = projectedTools.filter(name => name !== "read_chat_history" || Boolean(projectionInput.handoff));
   const readOnlyRoots = input.context.filesystemAccess?.readOnlyRoots;
 
   return {
@@ -115,6 +116,7 @@ export async function finalizeSkillsTurnProjection(input: Readonly<{
       : {}),
     finalTurnProjection: createFinalTurnProjection({
       turnKind: turnKindForOrigin(projectionInput.origin),
+      handoff: projectionInput.handoff, freshSession: projectionInput.freshSession,
       allowedTools,
       appInstructions: input.context.attachedAppInstructions ?? "",
       skillsCapable: snapshot.capable,

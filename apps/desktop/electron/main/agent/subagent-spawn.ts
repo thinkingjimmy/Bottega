@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on agent-bridge channels, backend runtime snapshot, HeadlessExecutor, and a fail-closed Claude ambient-plugin overlay resolver
- * [OUTPUT]: Provides SubagentSpawnService with frozen child policy, deadlines, draft/barrier custody, terminal tombstones, and bounded wire/LRU/durable results
+ * [OUTPUT]: Admits Subagents with target-specific operation eligibility, frozen child policy, deadlines, draft custody and bounded durable outcomes.
  * [POS]: Agent module's cross-backend delegated worker; it cannot penetrate TurnEntry or inject built-in MCP into a child
  */
 
@@ -34,7 +34,7 @@ import type {
   HeadlessJob,
 } from "../backends/types";
 import type { BackendRuntimeRegistry } from "../backends/runtime-registry";
-import { asError } from "../errors";
+import { asError, statusError } from "../errors";
 import {
   isAgentProcessAdmissionError,
 } from "../agent-process-supervisor";
@@ -75,7 +75,7 @@ export type PromotableResultSource = {
 };
 
 type SpawnDependencies = {
-  runtimeRegistry: Pick<BackendRuntimeRegistry, "resolveForSpawn">;
+  runtimeRegistry: Pick<BackendRuntimeRegistry, "resolveForSpawn" | "operationEligibility">;
   executor: HeadlessExecutor;
   backendFor(id: AgentBackendId): BackendDescriptor;
   openChannel(context: BuiltinToolContext): SubagentChannel | undefined;
@@ -175,6 +175,9 @@ export class SubagentSpawnService {
         signal
       );
       assertReady(input.agent, snapshot);
+      if ((await this.dependencies.runtimeRegistry.operationEligibility(input.agent, "subagent", { cwd: channel.snapshot.workspace, ignoreUserConfig: false }, snapshot)).decision !== "allow") {
+        throw statusError(424, "Subagent authentication is not confirmed");
+      }
       const disabledClaudePluginIds = input.agent === "claude"
         ? await abortable(this.dependencies.disabledClaudePluginIds(), signal)
         : [];
@@ -545,7 +548,6 @@ function assertReady(
 ) {
   if (
     snapshot.runtimeStatus !== "installed" ||
-    snapshot.authStatus !== "authenticated" ||
     !snapshot.capabilities.headless.includes("subagent")
   ) {
     throw statusError(424, `${agent} CLI 未安装、未登录或不支持 Subagent`);
@@ -569,8 +571,4 @@ function isPreflightExhausted(
 
 function queueTimeout() {
   return statusError(429, "Subagent 进程排队或运行时解析耗尽 deadline，请稍后重试");
-}
-
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }

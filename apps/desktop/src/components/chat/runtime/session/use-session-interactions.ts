@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on React, the app translation provider, Agent Approval/Question IPC, shared Plan-review decisions, Plan follow-up intent, Section relay, stop commands, and current request refs
- * [OUTPUT]: Provides identity-stable useSessionInteractions, localized relay-stop confirmation, relayStopAccepted, and stopSessionRequest; stop actions return stopped/declined/failed
+ * [OUTPUT]: Provides stable active-turn actions and canonical retry recovery, including an explicit one-operation authentication retry.
  * [POS]: The owner of the chat/runtime/session interaction status; Keep Plan Failed re-roll, relay Second confirmation and request-local cancel timing
  */
 
+import { assertNoPendingAgent } from "@/lib/chat-agent-draft/submission";
 import {
   useCallback,
   useMemo,
@@ -25,7 +26,7 @@ import {
   cancelAgentRequest,
   respondAgentApproval,
   respondAgentUserInput,
-  type CodexRequest,
+  type AgentRequest,
 } from "@/lib/agent-client";
 import { clearAnsweredUserInput } from "@/lib/chat-user-input-state";
 import { planModeAfterPlanReview } from "../../../../../shared/chat-plan-kind";
@@ -42,13 +43,14 @@ import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 export type SessionSubmit = (
   message: PromptInputMessage,
-  options?: { planIntent?: boolean; signal?: AbortSignal }
+  options?: { planIntent?: boolean; signal?: AbortSignal; authenticationRetry?: import("../../../../../shared/agent-availability/types").AuthenticationRetryIntent }
 ) => Promise<void>;
 
 type SessionInteractionsInput = {
+  chatId?: string;
   activeRequestId: string | null;
   messages: ChatMessage[];
-  requestRef: MutableRefObject<CodexRequest | null>;
+  requestRef: MutableRefObject<AgentRequest | null>;
   submitRef: MutableRefObject<SessionSubmit | null>;
   setPlanMode: (enabled: boolean) => void;
   reportStopError: (cause: unknown) => void;
@@ -82,14 +84,6 @@ export function lastRelayUserMessage(
   return lastUser?.relay ? lastUser : undefined;
 }
 
-export function relayStopAccepted(
-  relayMessage: UserChatMessage | undefined,
-  message: string,
-  confirmAction: (message: string) => boolean
-) {
-  return !relayMessage || confirmAction(message);
-}
-
 export async function respondApprovalWithPlanMode(
   approval: AgentApprovalRequest,
   decision: AgentApprovalDecision,
@@ -102,6 +96,7 @@ export async function respondApprovalWithPlanMode(
 }
 
 export function useSessionInteractions({
+  chatId,
   activeRequestId,
   messages,
   requestRef,
@@ -122,16 +117,20 @@ export function useSessionInteractions({
   // 「继续」与「重试」都是以 user 身份补一条纯文本——同一个原语，只是措辞不同。
   // 不为重试另开通道：另开就意味着两套排队/落盘语义，迟早分叉。
   const submitPlain = useCallback(
-    (displayText: string) => {
+    (displayText: string, options?: Parameters<SessionSubmit>[1]) => {
+      try { if (chatId) assertNoPendingAgent(chatId); } catch (cause) { reportStopError(cause); return; }
       void submitRef.current?.({
         input: { kind: "plain", displayText },
         files: [],
-      }).catch(() => {});
+      }, options).catch(() => {});
     },
-    [submitRef]
+    [submitRef, chatId, reportStopError]
   );
-  const continueTurn = useCallback(() => submitPlain("continue"), [submitPlain]);
-  const retryTurn = useCallback(() => submitPlain("重试"), [submitPlain]);
+  const continueTurn = useCallback(() => submitPlain(t("common.continue")), [submitPlain, t]);
+  const retryTurn = useCallback(() => submitPlain(t("common.retry")), [submitPlain, t]);
+  const retryAuthentication = useCallback(() => submitPlain(t("agentAvailability.retrySending"), {
+    authenticationRetry: { kind: "retry-authentication" },
+  }), [submitPlain, t]);
 
   const respondApproval = useCallback(
     async (decision: AgentApprovalDecision) => {
@@ -233,11 +232,7 @@ export function useSessionInteractions({
   const handleStop = useCallback(async () => {
     if (!activeRequestId || cancelPending) return "failed" as const;
     const relayMessage = lastRelayUserMessage(messages);
-    if (
-      !relayStopAccepted(relayMessage, t("chat.relayStopConfirm"), (message) =>
-        window.confirm(message)
-      )
-    ) {
+    if (relayMessage && !window.confirm(t("chat.relayStopConfirm"))) {
       return "declined" as const;
     }
     setCancelPending(true);
@@ -277,6 +272,7 @@ export function useSessionInteractions({
     pendingUserInput,
     continueTurn,
     retryTurn,
+    retryAuthentication,
     handleStop,
     respondApproval,
     respondPlanDecision,
@@ -300,5 +296,6 @@ export function useSessionInteractions({
     respondPlanDecision,
     respondUserInput,
     retryTurn,
+    retryAuthentication,
   ]);
 }

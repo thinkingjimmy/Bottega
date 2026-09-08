@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Accepts runtime from startup/agent settled Promise and resets the known process to stop
- * [OUTPUT]: Provides asSettled with settleRuntimeStop to ensure that the stop crosses all delays
- * [POS]: The lifecycle of apps/runtime is pure core, the chip is marked stop→ wait to start→ stop delay until PID→ wait for Agent chip to be fixed
+ * [INPUT]: Accepts a RuntimeSettlement entry (startup/agent settled promises) and a stopKnownProcesses callback
+ * [OUTPUT]: Provides asSettled and settleRuntimeStop, which marks the entry stopping and re-invokes stopKnownProcesses after each settlement point so no process started mid-startup or mid-agent-turn survives
+ * [POS]: apps/runtime's pure stop-sequencing core; it holds no process state itself, only orders when stopKnownProcesses re-runs
  */
 
 export type RuntimeSettlement = {

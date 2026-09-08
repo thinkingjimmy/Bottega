@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared compiled GUI manifest, receipt, finding, and SHA-256 contracts
- * [OUTPUT]: Provides immutable source, compiler sandbox, generated artifact, and fixed budget ports
+ * [OUTPUT]: Provides immutable source, compiler sandbox, actual native component and kernel AppArmor evidence, generated artifact, and fixed budget ports
  * [POS]: Main apps/gui-build contract leaf; preparation, sandbox, compiler, and generation builder meet here
  */
 
@@ -75,10 +75,13 @@ export type CompilerSandboxEvidence = Readonly<{
   platform: "darwin" | "win32" | "linux";
   evidenceDigest: Sha256Digest;
   probes: readonly Readonly<{ id: string; denied: boolean }>[];
+  componentDigest?: string;
+  nativePayloads?: readonly Readonly<{ id: string; path: string }>[];
+  linuxAppArmorProfile?: string;
 }>;
 
 export type CompilerSandboxPort = Readonly<{
   platform: "darwin" | "win32" | "linux";
   probe(): Promise<CompilerSandboxEvidence>;
-  compile(input: SealedCompilerInput, signal: AbortSignal): Promise<CompilerOutcome>;
+  compile(input: SealedCompilerInput, signal: AbortSignal, expectedEvidenceDigest?: string): Promise<CompilerOutcome>;
 }>;

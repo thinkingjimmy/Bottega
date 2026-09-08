@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on durable-json, ComponentDeliveryPlan, v1-to-v3 plan migration, execution config digests, and Registry generation-ref narrow ports
- * [OUTPUT]: Provides ThirdPartyMcpPlanLedger: safe legacy startup, intent-before-ref, exact delivery/session receipts, config seal, holder queries, and crash reconciliation
+ * [INPUT]: Depends on durable-json, ComponentDeliveryPlan, execution config digests, and Registry generation-ref narrow ports, and statusError from main/errors
+ * [OUTPUT]: Provides ThirdPartyMcpPlanLedger: intent-before-ref, exact delivery/session receipts, config seal, holder queries, and crash reconciliation
  * [POS]: The third-party MCP/component plan and App-delivery session authority; request release retains only generations proven discovered by a live backend session
  */
 
@@ -11,17 +11,16 @@ import {
   type ExtensionPackageGenerationRef,
 } from "../../../../shared/extensions-ipc";
 import type { AgentTurnCustodyDependency } from "../../../../shared/app-lifecycle";
+import { statusError } from "../../errors";
 import { DurableJson } from "../../persistence/durable-json";
-import { digestCanonical } from "../registry-store";
+import { digestCanonical, refKey } from "../registry-canonical";
 import {
   activePlanSessionRefs,
   planBindingSchema,
   planDigestSchema,
-  planGenerationRefKey,
   planSessionHandoffSchema,
   thirdPartyMcpPlanEntrySchema,
   thirdPartyMcpPlanFileSchema,
-  upgradeThirdPartyMcpPlanFile,
   type ThirdPartyMcpPlanBinding,
   type ThirdPartyMcpPlanEntry,
   type ThirdPartyMcpPlanFile,
@@ -58,7 +57,7 @@ export class ThirdPartyMcpPlanLedger {
   }
 
   initialize() {
-    return this.file.initialize(upgradeThirdPartyMcpPlanFile);
+    return this.file.initialize();
   }
 
   configure(port: GenerationRefPort) {
@@ -289,12 +288,12 @@ export class ThirdPartyMcpPlanLedger {
     if (!pending) return;
     if (pending.phase === "session-held") return;
     const keep = activePlanSessionRefs(pending);
-    const retained = new Set(keep.map(planGenerationRefKey));
+    const retained = new Set(keep.map((ref) => refKey(ref)));
     await this.releaseRefs(
       pending,
       [...uniqueGenerationBindings(pending.bindings)]
         .map((binding) => binding.generationRef)
-        .filter((ref) => !retained.has(planGenerationRefKey(ref)))
+        .filter((ref) => !retained.has(refKey(ref)))
     );
     await this.file.mutate((state) => {
       const current = state.entries.find(
@@ -605,16 +604,12 @@ function planBindings(plan: ComponentDeliveryPlan) {
 function uniqueGenerationBindings(bindings: readonly ThirdPartyMcpPlanBinding[]) {
   const unique = new Map<string, ThirdPartyMcpPlanBinding>();
   for (const binding of bindings) {
-    const key = `${binding.generationRef.packageGenerationId}\0${binding.generationRef.recordDigest}`;
+    const key = refKey(binding.generationRef);
     if (!unique.has(key)) unique.set(key, binding);
   }
   return unique.values();
 }
 
-function refKey(ref: ExtensionPackageGenerationRef) {
-  return `${ref.packageGenerationId}\0${ref.recordDigest}`;
-}
-
 function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }

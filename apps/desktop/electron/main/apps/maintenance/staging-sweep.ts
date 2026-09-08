@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the lifecycle intent store of the pending listing with Node fs; Staging Roots under the userData
- * [OUTPUT]: Provides sweepAppStaging The recycling of the app is not subject to any pending intent reference to the staging directory and pending configuration
- * [POS]: The first is the "Works Clean" app moduleThe probe/preview mapping is the process memory, and the staging of the journal that is not entered after the restart is only recovered here
+ * [INPUT]: Depends on LifecycleIntentStore's pending-intent listing and Node fs; reads the three staging roots under userData
+ * [OUTPUT]: Provides sweepAppStaging, reclaiming any staging entry or pending app-config file not referenced by a live pending intent
+ * [POS]: apps module's startup orphan sweep across the three staging roots (probe/share/preset) and pending configs; the probe/preview mapping lives only in process memory, so anything left after a crash is only ever recovered here
  */
 
 import { readdir, rm } from "node:fs/promises";

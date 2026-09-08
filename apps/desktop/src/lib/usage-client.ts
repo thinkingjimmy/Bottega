@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared Usage IPC/calendar agreement, renderer current Intl locale and preload exposed window.usage
- * [OUTPUT]: Provides Summary Queries, progress/price subscriptions, USD/compact/time/date formatting and heat chart classification of pure functions
- * [POS]: The use of IPC access boundaries of the renderer; View does not directly read windows or self-invent statistical qualities
+ * [OUTPUT]: Provides getUsageSummary, subscribePricingUpdated/subscribeScanProgress, and pure USD/compact-number/date formatting plus heatmap-tier classification
+ * [POS]: Renderer's Usage IPC boundary; views never read window.usage directly or invent their own formatting rules
  */
 
 import { dayKey } from "../../shared/usage-calendar";

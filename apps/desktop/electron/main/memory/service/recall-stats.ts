@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared observation scope/turn receipt, DurableJson and the corrupted language isolation
- * [OUTPUT]: PrOvides RecallStatsStore, recallBucketKey: Lasting cumulative recall results according to providerDataInstanceId/mode/generation, with 256 rolling requestId tabs, such as:
- * [POS]: The user can also access the user's main/memory/serviceIndependent initialization/notice/flush, any failure should not contaminate the Policy/Delivery or Chat main chain
+ * [INPUT]: Depends on shared MemoryObservationScope/TurnContextReceipt and DurableJson's corruption-isolated persistence
+ * [OUTPUT]: Provides RecallStatsStore and recallBucketKey: durable per-(providerDataInstanceId, sharingMode, sharingGeneration) recall counters, capped at 8 buckets with a 256-entry rolling requestId window
+ * [POS]: The main/memory/service recall-observability ledger; it initializes/persists/flushes independently, and any failure here must never contaminate Policy/Delivery or the chat main chain
  */
 
 import { z } from "zod";
@@ -67,7 +67,7 @@ export class RecallStatsStore {
   async initialize() {
     if (this.initialized) return;
     try {
-      await this.ledger.initialize(upgradeLedger);
+      await this.ledger.initialize();
       this.rebuildProjections();
       this.initialized = true;
       this.lastError = null;
@@ -175,11 +175,3 @@ const snapshotOf = (bucket: RecallLedger["buckets"][string]) => {
 
 const errorDetail = (cause: unknown) =>
   cause instanceof Error ? cause.message.slice(0, 500) : "召回观测不可用";
-
-function upgradeLedger(raw: unknown): RecallLedger | undefined {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
-  const record = raw as Record<string, unknown>;
-  if (record.version !== undefined || !record.buckets) return undefined;
-  const candidate = schema.safeParse({ version: 1, buckets: record.buckets });
-  return candidate.success ? candidate.data : undefined;
-}

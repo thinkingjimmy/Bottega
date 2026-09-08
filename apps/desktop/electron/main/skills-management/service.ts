@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on library-v3/jobs-v2 ledgers, Extension Registry gates, runtime discovery facts, read-only Agent-home candidate scanning, package verification, and catalog invalidation
+ * [INPUT]: Depends on library-v3/jobs-v2 ledgers, Extension Registry gates, runtime discovery facts, read-only Agent-home candidate scanning, package verification, and catalog invalidation, and statusError from main/errors
  * [OUTPUT]: Provides UnifiedSkillsService for list/discovery/import, enabled toggles, tombstone deletion, deletion-only consent, enablement-only undo, catalog candidates, progress, and restart recovery
  * [POS]: Library-first Skills coordination boundary; it cannot express or perform projection, native-target, Codex config, or Agent-home writes
  */
@@ -16,6 +16,7 @@ import type {
   UnifiedSkillsSnapshot,
 } from "../../../shared/unified-skills-ipc";
 import type { BackendRuntimeRegistry } from "../backends/runtime-registry";
+import { statusError } from "../errors";
 import type { ExtensionRegistryStore } from "../extensions/registry-store";
 import type { TurnProjectContext } from "../../../shared/product-resource-scope";
 import {
@@ -70,9 +71,7 @@ import {
   EXTENSION_PRODUCT_POLICY,
 } from "../extensions/product-policy";
 import {
-  invalidSkillsRequest as invalid,
   SKILLS_AUTHORITY_TTL_MS,
-  skillsConflict as conflict,
   type HeldSkillsPlan,
 } from "./service-authority";
 
@@ -159,7 +158,7 @@ export class UnifiedSkillsService {
   candidates(agent: ManagedSkillAgent | "all", forceReload = false) {
     return this.serialize(async () => {
       if (agent !== "all" && !AGENTS.includes(agent)) {
-        throw invalid("unknown Skill source");
+        throw statusError(400, "unknown Skill source");
       }
       if (forceReload || !this.lastCandidates.revision) {
         await this.refreshCandidates();
@@ -208,7 +207,7 @@ export class UnifiedSkillsService {
     return this.serialize(async () => {
       this.assertWritable();
       if (!Array.isArray(intents) || !intents.length || intents.length > 2_048) {
-        throw invalid("intent batch must contain 1-2048 items");
+        throw statusError(400, "intent batch must contain 1-2048 items");
       }
       for (const [id, plan] of this.plans) {
         if (plan.view.expiresAt <= Date.now()) this.plans.delete(id);
@@ -268,13 +267,13 @@ export class UnifiedSkillsService {
         held.view.planDigest !== input.planDigest ||
         held.view.authorityToken !== input.authorityToken
       ) {
-        throw conflict("plan authority is invalid");
+        throw statusError(409, "plan authority is invalid");
       }
       if (held.view.expiresAt <= Date.now()) {
-        throw conflict("plan authority expired");
+        throw statusError(409, "plan authority expired");
       }
       if (held.view.expectedRevision !== this.revision) {
-        throw conflict("Skills state changed; preview again");
+        throw statusError(409, "Skills state changed; preview again");
       }
       this.plans.delete(input.planId);
       const job = await this.jobs.authorizePlan({ ...input, steps: held.steps });
@@ -294,7 +293,7 @@ export class UnifiedSkillsService {
     return this.serialize(async () => {
       this.assertWritable();
       const job = this.jobs.jobForUndo(undoToken);
-      if (!job) throw conflict("undo token is invalid or already consumed");
+      if (!job) throw statusError(409, "undo token is invalid or already consumed");
       await this.jobs.startUndo(job.batchId);
       for (const step of [...job.steps].reverse()) {
         if (step.status !== "completed" || step.previousEnabled === null) continue;
@@ -519,8 +518,8 @@ export class UnifiedSkillsService {
     enabled: boolean
   ) {
     return enabled
-      ? this.dependencies.registry.enableComponent(componentInstanceIdentity)
-      : this.dependencies.registry.disableComponent(componentInstanceIdentity);
+      ? this.dependencies.registry.lifecycle.enableComponent(componentInstanceIdentity)
+      : this.dependencies.registry.lifecycle.disableComponent(componentInstanceIdentity);
   }
 
   private async projectSnapshot(): Promise<UnifiedSkillsSnapshot> {
@@ -688,7 +687,7 @@ export class UnifiedSkillsService {
       if (prior.source === source) this.imports.delete(id);
     }
     if (source === "all" && !supplied) {
-      throw invalid("aggregate imports require discovered authorities");
+      throw statusError(400, "aggregate imports require discovered authorities");
     }
     const authorities =
       supplied ??
@@ -779,9 +778,7 @@ export class UnifiedSkillsService {
   }
   private assertWritable() {
     if (this.availability.kind !== "ready") {
-      throw Object.assign(new Error("Skills management is read-only"), {
-        status: 503,
-      });
+      throw statusError(503, "Skills management is read-only");
     }
   }
 

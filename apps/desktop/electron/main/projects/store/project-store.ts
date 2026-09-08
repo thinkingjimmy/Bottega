@@ -13,7 +13,7 @@ import {
 } from "../../../../shared/projects-ipc";
 import type { TurnProjectContext } from "../../../../shared/resource-scope";
 import type { AppGrantRecord } from "../../../../shared/apps-ipc";
-import { errorMessage } from "../../errors";
+import { errorMessage, statusError } from "../../errors";
 import { SerialQueue } from "../../persistence/serial-queue";
 import {
   projectFileSchema,
@@ -105,7 +105,6 @@ export class ProjectStore {
         return;
       }
       await this.persistence.isolateInvalid(main, backup);
-      await this.persistence.backupMigration(selected);
       await this.persistence.publishMirror(selected.file);
       this.state = selected.file;
       this.ready = true;
@@ -787,9 +786,9 @@ export class ProjectStore {
 }
 
 function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }
 
 function lifecycleError(code: string, message: string) {
-  return Object.assign(new Error(message), { code, status: 409 });
+  return statusError(409, message, { code });
 }

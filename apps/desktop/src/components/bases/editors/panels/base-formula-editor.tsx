@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: Depends on React, shared Base formula analysis/column name mapping, i18n and Unified Dialog/Button expression monologue, state BaseMutationOutcome judgment type
- * [OUTPUT]: Provides BaseFormulaEditor; Edit by column name, save by columnId, and show in real time syntax/unknown dependence errors and static result types, editing is to remove old submit errors
- * [POS]: the formula configuration surface of bases/editors/panels; Only output the formula data, without writing a value or directly contacting the Provider
+ * [OUTPUT]: Provides BaseFormulaEditor, which edits formulas by column name, saves them by columnId, and shows live syntax/unknown-dependency errors and the inferred static result type; editing clears any stale submit error
+ * [POS]: The formula configuration surface of bases/editors/panels; it only emits the formula data — it never writes a value or talks to the Provider directly
  */
 
 import { useMemo, useState } from "react";

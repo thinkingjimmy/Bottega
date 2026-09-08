@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the agent identity string
- * [OUTPUT]: Provides hashAgentIdentity with agent AvatarRecipe to generate reproducible abstract head image parameters
- * [POS]: The lib algorithm headers are like pure functions; React Canvas is solely responsible for the recipe's lighting
+ * [OUTPUT]: Provides hashAgentIdentity and agentAvatarRecipe, deriving a reproducible abstract-avatar recipe (palette, rotation, inset, twist) from an identity string
+ * [POS]: Pure algorithm module in lib; the React canvas component (chat/subagent/agent-avatar.tsx) is solely responsible for painting the recipe
  */
 
 export type AgentAvatarRecipe = {

@@ -6,6 +6,9 @@
  * [POS]: GitHub sharing workflow for Apps; open state is owned by the caller because the entry point lives in a dropdown menu that unmounts on close, so the gh probe is driven by the open state rather than by Radix’s own change event; it runs fixed git/gh operations and never starts an Agent turn
  */
 
+import { CompatibilityReminder } from "../compatibility/reminder";
+import { AppCompatibilityRequiredError } from "@/lib/apps-client";
+import type { AppCompatibilityFailure } from "../../../../shared/app-host/contract";
 import { useEffect, useState } from "react";
 import {
   AppDialogBody,
@@ -53,6 +56,7 @@ export function AppShareDialog({
   const [visibility, setVisibility] = useState<"public" | "private">("public");
   const [preview, setPreview] = useState<SharePreview | null>(null);
   const [busy, setBusy] = useState(false);
+  const [compatibility, setCompatibility] = useState<AppCompatibilityFailure | null>(null);
   const [error, setError] = useState("");
 
   /* ============================================================
@@ -97,6 +101,7 @@ export function AppShareDialog({
         })
       );
     } catch (cause) {
+      if (cause instanceof AppCompatibilityRequiredError) { setCompatibility(cause.compatibility); return; }
       setError(errorMessage(cause, t("apps.share.previewFailed")));
     } finally {
       setBusy(false);
@@ -117,6 +122,7 @@ export function AppShareDialog({
       });
       onOpenChange(false);
     } catch (cause) {
+      if (cause instanceof AppCompatibilityRequiredError) { setCompatibility(cause.compatibility); return; }
       setError(errorMessage(cause, t("apps.share.publishFailed")));
     } finally {
       setBusy(false);
@@ -135,6 +141,7 @@ export function AppShareDialog({
       }}
     >
       <AppDialogContent className="sm:max-w-2xl">
+        {compatibility ? <CompatibilityReminder failure={compatibility} onClose={() => onOpenChange(false)} onRetry={() => { setCompatibility(null); }} /> : <>
         <DialogHeader className="shrink-0">
           <DialogTitle>{t("apps.share.title")}</DialogTitle>
           <DialogDescription>
@@ -266,6 +273,7 @@ export function AppShareDialog({
             </Button>
           </DialogFooter>
         )}
+        </>}
       </AppDialogContent>
     </Dialog>
   );

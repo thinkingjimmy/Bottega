@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on App store schema/recovery and authority-owned durable catalog replacement, static-v2/compiled-v3 generation planning/building, the Studio grant command leaf, shared App contracts, participant ledgers, Base GUI grants, compiler service, and server cutover ports
- * [OUTPUT]: Provides the AppStore v15-only single-writer facade, clone-free routing facts, authority-gated loading, Editor/Use/source facts, generation-bound Studio grants, durable commits/retirement, immutable artifact roots, bounded artifact collection, and record subscriptions
+ * [INPUT]: Depends on durable App records, main-owned host-version admission, generation builder/consent and existing grant, cutover and serialization authorities.
+ * [OUTPUT]: Provides the AppStore v15 writer, compiler readiness evidence, routing/source/grant facts, durable generation commits, bounded artifact collection, and subscriptions
  * [POS]: Canonical App record and broadcast authority; its authority sibling exclusively classifies and replaces startup catalog bytes while this facade loads established v15 state, serializes mutations, and prevents stale renderer projections
  */
 
+import { readCompatibility, recordCandidate, runningBottegaVersion } from "../compatibility/read";
 import { mkdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -13,7 +14,7 @@ import type {
   BaseGuiCapabilityScopes,
   BaseGuiHostActionCapability,
 } from "../../../../shared/apps-ipc";
-import { errorMessage } from "../../errors";
+import { errorMessage, statusError } from "../../errors";
 import { SerialQueue } from "../../persistence/serial-queue";
 import { durableReplaceFile } from "../../persistence/durable-json";
 import type { AppGenerationBuildLedger } from "../generation/app-generation-build-ledger";
@@ -84,13 +85,14 @@ export class AppStore {
   private readonly recovery: AppStoreRecovery;
   private readonly authorityEvidence: AppStoreAuthorityEvidence;
 
-  constructor(userData: string) {
+  constructor(userData: string, readonly hostVersion = runningBottegaVersion) {
     this.appsRoot = join(userData, "apps");
     this.artifactsRoot = join(userData, "app-generation-artifacts");
     this.filePath = join(userData, "apps.json");
     this.authorityEvidence = new AppStoreAuthorityEvidence(userData);
     this.authorityMarkerPath = this.authorityEvidence.markerPath;
     this.generationBuilder = new AppGenerationBuilder({
+      hostVersion: () => this.hostVersion(),
       artifactsRoot: this.artifactsRoot,
       get: (appId) => this.records.get(appId),
       artifactRoot: (appId, generationId) => this.artifactRoot(appId, generationId),
@@ -145,6 +147,11 @@ export class AppStore {
   initializeAppGuiCompiler() {
     if (!this.appGuiCompiler) throw new Error("App GUI compiler is not configured");
     return this.appGuiCompiler.initialize();
+  }
+
+  probeAppGuiCompiler() {
+    if (!this.appGuiCompiler) throw new Error("App GUI compiler is not configured");
+    return this.appGuiCompiler.probe();
   }
 
   registerArtifactRootProvider(
@@ -345,6 +352,7 @@ export class AppStore {
       generationSourceDir?: string;
     }> = {}
   ) {
+    if (record.manifest) await readCompatibility(options.generationSourceDir ?? record.dir, recordCandidate(record), this.hostVersion());
     return this.withGenerationCutover(record.id, () =>
       this.withServerCutover(record.id, () => record, {
         sourceDir: options.generationSourceDir,
@@ -371,6 +379,10 @@ export class AppStore {
     updater: (record: AppRecord) => AppRecord,
     options: Readonly<{ generationSourceDir?: string }> = {}
   ) {
+    const initial = this.get(appId);
+    if (!initial) throw new Error("App does not exist");
+    const proposed = updater(initial);
+    if (proposed.manifest) await readCompatibility(options.generationSourceDir ?? proposed.dir, recordCandidate(proposed), this.hostVersion());
     return this.withGenerationCutover(appId, () =>
       this.withServerCutover(
         appId,
@@ -401,11 +413,16 @@ export class AppStore {
    */
   async grantStudioAccess(appId: string, generationId: string) {
     this.assertWritableAuthority();
-    return this.queue.enqueue(() => grantStudioAccess({
-      get: (id) => this.get(id),
-      grants: this.baseGuiGrants,
-      commit: (next, id, previous) => this.commitRecord(next, id, previous),
-    }, appId, generationId));
+    return this.queue.enqueue(async () => {
+      const current = this.get(appId);
+      const generation = current?.generations.find((item) => item.generationId === generationId);
+      if (current && generation) await this.generationBuilder.validateCompatibility(current, generation);
+      return grantStudioAccess({
+        get: (id) => this.get(id),
+        grants: this.baseGuiGrants,
+        commit: (next, id, previous) => this.commitRecord(next, id, previous),
+      }, appId, generationId);
+    });
   }
 
   async revokeStudioAccess(appId: string) {
@@ -446,6 +463,8 @@ export class AppStore {
    * frozen graph 悄悄漂到用户没批准过的字节上。
    */
   async migrateGeneration(appId: string, migrationId: string) {
+    const candidate = this.get(appId);
+    if (candidate?.manifest) await readCompatibility(candidate.dir, recordCandidate(candidate), this.hostVersion());
     if (!migrationId.trim()) throw new Error("App generation migrationId 无效");
     return this.withGenerationCutover(appId, () =>
       this.withServerCutover(
@@ -499,6 +518,7 @@ export class AppStore {
           }
         : options;
     const candidate = compute();
+    if (candidate.manifest) await readCompatibility(options.sourceDir ?? candidate.dir, recordCandidate(candidate), this.hostVersion());
     const compiled = candidate.manifest?.kind === "base" && Boolean(candidate.manifest.gui?.build);
     const preview = compiled
       ? null
@@ -732,8 +752,6 @@ function assertResidenceFenceStable(
     previous.lifecycleRevision !== next.lifecycleRevision ||
     bindingChanged
   ) {
-    throw Object.assign(new Error("APP_USE_RESIDENCE_MUTATION_BUSY"), {
-      status: 409,
-    });
+    throw statusError(409, "APP_USE_RESIDENCE_MUTATION_BUSY");
   }
 }

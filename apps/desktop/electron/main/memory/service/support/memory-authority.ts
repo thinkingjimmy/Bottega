@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Policy/Delivery owner, current Memory target/provider, snapshot, runtime registry, Health, refresh and Rebuild status
- * [OUTPUT]: Provides Provider is freezing authentication, capability, validation, pre-promptation, validation and unified execution gate
- * [POS]: The main/memory/service/support authorization is protected; Focus on memory service's original identity, capabilities and execution conditions to avoid façade duplication of security judgments
+ * [INPUT]: Depends on the Policy store, Delivery store, active target/provider/controlGeneration state, the managed runtime registry, and a health-refresh callback
+ * [OUTPUT]: Provides MemoryAuthorityGuard: trustedProviderReady (health-gated proof for a frozen turn), validateFrozen/validateContext capability checks, an identity verifier, and executionEnabled
+ * [POS]: The authorization guard of main/memory/service/support; centralizes identity, capability, and execution-gate checks so MemoryService's façade doesn't duplicate this security logic
  */
 
 import type {

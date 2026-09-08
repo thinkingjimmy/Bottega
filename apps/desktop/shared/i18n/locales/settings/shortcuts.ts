@@ -9,6 +9,7 @@ export const settingsShortcutsEn = {
   description:
     "Click a row's edit icon to record a new key combination. Shortcuts sharing the same keys show a warning; scoped shortcuts may legitimately share keys.",
   labels: {
+    taskPanel: "Toggle task panel",
     search: "Open command palette",
     newChat: "New chat",
     settings: "Open settings",
@@ -18,6 +19,7 @@ export const settingsShortcutsEn = {
     findInChat: "Find in chat",
   },
   hints: {
+    taskPanel: "Available system-wide while top task status is enabled.",
     saveInstructions: "Only in the Personalization editor",
     findInFile: "Only in the Personalization editor",
     findInChat: "Only in the chat transcript",
@@ -47,6 +49,7 @@ export const settingsShortcutsZhCN: SettingsShortcutsCatalog = {
   description:
     "点击行内的编辑按钮即可录制新的组合键。相同组合键的快捷键会显示警告；分属不同作用域的快捷键允许共用按键。",
   labels: {
+    taskPanel: "开关任务面板",
     search: "打开命令面板",
     newChat: "新建会话",
     settings: "打开设置",
@@ -56,6 +59,7 @@ export const settingsShortcutsZhCN: SettingsShortcutsCatalog = {
     findInChat: "在会话中查找",
   },
   hints: {
+    taskPanel: "开启顶部任务状态后，可在其他应用中使用。",
     saveInstructions: "仅在个性化指令编辑页生效",
     findInFile: "仅在个性化指令编辑页生效",
     findInChat: "仅在会话记录中生效",
@@ -83,6 +87,7 @@ export const settingsShortcutsJa: SettingsShortcutsCatalog = {
   description:
     "各行の編集アイコンをクリックすると新しいキーの組み合わせを記録できます。同じキーを共有するショートカットには警告が表示されます。スコープが異なるショートカットはキーを共有できます。",
   labels: {
+    taskPanel: "タスクパネルの切り替え",
     search: "コマンドパレットを開く",
     newChat: "新しいチャット",
     settings: "設定を開く",
@@ -92,6 +97,7 @@ export const settingsShortcutsJa: SettingsShortcutsCatalog = {
     findInChat: "チャット内を検索",
   },
   hints: {
+    taskPanel: "画面上部のタスク表示が有効な間は、ほかのアプリでも使えます。",
     saveInstructions: "パーソナライズ編集ページのみ",
     findInFile: "パーソナライズ編集ページのみ",
     findInChat: "チャット履歴のみ",
@@ -119,6 +125,7 @@ export const settingsShortcutsFr: SettingsShortcutsCatalog = {
   description:
     "Cliquez sur l’icône de modification d’une ligne pour enregistrer une nouvelle combinaison. Les raccourcis partageant les mêmes touches affichent un avertissement ; des raccourcis à portées différentes peuvent légitimement partager des touches.",
   labels: {
+    taskPanel: "Afficher/masquer le panneau des tâches",
     search: "Ouvrir la palette de commandes",
     newChat: "Nouvelle discussion",
     settings: "Ouvrir les réglages",
@@ -128,6 +135,7 @@ export const settingsShortcutsFr: SettingsShortcutsCatalog = {
     findInChat: "Rechercher dans la discussion",
   },
   hints: {
+    taskPanel: "Disponible dans toutes les applications quand l’affichage des tâches en haut de l’écran est activé.",
     saveInstructions: "Uniquement dans l’éditeur de personnalisation",
     findInFile: "Uniquement dans l’éditeur de personnalisation",
     findInChat: "Uniquement dans la transcription de la discussion",
@@ -155,6 +163,7 @@ export const settingsShortcutsEs: SettingsShortcutsCatalog = {
   description:
     "Haz clic en el icono de edición de una fila para grabar una nueva combinación de teclas. Los atajos que comparten las mismas teclas muestran una advertencia; atajos de distintos ámbitos pueden compartir teclas legítimamente.",
   labels: {
+    taskPanel: "Mostrar/ocultar el panel de tareas",
     search: "Abrir la paleta de comandos",
     newChat: "Nuevo chat",
     settings: "Abrir ajustes",
@@ -164,6 +173,7 @@ export const settingsShortcutsEs: SettingsShortcutsCatalog = {
     findInChat: "Buscar en el chat",
   },
   hints: {
+    taskPanel: "Disponible en todas las aplicaciones mientras esté activado el estado de tareas en la parte superior.",
     saveInstructions: "Solo en el editor de personalización",
     findInFile: "Solo en el editor de personalización",
     findInChat: "Solo en la transcripción del chat",

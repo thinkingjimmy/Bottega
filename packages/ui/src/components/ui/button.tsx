@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, class-variance-authority, radix-ui Slot and cn of ui/utils
- * [OUTPUT]: Provides Button and button Variants ((6 variables × 9 sizes, with tablets: h-8 + px-5 + rounded-full +:: after 44px open life zone)
- * [POS]: The UI is a single-button implementation of the original language layer, desktop/web sharing; Confirm the bullet window, the Memory board and the Settings › Skills pills go size="pill", no longer in their respective class strings
+ * [OUTPUT]: Provides Button and buttonVariants (6 variants x 9 sizes; the pill size uses h-8 + px-5 + rounded-full with a ::after pseudo-element expanding the tap target to 44px)
+ * [POS]: components/ui's single Button implementation, shared by desktop and web; confirmation dialogs, the Memory panel, and Settings > Skills pills all use size="pill" instead of hand-rolled class strings
  */
 
 import * as React from "react"

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: dependence when not in operation; The first is the installation of five local directories
- * [OUTPUT]: Provides five-language concurrent operating permissions file formats and Full Access risk disclosure
- * [POS]: Permission feature catalog of shared/i18n/locales; The rank key, which is Agent PermissionMode, is listed, and the documentation does not assume suppliers
+ * [INPUT]: No runtime dependencies; defines five isomorphic locale objects for Permission
+ * [OUTPUT]: Provides five-language copy for concurrent Agent permission modes and the Full Access risk disclosure
+ * [POS]: Permission feature catalog of shared/i18n/locales; top-level keys mirror Agent PermissionMode and copy stays backend-neutral
  */
 
 export const permissionEn = {

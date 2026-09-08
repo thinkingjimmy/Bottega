@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the runtime/use-workspace-files of the differentiable state
- * [OUTPUT]: Provides Workspace Files grouped note by loading/ready/six reason
- * [POS]: The document candidate text boundaries of chat/composer; RichInput only rendered the host's group status
+ * [INPUT]: Depends on WorkspaceFilesState from runtime/use-workspace-files
+ * [OUTPUT]: Provides workspaceFilesNote, deriving a status note for the loading state, both empty-ready states, and each of six unavailable reasons
+ * [POS]: Workspace-file candidate note boundary for chat/composer; RichInput only renders the returned note text, never the state machine itself
  */
 
 import type { WorkspaceFilesState } from "../runtime/use-workspace-files";

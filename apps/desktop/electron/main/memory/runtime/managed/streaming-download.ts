@@ -15,6 +15,7 @@ import {
   type FileHandle,
 } from "node:fs/promises";
 import { dirname } from "node:path";
+import { syncDirectory } from "../../../persistence/durable-json";
 
 const HEADER_TIMEOUT_MS = 10_000;
 const STALL_TIMEOUT_MS = 30_000;
@@ -161,14 +162,6 @@ async function downloadOnce(
   }
 }
 
-async function syncDirectory(directory: string) {
-  const handle = await open(directory, "r");
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
 
 export async function writeFully(
   handle: Pick<FileHandle, "write">,

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import type { CodexTurnOptions } from "../../../../shared/codex-ipc";
 import { systemSkillsPath } from "../../system-skills";
 import { githubLatestVersion } from "../../setup/latest-version";
-import { codexEnvironment, findCodexRuntime } from "../../codex-runtime";
+import { codexEnvironment, findCodexRuntime } from "./environment";
 import { AcpTurn } from "../acp/acp-turn";
 import { classifyAcpFailure } from "../acp/failure";
 import {

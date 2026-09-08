@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on AppStore, App edit-slot lookup, the shared source-mutation lane, source reconciliation, Project-scoped Extension integration, grant authority, lifecycle/usage gates, reference/plan ledgers, and delivery materializer
+ * [INPUT]: Depends on shared appDisplayName, AppStore, App edit-slot lookup, the shared source-mutation lane, source reconciliation, Project-scoped Extension integration, grant authority, lifecycle/usage gates, reference/plan ledgers, and delivery materializer
  * [OUTPUT]: Provides AppTurnCoordinator for source-fenced edit admission, exact Project-aware reference acquisition, Extension delivery/health, Agent visibility, custody, terminal settlement, and release
  * [POS]: App service turn authority; mutable edit work holds the same per-App lane as install/repair/publish while frozen App generation bindings are projected once and never re-resolved against live Extension precedence
  */
 
+import { appDisplayName } from "../../../../shared/apps-ipc";
 import { join } from "node:path";
 import type {
   AppAgentDegradation,
@@ -218,7 +219,7 @@ export class AppTurnCoordinator {
           identity: record.domainIdentity!,
           context: {
             appId: record.id,
-            appName: record.manifest?.name ?? record.displayName,
+            appName: appDisplayName(record),
             generationId: generation.generationId,
             referenceLeaseId: entries[index]!.leaseId,
             capability: entries[index]!.frozenCapability,

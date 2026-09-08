@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Electron nativeImage; Receive bytes of an image that is already owned, content address key and fixed bucket
- * [OUTPUT]: Provides a single-fly, four-way linear key; decodes itself to the main thread; sequence-by-section events are allowed to be passed); 64MiB/128 LRU shortened data URL
- * [POS]: The database contains the database of the databaseRebuild without loss of business ownership, deletion or restart
+ * [OUTPUT]: Provides AttachmentThumbnailCache: single-flight per-key decoding with 4-way concurrency, decoding via Electron nativeImage on the main thread, and a 64MiB/128-entry LRU of thumbnail data URLs
+ * [POS]: bases/store's in-memory thumbnail cache; purely derived, so it is safely rebuilt on ownership change, deletion, or restart
  */
 
 import { nativeImage } from "electron";

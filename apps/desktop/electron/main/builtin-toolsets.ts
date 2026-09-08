@@ -24,8 +24,9 @@ import type { CdpHarness } from "./browser/cdp-harness";
 import { createBrowserToolset } from "./browser/toolset";
 import type { AgentPluginInventory } from "./extensions/agent-plugin-inventory";
 import type { SkillsTurnCustodyStore } from "./skills-management/turn-custody";
-import { createUseSkillToolset } from "./skills-management/use-skill-toolset";
 import { createDesignToolset } from "./design/toolset";
+import { createChatHistoryToolset } from "./agent/history/lease";
+import type { BuiltinToolset } from "./tools/registry";
 
 export type BuiltinToolsetDependencies = {
   chatStore: ChatStore;
@@ -62,6 +63,7 @@ export function createBuiltinToolsets(deps: BuiltinToolsetDependencies) {
     disabledClaudePluginIds: () => deps.agentPlugins.disabledClaudePluginIds(),
   });
   return [
+    createChatHistoryToolset(deps.chatStore),
     createSectionToolset(deps.chatStore, deps.coordinator, {
       baseSummaryForSection: (chatId) =>
         deps.basesService.summaryForSection(chatId),
@@ -100,6 +102,9 @@ export function createBuiltinToolsets(deps: BuiltinToolsetDependencies) {
       },
       appDirOf: (appId) => deps.appsService.resolveAppForBinding(appId)?.dir,
     }),
-    createUseSkillToolset(deps.skillsCustody),
+    {
+      use_skill: (args, context) =>
+        deps.skillsCustody.use(context.lease.skillsCustodyId, args.name as string),
+    } satisfies BuiltinToolset,
   ] as const;
 }

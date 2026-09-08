@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ChatAttachmentMeta, dataUrlByteSize and the frozen Section tail draft; Receive image capability, single Section number and full-round byte budget
- * [OUTPUT]: Provides unchanging SectionSnapshotPlan[] Width of attachment lines such as tri-mode rendering Neutral/ Planning Points/ Human-readable endnotes) with copy authentication assertions
- * [POS]: The only source of truth for sharing decisions is the shared Section image; Main Two ways of materialising are only consumption plans, not re-option
+ * [INPUT]: Depends on ChatAttachmentMeta from chats-ipc and dataUrlByteSize/count/byte limits from agent-ipc; consumes per-Section drafts plus image capability and byte-budget options
+ * [OUTPUT]: Provides planSectionSnapshots, producing the frozen SectionSnapshotPlan[] with fixed-width attachment status lines (plain / pending / a terminal included-or-omitted reason), and assertCopyFidelity for verifying a copied data URL matches its declared metadata
+ * [POS]: Single source of truth for which Section attachments survive the shared byte/count budget; main only consumes the plan this module produces and never re-decides inclusion itself
  */
 
 import type { ChatAttachmentMeta } from "./chats-ipc";
@@ -11,7 +11,7 @@ import {
   dataUrlByteSize,
 } from "./agent-ipc";
 
-export type SectionAttachmentReason =
+type SectionAttachmentReason =
   | "included"
   | "image-input-off"
   | "count-limit"

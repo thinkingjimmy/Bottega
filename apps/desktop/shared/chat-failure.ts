@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared chats - ChatMessage on ipc
- * [OUTPUT]: Provides isFailedAssistant/isTranscriptEligible Two turns Failed judgement
- * [POS]: The only source of truth shared is "Is this round a failure?"renderer directory/recover context with the same judgment as the e2e turn oracle
+ * [INPUT]: Depends on AssistantChatMessage/ChatMessage from chats-ipc
+ * [OUTPUT]: Provides isFailedAssistant, the single turn-failure predicate
+ * [POS]: Single source of truth for "did this turn fail?"; renderer directory/recovery and the e2e turn oracle both apply the same judgment
  */
 
 import type { AssistantChatMessage, ChatMessage } from "./chats-ipc";
@@ -25,5 +25,3 @@ export const isFailedAssistant = (
  * 可作为上下文重放的消息：排除系统 notice 与失败 turn。
  * 失败 turn 的正文是错误文案而非模型输出，喂回模型只会污染语境。
  */
-export const isTranscriptEligible = (message: ChatMessage) =>
-  message.role !== "notice" && !isFailedAssistant(message);

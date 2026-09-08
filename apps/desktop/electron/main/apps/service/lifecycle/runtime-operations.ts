@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { AppRecord, RemoveAppMode } from "../../../../../shared/apps-ipc";
-import { asError } from "../../../errors";
+import { asError, statusError } from "../../../errors";
 import type { AppExtensionIntegration } from "../../../extensions/integration/app-extension-composition";
 import type { AppDeleteService } from "../../conversion/app-delete";
 import { shouldMarkDeleteFailed } from "../../conversion/app-delete";
@@ -61,7 +61,7 @@ export function withGuiCutover<T>(
       const generationId = ports.activeGenerationId(appId);
       while (ports.gateway.requestLeases.countApp(appId) > 0) {
         if (Date.now() >= deadline) {
-          throw Object.assign(new Error("APP_GUI_DRAIN_TIMEOUT"), { status: 409 });
+          throw statusError(409, "APP_GUI_DRAIN_TIMEOUT");
         }
         await new Promise((resolve) => setTimeout(resolve, 25));
       }

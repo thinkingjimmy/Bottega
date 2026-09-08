@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on node:sqlite from the active runtime plus fs/path for private database files
+ * [INPUT]: Depends on node:sqlite from the active runtime plus fs/path for private database files and the persistence errno predicate
  * [OUTPUT]: Provides the single SQLite connection owner, WAL runtime safety gate, verified production pragmas, transaction helper, throttled high-water checkpoints, integrity/foreign-key/revision-convergence gates, and metrics
  * [POS]: Lowest Chat SQLite runtime layer; only the dedicated database worker may construct a production connection
  */
@@ -8,7 +8,8 @@ import { createRequire } from "node:module";
 import { chmod, lstat, mkdir, open, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { performance } from "node:perf_hooks";
-import { runMigrations } from "./migrations";
+import { ensureChatSchema } from "./migrations";
+import { isErrnoCode } from "../../persistence/durable-json";
 
 export type SqliteValue = null | number | bigint | string | Uint8Array;
 
@@ -34,7 +35,7 @@ type NodeSqlite = {
 
 export type ConnectionMode = "canonical" | "verification";
 
-export type CheckpointMetrics = Readonly<{
+type CheckpointMetrics = Readonly<{
   mode: "PASSIVE" | "TRUNCATE";
   busy: number;
   logFrames: number;
@@ -43,7 +44,7 @@ export type CheckpointMetrics = Readonly<{
   walBytes: number;
 }>;
 
-export type ConnectionMetrics = Readonly<{
+type ConnectionMetrics = Readonly<{
   databaseBytes: number;
   walBytes: number;
   pageBytes: number;
@@ -54,7 +55,7 @@ export type ConnectionMetrics = Readonly<{
   walAutocheckpointPages: number;
 }>;
 
-export const DEFAULT_WAL_HIGH_WATER_BYTES = 64 * 1024 * 1024;
+const DEFAULT_WAL_HIGH_WATER_BYTES = 64 * 1024 * 1024;
 const HIGH_WATER_CHECKPOINT_COOLDOWN_MS = 1_000;
 
 const versionParts = (value: string) => {
@@ -141,7 +142,7 @@ async function captureSafeExistingPath(path: string) {
     }
     return value;
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+    if (!isErrnoCode(cause, "ENOENT")) throw cause;
     return null;
   }
 }
@@ -195,7 +196,7 @@ export class ChatSqliteConnection {
         assertWalRuntimeSafe(String(row.version ?? ""));
       }
       connection.configure();
-      runMigrations(database);
+      ensureChatSchema(database);
       await assertPrivateDatabase(path);
       return connection;
     } catch (cause) {

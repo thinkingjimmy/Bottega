@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on git Fixed subprocesses, audited word paths for apps/share, canonical digest for registry-store and userData staging roots
  * [OUTPUT]: Provides fetchExtensionSource/discardStagedSource: partial no-checkout Freeze commit, pre-determined type and then sparse materialisation, source budget and provenance
- * [POS]: The remote supply chain mechanism of extensions/install; Just the question of "freeze which tree, which blob to read only bytes"
+ * [POS]: Extensions/install's remote supply-chain fetcher; it only resolves which tree to freeze and which blobs to read as bytes, not trust or admission
  */
 
 import { execFile } from "node:child_process";
@@ -9,10 +9,10 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, opendir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Sha256Digest } from "../../../../shared/extensions-ipc";
-import { sanitizedProcessEnvironment } from "../../codex-runtime";
+import { sanitizedProcessEnvironment } from "../../backends/runtime-probe";
 import { isSafePackagePath } from "../../apps/share/package/package-contract";
-import { digestCanonical } from "../registry-store";
-import type { ExtensionSourceProvenance } from "../registry-store";
+import { digestCanonical } from "../registry-canonical";
+import type { ExtensionSourceProvenance } from "../registry-schema";
 import {
   AGENT_PLUGIN_ADAPTER_ID,
 } from "../manifest-adapter";
@@ -21,7 +21,7 @@ import type { ExtensionAdapterId } from "../admission";
 
 /* Agent Plugins 1.0.0 的包布局是固定且浅的（plugin.json / skills/<name>/SKILL.md /
    mcp.json / 反向域名目录），因此预算比 App 包更紧：越界即拒，不做部分导入。 */
-export const EXTENSION_PACKAGE_BUDGET = {
+const EXTENSION_PACKAGE_BUDGET = {
   files: 512,
   fileBytes: 1024 * 1024,
   totalBytes: 16 * 1024 * 1024,

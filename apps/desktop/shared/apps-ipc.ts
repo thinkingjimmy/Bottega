@@ -1,9 +1,10 @@
 /**
  * [INPUT]: type-only AgentBackendId from agent-ipc, placement facts, and Extension identity vocabulary
- * [OUTPUT]: Provides sealed App manifests, v15 Editor/Use residence/source facts, fenced contextual grant candidates carrying the App's own icon so one App wears one face on every surface, compact effective provenance, compatibility-bound Studio authorization/grants, durable pinnedAt records, operation types, generation/grant/reference records, the canonical defaultAppGrantRequest payload, runtime eligibility, Design events, and the bridge/surface/navigation/install buckets it re-exports
+ * [OUTPUT]: Provides appDisplayName for installed Base names and authored Web names, pending install configuration, shared manifests, versioned Web commands, consent, generation, permissions and lifecycle contracts
  * [POS]: Single shared Apps wire truth and the barrel over its sibling buckets; navigation, surface, acquisition (apps-install-ipc), authorization, generation and Agent custody remain explicitly separate contracts
  */
 
+import type { AppCommand, AppInstallStrategy } from "./apps-execution";
 import type { AgentBackendId } from "./agent-ipc";
 export * from "./apps-bridge-ipc";
 export * from "./apps-install-ipc";
@@ -39,7 +40,7 @@ export type AppRequirement = {
   configKey?: string;
 };
 
-export type AppRequirements = { tools: AppRequirement[] };
+type AppRequirements = { tools: AppRequirement[] };
 
 type AppManifestBase = {
   name: string;
@@ -50,8 +51,9 @@ type AppManifestBase = {
 
 export type StaticAppManifest = AppManifestBase & {
   kind: "static";
-  installCmd: string;
-  buildCmd: string | null;
+  executionSchemaVersion?: 1;
+  installCmd: AppCommand | null;
+  buildCmd: AppCommand | null;
   staticDir: string;
   healthPath: string;
   agentRequirements: {
@@ -62,9 +64,10 @@ export type StaticAppManifest = AppManifestBase & {
 
 export type ServerAppManifest = AppManifestBase & {
   kind: "server";
-  installCmd: string;
-  buildCmd: string | null;
-  startCmd: string;
+  executionSchemaVersion?: 1;
+  installCmd: AppCommand | null;
+  buildCmd: AppCommand | null;
+  startCmd: AppCommand;
   healthPath: string;
   serveAgentPrompt: string | null;
   serveTrigger: {
@@ -311,12 +314,14 @@ export type AppFailurePhase =
 export type AppRecord = {
   id: string;
   sourceRepoUrl: string | null;
+  installCandidate?: Readonly<{ commitSha: string; declarationDigest: string | null }>;
   publishedRepoUrl: string | null;
   /** github=远端导入、local=Save as App、preset=main-owned 首方远端包；只有 github 携带来源仓库。 */
   origin: "github" | "local" | "preset";
   /** preset 安装的发布身份与实际取源 commit；非 preset 缺省。 */
   presetId?: string;
   installedPresetPin?: string;
+  /** Installed Base App name; independent of the immutable package manifest. */
   displayName: string;
   dir: string;
   state:
@@ -336,6 +341,9 @@ export type AppRecord = {
   agentWarning: string | null;
   agent: AgentBackendId;
   maintenanceAgent: AgentBackendId | "auto";
+  installStrategy?: AppInstallStrategy;
+  /** Admitted install form fields only; never an active generation or executable manifest. */
+  pendingInstallRequirements?: AppRequirements;
   headlessConsent: {
     backend: AgentBackendId;
     version?: string;
@@ -371,7 +379,13 @@ export type AppRecord = {
   addedAt: number;
 };
 
-export const defaultAppEditorProjection = (): AppEditorProjection => ({
+export function appDisplayName(record: Pick<AppRecord, "displayName" | "manifest">) {
+  return record.manifest?.kind === "base"
+    ? record.displayName
+    : record.manifest?.name ?? record.displayName;
+}
+
+const defaultAppEditorProjection = (): AppEditorProjection => ({
   editorActivatedAt: null,
   editorHiddenAt: null,
   editorRevision: 0,

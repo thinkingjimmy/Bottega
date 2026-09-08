@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node child_process/fs/path and process-group to coordinate the supervised process group with the Electron Node mode, handshake/go/result file
- * [OUTPUT]: Provides runSupervised/harvestProcess, residence status after the result, type withdrawal, sequential cancellation clearance and PGID settled
- * [POS]: The process security limits of install/repair, the supervisor is the same as PGID, and the process can still be harvested after the main process crashes
+ * [OUTPUT]: Provides runSupervised/harvestProcess; harvestProcess resolves a recovered process's status (missing/mismatch/killed) by PGID, guarding against PID reuse
+ * [POS]: install/repair's process-supervision boundary; the supervisor and its command share one process group (PGID) so the command can still be harvested even after the main process crashes
  */
 
 import { execFile, spawn } from "node:child_process";
@@ -277,7 +277,7 @@ function ps(args: string[]) {
   });
 }
 
-export async function processIdentityMatches(process: ActiveRepairProcess) {
+async function processIdentityMatches(process: ActiveRepairProcess) {
   try {
     const [startedAt, command] = await Promise.all([
       ps(["-o", "lstart=", "-p", String(process.pid)]),

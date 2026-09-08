@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the relay/manual/conversation fields and readonly selector types of the ledger-schema
- * [OUTPUT]: Provides target/conversation Increase indexing, compaction, aftercutting, pending conversation and local reading
- * [POS]: The memory acceleration unit of the coordinator/state; No canonical status, no IO execution
+ * [OUTPUT]: Provides LedgerIndices: target-chat/conversation indexing, rebuild, prune, pendingConversationIds, and a read-only selector over relay/manual records
+ * [POS]: In-memory acceleration layer for coordinator/state; holds no canonical state of its own and performs no IO
  */
 
 import type {

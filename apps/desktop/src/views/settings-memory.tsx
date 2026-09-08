@@ -20,9 +20,9 @@ import {
 import {
   blankMemoryConfigValues,
   MemoryRuntimeConfigDialog,
-  MemoryRuntimePanel,
   MemoryUninstallDialog,
-} from "@/components/settings/memory/memory-runtime-panel";
+} from "@/components/settings/memory/memory-runtime-dialogs";
+import { MemoryRuntimePanel } from "@/components/settings/memory/memory-runtime-panel";
 import { MemorySupplyList } from "@/components/settings/memory/memory-supply-list";
 import {
   SettingsCanvas,

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: No running dependence, only using type-sequence TypeScript
+ * [INPUT]: No runtime dependencies; only a type-only import of AppGrantRecord from apps-ipc
  * [OUTPUT]: Provides Project v8 lifecycle-fenced identity, workspace/App binding, positive-grant-gated App placements, hidden Base custody role, grants, archiving, sorting, appearance, native reveal, and Project/conversation-scoped Git contracts
  * [POS]: Shared Project wire truth; projectLifecycleRevision fences incarnation/deletion, reveal carries only Project ID, and appPlacements express navigation without granting App capability
  */
@@ -20,7 +20,7 @@ export type ProjectWorkspaceBinding =
  * ────────────────────────────────────────────────────────── */
 export type ProjectAppearance = { color: string; icon: string };
 
-export type ProjectAppPlacement = Readonly<{
+type ProjectAppPlacement = Readonly<{
   appId: string;
   pinnedAt: number;
 }>;
@@ -67,7 +67,7 @@ export type ProjectsSnapshot = {
   warning?: string;
 };
 
-export type GitBranchKind = "local" | "remote";
+type GitBranchKind = "local" | "remote";
 
 export type GitBranchRef = {
   name: string;

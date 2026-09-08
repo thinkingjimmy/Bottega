@@ -1,5 +1,5 @@
 /**
- * [INPUT]: dependence when not in operation; The first is the installation of five local directories
+ * [INPUT]: No runtime dependencies; defines five isomorphic locale objects for Settings › Browser
  * [OUTPUT]: Provides five languages for Settings › Browser text
  * [POS]: Browser feature catalog of shared/i18n/locales/settings; Chrome profile, domain name and underlying diagnostic source remain untranslated
  */

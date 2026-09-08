@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared Steer receipt/outbox Projection, RichValue, message queue pure state machine, and renderer locale/catalog runtime
- * [OUTPUT]: Provides Steer attach Deposit, derived manual custody, migration, receipt, collection, local assembly, back and transfer divergent migration
- * [POS]: Steer state boundary of runtime/message-queue; The journal distinguishes between previous local failure and uncertainty after trying IPC
+ * [OUTPUT]: Provides reconcileSteerIntents (replays outbox intents into queue state), failLocalSteerAssembly, markSteerTransportAmbiguous, and settleSteerReceipt for post-IPC outcomes
+ * [POS]: Steer state boundary of runtime/message-queue; distinguishes a known local failure from genuine delivery uncertainty after an IPC attempt
  */
 
 import type { RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";

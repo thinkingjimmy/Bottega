@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/product-failure ProductFailureError/agentRuntimeFailure/diagnosticFailureDetails and the registry BackendRuntimeSnapshot shape
- * [OUTPUT]: Provides assertInstalledRuntime and runtimeUnavailableFailure, the single pre-launch gate that turns a non-installed snapshot into a structured runtime-unavailable ProductFailureError
+ * [OUTPUT]: Applies shared runtime, persistent authentication and scoped quota decisions; only a matching main-owned retry receipt can bypass its bound authentication denial.
  * [POS]: agent/ pre-launch admission helper shared by startAgentPayload and spawnAgent; Coordinator IPC forwards only ProductFailureError as a coded rejection, so this gate never throws a bare Error
  */
 
@@ -9,13 +9,16 @@ import {
   agentRuntimeFailure,
   diagnosticFailureDetails,
 } from "../../../shared/product-failure";
+import { submissionDecision } from "../../../shared/agent-availability/projection";
+import type { ExecutionTarget } from "../../../shared/agent-availability/types";
+import { backendRuntimeRegistry } from "../backends";
 import type { BackendRuntimeSnapshot } from "../backends/runtime-registry";
 
 /* PresentSnapshot 的 runtimeStatus 是 "unsupported" | "installed" 联合，Extract 会得到
    never；交叉类型才把它窄成可读 runtime/capabilities 的 installed 快照。 */
 type InstalledSnapshot = BackendRuntimeSnapshot & { runtimeStatus: "installed" };
 
-export function runtimeUnavailableFailure(displayName: string, reason?: string) {
+function runtimeUnavailableFailure(displayName: string, reason?: string) {
   return new ProductFailureError(
     agentRuntimeFailure(
       "runtime-unavailable",
@@ -38,4 +41,24 @@ export function assertInstalledRuntime(
   if (snapshot.runtimeStatus !== "installed") {
     throw runtimeUnavailableFailure(displayName, snapshot.reason);
   }
+}
+
+export function assertAgentAvailable(
+  snapshot: BackendRuntimeSnapshot,
+  displayName: string,
+  operation?: { conversationId: string; requestId: string; target: ExecutionTarget }
+): asserts snapshot is InstalledSnapshot {
+  assertInstalledRuntime(snapshot, displayName);
+  const decision = submissionDecision(snapshot, Date.now(), operation ? {
+    target: operation.target, conversationId: operation.conversationId,
+    recent: backendRuntimeRegistry.evidence.recent(operation.target.backend, operation.conversationId),
+  } : undefined);
+  if (decision.decision === "allow") return;
+  if (decision.reason === "auth-required" && operation && backendRuntimeRegistry.evidence.permitsRetry(
+    operation.conversationId, operation.requestId, operation.target
+  )) return;
+  throw new ProductFailureError(agentRuntimeFailure(
+    decision.reason === "auth-required" ? "auth-required" : decision.reason === "usage-limit" ? "rate-limited" : "runtime-unavailable",
+    diagnosticFailureDetails(`${displayName}: ${decision.reason}`)
+  ));
 }

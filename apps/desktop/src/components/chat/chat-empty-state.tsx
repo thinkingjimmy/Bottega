@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on i18n, product single graphics for lib/brand, composer controller Project projection and ChatProject Menu
- * [OUTPUT]: Provides ChatEmptyState: Product Logo + the guides in the upper and lower levels, and the name of the Project in the guides can be changed locally
- * [POS]: Chat's empty chat screen, which is interspersed with ChatTranscript, occupies the same vertical slot; App dashboard with title/description
+ * [INPUT]: Depends on i18n, the product wordmark from lib/brand, composer controller Project projection, and ChatProjectMenu
+ * [OUTPUT]: Provides ChatEmptyState: product wordmark plus a title/description prompt, with an inline Project-name control when a Project is selected
+ * [POS]: Chat's empty-state screen, occupying the same vertical slot as ChatTranscript; title/description let App panels supply their own copy
  */
 
 import { useAppTranslation } from "@/components/providers/i18n-provider";

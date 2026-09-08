@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, Radix Slot, class-variance-authority, lucide-react, sharing context on UI text, mobile/sharing horizontal scaling hooks and native languages such as button/input/sheet/tooltip
- * [OUTPUT]: Provides SidebarProvider (built-in Cmd/Ctrl+B listener, opt-out via keyboardShortcut={false} for hosts with a central dispatcher), containers, groupings, menus, submenus, Rail and the corresponding action/badge/skeleton
+ * [INPUT]: Depends on React, Radix Slot, class-variance-authority, lucide-react, host-injected UI text, the mobile/horizontal-resize hooks, and the button/sheet/tooltip primitives
+ * [OUTPUT]: Provides SidebarProvider (built-in Cmd/Ctrl+B listener, opt-out via keyboardShortcut={false} for hosts with a central dispatcher), containers, groupings, menus, submenus, Rail and the corresponding action/badge
  * [POS]: The basic layer of shared side-by-side packages/ui provides only structure, status and default vision, with business layout and navigation terminology covered by consumers
  */
 
@@ -13,8 +13,6 @@ import { useHorizontalResize } from "@ai-chat/ui/hooks/use-horizontal-resize"
 import { cn } from "@ai-chat/ui/lib/utils"
 import { useUiText } from "@ai-chat/ui/lib/ui-text"
 import { Button } from "@ai-chat/ui/components/ui/button"
-import { Input } from "@ai-chat/ui/components/ui/input"
-import { Separator } from "@ai-chat/ui/components/ui/separator"
 import {
   Sheet,
   SheetContent,
@@ -22,7 +20,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@ai-chat/ui/components/ui/sheet"
-import { Skeleton } from "@ai-chat/ui/components/ui/skeleton"
 import {
   Tooltip,
   TooltipContent,
@@ -398,23 +395,6 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   )
 }
 
-function SidebarInput({
-  className,
-  ...props
-}: React.ComponentProps<typeof Input>) {
-  return (
-    <Input
-      data-slot="sidebar-input"
-      data-sidebar="input"
-      className={cn(
-        "h-8 w-full border-input bg-muted/20 dark:bg-muted/30",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
 function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -432,20 +412,6 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="sidebar-footer"
       data-sidebar="footer"
       className={cn("flex flex-col gap-2 p-2", className)}
-      {...props}
-    />
-  )
-}
-
-function SidebarSeparator({
-  className,
-  ...props
-}: React.ComponentProps<typeof Separator>) {
-  return (
-    <Separator
-      data-slot="sidebar-separator"
-      data-sidebar="separator"
-      className={cn("mx-2 w-auto bg-sidebar-border", className)}
       {...props}
     />
   )
@@ -675,44 +641,6 @@ function SidebarMenuBadge({
   )
 }
 
-function SidebarMenuSkeleton({
-  className,
-  showIcon = false,
-  ...props
-}: React.ComponentProps<"div"> & {
-  showIcon?: boolean
-}) {
-  // Random width between 50 to 90%.
-  const [width] = React.useState(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
-  })
-
-  return (
-    <div
-      data-slot="sidebar-menu-skeleton"
-      data-sidebar="menu-skeleton"
-      className={cn("flex h-8 items-center gap-2 rounded-md px-2", className)}
-      {...props}
-    >
-      {showIcon && (
-        <Skeleton
-          className="size-4 rounded-md"
-          data-sidebar="menu-skeleton-icon"
-        />
-      )}
-      <Skeleton
-        className="h-4 max-w-(--skeleton-width) flex-1"
-        data-sidebar="menu-skeleton-text"
-        style={
-          {
-            "--skeleton-width": width,
-          } as React.CSSProperties
-        }
-      />
-    </div>
-  )
-}
-
 function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
@@ -778,20 +706,17 @@ export {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarInput,
   SidebarInset,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSkeleton,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarProvider,
   SidebarRail,
-  SidebarSeparator,
   SidebarTrigger,
   useSidebar,
 }

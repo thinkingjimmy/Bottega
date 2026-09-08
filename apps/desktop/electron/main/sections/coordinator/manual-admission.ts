@@ -1,9 +1,13 @@
 /**
- * [INPUT]: Depends on shared manual submission, Coordinator, narrow runtime ports, durable ledger, canonical Chat Agent and PreparedManualTurn staging
- * [OUTPUT]: Provides exact replay of the shortcut, the shortcut, the backend fence, the full lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale lifecycle gate, the full-scale life-cycle gate, the full-scale life-cycle gate, the full-scale life-scale life-scale life-scale life-space, the full-scale life-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-space-sInline runNext only consumes explicitly held fact
- * [POS]: The coordinator for human resources access; The main arbitrator only provides conversation/project gate and scheduling feedback
+ * [INPUT]: Depends on shared submissions, canonical Chat Agent fences, lifecycle locks, durable reservations, and prepared staging
+ * [OUTPUT]: Admits exact replay or lock-validated manual turns, checks scoped availability before and after preparation, and resolves switch receipts before one-shot staging while preserving unknown custody
+ * [POS]: Manual-turn admission entry point for sections/coordinator; ConversationCoordinator supplies only the conversation/project gate and scheduling callbacks
  */
 
+import { assertSwitchSource, switchEligibility } from "./agent-switch/eligibility";
+import { freezeManualContext } from "./agent-switch/context";
+import { freezeSwitch } from "./agent-switch/prepare";
+import { isChatMutationOutcomeUnknown } from "../../chats/store/mutation-outcome";
 import type {
   UserChatMessage,
 } from "../../../../shared/chats-ipc";
@@ -12,7 +16,7 @@ import type {
   ManualTurnReceipt,
   TrustedManualTurnSubmission as ManualTurnSubmission,
 } from "../../../../shared/sections-ipc";
-import { prepareTextOnlyManualTurn } from "./admission/prepared-manual-turn";
+import { prepareTextOnlyManualTurn } from "./admission/prepared-manual-text";
 import {
   allocateManualSequences,
   assertManualPrecondition,
@@ -52,7 +56,7 @@ type ManualAdmissionRuntime = {
   ): Promise<boolean>;
   kick(conversationId: string): void;
   recovering: boolean;
-  /** 调用方已持有 canonical Project lifecycle gate；仅 save saga 内部路径可置真。 */
+  /** Internal lifecycle sagas and live recovery may already hold the Workspace gate. */
   projectLifecycleHeld: boolean;
   /** S3(lifecycle spike):落 durable intent 但不派发——queued 恒真且不 kick;
    * 与 recovering 不同,失败路径仍正常 release reservation。 */
@@ -84,6 +88,7 @@ export async function submitManualAdmission(
     runtime
   );
   if (accepted) return accepted;
+  await assertSwitchSource(submission, dependencies);
   await assertManualBackend(submission, dependencies.chats);
   const projectId = await manualLifecycleProjectId(
     submission,
@@ -122,6 +127,15 @@ export async function submitManualAdmission(
         getProjectWorkspaceSnapshot:
           dependencies.getProjectWorkspaceSnapshot,
       });
+      await assertSwitchSource(submission, dependencies);
+      await assertManualBackend(submission, dependencies.chats);
+      if (submission.agentSwitch) {
+        const eligibility = switchEligibility(dependencies, conversationId, {
+          ownIntentId: submission.intentId, recovering: runtime.deferKick && !runtime.recovering,
+          running: runtime.isRunning(conversationId),
+        });
+        if (!eligibility.eligible) throw new Error(`AGENT_SWITCH_BLOCKED:${eligibility.reason}`);
+      }
       const revision =
         submission.persistence.kind === "append" &&
         submission.persistence.input.revise !== undefined;
@@ -135,6 +149,12 @@ export async function submitManualAdmission(
       ) {
         throw new Error(REVISION_NOT_IDLE);
       }
+      if (submission.authenticationRetry && (runtime.recovering || runtime.deferKick ||
+        runtime.isRunning(conversationId) || dependencies.hasActivity([conversationId]) ||
+        nextDeliverable(dependencies.ledger, conversationId) !== null)) {
+        throw new Error("Authentication retry requires an idle conversation");
+      }
+      await dependencies.assertManualAvailability?.(submission);
       await dependencies.ledger.reserveSubmission({
         submission,
         submissionHash,
@@ -158,10 +178,14 @@ export async function submitManualAdmission(
         await dependencies.chats.beginCreation(submission);
       }
       let lease;
-      let sequence: { userSeq: number; assistantSeq: number };
+      let sequence: { noticeSeq?: number; userSeq: number; assistantSeq: number };
       let intent;
       let preparedCustody = false;
       try {
+        // Resolve the idempotent switch receipt before acquiring one-shot file and Skill custody.
+        const switchSequence = submission.agentSwitch
+          ? await allocateManualSequences(dependencies.chats, submission)
+          : undefined;
         lease = dependencies.prepareManual
           ? await dependencies.prepareManual(submission)
           : {
@@ -169,20 +193,22 @@ export async function submitManualAdmission(
               commit() {},
               async rollback() {},
             };
+        await dependencies.assertManualAvailability?.(submission);
         if (createsConversation) {
           await dependencies.chats.markCreationPrepared(submission);
         }
-        sequence = await allocateManualSequences(
+        sequence = switchSequence ?? await allocateManualSequences(
           dependencies.chats,
           submission
         );
         const candidate = {
           id: submission.intentId,
           conversationId,
-          payload: lease.prepared,
+          payload: freezeSwitch(await freezeManualContext(lease.prepared, dependencies, sequence), dependencies, submissionHash, sequence),
           submissionHash,
           requestId: submission.turn.requestId,
           userMessage,
+          noticeSeq: sequence.noticeSeq,
           userSeq: sequence.userSeq,
           assistantSeq: sequence.assistantSeq,
           createdAt: userMessage.createdAt,
@@ -196,7 +222,7 @@ export async function submitManualAdmission(
         );
         if (!intent) throw new Error("Submission reservation 提升失败");
       } catch (cause) {
-        if (!preparedCustody) {
+        if (!preparedCustody && !isChatMutationOutcomeUnknown(cause)) {
           await lease?.rollback();
           if (!runtime.recovering) {
             await dependencies.ledger.releaseSubmissionReservation(
@@ -204,12 +230,13 @@ export async function submitManualAdmission(
             );
           }
         }
-        if (createsConversation && !preparedCustody) {
+        if (isChatMutationOutcomeUnknown(cause)) lease?.commit();
+        if (createsConversation && !preparedCustody && !isChatMutationOutcomeUnknown(cause)) {
           await dependencies.chats.rollbackCreation(submission);
         }
         throw cause;
       }
-      const queued =
+      let queued =
         runtime.recovering ||
         runtime.deferKick ||
         nextDeliverable(dependencies.ledger, conversationId)?.id !==
@@ -221,6 +248,7 @@ export async function submitManualAdmission(
       } else {
         runtime.markRunning(conversationId);
         const progressed = await runtime.runNext(conversationId, true);
+        queued = !progressed;
         runtime.releaseRunningIfIdle(conversationId);
         if (
           progressed &&
@@ -243,7 +271,7 @@ export async function submitManualAdmission(
       ? dependencies.withWorkspaceLifecycle(run)
       : run());
   } catch (cause) {
-    if (!runtime.recovering) {
+    if (!runtime.recovering && !isChatMutationOutcomeUnknown(cause)) {
       await dependencies.ledger.releaseRawSubmissionReservation(
         submission.intentId
       );
@@ -265,6 +293,10 @@ async function assertManualBackend(
   }
   const record = chats.store.getMetadata(submission.persistence.input.chatId);
   if (!record) throw new Error("人工 turn 的目标聊天不存在");
+  if (submission.agentSwitch) return;
+  if (submission.expectedAgentRevision !== undefined && record.agentRevision !== submission.expectedAgentRevision) {
+    throw new Error("AGENT_REVISION_STALE");
+  }
   if (record.agent !== backend) {
     throw new Error("人工 turn backend 与 canonical Chat Agent 不一致");
   }

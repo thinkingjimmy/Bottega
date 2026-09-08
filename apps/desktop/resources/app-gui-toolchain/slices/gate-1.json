@@ -4,8 +4,18 @@
   "files": [
     {
       "path": "electron/main/app-gui-compiler-entry.ts",
-      "bytes": 7595,
-      "sha256": "sha256:e78fb24c08c2898e251d38701783c966f6f39dd53ec9b791a7d69dab7ab02637"
+      "bytes": 7757,
+      "sha256": "sha256:ced8cc5bdf2d831bc0bd4a69e1a4675446f971826d8abca8ecf68e049f35c092"
+    },
+    {
+      "path": "electron/main/apps/execution/schema.ts",
+      "bytes": 2382,
+      "sha256": "sha256:08d1aa52c6f02340135a9194c67dd7d6f8bb29d034f45181fbe02c64568a8e6d"
+    },
+    {
+      "path": "electron/main/apps/execution/source-file.ts",
+      "bytes": 2048,
+      "sha256": "sha256:7ecd1e4801af2c299c8c86b089f79da939e2d1301d34e731f67e54da230f214f"
     },
     {
       "path": "electron/main/apps/gui-build/admission.ts",
@@ -13,19 +23,59 @@
       "sha256": "sha256:72921f05efaac2bc63a3f3aac6c4ea2d7d63636fb1678cda73961e78f1a064d4"
     },
     {
+      "path": "electron/main/apps/gui-build/composition.ts",
+      "bytes": 8477,
+      "sha256": "sha256:caa21d225a53b3b17e322c075e8c24191f2b672ab6a4552ee5b9cf353eac6431"
+    },
+    {
       "path": "electron/main/apps/gui-build/contracts.ts",
-      "bytes": 3125,
-      "sha256": "sha256:041f5c8b00d85b0aea49e86e22583dac476661e692fda970bce488603f81ff62"
+      "bytes": 3342,
+      "sha256": "sha256:424b8a123f08153393df02e0824ecbbe0c09349077fee012391985a8133ce1b0"
     },
     {
       "path": "electron/main/apps/gui-build/metadata.ts",
-      "bytes": 8100,
-      "sha256": "sha256:92c53b54e8223abfe202386f356f302c5bf5775f7c601c6111886e7d3bc60fcc"
+      "bytes": 7438,
+      "sha256": "sha256:b91a538c67b88c21b6b6f360794ae309b35d04c2817677e0a530a2d8bcf328ca"
+    },
+    {
+      "path": "electron/main/apps/gui-build/native/linux/exec-policy.ts",
+      "bytes": 1559,
+      "sha256": "sha256:1f36e60167671eccaf343bda08174bdd089921c15c86dffbb0bf432f1a68b6c4"
+    },
+    {
+      "path": "electron/main/apps/gui-build/native/linux/launch.ts",
+      "bytes": 1728,
+      "sha256": "sha256:121063645204c7c329bb9fb3749dbc507fa86b0f48c7e30b69bc08933cc7ee6f"
+    },
+    {
+      "path": "electron/main/apps/gui-build/native/linux/lease.ts",
+      "bytes": 3112,
+      "sha256": "sha256:0aa37ac8830365cfb38a43fcbf6b863e393cadf831dfb2577fe66287e8788594"
+    },
+    {
+      "path": "electron/main/apps/gui-build/native/linux/locator.ts",
+      "bytes": 7062,
+      "sha256": "sha256:bfc0fc29058d814b00b2fcda1b3fdd15b797754f24ef51e0ce547d99ecefbc1f"
+    },
+    {
+      "path": "electron/main/apps/gui-build/native/linux/profile.ts",
+      "bytes": 1061,
+      "sha256": "sha256:9c926dededafeb617770583daab06033fc265bac0a117280b476c4ff66d5a582"
+    },
+    {
+      "path": "electron/main/apps/gui-build/native/linux/trust.ts",
+      "bytes": 6083,
+      "sha256": "sha256:8d7965a30e229ebdf7270754c3e4f69b299cc047a08fa044f78d845ee26931d5"
+    },
+    {
+      "path": "electron/main/apps/gui-build/native/probe-control.ts",
+      "bytes": 1291,
+      "sha256": "sha256:1e89135726d77a785929bc7d1fbfb096166e5da3b9810e1ce2169cc5999f9760"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/compiler.ts",
-      "bytes": 29196,
-      "sha256": "sha256:26de959f0c6769e134c3451cd44bde2d412e50e706c7e33a12355334a252804c"
+      "bytes": 29245,
+      "sha256": "sha256:31050c9fb33f73a65a5c2cdacb48390262f3aa65cf70953dd0e60b5ed3719691"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/dynamic-code-policy.ts",
@@ -34,33 +84,33 @@
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/portable.ts",
-      "bytes": 8966,
-      "sha256": "sha256:37574a2ca9b1828df65315a1da20db81d6ac4c39ecc078e58dad428913dc8128"
+      "bytes": 8913,
+      "sha256": "sha256:0556a04e33e4447c5fb8a091a417a42b4a48ad5febf0c042dd830fe11c75a7a7"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/receipt-metadata.ts",
-      "bytes": 3551,
-      "sha256": "sha256:e23db3a1ec6d0d8586a35af252cc55c686fc19882492d5fbfeacc01fffbb290a"
+      "bytes": 3553,
+      "sha256": "sha256:1ff3c10c7db5769e6ae2c6e4891053c4515388faa6fedf54508ca7f9660dbfc3"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/sandbox.ts",
-      "bytes": 31467,
-      "sha256": "sha256:81a6deed89df457971d8e756e6f79eda012193a04682acb47a8ad62fbe5ab1ec"
+      "bytes": 34920,
+      "sha256": "sha256:5a556d8ac1d3f35e4c7a36f96e41a645991aa2d619142f7f59b00f103f5b8d48"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/seal.ts",
-      "bytes": 12327,
-      "sha256": "sha256:255a80be70488bdb879a6f492123b016b2aa7cd75ca3a5d6fe47e3e58d0a31e3"
+      "bytes": 12077,
+      "sha256": "sha256:b43b1ba889295dd894c003a07350d2b2a470590999c4f0c26bbcf21b6d19db0e"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/source-preparer.ts",
-      "bytes": 9646,
-      "sha256": "sha256:b9ba8cb74c417d92fd33ece17849cb95b714310739dee977dfe56ed2dc64a564"
+      "bytes": 9356,
+      "sha256": "sha256:bb8bed14db5891c2d38e7ba4cb1d67c8100d730b5021863d0d36b70a77d3b397"
     },
     {
       "path": "electron/main/apps/gui-build/pipeline/source-validator.ts",
-      "bytes": 16766,
-      "sha256": "sha256:7eaf2ac5de2c34cc2c28c3e34c547f04db4570c008378627bd897f6ed35a0794"
+      "bytes": 16798,
+      "sha256": "sha256:a3b79de7c42a7af5cd52912f2947c639b133fabf7b6baf75725281664deb777a"
     },
     {
       "path": "electron/main/apps/gui-build/product-modules/app-react.ts",
@@ -84,8 +134,8 @@
     },
     {
       "path": "electron/main/apps/gui-build/scaffold/component-scaffolder.ts",
-      "bytes": 10593,
-      "sha256": "sha256:d774fee80cad2bcd35545a6cba711ef1a8088b3ad2b5ab817ca40aa8f2bb1159"
+      "bytes": 10595,
+      "sha256": "sha256:37c65e5141958338e9d1a1f564f59a807fa8ba157dc9849fb6bddc8da0e26a4d"
     },
     {
       "path": "electron/main/apps/gui-build/scaffold/contracts.ts",
@@ -94,18 +144,33 @@
     },
     {
       "path": "electron/main/apps/gui-build/service.ts",
-      "bytes": 8693,
-      "sha256": "sha256:2ae390ac2ad9b9ee69201e839afd64eda2d85b211339494024e91bad31187697"
+      "bytes": 8740,
+      "sha256": "sha256:f03441a4aee51f7ac47b89b97ee42c75a78dc54aa8f6641bf61aeba5b7e3119d"
     },
     {
       "path": "electron/main/apps/gui-build/source-analysis.ts",
-      "bytes": 3542,
-      "sha256": "sha256:821757cfd0d881cc2e19989b78b7d394e4470570da50d91d0f12969cb082bad6"
+      "bytes": 3535,
+      "sha256": "sha256:39746d03135ac8ce5ce28d469add98eb15864fb1b2a8d905c830058841055d3d"
     },
     {
       "path": "electron/main/apps/gui-build/source-imports.ts",
-      "bytes": 1348,
-      "sha256": "sha256:e0a3d0117e0368ec6bc8f3fa3cbc9ad6aa8002299ab77aa3cb84f7d496a4a1a8"
+      "bytes": 1334,
+      "sha256": "sha256:3581a1671039c9fe0eae2b9e0507e0c269a53f59bf5c3013eb6a712f06e5ffc9"
+    },
+    {
+      "path": "electron/main/apps/gui-build/transport/request.ts",
+      "bytes": 3632,
+      "sha256": "sha256:dae2fe1f592f8338c5085949bf293b7d69445580bb6e47a98fcf6e94b2cfc173"
+    },
+    {
+      "path": "electron/main/apps/gui-build/transport/windows-policy.ts",
+      "bytes": 6430,
+      "sha256": "sha256:00bc5cb9fff539d493d31022661fc77248624cbd63e48e4d6fd089f6e3af7f0b"
+    },
+    {
+      "path": "electron/main/apps/gui-build/transport/windows-supervisor.ts",
+      "bytes": 4018,
+      "sha256": "sha256:3723df4ee1b51a1c67359a8204ea34a1cd113c1a0f1da770abf146e26a4cb8ac"
     },
     {
       "path": "electron/main/apps/gui-cutover/cohort.ts",
@@ -133,6 +198,61 @@
       "sha256": "sha256:1880a8e16242c733f6cf7d898f25d721caa64df8f0639303e77054c9d6c7265f"
     },
     {
+      "path": "electron/main/apps/install/manifest-schema.ts",
+      "bytes": 17360,
+      "sha256": "sha256:325d2a3e80ebfae55dbc9ac3f16b4b0e71c1996f96d7d56e229c3626a4f9a70d"
+    },
+    {
+      "path": "electron/main/apps/share/package/command-sources.ts",
+      "bytes": 1857,
+      "sha256": "sha256:da25acd4b1d08f961bfe111dde2b247c43e6bd3f2abd10d50c58ca65ae6ed383"
+    },
+    {
+      "path": "electron/main/apps/share/package/package-contract.ts",
+      "bytes": 23901,
+      "sha256": "sha256:d30f45f557c5b6da9fc678f1f0db13693ad213f4ad2bc77099f5a435186d4040"
+    },
+    {
+      "path": "resources/app-gui-toolchain/native/linux-x64/NOTICE.txt",
+      "bytes": 3388,
+      "sha256": "sha256:229a402fddba5c81005950f28de162359383cba731f5b859b8f82a03c338bf01"
+    },
+    {
+      "path": "resources/app-gui-toolchain/native/linux-x64/bwrap",
+      "bytes": 72160,
+      "sha256": "sha256:52231e1caf55bcbc667b269f49c63599a6f7db4767ae6a039580d0ff853db712"
+    },
+    {
+      "path": "resources/app-gui-toolchain/native/linux-x64/bwrap.apparmor",
+      "bytes": 311,
+      "sha256": "sha256:b0b487a962997c7c6fc9d46e5e38c5521c068fea517f311926b0ec644d74010f"
+    },
+    {
+      "path": "resources/app-gui-toolchain/native/linux-x64/exec-policy",
+      "bytes": 4192,
+      "sha256": "sha256:1add6a1478e6dde3f3bbf28d4ab0fc5bc2fedbff6cfa1a5e85cf13b80d18294f"
+    },
+    {
+      "path": "resources/app-gui-toolchain/native/linux-x64/exec-policy-build.json",
+      "bytes": 943,
+      "sha256": "sha256:9a1391ef7f2d6b5f2a117b514ec815d3ba66340e12f1f92513c55fcf48a2a05f"
+    },
+    {
+      "path": "resources/app-gui-toolchain/native/linux-x64/install.py",
+      "bytes": 11252,
+      "sha256": "sha256:5255e3c3fc2b0ba7d3d72142c78965f4ce9088e18efa995675b373c10a1422c7"
+    },
+    {
+      "path": "resources/app-gui-toolchain/native/linux-x64/src/exec-policy.c",
+      "bytes": 9432,
+      "sha256": "sha256:83b8d7be70f9d06b512583962fc067577935aad4a92b154918eecceeed202acb"
+    },
+    {
+      "path": "resources/app-gui-toolchain/native/linux-x64/trust-manifest.json",
+      "bytes": 1277,
+      "sha256": "sha256:0bf478830927f663934eaac7900d357a667716e9024c556d148c32ad6eee79a1"
+    },
+    {
       "path": "shared/app-gui/contracts.ts",
       "bytes": 8855,
       "sha256": "sha256:1660e111b631c961eedc69c387300bf45bd5e2fc141497050fc896e364047aee"
@@ -144,8 +264,13 @@
     },
     {
       "path": "shared/app-gui/support.ts",
-      "bytes": 4672,
-      "sha256": "sha256:47c9c3d8af63a5af62cb2abe2e60f20a1aa163c2ee680570eb68bce2d57c4fed"
+      "bytes": 4715,
+      "sha256": "sha256:0e73fac31639147ccae8ecfa24cedf14d80a8f66c6d6931299dbf2b188d96839"
+    },
+    {
+      "path": "shared/apps-execution.ts",
+      "bytes": 1026,
+      "sha256": "sha256:fd93d05f1b44db53d4cb6ef8f9fa494fbbc81210b0de9a8b7b86287db686b3c4"
     }
   ],
   "runtimeSbomDigest": "sha256:65867776670c12b25af282c79cc4b738d08a3a5b859aee62d5bf2a2414fb6859",

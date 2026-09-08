@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Policy Consent purpose, core capability fence, current Settings/target/provider, control of snapshot and capture proof
- * [OUTPUT]: Provides runtime destination→Consent convergence, valid Consent destination reading, and simultaneously testing the live/rebuild capability fence of the shared mode/generation/Space/peer
- * [POS]: The main/memory/orchestration is licensed to the fence and the final fence; MemoryService retains the facade and no longer focuses on configuring Consent and verification details
+ * [INPUT]: Depends on Policy consent snapshot, core capability fence, active Settings/target/provider state, and a frozen turn context with optional TrustedProviderProof
+ * [OUTPUT]: Provides reconcileRuntimeDestination (drives runtime toward the active consent's target), effectiveConsentDestination, and validateFrozenAuthority/validateCurrentContext for live and rebuild capture
+ * [POS]: The main/memory/orchestration authority gate; MemoryService only calls through this façade instead of re-deriving consent and capability-fence checks itself
  */
 
 import { randomUUID } from "node:crypto";

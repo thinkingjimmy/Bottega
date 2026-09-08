@@ -36,7 +36,7 @@ Authenticate with the CLI provider before starting Bottega. Bottega never asks f
 
 Every release publishes installers for three platforms on the [Releases page](https://github.com/thinkingjimmy/Bottega/releases).
 
-If you are upgrading from 0.1.0 or 0.1.1, download and install [0.1.2](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.2) manually once. The older installed versions contain an updater bug; the fix takes effect after the new binary is installed. Windows continues to use manual installer downloads.
+If you are upgrading from 0.1.0 or 0.1.1, download and install [0.1.3](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.3) manually once. The older installed versions contain an updater bug; the fix takes effect after the new binary is installed. Windows continues to use manual installer downloads.
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
@@ -57,6 +57,25 @@ The right-click **Open** and **Open Anyway** shortcuts do not apply to this buil
 **Windows.** SmartScreen may show a "Windows protected your PC" warning for an unrecognized publisher. Choose **More info**, then **Run anyway**.
 
 Signed and notarized builds are planned; until then, verify the download against the SHA256 sums printed in the release build log if you need that assurance.
+
+## Upgrading to 0.1.3
+
+0.1.3 does not migrate the local storage formats used by earlier releases. An existing chat database causes startup to stop with a schema error; reinstalling the application does not change that database.
+
+1. Quit Bottega completely, including any background process, and back up the complete application data folder. Keep external Chat Homes and Project folders as well.
+2. To start fresh in 0.1.3, move the application data folder to a backup location instead of deleting it. On macOS, after quitting, run:
+
+```bash
+bottega_data="$HOME/Library/Application Support/Bottega"
+bottega_backup="${bottega_data}.backup-$(date +%Y%m%d-%H%M%S)"
+mv -n "$bottega_data" "$bottega_backup"
+```
+
+3. Install and launch 0.1.3, then complete onboarding again. Previous Bottega chats, settings, and installed App records are not imported automatically. External Project files and official CLI credentials remain where they were.
+
+The installed application data folder is `~/Library/Application Support/Bottega` on macOS, `%APPDATA%\Bottega` on Windows, and `$XDG_CONFIG_HOME/Bottega` on Linux (normally `~/.config/Bottega`). Move the whole folder, including database sidecars and related records; moving only `bottega.sqlite3` leaves inconsistent state. Development builds use a separate `@ai-chat/desktop` data directory.
+
+Keep the backup untouched if you need access through the older application. To restore it, quit 0.1.3, separately archive its new data folder, and restore the original folder before opening the matching older version.
 
 ## Build from source
 

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on native destination selection, durable exact-path intents, Node file/hash custody, node:util's TextDecoder, active surface binding, and side-effect lifecycle ports
+ * [INPUT]: Depends on native destination selection, durable exact-path intents, Node file/hash custody, node:util's TextDecoder, active surface binding, and side-effect lifecycle ports, and statusError from main/errors
  * [OUTPUT]: Provides begin/write/finalize/cancel/surface-close/crash-recovery for file.export V1 with atomic dialog-slot admission, one-unacknowledged-chunk backpressure, streaming content validation, and 20 MiB integrity limits
  * [POS]: file-export Host authority; App runtimes never receive destination paths or reusable file handles
  */
@@ -20,6 +20,7 @@ import {
   type CompleteFileExportResultV1,
   type WriteFileExportChunkHeaderV1,
 } from "../../../../shared/app-gui/file-export";
+import { statusError } from "../../errors";
 import type { GuiSideEffectPermit } from "../gui-cutover/side-effects";
 import { FileExportIntentStore, isFileExportBusy } from "./intent-store";
 
@@ -475,5 +476,5 @@ function exportFailureCode(cause: unknown): "integrity" | "timeout" | "io" | "su
 }
 
 function exportError(code: string) {
-  return Object.assign(new Error(code), { code, status: 400 });
+  return statusError(400, code, { code });
 }

@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on service/composition for the assembled collaborator graph, plus the shared lifecycle mutation lane, Design/extension/navigation integrations, and the service IPC registrar
- * [OUTPUT]: Provides authority-gated AppsService startup, source-fenced Edit turns, Use/Edit navigation, compiled GUI cohort cutover, signed-update compatibility, Studio authorization, file export, renderer cleanup, convergent deletion, Design integration, and one durable status forwarder
+ * [INPUT]: Depends on service/composition for the assembled collaborator graph, plus the shared lifecycle mutation lane, Design/extension/navigation integrations, and the service IPC registrar, and statusError from main/errors
+ * [OUTPUT]: Owns App service lifecycle and exposes explicit tool inspection separately from passive capability reads.
  * [POS]: The composition root of the apps module; it owns lifecycle, authority, and the late-bound collaborators while service/composition.ts assembles the object graph
  */
 
+import { APPS_CHANNEL } from "../../../shared/apps-ipc";
 import { join } from "node:path";
 import type { BrowserWindow } from "electron";
 import type { AgentBackendId } from "../../../shared/agent-ipc";
@@ -22,6 +23,7 @@ import type { BaseToolsAvailability } from "../../../shared/builtin-tools";
 import type { ExtensionTurnIdentity } from "../../../shared/extensions-ipc";
 import type { TurnProjectContext } from "../../../shared/product-resource-scope";
 import type { AppLocale } from "../../../shared/i18n/locale";
+import { statusError } from "../errors";
 import type { TrustedRendererContext } from "../window/surfaces/trusted-renderer-context";
 import type { AppExtensionIntegration } from "../extensions/integration/app-extension-composition";
 import type { AppGenerationBuildParticipantRegistry } from "../lifecycle/app-generation-build-participants";
@@ -116,6 +118,7 @@ export class AppsService {
   get attachments() {
     return this.attachmentFence;
   }
+  get compatibilityRequests() { return this.parts.packages.compatibility; }
   get configs() {
     return this.parts.packages.configs;
   }
@@ -191,6 +194,10 @@ export class AppsService {
   }
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
+    const stopCompatibility = this.compatibilityRequests.onChanged(() => {
+      if (!window.isDestroyed()) window.webContents.send(APPS_CHANNEL.compatibilityChanged);
+    });
+    window.once("closed", stopCompatibility);
     registerAppsIpc(window, rendererUrl, {
       store: this.store,
       runtime: this.parts.runtime,
@@ -206,6 +213,7 @@ export class AppsService {
       requireRecord: (appId) => this.requireRecord(appId),
       stop: (appId) => this.parts.stopApp(appId),
       extensionStatus: (appId) => this.extensionStatus(appId),
+      checkAgentTools: async (appId) => { await this.parts.runtime.inspectToolInventory(appId); },
       capabilities: (appId) => this.capabilities(appId),
       authorizeStudioAccess: (appId) =>
         this.runAppLifecycleMutation(appId, () => this.authorizeStudioAccess(appId)),
@@ -331,9 +339,9 @@ export class AppsService {
     this.buildParticipants = participants;
     this.thirdPartyMcpPlans.configure({
       acquireMany: (refs, owner) =>
-        integration.registry.acquireGenerationRefs(refs, owner),
+        integration.registry.lifecycle.acquireGenerationRefs(refs, owner),
       releaseMany: (refs, owner) =>
-        integration.registry.releaseGenerationRefs(refs, owner),
+        integration.registry.lifecycle.releaseGenerationRefs(refs, owner),
     });
     this.store.configureExtensionComposition(participants, integration.port);
     this.parts.packages.configureExtensions(integration);
@@ -434,9 +442,7 @@ export class AppsService {
       input.appSurfaceLeaseId
     );
     if (surface.appId !== input.appId) {
-      throw Object.assign(new Error("App GUI surface lease 与 App 不匹配"), {
-        status: 401,
-      });
+      throw statusError(401, "App GUI surface lease 与 App 不匹配");
     }
     return this.parts.guiRuntime.info(input, () => this.parts.dataMigrations.reconcile(input.appId), renderer);
   }

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on General ACP Failure Classification with OpenCode
- * [OUTPUT]: Provides opencodeClassifyFailure
- * [POS]: The following is a list of the most common types of backends/opencode failures: Only the original product diagnosis, no product reference text is generated
+ * [OUTPUT]: Classifies OpenCode structured failures and preserves providerId for frozen-target outcome attribution.
+ * [POS]: backends/opencode's failure classifier; emits only raw diagnostic classification, never user-facing product copy
  */
 
 import { classifyAcpFailure } from "../acp/failure";
@@ -48,6 +48,7 @@ export function opencodeClassifyFailure(
   ) {
     return {
       kind: "auth-required",
+      ...(typeof providerId === "string" ? { target: { backend: "opencode", providerId } } : {}),
       message,
       failure: agentRuntimeFailure("auth-required"),
     };

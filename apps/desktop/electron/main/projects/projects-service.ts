@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared Project/Chat contracts, lifecycle-fenced ProjectStore, filesystem validation, ProjectResourceCleanupCoordinator, rebind saga, and cross-domain cleanup ports
+ * [INPUT]: Depends on shared Project/Chat contracts, main/errors, lifecycle-fenced ProjectStore, filesystem validation, ProjectResourceCleanupCoordinator, rebind saga, and cross-domain cleanup ports
  * [OUTPUT]: Provides Project CRUD/workspace operations, Project-scoped branch mutations, conversation-scoped managed-worktree branch reads, authoritative reveal-directory resolution, canonical lifecycle contexts, exact held App-placement planning/cleanup, rebuildable removal handlers, and startup cleanup recovery
  * [POS]: Main Project authority; archive/rebind preserve incarnation while permanent removal is delegated only to the durable resource cleanup coordinator
  */
@@ -21,9 +21,8 @@ import {
 } from "../../../shared/projects-ipc";
 import type { AppChatRole, ChatSummary } from "../../../shared/chats-ipc";
 import { translate } from "../../../shared/i18n/runtime";
-import { errorMessage } from "../errors";
+import { errorMessage, statusError } from "../errors";
 import { SerialQueue } from "../persistence/serial-queue";
-import { statusError } from "./service/errors";
 import { publishProjectsEvent } from "./service/renderer-policy";
 import type { BuiltinMcpLease } from "../tools/lease";
 import {
@@ -116,7 +115,7 @@ export class ProjectsService {
   }
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
-    registerProjectsServiceIpc(window, rendererUrl, this);
+    registerProjectsServiceIpc(rendererUrl, this);
     window.once("closed", () => {
       if (this.window === window) this.window = null;
     });
@@ -523,7 +522,7 @@ export class ProjectsService {
       try {
         project = await this.store.addGrouping(input.name);
       } catch (cause) {
-        throw statusError(500, errorMessage(cause), cause);
+        throw statusError(500, errorMessage(cause), { cause });
       }
       let chat: ChatSummary;
       try {
@@ -554,7 +553,7 @@ export class ProjectsService {
         const suffix = residue.length
           ? `（补偿未完成，请手动清理：${residue.join("、")}）`
           : "";
-        throw statusError(500, `${errorMessage(primary)}${suffix}`, primary);
+        throw statusError(500, `${errorMessage(primary)}${suffix}`, { cause: primary });
       }
       const wire = this.withMissing(project);
       this.emit({ type: "upserted", project: wire });

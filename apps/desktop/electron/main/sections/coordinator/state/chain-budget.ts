@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on PauseSaga action/outbox Atomic solidification and chain/relay reservation structure
- * [OUTPUT]: Provides continueChainBudget, in durable sequence, to set a row and create the next action for the remaining item
- * [POS]: The ChainBudget pure state unit of the coordinator/state; Submit the quantity, epoch, relay attempt with the next pause window
+ * [OUTPUT]: Provides continueChainBudget, which resets a paused chain's used-budget count, re-admits waiting relays in sequence order up to the chain limit, and freezes a new pause for any relay still waiting
+ * [POS]: The ChainBudget pure state unit of coordinator/state; advances chain used-count, pause epoch, and relay attempts together with the pause window they produce
  */
 
 import {

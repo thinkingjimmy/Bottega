@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the type of sequentially based base; It's not dependent on Electron, Node or DOM
- * [OUTPUT]: Provides Memory provider/receipt/effectiveTarget, main-owned observation scope, recall/source observation, directory warning/error, three-phase durable version change, provider/revision fenced version directory and preload bridge agreement; The momentary facts must be filled and `| null` Expression of absence
- * [POS]: The shared memory is the only source of truth for IPC; main, preload, renderer only exchanged the value defined in this file
+ * [INPUT]: No runtime dependencies; not dependent on Electron, Node, or DOM
+ * [OUTPUT]: Provides Memory provider/receipt/effectiveTarget types, main-owned observation scope, recall/source observation, directory warning/error facts, three-phase durable version-change tracking, provider/revision-fenced version directory, and the preload bridge contract; point-in-time facts are always present, using `| null` rather than optional fields to express absence
+ * [POS]: Shared Memory IPC single source of truth; main, preload, and renderer only exchange values defined in this file
  */
 
 export type MemorySkipReason =

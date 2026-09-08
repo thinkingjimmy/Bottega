@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, i18n, shared calendar/token/cost calendar, use-client allocation/date/USD formatting with three-dimensional costText, renderer Intl locale, projecting the same directory color stages USAGE_RAMP_BG, ui Tooltip
- * [OUTPUT]: Provides a 7×53 UsageHeatmap with a portable UsageHeatmapLegend; Color stages are based on the shared ramp, tooltip and the same set of three-dimensional charges shared by the indicator zone
- * [POS]: Visualization of the settings/usage sub-module, located in the middle of the card; The title and illustrations are reversed, todayKey/timeZone and price facts are inserted by Summary
+ * [INPUT]: Depends on React, i18n, the shared usage-calendar matrix and DailyTokens contract, lib/usage-client's level/date/USD formatting including tiered costText, renderer Intl locale, the sibling USAGE_RAMP_BG color ramp, and ui Tooltip
+ * [OUTPUT]: Provides a 7×53 UsageHeatmap with a standalone UsageHeatmapLegend; both share the same color ramp, and cell tooltips share the same tiered cost formatting as the stat rail
+ * [POS]: settings/usage's visualization sub-module, placed in the card body; it owns no heading of its own — todayKey, timeZone, and price facts are all supplied by Summary
  */
 
 import {

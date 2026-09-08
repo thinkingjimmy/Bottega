@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React, SetupProvider, shared Personalization contracts, Agent branding, Settings primitives, format/shortcut helpers, InstructionsFind, Tabs/Textarea/Kbd, and i18n
- * [OUTPUT]: Provides global Personalization views plus a backend-agnostic InstructionsEditor and InstructionsPathBar with independent edit/search capabilities reusable by Project Settings
+ * [OUTPUT]: Provides global Personalization views plus a backend-agnostic InstructionsEditor with missing-file placeholders and an InstructionsPathBar with independent edit/search capabilities reusable by Project Settings
  * [POS]: Settings instruction editor surface; callers own file identity, save/reveal authority, drafts, and result normalization
  */
 
@@ -457,11 +457,9 @@ export function InstructionsEditor({
     ? { tone: "error" as const, text: failure }
     : file.oversized
       ? { tone: "warn" as const, text: t("settings.personalization.oversized") }
-      : !file.exists
-        ? { tone: "info" as const, text: t("settings.personalization.createHint", { path: file.displayPath }) }
-        : premise
-          ? { tone: "info" as const, text: premise }
-          : null;
+      : premise
+        ? { tone: "info" as const, text: premise }
+        : null;
 
   const bytes = file.oversized ? (file.size ?? 0) : new TextEncoder().encode(draft).length;
   const lines = draft ? draft.split("\n").length : 0;
@@ -495,7 +493,9 @@ export function InstructionsEditor({
                 className="field-sizing-fixed h-full min-h-0 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-5 py-3 font-mono focus-visible:border-0 focus-visible:ring-1 focus-visible:ring-ring/30 focus-visible:ring-inset"
                 disabled={unavailable}
                 onChange={(event) => onDraft(event.target.value)}
-                placeholder={t("settings.personalization.placeholder")}
+                placeholder={!file.exists && editable
+                  ? t("settings.personalization.createHint", { path: file.displayPath })
+                  : t("settings.personalization.placeholder")}
                 readOnly={!editable}
                 ref={setField}
                 value={draft}

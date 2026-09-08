@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends only on SQLite DDL supported by the packaged Electron runtime
- * [OUTPUT]: Provides migration 0001: portable Chat rows, device-local execution facts, immutable imports pinned by generation whose runs outlive the generation they name, mutation receipts, the continuation saga, and position-free FTS5 search
- * [POS]: Initial Chat SQLite schema authority; repositories may depend on it but may not create ad-hoc tables
+ * [OUTPUT]: Provides CHAT_STORE_SCHEMA with canonical Agent options/revisions, frozen fork identity, local execution facts, immutable imports with bounded history projection, receipts, continuation, and FTS5 search
+ * [POS]: The only Chat SQLite schema; it is created whole on a fresh database and never altered in place — repositories may depend on it but may not create ad-hoc tables
  */
 
-export const CHAT_STORE_SCHEMA_V1 = String.raw`
+export const CHAT_STORE_SCHEMA = String.raw`
 CREATE TABLE chat_store_meta (
   key TEXT PRIMARY KEY,
   value_json TEXT NOT NULL,
@@ -15,6 +15,9 @@ CREATE TABLE chats (
   id TEXT PRIMARY KEY,
   lifecycle_kind TEXT NOT NULL CHECK (lifecycle_kind IN ('native', 'external-readonly', 'external-managed')),
   agent TEXT NOT NULL,
+  agent_revision INTEGER NOT NULL DEFAULT 0 CHECK (agent_revision >= 0),
+  options_json TEXT CHECK (options_json IS NULL OR json_valid(options_json)),
+  fork_agent TEXT,
   title TEXT,
   title_source TEXT NOT NULL,
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
@@ -28,10 +31,22 @@ CREATE TABLE chats (
   branches_trimmed_through_seq INTEGER NOT NULL DEFAULT 0 CHECK (branches_trimmed_through_seq >= 0),
   core_revision INTEGER NOT NULL CHECK (core_revision >= 0),
   native_message_revision INTEGER NOT NULL CHECK (native_message_revision >= 0),
+  parent_chat_id TEXT,
+  parent_incarnation_id TEXT,
+  parent_message_id TEXT,
+  inherited_through_seq INTEGER CHECK (inherited_through_seq > 0),
   CHECK (
     (lifecycle_kind = 'external-readonly' AND next_seq IS NULL)
     OR
     (lifecycle_kind IN ('native', 'external-managed') AND next_seq > 0)
+  ),
+  -- fork lineage facts must be atomic
+  CHECK (
+    (parent_chat_id IS NULL AND parent_incarnation_id IS NULL
+      AND parent_message_id IS NULL AND inherited_through_seq IS NULL)
+    OR
+    (parent_chat_id IS NOT NULL AND parent_incarnation_id IS NOT NULL
+      AND parent_message_id IS NOT NULL AND inherited_through_seq IS NOT NULL)
   )
 ) STRICT;
 
@@ -74,9 +89,17 @@ CREATE TABLE chat_device_bindings (
   binding_revision INTEGER NOT NULL CHECK (binding_revision >= 0),
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
+  execution_dir TEXT,
+  execution_kind TEXT CHECK (execution_kind IS NULL OR execution_kind = 'managed-worktree'),
   PRIMARY KEY(chat_id, device_id),
   CHECK (state <> 'ready' OR home_dir IS NOT NULL),
-  CHECK (state NOT IN ('unavailable', 'revoked') OR (session_backend IS NULL AND session_id IS NULL))
+  CHECK (state NOT IN ('unavailable', 'revoked') OR (session_backend IS NULL AND session_id IS NULL)),
+  -- execution binding facts must be atomic
+  CHECK (
+    (execution_dir IS NULL AND execution_kind IS NULL)
+    OR
+    (execution_dir IS NOT NULL AND execution_kind = 'managed-worktree')
+  )
 ) STRICT;
 
 CREATE UNIQUE INDEX chat_bindings_session_idx
@@ -192,7 +215,7 @@ CREATE TABLE chat_import_generations (
   source_incarnation TEXT,
   source_size INTEGER NOT NULL CHECK (source_size >= 0),
   source_mtime_ns TEXT NOT NULL,
-  incomplete_tail TEXT NOT NULL CHECK (incomplete_tail IN ('true', 'false', 'unknown')),
+  incomplete_tail TEXT NOT NULL CHECK (incomplete_tail IN ('true', 'false')),
   state TEXT NOT NULL CHECK (state IN ('building', 'ready', 'superseded', 'abandoned')),
   entry_count INTEGER NOT NULL CHECK (entry_count >= 0),
   byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
@@ -217,11 +240,12 @@ CREATE TABLE chat_import_entry_versions (
   digest_codec_version INTEGER NOT NULL CHECK (digest_codec_version > 0),
   content_digest TEXT NOT NULL,
   byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
-  content_complete INTEGER NOT NULL CHECK (content_complete IN (0, 1)),
-  incomplete_reason TEXT,
+  history_parts_ready INTEGER NOT NULL DEFAULT 0 CHECK (history_parts_ready IN (0,1)),
   UNIQUE(chat_id, entry_version_id),
   UNIQUE(chat_id, source_entry_id, content_digest)
 ) STRICT;
+
+CREATE INDEX chat_import_parts_pending ON chat_import_entry_versions(entry_version_id) WHERE history_parts_ready=0;
 
 CREATE TABLE chat_import_entry_version_chunks (
   entry_version_id TEXT NOT NULL REFERENCES chat_import_entry_versions(entry_version_id) ON DELETE CASCADE,
@@ -353,7 +377,7 @@ CREATE TABLE history_import_runs (
   source_incarnation TEXT NOT NULL,
   source_size INTEGER NOT NULL CHECK (source_size >= 0),
   source_mtime_ns TEXT NOT NULL,
-  incomplete_tail TEXT NOT NULL CHECK (incomplete_tail IN ('true', 'false', 'unknown')),
+  incomplete_tail TEXT NOT NULL CHECK (incomplete_tail IN ('true', 'false')),
   cursor_json TEXT NOT NULL,
   rolling_digest TEXT NOT NULL,
   committed_entry_count INTEGER NOT NULL CHECK (committed_entry_count >= 0),

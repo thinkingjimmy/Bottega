@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the full-function version sequence of the Fetch and PyPI JSON API that is inserted, shared/version-compare; Previous Clearly carrying indivisible ETag/catalog
- * [OUTPUT]: Stable re-export compareVersions/isNewerVersion and provide a hard-dated PyPI stable version directory analysis, yank filtering and 304 preservation of the syntax
- * [POS]: The directory layer for the main/memory/runtime/managed version; No TTL/single-flight, no decision on the installation of the target, and no second implementation of the version sequence
+ * [INPUT]: Depends on an injectable fetch, PyPI's JSON API, shared/version-compare, and the previous ETag/catalog state for conditional requests
+ * [OUTPUT]: Re-exports compareVersions/isNewerVersion and provides fetchPypiCatalog: a deadline-bound PyPI release fetch with yank filtering and 304-not-modified short-circuiting
+ * [POS]: The version-catalog fetch layer for main/memory/runtime/managed; it holds no TTL/single-flight state, makes no install-target decisions, and is the only place that parses the PyPI wire shape
  */
 
 import {

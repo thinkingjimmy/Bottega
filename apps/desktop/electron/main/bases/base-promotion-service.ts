@@ -1,19 +1,21 @@
 /**
- * [INPUT]: Depends on lifecycle AdmissionGate/IntentStore, BaseStore/owner resolver, conversation, critical area and event feedback
+ * [INPUT]: Depends on lifecycle AdmissionGate/IntentStore, BaseStore/owner resolver, the shared ownerKeyOf projection, conversation exclusivity, and main/errors
  * [OUTPUT]: Provides promote/promoteChild/recover, support top-level upgrades and Save as App gate-held subsidiaries
- * [POS]: The following is a list of the different types of promotional services available to users: Gate has intent, BaseStore only performs the local leaf steps
+ * [POS]: bases/ promotion service; AdmissionGate owns intent, BaseStore only executes the local leaf steps
  */
 
-import type {
-  BasePromotionReceipt,
-  BasesEvent,
+import {
+  ownerKeyOf,
+  type BaseMeta,
+  type BasePromotionReceipt,
+  type BasesEvent,
 } from "../../../shared/bases-ipc";
 import type { AdmissionGate, SagaResult } from "../lifecycle/admission-gate";
 import type { LifecycleIntentStore } from "../lifecycle/intent-store";
 import type { LifecycleIntent } from "../lifecycle/intent-types";
 import type { BaseStore } from "./base-store";
 import type { BaseOwnerResolver } from "./service/base-owner-resolver";
-import { statusError } from "../errors";
+import { errorMessage, statusError } from "../errors";
 
 type PromotionOptions = {
   runConversationExclusive<T>(
@@ -61,19 +63,7 @@ export class BasePromotionService {
     );
     const receipt = receiptFromOutcome(outcome);
     if (outcome.state === "executed" && outcome.result.status === "done") {
-      this.options.onEvent({
-        type: "base-moved",
-        from: {
-          ownerKey: `chat:${input.chatId}`,
-          ownerInstanceId: fromInstanceId,
-        },
-        to: {
-          ownerKey: receipt.ownerKey,
-          ownerInstanceId: receipt.ownerInstanceId,
-        },
-        revision: receipt.revision,
-        reloadRequired: true,
-      });
+      this.emitMoved(input.chatId, fromInstanceId, receipt);
     }
     return receipt;
   }
@@ -150,19 +140,7 @@ export class BasePromotionService {
         receipt: result.receipt,
       });
       const receipt = result.receipt as BasePromotionReceipt;
-      this.options.onEvent({
-        type: "base-moved",
-        from: {
-          ownerKey: `chat:${input.chatId}`,
-          ownerInstanceId: source.incarnationId,
-        },
-        to: {
-          ownerKey: receipt.ownerKey,
-          ownerInstanceId: receipt.ownerInstanceId,
-        },
-        revision: receipt.revision,
-        reloadRequired: true,
-      });
+      this.emitMoved(input.chatId, source.incarnationId, receipt);
       return receipt;
     }
     if (result.status === "business-rejected") {
@@ -173,6 +151,20 @@ export class BasePromotionService {
       throw statusError(409, result.error.message);
     }
     throw new Error("Base 子升级被中断，将在启动时恢复");
+  }
+
+  private emitMoved(
+    chatId: string,
+    fromInstanceId: string,
+    receipt: BasePromotionReceipt
+  ) {
+    this.options.onEvent({
+      type: "base-moved",
+      from: { ownerKey: `chat:${chatId}`, ownerInstanceId: fromInstanceId },
+      to: { ownerKey: receipt.ownerKey, ownerInstanceId: receipt.ownerInstanceId },
+      revision: receipt.revision,
+      reloadRequired: true,
+    });
   }
 
   private async execute(
@@ -209,17 +201,15 @@ export class BasePromotionService {
         projectId,
         intent.intentId
       );
+      const receipt = promotionReceipt(completed);
       return {
         status: "done",
-        receipt: promotionReceipt(completed),
-        value: {
-          receipt: promotionReceipt(completed),
-          fromInstanceId: source.meta.ownerInstanceId,
-        },
+        receipt,
+        value: { receipt, fromInstanceId: source.meta.ownerInstanceId },
       };
     } catch (cause) {
       if ((cause as { status?: number }).status === 409) {
-        return rejected("PROMOTION_CONFLICT", errorText(cause));
+        return rejected("PROMOTION_CONFLICT", errorMessage(cause));
       }
       throw cause;
     }
@@ -227,13 +217,10 @@ export class BasePromotionService {
 }
 
 function promotionReceipt(snapshot: {
-  meta: { owner: import("../../../shared/bases-ipc").BaseOwner; ownerInstanceId: string; revision: number };
+  meta: Pick<BaseMeta, "owner" | "ownerInstanceId" | "revision">;
 }): BasePromotionReceipt {
   return {
-    ownerKey:
-      snapshot.meta.owner.kind === "chat"
-        ? `chat:${snapshot.meta.owner.chatId}`
-        : `project:${snapshot.meta.owner.projectId}`,
+    ownerKey: ownerKeyOf(snapshot.meta.owner),
     ownerInstanceId: snapshot.meta.ownerInstanceId,
     revision: snapshot.meta.revision,
   };
@@ -272,6 +259,3 @@ function stringField(value: Record<string, unknown>, key: string) {
   }
   return field;
 }
-
-const errorText = (cause: unknown) =>
-  cause instanceof Error ? cause.message : String(cause);

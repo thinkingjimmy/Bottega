@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on dnd-kit useDraggable, editors useBaseAttachmentThumbnail, kanban-fields kanbanCardFace projection and tones
- * [OUTPUT]: Provides KanbanCard (window slot + dragging card area) √KanbanCardBody (card only format, shared with DragOverlay) and KANBAN_CARD_CLASS
- * [POS]: The card rendering layer of views/kanban; Canban-fields only show the face, not the column type
+ * [OUTPUT]: Provides KanbanCard (lane slot plus drag handle) and KanbanCardBody (the shared card visual, reused by DragOverlay), and KANBAN_CARD_CLASS
+ * [POS]: The card rendering layer of views/kanban; it renders the face kanban-fields computed for it and never branches on column type itself
  */
 
 import { useMemo } from "react";

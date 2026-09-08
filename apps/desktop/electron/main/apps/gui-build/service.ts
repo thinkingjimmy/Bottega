@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on deterministic component scaffold, the sole immutable source preparer, strict frozen-manifest parsing, independent new-generation gate admission, fail-closed compiler sandbox, fixed transform metadata, and compiled-v3 sealer
+ * [INPUT]: Depends on deterministic scaffolding, immutable source preparation, manifest admission, actual sandbox component evidence, fixed transform metadata, and compiled-v3 sealing
  * [OUTPUT]: Provides one scaffold/prepare/compile/seal lifecycle whose cleanup owns every private staging root
  * [POS]: apps/gui-build orchestration facade consumed by AppGenerationBuilder; authoring sync precedes freeze and planning never rereads a live App root
  */
@@ -19,7 +19,7 @@ import { sealCompiledV3Artifact, type CompiledV3DigestSet } from "./pipeline/sea
 import { AppGuiComponentScaffolder } from "./scaffold/component-scaffolder";
 import { AppGuiAdmissionPolicy } from "./admission";
 import { appManifestSchema } from "../install/manifest-schema";
-import { canonicalJson } from "./metadata";
+import { canonicalJson } from "../support";
 
 const STAGING_OPERATION =
   /^app-gui-[^/\\]+-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -47,6 +47,8 @@ export class AppGuiBuildService {
       nativePayloads: readonly Readonly<{ id: string; path: string }>[];
     }>
   ) {}
+
+  probe() { return this.sandbox.probe(); }
 
   async initialize() {
     const stagingRoot = resolve(this.options.stagingRoot);
@@ -114,7 +116,7 @@ export class AppGuiBuildService {
         compilerEntry: this.options.compilerEntry,
         sandboxAdapterEntry: this.options.sandboxAdapterEntry,
         sandboxEvidenceDigest: evidence.evidenceDigest,
-        nativePayloads: this.options.nativePayloads,
+        nativePayloads: [...this.options.nativePayloads, ...(evidence.nativePayloads ?? [])],
       });
       const outcome = await this.sandbox.compile({
         snapshotRoot: source.snapshotRoot,
@@ -123,7 +125,7 @@ export class AppGuiBuildService {
         sourcePackageDigest: source.sourcePackageDigest,
         transformContractDigest: TRANSFORM_CONTRACT_DIGEST,
         platformCompilerCustodyDigest: custodyDigest,
-      }, input.signal ?? new AbortController().signal);
+      }, input.signal ?? new AbortController().signal, evidence.evidenceDigest);
       if (outcome.status === "failed") throw Object.assign(
         new Error(outcome.findings[0]?.message ?? "App GUI compilation failed"),
         { code: outcome.findings[0]?.code, findings: outcome.findings }

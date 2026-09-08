@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on I18n, Projects/Chats/History Provider Global Add, ProjectItem, project-sort, controlled folding mode, SidebarCollapsibleGroup and dropdown/sidebar Original language
+ * [INPUT]: Depends on i18n, Projects/Chats/History providers' global-add actions, ProjectItem, project-sort, controlled collapse state, SidebarCollapsibleGroup, and dropdown-menu/sidebar primitives
  * [OUTPUT]: Provides ProjectSection: the global Project import entry, the sort menu, and one shared collapsible group holding the project list and its warnings; every sub-row decision belongs to ProjectItem
  * [POS]: Projects category for components/sidebar/project, placed by AppSidebar above the root Chats category
  */

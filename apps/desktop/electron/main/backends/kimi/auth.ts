@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared ACP readiness kernel, Kimi Acp Launcher and declaration source read-only disposable readiness home
  * [OUTPUT]: Provides kimiReadinessSpec and createKimiAuthCheck
- * [POS]: The following are the results of the test: Just say "shake hands prove what", and the whole mechanism is startup/readiness
+ * [POS]: Declares only what a successful handshake proves for Kimi; the entire check mechanism is delegated to acp/startup readiness
  */
 
 import {

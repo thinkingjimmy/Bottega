@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context and lib/appearance types, DOM applications and persistence functions
- * [OUTPUT]: Provides AppearanceProvider/use Appearance and local appearance updates interface
- * [POS]: The appearance of the providers set to a single truth source, and was consumed by the renderer root input and set to view
+ * [INPUT]: Depends on React Context and lib/appearance types, DOM application and persistence functions
+ * [OUTPUT]: Provides AppearanceProvider/useAppearance for reading and updating appearance preferences
+ * [POS]: Single source of truth for appearance state; consumed by the renderer root and Settings view
  */
 
 import {

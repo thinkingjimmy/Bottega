@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on path-private import authorities, Library sources/store, verified package inspection, jobs-v2 step constructors, and trusted prompt composition
+ * [INPUT]: Depends on path-private import authorities, Library sources/store, verified package inspection, jobs-v2 step constructors, and trusted prompt composition, and statusError from main/errors
  * [OUTPUT]: Provides import/existing intent planners, terminal-report projection, and enabled-Library prompt-byte estimation
  * [POS]: Pure planning/report helper for skills-management; service owns authority lifetime and execution, while this file converts frozen facts into receipts and summaries
  */
@@ -10,6 +10,7 @@ import type {
   ManagedSkillTerminalReport,
 } from "../../../shared/unified-skills-ipc";
 import { composeSkills } from "../agent/product-context";
+import { statusError } from "../errors";
 import type { CandidateAuthority } from "./candidate-status";
 import {
   blankTerminalReport,
@@ -36,7 +37,7 @@ export async function planImportIntent(
     held.authorities.get(ref)
   );
   if (!selected.length || selected.some((candidate) => !candidate)) {
-    throw invalid("import selection is invalid");
+    throw statusError(400, "import selection is invalid");
   }
   const output: SkillsJobStep[] = [];
   for (const candidate of selected as CandidateAuthority[]) {
@@ -184,9 +185,5 @@ export function estimateLibraryPromptBytes(sources: readonly LibrarySource[]) {
 }
 
 function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
-}
-
-function invalid(message: string) {
-  return Object.assign(new Error(message), { status: 400 });
+  return statusError(409, message);
 }

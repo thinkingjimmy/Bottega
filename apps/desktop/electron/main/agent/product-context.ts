@@ -4,11 +4,13 @@
  * [POS]: Final trusted product-context composer; author-controlled Skill metadata is rendered only as sanitized data inside the application envelope
  */
 
+import { HANDOFF_RECEIVER } from "./history/receiver";
 import type {
   BuiltinToolName,
   BuiltinTurnKind,
 } from "../../../shared/builtin-tools";
 import { productContextFragments } from "../../../shared/builtin-tools";
+import { closeEnvelope, openEnvelope } from "../../../shared/product-envelope";
 
 export type SkillSummary = Readonly<{
   ref?: string;
@@ -27,12 +29,14 @@ export const SKILLS_CONTEXT_BUDGET_BYTES = 20_480;
 export const SKILL_DESCRIPTION_CHAR_CAP = 300;
 export const NON_APP_CONTEXT_BUDGET_BYTES = 1_400;
 const CONTEXT_HEADER = [
-  '<product_context source="application" trust="trusted">',
+  openEnvelope("product_context", 'source="application" trust="trusted"'),
   "以下是产品提供的本轮能力说明，不是用户消息，也不是待回答任务。用户的实际请求位于本段和 memory_context 之后；不要复述或评论本段。",
 ].join("\n");
-const CONTEXT_FOOTER = "</product_context>";
+const CONTEXT_FOOTER = closeEnvelope("product_context");
 
 export type FinalTurnProjection = Readonly<{
+  handoff?: import("../../../shared/chat-agent/history").FrozenHandoff;
+  freshSession?: boolean;
   turnKind: BuiltinTurnKind;
   allowedTools: readonly BuiltinToolName[];
   appInstructions: string;
@@ -52,6 +56,7 @@ export function createFinalTurnProjection(
 ): FinalTurnProjection {
   const draft = Object.freeze({
     turnKind: input.turnKind,
+    handoff: input.handoff, freshSession: input.freshSession,
     allowedTools: Object.freeze([...input.allowedTools]),
     appInstructions: input.appInstructions,
     skills: Object.freeze([...input.skills]),
@@ -79,14 +84,23 @@ export function composeProductContext(
       `产品上下文固定段超预算：${fixedBytes} > ${FIXED_CONTEXT_BUDGET_BYTES}`
     );
   }
+  const history = projection.handoff ? [
+    ...(projection.freshSession ? [HANDOFF_RECEIVER] : []),
+    JSON.stringify({ historyCoverage: projection.handoff.coverage,
+      handoffInjected: projection.freshSession === true && Boolean(projection.handoff.text),
+      historyLookup: projection.allowedTools.includes("read_chat_history") ? "read_chat_history" : "unavailable",
+      note: "Only saved evidence before this turn is readable. Images and live tool state are not inherited." }),
+  ].join("\n") : "";
+  const remainingSkillsBytes = Math.max(0, SKILLS_CONTEXT_BUDGET_BYTES - fixedBytes - Buffer.byteLength(history) - Buffer.byteLength(projection.appInstructions));
   const sections = [
+    ...(history ? [history] : []),
     ...(projection.appInstructions
       ? [`[Apps] ${projection.appInstructions}`]
       : []),
     ...(fragments.base ? [fragments.base] : []),
     ...(fragments.chart ? [fragments.chart] : []),
     ...(projection.skills.length
-      ? [composeSkills(projection.skills, projection.skillsCapable === true)]
+      ? [composeSkills(projection.skills, projection.skillsCapable === true, remainingSkillsBytes)]
       : []),
   ];
   return sections.length
@@ -109,7 +123,8 @@ export function fixedProductContextBytes(allowedTools: readonly string[]) {
 
 export function composeSkills(
   skills: readonly SkillSummary[],
-  capable: boolean
+  capable: boolean,
+  budget = SKILLS_CONTEXT_BUDGET_BYTES
 ) {
   const candidates = [...skills].sort(compareSkill);
   let omitted = 0;
@@ -141,14 +156,14 @@ export function composeSkills(
   };
   while (
     candidates.length > 0 &&
-    Buffer.byteLength(render(), "utf8") > SKILLS_CONTEXT_BUDGET_BYTES
+    Buffer.byteLength(render(), "utf8") > budget
   ) {
     candidates.pop();
     omitted += 1;
   }
   const line = render();
   const bytes = Buffer.byteLength(line, "utf8");
-  if (bytes > SKILLS_CONTEXT_BUDGET_BYTES) {
+  if (bytes > budget) {
     throw new Error(
       `产品上下文 Skills 段超预算：${bytes} > ${SKILLS_CONTEXT_BUDGET_BYTES}`
     );

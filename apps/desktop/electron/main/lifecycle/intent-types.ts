@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, node:crypto SHA-256, and the shared five-locale enum
- * [OUTPUT]: Provides current and migration-only LifecycleIntent schemas for seven saga inputs (decoding normalizes a terminal intent's retired phase to its kind's last phase, while a non-terminal unknown phase stays fail-closed), the shared monotonic phase comparison (phaseReached/reached), frozen Studio-only install authorization, locale, tombstone, stableInputHash, provenance, fulfillment, and consent claims
+ * [OUTPUT]: Provides the LifecycleIntent schema for seven saga inputs (decoding normalizes a terminal intent's retired phase to its kind's last phase, while a non-terminal unknown phase stays fail-closed), the shared monotonic phase comparison (phaseReached/reached), frozen Studio-only install authorization, locale, tombstone, stableInputHash, provenance, fulfillment, and consent claims
  * [POS]: The type truth source of the lifecycle domain, covenant v3, second paragraph of the machine image; consumed by intent-store/admission-gate in a single direction
  */
 
@@ -221,9 +221,6 @@ const decodedIntentEnvelopeSchema = z.preprocess(
   lifecycleIntentEnvelopeSchema
 );
 
-/** v1 迁移只用的信封 schema：验证事务骨架，不把历史 input 视为当前授权。 */
-export const legacyLifecycleIntentSchema = decodedIntentEnvelopeSchema;
-
 export const lifecycleIntentSchema = decodedIntentEnvelopeSchema.superRefine(
   (intent, ctx) => {
     const parsed = INTENT_INPUT_SCHEMAS[intent.kind].safeParse(intent.input);
@@ -237,9 +234,6 @@ export const lifecycleIntentSchema = decodedIntentEnvelopeSchema.superRefine(
 );
 
 export type LifecycleIntent = z.infer<typeof lifecycleIntentSchema>;
-export type LegacyLifecycleIntent = z.infer<
-  typeof legacyLifecycleIntentSchema
->;
 
 /* ── 终态压缩后的轻量墓碑:幂等查询永远可答;error 一并保留(R7/P1-9)。 ── */
 export const intentTombstoneSchema = z

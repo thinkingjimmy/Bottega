@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on AppRecord's active generation/frozen graph, ExtensionRegistryStore's exact generation ref projection, GrantStore tombstone/exact grants and main-owned capability snapshot
+ * [INPUT]: Depends on AppRecord's active generation/frozen graph, ExtensionRegistryStore.installs exact generation ref projection, GrantStore tombstone/exact grants and main-owned capability snapshot
  * [OUTPUT]: Provides projectAppExtensionStatus, a renderer-safe per-generation projection of installed/admission/enabled/grant/eligibility
  * [POS]: The read-only extension projection boundary of apps; a globally active package never stands in for the frozen generation ref and the exact grant
  */
@@ -22,6 +22,7 @@ import {
   backendExtensionProbe,
   EXTENSION_PRODUCT_POLICY,
 } from "../../extensions/product-policy";
+import type { ExtensionGenerationProjection } from "../../extensions/registry-install-authority";
 import type { ExtensionRegistryStore } from "../../extensions/registry-store";
 import type { AppExtensionGrantStore } from "../../extensions/integration/grant-store";
 
@@ -142,7 +143,7 @@ function projectRequirement(input: {
   }
 
   const resolution = input.resolution;
-  const generation = input.registry.generationProjection(
+  const generation = input.registry.installs.generationProjection(
     resolution.packageGenerationRef
   );
   const component = generation?.components.find(
@@ -191,7 +192,7 @@ function projectRequirement(input: {
 
 function enabledState(
   state: AppExtensionRequirementStatus["generationState"],
-  generation: ReturnType<ExtensionRegistryStore["generationProjection"]>,
+  generation: ExtensionGenerationProjection | null,
   componentInstanceIdentity: string | undefined
 ): AppExtensionRequirementStatus["enabled"] {
   if (!generation || !componentInstanceIdentity) return "unknown";

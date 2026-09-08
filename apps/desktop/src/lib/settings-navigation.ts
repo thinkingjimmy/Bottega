@@ -4,14 +4,15 @@
  * [POS]: Single renderer authority for Settings navigation, archive deep links, and active-section state, including the Extensions-to-Packages alias
  */
 
-export const SETTINGS_ROUTE_PREFIX = "/settings/";
+export const ABOUT_SETTINGS_PATH = "/settings/about";
+const SETTINGS_ROUTE_PREFIX = "/settings/";
 
 /* 设置的两条真实路由：常量与判据同住一处，路由的事只有这一个知情人。 */
 export const MEMORY_SETTINGS_PATH = "/settings/memory";
-export const ARCHIVE_SETTINGS_PATH = "/settings/archive";
-export const TOOLS_SETTINGS_PATH = "/settings/tools";
+const ARCHIVE_SETTINGS_PATH = "/settings/archive";
+const TOOLS_SETTINGS_PATH = "/settings/tools";
 export const SKILLS_SETTINGS_PATH = "/settings/skills";
-export const EXTENSIONS_SETTINGS_PATH = "/settings/extensions";
+const EXTENSIONS_SETTINGS_PATH = "/settings/extensions";
 
 /** Sidebar 与 Settings 共用的归档定位身份；kind 进入 key，来源不会碰撞。 */
 export type ArchivedSettingsLocator = {
@@ -72,6 +73,7 @@ export function settingsExitTarget(
 export function settingsRouteSection(
   pathname: string
 ): SettingsDestination | null {
+  if (pathname === ABOUT_SETTINGS_PATH) return "about";
   if (pathname === MEMORY_SETTINGS_PATH) return "memory";
   if (pathname === ARCHIVE_SETTINGS_PATH) return "archive";
   if (pathname === TOOLS_SETTINGS_PATH) return "tools";

@@ -40,7 +40,7 @@ import {
   type BaseIdentity,
   type BaseOwnerIdentity,
 } from "../base-store";
-import type { IndexedBaseSnapshot } from "../base-store-model";
+import { sameJson, type IndexedBaseSnapshot } from "../base-store-model";
 import { putGalleryOccurrence } from "../store/gallery-ledger";
 import { parseAttachmentDataUrl } from "../store/attachments";
 import { AttachmentThumbnailCache } from "../store/thumbnail-cache";
@@ -54,9 +54,6 @@ import {
   chooseDateColumn,
   galleryFailure,
 } from "./support";
-
-const same = (left: unknown, right: unknown) =>
-  JSON.stringify(left) === JSON.stringify(right);
 
 type AttachmentServiceOptions = {
   identity(
@@ -214,28 +211,12 @@ export class BaseAttachmentService {
         input.incarnationId
       );
       const value = this.ownedAttachment(input, identity);
-      const bytes = await this.store.attachments.read(
-        ownerFileStem(identity.ownerKey),
-        identity.ownerInstanceId,
-        value
-      );
-      const bucket =
-        BASE_ATTACHMENT_THUMB_BUCKETS.find(
-          (candidate) => candidate >= input.maxEdge
-        ) ?? 4096;
-      const thumbnail = await this.thumbnails.get(
-        `${identity.ownerKey}/${identity.ownerInstanceId}/${value.blobId}/${bucket}`,
-        bytes,
-        bucket
-      );
+      const thumbnail = await this.thumbnail(identity, value, input.maxEdge);
       return {
         ok: true,
         value: {
           attachmentId: value.attachmentId,
-          dataUrl: thumbnail.dataUrl,
-          bucket,
-          width: thumbnail.width,
-          height: thumbnail.height,
+          ...thumbnail,
           revision: value.revision,
           requestVersion: input.requestVersion,
         },
@@ -286,26 +267,12 @@ export class BaseAttachmentService {
     const owned = await this.resolveGalleryAttachment(sourceRef);
     if (!owned) return null;
     try {
-      const bytes = await this.store.attachments.read(
-        ownerFileStem(owned.ownerKey),
-        owned.ownerInstanceId,
-        owned.value
-      );
-      const bucket =
-        BASE_ATTACHMENT_THUMB_BUCKETS.find((candidate) => candidate >= maxEdge) ??
-        4096;
-      const thumbnail = await this.thumbnails.get(
-        `${owned.ownerKey}/${owned.ownerInstanceId}/${owned.value.blobId}/${bucket}`,
-        bytes,
-        bucket
-      );
+      const thumbnail = await this.thumbnail(owned, owned.value, maxEdge);
       return {
         ok: true,
         value: {
-          dataUrl: thumbnail.dataUrl,
-          bucket: bucket as 160 | 320 | 640 | 1024,
-          width: thumbnail.width,
-          height: thumbnail.height,
+          ...thumbnail,
+          bucket: thumbnail.bucket as 160 | 320 | 640 | 1024,
           sourceRevision: owned.value.revision,
         },
       };
@@ -534,7 +501,7 @@ export class BaseAttachmentService {
           bytes: input.bytes,
           sourceRevision: input.sourceRevision,
         });
-        if (!same(stored.value, described)) {
+        if (!sameJson(stored.value, described)) {
           throw new Error("Attachment describe/put 结果不一致");
         }
         const rows = existingRow
@@ -677,6 +644,28 @@ export class BaseAttachmentService {
     }
   }
 
+  /** Thumbnails are keyed by owner + blob + bucket; the bucket is the smallest fixed edge that covers maxEdge. */
+  private async thumbnail(
+    owner: OwnerRef,
+    value: BaseAttachmentValue,
+    maxEdge: number
+  ) {
+    const bytes = await this.store.attachments.read(
+      ownerFileStem(owner.ownerKey),
+      owner.ownerInstanceId,
+      value
+    );
+    const bucket =
+      BASE_ATTACHMENT_THUMB_BUCKETS.find((candidate) => candidate >= maxEdge) ??
+      BASE_ATTACHMENT_THUMB_BUCKETS.at(-1)!;
+    const thumbnail = await this.thumbnails.get(
+      `${owner.ownerKey}/${owner.ownerInstanceId}/${value.blobId}/${bucket}`,
+      bytes,
+      bucket
+    );
+    return { dataUrl: thumbnail.dataUrl, bucket, width: thumbnail.width, height: thumbnail.height };
+  }
+
   private async assertIdentity(chatId: string, incarnationId: string) {
     const identity = await this.options.identity(chatId);
     if (identity.incarnationId !== incarnationId) {
@@ -701,13 +690,12 @@ export class BaseAttachmentService {
       identity.ownerKey,
       identity.ownerInstanceId
     );
-    const snapshot = rowsSnapshot(this.store, identity);
+    const rows = rowsById(this.store, identity);
     // attachmentId 是内容寻址：同字节不同 revision 会有多条 association，
     // 必须按 attachmentId + revision 双键匹配，取首条会误判 NOT_FOUND。
     for (const association of Object.values(ledger.associations)) {
       if (association.attachmentId !== input.attachmentId) continue;
-      const value = snapshot?.rowsById.get(association.rowId)
-        ?.values[association.columnId];
+      const value = rows?.get(association.rowId)?.values[association.columnId];
       if (
         isBaseAttachmentValue(value) &&
         value.attachmentId === input.attachmentId &&
@@ -776,12 +764,9 @@ function transcriptLogicalKey(input: {
 
 type OwnerRef = { ownerKey: string; ownerInstanceId: string };
 
-const rowsSnapshot = (store: BaseStore, owner: OwnerRef) =>
-  store.peek(owner.ownerKey, owner.ownerInstanceId);
-
 /** 行按 id 直取：association.rowId → row → cell，不再为一张缩略图扫全表。 */
 const rowsById = (store: BaseStore, owner: OwnerRef) =>
-  rowsSnapshot(store, owner)?.rowsById;
+  store.peek(owner.ownerKey, owner.ownerInstanceId)?.rowsById;
 
 /** 逐行扫但扫到即止：只给了 attachmentId 时，这是唯一的退路。 */
 function findAttachment(snapshot: IndexedBaseSnapshot, attachmentId: string) {

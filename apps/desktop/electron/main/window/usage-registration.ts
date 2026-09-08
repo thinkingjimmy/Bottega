@@ -15,7 +15,7 @@ export function registerUsage(
   usage: UsageService
 ) {
   usage.attachWindow(window);
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的用量请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的用量请求")
     .handle(USAGE_CHANNEL.getSummary, (rawTarget, rawOptions) => {
       const request = assertUsageRequest(rawTarget, rawOptions);
       return usage.getSummary(request.target, { forceRefresh: request.forceRefresh });

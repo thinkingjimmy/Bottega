@@ -1,11 +1,14 @@
 /**
- * [INPUT]: Depends on the native theme of the electron and ThemePreference of the shared/settings-ipc
- * [OUTPUT]: Provides themeSourceFor pure mapping, applyThemeSource and windowBackgroundColor
- * [POS]: The main theme is projected boundariesThe product's auto|light|The theme source, renderer, and the result read only
+ * [INPUT]: Depends on Electron nativeTheme/BrowserWindow and the shared settings-ipc ThemePreference and themeResolved channel
+ * [OUTPUT]: Provides themeSourceFor pure mapping, applyThemeSource, windowBackgroundColor, and the per-window bindWindowTheme background/renderer sync
+ * [POS]: Main's theme-projection boundary; the product's auto|light|dark preference maps to Electron's themeSource, and renderer only ever reads the resolved theme
  */
 
-import { nativeTheme } from "electron";
-import type { ThemePreference } from "../../../shared/settings-ipc";
+import { nativeTheme, type BrowserWindow } from "electron";
+import {
+  SETTINGS_CHANNEL,
+  type ThemePreference,
+} from "../../../shared/settings-ipc";
 
 /* ============================================================
  * auto 不是产品要解析的第三种值，是「不覆盖平台」——Electron 的
@@ -25,3 +28,19 @@ export function applyThemeSource(theme: ThemePreference) {
    --background：light oklch(1 0 0)、dark oklch(0.145 0 0)。 */
 export const windowBackgroundColor = () =>
   nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#ffffff";
+
+/* 一条监听同时覆盖「用户切主题」与「系统外观变化」两路：两者都以
+   nativeTheme updated 到达，底色与 renderer 因此都不需要第二个分支。
+   renderer 收到的是解析好的布尔——themeSource 实测改不动它的
+   prefers-color-scheme，让它自己感知就会永远停在系统那一档。 */
+export function bindWindowTheme(window: BrowserWindow) {
+  const syncTheme = () => {
+    window.setBackgroundColor(windowBackgroundColor());
+    window.webContents.send(
+      SETTINGS_CHANNEL.themeResolved,
+      nativeTheme.shouldUseDarkColors
+    );
+  };
+  nativeTheme.on("updated", syncTheme);
+  window.once("closed", () => nativeTheme.off("updated", syncTheme));
+}

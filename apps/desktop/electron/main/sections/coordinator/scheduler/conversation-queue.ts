@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Promise Microtask queue with conversationId
- * [OUTPUT]: Provides ConversationQueue, the same conversation, sequence, different conversation parallel
- * [POS]: The short-critical zone executor of sections/coordinator/scheduler; Only protect the team leader/ write a claim, and do not carry a long Agent turn
+ * [INPUT]: Depends only on native Promise chaining
+ * [OUTPUT]: Provides ConversationQueue.run, which serializes operations sharing a conversationId while different conversations proceed in parallel
+ * [POS]: Short-critical-section executor for sections/coordinator/scheduler; it guards only the claim/write step, never a long-running Agent turn
  */
 
 export class ConversationQueue {

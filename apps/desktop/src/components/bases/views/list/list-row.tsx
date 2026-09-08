@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, i18n, lucide, shadcn Button/DropdownMenu, cn, shared Base column/line/attachment guard, state of BaseMutationOutcome, BaseCellEditor/BaseAttachmentPreview and the same directory attribute projection
- * [OUTPUT]: Provides BaseListRow: read mode at a row high ((id/status point/title/attributes chip/date), edit mode is open to field grid, and action as a hover/focus displayed array menu ((aria text form bases.list.rowActions); onPatch/onDelete Full absence menu is not rendered)
- * [POS]: Two single-line phases of views/lists; The line does not hold any Base status, and the intent to edit both attribution and deletion is decided by a higher level
+ * [OUTPUT]: Provides BaseListRow: a fixed-height read mode (id/status dot/title/attribute chips/date), an edit mode that opens into the field grid, and a hover/focus action menu (aria label from bases.list.rowActions) that renders nothing when both onPatch and onDelete are absent
+ * [POS]: The read/edit two-phase row for views/list; the row holds no Base state itself, and both edit and delete intents are decided by its caller
  */
 
 import { useEffect, useRef, useState } from "react";

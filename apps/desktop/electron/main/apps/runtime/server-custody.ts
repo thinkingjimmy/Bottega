@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the AppProcessCustodyJournal, custody kernel, and shared AppProcessCustodyEntry
- * [OUTPUT]: Provides AppServerCustodyRuntime: intent fsync → capability-free guardian → owned → activation-authorized → Delivery sealed code/data epoch → activated, and precise exit closure and start phase reconcile
- * [POS]: The server side custody drive for apps/runtime (D29); The turn drives are not identical to the backends, and the two accounts each have their own owner semantics
+ * [INPUT]: Depends on AppProcessCustodyJournal, the custody kernel (CustodyAttachment/converge), and shared AppProcessCustodyEntry types
+ * [OUTPUT]: Provides AppServerCustodyRuntime: begin() records an intent before spawn and rejects a new generation while an old custody hasn't converged; reconcile() drives each recoverable entry through abort/release/quarantine on startup, before admission opens
+ * [POS]: apps/runtime's server-side custody driver (D29); after a restart the guardian's control channel is gone and never reconnects, so reconcile() always revokes activation and kills rather than attempting takeover
  */
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
@@ -34,14 +34,14 @@ export type AppServerCustodyHandle = {
   readonly entry: AppProcessCustodyEntry;
 };
 
-export type AppServerCustodyReconcileReport = {
+type AppServerCustodyReconcileReport = {
   released: AppProcessCustodyEntry[];
   aborted: AppProcessCustodyEntry[];
   /** 身份说不清或杀不掉：不发信号、不释放，该 App 保持 quarantine 并 fail closed */
   quarantined: AppProcessCustodyEntry[];
 };
 
-export type AppServerCustodyOptions = Omit<
+type AppServerCustodyOptions = Omit<
   CustodyRuntimeOptions,
   "controlRoot" | "guardianArgs"
 > & {

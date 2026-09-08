@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, App i18n, ChatSessionController, latest-turn selector, TurnParts/MessageResponse, and ChatComposer
- * [OUTPUT]: Provides ChatSessionDock: The Latest turn tabs for the real hanging composer and the latest turn tabs for the input card
+ * [OUTPUT]: Provides ChatSessionDock: a floating latest-turn preview tab docked above the ChatComposer input card
  * [POS]: The only source of the chat/dock's floating form; No session, no contamination of the Base, the host decides who is covered by it
  */
 

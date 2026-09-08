@@ -18,7 +18,7 @@ import {
   type BaseFilter,
   type BaseSnapshot,
 } from "../../../../../../shared/bases-ipc";
-import { canonicalDigest, canonicalJson } from "../../../gui-build/metadata";
+import { canonicalDigest, canonicalJson } from "../../../support";
 import { selectRows } from "../../../../bases/base-read";
 import { decodeCursor, encodeCursor, type QueryCursorV1 } from "./query-cursor";
 import { apiError } from "../errors";
@@ -59,7 +59,7 @@ type QueryPageHeadV1 = Readonly<{
   revision: number;
   nextCursor?: string;
 }>;
-export type BaseGuiQueryPageV1 =
+type BaseGuiQueryPageV1 =
   | (QueryPageHeadV1 & Readonly<{
       mode: "rows";
       rows: readonly Readonly<{ rowId: string; values: Record<string, BaseCellValue | null> }>[];

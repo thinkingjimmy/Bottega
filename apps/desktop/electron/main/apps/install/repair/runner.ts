@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on fs/path, codex-runtime/process-group, apps/support, the store/runtime/maintenance gate, the site strategy, and the journal/supervisor pair
- * [OUTPUT]: Provides RepairRunner: lock-before-journal ordering, the seven-phase journal, fail-closed harvesting, idempotent commit, per-App startup recovery that never wedges the rest, orphan disposal, and `discard` for clean reinstall
+ * [INPUT]: Reads saved App configuration through the common command resolver; Depends on repair journals, source snapshots, custody and the shared structured App command interpreter
+ * [OUTPUT]: Provides transactional repair, data-bound server preflight and existing source/cancellation/recovery fences
  * [POS]: The install/repair transaction coordinator; it arranges safe ordering only, staging-vs-copy lives in site.ts, and manifest/command policy is injected by the adapter
  */
 
@@ -14,10 +14,9 @@ import type {
 import type { MaintenanceGate } from "../../maintenance/maintenance-gate";
 import type { AppRuntime } from "../../server/app-runtime";
 import type { AppStore } from "../../store/app-store";
-import { sanitizedProcessEnvironment } from "../../../codex-runtime";
 import { stopProcessGroup } from "../../../process-group";
 import { asError } from "../../../errors";
-import { strippedShell } from "../../support";
+import { resolveConfiguredAppCommand } from "../../execution/command";
 import {
   declineExtension,
   ExtensionInfrastructureError,
@@ -334,15 +333,14 @@ export class RepairRunner {
     manifest: Extract<AppManifest, { kind: "server" }>
   ) {
     const port = await this.deps.allocatePort();
-    const command = manifest.startCmd
-      .replaceAll("{PORT}", String(port))
-      .replaceAll("{HOST}", "127.0.0.1");
+    const command = await resolveConfiguredAppCommand(manifest.startCmd, {
+      userData: this.deps.userData, appId: context.record.id, signal: context.task.controller.signal,
+      root: context.journal.workspace, host: { PORT: String(port), HOST: "127.0.0.1" },
+    });
     let processError: Error | null = null;
     const running = context.execute({
       intent: "server-preflight",
-      ...strippedShell(command),
-      cwd: context.journal.workspace,
-      env: sanitizedProcessEnvironment(),
+      ...command,
       signal: context.task.controller.signal,
     }).catch((cause) => {
       processError = asError(cause);

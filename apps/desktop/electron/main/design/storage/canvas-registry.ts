@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on DurableJson and cryptographic canvas digests supplied by secure workspace readers
+ * [INPUT]: Depends on DurableJson and cryptographic canvas digests supplied by secure workspace readers, and statusError from main/errors
  * [OUTPUT]: Provides CanvasRegistry, the sole isCanonicalDesignPath predicate (case-sensitive design/ prefix), case-insensitive designPathIdentity dedup, registered-only listing, digest updates, owner migration, and owner termination
  * [POS]: Design's durable canvas identity ledger keyed only by stable workspace owner plus canonical relative path
  */
 
 import { join, posix } from "node:path";
 import { z } from "zod";
+import { statusError } from "../../errors";
 import { DurableJson } from "../../persistence/durable-json";
 
 const digestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -36,7 +37,7 @@ const fileSchema = z
 
 type RegistryFile = z.infer<typeof fileSchema>;
 export type CanvasProvenance = z.infer<typeof provenanceSchema>;
-export type CanvasRegistryEntry = z.infer<typeof entrySchema>;
+type CanvasRegistryEntry = z.infer<typeof entrySchema>;
 
 // design/ 前缀大小写敏感：磁盘目录恒为小写 design/，若前缀也走 /i，则
 // DESIGN/hero.html 与 design/hero.html 会 alias 成同一文件的两个身份。文件名段
@@ -71,7 +72,7 @@ export function designPathIdentity(canonicalPath: string) {
 
 export function canonicalDesignPath(value: string) {
   if (!isCanonicalDesignPath(value)) {
-    throw Object.assign(new Error("Design canvas path 无效"), { status: 400 });
+    throw statusError(400, "Design canvas path 无效");
   }
   return value;
 }
@@ -181,7 +182,7 @@ export class CanvasRegistry {
             candidate.stableWorkspaceOwnerId === toOwnerId &&
             candidate.canonicalRelativePath === entry.canonicalRelativePath
         );
-        if (conflict) throw Object.assign(new Error("Canvas owner migration 冲突"), { status: 409 });
+        if (conflict) throw statusError(409, "Canvas owner migration 冲突");
       }
       for (const entry of moving) entry.stableWorkspaceOwnerId = toOwnerId;
       if (moving.length) state.revision += 1;

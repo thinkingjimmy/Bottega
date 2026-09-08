@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on zod, strict RichInput and transcript/owner-native attachment Gallery sourceRef; Receive route-independent content, Steer outbox identity, incarnation precondition, ACK and outcome queries
- * [OUTPUT]: Provides a strict file/content schema, workspace precondition CAS, a canonical RichValue SubmissionContentV1, a stere wrapper schema, a dual kind ACK, revision outcome, typed error code single points and capsule budget
- * [POS]: The only wire truth of the shared durable submission; Queues only contain content, route identity only generated when drain/Steer admission
+ * [INPUT]: Depends on zod, the strict RichInput schema, and transcript/owner-native Gallery attachment sourceRef schemas; consumes route-independent content, the Steer outbox identity, incarnation/workspace preconditions, and ACK/outcome queries
+ * [OUTPUT]: Provides the strict file/content schema, the workspace-precondition CAS union, the canonical RichValue-based SubmissionContentV1, the Steer submission envelope schema, the dual-kind SubmissionAck, SubmissionOutcome, typed SubmissionErrorCode, and capsule byte/chat-count/TTL budgets
+ * [POS]: The only wire truth for shared durable submission; queues hold only content — route identity is generated only at drain/Steer admission time
  */
 
 import { z } from "zod";
@@ -307,6 +307,7 @@ export const submissionOutcomeSchema = z.discriminatedUnion("kind", [
       // 过期呈现走 live failed + message；会话删除直接删记录不立 intent
       // 墓碑——枚举只保留真实写入面。
       outcome: z.enum(["persisted", "failed"]),
+      custody: z.enum(["main-journal", "chat-persisted"]).optional(),
       deletedAt: z.number().int().nonnegative(),
     })
     .strict(),

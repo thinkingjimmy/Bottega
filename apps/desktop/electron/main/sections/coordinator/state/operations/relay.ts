@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the ledger schema, PauseSaga and the mutable LedgerState draft
  * [OUTPUT]: Provides relay access, phase/CAS, release, reply to complete, start recovery, chain discard and sequence into a pure mutation
- * [POS]: The coordinator/state's relay is pure mutation; No enduring, indexing or revision
+ * [POS]: Pure relay mutation unit of coordinator/state; no persistence, indexing, or side effects of its own
  */
 
 import { freezePause, settleAction } from "../pause-saga";
@@ -14,7 +14,7 @@ import {
   type SectionRef,
 } from "../ledger-schema";
 
-export const legalRelayTransitions: Record<
+const legalRelayTransitions: Record<
   RelayRecord["deliveryPhase"],
   RelayRecord["deliveryPhase"][]
 > = {
@@ -34,7 +34,7 @@ function sameRef(left: SectionRef, right: SectionRef) {
   );
 }
 
-export function matchesExpectation(
+function matchesExpectation(
   relay: RelayRecord,
   expected: RelayExpectation
 ) {
@@ -299,4 +299,12 @@ export function discardChain(
     relay.terminalAt = now;
   }
   return "discarded" as const;
+}
+
+export function freezeRelayHandoff(state: LedgerState, relayId: string,
+  handoff: import("../../../../../../shared/chat-agent/history").FrozenHandoff) {
+  const relay = state.relays[relayId];
+  if (!relay) return null;
+  relay.handoff ??= { ...structuredClone(handoff), refs: [...handoff.refs] };
+  return relay;
 }

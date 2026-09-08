@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on atomic file IO, zod, SerialQueue, submission custody, ledger operations, and Section/chat identities
- * [OUTPUT]: Provides relay ledger v6 mutations, recovery, reservations/intents/attempts, and fail-closed adoption-reference projection aggregated with custody manifests and persistent quarantine evidence
+ * [OUTPUT]: Provides relay ledger v7 mutations, targeted raw-custody reads, recovery, reservations/intents/attempts, and fail-closed adoption-reference projection aggregated with custody manifests and persistent quarantine evidence
  * [POS]: The durable side-effect journal of sections/coordinator
  */
 
+import { deferManualDispatch, deferRelayDispatch } from "./scheduler/defer-dispatch";
 import { readFile, readdir, rename } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { RelayActionsSnapshot } from "../../../../shared/sections-ipc";
@@ -38,7 +39,7 @@ import {
 import { collectAdoptionSnapshotIds, isSubmissionPayloadReference, submissionConversationId, SubmissionPayloadStore } from "./submission/payload-store";
 import type { ReferenceProjection } from "../../history-import/memory-snapshot-store";
 import {
-  admitRelay,
+  admitRelay, freezeRelayHandoff,
   completeAnsweredRelay as completeRelay,
   discardChain as discardRelayChain,
   normalizeSequences,
@@ -87,14 +88,12 @@ export class RelayLedger {
   private frozen: Error | null = null;
   private readonly submissionPayloads: SubmissionPayloadStore;
   private submissionReservationTail = Promise.resolve();
-
   constructor(userData: string, now: () => number = Date.now) {
     this.filePath = join(userData, "section-relay-ledger.json");
     this.submissionPayloadRoot = join(userData, "section-submission-payloads");
     this.submissionPayloads = new SubmissionPayloadStore(this.submissionPayloadRoot);
     this.now = now;
   }
-
   async initialize() {
     return this.queue.enqueue(async () => {
       await this.submissionPayloads.initialize();
@@ -371,8 +370,8 @@ export class RelayLedger {
     );
   }
 
-  async pendingSubmissionReservations() {
-    const pending = pendingSubmissionReservations(this.state);
+  async pendingSubmissionReservations(intentId?: string) {
+    const pending = pendingSubmissionReservations(this.state).filter(item => intentId === undefined || item.intentId === intentId);
     return Promise.all(
       pending.map(({ payload }) =>
         this.submissionPayloads.readReservation(payload)
@@ -416,6 +415,10 @@ export class RelayLedger {
     return this.mutate((state) =>
       bindManualSequences(state, intentId, userSeq, assistantSeq)
     );
+  }
+
+  freezeRelayHandoff(relayId: string, handoff: import("../../../../shared/chat-agent/history").FrozenHandoff) {
+    return this.mutate(state => freezeRelayHandoff(state, relayId, handoff));
   }
 
   bindRelaySequences(relayId: string, userSeq: number, assistantSeq: number) {
@@ -500,6 +503,13 @@ export class RelayLedger {
     return this.mutate((state, now) =>
       transitionManualIntent(state, intentId, expected, phase, now)
     );
+  }
+
+  deferManualDispatch(intentId: string) {
+    return this.mutate((state, now) => deferManualDispatch(state, intentId, now));
+  }
+  deferRelayDispatch(relayId: string) {
+    return this.mutate((state) => deferRelayDispatch(state, relayId));
   }
 
   markManualDispatching(intentId: string) {
@@ -702,13 +712,11 @@ export class RelayLedger {
       discardRelayChain(state, rootChainId, expectedPauseEpoch, now)
     );
   }
-
   async closeAndFlush() {
     await this.submissionReservationTail;
     this.queue.close();
     await this.queue.flush();
   }
-
   private mutate<T>(
     change: (draft: LedgerState, now: number) => T,
     afterCommit?: (result: T) => void
@@ -769,11 +777,7 @@ export class RelayLedger {
       return structuredClone(result);
     });
   }
-
-  private async persist(state: LedgerState) {
-    await persistLedgerState(this.filePath, state);
-  }
-
+  private async persist(state: LedgerState) { await persistLedgerState(this.filePath, state); }
   private async commitInitializedState(now: number) {
     const finalize =
       await this.submissionPayloads.recoverLedgerState(this.state, now);
@@ -786,11 +790,7 @@ export class RelayLedger {
     this.rebuildIndices();
     this.freezeCommittedState();
   }
-
-  private rebuildIndices() {
-    this.indices.rebuild(this.state);
-  }
-
+  private rebuildIndices() { this.indices.rebuild(this.state); }
   private freezeCommittedState() {
     if (process.env.NODE_ENV !== "production") deepFreeze(this.state);
   }

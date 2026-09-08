@@ -4,7 +4,7 @@
  * [POS]: Renderer command adapter for projects-service.ts; store serialization, lifecycle fences, and cleanup remain owned by ProjectsService
  */
 
-import { shell, type BrowserWindow } from "electron";
+import { shell } from "electron";
 import { z } from "zod";
 import {
   PROJECT_ID_PATTERN,
@@ -35,11 +35,10 @@ const setProjectAppPinnedSchema = z
   .strict() satisfies z.ZodType<SetProjectAppPinnedInput>;
 
 export function registerProjectsServiceIpc(
-  window: BrowserWindow,
   rendererUrl: string,
   service: ProjectsService
 ) {
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的 Projects 请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的 Projects 请求")
     .roles("main", "app-window")
     .handleWithContext(PROJECTS_CHANNEL.list, async (context) =>
       projectSnapshotForRenderer(context, await service.list())

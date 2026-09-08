@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on BaseCommitAuthorityRegistry BaseRowMutations Only submit kernel BaseAttachmentService owner-scoped read with active GUI binding
+ * [INPUT]: Depends on BaseCommitAuthorityRegistry BaseRowMutations Only submit kernel BaseAttachmentService owner-scoped read with active GUI binding, and statusError from main/errors
  * [OUTPUT]: Provides BaseAppGuiMutations, binding capability to authenticate generation fence as insert/patch/delete authority, and read owner own attachments
  * [POS]: The bases/service App GUI authorization is adapted to the page; Not to copy CAS, validation, history or annex attribution rules
  */
@@ -9,6 +9,7 @@ import type {
   BaseGuiLiveBinding,
 } from "../../../../shared/apps-ipc";
 import type { BaseRow, BaseRowPatch, BaseSnapshot } from "../../../../shared/bases-ipc";
+import { statusError } from "../../errors";
 import type {
   BaseCommitAuthorityRegistry,
   BaseMutationOperation,
@@ -126,8 +127,7 @@ export class BaseAppGuiMutations {
     operation: GuiMutationOperation
   ) {
     if (!binding.baseCapabilities.includes(operation)) {
-      throw Object.assign(new Error(`缺少 ${operation} capability`), {
-        status: 403,
+      throw statusError(403, `缺少 ${operation} capability`, {
         code: "capability_not_granted",
         outcome: "not-committed" as const,
       });

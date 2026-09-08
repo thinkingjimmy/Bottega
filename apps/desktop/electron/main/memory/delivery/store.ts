@@ -20,11 +20,6 @@ import {
   stableMemoryPayloadId,
 } from "./maintenance-store";
 
-export {
-  deliveryStreamKey,
-  stableMemoryPayloadId,
-} from "./maintenance-store";
-
 export type {
   CaptureReservation,
   DeliveryInstance,

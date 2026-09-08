@@ -1,16 +1,17 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React lazy/Suspense, shared history-import Agreement with lib/history/client
- * [OUTPUT]: Provides HistoryProvider/useHistory: the event-first watershed, the global Project Add flight, enable/refresh, and the Memory delta second confirmation
+ * [INPUT]: Depends on React lazy/Suspense, shared history-import contracts, lib/history/client, I18n, and the shared toast channel
+ * [OUTPUT]: Provides HistoryProvider/useHistory: event-first snapshots, one Project Add flight with preflight counts and automatic empty-project creation, enable/refresh, and Memory confirmation
  * [POS]: The single renderer owner of external history and Project onboarding; presentation actions on a synchronized history belong to the canonical Chat, not here
  */
 
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { HistoryImportSnapshot, HistoryMemoryPreview, PreparedProjectHistoryImport, ProjectHistoryCommitResult } from "../../../../shared/history-import-ipc";
+import { HISTORY_SOURCE_KINDS, type HistoryImportSnapshot, type HistoryMemoryPreview, type HistorySourceCount, type PreparedProjectHistoryImport, type ProjectHistoryCommitResult } from "../../../../shared/history-import-ipc";
 import type { Project } from "../../../../shared/projects-ipc";
 import {
   commitHistoryProject,
+  countHistoryProject,
   historySnapshot,
   onHistoryEvent,
   prepareHistoryProject,
@@ -19,6 +20,8 @@ import {
   commitHistoryMemory,
 } from "@/lib/history/client";
 import { errorMessage } from "@/lib/errors";
+import { useAppTranslation } from "../i18n-provider";
+import { toast } from "@ai-chat/ui/components/ui/sonner";
 
 const ProjectImportDialog = lazy(() =>
   import("@/components/sidebar/project/import/project-import-dialog").then((module) => ({
@@ -46,10 +49,14 @@ const initial: HistoryImportSnapshot = { revision: 0, entries: [], canonicalRout
 const HistoryContext = createContext<HistoryContextValue | null>(null);
 
 export function HistoryProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useAppTranslation();
   const [snapshot, setSnapshot] = useState(initial);
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState("");
-  const [prepared, setPrepared] = useState<PreparedProjectHistoryImport | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    prepared: PreparedProjectHistoryImport;
+    counts: HistorySourceCount[];
+  } | null>(null);
   const [refreshPreview, setRefreshPreview] = useState<HistoryMemoryPreview | null>(null);
   const addFlight = useRef<{
     promise: Promise<Project | null>;
@@ -102,33 +109,44 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  /* 失败已投影为 warning；入口调用方（Sidebar +、Composer）拿 null 即「未创建」，
-     不再向上抛拒绝。 */
+  const completeProject = useCallback((project: Project | null) => {
+    setConfirmation(null);
+    addFlight.current?.resolve(project);
+    addFlight.current = null;
+  }, []);
+
+  /* 四个来源都明确为零才跳过确认；扫描失败或缺少来源回执都保留选择。
+     扫描使用非阻塞进度提示，Sidebar 与 Composer 共享同一次添加。 */
   const addProject = useCallback(() => {
     if (addFlight.current) return addFlight.current.promise;
     let resolve!: (project: Project | null) => void;
     const promise = new Promise<Project | null>((done) => { resolve = done; });
     addFlight.current = { promise, resolve };
-    void run(prepareHistoryProject)
-      .then((next) => {
-        if (next) setPrepared(next);
-        else {
-          addFlight.current?.resolve(null);
-          addFlight.current = null;
+    void run(async () => {
+      const prepared = await prepareHistoryProject();
+      if (!prepared) return completeProject(null);
+      const progress = toast.loading(t("history.projectScanningDescription"));
+      try {
+        const counts = await countHistoryProject(prepared.token).catch(() => []);
+        const empty = HISTORY_SOURCE_KINDS.every((kind) =>
+          counts.find((item) => item.sourceKind === kind)?.count === 0
+        );
+        if (!empty) {
+          setConfirmation({ prepared, counts });
+          return;
         }
-      })
-      .catch(() => {
-        addFlight.current?.resolve(null);
-        addFlight.current = null;
-      });
+        const { project } = await commitHistoryProject({
+          token: prepared.token,
+          importHistory: false,
+          previewMemory: false,
+        });
+        completeProject(project);
+      } finally {
+        toast.dismiss(progress);
+      }
+    }).catch(() => completeProject(null));
     return promise;
-  }, [run]);
-
-  const completeProject = useCallback((project: Project | null) => {
-    setPrepared(null);
-    addFlight.current?.resolve(project);
-    addFlight.current = null;
-  }, []);
+  }, [completeProject, run, t]);
 
   const commitMemory = useCallback(
     (snapshotId: string, digest: string) => run(() => commitHistoryMemory(snapshotId, digest)),
@@ -154,9 +172,14 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
   return (
     <HistoryContext.Provider value={value}>
       {children}
-      {prepared && (
+      {confirmation && (
         <Suspense fallback={null}>
-          <ProjectImportDialog key={prepared.token} prepared={prepared} onComplete={completeProject} />
+          <ProjectImportDialog
+            key={confirmation.prepared.token}
+            prepared={confirmation.prepared}
+            counts={confirmation.counts}
+            onComplete={completeProject}
+          />
         </Suspense>
       )}
       {refreshPreview && (

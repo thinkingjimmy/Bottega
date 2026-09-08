@@ -6,10 +6,10 @@
 
 import { posix } from "node:path";
 
-export const GUI_ASSET_EXTENSIONS = [".json", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".woff", ".woff2"];
+const GUI_ASSET_EXTENSIONS = [".json", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".woff", ".woff2"];
 export const GUI_SOURCE_EXTENSIONS = [".ts", ".tsx", ".css", ...GUI_ASSET_EXTENSIONS];
 
-export function isGuiImportTarget(path: string): boolean {
+function isGuiImportTarget(path: string): boolean {
   const extension = posix.extname(path).toLowerCase();
   if (path.startsWith("gui/src/")) return GUI_SOURCE_EXTENSIONS.includes(extension);
   if (path.startsWith("gui/data/")) return extension === ".json";

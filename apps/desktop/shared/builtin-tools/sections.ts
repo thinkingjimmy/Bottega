@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod and the type of Section id, annotations, spec of the builtin-tools/platform
- * [OUTPUT]: Provides live reading, Project inheritance, Subagent results upgrading and manually-only attachments exported Sections Six static specs
- * [POS]: The truth source in the Sections field of builtin-tools; Just down the platform
+ * [OUTPUT]: Provides the six Sections built-in tool specs: list, live paginated read, cross-Section send, Project-inheriting create, Subagent-result promotion, and manual-only attachment export
+ * [POS]: Authoritative source for the Sections domain of builtin-tools; depends only on platform.ts
  */
 
 import { z } from "zod";

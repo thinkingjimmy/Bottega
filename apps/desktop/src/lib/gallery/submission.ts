@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the shared RichInput wire projection, PromptInputMessage, PreparedSubmissionV1/schema/comment templates and a per-chat Gallery snapshot with backend/epoch
- * [OUTPUT]: Provides synchronized freeze GalleryDraft, freezes sourceRef/token/backend/epoch and injects comment text in the first await
- * [POS]: The lib/gallery submission boundaries are frozen; direct, queue, steer and ambiguous share message.submissionData
+ * [OUTPUT]: Provides freezeGalleryDraft, which snapshots sourceRef/token/backend/epoch and injects comment text before the first await
+ * [POS]: The submission-freezing boundary for lib/gallery; direct-send, queued, steer, and ambiguous-reply paths all share message.submissionData
  */
 
 import type {

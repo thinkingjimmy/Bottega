@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, TanStack Virtual, Gallery visual-row model/store type, Thumbnail and Button
- * [OUTPUT]: Provides GalleryListbox; Virtual to real-world visuals, supporting roving focus, pin, scaling, comment control and independent retry
- * [POS]: The execution layer of the large list of bases/views/gallery; Interactive status and business commands held by BaseGalleryView
+ * [OUTPUT]: Provides GalleryListbox, a virtualized grid of gallery tiles with roving focus, pin, zoom, comment controls, and per-tile retry
+ * [POS]: The virtualized-list rendering layer of bases/views/gallery; interaction state and business commands stay owned by BaseGalleryView
  */
 
 import {

@@ -194,11 +194,10 @@ export type AppDataEpochOwnership =
       archiveId: string;
     }>;
 
-/** 三种 source 的封闭联合；任一分支都不得伪造 source generation。 */
+/** 两种 source 的封闭联合；任一分支都不得伪造 source generation。 */
 export type AppDataCutoverSource =
   | Readonly<{ kind: "none" }>
-  | Readonly<{ kind: "existing"; generationId: string; dataEpochId: string }>
-  | Readonly<{ kind: "legacy-import"; snapshotId: string }>;
+  | Readonly<{ kind: "existing"; generationId: string; dataEpochId: string }>;
 
 /**
  * `disposition` 是唯一的 durable 决定轴。重启对账只信它与 store 里那条 active

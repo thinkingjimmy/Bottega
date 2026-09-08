@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical ProjectStore, ProjectToolPolicyStore, scoped ManualMcpServersStore, builtin registry ids, shared support/effective projection, and global disabled-tool defaults
- * [OUTPUT]: Provides freezeProjectToolPreference, resolveManualMcpPreference, ResolvedProjectToolsSnapshot, and ProjectToolsResolver for durable preparation
+ * [OUTPUT]: Provides freezeProjectToolPreference, projectBuiltinInventory, ResolvedProjectToolsSnapshot, and ProjectToolsResolver for durable preparation
  * [POS]: Pure merge boundary between live main-owned stores and the preparation receipt; runtime consumes one frozen snapshot instead of rereading stores
  */
 
@@ -15,7 +15,6 @@ import type {
 } from "../../../../shared/project-tools-ipc";
 import type { ResourceBackendSupportView } from "../../../../shared/resource-scope";
 import { projectEffectiveState } from "../../../../shared/tool-support";
-import type { TurnOrigin } from "../../turn-registry";
 import type {
   ProductResourceScope,
   ScopedResourceVersion,
@@ -99,18 +98,7 @@ export function projectBuiltinInventory(input: Readonly<{
     });
 }
 
-export function projectRuntimeBuiltinTools(input: Readonly<{
-  backend: AgentBackendId;
-  builtinTools: "none" | "read" | "mutate";
-  planMode: boolean;
-  origin: TurnOrigin | undefined;
-  disabledTools: readonly string[];
-  useSkill?: boolean;
-}>) {
-  return projectBuiltinTools(input);
-}
-
-export function resolveManualMcpPreference(
+function resolveManualMcpPreference(
   servers: readonly ResolvedManualMcpServer[],
   policy: ProjectToolPolicyPayload | null
 ): readonly FrozenManualMcpCandidate[] {
@@ -180,7 +168,7 @@ export class ProjectToolsResolver {
         project: projectId ? this.mcpServers.scopeRevision(scope) : null,
       },
       builtinIntent: { disabledTools: intent.disabledTools },
-      allowedTools: projectRuntimeBuiltinTools({
+      allowedTools: projectBuiltinTools({
         builtinTools: input.builtinTools,
         backend: input.backend,
         planMode: input.planMode,

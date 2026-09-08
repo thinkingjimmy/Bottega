@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React useMemo, project the same directory color as USAGE_RAMP_FILL/USAGE_BAND_LEVELS, ui Tooltip and cn
- * [OUTPUT]: Provides UsageDailyChart The daily daily daily daily daily daily daily daily stacked area map of the SVG is hand-painted with the Tooltip marked today
- * [POS]: The following are the settings/usage sub-modules: Just draw the input values, don't know Summary, and don't touch ECharts
+ * [OUTPUT]: Provides UsageDailyChart: a hand-painted SVG stacked-area chart with today's point marked via Tooltip
+ * [POS]: settings/usage's chart sub-module; renders only the values it's given, has no knowledge of Summary, and intentionally avoids ECharts
  */
 
 import { useMemo } from "react";

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs with the injected launchctl/lsof capture, provider label/name, and boundary waiting parameters
- * [OUTPUT]: Provides LaunchdIdentityController with a border readDiagnosticTail
- * [POS]: The boundaries of the identity and log diagnosis of macOS processes in main/memory/runtime/control; Installing the output or port PID of the unparalleled command
+ * [OUTPUT]: Provides LaunchdIdentityController (compares launchctl job PID against the lsof listener PID on the service port to assert/wait-for ownership, and boot out the job) plus readDiagnosticTail
+ * [POS]: The macOS launchd process-identity and log-diagnostic boundary of main/memory/runtime/control; it refuses to touch a port whose listener PID doesn't match our own launchd job
  */
 
 import { open } from "node:fs/promises";

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on ACP schema session update/permission/stop reason and shared Agent DTO
- * [OUTPUT]: Provides ACP→Agent item mapping, native Plan lifecycle, permission/question mapping, and Codex/Claude subagent attribution metadata
- * [POS]: The pure translation layer of ACP transport, four AcpTurn shared and unheld processes
+ * [OUTPUT]: Provides ACP→Agent item mapping, native Plan update/removal mapping (finalization is imported from plan-events by AcpTurn directly), permission/question mapping, and Codex/Claude subagent attribution metadata
+ * [POS]: Pure translation layer of ACP transport, shared by all four AcpTurn backends; holds no session state of its own
  */
 
 import type {
@@ -22,15 +22,11 @@ import {
   type AgentTurnItemKind,
 } from "../../../../shared/agent-ipc";
 import {
-  finalizeNativePlan as finalizeAcpPlan,
-  finalizeNativePlans as finalizeAcpPlans,
   mapNativePlanUpdate,
   planEntryText,
   removeNativePlan,
   type NativePlanState,
 } from "./plan-events";
-
-export { finalizeAcpPlan, finalizeAcpPlans };
 
 export type AcpMappedEvent =
   | { type: "delta"; itemId: string; text: string }
@@ -197,12 +193,9 @@ function diffText(block: Record<string, unknown>) {
     .join("\n");
 }
 
-export function toolDetailText(
-  content: unknown,
-  rawInput?: unknown,
-  rawOutput?: unknown
-) {
-  const extracted = (Array.isArray(content) ? content : [])
+/** Text of ACP `content`/`diff` blocks, joined by blank lines; empty when none carry text. */
+function contentBlocksText(content: unknown) {
+  return (Array.isArray(content) ? content : [])
     .flatMap((block) => {
       if (!block || typeof block !== "object" || Array.isArray(block)) {
         return [];
@@ -215,8 +208,15 @@ export function toolDetailText(
     })
     .join("\n\n")
     .trim();
+}
+
+export function toolDetailText(
+  content: unknown,
+  rawInput?: unknown,
+  rawOutput?: unknown
+) {
   const fallback =
-    extracted ||
+    contentBlocksText(content) ||
     parameterSummary(rawOutput) ||
     parameterSummary(rawInput);
   return fallback
@@ -510,24 +510,22 @@ function permissionToolName(request: RequestPermissionRequest) {
  * ────────────────────────────────────────────────────────── */
 const CODEX_PLAN_REVIEW_OPTION_IDS = ["implement_plan", "revise_plan"];
 
-function isCodexPlanReview(request: RequestPermissionRequest) {
+function codexMeta(request: RequestPermissionRequest) {
   const codex = (request._meta as { codex?: unknown } | undefined)?.codex;
-  if (
-    codex &&
-    typeof codex === "object" &&
-    (codex as Record<string, unknown>).kind === "plan_review"
-  ) {
-    return true;
-  }
+  return codex && typeof codex === "object"
+    ? (codex as Record<string, unknown>)
+    : undefined;
+}
+
+function isCodexPlanReview(request: RequestPermissionRequest) {
+  if (codexMeta(request)?.kind === "plan_review") return true;
   return request.options.some((option) =>
     CODEX_PLAN_REVIEW_OPTION_IDS.includes(option.optionId)
   );
 }
 
 function codexPlanItemId(request: RequestPermissionRequest) {
-  const codex = (request._meta as { codex?: unknown } | undefined)?.codex;
-  if (!codex || typeof codex !== "object") return undefined;
-  const value = (codex as Record<string, unknown>).planItemId;
+  const value = codexMeta(request)?.planItemId;
   return typeof value === "string" && value ? value : undefined;
 }
 
@@ -552,20 +550,7 @@ function planPermissionOptions(request: RequestPermissionRequest) {
  * item 进 transcript，因此不吃 TOOL_DETAIL_BYTE_LIMIT 的过程截断。
  * ────────────────────────────────────────────────────────── */
 function planReviewPlanText(request: RequestPermissionRequest) {
-  const fromContent = (Array.isArray(request.toolCall.content)
-    ? request.toolCall.content
-    : [])
-    .flatMap((block) => {
-      if (!block || typeof block !== "object" || Array.isArray(block)) {
-        return [];
-      }
-      const value = block as Record<string, unknown>;
-      if (value.type !== "content") return [];
-      const text = textContent(value.content);
-      return text ? [text] : [];
-    })
-    .join("\n\n")
-    .trim();
+  const fromContent = contentBlocksText(request.toolCall.content);
   if (fromContent) return fromContent;
   const raw = (request.toolCall.rawInput as { plan?: unknown } | undefined)
     ?.plan;

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared authoritative inventory (health as generation/component/declared-config attribution) ✓ backend/runtime identity and obvious product policy/probe
+ * [INPUT]: Depends on shared authoritative inventory (health as generation/component/declared-config attribution), backend/runtime identity, and product policy/probe contracts
  * [OUTPUT]: Provides diagnostic capability snapshots, D13 effective owner selection after backend eligibility is known, and an exact inventory projection for frozen consumers
  * [POS]: The three-axis delivery eligibility authority; planners use effective selection while Settings keeps diagnostic exclusions
  */
@@ -17,7 +17,7 @@ import type {
   McpComponentHealthRecord,
   Sha256Digest,
 } from "../../../shared/extensions-ipc";
-import { digestCanonical } from "./registry-store";
+import { digestCanonical } from "./registry-canonical";
 
 export type ExtensionBackendProbe = Readonly<{
   backendId: AgentBackendId;

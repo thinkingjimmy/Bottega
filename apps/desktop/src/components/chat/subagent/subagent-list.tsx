@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on App i18n, renderer ProjectedSubagent, SubagentAvatar, and React timers/click navigation
- * [OUTPUT]: Provides a chrome-free SubagentList with a compact abstract in a relatively binary vertical residence with headings showing detailed inputs in the Active/Done category
+ * [OUTPUT]: Provides a chrome-free SubagentList grouped into Active/Done sections, each row showing avatar, name, a one-line status summary, and relative last-activity time
  * [POS]: The chat/subagent session level navigation page; Chrome is in PanelTabs, read only projections and does not have agent status
  */
 

@@ -1,22 +1,35 @@
 /**
- * [INPUT]: Depends only on the native Promise
- * [OUTPUT]: Provides DispatchTracker: registration of fire-and-forget dispatches with their failure handler, plus a drain barrier that waits for every one of them — including any started while draining
- * [POS]: The quiescence primitive of sections/coordinator/scheduler; a kick returns immediately, but shutdown still has a point at which nothing can write any more
+ * [INPUT]: Depends on Stable StopOperation identities and deferred asynchronous dispatch work.
+ * [OUTPUT]: Provides dispatchTracker synchronous registration/refinement, change subscriptions, and complete in-flight drain.
+ * [POS]: Coordinator-owned preparation tracker shared by dispatch, safe quit, and task status.
  */
 
-export class DispatchTracker {
-  private readonly inFlight = new Set<Promise<void>>();
+import type { StopOperation } from "../../../presence/lifecycle/start-fence";
 
-  track(work: Promise<unknown>, onFailure: (cause: unknown) => void) {
-    const dispatch: Promise<void> = work
-      .then(() => undefined, onFailure)
-      .finally(() => {
-        this.inFlight.delete(dispatch);
-      });
-    this.inFlight.add(dispatch);
+export class DispatchTracker {
+  private readonly listeners = new Set<() => void>();
+  onChanged(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  private notify() { for (const listener of this.listeners) { try { listener(); } catch (cause) { console.warn("[dispatch] observer failed", cause); } } }
+  private readonly inFlight = new Map<symbol, { operation: StopOperation; settled: Promise<void> }>();
+
+  track<T>(work: (refine: (operation: StopOperation) => void) => Promise<T>, operation: StopOperation): Promise<T> {
+    const token = Symbol("dispatch");
+    let finish!: () => void;
+    const settled = new Promise<void>((resolve) => { finish = resolve; });
+    this.inFlight.set(token, { operation: { startedAt: Date.now(), ...operation }, settled });
+    this.notify();
+    // Registration precedes even the first synchronous portion of async preparation.
+    return Promise.resolve().then(() => work((next) => {
+      const record = this.inFlight.get(token);
+      if (record) { record.operation = { ...record.operation, ...next }; this.notify(); }
+    })).finally(() => {
+      this.inFlight.delete(token);
+      finish(); this.notify();
+    });
   }
 
+  snapshot() { return [...this.inFlight.values()].map(({ operation }) => ({ ...operation })); }
   async drain() {
-    while (this.inFlight.size) await Promise.all([...this.inFlight]);
+    while (this.inFlight.size) await Promise.all([...this.inFlight.values()].map(({ settled }) => settled));
   }
 }

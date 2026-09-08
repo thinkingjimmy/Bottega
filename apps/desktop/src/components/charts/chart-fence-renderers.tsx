@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React lazy/Suspense, Streamdown renderer contracts, i18n, and ChartSkeleton
- * [OUTPUT]: Provides CHAT_FENCE_RENDERERS plus the localized ChartOverflowNotice
+ * [OUTPUT]: Provides CHAT_FENCE_RENDERERS (chart fence plus the localized overflow notice)
  * [POS]: Lazy registry boundary for components/charts; validation and viewport code load only when a chart fence is encountered
  */
 
@@ -29,7 +29,7 @@ function ChartFence(props: CustomRendererProps) {
   );
 }
 
-export function ChartOverflowNotice() {
+function ChartOverflowNotice() {
   const { t } = useAppTranslation();
   return (
     <div className="my-2 rounded-lg border bg-muted/30 p-3 text-muted-foreground text-sm">

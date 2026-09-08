@@ -68,6 +68,13 @@ for (const helper of helperApps) {
     throw new Error(`helper inherited entitlements are missing allow-jit: ${helper}`);
   }
 }
+const screenHelper = join(app, "Contents", "Resources", "presence", "bin", "screen-bridge");
+if (!existsSync(screenHelper)) throw new Error("presence screen helper is missing");
+run("codesign", ["--verify", "--strict", "--verbose=4", screenHelper]);
+const screenSignature = run("codesign", ["-dv", "--verbose=4", screenHelper]);
+if (!screenSignature.includes(`TeamIdentifier=${teamId}`) || !/flags=.*runtime/.test(screenSignature)) {
+  throw new Error("presence screen helper signature policy mismatch");
+}
 run("spctl", ["-a", "-vv", "--type", "execute", app]);
 run("xcrun", ["stapler", "validate", app]);
 run("xcrun", ["stapler", "validate", dmg]);

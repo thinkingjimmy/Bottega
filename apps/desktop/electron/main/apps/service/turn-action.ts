@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared AppDomainIdentity, Chat slot role and create-skill request
- * [OUTPUT]: In-app TurnCompletionAction is provided, which will consistently split the initial Base skill turn and subsequent Base/Static/Server edit into skill/rebuild/none
- * [POS]: The decision to terminate apps/services without status; AppsService redirects to keep the API open
+ * [OUTPUT]: Provides appTurnCompletionAction, classifying a completed edit turn as skill/rebuild/none, separating the Base initial skill-creation turn from later Base/Static/Server edits
+ * [POS]: Stateless decision helper for apps/service; kept free of AppsService state so the classification stays a pure function
  */
 
 import type { AppDomainIdentity } from "../../../../shared/apps-ipc";

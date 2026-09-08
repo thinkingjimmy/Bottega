@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on the rigorous Skill of the manifest-adapter
- * [OUTPUT]: Provides skill-repo-1.0.0 admission, only skills/<name>The following is the list of the official languages of the Republic of Moldova
- * [POS]: The expansion of the Naked Skill Warehouse adapter; Not to parse plugin.json, not to introduce MCP capabilities
+ * [INPUT]: Depends on manifest-adapter's strict Skill discovery and canonical directory resolution, plus the Registry source provenance type
+ * [OUTPUT]: Provides admitSkillRepoPackage (skill-repo-1.0.0 admission accepting only skills/<name>/SKILL.md), SKILL_REPO_ADAPTER_ID, and SKILL_REPO_SCHEMA_ID
+ * [POS]: The bare-Skill repository adapter of extensions; it never parses plugin.json and never invents MCP capabilities
  */
 
-import type { ExtensionSourceProvenance } from "./registry-store";
+import type { ExtensionSourceProvenance } from "./registry-schema";
 import {
   discoverSkills,
   canonicalDirectory,

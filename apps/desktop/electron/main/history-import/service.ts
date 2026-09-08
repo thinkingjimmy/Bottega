@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, Project/Chat queries, strict turn options, four history adapters, the dedicated import worker, Project/Memory coordinators, index/snapshot stores, and shared contracts
- * [OUTPUT]: Provides detection/refresh with a warning that reflects only the latest sync attempt (a successful refresh or a fresh background run retires the previous complaint), Project-ownership stamping at the scan seam (adapters report no projectId), stable identity, a separately scheduled off-main backpressured SQLite sync that skips adopted sources, forgets dangling routes, and marks vanished/returned sources missing/match within the scanned Project scope, canonical generation routing, registration-time snapshot republication, adoption, transcript export/search reads, Memory, and drain APIs
+ * [OUTPUT]: Validates same-source history adoption and forwards only the closed typed authentication retry intent to canonical admission.
  * [POS]: Canonical federated history and renderer-safe authority boundary; production SQLite ingestion parses outside main
  */
 
@@ -50,7 +50,6 @@ import {
 } from "./routing/history-policy";
 import { foreignTranscriptSnapshot } from "./routing/foreign-transcript";
 
-export { historyFileState } from "./routing/history-policy";
 
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
 
@@ -200,7 +199,7 @@ export class HistoryImportService {
     /* 启动同步跑在窗口注册之前：那批 publish 全部落空。窗口一到就补发一次
        当前快照，侧栏因此不必靠一次刷新才看见已经同步好的历史会话。 */
     this.publish();
-    const ipc = rendererIpc(window, rendererUrl, "拒绝非主窗口的历史导入请求")
+    const ipc = rendererIpc(rendererUrl, "拒绝非主窗口的历史导入请求")
       .roles("main");
     ipc
       .handle(HISTORY_IMPORT_CHANNEL.snapshot, () => this.snapshot())
@@ -638,7 +637,7 @@ export class HistoryImportService {
 
 function parseCommit(value: unknown) { return z.object({ token: z.string().min(1), importHistory: z.boolean(), previewMemory: z.boolean() }).strict().parse(value); }
 function parseAdopt(value: unknown): PrepareHistoryAdoptionInput {
-  const parsed = z.object({ opaqueId: idSchema, expectedHistoryRevision: z.string().min(1), submission: z.unknown(), turnOptions: z.unknown() }).strict().parse(value);
+  const parsed = z.object({ opaqueId: idSchema, expectedHistoryRevision: z.string().min(1), submission: z.unknown(), turnOptions: z.unknown(), authenticationRetry: z.object({ kind: z.literal("retry-authentication") }).strict().optional() }).strict().parse(value);
   /* 正文/附件/RichValue 三者的跨字段同构交给 manual route 那一套断言，
      此处不另写一份——两份校验必然有一份先松掉，而松掉的那份就是偏门。 */
   return {

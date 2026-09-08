@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node Unix socket, shared tool name, BuiltinMcpLeaseStore and BuiltinToolRegistry
+ * [INPUT]: Depends on Node Unix socket, shared tool name, BuiltinMcpLeaseStore and BuiltinToolRegistry, and statusError from main/errors
  * [OUTPUT]: Provides restartable 0600 native bridge, execute token/allowedTools, domain frequency control, socket-close/lease-revoke, cancel, ready, reverse, strict distribution and audit
- * [POS]: The process boundaries of tools; The stdio subprocess does not contact the product store, and can only be called via this bridge for static registration capabilities
+ * [POS]: The tools process boundary; the stdio subprocess never touches app storage and can only invoke statically registered builtin tools through this bridge
  */
 
 import { chmod, mkdir, unlink } from "node:fs/promises";
@@ -12,6 +12,7 @@ import {
   BUILTIN_TOOL_NAMES,
   type BuiltinToolName,
 } from "../../../shared/builtin-tools";
+import { statusError } from "../errors";
 import type { BuiltinMcpLeaseStore } from "./lease";
 import type { BuiltinToolRegistry } from "./registry";
 
@@ -170,6 +171,3 @@ export class BuiltinMcpBridge {
   }
 }
 
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
-}

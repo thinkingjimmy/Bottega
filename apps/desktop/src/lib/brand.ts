@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on assets Bottega single graph, bright and dark side Logo and Vite import.meta.url asset analysis
+ * [INPUT]: Depends on the Bottega mark and light/dark logo assets, resolved via Vite's import.meta.url asset URLs
  * [OUTPUT]: Provides PRODUCT_NAME, PRODUCT_MARK_URL/SIZE, PRODUCT_LOGO_URLS and PRODUCT_LOGO_SIZE
- * [POS]: The only true source of product identity is the renderer; Chat airspace uses single graphics, Sidebar page eyebrows are used to take horizontal tags according to the valid theme
+ * [POS]: Sole source of product identity in the renderer; consumed by the chat empty state, sidebar header, About section, and onboarding to render the Bottega mark/logo for the active theme
  */
 
 // 产品名是标识不是文案，故不进 i18n 目录；换名换图都只改这里一处，

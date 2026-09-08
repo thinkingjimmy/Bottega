@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppStore, AppGateway, lifecycle serialization, trusted renderer identity, Base GUI grants/data ports, attachment surface leases, query worker, preferences storage, file-export custody, renderer transition publication, and the current product window
- * [OUTPUT]: Provides the cohesive Base GUI runtime boundary for projection, staged cohort acquisition/readiness keyed by the renderer's logical lease, SDK routes, cutover barriers, preferences, exports, signed-update quarantine, renderer-owned surface release, initialization, non-fatal startup cutover recovery reporting, and shutdown
+ * [OUTPUT]: Emits explicit data-migration failure codes. Provides the cohesive Base GUI runtime boundary for projection, staged cohort acquisition/readiness keyed by the renderer's logical lease, SDK routes, cutover barriers, preferences, exports, signed-update quarantine, renderer-owned surface release, initialization, non-fatal startup cutover recovery reporting, and shutdown
  * [POS]: apps/service GUI facade; keeps AppsService as a composition root while GUI runtime ownership remains explicit and testable
  */
 
@@ -13,7 +13,7 @@ import type {
   AppGuiReadyResult,
   BaseGuiLiveBinding,
 } from "../../../../shared/apps-ipc";
-import { asError } from "../../errors";
+import { asError, statusError } from "../../errors";
 import type { AppGateway } from "../gateway/app-gateway";
 import type { AppStore } from "../store/app-store";
 import type { AppAttachmentSurfaceLeaseRegistry } from "../attachments/surface-leases";
@@ -185,7 +185,9 @@ export class AppGuiRuntimeService {
       logicalLeaseId: input.appSurfaceLeaseId,
     }, renderer);
     const result = target.cutoverId ? { ...info, cutoverId: target.cutoverId } : info;
-    return migrationError ? { ...result, error: migrationError } : result;
+    return migrationError
+      ? { ...result, error: `APP_DATA_MIGRATION_FAILED: ${migrationError}` }
+      : result;
   }
 
   ready(input: AppGuiReadyInput): Promise<AppGuiReadyResult> {
@@ -286,7 +288,7 @@ export class AppGuiRuntimeService {
   ) {
     while (this.gateway.requestLeases.countApp(appId) > 0) {
       if (Date.now() >= deadlineMs) {
-        throw Object.assign(new Error("APP_GUI_DRAIN_TIMEOUT"), { status: 409 });
+        throw statusError(409, "APP_GUI_DRAIN_TIMEOUT");
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }

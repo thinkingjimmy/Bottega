@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React's useEffect/useRef
- * [OUTPUT]: Provides useScrollActivity, returns the ref to the container, pointers inside or just roll out, and sets the data-scroll-active, standby and remove the data
+ * [OUTPUT]: Provides useScrollActivity, returning a container ref that toggles a data-scroll-active attribute while scrolling or while the pointer is inside, clearing it afterward
  * [POS]: The core of the rolling activity of hooks/; The scrollbar-slim, paired with globals.css, is the only switch that makes the scrollbar appear hidden
  */
 

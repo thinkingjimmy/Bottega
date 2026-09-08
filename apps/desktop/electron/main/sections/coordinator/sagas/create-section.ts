@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on RelayLedger CreateIntent, unkeyed universal Workspace lifecycle/external qualification ports, ChatsService canonical ensure, notice outbox and scheduler kick
  * [OUTPUT]: Provides resumeCreateSectionSaga, validates caller/external qualification within the same Project gate and performs chat→relay→result in the persistent phase
- * [POS]: CreateIntent side effects coder for coordinator/sagas; Retrieval perIOd qualification drift receives the receiver as rejected, temporary IO error remains replaceable
+ * [POS]: CreateIntent side-effect executor for coordinator/sagas; a Project-qualification drift discovered during resume is committed as rejected, while transient IO errors remain retryable
  */
 
 import { createHash } from "node:crypto";

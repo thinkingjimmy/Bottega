@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, snapshot tree test and journal/AppRecord type
- * [OUTPUT]: Provides the RepairSite interface, the stagingSite/copySite policies, repairSiteFor, and exists
+ * [OUTPUT]: Provides the RepairSite interface, repairSiteFor selecting the staging or copy policy, and exists
  * [POS]: The whole staging-vs-copy difference of install/repair lives here, so the runner never branches on site kind
  */
 
@@ -10,15 +10,15 @@ import type { AppRecord } from "../../../../../shared/apps-ipc";
 import type { RepairJournal } from "./journal";
 import { assertSameTree, snapshotTree } from "./snapshot";
 
-export type SwapDisposition = "rollback" | "forward" | "locked";
+type SwapDisposition = "rollback" | "forward" | "locked";
 export type SwapPresence = { dir: boolean; workspace: boolean; trash: boolean };
 
-export type SiteRoots = { userData: string; appsRoot: string };
+type SiteRoots = { userData: string; appsRoot: string };
 export type SiteHooks = {
   stopRuntime: () => Promise<void>;
   clone: () => Promise<void>;
 };
-export type SiteContext = { record: AppRecord; journal: RepairJournal };
+type SiteContext = { record: AppRecord; journal: RepairJournal };
 
 export const exists = (path: string) =>
   stat(path).then(() => true, () => false);
@@ -47,7 +47,7 @@ export interface RepairSite {
 // staging：安装失败后的干净重装，正式目录本就无效，无需备份
 // ============================================================
 
-export const stagingSite: RepairSite = {
+const stagingSite: RepairSite = {
   kind: "staging",
   workingState: "installing",
   workspacePath: (roots, appId) => join(roots.appsRoot, ".staging", appId),
@@ -88,7 +88,7 @@ export const stagingSite: RepairSite = {
 // copy：就绪 App 的原地更新，S1/S2 两次快照守护正式目录
 // ============================================================
 
-export const copySite: RepairSite = {
+const copySite: RepairSite = {
   kind: "copy",
   workingState: "updating",
   workspacePath: (roots, appId, runId) =>

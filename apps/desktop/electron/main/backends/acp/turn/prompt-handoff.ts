@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node Writable and ACP JSON-RPC session/prompt wire
- * [OUTPUT]: Provides final child stdin write-completion Linked PromptHandoff tracker, sensitive contribution trace summary and multi-request queue closures
- * [POS]: The general transport ack substrate of backends/acp/turn; The first is the Memory/Policy, the response, and the writer ack
+ * [OUTPUT]: Provides PromptHandoffTracker, projecting pending/accepted/rejected prompt state from child-stdin write completion, and AcpOutboundSink, the observing wrapper around the outbound JSON-RPC stream
+ * [POS]: Shared write-acknowledgement substrate for backends/acp/turn; prompt pending/accepted/rejected state is derived by observing outbound stdin writes, not from a separate ack channel
  */
 
 import { Writable } from "node:stream";

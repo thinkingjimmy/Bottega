@@ -4,7 +4,6 @@
  * [POS]: The chats renderer IPC adapter; ChatsService supplies domain callbacks while this module owns channel validation and window scope
  */
 
-import type { BrowserWindow } from "electron";
 import { CHATS_CHANNEL } from "../../../shared/chats-ipc";
 import {
   rendererIpc,
@@ -14,7 +13,6 @@ import { redactImageDetails } from "../gallery/agent-image-projection";
 import { surfaceWindowController } from "../window/surfaces/surface-window-controller";
 import { ATTACHMENT_ID_PATTERN, CHAT_ID_PATTERN } from "./chat-schema";
 import type { ChatStore } from "./chat-store";
-import { rejectLegacyRendererWrite } from "./chats-service-guards";
 import type {
   ChatFindCursor,
   CommitManagedWorktreeInput,
@@ -135,12 +133,11 @@ const outlineInput = (value: unknown): ChatOutlineInput => {
 };
 
 export function registerChatRendererIpc(
-  window: BrowserWindow,
   rendererUrl: string,
   ports: ChatRendererIpcPorts,
   register: RendererIpcRegistrar = rendererIpc
 ) {
-  register(window, rendererUrl, "拒绝非主窗口的聊天请求")
+  register(rendererUrl, "拒绝非主窗口的聊天请求")
     .roles("main", "app-window")
     .handleWithContext(CHATS_CHANNEL.list, (context) => {
       const scoped = surfaceWindowController.appWindowUseChat(context);
@@ -211,9 +208,6 @@ export function registerChatRendererIpc(
       });
     })
     .roles("main")
-    .handle(CHATS_CHANNEL.create, rejectLegacyRendererWrite)
-    .handle(CHATS_CHANNEL.createForApp, rejectLegacyRendererWrite)
-    .handle(CHATS_CHANNEL.append, rejectLegacyRendererWrite)
     .handle(CHATS_CHANNEL.forkPreflight, (input) => {
       ports.assertAdmission();
       if (!ports.forkPreflight) throw new Error("Chat fork is unavailable");

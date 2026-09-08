@@ -8,7 +8,7 @@ import type { BuiltinToolset } from "../tools/registry";
 import { lintDesignHtml } from "./anti-slop";
 import { captureDesignCanvas, type DesignRenderViewport } from "./render-check";
 
-export type DesignToolsetPorts = Readonly<{
+type DesignToolsetPorts = Readonly<{
   readDesignCanvasForTool(chatId: string, incarnationId: string, file: string): Promise<Buffer | string>;
 }>;
 

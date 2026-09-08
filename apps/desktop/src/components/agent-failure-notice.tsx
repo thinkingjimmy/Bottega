@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared ProductFailure, Agent copy projection, renderer i18n, and ProductFailureNotice
- * [OUTPUT]: Provides the AgentFailureNotice domain wrapper for human-first Agent failure presentation; tone selects the copy family (danger → terminal code copy, warning → notice copy) as well as the icon
+ * [OUTPUT]: Provides the AgentFailureNotice domain wrapper for human-first Agent failure presentation (tone selects the copy family: danger → terminal code copy, warning → notice copy, as well as the icon) and agentFailureNoticeLabels, the localized diagnostic-disclosure labels shared with surfaces that render raw error text on the same notice
  * [POS]: Agent-specific copy adapter shared by transcript, Setup, Settings, and model-catalog surfaces
  */
 
@@ -9,7 +9,20 @@ import type { AgentBackendId } from "../../shared/agent-ipc";
 import type { ProductFailure } from "../../shared/product-failure";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { agentFailureCopy } from "@/lib/agent-failure";
-import { ProductFailureNotice } from "./product-failure-notice";
+import {
+  ProductFailureNotice,
+  type ProductFailureNoticeLabels,
+} from "./product-failure-notice";
+
+export function agentFailureNoticeLabels(
+  t: (key: string) => string
+): ProductFailureNoticeLabels {
+  return {
+    technicalDetails: t("agentFailure.technicalDetails"),
+    copyDetails: t("agentFailure.copyDetails"),
+    copiedDetails: t("agentFailure.copiedDetails"),
+  };
+}
 
 export function AgentFailureNotice({
   failure,
@@ -32,11 +45,7 @@ export function AgentFailureNotice({
     <ProductFailureNotice
       compact={compact}
       copy={copy}
-      labels={{
-        technicalDetails: t("agentFailure.technicalDetails"),
-        copyDetails: t("agentFailure.copyDetails"),
-        copiedDetails: t("agentFailure.copiedDetails"),
-      }}
+      labels={agentFailureNoticeLabels(t)}
       tone={tone}
     >
       {children}

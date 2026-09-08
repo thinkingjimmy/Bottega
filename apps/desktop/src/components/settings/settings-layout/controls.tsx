@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React useId/ReactNode/ComponentProps/KeyboardEvent, Lucide ChevronRight, ui/Button/Collapsible/Tooltip, and @ai-chat/ui styling primitives
- * [OUTPUT]: Provides SettingsDisclosure, SettingsButton, SettingsIconButton, SettingsLabelAction, SettingsSwitch and SettingsChoiceRow -- every Settings control, with touch target, focus ring and roving selection welded in
+ * [OUTPUT]: Provides settingsDisclosure, SettingsButton, SettingsIconButton, SettingsLabelAction, SettingsSwitch and SettingsChoiceRow -- every Settings control, with touch target, focus ring and roving selection welded in
  * [POS]: The controls third of settings-layout/; domain views declare semantics while interaction consistency lives here and nowhere else
  */
 
@@ -210,12 +210,14 @@ export function SettingsSwitch({
   label,
   checked,
   disabled,
+  describedBy,
   onToggle,
 }: {
   id: string;
   label: string;
   checked: boolean;
   disabled?: boolean;
+  describedBy?: string;
   onToggle: (next: boolean) => void;
 }) {
   return (
@@ -225,6 +227,7 @@ export function SettingsSwitch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      aria-describedby={describedBy}
       disabled={disabled}
       className="flex size-11 touch-manipulation cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
       onClick={() => onToggle(!checked)}

@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on nine domain specs and the aggregation-free platform contract
+ * [INPUT]: Depends on ten domain specs and the aggregation-free platform contract
  * [OUTPUT]: Exposes the aggregate BuiltinToolSpec registry, exact tool names, wire schemas, Base capability projection, product-context fragments, and access projection
- * [POS]: The only public access to shared builtin-tools; declaration order is sections → subagents → projects → bases → search → browser → design → apps → skills
+ * [POS]: The public registry for sections, subagents, projects, bases, search, current-Chat history, browser, design, apps, and skills
  */
 
+import { HISTORY_TOOL_SPECS } from "../chat-agent/history-tool";
 import { APP_TOOL_SPECS } from "./apps";
 import { BASE_TOOL_SPECS } from "./bases";
 import { BROWSER_TOOL_SPECS } from "./browser";
@@ -21,6 +22,7 @@ export const BUILTIN_TOOL_SPECS = [
   ...PROJECT_TOOL_SPECS,
   ...BASE_TOOL_SPECS,
   ...SEARCH_TOOL_SPECS,
+  ...HISTORY_TOOL_SPECS,
   ...BROWSER_TOOL_SPECS,
   ...DESIGN_TOOL_SPECS,
   ...APP_TOOL_SPECS,

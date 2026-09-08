@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared generation build closed operation/checkpoint with BaseGuiGrantStore durable exact decision/revoke
- * [OUTPUT]: Provides BaseGuiBuildParticipant; prepare freeze exact decision, finalize phase review, abort write generation revoke tombstone
+ * [OUTPUT]: Provides BaseGuiBuildParticipant; prepare creates the durable grant decision, finalize verifies it still matches the sealed generation, and abort revokes it
  * [POS]: apps/base-gui build participant; it records authorized GUI build state and returns a checkpoint without owning AppStore phase or pointers
  */
 

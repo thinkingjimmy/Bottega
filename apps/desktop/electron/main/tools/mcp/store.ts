@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on Node fs/crypto/path, zod, neutral resource scope, and shared masked MCP contracts
- * [OUTPUT]: Provides scope-aware ManualMcpServersStore v2 with deterministic v1 migration, exact projections, per-scope CAS tombstones, owner fences, retryable active+backup secret cleanup, 0600 atomic persistence, budgets, and resolved main-only configs
+ * [INPUT]: Depends on Node crypto/path, zod, the JsonCasStore persistence kernel, neutral resource scope, and shared masked MCP contracts
+ * [OUTPUT]: Provides scope-aware ManualMcpServersStore v2 with exact projections, per-scope CAS tombstones, owner fences, retryable active+backup secret cleanup, budgets, and resolved main-only configs
  * [POS]: Main-only secret source of truth for manual MCP; global and exact-Project ownership is enforced before renderer projection or runtime resolution
  */
 
 import { createHash } from "node:crypto";
-import { chmod, mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { z } from "zod";
 import type {
   ManualMcpEligibility,
@@ -19,6 +18,13 @@ import type {
 } from "../../../../shared/mcp-servers-ipc";
 import type { ProductResourceScope } from "../../../../shared/resource-scope";
 import { PROJECT_ID_PATTERN } from "../../../../shared/projects-ipc";
+import {
+  JsonCasStore,
+  byteLength,
+  serialize,
+  storeError,
+  type JsonCasStoreDependencies,
+} from "../json-cas-store";
 
 const SCHEMA_VERSION = 2;
 const MAX_SERVERS_PER_SCOPE = 32;
@@ -56,17 +62,11 @@ const serverFields = {
   config: z.discriminatedUnion("transport", [stdioSchema, remoteSchema]),
 };
 const serverSchema = z.object({ ...serverFields, scope: scopeSchema }).strict();
-const legacyServerSchema = z.object(serverFields).strict();
 const fileSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
   revision: z.number().int().nonnegative(),
   scopeRevisions: z.record(z.string(), z.number().int().nonnegative()),
   servers: z.array(serverSchema),
-}).strict();
-const legacyFileSchema = z.object({
-  schemaVersion: z.literal(1),
-  revision: z.number().int().nonnegative(),
-  servers: z.array(legacyServerSchema),
 }).strict();
 
 type StoredServer = z.infer<typeof serverSchema>;
@@ -78,67 +78,28 @@ export type ResolvedManualMcpServer = Readonly<StoredServer & {
   eligibility: ManualMcpEligibility;
 }>;
 
-export type ManualMcpServersStoreDependencies = Readonly<{
-  readText?: (path: string) => Promise<string>;
-  atomicWrite?: (path: string, content: string) => Promise<void>;
-}>;
-
 const emptyFile = (): StoreFile => ({
   schemaVersion: SCHEMA_VERSION,
   revision: 0,
   scopeRevisions: { global: 0 },
   servers: [],
 });
-const byteLength = (value: string) => Buffer.byteLength(value, "utf8");
 
-export class ManualMcpServersStore {
-  readonly filePath: string;
-  readonly backupPath: string;
-  private state = emptyFile();
-  private previousValidated: StoreFile | undefined;
-  private queue: Promise<void> = Promise.resolve();
-  private readonly watchers = new Set<(event: McpServersChangedEvent) => void>();
-  private readonly readText: (path: string) => Promise<string>;
-
-  constructor(
-    private readonly userData: string,
-    private readonly dependencies: ManualMcpServersStoreDependencies = {}
-  ) {
-    this.filePath = join(userData, "mcp-servers.json");
-    this.backupPath = `${this.filePath}.bak`;
-    this.readText = dependencies.readText ?? ((path) => readFile(path, "utf8"));
+export class ManualMcpServersStore extends JsonCasStore<StoreFile, McpServersChangedEvent> {
+  constructor(userData: string, dependencies: JsonCasStoreDependencies = {}) {
+    super({
+      filePath: join(userData, "mcp-servers.json"),
+      label: "mcp-servers.json",
+      maxFileBytes: MAX_FILE_BYTES,
+      empty: emptyFile,
+      validate: validateState,
+      dependencies,
+    });
   }
 
-  async initialize() {
+  initialize() {
     return this.mutate(async () => {
-      try {
-        const source = await this.readSource(this.filePath);
-        const state = source.version === 1
-          ? await this.persistMigration(source.raw, source.state, true)
-          : source.state;
-        this.accept(state);
-      } catch (mainCause) {
-        if (mainCause instanceof McpMigrationError) throw mainCause;
-        const mainMissing = (mainCause as NodeJS.ErrnoException).code === "ENOENT";
-        try {
-          const source = await this.readSource(this.backupPath);
-          const state = source.version === 1
-            ? await this.persistMigration(source.raw, source.state, false)
-            : source.state;
-          await this.atomicWrite(this.filePath, serialize(state));
-          this.accept(state);
-        } catch (backupCause) {
-          if (backupCause instanceof McpMigrationError) throw backupCause;
-          const backupMissing = (backupCause as NodeJS.ErrnoException).code === "ENOENT";
-          if (!mainMissing || !backupMissing) {
-            throw storeError("store-corrupt", "mcp-servers.json 主档与备份均无法读取");
-          }
-          const initial = emptyFile();
-          await this.atomicWrite(this.filePath, serialize(initial));
-          this.accept(initial);
-        }
-      }
-      await chmod(this.filePath, 0o600);
+      await this.recover();
       return this.project({ kind: "global" });
     });
   }
@@ -169,11 +130,6 @@ export class ManualMcpServersStore {
 
   scopeRevision(scope: ProductResourceScope) {
     return this.state.scopeRevisions[scopeKey(parseScope(scope))] ?? 0;
-  }
-
-  onChanged(listener: (event: McpServersChangedEvent) => void) {
-    this.watchers.add(listener);
-    return () => this.watchers.delete(listener);
   }
 
   save(raw: SaveManualMcpServerInput) {
@@ -234,15 +190,9 @@ export class ManualMcpServersStore {
         delete scopeRevisions[key];
         await this.commitFile({ servers, scopeRevisions }, undefined);
       }
-      /* Project 删除必须擦除两代明文。即使 active 已清空仍走到这里，
-         因而 backup 重写失败后，下一次幂等调用仍能继续收敛。 */
-      await this.atomicWrite(this.backupPath, serialize(this.state));
+      await this.rewriteBackup();
       return hadServers || hadRevision;
     });
-  }
-
-  async closeAndFlush() {
-    await this.queue;
   }
 
   private visibleServers(scope: ProductResourceScope) {
@@ -282,7 +232,7 @@ export class ManualMcpServersStore {
     });
   }
 
-  private async commitFile(
+  private commitFile(
     changed: Pick<StoreFile, "servers" | "scopeRevisions">,
     event: McpServersChangedEvent | undefined
   ) {
@@ -291,76 +241,7 @@ export class ManualMcpServersStore {
       revision: this.state.revision + 1,
       ...changed,
     });
-    if (this.previousValidated) await this.atomicWrite(this.backupPath, serialize(this.previousValidated));
-    await this.atomicWrite(this.filePath, serialize(next));
-    this.accept(next);
-    if (event) for (const watcher of this.watchers) watcher(event);
-  }
-
-  private mutate<T>(operation: () => Promise<T>) {
-    const result = this.queue.then(operation);
-    this.queue = result.then(() => undefined, () => undefined);
-    return result;
-  }
-
-  private async readSource(path: string) {
-    const raw = await this.readText(path);
-    if (byteLength(raw) > MAX_FILE_BYTES) throw new Error("MCP 配置超过总字节预算");
-    const parsed = JSON.parse(raw) as { schemaVersion?: unknown };
-    if (parsed.schemaVersion === SCHEMA_VERSION) {
-      return { version: 2 as const, raw, state: validateState(parsed) };
-    }
-    if (parsed.schemaVersion === 1) {
-      const legacy = legacyFileSchema.parse(parsed);
-      const migrated = validateState({
-        schemaVersion: SCHEMA_VERSION,
-        revision: legacy.revision + 1,
-        scopeRevisions: { global: legacy.revision + 1 },
-        servers: legacy.servers.map((server) => ({ ...server, scope: { kind: "global" as const } })),
-      });
-      return { version: 1 as const, raw, state: migrated };
-    }
-    throw new Error(`MCP schemaVersion 不受支持：${String(parsed.schemaVersion)}`);
-  }
-
-  private async persistMigration(original: string, migrated: StoreFile, backupOriginal: boolean) {
-    try {
-      if (backupOriginal) await this.atomicWrite(this.backupPath, original);
-      await this.atomicWrite(this.filePath, serialize(migrated));
-      return migrated;
-    } catch (cause) {
-      try {
-        await this.atomicWrite(this.filePath, original);
-      } catch (rollbackCause) {
-        throw new McpMigrationError("MCP v1→v2 迁移失败且原密钥档恢复失败", {
-          cause: new AggregateError([cause, rollbackCause]),
-        });
-      }
-      throw new McpMigrationError("MCP v1→v2 迁移失败，原密钥档已恢复", { cause });
-    }
-  }
-
-  private accept(state: StoreFile) {
-    this.state = state;
-    this.previousValidated = structuredClone(state);
-  }
-
-  private async atomicWrite(path: string, content: string) {
-    if (this.dependencies.atomicWrite) {
-      await this.dependencies.atomicWrite(path, content);
-      return;
-    }
-    await mkdir(dirname(path), { recursive: true });
-    const temporary = `${path}.tmp`;
-    await writeFile(temporary, content, { mode: 0o600 });
-    const file = await open(temporary, "r");
-    await file.sync();
-    await file.close();
-    await rename(temporary, path);
-    await chmod(path, 0o600);
-    const directory = await open(dirname(path), "r");
-    await directory.sync();
-    await directory.close();
+    return this.commitState(next, event ? [event] : []);
   }
 }
 
@@ -540,13 +421,3 @@ function canonical(value: unknown): unknown {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, entry]) => [key, canonical(entry)]));
 }
-
-function serialize(state: StoreFile) {
-  return `${JSON.stringify(state, null, 2)}\n`;
-}
-
-function storeError(code: string, message: string) {
-  return Object.assign(new Error(message), { code, status: 409 });
-}
-
-class McpMigrationError extends Error {}

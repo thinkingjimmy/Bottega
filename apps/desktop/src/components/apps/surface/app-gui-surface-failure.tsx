@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React, the shared ui Button/lucide icon, the i18n provider, and errorMessage/failureCode classification helpers
- * [OUTPUT]: Provides guiFailureKind plus the GuiFailure panel that names permission, cutover, surface, migration, missing-entry and generic failures apart
+ * [OUTPUT]: Provides guiFailureKind and GuiFailure, classifying permission, cutover, surface and migration failures by explicit machine codes only
  * [POS]: components/apps/surface failure leaf; app-gui-surface.tsx renders it whenever no frame may be shown
  */
 
@@ -11,19 +11,8 @@ import { Button } from "@ai-chat/ui/components/ui/button";
 import { errorMessage, failureCode } from "@/lib/errors";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 
-/* ============================================================
- * 一句「App data upgrade failed」不能同时解释四种失败
- *
- * 这块面板从前把「授权过期」「换代超时」「面租约没了」「数据迁移失败」
- * 全印成同一句话——而只有最后一种是真的。用户据此做的每一个判断都错，
- * 因为标题本身就是错的。
- *
- * 分类的两个证据：
- *   1. 稳定机器码——main 的断言写成 `CODE: 人话`，码才是分支依据；
- *   2. 形状——main 答上来了（origin/token/入口俱在）而仍带错误，那就是
- *      数据迁移失败；连答复都没有，就是取绑定这一步没成。
- * 码先于形状：换代超时可能带着一份过期但完整的旧绑定回来。
- * ============================================================ */
+// A retained binding can accompany any refresh failure. Only the migration
+// owner can identify a data upgrade failure; old tokens are not evidence of one.
 const GUI_FAILURE_KIND = {
   APP_STUDIO_GRANT_CONFLICT: "permission",
   BASE_GUI_PARTIAL_DECISION: "permission",
@@ -31,6 +20,9 @@ const GUI_FAILURE_KIND = {
   GUI_CUTOVER_READY_TIMEOUT: "cutover",
   APP_LIFECYCLE_ADMISSION_CLOSED: "cutover",
   APP_INCARNATION_STALE: "surface",
+  APP_SURFACE_LEASE_REVOKED: "surface",
+  APP_SURFACE_LEASE_INVALID: "surface",
+  APP_DATA_MIGRATION_FAILED: "migration",
 } as const;
 
 const GUI_FAILURE_TITLE_KEY = {
@@ -54,13 +46,12 @@ const GUI_FAILURE_HINT_KEY = {
 export function guiFailureKind(input: {
   error?: string;
   missingEntry: boolean;
-  answered: boolean;
 }): keyof typeof GUI_FAILURE_TITLE_KEY {
   const coded = GUI_FAILURE_KIND[
     failureCode(input.error ?? "") as keyof typeof GUI_FAILURE_KIND
   ];
   if (coded) return coded;
-  if (input.error) return input.answered ? "migration" : "generic";
+  if (input.error) return "generic";
   return input.missingEntry ? "missing-entry" : "generic";
 }
 
@@ -68,19 +59,17 @@ export function GuiFailure({
   error,
   loading,
   missingEntry,
-  answered,
   onRetry,
   onGoToData,
 }: {
   error?: string;
   loading: boolean;
   missingEntry: boolean;
-  answered: boolean;
   onRetry(): void;
   onGoToData(): void;
 }) {
   const { t } = useAppTranslation();
-  const kind = guiFailureKind({ error, missingEntry, answered });
+  const kind = guiFailureKind({ error, missingEntry });
   /* 码剥净后可能什么都不剩（只有码没有人话的那种断言）。此时详情行不出现，
      解释全交给上面那句本地化的 hint——把码念给用户听不是解释。 */
   const detail = error ? errorMessage(error) : "";

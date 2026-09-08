@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, App i18n, preload-exposed window.browser, and shared BrowserBridgeApi/tab projections
- * [OUTPUT]: Provides use of BrowserTabs and BrowserTabsController: only snapshot subscription, explicitly synchronized with unified error packing tab action
- * [POS]: The tab status of the chat/browser page is entered; PanelTabs uses it to draw tabs, BrowserPanel uses it to draw navigation, and both share the same projection
+ * [OUTPUT]: Provides useBrowserTabs and BrowserTabsController: a single snapshot subscription plus busy/error-wrapped tab actions (create/activate/close/navigate)
+ * [POS]: Shared tab-state source for chat/browser; PanelTabs renders the tab list and BrowserPanel renders navigation from the same projection
  */
 
 import { useEffect, useState } from "react";

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shared AgentFailureNotice, the touch-target-44 hit-area utility, ProductFailure/backend identity, UI Button, a Lucide status icon, and the common localized Continue action
- * [OUTPUT]: Provides TurnErrorCard (localized human-first copy, folded diagnostics, optional continuation action) and FailureCard, the transcript-level "this is not an assistant message" card
+ * [INPUT]: Depends on shared AgentFailureNotice and its diagnostic labels, ProductFailureNotice, the touch-target-44 hit-area utility, ProductFailure/backend identity, UI Button, a Lucide status icon, and the common localized Continue action
+ * [OUTPUT]: Provides TurnErrorCard (localized human-first copy with folded diagnostics when a ProductFailure exists, the raw error text on the same notice when none was persisted, optional continuation action) and FailureCard, the transcript-level "this is not an assistant message" card
  * [POS]: Default structured Agent failure card for chat/transcript, selected by ChatTurn when no specialized usage-limit surface applies
  */
 
@@ -8,7 +8,11 @@ import type { ReactNode } from "react";
 import { CircleXIcon } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { AgentFailureNotice } from "@/components/agent-failure-notice";
+import {
+  AgentFailureNotice,
+  agentFailureNoticeLabels,
+} from "@/components/agent-failure-notice";
+import { ProductFailureNotice } from "@/components/product-failure-notice";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import type { ProductFailure } from "../../../../shared/product-failure";
 
@@ -17,34 +21,48 @@ import type { ProductFailure } from "../../../../shared/product-failure";
 
 export function TurnErrorCard({
   failure,
+  message,
   backend,
   backendId,
   onContinue,
 }: {
-  failure: ProductFailure;
+  /** 缺席即该行没有 ProductFailure：原文照登，不替它编一个错误码 */
+  failure?: ProductFailure;
+  message: string;
   backend: string;
   backendId?: AgentBackendId;
   /** 「继续」只在失败 turn 成立，故它长在卡片里，与限流卡的「立即重试」同位 */
   onContinue?: () => void;
 }) {
   const { t } = useAppTranslation();
+  const action = onContinue && (
+    <Button
+      className="relative mt-3 touch-manipulation touch-target-44 [--touch-target-inset:-4px]"
+      onClick={onContinue}
+      size="sm"
+      type="button"
+      variant="outline"
+    >
+      {t("common.continue")}
+    </Button>
+  );
+  if (!failure) {
+    return (
+      <ProductFailureNotice
+        copy={{ title: message, explanation: "", resolution: "" }}
+        labels={agentFailureNoticeLabels(t)}
+      >
+        {action}
+      </ProductFailureNotice>
+    );
+  }
   return (
     <AgentFailureNotice
       backend={backend}
       backendId={backendId}
       failure={failure}
     >
-      {onContinue && (
-        <Button
-          className="relative mt-3 touch-manipulation touch-target-44 [--touch-target-inset:-4px]"
-          onClick={onContinue}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          {t("common.continue")}
-        </Button>
-      )}
+      {action}
     </AgentFailureNotice>
   );
 }

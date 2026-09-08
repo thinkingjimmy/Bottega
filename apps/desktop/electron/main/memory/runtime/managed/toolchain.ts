@@ -1,35 +1,25 @@
 /**
- * [INPUT]: Depends on Node fs/path/os/zlib/crypto, capture-only commands to execute with HTTPS downloader
- * [OUTPUT]: Provides a ManagedToolchain with the version uv 0.12.3 lock, isolates UV_* environment and secure tar.gz developer
+ * [INPUT]: Depends on pinned OS/architecture uv assets, bounded tar/ZIP parsing, captured version checks and the Memory downloader
+ * [OUTPUT]: Provides single-flight uv supply with archive digests, platform executable names and staging verification before atomic publication
  * [POS]: the owner of the registry-level toolchain main/memory/runtime/managed; All providers share a single-flight supply
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import type { Downloader, RunCommandCaptured } from "./install-steps";
 
-export const MANAGED_UV_VERSION = "0.12.3";
-const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024;
-const MAX_EXPANDED_BYTES = 96 * 1024 * 1024;
-
-const RELEASES = {
-  arm64: {
-    folder: "uv-aarch64-apple-darwin",
-    sha256: "546f7f8a6c70ff13a3a9d2bc958db3427298cebf3e0cb756f9177133b7068843",
-  },
-  x64: {
-    folder: "uv-x86_64-apple-darwin",
-    sha256: "4c9f52262a14da336e4a42ed24992d12d0c956acde87619e4611d321dffa602b",
-  },
-} as const;
+import { MANAGED_UV_VERSION, managedUvAsset, UV_ARCHIVE_BYTES, UV_EXPANDED_BYTES } from "./archives/uv-assets";
+import { extractUvFromZip } from "./archives/zip";
+export { MANAGED_UV_VERSION } from "./archives/uv-assets";
 
 export type ManagedUv = { command: string; env: Record<string, string> };
 
 export type ManagedToolchainOptions = {
   arch?: NodeJS.Architecture;
+  platform?: NodeJS.Platform;
   runCaptured: RunCommandCaptured;
   download: Downloader;
   systemCandidates?: string[];
@@ -61,6 +51,8 @@ export class ManagedToolchain {
   }
 
   private async resolveOnce(): Promise<ManagedUv> {
+    const platform = this.options.platform ?? process.platform;
+    const release = managedUvAsset(platform, this.arch);
     const env = this.environment();
     await Promise.all(
       Object.values(env).map((directory) =>
@@ -69,33 +61,36 @@ export class ManagedToolchain {
     );
     const system =
       this.options.systemCandidates ??
-      ["uv", join(homedir(), ".local", "bin", "uv"), "/opt/homebrew/bin/uv", "/usr/local/bin/uv"];
+      [release.executable, join(homedir(), ".local", "bin", release.executable),
+        ...(platform === "darwin" ? ["/opt/homebrew/bin/uv", "/usr/local/bin/uv"] : [])];
     for (const command of system) {
       if (await this.matchesLockedVersion(command, env)) return { command, env };
     }
 
-    const release = this.release();
-    const command = join(this.toolsRoot, MANAGED_UV_VERSION, "uv");
+    const command = join(this.toolsRoot, MANAGED_UV_VERSION, release.executable);
     if (await this.matchesLockedVersion(command, env)) return { command, env };
 
     const archive = await this.options.download(
-      `https://github.com/astral-sh/uv/releases/download/${MANAGED_UV_VERSION}/${release.folder}.tar.gz`
+      `https://github.com/astral-sh/uv/releases/download/${MANAGED_UV_VERSION}/${release.asset}`,
+      { maximumBytes: UV_ARCHIVE_BYTES, allowedOrigins: ["https://github.com", "https://release-assets.githubusercontent.com"] }
     );
-    if (archive.length > MAX_ARCHIVE_BYTES) throw new Error("uv 归档超过字节预算");
+    if (archive.length > UV_ARCHIVE_BYTES) throw new Error("uv 归档超过字节预算");
     const digest = createHash("sha256").update(archive).digest("hex");
     if (digest !== release.sha256) {
       throw new Error(`uv SHA256 校验失败：期望 ${release.sha256}，实得 ${digest}`);
     }
-    const binary = extractUvFromTarGz(archive, release.folder);
+    const binary = release.format === "zip" ? extractUvFromZip(archive) : extractUvFromTarGz(archive, release.folder);
     const directory = join(this.toolsRoot, MANAGED_UV_VERSION);
-    const staging = `${command}.tmp`;
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    await writeFile(staging, binary, { mode: 0o755 });
-    await chmod(staging, 0o755);
-    await rename(staging, command);
-    if (!(await this.matchesLockedVersion(command, env))) {
-      await rm(command, { force: true });
-      throw new Error("产品供给的 uv 版本校验失败");
+    const stagingRoot = join(directory, `.staging-${randomUUID()}`);
+    const staging = join(stagingRoot, release.executable);
+    await mkdir(stagingRoot, { recursive: true, mode: 0o700 });
+    try {
+      await writeFile(staging, binary, { mode: 0o755, flag: "wx" });
+      await chmod(staging, 0o755);
+      if (!(await this.matchesLockedVersion(staging, env))) throw new Error("产品供给的 uv 版本校验失败");
+      await rename(staging, command);
+    } finally {
+      await rm(stagingRoot, { recursive: true, force: true });
     }
     return { command, env };
   }
@@ -112,18 +107,12 @@ export class ManagedToolchain {
       return false;
     }
   }
-
-  private release() {
-    if (this.arch === "arm64") return RELEASES.arm64;
-    if (this.arch === "x64") return RELEASES.x64;
-    throw new Error(`当前 macOS 架构不受支持：${this.arch}`);
-  }
 }
 
 export function extractUvFromTarGz(archive: Buffer, folder: string) {
   let tar: Buffer;
   try {
-    tar = gunzipSync(archive, { maxOutputLength: MAX_EXPANDED_BYTES });
+    tar = gunzipSync(archive, { maxOutputLength: UV_EXPANDED_BYTES });
   } catch (cause) {
     throw new Error("uv 归档解压失败或超过字节预算", { cause });
   }
@@ -133,25 +122,29 @@ export function extractUvFromTarGz(archive: Buffer, folder: string) {
   for (let offset = 0; offset + 512 <= tar.length; ) {
     const header = tar.subarray(offset, offset + 512);
     if (header.every((byte) => byte === 0)) break;
+    const checksum = Number.parseInt(tarText(header.subarray(148, 156)).trim(), 8);
+    const actualChecksum = header.reduce((sum, byte, index) => sum + (index >= 148 && index < 156 ? 32 : byte), 0);
+    if (checksum !== actualChecksum) throw new Error("uv 归档 header 校验失败");
     const name = tarText(header.subarray(0, 100));
     const prefix = tarText(header.subarray(345, 500));
     const path = prefix ? `${prefix}/${name}` : name;
     const type = String.fromCharCode(header[156] || 48);
     const sizeText = tarText(header.subarray(124, 136)).trim();
-    const size = Number.parseInt(sizeText || "0", 8);
-    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_EXPANDED_BYTES) {
+    if (!/^[0-7]+$/.test(sizeText)) throw new Error("uv 归档成员大小无效");
+    const size = Number.parseInt(sizeText, 8);
+    if (!Number.isSafeInteger(size) || size < 0 || size > UV_EXPANDED_BYTES) {
       throw new Error("uv 归档成员大小无效");
     }
     if (
       path.startsWith("/") ||
       path.split("/").includes("..") ||
       !allowed.has(path) ||
-      !["0", "5"].includes(type) ||
-      seen.has(path)
+      (path.endsWith("/") ? type !== "5" || size !== 0 : type !== "0") ||
+      seen.has(path.toLowerCase())
     ) {
       throw new Error(`uv 归档含不安全成员：${path}`);
     }
-    seen.add(path);
+    seen.add(path.toLowerCase());
     const bodyStart = offset + 512;
     const bodyEnd = bodyStart + size;
     if (bodyEnd > tar.length) throw new Error("uv 归档成员被截断");

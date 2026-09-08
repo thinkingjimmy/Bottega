@@ -1,14 +1,15 @@
 /**
- * [INPUT]: Depends on authoritative inventory, content addresses package roots and catalog frontmatter analysis
+ * [INPUT]: Depends on authoritative inventory, content addresses package roots and skills-catalog-scan frontmatter analysis
  * [OUTPUT]: Provides collectExtensionSkillCandidates: only scope-visible Skills with active administration, enabled catalog and component state become candidates, each carrying its full trusted identity
- * [POS]: Extensions to SkillsCatalog are read-only projections; The candidates are not the ledger, the catalog is still just a filtered list (F25)
+ * [POS]: Extensions' read-only projection into SkillsCatalog; candidates are not the ledger, only a filtered list (F25)
  */
 
 import { createHash } from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { join, relative, isAbsolute } from "node:path";
 import type { ExtensionInventorySnapshot } from "../../../shared/extensions-ipc";
-import { parseSkillFrontmatter, type CatalogSkill } from "../skills-catalog";
+import type { CatalogSkill } from "../skills-catalog";
+import { parseSkillFrontmatter } from "../skills-catalog-scan";
 
 type ExtensionSkillComponent = ExtensionInventorySnapshot["components"][number];
 

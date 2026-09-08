@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared/bases-ipc columns/lines/attachment guard, baseCellText only read projections with visibleBaseColumns, narrowing, and Lucide icon components with LucideIcon types
- * [OUTPUT]: Provides KanbanTone/KanbanChip/kanbanFaceSpec/KanbanCardFace Type, selectTone color analysis, KANBAN_TONE_CHOICES, canbanFaceSpec table-level single-shot projection directory, canbanFaceSpec, canban-columnIds, and select fields to be deleted `+N` Folding) with kanban CardFace single card projection
- * [POS]: The first is the view/kanban project layerlane head with the card only drawing the result it gives, the rendering side no longer branches by column type
+ * [INPUT]: Depends on shared/bases-ipc column/row/attachment types, the baseCellText/cellValue read-only projections and visibleBaseColumns narrowing, and Lucide icon components typed as LucideIcon
+ * [OUTPUT]: Provides KanbanTone/KanbanChip/KanbanFaceSpec/KanbanCardFace types, selectTone color resolution, KANBAN_TONE_CHOICES (the canonical color-name catalog), kanbanFaceSpec (board-level title/cover/chip-column projection), and kanbanCardFace (per-row card projection with `+N` overflow)
+ * [POS]: The projection layer of views/kanban; lane heads and cards only render what this module computes, so rendering never branches on column type itself
  */
 
 import {

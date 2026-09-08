@@ -1,17 +1,17 @@
 /**
  * [INPUT]: Depends on the backend info/AgentBackendId of the agent-ipc
- * [OUTPUT]: Provides Onboarding Discharge marks, setup status, runtime/latest independent events, listing terminal action and preload API
- * [POS]: The contract for the configuration of the shared native Agent; renderer cannot submit commands or credentials
+ * [OUTPUT]: Defines status and Chat-local evidence events, explicit recheck/cancel and a no-argument main Agent settings action.
+ * [POS]: Shared contract for native Agent backend setup; the renderer can only trigger a terminal action (install/update/login), never submit commands or credentials directly
  */
 
 import type { AgentBackendId, BackendInfo } from "./agent-ipc";
-
-/** 产品与 E2E 共用的「本次缺口稍后处理」意图；补齐要求后由产品删除。 */
 
 export type SetupStatus = { backends: BackendInfo[] };
 export type SetupTerminalAction = "install" | "update" | "login";
 
 export type SetupEvent =
+  | { type: "open-backends" }
+  | { type: "turn-evidence"; evidence: import("./agent-availability/types").TurnAvailabilityEvidence }
   | { type: "status"; backend: AgentBackendId; status: BackendInfo }
   | {
       type: "latest-version";
@@ -24,6 +24,9 @@ export type SetupEvent =
 
 export const SETUP_CHANNEL = {
   check: "setup:check",
+  watch: "setup:watch",
+  cancelCheck: "setup:cancel-check",
+  openManagement: "setup:open-agent-management",
   recheck: "setup:recheck",
   refreshLatest: "setup:refresh-latest",
   terminalAction: "setup:terminal-action",
@@ -32,6 +35,8 @@ export const SETUP_CHANNEL = {
 
 export type SetupBridgeApi = {
   check: () => Promise<SetupStatus>;
+  cancelCheck: (backend: AgentBackendId) => Promise<void>;
+  openManagement: () => Promise<void>;
   recheck: (backend: AgentBackendId) => Promise<SetupStatus>;
   refreshLatest: (backend: AgentBackendId) => Promise<void>;
   terminalAction: (

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared Usage Source domain subgroup, Summary/Progress type
- * [OUTPUT]: Provides full target revision+seq+generation Unified block, price, floor derivative status and progress reducer
- * [POS]: The renderer Usage is the pure state kernel; generation attribution, revision/seq attribution, all Summary responses to common rules
+ * [OUTPUT]: Provides UsageViewState/UsageProgressState types plus usageViewReducer/usageProgressReducer, unifying per-target revision+seq+generation fencing, pricing revision, and scan-progress state
+ * [POS]: Pure state kernel for renderer Usage; generation and revision/seq fencing apply the same rule to every summary response
  */
 
 import {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow, TrustedRendererContext IPC, conversation residence, and fail-closed manual payload validation
- * [OUTPUT]: Provides residence-gated manual turn admission plus role/App-scoped action & submission event projection
+ * [OUTPUT]: Provides residence-gated admission, explicit unknown-result projection, and role-scoped action and submission events
  * [POS]: Sections coordinator renderer boundary; composer writes are accepted only from the resident conversation window, and cross-conversation action/outcome state never fans out to App windows
  */
 
@@ -14,6 +14,7 @@ import {
   submissionAckSchema,
 } from "../../../../shared/submission";
 import { ProductFailureError } from "../../../../shared/product-failure";
+import { isChatMutationOutcomeUnknown } from "../../chats/store/mutation-outcome";
 import { rendererIpc } from "../../ipc-registrar";
 import { validateManualTurnSubmission } from "../../agent-payload-validation";
 import type { ConversationCoordinator } from "./conversation-coordinator";
@@ -46,11 +47,16 @@ export function registerCoordinatorIpc(
     });
     if (!accepted) throw new Error("Section action 来自非驻留窗口");
   };
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的 Section 动作")
+  rendererIpc(rendererUrl, "拒绝非主窗口的 Section 动作")
     .roles("main", "app-window")
+    .handleWithContext(SECTIONS_CHANNEL.agentSwitchEligibility, (context, chatId) => {
+      if (typeof chatId !== "string") throw new Error("Invalid Chat identity");
+      assertConversation(context, chatId);
+      return coordinator.agentSwitchEligibility(chatId);
+    })
     .handleWithContext(SECTIONS_CHANNEL.submitManualTurn, async (context, input) => {
       try {
-        const submission = assertManualTurnSubmission(input);
+        const submission = validateManualTurnSubmission(input);
         surfaceWindowController.assertConversationMutation(
           context,
           submission.turn.scope.conversationId
@@ -58,6 +64,9 @@ export function registerCoordinatorIpc(
         const receipt = await coordinator.submitManualTurn(submission);
         return { kind: "accepted" as const, receipt };
       } catch (cause) {
+        if (isChatMutationOutcomeUnknown(cause)) {
+          return { kind: "ambiguous" as const, cause: cause.message };
+        }
         /* 结构化失败随行：`ProductFailureError.message` 是给日志看的裸码
            （skills-runtime/ref-invalid），人话在 renderer 用 failure 组句。 */
         return {
@@ -190,10 +199,6 @@ function fanOutActionsToApps(
       actions,
     });
   }
-}
-
-function assertManualTurnSubmission(input: unknown) {
-  return validateManualTurnSubmission(input);
 }
 
 function assertActionInput(input: unknown, label: string) {

@@ -1,40 +1,25 @@
 /**
- * [INPUT]: Depends on Node fs/path/readline flow and usage-merge FileEvents
- * [OUTPUT]: Provides Claude projects/transcripts Recurring discovery and assistant model/limited four barrels, limited total non-state flow analysis
- * [POS]: The use of Claude Code fact adapters; The only thing that is important is to regulate single file events and not to overload files
+ * [INPUT]: Depends on Node fs/path/readline streams, the shared source-files walker, and usage-merge FileEvents
+ * [OUTPUT]: Provides listClaudeFiles (discovers ~/.claude/projects and ~/.claude/transcripts JSONL) and parseClaudeFile, which extracts per-assistant-message token buckets into FileEvents
+ * [POS]: The Claude Code usage-fact adapter; parses one file into isolated events only, with no cross-file state
  */
 
 import { createReadStream } from "node:fs";
-import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { listFilesRecursively } from "./source-files";
 import { sealBuckets, type FileEvents, type UsageBuckets } from "./usage-merge";
 
-async function listJsonl(root: string): Promise<string[]> {
-  try {
-    const entries = await readdir(root, { withFileTypes: true });
-    const nested = await Promise.all(
-      entries.map((entry) => {
-        const path = join(root, entry.name);
-        if (entry.isDirectory()) return listJsonl(path);
-        return Promise.resolve(
-          entry.isFile() && entry.name.endsWith(".jsonl") ? [path] : []
-        );
-      })
-    );
-    return nested.flat();
-  } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw cause;
-  }
-}
+const isJsonl = (name: string) => name.endsWith(".jsonl");
 
 export async function listClaudeFiles(home: string) {
   const roots = [
     join(home, ".claude", "projects"),
     join(home, ".claude", "transcripts"),
   ];
-  return (await Promise.all(roots.map(listJsonl))).flat().sort();
+  return (
+    await Promise.all(roots.map((root) => listFilesRecursively(root, isJsonl)))
+  ).flat().sort();
 }
 
 function nonNegative(value: unknown) {

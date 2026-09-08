@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the constants and types of zod, bases-ipc, chart-payload of CHART_TYPES, base-aggregations, base-view-config and attachment schema of bases/gallery-attachments
  * [OUTPUT]: Provides the strict Base owner/columns/rows/filters/six-category row-backed view/meta schemas, stable XLSX issue reports, every IPC input and the discriminated mutation-result checker, plus uniqueIds/Gallery column refinements shared across files
- * [POS]: The shared Base Scanner is the single source of truth; With the agent-IPC/agent-schema and the same configuration as the base-ipc, only the type, constant and pure functions are left, the calibrator always stays here, and the renderer is not required to be the zod for IPC calibration
+ * [POS]: Shared Base zod-validation layer; kept in lockstep with the types and constants bases-ipc owns (mirroring how agent-schema relates to agent-ipc), so only main needs zod to validate IPC input, not the renderer
  */
 
 import { z } from "zod";
@@ -63,6 +63,7 @@ export const baseOwnerSchema: z.ZodType<BaseOwner> = z.discriminatedUnion(
 );
 
 const entityIdSchema = z.string().regex(BASE_ENTITY_ID_PATTERN);
+const ownerKeySchema = z.string().regex(BASE_OWNER_KEY_PATTERN);
 export const baseNameSchema = z.string().trim().min(1).max(BASE_NAME_LIMIT);
 /* 与 parser 同一把尺：口径是 UTF-8 字节，不是 UTF-16 码元。用 .max() 的话
    4096 个汉字能过 zod，却在求值时被 parser 判成 #LIMIT!——两把尺必须合一。 */
@@ -514,17 +515,11 @@ export function refineGalleryViewColumns(
   });
 }
 
-const ownerInputSchema = z
-  .object({ ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN) })
-  .strict();
-
-export const baseGetInputSchema = ownerInputSchema;
+/** get/ensure/export channels all take exactly one owner key. */
+export const baseOwnerInputSchema = z.object({ ownerKey: ownerKeySchema }).strict();
 
 export const baseRemoveManagedInputSchema = z
-  .object({
-    ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
-    ownerInstanceId: entityIdSchema,
-  })
+  .object({ ownerKey: ownerKeySchema, ownerInstanceId: entityIdSchema })
   .strict();
 
 /* App window surface 的 lease；主窗口不带此字段，缺席即「非 App surface」。 */
@@ -532,7 +527,7 @@ const surfaceLeaseIdSchema = z.string().uuid().optional();
 
 export const baseUpdateMetaInputSchema = z
   .object({
-    ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
+    ownerKey: ownerKeySchema,
     expectedRevision: z.number().int().nonnegative(),
     patch: z
       .object({
@@ -548,7 +543,7 @@ export const baseUpdateMetaInputSchema = z
 
 export const baseInsertRowsInputSchema = z
   .object({
-    ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
+    ownerKey: ownerKeySchema,
     rows: z.array(baseRowSchema).min(1).max(BASE_INSERT_LIMIT),
     surfaceLeaseId: surfaceLeaseIdSchema,
   })
@@ -556,7 +551,7 @@ export const baseInsertRowsInputSchema = z
 
 export const basePatchRowInputSchema = z
   .object({
-    ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
+    ownerKey: ownerKeySchema,
     rowId: entityIdSchema,
     patch: z.record(entityIdSchema, baseCellValueSchema.nullable()),
     surfaceLeaseId: surfaceLeaseIdSchema,
@@ -565,29 +560,23 @@ export const basePatchRowInputSchema = z
 
 export const baseDeleteRowsInputSchema = z
   .object({
-    ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
+    ownerKey: ownerKeySchema,
     rowIds: z.array(entityIdSchema).min(1).max(BASE_DELETE_LIMIT),
     expectedRevision: z.number().int().nonnegative(),
     surfaceLeaseId: surfaceLeaseIdSchema,
   })
   .strict();
 
-export const baseExportCsvInputSchema = ownerInputSchema;
-export const baseExportJsonInputSchema = ownerInputSchema;
-export const baseExportXlsxInputSchema = ownerInputSchema;
-export const baseImportJsonInputSchema = z
+/** JSON and XLSX imports share one wire shape. */
+export const baseImportInputSchema = z
   .object({
-    ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
+    ownerKey: ownerKeySchema,
     expectedRevision: z.number().int().nonnegative(),
     surfaceLeaseId: surfaceLeaseIdSchema,
   })
   .strict();
-export const baseImportXlsxInputSchema = baseImportJsonInputSchema;
 export const baseRowHistoryInputSchema = z
-  .object({
-    ownerKey: z.string().regex(BASE_OWNER_KEY_PATTERN),
-    rowId: entityIdSchema,
-  })
+  .object({ ownerKey: ownerKeySchema, rowId: entityIdSchema })
   .strict();
 
 const baseMutationErrorSchema = z

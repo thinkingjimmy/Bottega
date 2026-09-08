@@ -1,72 +1,89 @@
 /**
- * [INPUT]: Depends only on injected admission/window-settlement/quiesce/close/recover/report ports; it never imports Electron
- * [OUTPUT]: Provides SafeQuitReason and SafeQuitCoordinator: a single-entry two-phase quit state machine that reclaims all renderer surfaces before owners close
- * [POS]: The startup quit-lane state machine; the composition root still owns which owners exist and in what order they close
+ * [INPUT]: Depends on Owned startup holds, synchronous operation permissions, and existing shutdown/recovery ports.
+ * [OUTPUT]: Provides safeQuitCoordinator with ready/aborted/failed results and an authorization boundary before global shutdown.
+ * [POS]: Single process-wide safe-quit owner shared by user quit, update installation, and system shutdown.
  */
 
-export type SafeQuitReason = "quit" | "update";
+import { permitsOperation, type StopOperation } from "../presence/lifecycle/start-fence";
 
+export type SafeQuitReason = "quit" | "update" | "system";
+export type SafeQuitResult = "ready" | "aborted" | "failed";
 export type SafeQuitPorts = {
-  /** 关准入：退出链里绝不能再产生新的 dispatch。可逆阶段与恢复失败各调一次。 */
+  acquireStartHold?(): () => void;
+  snapshotStopOperations?(): readonly StopOperation[];
   stopAdmission(): void;
-  /** 可逆阶段：等待活动迁移并把 App 窗口的 surface/capsule 收回主窗。 */
   settleWindows(): Promise<void>;
-  /** 可逆阶段：结算所有 Agent。失败后应用仍可以还给用户。 */
   quiesceAgents(): Promise<void>;
-  /** 不可逆阶段：终态 owner 逐个关闭并落盘。开始之后没有回头路。 */
   closeOwners(): Promise<void>;
-  /** 可逆阶段失败后的补偿；true 表示应用已回到可用状态。 */
   recover(reason: SafeQuitReason): Promise<boolean>;
   report(reason: SafeQuitReason, phase: "reversible" | "terminal", cause: unknown): void;
   notify(recovered: boolean): void;
   quit(): void;
 };
 
-/**
- * 退出与「下载完成后交接安装」走的是同一段收敛，差别只在结局：前者退出，
- * 后者把进程交给安装器。把它写成两条链必然漂移，而漂移的那一份会在崩溃
- * 之后才被发现——那时已经没有证据能说清 owner 到底关没关。
- *
- * 两阶段的分界是本类唯一要守住的事实：`quiesceAgents` 之前一切可逆，
- * `closeOwners` 一旦开始，恢复只会造出半开的 owner，因此那之后只允许
- * 退出、且绝不安装——下一次启动会重新跑所有 durable recovery。
- */
 export class SafeQuitCoordinator {
-  private requested = false;
-  private settled = false;
-
+  private flight: Promise<SafeQuitResult> | null = null;
+  private terminal: SafeQuitResult | null = null;
   constructor(private readonly ports: SafeQuitPorts) {}
+  get finished() { return this.terminal !== null; }
+  get requested() { return this.flight !== null; }
 
-  /** true 表示 owner 已全部关闭落盘，调用方可以真正退出或交接安装。 */
-  get finished() {
-    return this.settled;
+  prepare(reason: SafeQuitReason, permit: readonly StopOperation[] = []): Promise<SafeQuitResult> {
+    if (this.terminal) return Promise.resolve(this.terminal);
+    if (this.flight) return this.flight;
+    let finish!: (result: SafeQuitResult) => void;
+    const flight = new Promise<SafeQuitResult>((resolve) => { finish = resolve; });
+    this.flight = flight;
+    void this.run(reason, permit).then((result) => {
+      this.flight = null;
+      finish(result);
+    });
+    return flight;
   }
 
-  async prepare(reason: SafeQuitReason): Promise<boolean> {
-    if (this.settled) return true;
-    if (this.requested) return false;
-    this.requested = true;
-    this.ports.stopAdmission();
+  private async run(reason: SafeQuitReason, permit: readonly StopOperation[]): Promise<SafeQuitResult> {
+    let release: (() => void) | undefined;
+    let frozen = false;
+    let releaseAttempted = false;
+    const releaseOwnedHold = () => {
+      releaseAttempted = true;
+      release?.();
+    };
     try {
+      release = this.ports.acquireStartHold?.();
+      // Nothing asynchronous may separate acquiring the hold from enumerating identities.
+      const current = this.ports.snapshotStopOperations?.() ?? [];
+      if (reason !== "system" && current.some((operation) => !permitsOperation(permit, operation))) {
+        releaseOwnedHold();
+        return "aborted";
+      }
+      frozen = true;
+      this.ports.stopAdmission();
       await this.ports.settleWindows();
       await this.ports.quiesceAgents();
     } catch (cause) {
-      this.requested = false;
       this.ports.report(reason, "reversible", cause);
-      const recovered = await this.ports.recover(reason);
-      if (!recovered) this.ports.stopAdmission();
+      let recovered = !frozen && !releaseAttempted;
+      try {
+        if (frozen) recovered = await this.ports.recover(reason);
+        if (recovered) releaseOwnedHold();
+      } catch (recoveryCause) {
+        recovered = false;
+        this.ports.report(reason, "reversible", recoveryCause);
+      }
+      if (!recovered && frozen) this.ports.stopAdmission();
       this.ports.notify(recovered);
-      return false;
+      return "failed";
     }
     try {
       await this.ports.closeOwners();
-      this.settled = true;
-      return true;
+      this.terminal = "ready";
+      return "ready";
     } catch (cause) {
       this.ports.report(reason, "terminal", cause);
-      this.settled = true;
+      this.terminal = "failed";
       this.ports.quit();
-      return false;
+      return "failed";
     }
   }
 }

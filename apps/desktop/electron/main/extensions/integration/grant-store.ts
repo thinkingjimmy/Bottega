@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node fs/path, zod and frozen App requirement/package generation identities
+ * [INPUT]: Depends on Node fs/path, zod and frozen App requirement/package generation identities, and statusError from main/errors
  * [OUTPUT]: Provides AppExtensionGrantStore: stable decision, exact scoped grants, return grant+tombstone by app generation, only read projections, derive/consent/deny, revoke and single-mode aggregate revision for unaggregated
  * [POS]: The authorized durable single-writer of App×Extension; Grant is not across App generation/resolution/package/config
  */
@@ -12,7 +12,8 @@ import type {
   FrozenAppExtensionRequirementSetV1,
   ScopedComponentGrant,
 } from "../../../../shared/extensions-ipc";
-import { digestCanonical } from "../registry-store";
+import { statusError } from "../../errors";
+import { digestCanonical } from "../registry-canonical";
 
 type AppGrantAggregate = {
   appId: string;
@@ -121,9 +122,7 @@ export class AppExtensionGrantStore {
         current.requirementResolutionDigest !== input.set.resolutionDigest ||
         current.pendingAppGenerationId !== input.set.appGenerationId
       ) {
-        throw Object.assign(new Error("App extension consent fence 已变化"), {
-          status: 409,
-        });
+        throw statusError(409, "App extension consent fence 已变化");
       }
       const revision = aggregate.revision + 1;
       const grants = input.granted

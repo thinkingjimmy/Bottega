@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Delivery cleanup/RemoteTarget bookkeeping, provider purgeModel/session Delete ports with MemoryNetwork Runtime
- * [OUTPUT]: Provides descriptor classification of the accurate cleanup driver; The source session is removed by the tombstone and the entire Space action purges the workspace, which is absorbed by the adapter as the authorized finish mode
- * [POS]: network execution boundaries of memory/delivery; Store only remembers the fact that the destructive provider calls do not enter the durable gate
+ * [INPUT]: Depends on Delivery cleanup-request/RemoteTarget bookkeeping, the provider's purgeModel and session-delete ports, and MemoryNetworkRuntime
+ * [OUTPUT]: Provides MemoryCleanupRunner.drive: disposes each remote target's session, purges the workspace on non-tombstone reasons, and skips runtime-reset providers entirely
+ * [POS]: Network execution boundary of memory/delivery; Delivery store only records cleanup facts, the destructive provider calls happen here outside the durable gate
  */
 
 import type { MemoryProviderDescriptor } from "../../../../shared/memory-ipc";

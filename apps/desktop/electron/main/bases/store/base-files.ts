@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node fs/path, shared owner-aware Base/Gallery schema and durableAtomicWrite; receives the v2 root plus optional read/write injections
+ * [INPUT]: Depends on Node fs/path, shared owner-aware Base/Gallery schema, and the commit-kernel durable write and errno guard; receives the v2 root plus optional read/write injections
  * [OUTPUT]: Provides ownerKey→v2 file naming, bounded meta/rows/gallery/history IO, generation GC, and family delete/isolate
  * [POS]: The v2 file layout of bases/store borders on the IO; BaseStore only holds the status machine and submit order
  */
@@ -28,7 +28,7 @@ import {
   type BaseHistoryLedger,
 } from "../../../../shared/bases/history-ledger-schema";
 import { errorMessage } from "../../errors";
-import { durableAtomicWrite } from "./commit-kernel";
+import { durableAtomicWrite, isErrnoCode } from "./commit-kernel";
 import {
   emptyGalleryLedger,
   parseGalleryLedger,
@@ -103,7 +103,7 @@ export class BaseStoreFiles {
         BASE_ROWS_BYTE_LIMIT
       );
     } catch (cause) {
-      if (isCode(cause, "ENOENT")) {
+      if (isErrnoCode(cause, "ENOENT")) {
         throw new Error(
           `meta 引用的 rows 世代 ${meta.rowsGeneration} 不存在`
         );
@@ -130,7 +130,7 @@ export class BaseStoreFiles {
         meta.ownerInstanceId
       );
     } catch (cause) {
-      if (generation === 0 && isCode(cause, "ENOENT")) {
+      if (generation === 0 && isErrnoCode(cause, "ENOENT")) {
         return emptyGalleryLedger(galleryOwnerId(meta), meta.ownerInstanceId);
       }
       throw new Error(
@@ -148,7 +148,7 @@ export class BaseStoreFiles {
       );
       return parseHistoryLedger(JSON.parse(content));
     } catch (cause) {
-      if (generation === 0 && isCode(cause, "ENOENT")) {
+      if (generation === 0 && isErrnoCode(cause, "ENOENT")) {
         return emptyHistoryLedger();
       }
       throw new Error(
@@ -168,7 +168,7 @@ export class BaseStoreFiles {
         )
       );
     } catch (cause) {
-      if (isCode(cause, "ENOENT")) return null;
+      if (isErrnoCode(cause, "ENOENT")) return null;
       throw cause;
     }
   }
@@ -204,9 +204,7 @@ export class BaseStoreFiles {
   }
 
   async atomicWrite(path: string, content: string) {
-    await durableAtomicWrite(path, content, {
-      write: this.options.atomicWrite,
-    });
+    await durableAtomicWrite(path, content, this.options.atomicWrite);
   }
 
   /** 清理 durableAtomicWrite 崩溃遗留的 `*.tmp`；仅在 initialize 串行窗口调用。 */
@@ -227,7 +225,7 @@ export class BaseStoreFiles {
     ownerKey: string,
     currentRows: number,
     currentGallery: number,
-    currentHistory = 0
+    currentHistory: number
   ) {
     const entries = await readdir(this.root, { withFileTypes: true });
     const pattern = new RegExp(
@@ -307,8 +305,4 @@ export function galleryOwnerId(meta: BaseMeta) {
 
 function escapePattern(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function isCode(cause: unknown, code: string) {
-  return (cause as { code?: string })?.code === code;
 }

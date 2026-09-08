@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, Zod schemas, and SerialQueue
- * [OUTPUT]: Provides durable directory publication, atomic text/byte replacement, explicit corruption errors with retained diagnostics, quarantine, strict single-step upgrades, initialization that quarantines untrusted content and rebuilds empty by default (reporting `quarantined`), and serialized rollback-safe mutation
+ * [OUTPUT]: Provides the errno predicate, directory fsync, durable directory publication, atomic text/byte replacement, explicit corruption errors with retained diagnostics, quarantine, initialization that quarantines untrusted content (an older or unknown schema included) and rebuilds empty (reporting `quarantined`), and serialized rollback-safe mutation
  * [POS]: The persistence I/O boundary; DurableJson owns the recovery decision for unreadable content so no ledger can turn a schema drift into a fatal startup
  */
 
@@ -10,7 +10,8 @@ import { dirname, join } from "node:path";
 import type { z } from "zod";
 import { SerialQueue } from "./serial-queue";
 
-export type DurableJsonUpgrade<T> = (raw: unknown) => T | undefined;
+export const isErrnoCode = (cause: unknown, code: string) =>
+  cause instanceof Error && (cause as NodeJS.ErrnoException).code === code;
 export type DurableReplaceFileFaults = Readonly<{
   /** Test-only crash boundary: directory entry exists but its parent is not synced. */
   afterDirectoryCreated?: (input: {
@@ -88,12 +89,7 @@ async function durableReplace(
   if (typeof content === "string") {
     await faults.afterRename?.({ filePath, content });
   }
-  const parent = await open(directory, "r");
-  try {
-    await parent.sync();
-  } finally {
-    await parent.close();
-  }
+  await syncDirectory(directory);
 }
 
 /**
@@ -116,13 +112,13 @@ export async function ensureDurableDirectory(
       throw new Error(`Durable directory 边界不是真实目录：${directory}`);
     }
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+    if (!isErrnoCode(cause, "ENOENT")) throw cause;
     await ensureDurableDirectory(parent, mode, faults);
     try {
       await mkdir(directory, { mode });
       created = true;
     } catch (mkdirCause) {
-      if ((mkdirCause as NodeJS.ErrnoException).code !== "EEXIST") {
+      if (!isErrnoCode(mkdirCause, "EEXIST")) {
         throw mkdirCause;
       }
       const metadata = await lstat(directory);
@@ -136,10 +132,13 @@ export async function ensureDurableDirectory(
   await faults.afterDirectoryParentSynced?.({ directory, parent, created });
 }
 
-async function syncDirectory(directory: string) {
+/** Filesystems that cannot fsync a directory handle (EINVAL/ENOTSUP) have nothing further to flush. */
+export async function syncDirectory(directory: string) {
   const handle = await open(directory, "r");
   try {
     await handle.sync();
+  } catch (cause) {
+    if (!isErrnoCode(cause, "EINVAL") && !isErrnoCode(cause, "ENOTSUP")) throw cause;
   } finally {
     await handle.close();
   }
@@ -156,7 +155,7 @@ export async function quarantineDurableFile(filePath: string) {
   try {
     await rename(filePath, `${filePath}.quarantine-${Date.now()}`);
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+    if (!isErrnoCode(cause, "ENOENT")) throw cause;
   }
   const prefix = `${filePath.slice(directory.length + 1)}.quarantine-`;
   const entries = (await readdir(directory).catch(() => []))
@@ -185,15 +184,13 @@ export class DurableJson<T> {
     this.state = empty();
   }
 
-  /* ── 读不出即隔离重建：这是 initialize 的默认语义，不是 owner 的选项 ──
-     磁盘上的字节读到了却无法信任（JSON 坏了、schema 对不上、升级函数也
-     不认）：改名留证、空态重建、照常 ready，并把 quarantined 告诉调用方。
-     此前这层保护是一个可选的外层函数，二十多个账本从未调用它——任何一次
-     「形状变了、号没升」都会让主进程起不来（09-04 的 process-custody 就是）。
-     两类错误照常上抛：IO 错误（磁盘不动时空态同样写不进去，谎报 ready 只是
-     把故障推迟到下一笔）与升级函数交出的非法状态（那是代码错误，隔离只会
-     把它藏起来）。 */
-  async initialize(upgrade?: DurableJsonUpgrade<T>) {
+  /* Quarantine-and-rebuild is the default recovery, not an owner option: bytes
+     that parse but fail the strict schema — an older or unknown schemaVersion
+     included — are renamed for evidence and replaced by the empty state, and the
+     caller learns `quarantined`. There is no upgrade hook; an old ledger is
+     evidence, never input. I/O errors still throw: an empty state cannot be
+     written to a disk that does not move either. */
+  async initialize() {
     if (this.poisoned) {
       throw new Error(`Durable authority 已 poisoned，必须新建实例重开：${this.filePath}`);
     }
@@ -204,9 +201,8 @@ export class DurableJson<T> {
         this.ready = true;
         return { quarantined: false };
       }
-      const loaded = this.decode(content, upgrade);
+      const loaded = this.decode(content);
       if (loaded.ok) {
-        if (loaded.persist) await this.persistOrPoison(loaded.state);
         this.state = loaded.state;
         this.ready = true;
         return { quarantined: false };
@@ -223,9 +219,8 @@ export class DurableJson<T> {
   }
 
   private decode(
-    content: string,
-    upgrade?: DurableJsonUpgrade<T>
-  ): { ok: true; state: T; persist: boolean } | { ok: false; error: DurableFileCorruptionError } {
+    content: string
+  ): { ok: true; state: T } | { ok: false; error: DurableFileCorruptionError } {
     let raw: unknown;
     try {
       raw = JSON.parse(content) as unknown;
@@ -233,12 +228,9 @@ export class DurableJson<T> {
       return { ok: false, error: new DurableFileCorruptionError(this.filePath, cause) };
     }
     const current = this.schema.safeParse(raw);
-    if (current.success) return { ok: true, state: current.data, persist: false };
-    const migrated = upgrade?.(raw);
-    if (migrated === undefined) {
-      return { ok: false, error: new DurableFileCorruptionError(this.filePath, current.error) };
-    }
-    return { ok: true, state: this.schema.parse(migrated), persist: true };
+    return current.success
+      ? { ok: true, state: current.data }
+      : { ok: false, error: new DurableFileCorruptionError(this.filePath, current.error) };
   }
 
   snapshot() {
@@ -271,7 +263,7 @@ export class DurableJson<T> {
     try {
       return await readFile(this.filePath, "utf8");
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
+      if (isErrnoCode(cause, "ENOENT")) return null;
       throw cause;
     }
   }

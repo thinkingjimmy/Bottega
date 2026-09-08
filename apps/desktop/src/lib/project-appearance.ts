@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on 30 characters in lucide-react and ProjectAppearance in LucideIcon type, shared/projects-ipc
- * [OUTPUT]: Provides PROJECT_COLORS/PROJECT_ICONS Two directory tables ((includes only id and class name, and can be read as names for i18n projects.appearance.color|The following is a list of the most commonly used names for the name of the project:
- * [POS]: The only true source of Project looks in lib is rendered by the project-appearance-picker, and the project-item and Activity subtitle check tables are taken from the fontThe main process only keeps strings, the meaning is here
+ * [INPUT]: Depends on 30 lucide-react icon components (typed as LucideIcon) and the shared ProjectAppearance contract
+ * [OUTPUT]: Provides PROJECT_COLORS/PROJECT_ICONS (two literal lookup tables of id + Tailwind class names, keyed for i18n as projects.appearance.color.<id>), plus resolveProjectColor/resolveProjectIcon/resolveProjectGlyph and normalizeProjectAppearance
+ * [POS]: Sole source of truth for Project appearance in lib; consumed by project-appearance-picker for the color/icon choosers and by project-item/Activity subtitles for lookup; main only persists the plain id strings, the meaning lives here
  */
 
 import {

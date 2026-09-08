@@ -1,15 +1,14 @@
 /**
  * [INPUT]: Depends on browser Selection/Range DOM and PromptInput RichValue/RichNode type
- * [OUTPUT]: Provides RichInput's caret reading, selection of zone attributes, plain text pasting, thenable, differentiation, value comparison/text, constructions and suggestion, snapshot types
+ * [OUTPUT]: Provides RichInput's caret reading/placement, selection checks, plain text pasting, thenable detection, value cloning/comparison, and the suggestion transaction type
  * [POS]: ai-elements RichInput's browser editor is a dedicated assistant; Main components only arrange events and state migrations
  */
 
+import type { RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import type {
-  RichNode,
-  RichValue,
-} from "@ai-chat/ui/components/ai-elements/prompt-input";
-import type { RichCaretPoint } from "@ai-chat/ui/lib/rich-input-model";
-import type { RichQuery } from "@ai-chat/ui/lib/rich-input-model";
+  RichCaretPoint,
+  RichQuery,
+} from "@ai-chat/ui/lib/rich-input-model";
 import type { ClipboardEvent } from "react";
 
 export type RichSuggestionTransaction = {
@@ -33,12 +32,6 @@ export function pasteRichPlainText(
   event.preventDefault();
   insert(plain);
 }
-
-export const newText = (value: string): RichNode => ({
-  id: crypto.randomUUID(),
-  type: "text",
-  value,
-});
 
 export function selectionPoint(editor: HTMLDivElement): RichCaretPoint | null {
   const selection = window.getSelection();

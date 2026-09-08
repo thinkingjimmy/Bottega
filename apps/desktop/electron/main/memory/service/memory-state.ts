@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Chat/Agent type
- * [OUTPUT]: Provides turn settle Event shape and shutdown frequency constant SHUTDOWN_GRACE_MS
- * [POS]: The state machine's algebraic layer of main/memory/service; Retrieve rendering to prompt-lane, where only the cross-layer shared pure values are left
+ * [INPUT]: Depends on shared chats-ipc ChatMessage and agent bridge-types AgentContext/TurnOrigin
+ * [OUTPUT]: Provides the MemoryTurnSettledEvent shape and shutdown grace constant SHUTDOWN_GRACE_MS
+ * [POS]: The pure-value layer of main/memory/service; recall rendering itself lives in prompt-lane, this file only holds the cross-layer types both sides share
  */
 
 import type { ChatMessage } from "../../../../shared/chats-ipc";

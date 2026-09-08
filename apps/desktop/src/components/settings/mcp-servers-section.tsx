@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on React, i18n, an explicit global/Project MCP scope port, Settings primitives, AppDialog, and shared masked MCP DTOs
- * [OUTPUT]: Provides one MCP renderer for global defaults and exact Projects, including owner grouping, inherited overrides, masked-secret editing, and conflict-safe drafts
- * [POS]: Scope-agnostic manual MCP controls for Settings › Tools; controllers own IPC/CAS/fencing and this component only renders snapshots and mutations
+ * [INPUT]: Depends on React, i18n, the Setup provider, the scoped MCP controller, shared tool-support projection, an explicit global/Project MCP scope port, Settings primitives, AppDialog, the shared BackendSupportNote from builtin-tools-section, and shared masked MCP DTOs
+ * [OUTPUT]: Provides one MCP renderer for global defaults and exact Projects, including owner grouping, inherited overrides, masked-secret editing, and conflict-safe drafts, plus useMcpServersPort — the scope-agnostic half of the port both Tools views assemble
+ * [POS]: Scope-agnostic manual MCP controls for Settings › Tools; controllers own IPC/CAS/fencing, the hook wires one controller into the base port, and the component only renders snapshots and mutations
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Plus, RotateCcw, Server, Trash2 } from "lucide-react";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { Textarea } from "@ai-chat/ui/components/ui/textarea";
@@ -25,6 +25,12 @@ import type {
   McpServersSnapshot,
   SaveManualMcpServerInput,
 } from "../../../shared/mcp-servers-ipc";
+import { MCP_SERVERS_BRIDGE_UNAVAILABLE } from "../../../shared/mcp-servers-ipc";
+import type { ProductResourceScope } from "../../../shared/resource-scope";
+import {
+  projectManualMcpServerSupport,
+  toolBackendFacts,
+} from "../../../shared/tool-support";
 import {
   SettingsAlert,
   SettingsButton,
@@ -35,8 +41,11 @@ import {
   SettingsSection,
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
+import { BackendSupportNote } from "@/components/settings/builtin-tools-section";
 import { errorMessage } from "@/lib/errors";
+import { createMcpServersController } from "@/lib/mcp-servers-client";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { useSetup } from "@/components/providers/setup-provider";
 import type { TFunction } from "i18next";
 import { Link } from "react-router";
 
@@ -62,6 +71,55 @@ export type McpServersSectionPort = Readonly<{
   ): Promise<unknown>;
   resetInherited?(serverId: `manual:${string}`): Promise<unknown>;
 }>;
+
+export type McpServersPortBase = Omit<
+  McpServersSectionPort,
+  "kind" | "hasPolicyOverrides" | "setInheritedEnabled" | "resetInherited"
+>;
+
+/* ============================================================
+ * Both Tools views (global Settings › Tools and a Project's Tools tab) build
+ * the same base port from one scoped controller: subscribe, re-project every
+ * server against the live Setup backends, translate the bridge-missing code,
+ * and turn `save`'s boolean into the dialog's `{ ok, error }`. The scope-
+ * specific half — policy overrides and inherited controls — stays with each
+ * view. `scope` must be referentially stable; it keys the controller's life.
+ * ============================================================ */
+export function useMcpServersPort(scope: ProductResourceScope) {
+  const { t } = useAppTranslation();
+  const setup = useSetup();
+  const controller = useMemo(() => createMcpServersController(scope), [scope]);
+  useEffect(() => () => controller.dispose(), [controller]);
+  const mcp = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const backendFacts = useMemo(
+    () => (setup.status?.backends ?? []).map(toolBackendFacts),
+    [setup.status?.backends]
+  );
+  const port = useMemo<McpServersPortBase>(() => ({
+    snapshot: mcp.value
+      ? {
+          ...mcp.value,
+          servers: mcp.value.servers.map((server) =>
+            projectManualMcpServerSupport(server, backendFacts)
+          ),
+        }
+      : null,
+    loading: mcp.loading,
+    error:
+      mcp.error === MCP_SERVERS_BRIDGE_UNAVAILABLE
+        ? t("settings.tools.mcp.bridgeMissing")
+        : mcp.error,
+    bridgeAvailable: mcp.bridgeAvailable,
+    pending: mcp.pending,
+    load: controller.load,
+    save: async (draft, server) => {
+      const ok = await controller.save(draft, server);
+      return { ok, error: ok ? "" : controller.getSnapshot().error };
+    },
+    remove: controller.remove,
+  }), [backendFacts, controller, mcp, t]);
+  return { controller, backendFacts, port };
+}
 
 type EnvRow = {
   rowId: number;
@@ -587,7 +645,6 @@ function viewDraft(
 
 function serverDescription(server: ManualMcpServerView, t: TFunction) {
   const target = server.transport === "stdio" ? server.command : server.url;
-  const unsupported = server.backendSupport.filter((item) => !item.supported);
   return (
     <>
       {t(`settings.tools.mcp.effective.${server.effectiveState}`)}
@@ -600,25 +657,7 @@ function serverDescription(server: ManualMcpServerView, t: TFunction) {
         ),
         health: t(`settings.tools.mcp.health.${server.health.state}`),
       })}
-      {unsupported.length > 0 && (
-        <span className="mt-1 block" role="note">
-          {unsupported.map((item) => (
-            <span className="block" key={item.backendId}>
-              {item.backendId}: {t(
-                `settings.tools.supportReason.${item.reason ?? "unknown"}`
-              )}
-              {item.detail ? ` · ${item.detail}` : ""}
-              {item.constraint?.kind === "minimum-runtime-version"
-                ? ` · ${t("settings.tools.supportReason.minimumRuntimeVersion", {
-                    minimumVersion: item.constraint.minimumVersion,
-                    detectedVersion: item.constraint.detectedVersion ??
-                      t("settings.tools.supportReason.unknownVersion"),
-                  })}`
-                : ""}
-            </span>
-          ))}
-        </span>
-      )}
+      <BackendSupportNote support={server.backendSupport} />
     </>
   );
 }

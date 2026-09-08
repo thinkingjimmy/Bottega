@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on column-to-line contracts for base-snapshot/base-values, only consume column-to-value data
- * [OUTPUT]: Provides synthesizeBaseSampleRows with sampleSnapshot; Triple examples of zero-true data reliance on determinism
- * [POS]: The function of the sample data is the pure function of the shared data; Share example pattern must be here, and source rows are prohibited
+ * [INPUT]: Depends on Base column/row types from bases-ipc and the BaseSnapshotFileV2 shape from base-snapshot; consumes only column definitions, never real row data
+ * [OUTPUT]: Provides synthesizeBaseSampleRows and sampleSnapshot, deterministically generating three per-column-type sample rows with id-collision avoidance
+ * [POS]: Pure sample-data generator shared across Base; the only place that fabricates example rows and must never read or forward real user rows
  */
 
 import type { BaseColumn, BaseRow } from "./bases-ipc";

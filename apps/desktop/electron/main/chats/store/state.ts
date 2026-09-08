@@ -12,7 +12,7 @@ import type { ChatMetadata } from "../chat-summary";
 import { ChatStoreProjection } from "../chat-store-projection";
 import { ChatDatabaseClient } from "../sqlite/database-client";
 
-export type PublishedRecord = Readonly<{
+type PublishedRecord = Readonly<{
   record: ChatRecord;
   revision: number;
 }>;

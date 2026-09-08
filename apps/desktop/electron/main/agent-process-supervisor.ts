@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on AgentBackendId, ChildProcess and process-group
- * [OUTPUT]: Provides backend subdomain type access, owner-scoped security lock/unlock wake up, 4 slots semaphore, 2 interactive reservations, bordered FIFO background queues, auxiliary recording/observing and clustering shutdown
- * [POS]: The only owner of the Agent process resources of Electron main; lease before spawn, CleanupResult after settlement
+ * [OUTPUT]: Provides per-backend admission with a 4-slot semaphore (2 reserved for interactive), bounded FIFO background queueing, safety-lock hold/release, auxiliary-process tracking, and coordinated shutdown
+ * [POS]: The sole owner of Agent child-process admission in Electron main; callers acquire a lease before spawning and report a CleanupResult after teardown
  */
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
@@ -79,7 +79,7 @@ export const AGENT_PROCESS_BUDGET = {
 } as const;
 
 const domains = new Map<AgentBackendId, BackendDomain>();
-const LEGACY_SAFETY_OWNER = Symbol("interactive-safety-owner");
+const INTERACTIVE_SAFETY_OWNER = Symbol("interactive-safety-owner");
 
 function domain(backend: AgentBackendId) {
   let value = domains.get(backend);
@@ -255,7 +255,7 @@ export function agentProcessSafetyLock(backend: AgentBackendId) {
 export function reportAgentCleanupFailure(
   backend: AgentBackendId,
   cause: unknown,
-  owner: symbol = LEGACY_SAFETY_OWNER
+  owner: symbol = INTERACTIVE_SAFETY_OWNER
 ) {
   domain(backend).safetyLocks.set(owner, asError(cause).message);
 }
@@ -263,7 +263,7 @@ export function reportAgentCleanupFailure(
 export function clearAgentSafetyLockWhenIdle(backend: AgentBackendId) {
   const state = domain(backend);
   if (state.auxiliary.size > 0) return;
-  state.safetyLocks.delete(LEGACY_SAFETY_OWNER);
+  state.safetyLocks.delete(INTERACTIVE_SAFETY_OWNER);
   drain(backend, state);
 }
 
@@ -289,7 +289,7 @@ export function registerAuxiliaryAgentProcess(
   return unregister;
 }
 
-export function stopAgentProcessAdmission(backend: AgentBackendId) {
+function stopAgentProcessAdmission(backend: AgentBackendId) {
   const state = domain(backend);
   state.admissionOpen = false;
   for (const entry of [

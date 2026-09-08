@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared built-in tool wire Budget/tool name; The result of the single logical return of the bridge
+ * [INPUT]: Depends on the shared built-in tool wire byte limit and tool name types, and the raw single-value result returned by one bridge/registry call
  * [OUTPUT]: Provides toBuiltinCallToolResult, which validates the initiator cap after final MCP serialization and adapts either one text payload or one text-plus-image payload without structuredContent duplication
  * [POS]: The final gateway to the tools platform; prevents content/structuredContent duplication and keeps image base64 out of the text copy
  */

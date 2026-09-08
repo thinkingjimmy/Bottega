@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on crypto, ManagedRuntimeRegistry/Coordinator, Settings Owner and MemoryService provided current Consent destination/active/quiesce/reopen/reapply/rebuild fresh
- * [OUTPUT]: Provides MemoryLifecycle Orchestrator: per-provider reservation, revision-only version directory, coordinator direct, not running time queue, mirror/semi-installation recovery, credible version switching, configuration capability, disruption of the operation matrix and single enclosure sequence
- * [POS]: The destructive lifecycle center of main/memory/runtime/control; Coordinator is original, Settings/Delivery is not allowed to reverse to get reservation
+ * [INPUT]: Depends on node:crypto, the managed runtime registry/coordinator, and service-supplied active/consent-destination/quiesce/reopen/rebuild callbacks
+ * [OUTPUT]: Provides MemoryLifecycleOrchestrator: per-provider serial reservation, time-boxed destructive-operation authority tokens, read-only version-catalog listing via the coordinator, config preview/write/issue-resolution, and switch/repair/rebuild runs
+ * [POS]: The destructive-lifecycle center of main/memory/runtime/control; the coordinator owns runtime truth, Settings/Delivery must go through this orchestrator's reservation to touch it
  */
 
 import { randomUUID } from "node:crypto";

@@ -28,7 +28,7 @@ export type CandidateAuthority = Readonly<{
 export type OwnerFacts = Readonly<{
   sourceIdentity: string;
   digest: `sha256:${string}` | null;
-  sourceRevision: string | null;
+  sourceRevision: string;
 }>;
 
 export type CandidateClassification =
@@ -41,7 +41,7 @@ export function buildOwnerFacts(entries: readonly ManagedSkillsLibraryEntry[]) {
     return [entry.name, {
       sourceIdentity: entry.provenance.sourceIdentity,
       digest: active.digest as `sha256:${string}`,
-      sourceRevision: active.sourceRevision ?? null,
+      sourceRevision: active.sourceRevision,
     }];
   }));
 }
@@ -56,8 +56,7 @@ export function buildOwnerFacts(entries: readonly ManagedSkillsLibraryEntry[]) {
  *    异内容 name-taken-differs、任一侧 digest 缺失退回裸 name-taken；
  * 3. 无主 → new，且批内先见者当场占名（库内与批内本是同一个问题）；
  * 4. 同源：digest 在场比 digest；候选超预算未哈希时比导入复核存下的
- *    sourceRevision；旧库条目缺 sourceRevision 一律判 update——
- *    一次同内容 no-op 导入即回填愈合，永不多唠叨第二回。
+ *    sourceRevision。
  * ──────────────────────────────────────────────────────────── */
 export function classifyCandidates(
   authorities: Iterable<CandidateAuthority>,
@@ -104,7 +103,7 @@ function sameContent(
   owner: OwnerFacts
 ) {
   if (skill.digest && owner.digest) return skill.digest === owner.digest;
-  return owner.sourceRevision !== null && skill.revision === owner.sourceRevision;
+  return skill.revision === owner.sourceRevision;
 }
 
 /* 发现流程的文件系统失败翻成稳定的公开理由码：原始 errno 与路径

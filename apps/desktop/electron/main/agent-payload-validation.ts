@@ -1,9 +1,13 @@
 /**
  * [INPUT]: Depends on shared Agent limits/contracts, strict RichValue/SubmissionContentV1, chat user envelopes, and backend descriptors
- * [OUTPUT]: Provides strict public payload reconstruction plus a separate manual-origin start parser for main-owned prepared Skill receipts, and cross-field validation for Agent/manual/steer/adopt paths
+ * [OUTPUT]: Parses closed Agent/manual/adopt envelopes, including a single typed authentication retry intent, while rejecting renderer-owned execution authority.
  * [POS]: The first main-process trust boundary for public Agent/coordinator IPC; only the internal start parser can reconstruct coordinator-owned Skill authority
  */
 
+import { z } from "zod";
+import { handoffSchema } from "../../shared/chat-agent/history-schema";
+import { HANDOFF_PROMPT_HASH } from "./agent/history/receiver";
+import { agentSwitchIntentSchema } from "../../shared/chat-agent/schema";
 import {
   AGENT_BACKEND_ORDER,
   AGENT_INPUT_LIMIT,
@@ -210,7 +214,10 @@ export function validateManualTurnSubmission(
   assertExactKeys(
     value,
     [
+      "agentSwitch",
+      "expectedAgentRevision",
       "intentId",
+      "authenticationRetry",
       "persistence",
       "turn",
       "content",
@@ -226,6 +233,10 @@ export function validateManualTurnSubmission(
   ) {
     throw new Error("人工 turn intent 格式无效");
   }
+  if (raw.authenticationRetry !== undefined && (
+    !raw.authenticationRetry || typeof raw.authenticationRetry !== "object" ||
+    Object.keys(raw.authenticationRetry).length !== 1 || raw.authenticationRetry.kind !== "retry-authentication"
+  )) throw new Error("Invalid authentication retry intent");
   const turn = parseAgentPayload(raw.turn);
   const content = submissionContentV1Schema.parse(raw.content);
   const precondition = incarnationPreconditionSchema.parse(raw.precondition);
@@ -262,7 +273,10 @@ export function validateManualTurnSubmission(
       throw new Error("append 必须携带 existing incarnation precondition");
     }
     return {
+      agentSwitch: raw.agentSwitch ? agentSwitchIntentSchema.parse(raw.agentSwitch) : undefined,
+      expectedAgentRevision: z.number().int().nonnegative().parse(raw.expectedAgentRevision),
       intentId: raw.intentId,
+      ...(raw.authenticationRetry ? { authenticationRetry: { kind: "retry-authentication" as const } } : {}),
       persistence: {
         kind: "append",
         input: { ...persistence.input, precondition },
@@ -281,6 +295,7 @@ export function validateManualTurnSubmission(
   }
   return {
     intentId: raw.intentId,
+      ...(raw.authenticationRetry ? { authenticationRetry: { kind: "retry-authentication" as const } } : {}),
     persistence,
     turn,
     content,
@@ -348,6 +363,7 @@ function parseAgentPayload(
       "planMode",
       "input",
       ...(acceptsPreparedSelection ? ["preparedSkillSelection"] : []),
+      ...(authority ? ["handoff", "agentRevision"] : []),
     ],
     "Agent payload"
   );
@@ -371,6 +387,9 @@ function parseAgentPayload(
     throw new Error("Plan 模式格式无效");
   }
   const turnOptions = validateAgentTurnOptions(payload.turnOptions);
+  const handoff = payload.handoff === undefined ? undefined : handoffSchema.parse(payload.handoff);
+  if (handoff && (handoff.binding.chatId !== payload.scope?.conversationId || handoff.promptHash !== HANDOFF_PROMPT_HASH)) throw new Error("CHAT_HANDOFF_CONFLICT");
+  const agentRevision = payload.agentRevision === undefined ? undefined : z.number().int().nonnegative().parse(payload.agentRevision);
   const preparedSkillSelection = payload.preparedSkillSelection === undefined
     ? undefined
     : parsePreparedSkillSelection(payload.preparedSkillSelection);
@@ -436,6 +455,7 @@ function parseAgentPayload(
     ...(session ? { session } : {}),
     ...(payload.planMode !== undefined ? { planMode: payload.planMode } : {}),
     ...(preparedSkillSelection ? { preparedSkillSelection } : {}),
+    ...(handoff ? { handoff } : {}), ...(agentRevision !== undefined ? { agentRevision } : {}),
   };
 }
 

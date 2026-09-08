@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, radix-ui Tabs, class-variance-authority and cn of ui/utils
- * [OUTPUT]: Provides Tabs, TabsList, TabsTrigger, TabsContent and tabsListVariants
+ * [OUTPUT]: Provides Tabs, TabsList, TabsTrigger, and TabsContent
  * [POS]: Single implementation of the UI page layer for desktop/web business view sharing
  */
 
@@ -104,4 +104,4 @@ function TabsContent({
   )
 }
 
-export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants }
+export { Tabs, TabsList, TabsTrigger, TabsContent }

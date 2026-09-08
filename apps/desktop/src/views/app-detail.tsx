@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on react-router, Apps i18n/provider, the main-owned AppRecordProjection, Base detail, README/settings surfaces, the shared useAppEditor command, Apps client, and Web App frame/edit/repair components
+ * [INPUT]: Depends on shared appDisplayName, react-router, Apps i18n/provider, the main-owned AppRecordProjection, Base detail, README/settings surfaces, the shared useAppEditor command, Apps client, and Web App frame/edit/repair components
  * [OUTPUT]: Provides AppDetailView, residence-gated Base Studio rendering, App-window handoff, Editor navigation, Base/Web distribution, retry/cancel, README, and settings
  * [POS]: App detail route; web runtime start is gated by the positive servesWebRuntime predicate, and a nonresident main route renders a transfer card before any Base Studio hook or mutation surface mounts
  */
 
+import { appDisplayName } from "../../shared/apps-ipc";
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 import {
@@ -101,11 +102,9 @@ export function AppDetailView() {
   const [revision, setRevision] = useState(0);
   const [repairOpen, setRepairOpen] = useState(false);
   const [historyLog, setHistoryLog] = useState({ appId: "", text: "" });
-  const app = apps.find((item) =>
-    item.kind === "installed" ? item.record.id === id : item.id === id
-  );
+  const app = apps.find((item) => item.record.id === id);
 
-  const record = app?.kind === "installed" ? app.record : null;
+  const record = app?.record ?? null;
   const recordId = record?.id;
   const recordState = record?.state;
   const standalone = windowContext().role === "app-window";
@@ -116,9 +115,7 @@ export function AppDetailView() {
      它是 null，反向的 `kind !== "base"` 会把「还不知道」读成「是 Web App」，
      于是这条 effect 会替 Base App 去开 web runtime，把它打成 update-failed。 */
   const webRuntime = servesWebRuntime(record?.manifest);
-  const name =
-    record?.manifest?.name ??
-    (app?.kind === "placeholder" ? app.name : record?.displayName ?? "App");
+  const name = record ? appDisplayName(record) : "App";
 
   const openWindow = async (target: AppRecord) => {
     try {
@@ -191,22 +188,6 @@ export function AppDetailView() {
 
   if (!app) return <Navigate to="/apps" replace />;
 
-  if (app.kind === "placeholder") {
-    return (
-      <PageShell title={`${app.icon} ${app.name}`} backHref="/apps">
-        <div className="flex size-full flex-col items-center justify-center gap-3 p-8 text-center">
-          <div className="text-5xl">{app.icon}</div>
-          <p className="font-medium">{app.name}</p>
-          <p className="max-w-md text-muted-foreground text-sm">
-            {app.description}
-          </p>
-          <p className="text-muted-foreground text-xs">
-            {t("apps.detail.placeholder")}
-          </p>
-        </div>
-      </PageShell>
-    );
-  }
   if (!record) return <Navigate to="/apps" replace />;
   if (shouldRedirectAppDetail(record.state)) {
     return <Navigate to="/apps" replace />;

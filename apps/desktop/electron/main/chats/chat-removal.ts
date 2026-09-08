@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on ChatStore, ChatDeletionDriver advisory/resource phases, conversation lifecycle/cancellation ports, and optional App chat deactivation
+ * [INPUT]: Depends on ChatStore, ChatDeletionDriver advisory/resource phases, conversation lifecycle/cancellation ports, optional App chat deactivation, and main/errors
  * [OUTPUT]: Provides ChatRemovalController with purge-wide read-only admission for renderer, App-held, purge, and Project-held deletion paths
  * [POS]: The chats deletion orchestration boundary; ChatsService delegates removal while durable deletion details remain in ChatDeletionDriver
  */
@@ -10,6 +10,7 @@ import { ChatNotFoundError } from "./chat-commit";
 import type { ChatDeletionDriver } from "./chat-deletion";
 import type { ChatStore } from "./chat-store";
 import type { ChatMetadata } from "./chat-summary";
+import { statusError } from "../errors";
 
 type ChatLifecycleFacts = Omit<ChatMetadata, "preview">;
 
@@ -60,7 +61,7 @@ export class ChatRemovalController {
   async remove(chatId: string) {
     const candidate = await this.requireRecord(chatId);
     if (candidate.readOnlyReason === "external-readonly") {
-      throw Object.assign(new Error("导入的只读会话不能永久删除"), { status: 409 });
+      throw statusError(409, "导入的只读会话不能永久删除");
     }
     await this.ports.deletion.admit([candidate]);
     await this.appDeactivation?.(candidate, "delete");
@@ -156,9 +157,7 @@ export class ChatRemovalController {
       expected.incarnationId !== current.incarnationId ||
       expected.projectId !== current.projectId
     ) {
-      throw Object.assign(new Error("Chat 归属已变化，请重试删除"), {
-        status: 409,
-      });
+      throw statusError(409, "Chat 归属已变化，请重试删除");
     }
   }
 }

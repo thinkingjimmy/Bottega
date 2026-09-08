@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Pan-type containers without external dependence
- * [OUTPUT]: Provides TokenizedSubscriptionBroker Conversation A single subscription, attachmentId to prevent the token from being delayed in detachment, and deleted by mistake
- * [POS]: The first is the subscription booklet for Electron mainagent-bridge uses it to decrypt window subscriptions and turn lifecycle
+ * [INPUT]: Generic-typed in-memory map with no external dependencies
+ * [OUTPUT]: Provides TokenizedSubscriptionBroker: one live subscriber per conversation, with an attachmentId token guarding against stale or out-of-order detach calls
+ * [POS]: Electron main's generic subscription registry; agent-bridge uses it to track window subscriptions across turn lifecycle
  */
 
 export class TokenizedSubscriptionBroker<T> {

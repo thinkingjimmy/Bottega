@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on package/manual subjects with neutral resource scope, protocol-level evidence digests, and authoritative inventory
  * [OUTPUT]: Provides ComponentHealthAuthority single-writer observation, indexed backoff, exact-Project cleanup, server-by-server isolation, and authoritative manual UI projection
- * [POS]: The MCP runtime-health single-writer of extensions; The spawn event is not in the API and therefore cannot be disguised as observed-success
+ * [POS]: Extensions' single-writer for MCP runtime health; a process-spawn event alone is never treated as observed protocol success
  */
 
 import type {
@@ -14,7 +14,7 @@ import type {
   ManualMcpServerView,
   McpServerHealthView,
 } from "../../../shared/mcp-servers-ipc";
-import { digestCanonical } from "./registry-store";
+import { digestCanonical } from "./registry-canonical";
 
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 60_000;

@@ -1,8 +1,11 @@
 /**
  * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, main/App window context, surface migration runtime, Sidebar, and default/archive notifications
- * [OUTPUT]: Boots either the main Sidebar product tree or a fixed-App no-Sidebar window tree, including capsule reload, crash-loss notice, and the dedicated top-center archive feedback channel
+ * [OUTPUT]: Composes persistent product providers, foreground task-panel access, App compatibility recovery and route-dismissed settings navigation.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
+import { CompatibilityUpdateDialog } from "@/components/apps/compatibility/update-dialog";
+import { onSetupEvent } from "./lib/setup-client";
+
 
 import {
   lazy,
@@ -67,6 +70,9 @@ import {
   type SettingsOverlaySection,
 } from "@/lib/settings-navigation";
 import { settingsStore } from "@/lib/settings-store";
+import { presenceStore } from "@/lib/presence-client";
+import { useGlobalShortcuts } from "@/lib/shortcuts";
+import { resolvePanelBinding } from "../shared/shortcuts/bindings";
 import {
   commitSidebarLayout,
   readSidebarLayout,
@@ -245,8 +251,18 @@ function ProductApp() {
     settingsStore.ensureLoaded();
   };
 
+  useEffect(() => onSetupEvent((event) => {
+    if (event.type === "open-backends") selectSettings("backends");
+  }));
+
   /* 谁把你送进设置的不重要，出去只能有一个意思——覆盖层与路由两条
      进入路径共用这一个出口。 */
+  useEffect(() => {
+    // Route navigation is an external dismissal intent for the settings overlay.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSettingsSection(null);
+  }, [location.pathname]);
+
   const closeSettings = () => {
     setSettingsSection(null);
     leaveSettingsRoute();
@@ -384,6 +400,7 @@ function ProductApp() {
                             className={cn("h-full", settingsSection && "hidden")}
                           >
                             <Routes>
+                              <Route path="/settings/about" element={<AboutSettingsView />} />
                               <Route path="/" element={<ChatRoute surfaceVisible={!settingsSection} />} />
                               <Route path="/chat/:id" element={<ChatRoute surfaceVisible={!settingsSection} />} />
                               <Route
@@ -421,6 +438,7 @@ function ProductApp() {
                               />
                             </Routes>
                           </div>
+                          <CompatibilityUpdateDialog />
                           {settingsSection === "general" && <GeneralSettingsView />}
                           {settingsSection === "about" && <AboutSettingsView />}
                           {settingsSection === "shortcuts" && <ShortcutsSettingsView />}
@@ -461,6 +479,12 @@ function AppToaster() {
 
 function SurfaceRuntimeEvents() {
   const { t } = useAppTranslation();
+  useGlobalShortcuts(windowContext().role === "main" && isApplePlatform() ? { taskPanel: () => {
+    const settings = settingsStore.getSnapshot().settings;
+    if (settings?.showTaskStatusAtTop && !resolvePanelBinding(settings.keyboardShortcuts).conflict) {
+      void presenceStore.togglePanel().catch(() => toast.error(t("settings.presence.panelUnavailable")));
+    }
+  } } : {});
   useEffect(() => {
     const hydrate = () => panelSlotStore.reloadFromStorage();
     const draftLost = () =>

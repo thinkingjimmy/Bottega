@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on AgentTurnCustodyJournal, custody kernel, control channel / CustodyAttachment / converge) and backends / types of AgentProcessHost
- * [OUTPUT]: Provides AgentTurnCustodyRuntime: dependency Repeat → intent fsync → capability-free guardian → owned → activation-authorized → delivery → activated, and precise exit closure, restart phase reconcile with single-line turn `convergeTurn`
- * [POS]: The backends are the turn-side custody drive; The process mechanism is complete with the.../custody, and the document is only responsible for "access and restore the meaning of this book"
+ * [INPUT]: Depends on AgentTurnCustodyJournal, GuardianControlChannel, CustodyAttachment/converge from the custody kernel, and backends/types AgentProcessHost
+ * [OUTPUT]: Provides AgentTurnCustodyRuntime, driving custody through dependency verification, intent fsync, guardian handoff, ownership, activation-authorization and delivery to activated, plus exit reconciliation and single-call convergeTurn for restarts
+ * [POS]: Turn-side custody driver for backends; the actual process mechanics live in .../custody, this file only interprets and restores custody state for a turn
  */
 
 import { join } from "node:path";

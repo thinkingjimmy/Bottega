@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DesignService, AppStore, Base GUI grants, trusted surface leases, workspace plus current-chat identity resolution, factory import, and Apps event callbacks
+ * [INPUT]: Depends on DesignService, AppStore, Base GUI grants, trusted surface leases, workspace plus current-chat identity resolution, factory import, and Apps event callbacks, and statusError from main/errors
  * [OUTPUT]: Provides AppDesignIntegration for request-bound Design turn watching, incarnation-fenced tool reads, workspace/history access, custody controls, main-evidence Project rebind migration, factory lifecycle/explicit reinstall with legacy missing-owner cleanup, idempotent deletion finalization, and renderer events
  * [POS]: apps/service Design composition boundary; AppsService delegates the complete Design capability family here
  */
@@ -7,6 +7,7 @@
 import type { AgentBackendId } from "../../../../../shared/agent-ipc";
 import { defaultAppGrantRequest } from "../../../../../shared/apps-ipc";
 import type { BaseGuiLiveBinding } from "../../../../../shared/apps-ipc";
+import { statusError } from "../../../errors";
 import type { EffectiveWorkspaceResolver } from "../../../workspace-resolver";
 import { DESIGN_PRESET_ID } from "../../../design/enabled";
 import { designFactoryPayloadPath } from "../../../design/factory-path";
@@ -51,9 +52,7 @@ type DesignIntegrationPorts = Readonly<{
 
 function requireLease(binding: BaseGuiLiveBinding) {
   if (binding.appSurfaceLeaseId) return binding.appSurfaceLeaseId;
-  throw Object.assign(new Error("Design workspace 缺少 surface lease"), {
-    status: 401,
-  });
+  throw statusError(401, "Design workspace 缺少 surface lease");
 }
 
 export class AppDesignIntegration {
@@ -170,9 +169,7 @@ export class AppDesignIntegration {
 
   async readCanvasForTool(chatId: string, incarnationId: string, relativePath: string) {
     if (this.getConversationIncarnation?.(chatId) !== incarnationId) {
-      throw Object.assign(new Error("Design tool lease is stale for this chat incarnation"), {
-        status: 409,
-      });
+      throw statusError(409, "Design tool lease is stale for this chat incarnation");
     }
     const appId = this.service.enabled.enabledAppId();
     const resolved = this.effectiveWorkspaceResolver?.({
@@ -180,12 +177,10 @@ export class AppDesignIntegration {
       conversationId: chatId,
     });
     if (!appId || !resolved || resolved.kind !== "ready") {
-      throw Object.assign(new Error("Design is not available for this chat"), { status: 404 });
+      throw statusError(404, "Design is not available for this chat");
     }
     if (this.getConversationIncarnation?.(chatId) !== incarnationId) {
-      throw Object.assign(new Error("Design tool lease changed during workspace resolution"), {
-        status: 409,
-      });
+      throw statusError(409, "Design tool lease changed during workspace resolution");
     }
     return this.service.readCanvasForTool({
       workspace: resolved.workspace,

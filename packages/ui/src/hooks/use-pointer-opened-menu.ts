@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the useRef of react and onCloseAutoFocus/Trigger events of Radix DropdownMenu
  * [OUTPUT]: Provides use of PointerOpenedMenu, return triggerProps and onCloseAutoFocus
- * [POS]: The focus of hooks is the location of the arbiter, shared by the hover floating-level menu around the sidebar, and the use-mobile is the same as the general UI state
+ * [POS]: hooks' focus-return arbiter, shared by sidebar hover-triggered floating menus; a general-purpose UI-state hook alongside use-mobile
  */
 
 import { useRef } from "react"

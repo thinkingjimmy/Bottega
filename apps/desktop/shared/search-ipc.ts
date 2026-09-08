@@ -7,11 +7,7 @@
 import type { AgentBackendId } from "./agent-ipc";
 import type { ProductDestination } from "./placement/facts";
 
-/* 外源历史不再有自己的搜索泳道：同步后它就是一条只读 canonical Chat，
-   命中经 chat 泳道给出，命中目标也只剩产品消息一种。 */
-export type GlobalSearchSource = "chat" | "base";
-
-export type GlobalSearchTarget = { kind: "chat-message"; messageId: string };
+type GlobalSearchTarget = { kind: "chat-message"; messageId: string };
 
 export type GlobalSearchHit = Readonly<{
   key: string;
@@ -25,7 +21,7 @@ export type GlobalSearchHit = Readonly<{
   target?: GlobalSearchTarget;
 } & ({ source: "chat"; agent: AgentBackendId } | { source: "base" })>;
 
-export type StartSearchInput = Readonly<{ query: string }>;
+type StartSearchInput = Readonly<{ query: string }>;
 export type SearchJobStarted = Readonly<{
   jobId: string;
   snapshotRevision: string;

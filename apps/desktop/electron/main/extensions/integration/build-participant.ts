@@ -20,7 +20,7 @@ import {
   EXTENSION_PRODUCT_POLICY,
   backendExtensionProbe,
 } from "../product-policy";
-import { canonicalJson } from "../registry-store";
+import { canonicalJson } from "../registry-canonical";
 import { freezeAppExtensionRequirements } from "./requirement-resolver";
 import type { AppExtensionReservationLedger } from "./reservation-ledger";
 

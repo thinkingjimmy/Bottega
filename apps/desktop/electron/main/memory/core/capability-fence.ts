@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on FrozenTurnMemoryContext as a seven-field authorized
- * [OUTPUT]: Provides MemoryCapabilityFenceSnapshot with the only phase-by-phase matching function; The rebuild of the unherited runtime generation is obviously ignored
- * [POS]: The capability fence of memory/core is the single source of truthprompt, capture, authority No longer maintaining a field set
+ * [INPUT]: Depends on FrozenTurnMemoryContext, a seven-field snapshot frozen at turn start
+ * [OUTPUT]: Provides MemoryCapabilityFenceSnapshot and memoryCapabilityFenceMatches, comparing all seven fields with an option to skip runtimeGeneration for rebuild callers
+ * [POS]: The capability fence of memory/core; prompt-lane and authority-controller compare frozen vs current state through it instead of each maintaining its own field set
  */
 
 import type { FrozenTurnMemoryContext } from "./domain";

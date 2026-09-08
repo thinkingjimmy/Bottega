@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node:crypto and Electron WebContents positional or object navigation/destruction events
- * [OUTPUT]: Provides RendererIdentity, bindRendererIdentity, rendererIdentity, and onRendererRotated with main-frame-only rotation
+ * [OUTPUT]: Provides RendererIdentity, bindRendererIdentity, rendererIdentity, and resetRendererIdentities with main-frame-only rotation
  * [POS]: Window renderer-incarnation authority; surface and management leases bind here, while subframe and same-document navigation remain inert
  */
 
@@ -24,7 +24,6 @@ export type RendererIdentitySource = {
 type NavigationDetails = { isMainFrame?: boolean; isSameDocument?: boolean };
 
 const sessions = new Map<number, string>();
-const rotationListeners = new Set<(previous: RendererIdentity) => void>();
 
 /**
  * 绑定一次即可。轮换的判据是「主帧发生了一次真实导航」——同文档 hash 变化不算，
@@ -36,10 +35,9 @@ export function bindRendererIdentity(contents: RendererIdentitySource) {
   contents.on("did-start-navigation", (...args: unknown[]) => {
     const details = navigationDetails(args);
     if (details.isMainFrame === false || details.isSameDocument === true) return;
-    rotate(contents.id);
+    if (sessions.has(contents.id)) sessions.set(contents.id, randomUUID());
   });
   contents.on("destroyed", () => {
-    rotate(contents.id);
     sessions.delete(contents.id);
   });
 }
@@ -67,25 +65,7 @@ export function rendererIdentity(webContentsId: number): RendererIdentity {
     : { webContentsId, rendererSessionId: `unbound-${randomUUID()}` };
 }
 
-/** 订阅轮换：拿到的是**旧**身份，撤销要按它做，而不是按当前值。 */
-export function onRendererRotated(
-  listener: (previous: RendererIdentity) => void
-) {
-  rotationListeners.add(listener);
-  return () => rotationListeners.delete(listener);
-}
-
-function rotate(webContentsId: number) {
-  const previous = sessions.get(webContentsId);
-  if (!previous) return;
-  sessions.set(webContentsId, randomUUID());
-  for (const listener of rotationListeners) {
-    listener({ webContentsId, rendererSessionId: previous });
-  }
-}
-
 /** 测试与主进程重启之间共用的复位点；生产只在窗口销毁时被动收敛。 */
 export function resetRendererIdentities() {
   sessions.clear();
-  rotationListeners.clear();
 }

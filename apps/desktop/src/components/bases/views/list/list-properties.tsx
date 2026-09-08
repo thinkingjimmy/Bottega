@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, lucide, cn, the current Intl locale, shared Base column/value/date contracts plus baseCellText, and the editors useBaseAttachmentThumbnail
  * [OUTPUT]: Provides projectListColumns row projection, selectOptionTone color, listChipText text projection, and the ListSelectDot/ListPropertyChip/ListDateStamp primitives
- * [POS]: The list of attributes of the view/list; Just answer "what a row looks like at a fixed height", without knowing the window layout, grouping and editing mode
+ * [POS]: The attribute-projection layer of view/list; it only answers "what does a row look like at a fixed height", with no knowledge of windowing, grouping, or edit mode
  */
 
 import { CheckIcon } from "lucide-react";

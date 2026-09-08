@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the ledger schema, relay reservation, submission outcome, and staging ownerReceiving the mutable LedgerState draft
- * [OUTPUT]: Provides manual/create/notice phase, CreateIntent Failure with relay, atomic release, archive failure ((includes claimed+unknown, orphaned for failed+capsule) and conversation resource release Pure mutation
- * [POS]: The coordinator/state/operations personnel submit life cycle units; RelayLedger is responsible for the continuous submission, indexing and event
+ * [INPUT]: Depends on the ledger schema, relay release, submission-outcome helpers, and the staging-owner map; every operation receives and mutates a LedgerState draft directly
+ * [OUTPUT]: Provides transitionManual/transitionCreateIntent/notice-outbox phase mutations, failArchived (converts orphaned claimed+unknown manual intents and stuck relays to failed+ARCHIVED), and releaseConversationResources (drops a chat's relay/create/manual/steer/notice records and returns retained staging payloads) — all pure mutations on the LedgerState draft
+ * [POS]: Manual/create-intent lifecycle unit of coordinator/state/operations; RelayLedger owns persistence, indexing, and event emission around these mutations
  */
 
 import {

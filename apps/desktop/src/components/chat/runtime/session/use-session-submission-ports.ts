@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React memo, the latest SessionSubmitInput factory, the Conversation Coordinator/Agent queue client
- * [OUTPUT]: Provides useSessionSubmissionPorts and useSessionQueuePorts, all of which are used to read session snapshots every time a call is called back
- * [POS]: The submission port combination layer of chat/runtime/session; use-chat-session not repeatedly pronounced manual/steer/outcome
+ * [OUTPUT]: Provides useSessionSubmissionPorts and useSessionQueuePorts, whose stable callbacks each read a fresh SessionSubmitInput snapshot at call time rather than closing over stale state
+ * [POS]: The submission-port composition layer of chat/runtime/session; keeps use-chat-session from redeclaring manual/steer/outcome wiring itself
  */
 
 import { useMemo } from "react";

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on ChatStore, Section, Transcript Projects, Conversation Coordinator, owner-aware Base, summary and tools context
+ * [INPUT]: Depends on ChatStore, Section, Transcript Projects, Conversation Coordinator, owner-aware Base, summary and tools context, and main/errors
  * [OUTPUT]: Provides createSectionToolset, filters/taggers, Base owner abstract, from_seq read, send/create and exports attachments to field handler
  * [POS]: The only adaptation layer of the sections domain to the general built-in tool platform; The tool platform is responsible for identifying the authorization, frequency control, strict schema and wire budget, and the read transcripts and attachment data are consistent with the same result after the compression
  */
@@ -12,8 +12,9 @@ import type { ConversationCoordinator } from "./coordinator/conversation-coordin
 import { readSectionTranscriptPage } from "./export-transcript";
 import type { PromotableResultSource } from "../agent/subagent-spawn";
 import { promoteSubagentResult } from "./promote-toolset";
+import { statusError } from "../errors";
 
-export type SectionToolProviders = {
+type SectionToolProviders = {
   baseSummaryForSection(
     chatId: string
   ): Promise<{
@@ -95,7 +96,7 @@ function sectionCursor(value: unknown) {
     if (!Number.isSafeInteger(offset) || offset < 0) throw new Error();
     return offset;
   } catch {
-    throw Object.assign(new Error("Section cursor 无效"), { status: 400 });
+    throw statusError(400, "Section cursor 无效");
   }
 }
 
@@ -145,7 +146,7 @@ export function createSectionToolset(
       const sectionId = args.section_id as string;
       const record = await chats.getConversation(sectionId);
       if (!record) {
-        throw Object.assign(new Error("Section 不存在"), { status: 404 });
+        throw statusError(404, "Section 不存在");
       }
       const fromSeq = args.from_seq as number | undefined;
       const budget = transcriptByteLimit(context);
@@ -209,7 +210,7 @@ export function createSectionToolset(
       ),
     promote_result_to_section: (args, context) => {
       if (!providers.promotableResults) {
-        throw Object.assign(new Error("Subagent 结果提升服务不可用"), { status: 503 });
+        throw statusError(503, "Subagent 结果提升服务不可用");
       }
       return promoteSubagentResult(
         args as Parameters<typeof promoteSubagentResult>[0],

@@ -133,7 +133,7 @@ const sameRank = () => 0;
  * 只增不减：不做 show less。收起的动作早就存在，就是收起这个 Project；
  * 再造一个只收半截列表的按钮，等于给同一件事两个说法。
  * ────────────────────────────────────────────────────────── */
-export const PROJECT_CHAT_PAGE_SIZE = 5;
+const PROJECT_CHAT_PAGE_SIZE = 5;
 
 export function sortProjectChats(
   project: Pick<Project, "workspaceBinding">,
@@ -495,7 +495,6 @@ export function ProjectItem({
               <ChatThreadItem
                 key={chat.id}
                 chat={chat}
-                active={activePath === `/chat/${chat.id}`}
                 badge={project.workspaceBinding.kind === "app" && chat.appRole === "edit" ? t("projects.editBadge") : undefined}
                 variant="sub"
               />

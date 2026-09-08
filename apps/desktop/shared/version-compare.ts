@@ -1,7 +1,7 @@
 /**
- * [INPUT]: dependence when not in operation; Just use the strings
+ * [INPUT]: No runtime dependencies; operates only on version strings
  * [OUTPUT]: Provides isThreeSegmentVersion / compareVersions / isNewerVersion
- * [POS]: The shared version is a single truth source; This is a bit of a bounce window for the main version of the PyPI directory and the renderer version
+ * [POS]: Single source of truth for shared version comparison; replaces what used to be three separate implementations across main's release catalog and the renderer's version dialog
  */
 
 /* ============================================================

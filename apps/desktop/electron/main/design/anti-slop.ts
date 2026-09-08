@@ -4,7 +4,7 @@
  * [POS]: Design's advisory-only visual-quality lint; it shares rule intent with resources/skills/design/SKILL.md without becoming a release gate
  */
 
-export type AntiSlopAdvisory = Readonly<{
+type AntiSlopAdvisory = Readonly<{
   ruleId: string;
   message: string;
   count: number;

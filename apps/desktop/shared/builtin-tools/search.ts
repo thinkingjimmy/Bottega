@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod and builtin-tools/platform read annotations/spec
  * [OUTPUT]: Provides search_chat_history/search_bases
- * [POS]: The truth about the Search area of builtin-tools; Just down the platform
+ * [POS]: Authoritative source for the Search domain of builtin-tools; depends only on platform.ts
  */
 
 import { z } from "zod";

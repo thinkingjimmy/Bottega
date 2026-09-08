@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path/crypto, shared
+ * [INPUT]: Depends on Node fs/path/crypto and shared agent-ipc/app-ipc attachment types
  * [OUTPUT]: Provides FileAuthorizationStore with renderer-window ownership, atomic ref rebinding, crash cleanup, and path+dev+ino reserve→commit/rollback
- * [POS]: The user file capacity of Electron main is limited; The authorization to bind specific inodes, the actual paths are given only to the main private staging
+ * [POS]: Electron main's boundary for renderer-selected files; grants bind to one path+dev+ino, and real paths are exposed only to main-owned private staging
  */
 
 import { randomUUID } from "node:crypto";

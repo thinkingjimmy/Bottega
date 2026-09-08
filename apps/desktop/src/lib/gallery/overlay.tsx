@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React context, ConversationImageProjection and Gallery running
- * [OUTPUT]: Provides GalleryOverlayProvider/useGalleryRunningOverlay; Only current Chat hosts exposed ephemeral items
- * [POS]: Chat→Base Gallery's narrow overlay connections; Project/App: Only durable rows when there is no provider
+ * [OUTPUT]: Provides GalleryOverlayProvider/useGalleryRunningOverlay; only the current Chat host's ephemeral items are exposed
+ * [POS]: Narrow Chat-to-Base-Gallery overlay bridge; Project/App hosts have no provider and fall back to durable rows only
  */
 
 import { createContext, useContext, useMemo, type ReactNode } from "react";

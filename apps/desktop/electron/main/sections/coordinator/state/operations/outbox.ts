@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the ledger v6 manual/steer schema and mutable LedgerState draft
- * [OUTPUT]: Provides seq/ only terminal ack/outbox phase, prepared reservation staging owner with steer→manual Atom mutation
- * [POS]: The manual/steer mutation of the coordinator/state; IO and index submitted by RelayLedger packaging
+ * [OUTPUT]: Provides sequence binding and ACK bookkeeping for manual/relay/steer records, steer-intent phase transitions and steer→manual transfer, and staging-owner resolution (stagingOwner, liveStagingOwners) over the LedgerState draft
+ * [POS]: Manual/steer mutation unit of coordinator/state; RelayLedger wraps these calls with persistence and indexing
  */
 
 import {

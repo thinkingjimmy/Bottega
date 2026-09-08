@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on reliable runtime PATH/executable file and process cloud routing environment
  * [OUTPUT]: Provides Claude ACP subsystems with minimal environment, production launcher, sessionId validator and cloud routing whitelist
- * [POS]: The first step is to create a new interface for the Claude backendNo reading, no copying, no rewriting of any credentials or ~/.claude configurations
+ * [POS]: Environment seam for the Claude backend; never reads, copies, or rewrites credentials or ~/.claude configuration
  */
 
 import { sanitizedProcessEnvironment } from "../runtime-probe";

@@ -29,7 +29,7 @@ import type {
 import type { ManagedSkillsLibraryStore } from "./library-store";
 import { digestSkillFolder } from "./package";
 
-export const USE_SKILL_INLINE_BYTE_LIMIT = 32_768;
+const USE_SKILL_INLINE_BYTE_LIMIT = 32_768;
 
 type Custody = {
   custodyId: string;
@@ -87,7 +87,7 @@ export class SkillsTurnCustodyStore {
       .map((entry) => entry.generationRef as Extract<EffectiveSkillEntry["generationRef"], { kind: "extension" }>);
     let created: typeof extensionRefs = [];
     try {
-      const acquired = await this.registry.acquireGenerationRefs(
+      const acquired = await this.registry.lifecycle.acquireGenerationRefs(
         extensionRefs.map((generation) => generation.package),
         ownerId
       );
@@ -119,7 +119,7 @@ export class SkillsTurnCustodyStore {
       });
       return custodyId;
     } catch (cause) {
-      await this.registry.releaseGenerationRefs(
+      await this.registry.lifecycle.releaseGenerationRefs(
         created.map((generation) => generation.package),
         ownerId
       ).catch(() => undefined);
@@ -185,7 +185,7 @@ export class SkillsTurnCustodyStore {
     const holders: Array<{ requestId: string; conversationId: string }> = [];
     for (const custody of this.custodies.values()) {
       const holds = custody.extensionRefs.some((entry) =>
-        this.registry.generationProjection(entry.package)?.installIdentity ===
+        this.registry.installs.generationProjection(entry.package)?.installIdentity ===
         installIdentity
       );
       if (holds) {
@@ -209,7 +209,7 @@ export class SkillsTurnCustodyStore {
       await rm(custody.runtimeRoot, { recursive: true, force: true });
     }
     for (const generation of [...custody.extensionRefs].reverse()) {
-      await this.registry.releaseGenerationRef(generation.package, custody.ownerId);
+      await this.registry.lifecycle.releaseGenerationRef(generation.package, custody.ownerId);
     }
     this.custodies.delete(custody.custodyId);
     await this.library.resumeDeletions((directory) =>
@@ -232,7 +232,7 @@ export class SkillsTurnCustodyStore {
       );
     }
     if (entry.generationRef.kind === "extension") {
-      return this.registry.isComponentEnabled(
+      return this.registry.lifecycle.isComponentEnabled(
         entry.generationRef.componentInstanceIdentity
       );
     }

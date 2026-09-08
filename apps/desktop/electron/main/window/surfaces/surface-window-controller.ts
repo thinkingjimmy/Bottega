@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on process-global renderer IPC, trusted WindowRegistry identities, exact App Studio route helpers, residence/migration state machines, durable App Use switch fences, canonical/durable-draft App-chat identity, and main-owned attachment/capability cleanup ports
- * [OUTPUT]: Provides SurfaceWindowController for navigation-generation-fenced show, create/focus/reclaim/use-chat sync, exact App-window chat projections, capsule transfer, crash cleanup, and quit reconciliation
+ * [OUTPUT]: Provides surfaceWindowController for navigation-generation-fenced show, create/focus/reclaim/use-chat sync, exact App-window chat projections, capsule transfer, crash cleanup, and quit reconciliation
  * [POS]: Window-surfaces policy root; it is the only path that may move Studio/chat residence or rebind renderer-owned attachment references
  */
 
+import { MigrationReplies } from "./core/migration-replies";
 import { randomUUID } from "node:crypto";
 import {
   WINDOW_SURFACES_CHANNEL,
@@ -69,17 +70,9 @@ type ChatSurfaceIdentity = Readonly<{
   appRole: "edit" | "use" | null;
 }>;
 
-type PendingReply = {
-  expectedWindowId: string;
-  expectedOutcome: SurfaceMigrationReply["outcome"];
-  resolve(value: SurfaceMigrationReply): void;
-  reject(cause: unknown): void;
-  timer: ReturnType<typeof setTimeout>;
-};
-
 export class SurfaceWindowController {
   readonly residence = new SurfaceResidenceLedger();
-  private readonly pending = new Map<string, PendingReply>();
+  private readonly replies: MigrationReplies;
   private readonly intentionalClose = new Set<string>();
   private readonly crashHandled = new Set<string>();
   private readonly transferredAttachments = new Set<string>();
@@ -98,20 +91,32 @@ export class SurfaceWindowController {
   ) => void) | null = null;
   private releaseWindowResources: ((windowId: string) => void) | null = null;
   private admissionOpen = true;
+  private closePolicy: ((record: ProductWindowRecord) => boolean) | null = null;
+  private ensureMain: (() => Promise<ProductWindowRecord>) | null = null;
+  private closeFailure: ((record: ProductWindowRecord) => void) | null = null;
+  configurePresence(input: { beforeAppClose(record: ProductWindowRecord): boolean;
+    ensureMain(): Promise<ProductWindowRecord>; closeFailure(record: ProductWindowRecord): void }) {
+    this.closePolicy = input.beforeAppClose; this.ensureMain = input.ensureMain; this.closeFailure = input.closeFailure;
+  }
+
 
   constructor(private readonly registry: WindowRegistry = windowRegistry) {
+    this.replies = new MigrationReplies(registry);
     this.migration = new SurfaceMigrationCoordinator(this.residence, {
       exportCapsule: (windowId, transactionId, surface) =>
         this.exportCapsule(windowId, transactionId, surface),
       commitSource: (windowId, transactionId, capsule) =>
         this.request(windowId, { type: "commit", transactionId, capsule }, "committed")
           .then(() => undefined).finally(() => this.transferredAttachments.delete(transactionId)),
-      hydrate: async (windowId, sourceWindowId, transactionId, capsule) => {
+      hydrate: async (windowId, sourceWindowId, transactionId, capsule, mode = "present") => {
+        const prepared = await this.request(windowId, { type: "prepare-hydrate", transactionId, capsule }, "prepared");
+        if (!Number.isSafeInteger(prepared.composerRevision) || prepared.composerRevision! < 0) throw new Error("COMPOSER_REVISION_INVALID");
+        await this.request(sourceWindowId, { type: "validate-export", transactionId, capsule }, "validated");
         if (this.transferAttachmentRefs(capsule, sourceWindowId, windowId)) {
           this.transferredAttachments.add(transactionId);
         }
         await this.request(windowId, {
-          type: "hydrate", transactionId, capsule,
+          type: "hydrate", transactionId, capsule, mode, expectedComposerRevision: prepared.composerRevision,
         }, "hydrated");
       },
       restore: async (windowId, failedTargetWindowId, transactionId, capsule) => {
@@ -160,7 +165,6 @@ export class SurfaceWindowController {
   }
 
   configure(
-    mainWindow: ProductWindowRecord["window"],
     rendererUrl: string,
     createAppWindow: AppWindowFactory,
     resolveChatIdentity: (chatId: string) => ChatSurfaceIdentity | undefined,
@@ -178,7 +182,7 @@ export class SurfaceWindowController {
     this.resolveActiveUseChat = resolveActiveUseChat;
     this.rebindAttachmentRefs = rebindAttachmentRefs;
     this.releaseWindowResources = releaseWindowResources;
-    rendererIpc(mainWindow, rendererUrl, "Rejected untrusted window surface request")
+    rendererIpc(rendererUrl, "Rejected untrusted window surface request")
       .roles("main", "app-window")
       .handleWithContext(WINDOW_SURFACES_CHANNEL.residence, (_context, rawSurface) =>
         this.residence.get(rawSurface)
@@ -208,10 +212,12 @@ export class SurfaceWindowController {
       if (this.intentionalClose.has(record.windowId)) return;
       const event = args[0] as { preventDefault?(): void } | undefined;
       event?.preventDefault?.();
+      if (this.closePolicy?.(record)) return;
       void this.reclaimOwnedWindow(record, "close").catch((cause) => {
         /* 迁移失败不许留下一扇关不掉的窗：降级为 crash 语义收回并明示丢草稿。 */
         console.error("[window-surfaces] normal close migration failed", cause);
-        this.recoverCrashedWindow(record, "close-failed");
+        this.registry.focus(record.windowId);
+        this.closeFailure?.(record);
       });
     });
   }
@@ -350,11 +356,7 @@ export class SurfaceWindowController {
     this.stopAdmission();
     await this.migration.drain();
     for (const record of this.registry.list("app-window")) {
-      try {
-        await this.reclaimOwnedWindow(record, "quit");
-      } catch {
-        this.recoverCrashedWindow(record, "quit-timeout");
-      }
+      await this.reclaimOwnedWindow(record, "quit");
     }
   }
 
@@ -522,11 +524,13 @@ export class SurfaceWindowController {
     companions: readonly SurfaceResidence[] = [],
     deriveRouteFromCapsule = false
   ) {
-    const main = this.registry.main();
+    const main = this.registry.main() ?? await this.ensureMain?.();
     if (!main) throw new Error("Main window is unavailable");
+    const present = reason === "intent" || (reason === "close" && (main.window.isVisible?.() ?? true));
     const migrated = await this.migration.migrate({
       surface,
       targetRoute: route,
+      mode: present ? "present" : "background",
       ...(deriveRouteFromCapsule ? { deriveRouteFromCapsule: true as const } : {}),
       expectedRevision,
       sourceWindowId: source.windowId,
@@ -543,14 +547,13 @@ export class SurfaceWindowController {
         : {}),
     });
     this.transferConversations(source.windowId, null);
-    main.window.webContents.send(WINDOW_SURFACES_CHANNEL.command, {
-      type: "navigate",
-      route: migrated.targetRoute,
+    if (present) main.window.webContents.send(WINDOW_SURFACES_CHANNEL.command, {
+      type: "navigate", route: migrated.targetRoute,
     } satisfies SurfaceMigrationCommand);
     for (const residence of migrated.residences) {
       this.publishResidence(residence, reason);
     }
-    this.registry.focus(main.windowId);
+    if (present) this.registry.focus(main.windowId);
     return migrated.primary;
   }
 
@@ -573,47 +576,19 @@ export class SurfaceWindowController {
     });
   }
 
-  private request(
-    windowId: string,
-    command: SurfaceMigrationCommand,
-    expectedOutcome: SurfaceMigrationReply["outcome"]
-  ) {
-    const record = this.registry.get(windowId);
-    if (!record) return Promise.reject(new Error("Migration window is unavailable"));
-    const transactionId = "transactionId" in command ? command.transactionId : "";
-    return new Promise<SurfaceMigrationReply>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(transactionId);
-        reject(new Error(`Surface migration timed out: ${expectedOutcome}`));
-      }, 4_000);
-      this.pending.set(transactionId, {
-        expectedWindowId: windowId,
-        expectedOutcome,
-        resolve,
-        reject,
-        timer,
-      });
-      record.window.webContents.send(WINDOW_SURFACES_CHANNEL.command, command);
-    });
+  private request(windowId: string, command: SurfaceMigrationCommand, outcome: SurfaceMigrationReply["outcome"]) {
+    return this.replies.request(windowId, command, outcome);
   }
-
-  private acceptReply(context: TrustedRendererContext, rawReply: unknown) {
-    if (!rawReply || typeof rawReply !== "object") return;
-    const reply = rawReply as SurfaceMigrationReply;
-    if (typeof reply.transactionId !== "string") return;
-    const pending = this.pending.get(reply.transactionId);
-    if (!pending || pending.expectedWindowId !== context.windowId) return;
-    this.pending.delete(reply.transactionId);
-    clearTimeout(pending.timer);
-    if (reply.outcome !== pending.expectedOutcome) {
-      pending.reject(new Error(reply.message || "Renderer migration failed"));
-      return;
-    }
-    pending.resolve(reply);
-  }
+  private acceptReply(context: TrustedRendererContext, rawReply: unknown) { this.replies.accept(context, rawReply); }
 
   private onRegistryEvent(event: WindowRegistryEvent) {
-    if (event.record.role !== "app-window") return;
+    if (event.type === "renderer-gone" || event.type === "closed") {
+      this.replies.rejectWindow(event.record.windowId);
+    }
+    if (event.record.role !== "app-window") {
+      if (event.type === "renderer-gone" || event.type === "closed") this.releaseWindowResources?.(event.record.windowId);
+      return;
+    }
     if (event.type === "renderer-gone" ||
       (event.type === "closed" && !this.crashHandled.has(event.record.windowId))) {
       this.releaseWindowResources?.(event.record.windowId);
@@ -635,12 +610,7 @@ export class SurfaceWindowController {
     if (this.crashHandled.has(record.windowId)) return;
     this.crashHandled.add(record.windowId);
     /* 立即拒绝该窗的在途请求：等 4 秒超时只会把每次 crash 变成必付的僵持税。 */
-    for (const [transactionId, pending] of this.pending) {
-      if (pending.expectedWindowId !== record.windowId) continue;
-      this.pending.delete(transactionId);
-      clearTimeout(pending.timer);
-      pending.reject(new Error(`Migration window lost (${reason})`));
-    }
+    this.replies.rejectWindow(record.windowId);
     this.transferConversations(record.windowId, null);
     const reclaimed = this.residence.reclaimWindow(record.windowId);
     for (const [index, residence] of reclaimed.entries()) {

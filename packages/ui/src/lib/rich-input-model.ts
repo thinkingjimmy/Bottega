@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on PromptInput RichNode/RichValue type, multi-kind suggestion groups and browser UTF-16 selection zone deviation syntax
- * [OUTPUT]: Provides RichInput Specification/Range/Caret, skill/mention Queries, Filter by group limit, Multi-Trigger/Multi-Kind Projection, including the unified identity of entryKind
+ * [OUTPUT]: Provides RichInput normalization/range/caret math, the newRichText node factory, skill/mention queries, group-limited multi-trigger/multi-kind projection, and entryKind-aware identity
  * [POS]: The RichInput documentation of ui/lib and the candidate's single truth; DOM adapters are responsible for selecting zone translations and pure projection rendering only
  */
 
@@ -29,6 +29,12 @@ type SearchableSuggestion = {
 
 const nodeLength = (node: RichNode) =>
   node.type === "text" ? node.value.length : 1;
+
+export const newRichText = (value: string): RichNode => ({
+  id: crypto.randomUUID(),
+  type: "text",
+  value,
+});
 
 export function normalizeRichValue(value: RichValue): RichValue {
   const result: RichValue = [];

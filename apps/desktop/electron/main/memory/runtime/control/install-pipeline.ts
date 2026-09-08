@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on InstallSpec/ManagedRoots, the locked toolchain, configuration controller, manifest store, and coordinator-supplied readiness proof
- * [OUTPUT]: Provides install/recovery pipelines and commitReadyVersion for intent → installing → candidate-installed → ready promotion
- * [POS]: The managed installation state machine; it records candidate facts while the coordinator owns live readiness arbitration
+ * [INPUT]: Depends on managed roots, the pinned platform toolchain, independent Memory downloads, the coordinator's stopped-service window and progress ledger, and coordinator readiness proof
+ * [OUTPUT]: Provides ManagedInstallPorts/StoppedServiceOptions, the install/repair runner (runManagedInstall), the upgrade/switch-version runner (runManagedUpgrade) with intent→installing staging and candidate cleanup, marker recovery, and last-known-good promotion (commitReadyVersion)
+ * [POS]: The managed installation state machine; it records candidate facts and drives the stopped-service window while the coordinator owns live readiness arbitration
  */
 
+import { venvExecutable } from "../managed/archives/uv-assets";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type {
@@ -17,6 +18,7 @@ import {
   ensureModelAssets,
   exists,
   fetchVerifiedArtifacts,
+  runCleanupActions,
   type Downloader,
 } from "../managed/install-steps";
 import {
@@ -30,6 +32,156 @@ import type { ManagedInstallTarget } from "../managed/install-target";
 type SnapshotOverrides = Partial<
   Omit<MemoryRuntimeSnapshot, "providerId" | "revision">
 >;
+
+export type StoppedServiceOptions = {
+  expectedVersion?: string;
+  cleanupOnFailure?: () => Promise<void>;
+  readyTarget?: ManagedInstallTarget;
+};
+
+/** Everything the coordinator lends the install runners; readiness arbitration stays behind withOwnedServiceStopped. */
+export type ManagedInstallPorts = {
+  roots: ManagedRoots;
+  spec: InstallSpec;
+  descriptor: MemoryProviderDescriptor;
+  launchAgentPath: string;
+  toolchain: Pick<ManagedToolchain, "resolve">;
+  download: Downloader;
+  fetcher: typeof fetch;
+  config: Pick<
+    ManagedRuntimeConfigController,
+    "convergeManagedConfigs" | "installPlist" | "hasRequiredConfiguration"
+  >;
+  initialize(): Promise<{ kind: string }>;
+  beginStep<T>(step: MemoryRuntimeStep, action: () => Promise<T>): Promise<T>;
+  exec(
+    command: string,
+    args: string[],
+    options: { timeoutMs: number; env?: Record<string, string> }
+  ): Promise<void>;
+  appendLog(line: string): void;
+  publish(overrides?: SnapshotOverrides): Promise<MemoryRuntimeSnapshot>;
+  withOwnedServiceStopped<T>(
+    mutateWhileStopped: () => Promise<T>,
+    startAfter: boolean,
+    options?: StoppedServiceOptions
+  ): Promise<T>;
+};
+
+// instanceId 表示安装身份；受控 rebuild 与版本切换都保留它。
+export async function runManagedInstall(
+  ports: ManagedInstallPorts,
+  input: { rotateIdentity: boolean; target: ManagedInstallTarget }
+) {
+  const startAfter = await ports.config.hasRequiredConfiguration();
+  const result = await ports.withOwnedServiceStopped(
+    () => runManagedInstallPipeline({ ...ports, ...input, startAfter }),
+    startAfter,
+    { expectedVersion: input.target.version, readyTarget: input.target }
+  );
+  if (!startAfter) await completeSkippedStartupSteps(ports);
+  return result;
+}
+
+/* 升级只替换运行字节，不轮换安装身份。目标与已装版本相同时必须在
+   动手之前拒绝：三阶段 versionChange 对同版是空操作（stageVersionChange
+   直接早退），可 remove-plist/remove-venv 照删不误——那会留下一个
+   「manifest 说装着、磁盘上什么都没有」的窗口。同版重装走 repair。 */
+export async function runManagedUpgrade(
+  ports: ManagedInstallPorts,
+  target: ManagedInstallTarget
+) {
+  const installedVersion = (await ports.roots.readManifest())?.installedVersion;
+  if (installedVersion === target.version) {
+    throw new Error(
+      `RUNTIME_VERSION_UNCHANGED: 目标版本 ${target.version} 与当前安装版本相同，请使用修复`
+    );
+  }
+  const startAfter = await ports.config.hasRequiredConfiguration();
+  const result = await ports.withOwnedServiceStopped(
+    async () => {
+      await ports.beginStep({ kind: "remove-plist" }, async () => {
+        await stageVersionChange(ports.roots, target.version, "intent");
+        await rm(ports.launchAgentPath, { force: true });
+      });
+      await ports.beginStep({ kind: "remove-venv" }, async () => {
+        await stageVersionChange(ports.roots, target.version, "installing");
+        await rm(join(ports.roots.installRoot, "venv"), {
+          recursive: true,
+          force: true,
+        });
+      });
+      return runManagedInstallPipeline({
+        ...ports,
+        rotateIdentity: false,
+        target,
+        startAfter,
+      });
+    },
+    startAfter,
+    {
+      expectedVersion: target.version,
+      cleanupOnFailure: () => cleanupCandidateInstall(ports),
+      readyTarget: target,
+    }
+  );
+  if (!startAfter) await completeSkippedStartupSteps(ports);
+  return result;
+}
+
+async function cleanupCandidateInstall(
+  ports: Pick<ManagedInstallPorts, "roots" | "launchAgentPath">
+) {
+  const manifest = await ports.roots.readManifest();
+  const change = manifest?.versionChange;
+  if (!manifest || !change) return;
+  if (change.phase === "candidate-installed") {
+    await ports.roots.writeManifest({
+      ...manifest,
+      versionChange: { ...change, phase: "installing" },
+    });
+  }
+  const actions = [
+    {
+      label: "移除候选登录自启",
+      run: () => rm(ports.launchAgentPath, { force: true }),
+    },
+  ];
+  if (change.phase !== "intent") actions.push({
+      label: "移除候选运行环境",
+      run: () => rm(join(ports.roots.installRoot, "venv"), {
+        recursive: true,
+        force: true,
+      }),
+    });
+  await runCleanupActions(actions);
+}
+
+async function stageVersionChange(
+  roots: ManagedRoots,
+  targetVersion: string,
+  phase: "intent" | "installing"
+) {
+  const manifest = await roots.readManifest();
+  if (!manifest || manifest.installedVersion === targetVersion) return;
+  await roots.writeManifest({
+    ...manifest,
+    versionChange: { targetVersion, phase },
+  });
+}
+
+async function completeSkippedStartupSteps(
+  ports: Pick<ManagedInstallPorts, "beginStep">
+) {
+  await ports.beginStep(
+    { kind: "bootstrap", context: "deferred" },
+    async () => undefined
+  );
+  await ports.beginStep(
+    { kind: "await-ready", context: "deferred" },
+    async () => undefined
+  );
+}
 
 export async function recoverManagedManifest(input: {
   providerId: string;
@@ -65,28 +217,13 @@ export async function recoverManagedManifest(input: {
   return manifest;
 }
 
-export async function runManagedInstallPipeline(input: {
-  rotateIdentity: boolean;
-  target: ManagedInstallTarget;
-  startAfter: boolean;
-  roots: ManagedRoots;
-  spec: InstallSpec;
-  descriptor: MemoryProviderDescriptor;
-  launchAgentPath: string;
-  toolchain: Pick<ManagedToolchain, "resolve">;
-  download: Downloader;
-  fetcher: typeof fetch;
-  config: Pick<ManagedRuntimeConfigController, "convergeManagedConfigs" | "installPlist">;
-  initialize(): Promise<{ kind: string }>;
-  beginStep<T>(step: MemoryRuntimeStep, action: () => Promise<T>): Promise<T>;
-  exec(
-    command: string,
-    args: string[],
-    options: { timeoutMs: number; env?: Record<string, string> }
-  ): Promise<void>;
-  appendLog(line: string): void;
-  publish(overrides?: SnapshotOverrides): Promise<MemoryRuntimeSnapshot>;
-}) {
+async function runManagedInstallPipeline(
+  input: ManagedInstallPorts & {
+    rotateIdentity: boolean;
+    target: ManagedInstallTarget;
+    startAfter: boolean;
+  }
+) {
   await input.roots.ensure();
   const uv = await input.beginStep(
     { kind: "prepare-toolchain" },
@@ -132,7 +269,7 @@ export async function runManagedInstallPipeline(input: {
           "pip",
           "install",
           "--python",
-          join(venv, "bin", "python"),
+          venvExecutable(venv, "python"),
           ...packages,
         ],
         { timeoutMs: 20 * 60_000, env: uv.env }
@@ -181,10 +318,10 @@ export async function runManagedInstallPipeline(input: {
      发出去，末帧（累计 == 总量）永远放行。 */
   let lastTransferPublish = 0;
   let recoveredModel = false;
-  const models = await input.beginStep(
+  await input.beginStep(
     { kind: "model-assets" },
     async () => {
-      const outcome = await ensureModelAssets(input.roots, input.spec, {
+      await ensureModelAssets(input.roots, input.spec, {
         fetcher: input.fetcher,
         onInvalid: (filename) => {
           recoveredModel = true;
@@ -203,16 +340,12 @@ export async function runManagedInstallPipeline(input: {
         },
       });
       await input.publish({ transfer: null });
-      return outcome;
     }
   );
-  const convergence = await input.beginStep(
+  await input.beginStep(
     { kind: "config-converge" },
     () => input.config.convergeManagedConfigs()
   );
-  if (convergence.state === "converged") {
-    await Promise.all(models.legacySources.map((path) => rm(path, { force: true })));
-  }
   await input.beginStep({ kind: "install-plist" }, async () => {
     if (!input.startAfter || initialized.kind === "awaiting-secrets") {
       await rm(input.launchAgentPath, { force: true });

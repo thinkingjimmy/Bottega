@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on node:fs/path, package-digest for content addressing, the shared AppManifest, the base.json budget, and the bounded compiled-source portability envelope; takes local App/package directories
+ * [INPUT]: Depends on filesystem handles, the apps/support canonicalJson/syncDirectory primitives, content-addressed package digests, declared script source admission, shared manifests, and bounded Base/compiled source envelopes
  * [OUTPUT]: Provides the single package allowlist, the kind-aware source and runtime projections, the three-domain digest set, and immutable artifact seal/verify/collect; ignored subtrees are stripped rather than inspected, and runtime symlinks and the execute bit survive intact
  * [POS]: The two-way package boundary of apps/share/package and the generation-artifact machine; publish, preflight, preset import and AppStore all borrow this allowlist, copy and digest rather than growing their own
  */
@@ -30,8 +30,9 @@ import {
   sep,
 } from "node:path";
 import type { AppManifest } from "../../../../../shared/apps-ipc";
+import { canonicalJson, syncDirectory } from "../../support";
+import { inspectDeclaredCommandSources } from "./command-sources";
 import {
-  canonicalJson,
   framedTreeDigest,
   framedTreePairDigest,
   framedValueDigest,
@@ -39,6 +40,7 @@ import {
 
 export const PACKAGE_ALLOWLIST = [
   "app.json",
+  "app.compat.json",
   "README.md",
   "README.zh-CN.md",
   "LICENSE",
@@ -438,8 +440,9 @@ async function inspectProjections(
   const packageInspection = inspected ?? (await inspectPackage(root));
   const packageFiles = await projectRegularFiles(root, packageInspection.files);
   const runtime = await inspectRuntime(root, manifest, packageFiles);
+  const commands = await inspectDeclaredCommandSources(root, manifest);
   return {
-    source: sourceProjection(packageFiles, runtime.files),
+    source: sourceProjection([...packageFiles, ...commands], runtime.files),
     runtime,
   };
 }
@@ -475,7 +478,7 @@ async function inspectRuntime(
   const staticPrefix = staticRoot ? `${staticRoot}/` : "";
 
   const include = (path: string) =>
-    path === "app.json" ||
+    (path === "app.json" || path === "app.compat.json") ||
     (manifest.kind === "static"
       ? staticRoot === "" || path.startsWith(staticPrefix)
       : !path.startsWith(".git/") &&
@@ -656,15 +659,6 @@ async function makeTreeWritable(root: string): Promise<void> {
   for (const entry of await readdir(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     await makeTreeWritable(join(root, entry.name));
-  }
-}
-
-async function syncDirectory(path: string) {
-  const handle = await open(path, constants.O_RDONLY);
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
   }
 }
 

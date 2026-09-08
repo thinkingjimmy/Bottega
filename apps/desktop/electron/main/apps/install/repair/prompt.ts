@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the warehouse URL, failure stage, log end and manifest options
- * [OUTPUT]: Provides createRepairPrompt, generates a repair prompt that is transmitted by stdin and logged at least 64 KB
- * [POS]: install/repair with no access to process, certificate or file system
+ * [INPUT]: Depends only on its input arguments — repo URL, failure phase, log tail, and manifest
+ * [OUTPUT]: Provides createRepairPrompt, building the Agent repair prompt with the log tail capped at 64 KB
+ * [POS]: install/repair's prompt template; a pure string builder with no process, credential, or filesystem access
  */
 
 const LOG_LIMIT = 64 * 1024;

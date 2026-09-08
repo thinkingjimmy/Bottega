@@ -18,7 +18,7 @@ import {
   digest,
   fingerprint,
   fingerprintRevision,
-  humanTitle,
+  storageFingerprint,
   initialSourceIncarnation,
   isWithin,
   normalizedAliases,
@@ -34,7 +34,7 @@ import {
   type ParsedHistory,
   type ScanDepth,
 } from "./adapter";
-import { foldHistoryTurns, stripProductContext } from "./turn-folding";
+import { envelopeFreeTitle, foldHistoryTurns, stripProductEnvelopes } from "./turn-folding";
 
 type Json = Record<string, unknown>;
 
@@ -264,7 +264,7 @@ async function fullMeta(path: string, projectRoot: string) {
   return {
     cwd,
     sessionId,
-    title: humanTitle(title || "Claude Code 会话"),
+    title: envelopeFreeTitle(title, "Claude Code 会话"),
     createdAt: Number.isFinite(createdAt) ? createdAt : timestamp(undefined, fallback.birthtimeMs),
     updatedAt: updatedAt || timestamp(undefined, fallback.mtimeMs),
     incompleteTail,
@@ -282,7 +282,7 @@ function claudeContent(value: unknown, results: Map<string, ForeignToolEvent>) {
     /* 产品信封是独立的一块 text block（也可能与正文同块），剥掉它再入正文；
        整块只剩信封的直接消失，用户那句话因此才是第一条用户消息与标题。 */
     if (block.type === "text" && typeof block.text === "string") {
-      const text_ = stripProductContext(block.text);
+      const text_ = stripProductEnvelopes(block.text);
       if (text_) text.push(text_);
     }
     if (block.type === "tool_use") {
@@ -325,6 +325,5 @@ const safeJson = (value: unknown) => { try { return JSON.stringify(value); } cat
 const contentText = (value: unknown): string => typeof value === "string" ? value : Array.isArray(value) ? value.map((item) => typeof item === "string" ? item : string(object(item)?.text) ?? "").filter(Boolean).join("\n") : "";
 const byCreatedAt = (left: AdapterEntry, right: AdapterEntry) => right.createdAt - left.createdAt || left.opaqueId.localeCompare(right.opaqueId);
 const emptyScan = (sourceKind: "claude"): AdapterScan => ({ sourceKind, installed: false, entries: [], sourceRevision: "missing" });
-async function storageFingerprint(root: string) { try { const value = await fingerprint(root); return digest(`${value.device}:${value.inode}`); } catch { return null; } }
 async function safeDirectories(root: string) { try { return (await readdir(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()); } catch { return []; } }
 async function safeFiles(root: string) { try { return (await readdir(root, { withFileTypes: true })).filter((entry) => entry.isFile()); } catch { return []; } }

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod and shared ProcessIdentity
- * [OUTPUT]: Provides guardian env name of the channel control, NDJSON binary message schema, exit code table and launch capability shape
- * [POS]: The process boundary agreement of custody; The only thing that the main side runstime and the guardian entry have in common is that neither side has a runtime
+ * [OUTPUT]: Provides CUSTODY_ENV var names, the GUARDIAN_EXIT code table, NDJSON message schemas for both directions, and the launch capability shape
+ * [POS]: Custody's process-boundary protocol; the only artifact shared by the main-process runtime and the guardian entry, kept dependency-free so it works identically on both sides
  */
 
 import { z } from "zod";
@@ -33,7 +33,7 @@ export const GUARDIAN_EXIT = {
   standDown: 73,
 } as const;
 
-export const processIdentitySchema = z
+const processIdentitySchema = z
   .object({
     pid: z.number().int().positive(),
     processGroupId: z.number().int().positive(),
@@ -43,7 +43,7 @@ export const processIdentitySchema = z
   .strict();
 
 /** activation 交付的完整 capability；guardian 自己一个字段都不补。 */
-export const guardianLaunchSchema = z
+const guardianLaunchSchema = z
   .object({
     command: z.string().min(1),
     args: z.array(z.string()),

@@ -13,17 +13,6 @@ import type {
 export const PROJECT_TOOLS_BRIDGE_UNAVAILABLE =
   "PROJECT_TOOLS_BRIDGE_UNAVAILABLE";
 
-export const PROJECT_TOOLS_ERROR_CODES = [
-  "project-not-found",
-  "project-lifecycle-conflict",
-  "scope-revision-conflict",
-  "owner-mismatch",
-  "store-corrupt",
-] as const;
-
-export type ProjectToolsErrorCode =
-  (typeof PROJECT_TOOLS_ERROR_CODES)[number];
-
 export type ToolOverride = "enabled" | "disabled";
 
 export type ProjectToolPolicyPayload = Readonly<{

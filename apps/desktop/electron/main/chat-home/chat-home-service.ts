@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/path, shared ChatHome status, SettingsStore/ChatStore port and ChatHomeLedger
+ * [INPUT]: Depends on Node crypto/fs/path, shared ChatHome status, SettingsStore/ChatStore port, ChatHomeLedger, and the persistence errno predicate
  * [OUTPUT]: Provides ChatHomeService root selection, fork-worktree-aware ownership, canonical-record recovery, rollback compensation, deletion admission/release, and containment-correct read-only roots
  * [POS]: Chat Home ownership coordinator; cross-store SQLite continuation state remains in the Chat saga
  */
@@ -28,6 +28,7 @@ import type { SettingsStore } from "../settings-store";
 import { errorMessage } from "../errors";
 import { ChatHomeLedger } from "./chat-home-ledger";
 import type { ChatHomeRecord, RootIdentity } from "./ledger-values";
+import { isErrnoCode } from "../persistence/durable-json";
 
 const SENTINEL = ".ai-chat-home.json";
 const hash = (value: unknown) =>
@@ -440,12 +441,12 @@ export class ChatHomeService {
       await mkdir(record.homeDir, { recursive: false, mode: 0o700 });
     } catch (cause) {
       if (
-        (cause as NodeJS.ErrnoException).code === "EEXIST" &&
+        isErrnoCode(cause, "EEXIST") &&
         await this.isMatchingMaterializedHome(record)
       ) {
         return;
       }
-      if ((cause as NodeJS.ErrnoException).code === "EEXIST") {
+      if (isErrnoCode(cause, "EEXIST")) {
         throw new ChatHomeCollisionError(
           `Chat Home 目录已存在且不属于 intent ${record.intentId}`
         );
@@ -514,7 +515,7 @@ export class ChatHomeService {
       await lstat(path);
       return true;
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return false;
+      if (isErrnoCode(cause, "ENOENT")) return false;
       throw cause;
     }
   }

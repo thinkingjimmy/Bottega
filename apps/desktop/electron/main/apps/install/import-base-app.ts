@@ -1,9 +1,11 @@
 /**
  * [INPUT]: Depends on freeze packages directory/plugin preflight, strict manifest/base snapshot, source-only compiled portability verification, App/Project/Base store, Extension installer, AppConfigStore and lifecycle gate
  * [OUTPUT]: Provides BaseAppImporter import/recover/retryPending/cancelPending with durable Studio-only authorization, internal Base navigation at creation, mandatory local compiled rebuild, full requested-capability approval, grant-before-promotion ordering, and idempotent fulfillment recovery
- * [POS]: The basic delivery pipeline for apps/install; GitHub is different from the default only on "Where the package comes from", delivering, restoring and finishing zero copies
+ * [POS]: apps/install's unified Base App delivery pipeline; GitHub import and preset install differ only in where the package comes from, so import/recover/retryPending/cancelPending share one code path with no source-specific branching
  */
 
+import { AppCompatibilityError, recordCandidate, readCompatibility, runningBottegaVersion, revalidateCompatibility } from "../compatibility/read";
+import type { AppCandidateIdentity } from "../../../../shared/app-host/contract";
 import { randomUUID } from "node:crypto";
 import {
   access,
@@ -38,7 +40,7 @@ import {
 import { detectCliRequirements } from "../share/cli-detectors";
 import { inspectPackage, packageDigest } from "../share/package/package-contract";
 import { appManifestSchema } from "./manifest-schema";
-import { digestCanonical } from "../../extensions/registry-store";
+import { digestCanonical } from "../../extensions/registry-canonical";
 import type { ExtensionInstaller } from "../../extensions/install/installer";
 import {
   discardPortableCompiledSource,
@@ -55,6 +57,7 @@ export type ImportSource = {
   ref: string;
   digest: string;
   packageRoot: string;
+  candidate?: AppCandidateIdentity;
   extensionPreflights?: readonly AppExtensionInstallPreflight[];
   preset?: {
     presetId: string;
@@ -91,7 +94,8 @@ export class BaseAppImporter {
     private readonly intents: LifecycleIntentStore,
     private readonly gate: AdmissionGate,
     /** 测试缝：required CLI 门禁默认走真探测器，注入假探测即可密封验证。 */
-    private readonly detectCli: typeof detectCliRequirements = detectCliRequirements
+    private readonly detectCli: typeof detectCliRequirements = detectCliRequirements,
+    private readonly hostVersion = apps.hostVersion ?? runningBottegaVersion
   ) {}
 
   configureExtensions(port: Pick<
@@ -103,6 +107,7 @@ export class BaseAppImporter {
   }
 
   async import(request: ImportRequest) {
+    await this.checkSource(request.source);
     assertStudioAuthorization(request.authorization);
     await this.configs.stagePending(request.requestId, request.config);
     let outcome;
@@ -241,6 +246,10 @@ export class BaseAppImporter {
       return this.cancelIntent(intent);
     }
 
+    if (record && await access(finalDir).then(() => true, () => false)) {
+      await readCompatibility(finalDir, recordCandidate(record), this.hostVersion());
+    }
+
     /* "delivered" 是准入首档(arbitrate 即推进)；交付与否的唯一判据是
      * finalDir 是否存在——rename 原子落地即证据，崩溃恢复据此跳过重交付。 */
     if (intent.phase === "delivered") {
@@ -316,13 +325,13 @@ export class BaseAppImporter {
 
     const validated = await this.validatePackage(intent, request, packageRoot)
       .then((value) => ({ ok: true as const, value }))
-      .catch((cause: unknown) => ({
-        ok: false as const,
-        message: cause instanceof Error ? cause.message : "冻结包校验失败",
-      }));
+      .catch((cause: unknown) => {
+        if (cause instanceof AppCompatibilityError) throw cause;
+        return { ok: false as const, message: cause instanceof Error ? cause.message : "Invalid frozen package" };
+      });
     /* 冻结包/配置证据不完整时不留 pending 僵尸：settle 为失败终态，重试须重新 preflight。 */
     if (!validated.ok) return reject("INVALID_PACKAGE", validated.message);
-    const { activeRequest, manifest } = validated.value;
+    const { activeRequest, manifest, compatibility, candidate } = validated.value;
     if (manifest.kind !== "base") {
       return reject("NOT_BASE_APP", "冻结包不是 Base App");
     }
@@ -431,6 +440,7 @@ export class BaseAppImporter {
     if (declarations.length > 0 && !canApproveExtensions) {
       throw new Error("插件声明与已确认的安装来源不一致");
     }
+    await revalidateCompatibility(packageRoot, candidate, compatibility, this.hostVersion());
     record = await this.approveRequestedAndPromote(
       appId,
       activeRequest.authorization,
@@ -487,6 +497,8 @@ export class BaseAppImporter {
     if (digest !== activeRequest.source.digest) {
       throw new Error("冻结包内容与确认摘要不一致，已拒绝交付");
     }
+    const candidate = importCandidate(activeRequest.source);
+    const compatibility = await readCompatibility(packageRoot, candidate, this.hostVersion());
     const manifest = appManifestSchema.parse(
       JSON.parse(await readFile(join(packageRoot, "app.json"), "utf8"))
     );
@@ -498,7 +510,7 @@ export class BaseAppImporter {
     );
     assertRequirements(manifest.requirements?.tools ?? [], activeRequest.config);
     validateConfigRequirements(manifest.requirements?.tools ?? []);
-    return { activeRequest, manifest };
+    return { activeRequest, manifest, compatibility, candidate };
   }
 
   private async approveRequestedAndPromote(
@@ -647,6 +659,12 @@ export class BaseAppImporter {
     return { complete: false as const, error };
   }
 
+  private async checkSource(source: ImportSource) {
+    const inspection = await inspectPackage(source.packageRoot);
+    if (await packageDigest(source.packageRoot, inspection.files) !== source.digest) throw new Error("APP_CANDIDATE_DIGEST_CHANGED");
+    return readCompatibility(source.packageRoot, importCandidate(source), this.hostVersion());
+  }
+
   private async pendingImport(appId: string) {
     return (await this.intents.listPending()).find(
       (intent) =>
@@ -743,4 +761,14 @@ async function makeWritable(directory: string): Promise<void> {
     if (entry.isDirectory()) await makeWritable(path);
     else await chmod(path, 0o600);
   }
+}
+
+function importCandidate(source: ImportSource): AppCandidateIdentity {
+  return source.candidate ?? {
+    appName: source.preset?.presetId ?? source.ref.split("/").at(-1) ?? "App",
+    presetId: source.preset?.presetId,
+    repoUrl: source.origin === "github" ? source.ref : undefined,
+    commitSha: source.preset?.resolvedPin ?? null,
+    contentDigest: source.digest,
+  };
 }

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, Lucide, I18n, UI Popover, Shared, Authorization listing, Renderer security outlet and sibling FullAccessDialog
- * [OUTPUT]: Provides ChatPermissionSelector, which shows the current capability to drive permissions menu at the back end and confirms the risk of Codex Full Access
- * [POS]: The controller of the permissions is located in the chat/composer input box below the left; The documentation does not assume that the vendor has completed the risk disclosure of the renderer before the risk upgrade; The trigger is enclosed as a pure icon when @container/composer is narrower than 28rem or when the single-string (data-slot=permission-label) is left unlockedThe status identity is external to data-permission-mode listing rather than localized documentation, so e2e does not drift with language
+ * [INPUT]: Depends on React, lucide icons, i18n, UI Popover, shared AgentPermissionMode, openExternal/errorMessage, settings-client acknowledgeFullAccess, and sibling FullAccessDialog
+ * [OUTPUT]: Provides ChatPermissionSelector, a popover menu that shows the current permission mode, drives backend permission changes, and confirms Codex Full Access risk before applying it
+ * [POS]: Permission-mode control anchored bottom-left in chat/composer; it owns Full Access risk disclosure itself rather than assuming the backend already showed it; the trigger collapses to icon-only below the @container/composer 28rem breakpoint (label span hidden via data-slot=permission-label); mode identity is exposed through the data-permission-mode attribute rather than localized text so e2e assertions don't drift with language
  */
 
 import { useState, type ComponentType } from "react";

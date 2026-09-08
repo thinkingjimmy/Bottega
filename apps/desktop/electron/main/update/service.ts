@@ -1,9 +1,13 @@
 /**
  * [INPUT]: Depends on BrowserWindow, shared update IPC, one UpdateAdapter, signed candidate compatibility preflight, scheduling/forced-exit hooks, and a two-phase safe-quit port
- * [OUTPUT]: Provides app-singleton UpdateService with check/download state, fail-closed durable-contract preflight, non-returning installer handoff, IPC registration, TTL, and sanitized pre-terminal errors
+ * [OUTPUT]: Provides app-singleton UpdateService with check/download state, durable-contract preflight, installer handoff, deferred requirement cancellation, candidate identity fences and retryable installation intent.
  * [POS]: The main-owned update lifecycle authority; windows subscribe to it but never own timers or updater listeners
  */
 
+import { compareSemVer, meetsMinimum, parseSemVer } from "../../../shared/app-host/semver";
+import type { AppCompatibilityFailure } from "../../../shared/app-host/contract";
+import { randomUUID } from "node:crypto";
+import type { SafeQuitResult } from "../startup/safe-quit";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { BrowserWindow } from "electron";
@@ -29,6 +33,7 @@ type Timer = ReturnType<typeof setTimeout>;
 
 export type UpdateServiceOptions = {
   adapter: UpdateAdapter | null;
+  resolveAppRequirement?(requestId: string): Promise<AppCompatibilityFailure>;
   currentVersion: string;
   electronVersion: string;
   platform: NodeJS.Platform;
@@ -38,7 +43,8 @@ export type UpdateServiceOptions = {
     load(version: string): Promise<AppGuiCompatibilitySupport>;
     apply(matrix: AppGuiCompatibilitySupport): Promise<void>;
   }>;
-  prepareSafeQuit(reason: "update"): Promise<boolean>;
+  prepareSafeQuit(reason: "update", interactive?: boolean): Promise<SafeQuitResult>;
+  hasStopOperations?(): boolean;
   forceExit(code: number): void;
   now?: () => number;
   setTimer?: (action: () => void, delay: number) => Timer;
@@ -48,6 +54,7 @@ export type UpdateServiceOptions = {
 const idleSnapshot = (
   options: Pick<UpdateServiceOptions, "currentVersion" | "automaticInstall">
 ): UpdateSnapshot => ({
+  revision: 0,
   phase: "idle",
   currentVersion: options.currentVersion,
   availableVersion: null,
@@ -67,12 +74,24 @@ export class UpdateService {
   }> = [];
   private checkFlight: Promise<UpdateSnapshot> | null = null;
   private downloadFlight: Promise<UpdateSnapshot> | null = null;
+  private requirementFlight: Promise<UpdateSnapshot> | null = null;
+  private requirement: AppCompatibilityFailure | null = null;
+  private minimumCheck = false;
+  private suppressAutomaticInstall = false;
   private installFlight: Promise<void> | null = null;
   private firstTimer: Timer | null = null;
   private intervalTimer: Timer | null = null;
   private installExitTimer: Timer | null = null;
   private started = false;
   private terminalHandoff = false;
+  private adapterEpoch = 0;
+  private downloadVersion: string | null = null;
+  private readonly observers = new Set<(snapshot: UpdateSnapshot) => void>();
+
+  onChanged(listener: (snapshot: UpdateSnapshot) => void) {
+    this.observers.add(listener);
+    return () => { this.observers.delete(listener); };
+  }
   private checkKind: "background" | "manual" = "background";
 
   constructor(private readonly options: UpdateServiceOptions) {
@@ -85,7 +104,7 @@ export class UpdateService {
   }
 
   start() {
-    if (this.started || !this.options.adapter) return;
+    if (this.started || !this.options.adapter || this.candidateHeld()) return;
     this.started = true;
     this.firstTimer = this.timer(() => void this.check(false), FIRST_CHECK_DELAY_MS);
   }
@@ -106,10 +125,13 @@ export class UpdateService {
 
   check(manual = true): Promise<UpdateSnapshot> {
     if (!this.options.adapter) return Promise.resolve(this.snapshotValue);
-    if (this.checkFlight) return this.checkFlight;
-    if (["downloading", "installing"].includes(this.snapshotValue.phase)) {
+    if (this.requirementFlight && !this.minimumCheck) return this.requirementFlight;
+    if (this.candidateHeld()) return Promise.resolve(this.snapshotValue);
+    if (this.downloadFlight && this.snapshotValue.phase === "available") return Promise.resolve(this.snapshotValue);
+    if (this.snapshotValue.phase === "downloading") {
       return Promise.reject(new Error("更新正在安装，不能重复检查"));
     }
+    if (this.checkFlight) return this.checkFlight;
     const now = this.now();
     if (
       !manual &&
@@ -119,6 +141,7 @@ export class UpdateService {
       this.scheduleNextCheck();
       return Promise.resolve(this.snapshotValue);
     }
+    const operationId = ++this.adapterEpoch;
     this.checkKind = manual ? "manual" : "background";
     this.publish({
       ...this.snapshotValue,
@@ -127,10 +150,10 @@ export class UpdateService {
       progress: null,
     });
     const flight = this.options.adapter
-      .checkForUpdates()
+      .checkForUpdates(operationId)
       .then(() => this.snapshotValue)
       .catch((cause) => {
-        this.handleError(asError(cause));
+        if (this.snapshotValue.phase === "checking") this.handleError(asError(cause));
         return this.snapshotValue;
       })
       .finally(() => {
@@ -141,15 +164,125 @@ export class UpdateService {
     return flight;
   }
 
+  checkMinimum(context: AppCompatibilityFailure): Promise<UpdateSnapshot> {
+    if (!context.minBottegaVersion || !parseSemVer(context.minBottegaVersion)) {
+      return Promise.reject(new Error("APP_COMPATIBILITY_REQUIREMENT_INVALID"));
+    }
+    if (this.installFlight || this.terminalHandoff) {
+      this.publish({ ...this.snapshotValue, appRequirement: { context, status: "install-busy" } });
+      return Promise.resolve(this.snapshotValue);
+    }
+    if (!this.requirementFlight || !this.requirement ||
+        compareSemVer(context.minBottegaVersion, this.requirement.minBottegaVersion!) > 0) {
+      this.requirement = context;
+    }
+    if (this.requirementFlight) return this.requirementFlight;
+    // Synchronous admission also fences installNow while candidate validation yields.
+    this.suppressAutomaticInstall = true;
+    this.suspendChecks();
+    let finish!: (snapshot: UpdateSnapshot) => void;
+    const flight = new Promise<UpdateSnapshot>((resolve) => { finish = resolve; });
+    this.requirementFlight = flight;
+    void Promise.resolve().then(async () => {
+      try {
+        for (;;) {
+          const accepted = this.requirement;
+          await this.checkRequiredCandidate();
+          if (accepted === this.requirement) break;
+        }
+      } catch (cause) {
+        this.handleError(asError(cause));
+        this.requirementStatus("error");
+      }
+      this.requirementFlight = null;
+      if (!this.requirement) this.scheduleNextCheck();
+      finish(this.snapshotValue);
+    });
+    return flight;
+  }
+
+  dismissAppRequirement() {
+    // The cleared intent is observed after the admitted operation settles;
+    // requirementFlight keeps installation fenced until that safe boundary.
+    this.requirement = null;
+    // Dismissing guidance never resumes a previously suppressed automatic restart.
+    this.publish({ ...this.snapshotValue, appRequirement: null });
+    if (this.requirementFlight) return this.requirementFlight;
+    this.scheduleNextCheck();
+    return Promise.resolve(this.snapshotValue);
+  }
+
+  private requirementStatus(status: NonNullable<UpdateSnapshot["appRequirement"]>["status"]) {
+    if (this.requirement) this.publish({ ...this.snapshotValue, appRequirement: { context: this.requirement, status } });
+  }
+
+  private async checkRequiredCandidate(): Promise<UpdateSnapshot> {
+    for (;;) {
+      const context = this.requirement;
+      if (!context) return this.snapshotValue;
+      const minimum = context.minBottegaVersion!;
+      if (meetsMinimum(this.options.currentVersion, minimum)) {
+        this.requirementStatus("satisfied");
+        return this.snapshotValue;
+      }
+      if (meetsMinimum(this.snapshotValue.availableVersion, minimum) &&
+          ["available", "downloading", "ready"].includes(this.snapshotValue.phase)) {
+        if (this.snapshotValue.phase !== "ready" || !this.options.adapter?.validateDownloadedCandidate ||
+            await this.options.adapter.validateDownloadedCandidate(this.snapshotValue.availableVersion!)) {
+          if (context !== this.requirement) continue;
+          this.requirementStatus("satisfied");
+          return this.snapshotValue;
+        }
+      }
+      if (this.downloadFlight) {
+        this.requirementStatus("waiting-download");
+        await this.downloadFlight;
+        continue;
+      }
+      if (this.checkFlight) {
+        this.requirementStatus("checking");
+        await this.checkFlight;
+        continue;
+      }
+      await this.clearCandidate();
+      if (context !== this.requirement) continue;
+      if (!this.options.adapter) throw new Error("UPDATE_CHECK_UNAVAILABLE");
+      this.requirementStatus("checking");
+      if (context !== this.requirement) continue;
+      this.minimumCheck = true;
+      try { await this.check(true); }
+      finally { this.minimumCheck = false; }
+      if (context !== this.requirement) continue;
+      this.requirementStatus(this.snapshotValue.phase === "error" ? "error" :
+        meetsMinimum(this.snapshotValue.availableVersion, minimum) ? "satisfied" : "unavailable");
+      return this.snapshotValue;
+    }
+  }
+
+  private async clearCandidate() {
+    ++this.adapterEpoch;
+    this.downloadVersion = null;
+    this.publish({ ...this.snapshotValue, phase: "idle", candidateId: null, availableVersion: null, progress: null, error: null });
+    await this.options.adapter?.invalidateCandidate?.();
+  }
+
   downloadAndInstall(): Promise<UpdateSnapshot> {
+    if (this.requirementFlight) return this.requirementFlight;
+    if (this.requirement && !meetsMinimum(this.snapshotValue.availableVersion, this.requirement.minBottegaVersion!)) {
+      return Promise.reject(new Error("APP_HOST_UPDATE_REQUIRED"));
+    }
     if (!this.options.adapter || !this.options.automaticInstall) {
       return Promise.reject(new Error("当前平台只支持手动下载安装更新"));
     }
-    if (this.downloadFlight) return this.downloadFlight;
+    if (this.candidateHeld()) return Promise.resolve(this.snapshotValue);
+    if (this.snapshotValue.phase === "downloading" && this.downloadFlight) return this.downloadFlight;
     if (this.snapshotValue.phase !== "available") {
       return Promise.reject(new Error("当前没有可下载的更新"));
     }
+    if (this.downloadFlight) return this.downloadFlight;
     const version = this.snapshotValue.availableVersion;
+    this.downloadVersion = version;
+    const operationId = ++this.adapterEpoch;
     const flight = Promise.resolve()
       .then(async () => {
         if (!version) throw new Error("GUI_COMPATIBILITY_VERSION_UNAVAILABLE");
@@ -158,20 +291,21 @@ export class UpdateService {
           const matrix = await compatibility.load(version);
           await compatibility.apply(matrix);
         }
+        if (this.downloadVersion !== version || this.candidateHeld()) return;
         this.publish({
           ...this.snapshotValue,
           phase: "downloading",
           progress: { percent: 0, transferred: 0, total: 0 },
           error: null,
         });
-        await this.options.adapter!.downloadUpdate();
+        await this.options.adapter!.downloadUpdate(operationId);
       })
       .then(async () => {
         await this.installFlight;
         return this.snapshotValue;
       })
       .catch((cause) => {
-        this.handleError(asError(cause), "download");
+        if (!this.candidateHeld()) this.handleError(asError(cause), "download");
         return this.snapshotValue;
       })
       .finally(() => {
@@ -187,12 +321,21 @@ export class UpdateService {
     registrar: RendererIpcRegistrar = rendererIpc
   ) {
     this.windows.add(window);
-    registrar(window, rendererUrl, "拒绝非主窗口的更新请求")
+    registrar(rendererUrl, "拒绝非主窗口的更新请求")
       .handle(UPDATE_CHANNEL.snapshot, () => this.snapshot())
       .handle(UPDATE_CHANNEL.check, () => this.check(true))
+      .handle(UPDATE_CHANNEL.checkForApp, async (requestId) => {
+        if (typeof requestId !== "string" || !this.options.resolveAppRequirement) throw new Error("APP_COMPATIBILITY_REQUEST_UNAVAILABLE");
+        return this.checkMinimum(await this.options.resolveAppRequirement(requestId));
+      })
+      .handle(UPDATE_CHANNEL.dismissAppRequirement, () => this.dismissAppRequirement())
       .handle(UPDATE_CHANNEL.downloadAndInstall, () =>
         this.downloadAndInstall()
       )
+      .handle(UPDATE_CHANNEL.installNow, (candidateId) => {
+        if (typeof candidateId !== "string") throw new Error("UPDATE_CANDIDATE_REQUIRED");
+        return this.installNow(candidateId);
+      })
       .handle(UPDATE_CHANNEL.appInfo, () => this.appInfo());
     window.once("closed", () => this.windows.delete(window));
   }
@@ -211,28 +354,31 @@ export class UpdateService {
   private bindAdapter() {
     const adapter = this.options.adapter;
     if (!adapter) return;
-    this.listen("checking-for-update", () => {
-      if (this.snapshotValue.phase !== "checking") {
-        this.publish({ ...this.snapshotValue, phase: "checking", error: null });
-      }
+    // check() owns the transition; delayed adapter notifications must not replace an admitted candidate.
+    this.listen("update-available", (info) => { if (this.currentEvent(info)) this.available(info); });
+    this.listen("update-not-available", (info) => { if (this.currentEvent(info)) this.notAvailable(); });
+    this.listen("download-progress", (progress) => { if (this.currentEvent(progress)) this.progress(progress); });
+    this.listen("update-downloaded", (info) => {
+      if (!this.currentEvent(info) || this.snapshotValue.phase !== "downloading" || info.version !== this.downloadVersion) return;
+      const candidateId = randomUUID();
+      this.suspendChecks();
+      this.publish({ ...this.snapshotValue, phase: "ready", candidateId, progress: null, error: null });
+      if (!this.suppressAutomaticInstall && !this.requirementFlight && !(this.options.hasStopOperations?.() ?? true)) void this.installNow(candidateId, false);
     });
-    this.listen("update-available", (info) => this.available(info));
-    this.listen("update-not-available", () => this.notAvailable());
-    this.listen("download-progress", (progress) => this.progress(progress));
-    this.listen("update-downloaded", () => {
-      this.installFlight ??= this.install().finally(() => {
-        this.installFlight = null;
-      });
-    });
-    this.listen("error", (error) =>
+    this.listen("error", (error) => {
+      if (!this.currentEvent(error)) return;
+      if (this.terminalHandoff) { this.options.forceExit(1); return; }
+      if (this.candidateHeld()) return;
       this.handleError(
         error,
         ["downloading", "installing"].includes(this.snapshotValue.phase)
           ? "download"
           : "check"
-      )
-    );
+      );
+    });
   }
+
+  private currentEvent(event?: { operationId?: number }) { return event?.operationId === undefined || event.operationId === this.adapterEpoch; }
 
   private listen<K extends keyof UpdateAdapterEvents>(
     event: K,
@@ -243,6 +389,7 @@ export class UpdateService {
   }
 
   private available(info: UpdateInfo) {
+    if (this.snapshotValue.phase !== "checking") return;
     this.publish({
       ...this.snapshotValue,
       phase: "available",
@@ -255,6 +402,7 @@ export class UpdateService {
   }
 
   private notAvailable() {
+    if (this.snapshotValue.phase !== "checking") return;
     this.publish({
       ...this.snapshotValue,
       phase: "not-available",
@@ -282,16 +430,51 @@ export class UpdateService {
     });
   }
 
-  private async install() {
-    this.publish({ ...this.snapshotValue, phase: "installing", progress: null });
-    const safe = await this.options.prepareSafeQuit("update").catch((cause) => {
-      this.handleError(asError(cause), "download");
-      return false;
-    });
-    if (!safe) {
-      if (this.snapshotValue.phase === "installing") {
-        this.handleError(new Error("无法安全关闭应用，更新未安装"), "download");
+  installNow(candidateId: string, interactive = true): Promise<UpdateSnapshot> {
+    if (this.terminalHandoff) return Promise.resolve(this.snapshotValue);
+    if (this.requirementFlight || (this.requirement && !meetsMinimum(this.snapshotValue.availableVersion, this.requirement.minBottegaVersion!))) {
+      return Promise.reject(new Error("UPDATE_CANDIDATE_STALE"));
+    }
+    if (!candidateId || candidateId !== this.snapshotValue.candidateId ||
+        !this.candidateHeld() || !this.options.adapter) {
+      return Promise.reject(new Error("UPDATE_CANDIDATE_STALE"));
+    }
+    if (!this.installFlight) {
+      this.installFlight = Promise.resolve().then(() => this.install(candidateId, interactive)).finally(() => { this.installFlight = null; });
+    }
+    return this.installFlight.then(() => this.snapshotValue);
+  }
+
+  async invalidateCandidate(candidateId: string) {
+    if (this.installFlight || this.terminalHandoff || this.downloadFlight || this.requirementFlight) return;
+    if (this.snapshotValue.phase !== "ready" || this.snapshotValue.candidateId !== candidateId) return;
+    await this.clearCandidate();
+    this.scheduleNextCheck();
+  }
+
+  private candidateHeld() { return ["ready", "installing"].includes(this.snapshotValue.phase); }
+  private suspendChecks() {
+    if (this.firstTimer) this.clearTimer(this.firstTimer);
+    if (this.intervalTimer) this.clearTimer(this.intervalTimer);
+    this.firstTimer = null;
+    this.intervalTimer = null;
+  }
+
+  private async install(candidateId: string, interactive: boolean) {
+    try {
+      if (this.options.adapter?.validateDownloadedCandidate && !await this.options.adapter.validateDownloadedCandidate(this.snapshotValue.availableVersion ?? undefined)) {
+        await this.clearCandidate();
+        return;
       }
+      if (this.snapshotValue.candidateId !== candidateId) return;
+      this.publish({ ...this.snapshotValue, phase: "installing", progress: null });
+      const safe = await this.options.prepareSafeQuit("update", interactive);
+      if (safe !== "ready") {
+        this.publish({ ...this.snapshotValue, phase: "ready", error: safe === "failed" ? "UPDATE_SAFE_QUIT_FAILED" : null });
+        return;
+      }
+    } catch (cause) {
+      this.publish({ ...this.snapshotValue, phase: "ready", error: sanitizeError(asError(cause).message) });
       return;
     }
     this.terminalHandoff = true;
@@ -332,7 +515,10 @@ export class UpdateService {
   }
 
   private publish(snapshot: UpdateSnapshot) {
-    this.snapshotValue = Object.freeze(snapshot);
+    this.snapshotValue = Object.freeze({ ...snapshot, revision: (this.snapshotValue.revision ?? 0) + 1 });
+    for (const observer of this.observers) {
+      try { observer(this.snapshotValue); } catch (cause) { console.warn("[update] observer failed", cause); }
+    }
     for (const window of this.windows) {
       if (!window.isDestroyed()) {
         window.webContents.send(UPDATE_CHANNEL.subscribe, this.snapshotValue);
@@ -341,7 +527,7 @@ export class UpdateService {
   }
 
   private scheduleNextCheck() {
-    if (!this.started || !this.options.adapter) return;
+    if (!this.started || !this.options.adapter || this.candidateHeld()) return;
     if (this.intervalTimer) this.clearTimer(this.intervalTimer);
     this.intervalTimer = this.timer(() => void this.check(false), DAY_MS);
   }

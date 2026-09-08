@@ -10,7 +10,8 @@ import type { MemoryPrePromptValidation } from "../core/domain";
 import type { FrozenTurnMemoryContext } from "../core/domain";
 import type { MemoryProvider } from "../core/provider";
 import { providerSessionRef } from "../core/session-ref";
-import { MemoryDeliveryStore, stableMemoryPayloadId } from "../delivery/store";
+import { stableMemoryPayloadId } from "../delivery/maintenance-store";
+import { MemoryDeliveryStore } from "../delivery/store";
 import { isMemorableAssistant } from "../core/domain";
 import type { MemoryTurnSettledEvent } from "../service/memory-state";
 import type { MemoryNetworkRuntime } from "../runtime/network-runtime";
@@ -28,15 +29,15 @@ type Dependencies = {
   delivery: MemoryDeliveryStore;
   network: MemoryNetworkRuntime;
   readChat(chatId: string): Promise<ChatRecord | null>;
-  trustedProviderReady(context: FrozenTurnMemoryContext): Promise<TrustedProviderProof>;
-  trustedRebuildProviderReady(
-    context: FrozenTurnMemoryContext
+  trustedProviderReady(
+    context: FrozenTurnMemoryContext,
+    rebuild: boolean
   ): Promise<TrustedProviderProof>;
   validateContext(context: FrozenTurnMemoryContext): MemoryPrePromptValidation;
-  validateFrozen(context: FrozenTurnMemoryContext, proof: TrustedProviderProof): boolean;
-  validateRebuildFrozen(
+  validateFrozen(
     context: FrozenTurnMemoryContext,
-    proof: TrustedProviderProof
+    proof: TrustedProviderProof,
+    rebuild: boolean
   ): boolean;
   providerId(): string;
   captured(): void;
@@ -90,12 +91,12 @@ export class MemoryCaptureController {
       !input.mode &&
       this.dependencies.validateContext(context).kind !== "allowed"
     ) return false;
-    const proof = await (input.mode
-      ? this.dependencies.trustedRebuildProviderReady(context)
-      : this.dependencies.trustedProviderReady(context));
-    const validate = input.mode
-      ? this.dependencies.validateRebuildFrozen
-      : this.dependencies.validateFrozen;
+    const rebuild = input.mode === "rebuild";
+    const proof = await this.dependencies.trustedProviderReady(context, rebuild);
+    const validate = (
+      frozen: FrozenTurnMemoryContext,
+      trusted: TrustedProviderProof
+    ) => this.dependencies.validateFrozen(frozen, trusted, rebuild);
     const ref = providerSessionRef({
       sessionKey: `${context.memorySpaceId}:${context.sourceSessionKey}`,
       workspacePeerId: context.expectedPeerId,

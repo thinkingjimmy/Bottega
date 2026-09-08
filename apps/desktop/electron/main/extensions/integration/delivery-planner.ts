@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on frozen App graphs, live AppReference, scoped grants, authoritative inventory and main-owned capability snapshots
+ * [INPUT]: Depends on frozen App graphs, live AppReference, scoped grants, authoritative inventory and main-owned capability snapshots, and statusError from main/errors
  * [OUTPUT]: Provides buildComponentDeliveryDecision and excludeFailedDeliveries, generates an immutable plan that is required→blocked, optional→degraded, all satisfied→ready
- * [POS]: The first step is to create a new version of the AppEach App requirement to actual delivery remains on the independent licensing side, and the materialization failure is recycled along the same side
+ * [POS]: Extensions delivery planning for one App generation; requirement-to-delivery decisions stay independent of the grant/licensing side, and materialization failures are excluded through the same path
  */
 
 import { randomUUID } from "node:crypto";
@@ -17,7 +17,8 @@ import type {
   FrozenExtensionDeliveryEligibilityReason,
   ScopedComponentGrant,
 } from "../../../../shared/extensions-ipc";
-import { digestCanonical } from "../registry-store";
+import { statusError } from "../../errors";
+import { digestCanonical } from "../registry-canonical";
 
 export type AppDeliveryBindingInput = Readonly<{
   appId: string;
@@ -46,7 +47,7 @@ export function buildComponentDeliveryDecision(input: {
       app.frozenSet.appGenerationId !== app.appGenerationId ||
       !app.appReferenceLeaseId
     ) {
-      throw conflict("App reference/generation 与 frozen requirement graph 不一致");
+      throw statusError(409, "App reference/generation 与 frozen requirement graph 不一致");
     }
     const requirementBindings: ComponentDeliveryPlan["appBindings"][number]["requirementBindings"][number][] = [];
     for (const requirement of app.frozenSet.extensionRequirements) {
@@ -318,10 +319,6 @@ function assertSnapshot(
     capability.backendId !== turn.backendId ||
     capability.backendRuntimeIdentity !== turn.backendRuntimeIdentity
   ) {
-    throw conflict("Extension inventory/capability/turn snapshot 已漂移");
+    throw statusError(409, "Extension inventory/capability/turn snapshot 已漂移");
   }
-}
-
-function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
 }

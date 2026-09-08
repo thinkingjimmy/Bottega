@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on settings-client valid subject prefix/subscription ((Electron go main broadcast, browser return system preferences) with documentElement classList
+ * [INPUT]: Depends on settings-client's initialDarkTheme/subscribeResolvedTheme (main resolves and broadcasts the effective theme) and document.documentElement's classList
  * [OUTPUT]: Provides ResolvedTheme, applyResolvedTheme, resolvedThemeStore and initializeTheme
- * [POS]: The renderer's valid theme landing point; Preference is given to the main, which only receives the bulb and hangs it `.dark`Not auto, decided
+ * [POS]: Renderer's landing point for the resolved theme; main always decides light vs. dark (never "auto"), and this module only applies the `.dark` class and broadcasts the resolved value
  */
 
 import { initialDarkTheme, subscribeResolvedTheme } from "./settings-client";

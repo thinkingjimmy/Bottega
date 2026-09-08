@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React effect/state, shared GalleryMediaSourceRef and preload window.galleryMedia.thumbnail
  * [OUTPUT]: Provides use of GalleryThumbnail with predictable PreviewBudget, unified stable sourceRef, CACHE_PENDING, withdrawal, retry signal, cancellation, error projection and 128MiB preview budget
- * [POS]: The renderer of lib/gallery/media is the media state machine; conversation, Gallery shared with the Image tab, no business operations known
+ * [POS]: The renderer media state machine for lib/gallery/media; shared by the conversation Gallery and the Image tab, and holds no business logic of its own
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";

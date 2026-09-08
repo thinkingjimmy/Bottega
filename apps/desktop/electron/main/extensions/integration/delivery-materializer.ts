@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on ComponentDeliveryPlan, original capability snapshot, authoritative inventory, content addresses, packaging root, Agent Plugins re-admission, agent-input, read only snapshots and controlled executable PATH
  * [OUTPUT]: Provides materialize Component Deliveries: precise review deliveryReference, materialization per-turn skill and sealed-generation MCP resolved config digest with absolute executable/cwd, running env, failed to report
- * [POS]: The only materialization between plan/capability and backend instant delivery; Re-check the packet bytes/citations/digest, but not re-license, nor self-construct reference counts
+ * [POS]: Extensions' sole materializer between plan/capability and backend-ready delivery; it re-verifies packet bytes/citations/digests but never re-licenses or invents its own reference counts
  */
 
 import { constants } from "node:fs";
@@ -14,9 +14,10 @@ import type {
   FrozenExtensionDeliveryEligibilityReason,
 } from "../../../../shared/extensions-ipc";
 import { stageDirectorySnapshot } from "../../agent-input";
-import { parseSkillFrontmatter, readStableSkill } from "../../skills-catalog";
+import { readStableSkill } from "../../skills-catalog-runtime";
+import { parseSkillFrontmatter } from "../../skills-catalog-scan";
 import { errorMessage } from "../../errors";
-import { digestCanonical } from "../registry-store";
+import { digestCanonical } from "../registry-canonical";
 import { extensionPackageRoot } from "../skill-candidates";
 import { admitExtensionPackage, type AdmittedMcpServer } from "../manifest-adapter";
 

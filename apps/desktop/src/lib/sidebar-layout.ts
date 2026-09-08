@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on browser localStorage, receives incredible versioning of Sidebar layout JSON
- * [OUTPUT]: Provides SidebarLayout/SidebarGroups/SidebarView, size constants, loose parsing sequencing, synchronized submission and error reading of the function
- * [POS]: The Sidebar layout of the renderer borders the data to commit to synchronize to eliminate the pending state before the window closes
+ * [OUTPUT]: Provides SidebarLayout/SidebarGroups/SidebarView types, SIDEBAR_MIN_WIDTH/MAX_WIDTH constants, lenient parseSidebarLayout/serializeSidebarLayout, and read/commit persistence functions
+ * [POS]: Renderer's persistence boundary for Sidebar layout; commits synchronously so no pending write is lost when the window closes
  */
 
-export const SIDEBAR_DEFAULT_WIDTH = 256;
+const SIDEBAR_DEFAULT_WIDTH = 256;
 export const SIDEBAR_MIN_WIDTH = 200;
 export const SIDEBAR_MAX_WIDTH = 400;
 
@@ -107,7 +107,7 @@ export function readSidebarLayout(
   }
 }
 
-export function writeSidebarLayout(
+function writeSidebarLayout(
   layout: SidebarLayout,
   storage: SidebarStorage = window.localStorage
 ) {

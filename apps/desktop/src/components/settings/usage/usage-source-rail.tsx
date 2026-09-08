@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on i18n ⋅shared USAGE_SOURCE_ORDER/UsageQueryTarget ⋅lib agent-backends ⋅branded icons and compact tokens ⋅ formatting ⋅ directory UsageInfoTip ⋅ settings-layout ⋅ SettingsSurface ⋅ui Tabs/Skeleton
- * [OUTPUT]: Provides UsageSourceRail A surface with a side of the sidebar and the name of the adjacent lifetime token, in horizontal contrast to the side of the sidebar,
- * [POS]: The navigation of the settings/usage sub-module is in parallel with the horizontal contrast; The selector itself is data, and the panel is inserted by children
+ * [INPUT]: Depends on i18n, shared USAGE_SOURCE_ORDER/UsageQueryTarget, lib/agent-backends branded icons, compact-token formatting, the sibling UsageInfoTip, settings-layout's SettingsSurface, and ui Tabs/Skeleton
+ * [OUTPUT]: Provides UsageSourceRail, a single-surface tab rail where each tab pairs a source's name with its lifetime token for horizontal comparison
+ * [POS]: settings/usage's source-navigation surface for horizontal comparison; the tab selector is pure data while the panel content is supplied via children
  */
 
 import type { ReactNode } from "react";

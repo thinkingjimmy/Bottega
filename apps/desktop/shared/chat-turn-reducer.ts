@@ -224,7 +224,7 @@ export function applySubagent(
   };
 }
 
-export type FinalizedTurn = {
+type FinalizedTurn = {
   content: string;
   parts?: ChatPart[];
   durationMs: number;

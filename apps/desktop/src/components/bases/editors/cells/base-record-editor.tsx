@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, shared Base column/value, base cell editor, Dialog/Button/Input with i18n
- * [OUTPUT]: Provides BaseRecordEditor; Save and delete the null entry, and Gallery only accepts the target attachment column and files
- * [POS]: The standard new record surface of bases/editors/cells; Only draft collected, without Base mutation or attachment storage
+ * [OUTPUT]: Provides BaseRecordEditor, a new-record dialog whose Save omits null-valued cells and requires an attachment whenever the first column is an attachment column
+ * [POS]: The shared new-record surface for bases/editors/cells; it only collects a draft — the caller performs the Base mutation and attachment storage
  */
 
 import { useMemo, useState } from "react";

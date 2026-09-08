@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: Depends on thinking-orbs, ThinkingOrb, similar to Shimmer, ui/marker, MarkerIcon icon slots combined with cn class names
- * [OUTPUT]: Provides ThinkingShimmer ((Thinking orb + scan the flow state line of the light label)
- * [POS]: The standard state native language of ai-elements, Shimmer's only assembly layer, is consumed by chat draft and subagent panels; The status bar is a row ((min-w-0 + truncate)), and the length of the tag does not change the height of the bar; Sharing icon and toolbar MarkerIcon slots, 14px in font, two lines of text aligned on the left edge
+ * [OUTPUT]: Provides ThinkingShimmer, combining a ThinkingOrb with a Shimmer-lit status label line
+ * [POS]: ai-elements' standard thinking-state primitive, Shimmer's sole composed layer, consumed by chat draft and subagent panels; the status row (min-w-0 + truncate) never grows taller as the label's length changes; it shares the icon/toolbar MarkerIcon slots at 14px, with two lines of left-aligned text
  */
 
 import type { ReactNode } from "react";

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod and Base column/unit strict schema
  * [OUTPUT]: Provides a common App Base data migration v1 contract, schema and type
- * [POS]: The App is a live-Based app that is used to update the appApp packages declare data conversion, platform execution, and prohibit preset exclusive branches
+ * [POS]: Shared schema for App-declared Base data migrations; main validates and applies migration files bundled with Base-backed Apps
  */
 
 import { z } from "zod";

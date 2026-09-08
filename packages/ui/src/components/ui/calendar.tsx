@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, react-day-picker, lucide, navigation icons, share Button variables with cn
- * [OUTPUT]: Provides shadcn Calendar with the CalendarDayButton, unified day/period calendar navigation, interaction with state and accessible
- * [POS]: The date selector is a kernel of the original language layer ui, combined with the date selector by the business Popover
+ * [OUTPUT]: Provides shadcn Calendar with unified day/period navigation, range states, and accessible day buttons
+ * [POS]: components/ui's date-picker primitive; product code composes it inside a Popover to build a date selector
  */
 
 import * as React from "react"
@@ -223,4 +223,4 @@ function CalendarDayButton({
   )
 }
 
-export { Calendar, CalendarDayButton }
+export { Calendar }

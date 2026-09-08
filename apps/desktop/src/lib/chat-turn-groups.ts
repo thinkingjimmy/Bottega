@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared/chats-ipc and the shared/chat-turn-reducer's DraftPart/DraftToolPart
  * [OUTPUT]: Provides groupParts with standalone structured Agent failure notices, GroupedToolPart, and groupSummary
- * [POS]: The turn rendering projection of lib is pure function: reducer pipe flow state, where only the grouping is shown and can be returned independently
+ * [POS]: Pure turn-rendering projection in lib; groups reducer-produced parts for display without touching reducer state, so it can be tested independently
  */
 
 import type { ChatTextPart } from "../../shared/chats-ipc";

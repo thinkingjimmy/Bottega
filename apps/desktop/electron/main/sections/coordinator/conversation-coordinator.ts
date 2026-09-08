@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on relay/state ledgers, Chat and Settings services, SQLite unknown-outcome classification, Agent main bridge, memory/bootstrap ports, manual-turn helpers, and the canonical residence index
- * [OUTPUT]: Provides durable manual/relay FIFO admission, per-conversation scheduling, delivery, transition/active-turn probes, unknown-commit compensation fences, queue wake-up operations, and a quiescent shutdown that drains every in-flight dispatch before the ledger flushes
+ * [INPUT]: Depends on relay/state ledgers, Chat and Settings services, exact-submission recovery, SQLite unknown-outcome classification, Agent main bridge, memory/bootstrap ports, manual-turn helpers, and the canonical residence index
+ * [OUTPUT]: Provides durable FIFO with availability/start deferrals, per-conversation scheduling, live outcome recovery, transition probes, and quiescent shutdown draining dispatch and raw preparation
  * [POS]: Sections coordinator arbiter; renderer and MCP callers submit intents while this module alone advances Chat commits and Agent claims
  */
 
+import { dispatchManual } from "./scheduler/manual-dispatch";
 import type {
   SteerAdmission,
   SteerDecision,
@@ -14,6 +15,7 @@ import type {
 import type { ChatMessage } from "../../../../shared/chats-ipc";
 import type { ManualTurnReceipt, TrustedManualTurnSubmission as ManualTurnSubmission, RelayActionsSnapshot } from "../../../../shared/sections-ipc";
 import { ConversationQueue } from "./scheduler/conversation-queue";
+import { taskStartFence, StartDeferredError, requestOperation, type StopOperation } from "../../presence/lifecycle/start-fence";
 import { DispatchTracker } from "./scheduler/dispatch-tracker";
 import {
   blockedReceiptFor,
@@ -23,6 +25,7 @@ import {
 import type { BuiltinToolContext } from "../../tools/registry";
 import { coordinatorResidenceIndex, relayExpectation } from "./coordinator-values";
 import {
+  preparedSkillSelections,
   runManualTurn,
 } from "./manual-turns";
 import { submitManualAdmission } from "./manual-admission";
@@ -50,8 +53,8 @@ import {
   skillTruncationNoticeId,
   type TurnPreparationEvent,
 } from "./turn-preparation";
-import type { PreparedManualTurn } from "./admission/prepared-manual-turn";
-import { isChatMutationOutcomeUnknown } from "../../chats/chat-store";
+import { switchEligibility } from "./agent-switch/eligibility";
+import { SubmissionRecovery } from "./submission/recovery";
 export type { RelayToolStatus } from "./admission/section-tool-admission";
 
 export class ConversationCoordinator {
@@ -63,9 +66,29 @@ export class ConversationCoordinator {
   private readonly notices: SectionNoticeOutbox;
   private readonly steerOutbox: SteerOutbox;
   private readonly sectionTools: SectionToolAdmission;
+  private readonly submissionRecovery: SubmissionRecovery;
   private accepting = false;
+  private readonly releaseFenceListener = taskStartFence.onReleased(() => this.wakePending());
+
+  pendingStopOperations() {
+    return this.dispatches.snapshot().filter((operation) => !this.dependencies.ledger.read((state) =>
+      Object.values(state.manualIntents).some((intent) => intent.requestId === operation.requestId &&
+        ["queued", "appended", "settled", "failed"].includes(intent.phase)) ||
+      Object.values(state.relays).some((relay) => relay.requestId === operation.requestId &&
+        ["queued", "appended", "settled"].includes(relay.deliveryPhase))
+    ));
+  }
+
+  drainDispatches() { return this.dispatches.drain(); }
+  onPendingChanged(listener: () => void) { return this.dispatches.onChanged(listener); }
 
   constructor(private readonly dependencies: CoordinatorDependencies) {
+    this.submissionRecovery = new SubmissionRecovery({
+      dependencies, dispatches: this.dispatches, accepting: () => this.accepting,
+      runConversation: (id, task) => this.conversations.run(id, task),
+      resumeSubmission: submission => this.admitManual(submission, () => true, true, false, true, true),
+      kick: id => this.kick(id),
+    });
     this.notices = new SectionNoticeOutbox(
       dependencies.ledger,
       dependencies.chats
@@ -94,7 +117,6 @@ export class ConversationCoordinator {
       kick: (conversationId) => this.kick(conversationId),
     });
   }
-
   async initialize(openAdmission = true) {
     const initialization = await this.dependencies.ledger.initialize();
     if (initialization.recovered) {
@@ -118,7 +140,9 @@ export class ConversationCoordinator {
     this.accepting = openAdmission;
     if (openAdmission) this.wakePending();
   }
-
+  agentSwitchEligibility(conversationId: string) {
+    return switchEligibility(this.dependencies, conversationId, { recovering: !this.accepting, running: this.running.has(conversationId) });
+  }
   stopAdmission() { this.accepting = false; }
 
   reopenAdmission() {
@@ -132,9 +156,8 @@ export class ConversationCoordinator {
     return this.dependencies.ledger.onActionsChanged(listener);
   }
 
-  async submitManualTurn(
-    submission: ManualTurnSubmission
-  ): Promise<ManualTurnReceipt> {
+  submitManualTurn(submission: ManualTurnSubmission): Promise<ManualTurnReceipt> {
+    return this.dispatches.track(async () => {
     /* Chat 生命周期守卫由 ChatsService 单点判定。 */
     this.dependencies.chats.assertOrdinaryTurnAllowed(
       submission.turn.scope.conversationId
@@ -149,6 +172,9 @@ export class ConversationCoordinator {
       };
     }
     return this.admitManual(submission, () => this.accepting);
+    }, { ...requestOperation(submission.turn.scope.conversationId, submission.turn.requestId,
+      submission.precondition.kind === "existing" ? submission.precondition.incarnationId : submission.precondition.proposedIncarnationId),
+      backend: submission.turn.turnOptions.backend });
   }
 
   /**
@@ -210,7 +236,7 @@ export class ConversationCoordinator {
     conversationHeld = false,
     projectLifecycleHeld = false
   ): Promise<ManualTurnReceipt> {
-    return submitManualAdmission(submission, {
+    return this.dispatches.track(() => submitManualAdmission(submission, {
       dependencies: this.dependencies,
       accepting,
       runConversation: (conversationId, task) =>
@@ -231,7 +257,8 @@ export class ConversationCoordinator {
       recovering,
       deferKick,
       projectLifecycleHeld,
-    });
+    }), requestOperation(submission.turn.scope.conversationId, submission.turn.requestId,
+      submission.precondition.kind === "existing" ? submission.precondition.incarnationId : submission.precondition.proposedIncarnationId));
   }
 
   async cancelManualTurn(requestId: string) {
@@ -274,18 +301,7 @@ export class ConversationCoordinator {
   }
 
   preparedSkillSelections() {
-    return Object.values(
-      this.dependencies.ledger.snapshot().manualIntents
-    ).flatMap((intent) => {
-      if (["settled", "failed"].includes(intent.phase) || !intent.payload) {
-        return [];
-      }
-      const prepared = intent.payload as PreparedManualTurn;
-      return [{
-        requestId: intent.requestId,
-        receipt: prepared.skillSelection,
-      }];
-    });
+    return preparedSkillSelections(this.dependencies.ledger);
   }
 
   residenceIndex() { return coordinatorResidenceIndex(this.dependencies.ledger.snapshot()); }
@@ -300,7 +316,8 @@ export class ConversationCoordinator {
     return this.dependencies.ledger.ackSubmission(ack);
   }
 
-  submissionOutcome(intentId: string) {
+  async submissionOutcome(intentId: string) {
+    await this.submissionRecovery.reconcile(intentId);
     return this.dependencies.ledger.submissionOutcome(intentId);
   }
 
@@ -571,12 +588,14 @@ export class ConversationCoordinator {
   }
 
   private kick(conversationId: string) {
-    if (!this.accepting) return;
+    if (!this.accepting || taskStartFence.held) return;
     const head = nextDeliverable(this.dependencies.ledger, conversationId);
     /* 锁序法则 P→C：manual 派发必须在进会话锁之前持全局门。
        head 在排队期间可能换人；runNext 对「manual 是否已持门」严格
        对账，换成 relay 就让位重踢，不带着全局门跑长链。 */
-    const workspaceLifecycleHeld = head?.kind === "manual";
+    if (!head) return;
+    let refineOperation: ((operation: StopOperation) => void) | undefined;
+    const workspaceLifecycleHeld = head.kind === "manual";
     const run = () =>
       this.conversations.run(conversationId, async () => {
         if (
@@ -589,7 +608,8 @@ export class ConversationCoordinator {
         this.running.add(conversationId);
         const progressed = await this.runNext(
           conversationId,
-          workspaceLifecycleHeld
+          workspaceLifecycleHeld,
+          refineOperation
         );
         this.releaseRunningIfIdle(conversationId);
         if (
@@ -600,15 +620,15 @@ export class ConversationCoordinator {
           this.kick(conversationId);
         }
       });
-    this.dispatches.track(
-      workspaceLifecycleHeld
-        ? this.dependencies.withWorkspaceLifecycle(run)
-        : run(),
-      (cause) => {
+    void this.dispatches.track(
+      (refine) => { refineOperation = refine; return workspaceLifecycleHeld ? this.dependencies.withWorkspaceLifecycle(run) : run(); },
+      requestOperation(conversationId, head?.kind === "manual" ? head.intent.requestId :
+        head?.kind === "relay" ? head.relay.requestId : `pending:${conversationId}`,
+        this.dependencies.chats.store.getMetadata(conversationId)?.incarnationId)
+    ).catch((cause) => {
         this.running.delete(conversationId);
         console.error(`[section-coordinator] conversation=${conversationId} 调度失败`, cause);
-      }
-    );
+      });
   }
 
   /* 关机的唯一静默点：先关闸，再等在途派发落地（它们还会写 ledger），
@@ -616,6 +636,7 @@ export class ConversationCoordinator {
   async closeAndFlush() {
     this.accepting = false;
     await this.dispatches.drain();
+    this.releaseFenceListener();
     await this.dependencies.ledger.closeAndFlush();
   }
 
@@ -633,17 +654,22 @@ export class ConversationCoordinator {
 
   private async runNext(
     conversationId: string,
-    workspaceLifecycleHeld = false
+    workspaceLifecycleHeld = false,
+    refineOperation?: (operation: StopOperation) => void
   ) {
-    if (this.dependencies.hasActivity([conversationId])) return false;
+    if (!this.accepting || taskStartFence.held || this.dependencies.hasActivity([conversationId])) return false;
     /* S2 fence:过渡期一律不推进(manual/relay 已排队者滞留原位),
      * fence 解除后经 kickConversation 恢复;恢复路径(启动 kick)同受此检查。 */
     if (await this.isTransitioning(conversationId)) return false;
+    if (!this.accepting || taskStartFence.held) return false;
     const deliverable = nextDeliverable(
       this.dependencies.ledger,
       conversationId
     );
     if (!deliverable) return true;
+    refineOperation?.(requestOperation(conversationId,
+      deliverable.kind === "manual" ? deliverable.intent.requestId : deliverable.relay.requestId,
+      this.dependencies.chats.store.getMetadata(conversationId)?.incarnationId));
     /* 持锁校验：manual 需要全局门，relay 不该带着它跑长链。
        head 换人就让位重踢；多持与少持都按同一个布尔事实拒绝。 */
     const requiresWorkspaceLifecycle = deliverable.kind === "manual";
@@ -669,10 +695,12 @@ export class ConversationCoordinator {
       if (!["queued", "appended"].includes(deliverable.intent.phase)) {
         return true;
       }
-      await this.runManual(deliverable.intent, workspaceLifecycleHeld);
-      return true;
+      if (this.dependencies.canDispatchManual && !await this.dependencies.canDispatchManual((deliverable.intent.payload as import("./admission/prepared-manual-turn").PreparedManualTurn).turn)) return false;
+      return this.runManual(deliverable.intent, workspaceLifecycleHeld);
     }
+    try {
     await this.chains.run(deliverable.relay.rootChainId, async () => {
+      taskStartFence.assertOpen();
       await deliverRelaySaga(deliverable.relay.id, {
         ledger: this.dependencies.ledger,
         chats: this.dependencies.chats,
@@ -688,6 +716,12 @@ export class ConversationCoordinator {
           ),
       });
     });
+    } catch (cause) {
+      if (!(cause instanceof StartDeferredError)) throw cause;
+      this.running.delete(conversationId);
+      this.kick(conversationId);
+      return false;
+    }
     return true;
   }
 
@@ -752,47 +786,9 @@ export class ConversationCoordinator {
 
   /* projectLifecycleHeld 是调用方（runNext 持锁校验后）下传的事实，
      不在此处按 intent 条件重演推断——猜测在 head 换人时会撒谎。 */
-  private async runManual(
-    intent: Parameters<typeof runManualTurn>[0],
-    projectLifecycleHeld: boolean
-  ) {
-    try {
-      await runManualTurn(intent, this.dependencies, projectLifecycleHeld);
-    } catch (cause) {
-      if (isChatMutationOutcomeUnknown(cause)) {
-        this.dependencies.chats.store.pushWarning(
-          `Manual ${intent.id} 的 SQLite commit 结果未知；operationId=${cause.operationId}，已停止补偿与自动重试，等待 receipt 恢复。`
-        );
-        this.running.delete(intent.conversationId);
-        return;
-      }
-      const current = this.dependencies.ledger.read(
-        (state) => state.manualIntents[intent.id]
-      );
-      if (
-        current?.payload !== undefined &&
-        ["queued", "appended"].includes(current.phase)
-      ) {
-        await cleanupManualCreation(this.dependencies, current).catch(
-          (cleanupCause) => {
-            this.dependencies.chats.store.pushWarning(
-              `Manual ${current.id} 创建补偿待重试：${String(cleanupCause)}`
-            );
-          }
-        );
-        await this.dependencies.ledger.transitionManual(
-          current.id,
-          ["queued", "appended"],
-          "failed"
-        );
-      }
-      this.running.delete(intent.conversationId);
-      this.kick(intent.conversationId);
-      console.error(
-        `[section-coordinator] manual=${intent.id} 调度失败`,
-        cause
-      );
-    }
+  private runManual(intent: Parameters<typeof runManualTurn>[0], projectLifecycleHeld: boolean) {
+    return dispatchManual(intent, projectLifecycleHeld, { dependencies: this.dependencies,
+      release: (id) => { this.running.delete(id); }, kick: (id) => this.kick(id) });
   }
 
 }

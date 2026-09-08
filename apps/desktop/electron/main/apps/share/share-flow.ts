@@ -4,6 +4,7 @@
  * [POS]: The GitHub side-effect saga of apps/share; no Agent is involved, an unfinished publish's staging directory is recovery evidence and is never swept, a business rejection drops both the staging directory and its preview, and a crash resumes from the share-publish intent
  */
 
+import { readCompatibility, revalidateCompatibility, recordCandidate } from "../compatibility/read";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
@@ -31,7 +32,7 @@ import type { LifecycleIntent } from "../../lifecycle/intent-types";
 import type { LifecycleIntentStore } from "../../lifecycle/intent-store";
 import type { AdmissionGate, SagaResult } from "../../lifecycle/admission-gate";
 import type { ProjectStore } from "../../projects/store/project-store";
-import { sanitizedProcessEnvironment } from "../../codex-runtime";
+import { sanitizedProcessEnvironment } from "../../backends/runtime-probe";
 import type { AppStore } from "../store/app-store";
 import { README_SKELETON_HINT } from "../source/templates";
 import {
@@ -84,6 +85,7 @@ export class ShareFlow {
 
   async preview(input: SharePreviewInput): Promise<SharePreview> {
     const record = requireShareable(this.apps.get(input.appId));
+    const compatibility = await readCompatibility(record.dir, recordCandidate(record), this.apps.hostVersion?.());
     const project = this.projects.findByAppId(record.id);
     if (!project) throw new Error("Base App 缺少 Project");
     const source = this.bases.get(`project:${project.id}`);
@@ -128,6 +130,7 @@ export class ShareFlow {
         await this.run("git", ["init"], worktree);
       }
       const copied = await copyPackage(record.dir, worktree);
+      await revalidateCompatibility(worktree, recordCandidate(record), compatibility, this.apps.hostVersion?.());
       await this.exportCompiledGeneration(record, worktree);
       const dataPath = join(worktree, "data", "base.json");
       await mkdir(dirname(dataPath), { recursive: true, mode: 0o700 });
@@ -325,6 +328,7 @@ export class ShareFlow {
     }
     /* "prepared" 是准入首档(arbitrate 即推进)；worktree 物证全在不可变 input 里。 */
     const worktree = join(preview.staging, "worktree");
+    await readCompatibility(worktree, recordCandidate(this.apps.get(preview.appId)!, preview.digest), this.apps.hostVersion?.());
     if (intent.phase === "prepared") {
       if (preview.existingRemote && preview.expectedRemoteHead) {
         const remoteHead = parseLsRemoteHead(

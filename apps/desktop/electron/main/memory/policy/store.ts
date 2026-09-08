@@ -191,17 +191,9 @@ export class MemoryPolicyStore {
   }
 
   async initialize() {
-    /* 无真实用户：v3 不猜共享授权，直接断代为空 v4；provider 安装与 secret
-       在 Policy 根之外，因此不会被这次安全归零触碰。读不出的档由 DurableJson
-       自己隔离重建；这里只把「曾经隔离」如实登记为 policy-store 失败。 */
-    const { quarantined } = await this.ledger.initialize((raw) =>
-      raw &&
-      typeof raw === "object" &&
-      !Array.isArray(raw) &&
-      (raw as { schemaVersion?: unknown }).schemaVersion === 3
-        ? emptyPolicyState()
-        : undefined
-    );
+    // DurableJson quarantines unreadable schemas; provider installations and secrets
+    // live outside this store and remain untouched by policy recovery.
+    const { quarantined } = await this.ledger.initialize();
     await this.compactLedger();
     this.publish(this.ledger.snapshot(), quarantined ? "policy-store" : null);
     return this.snapshot();

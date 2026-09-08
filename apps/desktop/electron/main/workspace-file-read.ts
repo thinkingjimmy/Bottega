@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the logical scope of the workspace-resolver, the fresh member entity metadata of the catalog, and the read-only file capability of Node lstat/realpath/open/fstat/with boundaries read
- * [OUTPUT]: Provides binding identity, canonical path, inode and TTL, and grant/synchronize/distribute with both hard-bound opaque readRef authority
- * [POS]: Electron main's Workspace content read the authorized boundaries; It locks fresh proof to the same non-soft chain entity as the local lstat and is responsible for granting reuse/removal, stat-sized read and dual scope fence
+ * [OUTPUT]: Provides WorkspaceFileReadAuthority: TTL-bound opaque readRef grants tied to canonical path plus dev/ino identity, with reuse, release, and size-bounded read helpers
+ * [POS]: Electron main's authorization boundary for workspace file reads; each grant re-verifies the target is still the same non-symlink entity via lstat before it is reused, released, or read, scoped to both its workspace and readRef
  */
 
 import { randomUUID } from "node:crypto";

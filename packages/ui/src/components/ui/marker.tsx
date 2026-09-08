@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: Depends on React, class-variance-authority, and cn
+ * [OUTPUT]: Provides Marker, MarkerIcon, and MarkerContent row primitives
+ * [POS]: The tool/status row marker of components/ui shared by chat turns and ThinkingShimmer
+ */
+
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -57,4 +63,4 @@ function MarkerContent({ className, ...props }: React.ComponentProps<"span">) {
   )
 }
 
-export { Marker, MarkerContent, MarkerIcon, markerVariants }
+export { Marker, MarkerContent, MarkerIcon }

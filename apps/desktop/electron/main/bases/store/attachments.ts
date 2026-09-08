@@ -1,13 +1,12 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/path, shared attachment Budget and Gallery image header parser; Receive the owner file stem + lifecycle id and final bytes
+ * [INPUT]: Depends on Node crypto/fs/path, the commit-kernel durable write and errno guard, shared attachment budgets, and the Gallery image header parser; receives the owner file stem + lifecycle id and final bytes
  * [OUTPUT]: Provides content addresses AttachmentStore, family copy, data URL parsing, reserve→commit/release, incrementally accounted budget, ownership, read and deleted-proven, clean
  * [POS]: The source of the truth of the blob of bases/store; Final bytes hashed by magic/header after a second test, the directory physical name with owner lifecycle
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   mkdir,
-  open,
   cp,
   readFile,
   readdir,
@@ -24,7 +23,7 @@ import {
 } from "../../../../shared/bases/gallery-attachments";
 import type { BaseAttachmentValue } from "../../../../shared/bases-ipc";
 import { parseAttachmentImageHeader } from "../../gallery/image-header";
-import { fsyncParent } from "./commit-kernel";
+import { durableAtomicWrite, isErrnoCode } from "./commit-kernel";
 
 type Reservation = {
   chatKey: string;
@@ -79,7 +78,7 @@ export class BaseAttachmentStore {
     const exists = await stat(destination).then(
       () => true,
       (cause) => {
-        if ((cause as NodeJS.ErrnoException).code === "ENOENT") return false;
+        if (isErrnoCode(cause, "ENOENT")) return false;
         throw cause;
       }
     );
@@ -89,7 +88,7 @@ export class BaseAttachmentStore {
     try {
       if (!exists) {
         await mkdir(directory, { recursive: true, mode: 0o700 });
-        await writeImmutable(destination, input.bytes);
+        await durableAtomicWrite(destination, input.bytes);
         this.commit(reservation!);
       }
     } catch (cause) {
@@ -169,14 +168,14 @@ export class BaseAttachmentStore {
     try {
       entries = await readdir(directory, { withFileTypes: true });
     } catch (cause) {
-      if (isCode(cause, "ENOENT")) return;
+      if (isErrnoCode(cause, "ENOENT")) return;
       throw cause;
     }
     const doomed: string[] = [];
     const temporary: string[] = [];
     for (const entry of entries) {
       if (!entry.isFile()) continue;
-      // writeImmutable 崩溃遗留的 tmp 从未入账：删它不动账目。
+      // durableAtomicWrite 崩溃遗留的 tmp 从未入账：删它不动账目。
       if (entry.name.endsWith(".tmp")) temporary.push(entry.name);
       else if (
         /^att_[a-f0-9]{64}\./.test(entry.name) &&
@@ -223,7 +222,7 @@ export class BaseAttachmentStore {
         errorOnExist: false,
       });
     } catch (cause) {
-      if (!isCode(cause, "ENOENT")) throw cause;
+      if (!isErrnoCode(cause, "ENOENT")) throw cause;
     }
     const key = this.familyKey(toStem, toInstanceId);
     this.forget(key);
@@ -239,7 +238,7 @@ export class BaseAttachmentStore {
     try {
       await rename(source, `${source}.orphan-${timestamp}`);
     } catch (cause) {
-      if (!isCode(cause, "ENOENT")) throw cause;
+      if (!isErrnoCode(cause, "ENOENT")) throw cause;
     }
     // `.orphan-<ts>` 已不叫 `.attachments`：initialize 不再认它，账目也该忘记它。
     this.forget(this.familyKey(ownerStem, ownerInstanceId));
@@ -255,13 +254,13 @@ export class BaseAttachmentStore {
     try {
       entries = await readdir(directory, { withFileTypes: true });
     } catch (cause) {
-      if (isCode(cause, "ENOENT")) return 0;
+      if (isErrnoCode(cause, "ENOENT")) return 0;
       throw cause;
     }
     let bytes = 0;
     for (const file of entries) {
       if (!file.isFile()) continue;
-      // writeImmutable 崩溃遗留的 tmp 不入预算，就地清理。
+      // durableAtomicWrite 崩溃遗留的 tmp 不入预算，就地清理。
       if (file.name.endsWith(".tmp")) {
         if (sweepTemporary) {
           await rm(join(directory, file.name), { force: true }).catch(
@@ -351,35 +350,9 @@ export function parseAttachmentDataUrl(value: string) {
   return { mediaType: match[1]!, bytes };
 }
 
-async function writeImmutable(path: string, content: Buffer) {
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  const file = await open(temporary, "wx", 0o600);
-  try {
-    await file.writeFile(content);
-    await file.sync();
-  } finally {
-    await file.close();
-  }
-  try {
-    await rename(temporary, path);
-    await fsyncParent(path);
-  } catch (cause) {
-    await rm(temporary, { force: true }).catch(() => undefined);
-    throw cause;
-  }
-}
-
 function mediaTypeFor(extension: string): BaseAttachmentValue["mediaType"] {
   if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
   if (extension === "webp") return "image/webp";
   if (extension === "gif") return "image/gif";
   return "image/png";
-}
-
-function isCode(cause: unknown, code: string) {
-  return (
-    cause instanceof Error &&
-    "code" in cause &&
-    (cause as NodeJS.ErrnoException).code === code
-  );
 }

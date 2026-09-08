@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on SettledTurn from chat-turn-reducer ((plan tag + content) and DTO approval from agent-ipc
- * [OUTPUT]: Provides main/renderer shared, explicitly blocked PlanRequested Plan message classification pure function, and reconnects with plan-review mode after decision
- * [POS]: The shared Plan End-Mode classification is a single source of truth; The original plan item is not intended to be used as a guessing item; The main task of the project is to create a new version of the project
+ * [INPUT]: Depends on the settled-turn shape from chat-turn-reducer (plan tag + content) and AgentApprovalRequest/AgentApprovalDecision from agent-ipc
+ * [OUTPUT]: Provides planMessageKind, classifying a settled turn as a blocked "plan" message, and planModeAfterPlanReview, deciding whether Plan mode continues after a plan-review decision
+ * [POS]: Single source of truth for Plan-mode classification, shared by main and renderer; must stay in lockstep with the acp map-events plan-review detection or a turn can be double-classified as a plan message
  */
 
 import type {
@@ -10,7 +10,7 @@ import type {
 } from "./agent-ipc";
 
 /** 与 TurnSnapshot.terminal / SourceTerminal.type 同词表，调用方零翻译直传 */
-export type ChatTurnTerminal = "done" | "cancelled" | "error";
+type ChatTurnTerminal = "done" | "cancelled" | "error";
 
 export function planMessageKind(
   terminal: ChatTurnTerminal,

@@ -34,6 +34,8 @@ const RETRYABLE_READS = new Set<DatabaseCommand["kind"]>([
   "get-timeline-around",
   "get-outline-page",
   "find-messages",
+  "prepare-chat-history",
+  "read-chat-history",
   "get-operation-receipt",
   "list-attachment-ids",
   "has-attachment-reference",
@@ -64,7 +66,7 @@ type Pending = {
   timer: ReturnType<typeof setTimeout>;
 };
 
-export class ChatDatabaseError extends Error {
+class ChatDatabaseError extends Error {
   override name = "ChatDatabaseError";
   constructor(readonly failure: ChatDatabaseFailure) {
     super(failure.message);

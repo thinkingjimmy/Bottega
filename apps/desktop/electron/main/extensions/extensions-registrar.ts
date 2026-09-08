@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on rendererIpc, Project lifecycle authority, scoped Extension owners, and diagnostic AgentPluginInventory
+ * [INPUT]: Depends on rendererIpc, Project lifecycle authority, scoped Extension owners, and diagnostic AgentPluginInventory, and statusError from main/errors
  * [OUTPUT]: Provides scope-aware Extension IPC v2, exact-owner CAS validation, renderer-safe owned snapshots, and independently isolated revision-only invalidation fan-out
  * [POS]: Main-only renderer boundary; scope filtering and Project incarnation checks finish before any lifecycle mutation or DTO projection
  */
@@ -21,6 +21,7 @@ import {
   type ProductResourceScope,
 } from "../../../shared/product-resource-scope";
 import type { AgentBackendId } from "../../../shared/agent-ipc";
+import { statusError } from "../errors";
 import { rendererIpc } from "../ipc-registrar";
 import type { ProjectsService } from "../projects/projects-service";
 import type {
@@ -81,7 +82,7 @@ export function registerExtensions(
   window.once("closed", unsubscribe);
 
   const snapshot = (query: ExtensionScopeQuery) => projectSnapshot(deps, query);
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的扩展请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的扩展请求")
     .roles("main")
     .handle(EXTENSIONS_CHANNEL.list, (raw) =>
       snapshot(assertExtensionQuery(raw, deps))
@@ -278,9 +279,9 @@ async function projectSnapshot(
         .map((generation) => ({
           generationId: generation.packageGenerationId,
           resolvedCommit:
-            deps.registry.generationSource(generation.packageGenerationId)
+            deps.registry.installs.generationSource(generation.packageGenerationId)
               ?.resolvedCommit ?? "",
-          blockerCount: deps.registry.blockers({
+          blockerCount: deps.registry.lifecycle.blockers({
             packageGenerationId: generation.packageGenerationId,
             recordDigest: generation.recordDigest,
           }).length,
@@ -343,7 +344,7 @@ function projectPreflight(
   };
 }
 
-export function assertExtensionPreflightInput(
+function assertExtensionPreflightInput(
   raw: unknown,
   deps: ExtensionsRegistrarDependencies
 ) {
@@ -426,7 +427,7 @@ export function assertExtensionQuery(
   );
 }
 
-export function assertExtensionMutation(
+function assertExtensionMutation(
   raw: unknown,
   deps: ExtensionsRegistrarDependencies,
   extraKeys: readonly string[] = []
@@ -534,5 +535,5 @@ function assertRevision(raw: unknown, field: string) {
 }
 
 function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }

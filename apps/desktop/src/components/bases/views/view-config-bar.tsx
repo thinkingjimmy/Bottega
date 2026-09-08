@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, shadcn Select, ui cn, tailwind classes, and the editors EMPTY_SELECT_VALUE sentinel
  * [OUTPUT]: Provides ViewConfigBar containers, the ViewConfigSelect control, and viewConfigHitAreaClass (28px visual / 44px hit area)
- * [POS]: bases/views are set to view in native language, map and galleryJust send the id intent and permanently to the workbench
+ * [POS]: The view-local settings bar shared by Table/Map/Gallery views; it only emits id-based intent, leaving persistence to the workbench
  */
 
 import type { ReactNode } from "react";

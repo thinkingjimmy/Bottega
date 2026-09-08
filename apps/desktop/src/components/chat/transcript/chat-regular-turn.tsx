@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on projected assistant messages, structured Agent failures, localized copy/fork action, and a prebuilt process timeline
- * [OUTPUT]: Provides RegularChatTurn, the final-response/error/usage-limit presentation and optional fork action for non-plan assistant turns
+ * [INPUT]: Depends on projected assistant messages, the persisted ProductFailure when one exists, localized copy/fork action, and a prebuilt process timeline
+ * [OUTPUT]: Provides RegularChatTurn, the final-response/error/usage-limit presentation and optional fork action for non-plan assistant turns; an error row without a persisted failure shows its raw text and never a synthesized code
  * [POS]: Chat transcript terminal renderer; keeps user-facing failure projection separate from the process-heavy turn renderer
  */
 
@@ -13,7 +13,7 @@ import {
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import type { AssistantChatMessage } from "../../../../shared/chats-ipc";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { agentFailureCopy, rendererAgentFailure } from "@/lib/agent-failure";
+import { agentFailureCopy } from "@/lib/agent-failure";
 import { skillFailureText } from "@/lib/skill-failure-text";
 import { ChatMessageActions } from "./chat-message-actions";
 import { TurnErrorCard } from "./chat-error-card";
@@ -41,19 +41,7 @@ export function RegularChatTurn({
   forkDisabledReason?: string;
 }) {
   const { t } = useAppTranslation();
-  const legacyCode =
-    message.failureKind === "auth-required"
-      ? "auth-required"
-      : message.failureKind === "usage-limit"
-        ? message.usageLimit?.window === "provider"
-          ? "rate-limited"
-          : "quota-exhausted"
-        : "unknown";
-  const failure =
-    message.failure ??
-    (message.isError
-      ? rendererAgentFailure(legacyCode, message.content || undefined)
-      : undefined);
+  const failure = message.failure;
   const failureCopy = failure
     ? agentFailureCopy(t, failure, {
         backend: backendDisplayName,
@@ -86,7 +74,8 @@ export function RegularChatTurn({
         <TurnErrorCard
           backend={backendDisplayName}
           backendId={backendId}
-          failure={failure ?? rendererAgentFailure("unknown")}
+          failure={failure}
+          message={content}
           onContinue={showContinue ? onContinue : undefined}
         />
       ) : (

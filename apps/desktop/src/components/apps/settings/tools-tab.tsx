@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on the App capability snapshot IPC, react-router navigation, localized status maps, and Settings primitives
- * [OUTPUT]: Provides ToolsTab — the live tool/Skill/MCP snapshot with its own re-detect revision and the exit to global tool settings
+ * [OUTPUT]: Reads cached tool/Skill/MCP health and refreshes its projection after every explicit Agent tool check, including failures.
  * [POS]: The second body of components/apps/settings; the capability snapshot is read here and nowhere else
  */
 
@@ -20,7 +20,7 @@ import {
   SettingsSection,
 } from "@/components/settings/settings-layout";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { readAppCapabilities } from "@/lib/apps-client";
+import { readAppCapabilities, checkAppAgentTools } from "@/lib/apps-client";
 import type { AppCapabilitiesSnapshot } from "../../../../shared/apps-ipc";
 import type { AppSettingsTabProps } from "./tab-shell";
 
@@ -56,13 +56,14 @@ export function ToolsTab({ record, fail, onClose }: AppSettingsTabProps) {
   const { t } = useAppTranslation();
   const navigate = useNavigate();
   const [capabilities, setCapabilities] = useState<AppCapabilitiesSnapshot | null>(null);
+  const [checking, setChecking] = useState(false);
   const [revision, setRevision] = useState(0);
 
   useEffect(() => {
     let active = true;
     void readAppCapabilities(record.id)
       .then((next) => { if (active) setCapabilities(next); })
-      .catch((cause) => { if (active) fail(cause, t("apps.settingsReadFailed")); });
+      .catch((cause) => { if (active) { setCapabilities(null); fail(cause, t("apps.settingsReadFailed")); } });
     return () => { active = false; };
   }, [fail, record.id, revision, t]);
 
@@ -80,7 +81,13 @@ export function ToolsTab({ record, fail, onClose }: AppSettingsTabProps) {
       <SettingsSection
         action={
           <SettingsButton
-            onClick={() => setRevision((value) => value + 1)}
+            disabled={checking}
+            onClick={async () => {
+              setChecking(true);
+              try { await checkAppAgentTools(record.id); }
+              catch (cause) { fail(cause, t("apps.settingsReadFailed")); }
+              finally { setRevision((value) => value + 1); setChecking(false); }
+            }}
             variant="outline"
           >
             <RefreshCw />

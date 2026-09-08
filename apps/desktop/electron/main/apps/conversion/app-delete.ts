@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on lifecycle admission/intents, App/Project/Chat/Base authorities, generation/build/data/grant settlement ports, App shell cleanup, and idempotent finalization
+ * [INPUT]: Depends on lifecycle admission/intents, App/Project/Chat/Base authorities, generation/build/data/grant settlement ports, App shell cleanup, the main/errors statusError factory, and idempotent finalization
  * [OUTPUT]: Provides replayable cascade/retain-data deletion in data→placement→shell order; placement cleanup is idempotent and reports the Projects it actually touched
  * [POS]: Durable App deletion saga; same-mode concurrent clicks, retries, and crash recovery converge on one monotonic intent, a differing mode is refused instead of silently adopting the flight's disposition, and a recordless replay only finalizes because startup reconciliation owns orphan placements
  */
@@ -8,6 +8,7 @@ import type {
   AppRecord,
   RemoveAppInput,
 } from "../../../../shared/apps-ipc";
+import { statusError } from "../../errors";
 import type {
   AdmissionGate,
   SagaResult,
@@ -18,7 +19,7 @@ import type { ProjectsService } from "../../projects/projects-service";
 import type { ConversationCoordinator } from "../../sections/coordinator/conversation-coordinator";
 import type { AppStore } from "../store/app-store";
 
-export type AppDeleteDependencies = {
+type AppDeleteDependencies = {
   store: AppStore;
   projects: ProjectsService;
   intents: LifecycleIntentStore;
@@ -115,7 +116,7 @@ export class AppDeleteService {
         statusError(
           409,
           "该 App 正在以另一种数据处置方式删除，请等待其结束后重试",
-          APP_DELETE_MODE_CONFLICT
+          { code: APP_DELETE_MODE_CONFLICT }
         )
       );
     }
@@ -350,8 +351,4 @@ export class AppDeleteService {
 function recoveryProjectId(intent: LifecycleIntent) {
   const value = intent.recoveryState.projectId;
   return typeof value === "string" ? value : null;
-}
-
-function statusError(status: number, message: string, code?: string) {
-  return Object.assign(new Error(message), code ? { status, code } : { status });
 }

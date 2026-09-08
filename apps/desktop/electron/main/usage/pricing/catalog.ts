@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node crypto and models.dev `/api.json` The incredible provider/model data
- * [OUTPUT]: Provides PricingCatalog Conversion, three-dimensional rate calibration, stable abstract, overlay and seed integrity checks
- * [POS]: The only directory of usage/pricing converts boundaries; External JSON is narrowed and runs on a trusted catalog
+ * [INPUT]: Depends on Node crypto and the raw models.dev `/api.json` provider/model payload
+ * [OUTPUT]: Provides PricingCatalog conversion from models.dev, per-model rate validation, stable digests, catalog overlay, and seed integrity checks
+ * [POS]: The only usage/pricing conversion boundary; external JSON is validated here before becoming a trusted catalog
  */
 
 import { createHash } from "node:crypto";
@@ -177,7 +177,7 @@ export function catalogDigest(catalog: PricingCatalog, provenance: unknown) {
   return stableDigest({ catalog, provenance });
 }
 
-export function assertSeedCatalog(catalog: PricingCatalog) {
+function assertSeedCatalog(catalog: PricingCatalog) {
   for (const provider of PROVIDERS) {
     if (Object.keys(catalog.providers[provider]).length === 0) {
       throw new Error(`seed 缺少 ${provider} provider`);

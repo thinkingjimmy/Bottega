@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Policy/Delivery v3 Consent grant project Backfill controller Managed Runtime reset and MemorySpaceGate
- * [OUTPUT]: Provides stable operation ID+ increment attempt, boot-first restoreable rebuild driver, original/replacement associated snapshot, turn-by-turn progress and last Policy fence end-of-life
- * [POS]: The main/memory/orchestration rebuild saga owner; MemoryService only authorizes with UI façade, Store does not reset the network
+ * [INPUT]: Depends on Policy/Delivery consent grants, the backfill controller, cleanup runner, ManagedRuntimeRegistry, and MemorySpaceGate
+ * [OUTPUT]: Provides MemoryRebuildController: start/recover a rebuild attempt with a stable operation id, replacement-instance activation, per-turn progress, and completion under the Policy fence
+ * [POS]: The main/memory/orchestration rebuild saga owner; MemoryService only authorizes through this façade, the delivery store never resets the network itself
  */
 
 import type { MemoryEffectiveTarget } from "../../../../shared/memory-ipc";

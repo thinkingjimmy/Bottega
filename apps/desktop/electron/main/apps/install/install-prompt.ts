@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the standardized GitHub URL and product-free single-wheel server context
- * [OUTPUT]: Provides createInstallAnalysisPrompt, requiring only the maintenance Agent to read the inference manifest and trigger the sublayer contract
+ * [INPUT]: Depends on an explicitly selected analysis backend and the versioned Web manifest schema
+ * [OUTPUT]: Provides a read-only analysis prompt requiring structured commands, actual script digests and complete platform entry maps
  * [POS]: An analysis instruction template for Apps/install sub-modules that defines the boundaries between the App GUI and the server Agent, and does not assume execution or trust decisions
  */
 
@@ -11,7 +11,12 @@ export function createInstallAnalysisPrompt(repoUrl: string) {
 1. 阅读 README、package.json 与关键源码，判断这个应用的运行形态：
    - 若它是纯前端应用（构建产物可静态托管，无自定义 server/middleware/API），型别为 static；
    - 若它依赖自身的 dev server、middleware 或后端进程才能完整工作，型别为 server。
-2. 推断 installCmd（如 "pnpm install"）。static 型推断 buildCmd 与产物目录 staticDir
+2. 输出 executionSchemaVersion: 1。installCmd/buildCmd/startCmd 必须是结构化命令，禁止 shell 字符串。
+   命令 schema 为 bottega.app-command/v1，target.runtime 选择 node/npm/pnpm/yarn/bash/zsh/pwsh，
+   argv 为字符串数组，cwd 为 App 内相对路径，env 只引用声明 config 或 Host 的 PORT/HOST/APP_DATA_DIR。
+   Node/shell 使用冻结的包内 script.path 和真实文件 SHA-256；不得编造摘要或生成内联脚本。
+   平台差异声明 target.platforms 的 darwin/win32/linux 全套入口，不能把 zsh 文本翻译成 cmd。
+   不需要 install/build 时置 null。static 型推断 buildCmd 与产物目录 staticDir
    ——若仓库本身就是可直接托管的静态站点（已有可用的 index.html），buildCmd 置 null、
    staticDir 指向该目录（可为 "."）。server 型推断 startCmd。
    staticDir 必须是仓库内的相对路径，禁止绝对路径与 ".."。

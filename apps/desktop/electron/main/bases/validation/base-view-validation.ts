@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared Base view/filter/column DTO, aggregation matrix and filter column
+ * [INPUT]: Depends on shared Base view/filter/column DTO, the aggregation matrix, the filter column walker, and statusError from main/errors
  * [OUTPUT]: Validates view/column references, filters, and Gallery attachment fields, and scrubs references to removed columns and formulas
  * [POS]: The view-model rules of bases/validation; BasesService only organizes transactions, not cross-view branches
  */
@@ -7,6 +7,7 @@
 import {
   baseAggregationsForColumn,
   baseFormulaDependencies,
+  filterColumnIds,
   filterReferencesColumn,
   isColumnScopedView,
   isGroupableView,
@@ -15,6 +16,9 @@ import {
   type BaseView,
 } from "../../../../shared/bases-ipc";
 import type { ChartItem } from "../../../../shared/base-view-config";
+import { statusError } from "../../errors";
+
+const validationError = (message: string) => statusError(400, message);
 
 export function validateBaseView(
   view: BaseView,
@@ -65,7 +69,7 @@ export function validateBaseView(
   if (config.filter) {
     assertAttachmentFilter(config.filter, columns);
   }
-  visitFilter(config.filter, (id) => referenced.add(id));
+  for (const id of filterColumnIds(config.filter)) referenced.add(id);
   for (const id of referenced) {
     if (!columns.has(id)) {
       throw validationError(
@@ -131,13 +135,13 @@ function validateCharts(
         throw validationError(`列 ${column.name} 不能作为图表次维度`);
       }
     }
-    visitFilter(item.filter, (id) => {
+    for (const id of filterColumnIds(item.filter)) {
       if (!columns.has(id)) {
         throw validationError(
           `视图 ${view.name} 的图表筛选引用了未知列 ${id}`
         );
       }
-    });
+    }
   }
 }
 
@@ -196,17 +200,7 @@ function assertAttachmentFilter(
   }
 }
 
-function visitFilter(
-  filter: BaseFilter | undefined,
-  visit: (columnId: string) => void
-) {
-  if (!filter) return;
-  if (filter.kind === "condition") return visit(filter.columnId);
-  if (filter.kind === "not") return visitFilter(filter.filter, visit);
-  filter.filters.forEach((child) => visitFilter(child, visit));
-}
-
-export function scrubBaseView(
+function scrubBaseView(
   view: BaseView,
   removed: ReadonlySet<string>
 ): BaseView {
@@ -367,8 +361,4 @@ function scrubChart(
     next.filterScrubbed = true;
   }
   return next;
-}
-
-function validationError(message: string) {
-  return Object.assign(new Error(message), { status: 400 });
 }

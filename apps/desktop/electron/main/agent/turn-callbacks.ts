@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on TurnRegistry projection lane, runtime registry, MCP-plan-bound session persistence, image projection, MCP/server-fact observation and subagent reducer
- * [OUTPUT]: Provides createTurnCallbacks connecting backend events to ProductFailure-aware projections, atomic session+tool-plan binding, release/health owners and terminal finalization
- * [POS]: The turn event of the agent sub-module is re-routed to the factory; Generating fence In this unified gate, the agent-bridge is solely responsible for starting the sorting process
+ * [OUTPUT]: Projects typed turn outcomes, provider identity and Chat-local availability evidence; only complete success grants operation evidence, without rewriting global probe auth.
+ * [POS]: Factory wiring backend turn events into agent-bridge projections behind a single generation fence; agent-bridge itself only starts and routes turns
  */
 
 import type { SessionServiceTierEffective } from "../../../shared/agent-ipc";
@@ -98,6 +98,7 @@ export function createTurnCallbacks(
             },
           }
         : session;
+      await options.assertTurnAdmission?.(entry.payload!);
       threadScopes.bind(bound, entry.conversationId);
       boundSession = bound;
       await options.onSessionBound?.(
@@ -248,14 +249,20 @@ export function createTurnCallbacks(
         if (terminal.type === "done") {
           backendRuntimeRegistry.markTurnSuccess(
             backend.id,
-            runtimeGeneration
+            runtimeGeneration,
+            context.availabilityStart
           );
         } else if (terminal.failureKind === "auth-required") {
           backendRuntimeRegistry.markAuthFailure(
             backend.id,
-            runtimeGeneration
+            runtimeGeneration,
+            context.availabilityStart
           );
         }
+        if (context.availabilityStart && terminal.failure?.code === "connection-lost") backendRuntimeRegistry.recordTurn(context.availabilityStart, "connection");
+        if (context.availabilityStart && terminal.failure?.code === "service-unavailable") backendRuntimeRegistry.recordTurn(context.availabilityStart, "service");
+        if (terminal.type === "cancelled") backendRuntimeRegistry.evidence.discardRetry(entry.requestId);
+        if (terminal.failureKind === "usage-limit" && context.availabilityStart) backendRuntimeRegistry.recordTurn(context.availabilityStart, "usage-limit", terminal.usageLimit);
         observe(
           finalizeEntry(entry, terminal, options, generation),
           `terminal requestId=${entry.requestId}`
@@ -266,9 +273,15 @@ export function createTurnCallbacks(
         if (failure.kind === "auth-required") {
           backendRuntimeRegistry.markAuthFailure(
             backend.id,
-            runtimeGeneration
+            runtimeGeneration,
+            context.availabilityStart ? { ...context.availabilityStart, target: { ...context.availabilityStart.target, ...(failure.target?.providerId ? { providerId: failure.target.providerId } : {}) } } : undefined
           );
         }
+        const failureStart = context.availabilityStart ? { ...context.availabilityStart,
+          target: { ...context.availabilityStart.target, ...(failure.target?.providerId ? { providerId: failure.target.providerId } : {}) } } : undefined;
+        if (failureStart && failure.failure?.code === "connection-lost") backendRuntimeRegistry.recordTurn(failureStart, "connection");
+        if (failureStart && failure.failure?.code === "service-unavailable") backendRuntimeRegistry.recordTurn(failureStart, "service");
+        if (failure.kind === "usage-limit" && failureStart) backendRuntimeRegistry.recordTurn(failureStart, "usage-limit", failure.limit);
         observe(
           finalizeEntry(
             entry,

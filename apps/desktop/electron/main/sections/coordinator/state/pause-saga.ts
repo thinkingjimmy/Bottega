@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared typed notice/action, stableId and relay/outbox structure of the ledger
- * [OUTPUT]: Provides action schema containing settledAt, atom freezePause, end/expired action with canonical notice
- * [POS]: PauseSaga pure state unit of coordinator/state; Suspend facts, button facts and notice outbox in a ledger commit
+ * [OUTPUT]: Provides relayActionSchema, freezePause (atomically opens a pause action plus its canonical notice and expires any stale active action for the chain), settleAction (continued/discarded), and actionSnapshot
+ * [POS]: PauseSaga pure state unit of coordinator/state; folds pause, continue/discard, and expiry facts together with the notice outbox into one ledger commit
  */
 
 import { z } from "zod";

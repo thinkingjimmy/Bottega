@@ -9,7 +9,6 @@ import type { appsEn } from "./en";
 export const appsFr: typeof appsEn = {
   provider: {
     listFailed: "Échec du chargement des Apps : {{message}}",
-    browserFallbackDescription: "App de secours du navigateur depuis {{url}}",
   },
   presets: {
     designCanvas: {
@@ -144,12 +143,14 @@ export const appsFr: typeof appsEn = {
     aboutToInstall: "Prêt à télécharger et installer",
     permissionsWarning: "L’installation et l’exécution utilisent vos droits utilisateur, y compris l’accès aux fichiers et au réseau.",
     trustedOnly: "N’ajoutez que des dépôts de confiance.",
+    authorManifestInstall: "Installer depuis le manifeste de l’auteur",
+    agentAnalysis: "Utiliser l’analyse Agent (facultatif)",
+    authorManifestHint: "Les manifestes versionnés permettent une installation directe. Choisissez l’analyse Agent pour demander à un Agent autorisé de préparer la description d’installation.",
     runtimeAgent: "Agent d’exécution",
     repositoryAddress: "Adresse du dépôt",
     nextStep: "Ensuite, les objets Git sont lus sans checkout afin d’identifier le paquet. Aucun code du dépôt ne sera exécuté et aucune App ne sera créée à cette étape.",
   },
   card: {
-    browserFallback: "Repli navigateur",
     preparing: "Préparation de {{name}}",
     awaitingAuthorization: "Confirmez les autorisations pour continuer",
     operationFailed: "Échec de l’opération",
@@ -337,7 +338,6 @@ export const appsFr: typeof appsEn = {
   },
   detail: {
     startFailed: "Échec du lancement de l’App",
-    placeholder: "Cet exemple de démonstration ne peut pas s’exécuter. Utilisez le + en haut à droite pour ajouter une vraie App GitHub.",
     crashed: "Le processus App s’est arrêté de manière inattendue",
     stopped: "L’App est arrêtée",
     viewLog: "Voir le journal",

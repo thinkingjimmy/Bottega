@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, Node crypto/fs, Chat/Project stores, ChatHome/Purge journals, Coordinator pending CreationIntent/conversation critical area, ProjectsService durable cleanup, ChatsService deletion-resource chain, and optional Memory rebuild port
- * [OUTPUT]: Provides ArchiveService: explicitly archived Agent-identified Chat projection carrying read-only capability, admission-first immutable local-only/cleanup-and-rebuild purge that refuses read-only Chats, short Project intent/CAS, canonical+pending member snapshot, verified/record-only tokenized preview, and legacy Home convergence through the shared deletion helper
+ * [OUTPUT]: Provides archiveService: explicitly archived Agent-identified Chat projection carrying read-only capability, admission-first immutable local-only/cleanup-and-rebuild purge that refuses read-only Chats, short Project intent/CAS, canonical+pending member snapshot, verified/record-only tokenized preview, and legacy Home convergence through the shared deletion helper
  * [POS]: The trans-book coordinator of the archive module; The product gate only packs intent/CAS, Memory receipt/drain/network both outside the gate and hold multiple conversation locks at different times
  */
 
@@ -99,7 +99,7 @@ export class ArchiveService {
 
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
-    rendererIpc(window, rendererUrl, "拒绝非主窗口的归档请求")
+    rendererIpc(rendererUrl, "拒绝非主窗口的归档请求")
       .handle(ARCHIVE_CHANNEL.list, () => this.snapshot())
       .handle(ARCHIVE_CHANNEL.archive, (targets) =>
         this.archive(this.assertTargets(targets))

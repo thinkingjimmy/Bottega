@@ -16,6 +16,7 @@ import type {
   PutAttachmentInput,
 } from "../../../shared/bases-ipc";
 import {
+  BASE_COLUMN_LIMIT,
   isColumnScopedView,
   isGroupableView,
   visibleBaseColumns,
@@ -135,7 +136,7 @@ function findGeneratedColumn(
   preferred: string,
   type: BaseColumnType
 ) {
-  for (let index = 1; index <= 64; index += 1) {
+  for (let index = 1; index <= BASE_COLUMN_LIMIT; index += 1) {
     const id = index === 1 ? preferred : `${preferred}_${index}`;
     const column = columns.find((candidate) => candidate.id === id);
     if (!column || column.type === type) return id;
@@ -145,7 +146,7 @@ function findGeneratedColumn(
 
 function allocateColumn(columns: BaseColumn[], preferred: string) {
   if (!columns.some((column) => column.id === preferred)) return preferred;
-  for (let index = 2; index <= 64; index += 1) {
+  for (let index = 2; index <= BASE_COLUMN_LIMIT; index += 1) {
     const id = `${preferred}_${index}`;
     if (!columns.some((column) => column.id === id)) return id;
   }

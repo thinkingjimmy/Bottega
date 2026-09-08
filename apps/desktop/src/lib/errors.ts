@@ -1,7 +1,7 @@
 /**
  * [INPUT]: No external dependence
  * [OUTPUT]: Provides errorMessage (user-readable text with the IPC envelope, the machine-code prefix, and a bare all-caps code stripped), failureCode (the stable code for localized classification), and reportedFailure/isReportedFailure
- * [POS]: The only source of Error in the renderer is the instance of Error, a three-dimensional copy of the component layer handwritten by the substitute
+ * [POS]: Renderer's single place for turning thrown errors into human-readable text; strips IPC envelope and machine-code prefixes so components never hand-roll that parsing themselves
  */
 
 /* ── 码归日志，人话归人 ────────────────────────────────────────────

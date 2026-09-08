@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Policy/Delivery/RecallStats, MemoryAuthority/Network, turn receipt and Chat headings read-only ports
- * [OUTPUT]: PrOvides pause, still retain the state/provide projections in the final authorization range, first cut back and then O(1) metadata source line, recall execution, prompt contribution and settled recall calculation purely compile functions
+ * [OUTPUT]: Provides currentMemoryStatus/currentMemorySupply projections, performMemoryRecall (deadline-raced recall execution), prepareMemoryContribution (leases a prompt contribution), and recordSettledRecall — all pure functions over injected state
  * [POS]: The coordinated boundaries of the main/memory/service/support observation; MemoryService only has owner and lifecycle, no statistics/recall algorithms
  */
 
@@ -23,9 +23,8 @@ import { sumStreams, type MemoryDeliveryStore } from "../../delivery/store";
 import type { MemoryRebuildController } from "../../orchestration/rebuild-controller";
 import type { MemoryTurnSettledEvent } from "../memory-state";
 import {
-  emptyRecallProjection,
-  pausedRecallProjection,
   projectMemoryStatus,
+  recallProjection,
   unavailableRecallProjection,
 } from "../memory-status";
 import type { MemoryPolicyStore } from "../../policy/store";
@@ -113,7 +112,7 @@ export async function performMemoryRecall(input: Readonly<{
   setWarning(next: string | null): void;
 }>): Promise<MemoryRecallProjection> {
   if (input.admission.kind !== "eligible") {
-    return emptyRecallProjection(input.admission.requestId);
+    return recallProjection(input.admission.requestId, { kind: "none" });
   }
   const context = input.admission.context;
   let controller: AbortController | null = null;
@@ -138,7 +137,7 @@ export async function performMemoryRecall(input: Readonly<{
     );
     if (!input.authority.validateFrozen(context, proof)) {
       if (input.policy.snapshot().state.pausedAt !== null) {
-        return pausedRecallProjection(context.requestId);
+        return recallProjection(context.requestId, { kind: "skipped", reason: "paused" });
       }
       return unavailableRecallProjection(context.requestId, "stale-capability");
     }
@@ -150,10 +149,10 @@ export async function performMemoryRecall(input: Readonly<{
     });
   } catch (cause) {
     if (cause instanceof MemoryAbortError) {
-      return emptyRecallProjection(context.requestId);
+      return recallProjection(context.requestId, { kind: "none" });
     }
     if (input.policy.snapshot().state.pausedAt !== null) {
-      return pausedRecallProjection(context.requestId);
+      return recallProjection(context.requestId, { kind: "skipped", reason: "paused" });
     }
     const failureKind = cause instanceof MemoryDeadlineError
       ? "deadline"

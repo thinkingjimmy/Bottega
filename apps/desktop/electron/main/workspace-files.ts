@@ -6,7 +6,6 @@
 
 import { lstat, realpath } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import type { BrowserWindow } from "electron";
 import {
   WORKSPACE_DIRECTORY_INDEX_LIMIT,
   WORKSPACE_FILES_CHANNEL,
@@ -293,8 +292,8 @@ export class WorkspaceFileCatalog {
     );
   }
 
-  register(window: BrowserWindow, rendererUrl: string) {
-    rendererIpc(window, rendererUrl, "拒绝非主窗口的 Workspace 文件请求")
+  register(rendererUrl: string) {
+    rendererIpc(rendererUrl, "拒绝非主窗口的 Workspace 文件请求")
       .handle(WORKSPACE_FILES_CHANNEL.search, (value) =>
         this.search(assertWorkspaceFilesSearchInput(value))
       )

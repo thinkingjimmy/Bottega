@@ -36,7 +36,7 @@ Bottega 是一个本地优先的 macOS AI 编程 Agent 工作台。它连接你�
 
 每个 release 都会在 [Releases 页面](https://github.com/thinkingjimmy/Bottega/releases)发布三个平台的安装包。
 
-如果当前安装的是 0.1.0 或 0.1.1，请先手动下载并安装一次 [0.1.2](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.2)。旧版本的更新器存在问题，修复会在安装新版二进制后生效；Windows 继续通过手动下载安装包升级。
+如果当前安装的是 0.1.0 或 0.1.1，请先手动下载并安装一次 [0.1.3](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.3)。旧版本的更新器存在问题，修复会在安装新版二进制后生效；Windows 继续通过手动下载安装包升级。
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
@@ -57,6 +57,25 @@ xattr -rd com.apple.quarantine /Applications/Bottega.app
 **Windows。** SmartScreen 可能提示「Windows 已保护你的电脑」，原因是发布者未被识别。点击**更多信息**，再点击**仍要运行**。
 
 签名与公证版本在计划中；在此之前，如果需要额外确认，请用 release 构建日志中打印的 SHA256 校验下载文件。
+
+## 升级到 0.1.3
+
+0.1.3 不迁移旧版的本地存储格式。已有聊天数据库会使启动停止并报告 schema 错误；重新安装应用不会改变该数据库。
+
+1. 完全退出 Bottega，包括后台进程，备份完整的应用数据目录，并保留外部 Chat Homes 与项目目录。
+2. 开始使用 0.1.3 时，将应用数据目录移到备份位置，不要删除。macOS 用户退出应用后可以执行：
+
+```bash
+bottega_data="$HOME/Library/Application Support/Bottega"
+bottega_backup="${bottega_data}.backup-$(date +%Y%m%d-%H%M%S)"
+mv -n "$bottega_data" "$bottega_backup"
+```
+
+3. 安装并启动 0.1.3，重新完成引导。旧版 Bottega 聊天、设置和已安装 App 记录不会自动导入；外部项目文件与官方 CLI 凭据仍保留在原位置。
+
+正式安装版的数据目录为：macOS 的 `~/Library/Application Support/Bottega`、Windows 的 `%APPDATA%\Bottega`、Linux 的 `$XDG_CONFIG_HOME/Bottega`（通常为 `~/.config/Bottega`）。应移动整个目录，包括数据库附属文件和相关记录；只移动 `bottega.sqlite3` 会留下不一致状态。开发构建使用独立的 `@ai-chat/desktop` 数据目录。
+
+若仍需通过旧版访问原有数据，请保留备份原样。恢复时先退出 0.1.3，另行归档它的新数据目录，再恢复原目录并打开对应旧版本。
 
 ## 从源码构建
 

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared GalleryMediaBridgeApi and preload window.galleryMedia
- * [OUTPUT]: Declare renderer: the type of the global Gallery Media Port (the consumer directly reads window.galleryMedia, absent is immediately downgraded)
- * [POS]: The IPC type of the src/lib/gallery connector; The components do not directly contact the Electron channel
+ * [OUTPUT]: Declares window.galleryMedia's renderer-side type; callers read it directly and degrade immediately when it is absent
+ * [POS]: The IPC type declaration for src/lib/gallery; components never touch the Electron channel directly
  */
 
 import type { GalleryMediaBridgeApi } from "../../../shared/gallery-media-ipc";

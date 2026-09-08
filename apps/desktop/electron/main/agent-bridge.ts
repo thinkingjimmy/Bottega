@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the backend registry, TurnRegistry, split public/internal Agent payload validation, hydrated Project Tools receipts, Chat commit, Gallery, Memory, MCP leases, frozen session configuration, and retry guards
- * [OUTPUT]: Provides canonical turn execution with runtime-only Project policy narrowing, MCP plan/session binding guards, same-session Speed convergence, ProductFailure-preserving finalization, leases, interaction/retry IPC, and shutdown
+ * [INPUT]: Depends on the backend registry, TurnRegistry, payload validation, Project Tools receipts, Chat commit, Gallery, Memory, MCP leases, frozen session configuration, retry guards, and turn activity policy
+ * [OUTPUT]: Provides canonical turn execution with scoped availability, Agent-switch activity gates, Project policy narrowing, MCP/session guards, Speed convergence, ProductFailure finalization, leases, interaction/retry IPC, and shutdown
  * [POS]: Main-process multi-backend turn executor; the conversation coordinator supplies already-admitted manual intent
  */
 
@@ -48,7 +48,8 @@ import type {
 import { executableIdentity } from "./custody/identity";
 import { createTurnCallbacks } from "./agent/turn-callbacks";
 import { ensurePersistedForDrain } from "./agent/drain-guard";
-import { assertInstalledRuntime } from "./agent/runtime-gate";
+import { assertAgentAvailable, assertInstalledRuntime } from "./agent/runtime-gate";
+import { switchActivityReason } from "./agent/turn-actions";
 import {
   retryAgentSameSession,
   retryAgentWithoutSession,
@@ -69,13 +70,21 @@ import { AgentActivityPublisher } from "./agent/activity-publisher";
 import { installAcpDraftTrace } from "./agent/trace-observer";
 import type { HydratedProjectTools } from "./sections/coordinator/admission/prepared-project-tools";
 import { createBridgeEventPublisher } from "./agent/bridge-event-publisher";
+import { snapshotStopOperations } from "./agent/snapshots/stop-operations";
+import { taskStartFence, StartDeferredError, requestOperation, type StopOperation } from "./presence/lifecycle/start-fence";
 
-const turns = new TurnRegistry<AgentTurn>();
+export const turns = new TurnRegistry<AgentTurn>();
 installAcpDraftTrace(turns);
 const subscriptions = new TokenizedSubscriptionBroker<BrowserWindow>();
-const requestReservations = new Set<string>();
+const requestReservations = new Map<string, { operation: StopOperation; settled: Promise<void> }>();
+
+export const agentStopOperations = () => snapshotStopOperations(turns.liveEntries(), [...requestReservations.values()].map(({ operation }) => operation));
+
+async function drainRequestReservations() {
+  while (requestReservations.size) await Promise.all([...requestReservations.values()].map(({ settled }) => settled));
+}
 const threadScopes = new ThreadScopeRegistry();
-const activity = new AgentActivityPublisher(turns);
+export const activity = new AgentActivityPublisher(turns);
 let shuttingDown = false;
 const { publish, publishState, observe } = createBridgeEventPublisher({
   turns,
@@ -123,27 +132,25 @@ export function registerAgentSteerOperation(requestId: string) {
   };
 }
 
-/**
- * staged 快照只能被「声明过它的那道围栏」读到，而围栏在 spawn 时就冻结了：
- * 插入消息的快照是此后才落盘的，注进去必然 EPERM——Agent 收到一条自己打不开
- * 的 `resource_link`。所以带附件的插入不进运行中的 turn。
- */
+// Staged snapshots created after spawn are outside the frozen filesystem grants,
+// so they must travel with a new turn that can actually read them.
 export const steerCarriesStagedSnapshot = (
   input: ResolvedAgentInput["input"]
 ) => input.some((item) => item.type === "mention" || item.type === "skill");
 
-/**
- * steer 注入的能力闸。outbox 的 ACK 窗口比 spawn 长得多，而插入消息可以带
- * `@Section` 图片——admission 时能力为真、注入时后端已换代，没有这道闸就是
- * fail-open：图片被静默丢弃或直接喂给一个不认图片的后端。
- */
+// Steer uses the existing turn's admitted capabilities despite later probe errors.
+// Unknown image support still fails closed.
 export async function assertSteerTurnCapabilities(
   backendId: AgentBackendId,
-  input: ResolvedAgentInput["input"]
+  input: ResolvedAgentInput["input"],
+  capabilities?: import("../../shared/agent-ipc").BackendCapabilities
 ) {
   const backend = backendById(backendId);
-  const snapshot = await backendRuntimeRegistry.resolve(backendId);
-  assertResolvedInputCapabilities(backend, input, snapshot.capabilities);
+  if (!capabilities) {
+    if (input.some((item) => item.type === "image")) throw new Error("Active turn capabilities are unknown");
+    return;
+  }
+  assertResolvedInputCapabilities(backend, input, capabilities);
 }
 
 export async function steerAgentTurn(
@@ -159,7 +166,7 @@ export async function steerAgentTurn(
   if (steerCarriesStagedSnapshot(input)) {
     return { outcome: "unconsumed", reason: "staged-resource" } as const;
   }
-  await assertSteerTurnCapabilities(entry.backend, input);
+  await assertSteerTurnCapabilities(entry.backend, input, (entry as BridgeEntry).context?.activeCapabilities);
   return entry.turn.steer(resolvedInputBlocks(input));
 }
 
@@ -179,7 +186,12 @@ async function spawnAgent(
     let runtimeGeneration: number | undefined;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const snapshot = await backendRuntimeRegistry.resolveForSpawn(backend.id);
-      assertInstalledRuntime(snapshot, backend.displayName);
+      const gateTarget = await backendRuntimeRegistry.executionTarget(backend.id, snapshot, {
+        cwd: context.workspace, model: payload.turnOptions.model ?? undefined,
+      });
+      assertAgentAvailable(snapshot, backend.displayName, {
+        conversationId: payload.scope.conversationId, requestId: payload.requestId, target: gateTarget,
+      });
       assertBackendCapabilities(backend, payload, snapshot.capabilities);
       entry.processLease = await acquireAgentProcessLease(
         backend.id,
@@ -247,6 +259,9 @@ async function spawnAgent(
           entry.origin,
           context
         );
+        context.activeCapabilities = { ...snapshot.capabilities };
+        const target = await backendRuntimeRegistry.executionTarget(backend.id, snapshot, { cwd: context.workspace, model: payload.turnOptions.model ?? undefined });
+        context.availabilityStart = backendRuntimeRegistry.evidence.beginTurn(entry.conversationId, entry.requestId, target);
         runtime = snapshot.runtime;
         runtimeGeneration = snapshot.generation;
         break;
@@ -286,12 +301,8 @@ async function spawnAgent(
         }
       }
     }
-    /* ============================================================
-     * intent 必须先于 spawn 落盘，且这条 attempt 的 dependency 集合在这里
-     * 就已闭合。resume 重试走的是同一个 requestId 但不同进程，所以每次进来
-     * 都换一条新 custody——把上一条的死亡证据盖在新进程头上，正是重启后
-     * 「杀错人」或「早 GC」的来源。
-     * ============================================================ */
+    // Persist custody before spawn. Each attempt needs its own process identity,
+    // even when resume retries reuse the request ID, to prevent stale cleanup.
     entry.custody = await options.beginTurnCustody?.({
       turnRequestId: payload.requestId,
       owner: context.custodyOwner ?? {
@@ -349,9 +360,8 @@ async function spawnAgent(
       ...(entry.backendSessionConfig
         ? { backendSessionConfig: entry.backendSessionConfig }
         : {}),
-      /* 本轮交出去的快照进读面。围栏与 staged 输入在这里才第一次同时在手，
-         而它们必须一起说话：少了这一步，附件/@Section/Skill 全是 EPERM。
-         由 bridge 一处补齐，四家后端各自的翻译层不必认识 staging。 */
+      // Only this bridge has both the frozen grants and staged input roots;
+      // authorize them together before any backend starts reading attachments.
       ...(context.filesystemAccess
         ? {
             filesystemAccess: {
@@ -390,9 +400,8 @@ async function spawnAgent(
     });
     turns.bindTurn(entry, turn, resolvedInput);
     const startupController = new AbortController();
-    /* 分步归因归 AcpTurn：哪一步卡住就报哪一步，带上已完成步骤的耗时。
-       这里只留「turn.start 自己没结算」的总兜底——它一旦出现在用户面前，
-       那是 bug 报告，不是操作指引，所以文案照实说是内部错误。 */
+    // AcpTurn reports individual startup steps; this deadline catches only a
+    // start operation that never settles and is therefore an internal failure.
     const outcome = await withDeadline(
       turn.start(startupController.signal),
       acpStartupBackstopMs(),
@@ -438,14 +447,17 @@ async function spawnAgent(
   }
 }
 
-export function claimAgentRequest(backend: AgentBackendId, requestId: string) {
+export function claimAgentRequest(backend: AgentBackendId, requestId: string, conversationId = requestId, incarnationId?: string) {
+  taskStartFence.assertOpen();
   assertAgentProcessAdmission(backend);
   if (shuttingDown) throw new Error("应用正在退出，不能启动新请求");
   if (requestReservations.has(requestId) || turns.byRequest(requestId)) {
     throw new Error("requestId 正在执行");
   }
-  requestReservations.add(requestId);
-  return () => requestReservations.delete(requestId);
+  let finish!: () => void;
+  const settled = new Promise<void>((resolve) => { finish = resolve; });
+  requestReservations.set(requestId, { operation: requestOperation(conversationId, requestId, incarnationId), settled });
+  return () => { requestReservations.delete(requestId); finish(); };
 }
 
 export type { AgentBridgeOptions, AgentContext, ConversationAdmission } from "./agent/bridge-types";
@@ -470,14 +482,20 @@ export async function startAgentPayload(
     preparedProjectTools?.receipt.projectContext
   );
   const backend = backendById(payload.turnOptions.backend);
+  const releaseReservation = claimAgentRequest(backend.id, payload.requestId, payload.scope.conversationId,
+    options.conversationIncarnation?.(payload.scope.conversationId));
+  try {
   const snapshot = await backendRuntimeRegistry.resolve(backend.id);
+  taskStartFence.assertOpen();
   assertInstalledRuntime(snapshot, backend.displayName);
   assertBackendCapabilities(backend, payload, snapshot.capabilities);
   await options.assertChatBackend?.(
     payload.scope.conversationId,
     backend.id
   );
+  taskStartFence.assertOpen();
   await options.assertTurnAdmission?.(payload);
+  taskStartFence.assertOpen();
   const safetyLockReason = agentProcessSafetyLock(backend.id);
   if (safetyLockReason) {
     throw new Error(
@@ -487,9 +505,8 @@ export async function startAgentPayload(
   if (payload.session) {
     threadScopes.assertResume(payload.session, payload.scope.conversationId);
   }
-  /* coordinator 持 project lifecycle gate 派发时（admissionHeld），
-     排他性已由同一把 projects 锁提供；再取一次就是自锁死——
-     IPC 悬死、renderer 无回执。持锁事实只信调用方下传。 */
+  // The coordinator already holds the project lifecycle gate when admissionHeld
+  // is true; reacquiring it would deadlock the same submission.
   const admission: ConversationAdmission = admissionHeld
     ? (_conversationId, register) => register()
     : options.withConversationAdmission;
@@ -506,13 +523,19 @@ export async function startAgentPayload(
         if (preparedProjectTools && !context.preparedProjectTools) {
           context.preparedProjectTools = preparedProjectTools;
         }
-        let releaseReservation: (() => void) | undefined;
         let contextRetained = false;
         try {
-          releaseReservation = claimAgentRequest(
-            backend.id,
-            payload.requestId
-          );
+          taskStartFence.assertOpen();
+          if (shuttingDown) throw new StartDeferredError();
+          const currentSnapshot = await backendRuntimeRegistry.resolve(backend.id);
+          const target = await backendRuntimeRegistry.executionTarget(backend.id, currentSnapshot, {
+            cwd: context.workspace, model: payload.turnOptions.model ?? undefined,
+          });
+          assertAgentAvailable(currentSnapshot, backend.displayName, {
+            conversationId: payload.scope.conversationId, requestId: payload.requestId, target,
+          });
+          taskStartFence.assertOpen();
+          if (shuttingDown) throw new StartDeferredError();
           if (
             blocksNewTurn(
               turns.byConversation(payload.scope.conversationId)
@@ -531,6 +554,8 @@ export async function startAgentPayload(
           if (assistantSeq === undefined) {
             throw new Error("聊天消息序号 allocator 未配置");
           }
+          taskStartFence.assertOpen();
+          if (shuttingDown) throw new StartDeferredError();
           turns.seedSubagents(payload.scope.conversationId, subagents);
           const entry = turns.claim({
             backend: backend.id,
@@ -542,6 +567,7 @@ export async function startAgentPayload(
             assistantSeq,
             appId: context.appId,
           }) as BridgeEntry;
+          entry.incarnationId = options.conversationIncarnation?.(entry.conversationId);
           contextRetained = true;
           entry.payload = payload;
           entry.context = context;
@@ -562,16 +588,17 @@ export async function startAgentPayload(
           turns.setStartup(entry, startup);
           observe(startup, `startup requestId=${payload.requestId}`);
         } finally {
-          releaseReservation?.();
           if (!contextRetained) await options.releaseContext?.(context);
         }
       }
     );
   } catch (cause) {
+    if (cause instanceof StartDeferredError) throw cause;
     throw new Error(
       `${backend.displayName} 启动失败：${asError(cause).message}`
     );
   }
+  } finally { releaseReservation(); }
 }
 
 export function seedThreadScope(session: SessionRef, conversationId: string) {
@@ -583,11 +610,8 @@ export function releaseThreadScopeForConversation(conversationId: string) {
   threadScopes.releaseConversation(conversationId);
 }
 
-/** Explicit model/Speed actions retry the persisted preference in this session.
- *  三个落点必须同时清：main 的运行态 map（下一轮 payload 不再被回落覆写）、
- *  turn entry 的 `serviceTierEffective`（attach 快照的真相源）、以及 renderer
- *  投影（横幅读的就是它）。只清第一个，用户重开 Fast 后横幅仍挂着旧回落原因
- *  直到下一 turn 才刷新——那正是「显式重置后投影陈旧」。 */
+// Reset model/Speed fallback in the session, live entry, and renderer together
+// so explicit preference changes cannot leave stale fallback state visible.
 export function resetThreadServiceTierEffective(conversationId: string) {
   threadScopes.resetServiceTierEffective(conversationId);
   const entry = turns.byConversation(conversationId) as BridgeEntry | undefined;
@@ -609,6 +633,10 @@ export function registerAgentBridge(
     turns,
     requestId,
     retryToken,
+    prepareFreshInput: async (entry) => {
+      await options.assertTurnAdmission?.(entry.payload!);
+      return options.prepareFreshRetry?.(entry.payload!);
+    },
     replaceSession: (entry, oldSession) =>
       Promise.resolve(
         options.replaceSession?.(entry.conversationId, oldSession, null)
@@ -646,12 +674,6 @@ export function registerAgentBridge(
     listActivity: () => activity.list(),
     publishState: (entry) => publishState(entry as BridgeEntry),
     clearSafetyLock: clearAgentSafetyLockWhenIdle,
-    send: (rawPayload) => {
-      if (options.acceptRendererSend === false) {
-        throw new Error("人工 turn 必须经 ConversationCoordinator 提交");
-      }
-      return startAgentPayload(rawPayload, options);
-    },
     retryWithoutSession: (requestId, retryToken) => {
       const entry = turns.byRequest(requestId);
       if (entry) options.assertRetryWithoutSession?.(entry.conversationId);
@@ -719,6 +741,7 @@ async function drainEntry(
 export async function shutdownAllAgents() {
   shuttingDown = true;
   stopAllAgentProcessAdmission();
+  await drainRequestReservations();
   const results = await Promise.allSettled([
     backendRuntimeRegistry.shutdown(),
     turns.drain(
@@ -753,7 +776,6 @@ export async function cancelAgentRequests(requestIds: Iterable<string>) {
     (entry) => drainEntry(entry as BridgeEntry, lastOptions)
   );
 }
-
 export function releaseConversations(conversationIds: Iterable<string>) {
   for (const conversationId of conversationIds) {
     turns.release(conversationId);
@@ -762,13 +784,8 @@ export function releaseConversations(conversationIds: Iterable<string>) {
     activity.forget(conversationId);
   }
 }
-
-export function hasConversationActivity(
-  conversationIds: Iterable<string>
-) {
-  return turns.hasActivity(conversationIds);
-}
-
+export const conversationSwitchActivityReason = (id: string) => switchActivityReason(turns.byConversation(id));
+export function hasConversationActivity(ids: Iterable<string>) { return turns.hasActivity(ids); }
 export function recoverAfterFailedShutdown() {
   const recovered = AGENT_BACKEND_ORDER.every(
     (backend) =>

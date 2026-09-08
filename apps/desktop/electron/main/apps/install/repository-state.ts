@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node crypto/fs/path, apps/support isContained and AppRecord for shared/apps-ipc
  * [OUTPUT]: Provides porcelain v1 -z file-level analysis, working-tree fingerprinting and RepositoryState
- * [POS]: The apps/install warehouse changes the ledger and the untracked directory is expanded to the real file content
+ * [POS]: apps/install's repo-change detector; persists each App's last working-tree fingerprint so a later check can tell whether the source tree changed
  */
 
 import { createHash } from "node:crypto";

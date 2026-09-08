@@ -3,7 +3,7 @@
 /**
  * [INPUT]: Depends on React, lucide ChevronDown and ui sidebar/collapsible; Receive controls, group names, operate render slots and content
  * [OUTPUT]: Provides SidebarCollapsibleGroup with SIDEBAR_GROUP_LABEL_CLASS_NAME, a unified Library/Activity group headings view, and the arrows, hover/keyboard appearance and content skeleton of the folding group
- * [POS]: The Sidebar of components is a visual native language for grouping; Title tokens are maintained with all named hover classes at this single point, with consumers providing only action and content
+ * [POS]: components/sidebar's shared visual language for grouping; heading tokens and hover classes are all maintained in this one place, with consumers supplying only actions and content
  */
 
 import type { ReactNode } from "react";

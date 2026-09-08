@@ -80,7 +80,7 @@ export const galleryOccurrenceSchema = z
   })
   .strict();
 
-export const galleryAssociationSchema = z
+const galleryAssociationSchema = z
   .object({
     galleryItemId: z.string().min(3).max(257),
     occurrenceId: canonicalOccurrenceId,
@@ -101,7 +101,7 @@ export const galleryAssociationSchema = z
     }
   });
 
-export const galleryTombstoneSchema = z
+const galleryTombstoneSchema = z
   .object({
     occurrenceId: canonicalOccurrenceId,
     deletedAt: z.number().int().nonnegative(),
@@ -127,7 +127,6 @@ export const baseGalleryLedgerSchema = z
 
 export type BaseGalleryLedger = z.infer<typeof baseGalleryLedgerSchema>;
 export type GalleryOccurrence = z.infer<typeof galleryOccurrenceSchema>;
-export type GalleryAssociation = z.infer<typeof galleryAssociationSchema>;
 
 export const BASE_ATTACHMENT_ERROR_CODES = [
   "ATTACHMENT_CONFLICT",
@@ -141,9 +140,6 @@ export const BASE_ATTACHMENT_ERROR_CODES = [
   "QUEUE_FULL",
   "SOURCE_GONE",
 ] as const;
-
-export type BaseAttachmentErrorCode =
-  (typeof BASE_ATTACHMENT_ERROR_CODES)[number];
 
 export const baseAttachmentFailureSchema = z
   .object({

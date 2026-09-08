@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on ui Button primitives, ANSI rendering, lucide icons, and host-injected shared UI text
- * [OUTPUT]: Provides Terminal output containers with localized Header/Title/Status/copy/clear actions
+ * [OUTPUT]: Provides Terminal output containers with localized Header/Title/Actions/copy button and an auto-scrolling ANSI content area
  * [POS]: The display component for terminal output in ai-elements; purely visual, with no process or log state
  */
 
@@ -11,7 +11,7 @@ import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useUiText } from "@ai-chat/ui/lib/ui-text";
 import Ansi from "ansi-to-react";
-import { CheckIcon, CopyIcon, TerminalIcon, Trash2Icon } from "lucide-react";
+import { CheckIcon, CopyIcon, TerminalIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes } from "react";
 import {
   createContext,
@@ -27,7 +27,6 @@ interface TerminalContextType {
   output: string;
   isStreaming: boolean;
   autoScroll: boolean;
-  onClear?: () => void;
 }
 
 const TerminalContext = createContext<TerminalContextType>({
@@ -69,29 +68,6 @@ export const TerminalTitle = ({
     >
       <TerminalIcon className="size-4" />
       {children ?? terminalLabel}
-    </div>
-  );
-};
-
-export type TerminalStatusProps = HTMLAttributes<HTMLDivElement>;
-
-export const TerminalStatus = ({
-  className,
-  children,
-  ...props
-}: TerminalStatusProps) => {
-  const { isStreaming } = useContext(TerminalContext);
-
-  if (!isStreaming) {
-    return null;
-  }
-
-  return (
-    <div
-      className={cn("flex items-center gap-2 text-xs text-zinc-400", className)}
-      {...props}
-    >
-      {children}
     </div>
   );
 };
@@ -167,35 +143,6 @@ export const TerminalCopyButton = ({
   );
 };
 
-export type TerminalClearButtonProps = ComponentProps<typeof Button>;
-
-export const TerminalClearButton = ({
-  children,
-  className,
-  ...props
-}: TerminalClearButtonProps) => {
-  const { onClear } = useContext(TerminalContext);
-
-  if (!onClear) {
-    return null;
-  }
-
-  return (
-    <Button
-      className={cn(
-        "size-7 shrink-0 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100",
-        className
-      )}
-      onClick={onClear}
-      size="icon"
-      variant="ghost"
-      {...props}
-    >
-      {children ?? <Trash2Icon size={14} />}
-    </Button>
-  );
-};
-
 export type TerminalContentProps = HTMLAttributes<HTMLDivElement>;
 
 export const TerminalContent = ({
@@ -238,21 +185,19 @@ export type TerminalProps = HTMLAttributes<HTMLDivElement> & {
   output: string;
   isStreaming?: boolean;
   autoScroll?: boolean;
-  onClear?: () => void;
 };
 
 export const Terminal = ({
   output,
   isStreaming = false,
   autoScroll = true,
-  onClear,
   className,
   children,
   ...props
 }: TerminalProps) => {
   const contextValue = useMemo(
-    () => ({ autoScroll, isStreaming, onClear, output }),
-    [autoScroll, isStreaming, onClear, output]
+    () => ({ autoScroll, isStreaming, output }),
+    [autoScroll, isStreaming, output]
   );
 
   return (
@@ -268,13 +213,9 @@ export const Terminal = ({
           <>
             <TerminalHeader>
               <TerminalTitle />
-              <div className="flex items-center gap-1">
-                <TerminalStatus />
-                <TerminalActions>
-                  <TerminalCopyButton />
-                  {onClear && <TerminalClearButton />}
-                </TerminalActions>
-              </div>
+              <TerminalActions>
+                <TerminalCopyButton />
+              </TerminalActions>
             </TerminalHeader>
             <TerminalContent />
           </>

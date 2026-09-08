@@ -36,6 +36,12 @@ onNodeModuleFile: ./scripts/keep-node-module-types.cjs
 asarUnpack:
   - node_modules/**
 extraResources:
+  - from: resources/presence
+    to: presence
+    filter: ["*.png"]
+  - from: out/presence
+    to: presence
+    filter: ["bin/screen-bridge"]
   - from: ../../LICENSE
     to: LICENSE
   - from: resources/icon.png
@@ -44,6 +50,7 @@ extraResources:
     to: skills
   - from: resources/apps/Bottega-app-design-canvas
     to: factory-apps/design-canvas
+    filter: ["**/*", "!.git", "!.git/**"]
   - from: resources/gui-sdk
     to: gui-sdk
   - from: resources/app-gui-toolchain
@@ -57,6 +64,8 @@ extraResources:
   - from: node_modules/react-grab/dist/styles.css
     to: react-grab/styles.css
 mac:
+  binaries:
+    - Contents/Resources/presence/bin/screen-bridge
   target:
     - target: dmg
       arch: [arm64]

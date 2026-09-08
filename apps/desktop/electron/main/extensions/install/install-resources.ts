@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Registry/lifecycle ledgers, Project install authority, content store, and PLUGIN_DATA epoch storage
- * [OUTPUT]: Provides install-side Project admission, epoch binding, content collection, and generation lookup operations
+ * [OUTPUT]: Provides install-side Project admission, epoch binding, staged-content collection, and generation-ref lookup
  * [POS]: Durable resource coordinator beneath ExtensionInstaller; source/admission policy remains in installer.ts
  */
 
@@ -11,6 +11,7 @@ import type {
 } from "../../../../shared/extensions-ipc";
 import type { ProductResourceScope } from "../../../../shared/product-resource-scope";
 import type { ExtensionContentStore } from "../content-store";
+import { registryConflict as conflict } from "../registry-canonical";
 import type { ExtensionRegistryStore } from "../registry-store";
 import type {
   AuthorizedExtensionInstall,
@@ -124,32 +125,24 @@ export class ExtensionInstallResources {
     return { kind: "stdio", pluginDataEpochId: epochId };
   }
 
-  async collectStagedContent(contentDigest: Sha256Digest | null) {
-    if (!contentDigest) return;
+  /** Reclaims every content root no generation or live operation references. */
+  async collectStagedContent() {
     await this.contentStore.collect(
       this.retainedContentDigests(),
       (root) => this.faults.afterStagedContentRemoved?.(root)
     );
   }
 
-  contentRoot(contentDigest: string) {
-    return this.contentStore.contentRoot(contentDigest);
-  }
-
   generationRef(packageGenerationId: string): ExtensionPackageGenerationRef | null {
-    const found = this.registry.generationRecordById(packageGenerationId);
+    const found = this.registry.lifecycle.generationRecordById(packageGenerationId);
     return found
       ? { packageGenerationId: found.packageGenerationId, recordDigest: found.recordDigest }
       : null;
   }
 
-  generationRecord(packageGenerationId: string) {
-    return this.registry.generationRecordById(packageGenerationId);
-  }
-
   retainedContentDigests() {
     return new Set<Sha256Digest>([
-      ...this.registry.referencedContentDigests(),
+      ...this.registry.lifecycle.referencedContentDigests(),
       ...this.ledger
         .nonTerminal()
         .flatMap((item) => (item.contentDigest ? [item.contentDigest] : [])),
@@ -166,7 +159,3 @@ export const missingProjectInstallAuthority: ExtensionProjectInstallAuthority = 
   },
   release: async () => undefined,
 };
-
-function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
-}

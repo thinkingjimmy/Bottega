@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on the exact Electron-as-Node runtime, packaged compiler paths, exact esbuild and Tailwind Oxide payload resolution, signed component snapshot, private userData staging, and platform sandbox adapters
+ * [INPUT]: Depends on Electron-as-Node, packaged compiler/toolchain bytes, signed component snapshots, private staging, and release-pinned Linux system/stable component selection
  * [OUTPUT]: Provides the production AppGuiBuildService composition with hashed runtime custody, offline component scaffolding, and a never-throwing create whose missing payload becomes a typed GUI_COMPILER_SANDBOX_UNAVAILABLE build failure
  * [POS]: apps/gui-build composition leaf wired by AppsService; a damaged toolchain payload closes authoring only and leaves every other App runnable
  */
 
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { app } from "electron";
 import { AppSourcePreparer } from "./pipeline/source-preparer";
@@ -14,6 +15,7 @@ import { AppGuiBuildService } from "./service";
 import { AppGuiComponentScaffolder } from "./scaffold/component-scaffolder";
 import { AppGuiAdmissionPolicy } from "./admission";
 import type { CompilerSandboxPort } from "./contracts";
+import { LinuxCompilerLocator } from "./native/linux/locator";
 
 const require = createRequire(import.meta.url);
 
@@ -72,20 +74,24 @@ function compilerService(stagingRoot: string) {
   const nativePayloads = [esbuildExecutable, ...(oxideNative ? [oxideNative] : [])];
   const sandboxPayload = process.platform === "darwin"
     ? "/usr/bin/sandbox-exec"
-    : process.platform === "linux"
-      ? (resourcesRoot ? join(resourcesRoot, "app-gui-toolchain/native/linux-x64/bwrap") : "/usr/bin/bwrap")
-      : (resourcesRoot
+    : (resourcesRoot
           ? join(resourcesRoot, "app-gui-toolchain/native/win32-x64/bottega-compiler-sandbox.exe")
           : join(dirname(process.execPath), "bottega-compiler-sandbox.exe"));
+  const linuxLocator = new LinuxCompilerLocator({
+    execPolicy: join(metadataRoot, "native/linux-x64/exec-policy"),
+    manifest: async () => {
+      const bytes = await readFile(join(metadataRoot, "native/linux-x64/trust-manifest.json"));
+      if (bytes.length > 32 * 1024) throw new Error("Linux compiler trust manifest exceeds its budget");
+      return JSON.parse(bytes.toString("utf8"));
+    },
+  });
   const sandbox = createCompilerSandbox({
     compilerEntry,
     nodeExecutable: compilerNodeRuntime,
     dependencyRoots,
     esbuildExecutable,
     metadataRoot,
-    linuxBubblewrap: resourcesRoot
-      ? join(resourcesRoot, "app-gui-toolchain/native/linux-x64/bwrap")
-      : "/usr/bin/bwrap",
+    linuxResolver: (stableOnly) => linuxLocator.resolve(stableOnly),
     windowsWrapper: resourcesRoot
       ? join(resourcesRoot, "app-gui-toolchain/native/win32-x64/bottega-compiler-sandbox.exe")
       : join(dirname(process.execPath), "bottega-compiler-sandbox.exe"),
@@ -103,7 +109,7 @@ function compilerService(stagingRoot: string) {
         { id: "compiler-node-runtime", path: compilerNodeRuntime },
         { id: "compiler-esbuild", path: nativePayloads[0]! },
         ...(nativePayloads[1] ? [{ id: "tailwind-oxide", path: nativePayloads[1] }] : []),
-        { id: `sandbox-${process.platform}-${process.arch}`, path: sandboxPayload },
+        ...(process.platform === "linux" ? [] : [{ id: `sandbox-${process.platform}-${process.arch}`, path: sandboxPayload }]),
       ],
     }
   );

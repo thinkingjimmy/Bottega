@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on no runtime modules; defines the structural baseline for Chat composer copy
- * [OUTPUT]: Provides chatComposerEn for Agent, approval, branch, Project, Plan, user-input, attachment, and queue surfaces
+ * [OUTPUT]: Provides chatComposerEn for approval, branch, Project, Plan, user-input, attachment, and queue surfaces
  * [POS]: English Chat composer locale leaf; assembled inside the top-level chat.composer namespace
  */
 
@@ -8,11 +8,6 @@ export const chatComposerEn = {
   modelFallback: {
     defaultEffort: "Default",
     standardSpeed: "Standard",
-  },
-  agent: {
-    current: "Current Agent: {{backend}}",
-    checking: "Checking {{backend}} status",
-    selectCurrent: "Choose Agent; current: {{backend}}",
   },
   approval: {
     requestChanges: "Request changes",
@@ -52,7 +47,6 @@ export const chatComposerEn = {
   },
   surface: {
     plan: "Plan",
-    imageUnsupported: "The current Agent does not support images. Gallery selections are paused; add local images again after image support returns.",
     authorizeFileFailed: "Couldn't authorize {{file}}",
     branchBusy: "Wait for the branch operation to finish before sending.",
     fileAuthorizationBusy: "Wait for file authorization to finish before sending.",

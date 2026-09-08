@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Radix Dialog, Button, Lucide, icons, style tools and shared UI text
- * [OUTPUT]: Provides Sheet with localized closed names
+ * [OUTPUT]: Provides Sheet, SheetContent, SheetHeader, SheetTitle, and SheetDescription with a localized close control
  * [POS]: The base layer of the edge-floating layer of components/ui, replicated by higher-level components such as mobile side-bars
  */
 
@@ -14,18 +14,6 @@ import { XIcon } from "lucide-react"
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
-}
-
-function SheetTrigger({
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
-  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
-}
-
-function SheetClose({
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Close>) {
-  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />
 }
 
 function SheetPortal({
@@ -102,16 +90,6 @@ function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="sheet-footer"
-      className={cn("mt-auto flex flex-col gap-2 p-6", className)}
-      {...props}
-    />
-  )
-}
-
 function SheetTitle({
   className,
   ...props
@@ -141,13 +119,4 @@ function SheetDescription({
   )
 }
 
-export {
-  Sheet,
-  SheetTrigger,
-  SheetClose,
-  SheetContent,
-  SheetHeader,
-  SheetFooter,
-  SheetTitle,
-  SheetDescription,
-}
+export { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription }

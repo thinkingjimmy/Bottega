@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ChatStore/ChatsService, ProjectStore/ProjectsService, SettingsStore, MemoryService, the ConversationCoordinator handle, and HistoryImportService with its adapters
- * [OUTPUT]: Provides initializeHistoryImportService: one `historyImportSource` builder shared by sync and adoption, the sole producer of `sourceStatus` "missing"/"match", and incarnation-preserving adoption through the Coordinator
+ * [OUTPUT]: Connects same-source history adoption to canonical manual admission while preserving the typed explicit retry intent.
  * [POS]: The external-history half of the conversation-domain startup composition; conversation-runtime.ts owns the Chat/manual/Coordinator/Archive half
  */
 
@@ -25,7 +25,7 @@ import type { SettingsStore } from "../settings-store";
 function historyImportSource(
   entry: AdapterEntry,
   summary: ForeignHistorySummary,
-  incompleteTail: boolean | "unknown"
+  incompleteTail: boolean
 ) {
   return {
     projectId: entry.projectId,
@@ -138,7 +138,7 @@ export async function initializeHistoryImportService({
         historyImportSource(
           entry,
           publicHistoryEntry(entry),
-          snapshot.schemaVersion === 2 ? snapshot.incompleteTail : "unknown"
+          snapshot.incompleteTail
         ),
         snapshot.blocks as ForeignHistoryMessage[]
       );
@@ -150,16 +150,14 @@ export async function initializeHistoryImportService({
       const messageId = `user_${randomUUID().replaceAll("-", "")}`;
       const requestId = `request_${randomUUID().replaceAll("-", "")}`;
       const { submission } = request;
-      const turnOptions = await settings.resolveChatOptions(
-        { conversationId: request.opaqueId },
-        entry.sourceKind
-      );
+      const turnOptions = request.turnOptions;
       const content = submission.displayText.trim();
       const session = {
         backend: entry.sourceKind,
         id: entry.key.resumeAlias,
       } as const;
       const receipt = await coordinator.submitManualTurn({
+        ...(request.authenticationRetry ? { authenticationRetry: request.authenticationRetry } : {}),
         intentId: `adopt_${randomUUID().replaceAll("-", "")}`,
         persistence: {
           kind: "adopt",

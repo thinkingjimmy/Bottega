@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on durable-json, PluginDataEpochStore and package generation identity
  * [OUTPUT]: Provides McpServerCustodyLedger: connector-before-activation, durable writer lease, accurate exit release and crash quarantine
- * [POS]: The truth about per-server custody of extensions/lifecycle; P3 supervisor remains unopened as proof of zero authority or quarantine of unloading/data gate
+ * [POS]: Extensions/lifecycle's per-server custody source of truth; without an external supervisor takeover port, release requires proven zero-spawn or quarantine, never a timeout standing in for exit evidence
  */
 
 import { randomUUID } from "node:crypto";

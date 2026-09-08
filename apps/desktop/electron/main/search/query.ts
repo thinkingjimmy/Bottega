@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared baseCellText/cellValue/ownerKey/search-text and a read-only Base snapshot
  * [OUTPUT]: Provides owner-aware (zero-member sectionId=null) Base locator scan plus the Chat locator types the SQLite candidate lanes project into
- * [POS]: The search domain has no IO-only query kernel; The toolset holds cross-Sectional scanning counts and asynchronous deletion of rhythm
+ * [POS]: search domain's IO-free pure query kernel; toolset.ts owns cross-Section scan counting and pacing the scan against concurrent deletion
  */
 
 import { baseCellText } from "../../../shared/base-values";
@@ -32,7 +32,7 @@ type LocatorText = {
   offset: number;
 };
 
-export type ChatLocator = LocatorText & {
+type ChatLocator = LocatorText & {
   source: "chat";
   sectionId: string;
   title: string | null;
@@ -43,7 +43,7 @@ export type ChatLocator = LocatorText & {
     | { matched: "message"; messageSeq: number; role: "user" | "assistant" }
   );
 
-export type BaseLocator = LocatorText & {
+type BaseLocator = LocatorText & {
   source: "base";
   ownerKey: string;
   sectionId: string | null;

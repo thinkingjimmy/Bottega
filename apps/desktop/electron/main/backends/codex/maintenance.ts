@@ -17,15 +17,12 @@ import {
   type ExtensionPlan,
   verifyExtensionPlan,
 } from "../../apps/install/extension";
-import { buildAgentToolInventory } from "../../apps/runtime/agent-tools";
 import {
-  codexEnvironment,
-} from "../../codex-runtime";
+  buildAgentToolInventory,
+} from "../../apps/runtime/agent-tools";
+import { codexEnvironment } from "./environment";
 import { codexHome } from "../sandbox/fences";
-import {
-  validateMaintenanceRequirements,
-  workspaceMaintenanceJob,
-} from "../maintenance-job";
+import { workspaceMaintenanceJob } from "../maintenance-job";
 import type { MaintenanceAdapter } from "../types";
 
 const runJson = (
@@ -110,7 +107,6 @@ export const codexMaintenance: MaintenanceAdapter = {
         ]);
         return buildAgentToolInventory(workspace, mcpJson, pluginJson);
       },
-      validateRequirements: validateMaintenanceRequirements,
     };
   },
   async cleanup({ userData, appId }) {

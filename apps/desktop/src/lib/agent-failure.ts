@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared ProductFailure, Agent backend identity, and renderer translation functions
- * [OUTPUT]: Provides the single ProductFailure-to-human-copy projection (terminal code copy for danger tone, provider-neutral notice copy for warning tone), safe diagnostic extraction, login commands, and renderer-side fallback construction
+ * [OUTPUT]: Provides the single ProductFailure-to-human-copy projection (terminal code copy for danger tone, provider-neutral notice copy for warning tone), login commands, and renderer-side surface failure construction with safe diagnostic extraction
  * [POS]: Renderer presentation seam shared by transcript, Setup, Settings, and model-catalog failures
  */
 
@@ -81,16 +81,6 @@ export function agentFailureCopy(
   };
 }
 
-export function rendererAgentFailure(
-  code: AgentRuntimeFailureCode,
-  cause?: unknown
-): ProductFailure {
-  return agentRuntimeFailure(
-    code,
-    cause === undefined ? undefined : diagnosticFailureDetails(cause)
-  );
-}
-
 export function rendererAgentSurfaceFailure(
   code: AgentRuntimeFailureCode,
   backend: string,
@@ -98,7 +88,10 @@ export function rendererAgentSurfaceFailure(
   backendId?: AgentBackendId
 ): AgentSurfaceFailure {
   return {
-    failure: rendererAgentFailure(code, cause),
+    failure: agentRuntimeFailure(
+      code,
+      cause === undefined ? undefined : diagnosticFailureDetails(cause)
+    ),
     backend,
     ...(backendId ? { backendId } : {}),
   };

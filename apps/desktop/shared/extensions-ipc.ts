@@ -90,7 +90,7 @@ export type FrozenExtensionDeliveryEligibilityReason = Readonly<{
   evidenceDigest: Sha256Digest;
 }>;
 
-export type ExtensionDeliveryStrength =
+type ExtensionDeliveryStrength =
   | "per-tool-enforced"
   | "per-turn-enforced"
   | "server-inclusion-only"
@@ -99,8 +99,8 @@ export type ExtensionDeliveryStrength =
   | "unsupported-by-policy"
   | "unknown";
 
-export type ExtensionComponentKind = "skill" | "mcp-server";
-export type ExtensionTransport =
+type ExtensionComponentKind = "skill" | "mcp-server";
+type ExtensionTransport =
   | "manual-snapshot"
   | "fixed-workspace"
   | "stdio"
@@ -278,7 +278,7 @@ export type ScopedComponentGrant = Readonly<{
   grantedAt: number;
 }>;
 
-export type AppExtensionConsentDecisionBase = Readonly<{
+type AppExtensionConsentDecisionBase = Readonly<{
   decisionId: string;
   appId: string;
   pendingAppGenerationId: string;
@@ -432,7 +432,7 @@ export type ExtensionDisclosureView = Readonly<{
 
 /* 首装与更新是同一条流水线：install identity 由「来源 + 子目录」决定，所以
    对同一个仓库再预检一次，天然就是这个安装的下一代。差异只在下面两个字段。 */
-export type ExtensionCapabilityDiffView = Readonly<{
+type ExtensionCapabilityDiffView = Readonly<{
   previousGenerationId: string;
   /** canonical 能力行；新增即扩权 */
   added: readonly string[];
@@ -481,7 +481,7 @@ export type ExtensionBackendEligibilityView = Readonly<{
   exclusionCode?: FrozenExtensionDeliveryEligibilityReason["code"];
 }>;
 
-export type ExtensionComponentView = Readonly<{
+type ExtensionComponentView = Readonly<{
   declaredComponentIdentity: string;
   componentInstanceIdentity: string;
   componentId: string;
@@ -524,13 +524,13 @@ export type ExtensionProjectionOwner =
   | Readonly<{ kind: "app"; appId: string }>;
 
 /** 产品没写过、也无权撤销的副本：只能如实标 backend-delegated 并交回用户处置 */
-export type ExtensionForeignOccupancyView = Readonly<{
+type ExtensionForeignOccupancyView = Readonly<{
   projectionId: string;
   componentInstanceIdentity: string;
   strength: Extract<ExtensionDeliveryStrength, "backend-delegated">;
 }>;
 
-export type ExtensionConvergenceView = Readonly<{
+type ExtensionConvergenceView = Readonly<{
   operationId: string;
   completedSteps: readonly ExtensionConvergenceStep[];
   /** 非 null 即收敛卡住：状态停在 disable-pending，绝不冒充 disabled */
@@ -538,7 +538,7 @@ export type ExtensionConvergenceView = Readonly<{
 }>;
 
 /** 仍被精确绑定的旧代：保持不可变、可寻址，回收要等 owner 全部归零 */
-export type ExtensionRetainedGenerationView = Readonly<{
+type ExtensionRetainedGenerationView = Readonly<{
   generationId: string;
   resolvedCommit: string;
   blockerCount: number;

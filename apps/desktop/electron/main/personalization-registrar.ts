@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow, Node guarded fs/crypto/path, four state root truth source, durableReplaceFile, SerialQueue and shared Personalization agreement
+ * [INPUT]: Depends on Electron shell, renderer IPC, Node guarded fs/crypto/path, four state root truth source, durableReplaceFile, SerialQueue and shared Personalization agreement
  * [OUTPUT]: Provides PersonalizationService, which directs target analysis and register Personalization; Four read→CAS→durable write shared a queue and retained a symlink/mode, reveal only receives the backend itself and then deals it to the system file manager
  * [POS]: The main global Agent instructIOn file is the only IO boundary; renderer only see ~ shorten paths, soft links, other authentic items), content, digest and stable error codes
  */
@@ -9,7 +9,7 @@ import { constants } from "node:fs";
 import { lstat, open, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
-import { shell, type BrowserWindow } from "electron";
+import { shell } from "electron";
 import { AGENT_BACKEND_ORDER, type AgentBackendId } from "../../shared/agent-ipc";
 import { agentBackendIdSchema } from "../../shared/agent-schema";
 import {
@@ -65,7 +65,7 @@ export class PersonalizationService {
     return Promise.all(AGENT_BACKEND_ORDER.map((backend) => this.readPublic(backend)));
   }
 
-  save(raw: SaveInstructionsInput): Promise<SaveInstructionsResult> {
+  save(raw: unknown): Promise<SaveInstructionsResult> {
     const parsed = saveInstructionsInputSchema.safeParse(raw);
     if (!parsed.success) {
       /* 唯一合法的业务性校验失败是 content 超限；其余形状错误是调用方
@@ -231,14 +231,13 @@ const compactPath = (path: string, home: string) => {
 };
 
 export function registerPersonalization(
-  window: BrowserWindow,
   rendererUrl: string,
   service = new PersonalizationService()
 ) {
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的个性化请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的个性化请求")
     .roles("main")
     .handle(PERSONALIZATION_CHANNEL.list, () => service.list())
-    .handle(PERSONALIZATION_CHANNEL.save, (input) => service.save(input as SaveInstructionsInput))
+    .handle(PERSONALIZATION_CHANNEL.save, (input) => service.save(input))
     .handle(PERSONALIZATION_CHANNEL.reveal, (backend) =>
       service.reveal(agentBackendIdSchema.parse(backend))
     );

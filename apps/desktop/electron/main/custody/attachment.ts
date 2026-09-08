@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on node: child_process, custody Control pathway/protocol/identity probe, process-group Cleaning with shared ProcessIdentity
- * [OUTPUT]: Provides CustodyJournalPort, CustodyAttachment and converge a process hosted by a phase drive with the only crossover determinant
- * [POS]: The journal of custody is not related to the core; Agent turn and the App server write each account but share this "When to Deliver, When to Release"
+ * [INPUT]: Depends on node:child_process spawn, custody control-channel/protocol/identity-probe, and process-group cleanup, all keyed by shared ProcessIdentity
+ * [OUTPUT]: Provides CustodyAttachment, the per-attempt guardian spawn/handshake/activation/release state machine, and converge, the sole release-outcome arbiter based on real process evidence
+ * [POS]: Custody's journal-agnostic runtime leaf; Agent turn and the App server each keep their own ledger but share this single "when to deliver, when to release" state machine
  */
 
 import {
@@ -17,7 +17,7 @@ import { probeProcessBirth, type ProcessBirth } from "./identity";
 import { CUSTODY_ENV } from "./protocol";
 
 /** 两本账共用的封闭相位集；`quarantined` 是未收敛而非终态。 */
-export type CustodyPhase =
+type CustodyPhase =
   | "intent"
   | "aborted"
   | "owned"
@@ -28,7 +28,7 @@ export type CustodyPhase =
   | "quarantined";
 
 /** 内核只认这几格；appId/turnRequestId 之类归各自账本，内核一律不看。 */
-export type CustodyRecord = Readonly<{
+type CustodyRecord = Readonly<{
   custodyId: string;
   controlNonce: string;
   phase: CustodyPhase;
@@ -36,12 +36,12 @@ export type CustodyRecord = Readonly<{
   processIdentity?: ProcessIdentity;
 }>;
 
-export type CustodyAbortReason =
+type CustodyAbortReason =
   | "cancelled-before-owned"
   | "guardian-spawn-failed"
   | "owner-no-longer-live";
 
-export type CustodyQuarantineReason =
+type CustodyQuarantineReason =
   | "process-identity-unconfirmed"
   | "process-survived-kill";
 
@@ -49,7 +49,7 @@ export type CustodyQuarantineReason =
  * 账本对内核暴露的最小写面。每个方法都带 expected revision——内核从不「读改写」，
  * 它只按自己手上那一版推进，撞上晚到命令时由账本抛错。
  */
-export type CustodyJournalPort<E extends CustodyRecord> = {
+type CustodyJournalPort<E extends CustodyRecord> = {
   markOwned(custodyId: string, revision: number, identity: ProcessIdentity): Promise<E>;
   authorizeActivation(custodyId: string, revision: number): Promise<E>;
   markActivated(custodyId: string, revision: number): Promise<E>;
@@ -74,7 +74,7 @@ export type CustodyLaunchRequest = {
   env: NodeJS.ProcessEnv;
 };
 
-export type SpawnGuardian = (
+type SpawnGuardian = (
   command: string,
   args: readonly string[],
   options: SpawnOptionsWithoutStdio

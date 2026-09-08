@@ -11,7 +11,6 @@ import {
   generationRef,
   refKey,
   registryConflict as conflict,
-  syncLegacyEnable,
 } from "./registry-canonical";
 
 const REF_OWNER_PATTERN = /^[A-Za-z0-9:._/-]{1,500}$/;
@@ -26,7 +25,8 @@ export type ExtensionScopeMutationOwner = Readonly<{
   scope: ProductResourceScope;
   sourceIdentity: string;
 }>;
-export type RegistryLifecycleHost = Readonly<{
+/** The Registry transaction surface both authorities mutate through; registry-store.ts builds it once. */
+export type RegistryTransactionHost = Readonly<{
   state(): StoreFile;
   mutate<T>(operation: () => T | Promise<T>, options?: MutateOptions): Promise<T>;
   exclusive<T>(operation: () => Promise<T>): Promise<T>;
@@ -34,7 +34,7 @@ export type RegistryLifecycleHost = Readonly<{
 }>;
 
 export class RegistryLifecycleAuthority {
-  constructor(private readonly host: RegistryLifecycleHost) {}
+  constructor(private readonly host: RegistryTransactionHost) {}
   private get state() { return this.host.state(); }
   private mutate<T>(operation: () => T | Promise<T>, options: MutateOptions = {}) {
     return this.host.mutate(operation, options);
@@ -50,7 +50,6 @@ export class RegistryLifecycleAuthority {
         owner.enabledComponentInstanceIdentities.push(componentInstanceIdentity);
         owner.enabledComponentInstanceIdentities.sort();
       }
-      syncLegacyEnable(owner);
     });
   }
 
@@ -61,7 +60,6 @@ export class RegistryLifecycleAuthority {
       owner.enabledComponentInstanceIdentities = owner.enabledComponentInstanceIdentities.filter(
         (item) => item !== componentInstanceIdentity
       );
-      syncLegacyEnable(owner);
     });
   }
 
@@ -222,7 +220,6 @@ export class RegistryLifecycleAuthority {
       const prepared = await prepare(structuredClone(owner));
       const stored = this.requirePackage(input.installIdentity);
       stored.administrativeState = "disable-pending";
-      syncLegacyEnable(stored);
       this.state.lifecycleReceipts.push({
         operationId: prepared.operationId,
         kind: "disable",
@@ -253,7 +250,6 @@ export class RegistryLifecycleAuthority {
       const owner = this.requirePackage(input.installIdentity);
       assertFrozenOwner(owner, input);
       owner.administrativeState = "disable-pending";
-      syncLegacyEnable(owner);
       this.state.lifecycleReceipts.push({
         operationId: input.operationId,
         kind: "disable",
@@ -278,7 +274,6 @@ export class RegistryLifecycleAuthority {
       }
       owner.administrativeState = "denied";
       owner.enabledComponentInstanceIdentities = [];
-      syncLegacyEnable(owner);
       receipt.phase = "completed";
     });
   }
@@ -537,8 +532,8 @@ export class RegistryLifecycleAuthority {
         throw conflict(`package generation 仍被引用：${blocked.join(", ")}`);
       }
       const released = owner.generations.map((item) => item.contentDigest);
-      const expectedRefs = receipt.packageGenerationRefs.map(refKey).sort();
-      const actualRefs = owner.generations.map(generationRef).map(refKey).sort();
+      const expectedRefs = receipt.packageGenerationRefs.map((ref) => refKey(ref)).sort();
+      const actualRefs = owner.generations.map(generationRef).map((ref) => refKey(ref)).sort();
       if (expectedRefs.join("\n") !== actualRefs.join("\n")) {
         throw conflict("uninstall lifecycle generation 集合已漂移");
       }

@@ -5,12 +5,12 @@
  */
 
 import type { AppsService } from "../apps/apps-service";
+import { statusError } from "../errors";
 import type { BasesService } from "../bases/bases-service";
 import type { ProjectStore } from "../projects/store/project-store";
 
 const missingBase = () =>
-  Object.assign(new Error("该 App 没有可用的 Base"), {
-    status: 404,
+  statusError(404, "该 App 没有可用的 Base", {
     code: "base_not_found",
     outcome: "not-committed" as const,
   });

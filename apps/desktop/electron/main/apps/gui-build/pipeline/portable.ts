@@ -1,15 +1,15 @@
 /**
- * [INPUT]: Depends on a locally verified compiled-v3 artifact, its immutable source projection, and strict package inspection
+ * [INPUT]: Depends on a locally verified compiled-v3 artifact, its immutable source projection, strict package inspection, and the apps/support digest/directory primitives
  * [OUTPUT]: Provides data-free compiled-source sharing, exact outer/source verification, and receipt-enumerated envelope cleanup before target-machine rebuild
  * [POS]: gui-build/pipeline distribution boundary; foreign runtime/receipt bytes are never exported, adopted, or made Gateway-visible
  */
 
-import { lstat, mkdir, readFile, readdir, rmdir, stat, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, rmdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import type { AppManifest } from "../../../../../shared/apps-ipc";
 import type { Sha256Digest } from "../../../../../shared/extensions-ipc";
 import { inspectPackage } from "../../share/package/package-contract";
-import { canonicalDigest, canonicalJson, sha256 } from "../metadata";
+import { canonicalDigest, canonicalJson, isDirectory, sha256 } from "../../support";
 import { type CompiledV3DigestSet, verifyCompiledV3Artifact } from "./seal";
 
 const PORTABLE_COMPILED_SOURCE_PATH = ".bottega/compiled-source-v1";
@@ -199,7 +199,6 @@ function safeSourcePath(path: unknown): path is string {
 }
 
 function depth(path: string) { return path.split("/").length; }
-function isDirectory(path: string) { return stat(path).then((value) => value.isDirectory(), () => false); }
 function isDigest(value: unknown): value is Sha256Digest { return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value); }
 function compareText(left: string, right: string) { return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")); }
 function invalid(message: string) { return Object.assign(new Error(message), { code: "GUI_PORTABLE_SOURCE_INVALID" }); }

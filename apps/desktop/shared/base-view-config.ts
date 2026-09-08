@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the type of chart-payload and the type of unit-value of base-values
- * [OUTPUT]: Provides Base Six classes row-backed view for the separation of combined, Gallery/Chart configuration, stable type list, groupable/column-scoped, determination, visible Base Columns
- * [POS]: The Base view of the shared border configuration; One-way import by bases-IPC to avoid further expansion of IPC protocol files
+ * [OUTPUT]: Provides the six Base view types, per-view config including Gallery/Chart settings, the stable type list, and groupable/column-scoped/visible-column predicates
+ * [POS]: Shared Base view configuration boundary; imported one-way by bases-ipc to keep that IPC contract file from growing further
  */
 
 import type { ChartType } from "./chart-payload";

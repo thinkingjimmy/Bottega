@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on lucide RotateCcw, shared MemoryRebuildSnapshot, settings-layout SettingsButton, ui/ConfirmationDialog, lib/memory-view, and the color tables, @ai-chat/ui cn
  * [OUTPUT]: Provides MemoryRebuildButton, MemoryRebuildProgress, and independently acceptable MemoryRebuildDescription with MemoryRebuildDialog
- * [POS]: The three rebuilds of settings/memory; Input, progress and confirmation of the same source folders are three intersections of the same state machine.The finished mode is removed by the caller according to rebuildOutstanding, and the progress card is only for the time it is still running or it has been interrupted
+ * [POS]: settings/memory's rebuild trio — entry, progress, and confirmation are three faces of one state machine sharing the same snapshot; the caller hides the progress card via rebuildOutstanding once a rebuild is neither running nor interrupted
  */
 
 import { RotateCcw } from "lucide-react";

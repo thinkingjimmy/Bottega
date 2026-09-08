@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on ChatStore, BaseStore owner listing, Project archiving narrow queries, search/query flow locator, event loop yield and builtin result
+ * [INPUT]: Depends on ChatStore, BaseStore owner listing, Project archiving narrow queries, search/query flow locator, main/errors, event loop yield and builtin result
  * [OUTPUT]: Provides Section chat/Base search over keyset Chat-document pages; a Project Base is scanned once and carries its ownerKey, a zero-member Section keeps id=null with its archive state intact, and hits whose Chat was rewritten or removed count as skipped_sections instead of failing the call
- * [POS]: The only IO layer in the search domain; Only short read photos are expired but the version is consistent
+ * [POS]: The search domain's only IO layer; reads take short-lived, internally consistent snapshots rather than holding a long-lived transaction
  */
 
 import { createHash } from "node:crypto";
@@ -17,6 +17,7 @@ import type {
   SearchDocumentCursor,
   SearchDocumentHit,
 } from "../chats/sqlite/database-protocol";
+import { statusError } from "../errors";
 import type { BuiltinToolContext, BuiltinToolset } from "../tools/registry";
 import { builtinCallToolResultBytes } from "../tools/result";
 import {
@@ -317,7 +318,3 @@ function decodeCursor(value: string | undefined, kind: SearchKind, queryHash: st
 
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("base64url").slice(0, 16);
-
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
-}

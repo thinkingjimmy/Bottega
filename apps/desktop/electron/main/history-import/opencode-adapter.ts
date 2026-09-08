@@ -1,19 +1,20 @@
 /**
  * [INPUT]: Depends on Node module/path, user home(XDG_DATA_HOME missing ~/.local/share) with history-import adapter Public core
  * [OUTPUT]: Provides OpencodeHistoryAdapter with read-only session scans and transaction-fenced paged message streams, revision checks, limits, tools, duration, product-context envelope stripping, and one-assistant-per-turn folding
- * [POS]: The history-import OpenCode format adapter; The session_message migration target is empty and can be switched to todo/08-22-kimi-opencode-history-import.md L1); WAL search for read to keep single-generation snapshots
+ * [POS]: The history-import adapter for the OpenCode format; reads opencode.db read-only through node:sqlite and never migrates or writes back to it
  */
 
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { ForeignHistoryMessage, ForeignToolEvent } from "../../../shared/history-import-ipc";
 import {
+  HISTORY_FILE_BYTES,
   HISTORY_PARSER_VERSION,
   batchHistoryTurns,
   collectHistoryBatches,
   digest,
   fingerprint,
-  humanTitle,
+  historyRevisionChanged,
   initialSourceIncarnation,
   isWithin,
   normalizedAliases,
@@ -28,8 +29,7 @@ import {
   type ScanDepth,
   yieldHistoryParse,
 } from "./adapter";
-import { foldHistoryTurns, stripProductContext } from "./turn-folding";
-import { HISTORY_FILE_BYTES } from "./adapter";
+import { envelopeFreeTitle, foldHistoryTurns, stripProductEnvelopes } from "./turn-folding";
 
 type Json = Record<string, unknown>;
 type Row = Record<string, unknown>;
@@ -83,7 +83,7 @@ export class OpencodeHistoryAdapter implements HistoryAdapter {
           const updatedAt = timestamp(row.time_updated, 0);
           entries.push({
             opaqueId: opaqueSessionId(key), projectId: "", sourceKind: this.sourceKind, key,
-            title: humanTitle(title || "OpenCode 会话"), cwd: directory,
+            title: envelopeFreeTitle(title, "OpenCode 会话"), cwd: directory,
             createdAt: timestamp(row.time_created, updatedAt), updatedAt,
             /* 库级 mtime 拼 per-session time_updated：别的会话写库不轮换本行 revision */
             historyRevision: digest(`${id}:${String(row.time_updated)}`),
@@ -194,7 +194,7 @@ function takeMessage(state: ParseState, entry: AdapterEntry): ForeignHistoryMess
   if (!role) return null;
   /* 与 codex/claude 同律：产品自己的 <product_context …> 信封不是用户说的话。 */
   const content = row.parts.filter((part) => part.type === "text")
-    .map((part) => stripProductContext(asString(part.text) ?? "")).filter(Boolean).join("\n").trim();
+    .map((part) => stripProductEnvelopes(asString(part.text) ?? "")).filter(Boolean).join("\n").trim();
   const tools = role === "assistant" ? toolEvents(row.parts) : [];
   if (!content && !tools.length) return null;
   const time = object(data?.time);
@@ -217,9 +217,7 @@ function assertSessionRevision(db: Database, entry: AdapterEntry) {
     digest(`${entry.key.canonicalNativeId}:${String(row.time_updated)}`) !==
       entry.historyRevision
   ) {
-    throw Object.assign(new Error("历史会话已变化"), {
-      code: "HISTORY_REVISION_CHANGED",
-    });
+    throw historyRevisionChanged();
   }
 }
 

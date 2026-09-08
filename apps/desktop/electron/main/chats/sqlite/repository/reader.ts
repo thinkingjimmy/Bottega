@@ -4,6 +4,8 @@
  * [POS]: Read-only query layer beneath the ChatRepository facade
  */
 
+import { importedBackend } from "../history/source";
+import { turnOptionsSchema } from "../../../../../shared/chat-agent/options";
 import { truncateUtf8 } from "../../../../../shared/truncate-utf8";
 import type {
   ChatMessage,
@@ -48,7 +50,7 @@ const TIMELINE_PAGE_BYTE_LIMIT = 512 * 1024;
 const messageBytes = (message: ChatMessage) =>
   Buffer.byteLength(JSON.stringify(message), "utf8");
 
-/* 'unknown' 与 'false' 都不是「确实丢了尾巴」；只有确凿的 true 才提示。 */
+/* Only a stored 'true' flags a lost tail; any other text reads as complete. */
 const incompleteTailOf = (row: Row) =>
   row.active_generation_incomplete_tail === "true";
 
@@ -162,8 +164,12 @@ export class ChatRepositoryReader {
     if (row.lifecycle_kind === "external-readonly") {
       return this.readonlyMetadataFromRow(row);
     }
+    /* 不在这里 messageSchema.parse：下面的 chatRecordSchema 的 messages 字段
+       用的就是同一个 schema，先验一遍等于把每条 Chat 的最后一条消息验两遍。
+       两条路径的产物逐字节相同（同一 schema、同样剥未知键），删掉的只是那
+       第二遍——1 万条 Chat 的启动投影里，这是白花的一半钱。 */
     const lastMessage = row.last_message_json
-      ? messageSchema.parse(parseJson(row.last_message_json, "last message"))
+      ? parseJson(row.last_message_json, "last message")
       : null;
     if (!lastMessage) throw new Error("native Chat metadata has no retained message");
     const session = row.session_backend && row.session_id
@@ -198,6 +204,9 @@ export class ChatRepositoryReader {
       incarnationId: row.incarnation_id,
       title: row.title,
       agent: row.agent,
+      agentRevision: row.agent_revision,
+      options: parseJson(row.options_json, "Chat options"),
+      forkAgent: row.fork_agent ?? null,
       session,
       importOrigin,
       snapshotDigest: row.snapshot_digest ?? null,
@@ -245,6 +254,8 @@ export class ChatRepositoryReader {
       incarnationId: String(row.incarnation_id),
       title: row.title === null ? null : String(row.title),
       agent: row.agent as ChatRecord["agent"],
+      agentRevision: Number(row.agent_revision),
+      options: turnOptionsSchema.parse(parseJson(row.options_json, "Chat options")),
       session: null,
       importOrigin,
       snapshotDigest: null,
@@ -348,6 +359,9 @@ export class ChatRepositoryReader {
       incarnationId: core.incarnation_id,
       title: core.title,
       agent: core.agent,
+      agentRevision: core.agent_revision,
+      options: parseJson(core.options_json, "Chat options"),
+      forkAgent: core.fork_agent ?? null,
       session,
       importOrigin,
       snapshotDigest: core.snapshot_digest ?? null,
@@ -404,6 +418,9 @@ export class ChatRepositoryReader {
       incarnationId: String(core.incarnation_id),
       title: core.title === null ? null : String(core.title),
       agent: core.agent,
+      agentRevision: core.agent_revision,
+      options: parseJson(core.options_json, "Chat options"),
+      forkAgent: core.fork_agent ?? null,
       session: null,
       importOrigin: this.readonlyImportOrigin(core),
       snapshotDigest: null,
@@ -734,6 +751,7 @@ export class ChatRepositoryReader {
     return {
       ...common,
       role: "assistant",
+      backend: importedBackend(this.database, String(row.entry_version_id)),
       ...(parts.length ? { parts } : {}),
       /* 计划正文是本轮权威产出：与原生 planMessageKind 同律，空正文不成卡片。 */
       ...(payload.plan === true && content.trim() ? { kind: "plan" as const } : {}),
@@ -750,7 +768,7 @@ export class ChatRepositoryReader {
     const payload = parseJson(row.payload_json, "imported payload") as { preview?: unknown };
     const preview = truncateUtf8(String(payload.preview ?? ""), IMPORTED_MESSAGE_BYTE_LIMIT / 2, "…").value;
     return `${preview}\n\n[Imported content retained outside the renderer: ${Number(row.byte_size)} bytes]`;
-  }
+}
 
   private readSubagents(chatId: string): Record<string, PersistedSubagent> {
     const value = Object.fromEntries((this.database.prepare(

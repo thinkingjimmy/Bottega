@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on lifecycle AppPlatformAdmission 4 sets with attachmentAdmissionKey, App/Chat/Project stores and AppReference owner probe
- * [OUTPUT]: The app Provides AppAttachmentFence and AppAttachmentConflictError; grant/clear/default with App Project conversion using the same D17 determination and the same critical area
- * [POS]: The two-way fence for apps/attachments;"Who has the right" to grant-authority, the document only answers "Who and who can't happen simultaneously"
+ * [INPUT]: Depends on shared appDisplayName, lifecycle AppPlatformAdmission 4 sets with attachmentAdmissionKey, App/Chat/Project stores and AppReference owner probe
+ * [OUTPUT]: Provides AppAttachmentFence (runDefaultGrant/runGrant/runClear/runConversion critical-section admission, conversionConflict/assertConvertible checks) and AppAttachmentConflictError
+ * [POS]: Mutual-exclusion fence for apps/attachments; grant writes and App-conversion always contend for the same critical section so neither can race the other
  */
 
+import { appDisplayName } from "../../../../shared/apps-ipc";
 import type { AppGrantRecord, AppGrantTarget } from "../../../../shared/apps-ipc";
 import type { ChatStore } from "../../chats/chat-store";
 import {
@@ -15,7 +16,7 @@ import type { AppStore } from "../store/app-store";
 import { resolveAppGrant } from "./grant-resolver";
 
 /** 转换成 App workspace 的两个入口形状：chat 迁入 App Project、Project 绑定 App。 */
-export type AppConversionTarget =
+type AppConversionTarget =
   | { kind: "chat"; chatId: string }
   | { kind: "project"; projectId: string };
 
@@ -250,6 +251,6 @@ export class AppAttachmentFence {
   /** 拒绝信息必须让用户认得出是哪个 App，才谈得上「撤销后重试」。 */
   private appName(appId: string) {
     const record = this.dependencies.apps.get(appId);
-    return record?.manifest?.name ?? record?.displayName ?? appId;
+    return record ? appDisplayName(record) : appId;
   }
 }

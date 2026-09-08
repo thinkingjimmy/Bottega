@@ -1,9 +1,11 @@
 /**
  * [INPUT]: Depends on Apps package IPC, RepoProbe/main-owned PresetCatalog/SourceResolver/AppConfig/gh Detection, Base importer, optional immutable factory flow, ShareFlow, and canonical AppRecord query port
- * [OUTPUT]: Provides AppPackageController; concentrated repo/preset/factory probe, Studio-only authorization validation, Base import retry/cancel, config/share IPC, README reads, and install environment
- * [POS]: The package app front for apps/share; AppsService only retains the general app lifecycle, and the details of the package distribution are not reversed
+ * [OUTPUT]: Provides typed package admission, durable original-candidate resumption, explicit update application, pending configuration and existing install/share ownership.
+ * [POS]: apps/share package-installation front door; AppsService retains only the general App lifecycle while package/distribution details stay encapsulated here
  */
 
+import { AppCompatibilityRequests, appCompatibilityRequests } from "../compatibility/requests";
+import type { AppRepoProbeResult, PresetProbeResult } from "../../../../shared/apps-ipc";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
@@ -25,7 +27,7 @@ import {
   EMPTY_APP_CONFIG,
 } from "./app-config-store";
 import { detectGhStatus } from "./gh-detect";
-import { RepoProbeService } from "./package/repo-probe";
+import { AppCandidateUnavailableError, RepoProbeService } from "./package/repo-probe";
 import {
   PresetInstallService,
   type PresetFactoryFlow,
@@ -44,14 +46,18 @@ type ControllerPorts = {
 };
 
 export class AppPackageController {
+  readonly compatibility: AppCompatibilityRequests;
   readonly configs: AppConfigStore;
   readonly presets: PresetCatalog;
   private readonly probes: RepoProbeService;
   private readonly presetInstaller: PresetInstallService;
   private importer: BaseAppImporter | null = null;
   private shareFlow: ShareFlow | null = null;
+  private updatePort: Pick<import("../source/app-installer").AppInstaller, "resumeCompatibility" | "applyCompatibility"> | null = null;
+  configureCompatibilityUpdates(port: NonNullable<AppPackageController["updatePort"]>) { this.updatePort = port; }
 
   constructor(userData: string, presets = new PresetCatalog()) {
+    this.compatibility = appCompatibilityRequests(userData);
     this.configs = new AppConfigStore(userData);
     this.probes = new RepoProbeService(userData);
     this.presets = presets;
@@ -98,6 +104,7 @@ export class AppPackageController {
         ref: input.repoUrl,
         digest: confirmedDigest,
         packageRoot: probe.packageRoot,
+        candidate: probe.candidate,
         extensionPreflights: probe.extensionPreflights,
       },
       agent: input.agent,
@@ -135,23 +142,35 @@ export class AppPackageController {
   register(ipc: RendererIpc, ports: ControllerPorts) {
     ipc
       .handle(APPS_CHANNEL.probeRepo, (rawUrl) =>
-        this.probes.probe(ports.normalizeRepo(String(rawUrl)).repoUrl)
+        this.compatibility.guard(() => this.probes.probe(ports.normalizeRepo(String(rawUrl)).repoUrl))
       )
       .handle(APPS_CHANNEL.discardProbe, (rawPreflightId) =>
         this.probes.discard(String(rawPreflightId))
       )
       .handle(APPS_CHANNEL.probePreset, (rawPresetId) =>
-        this.presetInstaller.probePreset(assertPresetId(rawPresetId))
+        this.compatibility.guard(() => this.presetInstaller.probePreset(assertPresetId(rawPresetId)))
       )
       .handle(APPS_CHANNEL.discardPresetProbe, (rawPreflightId) =>
         this.presetInstaller.discard(String(rawPreflightId))
       )
       .handle(APPS_CHANNEL.installPreset, async (rawInput) =>
-        this.installPreset(
+        this.compatibility.guard(async () => this.installPreset(
           assertInstallPresetInput(rawInput),
           await ports.resolvePresetAgent()
-        )
+        ))
       )
+      .handle(APPS_CHANNEL.compatibilityRequests, () => this.compatibility.list())
+      .handle(APPS_CHANNEL.resumeCompatibility, (requestId) => this.compatibility.guard(() => this.resumeCompatibility(String(requestId))))
+      .handle(APPS_CHANNEL.applyCompatibility, (requestId) => this.compatibility.guard(async () => {
+        const saved = await this.compatibility.require(String(requestId));
+        if (!saved.candidate.appId || !this.updatePort) throw new Error("App update is unavailable");
+        const checked = await this.updatePort.resumeCompatibility(saved.candidate.appId, saved.candidate.contentDigest);
+        if (checked.kind !== "installed-update") return checked;
+        await this.updatePort.applyCompatibility(saved.candidate.appId, saved.candidate.contentDigest);
+        await this.compatibility.forget(String(requestId));
+        return { kind: "updated" } as const;
+      }))
+      .handle(APPS_CHANNEL.forgetCompatibility, (requestId) => this.compatibility.forget(String(requestId)))
       .handle(APPS_CHANNEL.ghStatus, () => detectGhStatus())
       .handle(APPS_CHANNEL.readConfig, (rawId) => {
         const appId = ports.assertAppId(rawId);
@@ -164,18 +183,46 @@ export class AppPackageController {
         return this.configs.write(
           appId,
           rawConfig as AppConfigValue,
-          record.manifest?.requirements?.tools ?? []
+          record.manifest?.requirements?.tools ?? record.pendingInstallRequirements?.tools ?? []
         );
       })
       .handle(APPS_CHANNEL.sharePreview, (rawInput) =>
-        this.requireShareFlow().preview(rawInput as SharePreviewInput)
+        this.compatibility.guard(() => this.requireShareFlow().preview(rawInput as SharePreviewInput))
       )
       .handle(APPS_CHANNEL.sharePublish, (rawInput) =>
-        this.requireShareFlow().publishShare(rawInput as SharePublishInput)
+        this.compatibility.guard(() => this.requireShareFlow().publishShare(rawInput as SharePublishInput))
       )
       .handle(APPS_CHANNEL.shareDiscard, (rawPreviewId) =>
         this.requireShareFlow().discardPreview(String(rawPreviewId))
       );
+  }
+
+  async probeAdmission(repoUrl: string, commitSha?: string) {
+    const result = await this.probes.probe(repoUrl, commitSha);
+    if (result.kind === "base") await this.probes.discard(result.preflightId);
+    return result;
+  }
+
+  private async resumeCompatibility(requestId: string): Promise<AppRepoProbeResult | PresetProbeResult | { kind: "candidate-unavailable" } | { kind: "installed-update"; appId: string }> {
+    const saved = await this.compatibility.require(requestId);
+    const candidate = saved.candidate;
+    if (candidate.appId) return this.updatePort?.resumeCompatibility(candidate.appId, candidate.contentDigest) ?? { kind: "candidate-unavailable" };
+    if (candidate.presetId) {
+      const result = await this.presetInstaller.probePreset(candidate.presetId, candidate.commitSha ?? undefined);
+      if (result.kind === "candidate-unavailable") return result;
+      const commit = result.kind === "base" ? result.commitSha : result.compatibility.candidate.commitSha;
+      if (commit !== candidate.commitSha) {
+        if (result.kind === "base") await this.presetInstaller.discard(result.preflightId);
+        return { kind: "candidate-unavailable" };
+      }
+      return result;
+    }
+    if (!candidate.repoUrl || !candidate.commitSha) return { kind: "candidate-unavailable" };
+    try { return await this.probes.probe(candidate.repoUrl, candidate.commitSha); }
+    catch (cause) {
+      if (cause instanceof AppCandidateUnavailableError) return { kind: "candidate-unavailable" };
+      throw cause;
+    }
   }
 
   async readReadme(record: AppRecord) {

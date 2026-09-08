@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Project/ChatSummary/ProjectsSortMode contract
- * [OUTPUT]: Provides sortProjects, both sorting will be invalid/substitute Project bottom, Manual maintains substitute updatedAt DESC/id order
+ * [OUTPUT]: Provides sortProjects; both sort modes sink archived/invalid projects to the bottom, and Manual mode falls back to updatedAt DESC then id when there is no explicit order
  * [POS]: Project sorting rules in lib, consumed by the Sidebar ProjectSection and locked by the single-section
  */
 

@@ -5,6 +5,8 @@
  */
 
 import { z } from "zod";
+import { turnOptionsSchema } from "../../../shared/chat-agent/options";
+import { agentSwitchedNoticeSchema } from "../../../shared/chat-agent/schema";
 import { agentBackendIdSchema } from "../../../shared/agent-schema";
 import { isAbsolute } from "node:path";
 import {
@@ -203,6 +205,7 @@ const assistantMessageSchema = z
   .object({
     ...messageBaseFields,
     role: z.literal("assistant"),
+    backend: agentBackendIdSchema,
     kind: z.literal("plan").optional(),
     /* 形状按导入段的宽口径收，原生那 4 KiB 由 overNativeDetail 按段补回。 */
     parts: z.array(importedPartSchema).min(1).max(MESSAGE_PART_LIMIT).optional(),
@@ -281,6 +284,7 @@ const noticeMessageSchema = z
     ...nonEmptyMessageBaseFields,
     role: z.literal("notice"),
     notice: z.discriminatedUnion("kind", [
+      agentSwitchedNoticeSchema,
       actionableNoticeSchema,
       failedNoticeSchema,
       manualRecoveredNoticeSchema,
@@ -539,6 +543,9 @@ const chatFactFields = {
     chatRecordRevision: z.number().int().positive(),
     chatMessageRevision: z.number().int().nonnegative(),
     agent: agentBackendIdSchema,
+    agentRevision: z.number().int().nonnegative(),
+    options: turnOptionsSchema,
+    forkAgent: agentBackendIdSchema.nullable().optional(),
     session: z
       .object({
         backend: agentBackendIdSchema,
@@ -630,6 +637,9 @@ function validateFacts(
       input: record,
     });
   }
+  if (record.options.backend !== record.agent) {
+    context.addIssue({ code: "custom", path: ["options"], message: "Chat options must match its Agent" });
+  }
   if (record.session && record.session.backend !== record.agent) {
     context.addIssue({
       code: "custom",
@@ -652,6 +662,7 @@ function validateFacts(
   if (
     record.importOrigin &&
     !record.session &&
+    record.agentRevision === 0 &&
     record.readOnlyReason !== "external-readonly"
   ) {
     context.addIssue({

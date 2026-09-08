@@ -1,12 +1,9 @@
 /**
- * [INPUT]: Depends on AppStore, node:fs atomic replacement, and the Project/Base name projection port
- * [OUTPUT]: Provides BaseAppRenamer: rewrite the source app.json atomically, seal a new generation through AppStore, then sync the Project/Base name best-effort
- * [POS]: The Base App rename layer of the apps module; source package and sealed manifest always agree, and a failed derived Project/Base projection never revokes the committed rename
+ * [INPUT]: Depends on AppStore metadata updates, SerialQueue, and the Project/Base name projection port
+ * [OUTPUT]: Provides BaseAppRenamer: persist the installed display name, then sync the Project/Base name best-effort without publishing a generation
+ * [POS]: Installed Base App naming boundary; source manifests, running generations, and grants retain their identity during rename
  */
 
-import { randomUUID } from "node:crypto";
-import { rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import type {
   AppRecord,
   RenameAppInput,
@@ -30,48 +27,26 @@ export class BaseAppRenamer {
   }
 
   private async renameLocked(input: RenameAppInput) {
-    const record = this.dependencies.store.get(input.appId);
-    if (!record) throw new Error("App 不存在");
     const name = input.name.trim();
-    if (!name || name.length > 120) throw new Error("App 名称无效");
-    if (record.manifest?.kind !== "base") {
-      throw new Error("当前只支持 Base App 改名");
-    }
-    const manifest = { ...record.manifest, name };
-    await writeManifestProjection({ ...record, manifest });
-    const saved = await this.dependencies.store.publishGeneration(
-      record.id,
-      (current) => ({
-        ...current,
-        displayName: name,
-        manifest,
-      })
+    if (!name || name.length > 120) throw new Error("Invalid App name");
+    const saved = await this.dependencies.store.update(
+      input.appId,
+      (current) => {
+        if (current.manifest?.kind !== "base") {
+          throw new Error("Only Base Apps support renaming");
+        }
+        // Names are local metadata; publishing would revoke live surface leases.
+        return { ...current, displayName: name };
+      }
     );
 
-    /* 改名已经提交；派生投影失败只值一条 warning,不能回头撤销既成事实。 */
+    // A derived projection failure cannot undo the committed name.
     await this.dependencies.syncBase(saved, name).catch((cause: unknown) => {
       this.dependencies.warn?.(
-        `Base App ${saved.id} 改名已提交，Project/Base 名称投影同步失败`,
+        `Base App ${saved.id} was renamed, but its Project/Base name projection failed`,
         cause
       );
     });
     return saved;
-  }
-}
-
-async function writeManifestProjection(record: AppRecord) {
-  const temporary = join(
-    record.dir,
-    `.app.json.rename-${randomUUID()}.tmp`
-  );
-  try {
-    await writeFile(
-      temporary,
-      `${JSON.stringify(record.manifest, null, 2)}\n`,
-      { mode: 0o600 }
-    );
-    await rename(temporary, join(record.dir, "app.json"));
-  } finally {
-    await rm(temporary, { force: true }).catch(() => {});
   }
 }

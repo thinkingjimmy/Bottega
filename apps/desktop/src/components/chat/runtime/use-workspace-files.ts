@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, shared workspace scope/result
  * [OUTPUT]: Provides the status of the Workspace Files in identity-stable, bound (scopeKey, chatId, query); The last response to cold 120ms/warm 30ms was to scrub and discard the delayed results with generation
- * [POS]: The file candidate of chat/runtime is asymmetrical boundary with the query owner; Keep main can be distinguished from united, without creating an error path
+ * [POS]: Async file-candidate boundary for chat/runtime, owned independently from the query caller; keeps conversation-scoped requests (no chatId) distinguishable from project/app-scoped ones without a separate error path
  */
 
 import {

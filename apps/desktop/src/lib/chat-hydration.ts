@@ -1,8 +1,10 @@
 /**
- * [INPUT]: Depends on shared workspace/backend contracts, chat ledger/attach ready, signal and generation
- * [OUTPUT]: Provides hydration, joint barrier, rear-end directory tri-mode, generation, default state machine and persisted/draft workspace
- * [POS]: The only coordinator that rendered a conversation merged only answered "Are the two routes of the session matched?" instead of "Can't type right now?"
+ * [INPUT]: Depends on the shared AgentWorkspaceScope and BackendInfo contracts
+ * [OUTPUT]: Keeps attach/load hydration independent of shared Agent sendability and resolves persisted workspace scope without optimistic promotion.
+ * [POS]: Sole hydration coordinator in the renderer; answers only whether the chat ledger and attach data have both arrived, not whether the user can type right now
  */
+import { submissionDecision } from "../../shared/agent-availability/projection";
+
 
 import type {
   AgentWorkspaceScope,
@@ -16,7 +18,8 @@ export function backendAvailability(
   checking: boolean
 ): BackendAvailability {
   if (!backend) return checking ? "checking" : "unavailable";
-  return backend.runtimeStatus === "installed" ? "ready" : "unavailable";
+  const decision = submissionDecision(backend, Date.now());
+  return decision.decision === "allow" ? "ready" : decision.decision === "wait" ? "checking" : "unavailable";
 }
 
 export type DraftWorkspaceScope = Exclude<

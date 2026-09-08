@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node worker_threads, immutable registered Base snapshots carrying their main-charged byte size, and the Query V1 pure executor
+ * [INPUT]: Depends on Node worker_threads, immutable registered Base snapshots carrying their main-charged byte size, and the Query V1 pure executor, and statusError from main/errors
  * [OUTPUT]: Provides the isolated worker message loop for register, evict, and absolute-deadline query operations that yield a typed query_timeout before main terminates the worker, and owns the per-snapshot sorted-plan cache that makes paging cheap
  * [POS]: Off-main execution leaf of api/query/, entered through electron/main/app-gui-query-worker-entry.ts; it owns no authority and cannot read Base storage directly
  */
@@ -7,6 +7,7 @@
 import { parentPort } from "node:worker_threads";
 import type { BaseGuiQueryRequestV1 } from "../../../../../../shared/app-gui/query";
 import type { BaseSnapshot } from "../../../../../../shared/bases-ipc";
+import { statusError } from "../../../../errors";
 import { executeBaseGuiQueryV1, type QueryPlanCacheV1 } from "./query-v1";
 
 type WorkerRequest =
@@ -59,29 +60,25 @@ parentPort.on("message", (message: WorkerRequest) => {
     }
     const entry = snapshots.get(message.snapshotKey);
     if (!entry) {
-      throw Object.assign(new Error("Query snapshot is no longer cached"), {
-        status: 409,
+      throw statusError(409, "Query snapshot is no longer cached", {
         code: "query_snapshot_missing",
         outcome: "not-committed",
       });
     }
     if (entry.rowsBytes > SNAPSHOT_LIMIT) {
-      throw Object.assign(new Error("Base snapshot exceeds 20 MiB"), {
-        status: 413,
+      throw statusError(413, "Base snapshot exceeds 20 MiB", {
         code: "query_budget_exceeded",
         outcome: "not-committed",
       });
     }
     if (Date.now() >= message.queueDeadlineAt) {
-      throw Object.assign(new Error("Query expired before worker execution"), {
-        status: 429,
+      throw statusError(429, "Query expired before worker execution", {
         code: "query_queue_timeout",
         outcome: "not-committed",
       });
     }
     if (Date.now() >= message.deadlineAt) {
-      throw Object.assign(new Error("Query exceeded its wall budget before worker execution"), {
-        status: 408,
+      throw statusError(408, "Query exceeded its wall budget before worker execution", {
         code: "query_timeout",
         outcome: "not-committed",
       });

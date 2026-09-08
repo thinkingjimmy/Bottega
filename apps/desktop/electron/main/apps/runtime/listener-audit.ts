@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Accepts lsof field, output, target port, start group and listener PID→PGID mapping
+ * [INPUT]: Accepts `lsof -Fpn` output, the target port, the expected process group, and the listener PID→PGID mapping
  * [OUTPUT]: Provides parseLsofListeners and assertLoopbackListeners security tests
- * [POS]: The pure listening audit core of apps/runtime requires that each listening is circular and belongs to the startup process group
+ * [POS]: apps/runtime's pure listener-audit core; asserts every listener on the port is a loopback address inside the expected process group
  */
 
-export type TcpListener = {
+type TcpListener = {
   pid: number;
   endpoint: string;
 };

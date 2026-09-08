@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on DurableJson, shared AppGenerationBuildOperation/AppDomainIdentity, normalized extensionRequirements and Base GUI capability requests
- * [OUTPUT]: Provides AppGenerationBuildLedger; staging is freezing the extension/Base GUI declaration, build-before-participant fsync, monophonic checkpoint/phase, abort tombstone, retired identity, query, non-terminal recovery of the listing and the air conditioning cold start after the breakdown/disconnection
- * [POS]: The generation build neutral durable monograph of apps; Participant can only return checkpoint and cannot directly promote AppStore
+ * [OUTPUT]: Provides AppGenerationBuildLedger: durable staging for App generation builds — freezes extension/Base GUI requirements at begin, records per-kind checkpoints, enforces monotonic phase advancement guarded by revision, retires build ids on promote/abort, and lists non-terminal builds for crash recovery on startup
+ * [POS]: The durable generation-build ledger beneath apps/generation; participants may only record checkpoints through it and never promote AppStore directly
  */
 
 import { join } from "node:path";

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on browser computed style and injectable 1×1 canvas pixel readability
  * [OUTPUT]: Provides ChartTheme, normalize CSSColor and readChartTheme
- * [POS]: The CSS→sRGB thematic boundaries of lib/charts; Hex is directed, the rest is canvasized to zrender, and the comma rgb/rgba is solvable
+ * [POS]: The CSS-to-sRGB color boundary for lib/charts; hex values pass straight through, everything else resolves via a canvas pixel read re-encoded into zrender-compatible rgb/rgba syntax
  */
 
 export type ChartTheme = {

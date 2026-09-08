@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on zod plus canonical Extension digest, generation, owner, and backend identity contracts
- * [OUTPUT]: Provides the schema-v5 Projection Ledger shape, exact-empty v1/v2 migration, inferred records, and fail-closed relational validation
+ * [INPUT]: Depends on zod, the canonical refKey, and shared Extension digest, generation, owner, and backend identity contracts
+ * [OUTPUT]: Provides the schema-v5 Projection Ledger shape, inferred records, and fail-closed relational validation
  * [POS]: Persistence boundary for projection-ledger; runtime mutation stays in projection-ledger.ts while impossible durable graphs are rejected here
  */
 
@@ -9,6 +9,7 @@ import {
   SHA256_DIGEST_IDENTITY_PATTERN,
   type Sha256Digest,
 } from "../../../../shared/extensions-ipc";
+import { refKey } from "../registry-canonical";
 
 const digestSchema = z
   .string()
@@ -21,7 +22,7 @@ const ownerSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("app"), appId: z.string().min(1) }).strict(),
 ]);
 
-export const projectionDeliverySchema = z.object({
+const projectionDeliverySchema = z.object({
   backend: z.enum(["codex", "claude", "kimi", "opencode"]),
   transport: z.literal("filesystem"),
   runtimeIdentity: z.string().min(1),
@@ -84,7 +85,7 @@ const sessionDiscoverySchema = z.object({
   revokedByOperationId: z.string().min(1).nullable(),
 }).strict();
 
-export const projectionAdmissionSchema = z.object({
+const projectionAdmissionSchema = z.object({
   installIdentity: identitySchema,
   packageGenerationRef: generationRefSchema,
   componentInstanceIdentity: identitySchema,
@@ -102,25 +103,6 @@ const bindingAuthoritySchema = z.object({
   expiresAt: z.number().int().nonnegative(),
   consumedAt: z.number().int().nonnegative().nullable(),
 }).strict();
-
-const emptyLegacyProjectionLedgerSchema = z.union([
-  z.object({
-    schemaVersion: z.literal(1),
-    bindings: z.array(z.never()).length(0),
-  }).strict(),
-  z.object({
-    schemaVersion: z.literal(2),
-    consents: z.array(z.never()).length(0),
-    bindings: z.array(z.never()).length(0),
-  }).strict(),
-  z.object({
-    schemaVersion: z.literal(2),
-    consents: z.array(z.never()).length(0),
-    bindings: z.array(z.never()).length(0),
-    projectionAdmissions: z.array(z.never()).length(0),
-    authorities: z.array(z.never()).length(0),
-  }).strict(),
-]);
 
 export const projectionLedgerSchema = z.object({
   schemaVersion: z.literal(5),
@@ -240,18 +222,6 @@ export const projectionLedgerSchema = z.object({
   }
 });
 
-export function migrateEmptyLegacyProjectionLedger(raw: unknown) {
-  if (!emptyLegacyProjectionLedgerSchema.safeParse(raw).success) return undefined;
-  return {
-    schemaVersion: 5 as const,
-    consents: [],
-    bindings: [],
-    sessionDiscoveries: [],
-    projectionAdmissions: [],
-    authorities: [],
-  };
-}
-
 export type ProjectionLedgerState = z.infer<typeof projectionLedgerSchema>;
 export type ExtensionProjectionBinding = z.infer<typeof bindingSchema>;
 export type ExtensionWorkspaceConsent = z.infer<typeof consentSchema>;
@@ -262,10 +232,6 @@ export type ProjectionAdmission = z.infer<typeof projectionAdmissionSchema>;
 
 function ownerKey(owner: z.infer<typeof ownerSchema>) {
   return owner.kind === "app" ? `app:${owner.appId}` : "user";
-}
-
-function refKey(ref: z.infer<typeof generationRefSchema>) {
-  return `${ref.packageGenerationId}\0${ref.recordDigest}`;
 }
 
 function sameReceiptBinding(

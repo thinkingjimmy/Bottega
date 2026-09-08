@@ -6,6 +6,9 @@
  * [POS]: Apps first-party discovery shelf; IPC carries stable identity and install facts while this renderer boundary owns all five-language product copy
  */
 
+import { CompatibilityReminder } from "../compatibility/reminder";
+import { AppCompatibilityRequiredError, resumeAppCompatibility, forgetAppCompatibility } from "@/lib/apps-client";
+import type { AppCompatibilityFailure } from "../../../../shared/app-host/contract";
 import { useEffect, useRef, useState } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
@@ -32,7 +35,7 @@ import type {
   InstallPresetInput,
   PresetAppId,
   PresetAppSummary,
-  PresetProbeResult,
+  ReadyPresetProbeResult,
 } from "../../../../shared/apps-ipc";
 import { AppRequirementsForm, appRequirementsSatisfied } from "./app-requirements-form";
 import {
@@ -45,8 +48,9 @@ const EMPTY_CONFIG: AppConfigValue = { values: {}, agentReadableKeys: [] };
 type CardStage =
   | { kind: "idle" }
   | { kind: "probing" }
-  | { kind: "ready"; probe: PresetProbeResult }
-  | { kind: "installing"; probe: PresetProbeResult };
+  | { kind: "compatibility"; failure: AppCompatibilityFailure }
+  | { kind: "ready"; probe: ReadyPresetProbeResult }
+  | { kind: "installing"; probe: ReadyPresetProbeResult };
 
 const PRESET_COPY_KEYS = {
   "design-canvas": {
@@ -78,7 +82,7 @@ function localizedPreset(
   return { name: t(copy.nameKey), description: t(copy.descriptionKey) };
 }
 
-function pickReadme(zh: boolean, probe: PresetProbeResult) {
+function pickReadme(zh: boolean, probe: ReadyPresetProbeResult) {
   const disclosed = (path: string) => probe.disclosures.find((entry) => entry.path === path)?.content;
   return (zh ? disclosed("README.zh-CN.md") : disclosed("README.md")) ?? disclosed("README.md") ?? "";
 }
@@ -148,11 +152,12 @@ export function PresetCard({ preset, onOpen }: {
  *  「再看一次」由调用方换 key 表达（一次挂载 = 一次 probe），组件内因此不必
  *  再数 attempt——epoch 交给谁掌管，谁就该持有它，两处各存一份必然对不齐。
  * ------------------------------------------------------------------------- */
-export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, discardPresetProbe, onInstall }: {
+export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, discardPresetProbe, onInstall, compatibilityRequestId }: {
   preset: PresetAppSummary;
+  compatibilityRequestId?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  probePreset: (presetId: string) => Promise<PresetProbeResult>;
+  probePreset: (presetId: string) => Promise<ReadyPresetProbeResult>;
   discardPresetProbe: (preflightId: string) => Promise<void>;
   onInstall: (input: InstallPresetInput) => Promise<AppRecord>;
 }) {
@@ -162,6 +167,8 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
   const [config, setConfig] = useState<AppConfigValue>(EMPTY_CONFIG);
   const [stage, setStage] = useState<CardStage>({ kind: "probing" });
   const [error, setError] = useState("");
+  const [candidateUnavailable, setCandidateUnavailable] = useState(false);
+  const returnFocus = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
   /* ── 为什么这里是世代号而不是一个布尔 ──────────────────────────────
    * 「本次挂载还是不是 preflight 的主人」用布尔表达，前提是「一次挂载 = 一次
    * effect」。StrictMode 下这个前提不成立：dev 会 挂载→清理→再挂载 跑两遍，
@@ -181,13 +188,21 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
     if (preflightId) void discardPresetProbe(preflightId).catch(() => undefined);
   };
 
+  const fetchProbe = async (latest = false) => {
+    if (latest || !compatibilityRequestId) return probePreset(preset.id);
+    const resumed = await resumeAppCompatibility(compatibilityRequestId);
+    if (resumed.kind !== "base" || !("presetId" in resumed)) { setCandidateUnavailable(true); throw new Error(t("appHost.candidateUnavailable")); }
+    return resumed;
+  };
+
   const retryProbe = async () => {
     const mine = (generation.current += 1);
     release();
     setStage({ kind: "probing" });
     setError("");
     try {
-      const next = await probePreset(preset.id);
+      const next = await fetchProbe(candidateUnavailable);
+      setCandidateUnavailable(false);
       if (mine !== generation.current) {
         await discardPresetProbe(next.preflightId).catch(() => undefined);
         return;
@@ -196,6 +211,7 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
       setStage({ kind: "ready", probe: next });
     } catch (cause) {
       if (mine !== generation.current) return;
+      if (cause instanceof AppCompatibilityRequiredError) { setStage({ kind: "compatibility", failure: cause.compatibility }); return; }
       setStage({ kind: "idle" });
       setError(errorMessage(cause, t("apps.presetProbeFailed")));
     }
@@ -205,7 +221,7 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
     const mine = (generation.current += 1);
     void (async () => {
       try {
-        const probe = await probePreset(preset.id);
+        const probe = await fetchProbe();
         if (mine !== generation.current) {
           await discardPresetProbe(probe.preflightId).catch(() => undefined);
           return;
@@ -214,6 +230,7 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
         setStage({ kind: "ready", probe });
       } catch (cause) {
         if (mine !== generation.current) return;
+        if (cause instanceof AppCompatibilityRequiredError) { setStage({ kind: "compatibility", failure: cause.compatibility }); return; }
         setStage({ kind: "idle" });
         setError(errorMessage(cause, t("apps.presetProbeFailed")));
       }
@@ -254,10 +271,12 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
         },
         ...(preset.requirements.length ? { config } : {}),
       });
+      if (compatibilityRequestId) await forgetAppCompatibility(compatibilityRequestId);
       setConfig(EMPTY_CONFIG);
       onOpenChange(false);
     } catch (cause) {
       /* preflight 已随提交转移给 main，renderer 不得重放；只能重开取新的一份。 */
+      if (cause instanceof AppCompatibilityRequiredError) { setStage({ kind: "compatibility", failure: cause.compatibility }); return; }
       setStage({ kind: "idle" });
       setError(errorMessage(cause, t("apps.presetInstallFailed")));
     }
@@ -268,13 +287,14 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
-      <AppDialogContent className="sm:max-w-[36rem]" data-testid="preset-detail">
+      <AppDialogContent className="sm:max-w-[36rem]" data-testid="preset-detail" onCloseAutoFocus={(event) => { event.preventDefault(); returnFocus.current?.focus(); }}>
         {/* 图标离开标题：标题只留名字，可访问名不再夹着一个读不出来的字符，
             而那颗 emoji 单独成块反倒比塞在句首更像它自己。pr 给右上角的 × 让位。 */}
         {/* 正文是唯一会滚的层，头尾各留一条满幅细线：没有它，长 README 会从
             标题背后穿过去、又贴着按钮收尾，看起来像被裁掉而不是还没滚完。
             -mx-5 是把 AppDialogContent 的内边距抵消掉——细线要横贯整个表面，
             缩在正文列里那条线就成了装饰而非边界。 */}
+        {stage.kind === "compatibility" ? <CompatibilityReminder failure={stage.failure} appName={copy.name} onClose={close} onRetry={() => void retryProbe()} /> : <>
         <DialogHeader className="-mx-5 shrink-0 gap-0 border-b px-5 pr-8 pb-4 text-left">
           <div className="flex items-start gap-3">
             <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-2xl">{preset.icon}</span>
@@ -361,7 +381,7 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
             <div className="space-y-3">
               <p className="rounded-lg bg-destructive/10 p-3 text-destructive text-sm" role="alert">{error}</p>
               <Button onClick={() => void retryProbe()} variant="outline">
-                {t("common.retry")}
+                {t(candidateUnavailable ? "appHost.checkLatest" : "common.retry")}
               </Button>
             </div>
           </AppDialogBody>
@@ -373,6 +393,7 @@ export function PresetInstallDialog({ preset, open, onOpenChange, probePreset, d
             {stage.kind === "installing" ? t("apps.presetInstalling") : t("apps.presetAllowAndInstall")}
           </Button>
         </DialogFooter>
+        </>}
       </AppDialogContent>
     </Dialog>
   );

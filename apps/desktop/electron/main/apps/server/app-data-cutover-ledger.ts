@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on DurableJson, crypto and shared AppDataEpochOwnership/AppDataCutoverRecord/AppDataCutoverSource
  * [OUTPUT]: Provides AppDataCutoverLedger: an unreadable file is quarantined and rebuilt empty, epoch ownership is monotonic, the source/target union is closed, abort/release write generationBuildId-level tombstones, and non-terminal cutovers are listed for restart reconcile
- * [POS]: The sole author of the apps server mutable-data record (§3.4); a code generation never names a physical root itself, and app-server-cutover drives the switch order
+ * [POS]: Sole source of truth for the apps server mutable-data record (§3.4); a generation id never names a physical root directly, and app-server-cutover drives the switch order
  */
 
 import { randomUUID } from "node:crypto";
@@ -25,7 +25,6 @@ const epochSchema = z.object({
 const sourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("none") }).strict(),
   z.object({ kind: z.literal("existing"), generationId: z.string().min(1), dataEpochId: z.string().uuid() }).strict(),
-  z.object({ kind: z.literal("legacy-import"), snapshotId: z.string().uuid() }).strict(),
 ]);
 const cutoverSchema = z.object({
   cutoverId: z.string().uuid(),

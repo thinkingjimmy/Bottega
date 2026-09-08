@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, current MemoryStatusSnapshot, memory-client title level supply IPC and i18n
- * [OUTPUT]: Provides MemorySupplyList: Successfully removes old error loading, disabled/failure prompt, decreased dynamic effects, chat/foreign aggregation, scope three-way fence loading range not to be delayed until discarded and maintained loading, red only left for rejection
- * [POS]: Settings › Memory The folding source sub-block of the observed segment; Only display the count/title/state, never touch the memory in writing
+ * [INPUT]: Depends on React, MemoryStatusSnapshot, memory-client's supply-stream IPC, and i18n
+ * [OUTPUT]: Provides MemorySupplyList: a disclosure row for chat/external source counts that discards stale results on scope change, stays in a loading state through in-flight scope races instead of erroring, and reserves the failure state for a real fetch rejection
+ * [POS]: Settings › Memory's collapsible source sub-block within the observation section; displays counts and status only, never writes to memory
  */
 
 import { useEffect, useRef, useState } from "react";

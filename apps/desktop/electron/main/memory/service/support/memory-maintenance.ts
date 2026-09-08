@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Delivery/cleanup/rebuild Owners, start initialization and façade status release feedback
- * [OUTPUT]: Provides Restore PreparatIOn, Background Rebuild, Running, Attention Follow-up with no phase/detail loss local diagnosis release
- * [POS]: The main/memory/service/support maintenance coordinator; The first thing to do is to restore, compress, clean, re-test and rebuild, and then run away from the chatter façade
+ * [INPUT]: Depends on the Delivery/cleanup/rebuild owners, owner initialization, errorMessage, and the facade's warning/publish callbacks
+ * [OUTPUT]: Provides MemoryMaintenanceController: rebuild-recovery preparation, background rebuild recovery with phase-preserving diagnostics, and attention follow-up actions
+ * [POS]: The maintenance coordinator of main/memory/service/support; keeps recovery, compaction, cleanup retry, and rebuild resumption out of the chat facade
  */
 
 import { existsSync } from "node:fs";
@@ -15,10 +15,7 @@ import type {
   MemoryRebuildController,
   MemoryRebuildRecoveryFailure,
 } from "../../orchestration/rebuild-controller";
-import {
-  providerRecoveryFailure,
-  rebuildRecoveryMessage,
-} from "./rebuild-diagnostics";
+import { errorMessage } from "../../../errors";
 
 type Dependencies = {
   delivery: MemoryDeliveryStore;
@@ -62,7 +59,10 @@ export class MemoryMaintenanceController {
     const failures = await this.dependencies.rebuild.recover();
     await this.reconcileActivationCleanup(failures);
     const failure = failures[0];
-    if (failure) this.dependencies.setWarning(rebuildRecoveryMessage(failure));
+    if (failure) {
+      const phase = failure.phase === "policy" ? "Policy 授权" : "Provider 清理/回灌";
+      this.dependencies.setWarning(`Memory 重建恢复失败（${phase}）：${failure.detail}`);
+    }
     this.dependencies.publish();
     return failures;
   }
@@ -81,7 +81,12 @@ export class MemoryMaintenanceController {
     try {
       await this.dependencies.enforceActivationCleanup();
     } catch (cause) {
-      failures.push(providerRecoveryFailure("activation-cleanup", cause));
+      failures.push({
+        operationId: "activation-cleanup",
+        failureKind: "provider",
+        phase: "provider",
+        detail: errorMessage(cause).slice(0, 2_000),
+      });
     }
   }
 

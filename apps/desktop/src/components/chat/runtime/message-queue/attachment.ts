@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on PromptInput File/Rich Text Contract, Composer File Form and Row Annex DTO
- * [OUTPUT]: Provides the queue attachment materialization, Gallery origin/submission Data authentication, with workspace file/dir, directory tail slider) to show the two-way draft
- * [POS]: the attachment boundary of the runtime/message-queue; Concentrate on having a FileReader that fits with blob URLs, not participating in access or Steer state migration
+ * [INPUT]: Depends on the PromptInput file/rich-text contract, ComposerFile, and the message-queue-model attachment/prompt types
+ * [OUTPUT]: Provides materializePrompt (queued attachment to PromptInputMessage via FileReader data URLs), draftPrompt, and promptFiles for the two-way composer/queue file projection
+ * [POS]: Attachment boundary for runtime/message-queue; only converts File objects to/from data and blob URLs, never touches admission or Steer state
  */
 
 import type {

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on guarded Node fs/crypto/path, the shared 8 MiB image data-URL limits, and canonical ChatAttachmentMeta
+ * [INPUT]: Depends on guarded Node fs/crypto/path, the shared 8 MiB image data-URL limits, canonical ChatAttachmentMeta, main/errors, and the persistence errno predicate
  * [OUTPUT]: Provides exportAttachmentFile: O_NOFOLLOW|O_NONBLOCK on both ends, MIME and length agreement, 0700/0600 modes, and an atomic rename from a randomly named temporary file
  * [POS]: Security kernel of attachment export; ChatsService owns ownership checks while this file owns the file-system state machine and its injectable failure seams
  */
@@ -13,6 +13,8 @@ import {
   isValidImageDataUrl,
 } from "../../../shared/agent-ipc";
 import type { ChatAttachmentMeta } from "../../../shared/chats-ipc";
+import { statusError } from "../errors";
+import { isErrnoCode } from "../persistence/durable-json";
 
 export type AttachmentExportDependencies = {
   writeTemp?: (path: string, content: Buffer) => Promise<void>;
@@ -88,7 +90,7 @@ async function readExistingTarget(path: string, expectedSize: number) {
   try {
     handle = await open(path, guardedReadFlags);
   } catch (cause) {
-    if (isCode(cause, "ENOENT")) return null;
+    if (isErrnoCode(cause, "ENOENT")) return null;
     throw cause;
   }
   try {
@@ -141,13 +143,3 @@ function extensionForMime(mediaType: string) {
 
 const asciiLower = (value: string) =>
   value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
-
-function isCode(cause: unknown, code: string) {
-  return Boolean(
-    cause && typeof cause === "object" && "code" in cause && cause.code === code
-  );
-}
-
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
-}

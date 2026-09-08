@@ -9,7 +9,6 @@ import type { appsEn } from "./en";
 export const appsZhCN: typeof appsEn = {
   provider: {
     listFailed: "Apps 加载失败：{{message}}",
-    browserFallbackDescription: "来自 {{url}} 的浏览器降级应用",
   },
   presets: {
     designCanvas: {
@@ -144,12 +143,14 @@ export const appsZhCN: typeof appsEn = {
     aboutToInstall: "即将下载并安装",
     permissionsWarning: "安装与运行均以你的用户权限执行（可读写文件、访问网络）。",
     trustedOnly: "仅添加你信任的仓库。",
+    authorManifestInstall: "使用作者声明安装",
+    agentAnalysis: "使用 Agent 分析（可选）",
+    authorManifestHint: "新版 App 声明可直接安装。需要已授权的 Agent 协助生成安装描述时，再选择 Agent 分析。",
     runtimeAgent: "运行 Agent",
     repositoryAddress: "仓库地址",
     nextStep: "下一步先以 no-checkout 方式读取 Git 对象并判型；此时不会运行仓库代码，也不会创建 App。",
   },
   card: {
-    browserFallback: "浏览器降级",
     preparing: "正在准备 {{name}}",
     awaitingAuthorization: "确认权限后即可继续使用",
     operationFailed: "操作失败",
@@ -337,7 +338,6 @@ export const appsZhCN: typeof appsEn = {
   },
   detail: {
     startFailed: "App 启动失败",
-    placeholder: "演示占位不可运行；请用右上角 + 添加真实 GitHub App。",
     crashed: "App 进程意外退出",
     stopped: "App 已停止",
     viewLog: "查看日志",

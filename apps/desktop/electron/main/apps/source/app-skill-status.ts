@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on AppStore, Base App directory skeleton and create-skill turn requestId
- * [OUTPUT]: Provides complete BaseAppSkill/failBaseAppSkill/hasGeneratedSkill, and is judged by the same AGENTS.md+SKILL.md settlement skills status
- * [POS]: The ability of the apps module to complete the truth source; Agent finalizer is used in conjunction with the Restore startup, without each guessing the product
+ * [OUTPUT]: Provides completeBaseAppSkill/failBaseAppSkill/hasGeneratedSkill, which settle a create-skill turn by checking for a real AGENTS.md and SKILL.md rather than assuming success
+ * [POS]: Source of truth for whether a Base App's skill-generation turn actually produced output; the Agent finalizer and startup recovery both settle skillStatus through it instead of each guessing
  */
 
 import { readFile, readdir, stat } from "node:fs/promises";

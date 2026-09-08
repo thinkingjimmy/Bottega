@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Memory-client, the effective renderer locale, shared i18n runtime, and shared memory status/description/running time contracts
- * [OUTPUT]: Provides module-level memoryStore: state, per-provider revision reducer, version checking instantaneous, health/upload, configuration/version switching and destructive capabilities
- * [POS]: Settings › Memory's renderer owner; View Unloaded Not Lost, Main Drive is Running Fact
+ * [INPUT]: Depends on memory-client, the effective renderer locale, shared i18n runtime, and shared memory status/descriptor/runtime contracts
+ * [OUTPUT]: Provides the module-level memoryStore: state, a per-provider revision reducer, runtime-version checks, health refresh, configuration preview/apply, provider/version switching, and destructive operations
+ * [POS]: Settings › Memory's renderer state owner; state persists across view unmounts and is driven by runtime facts, not by view lifecycle
  */
 
 import type {

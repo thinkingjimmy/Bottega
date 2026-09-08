@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shared SubmissionContent/Outcome/ACK/lifecycle constant, opaque raw payload reference and ledger v3 state/manual intent
- * [OUTPUT]: Provides outgoing raw submission→prepared intent Two-phase reservation, start failed recoverable, cross-link, attempt FSM, result outbox, capsule custody, revision outcome/ACK and release of resources pure mutation
+ * [INPUT]: Depends on shared SubmissionContent/Outcome/ACK/lifecycle constants, coordinator-values coded errors, opaque raw payload references, and ledger v7 state/manual-intent schema
+ * [OUTPUT]: Provides raw/prepared reservation and attempt lifecycles, persisted outcomes, retry capsules, and commit-custody proofs that survive terminal failure
  * [POS]: The durable submission state machine of sections/coordinator; RelayLedger is only responsible for the sequencing clone→persist→publish
  */
 
@@ -10,10 +10,10 @@ import {
   SUBMISSION_CAPSULE_TTL_MS,
   type SubmissionAck,
   type SubmissionContentV1,
-  type SubmissionErrorCode,
   type SubmissionOutcome,
   submissionContentV1Schema,
 } from "../../../../shared/submission";
+import { codedError } from "./coordinator-values";
 import type {
   LedgerState,
   ManualAttempt,
@@ -484,7 +484,7 @@ export function failManualWithCapsule(
     state,
     intent,
     "failed",
-    "main-journal",
+    mode === "retry-agent-turn" ? "chat-persisted" : "main-journal",
     capsuleInstalled ? mode : "none",
     now,
     !capsuleInstalled
@@ -561,6 +561,7 @@ export function querySubmissionOutcome(
       intentId,
       revision: 0,
       outcome,
+      ...(tombstone.custody ? { custody: tombstone.custody } : {}),
       deletedAt: tombstone.deletedAt,
     };
   }
@@ -767,7 +768,6 @@ function recoveryCapsuleContent(
     backendEpoch: content.backendEpoch,
   });
 }
-
 function requireIntent(state: LedgerState, intentId: string) {
   const intent = state.manualIntents[intentId];
   if (!intent) throw new Error("ManualTurnIntent 不存在");
@@ -796,8 +796,4 @@ function attemptProjection(phase: ManualAttempt["phase"]) {
     custody: "chat-persisted" as const,
     retry: "none" as const,
   };
-}
-
-function codedError(code: SubmissionErrorCode) {
-  return Object.assign(new Error(code), { code });
 }

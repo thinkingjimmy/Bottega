@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on tabId, AbortSignal and asynchronous batch assignments
- * [OUTPUT]: Provides PerTabExecutionLane; The tabs are strictly in sequence with the different tabs being parallel
- * [POS]: The main/browser/execution batch is simultaneously loaded; Remove the queue semantics from the CDP implementation to prevent the old batch from clearing the new batch status
+ * [OUTPUT]: Provides PerTabExecutionLane: tasks for the same tab run strictly in sequence, while different tabs run in parallel
+ * [POS]: main/browser/execution's per-tab serialization primitive; keeps queue ordering out of the CDP implementation so an aborted older batch can't clobber a newer batch's state
  */
 
 export class PerTabExecutionLane {

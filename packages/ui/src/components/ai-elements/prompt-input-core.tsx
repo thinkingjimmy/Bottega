@@ -1,16 +1,12 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, PromptInput context, typed attachment commands, host-injected UI text, and abort-aware submission gates
- * [OUTPUT]: Provides PromptInput submission transactions, localized file-admission errors, fresh-count attachment selection, and the plain-text input surface
+ * [INPUT]: Depends on React, PromptInput context and its shared admission helpers, typed attachment commands, host-injected UI text, and abort-aware submission gates
+ * [OUTPUT]: Provides the PromptInput form transaction, fresh-count attachment admission shared by provider and local paths, and PromptInputBody
  * [POS]: The submission and attachment-admission core of ai-elements PromptInput; provider and local paths share the same pure selection rules
  */
 
-import {
-  InputGroup,
-  InputGroupTextarea,
-} from "@ai-chat/ui/components/ui/input-group";
-import { selectPromptInputFiles } from "@ai-chat/ui/lib/prompt-input-files";
+import { InputGroup } from "@ai-chat/ui/components/ui/input-group";
 import { useUiText } from "@ai-chat/ui/lib/ui-text";
 import {
   awaitSubmissionStep,
@@ -18,33 +14,27 @@ import {
   throwIfSubmissionAborted,
 } from "@ai-chat/ui/lib/prompt-input-submission";
 import { cn } from "@ai-chat/ui/lib/utils";
-import type { SourceDocumentUIPart } from "ai";
-import { nanoid } from "nanoid";
 import {
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type ChangeEventHandler,
   type ClipboardEventHandler,
-  type ComponentProps,
   type FormEvent,
   type FormEventHandler,
   type HTMLAttributes,
-  type KeyboardEventHandler,
 } from "react";
 import {
+  admitAttachmentFiles,
   LocalAttachmentsContext,
-  LocalReferencedSourcesContext,
   useOptionalPromptInputController,
-  usePromptInputAttachments,
+  usePromptInputFileMessages,
   type AttachmentsContext,
   type PromptInputAdapter,
   type PromptInputFilePart,
   type PromptInputSnapshot,
-  type ReferencedSourcesContext,
 } from "./prompt-input-context";
 import {
   attachmentCommandTarget,
@@ -166,26 +156,7 @@ export const PromptInput = ({
     "submissionFailed",
     "Submission failed. Please try again."
   );
-  const fileTypeError = useUiText(
-    "fileTypeError",
-    "No files match the accepted types."
-  );
-  const fileSizeError = useUiText(
-    "fileSizeError",
-    "All files exceed the maximum size."
-  );
-  const fileCountError = useUiText(
-    "fileCountError",
-    "Too many files. Some were not added."
-  );
-  const fileMessages = useMemo(
-    () => ({
-      accept: fileTypeError,
-      max_file_size: fileSizeError,
-      max_files: fileCountError,
-    }),
-    [fileCountError, fileSizeError, fileTypeError]
-  );
+  const fileMessages = usePromptInputFileMessages();
   const controller = useOptionalPromptInputController();
   const usingProvider = !!controller;
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -197,57 +168,26 @@ export const PromptInput = ({
   // 非 Provider 路径的附件列表；blob URL 生命周期统一在 useAttachmentList
   const local = useAttachmentList();
   const files = usingProvider ? controller.attachments.files : local.files;
-  const [referencedSources, setReferencedSources] = useState<
-    (SourceDocumentUIPart & { id: string })[]
-  >([]);
 
-  const openFileDialogLocal = useCallback(() => inputRef.current?.click(), []);
-  const addLocal = useCallback(
-    (fileList: File[] | FileList) => {
-      if (
-        attachmentsDisabled ||
-        (!preserveSubmissionOnUnmount &&
-          submissionGateRef.current.isActive())
-      ) return;
-      const selection = selectPromptInputFiles(fileList, {
-        accept,
-        currentCount: local.filesRef.current.length + externalFileCount,
-        maxFiles,
-        maxFileSize,
-        messages: fileMessages,
-      });
-      if (selection.error) onError?.(selection.error);
-      if (selection.files.length === 0) return;
-
-      const acceptedAttachments = attachmentFileFilter
-        ? selection.files.filter(attachmentFileFilter)
-        : selection.files;
-      local.add(acceptedAttachments);
-      onFilesAccepted?.(selection.files);
-    },
-    [
-      accept,
-      attachmentFileFilter,
-      attachmentsDisabled,
-      externalFileCount,
-      fileMessages,
-      local,
-      maxFileSize,
-      maxFiles,
-      onError,
-      onFilesAccepted,
-      preserveSubmissionOnUnmount,
-    ]
+  /* 附件入口（对话框/拖放/粘贴）在禁用或提交进行中一律关闭；
+     custody 已移交的提交不再算「进行中」。 */
+  const admissionBlocked = useCallback(
+    () =>
+      attachmentsDisabled ||
+      (!preserveSubmissionOnUnmount && submissionGateRef.current.isActive()),
+    [attachmentsDisabled, preserveSubmissionOnUnmount]
   );
-  const addWithProviderValidation = useCallback(
+  const addValidated = useCallback<AttachmentsContext["addValidated"]>(
+    (fileList, options) =>
+      usingProvider
+        ? controller.attachments.addValidated(fileList, options)
+        : admitAttachmentFiles(local, fileMessages, fileList, options),
+    [controller, fileMessages, local, usingProvider]
+  );
+  const add = useCallback(
     (fileList: File[] | FileList) => {
-      if (
-        attachmentsDisabled ||
-        !controller ||
-        (!preserveSubmissionOnUnmount &&
-          submissionGateRef.current.isActive())
-      ) return;
-      const selection = controller.attachments.addValidated(fileList, {
+      if (admissionBlocked()) return;
+      const selection = addValidated(fileList, {
         accept,
         attachmentFileFilter,
         externalFileCount,
@@ -260,81 +200,38 @@ export const PromptInput = ({
     },
     [
       accept,
+      addValidated,
+      admissionBlocked,
       attachmentFileFilter,
-      attachmentsDisabled,
-      controller,
       externalFileCount,
       maxFileSize,
       maxFiles,
       onError,
       onFilesAccepted,
-      preserveSubmissionOnUnmount,
     ]
   );
   const clearAttachments = useCallback(() => {
-    if (usingProvider) controller?.attachments.clear();
+    if (usingProvider) controller.attachments.clear();
     else local.clear();
   }, [controller, local, usingProvider]);
-  const clearReferencedSources = useCallback(
-    () => setReferencedSources([]),
-    []
-  );
-  const add = usingProvider ? addWithProviderValidation : addLocal;
-  const addValidated = useCallback<AttachmentsContext["addValidated"]>(
-    (fileList, options) => {
-      if (usingProvider) {
-        return controller.attachments.addValidated(fileList, options);
-      }
-      const selection = selectPromptInputFiles(fileList, {
-        accept: options.accept,
-        currentCount:
-          local.filesRef.current.length + (options.externalFileCount ?? 0),
-        maxFiles: options.maxFiles,
-        maxFileSize: options.maxFileSize,
-        messages: fileMessages,
-      });
-      const attachments = options.attachmentFileFilter
-        ? selection.files.filter(options.attachmentFileFilter)
-        : selection.files;
-      if (attachments.length > 0) local.add(attachments);
-      return selection;
-    },
-    [controller, fileMessages, local, usingProvider]
-  );
   const remove = usingProvider ? controller.attachments.remove : local.remove;
   const openFileDialog = useCallback(() => {
-    if (
-      attachmentsDisabled ||
-      (!preserveSubmissionOnUnmount && submissionGateRef.current.isActive())
-    ) return;
+    if (admissionBlocked()) return;
     if (usingProvider) controller.attachments.openFileDialog();
-    else openFileDialogLocal();
-  }, [
-    attachmentsDisabled,
-    controller,
-    openFileDialogLocal,
-    preserveSubmissionOnUnmount,
-    usingProvider,
-  ]);
+    else inputRef.current?.click();
+  }, [admissionBlocked, controller, usingProvider]);
   const handlePasteCapture: ClipboardEventHandler<HTMLFormElement> =
     useCallback(
       (event) => {
         onPasteCapture?.(event);
-        if (
-          event.defaultPrevented ||
-          attachmentsDisabled ||
-          (!preserveSubmissionOnUnmount &&
-            submissionGateRef.current.isActive())
-        ) {
-          return;
-        }
+        if (event.defaultPrevented || admissionBlocked()) return;
         const pastedFiles = filesFromClipboard(event.clipboardData);
         if (pastedFiles.length === 0) return;
         event.preventDefault();
         event.stopPropagation();
         add(pastedFiles);
       },
-      [add, attachmentsDisabled, onPasteCapture, preserveSubmissionOnUnmount]
+      [add, admissionBlocked, onPasteCapture]
     );
   const consumeAfterSubmit = useCallback((consumedFiles: PromptInputFilePart[]) => {
     const targets = consumedFiles.map((file) =>
@@ -348,8 +245,7 @@ export const PromptInput = ({
     } else {
       local.command({ type: "submit-consume", targets });
     }
-    clearReferencedSources();
-  }, [clearReferencedSources, controller, local, usingProvider]);
+  }, [controller, local, usingProvider]);
 
   useEffect(() => {
     submissionPendingChangeRef.current = onSubmissionPendingChange;
@@ -380,8 +276,10 @@ export const PromptInput = ({
     }
   }, [files, syncHiddenInput]);
   useEffect(() => {
-    const form = formRef.current;
-    if (!form || globalDrop) return;
+    const target: GlobalEventHandlers | null = globalDrop
+      ? document
+      : formRef.current;
+    if (!target) return;
     const onDragOver = (event: DragEvent) => {
       if (event.dataTransfer?.types?.includes("Files")) event.preventDefault();
     };
@@ -389,27 +287,11 @@ export const PromptInput = ({
       if (event.dataTransfer?.types?.includes("Files")) event.preventDefault();
       if (event.dataTransfer?.files?.length) add(event.dataTransfer.files);
     };
-    form.addEventListener("dragover", onDragOver);
-    form.addEventListener("drop", onDrop);
+    target.addEventListener("dragover", onDragOver);
+    target.addEventListener("drop", onDrop);
     return () => {
-      form.removeEventListener("dragover", onDragOver);
-      form.removeEventListener("drop", onDrop);
-    };
-  }, [add, globalDrop]);
-  useEffect(() => {
-    if (!globalDrop) return;
-    const onDragOver = (event: DragEvent) => {
-      if (event.dataTransfer?.types?.includes("Files")) event.preventDefault();
-    };
-    const onDrop = (event: DragEvent) => {
-      if (event.dataTransfer?.types?.includes("Files")) event.preventDefault();
-      if (event.dataTransfer?.files?.length) add(event.dataTransfer.files);
-    };
-    document.addEventListener("dragover", onDragOver);
-    document.addEventListener("drop", onDrop);
-    return () => {
-      document.removeEventListener("dragover", onDragOver);
-      document.removeEventListener("drop", onDrop);
+      target.removeEventListener("dragover", onDragOver);
+      target.removeEventListener("drop", onDrop);
     };
   }, [add, globalDrop]);
   const handleChange: ChangeEventHandler<HTMLInputElement> = useCallback(
@@ -426,7 +308,7 @@ export const PromptInput = ({
       clear: clearAttachments,
       command: usingProvider ? controller.attachments.command : local.command,
       fileInputRef: inputRef,
-      files: files.map((item) => ({ ...item, id: item.id })),
+      files,
       openFileDialog,
       remove,
     }),
@@ -441,24 +323,6 @@ export const PromptInput = ({
       remove,
       usingProvider,
     ]
-  );
-  const referencedSourcesContext = useMemo<ReferencedSourcesContext>(
-    () => ({
-      add: (incoming) => {
-        const array = Array.isArray(incoming) ? incoming : [incoming];
-        setReferencedSources((current) => [
-          ...current,
-          ...array.map((source) => ({ ...source, id: nanoid() })),
-        ]);
-      },
-      clear: clearReferencedSources,
-      remove: (id) =>
-        setReferencedSources((current) =>
-          current.filter((source) => source.id !== id)
-        ),
-      sources: referencedSources,
-    }),
-    [clearReferencedSources, referencedSources]
   );
   const handleSubmit: FormEventHandler<HTMLFormElement> = useCallback(
     async (event) => {
@@ -553,8 +417,8 @@ export const PromptInput = ({
     ]
   );
 
-  const form = (
-    <>
+  return (
+    <LocalAttachmentsContext.Provider value={attachmentsContext}>
       <input
         accept={accept}
         aria-label={uploadFilesLabel}
@@ -577,13 +441,6 @@ export const PromptInput = ({
       >
         <InputGroup className="overflow-hidden">{children}</InputGroup>
       </form>
-    </>
-  );
-  return (
-    <LocalAttachmentsContext.Provider value={attachmentsContext}>
-      <LocalReferencedSourcesContext.Provider value={referencedSourcesContext}>
-        {form}
-      </LocalReferencedSourcesContext.Provider>
     </LocalAttachmentsContext.Provider>
   );
 };
@@ -595,71 +452,3 @@ export const PromptInputBody = ({
 }: PromptInputBodyProps) => (
   <div className={cn("contents", className)} {...props} />
 );
-
-export type PromptInputTextareaProps = ComponentProps<
-  typeof InputGroupTextarea
->;
-export const PromptInputTextarea = ({
-  onChange,
-  onKeyDown,
-  className,
-  placeholder = "What would you like to know?",
-  ...props
-}: PromptInputTextareaProps) => {
-  const controller = useOptionalPromptInputController();
-  const attachments = usePromptInputAttachments();
-  const [isComposing, setIsComposing] = useState(false);
-  const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = useCallback(
-    (event) => {
-      onKeyDown?.(event);
-      if (event.defaultPrevented) return;
-      if (event.key === "Enter") {
-        if (
-          isComposing ||
-          event.nativeEvent.isComposing ||
-          event.shiftKey
-        ) {
-          return;
-        }
-        event.preventDefault();
-        const submit =
-          event.currentTarget.form?.querySelector<HTMLButtonElement>(
-            'button[type="submit"]'
-          );
-        if (!submit?.disabled) event.currentTarget.form?.requestSubmit();
-        return;
-      }
-      if (
-        event.key === "Backspace" &&
-        event.currentTarget.value === "" &&
-        attachments.files.length > 0
-      ) {
-        event.preventDefault();
-        const last = attachments.files.at(-1);
-        if (last) attachments.remove(last.id);
-      }
-    },
-    [attachments, isComposing, onKeyDown]
-  );
-  const controlledProps = controller
-    ? {
-        onChange: (event: ChangeEvent<HTMLTextAreaElement>) => {
-          controller.textInput.setInput(event.currentTarget.value);
-          onChange?.(event);
-        },
-        value: controller.textInput.value,
-      }
-    : { onChange };
-  return (
-    <InputGroupTextarea
-      className={cn("field-sizing-content max-h-48 min-h-16", className)}
-      name="message"
-      onCompositionEnd={() => setIsComposing(false)}
-      onCompositionStart={() => setIsComposing(true)}
-      onKeyDown={handleKeyDown}
-      placeholder={placeholder}
-      {...props}
-      {...controlledProps}
-    />
-  );
-};

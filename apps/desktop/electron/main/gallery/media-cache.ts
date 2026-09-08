@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node crypto/fs, seatbelt sandbox-exec reader, image-header and TurnEventsBroker to complete the event
- * [OUTPUT]: Provides start budget reconstruction, single and concurrent hard budget caching, atomic copying, strict v1 indexing, receipt, restore window and reference perception GC
- * [POS]: The app-owned temporary custody of the gallery; Workspace read consumption main-only lease, durable Base receipt and no longer permanently retain second media
+ * [INPUT]: Depends on Node crypto/fs, a sandbox-exec (seatbelt) copy reader, image-header, and turn-events-broker's CompletedImageEventV1/WorkspaceReadLease types
+ * [OUTPUT]: Provides GalleryMediaCache: startup budget reconstruction from disk, global/per-chat hard budget enforcement with a queue admission fence, atomic seatbelt-verified copy-and-hash ingestion, an append-only v1 index, a post-receipt recovery window, and reference-aware garbage collection
+ * [POS]: Gallery's app-owned temporary staging area; consumes only main-only workspace read leases, and stops permanently retaining a second copy of media once Base holds a durable receipt
  */
 
 import { createHash, randomUUID } from "node:crypto";

@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { read, type BuiltinToolSpec } from "./platform";
 
-export const designCanvasPathSchema = z
+const designCanvasPathSchema = z
   .string()
   .regex(/^design\/[A-Za-z0-9][A-Za-z0-9._ -]{0,199}\.html$/i);
 

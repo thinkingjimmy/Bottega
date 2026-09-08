@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: Depends on cmdk, Dialog/InputGroup, Lucide, and other icon and style tools
- * [OUTPUT]: Provides Command, the whole barrel; CommandDialog is used for the command panel surface (top-1/3), the unlocked button, the headline is in Content, and the CommandItem is used to select the icon from the data-slot=command-shortcut
- * [POS]: The core of the candidate list of components/ui; Both for Popover's internal connection (max-h-72 density) and for the desktop command panel (consumer side overwriting CommandList height)
+ * [OUTPUT]: Provides the full Command barrel: CommandDialog for the top-1/3 command-palette surface, CommandInput, CommandList/CommandEmpty/CommandGroup/CommandItem, and CommandShortcut (rendered via data-slot=command-shortcut)
+ * [POS]: components/ui's candidate-list core; used both inside a Popover (max-h-72 density) and as the desktop command panel (consumers override CommandList's height)
  */
 
 import * as React from "react"

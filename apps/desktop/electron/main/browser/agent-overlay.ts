@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the results of the Runtime.evaluate and DOM.getBoxModel in the BrowserDebuggerPort
  * [OUTPUT]: Provides the CDP decoration layer function for injecting, moving, removing Agent virtual spotlight
- * [POS]: The main/browser's pure visual feedback layer; Pointer-events: none, never involved in element positioning, action successfully determined or security authorized
+ * [POS]: Pure visual feedback layer in main/browser; overlay injection failures are swallowed and never affect element targeting, action success, or security decisions
  */
 
 import type { BrowserDebuggerPort } from "./browser-service";

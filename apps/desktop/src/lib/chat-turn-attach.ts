@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared Codex snapshots/events, message-free ChatRuntimeContext, Subagent names, and the shared turn reducer
- * [OUTPUT]: Provides attach projections with a stable segment-then-seq message order; id→index overlay single-line append unordered, keeping the ledger
- * [POS]: The main-owned turn of the renderer is read only by the projection core, which is detached from the React test
+ * [INPUT]: Depends on the shared chat-turn-reducer, shared Agent/Codex snapshot and event types, chat message/runtime-context contracts, and displaySubagentName
+ * [OUTPUT]: Provides mergeChatMessages and the ChatTurnProjection/ProjectedSubagent/ChatProjectionStatus types, merging live turn snapshots into a stable segment-then-seq message order via an id-to-index overlay that appends unordered updates without reordering the ledger
+ * [POS]: Renderer's read-only projection core over the main-owned turn state; pure and detached from React
  */
 
 import {

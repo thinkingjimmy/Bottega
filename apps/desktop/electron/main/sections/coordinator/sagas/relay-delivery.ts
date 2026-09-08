@@ -4,6 +4,9 @@
  * [POS]: coordinator/sagas relay side effects organizer; The chain mutex is held by the caller, and the file only shows the durable head
  */
 
+import { taskStartFence, StartDeferredError } from "../../../presence/lifecycle/start-fence";
+import { historyLookupAvailability } from "../../../agent/history/availability";
+import { buildHandoff, handoffInput } from "../../../agent/history/builder";
 import type {
   AgentSendPayload,
   AgentUserInput,
@@ -12,7 +15,6 @@ import type { UnsequencedUserMessage } from "../../../../../shared/chats-ipc";
 import type { ChatsService } from "../../../chats/chats-service";
 import type { SettingsStore } from "../../../settings-store";
 import {
-  recoveryInput,
   relayExpectation,
   relayInputText,
 } from "../coordinator-values";
@@ -67,6 +69,14 @@ export async function deliverRelaySaga(
     if (!sequenced) return;
     relay = sequenced;
   }
+  if (!relay.handoff) {
+    const history = await dependencies.chats.store.prepareHistory(target.id, relay.userSeq!);
+    if (!history) throw new Error("CHAT_HISTORY_UNAVAILABLE");
+    const frozen = await dependencies.ledger.freezeRelayHandoff(relay.id, buildHandoff(history,
+      [{ type: "text", text: relayInputText(relay, source.title ?? "Untitled") }], historyLookupAvailability(target.agent, dependencies.settings.get().disabledBuiltinTools)));
+    if (!frozen) return;
+    relay = frozen;
+  }
   if (relay.deliveryPhase === "queued") {
     if (!await dependencies.chats.store.getNativeMessage(target.id, {
       kind: "id",
@@ -96,6 +106,7 @@ export async function deliverRelaySaga(
     if (!appended) return;
     relay = appended;
   }
+  taskStartFence.assertOpen();
   const attempts = structuredClone(relay.attempts);
   attempts.at(-1)!.reservationState = "charged";
   const claimed = await dependencies.ledger.transition(
@@ -111,10 +122,7 @@ export async function deliverRelaySaga(
   try {
     const latestTarget = dependencies.chats.store.getMetadata(target.id);
     if (!latestTarget) throw new Error("目标 Section 在 claim 后被删除");
-    const turnOptions = await dependencies.settings.resolveChatOptions(
-      { conversationId: target.id },
-      target.agent
-    );
+    const turnOptions = target.options;
     const currentInput: AgentUserInput[] = [{
       type: "text",
       text: relayInputText(claimed, source.title ?? "未命名"),
@@ -134,24 +142,13 @@ export async function deliverRelaySaga(
         });
       }
     }
-    const messages = latestTarget.session
-      ? null
-      : await dependencies.chats.store.getNativeMessages(target.id);
-    if (!latestTarget.session && !messages) {
-      throw new Error("目标 Section 的 canonical context 缺失");
-    }
+    const handoff = claimed.handoff ? { ...claimed.handoff, binding: { ...claimed.handoff.binding,
+      view: { ...claimed.handoff.binding.view, nativeMessageRevision: latestTarget.chatMessageRevision } } } : undefined;
     const payload: AgentSendPayload = {
-      requestId: claimed.requestId,
+      requestId: claimed.requestId, agentRevision: latestTarget.agentRevision, handoff,
       ...(latestTarget.session ? { session: latestTarget.session } : {}),
-      scope: { conversationId: target.id },
-      turnOptions,
-      input: latestTarget.session
-        ? currentInput
-        : recoveryInput(
-            messages!,
-            currentInput,
-            claimed.userMessageId
-          ).input,
+      scope: { conversationId: target.id }, turnOptions,
+      input: latestTarget.session ? currentInput : handoffInput(currentInput, handoff),
     };
     await dependencies.startTurn(
       payload,
@@ -160,6 +157,10 @@ export async function deliverRelaySaga(
       claimed.assistantSeq!
     );
   } catch (cause) {
+    if (cause instanceof StartDeferredError) {
+      await dependencies.ledger.deferRelayDispatch(claimed.id);
+      throw cause;
+    }
     const settled = await dependencies.ledger.transition(
       claimed.id,
       relayExpectation(claimed, "claimed"),

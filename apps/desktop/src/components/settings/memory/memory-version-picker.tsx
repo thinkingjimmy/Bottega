@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React state, MemoryRuntimeSnapshot, shared/version-compare ordering, i18n, ui DropdownMenu/ConfirmationDialog, and settings-layout button primitives
  * [OUTPUT]: Provides MemoryVersionPicker — a dropdown that lists the release catalog and a confirmation dialog that states the consequence before switching
- * [POS]: Settings › Memory 的版本入口。挑版本是浏览，切版本才是决定；这里让两者各自成形，不再共用一个弹窗
+ * [POS]: The Settings › Memory version entry; browsing versions and switching versions are separate surfaces here instead of one shared dialog
  */
 
 import { useState } from "react";

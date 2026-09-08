@@ -1,12 +1,11 @@
 /**
  * [INPUT]: Depends on the shared/agent-ipc backend, workspace scope, model and turn-by-turn combined type
  * [OUTPUT]: Provides settings v11, revision envelopes, Skills-onboarding state, Memory/Chat Home APIs, model/session options, and the transient session-effective reset bridge contract
- * [POS]: The first is the shared multi-end setup of a single truth sourcemain, preload, renderer only by this contract
+ * [POS]: Single source of truth for shared multi-process settings; main, preload, and renderer exchange only what this contract defines
  */
 
 import type {
   AgentBackendId,
-  AgentScope,
   AgentTurnOptions,
   AgentWorkspaceScope,
   BackendInfo,
@@ -64,6 +63,9 @@ export type AppSettings = {
   chatHomesRoot: string | null;
   /** 只能经 Chat Home 专用 API 修改。 */
   chatHomeState: ChatHomeState;
+  launchAtLogin: boolean;
+  keepRunningInBackground: boolean;
+  showTaskStatusAtTop: boolean;
   allowCrossChatRead: boolean;
   /** 宽松持久化、消费时与当前 ambient 工具集求交；下一轮 turn 生效。 */
   disabledBuiltinTools: readonly string[];
@@ -136,6 +138,8 @@ export type RendererSettingsPatch = Partial<
     | "chatHomeState"
     | "fullAccessAcknowledgedAt"
     | "memory"
+    | "launchAtLogin"
+    | "keepRunningInBackground"
   >
 >;
 
@@ -160,8 +164,9 @@ export const SETTINGS_CHANNEL = {
   acknowledgeFullAccess: "settings:full-access:acknowledge",
   listBackends: "settings:list-backends",
   listModels: "settings:list-models",
-  resolveChatOptions: "settings:resolve-chat-options",
-  setChatOptions: "settings:set-chat-options",
+  getBackendDefaults: "settings:backend-defaults",
+  rememberChatDefaults: "settings:remember-chat-defaults",
+  patchChatOptions: "settings:patch-chat-options",
 } as const;
 
 export type SettingsBridgeApi = {
@@ -184,20 +189,14 @@ export type SettingsBridgeApi = {
     backend: AgentBackendId,
     scope: AgentWorkspaceScope
   ) => Promise<BackendModelInfo[]>;
-  resolveChatOptions: (
-    scope: AgentScope,
-    backend?: AgentBackendId
-  ) => Promise<AgentTurnOptions>;
-  setChatOptions: (
-    scope: AgentScope,
-    options: AgentTurnOptions,
-    resetSessionEffective?: boolean
-  ) => Promise<AgentTurnOptions>;
+  getBackendDefaults: (backend?: AgentBackendId) => Promise<AgentTurnOptions>;
+  rememberChatDefaults: (options: AgentTurnOptions) => Promise<SettingsEnvelope>;
+  patchChatOptions: (input: import("./chat-agent/contracts").ChatOptionsPatch, resetSessionEffective?: boolean) => Promise<{
+    agent: AgentBackendId; agentRevision: number; chatRecordRevision: number; options: AgentTurnOptions;
+  }>;
+
 };
 
-// 旧模型名称仅保留有消费者的类型兼容；DTO 由 agent-ipc 统一。
-export type CodexServiceTierInfo =
-  import("./agent-ipc").BackendServiceTierInfo;
 export type CodexModelInfo = BackendModelInfo & {
   defaultReasoningEffort: string;
   supportedReasoningEfforts: NonNullable<

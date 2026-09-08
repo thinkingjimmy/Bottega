@@ -1,8 +1,12 @@
 /**
- * [INPUT]: Depends on React useSyncExternalStore and ChatActivityEvent for shared agent-ipc
- * [OUTPUT]: Provides per-chat with the global activity external store, stabilizes global snapshot, receives activity, claimsActiveChat Active declaration and useChatActivity subscription
- * [POS]: The only source of truth about the session activity in renderer lib; Library subscription by subscription, Activity view by global focus
+ * [INPUT]: Depends on React external-store hooks, Agent activity identities, and main-authorized presence consumption broadcasts.
+ * [OUTPUT]: Provides per-chat/global activity, ordered stream/snapshot hydration, identity-scoped consumption watermarks, and active Chat claims.
+ * [POS]: Renderer-lifetime activity owner; delayed snapshots and events cannot resurrect already consumed results.
  */
+
+import type { PresentedChat, PresenceBridge } from "../../shared/presence-ipc";
+
+declare global { interface Window { presence?: PresenceBridge; } }
 
 import { useCallback, useSyncExternalStore } from "react";
 import type {
@@ -25,6 +29,26 @@ const entries = new Map<string, ChatActivity>();
 // 生成于 main 读表那一刻，抵达 renderer 时可能已比事件流旧——分不清这
 // 两种空，就会把已结束的会话填回 running，侧边栏从此永久转圈。
 const seen = new Set<string>();
+const terminalIdentities = new Map<string, PresentedChat>();
+const consumedThrough = new Map<string, PresentedChat>();
+let stopConsumption: (() => void) | null = null;
+
+function ensureConsumption() {
+  if (stopConsumption || typeof window === "undefined" || !window.presence) return;
+  const stop = window.presence.onConsumed((receipt) => {
+    const previous = consumedThrough.get(receipt.chatId);
+    if (!previous || receipt.terminalSeq > previous.terminalSeq) consumedThrough.set(receipt.chatId, { ...receipt });
+    const current = terminalIdentities.get(receipt.chatId);
+    if (current?.incarnationId === receipt.incarnationId && current.requestId === receipt.requestId &&
+        current.generation === receipt.generation && current.terminalSeq === receipt.terminalSeq) {
+      terminalIdentities.delete(receipt.chatId); write(receipt.chatId, null);
+    }
+  });
+  const refresh = () => consumeSettled(activeChatId());
+  window.addEventListener("focus", refresh);
+  document.addEventListener("visibilitychange", refresh);
+  stopConsumption = () => { stop(); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+}
 const listeners = new Map<string, Set<() => void>>();
 const globalListeners = new Set<() => void>();
 let cachedSnapshot: ReadonlyMap<string, ChatActivity> = new Map();
@@ -41,10 +65,11 @@ const activeClaims: { chatId: string }[] = [];
 const activeChatId = () => activeClaims.at(-1)?.chatId ?? null;
 
 function consumeSettled(chatId: string | null) {
-  const activity = chatId ? entries.get(chatId) : undefined;
-  if (chatId && (activity === "done" || activity === "failed")) {
-    write(chatId, null);
-  }
+  ensureConsumption();
+  if (!chatId || typeof window === "undefined" || !window.presence) return;
+  const receipt = terminalIdentities.get(chatId);
+  const visible = document.visibilityState === "visible" && document.hasFocus();
+  void window.presence.presented(visible && receipt ? receipt : null).catch(() => {});
 }
 
 function write(chatId: string, activity: ChatActivity | null) {
@@ -61,18 +86,49 @@ const settled = (event: ChatActivityEvent): ChatActivity =>
     ? "failed"
     : "done";
 
+function wasConsumed(event: ChatActivityEvent) {
+  const receipt = consumedThrough.get(event.conversationId);
+  if (!receipt || event.incarnationId !== receipt.incarnationId) return false;
+  if (event.requestId === receipt.requestId && event.generation !== undefined) {
+    if (event.generation !== receipt.generation) return event.generation < receipt.generation;
+    return event.terminalSeq === undefined || event.terminalSeq <= receipt.terminalSeq;
+  }
+  return event.terminalSeq !== undefined && event.terminalSeq < receipt.terminalSeq;
+}
+
 export function receiveChatActivity(event: ChatActivityEvent) {
+  ensureConsumption();
+  if (wasConsumed(event)) return;
   seen.add(event.conversationId);
+  const previous = terminalIdentities.get(event.conversationId);
+  if (previous && event.requestId === previous.requestId && event.generation !== undefined && event.generation < previous.generation) return;
   if (event.running) {
     // 待你回话是活态而非未读标记，停留在该会话也照常显示——
     // 蓝点才是"你没看过的结果"，问号是"它正等着你"。
+    terminalIdentities.delete(event.conversationId);
     write(event.conversationId, event.waiting ? "waiting" : "running");
     return;
   }
-  write(
-    event.conversationId,
-    event.conversationId === activeChatId() ? null : settled(event)
-  );
+  if (event.incarnationId && event.requestId && event.generation && event.terminalSeq) {
+    terminalIdentities.set(event.conversationId, { chatId: event.conversationId, incarnationId: event.incarnationId,
+      requestId: event.requestId, generation: event.generation, terminalSeq: event.terminalSeq });
+  }
+  write(event.conversationId, settled(event));
+  if (event.conversationId === activeChatId()) consumeSettled(event.conversationId);
+}
+
+export function connectChatActivity(ports: {
+  subscribe(listener: (event: ChatActivityEvent) => void): () => void;
+  read(): Promise<ChatActivitySnapshot[]>;
+}) {
+  // Both streams must be attached before the main process captures the initial snapshot.
+  ensureConsumption();
+  let active = true;
+  const unsubscribe = ports.subscribe(receiveChatActivity);
+  void Promise.resolve().then(() => ports.read()).then((snapshots) => {
+    if (active) primeChatActivity(snapshots);
+  }).catch(() => {});
+  return () => { active = false; unsubscribe(); };
 }
 
 /**
@@ -81,14 +137,16 @@ export function receiveChatActivity(event: ChatActivityEvent) {
  * seen 里有的一律跳过——哪怕条目已被消费清空，「空」也是比快照新的真相。
  */
 export function primeChatActivity(snapshots: ChatActivitySnapshot[]) {
-  for (const { conversationId, waiting } of snapshots) {
+  for (const snapshot of snapshots) {
+    const { conversationId } = snapshot;
     if (!entries.has(conversationId) && !seen.has(conversationId)) {
-      write(conversationId, waiting ? "waiting" : "running");
+      receiveChatActivity({ ...snapshot, running: snapshot.running ?? true });
     }
   }
 }
 
 export function clearChatActivity(chatId: string) {
+  terminalIdentities.delete(chatId);
   write(chatId, null);
 }
 
@@ -143,6 +201,9 @@ export function useChatActivity(chatId: string) {
 export function resetChatActivityStoreForTests() {
   const chatIds = [...entries.keys()];
   entries.clear();
+  terminalIdentities.clear();
+  consumedThrough.clear();
+  stopConsumption?.(); stopConsumption = null;
   seen.clear();
   cachedSnapshot = new Map();
   activeClaims.length = 0;

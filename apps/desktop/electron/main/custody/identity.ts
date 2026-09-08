@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on POSIX `ps` The field pgid/lstart is associated with Node fs realpath/stat
- * [OUTPUT]: Provides probeProcessBirth (PID) and executableIdentity (document identity)
- * [POS]: The process of custody is processed by a process authenticatorThe only source of truth about whether or not to kill is "uncertainty", and I'm not sure
+ * [INPUT]: Depends on the POSIX `ps` pgid/lstart fields and Node fs realpath/stat
+ * [OUTPUT]: Provides probeProcessBirth (process-group id and creation-time birth identity for a PID) and executableIdentity (realpath+dev/ino/size fingerprint of a binary)
+ * [POS]: Custody's process-identity evidence leaf; the sole rule governing whether to kill is that an inconclusive probe must never be treated as confirmed exit
  */
 
 import { spawnSync } from "node:child_process";

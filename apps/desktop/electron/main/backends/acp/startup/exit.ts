@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node ChildProcess exit event, transport EOF is bounded by the real-time stderr tail
  * [OUTPUT]: Provides AcpExitReport, describes AcpExit, isTransportEof and preferProcessExit
- * [POS]: The only source of truth about the cause of death in the ACP sub-process; The SDK does not include the "ACP connection closed" as the final file
+ * [POS]: Sole source of truth for why an ACP subprocess died; the SDK's generic "ACP connection closed" transport-EOF message carries no diagnostic value and is never treated as the real cause
  */
 
 export type AcpExitReport = {

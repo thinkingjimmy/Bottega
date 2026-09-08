@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared ChatRecord/ChatMessage, Section Width-line rendering and export byte budget
- * [OUTPUT]: Provides explicitly declaring attachment projection mode messageLines, including attachment draft unchanging tail snapshot, and independent direct to live read_section
- * [POS]: The only source of truth for the only reading projections of the sections;@Shotshots share message projections only with read_section, not split page syntax
+ * [OUTPUT]: Provides messageLines (requires an explicit attachment-render mode, so callers never leak an unstated projection into search snippets), exportSectionSnapshotDraft (byte-budgeted immutable transcript-plus-attachments snapshot), and readSectionTranscriptPage (live forward pagination for read_section)
+ * [POS]: Single source of truth for Section transcript read projections; exportSectionSnapshotDraft and readSectionTranscriptPage both build on messageLines, but the live page here is a forward query, not a snapshot continuation
  */
 
 import { SECTION_EXPORT_BYTE_LIMIT } from "../../../shared/agent-ipc";
@@ -40,10 +40,13 @@ function detailLines(detail: string) {
  */
 export function messageLines(
   message: ChatMessage,
-  attachmentRender: SectionAttachmentRender
+  attachmentRender: SectionAttachmentRender,
+  includeIdentity = false
 ) {
-  if (message.role === "notice") return [];
-  const lines = [`${message.role}: ${message.content}`];
+  if (message.role === "notice") return includeIdentity ? [`[notice] ${message.content}`,
+    ...(message.notice.kind === "agent-switched" ? [`  [continuation] ${JSON.stringify(message.notice.context)}`] : [])] : [];
+  const author = includeIdentity && message.role === "assistant" ? `assistant[${message.backend}]` : message.role;
+  const lines = [`${author}: ${message.content}`];
   for (const part of message.role === "assistant" ? message.parts ?? [] : []) {
     if (part.type === "tool") {
       lines.push(`  [tool:${part.tool}] ${part.title} (${part.status})`);
@@ -74,7 +77,7 @@ const transcriptMessages = (
   attachmentRender: SectionAttachmentRender
 ): ProjectedMessage[] =>
   record.messages.flatMap((message) => {
-    const lines = messageLines(message, attachmentRender);
+    const lines = messageLines(message, attachmentRender, true);
     return lines.length ? [{ message, text: lines.join("\n") }] : [];
   });
 

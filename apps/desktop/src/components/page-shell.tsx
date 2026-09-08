@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on ReactNode, I18n, ui/button/sidebar, cn, lib/platform The platform is based on react-router Link
+ * [INPUT]: Depends on react-router Link, shared UI Button/useSidebar, cn, renderer i18n, and lib/platform
  * [OUTPUT]: Provides PageShell with uniform 32px back/column chrome, title/titleAdornment, an optional centre zone, an optional rail row under the header, plus panelChromeClassName and crossHeaderPanelStyle
  * [POS]: Page outline of the rounded workspace and the alignment benchmark for one-line headers; the header lays out as flex, or as an equal-gutter tri-zone grid once `center` is present; the divider is drawn once, at the bottom edge of the header block (the rail takes it over when present); the collapsed-sidebar left inset forks by platform (mac clears the traffic lights plus the floating trigger, Windows only the trigger)
  */

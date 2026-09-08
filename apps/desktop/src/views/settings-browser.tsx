@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, shared BrowserImportBridgeApi, PageShell, Settings layout and BrowserImportDialog
- * [OUTPUT]: Provides BrowserSettingsView: The entire page is imported into a single group, the Chrome login entry with the "Learn More" unseparated line is inserted into the same card, the ability details are folded, the import results and failures remain on the page
- * [POS]: Settings › Browser product control panel; Profile detection occurs when uploaded, and reading both Cookie and Keychain permissions is delayed until the user opens the pop-up window
+ * [OUTPUT]: Provides BrowserSettingsView: a single import group whose Chrome login row and inline "Learn more" link share one card, with capability details folded and import results/failures surfaced in place
+ * [POS]: Settings › Browser's product control panel; profile detection runs on mount, while Cookie and Keychain permission prompts are deferred until the user opens the import dialog
  */
 
 import { useEffect, useState } from "react";

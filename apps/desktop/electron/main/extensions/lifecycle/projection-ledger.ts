@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on DurableJson, zod, exact Extension package inventory, component-instance/generation identity, and projection owners
- * [OUTPUT]: Provides schema-v5 ambient-projection custody, exact-empty legacy startup migration, exact binding session receipts, and operation-frozen holder queries
+ * [INPUT]: Depends on DurableJson, zod, exact Extension package inventory, component-instance/generation identity, and projection owners, and statusError from main/errors
+ * [OUTPUT]: Provides schema-v5 ambient-projection custody, exact binding session receipts, and operation-frozen holder queries
  * [POS]: Durable projection authority; component-instance identity prevents same-declared-component owners from sharing consent or lifecycle state
  */
 
@@ -11,11 +11,14 @@ import {
   type ExtensionProjectionOwner,
   type Sha256Digest,
 } from "../../../../shared/extensions-ipc";
+import { statusError } from "../../errors";
 import { DurableJson } from "../../persistence/durable-json";
+
+/** An issued binding authority must be consumed within this window or it lapses. */
+const BINDING_AUTHORITY_TTL_MS = 5 * 60_000;
 import type { ExtensionRegistryStore } from "../registry-store";
 import type { TurnProjectContext } from "../../../../shared/product-resource-scope";
 import {
-  migrateEmptyLegacyProjectionLedger,
   projectionLedgerSchema,
   type ExtensionBindingAuthority,
   type ExtensionProjectionBinding,
@@ -90,9 +93,8 @@ export class ExtensionProjectionLedger {
     return this.file.filePath;
   }
 
-  /** Only authority-free legacy ledgers migrate; live legacy custody remains unknowable. */
   initialize() {
-    return this.file.initialize(migrateEmptyLegacyProjectionLedger);
+    return this.file.initialize();
   }
 
   /**
@@ -202,7 +204,7 @@ export class ExtensionProjectionLedger {
       const authority: ExtensionBindingAuthority = {
         ...structuredClone(input),
         authorityToken: randomUUID(),
-        expiresAt: now + 5 * 60_000,
+        expiresAt: now + BINDING_AUTHORITY_TTL_MS,
         consumedAt: null,
       };
       state.authorities.push(authority);
@@ -362,7 +364,7 @@ export class ExtensionProjectionLedger {
   }
 
   installIdentityOfGeneration(ref: ExtensionPackageGenerationRef) {
-    return this.registry.generationProjection(ref)?.installIdentity ?? null;
+    return this.registry.installs.generationProjection(ref)?.installIdentity ?? null;
   }
 
   /**
@@ -441,7 +443,7 @@ export class ExtensionProjectionLedger {
       projectContext: TurnProjectContext;
     }
   ) {
-    const owner = this.registry.generationProjection(
+    const owner = this.registry.installs.generationProjection(
       discovery.packageGenerationRef
     );
     const scopeMatches = owner?.scope.kind === "global" ||
@@ -577,7 +579,7 @@ export class ExtensionProjectionLedger {
     state: ProjectionLedgerState,
     input: AcquireProjectionInput
   ) {
-    const owner = this.registry.packageInventory(input.installIdentity);
+    const owner = this.registry.lifecycle.packageInventory(input.installIdentity);
     if (owner?.administrativeState !== "active") {
       throw conflict("package 已提交停用，不接受新的 projection binding");
     }
@@ -680,5 +682,5 @@ function requireBinding(
 }
 
 function conflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }

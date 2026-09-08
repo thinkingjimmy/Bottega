@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node Atomic files IO, ledger-values Purge schema and persistence/serial-queue
- * [OUTPUT]: Provides upsert/patch, immutable, deleting mode, preview-bound Home, deleting permissions, active Project, querying, damaged isolation and terminal compression
- * [POS]: The purge leaves lock the chat-home; No execution of files or side effects across stores
+ * [INPUT]: Depends on Node Atomic files IO, ledger-values Purge schema, persistence/serial-queue, and the persistence errno predicate
+ * [OUTPUT]: Provides PurgeJournal with intent upsert/patch (immutable deletionMode), active-intent listing, hasActiveProject lookup, corruption isolation, and terminal-state compaction
+ * [POS]: chat-home's purge leaf lock; never performs file execution or cross-store side effects
  */
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -14,6 +14,7 @@ import {
   type PurgeIntent,
   type PurgeJournalState,
 } from "./ledger-values";
+import { isErrnoCode } from "../persistence/durable-json";
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 export class PurgeJournal {
@@ -36,7 +37,7 @@ export class PurgeJournal {
           JSON.parse(await readFile(this.filePath, "utf8"))
         );
       } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+        if (isErrnoCode(cause, "ENOENT")) {
           this.state = emptyPurgeJournal();
         } else {
           const isolated = this.filePath.replace(

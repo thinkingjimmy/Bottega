@@ -1,13 +1,13 @@
 /**
- * [INPUT]: Depends on Node fs/path/readline flow and usage-merge CodexMeta/FileEvents
- * [OUTPUT]: Provides active+archived rollout Finds ̇ session/turn context Extract a four-barrel rollover table with a limited total/last binary form
- * [POS]: The use of Codex fact adapters; Identity only coded checkpoints, barrel/model claims handed over by merge
+ * [INPUT]: Depends on Node fs/path/readline streams, the shared source-files walker, and usage-merge CodexMeta/FileEvents
+ * [OUTPUT]: Provides listCodexFiles (discovers active+archived rollout-*.jsonl) and parseCodexFile, which reads session/turn context and derives token buckets from total/last usage counters with reset-epoch detection
+ * [POS]: The Codex usage-fact adapter; resolves only file-local session identity, leaving bucket/model reconciliation to usage-merge
  */
 
 import { createReadStream } from "node:fs";
-import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { listFilesRecursively } from "./source-files";
 import type {
   CodexMeta,
   FileEvents,
@@ -16,35 +16,17 @@ import type {
 } from "./usage-merge";
 import { sealBuckets } from "./usage-merge";
 
-async function listRollouts(root: string): Promise<string[]> {
-  try {
-    const entries = await readdir(root, { withFileTypes: true });
-    const nested = await Promise.all(
-      entries.map((entry) => {
-        const path = join(root, entry.name);
-        if (entry.isDirectory()) return listRollouts(path);
-        return Promise.resolve(
-          entry.isFile() &&
-            entry.name.startsWith("rollout-") &&
-            entry.name.endsWith(".jsonl")
-            ? [path]
-            : []
-        );
-      })
-    );
-    return nested.flat();
-  } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw cause;
-  }
-}
+const isRollout = (name: string) =>
+  name.startsWith("rollout-") && name.endsWith(".jsonl");
 
 export async function listCodexFiles(home: string) {
   const roots = [
     join(home, ".codex", "sessions"),
     join(home, ".codex", "archived_sessions"),
   ];
-  return (await Promise.all(roots.map(listRollouts))).flat().sort();
+  return (
+    await Promise.all(roots.map((root) => listFilesRecursively(root, isRollout)))
+  ).flat().sort();
 }
 
 function nonNegative(value: unknown) {

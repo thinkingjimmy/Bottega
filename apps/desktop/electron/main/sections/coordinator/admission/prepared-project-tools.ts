@@ -68,7 +68,7 @@ export type ExplicitSkillRequirementReceipt = Readonly<{
   allowedToolsDigest: string;
 }>;
 
-export type SealedMcpCandidatesRef = Readonly<{
+type SealedMcpCandidatesRef = Readonly<{
   blobId: string;
   path: string;
   byteSize: number;
@@ -173,7 +173,7 @@ export async function stageProjectToolsReceipt(input: Readonly<{
   return { ...base, digest: canonicalHash(base) };
 }
 
-export function assertProjectToolsReceipt(receipt: FrozenProjectToolsReceipt) {
+function assertProjectToolsReceipt(receipt: FrozenProjectToolsReceipt) {
   if (!receipt || receipt.schemaVersion !== 1) {
     throw new Error("PROJECT_TOOLS_RECEIPT_MISSING");
   }

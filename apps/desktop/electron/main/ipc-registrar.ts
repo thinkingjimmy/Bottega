@@ -4,7 +4,7 @@
  * [POS]: Electron main's sole renderer IPC admission point; window closure never removes process-global handlers
  */
 
-import { ipcMain, type WebContents, type WebFrameMain } from "electron";
+import { ipcMain } from "electron";
 import type { ProductWindowRole } from "../../shared/window-surfaces-ipc";
 import {
   resolveTrustedRendererContext,
@@ -12,16 +12,12 @@ import {
   type TrustedRendererEvent,
 } from "./window/surfaces/trusted-renderer-context";
 
-type RendererIpcEvent = {
-  sender?: WebContents;
-  senderFrame: WebFrameMain | null;
-};
 type RendererIpcHandler = (
-  event: RendererIpcEvent,
+  event: TrustedRendererEvent,
   ...args: unknown[]
 ) => unknown;
 type RendererIpcListener = (
-  event: RendererIpcEvent,
+  event: TrustedRendererEvent,
   ...args: unknown[]
 ) => void;
 
@@ -30,11 +26,6 @@ export type RendererIpcMain = {
   on(channel: string, listener: RendererIpcListener): void;
   removeHandler(channel: string): void;
   removeListener(channel: string, listener: RendererIpcListener): void;
-};
-
-/** Retained for source compatibility; the process-global dispatcher never owns a window listener. */
-export type RendererIpcWindow = {
-  once(event: "closed", listener: () => void): unknown;
 };
 
 export type RendererIpc = {
@@ -56,13 +47,12 @@ export type RendererIpc = {
 };
 
 export type RendererIpcRegistrar = (
-  window: RendererIpcWindow,
   rendererUrl: string,
   rejectMessage: string
 ) => RendererIpc;
 
 type ContextResolver = (
-  event: RendererIpcEvent,
+  event: TrustedRendererEvent,
   rendererUrl: string
 ) => TrustedRendererContext;
 
@@ -77,10 +67,10 @@ export function createRendererIpcRegistrar(
 ): RendererIpcRegistrar {
   const listeners = new Map<string, RendererIpcListener>();
 
-  return (_window, rendererUrl, rejectMessage) => {
+  return (rendererUrl, rejectMessage) => {
     let allowedRoles: ReadonlySet<ProductWindowRole> = new Set(["main"]);
     const context = (
-      event: RendererIpcEvent,
+      event: TrustedRendererEvent,
       roles: ReadonlySet<ProductWindowRole>
     ) => {
       try {
@@ -157,6 +147,6 @@ const electronIpcMain: RendererIpcMain = {
 export const rendererIpc = createRendererIpcRegistrar(
   electronIpcMain,
   (event, _rendererUrl) =>
-    resolveTrustedRendererContext(event as unknown as TrustedRendererEvent)
+    resolveTrustedRendererContext(event)
 );
 

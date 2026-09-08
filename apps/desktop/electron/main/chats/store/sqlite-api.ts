@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the shared ChatStoreState cell, the ChatReadModel projection, the typed SQLite client, the abortable immutable history pump, and continuation commands
+ * [INPUT]: Depends on the shared ChatStoreState cell, the ChatReadModel projection, the typed SQLite client, the abortable immutable history pump with its requireCommitted gate, and continuation commands
  * [OUTPUT]: Provides ChatHistorySagaApi: readonly presentation mutations, no-op-on-equal imported source_status marking that returns fresh metadata only when it actually moved, cancellable receipt-boundary external-history synchronization, and serialized receipt-gated continuation begin/finalize/precommit-fail/orphan-isolation operations
  * [POS]: SQLite import/continuation collaborator of ChatStore; durable SQL stays isolated in the database worker and every mutation here rides the shared serial queue
  */
@@ -18,26 +18,15 @@ import type { SessionRef } from "../../../../shared/agent-ipc";
 import type {
   ContinuationHomeEvidence,
   HistoryImportSource,
-  MutationOutcome,
 } from "../sqlite/database-protocol";
 import { ChatNotFoundError } from "../chat-commit";
 import { assertChatId } from "../chat-guards";
-import { syncExternalHistory as runHistorySync } from "./history-sync";
+import { requireCommitted, syncExternalHistory as runHistorySync } from "./history-sync";
 import type { ChatReadModel } from "./read-api";
 import type { ChatStoreState } from "./state";
 
 const hash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
-function resultOf<T>(outcome: MutationOutcome<T>) {
-  if (outcome.status === "committed") return outcome.receipt.result;
-  if (outcome.status === "outcome_unknown") {
-    throw Object.assign(new Error(outcome.reason), {
-      status: outcome.status,
-      operationId: outcome.operationId,
-    });
-  }
-  throw new Error(outcome.failure.message);
-}
 
 export class ChatHistorySagaApi {
   constructor(
@@ -86,7 +75,7 @@ export class ChatHistorySagaApi {
               }
             : presentation,
       };
-      resultOf(await this.state.requireDatabase().execute({
+      requireCommitted(await this.state.requireDatabase().execute({
         ...command,
         requestHash: hash(command),
       }));
@@ -109,7 +98,7 @@ export class ChatHistorySagaApi {
         chatId,
         sourceStatus,
       };
-      const result = resultOf(await this.state.requireDatabase().execute({
+      const result = requireCommitted(await this.state.requireDatabase().execute({
         ...command,
         requestHash: hash(command),
       }));
@@ -155,7 +144,7 @@ export class ChatHistorySagaApi {
         ...input,
         deviceId: this.state.requireDeviceId(),
       };
-      return resultOf(await this.state.requireDatabase().execute({
+      return requireCommitted(await this.state.requireDatabase().execute({
         ...command,
         requestHash: hash(command),
       }));
@@ -170,7 +159,7 @@ export class ChatHistorySagaApi {
         operationId,
         now,
       };
-      return resultOf(await this.state.requireDatabase().execute({
+      return requireCommitted(await this.state.requireDatabase().execute({
         ...command,
         requestHash: hash(command),
       }));
@@ -192,7 +181,7 @@ export class ChatHistorySagaApi {
         homeDirIdentity: evidence.homeDirIdentity,
         now,
       };
-      return resultOf(await this.state.requireDatabase().execute({
+      return requireCommitted(await this.state.requireDatabase().execute({
         ...command,
         requestHash: hash(command),
       }));
@@ -206,6 +195,7 @@ export class ChatHistorySagaApi {
     incarnationId: string;
     homeDir: string;
     session: SessionRef;
+    options?: import("../../../../shared/agent-ipc").AgentTurnOptions;
     firstMessage: ChatMessage;
     adoptionSnapshotId: string;
     snapshotDigest: string;
@@ -222,7 +212,7 @@ export class ChatHistorySagaApi {
         ...input,
         deviceId: this.state.requireDeviceId(),
       };
-      const result = resultOf(await this.state.requireDatabase().execute({
+      const result = requireCommitted(await this.state.requireDatabase().execute({
         ...command,
         requestHash: hash(command),
       }));
@@ -249,7 +239,7 @@ export class ChatHistorySagaApi {
         reason,
         now,
       };
-      return resultOf(await this.state.requireDatabase().execute({
+      return requireCommitted(await this.state.requireDatabase().execute({
         ...command,
         requestHash: hash(command),
       }));
@@ -270,7 +260,7 @@ export class ChatHistorySagaApi {
         reason,
         now,
       };
-      return resultOf(await this.state.requireDatabase().execute({
+      return requireCommitted(await this.state.requireDatabase().execute({
         ...command,
         requestHash: hash(command),
       }));

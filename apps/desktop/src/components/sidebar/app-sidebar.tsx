@@ -1,7 +1,7 @@
 "use client";
 /**
  * [INPUT]: Depends on React, i18n, Sidebar UI, product stores/providers, shared active App target/origin, navigation, the footer update affordance, and router
- * [OUTPUT]: Provides persistent navigation with asChild-stable row typography, pending-residence-safe generation-fenced Apps/global-pin/Project-alias targets, recovery, actionable store warnings with a GitHub report fallback, and a footer that mounts the Memory alert and SidebarUpdateButton without owning either verdict
+ * [OUTPUT]: Provides persistent navigation with asChild-stable row typography, pending-residence-safe generation-fenced Apps/global-pin/Project-alias targets, recovery, actionable store warnings with a GitHub report fallback, and a footer whose Settings/Memory buttons share hover geometry alongside SidebarUpdateButton
  * [POS]: Sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  */
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
@@ -164,7 +164,6 @@ function ChatsSection({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useAppTranslation();
-  const activePath = useSidebarActivePath();
   const navigate = useNavigate();
   /* 排序口径唯一归 ChatsProvider（createdAt 倒序）：这里只过滤不重排——
      再排一遍只会与它悄悄漂移，Project 子列表已经吃过这个亏。 */
@@ -189,15 +188,7 @@ function ChatsSection({
     >
       <SidebarMenu>
         {rootChats.map((chat) => (
-          <ChatThreadItem
-            key={chat.id}
-            chat={chat}
-            active={
-              chat.context?.kind === "app-use"
-                ? activePath.endsWith(`#app-use:${chat.id}`)
-                : activePath === `/chat/${chat.id}`
-            }
-          />
+          <ChatThreadItem key={chat.id} chat={chat} />
         ))}
       </SidebarMenu>
       {/* 空态与 Projects 同构：一行灰字告诉人这里怎么起头，别让空分组像坏了。
@@ -304,6 +295,11 @@ export function AppSidebar({
   onOpenMemorySettings,
   onCloseSettings,
 }: AppSidebarProps) {
+  useEffect(() => {
+    const open = () => onViewChange("activity");
+    window.addEventListener("bottega:open-activity", open);
+    return () => window.removeEventListener("bottega:open-activity", open);
+  }, [onViewChange]);
   const { t } = useAppTranslation();
   const { toggleSidebar } = useSidebar();
   const { pathname } = useLocation();
@@ -698,6 +694,7 @@ export function AppSidebar({
           {/* ====== 底部：Settings 入口（记忆异常时紧随文本挂告警，直达 Memory）。
                   告警是独立兄弟按钮而非 SidebarMenuAction：后者绝对定位在行尾，
                   且自带 hover:text-accent 会把 amber 压成前景黑。
+                  告警复用 Settings 的菜单按钮；颜色归图标，触控高度由伪元素补足。
                   更新按钮同理是兄弟按钮，其相位判断整条住在
                   lib/sidebar-update-view，这一层只留一个挂载点。 ====== */}
           <SidebarFooter className="p-0.5">
@@ -711,7 +708,7 @@ export function AppSidebar({
                   <span>{t("common.settings")}</span>
                 </SidebarMenuButton>
                 {(memoryAttention || memoryBusy) && (
-                  <button
+                  <SidebarMenuButton
                     type="button"
                     aria-label={memoryAttention
                       ? t("common.memoryAttentionOpen")
@@ -719,13 +716,13 @@ export function AppSidebar({
                     title={memoryAttention
                       ? t("common.memoryAttentionOpen")
                       : t("memory.runtime.openRunning")}
-                    className="flex size-11 touch-manipulation cursor-pointer items-center justify-center rounded-md text-amber-600 outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring dark:text-amber-400"
+                    className="relative w-8 flex-none touch-manipulation touch-target-44 cursor-pointer justify-center overflow-visible"
                     onClick={() => void navigate(MEMORY_SETTINGS_PATH)}
                   >
                     {memoryAttention
-                      ? <TriangleAlert className="size-4" />
+                      ? <TriangleAlert className="size-4 text-amber-600 dark:text-amber-400" />
                       : <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />}
-                  </button>
+                  </SidebarMenuButton>
                 )}
                 <SidebarUpdateButton
                   onOpenAbout={() => onSelectSettings("about")}

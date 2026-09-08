@@ -202,11 +202,14 @@ export class ChatRecordWriter {
          id, lifecycle_kind, agent, title, title_source, created_at, updated_at,
          archived_at, incarnation_id, next_seq, trimmed_through_seq,
          branches_trimmed_through_seq, core_revision, native_message_revision,
-         parent_chat_id, parent_incarnation_id, parent_message_id, inherited_through_seq
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         parent_chat_id, parent_incarnation_id, parent_message_id, inherited_through_seq, agent_revision, options_json, fork_agent
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          lifecycle_kind = excluded.lifecycle_kind,
          agent = excluded.agent,
+         agent_revision = excluded.agent_revision,
+         options_json = excluded.options_json,
+         fork_agent = excluded.fork_agent,
          title = excluded.title,
          title_source = excluded.title_source,
          updated_at = excluded.updated_at,
@@ -238,7 +241,10 @@ export class ChatRecordWriter {
       record.parentChatId ?? null,
       record.parentIncarnationId ?? null,
       record.parentMessageId ?? null,
-      record.inheritedThroughSeq ?? null
+      record.inheritedThroughSeq ?? null,
+      record.agentRevision,
+      json(record.options),
+      record.forkAgent ?? null
     );
   }
 

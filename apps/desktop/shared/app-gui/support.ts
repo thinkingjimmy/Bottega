@@ -5,10 +5,10 @@
  */
 
 import { z } from "zod";
-import type { AppGuiCompatibilityRef } from "./contracts";
+import { LEGACY_BASE_GUI_SDK_VERSION, type AppGuiCompatibilityRef } from "./contracts";
 
 const APP_GUI_RUN_CONTRACTS = [
-  "base-gui-legacy-v1",
+  LEGACY_BASE_GUI_SDK_VERSION,
   "sealed-runtime-v3",
   "app-generation-cutover-v2",
   "base-gui-query-v1",
@@ -85,7 +85,7 @@ function addRequiredContracts(
   ref: AppGuiCompatibilityRef
 ) {
   if (ref.kind === "static-v2") {
-    required.add("base-gui-legacy-v1");
+    required.add(LEGACY_BASE_GUI_SDK_VERSION);
     return;
   }
   required.add("sealed-runtime-v3");

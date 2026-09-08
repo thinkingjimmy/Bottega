@@ -1,16 +1,17 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/platform facts and apps/desktop/runtime-dependencies.json, the single authority for runtime packages, gate membership and author admission that scripts/check-dependency-manifest.mjs pins to package.json
+ * [INPUT]: Depends on Node fs/platform facts, the apps/support digest primitives, and apps/desktop/runtime-dependencies.json, the single authority for runtime packages, gate membership and author admission that scripts/check-dependency-manifest.mjs pins to package.json
  * [OUTPUT]: Provides canonical GUI toolchain identities, exact author imports, identity-cached payload digests, and verified legacy SDK custody
  * [POS]: apps/gui-build metadata authority; receipts, validators, and the gateway consume these values without mutable discovery
  */
 
-import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { arch, platform } from "node:process";
+import { APP_GUI_PRESET } from "../../../../shared/app-gui/contracts";
 import type { Sha256Digest } from "../../../../shared/extensions-ipc";
 import runtimeDependencies from "../../../../runtime-dependencies.json";
 import { bootstrapSource } from "./product-modules/bootstrap";
+import { canonicalDigest, sha256 } from "../support";
 
 type RuntimePackage = {
   version: string;
@@ -105,7 +106,7 @@ const APP_GUI_DEPENDENCY_VERSIONS: Readonly<Record<string, string>> = Object.fre
 
 export const TRANSFORM_CONTRACT_DIGEST = canonicalDigest({
   schema: "bottega.app-gui-transform/v1",
-  preset: "bottega-react-v1",
+  preset: APP_GUI_PRESET,
   entryAbi: "default-zero-argument-react-component-v1",
   target: "chromium-140",
   dependencies: APP_GUI_DEPENDENCY_VERSIONS,
@@ -183,22 +184,4 @@ export async function fileDigest(path: string): Promise<Sha256Digest> {
 export async function readVerifiedLegacyBaseGuiSdk(root: string) {
   const bytes = await readFile(join(root, "base-api.js"));
   return sha256(bytes) === LEGACY_BASE_GUI_SDK_DIGEST ? bytes : null;
-}
-
-export function canonicalDigest(value: unknown): Sha256Digest {
-  return sha256(Buffer.from(canonicalJson(value), "utf8"));
-}
-
-export function sha256(bytes: Uint8Array): Sha256Digest {
-  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-}
-
-export function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value).filter(([, item]) => item !== undefined);
-    entries.sort(([left], [right]) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
-    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
 }

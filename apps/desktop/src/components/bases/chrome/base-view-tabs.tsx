@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, shared BaseView contracts, menus/dialogs, tab chrome, InlineNameInput, icons, and Base mutation outcomes
  * [OUTPUT]: Provides BaseViewTabs; Single VIEW_TYPES directory drives six standard view tabs with added menus
- * [POS]: The view bar for bases/chrome is switched to the viewTabs slot in the BaseToolbar; Only the semantic intent, optimistic switch to the BaseWorkbench with CAS
+ * [POS]: The view bar for bases/chrome, mounted in BaseToolbar's viewTabs slot; it only emits semantic intent, letting BaseWorkbench apply the optimistic CAS switch
  */
 
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";

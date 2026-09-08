@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React, Lucide icons, UI Button/Popover/Slider/SlimScroller, Fast Star Wars style, Shared model directory and chat model selection
+ * [INPUT]: Depends on React, Lucide icons, UI Button/Popover/Slider/SlimScroller, its own chat-model-selector.css stylesheet, and the shared lib/chat-model-selection directory/rules
  * [OUTPUT]: Provides full-capability ChatModelSelector with structured model-catalog failures, Effort controls, explicit Speed reset, F22 disclosure, and visible preference/effective fallback state
  * [POS]: The Codex model controller for chat/composer; list-only Back end is carried by independent chat-model-list-selector
  */

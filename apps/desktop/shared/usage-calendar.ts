@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the standard Intl.DateTimeFormat and the ability to build UTC calendar
  * [OUTPUT]: Provides time zone to dayKey, calendar to addDays, 53 weeks heatmap matrix to start on Sunday with monthSpans
- * [POS]: The core of the shared calendar is pure calendar; main polymer and renderer heat stroke share same daytime quality
+ * [POS]: Pure calendar core shared across processes; main's aggregation and the renderer's heatmap both derive day boundaries from the same logic
  */
 
 const DAY_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;

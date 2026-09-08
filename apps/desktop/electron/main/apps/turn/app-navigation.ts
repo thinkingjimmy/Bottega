@@ -29,7 +29,7 @@ import type { ChatRecord, ChatSummary } from "../../../../shared/chats-ipc";
 import type { ProjectStore } from "../../projects/store/project-store";
 import type { AppChatSlots } from "./app-chat-slots";
 import type { AppStore } from "../store/app-store";
-import { errorMessage } from "../../errors";
+import { errorMessage, statusError } from "../../errors";
 
 const HISTORY_PAGE_MAX = 50;
 
@@ -330,9 +330,7 @@ export class AppNavigationService {
       project.role === "base-custody" ||
       (expectedProjectId !== undefined && project.id !== expectedProjectId)
     ) {
-      throw Object.assign(new Error("App Edit Project 不存在或已变化"), {
-        status: 409,
-      });
+      throw statusError(409, "App Edit Project 不存在或已变化");
     }
     return project;
   }
@@ -352,9 +350,7 @@ export class AppNavigationService {
       chat.context.appId !== input.appId ||
       chat.context.projectId !== projectId
     ) {
-      throw Object.assign(new Error("App Editor destination 已失效"), {
-        status: 409,
-      });
+      throw statusError(409, "App Editor destination 已失效");
     }
     return chat;
   }
@@ -363,7 +359,7 @@ export class AppNavigationService {
     app: T | undefined
   ): T {
     if (!app || !app.editableSource || app.state !== "ready") {
-      throw Object.assign(new Error("App 没有可编辑源码"), { status: 409 });
+      throw statusError(409, "App 没有可编辑源码");
     }
     return app;
   }
@@ -549,7 +545,7 @@ export class AppNavigationService {
       chat.context.kind !== "app-use" ||
       chat.context.appId !== input.appId
     ) {
-      throw Object.assign(new Error("App Use destination 已失效"), { status: 409 });
+      throw statusError(409, "App Use destination 已失效");
     }
     return this.destination(input.appId, {
       id: chat.id,
@@ -621,9 +617,7 @@ function decodeHistoryCursor(cursor: string): HistoryCursor {
     }
     return { updatedAt, createdAt, chatId };
   } catch {
-    throw Object.assign(new Error("APP_USE_HISTORY_CURSOR_INVALID"), {
-      status: 409,
-    });
+    throw statusError(409, "APP_USE_HISTORY_CURSOR_INVALID");
   }
 }
 

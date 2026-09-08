@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, I18n, shared history-import agreement, HistoryProvider, lib/agent-backends AgentBackendIcon, dialog/button/skeleton primitives
- * [OUTPUT]: Provides ProjectImportDialog — a value-first Project add: the agent-chat evidence opens the dialog as a plain statement + flush list, the decision is two buttons (skip / add & show history), then an optional Memory Grant preview→commit
+ * [INPUT]: Depends on React, I18n, preflight source counts, shared history-import agreement, HistoryProvider, lib/agent-backends AgentBackendIcon, and dialog/button primitives
+ * [OUTPUT]: Provides ProjectImportDialog for found history or unavailable scans, with source counts, explicit add-without-history/import actions, and optional Memory Grant preview→commit
  * [POS]: The explicit user authorization surface of sidebar/project/import; history/memory stay off by default and are chosen per-button, never a standing checkbox; Grant is confirmed in the second step and delivery runs on the main backstage pump
  */
 
@@ -12,19 +12,16 @@ import { HISTORY_SOURCE_KINDS, type HistoryMemoryEligibility, type HistoryMemory
 import type { Project } from "../../../../../shared/projects-ipc";
 import { useHistory } from "@/components/providers/history/history-provider";
 import { AgentBackendIcon } from "@/lib/agent-backends";
-import { countHistoryProject, historyMemoryEligibility } from "@/lib/history/client";
+import { historyMemoryEligibility } from "@/lib/history/client";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
-import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { errorMessage } from "@/lib/errors";
 
 const SOURCE_LABEL: Record<HistorySourceKind, string> = { claude: "Claude Code", codex: "Codex", kimi: "Kimi CLI", opencode: "OpenCode" };
 
-/* 上一步的文件夹选择器已经建立了「在哪个文件夹」的语境，标题再复述一遍
-   `Add project /full/path` 便是废话。于是可见标题整枚退场，只留一个 sr-only
-   的 DialogTitle 供读屏；叶子名拼进去，让读屏用户与视觉一样知道是哪个文件夹。 */
+/* 可见标题说明导入动作；文件夹名称只补充到读屏标题，沿用上一步的选择语境。 */
 function leafName(root: string) {
   const trimmed = root.replace(/\/+$/, "") || "/";
   return trimmed.slice(trimmed.lastIndexOf("/") + 1) || trimmed;
@@ -33,16 +30,14 @@ function leafName(root: string) {
 /* ============================================================
  * 证据行：一条平铺列表，不再裹卡片、不再做 badge。
  *
- * 形状写死在 HISTORY_SOURCE_KINDS，logo 与名字在磁盘扫描开始前就画得出来；
- * 要等磁盘的只有那个数字（本机实测 2–8s），骨架只上在数字上，行高一像素不动。
- *
- * count 的四个值是四件事：undefined = 还在扫，null = 扫完这家没回执，
- * installed&count>0 = 有，installed&count===0 = None，!installed = 未安装。
+ * 扫描由 Provider 在弹窗之前完成，这里只消费结果，不重复发起磁盘读取。
+ * null = 没有来源回执，installed&count>0 = 有，
+ * installed&count===0 = 无聊天记录，!installed = 未安装。
  * 品牌标记不随存量变淡：logo 说的是「它是谁」，不是「它有多少」。
  * ============================================================ */
 function SourceRow({ kind, count }: {
   kind: HistorySourceKind;
-  count: HistorySourceCount | null | undefined;
+  count: HistorySourceCount | null;
 }) {
   const { t } = useAppTranslation();
   const found = count ? count.installed && count.count > 0 : false;
@@ -52,20 +47,15 @@ function SourceRow({ kind, count }: {
       <span className={cn("text-xs", found ? "font-medium" : "text-muted-foreground")}>
         {SOURCE_LABEL[kind]}
       </span>
-      {count === undefined
-        ? <Skeleton
-            aria-busy="true"
-            className={cn("ml-auto h-3 rounded-full bg-foreground/10", kind === "claude" ? "w-14" : "w-11")}
-          />
-        : <span className={cn("ml-auto text-xs tabular-nums", !found && "text-muted-foreground")}>
-            {count === null
-              ? "—"
-              : !count.installed
-                ? t("history.notInstalled")
-                : count.count > 0
-                  ? t("history.sourceCount", { count: count.count })
-                  : t("history.sourceNone")}
-          </span>}
+      <span className={cn("ml-auto text-xs tabular-nums", !found && "text-muted-foreground")}>
+        {count === null
+          ? "—"
+          : !count.installed
+            ? t("history.notInstalled")
+            : count.count > 0
+              ? t("history.sourceCount", { count: count.count })
+              : t("history.sourceNone")}
+      </span>
     </li>
   );
 }
@@ -111,18 +101,18 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 /** 挂载方以 key=token 重挂重置表单；本组件不承担跨 prepared 的状态清理。 */
-export function ProjectImportDialog({ prepared, onComplete }: {
+export function ProjectImportDialog({ prepared, counts, onComplete }: {
   prepared: PreparedProjectHistoryImport;
+  counts: HistorySourceCount[];
   onComplete(project: Project | null): void;
 }) {
   const { t } = useAppTranslation();
   const { commitProject, commitMemory } = useHistory();
-  /* 「显示历史」不再是常驻勾选，而是落在两颗按钮上；记忆导入仍是一个独立的
-     可选子决策，只在合格时出现，且只对「Add & show history」这条路生效。 */
+  /* 两颗按钮决定是否导入聊天记录；记忆导入是独立的可选项，
+     只在合格时出现，且只对「Import history」这条路生效。 */
   const [importMemory, setImportMemory] = useState(false);
   const [pending, setPending] = useState<"skip" | "add" | "confirm" | null>(null);
   const [eligibility, setEligibility] = useState<HistoryMemoryEligibility | null>(null);
-  const [counts, setCounts] = useState<HistorySourceCount[] | null>(null);
   const [preview, setPreview] = useState<HistoryMemoryPreview | null>(null);
   const [createdProject, setCreatedProject] = useState<Project | null>(null);
   const [error, setError] = useState("");
@@ -133,9 +123,6 @@ export function ProjectImportDialog({ prepared, onComplete }: {
     void historyMemoryEligibility({ surface: "project" })
       .then((next) => { if (!stale) setEligibility(next); })
       .catch(() => { if (!stale) setEligibility(null); });
-    void countHistoryProject(prepared.token)
-      .then((next) => { if (!stale) setCounts(next); })
-      .catch(() => { if (!stale) setCounts([]); });
     return () => { stale = true; };
   }, [prepared.token]);
 
@@ -173,29 +160,14 @@ export function ProjectImportDialog({ prepared, onComplete }: {
     }
   };
 
-  /* ── 存量的四态判读 ──────────────────────────────────────────────
-     扫描失败时 counts 是空数组，那是「不知道」而不是「没有」——绝不能把一次
-     失败说成「这里没有历史」的结论。故 scanFailed 与 emptyFound 分开取词。 */
-  const scanning = counts === null;
-  const total = counts && counts.length > 0 ? counts.reduce((sum, item) => sum + item.count, 0) : 0;
-  const foundAny = counts !== null && counts.length > 0 && total > 0;
-  const emptyFound = counts !== null && counts.length > 0 && total === 0;
-
-  const headline = scanning
-    ? t("history.projectScanningTitle")
-    : foundAny
-      ? t("history.projectFoundTitle", { count: total })
-      : emptyFound
-        ? t("history.projectEmptyTitle")
-        : t("history.projectNeutralTitle");
-  const subline = foundAny
-    ? t("history.projectFoundSub")
-    : emptyFound
-      ? t("history.projectEmptySub")
-      : t("history.projectNeutralSub");
+  /* 完整的零记录结果已直接添加项目；到达此处的零记录意味着扫描未能确认。 */
+  const total = counts.reduce((sum, item) => sum + item.count, 0);
+  const description = total > 0
+    ? t("history.projectFoundDescription", { count: total })
+    : t("history.projectUnavailableDescription");
 
   /* 记忆合格与否不看待定的历史选择（无常驻开关可看），只看后端合格性；
-     勾选它就是在说「走 Add & show history 这条路时，顺带导入记忆」。 */
+     勾选它就是在说「走 Import history 这条路时，顺带导入记忆」。 */
   const memoryEnabled = Boolean(eligibility?.enabled);
   const memoryHint = () => {
     if (!eligibility?.enabled) {
@@ -223,15 +195,16 @@ export function ProjectImportDialog({ prepared, onComplete }: {
           </>
         ) : (
           <>
-            {/* 可见标题退场，可访问名保留 */}
-            <DialogTitle className="sr-only">{`${t("history.projectImportTitle")} — ${leaf}`}</DialogTitle>
             <div className="flex flex-col">
-              <p className="pr-6 font-medium text-sm leading-snug">{headline}</p>
-              <DialogDescription className="mt-1 pr-6 text-[11px] leading-[16px]">{subline}</DialogDescription>
+              <DialogTitle className="pr-6 font-medium text-sm leading-snug">
+                {t("history.projectImportTitle")}
+                <span className="sr-only">{` — ${leaf}`}</span>
+              </DialogTitle>
+              <DialogDescription className="mt-1 pr-6 text-[11px] leading-[16px]">{description}</DialogDescription>
               <ul className="mt-3 divide-y divide-border">
                 {HISTORY_SOURCE_KINDS.map((kind) => (
                   <SourceRow
-                    count={counts === null ? undefined : counts.find((item) => item.sourceKind === kind) ?? null}
+                    count={counts.find((item) => item.sourceKind === kind) ?? null}
                     key={kind}
                     kind={kind}
                   />

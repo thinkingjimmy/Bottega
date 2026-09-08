@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Base row/column values, canonical text projections, base-formula The full row of the call is provided by the pure query and the caller
- * [OUTPUT]: Provides createBaseCellContext, isBaseRelationLabelColumn and cellValue, as the only read-only value side of the column displayed as a normal column/formula column/non-recursive relation
- * [POS]: The Base reading projected kernel of shared; Sequencing, filtering, grouping, aggregating, exporting, consumable by Agent and Six Views
+ * [INPUT]: Depends on Base row/column values, canonical text projections, and base-formula's pure parse/evaluate APIs; the caller supplies the full row for formula evaluation
+ * [OUTPUT]: Provides createBaseCellContext, isBaseRelationLabelColumn and cellValue, the only read-only projection of a normal, formula, or non-recursive relation column's displayed value
+ * [POS]: Shared Base read-projection kernel; backs sorting, filtering, grouping, aggregating, and exporting, consumed by both the Agent tools and all six Base views
  */
 
 import {

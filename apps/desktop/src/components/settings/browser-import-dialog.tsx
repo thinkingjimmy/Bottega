@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, i18n, shared BrowserImportBridgeApi/ChromeProfile, ui AppDialogContent/Dialog/Select, settings-layout with SettingsAlert/SettingsButton and lucide icons
- * [OUTPUT]: Provides BrowserImportDialog: profile single selection, cookie domain default full selection, "can't read vs. not" separated preview failure and retest, Keychain information tips and importing actions
- * [POS]: Settings › Browser's one-time directory board; Only when a user clicks on the input is Keychain authorization triggered and the cookie is written, resulting in a page shutdown
+ * [OUTPUT]: Provides BrowserImportDialog: single profile selection, cookie domains selected by default, "failed to read" kept distinct from "none found" with retry, Keychain info tips and the import action
+ * [POS]: Settings › Browser's one-shot import dialog; Keychain authorization and cookie import trigger only when the user clicks Import, after which the dialog closes
  */
 
 import { useEffect, useMemo, useState } from "react";

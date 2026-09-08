@@ -13,14 +13,10 @@ import {
 } from "../../../../shared/bases-ipc";
 import {
   baseDeleteRowsInputSchema,
-  baseExportCsvInputSchema,
-  baseExportJsonInputSchema,
-  baseExportXlsxInputSchema,
-  baseGetInputSchema,
-  baseImportJsonInputSchema,
-  baseImportXlsxInputSchema,
+  baseImportInputSchema,
   baseImportMutationResultSchema,
   baseInsertRowsInputSchema,
+  baseOwnerInputSchema,
   basePatchRowInputSchema,
   baseRemoveManagedInputSchema,
   basePromoteToProjectInputSchema,
@@ -63,7 +59,7 @@ export function registerBasesRendererIpc(
   authority: RendererIpcAuthority
 ) {
   const readOwnerKey = (input: unknown) =>
-    baseGetInputSchema.parse(input).ownerKey;
+    baseOwnerInputSchema.parse(input).ownerKey;
   const appId = (context: TrustedRendererContext) => {
     if (context.role !== "app-window") return null;
     if (!context.appId) throw new Error("App window identity is missing");
@@ -111,7 +107,7 @@ export function registerBasesRendererIpc(
       ...(input.surfaceLeaseId ? { surfaceLeaseId: input.surfaceLeaseId } : {}),
     });
   };
-  const ipc = rendererIpc(window, rendererUrl, "Rejected unauthorized Bases request");
+  const ipc = rendererIpc(rendererUrl, "Rejected unauthorized Bases request");
   ipc
     .roles("main", "app-window")
     .handleWithContext(BASES_CHANNEL.get, (context, input) =>
@@ -162,16 +158,12 @@ export function registerBasesRendererIpc(
         return snapshotErrorResult(cause);
       }
     })
-    .handleWithContext(BASES_CHANNEL.exportCsv, (context, input) => {
-      const parsed = baseExportCsvInputSchema.parse(input);
-      return service.exportForRenderer(ownerKey(context, parsed.ownerKey));
-    })
-    .handleWithContext(BASES_CHANNEL.exportJson, (context, input) => {
-      const parsed = baseExportJsonInputSchema.parse(input);
-      return service.exportJsonForRenderer(ownerKey(context, parsed.ownerKey));
-    })
+    .handleWithContext(BASES_CHANNEL.exportCsv, (context, input) =>
+      service.exportForRenderer(ownerKey(context, readOwnerKey(input))))
+    .handleWithContext(BASES_CHANNEL.exportJson, (context, input) =>
+      service.exportJsonForRenderer(ownerKey(context, readOwnerKey(input))))
     .handleWithContext(BASES_CHANNEL.importJson, async (context, input) => {
-      const parsed = baseImportJsonInputSchema.parse(input);
+      const parsed = baseImportInputSchema.parse(input);
       const granted = await mutationAuthority(context, parsed, "json-import");
       try {
         const result = await service.importJsonForRenderer(
@@ -184,12 +176,10 @@ export function registerBasesRendererIpc(
         return importErrorResult(cause);
       }
     })
-    .handleWithContext(BASES_CHANNEL.exportXlsx, (context, input) => {
-      const parsed = baseExportXlsxInputSchema.parse(input);
-      return service.exportXlsxForRenderer(ownerKey(context, parsed.ownerKey));
-    })
+    .handleWithContext(BASES_CHANNEL.exportXlsx, (context, input) =>
+      service.exportXlsxForRenderer(ownerKey(context, readOwnerKey(input))))
     .handleWithContext(BASES_CHANNEL.importXlsx, async (context, input) => {
-      const parsed = baseImportXlsxInputSchema.parse(input);
+      const parsed = baseImportInputSchema.parse(input);
       const granted = await mutationAuthority(context, parsed, "xlsx-import");
       try {
         const result = await service.importXlsxForRenderer(

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on node: A stable abstract of crypto with structured cloning
- * [OUTPUT]: Provides Memory Space, freezes admission, Recall Projection, the closed set type of outcome/receipt in rounds and the only derivative function; General handoff/validation Shared Agent contracts
- * [POS]: The main/memory domain algebra; Policy, Delivery, Bridge and the renderer DTO are only consumed here, and cannot copy status priorities
+ * [INPUT]: Depends on node:crypto and the shared memory-ipc/agent-ipc/settings-ipc type contracts
+ * [OUTPUT]: Provides MemorySpaceRef/MemoryScopeSubject/FrozenTurnMemoryContext types, turn outcome/receipt derivation, and the memorySpaceId/expectedPeerId/sourceSessionKey/freezeMemoryValue primitives
+ * [POS]: The main/memory domain algebra; policy, orchestration, and service consume these types instead of redefining their own
  */
 
 import { createHash } from "node:crypto";

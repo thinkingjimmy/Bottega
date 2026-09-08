@@ -1,3 +1,9 @@
+/**
+ * [INPUT]: Depends on React, class-variance-authority, shared Button, and cn
+ * [OUTPUT]: Provides Attachment, AttachmentMedia, AttachmentContent, AttachmentTitle, AttachmentActions, AttachmentAction, and AttachmentGroup chip primitives
+ * [POS]: The attachment chip layer of components/ui consumed by ai-elements PromptInputAttachments
+ */
+
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -76,19 +82,6 @@ function AttachmentTitle({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
-function AttachmentDescription({
-  className,
-  ...props
-}: React.ComponentProps<"p">) {
-  return (
-    <p
-      data-slot="attachment-description"
-      className={cn("truncate text-muted-foreground text-xs", className)}
-      {...props}
-    />
-  )
-}
-
 function AttachmentActions({
   className,
   ...props
@@ -135,9 +128,7 @@ export {
   AttachmentAction,
   AttachmentActions,
   AttachmentContent,
-  AttachmentDescription,
   AttachmentGroup,
   AttachmentMedia,
   AttachmentTitle,
-  attachmentVariants,
 }

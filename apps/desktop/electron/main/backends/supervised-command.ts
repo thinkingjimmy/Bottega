@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node detached spawn, Agent process supervisor, process-group cleanup and AbortSignal
- * [OUTPUT]: Provides run SupervisedCommand with signal-aware waitForSharedFlight: community collection, shared diagnostics of de-sensitivity, timeout/abort/EPIPE, register Failed clearance owner and settled barrier
- * [POS]: The short-commands backends the host of the probe; Non-ACP subprocesses such as Model Directories can no longer use the uncontrolled execFile
+ * [OUTPUT]: Provides runSupervisedCommand and the signal-aware waitForSharedFlight helper for de-duplicating concurrent callers onto one in-flight probe, with redacted diagnostics, timeout/abort/EPIPE handling, cleanup-failure ownership registration, and a settled barrier for teardown
+ * [POS]: Host for backends' short-lived probe commands; non-ACP subprocesses such as model-catalog probes must go through this instead of an unsupervised execFile
  */
 
 import {

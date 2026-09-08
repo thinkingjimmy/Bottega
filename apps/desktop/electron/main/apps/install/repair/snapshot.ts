@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path/crypto, performs lstat scanning on the target tree that does not follow the symbol link
- * [OUTPUT]: Provides scanTree/treeSha256/assertSameTree, detects changes such as commit/ignored/mode/link
- * [POS]: Conformity core of install/repair, providing a stable length summary for S0/S1/S2
+ * [INPUT]: Depends on Node fs/path/crypto; walks the target tree with lstat (does not follow symlinks)
+ * [OUTPUT]: Provides treeSha256/snapshotTree/assertSameTree, a fixed-length digest over full fs metadata (path/type/mode/size/mtime/ctime/symlink target)
+ * [POS]: install/repair's tree-consistency core, used to compare the S0/S1/S2 snapshots
  */
 
 import { createHash } from "node:crypto";
@@ -18,7 +18,7 @@ export type TreeEntry = {
   target?: string;
 };
 
-export async function scanTree(root: string) {
+async function scanTree(root: string) {
   const entries: TreeEntry[] = [];
   async function visit(path: string) {
     const info = await lstat(path, { bigint: true });

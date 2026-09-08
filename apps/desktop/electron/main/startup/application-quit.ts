@@ -10,12 +10,13 @@ import { translate } from "../../../shared/i18n/runtime";
 import {
   SafeQuitCoordinator,
   type SafeQuitPorts,
+  type SafeQuitResult,
 } from "./safe-quit";
 
 export function installApplicationQuit(
   application: Pick<typeof app, "on" | "quit">,
   dialogs: Pick<typeof dialog, "showErrorBox">,
-  ports: Omit<SafeQuitPorts, "notify" | "quit">,
+  ports: Omit<SafeQuitPorts, "notify" | "quit"> & { requestUserQuit?(): Promise<SafeQuitResult> },
   locale: () => AppLocale = () => "en"
 ) {
   const safeQuit = new SafeQuitCoordinator({
@@ -32,8 +33,8 @@ export function installApplicationQuit(
   application.on("before-quit", (event) => {
     if (safeQuit.finished) return;
     event.preventDefault();
-    void safeQuit.prepare("quit").then((ready) => {
-      if (ready) application.quit();
+    void (ports.requestUserQuit?.() ?? safeQuit.prepare("quit")).then((ready) => {
+      if (ready === "ready") application.quit();
     });
   });
   return safeQuit;

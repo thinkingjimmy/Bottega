@@ -12,9 +12,9 @@ import { stableId } from "../coordinator-values";
 import type { SteerIntent } from "../relay-ledger";
 import {
   assertPreparedContentHash,
-  hydratePreparedTurn,
   type PreparedManualTurn,
 } from "./prepared-manual-turn";
+import { hydratePreparedTurn } from "./prepared/hydration";
 
 export const steerDerivedIntentId = (outboxRef: string) =>
   stableId("manual", `steer:${outboxRef}`);

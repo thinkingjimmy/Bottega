@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Base GUI surface binding/token claims, Node HTTP streams, a custody-aware Design workspace port, the injected selection bridge, and the shared source-line matcher
+ * [INPUT]: Depends on Base GUI surface binding/token claims, Node HTTP streams, a custody-aware Design workspace port, the injected selection bridge, and the shared source-line matcher, and statusError from main/errors
  * [OUTPUT]: Provides legacy authenticated workspace path routes and delegates compiled-v3 opaque refs/previews to the isolated compiled facade
  * [POS]: The Base GUI Design workspace-read composition boundary; legacy route parsing lives here, the browser bridge in design-selection-bridge.ts, and compiled trust-domain logic in compiled-workspace.ts
  */
@@ -9,6 +9,7 @@ import type {
   AppGuiRuntimeErrorCode,
   BaseGuiLiveBinding,
 } from "../../../../shared/apps-ipc";
+import { statusError } from "../../errors";
 import type { GuiTokenClaims } from "../generation/gui-api";
 import { bearerToken, sameGuiBinding } from "./api/router";
 import { CompiledWorkspaceFacade } from "./compiled-workspace";
@@ -239,7 +240,7 @@ async function resolveWorkspaceSourceLine(
     const file = requireDesignFile(url.searchParams.get("file"));
     const hint = requireHtmlHint(url.searchParams.get("hint"));
     const content = await port.read(binding, file);
-    if (content === null) throw Object.assign(new Error("Canvas not found"), { status: 404 });
+    if (content === null) throw statusError(404, "Canvas not found");
     const source = Buffer.isBuffer(content) ? content.toString("utf8") : content;
     return { sourceLine: workspaceSourceLine(source, hint) };
   }, method === "HEAD");
@@ -318,14 +319,14 @@ function publicVersion(version: WorkspaceVersion) {
 
 function requireDesignFile(value: unknown) {
   if (typeof value !== "string" || !/^design\/[A-Za-z0-9][A-Za-z0-9._ -]{0,199}\.html$/i.test(value)) {
-    throw Object.assign(new Error("Design file path is invalid"), { status: 400 });
+    throw statusError(400, "Design file path is invalid");
   }
   return value;
 }
 
 function requireUuid(value: unknown) {
   if (typeof value !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value)) {
-    throw Object.assign(new Error("Version identity is invalid"), { status: 400 });
+    throw statusError(400, "Version identity is invalid");
   }
   return value;
 }
@@ -339,7 +340,7 @@ function requireHtmlHint(value: unknown) {
     !value.endsWith(">") ||
     value.includes("\0")
   ) {
-    throw Object.assign(new Error("HTML source hint is invalid"), { status: 400 });
+    throw statusError(400, "HTML source hint is invalid");
   }
   return value;
 }

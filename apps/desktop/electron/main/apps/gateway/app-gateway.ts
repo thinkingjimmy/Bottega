@@ -9,7 +9,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { session } from "electron";
 import httpProxy from "http-proxy";
-import { asError } from "../../errors";
+import { asError, statusError } from "../../errors";
 import {
   GatewayRequestLeaseRegistry,
   type GatewayGenerationBinding,
@@ -85,9 +85,7 @@ export class AppGateway {
   private validateSurfaceLease: (
     surfaceLeaseId: string
   ) => Promise<void> = async () => {
-    throw Object.assign(new Error("App surface lease validator unavailable"), {
-      status: 503,
-    });
+    throw statusError(503, "App surface lease validator unavailable");
   };
 
   constructor(
@@ -392,9 +390,7 @@ export class AppGateway {
           route.binding.surfaceId !== route.surfaceId ||
           !route.binding.appSurfaceLeaseId
         ) {
-          throw Object.assign(new Error("GUI surface binding mismatch"), {
-            status: 401,
-          });
+          throw statusError(401, "GUI surface binding mismatch");
         }
         await this.validateSurfaceLease(route.binding.appSurfaceLeaseId);
       } catch (cause) {

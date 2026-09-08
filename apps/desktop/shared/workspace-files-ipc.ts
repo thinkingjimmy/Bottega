@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the shared/agent-ipc logic workspace scope, does not accept cwd or absolute paths submitted by the renderer
- * [OUTPUT]: Provides capability-free workspace file/directory search, opaque readRef Re-tick/restricted reading IPC contracts and query/path/index/read Budget constants
- * [POS]: The shared Workspace is recognized by the read-only capability agreement; renderer can only be read short-term in a selected/preview mode for a relative path
+ * [INPUT]: Depends on AgentWorkspaceScope from agent-ipc; never accepts a cwd or absolute path submitted by the renderer
+ * [OUTPUT]: Provides capability-free workspace file/directory search, an opaque readRef resign/restricted-read IPC contract, and query/path/index/read byte-budget constants
+ * [POS]: Shared read-only capability boundary for the workspace; the renderer can only read a relative path briefly, in select/preview mode, via an opaque readRef
  */
 
 import type { AgentWorkspaceScope } from "./agent-ipc";

@@ -45,7 +45,7 @@ export async function openProductDestination(
     canonical = await openAppEditor({
       appId: destination.appId,
       requestId: crypto.randomUUID(),
-      mode: destination.kind === "app-editor-draft" ? "new" : "resume",
+      mode: "new",
     });
   } else if (destination.kind === "app-editor-chat") {
     canonical = await openAppEditorChat({

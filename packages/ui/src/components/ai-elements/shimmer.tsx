@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: Depends on React CSSProperties merged with cn class names
- * [OUTPUT]: The system Provides Shimmer to scan text components (duration/delay/spread available)
- * [POS]: The load of ai-elements indicates the native language, and is assembled in a streamlined state by the ThinkingShimmer class
+ * [OUTPUT]: Provides Shimmer, a scanning-highlight text placeholder (duration/delay/spread are configurable)
+ * [POS]: ai-elements' text-loading primitive; ThinkingShimmer composes it into its own state indicator
  */
 
 import type { CSSProperties, ElementType, ReactNode } from "react";

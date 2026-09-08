@@ -100,6 +100,15 @@ function TabPanel({
   );
 }
 
+const regionCapability = (id: PanelRegion): PanelCapability =>
+  id === "browser"
+    ? "browser"
+    : isImageRegion(id)
+      ? "image"
+      : isAppRegion(id)
+        ? "app"
+        : id;
+
 async function loadAvailableApps(
   conversationId: string,
   conversationIncarnationId: string
@@ -245,12 +254,7 @@ export function PanelTabs({
     (!baseOwnerResult.absent || Boolean(snapshots[effectiveBaseOwnerKey]));
 
   const openPanel = (id: PanelTabId) => {
-    const capability: PanelCapability = isImageRegion(id)
-      ? "image"
-      : isAppRegion(id)
-        ? "app"
-        : id;
-    if (!panelEligibility(context, capability).allowed) return;
+    if (!panelEligibility(context, regionCapability(id)).allowed) return;
     panelSlotStore.open(slotKey, id);
     if (isAppRegion(id) && productRef) {
       void setDesignAutoOpen({
@@ -264,27 +268,13 @@ export function PanelTabs({
   };
   // 目录里唯一的分叉，只此一处：面板是单例，Browser 是工厂。
   const openFromCatalog = (id: PanelRegion) => {
-    const capability: PanelCapability = id === "browser"
-      ? "browser"
-      : isImageRegion(id)
-        ? "image"
-      : isAppRegion(id)
-        ? "app"
-        : id;
-    if (!panelEligibility(context, capability).allowed) return;
+    if (!panelEligibility(context, regionCapability(id)).allowed) return;
     if (id !== "browser") return openPanel(id);
     browser.createTab();
     panelSlotStore.activate(slotKey, "browser");
   };
   const catalogDisabled = (id: PanelRegion) => {
-    const capability: PanelCapability = id === "browser"
-      ? "browser"
-      : isImageRegion(id)
-        ? "image"
-      : isAppRegion(id)
-        ? "app"
-        : id;
-    if (!panelEligibility(context, capability).allowed) return true;
+    if (!panelEligibility(context, regionCapability(id)).allowed) return true;
     return id === "browser"
       ? browser.snapshot.tabs.length >= BROWSER_TAB_LIMIT
       : tabs.includes(id);
@@ -295,15 +285,7 @@ export function PanelTabs({
     return t(`chat.sidePanel.eligibility.${result.reason}`);
   };
   const catalogDisabledReason = (id: PanelRegion) =>
-    eligibilityReason(
-      id === "browser"
-        ? "browser"
-        : isImageRegion(id)
-          ? "image"
-          : isAppRegion(id)
-            ? "app"
-            : id
-    );
+    eligibilityReason(regionCapability(id));
 
   /* 处女 slot 的默认落点。写在派生之后而非组件顶部：dep 数组是 render 期
      求值的普通数组，baseExists 在它上面才声明，放回顶部就是 TDZ 崩。 */

@@ -6,7 +6,7 @@
 
 import type { SqliteDatabase } from "../connection";
 
-export type RetiredGenerationGc = Readonly<{
+type RetiredGenerationGc = Readonly<{
   deletedGenerations: number;
   deletedEntryVersions: number;
   deletedBlobDigests: string[];

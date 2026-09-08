@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on managed/PyPI-versions, PyPI package/fetcher and port of release for snapshots while running
- * [OUTPUT]: Provides RuntimeVersionCatalog/assertSwitchVersion: 24h Successful caching, single-flight with a hard time, ETag/304, first offline retesting failure, only one failed text, failed preservation with trusted members
- * [POS]: The owner of the version directory status of main/memory/runtime/control; Coordinator only consume facts and optional versions
+ * [INPUT]: Depends on managed/pypi-versions' fetchPypiCatalog/isNewerVersion, an injected fetch, and a publish callback that emits a MemoryRuntimeSnapshot
+ * [OUTPUT]: Provides RuntimeVersionCatalog (TTL-cached, single-flight, ETag-aware refresh that keeps the last-known-good catalog on failure) and assertSwitchVersion
+ * [POS]: The owner of the version-catalog state in main/memory/runtime/control; the coordinator only consumes its facts() output and the resolved version list
  */
 
 import type { MemoryRuntimeSnapshot } from "../../../../../shared/memory-ipc";

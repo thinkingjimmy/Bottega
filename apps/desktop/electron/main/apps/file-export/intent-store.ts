@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on DurableJson and exact Host-resolved destination/partial paths
+ * [INPUT]: Depends on DurableJson and exact Host-resolved destination/partial paths, and statusError from main/errors
  * [OUTPUT]: Provides durable open export intents, a typed busy rejection, terminal removal, and exact-path crash recovery enumeration
  * [POS]: file-export crash custody ledger; it never performs directory scans or wildcard cleanup
  */
 
 import { join } from "node:path";
 import { z } from "zod";
+import { statusError } from "../../errors";
 import { DurableJson } from "../../persistence/durable-json";
 
 const intentSchema = z.object({
@@ -49,7 +50,7 @@ export class FileExportIntentStore {
       if (state.intents.some((item) => item.exportId === intent.exportId)) return intent;
       /* 账本满是「现在没有空位」，不是「主进程坏了」：抛带 code 的忙错误，
          由 manager 翻译成 declined/busy，绝不能以裸 Error 落成 500。 */
-      if (state.intents.length >= 4) throw fileExportBusy();
+      if (state.intents.length >= 4) throw statusError(429, FILE_EXPORT_BUSY, { code: FILE_EXPORT_BUSY });
       state.intents.push(intentSchema.parse(intent));
       return intent;
     });
@@ -63,10 +64,6 @@ export class FileExportIntentStore {
 }
 
 const FILE_EXPORT_BUSY = "FILE_EXPORT_BUSY";
-
-function fileExportBusy() {
-  return Object.assign(new Error(FILE_EXPORT_BUSY), { code: FILE_EXPORT_BUSY, status: 429 });
-}
 
 export function isFileExportBusy(cause: unknown) {
   return (cause as { code?: unknown } | null)?.code === FILE_EXPORT_BUSY;

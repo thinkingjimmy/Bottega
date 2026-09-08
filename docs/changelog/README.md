@@ -4,6 +4,25 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-09-08 — v0.1.3
+
+**Before upgrading:** 0.1.3 uses a new local storage format. Chat databases from 0.1.2 and earlier cannot be opened or automatically migrated. Quit Bottega and back up the complete application data folder before upgrading. Keep that folder for use with the older version; starting 0.1.3 requires a fresh data folder, and previous Bottega chats and settings are not imported automatically. Follow the [backup and setup instructions](../getting-started/README.md#upgrading-to-013).
+
+### What's new
+
+- **Switch Agents within a chat.** Choose Codex, Claude Code, Kimi Code, or OpenCode for the next turn while the chat is idle. Keep one transcript with clear author and switch markers; the new Agent receives bounded context and can retrieve relevant chat history.
+- **See whether an Agent is ready.** The composer shows installation, authentication, and runtime availability, with focused install, sign-in, and retry actions. Unavailable Agents no longer silently consume queued work, and recovery stays scoped to the affected chat or Agent.
+- **Follow tasks outside the main window on macOS.** Independently enable launch at login, keep-running behavior after closing the window, and a floating task panel. The top-of-screen panel shows running tasks and requests needing attention, supports keyboard navigation, and opens the related chat. All three options are off by default.
+- **Check App compatibility before installation.** All four first-party Apps now declare Bottega 0.1.3 as their minimum version. Installation, rebuilding, authorization, and activation check that requirement; an upgrade prompt can return to the original App candidate after restarting. Rejected updates preserve the existing working version and permissions.
+- **Rename Apps without disturbing their work.** Changing an App's display name keeps its active version, source, data, and permissions intact.
+- **Simplify adding Projects.** History-import choices appear when local CLI history is actually available, while Projects without history can be added directly.
+
+### Downloads
+
+macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage installers are available below. These builds remain unsigned; follow the [first-launch instructions](../getting-started/README.md). macOS remains the primary platform; native App isolation and full feature parity on Windows/Linux are still in progress.
+
+Users on 0.1.0 or 0.1.1 must download and install 0.1.3 manually because those versions contain the earlier updater bug. The storage preparation above applies to all earlier versions.
+
 ## 2026-09-05 — v0.1.2
 
 **Upgrading from 0.1.0 or 0.1.1:** download and install 0.1.2 manually from the [Releases page](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.2). Those versions contain the updater bug fixed here, so they cannot receive this fix through their existing update button.

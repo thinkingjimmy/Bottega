@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on canonical Chat schemas/commit normalization, App Project membership facts, and monotonic Chat/title/start revisions
+ * [INPUT]: Depends on canonical Chat schemas/commit normalization, App Project membership facts, monotonic Chat/title/start revisions, and main/errors
  * [OUTPUT]: Provides Chat record creation, App Project placement mutation, superseded-branch pruning, and fact/commit revision advancement
  * [POS]: Pure Chat record lifecycle policy; ChatStore retains queue and I/O ownership while delegating record construction and transitions
  */
 
+import { backendDefaults } from "../../../shared/chat-agent/options";
 import { randomUUID } from "node:crypto";
 import type { AgentBackendId, SessionRef } from "../../../shared/agent-ipc";
 import {
@@ -28,8 +29,10 @@ import {
   isAppProjectMember,
 } from "./chat-guards";
 import type { ChatFacts } from "./chat-summary";
+import { statusError } from "../errors";
 
 export type ChatCreateIdentity = Readonly<{
+  options?: import("../../../shared/agent-ipc").AgentTurnOptions;
   incarnationId?: string;
   title?: string | null;
   minimumNextSeq?: number;
@@ -96,6 +99,9 @@ export function createChatRecord(input: Readonly<{
         input.identity.incarnationId ?? randomUUID().replaceAll("-", ""),
       title: input.identity.title ?? null,
       agent: input.agent,
+      agentRevision: 0,
+      forkAgent: null,
+      options: input.identity.options ?? backendDefaults({}, input.agent),
       session: input.identity.session ?? null,
       importOrigin: input.identity.importOrigin ?? null,
       snapshotDigest: input.identity.snapshotDigest ?? null,
@@ -154,7 +160,7 @@ export function moveChatProjectRecord<T extends ChatFacts>(
   projects: ProjectFacts
 ): T {
   if (current.projectId !== input.expectedSource) {
-    throw Object.assign(new Error("聊天 Project 归属已变化"), { status: 409 });
+    throw statusError(409, "聊天 Project 归属已变化");
   }
   const appRole = input.appRole ?? current.appRole;
   assertProjectRole(projects.isAppProject, input.target, appRole);

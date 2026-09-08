@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Electron app.isPackaged, main-owned PresetCatalog sourceDirectory/URL/pin, and dev submodules
  * [OUTPUT]: Provides PresetSourceResolver; release uses canonical URL+pin, dev uses repository-aligned submodule directory+live HEAD
- * [POS]: The default for apps/share/preset is to have the hard border of the source channel; env/argv/Settings/IPC is not part of the packaged branch
+ * [POS]: apps/share/preset source-channel boundary; packaged builds resolve only from the catalog, never from env/argv/Settings/IPC overrides
  */
 
 import { execFile } from "node:child_process";

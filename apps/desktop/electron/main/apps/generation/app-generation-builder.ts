@@ -4,6 +4,7 @@
  * [POS]: App generation saga owner beneath AppStore; AppStore retains record serialization and public lifecycle commands
  */
 
+import { readCompatibility, revalidateCompatibility, recordCandidate, runningBottegaVersion } from "../compatibility/read";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { rename } from "node:fs/promises";
@@ -33,6 +34,7 @@ import {
 } from "./app-generation-plan";
 
 type AppGenerationBuilderHost = Readonly<{
+  hostVersion?: () => string | null;
   artifactsRoot: string;
   get(appId: string): AppRecord | undefined;
   artifactRoot(appId: string, generationId: string): string;
@@ -68,6 +70,8 @@ export class AppGenerationBuilder {
     options: GenerationPlanOptions = {}
   ) {
     const previous = this.host.get(record.id);
+    const candidate = recordCandidate(record);
+    const compatibility = record.manifest ? await readCompatibility(options.sourceDir ?? record.dir, candidate, this.host.hostVersion?.() ?? runningBottegaVersion()) : null;
     const compiledManifest = record.manifest?.kind === "base" && record.manifest.gui?.build
       ? record.manifest
       : null;
@@ -94,6 +98,7 @@ export class AppGenerationBuilder {
           expected: plan.digests,
         });
       }
+      if (compatibility) await revalidateCompatibility(join(this.artifactRoot(record.id, plan.generationId), "source"), candidate, compatibility, this.host.hostVersion?.() ?? runningBottegaVersion());
       operation = await this.beginBuild(plan);
       /* 有声明就必须先拿到 participant 的 prepared handoff：pending 代只引用
          committed reservation 与 decision，永不直接 CAS active。 */
@@ -108,6 +113,7 @@ export class AppGenerationBuilder {
       );
       operation = capabilityBound.operation;
       const bound = this.bindPreparedEpoch(capabilityBound.record, plan, prepared);
+      if (compatibility) await revalidateCompatibility(join(this.artifactRoot(record.id, plan.generationId), "source"), candidate, compatibility, this.host.hostVersion?.() ?? runningBottegaVersion());
       await this.commitRecord(bound, record.id, previous);
       committed = true;
       await this.settleBuild(plan, operation);
@@ -127,6 +133,10 @@ export class AppGenerationBuilder {
     } finally {
       await compiled?.cleanup();
     }
+  }
+
+  async validateCompatibility(record: AppRecord, generation: AppGeneration) {
+    return readCompatibility(join(this.artifactRoot(record.id, generation.generationId), "source"), recordCandidate(record, generation.sourcePackageDigest), this.host.hostVersion?.() ?? runningBottegaVersion());
   }
 
   private requireAppGuiCompiler() {

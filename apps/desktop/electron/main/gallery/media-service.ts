@@ -68,7 +68,7 @@ export class GalleryMediaService {
 
   register(window: BrowserWindow, rendererUrl: string) {
     this.broker.attachWindow(window);
-    rendererIpc(window, rendererUrl, "拒绝非主窗口的 Gallery 媒体请求")
+    rendererIpc(rendererUrl, "拒绝非主窗口的 Gallery 媒体请求")
       .handle(GALLERY_MEDIA_CHANNEL.thumbnail, async (raw) => {
         const input = galleryThumbnailInputSchema.parse(raw);
         return this.thumbnail(input.sourceRef, input.maxEdge);

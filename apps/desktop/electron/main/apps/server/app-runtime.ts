@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node child_process/readline, backend runtime registry/headless executor, authorized App config, platform server-App policy, runtime audit/events, custody, store, gateway, and maintenance gate
- * [OUTPUT]: Provides AppRuntime for static/server generations; unsupported platform server Apps fail before custody, lsof, or spawn, and only web-runtime Apps can ever be branded start-failed
- * [POS]: The non-permanent mode of operation of the apps module is the only source of truth, and the end of its life cycle is empty; Process truth is always in the ProcessCustodyJournal, and no PID tables are created in this category
+ * [INPUT]: Reads saved App configuration through the common command resolver; Depends on sealed generations, shared command plans, platform readiness, loopback listener audit and durable server custody
+ * [OUTPUT]: Hosts qualified App execution; passive inventory reads use a binding-scoped cache, invalidated by explicit checks and repopulated only by the current successful inspection.
+ * [POS]: In-memory apps runtime state only, never a source of truth, and empty at the end of its lifecycle; process truth always lives in ProcessCustodyJournal, no PID table is kept here
  */
 
 import {
@@ -19,7 +19,7 @@ import {
   type ServerAppManifest,
 } from "../../../../shared/apps-ipc";
 import { platformCapabilityUnavailable } from "../../../../shared/platform-capabilities";
-import { sanitizedProcessEnvironment } from "../../codex-runtime";
+import { sanitizedProcessEnvironment } from "../../backends/runtime-probe";
 import { backendById, backendRuntimeRegistry } from "../../backends";
 import { headlessExecutor } from "../../backends/headless-executor";
 import { acquireAgentProcessLease } from "../../agent-process-supervisor";
@@ -45,16 +45,20 @@ import {
   type ServeLoop,
 } from "../runtime/serve-loop";
 import { asError } from "../../errors";
-import { strippedShell } from "../support";
+import { resolveConfiguredAppCommand } from "../execution/command";
 import type { AppProcessCustodyEntry } from "../../../../shared/app-lifecycle";
 import type {
   AppServerCustodyHandle,
   AppServerCustodyRuntime,
 } from "../runtime/server-custody";
-import type { AgentToolInventory } from "../runtime/agent-tools";
+import { assertAgentRequirements, type AgentToolInventory } from "../runtime/agent-tools";
 
 const START_TIMEOUT_MS = 60_000;
 const AGENT_TURN_TIMEOUT_MS = 10 * 60_000;
+
+function inventoryBindingKey(record: AppRecord) {
+  return `${record.maintenanceAgent}:${record.bindingRevision}:${record.dir}`;
+}
 
 type RuntimeEntry = {
   promise: Promise<{ origin: string }>;
@@ -75,6 +79,8 @@ type RuntimeEntry = {
 export const APP_DATA_ENV = "APP_DATA_DIR";
 
 export class AppRuntime {
+  private readonly inventoryCache = new Map<string, { key: string; inventory: AgentToolInventory }>();
+  private readonly inventoryInspections = new Map<string, symbol>();
   private readonly running = new Map<string, RuntimeEntry>();
 
   constructor(
@@ -96,31 +102,47 @@ export class AppRuntime {
     private readonly serverAppsEnabled = true
   ) {}
 
-  /** Settings 现检与启动校验共用 maintenance adapter 的结构化 inventory。 */
-  async inspectToolInventory(appId: string): Promise<AgentToolInventory | null> {
+  cachedToolInventory(appId: string): AgentToolInventory | null {
     const record = this.store.get(appId);
-    if (!record) throw new Error("App 不存在");
-    if (record.maintenanceAgent === "auto") return null;
-    const descriptor = backendById(record.maintenanceAgent);
-    if (!descriptor.maintenance) return null;
-    const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
-    if (
-      snapshot.runtimeStatus !== "installed" ||
-      snapshot.authStatus !== "authenticated"
-    ) {
-      return null;
-    }
-    const session = await descriptor.maintenance.open({
-      userData: this.userData,
-      appId: record.id,
-      workspace: record.dir,
-      runtime: snapshot.runtime,
-    });
-    const lease = await acquireAgentProcessLease(descriptor.id, "background");
+    const cached = this.inventoryCache.get(appId);
+    return record && cached?.key === inventoryBindingKey(record) ? cached.inventory : null;
+  }
+
+  /** An explicit attempt retires old health, including when admission or inspection fails. */
+  async inspectToolInventory(appId: string): Promise<AgentToolInventory | null> {
+    const inspection = Symbol(appId);
+    this.inventoryInspections.set(appId, inspection);
+    this.inventoryCache.delete(appId);
     try {
-      return await session.inspectToolInventory(record.dir) as AgentToolInventory;
+      const record = this.store.get(appId);
+      if (!record) throw new Error("App 不存在");
+      if (record.maintenanceAgent === "auto") return null;
+      const descriptor = backendById(record.maintenanceAgent);
+      if (!descriptor.maintenance) return null;
+      const key = inventoryBindingKey(record);
+      const isCurrent = () => {
+        const current = this.store.get(appId);
+        return this.inventoryInspections.get(appId) === inspection && current && inventoryBindingKey(current) === key;
+      };
+      const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
+      if (snapshot.runtimeStatus !== "installed" ||
+        (await backendRuntimeRegistry.operationEligibility(descriptor.id, "serve", { cwd: record.dir, ignoreUserConfig: true }, snapshot)).decision !== "allow") return null;
+      const signal = AbortSignal.timeout(START_TIMEOUT_MS);
+      const lease = await acquireAgentProcessLease(descriptor.id, "background", signal);
+      try {
+        if (!await backendRuntimeRegistry.confirmForSpawn(descriptor.id, snapshot, signal) || !isCurrent()) {
+          throw new Error("App inventory execution identity changed");
+        }
+        const session = await descriptor.maintenance.open({
+          userData: this.userData, appId: record.id, workspace: record.dir, runtime: snapshot.runtime,
+        });
+        const inventory = await session.inspectToolInventory(record.dir);
+        if (!isCurrent()) return null;
+        this.inventoryCache.set(appId, { key, inventory });
+        return inventory;
+      } finally { lease.release(); }
     } finally {
-      lease.release();
+      if (this.inventoryInspections.get(appId) === inspection) this.inventoryInspections.delete(appId);
     }
   }
 
@@ -355,16 +377,12 @@ export class AppRuntime {
     });
     entry.custody = custody;
     const upstreamPort = await this.gateway.allocateUpstreamPort();
-    const command = manifest.startCmd
-      .replaceAll("{PORT}", String(upstreamPort))
-      .replaceAll("{HOST}", "127.0.0.1");
-    const guardian = this.launchGuardian(
-      record,
-      generation,
-      command,
-      dataEpochId,
-      entry
-    );
+    const command = await resolveConfiguredAppCommand(manifest.startCmd, {
+      userData: this.userData, appId: record.id, signal: entry.controller.signal,
+      root: this.store.contentRoot(record.id, generation.generationId),
+      host: { PORT: String(upstreamPort), HOST: "127.0.0.1", APP_DATA_DIR: this.epochRoot(record.id, dataEpochId) },
+    });
+    const guardian = this.launchGuardian(record, command, dataEpochId, entry);
     await custody.delivered;
     /* 健康检查直接打上游端口：route 要等 activated 才发布，此刻经 origin
        去探等于永远探不到（gateway 会 404），60 秒后以一句泛泛超时收场。 */
@@ -386,19 +404,17 @@ export class AppRuntime {
    */
   private launchGuardian(
     record: AppRecord,
-    generation: AppGeneration,
-    command: string,
+    command: Awaited<ReturnType<typeof resolveConfiguredAppCommand>>,
     dataEpochId: string,
     entry: RuntimeEntry
   ) {
-    const shell = strippedShell(command);
     const child = entry.custody!.launch({
-      command: shell.executable,
-      args: shell.args,
+      command: command.executable,
+      args: command.args,
       // sealed code root 与 data epoch 都属于 capability：只在交付时刻出门
-      cwd: this.store.contentRoot(record.id, generation.generationId),
+      cwd: command.cwd,
       env: {
-        ...sanitizedProcessEnvironment(),
+        ...command.env,
         [APP_DATA_ENV]: this.epochRoot(record.id, dataEpochId),
       },
     });
@@ -530,7 +546,7 @@ export class AppRuntime {
       const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
       if (
         snapshot.runtimeStatus !== "installed" ||
-        snapshot.authStatus !== "authenticated"
+        (await backendRuntimeRegistry.operationEligibility(descriptor.id, "serve", { cwd: record.dir, ignoreUserConfig: true }, snapshot)).decision !== "allow"
       ) {
         throw new Error(`${descriptor.displayName} 当前不可用，伺服维护已暂停`);
       }
@@ -602,7 +618,7 @@ export class AppRuntime {
       throw new Error("Agent 工具要求未记录，请干净重装此 App");
     }
     const inventory = await session.inspectToolInventory(record.dir);
-    session.validateRequirements(requirements, inventory);
+    assertAgentRequirements(requirements, inventory);
   }
 
   private async setAgentWarning(appId: string, warning: string | null) {

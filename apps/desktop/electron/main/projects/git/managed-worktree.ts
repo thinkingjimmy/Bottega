@@ -22,14 +22,14 @@ import { auditExecutableGitConfig, listGitConfig } from "./git-config-audit";
 
 const exists = async (path: string) => access(path).then(() => true, () => false);
 
-export type ManagedWorktreeDirtyFacts = Readonly<{
+type ManagedWorktreeDirtyFacts = Readonly<{
   staged: boolean;
   unstaged: boolean;
   untracked: boolean;
   ignored: boolean;
 }>;
 
-export type ManagedWorktreePreflight = Readonly<{
+type ManagedWorktreePreflight = Readonly<{
   platform: NodeJS.Platform;
   supported: boolean;
   identity: GitRepositoryIdentity;
@@ -256,7 +256,7 @@ export async function assertManagedWorktreeShape(worktreeDir: string) {
   return identity;
 }
 
-export async function validateManagedWorktree(input: Readonly<{
+async function validateManagedWorktree(input: Readonly<{
   sourceIdentity: GitRepositoryIdentity;
   worktreeDir: string;
   branch: string;

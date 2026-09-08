@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on AbortSignal, Browser debugger/webContents seam and the pending action Promise
  * [OUTPUT]: Provides deadlineSignal and runCancelableAction; Stop JS/Navigation and wait for the bottom command to settle
- * [POS]: The main/browser/execution action is to delete the kernel; Concentrated load timeout, CDP cancel and detach bottom, not explaining business movements
+ * [POS]: The main/browser/execution cancellation kernel; centralizes load timeouts, CDP cancellation, and the detach floor without interpreting individual actions
  */
 
 import { setTimeout as delay } from "node:timers/promises";

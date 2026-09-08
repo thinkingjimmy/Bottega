@@ -1,12 +1,12 @@
 /**
- * [INPUT]: Depends on codex runtime codexEnvironment, user credential root, authorized processEnv and General HeadlessJob/ExecutionSpec agreement
- * [OUTPUT]: Provides codexHeadlessSpec, translates the title/processEnv HeadlessJob into codex exec JSONL command line, declares credentialRoots, parses the agent_message end value and keeps an error item as cause-of-death evidence while no message text exists;
- *           prompt does not enter the argv file executor Unified by stdin Deliver and close ((codex uninterrupted reading instructions from stdin)
- * [POS]: The Codex descriptor is a translation layer that is not guarded by anyone; CLI is responsible for the protocol parameters only
- *        readRoots/WriteRoot/Network is required by the executor's Unified macOS seatbelt, title open with toolPolicy: none + read-only
+ * [INPUT]: Depends on codex environment.ts codexEnvironment, user credential root, authorized processEnv and General HeadlessJob/ExecutionSpec agreement
+ * [OUTPUT]: Provides codexHeadlessSpec, translating a HeadlessJob's purpose/processEnv into a `codex exec` JSONL command line, declaring credentialRoots, parsing the terminal agent_message value, and keeping an error item as cause-of-death evidence only when no message text ever arrives;
+ *           the prompt is never passed as argv — it is written to stdin and the stream is closed (codex reads instructions from stdin until EOF)
+ * [POS]: Unguarded translation layer for the Codex descriptor; the CLI is trusted only for protocol parameters.
+ *        readRoots/sandbox/network are enforced by the shared macOS seatbelt in the executor; a job opened with toolPolicy: none is read-only
  */
 
-import { codexEnvironment } from "../../codex-runtime";
+import { codexEnvironment } from "./environment";
 import { codexHome } from "../sandbox/fences";
 import type {
   HeadlessExecutionSpec,

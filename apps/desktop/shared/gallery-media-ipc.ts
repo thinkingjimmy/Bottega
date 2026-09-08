@@ -54,12 +54,11 @@ export const galleryMediaSourceRefSchema = z.discriminatedUnion("kind", [
   galleryAttachmentSourceRefSchema,
 ]);
 
-/** 案 A 的转录投影维持窄类型；双源 media port 使用 GalleryMediaSourceRef。 */
-export const gallerySourceRefSchema = transcriptGallerySourceRefSchema;
-export type GallerySourceRef = z.infer<typeof gallerySourceRefSchema>;
 export type TranscriptGallerySourceRef = z.infer<
   typeof transcriptGallerySourceRefSchema
 >;
+/** 案 A 的转录投影维持窄类型；双源 media port 使用 GalleryMediaSourceRef。 */
+export type GallerySourceRef = TranscriptGallerySourceRef;
 export type AttachmentGallerySourceRef = z.infer<
   typeof galleryAttachmentSourceRefSchema
 >;
@@ -67,22 +66,18 @@ export type GalleryMediaSourceRef = z.infer<
   typeof galleryMediaSourceRefSchema
 >;
 
-export const GALLERY_MEDIA_ERROR_CODES = [
-  "OUT_OF_WORKSPACE",
-  "INCARNATION_MISMATCH",
-  "SOURCE_GONE",
-  "CACHE_PENDING",
-  "BUDGET_EXCEEDED",
-  "UNSUPPORTED_FORMAT",
-  "INVALID_IMAGE",
-  "TOO_LARGE",
-  "DECODE_TIMEOUT",
-  "QUEUE_FULL",
-  "IO_ERROR",
-] as const;
-
 export type GalleryMediaErrorCode =
-  (typeof GALLERY_MEDIA_ERROR_CODES)[number];
+  | "OUT_OF_WORKSPACE"
+  | "INCARNATION_MISMATCH"
+  | "SOURCE_GONE"
+  | "CACHE_PENDING"
+  | "BUDGET_EXCEEDED"
+  | "UNSUPPORTED_FORMAT"
+  | "INVALID_IMAGE"
+  | "TOO_LARGE"
+  | "DECODE_TIMEOUT"
+  | "QUEUE_FULL"
+  | "IO_ERROR";
 
 export type GalleryMediaError = {
   ok: false;

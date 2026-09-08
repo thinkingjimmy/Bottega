@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on intent-store pending listing with tombstone compression, admission-gate combination lock, kind of intent-types
- * [OUTPUT]: The first step is to create a new system that can be used to make the data
- * [POS]: The fourth section of the contract v3 starts with the accounting skeleton file Archive/Purge, running after recovery, before conversation admission opens; before recovery intent, then file back to the project across the library, and projection failure is not stopped
+ * [OUTPUT]: Provides LifecycleReconciliation: replays pending intents through their registered recovery handlers inside the admission gate, then runs registered idempotent projections and compacts terminal journal entries
+ * [POS]: Startup recovery boundary for the lifecycle domain; runs after intent-store recovery and before conversation/Project admission opens, replaying unresolved intents (e.g. Archive/Purge) through the same admission gate as live traffic, with projection failures reported but never fatal
  */
 
 import type { AdmissionGate, SagaResult } from "./admission-gate";

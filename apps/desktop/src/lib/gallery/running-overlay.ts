@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on active TurnDraft and Chat's incarnation/assistant sequence identity
- * [OUTPUT]: Provides Chat image tool draft → The purest projection of ephemeral GalleryItem
- * [POS]: The lightweight boundaries of Gallery mode; The main input only loads this file, and the durable row model continues to be delayed Base chunk
+ * [OUTPUT]: Provides projectRunningGalleryItems, a pure projection from a Chat image-tool draft to ephemeral GalleryItems
+ * [POS]: The lightweight half of Gallery-item sourcing; the main render path only imports this file, while the durable row model loads separately once its Base chunk resolves
  */
 
 import type {

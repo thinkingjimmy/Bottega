@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on chat-turn/chats/codex contracts, canonical Project scope, Extension generation identities, and Project Tools session receipts
- * [OUTPUT]: Provides presentation-free multi-backend DTOs, ProductFailure-aware terminal and warning lifecycle, structured usage-limit facts, MCP-plan-bound SessionRef, durable Skill receipts, runtime/auth/Steer contracts, structured input, CAS, and budgets (native vs imported tool-detail caps included)
+ * [OUTPUT]: Defines backend runtime/auth/static capability facts, typed availability evidence and structured execution failure contracts.
  * [POS]: Shared Agent wire truth connecting Electron main, preload, and renderer without exposing mutable scope authority
  */
 
@@ -34,14 +34,8 @@ export const AGENT_BACKEND_ORDER = [
 
 export type AgentBackendId = (typeof AGENT_BACKEND_ORDER)[number];
 
-export type BackendStatus =
-  | "missing"
-  | "unsupported"
-  | "auth-required"
-  | "ready"
-  | "error";
-
 export type BackendRuntimeStatus =
+  | "unknown"
   | "missing"
   | "error"
   | "unsupported"
@@ -149,11 +143,10 @@ export type BackendModelInfo = {
 export type BackendInfo = {
   id: AgentBackendId;
   displayName: string;
-  /** 兼容 renderer 的展示投影；准入必须读取 runtimeStatus/authStatus。 */
-  status: BackendStatus;
   runtimeStatus: BackendRuntimeStatus;
   authStatus: BackendAuthStatus;
   capabilities: BackendCapabilities;
+  availability?: import("./agent-availability/types").AvailabilityFacts;
   version?: string;
   path?: string;
   latestVersion?: string;
@@ -440,6 +433,9 @@ export type PreparedSkillSelectionReceipt = Readonly<{
 }>;
 
 export type AgentSendPayload = {
+  /** Main-owned, bounded history manifest; never accepted from renderer IPC. */
+  handoff?: import("./chat-agent/history").FrozenHandoff;
+  agentRevision?: number;
   requestId: string;
   session?: SessionRef;
   scope: AgentScope;
@@ -539,6 +535,9 @@ export type SessionServiceTierEffective = Readonly<{
 }>;
 
 export type TurnSnapshot = {
+  generation?: number;
+  terminalSeq?: number;
+  incarnationId?: string;
   requestId: string;
   /** root assistant 在 turn admission 时预留的 canonical 会话序号。 */
   assistantSeq: number;
@@ -651,7 +650,13 @@ export type AgentEvent = AgentEventBody & {
 //
 // waiting 是「turn 还在跑，但卡在你身上」——存在未闭合的审批或追问。
 // 它不是 running 的替代而是其子态：running 为假时 waiting 必假。
-export type ChatActivityEvent = {
+export type ActivityTurnIdentity = {
+  incarnationId?: string;
+  requestId?: string;
+  generation?: number;
+  terminalSeq?: number;
+};
+export type ChatActivityEvent = ActivityTurnIdentity & {
   conversationId: string;
   running: boolean;
   waiting: boolean;
@@ -659,13 +664,14 @@ export type ChatActivityEvent = {
 };
 
 /** 冷启动对齐用的活动快照：只列仍在跑的会话，附带各自是否卡在用户身上。 */
-export type ChatActivitySnapshot = {
+export type ChatActivitySnapshot = ActivityTurnIdentity & {
+  running?: boolean;
+  terminal?: "done" | "cancelled" | "error";
   conversationId: string;
   waiting: boolean;
 };
 
 export const AGENT_CHANNEL = {
-  send: "agent:send",
   event: "agent:event",
   cancel: "agent:cancel",
   respondApproval: "agent:respond-approval",
@@ -684,7 +690,6 @@ export const AGENT_CHANNEL = {
 } as const;
 
 export type AgentBridgeApi = {
-  send: (payload: AgentSendPayload) => Promise<void>;
   cancel: (requestId: string) => void;
   respondApproval: (response: AgentApprovalResponse) => Promise<void>;
   respondUserInput: (response: AgentUserInputResponse) => Promise<void>;
@@ -696,7 +701,7 @@ export type AgentBridgeApi = {
   abandonFatalTurn: (conversationId: string) => Promise<void>;
   acknowledgeCleanupFailure: (conversationId: string) => Promise<void>;
   retryWithoutSession: (requestId: string, retryToken: string) => Promise<void>;
-  retrySameSession?: (requestId: string, retryToken: string) => Promise<void>;
+  retrySameSession: (requestId: string, retryToken: string) => Promise<void>;
   onEvent: (callback: (event: AgentEvent) => void) => () => void;
   onActivity: (callback: (event: ChatActivityEvent) => void) => () => void;
   listActivity: () => Promise<ChatActivitySnapshot[]>;

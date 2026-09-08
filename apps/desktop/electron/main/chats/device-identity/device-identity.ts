@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/path and one userData root
+ * [INPUT]: Depends on Node crypto/fs/path, the persistence errno/fsync helpers, and one userData root
  * [OUTPUT]: Provides the sole installation-scoped deviceId load-or-create authority with 0600 atomic persistence and fail-closed parsing
  * [POS]: Chat execution identity boundary; the SQLite database may reference this id but never owns or carries it
  */
@@ -14,6 +14,7 @@ import {
   unlink,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { isErrnoCode, syncDirectory } from "../../persistence/durable-json";
 
 const FILE_NAME = "device-identity.json";
 const UUID_PATTERN =
@@ -48,15 +49,6 @@ const parseIdentity = (raw: string): DeviceIdentity => {
   return value as DeviceIdentity;
 };
 
-async function fsyncDirectory(path: string) {
-  const directory = await open(path, "r");
-  try {
-    await directory.sync();
-  } finally {
-    await directory.close();
-  }
-}
-
 async function assertPrivateRegularFile(path: string) {
   const value = await lstat(path);
   if (!value.isFile() || value.isSymbolicLink()) {
@@ -81,7 +73,7 @@ export class DeviceIdentityStore {
       await assertPrivateRegularFile(this.path);
       return parseIdentity(await readFile(this.path, "utf8")).deviceId;
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+      if (!isErrnoCode(cause, "ENOENT")) throw cause;
     }
 
     const identity: DeviceIdentity = { version: 1, deviceId: randomUUID() };
@@ -97,9 +89,9 @@ export class DeviceIdentityStore {
       // POSIX rename overwrites the winner. link gives create-if-absent semantics,
       // so concurrent first launches converge on exactly one installation id.
       await link(temporary, this.path);
-      await fsyncDirectory(dirname(this.path));
+      await syncDirectory(dirname(this.path));
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
+      if (!isErrnoCode(cause, "EEXIST")) throw cause;
     } finally {
       await unlink(temporary).catch(() => undefined);
     }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron-compatible BrowserWindow/WebContents event and send capabilities plus product window roles
- * [OUTPUT]: Provides WindowRegistry, global windowRegistry, stable main/app lookup, focus, lifecycle events, and role-scoped publication
+ * [OUTPUT]: Provides windowRegistry, global windowRegistry, stable main/app lookup, focus, lifecycle events, and role-scoped publication
  * [POS]: Window surfaces process-global identity owner; no caller selects a window through BrowserWindow.getAllWindows ordering
  */
 
@@ -17,6 +17,9 @@ export type RegisteredBrowserWindow = {
   id: number;
   webContents: RegisteredWebContents;
   isDestroyed(): boolean;
+  isVisible?(): boolean;
+  isFocused?(): boolean;
+  hide?(): void;
   isMinimized(): boolean;
   restore(): void;
   show(): void;
@@ -143,6 +146,8 @@ export class WindowRegistry {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
+
+  invalidate(record: ProductWindowRecord) { this.remove(record); }
 
   private remove(record: ProductWindowRecord) {
     if (this.records.get(record.windowId) !== record) return;

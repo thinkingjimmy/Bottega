@@ -623,10 +623,7 @@ async function enqueueSkillTurn(
     })
   ).find((candidate) => candidate.name === "create-app-skill");
   if (!skill) throw new Error("系统 create-app-skill 不可用");
-  const turnOptions = await dependencies.settings.resolveChatOptions(
-    { conversationId: chat.id },
-    chat.agent
-  );
+  const turnOptions = chat.options;
   const precondition = {
     kind: "existing" as const,
     incarnationId: chat.incarnationId,

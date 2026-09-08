@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React context/layout effect with Conversation's stick-to-bottom scrollRef
  * [OUTPUT]: Provides ChartScrollRootContext/Provider with ChartConversationBoundary
- * [POS]: The IO root of components/charts is inserted into the boundary; Base does not use this context
+ * [POS]: Supplies the IntersectionObserver root for components/charts via ChartConversationBoundary; Base views do not use this context
  */
 
 import {

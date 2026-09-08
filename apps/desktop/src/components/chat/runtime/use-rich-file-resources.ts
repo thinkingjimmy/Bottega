@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, per-chat composer store, PromptInput file node, workspace scope and preload file authorization API
- * [OUTPUT]: Provides callback-stable use RichFileResources store front, unified authorization, fileFor and permanent discard
- * [POS]: The rich file resource area of chat/runtime; The real lifecycle of the resource is returned to the composer store, reference collections are no longer attached to the components, and recycling is retained by the author himself
+ * [OUTPUT]: Provides callback-stable useRichFileResources: authorize (grants and records a file resource), discard (releases and forgets it), and fileFor (resource lookup)
+ * [POS]: Rich-file resource boundary for chat/runtime; the actual resource lifecycle lives in the composer store rather than component-local refs, so cleanup outlives any single mount
  */
 
 import { useCallback, useMemo } from "react";

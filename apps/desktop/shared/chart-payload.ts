@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on zod; Receive Base Chart Projection and Chat Chart Structured Chart Data used by the Fence
- * [OUTPUT]: Provides seven ChartType, ChartPayload, 12KB byte budget and strict chartPayloadSchema
- * [POS]: The shared graph protocol is the single source of truth; Base Live sharing with chat snapshots, prohibiting hosts from privatizing a second schema
+ * [INPUT]: Depends on zod; consumes structured chart data from both Base chart-view projections and Chat's chart Markdown fence
+ * [OUTPUT]: Provides the seven-member ChartType, the ChartPayload shape, a 12KB byte budget, and the strict chartPayloadSchema
+ * [POS]: Single source of truth for the shared chart wire protocol; Base's live view and Chat's snapshot share one schema, so no host may define a second, private chart shape
  */
 
 import { z } from "zod";
@@ -21,7 +21,7 @@ export const CHART_PAYLOAD_BYTE_LIMIT = 12 * 1024;
 export const CHART_LABEL_LIMIT = 120;
 export const CHART_SERIES_LIMIT = 12;
 export const CHART_POINT_LIMIT = 2_000;
-export const CHART_TEXT_LIMIT = 40;
+const CHART_TEXT_LIMIT = 40;
 
 export type ChartPayload = {
   type: ChartType;

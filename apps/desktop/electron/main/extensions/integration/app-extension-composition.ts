@@ -7,7 +7,6 @@
 import type { AppExtensionGenerationPort } from "../../apps/generation/app-extension-generation";
 import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/app-generation-build-participants";
 import type { AppGenerationDrainProviderRegistry } from "../../lifecycle/app-generation-drain-providers";
-import { VALIDATOR_FIXTURE_DIGEST } from "../admission";
 import { ExtensionRegistryStore } from "../registry-store";
 import {
   ExtensionInstaller,
@@ -90,14 +89,11 @@ export function createAppExtensionIntegration(input: {
     projections,
     lifecycle
   );
-  /* validator fixture digest 绑定当前 adapter 的判定口径：换 adapter/fixture
-     就是新的 admission 证据，旧 generation 不会被追认。 */
   const installer = new ExtensionInstaller(
     input.userData,
     registry,
     lifecycle,
     epochs,
-    VALIDATOR_FIXTURE_DIGEST,
     input.fetchSource,
     input.installerFaults,
     input.projectInstallAuthority
@@ -152,8 +148,8 @@ export function createAppExtensionIntegration(input: {
       context.projectId,
       context.resourceAdmissions
     );
-    for (const owner of registry.packageOwners(scope)) {
-      let packageRecord = registry.packageInventory(owner.installIdentity);
+    for (const owner of registry.lifecycle.packageOwners(scope)) {
+      let packageRecord = registry.lifecycle.packageInventory(owner.installIdentity);
       if (!packageRecord) continue;
       if (packageRecord.administrativeState === "active") {
         await convergence.beginDisable({
@@ -169,7 +165,7 @@ export function createAppExtensionIntegration(input: {
           );
         }
       }
-      packageRecord = registry.packageInventory(owner.installIdentity);
+      packageRecord = registry.lifecycle.packageInventory(owner.installIdentity);
       if (!packageRecord) continue;
       await uninstall.begin({
         installIdentity: owner.installIdentity,
@@ -192,7 +188,7 @@ export function createAppExtensionIntegration(input: {
         expectedScopeRevision: registry.scopeRevision(scope),
       });
     }
-    await registry.removeScopeTombstone(scope);
+    await registry.lifecycle.removeScopeTombstone(scope);
   };
   return {
     registry,

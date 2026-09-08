@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow/CDP, an already authorized complete HTML canvas, a fixed viewport, AbortSignal, and an image byte target
+ * [INPUT]: Depends on Electron BrowserWindow/CDP, an already authorized complete HTML canvas, a fixed viewport, AbortSignal, and an image byte target, and statusError from main/errors
  * [OUTPUT]: Provides a hermetic opaque-child JPEG capture with preflight cancellation, abort-raced liveness bounds, deterministic debugger/window teardown, and adaptive quality/scale budgeting
  * [POS]: Design's screenshot renderer; workspace authorization stays in the toolset and no renderer/user identity enters this process-owned window
  */
 
 import { randomUUID } from "node:crypto";
 import { BrowserWindow } from "electron";
+import { statusError } from "../errors";
 
 const VIEWPORTS = {
   desktop: { width: 1440, height: 900 },
@@ -15,7 +16,7 @@ const VIEWPORTS = {
 
 export type DesignRenderViewport = keyof typeof VIEWPORTS;
 
-export type DesignRenderInput = Readonly<{
+type DesignRenderInput = Readonly<{
   html: Buffer | string;
   viewport: DesignRenderViewport;
   maxImageBytes: number;
@@ -175,7 +176,7 @@ async function boundedCapture(
     }
   }
   if (smallest && smallest.bytes <= maxImageBytes) return smallest;
-  throw Object.assign(new Error(`Design screenshot exceeds ${maxImageBytes} image bytes`), { status: 413 });
+  throw statusError(413, `Design screenshot exceeds ${maxImageBytes} image bytes`);
 }
 
 function abortError() {
@@ -221,7 +222,7 @@ async function within<T>(
       aborted,
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
-          () => reject(Object.assign(new Error(`${label} exceeded ${timeoutMs}ms`), { status: 504 })),
+          () => reject(statusError(504, `${label} exceeded ${timeoutMs}ms`)),
           timeoutMs
         );
       }),

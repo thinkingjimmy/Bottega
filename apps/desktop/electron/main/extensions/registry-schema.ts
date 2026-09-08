@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on zod, canonical ProductResourceScope, and shared Extension digest types
- * [OUTPUT]: Provides the strict schema-v6 scoped Extension registry, canonical empty-ledger migration, durable reservations/receipts, empty state, and package/source types
- * [POS]: Persistence cutover boundary for registry-store; live pre-release facts remain unreadable while exact empty v2-v5 ledgers upgrade without inventing authority
+ * [INPUT]: Depends on zod, the shared productResourceScopeKey, the canonical refKey, and shared Extension digest types
+ * [OUTPUT]: Provides the strict schema-v7 scoped Extension registry, durable reservations/receipts, empty state, and package/source types
+ * [POS]: Persistence boundary for registry-store; any ledger that is not exactly schema-v7 remains unreadable and fails closed
  */
 
 import { z } from "zod";
@@ -9,8 +9,10 @@ import {
   SHA256_DIGEST_IDENTITY_PATTERN,
   type Sha256Digest,
 } from "../../../shared/extensions-ipc";
+import { productResourceScopeKey } from "../../../shared/product-resource-scope";
+import { refKey } from "./registry-canonical";
 
-export const EXTENSION_REGISTRY_SCHEMA_VERSION = 6;
+const EXTENSION_REGISTRY_SCHEMA_VERSION = 7;
 
 const REF_OWNER_PATTERN = /^[A-Za-z0-9:._/-]{1,500}$/;
 const digestSchema = z
@@ -98,7 +100,6 @@ const packageSchema = z
     components: z.array(componentSchema),
     admission: z.enum(["valid", "misconfigured"]),
     administrativeState: z.enum(["active", "disable-pending", "denied"]),
-    enabled: z.enum(["enabled", "disable-pending", "disabled"]),
     enabledComponentInstanceIdentities: z.array(identitySchema),
     removalPendingGenerationIds: z.array(z.string().min(1)),
   })
@@ -145,20 +146,6 @@ const lifecycleReceiptSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
 ]);
-const emptyLegacyStoreSchema = z
-  .object({
-    schemaVersion: z.union([
-      z.literal(2),
-      z.literal(3),
-      z.literal(4),
-      z.literal(5),
-    ]),
-    revision: z.number().int().nonnegative(),
-    packages: z.array(z.never()).length(0),
-    refs: z.object({}).strict(),
-  })
-  .strict();
-
 export const extensionRegistryStoreSchema = z
   .object({
     schemaVersion: z.literal(EXTENSION_REGISTRY_SCHEMA_VERSION),
@@ -185,9 +172,7 @@ export const extensionRegistryStoreSchema = z
         });
       }
       installIdentities.add(item.installIdentity);
-      const scopeKey = item.scope.kind === "global"
-        ? "global"
-        : `project:${item.scope.projectId}`;
+      const scopeKey = productResourceScopeKey(item.scope);
       if (store.scopeRevisions[scopeKey] === undefined) {
         context.addIssue({
           code: "custom",
@@ -207,13 +192,13 @@ export const extensionRegistryStoreSchema = z
         }
         generationIds.add(generation.packageGenerationId);
         ownedGenerationIds.add(generation.packageGenerationId);
-        const key = generationRefKey(generation);
+        const key = refKey(generation);
         ownedRefs.add(key);
         generationRefs.add(key);
       }
       if (
         item.activeGenerationRef &&
-        !ownedRefs.has(generationRefKey(item.activeGenerationRef))
+        !ownedRefs.has(refKey(item.activeGenerationRef))
       ) {
         issue(
           context,
@@ -243,12 +228,12 @@ export const extensionRegistryStoreSchema = z
         );
       }
       const activeRef = item.activeGenerationRef
-        ? generationRefKey(item.activeGenerationRef)
+        ? refKey(item.activeGenerationRef)
         : null;
       const activeInstances = new Set<string>();
       for (const [componentIndex, component] of item.components.entries()) {
         const componentPath = ["packages", packageIndex, "components", componentIndex];
-        const componentRef = generationRefKey(component.packageGenerationRef);
+        const componentRef = refKey(component.packageGenerationRef);
         if (!ownedRefs.has(componentRef)) {
           issue(
             context,
@@ -309,9 +294,7 @@ export const extensionRegistryStoreSchema = z
     const reservedScopes = new Set<string>();
     for (const [index, reservation] of store.installReservations.entries()) {
       const path = ["installReservations", index];
-      const scopeKey = reservation.scope.kind === "global"
-        ? "global"
-        : `project:${reservation.scope.projectId}`;
+      const scopeKey = productResourceScopeKey(reservation.scope);
       if (reservationOperations.has(reservation.operationId)) {
         issue(context, path, "install reservation operationId 必须唯一");
       }
@@ -338,9 +321,7 @@ export const extensionRegistryStoreSchema = z
         issue(context, path, "reserved generation 不得跨 install owner");
       }
       if (owner) {
-        const ownerScopeKey = owner.scope.kind === "global"
-          ? "global"
-          : `project:${owner.scope.projectId}`;
+        const ownerScopeKey = productResourceScopeKey(owner.scope);
         const ownerBaseline = reservation.phase === "reserved"
           ? owner.activeGenerationRef
           : reservation.expectedActiveGenerationRef;
@@ -351,8 +332,8 @@ export const extensionRegistryStoreSchema = z
           ownerScopeKey !== scopeKey ||
           owner.sourceIdentity !== reservation.sourceIdentity ||
           !ownerAdapterMatches ||
-          generationRefKeyOrNull(ownerBaseline) !==
-            generationRefKeyOrNull(reservation.expectedActiveGenerationRef)
+          refKey(ownerBaseline) !==
+            refKey(reservation.expectedActiveGenerationRef)
         ) {
           issue(context, path, "install reservation owner/scope/source/baseline 必须一致");
         }
@@ -365,8 +346,8 @@ export const extensionRegistryStoreSchema = z
       if (
         reservation.expectedActiveGenerationRef &&
         !owner?.generations.some(
-          (item) => generationRefKey(item) ===
-            generationRefKey(reservation.expectedActiveGenerationRef!)
+          (item) => refKey(item) ===
+            refKey(reservation.expectedActiveGenerationRef!)
         )
       ) {
         issue(context, path, "install reservation update baseline 必须属于 owner");
@@ -377,10 +358,10 @@ export const extensionRegistryStoreSchema = z
           !owner ||
           !generation ||
           !owner.activeGenerationRef ||
-          generationRefKey(generation) !==
-            generationRefKey(reservation.activatedGenerationRef) ||
-          generationRefKey(reservation.activatedGenerationRef) !==
-            generationRefKey(owner.activeGenerationRef)
+          refKey(generation) !==
+            refKey(reservation.activatedGenerationRef) ||
+          refKey(reservation.activatedGenerationRef) !==
+            refKey(owner.activeGenerationRef)
         ) {
           issue(context, path, "activated reservation 必须精确绑定 reserved/owner active generation");
         }
@@ -405,7 +386,7 @@ export const extensionRegistryStoreSchema = z
       if (
         owner &&
         (owner.sourceIdentity !== receipt.sourceIdentity ||
-          productScopeKey(owner.scope) !== productScopeKey(receipt.scope))
+          productResourceScopeKey(owner.scope) !== productResourceScopeKey(receipt.scope))
       ) {
         issue(context, path, "lifecycle receipt owner/scope/source 必须一致");
       }
@@ -423,7 +404,7 @@ export const extensionRegistryStoreSchema = z
         }
         continue;
       }
-      const refKeys = receipt.packageGenerationRefs.map(generationRefKey);
+      const refKeys = receipt.packageGenerationRefs.map((ref) => refKey(ref));
       if (new Set(refKeys).size !== refKeys.length) {
         issue(context, path, "uninstall receipt generation refs 必须唯一");
       }
@@ -438,7 +419,7 @@ export const extensionRegistryStoreSchema = z
           issue(context, path, "同一 owner 只能有一个 active lifecycle receipt");
         }
         activeLifecycleOwners.add(receipt.installIdentity);
-        const ownerRefs = owner?.generations.map(generationRefKey).sort() ?? [];
+        const ownerRefs = owner?.generations.map((ref) => refKey(ref)).sort() ?? [];
         if (
           !owner ||
           owner.administrativeState !== "denied" ||
@@ -476,35 +457,6 @@ export function emptyExtensionRegistryStore(): ExtensionRegistryStoreFile {
     installReservations: [],
     lifecycleReceipts: [],
   };
-}
-
-export function migrateEmptyExtensionRegistry(
-  raw: unknown
-): ExtensionRegistryStoreFile {
-  const legacy = emptyLegacyStoreSchema.parse(raw);
-  return extensionRegistryStoreSchema.parse({
-    ...emptyExtensionRegistryStore(),
-    revision: legacy.revision,
-    scopeRevisions: { global: legacy.revision },
-  });
-}
-
-function generationRefKey(input: {
-  packageGenerationId: string;
-  recordDigest: Sha256Digest;
-}) {
-  return `${input.packageGenerationId}:${input.recordDigest}`;
-}
-
-function generationRefKeyOrNull(input: {
-  packageGenerationId: string;
-  recordDigest: Sha256Digest;
-} | null) {
-  return input ? generationRefKey(input) : null;
-}
-
-function productScopeKey(scope: z.infer<typeof scopeSchema>) {
-  return scope.kind === "global" ? "global" : `project:${scope.projectId}`;
 }
 
 function canonicalStrings(values: readonly string[]) {

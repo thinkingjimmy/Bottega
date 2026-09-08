@@ -16,9 +16,9 @@ import type {
 } from "../../../shared/extensions-ipc";
 import { sameProductResourceScope, type ProductResourceScope } from "../../../shared/product-resource-scope";
 import type { ExtensionPackageAdmission } from "./manifest-adapter";
+import type { RegistryTransactionHost } from "./registry-lifecycle-authority";
 import type {
   ExtensionRegistryStoredPackage,
-  ExtensionRegistryStoreFile,
   ExtensionSourceProvenance,
 } from "./registry-schema";
 import {
@@ -27,12 +27,10 @@ import {
   generationRef,
   refKey,
   registryConflict as conflict,
-  syncLegacyEnable,
+  packageEnableState,
 } from "./registry-canonical";
 
-type StoreFile = ExtensionRegistryStoreFile;
 type StoredPackage = ExtensionRegistryStoredPackage;
-type MutateOptions = Readonly<{ installReservationOperationId?: string }>;
 
 export type ExtensionGenerationProjection = Readonly<{
   installIdentity: string;
@@ -51,6 +49,7 @@ export type ExtensionGenerationProjection = Readonly<{
 }>;
 
 export type SealExtensionGenerationInput = Readonly<{
+  /** 由 lifecycle ledger 预分配：重放按同一个 id 幂等，绝不生出第二代 */
   packageGenerationId: string;
   installIdentity: string;
   scope: ProductResourceScope;
@@ -64,7 +63,9 @@ export type SealExtensionGenerationInput = Readonly<{
   validatorFixtureDigest: Sha256Digest;
   displayName?: string;
   expectedActiveGenerationRef?: ExtensionPackageGenerationRef | null;
+  /** seal 前就已闭合的数据绑定；含 stdio 的代只能是 stdio 分支 */
   dataBinding: PackageGenerationDataBinding;
+  /** Durable Registry reservation acquired atomically with the install CAS. */
   installReservationOperationId?: string;
 }>;
 
@@ -79,16 +80,13 @@ export type ReserveExtensionInstallInput = Readonly<{
   expectedActiveGenerationRef: ExtensionPackageGenerationRef | null;
 }>;
 
-export type RegistryInstallHost = Readonly<{
-  state(): StoreFile;
-  mutate<T>(operation: () => T | Promise<T>, options?: MutateOptions): Promise<T>;
-  scopeRevision(scope: ProductResourceScope): number;
-}>;
-
 export class RegistryInstallAuthority {
-  constructor(private readonly host: RegistryInstallHost) {}
+  constructor(private readonly host: RegistryTransactionHost) {}
   private get state() { return this.host.state(); }
-  private mutate<T>(operation: () => T | Promise<T>, options: MutateOptions = {}) {
+  private mutate<T>(
+    operation: () => T | Promise<T>,
+    options: Readonly<{ installReservationOperationId?: string }> = {}
+  ) {
     return this.host.mutate(operation, options);
   }
   private scopeRevision(scope: ProductResourceScope) { return this.host.scopeRevision(scope); }
@@ -237,7 +235,6 @@ export class RegistryInstallAuthority {
         components: [],
         admission: "valid",
         administrativeState: "active",
-        enabled: "disabled",
         enabledComponentInstanceIdentities: [],
         removalPendingGenerationIds: [],
       };
@@ -304,7 +301,6 @@ export class RegistryInstallAuthority {
           : [];
       owner.activeGenerationRef = exactGenerationRef(ref);
       owner.enabledComponentInstanceIdentities = carried.sort();
-      syncLegacyEnable(owner);
       if (reservation) {
         reservation.phase = "activated";
         reservation.activatedGenerationRef = exactGenerationRef(ref);
@@ -405,7 +401,7 @@ export class RegistryInstallAuthority {
       admission: owner.admission,
       administrativeState: owner.administrativeState,
       globalCatalogEnabled: owner.enabledComponentInstanceIdentities.length > 0,
-      packageEnabled: owner.enabled,
+      packageEnabled: packageEnableState(owner),
       active: refKey(owner.activeGenerationRef) === refKey(ref),
       removalPending: owner.removalPendingGenerationIds.includes(
         ref.packageGenerationId

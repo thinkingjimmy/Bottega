@@ -1,10 +1,12 @@
 /**
- * [INPUT]: Depends on zod and the AppManifest field contract for shared/apps-ipc
- * [OUTPUT]: Provides static/server/Base manifests, including compiled GUI build/preferences identities, host actions, extension requirements, and isomorphic JSON Schema
- * [POS]: The free-of-charge agreement for apps/install; App with component identity reference capability to support pre-freeze installation with selected source
+ * [INPUT]: Depends on zod, shared App contracts and the versioned command schema
+ * [OUTPUT]: Exports shared requirementsSchema for pending install metadata. Provides strict static/server/Base manifests and JSON Schema, with opt-in structured Web execution and unchanged Base semantics
+ * [POS]: apps/install's manifest contract; the zod schemas validate authored App manifests and APP_MANIFEST_JSON_SCHEMA is the JSON Schema mirror handed to the install-analysis prompt
  */
 
 import { z } from "zod";
+import { APP_GUI_PRESET } from "../../../../shared/app-gui/contracts";
+import { appCommandSchema, APP_COMMAND_JSON_SCHEMA } from "../execution/schema";
 
 const sha256DigestSchema = z
   .string()
@@ -43,7 +45,7 @@ const requirementSchema = z
     }
   });
 
-const requirementsSchema = z
+export const requirementsSchema = z
   .object({
     tools: z.array(requirementSchema).max(100),
   })
@@ -166,8 +168,9 @@ const staticManifestSchema = z
   .object({
     ...common,
     kind: z.literal("static"),
-    installCmd: z.string().trim().min(1).max(2_000),
-    buildCmd: z.string().trim().min(1).max(2_000).nullable(),
+    executionSchemaVersion: z.literal(1).optional(),
+    installCmd: appCommandSchema.nullable(),
+    buildCmd: appCommandSchema.nullable(),
     staticDir: z.string().trim().min(1).max(500),
     healthPath: z.string().regex(/^\/([^/]|$)/).max(500),
     agentRequirements,
@@ -178,9 +181,10 @@ const serverManifestSchema = z
   .object({
     ...common,
     kind: z.literal("server"),
-    installCmd: z.string().trim().min(1).max(2_000),
-    buildCmd: z.string().trim().min(1).max(2_000).nullable(),
-    startCmd: z.string().trim().min(1).max(2_000),
+    executionSchemaVersion: z.literal(1).optional(),
+    installCmd: appCommandSchema.nullable(),
+    buildCmd: appCommandSchema.nullable(),
+    startCmd: appCommandSchema,
     healthPath: z.string().regex(/^\/([^/]|$)/).max(500),
     serveAgentPrompt: z.string().trim().min(1).max(10_000).nullable(),
     serveTrigger: z
@@ -224,7 +228,7 @@ const baseManifestSchema = z
           .optional(),
         build: z
           .object({
-            preset: z.literal("bottega-react-v1"),
+            preset: z.literal(APP_GUI_PRESET),
             entry: z.literal("src/main.tsx"),
             stylesheet: z.literal("src/styles.css"),
             iconLibrary: z.enum(["lucide", "phosphor"]),
@@ -275,7 +279,11 @@ export const appManifestSchema = z.discriminatedUnion("kind", [
   staticManifestSchema,
   serverManifestSchema,
   baseManifestSchema,
-]);
+]).superRefine((manifest, context) => {
+  if (manifest.kind === "base" || manifest.executionSchemaVersion !== 1) return;
+  const commands = [manifest.installCmd, manifest.buildCmd, ...(manifest.kind === "server" ? [manifest.startCmd] : [])];
+  if (commands.some((command) => typeof command === "string")) context.addIssue({ code: "custom", message: "Versioned manifests require structured commands" });
+});
 
 const commonJsonProperties = {
   name: { type: "string", minLength: 1, maxLength: 120 },
@@ -395,8 +403,9 @@ export const APP_MANIFEST_JSON_SCHEMA = {
       properties: {
         ...commonJsonProperties,
         kind: { const: "static" },
-        installCmd: { type: "string", minLength: 1, maxLength: 2_000 },
-        buildCmd: { type: ["string", "null"], maxLength: 2_000 },
+        executionSchemaVersion: { const: 1 },
+        installCmd: { anyOf: [APP_COMMAND_JSON_SCHEMA, { type: "null" }] },
+        buildCmd: { anyOf: [APP_COMMAND_JSON_SCHEMA, { type: "null" }] },
         staticDir: { type: "string", minLength: 1, maxLength: 500 },
         healthPath: {
           type: "string",
@@ -426,9 +435,10 @@ export const APP_MANIFEST_JSON_SCHEMA = {
       properties: {
         ...commonJsonProperties,
         kind: { const: "server" },
-        installCmd: { type: "string", minLength: 1, maxLength: 2_000 },
-        buildCmd: { type: ["string", "null"], maxLength: 2_000 },
-        startCmd: { type: "string", minLength: 1, maxLength: 2_000 },
+        executionSchemaVersion: { const: 1 },
+        installCmd: { anyOf: [APP_COMMAND_JSON_SCHEMA, { type: "null" }] },
+        buildCmd: { anyOf: [APP_COMMAND_JSON_SCHEMA, { type: "null" }] },
+        startCmd: APP_COMMAND_JSON_SCHEMA,
         healthPath: {
           type: "string",
           pattern: "^/([^/]|$)",
@@ -502,7 +512,7 @@ export const APP_MANIFEST_JSON_SCHEMA = {
               additionalProperties: false,
               required: ["preset", "entry", "stylesheet", "iconLibrary"],
               properties: {
-                preset: { const: "bottega-react-v1" },
+                preset: { const: APP_GUI_PRESET },
                 entry: { const: "src/main.tsx" },
                 stylesheet: { const: "src/styles.css" },
                 iconLibrary: { enum: ["lucide", "phosphor"] },

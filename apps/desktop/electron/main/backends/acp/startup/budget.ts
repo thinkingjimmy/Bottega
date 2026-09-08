@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on startup/exit AcpExitReport and the descriptor budget coverage options
- * [OUTPUT]: Provides AcpStartupStep Budget Table, AcpStartupTracker, and the total budget is below the AcpStartupTimeout
+ * [OUTPUT]: Provides the AcpStartupStep budget table, AcpStartupTracker, and AcpStartupTimeout as the sum of per-step budgets
  * [POS]: The only attributable core of the ACP launch chain; Transport only declares the sequence of steps, not the timers
  */
 

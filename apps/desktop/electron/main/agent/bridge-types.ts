@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent/Chat/MCP/platform DTOs, canonical Project context, hydrated Project Tools and durable Skill receipts, backend session config, App authorization, and built-in MCP leases
- * [OUTPUT]: Provides AgentBridgeOptions, BridgeEntry, TurnOrigin, exact Project/Tools/Skill projection context, and submission/Steer ports
+ * [OUTPUT]: Carries frozen execution and active capability facts alongside canonical Project, Skill and turn lifecycle context.
  * [POS]: Narrow Agent bridge contract; Electron composition and executors exchange frozen authority without importing one another
  */
 
@@ -66,6 +66,8 @@ export type BuiltinTurnToolPolicy = Readonly<{
 }>;
 
 export type TurnProjectionInput = Readonly<{
+  handoff?: AgentSendPayload["handoff"];
+  freshSession?: boolean;
   conversationId: string;
   requestId: string;
   backendId: AgentBackendId;
@@ -74,6 +76,8 @@ export type TurnProjectionInput = Readonly<{
 }>;
 
 export type AgentContext = {
+  activeCapabilities?: BackendCapabilities;
+  availabilityStart?: import("../backends/availability/evidence").TurnEvidenceStart;
   workspace: string;
   /** main 证明的执行类型；只授权 exact-issued、Chat-scoped commit 工具。 */
   managedWorktree?: boolean;
@@ -168,8 +172,6 @@ export type BridgeEntry = TurnEntry<AgentTurn> & {
 export type AgentBridgeOptions = {
   /** Product composition injects the current OS matrix; tests omit it unless exercising the gate. */
   platformSupport?: PlatformCapabilities;
-  /** 默认 true 供独立测试；产品主窗口设 false，人工 turn 只能经 coordinator。 */
-  acceptRendererSend?: boolean;
   traceDirectory?: string;
   resolveContext: (
     conversationId: string,
@@ -205,7 +207,9 @@ export type AgentBridgeOptions = {
     conversationId: string,
     backend: AgentBackendId
   ) => Promise<void> | void;
+  conversationIncarnation?: (conversationId: string) => string | undefined;
   assertTurnAdmission?: (payload: AgentSendPayload) => Promise<void> | void;
+  prepareFreshRetry?: (payload: AgentSendPayload) => Promise<AgentSendPayload["handoff"]>;
   reserveAssistantSequence?: (conversationId: string) => Promise<number>;
   /** 主 turn 的后端中立 item 观察口；发布前同步执行的 void 派生，subagent part 不走此回调。 */
   onTurnItem?: (conversationId: string, item: AgentTurnItem) => void;

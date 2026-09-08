@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Accepts Freeze the front-end bytes and file size of the copied product
+ * [INPUT]: Accepts raw image bytes (a Buffer) and an optional maxEdge/maxPixels limit pair
  * [OUTPUT]: Provides PNG/JPEG/WebP/GIF header size resolution, Gallery 12MP and attachment 100MP two-tier boundaries
- * [POS]: Gallery: The purest analyzer of media pipes; The caller decodes the host by selecting the boundary, prohibiting attachment to the old synchronized Gallery decoder
+ * [POS]: Gallery's purest media-pipeline analyzer; callers pick gallery or attachment size limits explicitly, and attachment ingestion must not fall back to Gallery's old synchronous decoder
  */
 
-export type GalleryImageHeader = {
+type GalleryImageHeader = {
   extension: "png" | "jpg" | "webp" | "gif";
   mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
   width: number;
@@ -137,7 +137,7 @@ function image(
   return { extension, mediaType, width, height };
 }
 
-export function galleryHeaderError(
+function galleryHeaderError(
   code: "UNSUPPORTED_FORMAT" | "INVALID_IMAGE" | "TOO_LARGE"
 ) {
   return Object.assign(new Error(code), { code });

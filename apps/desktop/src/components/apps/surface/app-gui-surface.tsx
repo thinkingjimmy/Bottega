@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, the sibling message schemas and failure panel, shared GUI paths with typed host actions, normalized host environment/theme, and the App gui binding
+ * [INPUT]: Depends on React, sibling message schemas and machine-code failure classification, shared GUI paths with typed host actions, normalized host environment/theme, and the App gui binding
  * [OUTPUT]: Provides AppGuiBinding, AppGuiSurface, and a re-exported guiFailureKind with pre-paint environment, cohort-ready double-buffered activation, superseded-frame release, fixed sandbox/fragment, result-bearing host actions re-checked against the live projection, trusted-gesture file-export staging, per-surface token checks, and a rate budget that survives frame swaps
- * [POS]: The basic Application GUI of the apps is the main Surface; Uploaded host actions with a narrow white list but not open to general RPC with BaseWorkbench
+ * [POS]: The main GUI Surface for Apps; host actions run through a narrow allowlist, not the general-purpose RPC bridge BaseWorkbench exposes
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -524,7 +524,6 @@ export function AppGuiSurface({
         </div>
       ) : (
         <GuiFailure
-          answered={Boolean(gui.origin && gui.token)}
           error={gui.error}
           loading={gui.loading}
           missingEntry={!gui.pages.includes(ENTRY)}

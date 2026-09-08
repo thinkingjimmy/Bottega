@@ -1,27 +1,24 @@
 /**
- * [INPUT]: Depends on Electron, shared chat contracts, typed service options, outcome-aware ChatStore/AttachmentStore, the focused fork service, ChatTitleJobs, renderer IPC/event adapters, pure guards, and deletion/removal controllers
- * [OUTPUT]: Provides the renderer/coordinator Chat facade, delegated receipt-safe forks, attachment compensation, adopted continuation, scoped reads/events, global storage-failure publication, and convergent removal
+ * [INPUT]: Depends on Electron, shared chat contracts, typed service options, outcome-aware ChatStore/AttachmentStore, the focused fork service, ChatTitleJobs, renderer IPC/event adapters, pure guards, main/errors, and deletion/removal controllers, lifecycle/attachment-commit.
+ * [OUTPUT]: Owns Chat admission, persistence, adopted authentication retries, pending title recovery, and isolated main-process event subscriptions before renderer publication.
  * [POS]: Main-process Chat service boundary; every new or adopted executable Chat is owned by a Chat Home creation saga
  */
 
+import { commitSwitchWithAttachments } from "./store/agent-switch/service";
 import { dirname, join } from "node:path";
+import { commitAttachments } from "./lifecycle/attachment-commit";
 import { type BrowserWindow } from "electron";
 import type { AgentScope, SessionRef } from "../../../shared/agent-ipc";
 import { dataUrlByteSize } from "../../../shared/agent-ipc";
 import type { AppChatRole } from "../../../shared/chats-ipc";
 import {
-  type ChatAttachmentMeta,
-  type ChatMessage,
-  type ChatRecord,
+  type ChatAttachmentMeta, type ChatAttachmentPayload, type ChatMessage, type ChatRecord,
   type ChatsEvent,
   type AppendChatMessageInput,
-  type CreateAppChatInput,
-  type CreateChatInput,
-  type AdoptChatInput,
+  type CreateAppChatInput, type CreateChatInput, type AdoptChatInput,
   type PersistedSubagent,
   type TurnCommitInput,
-  type UnsequencedChatMessage,
-  type UnsequencedUserMessage,
+  type UnsequencedChatMessage, type UnsequencedUserMessage,
 } from "../../../shared/chats-ipc";
 import type { TrustedManualTurnSubmission as ManualTurnSubmission } from "../../../shared/sections-ipc";
 import { PROJECT_UNAVAILABLE } from "../../../shared/projects-ipc";
@@ -35,8 +32,8 @@ import {
 import {
   isPersistenceIoError,
   sameCanonicalFirstMessage,
-  statusError,
 } from "./chats-service-guards";
+import { statusError } from "../errors";
 import {
   ChatStore,
   isChatMutationOutcomeUnknown,
@@ -64,13 +61,11 @@ import {
   beginAdoptedContinuation,
   createAdoptedChat,
 } from "./lifecycle/adopted-chat";
-export { rejectLegacyRendererWrite } from "./chats-service-guards";
-
-const summaryOf = summaryOfChatLike;
-
-export type { ChatsServiceOptions } from "./chats-service-options";
 
 export class ChatsService {
+  private readonly eventListeners = new Set<(event: ChatsEvent) => void>();
+  onEvent(listener: (event: ChatsEvent) => void) { this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); }; }
+
   private readonly titleRecovery: Promise<void>;
   private readonly attachments: AttachmentStore;
   private readonly deletion: ChatDeletionDriver;
@@ -80,7 +75,6 @@ export class ChatsService {
   private readonly forks: ChatForkService;
   private window: BrowserWindow | null = null;
   private admission: "accepting" | "draining" | "closed" = "accepting";
-
   constructor(
     readonly store: ChatStore,
     private readonly options: ChatsServiceOptions
@@ -118,44 +112,35 @@ export class ChatsService {
       emit: (event) => this.emit(event),
     });
   }
-
   register(window: BrowserWindow, rendererUrl: string) {
     this.window = window;
-    registerChatRendererIpc(window, rendererUrl, {
+    registerChatRendererIpc(rendererUrl, {
       store: this.store,
       isProjectArchived: this.options.isProjectArchived,
       assertAdmission: () => this.assertAdmission(),
       rename: async (input) => {
         const { chatId, title } = renameInputSchema.parse(input);
         const record = await this.store.setTitle(chatId, title);
-        this.emit({ type: "upserted", summary: summaryOf(record) });
+        this.emit({ type: "upserted", summary: summaryOfChatLike(record) });
         this.titles.sync(record);
-        return summaryOf(record);
+        return summaryOfChatLike(record);
       },
       remove: (chatId) => this.remove(chatId),
-      forkPreflight: (input) => this.forkPreflight(input),
-      fork: (input) => this.forkChat(input),
-      commitManagedWorktree: (input) => this.commitManagedWorktree(input),
+      forkPreflight: (input) => this.forks.preflight(input),
+      fork: (input) => this.forks.fork(input),
+      commitManagedWorktree: (input) => this.forks.commit(input),
       readAttachment: (attachmentId) => this.attachments.read(attachmentId),
     });
-
     window.once("closed", () => {
       if (this.window === window) this.window = null;
     });
   }
-
-  forkPreflight(input: Parameters<ChatForkService["preflight"]>[0]) {
-    return this.forks.preflight(input);
-  }
-
   forkChat(input: Parameters<ChatForkService["fork"]>[0]) {
     return this.forks.fork(input);
   }
-
   commitManagedWorktree(input: Parameters<ChatForkService["commit"]>[0]) {
     return this.forks.commit(input);
   }
-
   async createUserChat(
     input: CreateChatInput,
     sequence?: { userSeq: number; assistantSeq: number },
@@ -182,10 +167,12 @@ export class ChatsService {
           sequence
             ? {
                 minimumNextSeq: sequence.assistantSeq + 1,
+                options: value.options,
                 incarnationId: home.incarnationId,
                 homeDir: home.homeDir,
               }
             : {
+                options: value.options,
                 incarnationId: home.incarnationId,
                 homeDir: home.homeDir,
               }
@@ -199,7 +186,6 @@ export class ChatsService {
     this.scheduleTitle(record, value.firstMessage.content);
     return record;
   }
-
   async createAppChat(
     input: CreateAppChatInput,
     sequence?: { userSeq: number; assistantSeq: number },
@@ -229,12 +215,14 @@ export class ChatsService {
           sequence
             ? {
                 minimumNextSeq: sequence.assistantSeq + 1,
+                options: value.options,
                 incarnationId: home.incarnationId,
                 homeDir: home.homeDir,
                 appRole: value.appRole,
                 appId: value.appId,
               }
             : {
+                options: value.options,
                 incarnationId: home.incarnationId,
                 homeDir: home.homeDir,
                 appRole: value.appRole,
@@ -255,7 +243,6 @@ export class ChatsService {
     this.scheduleTitle(record, value.firstMessage.content);
     return record;
   }
-
   /**
    * App Studio 不能把一个尚不存在的 draft id 当成 conversation identity。
    * use slot 在返回 renderer 前，经同一 Chat Home CreationIntent 建成 dormant
@@ -272,24 +259,33 @@ export class ChatsService {
       publish: (mutation) => this.emitMutation(mutation),
     }, input);
   }
-
   async createAdoptedChat(
     input: AdoptChatInput,
     sequence?: { userSeq: number; assistantSeq: number },
-    projectLifecycle?: "held"
+    projectLifecycle?: "held",
+    turn?: Omit<import("../../../shared/agent-ipc").AgentSendPayload, "input">
   ) {
     this.assertAdmission();
     return createAdoptedChat({
       store: this.store,
       homes: this.options.chatHomes,
       isAppProject: this.options.isAppProject,
-      assertAgentReady: this.options.assertAgentReady,
+      assertAgentReady: async (agent) => this.options.assertAgentReady?.(agent, turn ? {
+        conversationId: input.id, requestId: turn.requestId, cwd: input.importOrigin.originalCwd,
+        model: turn.turnOptions.model ?? undefined,
+      } : undefined),
       withProject: (projectId, task) => this.withProject(projectId, task),
       commitWithAttachments: (payloads, commit) =>
         this.commitWithAttachments(payloads, commit),
       publish: (mutation) => this.emitMutation(mutation),
       onSessionBound: this.options.onAdoptedSessionBound,
     }, input, sequence, projectLifecycle);
+  }
+
+  commitAgentSwitch(command: import("./sqlite/agent-switch/command").SwitchAgentCommand, payloads: ChatAttachmentPayload[]) {
+    this.assertAdmission();
+    return commitSwitchWithAttachments(this.store, this.attachments, command, payloads,
+      metadata => this.publishRecord(metadata), event => this.emit(event));
   }
 
   async appendUserMessage(input: AppendChatMessageInput, reservedSeq?: number) {
@@ -305,6 +301,7 @@ export class ChatsService {
         throw new Error("INCARNATION_MISMATCH");
       }
     }
+    const titleWasNone = this.store.getMetadata(value.chatId)?.titleJob.state === "none";
     const mutation = value.revise
       ? await this.store.reviseTail({
           chatId: value.chatId,
@@ -322,6 +319,7 @@ export class ChatsService {
             )
         );
     this.emitMutation(mutation);
+    if (titleWasNone && mutation.record.titleJob.state === "pending") this.scheduleTitle(mutation.record, value.message.content);
     const stored = mutation.record.messages.find(
       (message) => message.id === value.message.id
     );
@@ -330,7 +328,6 @@ export class ChatsService {
     }
     return stored;
   }
-
   /** durable preparation 专用：由 canonical meta 反查 blob，renderer 无法指定替代内容。 */
   async revisionAttachmentPayloads(chatId: string, messageId: string) {
     const message = await this.store.getNativeMessage(chatId, {
@@ -356,11 +353,9 @@ export class ChatsService {
       })
     );
   }
-
   async handleSessionBound(scope: AgentScope, session: SessionRef) {
     await this.store.bindSession(scope.conversationId, session);
   }
-
   async replaceSession(
     scope: AgentScope,
     expected: SessionRef,
@@ -368,7 +363,6 @@ export class ChatsService {
   ) {
     await this.store.replaceSession(scope.conversationId, expected, next);
   }
-
   async assignProject(chatId: string, projectId: string) {
     if (this.options.isAppProject?.(projectId)) {
       throw statusError(
@@ -376,16 +370,15 @@ export class ChatsService {
         "App Project 只能从 App 的使用或编辑入口加入聊天"
       );
     }
-    return summaryOf(await this.store.setProjectId(chatId, projectId));
+    return summaryOfChatLike(await this.store.setProjectId(chatId, projectId));
   }
-
   async moveProject(
     chatId: string,
     expectedSource: string | null,
     target: string | null,
     appRole?: AppChatRole | null
   ) {
-    return summaryOf(
+    return summaryOfChatLike(
       await this.store.moveChatProject(chatId, {
         expectedSource,
         target,
@@ -393,31 +386,26 @@ export class ChatsService {
       })
     );
   }
-
   async releaseProject(chatId: string) {
-    const summary = summaryOf(await this.store.clearProjectId(chatId));
+    const summary = summaryOfChatLike(await this.store.clearProjectId(chatId));
     this.emit({ type: "upserted", summary });
     return summary;
   }
-
-  publishUpserted(summary: ReturnType<typeof summaryOf>) {
+  publishUpserted(summary: ReturnType<typeof summaryOfChatLike>) {
     this.emit({ type: "upserted", summary });
   }
-
   publishRecord(record: ChatRecord | ChatMetadata) {
     this.emit({
       type: "upserted",
       summary: summaryOfChatLike(record),
     });
   }
-
   /* 维护闸门这类全局失败没有 chatId：先进 store 的失败清单（重新拉快照也
      看得到），再广播给在线侧栏，两步一个入口，渲染层不必分先来后到。 */
   publishStorageFailure(failure: ChatStorageFailure) {
     this.store.pushStorageFailure(failure);
     this.emit({ type: "storage-failure", failure });
   }
-
   publishSessionInvalidated(record: Pick<ChatRecord, "id" | "incarnationId">) {
     this.emit({
       type: "session-invalidated",
@@ -490,21 +478,17 @@ export class ChatsService {
       ? Promise.resolve()
       : this.options.chatHomes!.commitCreation(submission.persistence.input.id);
   }
-
   commitCreationById(chatId: string) {
     return this.options.chatHomes!.commitCreation(chatId);
   }
-
   rollbackCreation(submission: ManualTurnSubmission) {
     return submission.persistence.kind === "append"
       ? Promise.resolve()
       : this.options.chatHomes!.rollbackCreation(submission.persistence.input.id);
   }
-
   rollbackCreationById(chatId: string) {
     return this.options.chatHomes!.rollbackCreation(chatId);
   }
-
   async appendTurnResult(
     conversationId: string,
     input: TurnCommitInput
@@ -553,25 +537,25 @@ export class ChatsService {
       subagents: result.record.subagents ?? {},
     };
   }
-
   async appendCanonical(
     chatId: string,
     message: ChatMessage | UnsequencedChatMessage,
     reservedSeq?: number
   ) {
     if (this.admission === "closed") throw new Error("聊天账本已关闭");
+    const titleWasNone = this.store.getMetadata(chatId)?.titleJob.state === "none";
     const mutation = await this.store.appendMessage(
       chatId,
       message,
       reservedSeq
     );
     this.emitMutation(mutation);
+    if (titleWasNone && mutation.record.titleJob.state === "pending") this.scheduleTitle(mutation.record, message.content);
     return (
       mutation.record.messages.find((candidate) => candidate.id === message.id) ??
       message
     );
   }
-
   async createSection(input: {
     intentId: string;
     id: string;
@@ -678,50 +662,38 @@ export class ChatsService {
       ? this.withProject(projectId, create)
       : create();
   }
-
   assertOrdinaryTurnAllowed(chatId: string) {
     this.removal.assertOrdinaryTurnAllowed(chatId);
   }
-
   async remove(chatId: string) { return this.removal.remove(chatId); }
-
   configureAppChatDeactivation(
     handler: (chat: Omit<ChatMetadata, "preview">, action: "archive" | "delete") => Promise<void>
   ) {
     this.removal.configureAppDeactivation(handler);
   }
-
   prepareForArchive(chat: Omit<ChatMetadata, "preview">) {
     return this.removal.prepareForArchive(chat);
   }
-
   async removeAppChatHeld(chatId: string, appId: string) { return this.removal.removeAppChatHeld(chatId, appId); }
-
   async removeFromPurge(
     chatId: string,
     mode: ConversationDeletionMode = "local-only"
   ) {
     return this.removal.removeFromPurge(chatId, mode);
   }
-
   admitDeletion(chatIds: readonly string[]) {
     return this.removal.admit(chatIds);
   }
-
   async removeByProject(projectId: string, projectLifecycle?: "held") { return this.removal.removeByProject(projectId, projectLifecycle); }
-
   async sweepAttachments() {
     return this.attachments.sweep(await this.store.listReferencedAttachmentIds());
   }
-
   async readSectionAttachment(sectionId: string, attachmentId: string) {
     const owned = await this.store.hasAttachmentReference(sectionId, attachmentId);
     if (!owned) throw statusError(404, "附件不属于该 Section");
     return this.attachments.read(attachmentId);
   }
-
   recoverDeletions(waitForCompletion = true) { return this.deletion.recover(waitForCompletion); }
-
   async exportAttachment(sectionId: string, attachmentId: string) {
     if (!this.store.getMetadata(sectionId)) {
       throw statusError(404, "Section 不存在");
@@ -736,49 +708,32 @@ export class ChatsService {
       dependencies: this.options.attachmentExportFs,
     });
   }
-
-  stopAdmission() { this.admission = "draining"; }
-
-  closeAdmission() { this.admission = "closed"; }
-
-  reopenAdmission() { this.admission = "accepting"; }
-
+  stopAdmission() { this.admission = "draining"; this.titles.close(); }
+  closeAdmission() { this.admission = "closed"; this.titles.close(); }
+  reopenAdmission() { this.admission = "accepting"; this.titles.reopen(); }
   private assertAdmission() {
     if (this.admission !== "accepting") {
       throw new Error("应用正在退出，聊天写入已关闭");
     }
   }
-
   async awaitTitleJobs() {
     await this.titleRecovery;
     await this.titles.drain();
   }
-
   scheduleTitle(record: ChatRecord, firstMessage: string) { this.titles.schedule(record, firstMessage); }
-
   private attachMetas(
     message: UnsequencedUserMessage,
     metas: ChatAttachmentMeta[]
   ): UnsequencedUserMessage {
     return metas.length ? { ...message, attachments: metas } : message;
   }
-
   /** 附件先落盘、消息提交失败即回滚附件（无半持久化）；导出供回归测试直接驱动 */
   async commitWithAttachments<T>(
     payloads: ParsedAttachmentPayload[] | undefined,
     commit: (metas: ChatAttachmentMeta[]) => Promise<T>
   ): Promise<T> {
-    const metas = await this.attachments.persist(payloads ?? []);
-    try {
-      return await commit(metas);
-    } catch (cause) {
-      if (!isChatMutationOutcomeUnknown(cause)) {
-        await this.attachments.remove(metas);
-      }
-      throw cause;
-    }
+    return commitAttachments(this.attachments, payloads, commit);
   }
-
   private withProject<T>(projectId: string, task: () => Promise<T>) {
     if (!this.options.withProject) {
       return Promise.reject(
@@ -787,7 +742,6 @@ export class ChatsService {
     }
     return this.options.withProject(projectId, task);
   }
-
   private requireCreationHome(chatId: string, incarnationId?: string) {
     const home = this.options.chatHomes?.identityForCreation(chatId);
     if (!home) throw new Error("Chat Home creation intent 尚未物化");
@@ -796,11 +750,12 @@ export class ChatsService {
     }
     return home;
   }
-
   private emit(event: ChatsEvent) {
+    for (const listener of this.eventListeners) {
+      try { listener(event); } catch (cause) { console.warn("[chats] observer failed", cause); }
+    }
     publishChatEvent({ event, store: this.store, window: this.window });
   }
-
   private emitMutation(mutation: ChatMessageMutation) {
     publishChatMutation(mutation, (event) => this.emit(event));
   }

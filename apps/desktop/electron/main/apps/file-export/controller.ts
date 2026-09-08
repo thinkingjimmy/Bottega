@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on live GUI bindings, Electron save dialogs, FileExportManager custody, and App-scoped side-effect permits
+ * [INPUT]: Depends on live GUI bindings, Electron save dialogs, FileExportManager custody, and App-scoped side-effect permits, and statusError from main/errors
  * [OUTPUT]: Provides renderer-facing begin/write/finalize/cancel operations with active-surface and file.export grant enforcement
  * [POS]: Trusted main-process adapter between Apps IPC and native file-export custody
  */
@@ -12,6 +12,7 @@ import type {
   WriteFileExportChunkInputV1,
 } from "../../../../shared/app-gui/file-export";
 import type { BaseGuiLiveBinding } from "../../../../shared/apps-ipc";
+import { statusError } from "../../errors";
 import { GuiSideEffectRegistry } from "../gui-cutover/side-effects";
 import { FileExportManager } from "./manager";
 
@@ -65,7 +66,7 @@ export class AppFileExportController {
     /* capabilityDecisionId 的存在性由 requireBinding 逐次核对——begin、write、
        finalize、cancel 每一步都重新解析活体 binding，所以这里不必再抄一遍。 */
     if (!surfaceLeaseId) {
-      throw Object.assign(new Error("FILE_EXPORT_SURFACE_INVALID"), { status: 401 });
+      throw statusError(401, "FILE_EXPORT_SURFACE_INVALID");
     }
     const effects = this.effectsFor(binding.appId);
     const permit = effects.issue({
@@ -140,7 +141,7 @@ export class AppFileExportController {
       binding.appSurfaceLeaseId !== surface.appSurfaceLeaseId ||
       !binding.capabilityDecisionId
     ) {
-      throw Object.assign(new Error("FILE_EXPORT_SURFACE_INVALID"), { status: 401 });
+      throw statusError(401, "FILE_EXPORT_SURFACE_INVALID");
     }
     return binding;
   }

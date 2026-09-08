@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on AgentTurn StartOutcome and Promise settlement synonyms
  * [OUTPUT]: Provides AcpTurnSettlement, exclusive start/transport deferred with active→requested→terminal|Stop status migration
- * [POS]: The ACP startup is the sole end-user; AcpTurn is responsible for protocol actions and no longer accompanies the maintenance of the stopped/terminal/startRequested Bul group
+ * [POS]: Sole owner of ACP startup settlement state; AcpTurn only performs protocol actions and no longer tracks its own stopped/terminal/startRequested flags
  */
 
 import type { StartOutcome } from "../../types";

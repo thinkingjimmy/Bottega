@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on React, registered ECharts on request, six charts/components/Canvas, chart option/theme/lifecycle, valid theme store, graphic animation/unobstructed color strategy and shared ChartPayload
- * [OUTPUT]: ChartCore is the default and is responsible for ECharts + ResizeObserverpayload, valid theme or color change without interruption, re-read token and setOption, and pure animation update only works on the next payload
- * [POS]: The only re-running time sheet node of components/charts; It is only possible to download dynamically via LazyChart
+ * [INPUT]: Depends on React, ECharts registered on demand, its six chart types/components/the Canvas renderer, chart option/theme/lifecycle helpers, the resolved theme store, and the shared ChartPayload's animation/accessible-color strategy
+ * [OUTPUT]: Provides ChartCore (default export), which owns the ECharts instance plus its ResizeObserver, reapplies setOption on a theme or color-token change without disrupting it, and only replays entrance animation on the next payload
+ * [POS]: The only ECharts-mounting leaf in components/charts; it is loaded dynamically only through LazyChart
  */
 
 import { useEffect, useRef, useSyncExternalStore } from "react";

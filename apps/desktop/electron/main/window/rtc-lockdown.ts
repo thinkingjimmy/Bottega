@@ -13,7 +13,7 @@ export const RTC_LOCKDOWN_GLOBALS = Object.freeze([
 ]);
 
 /** This arrow is serialized into a frame's main world. Keep it closure-free. */
-export const lockRtcGlobals = (globalNames: readonly string[]) => {
+const lockRtcGlobals = (globalNames: readonly string[]) => {
   for (const name of globalNames) {
     try {
       Object.defineProperty(globalThis, name, {

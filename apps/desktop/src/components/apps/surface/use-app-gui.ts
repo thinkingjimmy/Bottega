@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React, Apps-client readAppGuiInfo/ready/release/onAppsEvent, app generation revisionKey provided by the caller and apps declared by the AppGuiBinding port
- * [OUTPUT]: Provides useAppGui with per-refresh runtime surfaces, staged cutover readiness, generation-fenced gui/status, delayed old-surface release, actionable errors, short-lived tokens, and one binding identity per underlying state
+ * [OUTPUT]: Provides useAppGui with per-refresh runtime surfaces, staged readiness, delayed old-surface release, machine-code-preserving errors, short-lived tokens, and stable binding identity
  * [POS]: Apps GUI acquisition adapter; one renderer value point owns old and candidate runtime surfaces until double-buffer promotion retires the old lease
  */
 
@@ -14,7 +14,6 @@ import {
   readyAppGuiSurface,
   releaseAppGuiSurface,
 } from "@/lib/apps-client";
-import { errorMessage } from "@/lib/errors";
 import type { AppGuiInfo, AppGuiInfoInput } from "../../../../shared/apps-ipc";
 
 const EMPTY: AppGuiInfo = {
@@ -118,7 +117,8 @@ export function useAppGui({
                 : EMPTY,
             requestKey,
             revisionKey,
-            error: errorMessage(cause),
+            // Classification needs the machine code; the failure panel formats it.
+            error: cause instanceof Error ? cause.message : String(cause),
             surface: current.appId === appId ? current.surface : null,
           }));
         }

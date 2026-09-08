@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the Apps store/gateway/runtime/installer, the durable generation/reference/data/custody ledgers, the compiled Base GUI runtime, the Design integration, and the turn/delete/edit sub-domains
- * [OUTPUT]: Provides composeAppsRuntime, which wires the whole apps collaborator graph in one pass, plus requireConfigured for late-bound collaborators
+ * [OUTPUT]: Assembles App collaborators and injects passive cached inventory into ordinary capability reads.
  * [POS]: The apps composition factory; AppsService owns policy and lifecycle while the object graph is assembled here
  */
 
@@ -57,7 +57,7 @@ export function requireConfigured<T>(value: T | null, what: string): T {
  * 组合期拿不到、但运行期必然存在的那几件事。全是惰性取值——对象图在构造完
  * 之前不会去读它们，构造完之后 AppsService 才把真身配上来。
  */
-export type AppsRuntimeHost = Readonly<{
+type AppsRuntimeHost = Readonly<{
   emit(event: AppInstallEvent): void;
   projectRecord(record: AppRecord): AppRecordProjection;
   reportGatewayWarning(message: string): void;
@@ -72,7 +72,7 @@ export type AppsRuntimeHost = Readonly<{
   chatRole(conversationId: string): "edit" | "use" | undefined;
 }>;
 
-export type ComposeAppsRuntimeInput = Readonly<{
+type ComposeAppsRuntimeInput = Readonly<{
   userData: string;
   guardianArgs: readonly string[];
   inspectCapabilityInventory?: (
@@ -207,7 +207,7 @@ export function composeAppsRuntime(input: ComposeAppsRuntimeInput) {
     maintenanceGate,
     inspectCapabilityInventory:
       input.inspectCapabilityInventory ??
-      ((appId) => runtime.inspectToolInventory(appId)),
+      (async (appId) => runtime.cachedToolInventory(appId)),
     stop: stopApp,
     emit,
     window: () => host.window(),
@@ -231,7 +231,6 @@ export function composeAppsRuntime(input: ComposeAppsRuntimeInput) {
           }
         : null;
     },
-    appDir: (appId) => store.get(appId)?.dir ?? null,
   });
   serverCutover.configure(serverLifecycle.environment);
 
@@ -246,6 +245,9 @@ export function composeAppsRuntime(input: ComposeAppsRuntimeInput) {
     (appId) => agentOperations.readLogTail(appId),
     sourceMutations
   );
+
+  packages.configureCompatibilityUpdates(installer);
+  installer.configureCompatibilityReporter((failure) => packages.compatibility.remember(failure));
 
   const turnCoordinator = new AppTurnCoordinator({
     userData,

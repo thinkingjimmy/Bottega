@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod and the AGENT_BACKEND_ORDER group of agent-ipc
- * [OUTPUT]: Provides agentBackendIdSchema The only zod of the back end of the pad id
- * [POS]: The shared back end authentication is a single source of truth; The durable file and the trans-process load cannot be written by hand respectively
+ * [OUTPUT]: Provides agentBackendIdSchema, the zod schema validating an AgentBackendId
+ * [POS]: Shared runtime validator generated from AGENT_BACKEND_ORDER; used to check untrusted values from durable files and cross-process payloads
  */
 
 import { z } from "zod";

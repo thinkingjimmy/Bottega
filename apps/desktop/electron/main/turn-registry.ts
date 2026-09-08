@@ -1,13 +1,15 @@
 /**
  * [INPUT]: Depends on shared turn reducer, Agent/chats agreement with conversation level SubagentRegistry; TurnOrigin in this file defines, agent/ just export
- * [OUTPUT]: Provides TurnRegistry lifecycle ownership, ordered projection, ProductFailure-aware terminals, subagent outcomes, steering fences, input leases, retry claims, event sequencing, tombstones, and drain
- * [POS]: The long lifecycle of the Electron main turns into a single truth source; No Electron dependence, only the IO and the release are responsible for bridge
+ * [OUTPUT]: Provides TurnRegistry lifecycle ownership, exact terminal sequence identities, current-generation subagent outcomes, steering fences, input leases, retry claims, tombstones, and drain.
+ * [POS]: Electron main's single source of truth for turn lifecycle; carries no Electron dependency itself, with IO and release owned by agent-bridge.ts
  */
 
+import { createTurnSnapshot } from "./agent/snapshots/turn";
+import { taskStartFence } from "./presence/lifecycle/start-fence";
 import { randomUUID } from "node:crypto";
 import {
   applyDelta, applyItem, applyItemRemoved,
-  createDraft, serializeDraft, type TurnDraft,
+  createDraft, type TurnDraft,
 } from "../../shared/chat-turn-reducer";
 import type {
   AgentBackendId,
@@ -139,6 +141,9 @@ export type TurnEntry<TTurn extends RegistryTurn = RegistryTurn> = {
     rollback(): void;
     release(): Promise<void>;
   };
+  incarnationId?: string;
+  terminalSeq?: number;
+  currentSubagents?: Set<string>;
   sourceTerminal?: SourceTerminal;
   effectiveTerminal?: SourceTerminal;
   postProcess?: Promise<SourceTerminal>;
@@ -202,6 +207,8 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
   ) {
     this.draftObserver = observer;
   }
+
+  liveEntries(): readonly TurnEntry<TTurn>[] { return [...this.entries.values()]; }
 
   seedSubagents(conversationId: string, subagents: Record<string, PersistedSubagent> = {}) {
     const current = this.entries.get(conversationId);
@@ -422,6 +429,7 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
   }
 
   claimRetry(entry: TurnEntry<TTurn>, retryToken: string): RetryClaim<TTurn> {
+    taskStartFence.assertOpen();
     if (
       entry.phase !== "resume-failed" ||
       !entry.resumeRetryToken ||
@@ -488,6 +496,8 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
     entry.startup = undefined;
     entry.retryClaim = undefined;
     entry.generation += 1;
+    entry.terminalSeq = undefined;
+    entry.currentSubagents = new Set();
     entry.fenceClosed = false;
     entry.childController = new AbortController();
     entry.children.clear();
@@ -625,44 +635,7 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
 
   snapshot(conversationId: string): TurnSnapshot | null {
     const entry = this.entries.get(conversationId);
-    if (!entry) return null;
-    return {
-      requestId: entry.requestId,
-      assistantSeq: entry.assistantSeq,
-      steeringSupported: entry.turn?.steeringSupported === true,
-      phase: entry.phase,
-      cleanup: entry.cleanup,
-      persist: entry.persist,
-      blocksNewTurn: blocksNewTurn(entry),
-      ...(entry.session ? { session: entry.session } : {}),
-      ...(entry.serviceTierEffective ? { serviceTierEffective: entry.serviceTierEffective } : {}),
-      ...(entry.resumeRetryToken
-        ? { retryToken: entry.resumeRetryToken }
-        : {}),
-      allowedActions: {
-        sameSession: false,
-        freshSession: false,
-        abandon: false,
-      },
-      draft: serializeDraft(entry.draft),
-      approvals: [...entry.approvals.values()].map((value) => structuredClone(value)),
-      userInputs: [...entry.userInputs.values()]
-        .sort((left, right) => (right.expiresAt ?? Infinity) - (left.expiresAt ?? Infinity))
-        .map((value) => structuredClone(value)),
-      liveSubagents: entry.subagents.live(),
-      ...(entry.effectiveTerminal
-        ? {
-            terminal: entry.effectiveTerminal.type,
-            ...(entry.effectiveTerminal.failureKind
-              ? { failureKind: entry.effectiveTerminal.failureKind }
-              : {}),
-            ...(entry.effectiveTerminal.failure ? { failure: entry.effectiveTerminal.failure } : {}),
-            ...(entry.effectiveTerminal.usageLimit
-              ? { usageLimit: entry.effectiveTerminal.usageLimit }
-              : {}),
-          }
-        : {}),
-    };
+    return createTurnSnapshot(entry, blocksNewTurn(entry));
   }
 
   attachSnapshot(conversationId: string) {
@@ -674,8 +647,18 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
 
   stamp(conversationId: string, body: AgentEventBody): AgentEvent {
     const entry = this.entries.get(conversationId);
-    if (entry && entry.requestId === body.requestId) this.applyBody(entry, body);
-    return { ...body, conversationId, seq: ++this.sequence } as AgentEvent;
+    const seq = ++this.sequence;
+    if (entry && entry.requestId === body.requestId) {
+      this.applyBody(entry, body);
+      if (entry.effectiveTerminal && entry.terminalSeq === undefined &&
+          ["done", "cancelled", "error"].includes(body.type)) entry.terminalSeq = seq;
+      if (body.type === "subagent-update") {
+        entry.currentSubagents ??= new Set();
+        if (["pendingInit", "running"].includes(body.agent.status)) entry.currentSubagents.add(body.agent.agentThreadId);
+        else entry.currentSubagents.delete(body.agent.agentThreadId);
+      }
+    }
+    return { ...body, conversationId, seq } as AgentEvent;
   }
 
   enqueueProjection(

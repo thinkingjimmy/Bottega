@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Apps/Projects providers, explicit positive Project grants, the shared App authorization dialog, the shared data-level wording, fenced grant commands, shared Card/DropdownMenu primitives, Settings list primitives, and i18n
- * [OUTPUT]: Provides the Project App section — its own SettingsSection, an AppCard-shaped grid, direct Pin/Unpin, and a per-App menu holding permissions and Project removal
+ * [INPUT]: Depends on shared appDisplayName, Apps/Projects providers, explicit positive Project grants, the shared App authorization dialog, the shared data-level wording, fenced grant commands, shared Card/DropdownMenu primitives, Settings list primitives, and i18n
+ * [OUTPUT]: Provides the Project App section — its own SettingsSection, a responsive one/two/three-column AppCard grid, direct Pin/Unpin, and a per-App menu holding permissions and Project removal
  * [POS]: Contextual Project App manager shared by Project Settings and the Sidebar Project shortcut; the card anatomy is the Apps page's, so one App wears one face everywhere
  */
 
+import { appDisplayName } from "../../../../../shared/apps-ipc";
 import { useState } from "react";
 import {
   KeyRound,
@@ -157,7 +158,7 @@ export function ProjectAppPlacements({ project }: { project: Project }) {
         </div>
       )}
       {rows.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {rows.map((row) => (
             <ProjectAppCard
               busy={Boolean(pending[row.appId])}
@@ -267,7 +268,7 @@ function ProjectAppCard({
   onRemove(): void;
 }) {
   const { t } = useAppTranslation();
-  const name = row.record?.manifest?.name ?? row.record?.displayName ?? row.appId;
+  const name = row.record ? appDisplayName(row.record) : row.appId;
   const icon = row.record?.manifest?.icon ?? "📦";
   const canToggleOn = Boolean(row.record && canNewPin(row.record));
   /* tooltip 说动作（与 Apps 页一字不差），aria-label 说对象（三张卡上

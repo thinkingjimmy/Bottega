@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React, Setup/I18n Provider, structured AgentFailureNotice, SetupBackendRow, settings-layout, PageShell and lucide Server/RefreshCw
  * [OUTPUT]: Provides BackendsSettingsView with human-first/folded-diagnostic setup failures, backend status/version, page header, and explicit review in a 52px row list
- * [POS]: The Backends file that covers the Settings layer; The backend detection is extracted from the General and is separately partitioned into a page with the Personalization/Usage and Agents (the settings for the agent dimension) settings, so the conditions are not loaded and you can subscribe to SetupProvider only
+ * [POS]: Settings' Backends page; backend detection was extracted out of General into its own page alongside Personalization/Usage under the Agents settings group, so it subscribes only to SetupProvider without loading Settings state
  */
 
 import { RefreshCw, Server } from "lucide-react";

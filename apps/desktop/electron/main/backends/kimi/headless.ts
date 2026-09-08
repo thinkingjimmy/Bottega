@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on runtime-probe Minimum user environment, credential root, authorized processEnv, disposable Kimi home and General HeadlessJob/ExecutionSpec
- * [OUTPUT]: Provides KimiHeadlessSpec, translates the job containing title/processEnv into the Kimi stream-json command and parses the assistant/tool/meta line; The first time I saw a KIMI_CODE_HOME session, I was in the middle of a week
- * [POS]: The Kimi descriptor is a translation layer without a guard; CLI does not support prompt+auto, prompt is as a validated argv exception and stdin is shut down immediately
+ * [OUTPUT]: Provides KimiHeadlessSpec, translating a HeadlessJob's prompt/processEnv into the Kimi stream-json CLI invocation, parsing assistant-role JSONL lines, and provisioning a disposable per-run KIMI_CODE_HOME
+ * [POS]: Unguarded translation layer for the Kimi descriptor; the CLI doesn't support prompt+auto together, so the prompt is passed as a validated argv (the one exception to stdin handoff) and stdin is closed immediately
  */
 
 import type {

@@ -19,10 +19,8 @@ import type {
   MemoryRuntimeSnapshot,
 } from "../../../shared/memory-ipc";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import {
-  MemoryConfigFields,
-  MemoryOperationProgress,
-} from "@/components/settings/memory/memory-runtime-panel";
+import { MemoryConfigFields } from "@/components/settings/memory/memory-runtime-dialogs";
+import { MemoryOperationProgress } from "@/components/settings/memory/memory-runtime-panel";
 import {
   SettingsAlert,
   SettingsChoiceRow,

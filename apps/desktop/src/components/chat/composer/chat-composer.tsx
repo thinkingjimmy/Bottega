@@ -1,53 +1,26 @@
 /**
  * [INPUT]: Depends on React/router, runtime controller, Chat composer i18n, canonical Project Settings routing, workspace candidate/image transaction hooks, Gallery store/freeze/focus, PromptInputProvider and RichInput
- * [OUTPUT]: Provides localized ChatComposer with rich submission, managed-worktree permission ceiling, capability-aware controls, Gallery gates, and safe Resume Failure decisions
+ * [OUTPUT]: Preserves editable text, images, references and Gallery custody through availability changes; separates ordinary send, explicit authentication retry, active Stop and Agent inspection.
  * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
+import { Tooltip, TooltipContent, TooltipTrigger } from "@ai-chat/ui/components/ui/tooltip";
+import { useSetup } from "@/components/providers/setup-provider";
+import { projectAvailability } from "../../../../shared/agent-availability/projection";
 
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+
+import { PendingAgentBanner } from "../agent-switch/pending";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import {
-  PromptInput,
-  PromptInputActionMenu,
-  PromptInputActionMenuContent,
-  PromptInputActionMenuItem,
-  PromptInputActionMenuTrigger,
-  PromptInputBody,
-  PromptInputFooter,
-  PromptInputProvider,
-  PromptInputSubmit,
-  PromptInputTools,
-  usePromptInputAttachments,
-  type PromptInputAdapter,
-  type RichNode,
-} from "@ai-chat/ui/components/ai-elements/prompt-input";
+import { PromptInput, PromptInputActionMenu, PromptInputActionMenuContent, PromptInputActionMenuItem, PromptInputActionMenuTrigger, PromptInputBody, PromptInputFooter, PromptInputProvider, PromptInputSubmit, PromptInputTools, usePromptInputAttachments, type PromptInputAdapter, type RichNode } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import { PromptInputAttachments } from "@ai-chat/ui/components/ai-elements/prompt-input-attachments";
 import { Separator } from "@ai-chat/ui/components/ui/separator";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import {
-  RichInput,
-  type RichInputHandle,
-  type RichInputProps,
-} from "@ai-chat/ui/components/ai-elements/rich-input";
+import { RichInput, type RichInputHandle, type RichInputProps } from "@ai-chat/ui/components/ai-elements/rich-input";
 import { FileUpIcon, ImagesIcon, LightbulbIcon, PlusIcon, Settings, XIcon } from "lucide-react";
-import {
-  ATTACHMENT_BYTE_LIMIT,
-  ATTACHMENT_LIMIT,
-  SECTION_ATTACHMENT_COUNT_LIMIT,
-  SECTION_ATTACHMENT_TOTAL_BYTE_LIMIT,
-} from "../../../../shared/agent-ipc";
+import { ATTACHMENT_BYTE_LIMIT, ATTACHMENT_LIMIT, SECTION_ATTACHMENT_COUNT_LIMIT, SECTION_ATTACHMENT_TOTAL_BYTE_LIMIT } from "../../../../shared/agent-ipc";
 import type { ChatSessionController } from "../runtime/use-chat-session";
 import { ChatApprovalCard } from "./chat-approval-card";
 import { ChatAgentSelector } from "./chat-agent-selector";
-import { ChatBackendUnavailable } from "./chat-backend-unavailable";
 import { ChatBranchSelector } from "./chat-branch-selector";
 import { ChatModelListSelector } from "./chat-model-list-selector";
 import { ChatModelSelector } from "./chat-model-selector";
@@ -68,8 +41,6 @@ import {
   applyGalleryAttachmentCommand,
   clearGalleryComments,
   gallerySendGate,
-  resumeGalleryAfterCapability,
-  suspendGalleryForCapability,
   syncGalleryEnvironment,
   useGalleryState,
 } from "@/lib/gallery/store";
@@ -162,7 +133,17 @@ function ChatComposerContent({
   const { t } = useAppTranslation();
   const inputRef = useRef<RichInputHandle>(null);
   const attachments = usePromptInputAttachments();
-  const priorImageCapability = useRef(controller.imageInputAvailable);
+  const setup = useSetup();
+  const recent = setup.recentTurns?.get(controller.chatId);
+  const availability = projectAvailability(controller.selectedBackend, setup.now, {
+    conversationId: controller.chatId, recent,
+    target: recent ? { ...recent.target, providerId: undefined, configKey: undefined, backend: controller.turnOptions.backend,
+      environmentGeneration: controller.selectedBackend?.availability?.environmentGeneration ?? -1,
+      model: controller.turnOptions.model ?? undefined } : undefined,
+  });
+  const imagesBlocked = controller.selectedBackend?.availability?.capabilityKnowledge !== "unknown" &&
+    !controller.imageInputAvailable && controller.attachmentFiles.some((file) => file.mediaType?.startsWith("image/"));
+  const sendBlocked = availability.policy.decision !== "allow" || imagesBlocked;
   const focusedRef = useRef(false);
   const [branchBusy, setBranchBusy] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -182,7 +163,7 @@ function ChatComposerContent({
   const editorActive =
     !controller.pendingUserInput && !controller.pendingPlanDecision;
   const editingDisabled =
-    controller.inputDisabled ||
+    controller.inputDisabled || Boolean(controller.pendingAgent?.submitting || controller.pendingAgent?.stale) ||
     branchBusy ||
     authorizationPending > 0 ||
     workspaceSelectionPending;
@@ -208,19 +189,13 @@ function ChatComposerContent({
     controller.fileNodeCount > 0;
   const draftReady =
     hasDraftContent &&
-    !editingDisabled &&
+    !editingDisabled && !sendBlocked &&
     !gallerySendGate(controller.chatId);
   const stopping = isGenerating && !draftReady;
   const actionDisabled =
     controller.cancelPending ||
     (!stopping &&
-      (editingDisabled || gallerySendGate(controller.chatId)));
-  const unavailableBackend =
-    controller.persisted &&
-    controller.lockedBackend &&
-    controller.backendState === "unavailable"
-      ? controller.lockedBackend
-      : null;
+      (editingDisabled || sendBlocked || gallerySendGate(controller.chatId)));
   const {
     authorizeRichFile,
     discardRichNode,
@@ -265,42 +240,6 @@ function ChatComposerContent({
     controller.imageInputAvailable,
     controller.turnOptions.backend,
   ]);
-  useEffect(() => {
-    const previous = priorImageCapability.current;
-    priorImageCapability.current = controller.imageInputAvailable;
-    if (!controller.imageInputAvailable) {
-      suspendGalleryForCapability(controller.chatId);
-      const images = controller.attachmentFiles.filter((file) =>
-        file.mediaType?.startsWith("image/")
-      );
-      if (images.length) {
-        controller.replaceAttachmentFiles(
-          controller.attachmentFiles.filter(
-            (file) => !file.mediaType?.startsWith("image/")
-          )
-        );
-      }
-      if (images.length || gallery.selections.size) {
-        controller.setAttachmentNotice(
-          t("chat.composer.surface.imageUnsupported")
-        );
-      }
-      return;
-    }
-    if (!previous && controller.imageInputAvailable) {
-      void resumeGalleryAfterCapability(controller.chatId);
-    }
-  }, [
-    controller,
-    controller.attachmentFiles,
-    controller.chatId,
-    controller.imageInputAvailable,
-    controller.replaceAttachmentFiles,
-    controller.setAttachmentNotice,
-    gallery.selections.size,
-    t,
-  ]);
-
   useLayoutEffect(() => {
     const dependencies = {
       authorize: authorizeRichFile,
@@ -510,14 +449,8 @@ function ChatComposerContent({
       {!controller.loading && managedWorktree && (
         <ChatManagedWorktreeRow controller={controller} />
       )}
-      {unavailableBackend ? (
-        <ChatBackendUnavailable
-          backend={unavailableBackend}
-          info={controller.selectedBackend}
-          onConfigure={controller.openSetup}
-          onRetry={controller.retryBackends}
-        />
-      ) : controller.approval?.purpose === "plan-review" ? (
+      <PendingAgentBanner pending={controller.pendingAgent} options={controller.turnOptions} canonical={controller.canonicalOptions} undo={controller.undoAgentSwitch} />
+      {controller.approval?.purpose === "plan-review" ? (
         <ChatApprovalCard
           approval={controller.approval}
           backendDisplayName={
@@ -573,7 +506,9 @@ function ChatComposerContent({
           if (authorizationQueueRef.current?.isBusy()) {
             throw new Error(t("chat.composer.surface.fileAuthorizationBusy"));
           }
-          return controller.handleSubmit(message, { signal });
+          const authenticationRetry = (_event.nativeEvent as SubmitEvent).submitter?.getAttribute("name") === "authentication-retry";
+          if (sendBlocked && !(authenticationRetry && availability.policy.reason === "auth-required")) throw new Error(t("agentAvailability.blocked", { backend: controller.selectedBackend?.displayName ?? "Agent" }));
+          return controller.handleSubmit(message, { signal, ...(authenticationRetry ? { authenticationRetry: { kind: "retry-authentication" as const } } : {}) });
         }}
       >
         <button
@@ -581,13 +516,21 @@ function ChatComposerContent({
           className="pointer-events-none absolute size-px overflow-hidden opacity-0"
           disabled={
             // Enter 提交与可见按钮同一 gate：漏掉 gallerySendGate 会把 pending/failed 选图静默丢下发送
-            editingDisabled ||
+            editingDisabled || sendBlocked ||
             controller.cancelPending ||
             gallerySendGate(controller.chatId)
           }
           tabIndex={-1}
           type="submit"
         />
+        {(sendBlocked || (recent?.outcome !== "success" && availability.state !== "ready" && availability.state !== "unverified")) && <div className="flex flex-wrap items-center gap-2 px-3 pt-3 text-xs text-muted-foreground">
+          <span>{imagesBlocked ? t("agentAvailability.imagesPreserved") : t(`agentAvailability.state.${availability.state}`)}</span>
+          <Button type="button" variant="ghost" size="sm" onClick={() => void controller.openSetup()}>{t("agentAvailability.manage")}</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => void setup.recheckBackend(controller.turnOptions.backend)}>{t("chat.checkAgain")}</Button>
+          {availability.policy.reason === "auth-required" && <Tooltip><TooltipTrigger asChild>
+            <Button type={hasDraftContent ? "submit" : "button"} name="authentication-retry" onClick={() => { if (!hasDraftContent) controller.retryAuthentication(); }} variant="outline" size="sm" disabled={editingDisabled || submissionPending || isGenerating || (!hasDraftContent && (!recent || recent.outcome === "success")) || imagesBlocked || gallerySendGate(controller.chatId)}>{t("agentAvailability.retrySending")}</Button>
+          </TooltipTrigger><TooltipContent className="max-w-72">{t("agentAvailability.retryExplanation")}</TooltipContent></Tooltip>}
+        </div>}
         <PromptInputBody>
           <PromptInputAttachments />
           <RichInput
@@ -695,13 +638,16 @@ function ChatComposerContent({
             <ChatAgentSelector
               value={controller.turnOptions.backend}
               backends={controller.backends}
-              locked={
-                controller.persisted || Boolean(controller.lockedBackend)
-              }
-              checking={controller.backendState === "checking"}
+              locked={controller.switchLocked || isGenerating || submissionPending || controller.queueItems.length > 0 || controller.queuePaused || Boolean(controller.pendingAgent?.submitting)}
               saving={controller.settingsSaving}
-              disabled={turnControlsDisabled}
+              disabled={false}
+              reason={controller.switchReason ? t(`chat.agentSwitch.${controller.switchReason}`) : controller.queueItems.length || controller.queuePaused ? t("chat.agentSwitch.queue") : isGenerating ? t("chat.agentSwitch.running") : controller.pendingAgent?.submitting ? t("chat.agentSwitch.submission") : undefined}
               onChange={controller.selectBackend}
+              now={setup.now}
+              currentState={availability.state}
+              appBound={controller.project.kind === "fixed-app"}
+              onRecheck={(backend) => void setup.recheckBackend(backend)}
+              onRepair={(backend, action) => void setup.terminalAction(backend, action)}
             />
             {fullModelOptions && (
               <ChatModelSelector
@@ -752,6 +698,8 @@ function ChatComposerContent({
               onStop={controller.handleStop}
               preferSubmit={draftReady}
               disabled={actionDisabled}
+              {...(recent && recent.outcome !== "success" && availability.policy.decision === "allow" && !isGenerating
+                ? { "aria-label": t("agentAvailability.retrySending"), title: t("agentAvailability.retrySending") } : {})}
               {...(isGenerating && draftReady
                 ? {
                     "aria-label": t("chat.composer.surface.queueSubmit"),

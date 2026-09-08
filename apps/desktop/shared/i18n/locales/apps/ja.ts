@@ -9,7 +9,6 @@ import type { appsEn } from "./en";
 export const appsJa: typeof appsEn = {
   provider: {
     listFailed: "App の読み込みに失敗しました：{{message}}",
-    browserFallbackDescription: "{{url}} のブラウザ代替 App",
   },
   presets: {
     designCanvas: {
@@ -144,12 +143,14 @@ export const appsJa: typeof appsEn = {
     aboutToInstall: "ダウンロードしてインストールします",
     permissionsWarning: "インストールと実行は、ファイルの読み書きやネットワークアクセスを含むユーザー権限で行われます。",
     trustedOnly: "信頼できるリポジトリだけを追加してください。",
+    authorManifestInstall: "作者のマニフェストからインストール",
+    agentAnalysis: "Agent 分析を使う（任意）",
+    authorManifestHint: "バージョン付きの App 定義は直接インストールできます。承認済み Agent にインストール定義の作成を依頼する場合のみ、Agent 分析を選択してください。",
     runtimeAgent: "実行 Agent",
     repositoryAddress: "リポジトリアドレス",
     nextStep: "次に checkout せず Git オブジェクトを読み、パッケージ種別を判定します。この段階ではコードを実行せず、App も作成しません。",
   },
   card: {
-    browserFallback: "ブラウザ代替",
     preparing: "{{name}} を準備中",
     awaitingAuthorization: "権限を確認すると続行できます",
     operationFailed: "操作に失敗しました",
@@ -337,7 +338,6 @@ export const appsJa: typeof appsEn = {
   },
   detail: {
     startFailed: "App の起動に失敗しました",
-    placeholder: "このデモプレースホルダーは実行できません。右上の + から実際の GitHub App を追加してください。",
     crashed: "App プロセスが予期せず終了しました",
     stopped: "App は停止しました",
     viewLog: "ログを表示",

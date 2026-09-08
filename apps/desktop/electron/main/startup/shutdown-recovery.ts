@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on stopChatAdmission narrow reopen ports for each service, Agent restore playback and Coordinator access playback
- * [OUTPUT]: Provides a single-mode shutdown recovery gate from the first irreversible cleanup, and a stop-admission dependent recovery system; Gate only opens Coordinator after Agent recovery is successful
- * [POS]: The startup's shutdown compensation editor; seal previous durable queues Not closed, only real reverse operations of stopped dependencies→Agent→Coordinator
+ * [OUTPUT]: Provides ShutdownRecoveryGate, a one-way-latched recovery gate that reopens Coordinator only after Agent recovery succeeds, and reopenStoppedChatDependencies to reverse stopped-dependency admission
+ * [POS]: The startup shutdown-recovery module; recovery is a no-op once irreversible cleanup has begun, and only reverses admission for already-stopped dependencies
  */
 
 type DependencyAdmission = {

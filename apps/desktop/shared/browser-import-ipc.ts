@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod; Chrome profile and cookie domain names that are explicitly selected by the user
  * [OUTPUT]: Provides Browser Import IPC channel, platform availability, profile/domain schema, results, and BrowserImportBridgeApi
- * [POS]: The Chrome Login Import Agreement for shared Chrome Login is a contract for the import of shared Chrome loginsOnly select and count, without revealing Keychain keys, cookie values or machine paths
+ * [POS]: Shared Chrome cookie-import wire contract; the renderer only selects a profile and domain count, never seeing Keychain keys, cookie values, or filesystem paths
  */
 
 import { z } from "zod";

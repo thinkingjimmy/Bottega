@@ -1,16 +1,12 @@
 "use client";
 
 /**
- * [INPUT]: Depends on UI Button/ButtonGroup, share context in UI text, streamdown/CJK, MessageRendererContext, select rich text with lucide icons when running
- * [OUTPUT]: Provides Message layout and MessageResponse; Language key/plugin detection stable, stream-only code, Math/Mermaid remain available, single-load high brightness after settle
- * [POS]: The news of ai-elements shows the family; Messages do not break through the parent-level content list, and MessageResponse only posts http/mailto/minute links and waits for the plugins to be selected with a full skeletonThe default Markdown title ladder is reset at this single point, with text-sm officially the only reference point (the letter is changed to h4, h5/h6); Other contexts require another set of scales, covering only the end of the ccn + tw-merge with className to ensure that the call is won, without spelling specifications
+ * [INPUT]: Depends on UI Button/Tooltip, host-injected UI text, streamdown/CJK, MessageRendererContext, and the message plugin loader
+ * [OUTPUT]: Provides Message/MessageContent layout, MessageActions/MessageAction, and MessageResponse; stabilizes locale-key/plugin detection, streams code-only rendering while Math/Mermaid stay available, and applies syntax highlighting once in a single pass after streaming settles
+ * [POS]: ai-elements' message-display family; a Message never overflows its parent content list, and MessageResponse only auto-links http/mailto and hides behind a full skeleton until its plugins are chosen. The default Markdown heading scale is re-anchored here to the text-sm body size (h1-h4 keep distinct sizes, h5/h6 collapse onto text-sm); other rendering contexts need their own scale. className is always merged last through cn's tw-merge so a caller's class wins without needing to guess specificity
  */
 
 import { Button } from "@ai-chat/ui/components/ui/button";
-import {
-  ButtonGroup,
-  ButtonGroupText,
-} from "@ai-chat/ui/components/ui/button-group";
 import {
   Tooltip,
   TooltipContent,
@@ -21,17 +17,8 @@ import { cn } from "@ai-chat/ui/lib/utils";
 import { useUiText } from "@ai-chat/ui/lib/ui-text";
 import { cjk } from "@streamdown/cjk";
 import type { UIMessage } from "ai";
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import {
-  createContext,
-  memo,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import type { ComponentProps, HTMLAttributes } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { defaultRehypePlugins, Streamdown } from "streamdown";
 import {
   detectOptionalPlugins,
@@ -123,215 +110,6 @@ export const MessageAction = ({
   }
 
   return button;
-};
-
-interface MessageBranchContextType {
-  currentBranch: number;
-  totalBranches: number;
-  goToPrevious: () => void;
-  goToNext: () => void;
-  branches: ReactElement[];
-  setBranches: (branches: ReactElement[]) => void;
-}
-
-const MessageBranchContext = createContext<MessageBranchContextType | null>(
-  null
-);
-
-const useMessageBranch = () => {
-  const context = useContext(MessageBranchContext);
-
-  if (!context) {
-    throw new Error(
-      "MessageBranch components must be used within MessageBranch"
-    );
-  }
-
-  return context;
-};
-
-export type MessageBranchProps = HTMLAttributes<HTMLDivElement> & {
-  defaultBranch?: number;
-  onBranchChange?: (branchIndex: number) => void;
-};
-
-export const MessageBranch = ({
-  defaultBranch = 0,
-  onBranchChange,
-  className,
-  ...props
-}: MessageBranchProps) => {
-  const [currentBranch, setCurrentBranch] = useState(defaultBranch);
-  const [branches, setBranches] = useState<ReactElement[]>([]);
-
-  const handleBranchChange = useCallback(
-    (newBranch: number) => {
-      setCurrentBranch(newBranch);
-      onBranchChange?.(newBranch);
-    },
-    [onBranchChange]
-  );
-
-  const goToPrevious = useCallback(() => {
-    const newBranch =
-      currentBranch > 0 ? currentBranch - 1 : branches.length - 1;
-    handleBranchChange(newBranch);
-  }, [currentBranch, branches.length, handleBranchChange]);
-
-  const goToNext = useCallback(() => {
-    const newBranch =
-      currentBranch < branches.length - 1 ? currentBranch + 1 : 0;
-    handleBranchChange(newBranch);
-  }, [currentBranch, branches.length, handleBranchChange]);
-
-  const contextValue = useMemo<MessageBranchContextType>(
-    () => ({
-      branches,
-      currentBranch,
-      goToNext,
-      goToPrevious,
-      setBranches,
-      totalBranches: branches.length,
-    }),
-    [branches, currentBranch, goToNext, goToPrevious]
-  );
-
-  return (
-    <MessageBranchContext.Provider value={contextValue}>
-      <div
-        className={cn("grid w-full gap-2 [&>div]:pb-0", className)}
-        {...props}
-      />
-    </MessageBranchContext.Provider>
-  );
-};
-
-export type MessageBranchContentProps = HTMLAttributes<HTMLDivElement>;
-
-export const MessageBranchContent = ({
-  children,
-  ...props
-}: MessageBranchContentProps) => {
-  const { currentBranch, setBranches, branches } = useMessageBranch();
-  const childrenArray = useMemo(
-    () => (Array.isArray(children) ? children : [children]),
-    [children]
-  );
-
-  // Use useEffect to update branches when they change
-  useEffect(() => {
-    if (branches.length !== childrenArray.length) {
-      setBranches(childrenArray);
-    }
-  }, [childrenArray, branches, setBranches]);
-
-  return childrenArray.map((branch, index) => (
-    <div
-      className={cn(
-        "grid gap-2 overflow-hidden [&>div]:pb-0",
-        index === currentBranch ? "block" : "hidden"
-      )}
-      key={branch.key}
-      {...props}
-    >
-      {branch}
-    </div>
-  ));
-};
-
-export type MessageBranchSelectorProps = ComponentProps<typeof ButtonGroup>;
-
-export const MessageBranchSelector = ({
-  className,
-  ...props
-}: MessageBranchSelectorProps) => {
-  const { totalBranches } = useMessageBranch();
-
-  // Don't render if there's only one branch
-  if (totalBranches <= 1) {
-    return null;
-  }
-
-  return (
-    <ButtonGroup
-      className={cn(
-        "[&>*:not(:first-child)]:rounded-l-md [&>*:not(:last-child)]:rounded-r-md",
-        className
-      )}
-      orientation="horizontal"
-      {...props}
-    />
-  );
-};
-
-export type MessageBranchPreviousProps = ComponentProps<typeof Button>;
-
-export const MessageBranchPrevious = ({
-  children,
-  ...props
-}: MessageBranchPreviousProps) => {
-  const { goToPrevious, totalBranches } = useMessageBranch();
-  const label = useUiText("previousBranch", "Previous branch");
-
-  return (
-    <Button
-      aria-label={label}
-      disabled={totalBranches <= 1}
-      onClick={goToPrevious}
-      size="icon-sm"
-      type="button"
-      variant="ghost"
-      {...props}
-    >
-      {children ?? <ChevronLeftIcon size={14} />}
-    </Button>
-  );
-};
-
-export type MessageBranchNextProps = ComponentProps<typeof Button>;
-
-export const MessageBranchNext = ({
-  children,
-  ...props
-}: MessageBranchNextProps) => {
-  const { goToNext, totalBranches } = useMessageBranch();
-  const label = useUiText("nextBranch", "Next branch");
-
-  return (
-    <Button
-      aria-label={label}
-      disabled={totalBranches <= 1}
-      onClick={goToNext}
-      size="icon-sm"
-      type="button"
-      variant="ghost"
-      {...props}
-    >
-      {children ?? <ChevronRightIcon size={14} />}
-    </Button>
-  );
-};
-
-export type MessageBranchPageProps = HTMLAttributes<HTMLSpanElement>;
-
-export const MessageBranchPage = ({
-  className,
-  ...props
-}: MessageBranchPageProps) => {
-  const { currentBranch, totalBranches } = useMessageBranch();
-  const of = useUiText("branchOf", "of");
-
-  return (
-    <ButtonGroupText
-      className={cn(
-        "border-none bg-transparent text-muted-foreground shadow-none",
-        className
-      )}
-      {...props}
-    >
-      {currentBranch + 1} {of} {totalBranches}
-    </ButtonGroupText>
-  );
 };
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
@@ -535,21 +313,3 @@ export const MessageResponse = memo(
 );
 
 MessageResponse.displayName = "MessageResponse";
-
-export type MessageToolbarProps = ComponentProps<"div">;
-
-export const MessageToolbar = ({
-  className,
-  children,
-  ...props
-}: MessageToolbarProps) => (
-  <div
-    className={cn(
-      "mt-4 flex w-full items-center justify-between gap-4",
-      className
-    )}
-    {...props}
-  >
-    {children}
-  </div>
-);

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node Buffer/StringDecoder/os, ACP stderr with name noise reduction, shared diagnostic hypersensitivity, and with call party literal secrets, and exit, to position the native language
- * [OUTPUT]: Provides a fixed 64KiB byte ring AcpByteTail with AcpProcessEvidence ((reduced noise after complete reassembly, raw classification, lazy exit, perpetual de-sensitivity)
- * [POS]: The owner of the process proof of ACP startup; AcpTurn/probe/headless only bytes and withdrawal signals, no longer maintaining their respective string intercepts
+ * [INPUT]: Depends on Node StringDecoder, the ACP stderr noise filter, shared diagnostic redaction options/literal-secret set, and startup/exit's preferProcessExit
+ * [OUTPUT]: Provides AcpByteTail, a fixed 64KiB byte ring buffer, and AcpProcessEvidence, which reassembles UTF-8 stderr, filters noise, and produces a lazily classified, redacted process-exit tail
+ * [POS]: Owner of ACP startup process evidence; AcpTurn/probe/headless consume only bytes and exit signals from it instead of each maintaining their own stderr interception
  */
 
 import { StringDecoder } from "node:string_decoder";

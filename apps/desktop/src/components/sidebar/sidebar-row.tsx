@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React types and the sidebar-row.css marquee contract loaded by the renderer
- * [OUTPUT]: Provides shared root-action tone, sidebar SubRowClass, SidebarRowMark, SidebarRowTitle and SidebarRowTag
+ * [OUTPUT]: Provides shared root-action tone, left-aligned sidebar SubRowClass, SidebarRowMark, SidebarRowTitle and SidebarRowTag
  * [POS]: Shared row vocabulary for root and nested Sidebar entities; Chat and pinned Apps consume the same root-action contrast contract
  */
 
@@ -16,6 +16,7 @@ export const sidebarRootMenuActionClass =
  * 缩进都会把层级说成两级。容器 `SidebarMenuSub` 已被 project-item 抹平
  * （mx-0/px-0/border-l-0/translate-x-0），故这一个数就是缩进的全部。
  * action 浮层不占横向空间：把基类为单按钮预留的 pr-8 收回到 pr-2，标题区铺满整行。
+ * text-left 统一链接与按钮的文字对齐，避免 App 按钮继承浏览器默认居中。
  *
  * h-8 是把 `SidebarMenuSubButton` 的 28px 抬回根级行的 32px。缩进已经把「我是
  * 子行」说完了，行高再说一遍就成了第二种说法——而两种说法必然有一种是多余的：
@@ -28,7 +29,7 @@ export const sidebarRootMenuActionClass =
 export const SIDEBAR_SUB_ROW_INDENT = "pl-6";
 
 export const sidebarSubRowClass =
-  `h-8 w-full translate-x-0 pr-2 ${SIDEBAR_SUB_ROW_INDENT} font-normal! group-hover/menu-sub-item:bg-sidebar-accent group-hover/menu-sub-item:text-sidebar-accent-foreground group-has-[:focus-visible]/menu-sub-item:bg-sidebar-accent group-has-[:focus-visible]/menu-sub-item:text-sidebar-accent-foreground`;
+  `h-8 w-full translate-x-0 pr-2 ${SIDEBAR_SUB_ROW_INDENT} text-left font-normal! group-hover/menu-sub-item:bg-sidebar-accent group-hover/menu-sub-item:text-sidebar-accent-foreground group-has-[:focus-visible]/menu-sub-item:bg-sidebar-accent group-has-[:focus-visible]/menu-sub-item:text-sidebar-accent-foreground`;
 
 /* ── 行首等宽槽：三种宿主，共用这一个 16px 方槽 ──────────────────
  * 槽不只是为了居中，更是为了把图标从宿主手里救回来：两个宿主原语各自替直系

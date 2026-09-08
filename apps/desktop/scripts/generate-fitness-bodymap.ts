@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the exact local react-native-body-highlighter checkout Git HEAD, assets/body{, Female}{Front, Back}.ts, components/Svg{Male, Female}Wrapper.tsx and LICENSE; and read the same directory exercises.json reverse-call zone closed
- * [OUTPUT]: Definition generates two sets of anatomical levels on the back of the body-map.json geometry, five languages muscle-regions.json, upstream MIT full text and provenance; All claims before staged renaming failed to cover existing products
- * [POS]: The second entry in the offline supply chain for the development of scripts; Only move the vector path, disconnect, or copy upstream scans or React when running
+ * [INPUT]: Depends on a local react-native-body-highlighter checkout pinned to an exact commit (assets/body{, Female}{Front, Back}.ts, components/Svg{Male, Female}Wrapper.tsx, LICENSE) and the output directory's exercises.json, whose canonical_zones must be fully covered by the parsed body geometry
+ * [OUTPUT]: Generates body-map.json (per-gender front/back zone path geometry), muscle-regions.json (five-locale zone labels), body-highlighter.LICENSE.txt, and body-map.source.json provenance; artifacts are staged to temp files and atomically renamed into place
+ * [POS]: Offline supply-chain generator for the Fitness App body map, run manually against a local upstream checkout; it only parses SVG vector paths and never fetches network resources
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -196,7 +196,7 @@ export function assertZoneClosure(views: View[], catalogZones: readonly string[]
   }
 }
 
-export function assertLabelsComplete() {
+function assertLabelsComplete() {
   for (const [id, labels] of Object.entries(ZONE_LABELS)) {
     const missing = LOCALES.filter((locale) => !labels[locale]?.trim());
     if (missing.length) throw new Error(`zone ${id} 缺少 ${missing.join(",")} 标签`);

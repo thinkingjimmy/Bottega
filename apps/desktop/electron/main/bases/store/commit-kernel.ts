@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto; receives a target path and the exact bytes to publish
- * [OUTPUT]: Provides durableAtomicWrite (tmp → fsync → rename → parent fsync) and fsyncParent
+ * [OUTPUT]: Provides durableAtomicWrite (tmp → fsync → rename → parent fsync), fsyncParent, and the isErrnoCode guard shared by the store leaves
  * [POS]: The single durable-write point of bases/store; every generation and meta file goes through here, and a failed write leaves the target untouched
  */
 
@@ -8,17 +8,13 @@ import { randomUUID } from "node:crypto";
 import { open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
-export type DurableWriteDependencies = {
-  write?: (path: string, content: string) => Promise<void>;
-};
-
 export async function durableAtomicWrite(
   path: string,
-  content: string,
-  dependencies: DurableWriteDependencies = {}
+  content: string | Buffer,
+  write?: (path: string, content: string) => Promise<void>
 ) {
-  if (dependencies.write) {
-    await dependencies.write(path, content);
+  if (write) {
+    await write(path, content.toString());
     return;
   }
   const temporary = `${path}.${randomUUID()}.tmp`;
@@ -47,16 +43,12 @@ export async function fsyncParent(path: string) {
   try {
     await directory.sync();
   } catch (cause) {
-    if (!isCode(cause, "EINVAL") && !isCode(cause, "ENOTSUP")) throw cause;
+    if (!isErrnoCode(cause, "EINVAL") && !isErrnoCode(cause, "ENOTSUP")) throw cause;
   } finally {
     await directory.close();
   }
 }
 
-function isCode(cause: unknown, code: string) {
-  return (
-    cause instanceof Error &&
-    "code" in cause &&
-    (cause as NodeJS.ErrnoException).code === code
-  );
+export function isErrnoCode(cause: unknown, code: string) {
+  return (cause as NodeJS.ErrnoException | null)?.code === code;
 }

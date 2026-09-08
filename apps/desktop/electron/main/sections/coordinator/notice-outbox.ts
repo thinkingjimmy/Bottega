@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on RelayLedger notice outbox, ChatsService canonical append and chat message lookup, typed notice schema
- * [OUTPUT]: Provides noticeDependencySatisfied plus restart reconcile, pause-action flush, relay failure notice, and settleDependent (flush on stored, cancel otherwise)
+ * [OUTPUT]: Provides restart reconcile, pause-action flush, relay failure notice, and settleDependent (flush on stored, cancel otherwise)
  * [POS]: The sections/coordinator notice side-effect executor; it consumes only frozen ledger outbox records, and the single dependency predicate is what keeps live flush and startup recovery from drifting apart
  */
 
@@ -15,7 +15,7 @@ import type { ChatsService } from "../../chats/chats-service";
 import { stableId } from "./coordinator-values";
 import type { RelayLedger, RelayRecord } from "./relay-ledger";
 
-export async function noticeDependencySatisfied(
+async function noticeDependencySatisfied(
   chats: ChatsService,
   outbox: Readonly<{ chatId: string; dependsOnMessageId?: string }>
 ) {

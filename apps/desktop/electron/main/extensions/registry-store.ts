@@ -1,22 +1,15 @@
 /**
- * [INPUT]: Depends on durable Registry persistence, strict schema/empty-ledger migration, canonical/projection kernels, and delegated install/lifecycle authorities
- * [OUTPUT]: Provides the scoped Registry facade, atomic empty-ledger upgrade, owned/visible inventory, lifecycle commands, scope invalidation, and poisoned-store boundary
- * [POS]: Durable Extension owner and transaction coordinator; only authority-free legacy state upgrades, while live incompatible facts remain fail closed
+ * [INPUT]: Depends on durable Registry persistence, the strict schema-v7 contract, canonical/projection kernels, and delegated install/lifecycle authorities
+ * [OUTPUT]: Provides the scoped Registry facade exposing its public lifecycle/installs authorities, owned/visible inventory, scope invalidation, and poisoned-store boundary
+ * [POS]: Durable Extension owner and transaction coordinator; any ledger that is not exactly schema-v7 fails closed without rewriting bytes
  */
 
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
-  ExtensionAdmissionState,
-  ExtensionAdministrativeState,
   ExtensionComponentRecord,
-  ExtensionEnableState,
   ExtensionInventorySnapshot,
   ExtensionPackageGenerationRef,
-  ExtensionScopeMutation,
-  PackageGenerationDataBinding,
-  PackageGenerationRecord,
-  Sha256Digest,
 } from "../../../shared/extensions-ipc";
 import {
   GLOBAL_PRODUCT_RESOURCE_SCOPE,
@@ -25,7 +18,6 @@ import {
   type ProductResourceScope,
   type TurnProjectContext,
 } from "../../../shared/product-resource-scope";
-import type { ExtensionPackageAdmission } from "./manifest-adapter";
 import {
   durableReplaceFile,
   type DurableReplaceFileFaults,
@@ -33,74 +25,25 @@ import {
 import {
   emptyExtensionRegistryStore,
   extensionRegistryStoreSchema,
-  migrateEmptyExtensionRegistry,
   type ExtensionRegistryStoredPackage,
   type ExtensionRegistryStoreFile,
-  type ExtensionSourceProvenance,
 } from "./registry-schema";
 import {
   canonicalJson,
   digestCanonical,
+  packageEnableState,
   refKey,
   registryConflict as conflict,
 } from "./registry-canonical";
 import { activeComponents, selectVisibleComponents } from "./registry-projection";
-import { RegistryLifecycleAuthority } from "./registry-lifecycle-authority";
+import {
+  RegistryLifecycleAuthority,
+  type RegistryTransactionHost,
+} from "./registry-lifecycle-authority";
 import { RegistryInstallAuthority } from "./registry-install-authority";
-export type { ExtensionSourceProvenance } from "./registry-schema";
-export { canonicalJson, digestCanonical } from "./registry-canonical";
-export { selectVisibleComponents } from "./registry-projection";
 
 type StoreFile = ExtensionRegistryStoreFile;
 type StoredPackage = ExtensionRegistryStoredPackage;
-
-export type ExtensionGenerationProjection = Readonly<{
-  installIdentity: string;
-  scope: ProductResourceScope;
-  sourceIdentity: string;
-  admission: ExtensionAdmissionState;
-  administrativeState: ExtensionAdministrativeState;
-  globalCatalogEnabled: boolean;
-  packageEnabled: ExtensionEnableState;
-  active: boolean;
-  removalPending: boolean;
-  enabledComponentInstanceIdentities: readonly string[];
-  generation: PackageGenerationRecord;
-  source: ExtensionSourceProvenance;
-  components: readonly ExtensionComponentRecord[];
-}>;
-
-export type SealExtensionGenerationInput = Readonly<{
-  /** 由 lifecycle ledger 预分配：重放按同一个 id 幂等，绝不生出第二代 */
-  packageGenerationId: string;
-  installIdentity: string;
-  scope: ProductResourceScope;
-  sourceIdentity: string;
-  expectedScopeRevision: number;
-  componentNamespace: string;
-  contentDigest: Sha256Digest;
-  source: ExtensionSourceProvenance;
-  admission: ExtensionPackageAdmission;
-  schemaDigest?: Sha256Digest;
-  validatorFixtureDigest: Sha256Digest;
-  displayName?: string;
-  expectedActiveGenerationRef?: ExtensionPackageGenerationRef | null;
-  /** seal 前就已闭合的数据绑定；含 stdio 的代只能是 stdio 分支 */
-  dataBinding: PackageGenerationDataBinding;
-  /** Durable Registry reservation acquired atomically with the install CAS. */
-  installReservationOperationId?: string;
-}>;
-
-export type ReserveExtensionInstallInput = Readonly<{
-  operationId: string;
-  packageGenerationId: string;
-  installIdentity: string;
-  sourceIdentity: string;
-  scope: ProductResourceScope;
-  adapterId: "agent-plugins-1.0.0" | "skill-repo-1.0.0";
-  expectedScopeRevision: number;
-  expectedActiveGenerationRef: ExtensionPackageGenerationRef | null;
-}>;
 
 export class ExtensionRegistryStore {
   readonly root: string;
@@ -113,8 +56,8 @@ export class ExtensionRegistryStore {
     (event: Readonly<{ scope: ProductResourceScope; scopeRevision: number }>) =>
       void | Promise<void>
   >();
-  private readonly lifecycle: RegistryLifecycleAuthority;
-  private readonly installs: RegistryInstallAuthority;
+  readonly lifecycle: RegistryLifecycleAuthority;
+  readonly installs: RegistryInstallAuthority;
 
   constructor(
     userData: string,
@@ -123,17 +66,14 @@ export class ExtensionRegistryStore {
     this.root = join(userData, "agent-extensions");
     this.dataRoot = join(this.root, "data");
     this.filePath = join(this.root, "registry.json");
-    this.lifecycle = new RegistryLifecycleAuthority({
+    const host: RegistryTransactionHost = {
       state: () => this.state,
       mutate: (operation, options) => this.mutate(operation, options),
       exclusive: (operation) => this.exclusive(operation),
       scopeRevision: (scope) => this.scopeRevision(scope),
-    });
-    this.installs = new RegistryInstallAuthority({
-      state: () => this.state,
-      mutate: (operation, options) => this.mutate(operation, options),
-      scopeRevision: (scope) => this.scopeRevision(scope),
-    });
+    };
+    this.lifecycle = new RegistryLifecycleAuthority(host);
+    this.installs = new RegistryInstallAuthority(host);
   }
 
   async initialize() {
@@ -151,15 +91,13 @@ export class ExtensionRegistryStore {
         this.authorityStatus = "ready";
         return;
       }
-      try {
-        const current = extensionRegistryStoreSchema.safeParse(raw);
-        this.state = current.success
-          ? current.data
-          : migrateEmptyExtensionRegistry(raw);
-        if (!current.success) await this.persist();
-      } catch (cause) {
-        throw new Error("Agent Extension Registry 无效，已 fail closed", { cause });
+      const current = extensionRegistryStoreSchema.safeParse(raw);
+      if (!current.success) {
+        throw new Error("Agent Extension Registry 无效，已 fail closed", {
+          cause: current.error,
+        });
       }
+      this.state = current.data;
       this.authorityStatus = "ready";
     } catch (cause) {
       this.authorityStatus = "poisoned";
@@ -248,7 +186,7 @@ export class ExtensionRegistryStore {
       admission: item.admission,
       administrativeState: item.administrativeState,
       globalCatalogEnabled: item.enabledComponentInstanceIdentities.length > 0,
-      enabled: item.enabled,
+      enabled: packageEnableState(item),
       enabledComponentInstanceIdentities: [
         ...item.enabledComponentInstanceIdentities,
       ],
@@ -272,46 +210,6 @@ export class ExtensionRegistryStore {
     this.inventoryListeners.add(listener);
     return () => this.inventoryListeners.delete(listener);
   }
-
-
-  sealGeneration(input: SealExtensionGenerationInput) { return this.installs.sealGeneration(input); }
-  activateGeneration(...args: Parameters<RegistryInstallAuthority["activateGeneration"]>) { return this.installs.activateGeneration(...args); }
-  reserveInstall(input: ReserveExtensionInstallInput) { return this.installs.reserveInstall(input); }
-  releaseInstallReservation(...args: Parameters<RegistryInstallAuthority["releaseInstallReservation"]>) { return this.installs.releaseInstallReservation(...args); }
-  installReservation(...args: Parameters<RegistryInstallAuthority["installReservation"]>) { return this.installs.installReservation(...args); }
-  generationSource(...args: Parameters<RegistryInstallAuthority["generationSource"]>) { return this.installs.generationSource(...args); }
-  generationProjection(...args: Parameters<RegistryInstallAuthority["generationProjection"]>): ExtensionGenerationProjection | null { return this.installs.generationProjection(...args); }
-
-  enableComponent(...args: Parameters<RegistryLifecycleAuthority["enableComponent"]>) { return this.lifecycle.enableComponent(...args); }
-  disableComponent(...args: Parameters<RegistryLifecycleAuthority["disableComponent"]>) { return this.lifecycle.disableComponent(...args); }
-  assertInstallCas(...args: Parameters<RegistryLifecycleAuthority["assertInstallCas"]>) { return this.lifecycle.assertInstallCas(...args); }
-  assertScopeMutation(...args: Parameters<RegistryLifecycleAuthority["assertScopeMutation"]>) { return this.lifecycle.assertScopeMutation(...args); }
-  runScopeMutation<T>(input: ExtensionScopeMutation, operation: () => Promise<T>) { return this.lifecycle.runScopeMutation(input, operation); }
-  runScopeRevisionMutation<T>(scope: ProductResourceScope, revision: number, operation: () => Promise<T>) { return this.lifecycle.runScopeRevisionMutation(scope, revision, operation); }
-  packageOwners(...args: Parameters<RegistryLifecycleAuthority["packageOwners"]>) { return this.lifecycle.packageOwners(...args); }
-  packageInventory(...args: Parameters<RegistryLifecycleAuthority["packageInventory"]>) { return this.lifecycle.packageInventory(...args); }
-  generationRecordById(...args: Parameters<RegistryLifecycleAuthority["generationRecordById"]>) { return this.lifecycle.generationRecordById(...args); }
-  contentDigestReferenced(...args: Parameters<RegistryLifecycleAuthority["contentDigestReferenced"]>) { return this.lifecycle.contentDigestReferenced(...args); }
-  referencedContentDigests() { return this.lifecycle.referencedContentDigests(); }
-  removeScopeTombstone(...args: Parameters<RegistryLifecycleAuthority["removeScopeTombstone"]>) { return this.lifecycle.removeScopeTombstone(...args); }
-  beginDisable(...args: Parameters<RegistryLifecycleAuthority["beginDisable"]>) { return this.lifecycle.beginDisable(...args); }
-  resumeBeginDisable(...args: Parameters<RegistryLifecycleAuthority["resumeBeginDisable"]>) { return this.lifecycle.resumeBeginDisable(...args); }
-  completeDisable(...args: Parameters<RegistryLifecycleAuthority["completeDisable"]>) { return this.lifecycle.completeDisable(...args); }
-  acquireGenerationRef(...args: Parameters<RegistryLifecycleAuthority["acquireGenerationRef"]>) { return this.lifecycle.acquireGenerationRef(...args); }
-  acquireGenerationRefs(...args: Parameters<RegistryLifecycleAuthority["acquireGenerationRefs"]>) { return this.lifecycle.acquireGenerationRefs(...args); }
-  releaseGenerationRef(...args: Parameters<RegistryLifecycleAuthority["releaseGenerationRef"]>) { return this.lifecycle.releaseGenerationRef(...args); }
-  releaseGenerationRefs(...args: Parameters<RegistryLifecycleAuthority["releaseGenerationRefs"]>) { return this.lifecycle.releaseGenerationRefs(...args); }
-  blockers(...args: Parameters<RegistryLifecycleAuthority["blockers"]>) { return this.lifecycle.blockers(...args); }
-  generationRefsHeldByOwnerPrefix(...args: Parameters<RegistryLifecycleAuthority["generationRefsHeldByOwnerPrefix"]>) { return this.lifecycle.generationRefsHeldByOwnerPrefix(...args); }
-  beginGenerationRemoval(...args: Parameters<RegistryLifecycleAuthority["beginGenerationRemoval"]>) { return this.lifecycle.beginGenerationRemoval(...args); }
-  beginPackageRemoval(...args: Parameters<RegistryLifecycleAuthority["beginPackageRemoval"]>) { return this.lifecycle.beginPackageRemoval(...args); }
-  resumePackageRemoval(...args: Parameters<RegistryLifecycleAuthority["resumePackageRemoval"]>) { return this.lifecycle.resumePackageRemoval(...args); }
-  cancelPackageRemoval(...args: Parameters<RegistryLifecycleAuthority["cancelPackageRemoval"]>) { return this.lifecycle.cancelPackageRemoval(...args); }
-  resumeCancelPackageRemoval(...args: Parameters<RegistryLifecycleAuthority["resumeCancelPackageRemoval"]>) { return this.lifecycle.resumeCancelPackageRemoval(...args); }
-  packageGenerationRefs(...args: Parameters<RegistryLifecycleAuthority["packageGenerationRefs"]>) { return this.lifecycle.packageGenerationRefs(...args); }
-  removePackage(...args: Parameters<RegistryLifecycleAuthority["removePackage"]>) { return this.lifecycle.removePackage(...args); }
-  removeGeneration(...args: Parameters<RegistryLifecycleAuthority["removeGeneration"]>) { return this.lifecycle.removeGeneration(...args); }
-  isComponentEnabled(...args: Parameters<RegistryLifecycleAuthority["isComponentEnabled"]>) { return this.lifecycle.isComponentEnabled(...args); }
 
   /* 包级 source 是派生视图：以 active 代为准，尚未 activate 时取最后一代。 */
   private activeSource(item: StoredPackage) {
@@ -420,7 +318,7 @@ export class ExtensionRegistryStore {
             try {
               await listener(event);
             } catch (cause) {
-              console.debug("[extensions] inventory listener failed", cause);
+              console.warn("[extensions] inventory listener failed", cause);
             }
           }
         }
@@ -545,7 +443,6 @@ export class ExtensionRegistryStore {
         generations: item.generations,
         components: item.components,
         administrativeState: item.administrativeState,
-        enabled: item.enabled,
         enabledComponentInstanceIdentities:
           item.enabledComponentInstanceIdentities,
         removalPendingGenerationIds: item.removalPendingGenerationIds,

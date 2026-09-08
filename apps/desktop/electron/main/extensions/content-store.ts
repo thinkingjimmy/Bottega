@@ -5,7 +5,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { open, opendir, readFile, rename, rm } from "node:fs/promises";
+import { opendir, readFile, rename, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { z } from "zod";
 import type { Sha256Digest } from "../../../shared/extensions-ipc";
@@ -14,7 +14,8 @@ import {
   ensureDurableDirectory,
 } from "../persistence/durable-json";
 import { SerialQueue } from "../persistence/serial-queue";
-import { digestCanonical } from "./registry-store";
+import { digestCanonical } from "./registry-canonical";
+import { isErrnoCode, syncDirectory } from "../persistence/durable-json";
 
 const digestSchema = z
   .string()
@@ -173,7 +174,7 @@ export class ExtensionContentStore {
       removed = true;
       await afterRemove?.(root);
     }
-    if (removed) await syncDirectory(this.packagesRoot, true);
+    if (removed) await syncDirectory(this.packagesRoot).catch((cause) => { if (!isErrnoCode(cause, "ENOENT")) throw cause; });
   }
 }
 
@@ -245,17 +246,3 @@ async function directoryExists(path: string) {
   }
 }
 
-async function syncDirectory(path: string, allowMissing = false) {
-  let directory;
-  try {
-    directory = await open(path, "r");
-  } catch (cause) {
-    if (allowMissing && (cause as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw cause;
-  }
-  try {
-    await directory.sync();
-  } finally {
-    await directory.close();
-  }
-}

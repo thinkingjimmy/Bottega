@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on ACP SDK transport/config options, framing/startup settlement, prompt handoff, frozen product/MCP inputs and runtime-bound server-fact oracle
  * [OUTPUT]: Provides AcpTurn/acpMcpServers, end-to-end session/prompt lifecycle with typed ProductFailure terminals/notices, pre-prompt complete and continuously frozen model/mode facts, health observation, steering, approval, cancellation and resume
- * [POS]: The agreement on ACP transport has been achieved; The acceptance/name denial of the session is evidence of MCP health, not spam; Process evidence with terminal ownership declining startup, failure first raw classification, post-defective release
+ * [POS]: ACP transport composition root, owning the end-to-end session/prompt lifecycle; session accept/reject doubles as MCP-health evidence, and startup process evidence plus terminal ownership are resolved here before failure classification and release
  */
 
 import {
@@ -23,11 +23,12 @@ import { describeAcpExit } from "./startup/exit";
 import { AcpProcessEvidence } from "./startup/evidence";
 import { AcpTurnSettlement } from "./startup/settlement";
 import {
-  createAcpEventState, finalizeAcpPlan, finalizeAcpPlans, flushAcpSegments,
+  createAcpEventState, flushAcpSegments,
   mapAcpSubagentMeta, mapAcpUpdate, mapPermissionRequest, mapQuestionRequest,
   mapStopReason, permissionOutcome, questionOutcome,
   type AcpPermissionMapping, type AcpQuestionMapping,
 } from "./map-events";
+import { finalizeNativePlan, finalizeNativePlans } from "./plan-events";
 import { requestAcpSteering, SteeringOperationGate } from "./turn/acp-steering";
 import { AcpTraceTee } from "./trace";
 import { AcpOutboundSink, PromptHandoffTracker } from "./turn/prompt-handoff";
@@ -631,7 +632,7 @@ export class AcpTurn implements AgentTurn {
     if (mapping.planReview) {
       this.flushTerminalSegments("completed");
       const planId = mapping.planItemId ?? `plan-review-${approvalId}`;
-      const event = finalizeAcpPlan(this.state, planId, mapping.plan);
+      const event = finalizeNativePlan(this.state, planId, mapping.plan);
       if (event) this.emitMapped(event);
     }
     const mode = this.options.payload.turnOptions.permissionMode;
@@ -688,7 +689,7 @@ export class AcpTurn implements AgentTurn {
     if (!this.settlement.requestTerminal()) return;
     await this.steeringGate.wait();
     if (!this.settlement.claimTerminal()) return;
-    for (const plan of finalizeAcpPlans(this.state)) this.emitMapped(plan);
+    for (const plan of finalizeNativePlans(this.state)) this.emitMapped(plan);
     this.flushTerminalSegments(
       event.type === "done" ? "completed" : "failed"
     );
@@ -757,7 +758,7 @@ export class AcpTurn implements AgentTurn {
        里抢在 close 事件之前。让位给进程自己的死因，证据才不会丢。 */
     const cause = await this.evidence.preferExit(rawCause);
     if (!this.settlement.claimTerminal()) return;
-    for (const plan of finalizeAcpPlans(this.state)) this.emitMapped(plan);
+    for (const plan of finalizeNativePlans(this.state)) this.emitMapped(plan);
     this.flushTerminalSegments("failed");
     const classified = this.config.classifyFailure?.(cause, {
       rateLimit: this.state.rateLimit,

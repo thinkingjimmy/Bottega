@@ -1,15 +1,11 @@
 /**
  * [INPUT]: Depends on node: AsyncLocalStorage for async_hooks, intent-store for carriers such as hooks, intent-types for claims/hashes
- * [OUTPUT]: Provides AdmissionGate ((admitAndRun Single-Flight Input + runRecovery Restore Input + runExclusiveAll Combination Lock) ✓ SagaResult terminal protocol with AdmissionBusyError
- * [POS]: The only top-level entry to the lifecycle saga is the overlapping conflict of the different requestId constant 409 ((the arbitrator is settled, and the callback reads in the lock to the final mode); the handler concludes the differential result, and the Gate atom settle the settlement pact v3 + R8 revisions
+ * [OUTPUT]: Provides AdmissionGate: admitAndRun (single-flight admission), runRecovery (recovery replay), and runExclusiveAll (combined-key lock), all resolving through the SagaResult terminal protocol, plus AdmissionBusyError
+ * [POS]: The lifecycle domain's sole top-level saga entry point; a concurrent claim on a busy resource fails fast with a constant 409 (AdmissionBusyError), the handler runs inside the claim lock and returns a discriminated SagaResult, and the Gate atomically settles it per the v3+R8 contract
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import {
-  IntentConflictError,
-  LifecycleIntentStore,
-  type IntentLookup,
-} from "./intent-store";
+import { IntentConflictError, LifecycleIntentStore } from "./intent-store";
 import {
   INTENT_PHASES,
   PROPOSED_PHASE,
@@ -274,5 +270,3 @@ export class AdmissionGate {
     if (blocked) throw blocked;
   }
 }
-
-export { IntentConflictError, type IntentLookup };

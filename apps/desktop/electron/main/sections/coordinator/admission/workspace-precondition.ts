@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared WorkspacePrecondition/ManualTurnSubmission, canonical ChatStore and Project binding/revision snapshot
- * [OUTPUT]: Provides manual/Steer current Workspace owner Projects, lifecycle Project affiliates, strict CAS and root/chat-home also accessed universal lifecycle gate helper
- * [POS]: The coordinator/admission of the Workspace identity authority; The renderer is only frozen by the owner, the main is only canonically determined by the facts
+ * [OUTPUT]: Provides manual/conversation workspace-precondition assertions that resolve the current project/app/chat-home owner and CAS-compare it against the submitted precondition, plus withConversationWorkspacePrecondition to run a task under the workspace lifecycle queue
+ * [POS]: Workspace-identity authority for coordinator/admission; the renderer only sees the owner it froze at submission time, while main always re-derives ownership from current facts
  */
 
 import type { ChatRecord } from "../../../../../shared/chats-ipc";

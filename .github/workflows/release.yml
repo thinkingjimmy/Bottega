@@ -117,21 +117,27 @@ jobs:
         id: notes
         run: |
           set -euo pipefail
-          node - "$TAG" <<'NODE' > notes.md || true
+          node - "$TAG" <<'NODE' > notes.md
           const { readFileSync } = require("node:fs");
+          const { posix } = require("node:path");
           const tag = process.argv[2];
-          const lines = readFileSync("docs/changelog/README.md", "utf8").split("\n");
-          const start = lines.findIndex((line) => line.startsWith("## ") && line.includes(tag));
-          if (start < 0) process.exit(1);
-          const rest = lines.slice(start + 1);
-          const end = rest.findIndex((line) => line.startsWith("## "));
-          process.stdout.write(rest.slice(0, end < 0 ? rest.length : end).join("\n").trim() + "\n");
+          if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw new Error("Expected a stable version tag");
+          const languages = [["English", "README.md"], ["简体中文", "README.zh-CN.md"]];
+          const sections = languages.map(([language, filename]) => {
+            const lines = readFileSync(`docs/changelog/${filename}`, "utf8").split("\n");
+            const start = lines.findIndex((line) => line.startsWith("## ") && line.endsWith(` — ${tag}`));
+            if (start < 0) throw new Error(`Missing ${language} changelog for ${tag}`);
+            const rest = lines.slice(start + 1);
+            const end = rest.findIndex((line) => line.startsWith("## "));
+            const body = rest.slice(0, end < 0 ? rest.length : end).join("\n").trim();
+            if (!body) throw new Error(`Empty ${language} changelog for ${tag}`);
+            const linked = body.replace(/\]\((\.\.?\/[^)]+)\)/g, (_, target) =>
+              `](https://github.com/${process.env.GITHUB_REPOSITORY}/blob/${tag}/${posix.normalize(posix.join("docs/changelog", target))})`);
+            return `## ${language}\n\n${linked}\n`;
+          });
+          process.stdout.write(sections.join("\n"));
           NODE
-          if [ -s notes.md ]; then
-            echo "flags=--notes-file notes.md" >> "$GITHUB_OUTPUT"
-          else
-            echo "flags=--generate-notes" >> "$GITHUB_OUTPUT"
-          fi
+          echo "flags=--notes-file notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Publish
         env:

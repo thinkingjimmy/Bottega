@@ -73,7 +73,7 @@ export function registerProjectTools(
     return snapshot(input.projectId);
   };
 
-  rendererIpc(window, rendererUrl, "拒绝非主窗口的 Project Tools 请求")
+  rendererIpc(rendererUrl, "拒绝非主窗口的 Project Tools 请求")
     .roles("main")
     .handle(PROJECT_TOOLS_CHANNEL.get, (raw) => {
       const input = raw as { projectId: string };

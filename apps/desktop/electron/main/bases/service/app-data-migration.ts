@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared App data migration Contracts, Base model/cell test and column budget
+ * [INPUT]: Depends on shared App data migration Contracts, Base model/cell test and column budget, and statusError from main/errors
  * [OUTPUT]: Provides apply AppBase DataMigration for pure conversion; Added missing columns and synchronized explicitly visible columns, merged select missing items, added empty values, only alias live and run zero changes twice
  * [POS]: The App live-data migration kernel of bases/service; not knowing the presetId, not executing IO, not covering user values
  */
@@ -14,6 +14,7 @@ import {
   type BaseColumn,
   type BaseSnapshot,
 } from "../../../../shared/bases-ipc";
+import { statusError } from "../../errors";
 import {
   validateBaseCell,
   validateBaseModel,
@@ -137,5 +138,5 @@ function throwColumnConflict(existing: BaseColumn, declared: BaseColumn): never 
 }
 
 function migrationError(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }

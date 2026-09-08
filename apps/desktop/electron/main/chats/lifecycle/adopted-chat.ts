@@ -133,6 +133,7 @@ async function completeSqliteContinuation(
       incarnationId: home.incarnationId,
       homeDir: home.homeDir,
       session: value.session,
+      options: value.options,
       firstMessage,
       adoptionSnapshotId: value.importOrigin.adoptionSnapshotId!,
       snapshotDigest: value.snapshotDigest,

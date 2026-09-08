@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared AgentBackendId and the shape of the probe/policy of the capability-snapshot
  * [OUTPUT]: Provides EXTENSION_PRODUCT_POLICY and backendExtensionProbe; manual Skill snapshots are enabled for all four backends while unverified server/projection channels remain closed
- * [POS]: The product policy of extensions is constantly being scaled up; P2/P3 gate unlocked before it was delivered as a hard-top for eligibility
+ * [POS]: Extensions' product policy rolls out incrementally; the P2 (remote) and P3 (stdio) gates stay closed until explicitly unlocked, acting as a hard ceiling on eligibility until then
  */
 
 import type { AgentBackendId } from "../../../shared/agent-ipc";

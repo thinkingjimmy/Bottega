@@ -1,7 +1,7 @@
 /**
- * [INPUT]: The unreliable pure rule module
+ * [INPUT]: No external dependencies; a self-contained pure rule module
  * [OUTPUT]: Provides PlanDecision type and implement/revise/skip follow-up turn alignment rules
- * [POS]: The renderer Plan is a decision-making framework that is purely rules-based; The authority of the message classification of the Plan is determined when the message is in the shared/chat-plan-kind (main) cache, and the renderer is no longer recalculated
+ * [POS]: Renderer's purely rule-based Plan decision layer; a Plan message's authority classification is decided once (cached by shared/chat-plan-kind, computed in main) and never recomputed by the renderer
  */
 
 export type PlanDecision =

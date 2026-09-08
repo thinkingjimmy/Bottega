@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/path/http and Agent Plugins 1.0.0 Fixed schema id
  * [OUTPUT]: Provides Agent Plugins admission, strict Skill Detection and standardization component diagnosis
- * [POS]: The specification of extensions is the priority admission adapter; Parser only finds that the validator decides the facts of the library
+ * [POS]: Extensions' primary admission adapter for the Agent Plugins spec; parsing only detects shape, the validator alone decides admitted facts
  */
 
 import { validateHeaderName, validateHeaderValue } from "node:http";

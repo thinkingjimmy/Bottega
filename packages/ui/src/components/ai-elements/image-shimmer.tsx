@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: Depends on React CSSProperties, cn class name merged with subject --muted / --muted-foreground
- * [OUTPUT]: Provides ImageShimmer (picture waiting for position: bottom color + drift point array + floating high light)
- * [POS]: The image form of ai-elements is loaded in native language, parallel to the text form Shimmer; Live charts and shortened charts by chat transcript are waiting for state consumption
+ * [OUTPUT]: Provides ImageShimmer, an image-placeholder animation of a dim drifting dot field with a brighter wandering highlight cluster
+ * [POS]: ai-elements' image-loading placeholder, the visual counterpart to a text Shimmer; consumed by chat transcript and canvas surfaces while an image is generating
  */
 
 import type { CSSProperties } from "react";

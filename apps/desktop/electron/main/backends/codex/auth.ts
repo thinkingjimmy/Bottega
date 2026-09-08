@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on the Unified CLI Certification Core and Codex Minimum Non-Documented Environment
- * [OUTPUT]: Provides checkCodexAuth and classifyCodexAuthFailure; Just be precise `Not logged in` The evidence is mapped as unregistered
- * [POS]: The following are the official documents of the European Union and the European Union: Just repeat what the CLI says, and the login instructions go to the renderer directory
+ * [INPUT]: Depends on the shared CLI auth-check core and codexEnvironment's minimal non-credential environment
+ * [OUTPUT]: Provides checkCodexAuth and classifyCodexAuthFailure; only the exact `Not logged in` CLI message is mapped to the unauthenticated state
+ * [POS]: backends/codex's auth check only repeats what the CLI reports; login instructions are owned by the renderer, not produced here
  */
 
-import { codexEnvironment } from "../../codex-runtime";
+import { codexEnvironment } from "./environment";
 import { acpDiagnosticRedactionOptions } from "../acp/trace";
 import { createCliAuthCheck } from "../cli-auth";
 

@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React Context, the locale catalog, setup-client, the Settings store, the narrow backend projection, onboarding-gate judgments, and shared SetupStatus
- * [OUTPUT]: Provides full SetupProvider with structured Agent failures and non-error notices, residence-scoped AppRuntimeSetupProvider, and useSetup for Chat/Settings/onboarding consumers
+ * [OUTPUT]: Maintains revision-ordered backend facts, Chat-local evidence and one shared expiry clock; preserves workbench residence and exposes restricted App recheck/management actions.
  * [POS]: Renderer Agent-environment context; the main window owns setup lifecycle while App windows consume only backend runtime projections for their resident chat
  */
 
@@ -15,7 +15,10 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { AgentBackendId } from "../../../shared/agent-ipc";
+import { useEvidenceClock } from "./availability/use-evidence-clock";
+import { availabilityDeadlines, mergeBackendSnapshots } from "../../../shared/agent-availability/snapshots";
+import type { TurnAvailabilityEvidence } from "../../../shared/agent-availability/types";
+import { AGENT_BACKEND_ORDER, type AgentBackendId } from "../../../shared/agent-ipc";
 import type {
   SetupStatus,
   SetupTerminalAction,
@@ -24,6 +27,7 @@ import {
   checkSetup,
   openBackendTerminalAction,
   onSetupEvent,
+  openAgentSettings,
   recheckBackend,
   refreshBackendLatest,
 } from "@/lib/setup-client";
@@ -59,6 +63,9 @@ const isReady = (status: SetupStatus | null) =>
 
 type SetupContextValue = {
   status: SetupStatus | null;
+  now: number;
+  recentTurns?: ReadonlyMap<string, TurnAvailabilityEvidence>;
+  openAgentSettings: () => Promise<void>;
   checking: boolean;
   busy: Partial<Record<AgentBackendId, SetupTerminalAction | "recheck">>;
   latestChecking: Partial<Record<AgentBackendId, boolean>>;
@@ -86,17 +93,19 @@ const APP_RUNTIME_ONBOARDING: OnboardingVerdict = {
   settled: true,
 };
 
-/** App windows never acquire setup/settings authority; they only refresh backend facts. */
+/** App windows receive backend facts and residence-scoped rechecks, plus fixed management navigation. */
 export function AppRuntimeSetupProvider({ children }: { children: React.ReactNode }) {
   const { t } = useAppTranslation();
   const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [recentTurns, setRecentTurns] = useState<ReadonlyMap<string, TurnAvailabilityEvidence>>(new Map());
+  const now = useEvidenceClock(availabilityDeadlines(status?.backends ?? [], [...recentTurns.values()]));
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<AgentSurfaceFailure | null>(null);
   const [notice, setNotice] = useState("");
   const recheck = useCallback(async () => {
-    setChecking(true);
     try {
-      setStatus({ backends: await listBackends() });
+      const backends = await listBackends();
+      setStatus((current) => ({ backends: mergeBackendSnapshots(current?.backends ?? [], backends) }));
       setError(null);
       setNotice("");
     } catch (cause) {
@@ -106,14 +115,19 @@ export function AppRuntimeSetupProvider({ children }: { children: React.ReactNod
     }
   }, []);
   useEffect(() => {
+    const release = onSetupEvent((event) => {
+      if (event.type === "status") setStatus((current) => ({ backends: mergeBackendSnapshots(current?.backends ?? [], [event.status]) }));
+      if (event.type === "turn-evidence") setRecentTurns((current) =>
+        (current.get(event.evidence.conversationId)?.revision ?? -1) >= event.evidence.revision ? current : new Map(current).set(event.evidence.conversationId, event.evidence));
+    });
     const timer = window.setTimeout(() => void recheck(), 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); release(); };
   }, [recheck]);
   const unavailable = useCallback(async () => {
     throw new Error(t("setup.provider.mainWindowOnly"));
   }, [t]);
   const value = useMemo<SetupContextValue>(() => ({
-    status,
+    status, now, recentTurns, openAgentSettings,
     checking,
     busy: {},
     latestChecking: {},
@@ -124,16 +138,18 @@ export function AppRuntimeSetupProvider({ children }: { children: React.ReactNod
     openOnboarding: () => undefined,
     leaveOnboarding: () => undefined,
     terminalAction: unavailable,
-    recheckBackend: async () => recheck(),
+    recheckBackend: async (backend) => { await recheckBackend(backend); await recheck(); },
     refreshLatest: unavailable,
-    recheck,
-  }), [checking, error, notice, recheck, status, unavailable]);
+    recheck: async () => { await Promise.all(AGENT_BACKEND_ORDER.map(recheckBackend)); await recheck(); },
+  }), [checking, error, notice, recheck, status, unavailable, now, recentTurns]);
   return <SetupContext.Provider value={value}>{children}</SetupContext.Provider>;
 }
 
 export function SetupProvider({ children }: { children: React.ReactNode }) {
   const { t } = useAppTranslation();
   const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [recentTurns, setRecentTurns] = useState<ReadonlyMap<string, TurnAvailabilityEvidence>>(new Map());
+  const now = useEvidenceClock(availabilityDeadlines(status?.backends ?? [], [...recentTurns.values()]));
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] =
     useState<SetupContextValue["busy"]>({});
@@ -158,7 +174,8 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setNotice("");
     try {
-      setStatus(await checkSetup());
+      const next = await checkSetup();
+      setStatus((current) => ({ backends: mergeBackendSnapshots(current?.backends ?? [], next.backends) }));
     } catch (cause) {
       setError(rendererAgentSurfaceFailure("runtime-unavailable", "Agent", cause));
     } finally {
@@ -169,14 +186,14 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = onSetupEvent((event) => {
       if (event.type === "status") {
-        setStatus((current) => ({
-          backends: current
-            ? current.backends.map((backend) =>
-                backend.id === event.backend ? event.status : backend
-              )
-            : [event.status],
-        }));
+        setStatus((current) => ({ backends: mergeBackendSnapshots(current?.backends ?? [], [event.status]) }));
       }
+      if (event.type === "turn-evidence") setRecentTurns((current) => {
+        const next = new Map(current);
+        const prior = next.get(event.evidence.conversationId);
+        if (!prior || prior.revision < event.evidence.revision) next.set(event.evidence.conversationId, event.evidence);
+        return next;
+      });
       if (event.type === "latest-version") {
         setLatestChecking((current) => ({
           ...current,
@@ -259,7 +276,8 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setNotice("");
     try {
-      setStatus(await recheckBackend(backend));
+      const next = await recheckBackend(backend);
+      setStatus((current) => ({ backends: mergeBackendSnapshots(current?.backends ?? [], next.backends) }));
     } catch (cause) {
       setError(
         rendererAgentSurfaceFailure(
@@ -280,7 +298,7 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<SetupContextValue>(
     () => ({
-      status,
+      status, now, recentTurns, openAgentSettings,
       checking,
       busy,
       latestChecking,
@@ -293,10 +311,10 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
       terminalAction: runTerminal,
       recheckBackend: recheckOne,
       refreshLatest: refreshBackendLatest,
-      recheck,
+      recheck: async () => { await Promise.all(AGENT_BACKEND_ORDER.map(recheckOne)); },
     }),
     [
-      status,
+      status, now, recentTurns,
       checking,
       busy,
       latestChecking,
@@ -306,7 +324,6 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
       leaveOnboarding,
       runTerminal,
       recheckOne,
-      recheck,
     ]
   );
 

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Policy v4/Delivery, runtime-owned instance, platform capabilities, paged native-history Consent/rebuild controllers, service/support, and build/authorise/observe/run coordination
  * [OUTPUT]: Provides a platform-gated admission/recall/capture façade with native-segment history, independent Provider/statistical alerts, O(1) metadata, preview/Consent, pause/resume, delete, and rebuild recovery
- * [POS]: The main/memory/service chat combination root; Four Owners each keep the truth, Provider recall/capture Failed to get into canceled police, start recovery and attention
+ * [POS]: The main/memory/service chat façade and composition root; policy/delivery/recall-stats stores and the orchestration controllers each own their own truth, provider recall/capture failures surface here as an attention warning that triggers recovery and republish
  */
 
 import { randomUUID } from "node:crypto";
@@ -541,26 +541,6 @@ export class MemoryService {
     this.publish();
   }
 
-  snapshotProjectRebind(projectId: string) {
-    return this.destructive.snapshotProjectRebind(projectId);
-  }
-
-  /** Project 改绑显式 retain/new；Policy receipt 必须先于 Project source CAS。 */
-  async prepareProjectRebind(
-    projectId: string,
-    operationId: string,
-    expectation: {
-      expectedOldMemorySpaceId: string | null;
-      expectedSpaceGenerationRevision: number | null;
-      mode: "retain" | "new";
-    }
-  ) {
-    return this.destructive.prepareProjectRebind(
-      projectId,
-      operationId,
-      expectation
-    );
-  }
   async reconcile() {
     if (!this.platformAvailable()) return;
     if (this.memory?.enabled) await this.initializeOwners();

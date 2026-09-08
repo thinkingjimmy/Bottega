@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared ACP readiness kernel, opencode AcpLauncher and its exclusive failure classification
- * [OUTPUT]: Provides opencodeReadinessSpec ((launch half-side) with createOpencodeAuthCheck
- * [POS]: The following are the results of the evaluation of the results of the evaluation: Shaking hands is just proof of the process's health, and the log-in is honest
+ * [OUTPUT]: Provides opencodeReadinessSpec (the launch half) and createOpencodeAuthCheck
+ * [POS]: Declares only what a successful handshake proves for OpenCode: process/protocol health, not login state — auth status stays honestly unknown otherwise
  */
 
 import {

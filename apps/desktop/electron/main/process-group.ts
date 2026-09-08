@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the process group signal capacity of Node process.kill and asError of main/errors
  * [OUTPUT]: Provides groupExists, wait, stopProcessGroup, cleanProcessGroup and CleanupResult
- * [POS]: The only source of the POSIX processor lifecycle of Electron main, the pure function is modular-free, and is consumed by agent-bridge/apps/repair as a whole
+ * [POS]: Electron main's sole POSIX process-group lifecycle helper; dependency-free pure functions consumed by agent-bridge and other process owners
  */
 
 import { asError } from "./errors";

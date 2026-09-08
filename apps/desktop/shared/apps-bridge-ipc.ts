@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on type-only Apps lifecycle, grant, package, surface, and Design command DTOs
- * [OUTPUT]: Provides APPS_CHANNEL, the AppRecordProjection/AppsProjectionSnapshot read models, and the complete renderer AppsBridgeApi contract, including fenced contextual grant candidates, structured add outcomes, symmetric Studio authorize/decline/revoke, and main-only durable App Pin mutation
+ * [OUTPUT]: Defines App lifecycle/package bridges, typed compatibility return/resume/apply channels and explicit tool inspection separate from passive capabilities.
  * [POS]: Shared Apps wire boundary; keeps channel routing and preload shape separate from durable domain records
  */
 
+import type { AppCompatibilityBlocked, AppCompatibilityFailure } from "./app-host/contract";
 import type {
   AddAppInput,
   AddAppResult,
@@ -112,6 +113,7 @@ export const APPS_CHANNEL = {
   revokeExtensionGrant: "apps:extension-grant:revoke",
   rebuildExtensionGeneration: "apps:extension-generation:rebuild",
   capabilities: "apps:capabilities",
+  checkAgentTools: "apps:check-agent-tools",
   guiInfo: "apps:gui-info",
   guiReady: "apps:gui-ready",
   releaseGuiSurface: "apps:gui-surface:release",
@@ -131,6 +133,11 @@ export const APPS_CHANNEL = {
   setDesignEnabled: "apps:design:enabled:set",
   readReadme: "apps:read-readme",
   probeRepo: "apps:probe-repo",
+  compatibilityRequests: "apps:compatibility-requests",
+  compatibilityChanged: "apps:compatibility-changed",
+  resumeCompatibility: "apps:resume-compatibility",
+  applyCompatibility: "apps:compatibility:apply",
+  forgetCompatibility: "apps:forget-compatibility",
   discardProbe: "apps:discard-probe",
   listPresets: "apps:list-presets",
   probePreset: "apps:probe-preset",
@@ -165,7 +172,7 @@ export type AppsProjectionSnapshot = Readonly<{
 }>;
 
 export type AppsBridgeApi = {
-  add: (input: AddAppInput) => Promise<AddAppResult>;
+  add: (input: AddAppInput) => Promise<AddAppResult | AppCompatibilityBlocked>;
   remove: (appId: string, mode?: RemoveAppMode, requestId?: string) => Promise<void>;
   list: () => Promise<AppsProjectionSnapshot>;
   open: (appId: string) => Promise<AppOpenResult>;
@@ -182,8 +189,8 @@ export type AppsBridgeApi = {
   reveal: (appId: string) => Promise<void>;
   cancelInstall: (appId: string) => Promise<void>;
   readLog: (appId: string) => Promise<string>;
-  retry: (appId: string) => Promise<void>;
-  repair: (appId: string) => Promise<void>;
+  retry: (appId: string) => Promise<void | AppCompatibilityBlocked>;
+  repair: (appId: string) => Promise<void | AppCompatibilityBlocked>;
   setAgent: (input: SetAppAgentInput) => Promise<AppRecord>;
   saveAsApp: (input: SaveAsAppInput) => Promise<SaveAsAppResult>;
   rename: (input: RenameAppInput) => Promise<AppRecord>;
@@ -195,12 +202,13 @@ export type AppsBridgeApi = {
   openEditorChat: (input: OpenAppEditorChatInput) => Promise<AppEditorDestination>;
   hideEditor: (appId: string) => Promise<AppRecord>;
   retrySkill: (appId: string) => Promise<AppRecord>;
-  authorizeStudioAccess: (appId: string) => Promise<AppRecord>;
+  authorizeStudioAccess: (appId: string) => Promise<AppRecord | AppCompatibilityBlocked>;
   declineStudioAccess: (appId: string) => Promise<AppRecord>;
   revokeStudioAccess: (appId: string) => Promise<AppRecord>;
   extensionStatus: (appId: string) => Promise<AppExtensionStatus>;
   revokeExtensionGrant: (appId: string) => Promise<AppExtensionStatus>;
-  rebuildExtensionGeneration: (appId: string) => Promise<AppRecord>;
+  rebuildExtensionGeneration: (appId: string) => Promise<AppRecord | AppCompatibilityBlocked>;
+  checkAgentTools: (appId: string) => Promise<void>;
   capabilities: (appId: string) => Promise<AppCapabilitiesSnapshot>;
   guiInfo: (input: AppGuiInfoInput) => Promise<AppGuiInfo>;
   guiReady: (input: AppGuiReadyInput) => Promise<AppGuiReadyResult>;
@@ -220,17 +228,22 @@ export type AppsBridgeApi = {
   deleteDesignData: (input: DeleteDesignDataInput) => Promise<boolean>;
   setDesignEnabled: (input: SetDesignEnabledInput) => Promise<AppRecord>;
   readReadme: (appId: string) => Promise<string | null>;
+  onCompatibilityChanged: (callback: () => void) => () => void;
+  compatibilityRequests: () => Promise<AppCompatibilityFailure[]>;
+  resumeCompatibility: (requestId: string) => Promise<AppRepoProbeResult | PresetProbeResult | { kind: "candidate-unavailable" } | { kind: "installed-update"; appId: string }>;
+  applyCompatibility: (requestId: string) => Promise<{ kind: "updated" | "candidate-unavailable" } | AppCompatibilityBlocked>;
+  forgetCompatibility: (requestId: string) => Promise<void>;
   probeRepo: (repoUrl: string) => Promise<AppRepoProbeResult>;
   discardProbe: (preflightId: string) => Promise<void>;
   listPresets: () => Promise<PresetAppSummary[]>;
   probePreset: (presetId: string) => Promise<PresetProbeResult>;
   discardPresetProbe: (preflightId: string) => Promise<void>;
-  installPreset: (input: InstallPresetInput) => Promise<AppRecord>;
+  installPreset: (input: InstallPresetInput) => Promise<AppRecord | AppCompatibilityBlocked>;
   ghStatus: () => Promise<GhStatus>;
   readConfig: (appId: string) => Promise<AppConfigValue>;
   writeConfig: (appId: string, config: AppConfigValue) => Promise<AppConfigValue>;
-  sharePreview: (input: SharePreviewInput) => Promise<SharePreview>;
-  sharePublish: (input: SharePublishInput) => Promise<AppRecord>;
+  sharePreview: (input: SharePreviewInput) => Promise<SharePreview | AppCompatibilityBlocked>;
+  sharePublish: (input: SharePublishInput) => Promise<AppRecord | AppCompatibilityBlocked>;
   shareDiscard: (previewId: string) => Promise<void>;
   onEvent: (callback: (event: AppInstallEvent) => void) => () => void;
 };

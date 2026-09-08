@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on turn persist/retry status with a forced persisting reset
- * [OUTPUT]: Provides ensure PersistedForDrain, eliminates the drain and verifies the drain termination
- * [POS]: The only thing that can be done is to remove the anti-aging material from the bodyShutdown, deletion and maintenance shared
+ * [OUTPUT]: Provides ensurePersistedForDrain, which cancels pending retry timers/in-flight retries and confirms the turn reached a drainable persist state
+ * [POS]: Shared drain precondition for shutdown, deletion, and maintenance flows; the only place that forces a turn's persistence to settle before teardown
  */
 
 import type { TurnEntry } from "../turn-registry";

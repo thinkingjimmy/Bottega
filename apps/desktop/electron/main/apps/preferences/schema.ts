@@ -4,7 +4,7 @@
  * [POS]: Shared main-side semantic authority for compiler validation and durable preference writes
  */
 
-import { canonicalJson } from "../gui-build/metadata";
+import { canonicalJson } from "../support";
 
 const ALLOWED_SCHEMA_KEYS = new Set([
   "type", "properties", "required", "additionalProperties", "enum", "default",

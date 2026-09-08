@@ -33,6 +33,7 @@ export type SurfaceRouteState = Readonly<{
 }>;
 
 export type SurfaceComposerCapsule = Readonly<{
+  revision?: number;
   chatId: string;
   incarnationId: string;
   /* 工作区身份必须随胶囊迁移：目标窗以空身份挂载会把迁来的 file 节点
@@ -87,6 +88,9 @@ export type SurfaceIntentResult = Readonly<{
 }>;
 
 export type SurfaceMigrationCommand =
+  | Readonly<{ type: "prepare-hydrate"; transactionId: string; capsule: SurfaceCapsuleV1 }>
+  | Readonly<{ type: "validate-export"; transactionId: string; capsule: SurfaceCapsuleV1 }>
+  | Readonly<{ type: "presence-destination"; destination: "activity" | "general" }>
   | Readonly<{
       type: "export";
       transactionId: string;
@@ -99,6 +103,8 @@ export type SurfaceMigrationCommand =
     }>
   | Readonly<{
       type: "hydrate";
+      expectedComposerRevision?: number;
+      mode?: "present" | "background";
       transactionId: string;
       capsule: SurfaceCapsuleV1;
     }>
@@ -120,7 +126,9 @@ export type SurfaceMigrationCommand =
 
 export type SurfaceMigrationReply = Readonly<{
   transactionId: string;
-  outcome: "exported" | "committed" | "hydrated" | "restored" | "failed";
+  mode?: "present" | "background";
+  composerRevision?: number;
+  outcome: "prepared" | "validated" | "exported" | "committed" | "hydrated" | "restored" | "failed";
   capsule?: SurfaceCapsuleV1;
   message?: string;
 }>;

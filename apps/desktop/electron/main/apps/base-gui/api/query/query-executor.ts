@@ -8,7 +8,7 @@ import {
   baseGuiQueryPageSchema,
   type BaseGuiQueryRequestV1,
 } from "../../../../../../shared/app-gui/query";
-import { canonicalJson } from "../../../gui-build/metadata";
+import { canonicalJson } from "../../../support";
 import { apiError } from "../errors";
 import { abortError, exactKeys, isRecord, QueryWorkerClient } from "./query-worker-client";
 import type { BaseGuiQuerySnapshotSource } from "../router";

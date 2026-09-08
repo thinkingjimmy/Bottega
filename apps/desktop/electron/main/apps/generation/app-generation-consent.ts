@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on App records, generation builder/ledger, Extension and Base GUI consent authorities, server cutover, and injected serialized commit ports
+ * [INPUT]: Depends on App records, sealed-candidate host admission, generation builder/ledger, Extension/Base GUI consent and serialized commit ports.
  * [OUTPUT]: Provides AppGenerationConsentController for pending consent, abort, and promotion transactions
  * [POS]: The AppStore generation-consent subdomain; AppStore remains the single writer while this controller owns the multi-authority state machine
  */
@@ -49,9 +49,11 @@ export class AppGenerationConsentController {
       const current = this.ports.get(appId);
       const pending = current?.generationBinding.pending;
       if (!current || !pending) throw new Error("App 没有待同意的 generation");
-      const resolution = current.generations.find(
+      const generation = current.generations.find(
         (item) => item.generationId === pending.generationId
-      )?.extensionRequirementResolution;
+      );
+      if (granted && generation) await this.ports.builder.validateCompatibility(current, generation);
+      const resolution = generation?.extensionRequirementResolution;
       const extension = this.ports.extension();
       if (resolution?.kind !== "frozen" || !extension) {
         throw new Error("pending generation 未冻结 extension resolution");
@@ -102,6 +104,7 @@ export class AppGenerationConsentController {
       if (!current || !pending || !pointer || !generation || !grants) {
         throw new Error("App 没有待处理的 Base GUI capability decision");
       }
+      await this.ports.builder.validateCompatibility(current, generation);
       const decision = await grants.decide({
         appId,
         generationId: generation.generationId,
@@ -212,6 +215,8 @@ export class AppGenerationConsentController {
     const generation = this.ports.get(appId)?.generations.find(
       (item) => item.generationId === pending?.generationId
     );
+    const record = this.ports.get(appId);
+    if (record && generation) await this.ports.builder.validateCompatibility(record, generation);
     const serverCutover = this.ports.serverCutover();
     const prepared =
       pending && generation?.manifest.kind === "server" && serverCutover
@@ -257,6 +262,7 @@ export class AppGenerationConsentController {
         (item) => item.generationId === pending.generationId
       );
       if (!generation) throw new Error("pending generation 不存在");
+      await this.ports.builder.validateCompatibility(current, generation);
       if (
         generation.extensionRequirementResolution.kind === "frozen" &&
         !this.ports.extension()?.promotable({

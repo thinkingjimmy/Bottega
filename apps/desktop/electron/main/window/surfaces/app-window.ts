@@ -10,7 +10,6 @@ import { app, BrowserWindow, nativeTheme } from "electron";
 import {
   INITIAL_DARK_ARGUMENT,
   INITIAL_LANGUAGE_ARGUMENT,
-  SETTINGS_CHANNEL,
 } from "../../../../shared/settings-ipc";
 import { resolveAppLocale } from "../../../../shared/i18n/locale";
 import {
@@ -21,7 +20,7 @@ import {
 import type { AppsService } from "../../apps/apps-service";
 import type { SettingsStore } from "../../settings-store";
 import { resolveAppIconPath } from "../app-icon";
-import { windowBackgroundColor } from "../native-theme";
+import { bindWindowTheme, windowBackgroundColor } from "../native-theme";
 import { bindRendererIdentity } from "../renderer-identity";
 import { lockNavigation } from "../security";
 import {
@@ -95,15 +94,7 @@ export async function createAppWindow({
     rendererUrl,
     window,
   });
-  const syncTheme = () => {
-    window.setBackgroundColor(windowBackgroundColor());
-    window.webContents.send(
-      SETTINGS_CHANNEL.themeResolved,
-      nativeTheme.shouldUseDarkColors
-    );
-  };
-  nativeTheme.on("updated", syncTheme);
-  window.once("closed", () => nativeTheme.off("updated", syncTheme));
+  bindWindowTheme(window);
   lockNavigation(window, rendererUrl, apps, locale);
 
   const loaded = new Promise<void>((resolve, reject) => {

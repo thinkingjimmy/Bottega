@@ -12,6 +12,7 @@ import { readRichEditor, readRichRange } from "@ai-chat/ui/lib/rich-input-dom";
 import { discardedRichNodes } from "@ai-chat/ui/lib/rich-input-history";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import {
+  newRichText,
   normalizeRichValue,
   normalizeSuggestionIndex,
   pointAtRichOffset,
@@ -41,7 +42,6 @@ import { useRichInputComposition } from "./rich-input-composition";
 import {
   cloneValue,
   isThenable,
-  newText,
   pasteRichPlainText,
   placeCaret,
   sameEditorValue,
@@ -57,7 +57,6 @@ import type {
   RichSuggestionCopy,
 } from "./rich-input-types";
 
-export { PathLabel } from "./rich-input-suggestions";
 export type {
   RichInputHandle,
   RichInputProps,
@@ -416,12 +415,12 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
           const replacement: RichValue = [
             ...(before ? [{ ...target, value: before }] : []),
             node,
-            ...(after ? [newText(after)] : [newText("")]),
+            newRichText(after),
           ];
           next.splice(point.index, 1, ...replacement);
           caretIndex = point.index + replacement.length - 1;
         } else {
-          next.splice(point.index, 0, node, newText(""));
+          next.splice(point.index, 0, node, newRichText(""));
           caretIndex = point.index + 1;
         }
         savedPoint.current = null;
@@ -509,7 +508,7 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
         const replacement: RichValue = [
           ...(before ? [{ ...target, value: before }] : []),
           ...(consumed ? [] : [token]),
-          newText(
+          newRichText(
             target.value.slice(activeQuery.start + triggerLength)
           ),
         ];
@@ -519,28 +518,11 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
         if (!consumed && (item.kind === "section" || item.kind === "history")) {
           const existingIndex = current.findIndex(sameAtom);
           if (existingIndex >= 0) {
+            const queryStart =
+              richValueLength(current.slice(0, index)) + activeQuery.start;
             const withoutQuery = replaceRichRange(
               current,
-              {
-                start:
-                  current
-                    .slice(0, index)
-                    .reduce(
-                      (total, node) =>
-                        total + (node.type === "text" ? node.value.length : 1),
-                      0
-                    ) + activeQuery.start,
-                end:
-                  current
-                    .slice(0, index)
-                    .reduce(
-                      (total, node) =>
-                        total + (node.type === "text" ? node.value.length : 1),
-                      0
-                    ) +
-                  activeQuery.start +
-                  triggerLength,
-              },
+              { start: queryStart, end: queryStart + triggerLength },
               ""
             );
             updateQuery(null);

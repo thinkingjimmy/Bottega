@@ -1,17 +1,19 @@
 /**
- * [INPUT]: Depends on one immutable source freeze receipt, one validated compiler runtime, canonical build receipt bytes, and a generation-owned final root
+ * [INPUT]: Depends on one immutable source freeze receipt, one validated compiler runtime, canonical build receipt bytes, the apps/support digest/directory primitives, and a generation-owned final root
  * [OUTPUT]: Provides atomic local compiled-v3 source/runtime/metadata sealing in one read per file and four-digest startup verification that hashes each subtree once
  * [POS]: apps/gui-build/pipeline content-layout-v3 custody boundary; Gateway receives only runtime/gui while source and receipt remain unreachable metadata
  */
 
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { chmod, mkdir, open, readFile, readdir, rename, rm, stat } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
 import type { AppGuiBuildReceipt, AppManifest } from "../../../../../shared/apps-ipc";
+import { APP_GUI_PRESET } from "../../../../../shared/app-gui/contracts";
 import type { Sha256Digest } from "../../../../../shared/extensions-ipc";
 import type { SourceFreezeReceipt } from "../contracts";
-import { canonicalDigest, canonicalJson, sha256 } from "../metadata";
+import { orderedByPath } from "../../share/package/package-digest";
+import { canonicalDigest, canonicalJson, isDirectory, sha256, syncDirectory } from "../../support";
 
 export type CompiledV3DigestSet = Readonly<{
   manifestDigest: Sha256Digest;
@@ -123,7 +125,7 @@ async function projectFrozenSource(receipt: SourceFreezeReceipt, temporaryRoot: 
   const runtimeRoot = join(temporaryRoot, "runtime");
   await mkdir(sourceRoot, { recursive: true, mode: 0o700 });
   await mkdir(runtimeRoot, { recursive: true, mode: 0o700 });
-  for (const file of ordered(receipt.files)) {
+  for (const file of orderedByPath(receipt.files)) {
     const bytes = await readFile(join(receipt.snapshotRoot, file.path));
     if (bytes.byteLength !== file.bytes || sha256(bytes) !== file.sha256) {
       throw invalid(`immutable source changed before seal: ${file.path}`);
@@ -184,7 +186,7 @@ async function readTree(root: string) {
 function sourceDigest(files: readonly { path: string; bytes: number; sha256: string }[]) {
   const hash = createHash("sha256");
   hash.update("bottega.app-source-freeze/v1\0");
-  for (const file of ordered(files)) {
+  for (const file of orderedByPath(files)) {
     hash.update(`${Buffer.byteLength(file.path)}:${file.path}:${file.bytes}:${file.sha256}\n`);
   }
   return `sha256:${hash.digest("hex")}` as const;
@@ -200,18 +202,14 @@ function contentDigest(
 }
 
 function treeDigest(domain: string, files: readonly { path: string; bytes: number; sha256: Sha256Digest }[]) {
-  return canonicalDigest({ domain, files: ordered(files) });
-}
-
-function ordered<T extends { path: string }>(files: readonly T[]) {
-  return [...files].sort((left, right) => Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)));
+  return canonicalDigest({ domain, files: orderedByPath(files) });
 }
 
 function parseReceipt(value: string): AppGuiBuildReceipt {
   const receipt = JSON.parse(value) as AppGuiBuildReceipt;
   if (
     !receipt ||
-    receipt.preset !== "bottega-react-v1" ||
+    receipt.preset !== APP_GUI_PRESET ||
     receipt.compatibility?.kind !== "compiled-v3" ||
     !Array.isArray(receipt.files)
   ) {
@@ -261,19 +259,6 @@ async function makeTreeWritable(root: string): Promise<void> {
   for (const entry of await readdir(root, { withFileTypes: true })) {
     if (entry.isDirectory()) await makeTreeWritable(join(root, entry.name));
   }
-}
-
-async function syncDirectory(path: string) {
-  const handle = await open(path, constants.O_RDONLY);
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
-
-async function isDirectory(path: string) {
-  return stat(path).then((value) => value.isDirectory(), () => false);
 }
 
 function invalid(message: string) {

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared/markdown-fences scanFences is compatible with ChatMessage for chats-ipc
  * [OUTPUT]: Provides CHAT_PREVIEW_LIMIT with previewOfMessages, refining a whole transcript into a second-line essay on the sidebar
- * [POS]: The only source of truth in the meaning of shared chat previews; The main is evaporated in metadataOf, and the browser degradation of the renderer is the same, with neither side recognizing Electron or perpetuation
+ * [POS]: Single source of truth for shared chat-preview semantics; main calls it inside metadataOf and the renderer's degraded-browser path calls the same function, so neither side implements its own summarization
  */
 
 import type { ChatMessage } from "./chats-ipc";

@@ -1,14 +1,16 @@
 /**
- * [INPUT]: Depends on zod, shared App/agent contracts, and the App manifest schema
- * [OUTPUT]: Provides the v15-only apps.json contract, static-v2/compiled-v3 generation discrimination, one shared chat-slot identity for Edit/Use/switch, a strict fail-closed parser, locale-independent byte-ordered canonical manifest digest, and domain identity projection
+ * [INPUT]: Depends on zod, shared App/agent contracts, the App manifest schema, and the apps/support canonicalJson
+ * [OUTPUT]: Supports pending install configuration without an active manifest. Provides strict AppStore v15 schema with optional explicit install strategy, Headless consent and existing generation/source/recovery authority
  * [POS]: AppStore persistence contract; storage and generation orchestration consume this fail-closed schema instead of defining it inline, while the quarantine decision for foreign bytes stays in app-store.ts
  */
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { agentBackendIdSchema } from "../../../../shared/agent-schema";
+import { LEGACY_BASE_GUI_SDK_VERSION } from "../../../../shared/app-gui/contracts";
 import type { AppManifest } from "../../../../shared/apps-ipc";
-import { appManifestSchema } from "../install/manifest-schema";
+import { appManifestSchema, requirementsSchema } from "../install/manifest-schema";
+import { canonicalJson } from "../support";
 
 export const SCHEMA_VERSION = 15;
 export const APP_ID_PATTERN = /^[a-z0-9]{10}$/;
@@ -105,7 +107,7 @@ const generationV2Schema = z
       .object({
         kind: z.literal("static-v2"),
         legacySdkDigest: digestSchema,
-        legacyBaseApiVersion: z.literal("base-gui-legacy-v1"),
+        legacyBaseApiVersion: z.literal(LEGACY_BASE_GUI_SDK_VERSION),
         grantContractVersion: z.literal("studio-grant-v1"),
         requiredHostActions: z.array(z.enum(["open-data", "open-data-view", "compose-text"])).max(3),
       })
@@ -298,6 +300,7 @@ export const appRecordSchema = z
   .object({
     id: z.string().regex(APP_ID_PATTERN),
     sourceRepoUrl: z.string().regex(REPO_PATTERN).nullable(),
+    installCandidate: z.object({ commitSha: z.string().regex(/^[0-9a-f]{40}$/), declarationDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/).nullable() }).strict().optional(),
     publishedRepoUrl: z.string().regex(REPO_PATTERN).nullable(),
     origin: z.enum(["github", "local", "preset"]),
     presetId: z.string().regex(/^[a-z][a-z0-9-]{1,38}$/).optional(),
@@ -336,6 +339,8 @@ export const appRecordSchema = z
       agentBackendIdSchema,
       z.literal("auto"),
     ]),
+    installStrategy: z.enum(["author-manifest", "agent-analysis"]).optional(),
+    pendingInstallRequirements: requirementsSchema.optional(),
     headlessConsent: z
       .object({
         backend: agentBackendIdSchema,
@@ -548,26 +553,9 @@ export function sealedContentDigest(manifest: AppManifest) {
 
 /**
  * digest 的唯一排序依据必须是字节序：localeCompare 走进程 locale 与 ICU 版本，
- * 同一份数据在两台机器上可能排出两种顺序，digest 也就跟着分叉。与
- * gui-build/metadata.ts 的 canonicalJson 是同一套规则的孪生实现（两边各自本地
- * 持有，互不 import，避免持久化契约反向依赖构建管线）。
- * 当前 key 全是小写 ASCII，字节序与 localeCompare 结果一致，已有数据的 digest
- * 不变。
+ * 同一份数据在两台机器上可能排出两种顺序，digest 也就跟着分叉。canonicalJson
+ * 住在 apps/support 这片无依赖的叶子上，持久化契约因此不必反向依赖构建管线。
  */
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    return `{${Object.entries(value)
-      .filter(([, item]) => item !== undefined)
-      .sort(([left], [right]) => Buffer.compare(Buffer.from(left), Buffer.from(right)))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
 export function domainIdentity(manifest: AppManifest) {
   if (manifest.kind === "static" || manifest.kind === "server") {
     return { kind: "no-data" as const, appKind: manifest.kind };

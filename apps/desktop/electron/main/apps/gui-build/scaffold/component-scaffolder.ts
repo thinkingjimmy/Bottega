@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { canonicalDigest, canonicalJson, sha256 } from "../metadata";
+import { canonicalDigest, canonicalJson, sha256 } from "../../support";
 import {
   componentAuthorMirrorSchema,
   componentCatalogSchema,

@@ -21,12 +21,13 @@ export class AttachmentStore {
   constructor(readonly root: string) {}
 
   /** 全部写盘成功才返回 metas；任一失败回滚已写文件并抛错（无半持久化） */
-  async persist(payloads: ChatAttachmentPayload[]): Promise<ChatAttachmentMeta[]> {
+  async persist(payloads: ChatAttachmentPayload[], stableIds?: string[]): Promise<ChatAttachmentMeta[]> {
     if (payloads.length === 0) return [];
     await mkdir(this.root, { recursive: true });
     const metas: ChatAttachmentMeta[] = [];
-    for (const payload of payloads) {
-      const id = nanoid();
+    for (const [index, payload] of payloads.entries()) {
+      const id = stableIds?.[index] ?? nanoid();
+      if (!/^[A-Za-z0-9_-]{10,64}$/.test(id)) throw new Error("Invalid attachment identity");
       const path = join(this.root, id);
       const temporary = `${path}.tmp`;
       try {

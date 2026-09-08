@@ -7,7 +7,7 @@
 export const APP_INSTRUCTION_BUDGET = 2 * 1024;
 export const APP_REFERENCE_LIMIT = 8;
 
-export type AppInstructionReference = Readonly<{
+type AppInstructionReference = Readonly<{
   appId: string;
   instruction: string;
 }>;

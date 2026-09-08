@@ -2,14 +2,15 @@
 
 /**
  * [INPUT]: Depends on React, AI SDK FileUIPart, host-injected UI text, pure file-admission rules, and typed useAttachmentList commands
- * [OUTPUT]: Provides the PromptInput value model, localized addValidated errors, workspace entry projection, and attachment access hooks
+ * [OUTPUT]: Provides the PromptInput value model, the shared file-admission helpers (usePromptInputFileMessages/admitAttachmentFiles), workspace entry projection, and attachment access hooks
  * [POS]: The state contract layer of ai-elements PromptInput; Draft owners can upgrade the lifecycle of the attachment to a cross-mounted store
  */
 
-import type { FileUIPart, SourceDocumentUIPart } from "ai";
+import type { FileUIPart } from "ai";
 import {
   selectPromptInputFiles,
   type PromptInputFileError,
+  type PromptInputFileMessages,
 } from "../../lib/prompt-input-files";
 import {
   createContext,
@@ -96,20 +97,22 @@ export function richValueDisplayText(value: RichValue) {
     .join("");
 }
 
+export type AttachmentAdmissionOptions = {
+  accept?: string;
+  /** 返回值保留全部准入文件，仅把匹配项写入附件 store，供非附件 host 消费其余项。 */
+  attachmentFileFilter?: (file: File) => boolean;
+  externalFileCount?: number;
+  maxFiles?: number;
+  maxFileSize?: number;
+};
+
 export interface AttachmentsContext {
   files: (PromptInputFilePart & { id: string })[];
   add: (files: File[] | FileList) => void;
   /** 校验与追加共享同一份 fresh filesRef，避免 await 后以陈旧 render 数量越过上限。 */
   addValidated: (
     files: File[] | FileList,
-    options: {
-      accept?: string;
-      /** 返回值保留全部准入文件，仅把匹配项写入附件 store，供非附件 host 消费其余项。 */
-      attachmentFileFilter?: (file: File) => boolean;
-      externalFileCount?: number;
-      maxFiles?: number;
-      maxFileSize?: number;
-    }
+    options: AttachmentAdmissionOptions
   ) => { files: File[]; error?: PromptInputFileError };
   remove: (id: string) => void;
   clear: () => void;
@@ -118,7 +121,44 @@ export interface AttachmentsContext {
   fileInputRef: RefObject<HTMLInputElement | null>;
 }
 
-export interface TextInputContext {
+export function usePromptInputFileMessages(): PromptInputFileMessages {
+  const accept = useUiText("fileTypeError", "No files match the accepted types.");
+  const maxFileSize = useUiText(
+    "fileSizeError",
+    "All files exceed the maximum size."
+  );
+  const maxFiles = useUiText(
+    "fileCountError",
+    "Too many files. Some were not added."
+  );
+  return useMemo(
+    () => ({ accept, max_file_size: maxFileSize, max_files: maxFiles }),
+    [accept, maxFileSize, maxFiles]
+  );
+}
+
+/** Admits against the list's fresh count and appends only the filtered attachments. */
+export function admitAttachmentFiles(
+  list: Pick<ReturnType<typeof useAttachmentList>, "add" | "filesRef">,
+  messages: PromptInputFileMessages,
+  files: File[] | FileList,
+  options: AttachmentAdmissionOptions
+) {
+  const selection = selectPromptInputFiles(files, {
+    accept: options.accept,
+    currentCount: list.filesRef.current.length + (options.externalFileCount ?? 0),
+    maxFiles: options.maxFiles,
+    maxFileSize: options.maxFileSize,
+    messages,
+  });
+  const attachments = options.attachmentFileFilter
+    ? selection.files.filter(options.attachmentFileFilter)
+    : selection.files;
+  if (attachments.length > 0) list.add(attachments);
+  return selection;
+}
+
+interface TextInputContext {
   value: string;
   setInput: (value: string) => void;
   clear: () => void;
@@ -142,34 +182,11 @@ const ProviderAttachmentsContext = createContext<AttachmentsContext | null>(
 export const LocalAttachmentsContext =
   createContext<AttachmentsContext | null>(null);
 
-export const usePromptInputController = () => {
-  const context = useContext(PromptInputController);
-  if (!context) {
-    throw new Error(
-      "Wrap your component inside <PromptInputProvider> to use usePromptInputController()."
-    );
-  }
-  return context;
-};
-
 export const useOptionalPromptInputController = () =>
   useContext(PromptInputController);
 
-export const useProviderAttachments = () => {
-  const context = useContext(ProviderAttachmentsContext);
-  if (!context) {
-    throw new Error(
-      "Wrap your component inside <PromptInputProvider> to use useProviderAttachments()."
-    );
-  }
-  return context;
-};
-
-export const useOptionalProviderAttachments = () =>
-  useContext(ProviderAttachmentsContext);
-
 export const usePromptInputAttachments = () => {
-  const provider = useOptionalProviderAttachments();
+  const provider = useContext(ProviderAttachmentsContext);
   const local = useContext(LocalAttachmentsContext);
   const context = local ?? provider;
   if (!context) {
@@ -190,26 +207,7 @@ export const PromptInputProvider = ({
   attachments: controlledAttachments,
   children,
 }: PromptInputProviderProps) => {
-  const fileTypeError = useUiText(
-    "fileTypeError",
-    "No files match the accepted types."
-  );
-  const fileSizeError = useUiText(
-    "fileSizeError",
-    "All files exceed the maximum size."
-  );
-  const fileCountError = useUiText(
-    "fileCountError",
-    "Too many files. Some were not added."
-  );
-  const fileMessages = useMemo(
-    () => ({
-      accept: fileTypeError,
-      max_file_size: fileSizeError,
-      max_files: fileCountError,
-    }),
-    [fileCountError, fileSizeError, fileTypeError]
-  );
+  const fileMessages = usePromptInputFileMessages();
   const [textInput, setTextInput] = useState(initialInput);
   // blob URL 生命周期统一在 useAttachmentList（与 PromptInput 本地路径共用同一实现）
   const list = useAttachmentList(controlledAttachments);
@@ -223,22 +221,8 @@ export const PromptInputProvider = ({
     [listAdd]
   );
   const addValidated = useCallback<AttachmentsContext["addValidated"]>(
-    (files, options) => {
-      const selection = selectPromptInputFiles(files, {
-        accept: options.accept,
-        currentCount:
-          list.filesRef.current.length + (options.externalFileCount ?? 0),
-        maxFiles: options.maxFiles,
-        maxFileSize: options.maxFileSize,
-        messages: fileMessages,
-      });
-      const attachments = options.attachmentFileFilter
-        ? selection.files.filter(options.attachmentFileFilter)
-        : selection.files;
-      if (attachments.length > 0) listAdd(attachments);
-      return selection;
-    },
-    [fileMessages, list.filesRef, listAdd]
+    (files, options) => admitAttachmentFiles(list, fileMessages, files, options),
+    [fileMessages, list]
   );
 
   const openFileDialog = useCallback(() => openRef.current?.(), []);
@@ -290,24 +274,4 @@ export const PromptInputProvider = ({
       </ProviderAttachmentsContext.Provider>
     </PromptInputController.Provider>
   );
-};
-
-export interface ReferencedSourcesContext {
-  sources: (SourceDocumentUIPart & { id: string })[];
-  add: (sources: SourceDocumentUIPart[] | SourceDocumentUIPart) => void;
-  remove: (id: string) => void;
-  clear: () => void;
-}
-
-export const LocalReferencedSourcesContext =
-  createContext<ReferencedSourcesContext | null>(null);
-
-export const usePromptInputReferencedSources = () => {
-  const context = useContext(LocalReferencedSourcesContext);
-  if (!context) {
-    throw new Error(
-      "usePromptInputReferencedSources must be used within a LocalReferencedSourcesContext.Provider"
-    );
-  }
-  return context;
 };

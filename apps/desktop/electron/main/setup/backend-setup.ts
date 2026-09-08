@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BrowserWindow, shared AppLocale, backend runtime registry, latest-version cache, fixed terminal action and setup IPC
- * [OUTPUT]: Provides BackendSetupService: non-blocking check, explicit recheck/latest refresh and list of terminal actions
+ * [OUTPUT]: Owns passive four-backend reads, the three explicit full-check intents, one-shot login returns and residence-fenced App watch/recheck/fixed management navigation.
  * [POS]: Setup the main process sorting layer; No download, uninstall, unload CLI, no holding or migration of credentials
  */
 
@@ -21,6 +21,10 @@ import {
   backendRuntimeRegistry,
   orderedBackends,
 } from "../backends";
+import { surfaceWindowController } from "../window/surfaces/surface-window-controller";
+import { windowRegistry } from "../window/surfaces/window-registry";
+import { rendererIdentity } from "../window/renderer-identity";
+import type { TrustedRendererContext } from "../window/surfaces/trusted-renderer-context";
 import { isVersionNewer } from "../backends/runtime-probe";
 import { rendererIpc } from "../ipc-registrar";
 import { LatestVersionCache } from "./latest-version";
@@ -30,6 +34,9 @@ export class BackendSetupService {
   private window: BrowserWindow | null = null;
   private readonly latest = new LatestVersionCache();
   private unsubscribeRuntime?: () => void;
+  private unsubscribeTurns?: () => void;
+  private started = false;
+  private readonly subscribers = new Map<string, TrustedRendererContext>();
   /* 已把用户送去外部终端登录、但还没回来对账的后端。
      登录动作是一句"这个后端的认证态即将改变"的声明——而模型目录的 TTL
      对此一无所知，于是登录完回来还能看见至多五分钟的旧（免费）模型集。 */
@@ -37,7 +44,7 @@ export class BackendSetupService {
 
   constructor(private readonly locale: () => AppLocale = () => "en") {}
 
-  register(window: BrowserWindow, rendererUrl: string) {
+  register(window: BrowserWindow, rendererUrl: string, register = rendererIpc) {
     this.window = window;
     this.unsubscribeRuntime?.();
     this.unsubscribeRuntime = backendRuntimeRegistry.subscribe(
@@ -49,17 +56,40 @@ export class BackendSetupService {
         });
       }
     );
-    rendererIpc(window, rendererUrl, "拒绝非主窗口的初始化请求")
+    this.unsubscribeTurns?.();
+    this.unsubscribeTurns = backendRuntimeRegistry.subscribeTurnEvidence((evidence) => this.send({ type: "turn-evidence", evidence }));
+    if (!this.started) {
+      this.started = true;
+      for (const descriptor of orderedBackends()) void backendRuntimeRegistry.fullCheck(descriptor.id, "startup");
+    }
+    register(rendererUrl, "拒绝非主窗口的初始化请求")
       .handle(SETUP_CHANNEL.check, () => this.check())
-      .handle(SETUP_CHANNEL.recheck, (backend) =>
-        this.recheck(this.assertBackend(backend))
-      )
       .handle(SETUP_CHANNEL.refreshLatest, (backend) =>
         this.refreshLatest(this.assertBackend(backend), true)
       )
       .handle(SETUP_CHANNEL.terminalAction, (value) =>
         this.terminalAction(value)
-      );
+      )
+      .roles("main", "app-window")
+      .handleWithContext(SETUP_CHANNEL.watch, (context) => {
+        this.assertResidence(context);
+        this.subscribers.set(context.windowId, context);
+      })
+      .handleWithContext(SETUP_CHANNEL.recheck, (context, backend) => {
+        this.assertResidence(context);
+        return this.recheck(this.assertBackend(backend));
+      })
+      .handleWithContext(SETUP_CHANNEL.cancelCheck, (context, backend) => {
+        this.assertResidence(context);
+        backendRuntimeRegistry.cancelCheck(this.assertBackend(backend));
+      })
+      .handleWithContext(SETUP_CHANNEL.openManagement, (context, ...args) => {
+        this.assertResidence(context);
+        if (args.length) throw new Error("Agent management accepts no route or URL");
+        const main = windowRegistry.main();
+        if (!main || !windowRegistry.focus(main.windowId)) throw new Error("Open the main window to manage Agents");
+        main.window.webContents.send(SETUP_CHANNEL.event, { type: "open-backends" } satisfies SetupEvent);
+      });
     /* 「登录引导完成回到 app」这件事，在主进程里唯一看得见的信号就是窗口
        重新获得焦点。只对 awaitingLogin 里的后端作废，所以普通 alt-tab 不会
        把每次切窗都变成一次 15s 子进程探测。 */
@@ -67,8 +97,6 @@ export class BackendSetupService {
     window.once("closed", () => {
       if (this.window === window) {
         this.window = null;
-        this.unsubscribeRuntime?.();
-        this.unsubscribeRuntime = undefined;
       }
     });
   }
@@ -77,19 +105,14 @@ export class BackendSetupService {
     for (const backend of this.awaitingLogin) {
       backendById(backend).models?.invalidate?.();
       this.send({ type: "models-invalidated", backend });
+      void backendRuntimeRegistry.fullCheck(backend, "login-return");
     }
     this.awaitingLogin.clear();
   }
 
   async check(): Promise<SetupStatus> {
-    const backends = await Promise.all(
-      orderedBackends().map(async (descriptor) => {
-        const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
-        void this.refreshLatest(descriptor.id, false);
-        return this.info(descriptor.id, snapshot);
-      })
-    );
-    return { backends };
+    return { backends: backendRuntimeRegistry.listSnapshots().map((base) => ({ ...base,
+      ...(this.latest.current(base.id)?.version ? { latestVersion: this.latest.current(base.id)!.version } : {}) })) };
   }
 
   async recheck(backend: AgentBackendId) {
@@ -131,6 +154,8 @@ export class BackendSetupService {
   async shutdown() {
     this.unsubscribeRuntime?.();
     this.unsubscribeRuntime = undefined;
+    this.unsubscribeTurns?.();
+    this.subscribers.clear();
   }
 
   private async terminalAction(value: unknown) {
@@ -154,10 +179,10 @@ export class BackendSetupService {
     const action = candidate.action as SetupTerminalAction;
     const command = backendById(backend).setup?.commands[action];
     if (!command) throw new Error("当前后端不支持该终端动作");
-    if (action === "login") this.awaitingLogin.add(backend);
-    return launchSetupTerminalAction(this.window, command, {
-      locale: this.locale,
-    });
+    const result = await launchSetupTerminalAction(this.window, command, { locale: this.locale });
+    if (action === "login" && result.delivery === "terminal" && result.launched) this.awaitingLogin.add(backend);
+    if ((action === "install" || action === "update") && result.delivery === "terminal") backendRuntimeRegistry.invalidate(backend);
+    return result;
   }
 
   private info(
@@ -179,7 +204,25 @@ export class BackendSetupService {
     return backendById(value as AgentBackendId).id;
   }
 
+  private assertResidence(context: TrustedRendererContext) {
+    if (context.role === "main") return;
+    if (!context.appId) throw new Error("App window identity is missing");
+    surfaceWindowController.assertAppStudioMutation(context, context.appId);
+  }
+
   private send(event: SetupEvent) {
+    for (const [id, context] of this.subscribers) {
+      if (context.role === "main") continue;
+      try {
+        if (!windowRegistry.get(id) || rendererIdentity(context.webContentsId).rendererSessionId !== context.rendererIncarnation) throw new Error("Expired renderer");
+        this.assertResidence(context);
+        if (event.type === "open-backends") continue;
+        if (event.type === "turn-evidence") surfaceWindowController.assertAppConversationRead(context, event.evidence.conversationId);
+        context.window.webContents.send(SETUP_CHANNEL.event, event);
+      } catch {
+        if (event.type !== "turn-evidence") this.subscribers.delete(id);
+      }
+    }
     if (this.window && !this.window.isDestroyed()) {
       this.window.webContents.send(SETUP_CHANNEL.event, event);
     }

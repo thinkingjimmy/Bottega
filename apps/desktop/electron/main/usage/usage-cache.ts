@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the type of original text object used in Node fs/path, persistence/SerialQueue and usage-merge
- * [OUTPUT]: Provides v2 usage-cache rigorous testing loading, model/four-barrel fact sequencing, atomic replacement and drain by source
- * [POS]: The use of performance caching; Save only event/meta/fast snapshot, no time zone, scope root, price or aggregate results
+ * [INPUT]: Depends on Node fs/path, persistence's SerialQueue, and usage-merge's FileEvents
+ * [OUTPUT]: Provides UsageCache: strict v2 schema validation on load, per-event model/four-bucket parsing, atomic replace, and per-source commitBatch
+ * [POS]: The usage-domain read cache; stores only raw events/meta/file snapshots, never timezone, root scope, price, or aggregated results
  */
 
 import {

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Accepts the latest chart view config and the renderer generates the id level intent op
  * [OUTPUT]: Provides ChartOp, applyChartOpToConfig, and stripChartSorts
- * [POS]: The lib/charts syntax is also usedThe workbench is read/commit only and does not directly reconfigure the old array
+ * [POS]: The chart-dashboard intent layer for lib/charts; the workbench only reads and commits ops, it never mutates the config array directly
  */
 
 import {

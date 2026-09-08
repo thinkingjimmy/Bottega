@@ -1,21 +1,22 @@
 /**
- * [INPUT]: Depends on Node crypto and the three-field server contract on AppManifest; the caller supplies the clock and the current state
+ * [INPUT]: Depends on Node crypto, the apps/support canonicalJson, and the three-field server contract on AppManifest; the caller supplies the clock and the current state
  * [OUTPUT]: Provides the pure serve kernel: trigger tokens, ack validity, canonical JSON, the contract fingerprint, the debounce window, the token bucket, and retry backoff
  * [POS]: The pure kernel of the apps/runtime event-driven serve loop; it reads no files, creates no watcher, and holds no timer
  */
 
 import { createHash } from "node:crypto";
 import type { ServerAppManifest } from "../../../../shared/apps-ipc";
+import { canonicalJson } from "../support";
 
 export const SERVE_ACK_VERSION = 1;
-export const SERVE_DEBOUNCE_MS = 500;
-export const SERVE_MAX_WAIT_MS = 2_000;
-export const SERVE_BUCKET_CAPACITY = 3;
-export const SERVE_BUCKET_REFILL_MS = 60_000;
-export const SERVE_BUCKET_ESCALATION_MS = 5 * 60_000;
-export const SERVE_QUIET_RESET_MS = 60_000;
-export const SERVE_RETRY_MIN_MS = 5_000;
-export const SERVE_RETRY_MAX_MS = 5 * 60_000;
+const SERVE_DEBOUNCE_MS = 500;
+const SERVE_MAX_WAIT_MS = 2_000;
+const SERVE_BUCKET_CAPACITY = 3;
+const SERVE_BUCKET_REFILL_MS = 60_000;
+const SERVE_BUCKET_ESCALATION_MS = 5 * 60_000;
+const SERVE_QUIET_RESET_MS = 60_000;
+const SERVE_RETRY_MIN_MS = 5_000;
+const SERVE_RETRY_MAX_MS = 5 * 60_000;
 
 export type ServeToken = {
   sha256: string;
@@ -87,20 +88,6 @@ export function contractFingerprint(
     .update("\0")
     .update(deliveryFingerprint)
     .digest("hex");
-}
-
-export function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-    .join(",")}}`;
 }
 
 export function noteDebounce(

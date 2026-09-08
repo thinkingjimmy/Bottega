@@ -1,18 +1,19 @@
 /**
- * [INPUT]: Depends on BrowserPanelService/CdpHarness, shared browser action and builtin tool context
- * [OUTPUT]: Provides canAccess with createBrowserToolset, and performs the read-write authorization tab by lease chat in a single point
- * [POS]: The only layer of adaptation of the browser domain to the built-in tool platform; The handler does not accept the renderer identity or the Agent self-identification owner
+ * [INPUT]: Depends on BrowserPanelService/CdpHarness, the shared BrowserAction and builtin-tool domain specs, the BuiltinToolset contract, and the main error vocabulary (statusError)
+ * [OUTPUT]: Provides canAccess and createBrowserToolset; read/write tab authorization is decided once per call from the lease chat
+ * [POS]: The only adapter between the browser domain and the builtin-tool platform; handlers never trust renderer identity or an Agent-claimed owner
  */
 
 import {
   BUILTIN_TOOL_DOMAINS,
   type BrowserAction,
 } from "../../../shared/builtin-tools";
+import { statusError } from "../errors";
 import type { BuiltinToolset } from "../tools/registry";
 import { BrowserPanelService } from "./browser-service";
 import { CdpHarness } from "./cdp-harness";
 
-export type BrowserAccessTab = {
+type BrowserAccessTab = {
   tabId: string;
   ownerChatId: string | null;
 };
@@ -118,8 +119,4 @@ export function createBrowserToolset(
       return { closed: true, tab_id: tabId };
     },
   };
-}
-
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
 }

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on fs Temporary copy, node: sqlite read only queries, macOS security, crypto v10 decryption and Electron cookie store seam
- * [OUTPUT]: Provides Chrome cookie preview/import domain; expires_utc maintains 64-bit accuracy by crossing TEXT, maintains host-only, skips CHIPS, and provides epoch/sameSite/url/domain hash pure functions and classification results
- * [POS]: The browser/chrome-import login mode is imported into the kernel; The key and text are only temporarily stored in the main memory and deleted when the temporary library is used
+ * [INPUT]: Depends on a temporary fs copy, read-only node:sqlite queries, the macOS Keychain, v10 cookie decryption, and the Electron cookie-store seam
+ * [OUTPUT]: Provides previewChromeCookieDomains/importChromeCookies (expires_utc read as TEXT to keep 64-bit precision, host-only preserved, CHIPS skipped) plus the pure epoch/sameSite/url/domain-hash helpers
+ * [POS]: The browser/chrome-import login-state import kernel; key and plaintext live only in main memory and the temporary database is deleted after use
  */
 
 import {
@@ -48,7 +48,7 @@ type CookieRow = {
   is_persistent?: number;
 };
 
-export type CookieStorePort = {
+type CookieStorePort = {
   set(details: {
     url: string;
     name: string;

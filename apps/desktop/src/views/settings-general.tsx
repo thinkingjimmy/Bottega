@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on React, Appearance/I18n/Setup Provider, shared AgentFailureNotice, settings-layout, settingsStore, PageShell and ui/select/skeleton/spinner
- * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle plus structured title-model failures for Theme/Language, Font, Chat Home, and title generation settings
- * [POS]: Settings: the default view of the layer of coverage; The condition is not loaded so you can't hold the set snapshot, subscribe to the settingsStore and pull the model directory that is isolated at the back end as needed
+ * [INPUT]: Depends on React, Appearance/I18n/Setup providers, AgentFailureNotice, PresenceSettings, settings controls/store, PageShell, and UI primitives.
+ * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle with appearance, presence, Chat Home, and title generation settings.
+ * [POS]: Settings layer's default view; holds no settings snapshot of its own — subscribes to settingsStore and pulls the per-backend model catalog on demand
  */
 
+import { PresenceSettings } from "@/components/settings/presence/section";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useAppearance } from "@/components/providers/appearance-provider";
 import { useSetup } from "@/components/providers/setup-provider";
@@ -30,7 +31,6 @@ import {
 } from "@/lib/agent-backends";
 import {
   buildTitleModelOptions,
-  hasSettingsBridge,
   persistedTitleModelValue,
   selectedTitleModelValue,
 } from "@/lib/settings-client";
@@ -308,20 +308,13 @@ function ChatRowsSkeleton() {
   );
 }
 
-export function CrossChatReadToggle({
-  enabled,
-  disabled,
-}: {
-  enabled: boolean;
-  disabled: boolean;
-}) {
+export function CrossChatReadToggle({ enabled }: { enabled: boolean }) {
   const { t } = useAppTranslation();
   return (
     <SettingsSwitch
       id="allow-cross-chat-read"
       label={t("settings.general.crossChatRead")}
       checked={enabled}
-      disabled={disabled}
       onToggle={(allowCrossChatRead) =>
         void settingsStore.update(
           { allowCrossChatRead },
@@ -433,8 +426,8 @@ export function GeneralSettingsView() {
   /* 候选不是常量，是能力的函数；失效的持久值只在呈现上回落，
      判据与回落规则同住 lib/agent-backends 以便单测。 */
   const backends = setup.status?.backends;
-  const options = useMemo(() => titleAgentOptions(backends), [backends]);
-  const titleAgent = effectiveTitleAgent(settings?.titleAgent, backends);
+  const options = useMemo(() => titleAgentOptions(backends, setup.now), [backends, setup.now]);
+  const titleAgent = effectiveTitleAgent(settings?.titleAgent, backends, setup.now);
   const effectiveTitleBackend = titleSlot(titleAgent);
   const modelsError = modelsErrorByBackend[effectiveTitleBackend] ?? null;
 
@@ -499,6 +492,8 @@ export function GeneralSettingsView() {
             </SettingsList>
           </SettingsSection>
 
+          <PresenceSettings />
+
           <SettingsSection
             title={t("settings.general.chatHomeLocation")}
             description={t("settings.general.chatHomeDescription")}
@@ -537,11 +532,7 @@ export function GeneralSettingsView() {
                     aria-label={t("settings.general.changeChatHomeFolder")}
                     id="choose-chat-homes-root"
                     variant="outline"
-                    disabled={
-                      chatHomesRootBusy ||
-                      !settings ||
-                      !hasSettingsBridge()
-                    }
+                    disabled={chatHomesRootBusy || !settings}
                     onClick={() => void settingsStore.chooseChatHomesRoot()}
                   >
                     {chatHomesRootBusy ? (
@@ -559,10 +550,7 @@ export function GeneralSettingsView() {
                 description={t("settings.general.crossChatReadDescription")}
                 control={
                   settings ? (
-                    <CrossChatReadToggle
-                      enabled={settings.allowCrossChatRead}
-                      disabled={!hasSettingsBridge()}
-                    />
+                    <CrossChatReadToggle enabled={settings.allowCrossChatRead} />
                   ) : (
                     <Skeleton className="h-6 w-11 rounded-full" />
                   )

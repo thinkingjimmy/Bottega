@@ -9,7 +9,6 @@ import type { appsEn } from "./en";
 export const appsEs: typeof appsEn = {
   provider: {
     listFailed: "No se pudieron cargar las Apps: {{message}}",
-    browserFallbackDescription: "App alternativa del navegador de {{url}}",
   },
   presets: {
     designCanvas: {
@@ -144,12 +143,14 @@ export const appsEs: typeof appsEn = {
     aboutToInstall: "Listo para descargar e instalar",
     permissionsWarning: "La instalación y ejecución usan tus permisos de usuario, incluido el acceso de lectura/escritura y red.",
     trustedOnly: "Añade solo repositorios de confianza.",
+    authorManifestInstall: "Instalar desde el manifiesto del autor",
+    agentAnalysis: "Usar análisis de Agent (opcional)",
+    authorManifestHint: "Los manifiestos versionados se instalan directamente. Elige el análisis de Agent para que un Agent autorizado prepare la descripción de instalación.",
     runtimeAgent: "Agent de ejecución",
     repositoryAddress: "Dirección del repositorio",
     nextStep: "A continuación se leen objetos Git sin checkout para identificar el paquete. En este paso no se ejecuta código ni se crea una App.",
   },
   card: {
-    browserFallback: "Alternativa en navegador",
     preparing: "Preparando {{name}}",
     awaitingAuthorization: "Confirma los permisos para continuar",
     operationFailed: "La operación falló",
@@ -337,7 +338,6 @@ export const appsEs: typeof appsEn = {
   },
   detail: {
     startFailed: "La App no pudo iniciarse",
-    placeholder: "Este marcador de demostración no puede ejecutarse. Usa el + superior derecho para añadir una App real de GitHub.",
     crashed: "El proceso de la App terminó inesperadamente",
     stopped: "La App se detuvo",
     viewLog: "Ver registro",

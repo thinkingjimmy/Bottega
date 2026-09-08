@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared MemoryStatusSnapshot, memoryActivityStats for lib/memory-view and absoluteMoment/TONE_TEXT/MemoryStat, @ai-chat/ui for cn
- * [OUTPUT]: Provides MemoryActivityGrid purely displayed components: Delivery/Call event zone + 6G counter (with hit/zero hit), two zones in equal latitude are three columns, all of which are reduced to one silent line
- * [POS]: The settings/memory run area; It is not self-contained with usage-stat-row, the same set of "big plus small tags" languages
+ * [OUTPUT]: Provides MemoryActivityGrid, a presentational grid with an event-stat zone and a four-column counter zone, collapsing to a single column on narrow layouts
+ * [POS]: settings/memory's activity area; shares the large-value-plus-small-label visual language with usage-stat-row without reusing its implementation
  */
 
 import type { MemoryStatusSnapshot } from "../../../../shared/memory-ipc";

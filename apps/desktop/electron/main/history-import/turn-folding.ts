@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the shared ForeignHistoryMessage/ForeignProcessStep wire and the adapter turn-stream type
- * [OUTPUT]: Provides foldHistoryTurns/foldAssistantRun (one assistant entry per turn, each process step ordered tools-then-text because a block's tools are the calls that preceded it), splitPlan/flattenPlanTags (Codex `<proposed_plan>` machine tags) and stripProductContext (our own outgoing envelope)
+ * [INPUT]: Depends on the shared ForeignHistoryMessage/ForeignProcessStep wire, shared PRODUCT_ENVELOPE_TAGS, and the adapter kernel's humanTitle/turn-stream type
+ * [OUTPUT]: Provides foldHistoryTurns/foldAssistantRun (one assistant entry per turn, each process step ordered tools-then-text because a block's tools are the calls that preceded it), splitPlan/flattenPlanTags (Codex `<proposed_plan>` machine tags), stripProductEnvelopes (every one of our outgoing envelopes, tag table owned by shared/product-envelope.ts) and envelopeFreeTitle (the one title path all four adapters share)
  * [POS]: The single normalization seam every history adapter's turn stream passes through before batching; adapters stay format parsers and never learn turn shape
  */
 
@@ -9,7 +9,8 @@ import type {
   ForeignProcessStep,
   ForeignToolEvent,
 } from "../../../shared/history-import-ipc";
-import type { HistoryBlockTurns } from "./adapter";
+import { PRODUCT_ENVELOPE_TAGS } from "../../../shared/product-envelope";
+import { humanTitle, type HistoryBlockTurns } from "./adapter";
 
 /* ── Codex 计划标签：<proposed_plan> 是模型输出里的机器语法 ─────────
  * 产品正史里 plan 走 PlanCard；源文本把计划内嵌在 assistant 正文的标签里，
@@ -37,20 +38,49 @@ export function flattenPlanTags(content: string): string {
 }
 
 /* ── 我们自己的信封不该回流成用户的第一句话 ─────────────────────
- * 产品把 <product_context …> 作为**独立的一块** text content block 拼在
- * prompt 前面（backends/acp/turn/setup.ts）。源侧把一条消息的所有 text
- * 块拼成一段正文，于是导入回来时这段信封成了第一个用户气泡，还顺手当上
- * 了侧栏标题。信封是产品说的话，不是用户说的话：剥掉它，保留用户自己
- * 写下的那部分；剥完什么都不剩，这条消息本就不该存在。
+ * 产品把 <product_context …>（能力说明）与 <memory_context …>（长期记忆）
+ * 各作为**独立的一块** text content block 拼在 prompt 前面
+ * （backends/acp/turn/setup.ts）。源侧把一条消息的所有 text 块拼成一段
+ * 正文，于是导入回来时这些信封成了第一个用户气泡，还顺手当上了侧栏标题。
+ * 信封是产品说的话，不是用户说的话：剥掉它们，保留用户自己写下的那部分；
+ * 剥完什么都不剩，这条消息本就不该存在。
+ * 标签表来自 shared/product-envelope.ts——拼装侧新增一种信封，剥离侧同一
+ * 秒学会，不会再出现「product_context 剥了、memory_context 漏了」。
  * ────────────────────────────────────────────────────────── */
-const PRODUCT_CONTEXT_PATTERN = /<product_context\b[^>]*>[\s\S]*?<\/product_context>/g;
+const CLOSED_ENVELOPE_PATTERN = new RegExp(
+  PRODUCT_ENVELOPE_TAGS.map(
+    (tag) => `<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>`
+  ).join("|"),
+  "g"
+);
 /** 未闭合只可能是信封被截断——它恒在最前，其后无一字属于用户。 */
-const OPEN_PRODUCT_CONTEXT_PATTERN = /^\s*<product_context\b[\s\S]*$/;
+const OPEN_ENVELOPE_PATTERN = new RegExp(
+  `^\\s*<(?:${PRODUCT_ENVELOPE_TAGS.join("|")})\\b[\\s\\S]*$`
+);
 
-export function stripProductContext(value: string): string {
-  if (!value.includes("<product_context")) return value;
-  const closed = value.replace(PRODUCT_CONTEXT_PATTERN, "");
-  return (OPEN_PRODUCT_CONTEXT_PATTERN.test(closed) ? "" : closed).trim();
+export function stripProductEnvelopes(value: string): string {
+  if (!PRODUCT_ENVELOPE_TAGS.some((tag) => value.includes(`<${tag}`))) {
+    return value;
+  }
+  const closed = value.replace(CLOSED_ENVELOPE_PATTERN, "");
+  return (OPEN_ENVELOPE_PATTERN.test(closed) ? "" : closed).trim();
+}
+
+/* ── 标题也是正文的投影 ─────────────────────────────────────
+ * 标题在各家来源有多路来路：源自己的 state 库、首条用户消息、产品写下的
+ * 自定义标题。凡不经正文那条剥离路径的来路，信封就会原样爬进侧栏——Codex
+ * 的 state_5.sqlite `threads.title` 正是这么让一条会话叫作
+ * `<product_context source="application" …` 的。四家适配器共用这一条：
+ * 按优先级取首个剥完仍非空的候选，最后一个候选是各家的兜底名。
+ * ────────────────────────────────────────────────────────── */
+export function envelopeFreeTitle(
+  ...candidates: readonly (string | undefined)[]
+): string {
+  for (const candidate of candidates) {
+    const stripped = stripProductEnvelopes(candidate ?? "").trim();
+    if (stripped) return humanTitle(stripped);
+  }
+  return "";
 }
 
 /* 一条 assistant 消息挂着的工具，是**跑在它之前**的那些调用（codex 在推入

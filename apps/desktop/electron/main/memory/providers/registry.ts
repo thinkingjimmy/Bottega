@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the provider Port/InstallSpec shape, OpenVikingProvider and EverOSProvider
- * [OUTPUT]: Provides the only MemoryProviderModule registry and its derivatives: MEMORY_PROVIDER_IDS, descriptor lists, config panels, installationSpec and createProvider factories containing model assets/PyPI master packages/real destination parsing contracts; Internal consistency of the module asserts when loaded
+ * [OUTPUT]: Provides the only MemoryProviderModule registry and its derivatives: MEMORY_PROVIDER_IDS, descriptor lists, config panels, installationSpec and createProvider factories, plus the assertMemoryProviderId boundary validator; internal consistency of the module asserts when loaded
  * [POS]: The main/memory plugins are registered at the single point; enum/installer/panel/tender is all derived from this, and the new provider just changed this file with its own adapter
  */
 
@@ -261,6 +261,15 @@ export const MEMORY_PROVIDER_DESCRIPTORS = MEMORY_PROVIDER_MODULES.map(
 export const MEMORY_CONFIG_PANELS = MEMORY_PROVIDER_MODULES.flatMap((module) =>
   module.configPanel ? [module.configPanel] : []
 );
+
+/* reveal 会把这个字符串变成真实数据目录路径并交给 Finder 打开：注册表形状之外
+   一律在边界拒绝。禁止加 `m` 标志——多行模式下 `$` 认行尾，"everos\n" 会溜过去。 */
+export function assertMemoryProviderId(raw: unknown) {
+  if (typeof raw !== "string" || !/^[a-z0-9-]{1,64}$/.test(raw)) {
+    throw new Error("Memory provider id 无效");
+  }
+  return raw;
+}
 
 export function memoryModule(providerId: string) {
   return (

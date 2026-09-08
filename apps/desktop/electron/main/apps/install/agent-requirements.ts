@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path and AppManifest, read the skills of the plugin/project, MCP declaration
- * [OUTPUT]: Provides complete AgentRequirements, incorporating tools found by mechanics into the manifest requirements
- * [POS]: The Agent of apps/install requires a unifier to prevent analytical models from missing the clear declaration warehouse
+ * [INPUT]: Depends on Node fs/path and AppManifest; reads a server App's `.agents/skills`, `.agent-plugin/plugin.json`, `.mcp.json`, and `.agent/config.toml` for declared skills and MCP servers
+ * [OUTPUT]: Provides completeAgentRequirements, merging skills/MCP servers discovered on disk into the manifest's agentRequirements
+ * [POS]: apps/install's requirement-discovery step; ensures a server App's declared agent requirements match what its repository actually contains
  */
 
 import { readFile, readdir } from "node:fs/promises";

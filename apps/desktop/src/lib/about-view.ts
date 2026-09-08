@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the shared UpdateSnapshot contract only — no React, no IPC, no i18n runtime
  * [OUTPUT]: Provides UpdateTone, UpdateGlyph, UpdateView, describeUpdate and formatAppDiagnostics
- * [POS]: Settings › About 的结论层：更新快照到「说不说话、说什么、多重、给哪颗按钮、失败后怎么办」只判一次，与 lib/memory-view 同一族
+ * [POS]: Settings › About's conclusion layer — turns an UpdateSnapshot into whether to speak, what to say, and which button/next step, decided once; same family as lib/memory-view
  */
 
 import type { UpdateSnapshot } from "../../shared/update-ipc";
@@ -17,6 +17,8 @@ export type UpdateTone = "quiet" | "loud" | "danger";
 export type UpdateGlyph = "spinner" | "check" | "download" | "alert";
 
 type UpdateMessageKey =
+  | "appHost.waitingDownload" | "appHost.checking" | "appHost.unavailable" | "appHost.installBusy"
+  | "settings.presence.ready"
   | "settings.about.unavailable"
   | "settings.about.checking"
   | "settings.about.available"
@@ -27,6 +29,7 @@ type UpdateMessageKey =
   | "settings.about.current"
   | "settings.about.backgroundFailed";
 type UpdateActionKey =
+  | "settings.presence.restart"
   | "settings.about.upgrade"
   | "settings.about.manualUpgrade";
 type UpdateResolutionKey = "settings.about.failedResolution";
@@ -90,6 +93,13 @@ export function describeUpdate(
   if (!bridgeReady) {
     return speak({ messageKey: "settings.about.unavailable", glyph: "alert", blocked: true });
   }
+  const requirement = update.appRequirement;
+  if (requirement && requirement.status !== "satisfied" && requirement.status !== "error") {
+    const keys = { "waiting-download": "appHost.waitingDownload", checking: "appHost.checking", unavailable: "appHost.unavailable", "install-busy": "appHost.installBusy" } as const;
+    const waiting = requirement.status === "waiting-download" || requirement.status === "checking";
+    return speak({ messageKey: keys[requirement.status], glyph: waiting ? "spinner" : "alert", blocked: waiting,
+      percent: requirement.status === "waiting-download" && update.progress ? Math.round(update.progress.percent) : null });
+  }
   const version = update.availableVersion ?? update.currentVersion;
   switch (update.phase) {
     case "checking":
@@ -115,6 +125,8 @@ export function describeUpdate(
         percent: Math.round(update.progress?.percent ?? 0),
         blocked: true,
       });
+    case "ready":
+      return speak({ messageKey: "settings.presence.ready", glyph: "download", tone: "loud", upgradeKey: "settings.presence.restart" });
     case "installing":
       return speak({ messageKey: "settings.about.installing", glyph: "check", tone: "loud", blocked: true });
     case "error":

@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on React external-store hooks, lib/brand identity, lib/about-view verdicts, Settings layout primitives, update-client stores, app external-link/clipboard IPC, ui Collapsible/Button, lucide glyphs, and About i18n
- * [OUTPUT]: Provides AboutSection with a product identity block, an on-demand update receipt whose failure alert carries its own resolution sentence, the bundled MIT license behind an inline trigger, and three external link rows
+ * [OUTPUT]: Provides aboutSection with a product identity block, an on-demand update receipt whose failure alert carries its own resolution sentence, the bundled MIT license behind an inline trigger, and three external link rows
  * [POS]: Settings › About business component; main owns the facts, lib/about-view owns the verdicts, this file only renders them and invokes typed commands
  */
 
+import { useNavigate } from "react-router";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   ArrowUpRight,
@@ -62,6 +63,7 @@ const TONES: Record<UpdateTone, string> = {
 
 export function AboutSection() {
   const { t } = useAppTranslation();
+  const navigate = useNavigate();
   const update = useSyncExternalStore(
     updateStore.subscribe,
     updateStore.getSnapshot
@@ -112,7 +114,7 @@ export function AboutSection() {
     void updateStore.check();
   };
   const upgrade = () =>
-    update.automaticInstall
+    update.phase === "ready" ? updateStore.installNow() : update.automaticInstall
       ? updateStore.downloadAndInstall()
       : openExternal(RELEASE_URL);
   const copyDiagnostics = () => {
@@ -131,6 +133,13 @@ export function AboutSection() {
 
   return (
     <div className="space-y-8">
+      {update.appRequirement && <section className="space-y-3 rounded-lg border p-4" data-testid="app-update-requirement">
+        <p className="text-sm" role="status">{t("appHost.requiredContext", { name: update.appRequirement.context.candidate.appName, minimum: update.appRequirement.context.minBottegaVersion ?? "—", current: update.currentVersion })}</p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void navigate(`/apps?compatibility=${encodeURIComponent(update.appRequirement!.context.requestId ?? "")}`)}>{t("appHost.returnToApp")}</Button>
+          <Button variant="ghost" onClick={() => void updateStore.dismissAppRequirement()}>{t("appHost.dismiss")}</Button>
+        </div>
+      </section>}
       {/* Collapsible 收住身份块与协议正文：触发器是版本行里那个词，
           面板落在整块之下，两者必须同处一个 Root 才是同一次开合。 */}
       <Collapsible>

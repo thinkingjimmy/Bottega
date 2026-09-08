@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the shared WorkspaceFiles bridge contract, renderer locale, shared i18n runtime, and preload window.workspaceFiles
- * [OUTPUT]: Provides a failure-open combination of search, and a narrow front for readRef's overtly failed typing/reading
- * [POS]: The only input of the renderer lib is the Workspace Files IPC, which does not read directly the window with the component hook
+ * [OUTPUT]: Provides searchWorkspaceFiles (fails open to an "unavailable" result), plus resignWorkspaceFile and readWorkspaceFile, which throw explicit errors on failure
+ * [POS]: Renderer's sole boundary for Workspace Files IPC; components never read window.workspaceFiles directly
  */
 
 import type {

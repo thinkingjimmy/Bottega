@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DurableJson, Node crypto/fs/path, and canonical CanvasRegistry identity fields
+ * [INPUT]: Depends on DurableJson, Node crypto/fs/path, and canonical CanvasRegistry identity fields, and statusError from main/errors
  * [OUTPUT]: Provides VersionHistory with content-addressed blobs, parent-linked capture, restore reads, explicit owner migration, and owner termination with garbage collection
  * [POS]: Design's historical ledger; it complements CanvasRegistry current truth and never infers versions from Git history
  */
@@ -9,6 +9,7 @@ import { access, mkdir, open, readdir, rm } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { statusError } from "../../errors";
 import { DurableJson, durableReplaceFile } from "../../persistence/durable-json";
 import { canonicalDesignPath, type CanvasProvenance } from "./canvas-registry";
 
@@ -42,7 +43,7 @@ const fileSchema = z
   .strict();
 
 type HistoryFile = z.infer<typeof fileSchema>;
-export type CanvasVersion = z.infer<typeof versionSchema>;
+type CanvasVersion = z.infer<typeof versionSchema>;
 
 export class VersionHistory {
   private readonly root: string;
@@ -93,7 +94,7 @@ export class VersionHistory {
       ? input.content
       : Buffer.from(input.content, "utf8");
     if (content.byteLength > MAX_CANVAS_BYTES) {
-      throw Object.assign(new Error("Design canvas 超过 8 MiB"), { status: 413 });
+      throw statusError(413, "Design canvas 超过 8 MiB");
     }
     const digest = `sha256:${createHash("sha256").update(content).digest("hex")}`;
     await this.storeBlob(digest, content);
@@ -128,7 +129,7 @@ export class VersionHistory {
     const version = this.file.snapshot().versions.find(
       (candidate) => candidate.versionId === versionId
     );
-    if (!version) throw Object.assign(new Error("Canvas version 不存在"), { status: 404 });
+    if (!version) throw statusError(404, "Canvas version 不存在");
     return { version, content: await this.readBlob(version.digest) };
   }
 

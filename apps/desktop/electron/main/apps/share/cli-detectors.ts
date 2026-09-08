@@ -1,14 +1,14 @@
 /**
- * [INPUT]: Depends on node: child_process execFile and the process environment to be cleanedOnly receive the detector id of the manifest
- * [OUTPUT]: Provides fixed CLI_DETECTORS, detectCliRequirements; External id never executed
- * [POS]: The app/share's incredible manifest→ The home computer can execute file isolation layers
+ * [INPUT]: Depends on node:child_process execFile, the sanitized process environment, and manifest-declared requirement ids
+ * [OUTPUT]: Provides detectCliRequirements over a fixed detector table; External id never executed
+ * [POS]: apps/share manifest→local-executable probe boundary; only allowlisted commands from CLI_DETECTORS run, never an arbitrary manifest-supplied executable
  */
 
 import { execFile } from "node:child_process";
 import type { AppRequirement } from "../../../../shared/apps-ipc";
-import { sanitizedProcessEnvironment } from "../../codex-runtime";
+import { sanitizedProcessEnvironment } from "../../backends/runtime-probe";
 
-export const CLI_DETECTORS = {
+const CLI_DETECTORS = {
   gh: { command: "gh", args: ["--version"] },
   git: { command: "git", args: ["--version"] },
   node: { command: "node", args: ["--version"] },

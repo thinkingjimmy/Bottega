@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the Chat schema, the aggregate budget, the shared Markdown fence scanner, the byte limits, and the subagent registry
+ * [INPUT]: Depends on the Chat schema, the aggregate budget, the shared Markdown fence scanner and UTF-8 truncation, the byte limits, and the subagent registry
  * [OUTPUT]: Provides the IO-free turn-commit kernel: fence-safe UTF-8 truncation, seq assignment, reachability subagent GC, budget convergence, and an explicit subagentsChanged verdict
  * [POS]: Pure commit kernel of the chats module; ChatStore calls it inside the serial queue, so it stays testable without a file system
  */
@@ -19,6 +19,7 @@ import {
 import { slicePartsProtected } from "../../../shared/chat-turn-reducer";
 import { prunePersistedSubagents } from "../../../shared/subagent-registry";
 import { scanFences } from "../../../shared/markdown-fences";
+import { truncateUtf8 as truncateUtf8Result } from "../../../shared/truncate-utf8";
 import {
   CHAT_BYTE_LIMIT,
   CHAT_MESSAGE_LIMIT,
@@ -53,12 +54,7 @@ export function fallbackTitle(firstMessage: string) {
 }
 
 export function truncateUtf8(value: string, limit = MESSAGE_BYTE_LIMIT) {
-  if (utf8Length(value) <= limit) return value;
-  const suffixBytes = utf8Length(TRUNCATED_SUFFIX);
-  const bytes = Buffer.from(value, "utf8");
-  let end = Math.max(0, limit - suffixBytes);
-  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end -= 1;
-  return `${bytes.subarray(0, end).toString("utf8")}${TRUNCATED_SUFFIX}`;
+  return truncateUtf8Result(value, limit, TRUNCATED_SUFFIX).value;
 }
 
 export function truncateMarkdownSafe(

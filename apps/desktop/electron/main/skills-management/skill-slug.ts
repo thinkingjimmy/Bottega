@@ -4,8 +4,8 @@
  * [POS]: Identity gate shared by library, extension, project, and system sources before dedupe, prompt rendering, or lease issuance
  */
 
-export const SKILL_SLUG_MAX_LENGTH = 64;
-export const SKILL_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SKILL_SLUG_MAX_LENGTH = 64;
+const SKILL_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export type SkillSlug = string & { readonly __skillSlug: unique symbol };
 

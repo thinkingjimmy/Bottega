@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React use Memo, TurnDraft/DraftPlanProjection and chart Markdown quota projection
  * [OUTPUT]: Provides useDraftProjection, which separates the cold scan of the finished parts from the hot scan of the flow text/Plan
- * [POS]: The current draft of the chat/transcript is a pure projection hook; chat-turn is only responsible for the layout of the components, and no longer has a history of each scan
+ * [POS]: Pure projection hook for the active draft in chat/transcript; chat-turn only handles component layout and no longer redoes this scan itself
  */
 
 import { useMemo } from "react";

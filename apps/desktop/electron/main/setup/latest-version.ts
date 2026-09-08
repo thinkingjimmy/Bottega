@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on descriptor latestVersion Extended, 24h clock and display generation
  * [OUTPUT]: Provides LatestVersionCache and GitHub Release to read the latest stable version
- * [POS]: the information boundaries of the non-blocked version of the setup; Runtime check not waiting for the network
+ * [POS]: setup's non-blocking version-check boundary; callers read a cached result immediately and never wait on the network
  */
 
 import type { AgentBackendId } from "../../../shared/agent-ipc";

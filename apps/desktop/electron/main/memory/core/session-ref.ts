@@ -1,21 +1,14 @@
 /**
  * [INPUT]: Depends on node: crypto and ProviderSessionRef shape
- * [OUTPUT]: Provides memorySessionKey and the only derivative of providerSessionRef
- * [POS]: The remote address single point of the main/memory/core; The adapter receives ref and prohibits the automatic access of the session key by writing remote id
+ * [OUTPUT]: Provides providerSessionRef and workspacePeerId, the only derivation of remote session addressing
+ * [POS]: The remote-addressing single point of main/memory/core; adapters receive only the hashed remoteSessionId, never the raw sessionKey
  */
 
 import { createHash } from "node:crypto";
-import type { ChatRecord } from "../../../../shared/chats-ipc";
 import type { ProviderSessionRef } from "./provider";
 
 /** 远端命名的代次前缀：v1 直接用 sessionKey，v2 起一律哈希寻址。 */
 const REMOTE_PREFIX = "aicv2";
-
-export function memorySessionKey(
-  chat: Pick<ChatRecord, "id" | "incarnationId">
-) {
-  return `${chat.id}:${chat.incarnationId}`;
-}
 
 export function providerSessionRef(input: {
   sessionKey: string;

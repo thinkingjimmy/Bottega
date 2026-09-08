@@ -3,7 +3,7 @@
 /**
  * [INPUT]: Depends on use HorizontalResize, PageShell crossHeaderPanelStyle/panelChromeClassName, Button and cn
  * [OUTPUT]: Provides AppSidePanel; a 44px resize rail on the leading edge, a 40px header, an optional second header band (rail) that takes over the divider, and zero width when closed
- * [POS]: The third-party apps are the only form source shared by the Use/Settings tab; The shutdown mode leaves zero width aside, and content is not posted
+ * [POS]: The one resizable side-panel shell shared by the Use and Settings tabs; closed state collapses to zero width without unmounting its content
  */
 
 import { type ReactNode, useState } from "react";

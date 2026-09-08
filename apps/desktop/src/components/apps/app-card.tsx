@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on AppListItem/AppsProvider, progress, app-state, dialogs, UI card/dropdown, router, surface residence intents, AppWindow icon, shared system-file-manager copy, and external/reveal IPC
+ * [INPUT]: Depends on shared appDisplayName, AppListItem/AppsProvider, progress, app-state, dialogs, UI card/dropdown, router, surface residence intents, AppWindow icon, shared system-file-manager copy, and external/reveal IPC
  * [OUTPUT]: Provides AppCard with platform-correct Reveal copy, plain waiting-for-access recovery, current-surface navigation, direct Pin/Unpin beside More, lifecycle actions, frozen deletion-dialog identity, and non-cancellable deletion progress
  * [POS]: App listing unit; the badge follows generation readiness without exposing internal terminology, and main-owned navigation focuses an existing Studio instead of rendering twice
  */
 
+import { appDisplayName } from "../../../shared/apps-ipc";
 import { useState } from "react";
 import {
   AppWindowIcon,
@@ -88,25 +89,8 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
   const [repairOpen, setRepairOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  if (app.kind === "placeholder") {
-    return (
-      <Card className="h-full border-dashed opacity-70">
-        <CardHeader>
-          <div className="mb-1 text-3xl">{app.icon}</div>
-          <CardTitle className="text-base">{app.name}</CardTitle>
-          <CardDescription className="line-clamp-2">
-            {app.description}
-          </CardDescription>
-          <span className="text-muted-foreground text-xs">
-            {t("apps.card.browserFallback")}
-          </span>
-        </CardHeader>
-      </Card>
-    );
-  }
-
   const { record } = app;
-  const name = record.manifest?.name ?? record.displayName;
+  const name = appDisplayName(record);
   const description =
     record.manifest?.description ??
     (isAwaitingGeneration(record)

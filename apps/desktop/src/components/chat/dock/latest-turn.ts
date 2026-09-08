@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical ChatMessage, active TurnDraft and assistantSeq
- * [OUTPUT]: Provides the latest assistant pure selector; The draft is updated when priority, seq is equal, canonical wins
+ * [OUTPUT]: Provides selectLatestTurn, a pure selector that prefers the active draft when its assistantSeq is newer, otherwise returns the canonical assistant message
  * [POS]: The statusless selector for chat/dock; user/notice/settling Not participating Latest turn
  */
 

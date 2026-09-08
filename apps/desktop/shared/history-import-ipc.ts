@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The sequencing type of shared Agent/Settings only
- * [OUTPUT]: Provides external session identity, fingerprints, canonical routing, one-message-per-turn foreign history blocks (folded `process` statements plus the Codex `plan` marker), foreignMessageText, adoption, and Memory snapshot contracts
+ * [OUTPUT]: Defines foreign history and same-source adoption contracts, including the closed optional authentication retry intent.
  * [POS]: The single source of truth for the shared history-import wire; the renderer never receives a source file path and cannot forge a SessionRef
  */
 
@@ -22,15 +22,6 @@ export type HistoryFileFingerprint = Readonly<{
   size: number;
   parserVersion: number;
 }>;
-
-export type HistoryFileState =
-  | "new"
-  | "append"
-  | "truncate"
-  | "replace"
-  | "archive"
-  | "delete"
-  | "unchanged";
 
 /** 唯一等价关系；任何去重/claim/resume 都必须消费同一组 alias。 */
 export type ExternalSessionKey = Readonly<{
@@ -146,7 +137,7 @@ export type HistoryImportSnapshot = Readonly<{
   warning: string | null;
 }>;
 
-/** prepare 只冻结目录与令牌；计数经 countProject 异步补齐，弹窗不等扫描。 */
+/** prepare 只冻结目录与令牌；renderer 经 countProject 领取预检结果后决定是否展示导入确认。 */
 export type PreparedProjectHistoryImport = Readonly<{
   token: string;
   canonicalRoot: string;
@@ -181,13 +172,14 @@ export type HistoryAdoptionSubmission = Readonly<{
 }>;
 
 export type PrepareHistoryAdoptionInput = Readonly<{
+  authenticationRetry?: import("./agent-availability/types").AuthenticationRetryIntent;
   opaqueId: string;
   expectedHistoryRevision: string;
   submission: HistoryAdoptionSubmission;
   turnOptions: AgentTurnOptions;
 }>;
 
-export type HistoryAdoptionReceipt = Readonly<{
+type HistoryAdoptionReceipt = Readonly<{
   chatId: string;
   incarnationId: string;
   phase: "started" | "queued" | "settled";
@@ -210,7 +202,7 @@ export type ProjectHistoryCommitResult = Readonly<{
   memoryPreview: HistoryMemoryPreview | null;
 }>;
 
-export type ProjectHistoryRefreshResult = Readonly<{
+type ProjectHistoryRefreshResult = Readonly<{
   project: ProjectHistoryImportState;
   memoryPreview: HistoryMemoryPreview | null;
 }>;

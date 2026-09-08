@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on ACP short process detection, descriptor of the AcpLauncher, selectable single process environment/readable source only, production Seatbelt, background process lease and ACP failure
- * [OUTPUT]: Provides AcpReadinessSpec, prepare/run resource binary settlement and retain reason authentication projection create AcpReadinessCheck
- * [POS]: The core of the shared 4 end without prompt readiness; The start-up mode and the state root lifecycle have a single owner
+ * [INPUT]: Depends on the ACP session probe, AcpLauncher descriptors, an optional prepared process environment with read-only roots, the seatbelt sandbox wrapper, the agent process lease, and ACP failure classification
+ * [OUTPUT]: Bounds authentication lease waiting separately from the ACP handshake and reports the actual authentication phase without nested interactive leases.
+ * [POS]: Core of the no-prompt readiness check shared by all four backends; owns both the handshake launch and the state-root lifecycle as a single unit
  */
 
+import { CHECK_QUEUE_MS } from "../../availability/budgets";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -181,15 +182,17 @@ async function runAcpReadiness(
   spec: AcpReadinessSpec,
   runtime: ResolvedRuntime,
   signal?: AbortSignal,
-  dependencies: AcpReadinessDependencies = defaultReadinessDependencies
+  dependencies: AcpReadinessDependencies = defaultReadinessDependencies,
+  onAuthenticationStarted?: () => void
 ): Promise<AcpReadinessReport> {
   const controller = new AbortController();
   const effectiveSignal = signal
     ? AbortSignal.any([signal, controller.signal])
     : controller.signal;
   const cwd = await dependencies.prepare(spec.backend);
-  const lease = await dependencies.acquire(spec.backend, effectiveSignal);
+  const lease = await dependencies.acquire(spec.backend, AbortSignal.any([effectiveSignal, AbortSignal.timeout(CHECK_QUEUE_MS)]));
   try {
+    onAuthenticationStarted?.();
     await dependencies.probe(spec, runtime, cwd, effectiveSignal);
     return { kind: "ready" };
   } catch (cause) {
@@ -229,9 +232,10 @@ export function createAcpReadinessCheck(
 ) {
   return async (
     runtime: ResolvedRuntime,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onAuthenticationStarted?: () => void
   ): Promise<AuthCheckResult> => {
-    const report = await runAcpReadiness(spec, runtime, signal, dependencies);
+    const report = await runAcpReadiness(spec, runtime, signal, dependencies, onAuthenticationStarted);
     return {
       status: PROJECTION[spec.proves][report.kind],
       ...(report.kind === "ready" ? {} : { reason: report.message }),

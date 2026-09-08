@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on AppStore compatibility-bound generations/Studio grants, ChatStore, ProjectStore, BaseGuiGrantStore, AppAttachmentFence, the ProjectsService publish boundary, nearest-scope grant-resolver, and shared Apps grant DTO
+ * [INPUT]: Depends on shared appDisplayName, AppStore compatibility-bound generations/Studio grants, ChatStore, ProjectStore, BaseGuiGrantStore, AppAttachmentFence, the ProjectsService publish boundary, nearest-scope grant-resolver, and shared Apps grant DTO, and statusError from main/errors
  * [OUTPUT]: Provides AppGrantAuthority with fenced grant/disable/clear, all-installed Chat management projection, nearest-scope effective grants, exact generation/content/compatibility-bound Studio-only projection, and Project mutation publication; exports the shared studioSurfaceReady predicate the renderer Gate consumes
  * [POS]: Sole durable App grant authority; ordinary AppRole chats stay excluded while the resident Studio lease consumes a separate exact-use projection
  */
 
+import { appDisplayName } from "../../../../shared/apps-ipc";
 import {
   isPositiveAppGrant,
   type AppCapabilityGrant,
@@ -27,6 +28,7 @@ import {
 } from "../../../../shared/apps-ipc";
 import type { ChatMetadata } from "../../chats/chat-summary";
 import type { ChatStore } from "../../chats/chat-store";
+import { statusError } from "../../errors";
 import type { StoredProject } from "../../projects/store/project-store-schema";
 import type { ProjectStore } from "../../projects/store/project-store";
 import type { AppStore } from "../store/app-store";
@@ -206,7 +208,7 @@ export class AppGrantAuthority {
          统一授权入口。Agent 能力仍只从 effectiveGrants() 取正向授权。 */
       return [{
         appId,
-        name: app.manifest?.name ?? app.displayName,
+        name: appDisplayName(app),
         state: app.state,
         generationId,
         effectiveSource: resolved.provenance.effectiveSource,
@@ -247,7 +249,7 @@ export class AppGrantAuthority {
           });
       return {
         appId: app.id,
-        name: app.manifest?.name ?? app.displayName,
+        name: appDisplayName(app),
         icon: app.manifest?.icon ?? null,
         state: app.state,
         generationId: app.generationBinding.active?.generationId ?? null,
@@ -518,12 +520,10 @@ export class AppGrantAuthority {
         "expectedProjectLifecycleRevision" in target &&
         project.projectLifecycleRevision !== target.expectedProjectLifecycleRevision
       ) {
-        throw Object.assign(new Error("Project lifecycle 已变化，请刷新后重试"), {
-          status: 409,
-        });
+        throw statusError(409, "Project lifecycle 已变化，请刷新后重试");
       }
       if (project.archivedAt || project.deletionCheckpoint) {
-        throw Object.assign(new Error("Project 当前不可用"), { status: 409 });
+        throw statusError(409, "Project 当前不可用");
       }
       if (project.workspaceBinding.kind === "app") throw new Error("App Project 不能再附加 App");
       return;
@@ -534,10 +534,7 @@ export class AppGrantAuthority {
       "expectedConversationIncarnationId" in target &&
       chat.incarnationId !== target.expectedConversationIncarnationId
     ) {
-      throw Object.assign(
-        new Error("APP_INCARNATION_STALE: conversation incarnation 已变化，请刷新后重试"),
-        { status: 409 }
-      );
+      throw statusError(409, "APP_INCARNATION_STALE: conversation incarnation 已变化，请刷新后重试");
     }
     if (chat.appRole !== null) throw new Error("App chat 不能再附加 App");
     const project = chat.projectId ? this.projects.get(chat.projectId) : undefined;
@@ -554,7 +551,7 @@ export class AppGrantAuthority {
 
   private appName(appId: string) {
     const app = this.apps.get(appId);
-    return app?.manifest?.name ?? app?.displayName ?? appId;
+    return app ? appDisplayName(app) : appId;
   }
 
   private dataGrant(

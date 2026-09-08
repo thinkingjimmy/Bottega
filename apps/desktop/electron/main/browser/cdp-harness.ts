@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on the BrowserPanelService registry, webContents.debugger, browser action, per-tab lane, canceled action execution, Agent overlay and AbortSignal
- * [OUTPUT]: Provides CdpHarness: cross-frame/OOPIF AX snapshots, versioned ref, budget compression, batch action, stop semantics and final feedback snapshots
- * [POS]: The main/browser's Agent kernel is sorted; lane synchronization, action-execution, cancellation, AX/ref/ action syntax and result budget
+ * [INPUT]: Depends on the BrowserPanelService tab registry, webContents.debugger, the shared BrowserAction, the per-tab execution lane, cancelable action execution, the Agent overlay, AbortSignal, and the main error vocabulary (asError/statusError)
+ * [OUTPUT]: Provides CdpHarness: cross-frame/OOPIF AX snapshots, versioned refs, budget compression, batched actions, stop semantics, and the final feedback snapshot
+ * [POS]: The main/browser Agent kernel; it composes lane serialization, action execution, cancellation, AX/ref/action semantics, and result budgets
  */
 
 import { setTimeout as delay } from "node:timers/promises";
 import type { BrowserAction } from "../../../shared/builtin-tools/browser";
+import { asError, statusError } from "../errors";
 import {
   boxCenter,
   removeAgentOverlay,
@@ -63,7 +64,7 @@ type Candidate = {
   offscreen: boolean;
 };
 
-export type BrowserSnapshot = {
+type BrowserSnapshot = {
   snapshot: string;
   version: number;
   truncated: boolean;
@@ -674,8 +675,3 @@ const cdpExceptionMessage = (
 const isUserStop = (cause: unknown) =>
   cause instanceof UserStoppedBrowserBatchError ||
   (cause instanceof Error && "code" in cause && cause.code === "stopped_by_user");
-const asError = (cause: unknown) =>
-  cause instanceof Error ? cause : new Error(String(cause));
-function statusError(status: number, message: string) {
-  return Object.assign(new Error(message), { status });
-}

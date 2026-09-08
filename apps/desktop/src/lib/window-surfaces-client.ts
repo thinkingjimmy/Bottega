@@ -14,6 +14,8 @@ import {
   type WindowSurfacesBridgeApi,
 } from "../../shared/window-surfaces-ipc";
 import {
+  composerRevision,
+  validateComposerCapsuleExport,
   commitComposerCapsuleExport,
   exportComposerCapsule,
   importComposerCapsule,
@@ -56,6 +58,7 @@ async function handleCommand(command: SurfaceCommand) {
   try {
     await runCommand(command);
   } catch (cause) {
+    document.getElementById("root")?.removeAttribute("inert");
     if ("transactionId" in command) {
       window.windowSurfaces?.reply({
         transactionId: command.transactionId,
@@ -67,6 +70,11 @@ async function handleCommand(command: SurfaceCommand) {
 }
 
 async function runCommand(command: SurfaceCommand) {
+    if (command.type === "presence-destination") {
+      if (command.destination === "general") navigate("/settings/general");
+      else window.dispatchEvent(new Event("bottega:open-activity"));
+      return;
+    }
     if (command.type === "navigate") {
       navigate(command.route);
       return;
@@ -82,7 +90,18 @@ async function runCommand(command: SurfaceCommand) {
       }
       return;
     }
+    if (command.type === "prepare-hydrate") {
+      window.windowSurfaces?.reply({ transactionId: command.transactionId, outcome: "prepared",
+        composerRevision: command.capsule.composer ? composerRevision(command.capsule.composer.chatId) : 0 });
+      return;
+    }
+    if (command.type === "validate-export") {
+      if (command.capsule.composer) validateComposerCapsuleExport(command.transactionId, command.capsule.composer);
+      window.windowSurfaces?.reply({ transactionId: command.transactionId, outcome: "validated" });
+      return;
+    }
     if (command.type === "export") {
+      document.getElementById("root")?.setAttribute("inert", "");
       const stored = readCapsule(command.surface);
       const capsule: SurfaceCapsuleV1 = stored.route.useChatId
         ? {
@@ -102,6 +121,7 @@ async function runCommand(command: SurfaceCommand) {
       return;
     }
     const capsule = command.capsule;
+    if (command.type === "restore" || command.type === "commit") document.getElementById("root")?.removeAttribute("inert");
     if (command.type === "commit") {
       if (capsule.composer) {
         commitComposerCapsuleExport(command.transactionId, capsule.composer);
@@ -116,10 +136,14 @@ async function runCommand(command: SurfaceCommand) {
       if (command.type === "restore") {
         restoreComposerCapsuleExport(command.transactionId, capsule.composer);
       } else {
-        importComposerCapsule(capsule.composer);
+        importComposerCapsule(capsule.composer, command.transactionId, command.expectedComposerRevision);
       }
     }
     writeCapsule(capsule);
+    if (command.type === "hydrate" && command.mode === "background") {
+      window.windowSurfaces?.reply({ transactionId: command.transactionId, outcome: "hydrated", mode: "background" });
+      return;
+    }
     navigate(capsule.route.pathname);
     window.dispatchEvent(
       new CustomEvent("bottega:surface-hydrated", { detail: capsule })
@@ -127,6 +151,7 @@ async function runCommand(command: SurfaceCommand) {
     window.windowSurfaces?.reply({
       transactionId: command.transactionId,
       outcome: command.type === "hydrate" ? "hydrated" : "restored",
+      ...(command.type === "hydrate" ? { mode: command.mode ?? "present" } : {}),
     });
 }
 

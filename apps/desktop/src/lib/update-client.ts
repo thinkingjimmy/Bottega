@@ -51,10 +51,26 @@ class UpdateStore {
     void this.settle(window.update.snapshot());
   }
 
+  checkForApp(requestId: string) {
+    return window.update ? this.settle(window.update.checkForApp(requestId)) : Promise.resolve(this.value);
+  }
+  dismissAppRequirement() {
+    return window.update ? this.settle(window.update.dismissAppRequirement()) : Promise.resolve(this.value);
+  }
+
   check() {
+    const requestId = this.value.appRequirement?.context.requestId;
+    if (requestId) return this.checkForApp(requestId);
     return window.update
       ? this.settle(window.update.check())
       : Promise.resolve(this.value);
+  }
+
+  installNow() {
+    const candidateId = this.getSnapshot().candidateId;
+    return window.update && candidateId
+      ? this.settle(window.update.installNow(candidateId))
+      : Promise.resolve();
   }
 
   downloadAndInstall() {
@@ -80,6 +96,7 @@ class UpdateStore {
   }
 
   private publish(snapshot: UpdateSnapshot) {
+    if (snapshot.revision !== undefined && this.value.revision !== undefined && snapshot.revision < this.value.revision) return;
     this.value = snapshot;
     for (const listener of this.listeners) listener();
   }

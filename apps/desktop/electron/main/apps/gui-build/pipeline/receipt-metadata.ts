@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { AppGuiAdmissionGate } from "../admission";
-import { canonicalDigest, sha256 } from "../metadata";
+import { canonicalDigest, sha256 } from "../../support";
 
 export async function loadReceiptMetadata(gates: readonly AppGuiAdmissionGate[]) {
   const root = metadataRoot();

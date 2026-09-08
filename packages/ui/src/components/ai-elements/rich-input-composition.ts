@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on RichInput editor/value refs, pure range replacement model and React composition events
- * [OUTPUT]: Provides use of RichInputComposition, encapsulates IME preview/commit with browser replay input to weight
- * [POS]: The IME business adapter for ai-elements RichInput; The main state machine consumes only three stability event processors
+ * [OUTPUT]: Provides useRichInputComposition, which wraps IME preview/commit handling and replays the browser's native composition input against the pure range-replacement model
+ * [POS]: IME adapter for ai-elements RichInput; the main state machine only consumes its three stable event handlers
  */
 
 import {

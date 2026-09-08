@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the backend, maintenance of the session/headless executor, apps/support assistant, repair prompt/finalize, RepairContext and log/static output capabilities injected
- * [OUTPUT]: Provides RepairAdapter, clone packaging, session repair on the back end of the disc and uncertified certainty lock
+ * [INPUT]: Reads saved App configuration through the common command resolver; Depends on maintenance sessions, Headless execution, the shared command interpreter and repair journal context
+ * [OUTPUT]: Builds authorized repair jobs only after matching maintenance qualification; execution remains bound to the repair workspace and lease.
  * [POS]: install/repair product adaptation layer, so that AppInstaller does not know the specific Agent runtime
  */
 
@@ -10,8 +10,9 @@ import {
   backendRuntimeRegistry,
 } from "../../../backends";
 import { headlessExecutor } from "../../../backends/headless-executor";
-import { sanitizedProcessEnvironment } from "../../../codex-runtime";
-import { strippedShell } from "../../support";
+import { sanitizedProcessEnvironment } from "../../../backends/runtime-probe";
+import { resolveConfiguredAppCommand, appCommandLabel } from "../../execution/command";
+import type { AppCommand } from "../../../../../shared/apps-execution";
 import { finalizeInstall } from "../finalize";
 import { createRepairPrompt } from "./prompt";
 import type { RepairContext } from "./runner";
@@ -66,7 +67,7 @@ export class RepairAdapter {
     );
     if (
       snapshot.runtimeStatus !== "installed" ||
-      snapshot.authStatus !== "authenticated" ||
+      (await backendRuntimeRegistry.operationEligibility(descriptor.id, "repair", { cwd: context.journal.workspace, ignoreUserConfig: true }, snapshot)).decision !== "allow" ||
       !snapshot.capabilities.maintenance
     ) {
       throw new Error(`${descriptor.displayName} 当前不可用于 App 修复`);
@@ -120,18 +121,19 @@ export class RepairAdapter {
   }
 
   finalize(context: RepairContext, candidate: unknown) {
-    const run = async (command: string, intent: string) => {
+    const run = async (command: AppCommand, intent: string) => {
       this.options.emit({
         appId: context.record.id,
         type: "progress",
-        step: `正在验证修复：${command.slice(0, 80)}`,
+        step: `正在验证修复：${appCommandLabel(command)}`,
         operation: "repair",
       });
       const result = await context.execute({
         intent,
-        ...strippedShell(command),
-        cwd: context.journal.workspace,
-        env: sanitizedProcessEnvironment(),
+        ...await resolveConfiguredAppCommand(command, {
+          root: context.journal.workspace, userData: this.options.userData,
+          appId: context.record.id, signal: context.task.controller.signal,
+        }),
         signal: context.task.controller.signal,
       });
       await this.appendOutput(context.record.id, `repair:${intent}`, result);

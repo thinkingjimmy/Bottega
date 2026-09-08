@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React memo, Chat/Project abstract, chat-hydration scope rules and session project mode
  * [OUTPUT]: Provides useWorkspaceLifecycle, separates wire scope, canonical Workspace precondition, async fence key and durable draft identity
- * [POS]: The Workspace lifecycle projector for chat/runtime; use-chat-session only sort out side effects and no longer type as JSON
+ * [POS]: Workspace-lifecycle projector for chat/runtime; use-chat-session only wires side effects and no longer computes these JSON-keyed identities itself
  */
 
 import { useMemo } from "react";

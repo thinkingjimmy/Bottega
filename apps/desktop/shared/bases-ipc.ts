@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Base value/view/attachment contracts and the canonical BaseCellContext evaluation kernel
- * [OUTPUT]: Provides Base owner/IPC DTOs with required navigation, limits, mutation results, change/removed/moved/warning events, and context-required filter/project/group functions with language-neutral group descriptors
+ * [OUTPUT]: Provides Base owner/IPC DTOs with required navigation, limits, mutation results, change/removed/moved/warning events, the filter column walker, and context-required filter/project/group functions with language-neutral group descriptors
  * [POS]: The shared Base wire and projection authority used by main, renderer, and the builtin-tool server; projection never manufactures its own partial evaluation context
  */
 
@@ -468,14 +468,19 @@ export function projectBaseRows(
   });
 }
 
+/** Every column id a filter tree reads, in visit order (duplicates kept). */
+export function filterColumnIds(filter: BaseFilter | undefined): string[] {
+  if (!filter) return [];
+  if (filter.kind === "condition") return [filter.columnId];
+  if (filter.kind === "not") return filterColumnIds(filter.filter);
+  return filter.filters.flatMap(filterColumnIds);
+}
+
 export function filterReferencesColumn(
   filter: BaseFilter | undefined,
   columnId: string
 ): boolean {
-  if (!filter) return false;
-  if (filter.kind === "condition") return filter.columnId === columnId;
-  if (filter.kind === "not") return filterReferencesColumn(filter.filter, columnId);
-  return filter.filters.some((child) => filterReferencesColumn(child, columnId));
+  return filterColumnIds(filter).includes(columnId);
 }
 
 export function groupBaseRows(

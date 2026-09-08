@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared Workspace Index/path Budget, projects/git/git-runner and Node opendir/lstat/path
- * [OUTPUT]: Provides canonical POSIX path, validation, 8MB retained index, three stage bounded Git NUL flow, walk list and fresh single path member/entity proof
- * [POS]: The Workspace indexing mechanism layer of Electron main; In Git/walk, the listing and directory derivatives execute raw/retained/count/byte upper limits, and the catalog only has caches, sequences and identity fence
+ * [OUTPUT]: Provides canonical POSIX path validation, an 8MB-bounded Git NUL-record index build (buildWorkspaceIndex), a filesystem walk fallback (defaultListWorkspaceFiles), and single-path existence/kind proof (proveWorkspaceEntry)
+ * [POS]: Electron main's workspace-indexing layer; both the Git and filesystem-walk listing paths enforce raw/retained count and byte ceilings before returning entries
  */
 
 import { lstat, opendir } from "node:fs/promises";

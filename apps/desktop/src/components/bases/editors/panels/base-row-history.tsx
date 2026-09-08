@@ -2,8 +2,8 @@
 
 /**
  * [INPUT]: Depends on React, the useBaseSnapshots rowHistory reading face, i18n, Unified Dialog with the current list of Base columns
- * [OUTPUT]: Provides BaseRowHistoryDialog; The rowId shows the last 50 actor/time/operation, the field abstract takes only the cell in the row and shows the column name as the missing column return id)
- * [POS]: The details of the bases/editors/panels are read only; No history, no enduring status, no rollback
+ * [OUTPUT]: Provides BaseRowHistoryDialog, showing a rowId's last 50 actor/time/operation entries with per-entry field summaries filtered to that row's cells, falling back to the columnId when a column has been deleted
+ * [POS]: Read-only detail surface in bases/editors/panels; it neither writes history entries nor supports rollback
  */
 
 import { useEffect, useMemo, useState } from "react";

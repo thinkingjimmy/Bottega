@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AsyncLocalStorage and Memory Promise
- * [OUTPUT]: Provides a global authorization strategy/Project/App/Attachment four-tiered admission gate, attachment key, single point `attachmentAdmissionKey`AppUsageRegistry with five sets of AppPlatformAdmission, fixed D26 sequences and reverse to fail-fast
+ * [OUTPUT]: Provides a four-tiered admission gate (global/Project/App/Attachment), the single-point `attachmentAdmissionKey` helper, an AppUsageRegistry, and AppPlatformAdmission composing all five with a fixed lock-order sequence that fails fast on inversion
  * [POS]: App Attach and launch the lifecycle baseline; Composition root is not dependent on any Store, but only builds an AppPlatformAdmission
  */
 

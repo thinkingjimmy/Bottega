@@ -109,7 +109,7 @@ export function withOpencodeDefaultModel(
  * 配置，把它当 cwd 等于让被探测的对象决定探测的行为。用 os.tmpdir() 下的
  * 固定子目录（macOS 上它是 per-user 私有目录），0700 建出来。
  */
-export function opencodeProbeCwd() {
+function opencodeProbeCwd() {
   const path = join(tmpdir(), "ai-chat-opencode-probe");
   mkdirSync(path, { recursive: true, mode: 0o700 });
   return path;

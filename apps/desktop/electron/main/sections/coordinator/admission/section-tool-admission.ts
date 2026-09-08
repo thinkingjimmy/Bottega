@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on RelayLedger, ChatService, SettingsStore, Keyless Universal Workspace lifecycle gate, notice outbox, backend readiness and create-section saga
- * [OUTPUT]: Provides access to and feedback from tools such as send_to_section / create_section / promote; promote with original parameters abstract and complete D-D6 provenance Atomic entry, return to execute the entire line by book intent Projection, Project inheritance qualification review, Intent entry and first creation of a common gate
- * [POS]: The builtin tool of sections/coordinator is to access the boundary; The controller only receives verified durable relay/create intent
+ * [OUTPUT]: Provides SectionToolAdmission's send/create/promote handlers for the send_to_section, create_section, and promote builtin tools; promote dedupes by parameter digest against the recorded create intent and gates Project inheritance behind the workspace lifecycle
+ * [POS]: Builtin-tool access boundary for sections/coordinator; the controller only receives verified, durable relay/create intents
  */
 
 import { createHash } from "node:crypto";
@@ -429,7 +429,7 @@ export class SectionToolAdmission {
   }
 }
 
-export function promotionParameterDigest(input: {
+function promotionParameterDigest(input: {
   agentThreadId: string;
   title?: string;
   agent?: string;

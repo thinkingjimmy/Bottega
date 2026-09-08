@@ -1,5 +1,5 @@
 /**
- * [INPUT]: No external dependence; The user source domain is self-identified and is being transferred to the back-end registered domain of agent-ipc
+ * [INPUT]: No external dependencies; USAGE_SOURCE_ORDER is an independent tuple, deliberately not derived from agent-ipc's AGENT_BACKEND_ORDER
  * [OUTPUT]: Provides Usage Source domain subgroup/identity, query target, token/cost statistics, price revision, push, scan progress DTO and preload bridge agreement
  * [POS]: IPC single truth source, connecting Electron main, preload and renderer
  */

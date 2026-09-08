@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on node fs/crypto, strict frontmatter parsing, and the shared SkillSlug admission gate
+ * [INPUT]: Depends on node fs/crypto, strict frontmatter parsing, and the shared SkillSlug admission gate, and statusError from main/errors
  * [OUTPUT]: Provides strict Skill directory inspection with admitted slug/requires metadata, deterministic filtered digesting/copying, candidate discovery, and stable digest observation
- * [POS]: The unreliable directory of skills-management is reading the boundaries; The volume is just not deciding, hard failure is just left to symlink/cross-border/bad name things that are really unsafe
+ * [POS]: skills-management's untrusted-directory read boundary; size is reported, never a verdict — hard failure is reserved for symlinks, path escapes, and invalid names
  */
 
 import { createHash } from "node:crypto";
@@ -20,6 +20,7 @@ import type {
   ManagedSkillReason,
   ManagedSkillReasonCode,
 } from "../../../shared/unified-skills-ipc";
+import { statusError } from "../errors";
 import { parseStrictSkillFrontmatter } from "../extensions/manifest-adapter";
 import { admitSkillSlug } from "./skill-slug";
 
@@ -175,7 +176,7 @@ export async function verifyInspectedSkill(
     ? current.skill.digest === skill.digest
     : current.skill.revision === skill.revision);
   if (!current.importable || !unchanged) {
-    throw Object.assign(new Error("Skill 候选在预览后已变化，请重新打开预览"), { status: 409 });
+    throw statusError(409, "Skill 候选在预览后已变化，请重新打开预览");
   }
   const digest = current.skill.digest ?? await digestWalk(current.skill.canonicalPath, current.skill.files);
   return { ...current.skill, digest };
@@ -373,5 +374,5 @@ function candidateLabel(path: string) {
 }
 
 function changedDuringCopy() {
-  return Object.assign(new Error("Skill 来源在复制期间发生变化，请重新预览"), { status: 409 });
+  return statusError(409, "Skill 来源在复制期间发生变化，请重新预览");
 }

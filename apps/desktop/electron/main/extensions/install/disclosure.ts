@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fs/path, adapter registry and admission results
  * [OUTPUT]: Provides listPackageFiles (full-path byte order, since it feeds a digest), discloseExtensionPackage, capabilityLines and diffCapabilities
- * [POS]: The ability to disclose extensions/install; The same measurement is shared between the installation and the update, and diff is comparable
+ * [POS]: Extensions/install's package-disclosure boundary; install and update share the same measurement so their capability diffs are comparable
  */
 
 import { readFile, stat } from "node:fs/promises";
@@ -9,7 +9,8 @@ import { opendir } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { admitExtensionPackageWithAdapter, type ExtensionAdapterId } from "../admission";
 import type { ExtensionPackageAdmission } from "../manifest-adapter";
-import { digestCanonical, type ExtensionSourceProvenance } from "../registry-store";
+import { digestCanonical } from "../registry-canonical";
+import type { ExtensionSourceProvenance } from "../registry-schema";
 
 const SCRIPT_EXTENSIONS = new Set([
   "sh", "bash", "zsh", "js", "mjs", "cjs", "ts", "py", "rb", "pl", "php",
@@ -131,7 +132,7 @@ export async function discloseInstalledGeneration(input: {
 
 /* canonical 能力行：一行就是一项用户批准过的能力。行集合是集合语义，
    顺序无关；新增即扩权，减少只是缩权。 */
-export function capabilityLines(
+function capabilityLines(
   disclosure: ExtensionCapabilityDisclosure
 ): string[] {
   return [

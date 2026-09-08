@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node fsync journal/realpath/stat, BrowserWindow, canonical image source resolver and durable cache source resolver
- * [OUTPUT]: Provides a durable completion journal, stable completedAt, intergenerational CAS ACK/reference query, multiple subscriptions to TurnEventsBroker, canonical paths between restarting the reset and pathless renderer projections
- * [POS]: The gallery's completed event arbitrator; Before you get durable custody, then project, lease and savePath stay in the main forever
+ * [OUTPUT]: Provides TurnEventsBroker: a durable completion journal with stable completedAt, generation-checked (CAS) subscriber ACK/reference tracking, multi-subscriber fan-out, canonical/durable source resolution across restarts, and path-free event projections sent to renderer windows
+ * [POS]: Gallery's completed-event arbiter; always persists to the durable journal before projecting to renderer windows, and the raw lease/savedPath never leave the main process
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -25,6 +25,7 @@ import {
   type GalleryItemProjectionEventV1,
   type TranscriptGallerySourceRef,
 } from "../../../shared/gallery-media-ipc";
+import { syncDirectory } from "../persistence/durable-json";
 
 export type WorkspaceReadLease = {
   sourcePath: string;
@@ -80,13 +81,9 @@ export class TurnEventsBroker {
       const path = join(this.journalRoot, entry.name);
       let event: CompletedImageEventV1;
       try {
-        const parsed = completedImageEventSchema.parse(
+        event = completedImageEventSchema.parse(
           JSON.parse(await readFile(path, "utf8"))
         );
-        event = {
-          ...parsed,
-          journalToken: parsed.journalToken ?? legacyJournalToken(parsed),
-        };
       } catch (cause) {
         // completion journal 是 best-effort 入库的辅助账本：单文件损坏
         // 隔离为 .corrupt 继续启动，缺失的事件由 canonical reconcile 收敛。
@@ -278,7 +275,7 @@ export class TurnEventsBroker {
     }
     if (this.journalRoot) {
       await rm(this.journalPath(sourceRef), { force: true });
-      await fsyncDirectory(this.journalRoot);
+      await syncDirectory(this.journalRoot);
     }
     this.leases.delete(key);
     this.completed.delete(key);
@@ -334,7 +331,7 @@ const completedImageEventSchema = z
     sourceRevision: z.string().min(1).max(256),
     completedAt: z.number().finite().nonnegative(),
     lease: workspaceReadLeaseSchema,
-    journalToken: z.string().uuid().optional(),
+    journalToken: z.string().uuid(),
   })
   .strict()
   .superRefine((event, context) => {
@@ -406,23 +403,6 @@ function sameCompletion(
   );
 }
 
-function legacyJournalToken(
-  event: Omit<CompletedImageEventV1, "journalToken"> & {
-    journalToken?: string;
-  }
-) {
-  return createHash("sha256")
-    .update(
-      [
-        galleryOccurrenceKey(event.sourceRef),
-        event.sourceRevision,
-        event.completedAt,
-        event.lease.issuedAt,
-      ].join("\0")
-    )
-    .digest("hex");
-}
-
 async function durableJson(path: string, value: unknown) {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${randomUUID()}.tmp`;
@@ -435,30 +415,10 @@ async function durableJson(path: string, value: unknown) {
   }
   try {
     await rename(temporary, path);
-    await fsyncDirectory(dirname(path));
+    await syncDirectory(dirname(path));
   } catch (cause) {
     await rm(temporary, { force: true }).catch(() => undefined);
     throw cause;
   }
 }
 
-async function fsyncDirectory(path: string) {
-  const directory = await open(path, "r");
-  try {
-    await directory.sync();
-  } catch (cause) {
-    if (!isCode(cause, "EINVAL") && !isCode(cause, "ENOTSUP")) {
-      throw cause;
-    }
-  } finally {
-    await directory.close();
-  }
-}
-
-function isCode(cause: unknown, code: string) {
-  return (
-    cause instanceof Error &&
-    "code" in cause &&
-    (cause as NodeJS.ErrnoException).code === code
-  );
-}

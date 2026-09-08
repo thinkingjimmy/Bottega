@@ -15,6 +15,7 @@ import {
   mcpBackendAlias,
 } from "../../../../shared/mcp-servers-ipc";
 import type { TurnProjectContext } from "../../../../shared/resource-scope";
+import { deepFreeze } from "../../sections/coordinator/state/readonly-ledger";
 import type { TurnOrigin } from "../../turn-registry";
 import {
   manualSessionPlanDigest,
@@ -83,13 +84,4 @@ export function buildManualMcpPlan(input: Readonly<{
     entries: deepFreeze(entries),
     planDigest,
   });
-}
-
-function deepFreeze<T>(value: T): T {
-  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
-  Object.freeze(value);
-  for (const entry of Object.values(value as Record<string, unknown>)) {
-    deepFreeze(entry);
-  }
-  return value;
 }

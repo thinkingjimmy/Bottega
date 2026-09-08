@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on RelayLedger, ChatsService, submission/create/relay recovery, and the dependency-aware notice outbox
- * [OUTPUT]: Provides reconcileCoordinator with producer-ordered recovery plus dependent-notice flush or cancellation for stored and empty/error results
+ * [INPUT]: Depends on RelayLedger, ChatsService, shared raw-submission recovery, create/relay recovery, and the dependency-aware notice outbox
+ * [OUTPUT]: Recovers producers in order while retaining unknown raw submissions and flushing dependent result notices
  * [POS]: Coordinator startup recovery unit; every durable producer phase is followed by the projection needed to make its facts visible in the same boot
  */
 
@@ -14,6 +14,7 @@ import {
 import type { SectionNoticeOutbox } from "./notice-outbox";
 import type { RelayLedger, RelayRecord } from "./relay-ledger";
 import { skillTruncationNoticeId } from "./turn-preparation";
+import { resumeRawSubmission } from "./submission/recovery";
 
 type ReconcileInput = {
   ledger: RelayLedger;
@@ -27,20 +28,7 @@ type ReconcileInput = {
 export async function reconcileCoordinator(input: ReconcileInput) {
   await input.ledger.recoverSubmissionReservations();
   for (const submission of await input.ledger.pendingSubmissionReservations()) {
-    await input.resumeSubmission(submission).catch(async (cause) => {
-      const reason =
-        cause instanceof Error ? cause.message : String(cause);
-      await input.ledger.failRawSubmissionRecovery({
-        intentId: submission.intentId,
-        content: submission.content,
-        message:
-          `启动恢复已停止：${reason}。原提交仍由 main custody 保留，` +
-          "可编辑后以新身份重发。",
-      });
-      input.chats.store.pushWarning(
-        `Submission ${submission.intentId} 启动恢复已转 recoverable：${reason}`
-      );
-    });
+    await resumeRawSubmission(input, submission);
   }
   await input.ledger.ensurePausedActions();
   await input.notices.reconcile();

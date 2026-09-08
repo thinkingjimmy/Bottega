@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node fs/path, strict Extension digest identity validation, and canonical ProductResourceScope
+ * [INPUT]: Depends on Node fs/path, strict Extension digest identity validation, and canonical ProductResourceScope, and statusError from main/errors
  * [OUTPUT]: Provides contained install-owned owner receipts, completion-marked atomic epoch snapshots, writer gates, exact-scope enumeration, and explicit purge
  * [POS]: Retained Extension data authority; owner.json survives Registry package removal and never contains secrets
  */
@@ -21,6 +21,7 @@ import {
   sameProductResourceScope,
   type ProductResourceScope,
 } from "../../../../shared/product-resource-scope";
+import { statusError } from "../../errors";
 
 export type RetainedExtensionDataOwner = Readonly<{
   installIdentity: string;
@@ -229,19 +230,14 @@ export class PluginDataEpochStore {
       owner.sourceIdentity !== expectedOwner.sourceIdentity ||
       !sameProductResourceScope(owner.scope, expectedOwner.scope)
     ) {
-      throw Object.assign(new Error("Retained Extension data 不属于目标 owner"), {
-        status: 409,
-      });
+      throw statusError(409, "Retained Extension data 不属于目标 owner");
     }
     const { installIdentity } = owner;
     const outstanding = [...this.writers.values()].filter((value) =>
       value.startsWith(`${installIdentity}\0`)
     );
     if (outstanding.length) {
-      throw Object.assign(
-        new Error(`install data 仍有 ${outstanding.length} 个未归还的 writer lease`),
-        { status: 409 }
-      );
+      throw statusError(409, `install data 仍有 ${outstanding.length} 个未归还的 writer lease`);
     }
     const installRoot = await this.assertInstallRoot(installIdentity);
     await rm(installRoot, {
@@ -272,9 +268,7 @@ export class PluginDataEpochStore {
   acquireWriter(installIdentity: string, pluginDataEpochId: string) {
     const target = key(installIdentity, pluginDataEpochId);
     if (this.paused.has(target)) {
-      throw Object.assign(new Error("package data gate 已暂停新 writer"), {
-        status: 409,
-      });
+      throw statusError(409, "package data gate 已暂停新 writer");
     }
     const leaseId = randomUUID();
     this.writers.set(leaseId, target);

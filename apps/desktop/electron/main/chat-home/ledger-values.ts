@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod and shared Archive/Settings type
  * [OUTPUT]: Provides ChatHome/Purge durable schemas, including optional managed-worktree creation identity and immutable deletion authorization
- * [POS]: The pure schema of the chat-home module is true source, and the IO owner only consumes verified status
+ * [POS]: Pure schema source of truth for the chat-home module; IO owners (ledger, journal) only persist and validate values already checked here
  */
 
 import { z } from "zod";
@@ -9,11 +9,11 @@ import { z } from "zod";
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
 const incarnationId = z.string().regex(/^[a-f0-9]{32}$/);
 const absolutePath = z.string().min(1).max(4096).startsWith("/");
-export const rootIdentitySchema = z
+const rootIdentitySchema = z
   .object({ dev: z.string().min(1), ino: z.string().min(1) })
   .strict();
 
-export const creationPhaseSchema = z.enum([
+const creationPhaseSchema = z.enum([
   "planned",
   "materialized",
   "prepared",

@@ -1,25 +1,26 @@
 /**
- * [INPUT]: Depends on Node SHA-256, shared generation identities, and Registry stored-package contracts
- * [OUTPUT]: Provides canonical JSON digests, exact generation keys, lifecycle conflicts, and legacy enable projection synchronization
+ * [INPUT]: Depends on Node SHA-256, errors.ts statusError, shared generation identities, and Registry stored-package contracts
+ * [OUTPUT]: Provides canonical JSON digests, exact generation keys, lifecycle conflicts, and the derived package enable state
  * [POS]: Pure identity kernel shared by Registry install, lifecycle, projection, and persistence authorities
  */
 
 import { createHash } from "node:crypto";
 import type {
+  ExtensionEnableState,
   ExtensionPackageGenerationRef,
   PackageGenerationRecord,
   Sha256Digest,
 } from "../../../shared/extensions-ipc";
+import { statusError } from "../errors";
 import type { ExtensionRegistryStoredPackage } from "./registry-schema";
 
-export function syncLegacyEnable(owner: ExtensionRegistryStoredPackage) {
-  owner.enabled = owner.administrativeState === "disable-pending"
-    ? "disable-pending"
-    : owner.administrativeState === "denied"
-      ? "disabled"
-      : owner.enabledComponentInstanceIdentities.length > 0
-        ? "enabled"
-        : "disabled";
+/** Derived, never persisted: administrative state outranks component enablement. */
+export function packageEnableState(
+  owner: Pick<ExtensionRegistryStoredPackage, "administrativeState" | "enabledComponentInstanceIdentities">
+): ExtensionEnableState {
+  if (owner.administrativeState === "disable-pending") return "disable-pending";
+  if (owner.administrativeState === "denied") return "disabled";
+  return owner.enabledComponentInstanceIdentities.length > 0 ? "enabled" : "disabled";
 }
 
 export function generationRef(record: PackageGenerationRecord) {
@@ -36,12 +37,15 @@ export function exactGenerationRef(ref: ExtensionPackageGenerationRef) {
   } satisfies ExtensionPackageGenerationRef;
 }
 
+/** The one generation-ref key; it is also the persisted `refs` key in registry.json. */
+export function refKey(ref: ExtensionPackageGenerationRef): string;
+export function refKey(ref: ExtensionPackageGenerationRef | null | undefined): string | null;
 export function refKey(ref: ExtensionPackageGenerationRef | null | undefined) {
   return ref ? `${ref.packageGenerationId}:${ref.recordDigest}` : null;
 }
 
 export function registryConflict(message: string) {
-  return Object.assign(new Error(message), { status: 409 });
+  return statusError(409, message);
 }
 
 export function digestCanonical(value: unknown): Sha256Digest {

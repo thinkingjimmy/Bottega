@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on Chat/Project/App/Memory/Gallery/Browser services, the History Import handle, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, manual staging, RelayLedger, and backend bridge
- * [OUTPUT]: Provides ChatsService/Coordinator/Archive composition, Project workspace authority for Chat forks, adopted-continuation reconciliation, and frozen manual preparation
+ * [OUTPUT]: Composes runtime-only admission, scoped retries, queue pausing and title generation/recovery qualified against the same configured model and workspace.
  * [POS]: The conversation-domain startup composition module; the external-history half lives in history-import-runtime.ts and assembles dependencies without holding global lifecycle state
  */
 
 import { join } from "node:path";
-import type { AgentWorkspaceScope } from "../../../shared/agent-ipc";
+import type { AgentBackendId, AgentWorkspaceScope } from "../../../shared/agent-ipc";
 import type { TurnProjectContext } from "../../../shared/product-resource-scope";
 import { ownerFromKey } from "../../../shared/bases-ipc";
 import { PROJECT_UNAVAILABLE } from "../../../shared/projects-ipc";
@@ -14,6 +14,7 @@ import {
   cancelAgentTurn,
   cancelConversations,
   hasConversationActivity,
+  conversationSwitchActivityReason,
   registerAgentSteerOperation,
   releaseConversations,
   releaseThreadScopeForConversation,
@@ -23,6 +24,8 @@ import {
 } from "../agent-bridge";
 import type { AppsService } from "../apps/apps-service";
 import { ArchiveService } from "../archive/archive-service";
+import { TitleEligibilityDeferred } from "../chats/chat-title-jobs";
+import { assertAgentAvailable, assertInstalledRuntime } from "../agent/runtime-gate";
 import { backendById, backendRuntimeRegistry, orderedBackends } from "../backends";
 import type { BaseStore } from "../bases/base-store";
 import type { BasesService } from "../bases/bases-service";
@@ -96,6 +99,9 @@ export function createChatsService({
   getRelayLedger,
   getHistoryImport,
 }: ChatsRuntimeDependencies) {
+  const titlePlan = (backend: AgentBackendId, preferences = settings.get()) => ({
+    cwd: titleWorkspace, ignoreUserConfig: true, model: preferences.titleModelByBackend[backend] ?? undefined,
+  });
   return new ChatsService(store, {
     recoverTitleJobs: true,
     chatHomes,
@@ -121,26 +127,53 @@ export function createChatsService({
         );
     },
     onAdoptedSessionBound: (session, chatId) => seedThreadScope(session, chatId),
-    assertAgentReady: async (agent) => {
+    assertAgentReady: async (agent, operation) => {
       const descriptor = backendById(agent);
       const snapshot = await backendRuntimeRegistry.resolve(agent);
-      if (snapshot.runtimeStatus !== "installed") {
-        throw new Error(
-          `${descriptor.displayName} 当前不可用，请重新选择 Agent`
-        );
-      }
+      const target = operation ? await backendRuntimeRegistry.executionTarget(agent, snapshot, operation) : undefined;
+      assertAgentAvailable(snapshot, descriptor.displayName, operation && target ? { ...operation, target } : undefined);
     },
-    generateTitle: async (firstMessage) => {
+    subscribeTitleEligibility: (wake) => {
+      const seen = new Map<string, string>();
+      const pending = new Map<AgentBackendId, number>();
+      let revision = 0;
+      let closed = false;
+      const releaseRuntime = backendRuntimeRegistry.subscribe((backend, snapshot) => {
+        const request = ++revision;
+        pending.set(backend, request);
+        void backendRuntimeRegistry.operationEligibility(backend, "title", titlePlan(backend), snapshot).then((eligibility) => {
+          if (closed || pending.get(backend) !== request) return;
+          const signature = JSON.stringify([snapshot.runtimeStatus, snapshot.generation, eligibility]);
+          if (seen.get(backend) === signature) return;
+          seen.set(backend, signature);
+          wake();
+        }).catch((cause) => console.warn("[titles] Eligibility observation failed", cause));
+      });
+      let titleSettings = JSON.stringify([settings.get().titleAgent, settings.get().titleModelByBackend]);
+      const releaseSettings = settings.onChanged(() => {
+        const next = JSON.stringify([settings.get().titleAgent, settings.get().titleModelByBackend]);
+        if (next === titleSettings) return;
+        titleSettings = next;
+        pending.clear();
+        seen.clear();
+        wake();
+      });
+      return () => { closed = true; releaseRuntime(); releaseSettings(); };
+    },
+    generateTitle: async (firstMessage, context) => {
       const preferences = settings.get();
       const explicit = preferences.titleAgent;
       const candidates =
         explicit === "auto" ? orderedBackends() : [backendById(explicit)];
       let selected;
+      let deferred = false;
       for (const descriptor of candidates) {
         const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
+        const eligibility = await backendRuntimeRegistry.operationEligibility(descriptor.id, "title", titlePlan(descriptor.id, preferences), snapshot);
+        deferred ||= eligibility.decision === "wait";
         if (
           snapshot.runtimeStatus === "installed" &&
-          snapshot.authStatus === "authenticated" &&
+          eligibility.decision === "allow" &&
           snapshot.capabilities.headless.includes("title") &&
           descriptor.headless
         ) {
@@ -149,6 +182,7 @@ export function createChatsService({
         }
       }
       if (!selected) {
+        if (deferred) throw new TitleEligibilityDeferred();
         throw new Error(
           explicit === "auto"
             ? "没有可用于标题生成的 Agent"
@@ -159,7 +193,7 @@ export function createChatsService({
         selected,
         titleWorkspace,
         firstMessage,
-        preferences.titleModelByBackend[selected.id] ?? null
+        preferences.titleModelByBackend[selected.id] ?? null, context
       );
     },
     withProject: (projectId, task) =>
@@ -343,7 +377,17 @@ export function createManualTurnPreparer({
           projectId,
         })
       : resolveWorkspace(stagingScope);
-    const workspace = resolved.workspace;
+    const workspace = persistence.kind === "adopt" ? persistence.input.importOrigin.originalCwd : resolved.workspace;
+    const backend = submission.turn.turnOptions.backend;
+    const target = await backendRuntimeRegistry.executionTarget(backend, runtime, {
+      cwd: workspace, model: submission.turn.turnOptions.model ?? undefined,
+    });
+    if (submission.authenticationRetry) backendRuntimeRegistry.evidence.bindRetry(
+      submission.turn.scope.conversationId, submission.turn.requestId, target
+    );
+    assertAgentAvailable(runtime, backendById(backend).displayName, {
+      conversationId: submission.turn.scope.conversationId, requestId: submission.turn.requestId, target,
+    });
     const projectContext = lifecycleProjectId
       ? {
           projectId: lifecycleProjectId,
@@ -477,6 +521,7 @@ export function createConversationCoordinator({
         admissionHeld,
         projectTools
       ),
+    onAgentSwitchCommitted: (conversationId) => { releaseThreadScopeForConversation(conversationId); },
     rebuildSessionForTools: async (conversationId, expected) => {
       await chats.replaceSession(
         { conversationId },
@@ -505,8 +550,35 @@ export function createConversationCoordinator({
       registerAgentSteerOperation(requestId),
     steerTurn: (requestId, input) => steerAgentTurn(requestId, input),
     hasActivity: hasConversationActivity,
+    switchActivityReason: conversationSwitchActivityReason,
     reconcileMemory: () => memory.reconcile(),
     prepareManual,
+    canDispatchManual: async (turn) => {
+      const backend = turn.turnOptions.backend;
+      const snapshot = await backendRuntimeRegistry.resolveForSpawn(backend);
+      const bound = backendRuntimeRegistry.evidence.retryTarget(turn.scope.conversationId, turn.requestId);
+      const cwd = chats.store.getHomeDir(turn.scope.conversationId)
+        ? resolveConversationContext(turn.scope.conversationId, projects, chats.store).workspace : undefined;
+      const target = bound ?? await backendRuntimeRegistry.executionTarget(backend, snapshot, { cwd, model: turn.turnOptions.model ?? undefined });
+      try { assertAgentAvailable(snapshot, backendById(backend).displayName, { conversationId: turn.scope.conversationId, requestId: turn.requestId, target }); return true; }
+      catch { return false; }
+    },
+    assertManualAvailability: async (submission) => {
+      const backend = submission.turn.turnOptions.backend;
+      const snapshot = await backendRuntimeRegistry.resolveForSpawn(backend);
+      const conversationId = submission.turn.scope.conversationId;
+      const target = await backendRuntimeRegistry.executionTarget(backend, snapshot, {
+        model: submission.turn.turnOptions.model ?? undefined,
+      });
+      if (submission.authenticationRetry) {
+        // The preparer binds the final workspace scope before accepting a message.
+        assertInstalledRuntime(snapshot, backendById(backend).displayName);
+        const bound = backendRuntimeRegistry.evidence.retryTarget(conversationId, submission.turn.requestId);
+        if (bound) assertAgentAvailable(snapshot, backendById(backend).displayName, { conversationId, requestId: submission.turn.requestId, target: bound });
+        return;
+      }
+      assertAgentAvailable(snapshot, backendById(backend).displayName, { conversationId, requestId: submission.turn.requestId, target });
+    },
     assertGallery: (gallery, context) =>
       assertTrustedGallerySubmission(gallery, {
         ...context,

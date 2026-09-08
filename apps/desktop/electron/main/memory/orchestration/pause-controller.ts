@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Policy v4, current sharing mode, rebuild, active projection, runtime extraction destination and Memory target
- * [OUTPUT]: Provides pause/resume: constantly rotate live Consent ((revoke/new build), rebuild mode only exempts abortNetwork
- * [POS]: The main/memory/orchestration is a suspension intent executorSettings Owner Persistent user intent, this controller only covers Policy/runtime facts
+ * [OUTPUT]: Provides MemoryPauseController.pause/resume: pause always revokes the live consent epoch and aborts network unless a rebuild is active, resume re-signs a fresh epoch for the given target
+ * [POS]: The main/memory/orchestration pause/resume executor; Settings Owner persists the user's intent, this controller only enforces the resulting Policy/runtime facts
  */
 
 import { randomUUID } from "node:crypto";

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the loopback of wire.ts JSON client with strict enumeration statements, MemoryProvider port agreement, standardised baseUrl
- * [OUTPUT]: Provides EverOSProvider: sync commitModel v2 add/flush strictly listing mapping, SuccessEnvelope/health schema testing, sender_id attribution keys, keyword retrieval and health probes; Failure to perform task
- * [POS]: The sync provider of main/memory; No task concepts, no workspace purge, Runtime reset to Managed Runtime
+ * [INPUT]: Depends on wire.ts's LoopbackJsonClient/assertors and the MemoryProvider port contract, pinned to EverOS PyPI sdist 1.2.1's /api/v2 wire shape
+ * [OUTPUT]: Provides EverOSProvider: sync commitModel add/flush against the strict v2 envelope, SuccessEnvelope/health schema validation, sender_id-keyed session scoping, recall, and health probes; no task port
+ * [POS]: The sync provider of main/memory; disposeSessionRaw is a no-op and purgeWorkspace is unimplemented, session cleanup falls back to a Managed Runtime reset
  */
 
 import {

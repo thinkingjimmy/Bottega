@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the manifest, attribution, manual acceptance and service identity of the current Memory target and hosted runtime registry
- * [OUTPUT]: ProvIDes authorizing MemoryRebuild to return the only provider data instance ID when successful
- * [POS]: The main/memory/service/support destructive-operation authorization gate; Complete the fail-closed goal proof before any clean library
+ * [INPUT]: Depends on the current MemoryEffectiveTarget and the managed runtime registry's manifest/ownership/manual-config/service-identity checks
+ * [OUTPUT]: Provides authorizeMemoryRebuild, returning the target's providerDataInstanceId once ownership and identity are proven, or throwing otherwise
+ * [POS]: The main/memory/service/support destructive-operation authorization gate; every fail-closed proof must pass before any data wipe is allowed to proceed
  */
 
 import type { MemoryEffectiveTarget } from "../../../../../shared/memory-ipc";

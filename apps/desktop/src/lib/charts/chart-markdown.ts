@@ -13,7 +13,7 @@ import {
 export const capMarkdown = (markdown: string, limit = 8) =>
   capChartFences([{ id: "content", markdown }], limit)[0]!.markdown;
 
-export const chartFenceCount = (fragments: readonly MarkdownFragment[]) =>
+const chartFenceCount = (fragments: readonly MarkdownFragment[]) =>
   fragments.reduce(
     (total, fragment) =>
       total +

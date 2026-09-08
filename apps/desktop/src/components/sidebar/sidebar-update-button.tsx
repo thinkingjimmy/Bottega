@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React external-store hooks, i18n, lib/sidebar-update-view verdicts, update-client store/RELEASE_URL, app external-link IPC, and lucide glyphs
  * [OUTPUT]: Provides SidebarUpdateButton — the footer update affordance across every update phase
- * [POS]: components/sidebar 的底部状态知会：常态是无底色的 24×32 幽灵药丸（hover 才浮出底色），下载中改用一条又宽又矮的进度轨；结论住在 lib/sidebar-update-view，这里只负责把结论穿上衣服
+ * [POS]: The sidebar footer update notice: a borderless 24×32 ghost pill at rest (background only on hover), a wide low progress track while downloading; the verdict lives in lib/sidebar-update-view and this file only renders it
  */
 
 import { useEffect, useSyncExternalStore } from "react";
@@ -133,6 +133,7 @@ export function SidebarUpdateButton({
       title={label}
       className={cn(SHELL, FOCUS, TONES[view.tone])}
       onClick={() => {
+        if (view.intent === "restart") return void updateStore.installNow();
         if (view.intent === "install") return void updateStore.downloadAndInstall();
         if (view.intent === "releases") return void openExternal(RELEASE_URL);
         onOpenAbout();

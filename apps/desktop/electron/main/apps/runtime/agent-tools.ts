@@ -61,7 +61,7 @@ export function assertAgentRequirements(
   throw new Error(`Agent 工具缺失：${details.join("；")}`);
 }
 
-export function parseEnabledMcpServers(json: string) {
+function parseEnabledMcpServers(json: string) {
   const parsed = JSON.parse(json) as unknown;
   if (!Array.isArray(parsed)) throw new Error("codex mcp list 输出格式无效");
   return new Set(

@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Depends on Node fs/path
- * [OUTPUT]: Provides directory availability, Project name cleaning, workspace/root, dual containment, a contract with a compensated directory, creating a core
- * [POS]: Project filesystem security boundaries of the projects modules, defined by Project's lack of data, directory chooser, standalone Project write and convert saga
+ * [INPUT]: Depends on Node fs/path and the persistence errno predicate
+ * [OUTPUT]: Provides directory-availability checks, Project name sanitization, workspace/root dual-containment guards, and atomic Project-directory creation with compensating cleanup on failure
+ * [POS]: Project filesystem safety primitives shared by the directory picker and Project write/rebind flows; containment guards keep standalone workspaces and managed roots disjoint
  */
 
 import { statSync } from "node:fs";
 import { mkdir, realpath, rmdir } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
+import { isErrnoCode } from "../persistence/durable-json";
 
 export function isUsableDirectory(dir: string) {
   if (!dir) return false;
@@ -121,7 +122,7 @@ export async function createProjectDirectory(
       try {
         await mkdir(candidate);
       } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code === "EEXIST") {
+        if (isErrnoCode(cause, "EEXIST")) {
           candidate = undefined;
           continue;
         }

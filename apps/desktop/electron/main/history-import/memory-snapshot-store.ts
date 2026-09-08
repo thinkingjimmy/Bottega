@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/path, zod, durable replacement, product-history intents, shared transcript DTOs read through foreignMessageText (folded statements included), and complete reference projections
- * [OUTPUT]: Provides immutable Memory/Adoption snapshots, schema-v2 quality freeze, deterministic digest projection, cancellable reads, Grant/watermark ledgers, drain, and fail-closed GC
+ * [INPUT]: Depends on Node crypto/fs/path, zod, durable replacement and its errno predicate, product-history intents, shared transcript DTOs read through foreignMessageText (folded statements included), and complete reference projections
+ * [OUTPUT]: Provides immutable schema-v2 Memory/Adoption snapshots (any other version fails the parse), deterministic digest projection, cancellable reads, the v3 Grant and v2 watermark ledgers (older ledgers are quarantined, never upgraded), drain, and fail-closed GC
  * [POS]: The TOCTOU and crash-consistency layer of history-import
  */
 
@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { z } from "zod";
 import { HISTORY_SOURCE_KINDS, foreignMessageText, type ForeignHistoryMessage, type ForeignHistorySummary, type HistorySourceKind } from "../../../shared/history-import-ipc";
-import { DurableJson, durableReplaceFile } from "../persistence/durable-json";
+import { DurableJson, durableReplaceFile, isErrnoCode } from "../persistence/durable-json";
 import {
   productHistoryIntentSchema,
   type ProductHistoryIntent,
@@ -25,14 +25,8 @@ const sourceSchema = z.object({
   sourceKind: z.enum(HISTORY_SOURCE_KINDS), storageFingerprint: id, canonicalNativeId: id,
   aliases: z.array(id), resumeAlias: id,
 }).strict();
-const adoptionSchemaV1 = z.object({
-  schemaVersion: z.literal(1), kind: z.literal("adoption"), snapshotId: id, digest: z.string().regex(/^[a-f0-9]{64}$/),
-  source: sourceSchema, projectId: id, cwd: z.string().min(1), title: z.string(), historyRevision: id,
-  sourcePath: z.string().min(1),
-  fingerprint: z.object({ size: z.number().int().nonnegative(), mtimeNs: z.string() }).strict(),
-  parserVersion: z.number().int().positive(), blocks: z.array(z.unknown()), createdAt: z.number().int().nonnegative(),
-}).strict();
-const adoptionSchemaV2 = z.object({
+/* Snapshots exist in schema v2 only; any other version is not input and fails the parse. */
+const adoptionSchema = z.object({
   schemaVersion: z.literal(2), kind: z.literal("adoption"), snapshotId: id, digest: z.string().regex(/^[a-f0-9]{64}$/),
   source: sourceSchema, projectId: id, cwd: z.string().min(1), title: z.string(), historyRevision: id,
   sourcePath: z.string().min(1),
@@ -40,18 +34,11 @@ const adoptionSchemaV2 = z.object({
   parserVersion: z.number().int().positive(), blocks: z.array(z.unknown()),
   incompleteTail: z.boolean(), createdAt: z.number().int().nonnegative(),
 }).strict();
-const adoptionSchema = z.discriminatedUnion("schemaVersion", [
-  adoptionSchemaV1,
-  adoptionSchemaV2,
-]);
-const memorySchemaV1 = z.object({
-  schemaVersion: z.literal(1), kind: z.literal("memory-source"), snapshotId: id, digest: z.string().regex(/^[a-f0-9]{64}$/),
-  source: sourceSchema, sourceIncarnation: id, projectId: id, cwd: z.string().min(1), parserVersion: z.number().int().positive(),
+const memorySchema = z.object({
+  schemaVersion: z.literal(2), kind: z.literal("memory-source"), snapshotId: id, digest: z.string().regex(/^[a-f0-9]{64}$/),
+  source: sourceSchema, sourceIncarnation: id, projectId: id, cwd: z.string().min(1), historyRevision: id,
+  parserVersion: z.number().int().positive(),
   normalizedPrefixDigest: z.string().regex(/^[a-f0-9]{64}$/), messages: z.array(messageSchema), createdAt: z.number().int().nonnegative(),
-}).strict();
-const memorySchema = memorySchemaV1.extend({
-  schemaVersion: z.literal(2),
-  historyRevision: id,
 }).strict();
 const watermarkSchema = z.object({
   schemaVersion: z.literal(2),
@@ -90,17 +77,6 @@ const grantSchema = z.object({
 const grantLedgerSchema = z.object({
   schemaVersion: z.literal(3), grants: z.record(z.string(), grantSchema),
 }).strict();
-const legacyGrantSchema = z.object({
-  id, previewDigest: z.string().regex(/^[a-f0-9]{64}$/), snapshotIds: z.array(id),
-  authorizationDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  projectEligibility: z.record(z.string(), z.string().min(1)),
-  state: z.enum(["pending", "complete", "superseded"]), createdAt: z.number().int().nonnegative(),
-  completedAt: z.number().int().nonnegative().nullable(),
-  supersededAt: z.number().int().nonnegative().nullable(),
-}).strict();
-const legacyGrantLedgerSchema = z.object({
-  schemaVersion: z.literal(2), grants: z.record(z.string(), legacyGrantSchema),
-}).strict();
 
 export type AdoptionSnapshot = z.infer<typeof adoptionSchema>;
 export type MemorySourceSnapshot = z.infer<typeof memorySchema>;
@@ -138,9 +114,8 @@ export class HistorySnapshotStore {
       mkdir(this.adoptionRoot, { recursive: true, mode: 0o700 }),
       mkdir(this.memoryRoot, { recursive: true, mode: 0o700 }),
       this.watermarkLedger.initialize(),
-      this.grantLedger.initialize(upgradeGrantLedger),
+      this.grantLedger.initialize(),
     ]);
-    await this.hydrateLegacyGrantSources();
   }
 
   async writeAdoption(input: { summary: ForeignHistorySummary; sourcePath: string; blocks: ForeignHistoryMessage[]; parserVersion: number; fingerprint: { size: number; mtimeNs: string }; incompleteTail: boolean }) {
@@ -197,14 +172,7 @@ export class HistorySnapshotStore {
     const raw = JSON.parse(
       await readFile(join(this.memoryRoot, safeId(snapshotId) + ".json"), "utf8")
     );
-    const current = memorySchema.safeParse(raw);
-    if (current.success) return verifySnapshot(current.data);
-    const legacy = verifySnapshot(memorySchemaV1.parse(raw));
-    return {
-      ...legacy,
-      schemaVersion: 2 as const,
-      historyRevision: `legacy_${legacy.digest}`,
-    };
+    return verifySnapshot(memorySchema.parse(raw));
   }
 
   watermarks() { return this.watermarkLedger.snapshot().sources; }
@@ -354,40 +322,6 @@ export class HistorySnapshotStore {
     ]);
   }
 
-  private async hydrateLegacyGrantSources() {
-    const legacy = this.pendingMemoryGrants().flatMap((grant) =>
-      grant.sources.filter((source) => source.logicalSource.startsWith("legacy_"))
-        .map((source) => ({ grantId: grant.id, snapshotId: source.snapshotId }))
-    );
-    if (!legacy.length) return;
-    const hydrated = new Map<string, MemorySourceSnapshot | null>();
-    for (const item of legacy) {
-      try {
-        hydrated.set(item.snapshotId, await this.readMemory(item.snapshotId));
-      } catch {
-        hydrated.set(item.snapshotId, null);
-      }
-    }
-    await this.grantLedger.mutate((state) => {
-      const now = Date.now();
-      for (const item of legacy) {
-        const grant = state.grants[item.grantId];
-        const source = grant?.sources.find((candidate) => candidate.snapshotId === item.snapshotId);
-        if (!grant || !source || source.state !== "pending") continue;
-        const snapshot = hydrated.get(item.snapshotId) ?? null;
-        if (!snapshot) {
-          source.state = "superseded";
-          source.supersededAt = now;
-        } else {
-          source.logicalSource = memoryLogicalSourceKey(snapshot);
-          source.projectId = snapshot.projectId;
-          source.historyRevision = snapshot.historyRevision;
-        }
-        settleGrant(grant, now);
-      }
-    });
-  }
-
   gcAdoptionOrphans(projection: ReferenceProjection, olderThan = Date.now() - GC_GRACE_MS) {
     if (!projection.complete) return Promise.resolve();
     return this.gcOrphans(this.adoptionRoot, projection.refs, olderThan);
@@ -501,41 +435,6 @@ function settleGrant(grant: HistoryMemoryGrant, now: number) {
   grant.supersededAt ??= now;
 }
 
-function upgradeGrantLedger(raw: unknown) {
-  const legacy = legacyGrantLedgerSchema.safeParse(raw);
-  if (!legacy.success) return undefined;
-  return grantLedgerSchema.parse({
-    schemaVersion: 3,
-    grants: Object.fromEntries(
-      Object.entries(legacy.data.grants).map(([grantId, grant]) => {
-        const projectIds = Object.keys(grant.projectEligibility).sort();
-        const projectId = projectIds[0] ?? `legacy_project_${hash(grantId)}`;
-        return [grantId, {
-          id: grant.id,
-          previewDigest: grant.previewDigest,
-          sources: grant.snapshotIds.map((snapshotId) => ({
-            snapshotId,
-            logicalSource: `legacy_${hash(snapshotId)}`,
-            projectId,
-            historyRevision: `legacy_${hash(`${grantId}\0${snapshotId}`)}`,
-            state: grant.state,
-            completedAt: grant.completedAt,
-            supersededAt: grant.supersededAt,
-          })),
-          product: null,
-          scopeProjectIds: projectIds,
-          authorizationDigest: grant.authorizationDigest,
-          projectEligibility: grant.projectEligibility,
-          state: grant.state,
-          createdAt: grant.createdAt,
-          completedAt: grant.completedAt,
-          supersededAt: grant.supersededAt,
-        }];
-      })
-    ),
-  });
-}
-
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value && typeof value === "object") return `{${Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
@@ -558,50 +457,37 @@ function normalizedMemoryMessages(blocks: ForeignHistoryMessage[]) {
 }
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const safeId = (value: string) => { if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error("snapshotId 格式无效"); return value; };
-async function writeContentAddressed(path: string, value: unknown) {
+async function writeContentAddressed(path: string, value: AdoptionSnapshot | MemorySourceSnapshot) {
   let existing: string | null = null;
   try {
     existing = await readFile(path, "utf8");
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+    if (!isErrnoCode(cause, "ENOENT")) throw cause;
   }
   if (existing === null) {
     await durableReplaceFile(path, `${JSON.stringify(value)}\n`);
     return;
   }
-  /* v2 adoption 的 createdAt 不属于内容身份；重试只比较 digest 投影。
+  /* adoption 的 createdAt 不属于内容身份；重试只比较 digest 投影。
      其余快照维持全体比较，损坏与冲突一律响亮上浮。 */
   const parsedExisting = JSON.parse(existing) as unknown;
-  const same = isAdoptionV2(value)
-    ? canonical(adoptionDigestProjection(adoptionSchemaV2.parse(parsedExisting))) ===
-      canonical(adoptionDigestProjection(adoptionSchemaV2.parse(value)))
+  const same = value.kind === "adoption"
+    ? canonical(adoptionDigestProjection(adoptionSchema.parse(parsedExisting))) ===
+      canonical(adoptionDigestProjection(value))
     : canonical(parsedExisting) === canonical(value);
   if (!same) {
     throw new Error("content-addressed snapshot 冲突");
   }
 }
 
-function verifySnapshot<T extends { kind: string; snapshotId: string; digest: string }>(snapshot: T) {
+function verifySnapshot<T extends { kind: "adoption" | "memory-source"; snapshotId: string; digest: string }>(snapshot: T) {
   const { schemaVersion: _schemaVersion, kind, snapshotId, digest, ...body } = snapshot as T & { schemaVersion: number };
-  const expected = hash(canonical(
-    kind === "adoption" && _schemaVersion === 2
-      ? adoptionDigestProjection(snapshot)
-      : body
-  ));
+  const expected = hash(canonical(kind === "adoption" ? adoptionDigestProjection(snapshot) : body));
   const prefix = kind === "adoption" ? "adopt_" : "memory_";
   if (digest !== expected || snapshotId !== `${prefix}${expected}`) {
     throw new Error("content-addressed snapshot 完整性校验失败");
   }
   return snapshot;
-}
-
-function isAdoptionV2(value: unknown): boolean {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    (value as { kind?: unknown }).kind === "adoption" &&
-    (value as { schemaVersion?: unknown }).schemaVersion === 2
-  );
 }
 
 function adoptionDigestProjection(value: unknown) {
@@ -634,11 +520,9 @@ const canonical = (value) => {
   const snapshot = JSON.parse(await readFile(workerData, "utf8"));
   if (!snapshot || typeof snapshot !== "object") throw new Error("快照格式无效");
   const { schemaVersion, kind, snapshotId, digest, ...body } = snapshot;
-  const projection = kind === "adoption" && schemaVersion === 2
-    ? (({ createdAt: ignored, ...stable }) => stable)(body)
-    : body;
+  const { createdAt: ignored, ...projection } = body;
   const expected = createHash("sha256").update(canonical(projection)).digest("hex");
-  if (kind !== "adoption" || digest !== expected || snapshotId !== "adopt_" + expected) {
+  if (kind !== "adoption" || schemaVersion !== 2 || digest !== expected || snapshotId !== "adopt_" + expected) {
     throw new Error("content-addressed snapshot 完整性校验失败");
   }
   parentPort.postMessage({ ok: true, snapshot });

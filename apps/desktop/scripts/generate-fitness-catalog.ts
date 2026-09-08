@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the exact local exercises-dataset checkout Git HEAD, data/exercises.json, LICENSE, NOTICE.md and 180×180 GIF under videos/; Parameters are checkout, expected commit, output directory
  * [OUTPUT]: Generates 72 exercises, provenance/licenses, unchanged Base migrations, licensed GIFs, and their static React import index
- * [POS]: The development period of the scripts is offline supply chain entry; The government is not connected to the internet, it is not following branchesGym visual media distributed independently licensed packages, and the 180×180 test was completed with the signature of the player
+ * [POS]: Offline supply-chain generator for the Fitness App exercise catalog, run manually during development; it never fetches network resources — Gym visual GIF media is licensed only at 180x180 with mandatory attribution, and both are verified per file before anything is published
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -12,13 +12,13 @@ import { fileURLToPath } from "node:url";
 
 export const SOURCE_REPO = "https://github.com/hasaneyldrm/exercises-dataset";
 export const SOURCE_COMMIT = "7455efae41b330c265e7cd4b78dfa848e7ce5ebd";
-export const SOURCE_JSON_SHA256 = "656634224b8977b99a6d765470ee123260d4979715eaa4e7c0b7c8bb0d79f93d";
+const SOURCE_JSON_SHA256 = "656634224b8977b99a6d765470ee123260d4979715eaa4e7c0b7c8bb0d79f93d";
 export const GENERATOR_VERSION = 2;
 
 /* Gym visual 媒体不在上游 MIT 覆盖范围内：授权只到 180×180，且每次使用都必须
    带这条署名。两者都在发布前逐个文件校验——违反授权的产物不许存在于磁盘上。 */
-export const MEDIA_ATTRIBUTION = "© Gym visual — https://gymvisual.com/";
-export const MEDIA_EDGE = 180;
+const MEDIA_ATTRIBUTION = "© Gym visual — https://gymvisual.com/";
+const MEDIA_EDGE = 180;
 const MEDIA_TOTAL_BUDGET = 12 * 1024 * 1024;
 
 const ZONES = [
@@ -210,7 +210,7 @@ async function loadMedia(checkout: string, byId: Map<string, UpstreamExercise>) 
 }
 
 /* GIF 逻辑屏尺寸就在头部第 7-10 字节，小端 u16 两个——读它比信任上游便宜得多。 */
-export function assertGifShape(id: string, bytes: Uint8Array) {
+function assertGifShape(id: string, bytes: Uint8Array) {
   const header = Buffer.from(bytes.buffer, bytes.byteOffset, Math.min(bytes.byteLength, 10));
   if (header.byteLength < 10 || header.subarray(0, 3).toString("latin1") !== "GIF") {
     throw new Error(`${id} 不是 GIF`);
@@ -222,7 +222,7 @@ export function assertGifShape(id: string, bytes: Uint8Array) {
   }
 }
 
-export function assertAttribution(exercise: { id: string; attribution?: string }) {
+function assertAttribution(exercise: { id: string; attribution?: string }) {
   if (exercise.attribution?.trim() !== MEDIA_ATTRIBUTION) {
     throw new Error(`${exercise.id} 的 Gym visual 署名缺失或被改写: ${String(exercise.attribution)}`);
   }

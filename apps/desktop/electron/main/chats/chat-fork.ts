@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on canonical Chat schemas, message normalization, cryptographic ids, and transcript Gallery source references
+ * [INPUT]: Depends on canonical Chat schemas, message normalization, cryptographic ids, main/errors, and transcript Gallery source references
  * [OUTPUT]: Provides native/imported fork eligibility, deterministic title allocation, operation identity, native-envelope prefix materialization, and independent child-record construction through an exact assistant anchor
  * [POS]: Pure fork policy between the renderer/service admission boundary and ChatStore persistence
  */
@@ -19,8 +19,9 @@ import {
   messageBytes,
 } from "./chat-schema";
 import { normalizeMessage } from "./chat-commit";
+import { statusError } from "../errors";
 
-const conflict = (message: string) => Object.assign(new Error(message), { status: 409 });
+const conflict = (message: string) => statusError(409, message);
 
 export const forkOperationId = (requestId: string) =>
   `fork_${createHash("sha256").update(requestId).digest("hex").slice(0, 32)}`;
@@ -46,17 +47,17 @@ export function allocateForkTitle(sourceTitle: string | null, titles: Iterable<s
   throw new Error("Unable to allocate fork title");
 }
 
-export type ForkAnchor = Readonly<{
+type ForkAnchor = Readonly<{
   anchor: AssistantChatMessage;
   retained: ChatMessage[];
 }>;
 
-export type MaterializedForkPrefix = Readonly<{
+type MaterializedForkPrefix = Readonly<{
   anchor: AssistantChatMessage;
   messages: ChatMessage[];
 }>;
 
-export function requireForkSource(source: ChatRecord) {
+function requireForkSource(source: ChatRecord) {
   if (
     source.context.kind !== "ordinary" ||
     (source.readOnlyReason && source.readOnlyReason !== "external-readonly") ||
@@ -194,6 +195,9 @@ export function createForkedChatRecord(input: Readonly<{
     titleSource: "user",
     titleJob: { state: "none" },
     agent: input.source.agent,
+    agentRevision: 0,
+    options: structuredClone(input.source.options),
+    forkAgent: input.source.agent,
     session: null,
     importOrigin: null,
     snapshotDigest: null,

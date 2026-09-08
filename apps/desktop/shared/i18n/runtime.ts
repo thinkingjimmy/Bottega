@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on i18next, locale Element Group with static English directory (all other languages are registered by the caller)
- * [OUTPUT]: Provides directory registry register Catalog/hasCatalog, synchronized i18n instance factory with main available translate
- * [POS]: the sole holder of the boundary and directory when running desktop i18n; English permanent, non-English by main Full-size pitch or renderer Registration on request
+ * [INPUT]: Depends on i18next; keeps English resident as the static baseline catalog, every other locale is registered by the caller
+ * [OUTPUT]: Provides registerCatalog/catalogOf, the synchronous createAppI18n instance factory, and translate
+ * [POS]: The sole catalog registry and instance factory for desktop i18n; English is always resident so any catalog miss falls back to it, while main registers every locale eagerly via resources.ts and the renderer registers each on demand via catalogs.ts
  */
 
 import i18next, { type i18n, type TOptions } from "i18next";
@@ -20,10 +20,6 @@ export function registerCatalog(locale: AppLocale, catalog: Catalog) {
   catalogs.set(locale, catalog);
   /* 目录换代，缓存实例即刻作废——否则先用后注册的语言会被钉死在英文。 */
   instances.delete(locale);
-}
-
-export function hasCatalog(locale: AppLocale) {
-  return catalogs.has(locale);
 }
 
 export function catalogOf(locale: AppLocale) {

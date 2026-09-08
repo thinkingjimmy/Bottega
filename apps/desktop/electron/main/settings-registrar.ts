@@ -1,15 +1,15 @@
 /**
  * [INPUT]: Depends on Electron dialog/BrowserWindow, Node fs/path, shared Settings, platform capabilities, ChatHomeService, backend runtime registry, memory service, workspace resolver, trusted renderer IPC, and surface residence
- * [OUTPUT]: Provides registerSettings, validated Skills-onboarding preference, main-only global controls, residence-gated chat options, and explicit session-effective reset dispatch
+ * [OUTPUT]: Registers settings and model APIs; backend catalog reads return four snapshots immediately and model discovery uses runtime-only resolution.
  * [POS]: Main Settings admission boundary; App windows receive no global settings envelope and only the backend/session projections required by their resident use chat
  */
 
+import { chatOptionsPatchSchema } from "../../shared/chat-agent/schema";
 import { mkdtemp, realpath, rmdir } from "node:fs/promises";
 import { join } from "node:path";
 import { app, dialog, type BrowserWindow } from "electron";
 import type {
   AgentBackendId,
-  AgentScope,
   AgentTurnOptions,
   AgentWorkspaceScope,
 } from "../../shared/agent-ipc";
@@ -18,7 +18,6 @@ import { acquireAgentProcessLease } from "./agent-process-supervisor";
 import {
   backendById,
   backendRuntimeRegistry,
-  orderedBackends,
 } from "./backends";
 import { rendererIpc } from "./ipc-registrar";
 import {
@@ -50,25 +49,11 @@ const RENDERER_SETTINGS_KEYS = new Set([
   "disabledBuiltinTools",
   "usagePricingAutoRefresh",
   "skillsOnboarding",
+  "showTaskStatusAtTop",
   "theme",
   "language",
   "keyboardShortcuts",
 ]);
-
-/** renderer 传入的 scope 是不可信输入，进 store 前收敛为合法 AgentScope。 */
-function assertScope(value: unknown): AgentScope {
-  const scope = value as Partial<AgentScope> | null;
-  if (
-    scope !== null &&
-    typeof scope === "object" &&
-    Object.keys(scope).length === 1 &&
-    typeof scope?.conversationId === "string" &&
-    /^[A-Za-z0-9_-]{1,128}$/.test(scope.conversationId)
-  ) {
-    return { conversationId: scope.conversationId };
-  }
-  throw new Error("Agent scope 格式无效");
-}
 
 export function assertRendererSettingsPatch(
   value: unknown
@@ -119,28 +104,16 @@ export function registerSettings(
   memoryOwner: MemorySettingsOwner,
   chatHomes: ChatHomeService,
   platformSupport?: PlatformCapabilities,
-  resetSessionEffective?: (conversationId: string) => void
+  resetSessionEffective?: (conversationId: string) => void,
+  chats?: import("./chats/chats-service").ChatsService
 ) {
   const assertBackend = (value: unknown): AgentBackendId =>
     backendById(value as AgentBackendId).id;
-  const ipc = rendererIpc(window, rendererUrl, "拒绝非驻留窗口的设置请求");
+  const ipc = rendererIpc(rendererUrl, "拒绝非驻留窗口的设置请求");
   const assertStudioRead = (context: Parameters<typeof surfaceWindowController.assertAppStudioMutation>[0]) => {
     if (context.role === "main") return;
     if (!context.appId) throw new Error("App window identity is missing");
     surfaceWindowController.assertAppStudioMutation(context, context.appId);
-  };
-  const assertConversationScope = (
-    context: Parameters<typeof surfaceWindowController.assertConversationMutation>[0],
-    value: unknown
-  ) => {
-    const scope = assertScope(value);
-    if (context.role === "app-window") {
-      surfaceWindowController.assertConversationMutation(
-        context,
-        scope.conversationId
-      );
-    }
-    return scope;
   };
   ipc
     .handle(SETTINGS_CHANNEL.get, () => store.envelope())
@@ -163,15 +136,7 @@ export function registerSettings(
     .roles("main", "app-window")
     .handleWithContext(SETTINGS_CHANNEL.listBackends, async (context) => {
       assertStudioRead(context);
-      return Promise.all(
-        orderedBackends().map(async (descriptor) => {
-          const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
-          return backendRuntimeRegistry.toBackendInfo(
-            descriptor.id,
-            snapshot
-          );
-        })
-      );
+      return backendRuntimeRegistry.listSnapshots();
     })
     .handleWithContext(SETTINGS_CHANNEL.listModels, async (context, rawBackend, rawScope) => {
       const descriptor = backendById(assertBackend(rawBackend));
@@ -185,7 +150,7 @@ export function registerSettings(
       if (context.role === "app-window") {
         const scope = rawScope as Partial<AgentWorkspaceScope>;
         if (scope.kind === "conversation") {
-          assertConversationScope(context, { conversationId: scope.conversationId });
+          surfaceWindowController.assertConversationMutation(context, scope.conversationId!);
         } else if (scope.kind === "app" && scope.appId === context.appId) {
           assertStudioRead(context);
         } else {
@@ -215,32 +180,23 @@ export function registerSettings(
         lease.release();
       }
     })
-    .handleWithContext(SETTINGS_CHANNEL.resolveChatOptions, (context, scope, rawBackend) =>
-      store.resolveChatOptions(
-        assertConversationScope(context, scope),
-        rawBackend === undefined ? undefined : assertBackend(rawBackend)
-      )
-    )
-    .handleWithContext(
-      SETTINGS_CHANNEL.setChatOptions,
-      async (context, rawScope, options, rawResetSessionEffective) => {
-        if (
-          rawResetSessionEffective !== undefined &&
-          typeof rawResetSessionEffective !== "boolean"
-        ) {
-          throw new Error("Speed session reset 标记无效");
-        }
-        const scope = assertConversationScope(context, rawScope);
-        const stored = await store.setChatOptions(
-          scope,
-          options as AgentTurnOptions
-        );
-        if (rawResetSessionEffective === true) {
-          resetSessionEffective?.(scope.conversationId);
-        }
-        return stored;
-      }
-    );
+    .handleWithContext(SETTINGS_CHANNEL.getBackendDefaults, (context, rawBackend) => {
+      assertStudioRead(context);
+      return store.getBackendDefaults(rawBackend === undefined ? undefined : assertBackend(rawBackend));
+    })
+    .handleWithContext(SETTINGS_CHANNEL.patchChatOptions, async (context, raw, reset) => {
+      const input = chatOptionsPatchSchema.parse(raw);
+      surfaceWindowController.assertConversationMutation(context, input.chatId);
+      if (!chats) throw new Error("Chat options authority is unavailable");
+      if (input.patch.permissionMode === "full-access" && !store.get().fullAccessAcknowledgedAt) throw new Error("FULL_ACCESS_ACK_REQUIRED");
+      if (reset !== undefined && typeof reset !== "boolean") throw new Error("Invalid session reset flag");
+      const result = await chats.store.patchOptions(input);
+      if (reset === true) resetSessionEffective?.(input.chatId);
+      chats.publishRecord(result);
+      return { agent: result.agent, agentRevision: result.agentRevision, chatRecordRevision: result.chatRecordRevision, options: result.options };
+    })
+    .roles("main")
+    .handle(SETTINGS_CHANNEL.rememberChatDefaults, (options) => store.rememberChatDefaults(options as AgentTurnOptions));
   /* 变更广播是 renderer rebase 的前提：没有它，外部写入永远到不了
      renderer，后续 patch 全部基于陈旧基线计算。 */
   const unwatch = store.onChanged((envelope) => {

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React useMemo/useState, i18n, shared usage-calendar addDays with USAGE_SOURCE_ORDER, usage-client tri-mode fees with formatting, agent-backends brand icons, with the same directory UsageRegion/UsageDailyChart/UsageInfoTip/color projection, ui Tabs
- * [OUTPUT]: Provides UsageToday: Today's cost/use ratio per source with a line of close to 30 days, Cost/Tokens is a switching tube
- * [POS]: The following is a list of the settings/usage sub-modules: The left side is the opening of the last point of the right side, and both are the same source
+ * [OUTPUT]: Provides UsageToday: today's per-source cost/usage share alongside a near-30-day trend line, with a Cost/Tokens metric switch
+ * [POS]: settings/usage's mid-scale view; the left column expands the right column's latest point, and both read from the same source data
  */
 
 import { useMemo, useState } from "react";

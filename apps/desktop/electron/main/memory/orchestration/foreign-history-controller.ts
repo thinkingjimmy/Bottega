@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the unchanged external source of the fully standardized front-end summary MemorySource Snapshot, current Policy Consent/Space, capture reservation and runtime capability callbacks
- * [OUTPUT]: Provides Foreign SnapshotBoundary Grant for up to one round of snapshot-only deliveries per event-loop tick, complete front-loop water retracement
- * [POS]: The main/memory/orchestration external source history transmitter; It is compatible with the canonical BackfillController and never reads ChatRecord or CLI files
+ * [INPUT]: Depends on renderer-normalized ForeignMemorySourceSnapshot batches, the active Policy consent/Space, and the capture controller
+ * [OUTPUT]: Provides MemoryForeignHistoryController.import: authorizes each snapshot against consent, resolves its Space, and captures its last assistant turn behind a foreign-snapshot backfill grant
+ * [POS]: The main/memory/orchestration importer for external (non-canonical) chat history; it never reads ChatRecord or CLI files, unlike the canonical BackfillController
  */
 
 import { createHash } from "node:crypto";
@@ -178,6 +178,7 @@ export class MemoryForeignHistoryController {
           assistant: {
             id: `foreign_assistant_${sha256(`${source}\0${assistant.nativeTurnId}`)}`,
             role: "assistant",
+            backend: snapshot.source.sourceKind,
             content: assistant.content,
             createdAt: assistant.createdAt,
             seq: assistant.deliverySeq,

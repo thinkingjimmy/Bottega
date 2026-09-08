@@ -10,10 +10,10 @@ import { createServer, type Server as NetServer } from "node:net";
 import type { Duplex } from "node:stream";
 import { GatewayConnectionCustody } from "./gateway-request-leases";
 
-export const GATEWAY_DEFAULT_PORT = 4700;
+const GATEWAY_DEFAULT_PORT = 4700;
 const UPSTREAM_PORT_FLOOR = 4100;
 
-export type GatewayServerHandlers = Readonly<{
+type GatewayServerHandlers = Readonly<{
   request(request: IncomingMessage, response: ServerResponse): void;
   upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void;
 }>;

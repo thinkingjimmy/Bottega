@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React, nanoid, blob URL lifecycle and controlled typed command owner
- * [OUTPUT]: Provides useAttachmentList, Gallery origin, unchangeable target/CAS command matches the four types of atomic commands
+ * [OUTPUT]: Provides useAttachmentList, with Gallery-origin tracking and CAS-guarded target matching across four atomic command types
  * [POS]: the core of the hooks' attachment resources; The revoke responsibility of blob URLs follows the actual owner, controlled unloading without touching the external URL
  */
 

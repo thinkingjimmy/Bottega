@@ -1,5 +1,5 @@
 /**
- * [INPUT]: The cn-contact that relies solely on ui will intentionally not touch any components/Radix to be introduced into safe static before the jsDOM load globals by DOM testing
+ * [INPUT]: Depends only on the cn utility; deliberately avoids any Radix/component import so it stays safe to load as a static module before DOM tests set up jsDOM globals
  * [OUTPUT]: Provides baseTabShellClass(active) with baseTabActionButtonClass: the same set of tabs that are shared between the host tab and the view tab
  * [POS]: The only true source of the tab visual language of bases/chrome; Consumed simultaneously by BaseViewTabs and Host PanelTabs, the size difference is left to the caller
  */

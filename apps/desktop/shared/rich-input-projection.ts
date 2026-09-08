@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on zod and shared AgentUserInput
  * [OUTPUT]: Provides strict RichInput value schema, display text with RichValue→ non-image AgentUserInput canonical projection
- * [POS]: The shared rich input is a single source of truth across processes; The renderer is responsible for constructing, repositioning and verifying the actual wire before staging/injecting
+ * [POS]: Single source of truth for shared rich-input node validation and projection; the renderer builds and validates the actual wire value before staging or injecting it
  */
 
 import { z } from "zod";

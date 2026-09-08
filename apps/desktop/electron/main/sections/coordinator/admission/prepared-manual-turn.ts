@@ -54,7 +54,7 @@ import {
   binaryFreeSubmissionContent,
   emptyPreparedSkillSelection,
   normalizeManualSubmission,
-} from "./prepared-manual-legacy";
+} from "./prepared-manual-text";
 import {
   emptyProjectToolsSnapshot,
   stageProjectToolsReceipt,
@@ -70,9 +70,6 @@ import {
   reservePreparedStagingBytes,
 } from "./prepared/staging";
 
-export { configurePreparedSkillReferenceCustody } from "./prepared-skill-reference-custody";
-export { prepareTextOnlyManualTurn } from "./prepared-manual-legacy";
-export { hydratePreparedTurn } from "./prepared/hydration";
 export {
   assertPreparedContentHash,
   preparedStagingUsageBytes,
@@ -125,6 +122,9 @@ export type PreparedPersistence =
   | { kind: "append"; input: PreparedAppend };
 
 export type PreparedManualTurn = {
+  agentSwitch?: ManualTurnSubmission["agentSwitch"];
+  expectedAgentRevision?: number;
+  switchCommand?: import("../../../chats/sqlite/agent-switch/command").SwitchAgentCommand;
   intentId: string;
   persistence: PreparedPersistence;
   turn: Omit<AgentSendPayload, "input">;
@@ -146,7 +146,7 @@ export type PreparedManualLease = {
   rollback(): Promise<void>;
 };
 
-export type PreparationDependencies = {
+type PreparationDependencies = {
   workspace: string;
   workspaceScope: AgentWorkspaceScope;
   backend: AgentSendPayload["turnOptions"]["backend"];
@@ -491,7 +491,7 @@ export async function prepareManualTurn(
   input: ManualTurnSubmission,
   dependencies: PreparationDependencies
 ): Promise<PreparedManualLease> {
-  const submission = await normalizeManualSubmission(input, dependencies);
+  const submission = normalizeManualSubmission(input);
   const stagingDir = join(dependencies.stagingRoot, submission.intentId);
   const reservations: FileReservation[] = [];
   const explicitSkills: ExplicitSkillRequirementReceipt[] = [];
@@ -549,6 +549,8 @@ export async function prepareManualTurn(
         );
     await acquirePreparedSkillReferences(skillSelection);
     const body = {
+      agentSwitch: submission.agentSwitch,
+      expectedAgentRevision: submission.expectedAgentRevision,
       intentId: submission.intentId,
       persistence,
       turn,

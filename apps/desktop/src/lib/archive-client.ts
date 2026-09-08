@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on shared Archive IPC and preload window.archive
- * [OUTPUT]: Provides archive/list/restore/preview/execute renderer the only client; Read the interface browser and downgrade the mutation to missing bridge
- * [POS]: The IPC boundary of lib; The components must not be directly fitted with a channel
+ * [OUTPUT]: Provides the renderer's sole Archive client: list/archive/restore/preview/execute-purge calls and event subscription, with mutations rejected when the preload bridge is missing
+ * [POS]: lib's IPC boundary for Archive; components must never touch the IPC channel directly
  */
 
 import type {

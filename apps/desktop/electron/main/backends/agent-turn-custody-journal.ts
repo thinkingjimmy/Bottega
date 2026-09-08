@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on DurableJson, crypto and shared AgentTurnCustodyEntry/owner/dependency(App reference/Extension plan) /process identity and abort/quarantine reasons for sharing the two accounts
+ * [INPUT]: Depends on DurableJson, node:crypto, and shared AgentTurnCustodyEntry/owner/dependency (app-reference or extension-plan)/process-identity/abort/quarantine-reason types
  * [OUTPUT]: Provides AgentTurnCustodyJournal; intent-before-spawn, owned→activation-authorized→activated→release-pending→released
- * [POS]: The truth source of the backends is the neutral turn process custody; App/Extension contributes only dependency, not ownership of processes
+ * [POS]: backends' neutral source of truth for turn process custody; App/Extension may only contribute a dependency, never own the process
  */
 
 import { randomUUID } from "node:crypto";

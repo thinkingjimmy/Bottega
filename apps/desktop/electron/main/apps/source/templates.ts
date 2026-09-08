@@ -4,6 +4,7 @@
  * [POS]: The Save as App template boundary; persisted user-facing manifest copy is localized while authored scaffold language remains an explicit product decision
  */
 
+import { APP_COMPATIBILITY_SCHEMA, APP_HOST_BASELINE } from "../../../../shared/app-host/contract";
 import type { BaseAppManifest } from "../../../../shared/apps-ipc";
 import type { AppLocale } from "../../../../shared/i18n/locale";
 import { translate } from "../../../../shared/i18n/runtime";
@@ -29,6 +30,7 @@ export function baseAppManifest(
 
 export function baseAppScaffold(manifest: BaseAppManifest) {
   return {
+    "app.compat.json": `${JSON.stringify({ schema: APP_COMPATIBILITY_SCHEMA, minBottegaVersion: APP_HOST_BASELINE }, null, 2)}\n`,
     "app.json": `${JSON.stringify(manifest, null, 2)}\n`,
     "README.md": `# ${manifest.icon} ${manifest.name}
 

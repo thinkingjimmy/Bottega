@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on AppStore generation artifacts, sealed preference manifests, App-global cutover intents, canonical digests, and AppPreferencesStore
+ * [INPUT]: Depends on AppStore generation artifacts, sealed preference manifests, App-global cutover intents, canonical digests, and AppPreferencesStore, and statusError from main/errors
  * [OUTPUT]: Provides digest-keyed cached generation contracts validated once on cache entry, staging-frozen cutover adoption/validation, active-generation-only reset self-heal, one-sweep durable-retirement reconciliation, first-install adoption, profile-local reads, and CAS writes/reset
  * [POS]: Runtime bridge between a live Base GUI binding and the durable preference authority
  */
@@ -9,7 +9,8 @@ import { join } from "node:path";
 import type { BaseGuiLiveBinding } from "../../../../shared/apps-ipc";
 import type { AppGuiGenerationIntent } from "../../../../shared/app-gui/cutover";
 import type { AppGuiPreferenceAdoptionSnapshot } from "../../../../shared/app-gui/cutover";
-import { canonicalJson, sha256 } from "../gui-build/metadata";
+import { statusError } from "../../errors";
+import { canonicalJson, sha256 } from "../support";
 import type { AppStore } from "../store/app-store";
 import type { PreferenceJsonSchema } from "./schema";
 import {
@@ -260,5 +261,5 @@ async function readJson(path: string): Promise<unknown> {
 }
 
 function preferenceError(code: string, status: number) {
-  return Object.assign(new Error(code), { code, status });
+  return statusError(status, code, { code });
 }

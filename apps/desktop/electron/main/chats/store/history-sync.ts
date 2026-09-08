@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the typed SQLite client, immutable import normalization, AbortSignal, and array or AsyncIterable external source batches
- * [OUTPUT]: Replays, resumes, reports durable progress, cancels the run between receipts on abort or failure, and finalizes one deterministic external-history generation carrying the parser\u2019s own incompleteTail verdict, with one byte/count-bounded batch policy and backpressure
+ * [OUTPUT]: Provides the shared requireCommitted outcome gate; replays, resumes, reports durable progress, cancels the run between receipts on abort or failure, and finalizes one deterministic external-history generation carrying the parser's own incompleteTail verdict, with one byte/count-bounded batch policy and backpressure
  * [POS]: Main-process import pump between parser and DB workers; it never buffers the complete normalized source
  */
 
@@ -9,7 +9,9 @@ import type { ForeignHistoryMessage } from "../../../../shared/history-import-ip
 import type { ChatDatabaseClient } from "../sqlite/database-client";
 import type {
   DatabaseResults,
+  HistoryImportEntryInput,
   HistoryImportSource,
+  MutationOutcome,
   PreparedHistoryImportBatch,
 } from "../sqlite/database-protocol";
 import {
@@ -20,7 +22,6 @@ import {
   advanceImportDigest,
   EMPTY_IMPORT_DIGEST,
 } from "../sqlite/repository/imports";
-import type { HistoryImportEntryInput } from "../sqlite/database-protocol";
 
 const digest = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -28,9 +29,7 @@ const digest = (value: unknown) =>
 type HistoryImportRun = NonNullable<DatabaseResults["get-history-import-run"]>;
 type HistorySyncInput = Parameters<typeof syncExternalHistory>[0];
 
-function requireCommitted<T>(
-  outcome: import("../sqlite/database-protocol").MutationOutcome<T>
-) {
+export function requireCommitted<T>(outcome: MutationOutcome<T>) {
   if (outcome.status === "committed") return outcome.receipt.result;
   if (outcome.status === "outcome_unknown") {
     throw Object.assign(new Error(outcome.reason), {

@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * [INPUT]: Depends on a Project placement projection, AppsProvider records, exclusive Sidebar App target/origin state, shared activation, router, and Sidebar sub-row primitives
+ * [INPUT]: Depends on shared appDisplayName, a Project placement projection, AppsProvider records, the exclusive Sidebar App target, shared Sidebar App activation, router, and Sidebar sub-row primitives
  * [OUTPUT]: Provides ordered Project App aliases with renderer/main generation-fenced canonical activation and no management actions
  * [POS]: Focused Project child-list projection inserted between Project Base and Chat/History rows
  */
 
+import { appDisplayName } from "../../../../shared/apps-ipc";
 import { useNavigate } from "react-router";
 import { toast } from "@ai-chat/ui/components/ui/sonner";
 import {
@@ -16,8 +17,7 @@ import type { Project } from "../../../../shared/projects-ipc";
 import { useApps } from "@/components/providers/apps-provider";
 import { errorMessage } from "@/lib/errors";
 import { sidebarSubRowClass, SidebarRowMark } from "../sidebar-row";
-import { activateAppSurface } from "../apps/activate-app-surface";
-import { sidebarAppOriginStore } from "../active/app-origin";
+import { activateSidebarApp } from "../apps/activate-app-surface";
 import { useSidebarAppTarget } from "../active/app-target";
 
 export function ProjectPinnedApps({
@@ -42,40 +42,19 @@ export function ProjectPinnedApps({
     });
 
   return aliases.map(({ placement, record }) => {
-    const name = record.manifest?.name ?? record.displayName ?? record.id;
+    const name = appDisplayName(record);
     const icon = record.manifest?.icon ?? "📦";
     const active =
       expanded &&
       target.kind === "project-app" &&
       target.projectId === project.id &&
       target.appId === record.id;
-    const activate = async () => {
-      const activation = sidebarAppOriginStore.beginActivation(record.id);
-      try {
-        await activation.ready;
-      } catch (cause) {
-        sidebarAppOriginStore.finishNavigation(activation.epoch);
-        toast.error(errorMessage(cause));
-        return;
-      }
-      if (!sidebarAppOriginStore.isCurrent(activation.epoch)) return;
-      const result = await activateAppSurface(record, {
+    const activate = () =>
+      activateSidebarApp(record, {
         navigate,
-        navigationIntentId: activation.intentId,
         onError: (cause) => toast.error(errorMessage(cause)),
+        origin: { projectId: project.id },
       });
-      if (
-        result.outcome === "main-shown" ||
-        result.outcome === "fallback-main"
-      ) {
-        sidebarAppOriginStore.commitActivation(activation.epoch, {
-          appId: record.id,
-          projectId: project.id,
-        });
-      } else {
-        sidebarAppOriginStore.finishNavigation(activation.epoch);
-      }
-    };
     return (
       <SidebarMenuSubItem
         className="w-full"

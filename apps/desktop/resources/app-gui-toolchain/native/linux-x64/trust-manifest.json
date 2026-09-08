@@ -1,0 +1,37 @@
+{
+  "schema": "bottega.compiler-linux-payload/v1",
+  "payloadId": "bwrap-eae0872ccf73b720079278426e26a39985da286911c1010d4d3593a215669bfe",
+  "distribution": {
+    "id": "ubuntu",
+    "version": "24.04",
+    "architecture": "x64"
+  },
+  "package": {
+    "name": "bubblewrap",
+    "version": "0.9.0-1ubuntu0.1",
+    "architecture": "amd64",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb",
+    "bytes": 50178,
+    "sha256": "sha256:1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a",
+    "archiveKey": "F6ECB3762474EDA9D21B7022871920D1991BC93C",
+    "inReleaseSha256": "sha256:91c7e0011e44ada9c7c9854383499872ecfa38f38804302cea35b75b634fe0d2",
+    "packagesSha256": "sha256:bff14e8620aaf06e6073bf81df0c1e00333d80a0fe40b5b37716d1b70b7d8527"
+  },
+  "binary": {
+    "bytes": 72160,
+    "sha256": "sha256:52231e1caf55bcbc667b269f49c63599a6f7db4767ae6a039580d0ff853db712"
+  },
+  "execPolicy": {
+    "bytes": 4192,
+    "sha256": "sha256:1add6a1478e6dde3f3bbf28d4ab0fc5bc2fedbff6cfa1a5e85cf13b80d18294f"
+  },
+  "system": {
+    "path": "/usr/bin/bwrap"
+  },
+  "stable": {
+    "profile": {
+      "bytes": 311,
+      "sha256": "sha256:b0b487a962997c7c6fc9d46e5e38c5521c068fea517f311926b0ec644d74010f"
+    }
+  }
+}

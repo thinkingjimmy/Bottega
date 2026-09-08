@@ -6,6 +6,7 @@
 
 import type {
   AgentBackendId,
+  AgentTurnOptions,
   AgentTurnItemKind,
   FailureKind,
   UsageLimitInfo,
@@ -127,12 +128,13 @@ type ChatMessageBase = {
   segment?: "imported";
 };
 
-export type ChatRelayMeta = {
+type ChatRelayMeta = {
   sourceSectionId: string;
   chainId: string;
 };
 
 export type ChatNotice =
+  | import("./chat-agent/contracts").AgentSwitchedNotice
   | {
       kind: "app-chat-ready";
       appId: string;
@@ -165,7 +167,7 @@ export type ChatNotice =
  * 于是每加一种 notice 就得回去补一条 `!==`——按正面条件判定，新 kind 才不会
  * 悄悄落进 action 分支。
  */
-export type ActionableChatNotice = Extract<
+type ActionableChatNotice = Extract<
   ChatNotice,
   { kind: "chain-paused" | "startup-recovered" }
 >;
@@ -176,6 +178,7 @@ export const isActionableNotice = (
   notice?.kind === "chain-paused" || notice?.kind === "startup-recovered";
 
 export function noticeMessageContent(notice: ChatNotice) {
+  if (notice.kind === "agent-switched") return `Agent switched · Replies from here are by ${notice.to}`;
   if (notice.kind === "app-chat-ready") return "App Studio session is ready.";
   if (notice.kind === "manual-recovered") {
     return "应用重启，这条消息的回复已中断，请重新发送。";
@@ -208,6 +211,7 @@ export type UserChatMessage = ChatMessageBase & {
 
 export type AssistantChatMessage = ChatMessageBase & {
   role: "assistant";
+  backend: AgentBackendId;
   /** 原生 Plan turn 的最终计划 */
   kind?: "plan";
   /** assistant：最终回复之前的过程条目（工具行 + 中间文本） */
@@ -270,6 +274,9 @@ export type ChatSummary = {
   chatRecordRevision?: number;
   chatMessageRevision?: number;
   agent: AgentBackendId;
+  agentRevision?: number;
+  options?: AgentTurnOptions;
+  forkAgent?: AgentBackendId | null;
   grants: AppGrantRecord[];
   grantRevision: number;
   /**
@@ -331,6 +338,8 @@ type CanonicalChatFacts = Required<
     | "titleSource"
     | "chatRecordRevision"
     | "chatMessageRevision"
+    | "agentRevision"
+    | "options"
   >
 >;
 
@@ -444,7 +453,7 @@ export type CommitManagedWorktreeInput = Readonly<{
   message: string;
 }>;
 
-export type CommitManagedWorktreeResult = Readonly<{
+type CommitManagedWorktreeResult = Readonly<{
   committed: boolean;
   commit: string | null;
 }>;
@@ -553,6 +562,7 @@ export type ChatFindPage = Readonly<{
 }>;
 
 export type CreateChatInput = {
+  options?: AgentTurnOptions;
   id: string;
   agent: AgentBackendId;
   firstMessage: UnsequencedUserMessage;
@@ -564,6 +574,7 @@ export type CreateChatInput = {
 
 /** main-only；renderer 的 sections 校验器永远拒绝 persistence.kind=adopt。 */
 export type AdoptChatInput = {
+  options?: AgentTurnOptions;
   id: string;
   title: string;
   agent: AgentBackendId;
@@ -577,6 +588,7 @@ export type AdoptChatInput = {
 };
 
 export type CreateAppChatInput = {
+  options?: AgentTurnOptions;
   id: string;
   appId: string;
   projectId: string;
@@ -592,7 +604,7 @@ export type AppendChatMessageInput = {
   chatId: string;
   message: UnsequencedUserMessage;
   attachmentPayloads?: ChatAttachmentPayload[];
-  /** Coordinator 延迟 append 的第二道 CAS；旧 renderer 入口可省略。 */
+  /** Second CAS for the coordinator's deferred append; omitted only by callers that already hold the incarnation fence. */
   precondition?: IncarnationPrecondition;
   /** 仍属 append：保持 coordinator 的 existing/create 二分不生第四种状态。 */
   revise?: {
@@ -625,9 +637,6 @@ export const CHATS_CHANNEL = {
   timelineAround: "chats:timeline-around",
   outlinePage: "chats:outline-page",
   findMessages: "chats:find-messages",
-  create: "chats:create",
-  createForApp: "chats:create-for-app",
-  append: "chats:append",
   forkPreflight: "chats:fork-preflight",
   fork: "chats:fork",
   commitManagedWorktree: "chats:commit-managed-worktree",
@@ -644,10 +653,6 @@ export type ChatsBridgeApi = {
   timelineAround: (input: ChatTimelineAroundInput) => Promise<ChatTimelinePage | null>;
   outlinePage: (input: ChatOutlineInput) => Promise<ChatOutlinePage | null>;
   findMessages: (input: ChatFindInput) => Promise<ChatFindPage | null>;
-  create: (input: CreateChatInput) => Promise<ChatRecord>;
-  createForApp: (input: CreateAppChatInput) => Promise<ChatRecord>;
-  /** 返回存储后的消息（含主进程生成的附件元数据与截断结果），renderer 以其为准 */
-  append: (input: AppendChatMessageInput) => Promise<ChatMessage>;
   forkPreflight: (input: ForkChatPreflightInput) => Promise<ForkChatPreflight>;
   fork: (input: ForkChatRequest) => Promise<ChatRecord>;
   commitManagedWorktree: (

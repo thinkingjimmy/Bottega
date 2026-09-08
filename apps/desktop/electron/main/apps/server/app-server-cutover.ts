@@ -1,17 +1,17 @@
 /**
- * [INPUT]: Depends on AppDataCutoverLedger and Node fs, plus the narrow environment injected by the composition root (close admission / revoke route / drain / stop / custody count / active binding / appDir)
- * [OUTPUT]: Provides AppServerDataCutover and AppServerCutoverPort: the §3.4 fixed-order epoch switch, isolated target construction, and a startup reconcile that settles each cutover independently and reports the ones it cannot decide
+ * [INPUT]: Depends on AppDataCutoverLedger, Node fs, the apps/support isDirectory probe, plus the narrow environment injected by the composition root (close admission / revoke route / drain / stop / custody count / active binding)
+ * [OUTPUT]: Provides AppServerDataCutover and AppServerCutoverPort: the §3.4 fixed-order epoch switch, isolated target construction from an empty or source-epoch origin, and a startup reconcile that settles each cutover independently and reports the ones it cannot decide
  * [POS]: The apps server data-epoch switch; AppStore only ever receives one CAS-able dataEpochId
  */
 
-import { cp, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
-import { randomUUID } from "node:crypto";
 import type {
   AppDataCutoverRecord,
   AppDataCutoverSource,
 } from "../../../../shared/app-lifecycle";
 import { asError } from "../../errors";
+import { isDirectory } from "../support";
 import type { AppDataCutoverLedger } from "./app-data-cutover-ledger";
 
 /** AppStore 只认识这一个面：拿到 epoch id 去 CAS，成或败各回一次。 */
@@ -48,11 +48,7 @@ export type AppServerCutoverEnvironment = {
   activeServerBinding(
     appId: string
   ): Readonly<{ generationId: string; dataEpochId: string }> | null;
-  /** legacy 数据的来源目录（旧存量 App 的运行目录） */
-  appDir(appId: string): string | null;
 };
-
-const LEGACY_DATA_DIR = "data";
 
 export class AppServerDataCutover implements AppServerCutoverPort {
   private environment: AppServerCutoverEnvironment | null = null;
@@ -86,7 +82,7 @@ export class AppServerDataCutover implements AppServerCutoverPort {
     if (this.ledger.isRetiredBuild(input.generationBuildId)) {
       throw new Error("server data build 已永久退役");
     }
-    const source = await this.resolveSource(input.appId);
+    const source = this.resolveSource(input.appId);
     let cutover = await this.ledger.open({
       appId: input.appId,
       generationBuildId: input.generationBuildId,
@@ -103,7 +99,7 @@ export class AppServerDataCutover implements AppServerCutoverPort {
     const resuming = cutover.disposition === "prepared";
     try {
       await environment.closeAdmission(input.appId);
-      /* 三种 source 走同一条收敛：`none` 分支这三步天然是空操作，为它们写
+      /* 两种 source 走同一条收敛：`none` 分支这三步天然是空操作，为它们写
          特例只会多出一条永远测不到的路径。 */
       await environment.revokeRoute(input.appId);
       await environment.drainRequests(input.appId);
@@ -262,11 +258,11 @@ export class AppServerDataCutover implements AppServerCutoverPort {
 
   /**
    * source 判定只信两样：durable active binding 与 ledger 里那条 epoch 记录。
-   * 任一分支都不伪造 source generation——没有 active epoch 就绝不写 `existing`。
+   * 任一分支都不伪造 source generation——没有 active epoch 就绝不写 `existing`，
+   * 而是从空 epoch 起步；运行目录里的任何字节都不是 source。
    */
-  private async resolveSource(appId: string): Promise<AppDataCutoverSource> {
-    const environment = this.require();
-    const active = environment.activeServerBinding(appId);
+  private resolveSource(appId: string): AppDataCutoverSource {
+    const active = this.require().activeServerBinding(appId);
     if (active) {
       const epoch = this.ledger.epoch(active.dataEpochId);
       if (epoch?.state === "active") {
@@ -276,11 +272,6 @@ export class AppServerDataCutover implements AppServerCutoverPort {
           dataEpochId: active.dataEpochId,
         };
       }
-    }
-    const appDir = environment.appDir(appId);
-    const legacy = appDir ? join(appDir, LEGACY_DATA_DIR) : null;
-    if (legacy && (await isDirectory(legacy))) {
-      return { kind: "legacy-import", snapshotId: randomUUID() };
     }
     return { kind: "none" };
   }
@@ -298,44 +289,12 @@ export class AppServerDataCutover implements AppServerCutoverPort {
     });
     await rm(staging, { recursive: true, force: true });
     await mkdir(staging, { recursive: true });
-    const origin = await this.materializeSource(cutover);
-    if (origin) {
+    if (cutover.source.kind === "existing") {
+      const origin = this.epochRoot(cutover.appId, cutover.source.dataEpochId);
       await cp(origin, staging, { recursive: true, force: true });
       await assertTreeCopied(origin, staging);
     }
     await rename(staging, target);
-  }
-
-  /**
-   * legacy 只读一次：第一次把 `<appDir>/data` fsync 成不可变 snapshot，
-   * 之后每次重放都只读那份 snapshot——中断可重放正是靠这条不变式，
-   * 否则第二次会把「已经被新代改过的 legacy 目录」当成原始数据。
-   */
-  private async materializeSource(cutover: AppDataCutoverRecord) {
-    if (cutover.source.kind === "none") return null;
-    if (cutover.source.kind === "existing") {
-      return this.epochRoot(cutover.appId, cutover.source.dataEpochId);
-    }
-    const snapshot = join(
-      this.userData,
-      "app-data",
-      cutover.appId,
-      "legacy",
-      cutover.source.snapshotId
-    );
-    if (await isDirectory(snapshot)) return snapshot;
-    const appDir = this.require().appDir(cutover.appId);
-    if (!appDir) throw new Error("legacy import 找不到 App 运行目录");
-    const legacy = join(appDir, LEGACY_DATA_DIR);
-    const staging = `${snapshot}.staging`;
-    await mkdir(join(this.userData, "app-data", cutover.appId, "legacy"), {
-      recursive: true,
-    });
-    await rm(staging, { recursive: true, force: true });
-    await cp(legacy, staging, { recursive: true, force: true });
-    await assertTreeCopied(legacy, staging);
-    await rename(staging, snapshot);
-    return snapshot;
   }
 
   /** delete 的物理收尾；ledger 状态由调用方推进，这里只负责字节。 */
@@ -373,12 +332,6 @@ export class AppServerDataCutover implements AppServerCutoverPort {
     }
     return this.environment;
   }
-}
-
-async function isDirectory(path: string) {
-  return stat(path)
-    .then((entry) => entry.isDirectory())
-    .catch(() => false);
 }
 
 /** 复制校验：逐条相对路径比对，缺一条就不是「隔离构造完成」。 */

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on the string definition
- * [OUTPUT]: Provides create StderrNoiseFilter: By name list, remove known-quality CLI noise and its continuity, keep the state across the chunk
- * [POS]: The stderr noise reducer of the acp, which serves as the cause of death evidence (stderrTail); The only thing that is missing is the name of the noise, the rest of the words are silent
+ * [INPUT]: Depends only on a hand-curated table of confirmed-benign stderr regex patterns
+ * [OUTPUT]: Provides createStderrNoiseFilter, which strips known-benign CLI stderr lines (and their continuation lines) by pattern, preserving match state across chunk boundaries
+ * [POS]: ACP stderr noise reducer feeding the cause-of-death evidence in stderrTail; only lines matching a named, confirmed-benign pattern are dropped, everything else is preserved
  */
 
 /* ============================================================

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Project rebind durable journal/capsule with injected Memory effect, Project CAS
  * [OUTPUT]: Provides retain admission-neutral receipt with the new generation-first common workspace rebind driver, and source/target CAS determination
- * [POS]: The project module is the core of the cross-book saga; No UI, ProjectStore or lock, only specified checkpoint order
+ * [POS]: Projects' cross-ledger rebind-saga driver; no UI, ProjectStore, or lock access — only the specified checkpoint order
  */
 
 import type { StoredProject } from "../store/project-store";

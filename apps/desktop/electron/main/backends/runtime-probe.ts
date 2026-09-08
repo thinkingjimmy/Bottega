@@ -1,15 +1,16 @@
 /**
- * [INPUT]: Depends on Node child_process/os/path/util, explicit command names and Registry flight AbortSignal
- * [OUTPUT]: Provides sequencing candidate listing, canceled and environmentally inserted asynchronous versions detection, specification versions, built-in tooling versions oracle, minimum version access restrictions and comparison of semantic updates
+ * [INPUT]: Depends on shell-free executable discovery, platform PATH/environment facts and cancellable runtime/version probes
+ * [OUTPUT]: Provides ordered CLI discovery, Windows-required non-secret environment and existing version/capability admission
  * [POS]: The backends are found when running the kernel; The lifecycle of the asynchronous process is called by its Runtime Registry flight unified with the canceled and drained
  */
 
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { AgentBackendId } from "../../../shared/agent-ipc";
 import type { AgentRuntime } from "./types";
+import { environmentValue, findExecutable, platformPathEnvironment } from "../custody/executable-path";
 
 const SHELL_PROBE_TIMEOUT_MS = 5_000;
 const VERSION_PROBE_TIMEOUT_MS = 5_000;
@@ -17,21 +18,15 @@ const execFileAsync = promisify(execFile);
 
 async function commandPathAsync(
   command: string,
-  envPath = process.env.PATH ?? "",
+  envPath = environmentValue(process.env, "PATH") ?? "",
   signal?: AbortSignal
 ) {
-  const { stdout } = await execFileAsync("/usr/bin/which", [command], {
-    encoding: "utf8",
-    env: { PATH: envPath },
-    timeout: SHELL_PROBE_TIMEOUT_MS,
-    signal,
-  });
-  const output = String(stdout).trim();
-  return output || undefined;
+  return findExecutable(command, { ...platformPathEnvironment(process.env), PATH: envPath }, signal);
 }
 
 async function loginShellPathAsync(signal?: AbortSignal) {
-  const shell = process.env.SHELL || "/bin/zsh";
+  if (process.platform === "win32") return undefined;
+  const shell = process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/sh");
   const { stdout } = await execFileAsync(shell, ["-ilc", "/usr/bin/env -0"], {
     encoding: "utf8",
     timeout: SHELL_PROBE_TIMEOUT_MS,
@@ -46,6 +41,13 @@ async function loginShellPathAsync(signal?: AbortSignal) {
 }
 
 export function commonCommandPaths(command: string) {
+  if (process.platform === "win32") {
+    const local = environmentValue(process.env, "LOCALAPPDATA");
+    const roaming = environmentValue(process.env, "APPDATA");
+    return [join(homedir(), ".local/bin", `${command}.exe`),
+      ...(local ? [join(local, "Microsoft/WinGet/Links", `${command}.exe`)] : []),
+      ...(roaming ? [join(roaming, "npm", `${command}.exe`)] : [])];
+  }
   return [
     join(homedir(), "Library/pnpm", command),
     join(homedir(), ".local/bin", command),
@@ -79,11 +81,11 @@ export async function probeRuntimeCandidatesAsync(options: {
   try {
     const executable = await commandPathAsync(
       options.command,
-      process.env.PATH ?? "",
+      environmentValue(process.env, "PATH") ?? "",
       options.signal
     );
     if (executable) {
-      append({ executable, path: process.env.PATH ?? "" });
+      append({ executable, path: environmentValue(process.env, "PATH") ?? "" });
     }
   } catch {
     options.signal?.throwIfAborted();
@@ -103,13 +105,12 @@ export async function probeRuntimeCandidatesAsync(options: {
     const executable of
     options.commonPaths ?? commonCommandPaths(options.command)
   ) {
-    const path = [dirname(executable), process.env.PATH]
+    const path = [dirname(executable), environmentValue(process.env, "PATH")]
       .filter(Boolean)
-      .join(":");
+      .join(delimiter);
     try {
-      if (await commandPathAsync(executable, path, options.signal)) {
-        append({ executable, path });
-      }
+      const canonical = await commandPathAsync(executable, path, options.signal);
+      if (canonical) append({ executable: canonical, path });
     } catch {
       options.signal?.throwIfAborted();
       // 当前候选不可执行，继续下一项。
@@ -238,12 +239,13 @@ export function runtimeVersionAtLeast(
 }
 
 export function sanitizedProcessEnvironment(
-  pathValue = process.env.PATH,
+  pathValue = environmentValue(process.env, "PATH"),
   source: NodeJS.ProcessEnv = process.env
 ) {
   return {
-    HOME: source.HOME,
-    PATH: pathValue ?? "/usr/bin:/bin:/usr/sbin:/sbin",
+    ...platformPathEnvironment(source),
+    HOME: source.HOME ?? environmentValue(source, "USERPROFILE"),
+    PATH: pathValue ?? (process.platform === "win32" ? "" : "/usr/bin:/bin:/usr/sbin:/sbin"),
     USER: source.USER,
     SHELL: source.SHELL,
     LANG: source.LANG,

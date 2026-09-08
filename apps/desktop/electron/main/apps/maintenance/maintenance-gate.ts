@@ -1,7 +1,7 @@
 /**
- * [INPUT]: No external dependence, only accepting appId and lock holder identification
- * [OUTPUT]: Provides MaintenanceGate, Unified Repair acquisire/isLocked/release
- * [POS]: The apps module maintains parallel boundaries, runtime, edit, delete and repair with the same truth source
+ * [INPUT]: No external dependencies; accepts only an appId and a lock-holder identifier
+ * [OUTPUT]: Provides MaintenanceGate: acquire/isLocked/release
+ * [POS]: apps module's maintenance mutex; runtime start, edit rebuild, delete, and repair all read the same truth about whether an App is under maintenance
  */
 
 export class MaintenanceGate {

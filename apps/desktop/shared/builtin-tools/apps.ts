@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the zod and the type of spec for the builtin-tools/platform
  * [OUTPUT]: Provides validate_app built-in tool static spec
- * [POS]: The app is a true source of builtin-toolsJust down the platform
+ * [POS]: Single-tool builtin-tools spec for the apps domain; depends only on platform.ts
  */
 
 import { z } from "zod";

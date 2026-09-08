@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on zod, strict RichInput and transcript/owner-native attachment Gallery sourceRef schema; Receiving frozen messages, credible back-source identity, dual tokens, backend and capability epoch
- * [OUTPUT]: Provides freezeGalleryDraft PreparedSubmissionV1 strict RichValue/cross consistency schema, unified 8KiB logicalKey Budget, type and stable comment template
- * [POS]: The Gallery renderer is frozen in the middle mode of shared; The route is pre-encoded in SubmissionContent V1, not directly into the main envelope
+ * [INPUT]: Depends on zod, ATTACHMENT_LIMIT from agent-ipc, agentBackendIdSchema, Gallery sourceRef/logical-key schemas from gallery-media-ipc, and the RichInput/submission-file schemas
+ * [OUTPUT]: Provides preparedSubmissionV1Schema/PreparedSubmissionV1 (strict RichValue cross-consistency schema with a unified 8KiB logicalKey budget) plus formatGalleryCommentBlock/appendGalleryCommentBlocks for the stable pinned-comment prompt template
+ * [POS]: Shared schema and comment-template authority for Gallery-image submissions; the renderer's freezeGalleryDraft (src/lib/gallery/submission.ts) builds the frozen draft against this schema before it becomes a durable submission
  */
 
 import { z } from "zod";

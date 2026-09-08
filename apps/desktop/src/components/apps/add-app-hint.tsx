@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on i18n text and Tailwind arbitrary font size (the system is handwritten, no font weight)
- * [OUTPUT]: Provides AddAppHint: A hand drawing arrow batch pointing to the top of the page +
- * [POS]: The second instalment of Apps Airborne provides instructions on how to install itThe relative ancestors must be positioned
+ * [OUTPUT]: Provides AddAppHint, a hand-drawn arrow and caption pointing at the add-app action
+ * [POS]: Empty-state hint for the Apps list; the parent must be positioned relatively so the absolute hint anchors to it
  */
 
 import { useAppTranslation } from "@/components/providers/i18n-provider";

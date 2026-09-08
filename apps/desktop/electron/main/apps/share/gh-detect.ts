@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on node: child_process' execFile and the process environment
- * [OUTPUT]: Provides detect GhStatus tri-mode detection; 10 seconds overdue, shell = false, exit code is the only way to tell
+ * [OUTPUT]: Provides detectGhStatus tri-state detection (missing/unauthenticated/ready) via a 10s-timeout, shell:false execFile keyed only on exit code
  * [POS]: The GitHub CLI trust probe for apps/share; Product only detects and instructs, not replaces user installation or login
  */
 
 import { execFile } from "node:child_process";
 import type { GhStatus } from "../../../../shared/apps-ipc";
-import { sanitizedProcessEnvironment } from "../../codex-runtime";
+import { sanitizedProcessEnvironment } from "../../backends/runtime-probe";
 
 export async function detectGhStatus(
   run: typeof runCommand = runCommand
