@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides the complete Simplified Chinese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
  * [POS]: zh-CN desktop locale; compile-time structure must match English exactly
  */
+import { sketchZhCN } from "./sketch/zh-cn";
 import { appHostZhCN } from "./app-host/zh-cn";
 import { agentAvailabilityZhCN } from "./agent-availability/zh-cn";
 
@@ -37,6 +38,7 @@ import { agentFailureZhCN } from "./agent-failure/zh-cn";
 import { chatStorageZhCN } from "./chat-storage/zh-cn";
 
 export const zhCN: Catalog = {
+  sketch: sketchZhCN,
   appHost: appHostZhCN,
   agentAvailability: agentAvailabilityZhCN,
   common: {
@@ -338,11 +340,21 @@ export const zhCN: Catalog = {
       },
     },
     resumeFailure: {
-      title: "保存的 Session 无法恢复",
-      description: "后端拒绝了保存的 Session。消息与附件仍已落盘；请选择恢复方式，用户消息不会重复写入。",
-      sameSession: "重试同一 Session",
-      freshSession: "开启新 Session",
-      abandon: "放弃本轮",
+      title: "{{backend}} 打不开这个 Chat 保存的会话",
+      description: "你的消息和附件都已保存，也还没有发送出去。",
+      retriedTitle: "重试原来的会话失败了",
+      retriedDescription: "这个会话大概率已经不在 {{backend}} 那边了。你的消息和附件都还保存着，也还没有发送出去。",
+      recommended: "推荐",
+      sameSession: "重试原来的会话",
+      sameSessionDetail: "再连一次原来的会话。成功后 Agent 保留这个 Chat 的全部上下文。",
+      sameSessionRetry: "再重试一次",
+      sameSessionRetryDetail: "再试着连一次原来的会话。刚才已经失败过一次。",
+      freshSession: "开启新会话",
+      freshSessionDetail: "放弃原来的会话，让 Agent 从最近对话的摘要重新开始。更早的内容它不再直接看得到。",
+      freshSessionBlocked: "这个 Chat 是从外部导入的，绑定的是导入时的原始会话，不能换新会话。",
+      abandon: "放弃这一轮",
+      abandonDetail: "这次不发送，本轮到此结束。消息仍留在这个 Chat 里。",
+      actionFailed: "操作没有成功：{{message}}",
     },
     readOnly: "此聊天当前为只读",
     backendUnavailable: "{{backend}} 当前不可用。",

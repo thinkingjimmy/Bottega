@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides ja settings, tray, quit, and task-panel translations, including persistent top-bar/menu access, keyboard hints, and task failures.
+ * [OUTPUT]: Provides ja settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut-only settings hints, and task failures, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -11,17 +11,21 @@ export const presenceJa = {
   "openHint": "開く",
   "spaceKey": "スペース",
   "taskFailed": "失敗",
-  "openPanel": "タスクパネルを開く",
   "empty": "実行中のタスクはありません",
   "emptyDescription": "Bottega でタスクを開始すると、ここに進行状況が表示されます。",
-  "shortcutUnavailable": "このショートカットは使用できません。「キーボードショートカット」で変更するか、ボタンでパネルを開いてください。",
+  "shortcutUnavailable": "このショートカットは使用できません。「キーボードショートカット」で変更してください。",
+  "displayMode": "表示方法",
+  "iconMode": "メニューバーアイコン",
+  "notchMode": "ノッチのタスクパネル",
+  "iconDescription": "メニューバーアイコンから Bottega を開き、タスクの状況を確認できます。",
+  "notchDescription": "ほかのアプリの使用中もノッチの横でタスクや入力待ちの状態を確認できます。タスクをクリックするとチャットに戻ります。",
+  "noNotch": "ノッチ付きディスプレイが見つかりません。メニューバーアイコンを使用します。",
+  "retentionDescriptionTray": "メインウィンドウを閉じても Bottega を実行し続けます。システムトレイアイコンから再び開けます。",
   "title": "バックグラウンド動作",
   "login": "ログイン時に Bottega を起動",
   "loginDescription": "パソコンへのログイン後に起動します。バックグラウンド動作が有効な場合はウィンドウを表示しません。",
   "retention": "メインウィンドウを閉じても実行を継続",
-  "retentionDescription": "ウィンドウを閉じてもタスクを続行します。メニューバーや Dock から再度開けます。",
-  "top": "フローティングタスクパネルを表示",
-  "topDescription": "ほかのアプリを使用中も Bottega のタスクや入力待ちの状態を確認できます。上部のバーは常に表示され、メニューバーのアイコンに代わります。タスクをクリックするとチャットに戻ります。",
+  "retentionDescription": "メインウィンドウを閉じても Bottega を実行し続けます。選択したバックグラウンドの表示から再び開けます。",
   "notice": "Bottega を終了するとローカルタスクが停止します。スリープ中はタスクやリモート操作が一時停止する場合があります。",
   "open": "Bottega を開く",
   "quitting": "終了しています…",
@@ -46,7 +50,6 @@ export const presenceJa = {
   "closeFailed": "下書きを移行できませんでした。もう一度ウィンドウを閉じてください。",
   "retry": "再試行",
   "systemSettings": "システム設定を開く",
-  "applying": "適用中…",
   "disabled": "オフ",
   "enabled": "オン",
   "blocked": "対応が必要",
@@ -57,7 +60,7 @@ export const presenceJa = {
   "systemDisabled": "システム設定で無効にされています",
   "loginFailed": "ログイン項目を確認できません",
   "saveFailed": "設定を保存できません",
-  "trayUnavailable": "メニューバーの項目を利用できません",
+  "trayUnavailable": "バックグラウンドアイコンを利用できません",
   "panelUnavailable": "タスクの状態を表示できません",
   "screenUnavailable": "画面の空き領域が不足しています",
   "nativeUnavailable": "画面アダプターを利用できません",

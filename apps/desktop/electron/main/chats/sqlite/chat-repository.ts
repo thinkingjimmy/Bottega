@@ -1,9 +1,12 @@
 /**
  * [INPUT]: Depends on focused repository reader/writer collaborators, canonical Chat schemas, SQLite transactions, optional import-blob storage, and the closed database protocol
- * [OUTPUT]: Provides transactional narrow turn/fact/presentation and aggregate Chat mutations including readonly removal, imported source_status marking, receipts, native-Memory reads, startup reaping of interrupted imports that also reclaims abandoned generations, immutable-generation GC, self-healing search-projection reconciliation, and bounded timeline plus keyset search facades
+ * [OUTPUT]: Single-connection transactional Chat authority; business mutations share the receipt transaction with scoped outbox publication, imported source freezing and deletion custody.
  * [POS]: Chat domain SQL transaction authority inside the dedicated worker; row projection details live in repository collaborators
  */
 
+import { ChatCloudRepository } from "./cloud/repository";
+import { collectRetainedAttachmentIds } from "./cloud/retention";
+import type { CloudMutation, CloudRead } from "./cloud/protocol";
 import { commitAgentSwitch } from "./agent-switch/commit";
 import { reserveSwitchSequences } from "./agent-switch/reserve";
 import type { SwitchSequenceReservation } from "./agent-switch/command";
@@ -78,6 +81,7 @@ const nullableNumber = (value: unknown) =>
   value === null || value === undefined ? null : Number(value);
 
 export class ChatRepository {
+  private readonly cloud: ChatCloudRepository;
   private readonly reader: ChatRepositoryReader;
   private readonly writer: ChatRecordWriter;
   private readonly imports: HistoryImportRepository;
@@ -88,7 +92,7 @@ export class ChatRepository {
   constructor(
     private readonly database: SqliteDatabase,
     private readonly now: () => number = Date.now,
-    storage?: Readonly<{ importBlobsRoot?: string; backendDefaults?: import("../../../../shared/settings-ipc").DefaultChatOptionsByBackend }>
+    storage?: Readonly<{ storageMode?: import("../../../../shared/local-storage/contracts").StorageMode; importBlobsRoot?: string; backendDefaults?: import("../../../../shared/settings-ipc").DefaultChatOptionsByBackend }>
   ) {
     this.reader = new ChatRepositoryReader(database);
     this.writer = new ChatRecordWriter(database, now);
@@ -96,12 +100,18 @@ export class ChatRepository {
     this.continuations = new ContinuationSagaRepository(database, now);
     this.memory = new ChatMemoryReader(database);
     this.facts = new ChatFactReader(database);
+    this.cloud = new ChatCloudRepository(database, this.reader, this.writer, now, storage?.storageMode);
+  }
+
+  cloudRead(command: CloudRead) { return this.cloud.read(command); }
+
+  cloudMutate(command: CloudMutation) {
+    return this.simpleMutation(command, null, () => this.cloud.mutate(command));
   }
 
   listMetadata(deviceId: string, chatId?: string) {
     return this.reader.listMetadata(deviceId, chatId);
   }
-
   getRecord(chatId: string, deviceId: string) {
     return this.reader.getRecord(chatId, deviceId);
   }
@@ -145,7 +155,7 @@ export class ChatRepository {
     return this.reader.findMessages(command);
   }
 
-  reserveSwitchSequences(command: Extract<DatabaseCommand, { kind: "reserve-switch-sequences" }>): MutationOutcome<SwitchSequenceReservation> {
+  reserveSwitchSequences(command: Extract<DatabaseCommand, { kind: "reserve-switch-sequences" | "reserve-turn-sequences" }>): MutationOutcome<SwitchSequenceReservation> {
     try {
       return transaction(this.database, () => {
         const replay = this.replay<SwitchSequenceReservation>(command);
@@ -339,6 +349,7 @@ export class ChatRepository {
            来源不再被任何墓碑记恨。下一次扫描于是能重新导入同一个来源。
            「不许永久删除只读会话」是产品栅栏，住在 ChatsService 与归档面，
            不在这里——否则删除 Project 与清空归档会半路夭折。 */
+        this.cloud.archiveBeforeRemoval(command.chatId, command.deviceId, command.operationId);
         const attachments = this.attachmentRows(command.chatId);
         this.database.prepare("DELETE FROM chats WHERE id = ?").run(command.chatId);
         /* Forks deliberately share ordinary attachment ids. Deletion therefore returns
@@ -348,7 +359,7 @@ export class ChatRepository {
           "SELECT 1 FROM chat_message_attachments WHERE attachment_id = ? LIMIT 1"
         );
         const reclaimable = attachments.filter(
-          (attachment) => !referenced.get(attachment.id)
+          (attachment) => !referenced.get(attachment.id) && !collectRetainedAttachmentIds(this.database).has(attachment.id)
         );
         const result = { chatId: command.chatId, attachments: reclaimable };
         return {
@@ -369,9 +380,9 @@ export class ChatRepository {
   }
 
   listAttachmentIds() {
-    return (this.database.prepare(
+    return [...new Set([...(this.database.prepare(
       "SELECT DISTINCT attachment_id FROM chat_message_attachments ORDER BY attachment_id"
-    ).all() as Row[]).map((row) => String(row.attachment_id));
+    ).all() as Row[]).map((row) => String(row.attachment_id)), ...collectRetainedAttachmentIds(this.database)])];
   }
 
   hasAttachmentReference(chatId: string, attachmentId: string, deviceId: string) {
@@ -734,6 +745,7 @@ export class ChatRepository {
     result: T,
     targetId: string | null
   ): MutationReceipt<T> {
+    if (command.kind !== "cloud-mutate" && command.kind !== "remove-record") this.cloud.recordBusinessCommit(command, targetId);
     const committedAt = this.now();
     this.database.prepare(
       `INSERT INTO chat_operations(
@@ -777,9 +789,7 @@ export class ChatRepository {
     }
   }
 }
-
 export { queryGramTokens };
-
 export function exactSearchFilter(
   hits: SearchDocumentHit[],
   tokens: readonly string[]

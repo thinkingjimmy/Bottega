@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared ChatRecord/ChatMessage, Section Width-line rendering and export byte budget
- * [OUTPUT]: Provides messageLines (requires an explicit attachment-render mode, so callers never leak an unstated projection into search snippets), exportSectionSnapshotDraft (byte-budgeted immutable transcript-plus-attachments snapshot), and readSectionTranscriptPage (live forward pagination for read_section)
+ * [OUTPUT]: Shared bounded transcript/context/export projection; structured incomplete assistant/tool/subagent evidence is annotated without changing stored message bodies.
  * [POS]: Single source of truth for Section transcript read projections; exportSectionSnapshotDraft and readSectionTranscriptPage both build on messageLines, but the live page here is a forward query, not a snapshot continuation
  */
 
@@ -47,14 +47,17 @@ export function messageLines(
     ...(message.notice.kind === "agent-switched" ? [`  [continuation] ${JSON.stringify(message.notice.context)}`] : [])] : [];
   const author = includeIdentity && message.role === "assistant" ? `assistant[${message.backend}]` : message.role;
   const lines = [`${author}: ${message.content}`];
+  if (message.role === "assistant" && message.completion === "interrupted") {
+    lines.push(`  [interrupted: ${message.completionReason ?? "execution-unconfirmed"}]`);
+  }
   for (const part of message.role === "assistant" ? message.parts ?? [] : []) {
     if (part.type === "tool") {
-      lines.push(`  [tool:${part.tool}] ${part.title} (${part.status})`);
+      lines.push(`  [tool:${part.tool}] ${part.title} (${part.completion === "interrupted" ? "interrupted" : part.status})`);
       if (part.detail && part.tool !== "image") {
         lines.push(...detailLines(part.detail));
       }
     } else if (part.type === "subagent") {
-      lines.push(`  [subagent] ${part.name} (${part.status})`);
+      lines.push(`  [subagent] ${part.name} (${part.completion === "interrupted" ? "interrupted" : part.status})`);
     } else if (part.text !== message.content) {
       lines.push(`  [process] ${part.text}`);
     }

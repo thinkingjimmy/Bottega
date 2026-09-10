@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, Appearance/I18n/Setup providers, AgentFailureNotice, PresenceSettings, settings controls/store, PageShell, and UI primitives.
- * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle with appearance, presence, Chat Home, and title generation settings.
+ * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle with appearance, presence, Chat Home, and title generation settings using consistent trigger/menu typography.
  * [POS]: Settings layer's default view; holds no settings snapshot of its own — subscribes to settingsStore and pulls the per-backend model catalog on demand
  */
 
@@ -210,7 +210,7 @@ function ChatRows({
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent align="end">
+            <SelectContent align="end" className="text-sm">
               {[5, 10, 25, 50, 100, 0].map((value) => (
                 <SelectItem
                   key={value}
@@ -247,7 +247,7 @@ function ChatRows({
                   <TitleAgentLabel value={titleAgent} />
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent align="end">
+              <SelectContent align="end" className="text-sm">
                 {titleAgentOptions.map((option) => (
                   <SelectItem
                     key={option}
@@ -273,7 +273,7 @@ function ChatRows({
                   {modelsReady ? selectedModelLabel : t("settings.general.reading")}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent align="end">
+              <SelectContent align="end" className="text-sm">
                 {modelOptions.map((model) => (
                   <SelectItem
                     key={model.value}
@@ -348,7 +348,7 @@ export function ThemeSelect({ theme }: { theme: ThemePreference | null }) {
       >
         <SelectValue />
       </SelectTrigger>
-      <SelectContent align="end">
+      <SelectContent align="end" className="text-sm">
         {THEME_OPTIONS.map((option) => (
           <SelectItem
             key={option.value}
@@ -395,12 +395,12 @@ export function LanguageSelect({
           <LanguageLabel option={selected} />
         </SelectValue>
       </SelectTrigger>
-      <SelectContent align="end" className="min-w-48">
+      <SelectContent align="end" className="min-w-48 text-sm">
         {LANGUAGE_OPTIONS.map((option) => (
           <SelectItem
             key={option.value}
             value={option.value}
-            className="min-h-9 pr-9 text-sm"
+            className="min-h-9 pr-9"
           >
             <LanguageLabel option={option} />
           </SelectItem>
@@ -475,7 +475,7 @@ export function GeneralSettingsView() {
                     >
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent align="end">
+                    <SelectContent align="end" className="text-sm">
                       {FONT_OPTIONS.map((font) => (
                         <SelectItem
                           key={font.value}

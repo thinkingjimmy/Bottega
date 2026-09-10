@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on React, react-router navigation, useAppTranslation onboarding catalog, SetupProvider judgments, shared AgentFailureNotice, Library-first Skills discovery/import, settingsStore, brand assets, SetupBackendRow, backendSetupPresentation and Settings/UI primitives
- * [OUTPUT]: Provides an adaptive three-step required Chat Home/Agent onboarding with structured Agent failures and one optional Skills/Memory enhancement screen with focused descriptions
- * [POS]: Main-owned onboarding surface of views; required gates derive from onboarding-gate while its compact rail and container-aware enhancement rows preserve usable reading width
+ * [OUTPUT]: Provides three-step onboarding with selection-driven Chat Home advancement, state-aware Agent setup guidance, and optional Skills/Memory setup with inline scan recovery
+ * [POS]: Main-owned onboarding surface of views; required gates derive from onboarding-gate while its continuously connected rail and container-aware enhancement rows preserve usable reading width
  */
 
-import { Brain, ChevronLeft, Check, FolderOpen, Sparkles } from "lucide-react";
+import { Brain, ChevronLeft, Check, FolderOpen, RotateCw, Sparkles, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
@@ -124,21 +124,20 @@ function BrandRail({ cursor }: { cursor: number }) {
         src={PRODUCT_LOGO_URLS.dark}
         width={PRODUCT_LOGO_SIZE.width}
       />
-      <ol className="relative mt-14 flex flex-col gap-1">
+      <ol className="relative mt-14 flex flex-col">
         {WIZARD_STEPS.map((id, index) => {
           const state =
             index < cursor ? "done" : index === cursor ? "current" : "todo";
           return (
-            <li key={id}>
-              {index > 0 && (
-                <div aria-hidden="true" className="flex w-6 justify-center py-0.5">
-                  <span
-                    className={cn(
-                      "h-[18px] w-px",
-                      index <= cursor ? "bg-white/30" : "bg-white/15"
-                    )}
-                  />
-                </div>
+            <li key={id} className="relative pb-6 last:pb-0">
+              {index < WIZARD_STEPS.length - 1 && (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute top-6 bottom-0 left-3 w-px -translate-x-1/2",
+                    index < cursor ? "bg-white/30" : "bg-white/15"
+                  )}
+                />
               )}
               <div
                 aria-current={state === "current" ? "step" : undefined}
@@ -211,12 +210,15 @@ function StepHeading({ id, optional }: { id: WizardStepId; optional?: boolean })
 const surface =
   "rounded-lg bg-card shadow-sm ring-1 ring-foreground/10";
 
-function ChatHomeStep() {
+function ChatHomeStep({ onSelected }: { onSelected: () => void }) {
   const { t } = useAppTranslation();
   const { settings, error, chatHomesRootBusy, chatHomesRootError } =
     useSyncExternalStore(settingsStore.subscribe, settingsStore.getSnapshot);
   const state = settings?.chatHomeState ?? "unconfigured";
   const chosen = Boolean(settings?.chatHomesRoot);
+  const chooseFolder = async () => {
+    if (await settingsStore.chooseChatHomesRoot()) onSelected();
+  };
 
   return (
     <>
@@ -251,13 +253,10 @@ function ChatHomeStep() {
             {t("common.retry")}
           </Button>
         ) : (
-          /* 未选定时它是这一屏唯一能解锁流程的动作，故是实心主按钮；
-             选定之后降级为 outline，让「继续」重新成为唯一的主行动。 */
           <Button
             size="lg"
-            variant={chosen ? "outline" : "default"}
             disabled={chatHomesRootBusy || !settings}
-            onClick={() => void settingsStore.chooseChatHomesRoot()}
+            onClick={() => void chooseFolder()}
           >
             {chatHomesRootBusy && <Spinner className="size-3.5" />}
             {t(chosen ? "onboarding.change" : "onboarding.choose")}
@@ -327,27 +326,44 @@ function SkillsOptionRow({ disabled }: { disabled: boolean }) {
   const [count, setCount] = useState(0);
   const [libraryEmpty, setLibraryEmpty] = useState(true);
   const [busy, setBusy] = useState(true);
-  const [error, setError] = useState("");
+  const [scanAttempt, setScanAttempt] = useState(0);
+  const [failure, setFailure] = useState<{
+    action: "scan" | "import";
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     let live = true;
     void Promise.all([listUnifiedSkills(), listUnifiedSkillCandidates("all", false)])
       .then(([snapshot, preview]) => {
         if (!live) return;
+        setFailure(null);
         setLibraryEmpty(snapshot.personalLibraryEmpty);
         setCount(preview.candidates.filter(
           (candidate) => candidate.importable && candidate.status !== "current"
         ).length);
       })
-      .catch((cause) => live && setError(cause instanceof Error ? cause.message : String(cause)))
+      .catch((cause) => live && setFailure({
+        action: "scan",
+        message: cause instanceof Error ? cause.message : String(cause),
+      }))
       .finally(() => live && setBusy(false));
     return () => { live = false; };
-  }, []);
+  }, [scanAttempt]);
 
   const imported = settings?.skillsOnboarding === "done" || !libraryEmpty;
+  const scanFailed = failure?.action === "scan";
+  const error = scanFailed
+    ? t("onboarding.skillsScanFailed")
+    : failure?.message || settingsError;
+  const showError = Boolean(error) && !busy;
+  const retryScan = () => {
+    setBusy(true);
+    setScanAttempt((value) => value + 1);
+  };
   const importAll = async () => {
     setBusy(true);
-    setError("");
+    setFailure(null);
     try {
       const snapshot = await importAllDiscoveredSkills();
       setLibraryEmpty(snapshot.personalLibraryEmpty);
@@ -356,51 +372,65 @@ function SkillsOptionRow({ disabled }: { disabled: boolean }) {
         t("onboarding.skillsUpdateFailed")
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setFailure({
+        action: "import",
+        message: cause instanceof Error ? cause.message : String(cause),
+      });
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <>
-      <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 p-5 @max-[40rem]/extras:grid-cols-[2.5rem_minmax(0,1fr)]">
-        <span className="grid size-10 shrink-0 place-items-center rounded-md bg-sunken text-muted-foreground">
-          <Sparkles className="size-[18px]" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-sm">
-            {t("onboarding.extras.skills")}
-          </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {busy
-              ? t("onboarding.skillsScanning")
+    <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 p-5 @max-[40rem]/extras:grid-cols-[2.5rem_minmax(0,1fr)]">
+      <span className={cn(
+        "grid size-10 shrink-0 place-items-center rounded-md",
+        showError
+          ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+          : "bg-sunken text-muted-foreground"
+      )}>
+        {showError ? <TriangleAlert className="size-[18px]" /> : <Sparkles className="size-[18px]" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-sm">
+          {t("onboarding.extras.skills")}
+        </p>
+        <p className="mt-1 text-[11px] text-muted-foreground" role={showError ? "alert" : undefined}>
+          {busy
+            ? t("onboarding.skillsScanning")
+            : error
+              ? error
               : imported
                 ? t("onboarding.skillsDone")
                 : count > 0
                   ? t("onboarding.skillsFound", { count })
                   : t("onboarding.skillsNone")}
-          </p>
-        </div>
-        {!imported && count > 0 && (
-          <Button
-            className="@max-[40rem]/extras:col-start-2 @max-[40rem]/extras:justify-self-start"
-            disabled={busy || disabled}
-            onClick={() => void importAll()}
-            size="lg"
-            variant="outline"
-          >
-            {busy && <Spinner className="size-3.5" />}
-            {t("onboarding.skillsImportAll")}
-          </Button>
-        )}
-      </div>
-      {(error || settingsError) && (
-        <p role="alert" className="px-5 pb-4 text-destructive text-xs">
-          {error || settingsError}
         </p>
+      </div>
+      {scanFailed ? (
+        <Button
+          className="@max-[40rem]/extras:col-start-2 @max-[40rem]/extras:justify-self-start"
+          disabled={busy || disabled}
+          onClick={retryScan}
+          size="lg"
+          variant="outline"
+        >
+          {busy ? <Spinner className="size-3.5" /> : <RotateCw className="size-3.5" />}
+          {t("common.retry")}
+        </Button>
+      ) : !imported && count > 0 && (
+        <Button
+          className="@max-[40rem]/extras:col-start-2 @max-[40rem]/extras:justify-self-start"
+          disabled={busy || disabled}
+          onClick={() => void importAll()}
+          size="lg"
+          variant="outline"
+        >
+          {busy && <Spinner className="size-3.5" />}
+          {t("onboarding.skillsImportAll")}
+        </Button>
       )}
-    </>
+    </div>
   );
 }
 
@@ -487,13 +517,7 @@ export function OnboardingView() {
     setup.openOnboarding();
   }, [setup]);
 
-  /* 落定后把光标停在第一个未满足的必做步：Agent 通常首启就已就绪，
-     从头走一遍只是空转。只做一次——之后光标归用户，补齐某一步不该
-     把正在看的页面抽走。
-
-     渲染期就地调整而非 effect 回写，与 SetupProvider 的守档同一个理由：
-     effect 回写要多渲染一帧，那一帧显示的是还没落位的光标；布尔守卫
-     保证至多多渲染一次即收敛。 */
+  // Seed once so background refreshes cannot undo Back navigation.
   const [seeded, setSeeded] = useState(false);
   if (settled && !seeded) {
     setSeeded(true);
@@ -560,7 +584,7 @@ export function OnboardingView() {
           {isApplePlatform() && <div className="h-10 shrink-0" />}
           <SlimScroller className="flex min-h-0 flex-1 flex-col overflow-y-auto px-[clamp(2rem,5vw,4rem)] pb-6">
             <div className="my-auto flex w-full flex-col gap-6">
-              {step === "chat-home" && <ChatHomeStep />}
+              {step === "chat-home" && <ChatHomeStep onSelected={advance} />}
               {step === "agent" && <AgentStep />}
               {step === OPTIONAL_STEP && (
                 <ExtrasStep
@@ -570,11 +594,8 @@ export function OnboardingView() {
               )}
             </div>
           </SlimScroller>
-          {/* 动作条固定在右栏底部：位置永不随内容跳，三页共用同一条几何。
-              没有逃生门——两个门槛没补齐就是进不去。 */}
-          <div className="flex h-[76px] shrink-0 items-center gap-4 border-t px-[clamp(2rem,5vw,4rem)]">
-            {/* 第一步无处可退，就不画 Back——一颗禁用态的占位按钮看着像坏了。 */}
-            {cursor > 0 && (
+          {cursor > 0 && (
+            <div className="flex h-[76px] shrink-0 items-center gap-4 border-t px-[clamp(2rem,5vw,4rem)]">
               <Button
                 variant="ghost"
                 className="text-muted-foreground"
@@ -584,31 +605,34 @@ export function OnboardingView() {
                 <ChevronLeft />
                 {t("onboarding.back")}
               </Button>
-            )}
-            <div className="ml-auto flex items-center gap-4">
-              {/* 只有 Agent 步给一行原因：它的门槛是「至少登录一个」，四行各自
-                  的 Install/Sign in 按钮说不出这个阈值。数据位置步只有一件事
-                  可做，卡里就有一颗醒目的主按钮，再补一句「去选目录」是废话。 */}
-              {blocked && step === "agent" && (
-                <p className="flex items-center gap-1.5 text-xs">
-                  <span
-                    aria-hidden="true"
-                    className="size-1.5 shrink-0 rounded-full bg-amber-500"
-                  />
-                  {t("onboarding.blocked.agent")}
-                </p>
-              )}
-              <Button
-                size="lg"
-                className="px-5"
-                disabled={blocked || finishing}
-                onClick={last ? () => void finish() : advance}
-              >
-                {finishing && last && <Spinner className="size-3.5" />}
-                {t(last ? "onboarding.start" : "onboarding.next")}
-              </Button>
+              <div className="ml-auto flex items-center gap-4">
+                {blocked && step === "agent" && (
+                  <p className="flex items-center gap-1.5 text-xs" role="status">
+                    {facts.agent === "unknown" ? (
+                      <Spinner className="size-3.5 text-muted-foreground" />
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="size-1.5 shrink-0 rounded-full bg-amber-500"
+                      />
+                    )}
+                    {t(facts.agent === "unknown"
+                      ? "onboarding.blocked.checkingAgent"
+                      : "onboarding.blocked.agent")}
+                  </p>
+                )}
+                <Button
+                  size="lg"
+                  className="px-5"
+                  disabled={blocked || finishing}
+                  onClick={last ? () => void finish() : advance}
+                >
+                  {finishing && last && <Spinner className="size-3.5" />}
+                  {t(last ? "onboarding.start" : "onboarding.next")}
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </section>
       </div>
     </TooltipProvider>

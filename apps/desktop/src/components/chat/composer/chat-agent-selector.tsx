@@ -1,12 +1,12 @@
 /**
- * [INPUT]: Depends on shared availability facts, localized copy and existing menu/tooltip primitives.
- * [OUTPUT]: Renders a wordless Agent chip, a one-line tooltip and a repair-capable picker whose rows stay uniform; refresh never changes the selected Agent.
- * [POS]: Composer identity and availability control; status is spent only where it changes what the reader can do.
+ * [INPUT]: Depends on shared availability facts, quota projections, localized copy, injected Agent management and existing menu/tooltip primitives.
+ * [OUTPUT]: Renders an availability-aware Agent chip over a quota picker whose rows carry one line of truth and one slot of action; refresh never changes the selected Agent.
+ * [POS]: Composer identity and availability control; the row is the only control, so nothing competes with the selected mark.
  */
-import { useCallback } from "react";
-import { LoaderCircle, TriangleAlert } from "lucide-react";
+import { useCallback, useId, useRef, useState } from "react";
+import { ArrowRight, Check, LoaderCircle, TriangleAlert } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@ai-chat/ui/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuSeparator, DropdownMenuTrigger } from "@ai-chat/ui/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@ai-chat/ui/components/ui/tooltip";
 import { AGENT_BACKEND_ORDER, type AgentBackendId, type BackendInfo } from "../../../../shared/agent-ipc";
 import { projectAvailability } from "../../../../shared/agent-availability/projection";
@@ -14,8 +14,14 @@ import type { AvailabilityState } from "../../../../shared/agent-availability/ty
 import { AgentBackendIcon, backendLabel } from "@/lib/agent-backends";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 
+import { useUsageLimits, useUsageLimitsDemand } from "@/lib/usage-limits/hooks";
+import { quotaDescription, quotaDetail, quotaResetClock } from "@/lib/usage-limits/format";
+import { emptyAgentLimits } from "../../../../shared/usage-limits/projection";
+import { useQuotaMenuHint } from "./usage/menu-hint";
+import { QuotaSummaryText } from "./usage/summary";
+
 /* ── 十二个状态，三种声量 ──────────────────────────────────────
- * quiet 三处界面都不出字：ready 与 unverified 说的是「没出问题」，
+ * quiet 在触发器上不出字：ready 与 unverified 说的是「没出问题」，
  * 而「没出问题」不改变任何人此刻能做的事。working 只转一圈。
  * 剩下九个才配一个词——它们各自对应一件能做的事。
  * ────────────────────────────────────────────────────────── */
@@ -27,16 +33,25 @@ const TONE: Record<AvailabilityState, Tone> = {
   connection: "attention", service: "attention", "usage-limit": "attention",
 };
 
-/* 动词已经说明了病因的状态只给按钮：`Sign in required` 挨着一枚 Sign in
-   是同一个事实穿两件衣服。Retry 什么病因都没说，故那四个保留标签；
-   usage-limit 是等而不是重试，因此有标签、没按钮。 */
-const REPAIR: Partial<Record<AvailabilityState, "install" | "login" | "update">> = {
-  missing: "install", "sign-in": "login", "recent-sign-in": "login", unsupported: "update",
+/* 槽里永远只有一个记号——✓、转圈、或一个动词——因为一行永远不会同时是两者。
+   动词只留给「此刻就能做完」的事；安装与更新要去 Settings 办，于是把病因交给
+   第二行，跳转交给行本身：`Manage Agents` 从来没解释过任何东西。
+   App 窗里所有修复都由 Settings 承接，动词在那里说不出真话，一并让位。 */
+const SLOT_VERB: Partial<Record<AvailabilityState, "login" | "retry">> = {
+  "sign-in": "login", "recent-sign-in": "login",
+  connection: "retry", service: "retry", "cannot-check": "retry", "cannot-start": "retry",
 };
-const RETRYABLE = new Set<AvailabilityState>(["connection", "service", "cannot-check", "cannot-start"]);
+type Recovery = "login" | "retry" | "manage";
+const recoveryFor = (state: AvailabilityState, appBound: boolean): Recovery | undefined => {
+  if (state === "missing" || state === "unsupported") return "manage";
+  const verb = SLOT_VERB[state];
+  return verb ? (appBound ? "manage" : verb) : undefined;
+};
 
-export function ChatAgentSelector({ value, backends, locked, disabled, saving, onChange, onRecheck, onRepair, appBound = false, now, currentState, reason }: {
+export function ChatAgentSelector({ value, backends, locked, disabled, saving, onChange, onRecheck, onRepair, onManage, appBound = false, now, currentState, reason, onOpenUsage, customProvider = false, usageResetsAt }: {
   reason?: string;
+  onOpenUsage?: (trigger: HTMLElement | null) => void;
+  customProvider?: boolean;
   value: AgentBackendId;
   backends: BackendInfo[];
   locked: boolean;
@@ -44,12 +59,32 @@ export function ChatAgentSelector({ value, backends, locked, disabled, saving, o
   saving?: boolean;
   onChange: (backend: AgentBackendId) => Promise<void>;
   onRecheck?: (backend: AgentBackendId) => void;
-  onRepair?: (backend: AgentBackendId, action: "install" | "login" | "update") => void;
+  onRepair?: (backend: AgentBackendId, action: "login") => void;
+  onManage?: () => void;
   appBound?: boolean;
   now: number;
   currentState?: AvailabilityState;
+  /** 只有 usage-limit 用得上：拦下这一回合的那个窗口何时恢复。等待是唯一的动作，等多久就是唯一有用的事实。 */
+  usageResetsAt?: number;
 }) {
   const { t } = useAppTranslation();
+  const [open, setOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const openingSettings = useRef(false);
+  const descriptionId = useId();
+  const handleRecovery = useCallback((backend: AgentBackendId, recovery: Recovery) => {
+    if (recovery === "manage") {
+      openingSettings.current = true;
+      setOpen(false);
+      onManage?.();
+    } else if (recovery === "login") onRepair?.(backend, "login");
+    else onRecheck?.(backend);
+  }, [onManage, onRecheck, onRepair]);
+  const quota = useUsageLimits();
+  useUsageLimitsDemand(open && Boolean(onOpenUsage), "selector", appBound ? [value] : AGENT_BACKEND_ORDER);
+  const hint = useQuotaMenuHint(open, menu);
+
   const selected = backends.find((entry) => entry.id === value);
   const projection = projectAvailability(selected, now);
   const state = currentState ?? projection.state;
@@ -61,29 +96,26 @@ export function ChatAgentSelector({ value, backends, locked, disabled, saving, o
     const backend = backends.find((entry) => entry.id === id);
     const base = projectAvailability(backend, now);
     const rowState = id === value && currentState ? currentState : base.state;
-    const repair = REPAIR[rowState];
+    const recovery = recoveryFor(rowState, appBound);
+    const current = id === value;
+    const canSelect = !locked && !disabled && !saving && base.policy.decision === "allow";
+    const handled = recovery === "manage" ? Boolean(onManage) : recovery === "login" ? Boolean(onRepair) : recovery === "retry" ? Boolean(onRecheck) : false;
     return {
-      id, backend, rowState, repair,
+      id, backend, rowState, current, canSelect,
       tone: TONE[rowState],
-      retry: !repair && RETRYABLE.has(rowState),
-      canSelect: !locked && !disabled && !saving && base.policy.decision === "allow",
+      recovery: handled ? recovery : undefined,
+      /* 灰掉只意味着一件事：切不过去。当前 Agent 无论坏成什么样都不灰——它是「你在哪」。 */
+      dim: !current && !canSelect,
+      verb: handled && recovery !== "manage" ? t(recovery === "login" ? "agentAvailability.login" : "agentAvailability.retry") : undefined,
     };
   });
 
-  /* 面板宽度是内容的函数——这里每个字符串都是已知的枚举标签，没有后端自由
-     文本，`w-max` 的上下限于是真的兜得住（model 面板禁用它正是因为反面）。
-     打开那一刻把当时的宽度焊成下限：探测中途落地可以把面板撑宽，却绝不会
-     让它在指针底下缩回去。面板一关就卸载，下次打开重新量。 */
-  const pinWidth = useCallback((element: HTMLDivElement | null) => {
-    if (element) element.style.minWidth = `${element.offsetWidth}px`;
-  }, []);
-
   return <>
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={(next) => { hint.dismiss(); setOpen(next); }}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="ghost" aria-label={label} aria-busy={projection.refreshing || saving} className="h-8 shrink-0 gap-1.5 rounded-full px-2">
+            <Button ref={trigger} type="button" variant="ghost" aria-label={label} aria-busy={projection.refreshing || saving} className="h-8 shrink-0 gap-1.5 rounded-full px-2">
               {tone === "working"
                 ? <span className="relative flex size-5 shrink-0 items-center justify-center">
                     <AgentBackendIcon backend={value} className="size-3.5" />
@@ -103,34 +135,70 @@ export function ChatAgentSelector({ value, backends, locked, disabled, saving, o
           </div>
         </TooltipContent>
       </Tooltip>
-      <DropdownMenuContent ref={pinWidth} side="top" align="end" className="w-max min-w-46 max-w-72">
+      <DropdownMenuContent ref={menu} side="top" align="end" className="w-76 min-w-0 max-w-[calc(100vw-1rem)]" data-testid="agent-usage-menu"
+        onCloseAutoFocus={(event) => { if (openingSettings.current) { event.preventDefault(); openingSettings.current = false; } }}>
+        {/* 锁的理由管着它下面的每一行，所以它必须在第一行之上；印在最后一行下面读起来是脚注。 */}
+        {locked && <>
+          <DropdownMenuLabel className="whitespace-normal font-normal">{reason ?? t("agentAvailability.locked")}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+        </>}
         <DropdownMenuRadioGroup value={value}>
           {rows.map((row) => {
-            const action = row.repair && onRepair && !appBound
-              ? { label: t(`agentAvailability.${row.repair}`), run: () => onRepair(row.id, row.repair!) }
-              : row.retry && onRecheck ? { label: t("agentAvailability.retry"), run: () => onRecheck(row.id) } : undefined;
-            return <DropdownMenuRadioItem key={row.id} value={row.id} aria-disabled={!row.canSelect}
-              title={row.backend?.reason || undefined}
-              /* 行只做这一行能做的那件事：选得动就切换，选不动就修。键盘因此
-                 无需够到那枚按钮——按钮是给指针看的落点，不是唯一的入口。 */
+            const agent = quota.snapshot.agents.find((agent) => agent.backend === row.id) ?? emptyAgentLimits(row.id);
+            const isCustom = row.id === value && customProvider;
+            const description = quotaDescription(agent, quota.now, t, isCustom);
+            const stateText = t(`agentAvailability.state.${row.rowState}`);
+            /* 等待是唯一的动作，所以「等多久」是这一行唯一有用的补充。 */
+            const line = row.tone === "quiet"
+              ? <QuotaSummaryText agent={agent} now={quota.now} customProvider={isCustom} />
+              : row.rowState === "usage-limit" && row.current && usageResetsAt !== undefined
+                ? `${stateText} · ${t("settings.usage.limits.resets", { date: quotaResetClock(usageResetsAt, quota.now) })}`
+                : stateText;
+            /* 能选的行与当前行是单选项；只能修的行不是选项，别让它穿单选的衣服。 */
+            const choosable = row.canSelect || row.current;
+            /* 真正什么也做不了的行才交给 Radix 的 disabled——只有它会同时挡住指针与键盘。
+               但它自带的 opacity-50 会把动词一起压暗，而这里灰掉的只该是身份。 */
+            const inert = !row.current && !row.canSelect && !row.recovery;
+            return <DropdownMenuItem key={row.id} role={choosable ? "menuitemradio" : "menuitem"}
+              aria-checked={choosable ? row.current : undefined} disabled={inert}
+              aria-label={[backendLabel(row.id), row.tone === "quiet" ? null : stateText, row.verb].filter(Boolean).join(" · ")}
+              aria-describedby={`${descriptionId}-${row.id}`} data-agent={row.id}
+              {...hint.handlers(quotaDetail(agent, quota.now, t, isCustom, true))}
               onSelect={(event) => {
-                if (row.canSelect && row.id !== value) { void onChange(row.id); return; }
+                if (row.canSelect && !row.current) { void onChange(row.id); return; }
                 event.preventDefault();
-                if (!row.canSelect) action?.run();
+                if (row.recovery) handleRecovery(row.id, row.recovery);
               }}
-              className="min-h-8 gap-2">
-              <AgentBackendIcon backend={row.id} className="size-4" />
-              <span className="flex-1">{backendLabel(row.id)}</span>
-              {row.tone === "working" && <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin text-muted-foreground motion-reduce:animate-none" />}
-              {row.tone === "attention" && !row.repair && <span className="text-amber-600 dark:text-amber-400">{t(`agentAvailability.state.${row.rowState}`)}</span>}
-              {action && <Button type="button" variant="outline" size="xs" tabIndex={-1}
-                onClick={(event) => { event.preventDefault(); event.stopPropagation(); action.run(); }}>{action.label}</Button>}
-            </DropdownMenuRadioItem>;
+              className="min-h-[50px] items-center gap-2.5 px-2.5 py-1.5 data-disabled:opacity-100">
+              <AgentBackendIcon backend={row.id} className={`size-4 shrink-0 [&>svg]:size-full! ${row.dim ? "[&>svg]:opacity-60" : ""}`} />
+              <div className="min-w-0 flex-1">
+                <div className={`flex min-h-4 items-center leading-4 font-medium ${row.dim ? "text-muted-foreground" : ""}`}>{backendLabel(row.id)}</div>
+                <div className={`mt-0.5 text-[11px] leading-4 tabular-nums ${row.tone === "attention" ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}
+                  data-testid={`agent-line-${row.id}`}>{line}</div>
+              </div>
+              {/* 一个槽，一个记号，自身与名字那一行对齐——按整行居中会比名字低十个像素。 */}
+              <span className="flex h-4 shrink-0 items-center justify-end self-start">
+                {row.tone === "working"
+                  ? <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin text-muted-foreground motion-reduce:animate-none" />
+                  : row.verb ? <span className="text-[11px] font-medium whitespace-nowrap">{row.verb}</span>
+                  : row.current ? <Check aria-hidden="true" className="size-3.5" /> : null}
+              </span>
+              <span id={`${descriptionId}-${row.id}`} hidden>{description}</span>
+            </DropdownMenuItem>;
           })}
         </DropdownMenuRadioGroup>
-        {locked && <DropdownMenuLabel className="whitespace-normal font-normal">{reason ?? t("agentAvailability.locked")}</DropdownMenuLabel>}
+        {onOpenUsage && <>
+          {/* 分隔线要留出上下各 4px：紧贴它的行一 hover 就是一块圆角填充，
+              零间距时那条线看起来像是从填充里穿过去。 */}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="min-h-[34px] justify-between gap-3 px-2.5 text-[11px]" onSelect={() => { openingSettings.current = true; onOpenUsage(trigger.current); }} data-testid="agent-usage-details">
+            <span className="text-muted-foreground">{t("settings.usage.limits.scope")}</span>
+            <span className="flex items-center gap-1">{t("settings.usage.limits.details")}<ArrowRight aria-hidden="true" className="size-3" /></span>
+          </DropdownMenuItem>
+        </>}
       </DropdownMenuContent>
     </DropdownMenu>
+    {hint.content}
     <span className="sr-only" aria-live="polite" aria-atomic="true">{backendLabel(value)} · {text}</span>
   </>;
 }

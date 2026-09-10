@@ -4,6 +4,8 @@
  * [POS]: The durable manual-intent executor of sections/coordinator
  */
 
+import { allocateTurnSequences, turnSequencesSchema } from "../../../../shared/chat-agent/sequences";
+import { canonicalHash } from "./coordinator-values";
 import { taskStartFence, StartDeferredError } from "../../presence/lifecycle/start-fence";
 import { buildHandoff, handoffInput } from "../../agent/history/builder";
 import { isOriginalAdoptedBinding } from "../../../../shared/chat-agent/contracts";
@@ -181,22 +183,19 @@ export async function allocateManualSequences(
     submission.persistence.kind === "adopt" &&
     record?.readOnlyReason === "external-readonly"
   ) {
-    return { userSeq: 1, assistantSeq: 2 };
+    return allocateTurnSequences(1);
   }
   if (!record) {
     if (submission.persistence.kind === "append") {
       throw new Error("人工 turn 的目标聊天不存在");
     }
-    return { userSeq: 1, assistantSeq: 2 };
+    return allocateTurnSequences(1);
   }
   if (submission.agentSwitch) {
     return chats.store.reserveAgentSwitchSequences(switchReservationInput(submission));
   }
-  const [userSeq, assistantSeq] = await chats.store.reserveSequences(
-    conversationId,
-    2
-  );
-  return { userSeq: userSeq!, assistantSeq: assistantSeq! };
+  return chats.store.reserveTurnSequences({ chatId: conversationId, incarnationId: record.incarnationId,
+    intentId: submission.intentId, submissionHash: canonicalHash(submission.content) });
 }
 
 export async function ensureManualSequences(
@@ -205,14 +204,14 @@ export async function ensureManualSequences(
   intent: DeepReadonly<ManualTurnIntent>
 ) {
   if (intent.userSeq !== undefined && intent.assistantSeq !== undefined) {
-    return { userSeq: intent.userSeq, assistantSeq: intent.assistantSeq };
+    return turnSequencesSchema.parse({ executorNoticeSeq: intent.executorNoticeSeq, noticeSeq: intent.noticeSeq, userSeq: intent.userSeq, assistantSeq: intent.assistantSeq });
   }
   const hydrated = await manualSubmission(intent);
   const sequence = await allocateManualSequences(chats, hydrated.submission);
   await ledger.bindManualSequences(
     intent.id,
     sequence.userSeq,
-    sequence.assistantSeq
+    sequence.assistantSeq, sequence
   );
   return sequence;
 }

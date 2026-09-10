@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on the canonical Chat schema, SQLite connection, and deterministic repository codecs
- * [OUTPUT]: Provides connection-scoped row projection writers for fork-aware Chat core/device bindings, narrow commits, messages, subagents, attachments, branches, origins, and chunked search documents
+ * [OUTPUT]: Canonical SQL writer with atomic classification, first-user start state, complete options and revision/search convergence.
  * [POS]: Write projection layer beneath transactional ChatRepository mutation orchestration
  */
 
+import { assertClassification, writeClassification } from "../cloud/retention";
 import type { ChatRecord } from "../../../../../shared/chats-ipc";
 import type { ChatFacts } from "../../chat-summary";
 import { normalizeSearchText } from "../../../../../shared/search-text";
@@ -44,7 +45,7 @@ export class ChatRecordWriter {
     message: ReturnType<typeof messageSchema.parse>
   ) {
     this.assertAppendContract(command, message.seq);
-    this.advanceAppendState(command);
+    this.advanceAppendState(command, message);
     this.trimPrefix(command.chatId, command.retainedFromSeq);
     const rowId = this.insertMessage(command.chatId, message);
     if (message.role !== "notice") {
@@ -62,7 +63,7 @@ export class ChatRecordWriter {
     message: ReturnType<typeof messageSchema.parse> | null
   ) {
     this.assertTurnContract(command, message?.seq);
-    this.advanceAppendState(command);
+    this.advanceAppendState(command, message);
     this.trimPrefix(command.chatId, command.retainedFromSeq);
     if (message) {
       const rowId = this.insertMessage(command.chatId, message);
@@ -110,7 +111,8 @@ export class ChatRecordWriter {
   }
 
   private advanceAppendState(
-    command: Extract<DatabaseCommand, { kind: "append-message" | "commit-turn" }>
+    command: Extract<DatabaseCommand, { kind: "append-message" | "commit-turn" }>,
+    message: ReturnType<typeof messageSchema.parse> | null
   ) {
     const core = this.database.prepare(
       `UPDATE chats
@@ -140,6 +142,14 @@ export class ChatRecordWriter {
     );
     if (changes(core) !== 1 || changes(local) !== 1) {
       throw new Error("REVISION_STALE");
+    }
+    if (message?.role === "user") {
+      this.database.prepare(
+        `UPDATE chat_device_bindings SET start_state_json = ?
+          WHERE chat_id = ? AND device_id = ?
+            AND json_extract(start_state_json, '$.kind') = 'unstarted'`
+      ).run(json({ kind: "started-exact", firstUserMessageSeq: message.seq,
+        firstUserMessageAt: message.createdAt }), command.chatId, command.deviceId);
     }
   }
 
@@ -196,7 +206,8 @@ export class ChatRecordWriter {
     return rowId;
   }
 
-  writeCore(record: ChatFacts, lifecycle: "native" | "external-managed") {
+  writeCore(record: ChatFacts, lifecycle: "native" | "external-managed", allowClassificationChange = false) {
+    assertClassification(this.database, record, allowClassificationChange);
     this.database.prepare(
       `INSERT INTO chats(
          id, lifecycle_kind, agent, title, title_source, created_at, updated_at,
@@ -246,6 +257,7 @@ export class ChatRecordWriter {
       json(record.options),
       record.forkAgent ?? null
     );
+    writeClassification(this.database, record);
   }
 
   updateReadonlyPresentation(

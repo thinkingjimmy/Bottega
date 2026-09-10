@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React useEffect/useMemo/useRef/useSyncExternalStore, lib/platform's isApplePlatform, lib/settings-store's live keyboardShortcuts overrides and shared/settings-ipc's ShortcutBinding
+ * [INPUT]: Depends on shared shortcut defaults, settings, platform keys, React hooks, and the shared modal keyboard scope.
  * [OUTPUT]: Provides ShortcutId/SHORTCUT_IDS/SHORTCUT_DEFAULTS, resolveShortcut/matchesBinding/matchShortcut, bindingGlyphs/shortcutKeys, useShortcutBindings/useShortcutKeys, conflictingShortcutIds, captureBinding and useGlobalShortcuts
  * [POS]: Renderer shortcut matching and controls: defaults live in shared/shortcuts/bindings, user overrides live in settings.json (absent=default, null=disabled), resolution happens at event/render time so there is no stale closure; matching is exact on shift because rebinding lets any combo gain a second owner
  */
@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { ShortcutBinding } from "../../shared/settings-ipc";
 import { isApplePlatform } from "./platform";
 import { settingsStore } from "./settings-store";
+import { hasModalKeyboardScope } from "./modal-keyboard/scope";
 
 export type { ShortcutBinding };
 
@@ -189,6 +190,7 @@ export function useGlobalShortcuts(
   useEffect(() => {
     settingsStore.ensureLoaded();
     const onKeyDown = (event: KeyboardEvent) => {
+      if (hasModalKeyboardScope()) return;
       if (event.repeat) return;
       const overrides = liveOverrides();
       for (const id of SHORTCUT_IDS) {

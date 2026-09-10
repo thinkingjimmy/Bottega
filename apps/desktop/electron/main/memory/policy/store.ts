@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, DurableJson, MemorySpaceGate, core domain/scope and stable canonical digest
- * [OUTPUT]: Provides the Policy v4 durable store, installation-scoped owner/shared generations, consent bindings, queries, backfill grants, disable/revoke mutations, and immutable owner-effect receipts
+ * [OUTPUT]: Provides Policy v4 authority, consent and effect receipts; refused durable startup publishes a failure fence without replacing source bytes
  * [POS]: The only permanent source of truth for main/memory/policy; Delivery only consume quick photos and receipts and prohibits reverse reading authorizations
  */
 
@@ -191,12 +191,15 @@ export class MemoryPolicyStore {
   }
 
   async initialize() {
-    // DurableJson quarantines unreadable schemas; provider installations and secrets
-    // live outside this store and remain untouched by policy recovery.
-    const { quarantined } = await this.ledger.initialize();
-    await this.compactLedger();
-    this.publish(this.ledger.snapshot(), quarantined ? "policy-store" : null);
-    return this.snapshot();
+    try {
+      await this.ledger.initialize();
+      await this.compactLedger();
+      this.publish(this.ledger.snapshot(), null);
+      return this.snapshot();
+    } catch (cause) {
+      this.publish(this.published.state, "policy-store");
+      throw cause;
+    }
   }
 
   snapshot(): PublishedPolicySnapshot {

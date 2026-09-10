@@ -11,7 +11,10 @@ import { noticeMessageContent } from "../../../../../shared/chats-ipc";
 import { switchOperationId } from "../../../chats/sqlite/agent-switch/command";
 
 export function freezeSwitch(prepared: PreparedManualTurn, dependencies: CoordinatorDependencies,
-  submissionHash: string, sequence: { noticeSeq?: number; userSeq: number; assistantSeq: number }): PreparedManualTurn {
+  submissionHash: string, sequence: { executorNoticeSeq?: number; noticeSeq?: number; userSeq: number; assistantSeq: number }): PreparedManualTurn {
+  const { contentHash: _previousHash, ...initial } = prepared;
+  const withSequences = { ...initial, sequences: sequence };
+  prepared = { ...withSequences, contentHash: canonicalHash(withSequences) };
   const intent = prepared.agentSwitch;
   if (!intent) return prepared;
   if (prepared.persistence.kind !== "append" || !sequence.noticeSeq) throw new Error("AGENT_SWITCH_SEQUENCE_MISSING");

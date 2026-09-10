@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides fr settings, tray, quit, and task-panel translations, including persistent top-bar/menu access, keyboard hints, and task failures.
+ * [OUTPUT]: Provides fr settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut-only settings hints, and task failures, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -11,17 +11,21 @@ export const presenceFr = {
   "openHint": "Ouvrir",
   "spaceKey": "Espace",
   "taskFailed": "Échec",
-  "openPanel": "Ouvrir le panneau des tâches",
   "empty": "Aucune tâche en cours",
   "emptyDescription": "Les tâches apparaîtront ici lorsque vous travaillerez dans Bottega.",
-  "shortcutUnavailable": "Ce raccourci est indisponible. Modifiez-le dans Raccourcis clavier ou ouvrez le panneau avec le bouton.",
+  "shortcutUnavailable": "Ce raccourci est indisponible. Modifiez-le dans Raccourcis clavier.",
+  "displayMode": "Mode d’affichage",
+  "iconMode": "Icône de la barre des menus",
+  "notchMode": "Panneau dans l’encoche",
+  "iconDescription": "Ouvrez Bottega et consultez les tâches depuis l’icône de la barre des menus.",
+  "notchDescription": "Consultez les tâches et les demandes de saisie près de l’encoche pendant que vous utilisez d’autres apps. Cliquez sur une tâche pour revenir à sa conversation.",
+  "noNotch": "Aucun écran avec encoche n’est disponible. L’icône de la barre des menus est utilisée.",
+  "retentionDescriptionTray": "Gardez Bottega actif après la fermeture de la fenêtre principale. Rouvrez-le depuis l’icône de la zone de notification.",
   "title": "Activité en arrière-plan",
   "login": "Lancer Bottega à la connexion",
   "loginDescription": "Démarrer après la connexion à votre ordinateur, sans fenêtre si l’activité en arrière-plan est activée.",
   "retention": "Continuer après la fermeture de la fenêtre principale",
-  "retentionDescription": "Les tâches continuent. Rouvrez Bottega depuis la barre des menus ou le Dock.",
-  "top": "Afficher le panneau flottant des tâches",
-  "topDescription": "Consultez les tâches Bottega et les demandes de saisie depuis les autres apps. La barre supérieure reste visible et remplace l’icône de la barre des menus. Cliquez sur une tâche pour revenir à sa conversation.",
+  "retentionDescription": "Gardez Bottega actif après la fermeture de la fenêtre principale. Rouvrez-le depuis l’accès en arrière-plan choisi.",
   "notice": "Quitter Bottega arrête les tâches locales. La veille peut suspendre les tâches et le contrôle à distance.",
   "open": "Ouvrir Bottega",
   "quitting": "Fermeture…",
@@ -46,7 +50,6 @@ export const presenceFr = {
   "closeFailed": "Le brouillon n’a pas pu être transféré. Réessayez de fermer la fenêtre.",
   "retry": "Réessayer",
   "systemSettings": "Ouvrir Réglages Système",
-  "applying": "Application…",
   "disabled": "Désactivé",
   "enabled": "Activé",
   "blocked": "Action requise",
@@ -57,7 +60,7 @@ export const presenceFr = {
   "systemDisabled": "Désactivé dans Réglages Système",
   "loginFailed": "Impossible de vérifier l’élément de connexion",
   "saveFailed": "Impossible d’enregistrer la préférence",
-  "trayUnavailable": "L’entrée de la barre des menus est indisponible",
+  "trayUnavailable": "L’icône en arrière-plan est indisponible",
   "panelUnavailable": "Impossible d’afficher les tâches",
   "screenUnavailable": "L’espace disponible sur cet écran est insuffisant",
   "nativeUnavailable": "L’adaptateur d’écran est indisponible",

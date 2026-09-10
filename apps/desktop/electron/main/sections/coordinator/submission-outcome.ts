@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared SubmissionContent/Outcome/ACK/lifecycle constants, coordinator-values coded errors, opaque raw payload references, and ledger v7 state/manual-intent schema
- * [OUTPUT]: Provides raw/prepared reservation and attempt lifecycles, persisted outcomes, retry capsules, and commit-custody proofs that survive terminal failure
+ * [OUTPUT]: Reservation/attempt outcome state machine and retry custody; a pending cloud handoff retains full source payload and result through terminal settlement and resource release.
  * [POS]: The durable submission state machine of sections/coordinator; RelayLedger is only responsible for the sequencing clone→persist→publish
  */
 
@@ -435,7 +435,7 @@ export function persistManualResult(
     transitionAttempt(state, intentId, "result-prepared", "persisted", now);
     intent.phase = "settled";
     intent.terminalAt = now;
-    delete intent.payload;
+    if (intent.cloudHandoff?.state !== "pending") delete intent.payload;
     updateOutcome(state, intent, "persisted", "chat-persisted", "none", now);
     // 恢复路径必须假设世界是脏的：历史数据里可能存在无 reservation 的
     // intent，terminal 转换不允许因此失败。
@@ -474,7 +474,7 @@ export function failManualWithCapsule(
   }
   intent.phase = "failed";
   intent.terminalAt = now;
-  delete intent.payload;
+  if (intent.cloudHandoff?.state !== "pending") delete intent.payload;
   const reservation = state.submissionReservations[intentId];
   if (reservation) {
     reservation.state = "released";
@@ -610,7 +610,7 @@ export function releaseSubmissionResources(
 ) {
   const released: unknown[] = [];
   for (const [intentId, intent] of Object.entries(state.manualIntents)) {
-    if (intent.conversationId !== chatId) continue;
+    if (intent.conversationId !== chatId || intent.cloudHandoff?.state === "pending") continue;
     if (intent.payload !== undefined) released.push(intent.payload);
     delete state.manualIntents[intentId];
     delete state.submissionReservations[intentId];

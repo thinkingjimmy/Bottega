@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path/zlib, the built renderer index.html plus its eager module JS, and the temporary Rollup chunk→module report
- * [OUTPUT]: Fails the build when eager JS exceeds the raw/gzip budget or when a declared lazy lane (ECharts, non-en locales) is empty, enters the entry's static closure, or is reachable without crossing a dynamic import; `--self-test` proves each lane's negative fixture turns red
+ * [OUTPUT]: Enforces eager raw/gzip budgets and independent dynamic boundaries for charts, locales, Konva, and React-Konva, including negative self-tests.
  * [POS]: Last segment of the desktop build script; the renderer first-load boundary is enforced mechanically here and the module report is deleted after checking so it never ships
  */
 
@@ -17,6 +17,16 @@ import { gzipSync } from "node:zlib";
  * 新增一条懒边界，就是往表里加一行，而不是再抄一遍三十行遍历。
  */
 const LAZY_LANES = [
+  {
+    name: "Konva",
+    pattern: /(?:^|\/)konva(?:@[^/]+)?\//,
+    sample: "node_modules/konva/lib/index.js",
+  },
+  {
+    name: "React-Konva",
+    pattern: /(?:^|\/)react-konva(?:@[^/]+)?\//,
+    sample: "node_modules/react-konva/lib/ReactKonva.js",
+  },
   {
     name: "ECharts",
     pattern: /(?:^|\/)(?:echarts(?:@[^/]+)?\/|node_modules\/echarts\/)/,

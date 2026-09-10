@@ -1,6 +1,6 @@
 /**
- * [INPUT]: No external dependencies; USAGE_SOURCE_ORDER is an independent tuple, deliberately not derived from agent-ipc's AGENT_BACKEND_ORDER
- * [OUTPUT]: Provides Usage Source domain subgroup/identity, query target, token/cost statistics, price revision, push, scan progress DTO and preload bridge agreement
+ * [INPUT]: Depends on the quota bridge type; local USAGE_SOURCE_ORDER remains independent of agent-ipc's AGENT_BACKEND_ORDER.
+ * [OUTPUT]: Composes the optional quota bridge and provides Usage Source domain subgroup/identity, query target, token/cost statistics, price revision, push, scan progress DTO and preload bridge agreement
  * [POS]: IPC single truth source, connecting Electron main, preload and renderer
  */
 
@@ -71,6 +71,7 @@ export const USAGE_CHANNEL = {
 } as const;
 
 export type UsageBridgeApi = {
+  limits?: import("./usage-limits/types").UsageLimitsBridgeApi;
   getSummary: (
     target: UsageQueryTarget,
     opts?: { forceRefresh?: boolean }

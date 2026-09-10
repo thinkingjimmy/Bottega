@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React external store, nanoid, PromptInput/RichInput, Gallery origin, attachments, message queues and file authorization release
- * [OUTPUT]: Provides per-chat composer draft/files/queue/pending-ACK state, exact blank-line host append, plus epoch-fenced clone-safe window migration export/commit/restore with one active sender
+ * [OUTPUT]: Provides per-chat draft/files/queue/ACK and Sketch ownership, renderer source budgets, epoch-fenced atomic publication, and migration export/commit/restore.
  * [POS]: lib's single-owner store for uncommitted composer drafts and their identity; unlike the retrievable message caches, this store never LRU-evicts, and a generation-unknown snapshot can never silently replace a known one
  */
 
@@ -23,6 +23,8 @@ import {
 } from "./message-queue-model";
 import type { SurfaceComposerCapsule } from "../../shared/window-surfaces-ipc";
 import type { QueueItem } from "./message-queue-model";
+import { collectSketchResources, emptySketchResources, sketchQueueExtraBytes, type ComposerSketchResources } from "./chat-composer/resources";
+import { assertBudget, CACHE_BYTES, retainedBytes } from "../components/chat/sketch/model/budget";
 
 export type ComposerFile = PromptInputFilePart & {
   id: string;
@@ -36,7 +38,7 @@ export type ComposerFile = PromptInputFilePart & {
 };
 export type FileNode = Extract<RichNode, { type: "file" }>;
 type FileResource = { file?: File; node: FileNode };
-type ComposerState = {
+export type ComposerState = {
   /** "" = 尚未认领任何一世。它不是「某一世」，因此不能拿去和真实世代比大小。 */
   incarnationId: string;
   /** 草稿的目标 Project；落盘后归属由 record 接管，这个值就此定格、不再变化。 */
@@ -47,6 +49,8 @@ type ComposerState = {
   handledSteerIntents: ReadonlySet<string>;
   draft: { richValue: RichValue; files: ComposerFile[] };
   fileResources: Map<string, FileResource>;
+  sketch: ComposerSketchResources;
+  sketchEditable: boolean;
 };
 
 const emptyComposer = (incarnationId = ""): ComposerState => ({
@@ -57,6 +61,8 @@ const emptyComposer = (incarnationId = ""): ComposerState => ({
   handledSteerIntents: new Set(),
   draft: { richValue: [], files: [] },
   fileResources: new Map(),
+  sketch: emptySketchResources(),
+  sketchEditable: true,
 });
 
 /** getSnapshot 必须身份稳定，因此缺席态是一份常量而非每次现造。 */
@@ -140,6 +146,7 @@ export async function exportComposerCapsule(
   transactionId: string
 ): Promise<SurfaceComposerCapsule> {
   const current = readComposer(chatId);
+  if (current.sketch.editorPins.size) throw new Error("SKETCH_EDITOR_ACTIVE");
   const draftAttachmentRefs = new Set<string>();
   const richValue: RichValue = [];
   for (const node of current.draft.richValue) {
@@ -354,6 +361,8 @@ const migratedQueueState = (item: QueueItem): "queued" | "ambiguous" =>
     : "queued";
 
 const publish = (chatId: string, next: ComposerState) => {
+  const sketch = collectSketchResources(next.sketch, next.draft.files.map((file) => file.id), next.queue);
+  if (sketch !== next.sketch) next = { ...next, sketch };
   revisions.set(chatId, composerRevision(chatId) + 1);
   entries.set(chatId, next);
   for (const listener of listeners.get(chatId) ?? []) listener();
@@ -409,7 +418,36 @@ export function appendComposerText(chatId: string, text: string) {
 }
 
 export const globalQueuedBytes = () =>
-  [...entries.values()].reduce((total, state) => total + queuedBytes(state.queue), 0);
+  [...entries.values()].reduce((total, state) => total + queuedBytes(state.queue, sketchQueueExtraBytes(state.sketch)), 0);
+
+export type ComposerOwner = Readonly<{ chatId: string; epoch: number; incarnationId: string }>;
+export function captureComposerOwner(chatId: string): ComposerOwner {
+  if (!entries.has(chatId)) primeComposer(chatId, "");
+  return { chatId, epoch: ownershipEpoch(chatId), incarnationId: readComposer(chatId).incarnationId };
+}
+export function composerOwnerValid(owner: ComposerOwner) {
+  const state = entries.get(owner.chatId);
+  return Boolean(state && owner.epoch === ownershipEpoch(owner.chatId) && (!owner.incarnationId || owner.incarnationId === state.incarnationId));
+}
+export function assertComposerOwner(owner: ComposerOwner, editing = true): ComposerState {
+  if (!composerOwnerValid(owner)) throw new Error("SKETCH_OWNER_EXPIRED");
+  if (composerMigrating(owner.chatId)) throw new Error("COMPOSER_MIGRATION_ACTIVE");
+  const state = readComposer(owner.chatId);
+  if (editing && !state.sketchEditable) throw new Error("SKETCH_READ_ONLY");
+  return state;
+}
+/** Check before constructing a pure candidate; release resources only after this function returns. */
+export function atomicComposerUpdate(owner: ComposerOwner, updater: (state: ComposerState) => ComposerState, editing = true) {
+  const current = assertComposerOwner(owner, editing);
+  const next = updater(current);
+  if (next === current) return current;
+  const documents = [...entries].flatMap(([id, state]) => [...(id === owner.chatId ? next : state).sketch.sources.values()].map((source) => source.document));
+  assertBudget(retainedBytes(documents), CACHE_BYTES);
+  return publish(owner.chatId, next);
+}
+export function setSketchEditable(chatId: string, editable: boolean) {
+  updateComposer(chatId, (state) => state.sketchEditable === editable ? state : { ...state, sketchEditable: editable });
+}
 
 /* ─────────────────────────── 待发草稿槽 ───────────────────────────
    新会话在落盘前也需要一个 chatId：它既是本 store 的键，落盘时又直接成为
@@ -594,6 +632,7 @@ function disposeComposer(
 ) {
   const current = entries.get(chatId);
   if (!current) return;
+  advanceOwnershipEpoch(chatId);
   revokeFiles(current.draft.files);
   for (const { node } of current.fileResources.values()) {
     if (!retainedRefs.has(node.ref)) void window.app?.releaseFile(node.ref);
@@ -609,6 +648,9 @@ function disposeComposer(
 }
 
 export function receiveComposerChatEvent(event: ChatsEvent) {
+  if (event.type === "upserted" && entries.has(event.summary.id)) {
+    setSketchEditable(event.summary.id, !event.summary.archivedAt && !event.summary.readOnlyReason);
+  }
   if (event.type === "removed") disposeComposer(event.chatId);
   if (event.type !== "messages" && event.type !== "messages-delta") return;
   primeComposer(event.chatId, event.incarnationId);

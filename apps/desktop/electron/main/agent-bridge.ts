@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the backend registry, TurnRegistry, payload validation, Project Tools receipts, Chat commit, Gallery, Memory, MCP leases, frozen session configuration, retry guards, and turn activity policy
+ * [INPUT]: Depends on the backend registry, TurnRegistry, payload validation, Project Tools receipts, Chat commit, Gallery, Memory, MCP leases, frozen session configuration, retry guards, turn activity policy and credential reservations
  * [OUTPUT]: Provides canonical turn execution with scoped availability, Agent-switch activity gates, Project policy narrowing, MCP/session guards, Speed convergence, ProductFailure finalization, leases, interaction/retry IPC, and shutdown
  * [POS]: Main-process multi-backend turn executor; the conversation coordinator supplies already-admitted manual intent
  */
@@ -15,6 +15,7 @@ import { stagedInputReadRoots } from "./agent-input";
 import { parseAgentPayloadForStart } from "./agent-payload-validation";
 import {
   acquireAgentProcessLease,
+  reserveAgentCredentialUse,
   agentProcessSafetyLock,
   assertAgentProcessAdmission,
   clearAgentSafetyLockWhenIdle,
@@ -180,7 +181,10 @@ async function spawnAgent(
   const backend = backendById(payload.turnOptions.backend);
   const generation = entry.generation;
   let resolvedInput = reuseInput;
+  let credentialUse: ReturnType<typeof reserveAgentCredentialUse> | undefined;
   try {
+    credentialUse = reserveAgentCredentialUse(backend.id);
+    await credentialUse.ready;
     assertAgentProcessAdmission(backend.id);
     let runtime: ResolvedRuntime | undefined;
     let runtimeGeneration: number | undefined;
@@ -444,7 +448,7 @@ async function spawnAgent(
           ),
         };
     await finalizeEntry(entry, terminal, options, generation);
-  }
+  } finally { credentialUse?.release(); }
 }
 
 export function claimAgentRequest(backend: AgentBackendId, requestId: string, conversationId = requestId, incarnationId?: string) {
@@ -454,10 +458,11 @@ export function claimAgentRequest(backend: AgentBackendId, requestId: string, co
   if (requestReservations.has(requestId) || turns.byRequest(requestId)) {
     throw new Error("requestId 正在执行");
   }
+  const credentialUse = reserveAgentCredentialUse(backend);
   let finish!: () => void;
   const settled = new Promise<void>((resolve) => { finish = resolve; });
   requestReservations.set(requestId, { operation: requestOperation(conversationId, requestId, incarnationId), settled });
-  return () => { requestReservations.delete(requestId); finish(); };
+  return Object.assign(() => { requestReservations.delete(requestId); credentialUse.release(); finish(); }, { ready: credentialUse.ready });
 }
 
 export type { AgentBridgeOptions, AgentContext, ConversationAdmission } from "./agent/bridge-types";
@@ -485,6 +490,7 @@ export async function startAgentPayload(
   const releaseReservation = claimAgentRequest(backend.id, payload.requestId, payload.scope.conversationId,
     options.conversationIncarnation?.(payload.scope.conversationId));
   try {
+  await releaseReservation.ready;
   const snapshot = await backendRuntimeRegistry.resolve(backend.id);
   taskStartFence.assertOpen();
   assertInstalledRuntime(snapshot, backend.displayName);
@@ -697,9 +703,7 @@ export function registerAgentBridge(
   });
   registerAgentBridgeIpc(window, rendererUrl, handlers);
 }
-
 let lastOptions: AgentBridgeOptions | undefined;
-
 export function cancelAgentTurn(
   requestId: string,
   options = lastOptions
@@ -716,7 +720,6 @@ export function cancelAgentTurn(
     `cancel requestId=${requestId}`
   );
 }
-
 async function drainEntry(
   entry: BridgeEntry,
   options?: AgentBridgeOptions
@@ -737,7 +740,6 @@ async function drainEntry(
     throw new Error(`${entry.backend} cleanup 失败，安全锁仍驻留`);
   }
 }
-
 export async function shutdownAllAgents() {
   shuttingDown = true;
   stopAllAgentProcessAdmission();
@@ -757,7 +759,6 @@ export async function shutdownAllAgents() {
     throw new AggregateError(failures, "Agent shutdown 失败");
   }
 }
-
 export async function cancelConversations(
   conversationIds: Iterable<string>
 ) {
@@ -767,7 +768,6 @@ export async function cancelConversations(
     (entry) => drainEntry(entry as BridgeEntry, lastOptions)
   );
 }
-
 /** Drain only the prepared/live turns named by exact request custody. */
 export async function cancelAgentRequests(requestIds: Iterable<string>) {
   const targets = new Set(requestIds);

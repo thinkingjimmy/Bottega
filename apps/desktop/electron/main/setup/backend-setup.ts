@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BrowserWindow, shared AppLocale, backend runtime registry, latest-version cache, fixed terminal action and setup IPC
- * [OUTPUT]: Owns passive four-backend reads, the three explicit full-check intents, one-shot login returns and residence-fenced App watch/recheck/fixed management navigation.
+ * [OUTPUT]: Coordinates terminal authentication with quota cleanup and owns passive runtime reads, cached background update discovery, combined explicit rechecks, one-shot login returns and residence-fenced App management.
  * [POS]: Setup the main process sorting layer; No download, uninstall, unload CLI, no holding or migration of credentials
  */
 
@@ -27,6 +27,7 @@ import { rendererIdentity } from "../window/renderer-identity";
 import type { TrustedRendererContext } from "../window/surfaces/trusted-renderer-context";
 import { isVersionNewer } from "../backends/runtime-probe";
 import { rendererIpc } from "../ipc-registrar";
+import { reserveAgentCredentialUse } from "../agent-process-supervisor";
 import { LatestVersionCache } from "./latest-version";
 import { launchSetupTerminalAction } from "./terminal-action";
 
@@ -41,6 +42,7 @@ export class BackendSetupService {
      登录动作是一句"这个后端的认证态即将改变"的声明——而模型目录的 TTL
      对此一无所知，于是登录完回来还能看见至多五分钟的旧（免费）模型集。 */
   private readonly awaitingLogin = new Set<AgentBackendId>();
+  private readonly credentialActions = new Map<AgentBackendId, ReturnType<typeof reserveAgentCredentialUse>>();
 
   constructor(private readonly locale: () => AppLocale = () => "en") {}
 
@@ -60,7 +62,10 @@ export class BackendSetupService {
     this.unsubscribeTurns = backendRuntimeRegistry.subscribeTurnEvidence((evidence) => this.send({ type: "turn-evidence", evidence }));
     if (!this.started) {
       this.started = true;
-      for (const descriptor of orderedBackends()) void backendRuntimeRegistry.fullCheck(descriptor.id, "startup");
+      for (const descriptor of orderedBackends()) {
+        void backendRuntimeRegistry.fullCheck(descriptor.id, "startup");
+        void this.refreshLatest(descriptor.id, false);
+      }
     }
     register(rendererUrl, "拒绝非主窗口的初始化请求")
       .handle(SETUP_CHANNEL.check, () => this.check())
@@ -105,14 +110,16 @@ export class BackendSetupService {
     for (const backend of this.awaitingLogin) {
       backendById(backend).models?.invalidate?.();
       this.send({ type: "models-invalidated", backend });
-      void backendRuntimeRegistry.fullCheck(backend, "login-return");
+      const reservation = this.credentialActions.get(backend);
+      void backendRuntimeRegistry.fullCheck(backend, "login-return").finally(() => {
+        if (reservation) this.releaseCredentialAction(backend, reservation);
+      });
     }
     this.awaitingLogin.clear();
   }
 
   async check(): Promise<SetupStatus> {
-    return { backends: backendRuntimeRegistry.listSnapshots().map((base) => ({ ...base,
-      ...(this.latest.current(base.id)?.version ? { latestVersion: this.latest.current(base.id)!.version } : {}) })) };
+    return { backends: backendRuntimeRegistry.listSnapshots().map((base) => this.withLatest(base)) };
   }
 
   async recheck(backend: AgentBackendId) {
@@ -121,7 +128,11 @@ export class BackendSetupService {
        毛病。缓存跟着复检一起作废，广播让 renderer 强制重取。 */
     backendById(backend).models?.invalidate?.();
     this.awaitingLogin.delete(backend);
-    const snapshot = await backendRuntimeRegistry.recheck(backend);
+    void this.refreshLatest(backend, true);
+    const reservation = this.credentialActions.get(backend);
+    const snapshot = await backendRuntimeRegistry.recheck(backend).finally(() => {
+      if (reservation) this.releaseCredentialAction(backend, reservation);
+    });
     const status = this.info(backend, snapshot);
     this.send({ type: "status", backend, status });
     this.send({ type: "models-invalidated", backend });
@@ -137,7 +148,7 @@ export class BackendSetupService {
     this.send({
       type: "latest-version",
       backend,
-      checking: false,
+      checking: entry.checking,
       version: entry.version,
     });
     const snapshot = backendRuntimeRegistry.current(backend);
@@ -152,6 +163,7 @@ export class BackendSetupService {
   }
 
   async shutdown() {
+    for (const backend of this.credentialActions.keys()) this.releaseCredentialAction(backend);
     this.unsubscribeRuntime?.();
     this.unsubscribeRuntime = undefined;
     this.unsubscribeTurns?.();
@@ -179,10 +191,24 @@ export class BackendSetupService {
     const action = candidate.action as SetupTerminalAction;
     const command = backendById(backend).setup?.commands[action];
     if (!command) throw new Error("当前后端不支持该终端动作");
-    const result = await launchSetupTerminalAction(this.window, command, { locale: this.locale });
-    if (action === "login" && result.delivery === "terminal" && result.launched) this.awaitingLogin.add(backend);
-    if ((action === "install" || action === "update") && result.delivery === "terminal") backendRuntimeRegistry.invalidate(backend);
-    return result;
+    const reservation = reserveAgentCredentialUse(backend);
+    try {
+      await reservation.ready;
+      backendRuntimeRegistry.invalidate(backend);
+      const result = await launchSetupTerminalAction(this.window, command, { locale: this.locale });
+      if (result.delivery === "terminal" && result.launched) {
+        this.releaseCredentialAction(backend);
+        this.credentialActions.set(backend, reservation);
+        this.awaitingLogin.add(backend);
+      } else reservation.release();
+      return result;
+    } catch (error) { reservation.release(); throw error; }
+  }
+
+  private releaseCredentialAction(backend: AgentBackendId, reservation = this.credentialActions.get(backend)) {
+    if (this.credentialActions.get(backend) !== reservation) return;
+    reservation?.release();
+    this.credentialActions.delete(backend);
   }
 
   private info(
@@ -190,7 +216,11 @@ export class BackendSetupService {
     snapshot: Parameters<typeof backendRuntimeRegistry.toBackendInfo>[1]
   ): BackendInfo {
     const base = backendRuntimeRegistry.toBackendInfo(backend, snapshot);
-    const latest = this.latest.current(backend)?.version;
+    return this.withLatest(base);
+  }
+
+  private withLatest(base: BackendInfo): BackendInfo {
+    const latest = this.latest.current(base.id)?.version;
     return {
       ...base,
       ...(latest ? { latestVersion: latest } : {}),

@@ -83,9 +83,12 @@ export function AppRequirementsForm({
                 {requirement.label}
                 {requirement.required ? " *" : ""}
               </span>
+              {/* 这一页唯一要「填完再提交」的格子；它不是设置行里的一个
+                  控件，是一个表单字段，跟着表单字段那一档走。 */}
               <Input
                 autoComplete="off"
                 disabled={disabled}
+                size="lg"
                 onChange={(event) =>
                   onChange({
                     ...value,

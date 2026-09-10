@@ -1,9 +1,11 @@
 /**
  * [INPUT]: Depends on durable App records, main-owned host-version admission, generation builder/consent and existing grant, cutover and serialization authorities.
- * [OUTPUT]: Provides the AppStore v15 writer, compiler readiness evidence, routing/source/grant facts, durable generation commits, bounded artifact collection, and subscriptions
+ * [OUTPUT]: AppStore v16 single writer for installed records, independent portable descriptors, fixed admission identities, durable package candidates and installation receipts.
  * [POS]: Canonical App record and broadcast authority; its authority sibling exclusively classifies and replaces startup catalog bytes while this facade loads established v15 state, serializes mutations, and prevents stale renderer projections
  */
 
+import { AppPortableApi } from "./portable/api";
+import { appPortableCatalogSchema, emptyAppPortableCatalog } from "./portable/model";
 import { readCompatibility, recordCandidate, runningBottegaVersion } from "../compatibility/read";
 import { mkdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, normalize, relative } from "node:path";
@@ -54,6 +56,8 @@ export type AppStoreAuthorityState =
   | "degraded-corrupt";
 
 export class AppStore {
+  readonly portable: AppPortableApi;
+  private portableCatalog = emptyAppPortableCatalog();
   readonly appsRoot: string;
   readonly artifactsRoot: string;
   readonly filePath: string;
@@ -85,7 +89,14 @@ export class AppStore {
   private readonly recovery: AppStoreRecovery;
   private readonly authorityEvidence: AppStoreAuthorityEvidence;
 
-  constructor(userData: string, readonly hostVersion = runningBottegaVersion) {
+  constructor(userData: string, readonly hostVersion = runningBottegaVersion, storageMode: import("../../../../shared/local-storage/contracts").StorageMode = { kind: "local-only" }) {
+    this.portable = new AppPortableApi({ enqueue: run => this.queue.enqueue(run), state: () => this.portableCatalog, installed: id => this.records.get(id),
+      commit: async next => {
+        const previous = this.portableCatalog;
+        this.portableCatalog = appPortableCatalogSchema.parse(next);
+        try { await this.persist(); } catch (cause) { this.portableCatalog = previous; throw cause; }
+      },
+    }, storageMode);
     this.appsRoot = join(userData, "apps");
     this.artifactsRoot = join(userData, "app-generation-artifacts");
     this.filePath = join(userData, "apps.json");
@@ -255,6 +266,7 @@ export class AppStore {
          它们真正改动的那几条，而不是把整张表当成新闻重播一遍。 */
       this.published.set(record.id, JSON.stringify(record));
     }
+    this.portableCatalog = parsed.portable;
     this.retiredIds = new Set([
       ...parsed.retiredIds,
       ...parsed.apps.map((record) => record.id),
@@ -597,10 +609,14 @@ export class AppStore {
       const current = this.records.get(appId);
       if (!current) return;
       this.records.delete(appId);
+      const previousCatalog = this.portableCatalog;
+      this.portableCatalog = { ...previousCatalog, entries: previousCatalog.entries.map(entry => entry.descriptor.appId === appId
+        ? { ...entry, installation: "not-installed" as const, installedGenerationId: null } : entry) };
       try {
         await this.persist();
       } catch (cause) {
         this.records.set(appId, current);
+        this.portableCatalog = previousCatalog;
         throw cause;
       }
       for (const generation of current.generations) {
@@ -693,11 +709,12 @@ export class AppStore {
         schemaVersion: SCHEMA_VERSION,
         apps,
         retiredIds: [...this.retiredIds].sort(),
+        portable: this.portableCatalog,
       },
       null,
       2
     );
-    await durableReplaceFile(this.filePath, `${content}\n`);
+    try { await durableReplaceFile(this.filePath, `${content}\n`); } catch (cause) { this.authority = "degraded-corrupt"; throw cause; }
     this.announce(apps);
   }
 

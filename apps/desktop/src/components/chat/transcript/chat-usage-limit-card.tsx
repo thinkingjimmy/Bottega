@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React state/effect, shared AgentFailureNotice, UI Button, current Intl locale, structured ProductFailure/UsageLimitInfo, and five-language failure copy
- * [OUTPUT]: Renders localized quota/rate recovery and reset times using the shared renderer evidence clock.
+ * [INPUT]: Depends on the shared evidence clock, AgentBackendIcon, AgentFailureNotice, UI Button, current Intl locale, structured ProductFailure/UsageLimitInfo, and five-language failure copy
+ * [OUTPUT]: Renders Agent-branded quota/rate recovery titles and localized reset times using the shared renderer evidence clock.
  * [POS]: Usage-limit recovery surface in chat/transcript; wire DTOs provide machine facts while this renderer owns all presentation copy
  */
 import { useMinuteClock } from "@/components/providers/availability/use-evidence-clock";
@@ -10,6 +10,7 @@ import { RotateCcwIcon } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type { UsageLimitInfo } from "../../../../shared/agent-ipc";
 import { intlLocale } from "@/lib/i18n-locale";
+import { AgentBackendIcon } from "@/lib/agent-backends";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { AgentFailureNotice } from "@/components/agent-failure-notice";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
@@ -82,6 +83,12 @@ export function UsageLimitCard({
   backendId?: AgentBackendId;
 }) {
   const { t } = useAppTranslation();
+  const icon = backendId ? (
+    <AgentBackendIcon
+      backend={backendId}
+      className={failure ? "mt-0.5 size-4" : "mt-1 size-4"}
+    />
+  ) : undefined;
   const now = useMinuteClock(limit.resetsAt !== undefined);
   const remainingDurationValue =
     limit.resetsAt === undefined
@@ -144,6 +151,7 @@ export function UsageLimitCard({
         backend={backendDisplayName}
         backendId={backendId}
         failure={failure}
+        icon={icon}
         tone="warning"
       >
         {facts}
@@ -153,8 +161,11 @@ export function UsageLimitCard({
   }
   return (
     <div className="w-full min-w-0 rounded-xl border bg-muted/40 p-4">
-      <div className="font-medium text-base">
-        {t("chat.usageLimit.unavailable", { backend: backendDisplayName })}
+      <div className="flex items-start gap-2 font-medium text-base">
+        {icon}
+        <span className="min-w-0 break-words">
+          {t("chat.usageLimit.unavailable", { backend: backendDisplayName })}
+        </span>
       </div>
       <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground text-sm">
         {message}

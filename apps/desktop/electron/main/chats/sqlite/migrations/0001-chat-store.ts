@@ -1,8 +1,10 @@
 /**
  * [INPUT]: Depends only on SQLite DDL supported by the packaged Electron runtime
- * [OUTPUT]: Provides CHAT_STORE_SCHEMA with canonical Agent options/revisions, frozen fork identity, local execution facts, immutable imports with bounded history projection, receipts, continuation, and FTS5 search
+ * [OUTPUT]: Complete candidate Chat schema v6, including NOT NULL options, portable classification, scoped outbox/receipts, mirrors, candidates and independent retained-source roots.
  * [POS]: The only Chat SQLite schema; it is created whole on a fresh database and never altered in place — repositories may depend on it but may not create ad-hoc tables
  */
+
+import { CHAT_CLOUD_SCHEMA } from "../cloud/schema";
 
 export const CHAT_STORE_SCHEMA = String.raw`
 CREATE TABLE chat_store_meta (
@@ -16,7 +18,14 @@ CREATE TABLE chats (
   lifecycle_kind TEXT NOT NULL CHECK (lifecycle_kind IN ('native', 'external-readonly', 'external-managed')),
   agent TEXT NOT NULL,
   agent_revision INTEGER NOT NULL DEFAULT 0 CHECK (agent_revision >= 0),
-  options_json TEXT CHECK (options_json IS NULL OR json_valid(options_json)),
+  options_json TEXT NOT NULL CHECK (json_valid(options_json)),
+  conversation_kind TEXT NOT NULL DEFAULT 'ordinary' CHECK(conversation_kind IN ('ordinary','app-use','app-edit')),
+  portable_app_id TEXT, portable_project_id TEXT,
+  cloud_state TEXT NOT NULL DEFAULT 'local-only' CHECK(cloud_state IN ('local-only','synced','mirror')),
+  cloud_environment TEXT, cloud_user_id TEXT,
+  cloud_executor_device_id TEXT, cloud_execution_epoch INTEGER,
+  cloud_last_committed_executor_device_id TEXT, cloud_native_session_device_id TEXT,
+  cloud_revision INTEGER, cloud_home_snapshot_id TEXT,
   fork_agent TEXT,
   title TEXT,
   title_source TEXT NOT NULL,
@@ -40,6 +49,14 @@ CREATE TABLE chats (
     OR
     (lifecycle_kind IN ('native', 'external-managed') AND next_seq > 0)
   ),
+  CHECK ((conversation_kind = 'ordinary' AND portable_app_id IS NULL) OR
+    (conversation_kind IN ('app-use','app-edit') AND portable_app_id IS NOT NULL)),
+  CHECK (conversation_kind <> 'app-edit' OR portable_project_id IS NOT NULL),
+  CHECK ((cloud_state = 'local-only' AND cloud_environment IS NULL AND cloud_user_id IS NULL
+    AND cloud_executor_device_id IS NULL AND cloud_execution_epoch IS NULL
+    AND cloud_last_committed_executor_device_id IS NULL AND cloud_native_session_device_id IS NULL
+    AND cloud_revision IS NULL AND cloud_home_snapshot_id IS NULL) OR
+    (cloud_state <> 'local-only' AND cloud_environment IS NOT NULL AND cloud_user_id IS NOT NULL AND cloud_revision IS NOT NULL)),
   -- fork lineage facts must be atomic
   CHECK (
     (parent_chat_id IS NULL AND parent_incarnation_id IS NULL
@@ -439,4 +456,5 @@ AFTER UPDATE ON chat_search_documents BEGIN
   VALUES ('delete', OLD.row_id, OLD.grams_text);
   INSERT INTO chat_search_fts(rowid, grams_text) VALUES (NEW.row_id, NEW.grams_text);
 END;
+${CHAT_CLOUD_SCHEMA}
 `;

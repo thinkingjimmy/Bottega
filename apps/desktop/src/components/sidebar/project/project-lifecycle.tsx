@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React state, Project/Chat contracts, ProjectsProvider detach mutation, archive client, optional caller-owned archive-success feedback, shared dialogs, and i18n
- * [OUTPUT]: Provides useProjectLifecycle, ProjectLifecycleDialogs, and localDetachArchiveReasons as one archive/remove state machine with an optional post-archive signal
+ * [OUTPUT]: Provides useProjectLifecycle, ProjectLifecycleDialogs — two confirmations on one register, weighted only by reversibility — and localDetachArchiveReasons as one archive/remove state machine with an optional post-archive signal
  * [POS]: Shared Project lifecycle controller consumed by Sidebar Project rows and Project Settings General
  */
 
@@ -13,16 +13,7 @@ import { useProjects } from "@/components/providers/projects-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { archiveTargets } from "@/lib/archive-client";
 import { errorMessage } from "@/lib/errors";
-import { Button } from "@ai-chat/ui/components/ui/button";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@ai-chat/ui/components/ui/dialog";
 
 export function localDetachArchiveReasons(input: {
   hasProjectBase: boolean;
@@ -123,6 +114,19 @@ export function useProjectLifecycle(
 
 export type ProjectLifecycleController = ReturnType<typeof useProjectLifecycle>;
 
+/* ── 两个确认框，一把尺子 ──────────────────────────────────────────
+ * 它们并排住在同一个危险区里，此前却分属两套规范：归档走的是 384px、
+ * 12px 正文、黑 80% 加模糊的旧外壳；移除本机记录走的是新外壳，却又用四条
+ * 后代选择器把它改回 420px、描述句 mt-1、药丸内边距 px-4，还额外挂了一个
+ * 重新定位过的 ×。一个 register 存在的意义就是没人需要在调用点重新调它。
+ *
+ * 现在两者同形，唯一的差别是那把该有的尺子：归档可回收（Archive 页能原样
+ * 捞回来），主按钮因此中性；移除本机记录之后这台机器上再没有这条记录，红
+ * 只发给它。触发处那两颗按钮早就是这么分的，确认框现在与它们一致。
+ *
+ * 报错也从页脚**下面**挪进描述句末尾——页脚是这张弹窗的最后一行，排在它
+ * 之后的字没有任何东西保证读者还会往下看。
+ * ────────────────────────────────────────────────────────────────── */
 export function ProjectLifecycleDialogs({
   controller,
 }: {
@@ -139,32 +143,38 @@ export function ProjectLifecycleDialogs({
     operationError,
     busy,
   } = controller;
+  const failure = operationError ? (
+    <span className="mt-3 block text-[13px] text-destructive" role="alert">
+      {operationError}
+    </span>
+  ) : null;
+  const clearOnClose = (next: boolean) => {
+    if (!next) controller.setOperationError("");
+  };
   return (
     <>
-      <Dialog open={archiveOpen} onOpenChange={controller.setArchiveOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("projects.archiveTitle")}</DialogTitle>
-            <DialogDescription>
-              {t("projects.archiveDescription", {
-                name: project.name,
-                chats: chats.length,
-              })}
-              {rootBaseCount > 0 &&
-                ` ${t("projects.archiveRootBases", { bases: rootBaseCount })}`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => controller.setArchiveOpen(false)}>
-              {t("common.cancel")}
-            </Button>
-            <Button disabled={busy} onClick={() => void controller.archive()}>
-              {t("projects.archive")}
-            </Button>
-          </DialogFooter>
-          {operationError && <p className="mt-3 text-destructive text-sm" role="alert">{operationError}</p>}
-        </DialogContent>
-      </Dialog>
+      <ConfirmationDialog
+        open={archiveOpen}
+        title={t("projects.archiveTitle")}
+        description={
+          <>
+            {t("projects.archiveDescription", {
+              name: project.name,
+              chats: chats.length,
+            })}
+            {rootBaseCount > 0 &&
+              ` ${t("projects.archiveRootBases", { bases: rootBaseCount })}`}
+            {failure}
+          </>
+        }
+        confirmLabel={t("projects.archive")}
+        busy={busy}
+        onOpenChange={(next) => {
+          controller.setArchiveOpen(next);
+          clearOnClose(next);
+        }}
+        onConfirm={() => void controller.archive()}
+      />
       <ConfirmationDialog
         key={localDetachReasons.length ? "archive-instead" : "remove-local"}
         open={localDetachOpen}
@@ -187,7 +197,7 @@ export function ProjectLifecycleDialogs({
                     ? "projects.archiveInsteadMemory"
                     : "projects.removeLocalDescription"
             )}
-            {operationError && <span className="mt-3 block text-destructive" role="alert">{operationError}</span>}
+            {failure}
           </>
         }
         confirmLabel={t(
@@ -197,11 +207,9 @@ export function ProjectLifecycleDialogs({
         )}
         confirmTone="destructive"
         busy={busy}
-        showCloseButton
-        contentClassName="sm:max-w-[26.25rem] [&_[data-slot=dialog-close]]:top-3 [&_[data-slot=dialog-close]]:right-4 [&_[data-slot=dialog-close]]:text-muted-foreground [&_[data-slot=dialog-description]]:mt-1 [&_[data-slot=dialog-footer]>button:last-child]:px-4"
         onOpenChange={(next) => {
           controller.setLocalDetachOpen(next);
-          if (!next) controller.setOperationError("");
+          clearOnClose(next);
         }}
         onConfirm={() => void controller.detachLocal()}
       />

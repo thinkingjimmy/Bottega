@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on the shared ForeignToolEvent/ForeignProcessStep wire shapes, the imported tool-detail cap and the canonical ChatPart/part budgets
- * [OUTPUT]: Provides projectForeignTools and projectForeignParts; imported tool events and folded intermediate statements become canonical ChatParts (native kind classification, argument-derived title, 16 KiB-capped detail) inside one shared message byte budget
+ * [OUTPUT]: Budgeted foreign tool/part projection preserving interrupted status and source ordering instead of treating incomplete work as successful.
  * [POS]: Pure projection beside the SQLite import reader; imported rows therefore speak the same TurnParts language as native history
  */
 
+import { completionMetadataSchema } from "../../../../../shared/local-storage/contracts";
 import type { ChatPart, ChatToolPart } from "../../../../../shared/chats-ipc";
 import { MESSAGE_PART_LIMIT } from "../../../../../shared/chats-ipc";
 import { IMPORTED_TOOL_DETAIL_BYTE_LIMIT } from "../../../../../shared/agent-ipc";
@@ -111,7 +112,8 @@ function toolParts(
       tool: kind,
       title: clip(title, PART_TITLE_CHAR_LIMIT),
       ...(detail ? { detail } : {}),
-      status: "completed",
+      ...completionMetadataSchema.parse(tool),
+      status: tool.completion === "interrupted" ? "failed" : "completed",
     });
     budget.parts -= 1;
   }

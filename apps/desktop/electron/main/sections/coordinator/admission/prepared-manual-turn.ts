@@ -122,6 +122,7 @@ export type PreparedPersistence =
   | { kind: "append"; input: PreparedAppend };
 
 export type PreparedManualTurn = {
+  sequences?: import("../../../../../shared/chat-agent/sequences").TurnSequences;
   agentSwitch?: ManualTurnSubmission["agentSwitch"];
   expectedAgentRevision?: number;
   switchCommand?: import("../../../chats/sqlite/agent-switch/command").SwitchAgentCommand;

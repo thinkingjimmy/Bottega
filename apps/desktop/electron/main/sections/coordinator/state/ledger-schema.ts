@@ -1,10 +1,12 @@
 /**
  * [INPUT]: Depends on zod, canonical Hash, shared Agent backend vocabulary, manual-only durable turn origin and PauseSaga action schema
- * [OUTPUT]: Provides the ledger v7 schema: run/seed CreateIntent (seed carries full promote provenance — subagent thread, source chat, byte size, truncated flag), manual/steer/outbox/tombstone schemas, retention constants, derived types, and emptyLedgerState; v7 is the only version this module reads
+ * [OUTPUT]: Strict ledger v7 records with contiguous two/three/four-slot sequences and frozen pending/confirmed cloud handoff proof.
  * [POS]: Source of truth for the coordinator/state durable wire format; RelayLedger is responsible only for sequencing atomic mutations and file IO
  */
 
 import { z } from "zod";
+import { cloudMutationSchema } from "../../../chats/sqlite/cloud/protocol";
+import { turnSequencesSchema } from "../../../../../shared/chat-agent/sequences";
 import { handoffSchema } from "../../../../../shared/chat-agent/history-schema";
 import { agentBackendIdSchema } from "../../../../../shared/agent-schema";
 import { canonicalHash } from "../coordinator-values";
@@ -211,6 +213,10 @@ export const manualIntentSchema = z
     createdAt: z.number().int().nonnegative(),
     terminalAt: z.number().int().nonnegative().optional(),
     ackedAt: z.number().int().nonnegative().optional(),
+    cloudHandoff: z.object({ command: cloudMutationSchema, state: z.enum(["pending", "confirmed"]),
+      proof: z.object({ operationId: z.string().min(1), requestHash: z.string().regex(/^[a-f0-9]{64}$/), sourceId: z.string().min(1), digest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().nullable(),
+    }).strict().refine(value => (value.state === "confirmed") === Boolean(value.proof)).optional(),
+    executorNoticeSeq: z.number().int().positive().optional(),
     noticeSeq: z.number().int().positive().optional(),
     userSeq: z.number().int().positive().optional(),
     assistantSeq: z.number().int().positive().optional(),
@@ -243,6 +249,10 @@ export const manualIntentSchema = z
   })
   .strict()
   .superRefine((intent, context) => {
+    if (intent.userSeq !== undefined || intent.assistantSeq !== undefined || intent.noticeSeq !== undefined || intent.executorNoticeSeq !== undefined) {
+      const parsed = turnSequencesSchema.safeParse({ executorNoticeSeq: intent.executorNoticeSeq, noticeSeq: intent.noticeSeq, userSeq: intent.userSeq, assistantSeq: intent.assistantSeq });
+      if (!parsed.success) context.addIssue({ code: "custom", message: "Invalid frozen manual turn sequences" });
+    }
     if (
       ["queued", "appended", "claimed"].includes(intent.phase) &&
       intent.payload === undefined

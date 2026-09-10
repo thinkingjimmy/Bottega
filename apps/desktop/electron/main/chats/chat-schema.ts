@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on the zod, shared/agent-ipc and the limiting constant for chats-ipc, shared/projects-ipc PROJECT_ID_PATTERN
- * [OUTPUT]: Provides strict schema v13 Chat facts with atomic fork lineage and managed-worktree execution bindings, canonical records, and readonly imported records
+ * [OUTPUT]: Strict Chat facts and records with complete options from creation, structured terminal evidence, independent empty mirror compatibility and context-derived classification invariants.
  * [POS]: Durable Chat record authority; SQLite is the only backend and no legacy file envelope precedes it
  */
 
 import { z } from "zod";
+import { completionFields } from "../../../shared/local-storage/contracts";
 import { turnOptionsSchema } from "../../../shared/chat-agent/options";
 import { agentSwitchedNoticeSchema } from "../../../shared/chat-agent/schema";
 import { agentBackendIdSchema } from "../../../shared/agent-schema";
@@ -118,6 +119,7 @@ const persistedSubagentSchema = z
         model: z.string().min(1).max(200).optional(),
         origin: z.enum(["native", "spawn"]).optional(),
         agent: agentBackendIdSchema.optional(),
+        ...completionFields,
         status: z.enum(["completed", "errored", "shutdown", "interrupted"]),
         spawnedAt: z.number().int().nonnegative(),
         lastActivityAt: z.number().int().nonnegative(),
@@ -205,6 +207,7 @@ const assistantMessageSchema = z
   .object({
     ...messageBaseFields,
     role: z.literal("assistant"),
+    ...completionFields,
     backend: agentBackendIdSchema,
     kind: z.literal("plan").optional(),
     /* 形状按导入段的宽口径收，原生那 4 KiB 由 overNativeDetail 按段补回。 */
@@ -315,7 +318,7 @@ const supersededBranchSchema = z
     supersededAt: z.number().int().nonnegative(),
     supersedesUserMessageId: z.string().regex(MESSAGE_ID_PATTERN),
     throughSeqEnd: z.number().int().positive(),
-    messages: z.array(messageSchema).min(1).max(CHAT_MESSAGE_LIMIT),
+    messages: z.array(messageSchema).max(CHAT_MESSAGE_LIMIT),
   })
   .strict()
   .superRefine((branch, context) => {
@@ -349,7 +352,7 @@ const recordFields = {
     .max(SUPERSEDED_BRANCH_LIMIT)
     .default([]),
   supersededBranchesTrimmedThroughSeq: z.number().int().nonnegative().optional(),
-  messages: z.array(messageSchema).min(1).max(CHAT_MESSAGE_LIMIT),
+  messages: z.array(messageSchema).max(CHAT_MESSAGE_LIMIT),
   subagents: subagentsSchema.optional(),
 };
 
@@ -697,20 +700,7 @@ function validateFacts(
       input: record,
     });
   }
-  /* 空的源文件也是一份诚实的历史：只读导入段允许零条 entry，此时
-     unstarted 就是实情。「必须已开始」只约束可执行的普通 Chat。 */
-  if (
-    record.context.kind === "ordinary" &&
-    record.startState.kind === "unstarted" &&
-    record.readOnlyReason !== "external-readonly"
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["startState"],
-      message: "ordinary canonical Chat 必须已开始",
-      input: record,
-    });
-  }
+  // A materialized empty mirror has no fabricated first user message.
   if (
     record.context.kind === "app-edit" &&
     record.startState.kind === "unstarted"

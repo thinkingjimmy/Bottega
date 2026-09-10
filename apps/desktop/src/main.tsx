@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, main/App window context, surface migration runtime, Sidebar, and default/archive notifications
- * [OUTPUT]: Composes persistent product providers, foreground task-panel access, App compatibility recovery and route-dismissed settings navigation.
+ * [OUTPUT]: Composes persistent providers, task-panel access, App recovery, intent-aware settings navigation, and a route-independent ProductApp SketchHost.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
+import { SettingsNavigationContext } from "@/components/providers/navigation/context";
 import { CompatibilityUpdateDialog } from "@/components/apps/compatibility/update-dialog";
 import { onSetupEvent } from "./lib/setup-client";
 
@@ -49,6 +50,7 @@ import {
 } from "@ai-chat/ui/components/ui/sidebar";
 import { Toaster, toast } from "@ai-chat/ui/components/ui/sonner";
 import { TooltipProvider } from "@ai-chat/ui/components/ui/tooltip";
+import { SketchHost } from "./components/chat/sketch/host/host";
 import { ChatRoute } from "@/views/chat";
 import { initializeAppearance } from "@/lib/appearance";
 import { isApplePlatform } from "@/lib/platform";
@@ -223,6 +225,9 @@ function ProductApp() {
   const navigate = useNavigate();
   const [settingsSection, setSettingsSection] =
     useState<SettingsOverlaySection | null>(null);
+  const settingsReturnFocus = useRef<HTMLElement | null>(null);
+  const settingsOrigin = useRef(location);
+  const settingsOverlayReturn = useRef<{ pathname: string; key?: string } | null>(null);
   const [sidebarLayout, setSidebarLayout] = useState(readSidebarLayout);
   const sidebarLayoutRef = useRef(sidebarLayout);
 
@@ -246,6 +251,10 @@ function ProductApp() {
      再进 Memory 又会往历史里多压一格设置，「Back to app」于是退回另
      一格设置。设置目的地在任一时刻只有一格，在历史里也只占一格。 */
   const selectSettings = (section: SettingsOverlaySection) => {
+    const exit = settingsExitTarget(location.pathname, location.key);
+    settingsOverlayReturn.current = exit === -1
+      ? settingsOrigin.current
+      : exit ? { pathname: exit } : null;
     leaveSettingsRoute();
     setSettingsSection(section);
     settingsStore.ensureLoaded();
@@ -258,14 +267,21 @@ function ProductApp() {
   /* 谁把你送进设置的不重要，出去只能有一个意思——覆盖层与路由两条
      进入路径共用这一个出口。 */
   useEffect(() => {
-    // Route navigation is an external dismissal intent for the settings overlay.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    const expected = settingsOverlayReturn.current;
+    settingsOverlayReturn.current = null;
+    if (!inSettingsRoute) settingsOrigin.current = location;
+    // Returning from a settings route belongs to the new overlay's opening intent.
+    if (expected && (expected.key ? expected.key === location.key : expected.pathname === location.pathname)) return;
     setSettingsSection(null);
-  }, [location.pathname]);
+  }, [location, inSettingsRoute]);
 
   const closeSettings = () => {
+    settingsOverlayReturn.current = null;
     setSettingsSection(null);
     leaveSettingsRoute();
+    const trigger = settingsReturnFocus.current;
+    settingsReturnFocus.current = null;
+    requestAnimationFrame(() => { if (trigger?.isConnected) trigger.focus(); });
   };
 
   /* 进 Memory 是「换一个设置目的地」，不是「离开设置」——它此前借用
@@ -281,6 +297,7 @@ function ProductApp() {
      null，整个侧栏当场翻回 app 分支再翻回来，肉眼就是「闪一下」。
      同一意图的两个载体分两次提交，撕裂是必然而非偶然。 */
   const openMemorySettings = () => {
+    settingsOverlayReturn.current = null;
     settingsStore.ensureLoaded();
     startTransition(() => {
       setSettingsSection(null);
@@ -289,6 +306,7 @@ function ProductApp() {
   };
 
   const openSkillsSettings = () => {
+    settingsOverlayReturn.current = null;
     settingsStore.ensureLoaded();
     startTransition(() => {
       setSettingsSection(null);
@@ -340,6 +358,7 @@ function ProductApp() {
   }
 
   return (
+    <SettingsNavigationContext.Provider value={{ openUsage: (trigger) => { settingsReturnFocus.current = trigger; selectSettings("usage"); }, openAgents: () => selectSettings("backends") }}>
     <AppsProvider>
       <HistoryProvider>
         <ProjectsProvider>
@@ -348,6 +367,7 @@ function ProductApp() {
               <ArchiveProvider>
                 <MessageRendererProvider value={CHAT_FENCE_RENDERERS}>
                   <TooltipProvider>
+                    <SketchHost />
                     {/* 覆盖层开着就不挂：Settings 正是补齐缺口的地方，
                         General 那页本来就逐条列着它们并各带动作。站在配置页
                         上还飘一句「去配置」是噪音；更实际的是它 fixed 在右下
@@ -459,6 +479,7 @@ function ProductApp() {
         </ProjectsProvider>
       </HistoryProvider>
     </AppsProvider>
+    </SettingsNavigationContext.Provider>
   );
 }
 

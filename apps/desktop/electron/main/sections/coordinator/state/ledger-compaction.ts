@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the durable state of the ledger-schema, terminal time and the constants of the unified retained window
- * [OUTPUT]: Compacts terminal ledger records while retaining canonical commit custody in manual tombstones
+ * [OUTPUT]: Terminal mark/sweep that preserves pending handoff commands, full manual payload and result evidence until SQLite custody is confirmed.
  * [POS]: Pure compaction unit of coordinator/state; performs no file IO, and retention decisions rely only on terminalAt already committed to state, never inferred side-effect completion
  */
 
@@ -154,6 +154,7 @@ export function compactLedgerState(state: LedgerState, now: number) {
   }
   for (const intent of Object.values(state.manualIntents)) {
     if (
+      intent.cloudHandoff?.state === "pending" ||
       !manualTerminal(intent) ||
       intent.ackedAt === undefined ||
       intent.submissionHash === undefined

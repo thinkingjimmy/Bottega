@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on zod, the canonical ChatPart/ChatToolPart/attachment types, and the native/imported tool-detail plus message byte budgets
- * [OUTPUT]: Provides utf8Length, PART_TITLE_CHAR_LIMIT, transcript-provenance-aware storage/imported/IPC part schemas, overNativeDetail, and messageBytes accounting
+ * [OUTPUT]: Canonical parts and subagent codecs, preserving terminal completion evidence alongside existing byte budgets and readonly media provenance.
  * [POS]: The part-level half of the chat fact schema, split out so chat-schema.ts stays a record-level document; every part limit lives here and nowhere else
  */
 
 import { z } from "zod";
+import { completionFields } from "../../../shared/local-storage/contracts";
 import {
   IMPORTED_TOOL_DETAIL_BYTE_LIMIT,
   TOOL_DETAIL_BYTE_LIMIT,
@@ -48,6 +49,7 @@ void _toolKindsExhaustive;
 const partSchemasWithLimit = (detailLimit: number, titleLimit: number) => {
   const tool = z
     .object({
+      ...completionFields,
       type: z.literal("tool"),
       itemId: z.string().min(1).max(256),
       tool: z.enum(TOOL_KINDS),
@@ -76,6 +78,7 @@ const partSchemasWithLimit = (detailLimit: number, titleLimit: number) => {
     });
   const text = z
     .object({
+      ...completionFields,
       type: z.literal("text"),
       itemId: z.string().min(1).max(256),
       text: z
@@ -89,6 +92,7 @@ const partSchemasWithLimit = (detailLimit: number, titleLimit: number) => {
     .strict();
   const subagent = z
     .object({
+      ...completionFields,
       type: z.literal("subagent"),
       itemId: z.string().min(1).max(256),
       agentThreadId: z.string().min(1).max(256),

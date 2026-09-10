@@ -14,6 +14,7 @@ import { Button } from "@ai-chat/ui/components/ui/button";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { matchShortcut } from "@/lib/shortcuts";
 import { findChatMessages } from "@/lib/chats-client";
+import { hasModalKeyboardScope } from "@/lib/modal-keyboard/scope";
 
 export function TranscriptFind({
   chatId,
@@ -91,6 +92,7 @@ export function TranscriptFind({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (hasModalKeyboardScope()) return;
       /* 组合键定义收进中央真值表（findInChat，可改绑/可停用）；
          监听器与 surfaceVisible 门控留在本地——作用域是这里的事。 */
       if (!matchShortcut(event, "findInChat")) return;

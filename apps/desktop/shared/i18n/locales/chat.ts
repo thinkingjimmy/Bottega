@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on no runtime modules; all five locale objects share one literal shape
- * [OUTPUT]: Provides five-language Chat runtime, Sidebar rows, Browser, dock, Subagent, Skill-failure, and suggestion copy
+ * [OUTPUT]: Five-language Chat copy, including the persisted interrupted-state annotation used by regular and Plan turns.
  * [POS]: Locale authority for shared Chat runtime states and focused renderer surfaces outside the split composer catalog
  */
 
@@ -26,6 +26,7 @@ export const chatEn = {
     bridgeUnavailable: "Workspace files are unavailable in this environment.",
     searchFailed: "Workspace file search failed.",
   },
+  interrupted: "This response was interrupted. Partial results are preserved.",
   noText: "This turn returned no text.",
   relayStopConfirm: "Stop the current request and disconnect the entire Section relay chain?",
   workspaceImage: {
@@ -133,6 +134,7 @@ export const chatZhCN: typeof chatEn = {
     bridgeUnavailable: "当前环境无法使用 Workspace 文件桥。",
     searchFailed: "Workspace 文件搜索失败。",
   },
+  interrupted: "回复已中断，已保留部分结果。",
   noText: "本轮没有返回文本。",
   relayStopConfirm: "这会停止当前请求并断开整条 Section 接力链，继续吗？",
   workspaceImage: {
@@ -240,6 +242,7 @@ export const chatJa: typeof chatEn = {
     bridgeUnavailable: "この環境では Workspace ファイルを利用できません。",
     searchFailed: "Workspace ファイルの検索に失敗しました。",
   },
+  interrupted: "応答が中断されました。途中の結果は保存されています。",
   noText: "このターンはテキストを返しませんでした。",
   relayStopConfirm: "現在のリクエストを停止し、Section リレーチェーン全体を切断しますか？",
   workspaceImage: {
@@ -342,6 +345,7 @@ export const chatFr: typeof chatEn = {
     bridgeUnavailable: "Les fichiers Workspace sont indisponibles dans cet environnement.",
     searchFailed: "La recherche de fichiers Workspace a échoué.",
   },
+  interrupted: "Réponse interrompue. Les résultats partiels sont conservés.",
   noText: "Ce tour n’a renvoyé aucun texte.",
   relayStopConfirm: "Arrêter la requête actuelle et déconnecter toute la chaîne de relais Section ?",
   workspaceImage: {
@@ -444,6 +448,7 @@ export const chatEs: typeof chatEn = {
     bridgeUnavailable: "Los archivos del Workspace no están disponibles en este entorno.",
     searchFailed: "Falló la búsqueda de archivos del Workspace.",
   },
+  interrupted: "Respuesta interrumpida. Se conservan los resultados parciales.",
   noText: "Este turno no devolvió texto.",
   relayStopConfirm: "¿Detener la solicitud actual y desconectar toda la cadena de relevo de Section?",
   workspaceImage: {

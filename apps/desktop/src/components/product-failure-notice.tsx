@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, lucide status/chevron/copy icons, UI Button, and caller-projected product copy
- * [OUTPUT]: Provides a reusable human-first failure alert on a neutral surface, with tone carried by the icon alone and a default-closed diagnostic disclosure whose icon-only copy action stays inside the diagnostic row
+ * [INPUT]: Depends on React, lucide status/chevron/copy icons, UI Button, caller-projected product copy, and optional custom title icons
+ * [OUTPUT]: Provides a reusable failure alert with a customizable title icon, body copy aligned with the diagnostic disclosure, and an icon-only copy action inside the diagnostic row
  * [POS]: Neutral renderer presentation primitive wrapped by domain-specific Agent and Chat-storage notices
  */
 
@@ -49,12 +49,14 @@ export function ProductFailureNotice({
   labels,
   tone = "danger",
   compact = false,
+  icon,
   children,
 }: {
   copy: ProductFailureNoticeCopy;
   labels: ProductFailureNoticeLabels;
   tone?: "danger" | "warning";
   compact?: boolean;
+  icon?: ReactNode;
   children?: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
@@ -80,24 +82,26 @@ export function ProductFailureNotice({
       "w-full min-w-0 max-w-full overflow-hidden rounded-lg border bg-muted/40",
       compact ? "px-3 py-2.5" : "px-4 py-3"
     )}>
-      <div className="flex gap-2.5" role="alert" aria-atomic="true">
-        <TriangleAlertIcon
-          aria-hidden="true"
-          className={cn(
-            "mt-0.5 size-4 shrink-0",
-            warning ? "text-amber-700 dark:text-amber-400" : "text-destructive"
+      <div className="space-y-1 text-sm" role="alert" aria-atomic="true">
+        <div className="flex gap-2.5">
+          {icon ?? (
+            <TriangleAlertIcon
+              aria-hidden="true"
+              className={cn(
+                "mt-0.5 size-4 shrink-0",
+                warning ? "text-amber-700 dark:text-amber-400" : "text-destructive"
+              )}
+            />
           )}
-        />
-        <div className="min-w-0 flex-1 space-y-1 text-sm">
-          <p className="text-pretty font-medium">{copy.title}</p>
-          {copy.explanation && (
-            <p className="text-muted-foreground">{withCodeSpans(copy.explanation)}</p>
-          )}
-          {copy.resolution && (
-            <p className="text-muted-foreground">{withCodeSpans(copy.resolution)}</p>
-          )}
-          {children}
+          <p className="min-w-0 flex-1 text-pretty font-medium">{copy.title}</p>
         </div>
+        {copy.explanation && (
+          <p className="text-muted-foreground">{withCodeSpans(copy.explanation)}</p>
+        )}
+        {copy.resolution && (
+          <p className="text-muted-foreground">{withCodeSpans(copy.resolution)}</p>
+        )}
+        {children}
       </div>
       {copy.diagnostic && (
         /* summary 用 flex 会连原生小三角一起吃掉（Chromium），故自带 chevron：

@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides the complete French catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
  * [POS]: French desktop locale; compile-time structure must match English exactly
  */
+import { sketchFr } from "./sketch/fr";
 import { appHostFr } from "./app-host/fr";
 import { agentAvailabilityFr } from "./agent-availability/fr";
 
@@ -37,6 +38,7 @@ import { agentFailureFr } from "./agent-failure/fr";
 import { chatStorageFr } from "./chat-storage/fr";
 
 export const fr: Catalog = {
+  sketch: sketchFr,
   appHost: appHostFr,
   agentAvailability: agentAvailabilityFr,
   common: {
@@ -338,11 +340,21 @@ export const fr: Catalog = {
       },
     },
     resumeFailure: {
-      title: "Impossible de reprendre la Session enregistrée",
-      description: "Le backend a refusé la Session enregistrée. Le message et les pièces jointes restent stockés sans duplication.",
-      sameSession: "Réessayer la même Session",
-      freshSession: "Démarrer une nouvelle Session",
-      abandon: "Abandonner le tour",
+      title: "{{backend}} ne parvient pas à ouvrir la session enregistrée de ce chat",
+      description: "Votre message et ses pièces jointes sont enregistrés et n'ont pas encore été envoyés.",
+      retriedTitle: "La reprise de la session d'origine a échoué",
+      retriedDescription: "Cette session n'existe très probablement plus du côté de {{backend}}. Votre message et ses pièces jointes restent enregistrés et non envoyés.",
+      recommended: "Recommandé",
+      sameSession: "Réessayer la session d'origine",
+      sameSessionDetail: "Se reconnecter à la session d'origine. Si cela fonctionne, l'agent conserve tout ce qu'il sait de ce chat.",
+      sameSessionRetry: "Réessayer la session d'origine",
+      sameSessionRetryDetail: "Tenter la même reconnexion une fois de plus. Elle a déjà échoué une fois.",
+      freshSession: "Démarrer une nouvelle session",
+      freshSessionDetail: "Abandonner la session d'origine et laisser l'agent repartir d'un résumé de la conversation récente. Ce qui précède ne sera plus sous ses yeux.",
+      freshSessionBlocked: "Ce chat a été importé de l'extérieur et reste lié à la session d'origine ; il ne peut pas passer à une nouvelle.",
+      abandon: "Abandonner ce tour",
+      abandonDetail: "Rien n'est envoyé, ce tour s'arrête ici. Votre message reste dans ce chat.",
+      actionFailed: "Échec de l'opération : {{message}}",
     },
     readOnly: "Ce chat est actuellement en lecture seule",
     backendUnavailable: "{{backend}} est actuellement indisponible.",

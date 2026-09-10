@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Chat/Project/Setup ports, Conversation Coordinator, session-submission-payload, renderer locale/catalog runtime, errors, attachment sequencing, and Abort tools
- * [OUTPUT]: Provides workspace-fenced manual submission/revision with availability and explicit authentication retry, keeping ambiguous switches in their original composer
+ * [OUTPUT]: Provides workspace-fenced manual submission/revision with canonical Agent revision checks, availability, and explicit authentication retry
  * [POS]: The limit of the submission of chat/runtime/session transactions; The main custody is not cancelled due to view switching, and the delayed return can only be written back to the still matched renderer generation
  */
 import { submissionDecision } from "../../../../../shared/agent-availability/projection";
@@ -526,6 +526,7 @@ export function createSessionSubmissionPorts(
     const gallery = readGalleryState(chatId);
     const envelope: ManualTurnSubmission = {
       intentId,
+      expectedAgentRevision: readAgentDraft(chatId).canonical?.agentRevision ?? 0,
       persistence: {
         kind: "append",
         input: {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the SQLite connection type and the immutable-import generation/entry tables
- * [OUTPUT]: Provides reclaimRetiredGenerations: bounded, saga-fenced deletion of superseded and abandoned import generations plus the orphan entry-version, chunk, search-document and blob sweep that follows
+ * [OUTPUT]: Bounded retired-generation reclamation; retained snapshot/deletion sources protect oversized imported blob bytes from cascading cleanup.
  * [POS]: The reclamation half of HistoryImportRepository; the write path never has to know when a generation stops being reachable
  */
 
@@ -69,7 +69,7 @@ export function reclaimRetiredGenerations(
     const retained = database.prepare(
       "SELECT 1 FROM chat_import_entry_blobs WHERE content_digest = ? LIMIT 1"
     ).get(contentDigest);
-    if (retained) return false;
+    if (retained || database.prepare("SELECT 1 FROM chat_retained_import_blobs WHERE content_digest=? LIMIT 1").get(contentDigest)) return false;
     database.prepare("DELETE FROM chat_import_blobs WHERE content_digest = ?").run(contentDigest);
     return true;
   });

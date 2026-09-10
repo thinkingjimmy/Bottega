@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React state/focus primitives, AppDialog/Input/Button/Spinner, desktop i18n, and the pointer-opened menu focus arbiter
- * [OUTPUT]: Provides SidebarRenameDialog and useSidebarRenameMenu for one rename form and deterministic DropdownMenu-to-Dialog focus transfer
+ * [OUTPUT]: Provides SidebarRenameDialog and useSidebarRenameMenu for one rename form on the shared dialog register and deterministic DropdownMenu-to-Dialog focus transfer
  * [POS]: Shared rename interaction in components/sidebar/rename, consumed by Chat, imported History, and Project rows
  */
 
@@ -171,7 +171,7 @@ function SidebarRenameForm({
             <DialogTitle className="text-xl/7 font-semibold">
               {title}
             </DialogTitle>
-            <DialogDescription className="mt-2 text-sm/5">
+            <DialogDescription className="mt-3 text-[15px]/[1.4]">
               {description}
             </DialogDescription>
           </DialogHeader>
@@ -188,10 +188,14 @@ function SidebarRenameForm({
             spellCheck={false}
             data-1p-ignore
             data-lpignore="true"
-            className="my-5 text-base"
+            /* 这道弹窗的正文就是这一个框，它是你为之而来的东西——比 32px
+               的药丸按钮高一档，字号跟正文走。原先 16px 是 iOS 防缩放的遗留，
+               这里没有 iOS，只剩挤在 28px 里。 */
+            className="mt-5"
+            size="lg"
             onChange={(event) => setDraft(event.target.value)}
           />
-          <DialogFooter className="flex-row justify-end gap-3">
+          <DialogFooter className="mt-5 flex-row justify-end gap-3">
             <Button
               type="button"
               variant="ghost"
@@ -206,8 +210,10 @@ function SidebarRenameForm({
               size="pill"
               disabled={busy || !name}
             >
+              {/* 忙态只加 spinner，文案不动。换成「Loading」既让按钮在按下
+                  那一刻改变宽度，也把一个动作说成了一种状态。 */}
               {busy && <Spinner aria-hidden />}
-              {busy ? t("common.loading") : t("common.save")}
+              {t("common.save")}
             </Button>
           </DialogFooter>
         </form>

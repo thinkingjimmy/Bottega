@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on renderer-safe foreign history messages and the closed SQLite history-import entry contract
- * [OUTPUT]: Provides lossless single-path message normalization (folded process statements and their tools ride in the payload and the search text), canonical search text, strict source-order validation, and deterministic bounded batches with >8 MiB blob admission
+ * [OUTPUT]: Lossless imported message/tool completion normalization and bounded entry batching with the existing oversized-blob lane.
  * [POS]: Shared normalization seam between source adapters and immutable SQLite generations; it performs no IO
  */
 
+import { completionMetadataSchema } from "../../../../../shared/local-storage/contracts";
 import type { ForeignHistoryMessage } from "../../../../../shared/history-import-ipc";
 import { normalizeSearchText } from "../../../../../shared/search-text";
 import type { HistoryImportEntryInput } from "../database-protocol";
@@ -44,6 +45,7 @@ function entryOf(block: ForeignHistoryMessage): HistoryImportEntryInput {
     createdAt: block.createdAt,
     payload: {
       foreignKind: "message",
+      ...completionMetadataSchema.parse(block),
       nativeTurnId: block.nativeTurnId,
       tools: block.tools ?? [],
       workedForMs: block.workedForMs ?? null,

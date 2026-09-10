@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BackendDescriptor headlessSpec, the platform capability matrix, macOS seatbelt, Node detached spawn, process-group and per-backend process supervisor
- * [OUTPUT]: Freezes main-owned purpose eligibility before lease admission, then rechecks execution identity and permissions at spawn; expiry affects only new operations.
+ * [OUTPUT]: Reserves native credential use across quota cleanup, then freezes main-owned purpose eligibility before lease admission, then rechecks execution identity and permissions at spawn; expiry affects only new operations.
  * [POS]: Host for backends' non-interactive processes; wraps every job in the shared macOS seatbelt by default, and a backend may declare its own native OS sandbox only once the platform capability matrix confirms it
  */
 
@@ -11,6 +11,7 @@ import {
 } from "node:child_process";
 import {
   acquireAgentProcessLease,
+  reserveAgentCredentialUse,
   isAgentProcessAdmissionError,
   registerAuxiliaryAgentProcess,
   reportAgentCleanupFailure,
@@ -135,8 +136,10 @@ export class HeadlessExecutor {
       ? AbortSignal.any([controller.signal, options.signal])
       : controller.signal;
     let lease: AgentProcessLease | undefined;
+    const credentialUse = reserveAgentCredentialUse(descriptor.id);
     const ready = Promise.resolve()
       .then(async () => {
+        await credentialUse.ready;
         const receipt = await this.runtimeForRun(descriptor, options.snapshot, signal, job);
         lease = await (
           this.dependencies.acquireLease ?? acquireAgentProcessLease
@@ -168,6 +171,7 @@ export class HeadlessExecutor {
       .finally(() => {
         lease?.release();
         lease = undefined;
+        credentialUse.release();
       });
     const result = ready.then((active) => active.result);
     /* runStarted 可能在 caller 拿到句柄前因 admission/hook 主动结算；公开

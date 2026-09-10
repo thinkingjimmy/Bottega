@@ -1,3 +1,8 @@
+/**
+ * [INPUT]: Depends on React, Radix Popover, shared class merging, and theme tokens.
+ * [OUTPUT]: Provides Popover, PopoverTrigger, and a viewport-bounded scrollable PopoverContent.
+ * [POS]: Shared accessible popover primitive used by Sketch and other product controls.
+ */
 import * as React from "react"
 import { Popover as PopoverPrimitive } from "radix-ui"
 

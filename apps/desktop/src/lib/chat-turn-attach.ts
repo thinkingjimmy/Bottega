@@ -43,6 +43,8 @@ export type ChatTurnProjection = {
   persist?: TurnSnapshot["persist"];
   terminal?: TurnSnapshot["terminal"];
   phase?: TurnSnapshot["phase"];
+  /** 每次 resume 重试 +1；用来区分「第一次落到恢复弹窗」与「重试后又落回来」。 */
+  generation?: number;
   retryToken?: string;
   allowedActions?: TurnSnapshot["allowedActions"];
   assistantSeq?: number;
@@ -71,6 +73,7 @@ export type ChatProjectionStatus = Partial<
     | "cleanup"
     | "persist"
     | "phase"
+    | "generation"
     | "requestId"
     | "retryToken"
     | "allowedActions"
@@ -86,6 +89,7 @@ export const projectionStatusOf = (
   cleanup: projection.cleanup,
   persist: projection.persist,
   phase: projection.phase,
+  generation: projection.generation,
   requestId: projection.requestId,
   retryToken: projection.retryToken,
   allowedActions: projection.allowedActions,
@@ -101,6 +105,7 @@ export const sameProjectionStatus = (
   left.cleanup === right.cleanup &&
   left.persist === right.persist &&
   left.phase === right.phase &&
+  left.generation === right.generation &&
   left.requestId === right.requestId &&
   left.retryToken === right.retryToken &&
   left.allowedActions?.sameSession === right.allowedActions?.sameSession &&
@@ -276,6 +281,7 @@ export function projectionFromSnapshot(
     persist: turn.persist,
     terminal: turn.terminal,
     phase: turn.phase,
+    generation: turn.generation,
     retryToken: turn.retryToken,
     allowedActions: turn.allowedActions,
     assistantSeq: turn.assistantSeq,
@@ -307,6 +313,7 @@ export function applyTurnEvent(
       persist: event.turn.persist,
       terminal: event.turn.terminal,
       phase: event.turn.phase,
+      generation: event.turn.generation,
       retryToken: event.turn.retryToken,
       allowedActions: event.turn.allowedActions,
       assistantSeq: event.turn.assistantSeq,

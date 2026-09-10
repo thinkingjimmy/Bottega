@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppKit screen/workspace notifications, CoreGraphics window geometry, and bounded stdin commands.
- * [OUTPUT]: Provides versioned safe-area, conservative fullscreen/inactivity facts, and acknowledged prior-application focus restoration.
+ * [OUTPUT]: Provides versioned safe-area and empty-display updates, conservative fullscreen/inactivity facts, and acknowledged prior-application focus restoration.
  * [POS]: Narrow subprocess adapter for presence; no task data, permissions, or login registration.
  */
 
@@ -32,8 +32,7 @@ static BOOL fullscreen(NSScreen *screen, NSArray *windows, pid_t frontmost, CGFl
 }
 static void emitScreens(void) {
   NSArray<NSScreen *> *screens = NSScreen.screens;
-  if (screens.count == 0) return;
-  CGFloat primaryHeight = screens[0].frame.size.height;
+  CGFloat primaryHeight = screens.count ? screens[0].frame.size.height : 0;
   NSArray *windows = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
   pid_t frontmost = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
   NSMutableArray *items = [NSMutableArray array];

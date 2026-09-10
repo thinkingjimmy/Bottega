@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on lifecycle intent identities and the relay coordinator's live manual-intent ids
- * [OUTPUT]: Provides liveChatHomeIntentIds, the single startup projection of every saga that may still own an uncommitted Chat Home
+ * [OUTPUT]: Home startup liveness from RelayLedger and pending lifecycle owners, including fixed-identity Chat materialization, so compensation cannot race recovery.
  * [POS]: Chat Home recovery policy boundary; prevents one durable journal from compensating work still owned by another journal
  */
 
@@ -8,6 +8,7 @@ import type { LifecycleIntent } from "../lifecycle/intent-types";
 
 const CHAT_HOME_LIFECYCLE_KINDS = new Set<LifecycleIntent["kind"]>([
   "chat-slot",
+  "chat-materialize",
 ]);
 
 export function liveChatHomeIntentIds(

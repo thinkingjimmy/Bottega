@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared appDisplayName, AppListItem/AppsProvider, progress, app-state, dialogs, UI card/dropdown, router, surface residence intents, AppWindow icon, shared system-file-manager copy, and external/reveal IPC
+ * [INPUT]: Depends on localized surface migration failure projection; Depends on shared appDisplayName, AppListItem/AppsProvider, progress, app-state, dialogs, UI card/dropdown, router, surface residence intents, AppWindow icon, shared system-file-manager copy, and external/reveal IPC
  * [OUTPUT]: Provides AppCard with platform-correct Reveal copy, plain waiting-for-access recovery, current-surface navigation, direct Pin/Unpin beside More, lifecycle actions, frozen deletion-dialog identity, and non-cancellable deletion progress
  * [POS]: App listing unit; the badge follows generation readiness without exposing internal terminology, and main-owned navigation focuses an existing Studio instead of rendering twice
  */
@@ -51,7 +51,7 @@ import {
 } from "./app-state";
 import { AppDeleteDialog } from "./dialogs/delete-dialog";
 import { RepairConfirmDialog } from "./dialogs/repair-dialog";
-import { errorMessage } from "@/lib/errors";
+import { surfaceErrorMessage } from "@/lib/chat-composer/errors";
 import { appStudioSurface } from "../../../shared/window-surfaces-ipc";
 import {
   openSurfaceInWindow,
@@ -113,7 +113,7 @@ export function AppCard({ app, onOpenProgress }: AppCardProps) {
       await action();
       return true;
     } catch (cause) {
-      setOpenError(errorMessage(cause, t("apps.card.operationFailed")));
+      setOpenError(surfaceErrorMessage(cause, t("apps.card.operationFailed")));
       return false;
     } finally {
       setBusy(false);

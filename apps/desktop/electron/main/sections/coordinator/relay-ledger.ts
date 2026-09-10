@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Depends on atomic file IO, zod, SerialQueue, submission custody, ledger operations, and Section/chat identities
- * [OUTPUT]: Provides relay ledger v7 mutations, targeted raw-custody reads, recovery, reservations/intents/attempts, and fail-closed adoption-reference projection aggregated with custody manifests and persistent quarantine evidence
+ * [OUTPUT]: Ledger v7 single writer for manual/relay attempts, optional notice sequences and complete SQLite handoff custody; incompatible startup bytes fail closed.
  * [POS]: The durable side-effect journal of sections/coordinator
  */
 
+import { freezeCloudHandoff, confirmCloudHandoff } from "./state/operations/cloud";
 import { deferManualDispatch, deferRelayDispatch } from "./scheduler/defer-dispatch";
-import { readFile, readdir, rename } from "node:fs/promises";
+import { readFile, readdir, } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { RelayActionsSnapshot } from "../../../../shared/sections-ipc";
 import type { SubmissionAck, SubmissionOutcome } from "../../../../shared/submission";
@@ -94,7 +95,7 @@ export class RelayLedger {
     this.submissionPayloads = new SubmissionPayloadStore(this.submissionPayloadRoot);
     this.now = now;
   }
-  async initialize() {
+  async initialize(): Promise<{ recovered: false; warning?: undefined }> {
     return this.queue.enqueue(async () => {
       await this.submissionPayloads.initialize();
       this.frozen = null;
@@ -117,19 +118,8 @@ export class RelayLedger {
           await this.commitInitializedState(loadedAt);
           return { recovered: false as const };
         }
-        const isolatedPath = this.filePath.replace(
-          /\.json$/,
-          `.corrupt-${loadedAt}.json`
-        );
-        await rename(this.filePath, isolatedPath);
-        this.state = emptyLedgerState();
-        await this.commitInitializedState(loadedAt);
-        return {
-          recovered: true as const,
-          isolatedPath,
-          warning: `Section 接力账本损坏，已隔离备份 ${isolatedPath}，历史接力状态丢失，进行中的接力链已终止`,
-          cause,
-        };
+        this.frozen = cause instanceof Error ? cause : new Error(String(cause));
+        throw new Error("Relay ledger cannot be opened; original bytes were preserved", { cause });
       }
       this.state = normalizeSequences(parsed);
       normalizeTerminalTimes(this.state, loadedAt);
@@ -411,9 +401,9 @@ export class RelayLedger {
     );
   }
 
-  bindManualSequences(intentId: string, userSeq: number, assistantSeq: number) {
+  bindManualSequences(intentId: string, userSeq: number, assistantSeq: number, notices: { noticeSeq?: number; executorNoticeSeq?: number } = {}) {
     return this.mutate((state) =>
-      bindManualSequences(state, intentId, userSeq, assistantSeq)
+      bindManualSequences(state, intentId, userSeq, assistantSeq, notices)
     );
   }
 
@@ -543,6 +533,12 @@ export class RelayLedger {
     );
   }
 
+  freezeCloudHandoff(intentId: string, command: Parameters<typeof freezeCloudHandoff>[2]) {
+    return this.mutate(state => freezeCloudHandoff(state, intentId, command));
+  }
+  confirmCloudHandoff(intentId: string, proof: Parameters<typeof confirmCloudHandoff>[2]) {
+    return this.mutate(state => confirmCloudHandoff(state, intentId, proof));
+  }
   prepareManualResult(
     intentId: string,
     input: {

@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on zod, shared App/agent contracts, the App manifest schema, and the apps/support canonicalJson
- * [OUTPUT]: Supports pending install configuration without an active manifest. Provides strict AppStore v15 schema with optional explicit install strategy, Headless consent and existing generation/source/recovery authority
+ * [OUTPUT]: Strict AppFile v16 authority with independent portable catalog, installed generation contracts and stable App/Project/Base association records; older formats are refused.
  * [POS]: AppStore persistence contract; storage and generation orchestration consume this fail-closed schema instead of defining it inline, while the quarantine decision for foreign bytes stays in app-store.ts
  */
 
+import { appPortableCatalogSchema, emptyAppPortableCatalog } from "./portable/model";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { agentBackendIdSchema } from "../../../../shared/agent-schema";
@@ -12,7 +13,7 @@ import type { AppManifest } from "../../../../shared/apps-ipc";
 import { appManifestSchema, requirementsSchema } from "../install/manifest-schema";
 import { canonicalJson } from "../support";
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 export const APP_ID_PATTERN = /^[a-z0-9]{10}$/;
 const REPO_PATTERN =
   /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
@@ -524,6 +525,7 @@ export const storeSchema = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSION),
     apps: z.array(appRecordSchema).max(100),
+    portable: appPortableCatalogSchema.default(emptyAppPortableCatalog),
     retiredIds: z
       .array(z.string().regex(APP_ID_PATTERN))
       .max(10_000)

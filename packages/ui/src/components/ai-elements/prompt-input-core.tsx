@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, PromptInput context and its shared admission helpers, typed attachment commands, host-injected UI text, and abort-aware submission gates
- * [OUTPUT]: Provides the PromptInput form transaction, fresh-count attachment admission shared by provider and local paths, and PromptInputBody
+ * [INPUT]: Depends on React, prompt context/admission, native Blob reading, typed attachment commands, localized UI text, and abort-aware submission gates.
+ * [OUTPUT]: Provides PromptInput/PromptInputBody with native image conversion, fresh-count admission, per-submission tokens and exactly-once final settlement.
  * [POS]: The submission and attachment-admission core of ai-elements PromptInput; provider and local paths share the same pure selection rules
  */
 
@@ -40,31 +40,16 @@ import {
   attachmentCommandTarget,
   useAttachmentList,
 } from "../../hooks/use-attachment-list";
+import { readBlobDataUrl } from "../../lib/attachments/data-url";
 
 async function convertBlobUrlToDataUrl(
-  url: string,
+  item: PromptInputFilePart,
   signal: AbortSignal
 ): Promise<string | null> {
   try {
-    const response = await fetch(url, { signal });
+    const blob = item.nativeFile ?? await (await fetch(item.url!, { signal })).blob();
     throwIfSubmissionAborted(signal);
-    const blob = await response.blob();
-    throwIfSubmissionAborted(signal);
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      const onAbort = () => reader.abort();
-      signal.addEventListener("abort", onAbort, { once: true });
-      const finish = (value: string | null) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(value);
-      };
-      // oxlint-disable-next-line eslint-plugin-unicorn(prefer-add-event-listener)
-      reader.onloadend = () => finish(reader.result as string);
-      // oxlint-disable-next-line eslint-plugin-unicorn(prefer-add-event-listener)
-      reader.onerror = () => finish(null);
-      reader.readAsDataURL(blob);
-      if (signal.aborted) onAbort();
-    });
+    return await readBlobDataUrl(blob, signal);
   } catch {
     throwIfSubmissionAborted(signal);
     return null;
@@ -107,6 +92,8 @@ export type PromptInputProps = Omit<
   attachmentsDisabled?: boolean;
   /** 从快照到异步图片转换、发送与清理结束期间投影 true */
   onSubmissionPendingChange?: (pending: boolean) => void;
+  /** Called exactly once by the actual submission finally, including prepare failures and unmount. */
+  onSubmissionSettled?: (submissionToken: string) => void;
   /** 可选受控清空：提交期间用户继续编辑时只消费原快照，不清新输入。 */
   clearIfUnchanged?: boolean;
   /** desktop 将 signal custody 转交事务后，组件卸载不再取消提交。 */
@@ -114,7 +101,7 @@ export type PromptInputProps = Omit<
   onFilesAccepted?: (files: File[]) => void;
   inputAdapter?: PromptInputAdapter;
   /** 提交 gate 内、任何异步附件转换前恰好调用一次。 */
-  prepareSubmission?: (message: PromptInputMessage) => PromptInputMessage;
+  prepareSubmission?: (message: PromptInputMessage, context: { submissionToken: string }) => PromptInputMessage;
   onError?: (error: {
     code: "max_files" | "max_file_size" | "accept" | "submit";
     message: string;
@@ -140,6 +127,7 @@ export const PromptInput = ({
   attachmentFileFilter,
   attachmentsDisabled = false,
   onSubmissionPendingChange,
+  onSubmissionSettled,
   clearIfUnchanged = false,
   preserveSubmissionOnUnmount = false,
   onFilesAccepted,
@@ -329,6 +317,8 @@ export const PromptInput = ({
       event.preventDefault();
       const submissionGate = submissionGateRef.current;
       if (!submissionGate.tryEnter()) return;
+      const submissionToken = crypto.randomUUID();
+      const settled = onSubmissionSettled;
       const signal = submissionLifecycleRef.current.signal;
       const form = event.currentTarget;
       let restoreTextOnError: (() => void) | undefined;
@@ -352,7 +342,7 @@ export const PromptInput = ({
             field.value = plainText;
           }
         };
-        const prepared = prepareSubmission?.({ files, input }) ?? {
+        const prepared = prepareSubmission?.({ files, input }, { submissionToken }) ?? {
           files,
           input,
         };
@@ -360,7 +350,7 @@ export const PromptInput = ({
           Promise.all(
             prepared.files.map(async (item) => {
               if (!item.url?.startsWith("blob:")) return item;
-              const dataUrl = await convertBlobUrlToDataUrl(item.url, signal);
+              const dataUrl = await convertBlobUrlToDataUrl(item, signal);
               return { ...item, url: dataUrl ?? item.url };
             })
           )
@@ -396,9 +386,12 @@ export const PromptInput = ({
         }
       } finally {
         submissionGate.leave();
-        if (!signal.aborted) {
-          setSubmissionPending(false);
-          onSubmissionPendingChange?.(false);
+        try { settled?.(submissionToken); }
+        finally {
+          if (!signal.aborted) {
+            setSubmissionPending(false);
+            onSubmissionPendingChange?.(false);
+          }
         }
       }
     },
@@ -410,6 +403,7 @@ export const PromptInput = ({
       inputAdapter,
       onError,
       onSubmissionPendingChange,
+      onSubmissionSettled,
       onSubmit,
       prepareSubmission,
       submissionFailed,

@@ -78,7 +78,7 @@ export type MergeResult = {
   daily: DailyTokens;
   dailyCostUsd: Record<string, number>;
   dailyUnpricedTokens: Record<string, number>;
-  perFileTs: Map<string, number[]>;
+  longestChatMs: number;
   degradedCodexFiles: Set<string>;
 };
 
@@ -309,11 +309,14 @@ export function mergeUsageFiles(
       dailyCostUsd[key] = (dailyCostUsd[key] ?? 0) + cost;
     }
   }
+  /* 时间戳表就地折成一个标量：它唯一的读者是 longestSegment，而后者
+     按文件独立取 max，故没有任何下游需要原始时间戳。留着它等于让
+     「每个事件一个 number」跟着结果一路常驻——本机 41 万个。 */
   return {
     daily,
     dailyCostUsd,
     dailyUnpricedTokens,
-    perFileTs,
+    longestChatMs: longestSegment(perFileTs),
     degradedCodexFiles,
   };
 }
@@ -322,15 +325,16 @@ export function mergeUsageFiles(
  * mergeKey 给每个键都打了 source 前缀，跨源永不碰撞——于是
  * 「三个源」的合并结果与「一次性合并三个源」按定义等价，
  * 逐字段相加即可。All 因此不必把所有事件重新合并一遍。
- * perFileTs 的键本就是 `${source}:${path}`，直接并集。
+ * longestChatMs 同理：它是按文件取的 max，而文件键含源前缀，
+ * 各源互不重叠，故「先按源取 max 再取 max」与一次性求解等价。
  * ============================================================ */
 
 export function combineMergeResults(results: MergeResult[]): MergeResult {
   const daily: DailyTokens = {};
   const dailyCostUsd: Record<string, number> = {};
   const dailyUnpricedTokens: Record<string, number> = {};
-  const perFileTs = new Map<string, number[]>();
   const degradedCodexFiles = new Set<string>();
+  let longestChatMs = 0;
   for (const result of results) {
     for (const [key, tokens] of Object.entries(result.daily)) {
       daily[key] = (daily[key] ?? 0) + tokens;
@@ -341,9 +345,7 @@ export function combineMergeResults(results: MergeResult[]): MergeResult {
     for (const [key, tokens] of Object.entries(result.dailyUnpricedTokens)) {
       dailyUnpricedTokens[key] = (dailyUnpricedTokens[key] ?? 0) + tokens;
     }
-    for (const [key, timestamps] of result.perFileTs) {
-      perFileTs.set(key, timestamps);
-    }
+    longestChatMs = Math.max(longestChatMs, result.longestChatMs);
     for (const path of result.degradedCodexFiles) {
       degradedCodexFiles.add(path);
     }
@@ -352,7 +354,7 @@ export function combineMergeResults(results: MergeResult[]): MergeResult {
     daily,
     dailyCostUsd,
     dailyUnpricedTokens,
-    perFileTs,
+    longestChatMs,
     degradedCodexFiles,
   };
 }
@@ -398,7 +400,7 @@ function longestStreak(activeDays: string[]) {
 
 export function computeStats(
   daily: DailyTokens,
-  perFileTs: Map<string, number[]>,
+  longestChatMs: number,
   todayKey: string,
   dailyCostUsd: Record<string, number> = {}
 ): UsageStats {
@@ -422,7 +424,7 @@ export function computeStats(
     ),
     peakDayTokens,
     peakDay,
-    longestChatMs: longestSegment(perFileTs),
+    longestChatMs,
     currentStreakDays: currentStreak(new Set(activeDays), todayKey),
     longestStreakDays: longestStreak(activeDays),
   };

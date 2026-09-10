@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on node:sqlite from the active runtime plus fs/path for private database files and the persistence errno predicate
- * [OUTPUT]: Provides the single SQLite connection owner, WAL runtime safety gate, verified production pragmas, transaction helper, throttled high-water checkpoints, integrity/foreign-key/revision-convergence gates, and metrics
+ * [OUTPUT]: Private SQLite connection and WAL ownership, schema preflight before write-capable pragmas, integrity gates, bounded cache and durable checkpoint/close.
  * [POS]: Lowest Chat SQLite runtime layer; only the dedicated database worker may construct a production connection
  */
 
@@ -195,8 +195,8 @@ export class ChatSqliteConnection {
         };
         assertWalRuntimeSafe(String(row.version ?? ""));
       }
-      connection.configure();
       ensureChatSchema(database);
+      connection.configure();
       await assertPrivateDatabase(path);
       return connection;
     } catch (cause) {

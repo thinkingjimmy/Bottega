@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Electron app/window events, auxiliary windows, private IPC, shared shortcut bindings, native geometry/focus, lock events, and bounded task snapshots.
- * [OUTPUT]: Provides independent auxiliary window lifecycle, guarded manual opening, scoped shortcuts, persistent idle/active menu-bar access with CSS-owned compact corners, an anchored native menu, an expanded list, Mission Control exclusion from creation, and privacy hiding.
+ * [INPUT]: Depends on Electron app/window events, auxiliary windows, private IPC, shared shortcut bindings, background-scoped screen observation/focus, lock events, and bounded task snapshots.
+ * [OUTPUT]: Provides real-notch-only auxiliary window lifecycle with shared screen observation, guarded manual opening, scoped shortcuts, persistent idle/active menu-bar access with CSS-owned compact corners, an anchored native menu, an expanded list, Mission Control exclusion from creation, and privacy hiding.
  * [POS]: Presence panel owner outside the product WindowRegistry and full product preload.
  */
 
@@ -10,15 +10,14 @@ import { join } from "node:path";
 import { PANEL_CHANNEL, type TaskActivitySnapshot, type TaskPanelIntent, type TaskPanelSnapshot, type EffectivePresence } from "../../../../shared/presence-ipc";
 import type { AppLocale } from "../../../../shared/i18n/locale";
 import { rendererMatches } from "../../frame-guard";
-import { NativeScreenBridge } from "./native-bridge";
+import type { PresenceScreenSource } from "./screen-monitor";
 import { panelGeometry, type NativeScreen } from "./geometry";
 import { resolvePanelBinding, type PanelBinding } from "../../../../shared/shortcuts/bindings";
 import { PanelShortcut } from "./shortcut";
 
 export class TaskPanelController {
   private windows: BrowserWindow[] = [];
-  private native: NativeScreenBridge | null = null;
-  private screens: NativeScreen[] = [];
+  private screens: readonly NativeScreen[] = [];
   private expanded = false;
   private expanding = false;
   private expansion = 0;
@@ -30,10 +29,10 @@ export class TaskPanelController {
   private lifecycle = 0;
   private snapshotValue: TaskActivitySnapshot = { version: 1, revision: 0, tasks: [], total: 0, running: 0, waiting: 0, overflow: 0, result: null };
   private readonly cleanup: Array<() => void> = [];
-  constructor(private readonly ports: { mainDirectory: string; resourcesPath: string; nativePath?: string; rendererUrl?: string;
+  constructor(private readonly ports: { mainDirectory: string; screens: PresenceScreenSource; rendererUrl?: string;
     locale(): AppLocale; action(intent: TaskPanelIntent): Promise<void>; menu?(window: BrowserWindow): void; failed(): void;
     binding?(): PanelBinding; mainFocused?(): boolean; changed?(): void }) {}
-  available() { return this.healthy; }
+  available() { return this.healthy && Boolean(panelGeometry(this.screens)); }
   effective(): EffectivePresence { return { status: this.healthy ? "enabled" : "disabled", reason: this.shortcut.unavailable ? "shortcut-unavailable" : null }; }
   refreshShortcut(retry = false) {
     const eligible = this.canPresent() && !this.ports.mainFocused?.();
@@ -46,7 +45,7 @@ export class TaskPanelController {
     this.expanding = true;
     try {
       if (!this.focusCapture) {
-        const capture = this.native!.rememberFocus().finally(() => { if (this.focusCapture === capture) this.focusCapture = null; });
+        const capture = this.ports.screens.rememberFocus().finally(() => { if (this.focusCapture === capture) this.focusCapture = null; });
         this.focusCapture = capture;
       }
       await this.focusCapture;
@@ -64,13 +63,15 @@ export class TaskPanelController {
     if (this.healthy) { this.refreshShortcut(true); return this.effective(); }
     this.disable();
     const lifecycle = this.lifecycle;
-    this.native = new NativeScreenBridge(this.ports.nativePath ?? join(this.ports.resourcesPath, "presence/bin/screen-bridge"), (screens) => {
+    const updateScreens = () => {
+      const screens = this.ports.screens.screens();
       const geometry = panelGeometry(screens);
       const identity = JSON.stringify(geometry);
       if (this.geometryId !== identity) this.cancelExpansion();
       this.geometryId = identity; this.screens = screens; this.render();
-    }, () => { this.disable(); this.ports.failed(); });
-    try { await this.native.start(); } catch { this.disable(); return { status: "failed", reason: "native-unavailable" }; }
+    };
+    updateScreens();
+    this.cleanup.push(this.ports.screens.onChanged(updateScreens));
     if (!panelGeometry(this.screens)) { this.disable(); return { status: "failed", reason: "screen-unavailable" }; }
     const entry = join(this.ports.mainDirectory, "../renderer/task-panel.html");
     const url = this.ports.rendererUrl ? `${this.ports.rendererUrl.replace(/\/$/, "")}/task-panel.html` : pathToFileURL(entry).href;
@@ -112,7 +113,7 @@ export class TaskPanelController {
     this.cleanup.push(() => { ipcMain.removeHandler(PANEL_CHANNEL.snapshot); ipcMain.removeHandler(PANEL_CHANNEL.intent); });
     this.locked = powerMonitor.getSystemIdleState(1) === "locked";
     const hide = () => { this.locked = true; this.cancelExpansion(); this.render(); };
-    const restore = () => { this.locked = false; this.cancelExpansion(); this.native?.command("refresh"); this.render(); };
+    const restore = () => { this.locked = false; this.cancelExpansion(); this.ports.screens.command("refresh"); this.render(); };
     powerMonitor.on("lock-screen", hide); powerMonitor.on("suspend", hide); powerMonitor.on("user-did-resign-active", hide);
     powerMonitor.on("unlock-screen", restore); powerMonitor.on("resume", restore); powerMonitor.on("user-did-become-active", restore);
     this.cleanup.push(() => {
@@ -122,7 +123,7 @@ export class TaskPanelController {
     const refreshShortcut = () => { setImmediate(() => { if (lifecycle === this.lifecycle) this.refreshShortcut(); }); };
     app.on("browser-window-focus", refreshShortcut); app.on("browser-window-blur", refreshShortcut);
     this.cleanup.push(() => { app.removeListener("browser-window-focus", refreshShortcut); app.removeListener("browser-window-blur", refreshShortcut); });
-    const refreshScreen = () => this.native?.command("refresh");
+    const refreshScreen = () => this.ports.screens.command("refresh");
     const watchFullscreen = (_event: unknown, window: BrowserWindow) => {
       if (this.windows.includes(window)) return;
       window.on("enter-full-screen", refreshScreen); window.on("leave-full-screen", refreshScreen);
@@ -146,7 +147,7 @@ export class TaskPanelController {
     const activity = this.locked || geometry?.hidden ? { ...this.snapshotValue, tasks: [] } : this.snapshotValue;
     return { activity, expanded: index === 2 && this.expanded, panelOpen: this.expanded, segment: index === 1 ? "right" : geometry?.collapsed.length === 2 ? "left" : "full", locale: this.ports.locale() };
   }
-  private collapse(restoreFocus: boolean) { const wasExpanded = this.expanded; this.cancelExpansion(); this.render(); if (restoreFocus && wasExpanded) this.native?.command("restore-focus"); }
+  private collapse(restoreFocus: boolean) { const wasExpanded = this.expanded; this.cancelExpansion(); this.render(); if (restoreFocus && wasExpanded) this.ports.screens.command("restore-focus"); }
   private render() {
     this.refreshShortcut();
     const geometry = panelGeometry(this.screens);
@@ -168,7 +169,7 @@ export class TaskPanelController {
   disable() {
     this.lifecycle++;
     this.healthy = false; this.cancelExpansion(); this.focusCapture = null; this.shortcut.close();
-    this.cleanup.splice(0).forEach((stop) => stop()); this.native?.close(); this.native = null;
+    this.cleanup.splice(0).forEach((stop) => stop());
     const windows = this.windows.splice(0); for (const window of windows) if (!window.isDestroyed()) window.destroy();
   }
 }

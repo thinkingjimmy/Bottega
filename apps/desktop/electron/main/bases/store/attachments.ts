@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on Node crypto/fs/path, the commit-kernel durable write and errno guard, shared attachment budgets, and the Gallery image header parser; receives the owner file stem + lifecycle id and final bytes
- * [OUTPUT]: Provides content addresses AttachmentStore, family copy, data URL parsing, reserve→commit/release, incrementally accounted budget, ownership, read and deleted-proven, clean
+ * [OUTPUT]: Content-addressed owner-specific attachment bytes and logical sidecars, integrity checks, budget reservations, copy identity and reference-driven collection.
  * [POS]: The source of the truth of the blob of bases/store; Final bytes hashed by magic/header after a second test, the directory physical name with owner lifecycle
  */
 
+import { describeBlob, publishBlobMetadata, readBlobMetadata, verifyBlob } from "../../persistence/logical-blob";
 import { createHash } from "node:crypto";
 import {
   mkdir,
@@ -95,6 +96,8 @@ export class BaseAttachmentStore {
       if (reservation) this.release(reservation);
       throw cause;
     }
+    if (exists) verifyBlob(await readFile(destination), describeBlob(blobId, input.bytes, value.mediaType));
+    await publishBlobMetadata(destination, `${input.chatId}:${input.incarnationId}`, describeBlob(blobId, input.bytes, value.mediaType));
     return { value, created: !exists };
   }
 
@@ -142,6 +145,9 @@ export class BaseAttachmentStore {
     if (!value.blobId.startsWith(`att_${hash}.`)) {
       throw new Error("Attachment blob 内容哈希不匹配");
     }
+    const blob = await readBlobMetadata(join(this.familyPath(chatId, incarnationId), value.blobId), `${chatId}:${incarnationId}`);
+    verifyBlob(bytes, blob);
+    if (blob.blobId !== value.blobId || blob.bytes !== value.byteLength || blob.mime !== value.mediaType) throw new Error("BLOB_REFERENCE_MISMATCH");
     return bytes;
   }
 
@@ -178,7 +184,7 @@ export class BaseAttachmentStore {
       // durableAtomicWrite 崩溃遗留的 tmp 从未入账：删它不动账目。
       if (entry.name.endsWith(".tmp")) temporary.push(entry.name);
       else if (
-        /^att_[a-f0-9]{64}\./.test(entry.name) &&
+        /^att_[a-f0-9]{64}\.(png|jpe?g|webp|gif)$/.test(entry.name) &&
         !referenced.has(entry.name)
       ) {
         doomed.push(entry.name);
@@ -198,6 +204,7 @@ export class BaseAttachmentStore {
           () => 0
         );
         await rm(path, { force: true });
+        await rm(`${path}.blob.json`, { force: true });
         return bytes;
       })
     );
@@ -223,6 +230,12 @@ export class BaseAttachmentStore {
       });
     } catch (cause) {
       if (!isErrnoCode(cause, "ENOENT")) throw cause;
+    }
+    for (const entry of await readdir(destination).catch(() => [])) {
+      if (!entry.endsWith(".blob.json")) continue;
+      const blobId = entry.slice(0, -10);
+      const blob = await readBlobMetadata(join(source, blobId), `${fromStem}:${fromInstanceId}`);
+      await durableAtomicWrite(join(destination, entry), JSON.stringify({ version: 1, owner: `${toStem}:${toInstanceId}`, blob }));
     }
     const key = this.familyKey(toStem, toInstanceId);
     this.forget(key);
@@ -269,7 +282,7 @@ export class BaseAttachmentStore {
         }
         continue;
       }
-      if (!/^att_[a-f0-9]{64}\./.test(file.name)) continue;
+      if (!/^att_[a-f0-9]{64}\.(png|jpe?g|webp|gif)$/.test(file.name)) continue;
       bytes += (await stat(join(directory, file.name))).size;
     }
     return bytes;

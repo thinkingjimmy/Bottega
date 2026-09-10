@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node os/path, sandbox/sbpl path and translation native language, barrier declaration table, HeadlessJob and HeadlessExecutionSpec
- * [OUTPUT]: Provides credential root, dual-directional scanning, job→SBPL and sandbox-exec packaging; Interface file set up adapter/built-in/freeze third party MCP runtime canonical read root, node_modules ancestor with accurate symlink input
+ * [OUTPUT]: Builds SBPL and sandbox-exec launches with own/foreign credential fences, explicit quota authentication write grants, protected config roots and bounded runtime read access.
  * [POS]: The default macOS OS fence translation layer for backends/sandbox; The path is true in fences.ts, the SBPL source is in sbpl.ts, and the file does not recognize any directory layout of a CLI
  */
 
@@ -46,6 +46,8 @@ export type SeatbeltOptions = {
   runtimeReadFiles?: string[];
   /** 即使与 TMPDIR/workspace 写根重叠，也在 allow 后重新 deny write。 */
   protectedReadOnlyRoots?: string[];
+  /** Native authentication directories shared by a disposable query home. */
+  stateWriteRoots?: string[];
   /** 围栏归属；缺省时谁都是外人（最严解释），自有根为空集。 */
   backend?: AgentBackendId;
   /** 子进程实际环境；声明表据此解析自有根，异后端名单再叠加默认位置。 */
@@ -131,6 +133,7 @@ export function buildSeatbeltProfile(
       tempDir,
       job.homeDir,
       ...credentialRoots,
+      ...(options.stateWriteRoots ?? []),
       job.sandbox === "workspace-write" ? job.sandboxRoot : undefined,
     ],
     "seatbelt 写根"
@@ -296,6 +299,7 @@ export function wrapInteractiveWithSeatbelt(input: {
   permissionMode: AgentPermissionMode;
   workspace: string;
   readOnlyRoots: string[];
+  stateWriteRoots?: string[];
   controlRoot: string;
   /** 本 turn 注入的内置 MCP server spec；缺席（无 lease）则不放行任何产品运行时读根。 */
   builtinMcpServer?: { command: string; args: string[] };
@@ -379,6 +383,7 @@ export function wrapInteractiveWithSeatbelt(input: {
       runtimeReadRoots: runtimeAccess.flatMap((access) => access.roots),
       runtimeReadFiles: runtimeAccess.flatMap((access) => access.files),
       protectedReadOnlyRoots: input.readOnlyRoots,
+      stateWriteRoots: input.stateWriteRoots,
     }
   );
   const profile = `${wrapped.args[1] as string}(deny file-write* (subpath ${sbplString(controlRoot)}))\n(deny file-write* (literal ${sbplString(controlParent)}))\n`;

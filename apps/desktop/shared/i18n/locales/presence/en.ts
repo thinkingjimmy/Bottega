@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides en settings, tray, quit, and task-panel translations, including persistent top-bar/menu access, keyboard hints, and task failures.
+ * [OUTPUT]: Provides en settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut-only settings hints, and task failures, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -11,17 +11,21 @@ export const presenceEn = {
   "openHint": "Open",
   "spaceKey": "Space",
   "taskFailed": "Failed",
-  "openPanel": "Open task panel",
   "empty": "No active tasks",
   "emptyDescription": "Tasks will appear here when you start working in Bottega.",
-  "shortcutUnavailable": "This shortcut is unavailable. Change it in Keyboard shortcuts, or open the panel using the button.",
+  "shortcutUnavailable": "This shortcut is unavailable. Change it in Keyboard shortcuts.",
+  "displayMode": "Display mode",
+  "iconMode": "Menu bar icon",
+  "notchMode": "Notch task panel",
+  "iconDescription": "Open Bottega and view task status from the menu bar icon.",
+  "notchDescription": "See tasks and requests for your input beside the notch while using other apps. Click a task to return to its chat.",
+  "noNotch": "No notched display is currently available. Using the menu bar icon.",
+  "retentionDescriptionTray": "Keep Bottega running after closing the main window. Reopen it from the system tray icon.",
   "title": "Background activity",
   "login": "Launch Bottega at login",
   "loginDescription": "Start after signing in to your computer. Stay hidden when background activity is enabled.",
   "retention": "Keep running when the main window closes",
-  "retentionDescription": "Keep tasks running after closing the main window. Reopen from the menu bar or Dock.",
-  "top": "Show floating task panel",
-  "topDescription": "See Bottega tasks and requests for your input while using other apps. The top bar stays visible and replaces the menu bar icon. Click a task to return to its chat.",
+  "retentionDescription": "Keep Bottega running after closing the main window. Reopen it from the selected background entry.",
   "notice": "Quitting Bottega stops local tasks. Tasks and remote control may pause while your computer sleeps.",
   "open": "Open Bottega",
   "quitting": "Quitting…",
@@ -46,7 +50,6 @@ export const presenceEn = {
   "closeFailed": "The window could not transfer its draft. Try closing it again.",
   "retry": "Retry",
   "systemSettings": "Open System Settings",
-  "applying": "Applying…",
   "disabled": "Off",
   "enabled": "On",
   "blocked": "Needs attention",
@@ -57,7 +60,7 @@ export const presenceEn = {
   "systemDisabled": "Disabled in System Settings",
   "loginFailed": "The login item could not be verified",
   "saveFailed": "The preference could not be saved",
-  "trayUnavailable": "The menu bar entry is unavailable",
+  "trayUnavailable": "The background icon is unavailable",
   "panelUnavailable": "Task status could not be displayed",
   "screenUnavailable": "This screen does not have enough space",
   "nativeUnavailable": "The screen adapter is unavailable",

@@ -23,6 +23,7 @@ import {
   unclaimSteer,
   type MessageQueue,
   type QueuedPrompt,
+  type QueueExtraBytes,
 } from "@/lib/message-queue-model";
 import { errorMessage } from "@/lib/errors";
 import { effectiveLocale } from "@/lib/i18n-locale";
@@ -94,12 +95,13 @@ export function reconcileSteerIntents(
   globalBytes: number,
   effects: {
     notice(message: string): void;
-  }
+  },
+  extraBytes: QueueExtraBytes = () => 0
 ) {
   let queue = initial;
-  const initialBytes = queuedBytes(initial);
+  const initialBytes = queuedBytes(initial, extraBytes);
   const currentGlobalBytes = () =>
-    globalBytes + queuedBytes(queue) - initialBytes;
+    globalBytes + queuedBytes(queue, extraBytes) - initialBytes;
   const acknowledgements = new Set<string>();
   for (const intent of intents) {
     const item = queue.items.find(
@@ -122,7 +124,7 @@ export function reconcileSteerIntents(
         const prompt = recoveredPrompt(intent);
         if (prompt) {
           const recoveredItem = createQueueItem(prompt, intent.createdAt);
-          const result = enqueue(queue, recoveredItem, currentGlobalBytes());
+          const result = enqueue(queue, recoveredItem, currentGlobalBytes(), extraBytes);
           if (result.accepted) {
             queue =
               intent.recovery?.mode === "decision"
@@ -162,7 +164,7 @@ export function reconcileSteerIntents(
         const prompt = recoveredPrompt(intent);
         if (prompt) {
           const candidate = createQueueItem(prompt, intent.createdAt);
-          const result = enqueue(queue, candidate, currentGlobalBytes());
+          const result = enqueue(queue, candidate, currentGlobalBytes(), extraBytes);
           if (result.accepted) {
             queue = markAmbiguous(
               result.queue,

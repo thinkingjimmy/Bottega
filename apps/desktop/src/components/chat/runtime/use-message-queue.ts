@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React effects, app i18n, composer external store, message-queue state modules, and assembly/admit/steer/outcome/ack ports
- * [OUTPUT]: Provides a per-chat queue controller with localized structured model errors, workspace-file Steer, durable/manual custody, outcome settlement, and edit swap
+ * [INPUT]: Depends on React effects, app i18n, composer external store, reported-failure markers, message-queue state modules, and assembly/admit/steer/outcome/ack ports
+ * [OUTPUT]: Provides a per-chat queue controller with localized model errors, tooltip-owned capacity rejection, workspace-file Steer, durable/manual custody, outcome settlement, and edit swap
  * [POS]: The root of the renderer queue of chat/runtime; The state is stored, attached/admission/steer rules are narrowed down to modules
  */
 
@@ -30,12 +30,16 @@ import {
   globalQueuedBytes,
   readComposer,
   registerPendingComposerAck,
-  replaceDraftFiles,
+  captureComposerOwner,
   retainComposerResources,
   updateComposer,
   useComposerState,
 } from "@/lib/chat-composer-store";
 import { readGalleryState } from "@/lib/gallery/store";
+import { sketchQueueExtraBytes } from "@/lib/chat-composer/resources";
+import { swapComposerQueue } from "@/lib/chat-composer/sketch";
+import { sketchErrorMessage } from "@/lib/chat-composer/errors";
+import { reportedFailure } from "@/lib/errors";
 import {
   claimItem,
   claimNext,
@@ -54,7 +58,6 @@ import {
   setQueuePaused,
   setReorderLock,
   settleItem,
-  swapWithInput,
   tryFreeze,
   type MessageQueue,
   type QueueError,
@@ -209,7 +212,9 @@ export function useMessageQueue({
           id,
           owner,
           frozen,
-          globalQueuedBytes()
+          globalQueuedBytes(),
+          Date.now(),
+          sketchQueueExtraBytes(current.sketch)
         );
         accepted = result.accepted;
         return { ...current, queue: result.queue };
@@ -341,7 +346,8 @@ export function useMessageQueue({
         globalQueuedBytes(),
         {
           notice: noticeCurrent,
-        }
+        },
+        sketchQueueExtraBytes(current.sketch)
       );
       for (const outboxRef of reconciled.acknowledgements) {
         ackSteer(outboxRef);
@@ -366,13 +372,17 @@ export function useMessageQueue({
 
   const enqueue = useCallback((message: PromptInputMessage) => {
     let reason: QueueError | undefined;
+    let capacityReached = false;
     updateComposer(chatId, (current) => {
       const result = enqueueItem(
         current.queue,
         createQueueItem(queuedPrompt(message)),
-        globalQueuedBytes()
+        globalQueuedBytes(),
+        sketchQueueExtraBytes(current.sketch)
       );
       reason = result.reason;
+      capacityReached = typeof reason === "object" && reason.copyKey === "chat.queue.limit";
+      if (capacityReached) return current;
       return result.queue === current.queue
         ? {
             ...current,
@@ -383,7 +393,11 @@ export function useMessageQueue({
           }
         : { ...current, queue: result.queue };
     });
-    if (reason) throw new Error(errorText(reason));
+    if (reason) {
+      const error = new Error(errorText(reason));
+      // The disabled Send tooltip explains capacity; throwing still preserves the draft.
+      throw capacityReached ? reportedFailure(error) : error;
+    }
   }, [chatId, errorText]);
 
   const edit = useCallback((id: string) => {
@@ -391,14 +405,12 @@ export function useMessageQueue({
     const input = current.draft.richValue.length || current.draft.files.length
       ? draftPrompt(current.draft.richValue, current.draft.files)
       : undefined;
-    const swapped = swapWithInput(current.queue, id, input);
-    if (!swapped.prompt) return false;
     // 画廊附件的 selection 可能已被此前提交消费：恢复陈旧附件会得到永远过不了
     // token CAS 的死草稿，这里只还原仍持有效 selection 的画廊文件
     const liveSelections = readGalleryState(chatId).selections;
-    const restorable = {
-      ...swapped.prompt,
-      attachments: swapped.prompt.attachments.filter((attachment) => {
+    try { return swapComposerQueue(captureComposerOwner(chatId), id, input, (prompt) => promptFiles({
+      ...prompt,
+      attachments: prompt.attachments.filter((attachment) => {
         if (attachment.origin?.kind !== "gallery") return true;
         const selection = liveSelections.get(attachment.origin.logicalKey);
         return (
@@ -406,16 +418,8 @@ export function useMessageQueue({
           selection.attachmentId === attachment.id
         );
       }),
-    };
-    replaceDraftFiles(chatId, promptFiles(restorable));
-    updateComposer(chatId, (latest) => ({
-      ...latest,
-      queue: swapped.queue,
-      draft: { ...latest.draft, richValue: swapped.prompt!.richValue },
-    }));
-    retainComposerResources(chatId);
-    return true;
-  }, [chatId]);
+    })); } catch (error) { noticeCurrent(sketchErrorMessage(error)); return false; }
+  }, [chatId, noticeCurrent]);
 
   const steer = useCallback((id: string) => {
     const candidate = readComposer(chatId).queue.items.find(

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, the app translation provider, Agent Approval/Question IPC, shared Plan-review decisions, Plan follow-up intent, Section relay, stop commands, and current request refs
- * [OUTPUT]: Provides stable active-turn actions and canonical retry recovery, including an explicit one-operation authentication retry.
+ * [OUTPUT]: Provides stable approval, question, Plan, stop, retry, and explicit authentication-retry actions through canonical submission.
  * [POS]: The owner of the chat/runtime/session interaction status; Keep Plan Failed re-roll, relay Second confirmation and request-local cancel timing
  */
 
@@ -114,8 +114,7 @@ export function useSessionInteractions({
     useState<PendingPlanDecisionState | null>(null);
   const [cancelPending, setCancelPending] = useState(false);
 
-  // 「继续」与「重试」都是以 user 身份补一条纯文本——同一个原语，只是措辞不同。
-  // 不为重试另开通道：另开就意味着两套排队/落盘语义，迟早分叉。
+  // Route retries through normal submission to preserve queue and persistence semantics.
   const submitPlain = useCallback(
     (displayText: string, options?: Parameters<SessionSubmit>[1]) => {
       try { if (chatId) assertNoPendingAgent(chatId); } catch (cause) { reportStopError(cause); return; }
@@ -126,7 +125,6 @@ export function useSessionInteractions({
     },
     [submitRef, chatId, reportStopError]
   );
-  const continueTurn = useCallback(() => submitPlain(t("common.continue")), [submitPlain, t]);
   const retryTurn = useCallback(() => submitPlain(t("common.retry")), [submitPlain, t]);
   const retryAuthentication = useCallback(() => submitPlain(t("agentAvailability.retrySending"), {
     authenticationRetry: { kind: "retry-authentication" },
@@ -270,7 +268,6 @@ export function useSessionInteractions({
     cancelPending,
     pendingPlanDecision,
     pendingUserInput,
-    continueTurn,
     retryTurn,
     retryAuthentication,
     handleStop,
@@ -288,7 +285,6 @@ export function useSessionInteractions({
     approvalError,
     approvals,
     cancelPending,
-    continueTurn,
     handleStop,
     pendingPlanDecision,
     pendingUserInput,

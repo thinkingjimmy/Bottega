@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides the complete Spanish catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
  * [POS]: Spanish desktop locale; compile-time structure must match English exactly
  */
+import { sketchEs } from "./sketch/es";
 import { appHostEs } from "./app-host/es";
 import { agentAvailabilityEs } from "./agent-availability/es";
 
@@ -37,6 +38,7 @@ import { agentFailureEs } from "./agent-failure/es";
 import { chatStorageEs } from "./chat-storage/es";
 
 export const es: Catalog = {
+  sketch: sketchEs,
   appHost: appHostEs,
   agentAvailability: agentAvailabilityEs,
   common: {
@@ -338,11 +340,21 @@ export const es: Catalog = {
       },
     },
     resumeFailure: {
-      title: "No se pudo reanudar la Session guardada",
-      description: "El backend rechazó la Session guardada. El mensaje y los adjuntos siguen almacenados sin duplicarse.",
-      sameSession: "Reintentar la misma Session",
-      freshSession: "Iniciar una Session nueva",
-      abandon: "Abandonar turno",
+      title: "{{backend}} no puede abrir la sesión guardada de este chat",
+      description: "Tu mensaje y sus adjuntos están guardados y todavía no se han enviado.",
+      retriedTitle: "El reintento de la sesión original falló",
+      retriedDescription: "Lo más probable es que esa sesión ya no exista en {{backend}}. Tu mensaje y sus adjuntos siguen guardados y sin enviar.",
+      recommended: "Recomendado",
+      sameSession: "Reintentar la sesión original",
+      sameSessionDetail: "Volver a conectar con la sesión original. Si funciona, el agente conserva todo lo que sabe de este chat.",
+      sameSessionRetry: "Reintentar otra vez",
+      sameSessionRetryDetail: "Intentar la misma reconexión una vez más. Ya falló una vez.",
+      freshSession: "Iniciar una sesión nueva",
+      freshSessionDetail: "Descartar la sesión original y dejar que el agente empiece de nuevo desde un resumen de la conversación reciente. Lo anterior deja de estar a su vista.",
+      freshSessionBlocked: "Este chat se importó desde fuera y sigue ligado a la sesión con la que llegó, así que no puede cambiar a una nueva.",
+      abandon: "Descartar este turno",
+      abandonDetail: "No se envía nada; este turno termina aquí. Tu mensaje permanece en este chat.",
+      actionFailed: "No se pudo completar: {{message}}",
     },
     readOnly: "Este chat está actualmente en modo de solo lectura",
     backendUnavailable: "{{backend}} no está disponible actualmente.",

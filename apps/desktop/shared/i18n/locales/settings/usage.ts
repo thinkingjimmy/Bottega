@@ -1,10 +1,13 @@
 /**
- * [INPUT]: No runtime dependencies; defines five isomorphic locale objects for Settings › Usage
- * [OUTPUT]: Provides five languages for Settings › Usage
+ * [INPUT]: Depends on the five usage-limits catalogs and defines the local history vocabulary.
+ * [OUTPUT]: Provides five matching languages for Settings Usage and composer quota details.
  * [POS]: Usage feature catalog of shared/i18n/locales/settings; dynamic CLI diagnostics are not translated
  */
 
+import { usageLimitsEn, usageLimitsZhCN, usageLimitsJa, usageLimitsFr, usageLimitsEs } from "./usage-limits";
+
 export const settingsUsageEn = {
+  limits: usageLimitsEn,
   today: "Today",
   allTime: "All time",
   rawTokenCost: "Raw token cost",
@@ -42,6 +45,7 @@ export const settingsUsageEn = {
 type SettingsUsageCatalog = typeof settingsUsageEn;
 
 export const settingsUsageZhCN: SettingsUsageCatalog = {
+  limits: usageLimitsZhCN,
   today: "今天",
   allTime: "全时段",
   rawTokenCost: "Token 折算费用",
@@ -77,6 +81,7 @@ export const settingsUsageZhCN: SettingsUsageCatalog = {
 };
 
 export const settingsUsageJa: SettingsUsageCatalog = {
+  limits: usageLimitsJa,
   today: "今日",
   allTime: "全期間",
   rawTokenCost: "Token 換算費用",
@@ -112,6 +117,7 @@ export const settingsUsageJa: SettingsUsageCatalog = {
 };
 
 export const settingsUsageFr: SettingsUsageCatalog = {
+  limits: usageLimitsFr,
   today: "Aujourd’hui",
   allTime: "Depuis le début",
   rawTokenCost: "Coût brut des tokens",
@@ -147,6 +153,7 @@ export const settingsUsageFr: SettingsUsageCatalog = {
 };
 
 export const settingsUsageEs: SettingsUsageCatalog = {
+  limits: usageLimitsEs,
   today: "Hoy",
   allTime: "Histórico",
   rawTokenCost: "Coste bruto de tokens",

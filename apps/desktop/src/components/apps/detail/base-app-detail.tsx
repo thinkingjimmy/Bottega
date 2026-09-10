@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Base App lifecycle/generation, the main-owned AppRecordProjection, declaresBaseGui, BaseWorkbench/AppGuiSurface, trusted file-export IPC, the shared useAppEditor command, use-chat, routing, and window surface capsule checkpoints
+ * [INPUT]: Depends on localized surface migration failure projection; Depends on Base App lifecycle/generation, the main-owned AppRecordProjection, declaresBaseGui, BaseWorkbench/AppGuiSurface, trusted file-export IPC, the shared useAppEditor command, use-chat, routing, and window surface capsule checkpoints
  * [OUTPUT]: Provides BaseAppDetail with a main-derived studioSurfaceReady gate that discloses every requested capability and offers allow/decline, a re-authorize exit from surface failures, uniformly styled tri-zone header actions, explicit App-window handoff, generation-bound native file export, Use panel/dock, Editor navigation, settings, and normal-close checkpoints
  * [POS]: Resident Base App Studio; the App-window shell removes global chrome while this component keeps the same main and third-panel product structure
  */
@@ -78,6 +78,7 @@ import {
   DesignHistoryDialog,
 } from "../design/design-history-dialog";
 import { errorMessage } from "@/lib/errors";
+import { surfaceErrorMessage } from "@/lib/chat-composer/errors";
 import { declaresBaseGui } from "../app-state";
 import { useAppEditor } from "../use-app-editor";
 import { AppWorkbench } from "./app-workbench";
@@ -454,7 +455,7 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
       navigate("/apps", { replace: true });
     } catch (cause) {
       toast.error(t("windowSurface.openInWindowFailed"), {
-        description: errorMessage(cause),
+        description: surfaceErrorMessage(cause, t("windowSurface.openInWindowFailed")),
       });
     }
   };

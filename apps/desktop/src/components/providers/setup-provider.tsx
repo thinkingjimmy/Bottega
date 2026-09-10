@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React Context, the locale catalog, setup-client, the Settings store, the narrow backend projection, onboarding-gate judgments, and shared SetupStatus
- * [OUTPUT]: Maintains revision-ordered backend facts, Chat-local evidence and one shared expiry clock; preserves workbench residence and exposes restricted App recheck/management actions.
+ * [OUTPUT]: Maintains revision-ordered backend facts, Chat-local evidence, one expiry clock and visible full-check progress; preserves residence-scoped actions.
  * [POS]: Renderer Agent-environment context; the main window owns setup lifecycle while App windows consume only backend runtime projections for their resident chat
  */
 
@@ -17,6 +17,7 @@ import {
 } from "react";
 import { useEvidenceClock } from "./availability/use-evidence-clock";
 import { availabilityDeadlines, mergeBackendSnapshots } from "../../../shared/agent-availability/snapshots";
+import { projectAvailability } from "../../../shared/agent-availability/projection";
 import type { TurnAvailabilityEvidence } from "../../../shared/agent-availability/types";
 import { AGENT_BACKEND_ORDER, type AgentBackendId } from "../../../shared/agent-ipc";
 import type {
@@ -299,7 +300,8 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<SetupContextValue>(
     () => ({
       status, now, recentTurns, openAgentSettings,
-      checking,
+      checking: checking || Object.values(busy).includes("recheck") ||
+        Boolean(status?.backends.some((backend) => backend.authStatus === "checking" || projectAvailability(backend, now).refreshing)),
       busy,
       latestChecking,
       error,

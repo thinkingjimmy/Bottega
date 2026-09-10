@@ -1,8 +1,9 @@
 /**
  * [INPUT]: Depends on Node fs/path, nanoid, shared Project/App contracts, project-store-schema, main/errors, and persistence/serial-queue
- * [OUTPUT]: Provides ProjectStore v8 mutations with mirrored monotonic commits, lifecycle/deletion authority, and delegated workspace plus App-placement atoms over one ProjectFile
+ * [OUTPUT]: ProjectStore v9 single writer for mirrored local authority and portable identity associations; workspace and App placement mutations retain their existing lifecycle fences.
  * [POS]: Canonical Project persistence and lifecycle authority; focused collaborators share its queue/state/commit port and never create secondary ledgers
  */
+import { ProjectPortableApi } from "./portable/api";
 import { basename } from "node:path";
 import { nanoid } from "nanoid";
 import {
@@ -34,6 +35,7 @@ export { projectAppearanceSchema, type ProjectDeletionCheckpoint,
   type StoredProject } from "./project-store-schema";
 
 export type ProjectStoreDependencies = {
+  storageMode?: import("../../../../shared/local-storage/contracts").StorageMode;
   atomicWrite?: (filePath: string, content: string) => Promise<void>;
   readText?: (filePath: string) => Promise<string>;
   now?: () => number;
@@ -41,6 +43,7 @@ export type ProjectStoreDependencies = {
 };
 
 export class ProjectStore {
+  readonly portable: ProjectPortableApi;
   readonly filePath: string;
   readonly backupPath: string;
   readonly failurePath: string;
@@ -55,6 +58,8 @@ export class ProjectStore {
   readonly appPlacements: ProjectAppPlacements;
 
   constructor(userData: string, private readonly dependencies: ProjectStoreDependencies = {}) {
+    this.portable = new ProjectPortableApi({ enqueue: operation => this.queue.enqueue(operation),
+      state: () => { this.assertReady(); return this.state; }, commit: next => this.commit(next) }, dependencies.storageMode);
     this.persistence = new ProjectStorePersistence(userData, dependencies);
     this.filePath = this.persistence.filePath;
     this.backupPath = this.persistence.backupPath;

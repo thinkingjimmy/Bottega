@@ -1,9 +1,12 @@
 /**
  * [INPUT]: Depends on shared Base schema, BaseStoreFiles/AttachmentStore and Gallery ownership ledger; Received verified source state, projectId/intentId and meta release feedback
- * [OUTPUT]: Provides prepareProjectBase, re-bind and retain attachment ownership, copy blob/generation, publish project meta, and mount the promoted state frozen and id-indexed like every other Store entry
+ * [OUTPUT]: Exact-owner Base promotion and retained-root transfer; synchronized schema migration requires a validated atomic cloud receipt.
  * [POS]: The promotion leaf steps of bases/store; No touching lifecycle journal, no backing up to Store
  */
 
+import { serializeSync, syncPath } from "./sync/files";
+import { emptyBaseSync } from "./sync/model";
+import { dirname } from "node:path";
 import {
   type BaseOwner,
 } from "../../../../shared/bases-ipc";
@@ -24,6 +27,9 @@ export async function prepareProjectBase(input: {
   attachments: BaseAttachmentStore;
   writeMeta(ownerKey: string, content: string): Promise<void>;
 }): Promise<StoredBase> {
+  if (input.source.sync.cloudState !== "local-only") throw new Error("Synchronized Base promotion requires a confirmed lifecycle receipt");
+  const sync = emptyBaseSync(input.intentId);
+  const syncFile = serializeSync(sync);
   const owner: BaseOwner = {
     kind: "project",
     projectId: input.projectId,
@@ -34,6 +40,7 @@ export async function prepareProjectBase(input: {
     ownerInstanceId: input.intentId,
     // 升格产物回到 Project 容器；根可见性由用户后续显式动作决定。
     navigation: { kind: "project-contained", projectId: input.projectId },
+    syncGeneration: 0, syncHash: syncFile.hash,
     revision: 0,
     rowsGeneration: 0,
     galleryGeneration: 0,
@@ -64,6 +71,7 @@ export async function prepareProjectBase(input: {
     input.files.historyPath(input.toKey, 0),
     input.files.serializeHistory(history)
   );
+  await input.files.atomicWrite(syncPath(dirname(input.files.metaPath(input.toKey)), input.toKey, 0), syncFile.content);
   await input.writeMeta(input.toKey, input.files.serializeMeta(meta));
-  return storedBase({ meta, rows, gallery, history });
+  return storedBase({ meta, rows, gallery, history, sync });
 }

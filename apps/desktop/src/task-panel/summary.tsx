@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the shared panel snapshot, locale runtime, Agent logos, and static status symbols.
  * [OUTPUT]: Provides persistent menu-bar access with a native menu button and a separate task-list toggle.
- * [POS]: Nonactivating compact renderer for the two notch wings or one centered menu-bar surface.
+ * [POS]: Nonactivating compact renderer for the two native notch wings.
  */
 import React from "react";
 import { ChevronDown, ChevronUp, List, MessageCircleQuestion, Zap } from "lucide-react";

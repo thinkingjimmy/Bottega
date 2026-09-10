@@ -1,17 +1,21 @@
 /**
  * [INPUT]: Depends on zod, node:crypto SHA-256, and the shared five-locale enum
- * [OUTPUT]: Provides the LifecycleIntent schema for seven saga inputs (decoding normalizes a terminal intent's retired phase to its kind's last phase, while a non-terminal unknown phase stays fail-closed), the shared monotonic phase comparison (phaseReached/reached), frozen Studio-only install authorization, locale, tombstone, stableInputHash, provenance, fulfillment, and consent claims
+ * [OUTPUT]: Closed lifecycle input/phase/claim contracts, including fixed Home materialization and ordered cross-store scope cleanup.
  * [POS]: The type truth source of the lifecycle domain, covenant v3, second paragraph of the machine image; consumed by intent-store/admission-gate in a single direction
  */
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { portableChatSchema, syncScopeSchema } from "../../../shared/local-storage/contracts";
+import { scopeCleanupPlanSchema } from "./scope-cleanup/model";
 import { APP_LOCALES } from "../../../shared/i18n/locale";
 
 /* ── phase 单调枚举:首档恒为 "proposed"(身份已定、尚未准入——R7/P0-1:
  * 落盘与取 gate 之间存在崩溃窗口,重启后必须能区分「已准入」与「仅提案」,
  * 否则两个提案态互相看作 rival 而永久互锁),第二档起为准入后的推进序。 ── */
 export const INTENT_PHASES = {
+  "chat-materialize": ["proposed", "admitted", "home-committed", "chat-committed"],
+  "scope-cleanup": ["proposed", "admitted", "homes", "blobs", "bases", "projects", "apps", "chats"],
   "save-as-app": [
     "proposed",
     "admitted",
@@ -147,6 +151,8 @@ const presetInstallInput = z
   .strict();
 
 export const INTENT_INPUT_SCHEMAS: Record<LifecycleKind, z.ZodType> = {
+  "scope-cleanup": scopeCleanupPlanSchema,
+  "chat-materialize": z.object({ scope: syncScopeSchema, chat: portableChatSchema }).strict(),
   "save-as-app": saveAsAppInput,
   "base-promotion": basePromotionInput,
   "chat-slot": chatSlotInput,
@@ -312,6 +318,15 @@ export function claimsOf(
     return `${dim}:${value}`;
   };
   switch (kind) {
+    case "chat-materialize": {
+      const portable = portableChatSchema.parse(input.chat);
+      return ["sync-scope", `chat:${portable.id}`, ...(portable.classification.projectId ? [`project:${portable.classification.projectId}`] : [])];
+    }
+    case "scope-cleanup": {
+      const plan = scopeCleanupPlanSchema.parse(input);
+      return [...new Set(["sync-scope", ...plan.chats.map(item => `chat:${item.chatId}`),
+        ...plan.projectIds.map(id => `project:${id}`), ...plan.appIds.map(id => `app:${id}`), ...plan.bases.map(item => item.ownerKey)])];
+    }
     case "save-as-app":
       /* 闭包含未来子 promotion 的 project(R8:否则同 project 的另一 promotion 可穿透)。 */
       return [

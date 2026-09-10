@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on settings-client revision get/set/mutateMemory/onChanged/Chat Home chooser/listModels, shared i18n runtime, and the renderer effective locale
- * [OUTPUT]: Provides settingsStore with testable factory owner by revision rebase, sequential mutation, Memory, special commands, per-backend Models with structured Agent failures, independent epoch and useSyncExternalStore
+ * [OUTPUT]: Provides settingsStore with revision-rebased mutations, Memory commands, a Chat Home chooser returning readiness after selection, per-backend Models with structured Agent failures, independent epochs and useSyncExternalStore
  * [POS]: General/Memory/Onboarding is set to the renderer as the sole owner; Domain and back end isolation to avoid slow requests, old responses and error contamination
  */
 
@@ -277,8 +277,8 @@ export function createSettingsStoreOwner(
         return false;
       }
     },
-    chooseChatHomesRoot: async () => {
-      if (snapshot.chatHomesRootBusy) return;
+    chooseChatHomesRoot: async (): Promise<boolean> => {
+      if (snapshot.chatHomesRootBusy) return false;
       publish({
         ...snapshot,
         chatHomesRootBusy: true,
@@ -291,7 +291,9 @@ export function createSettingsStoreOwner(
           settingsLoaded = true;
           enqueueSettingsMutation.rebase(envelope);
           publish({ ...snapshot, settings: envelope.settings });
+          return envelope.settings.chatHomeState === "ready";
         }
+        return false;
       } catch (cause) {
         publish({
           ...snapshot,
@@ -303,6 +305,7 @@ export function createSettingsStoreOwner(
             )
           ),
         });
+        return false;
       } finally {
         publish({ ...snapshot, chatHomesRootBusy: false });
       }

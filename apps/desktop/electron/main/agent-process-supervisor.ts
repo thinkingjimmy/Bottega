@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AgentBackendId, ChildProcess and process-group
- * [OUTPUT]: Provides per-backend admission with a 4-slot semaphore (2 reserved for interactive), bounded FIFO background queueing, safety-lock hold/release, auxiliary-process tracking, and coordinated shutdown
+ * [OUTPUT]: Provides atomic quota exclusion, credential reservations, chat-priority cancellation and per-backend admission with a 4-slot semaphore (2 reserved for interactive), bounded FIFO background queueing, safety-lock hold/release, auxiliary-process tracking, and coordinated shutdown
  * [POS]: The sole owner of Agent child-process admission in Electron main; callers acquire a lease before spawning and report a CleanupResult after teardown
  */
 
@@ -28,6 +28,8 @@ type BackendDomain = {
   background: number;
   interactiveQueue: QueueEntry[];
   backgroundQueue: QueueEntry[];
+  credentialUsers: Set<symbol>;
+  quota?: { cancel(): void; settled: Promise<void> };
 };
 
 type ProcessClass = "interactive" | "background";
@@ -92,6 +94,7 @@ function domain(backend: AgentBackendId) {
       background: 0,
       interactiveQueue: [],
       backgroundQueue: [],
+      credentialUsers: new Set(),
     };
     domains.set(backend, value);
   }
@@ -103,7 +106,7 @@ function total(state: BackendDomain) {
 }
 
 function canAcquire(state: BackendDomain, kind: ProcessClass) {
-  if (total(state) >= AGENT_PROCESS_BUDGET.capacity) return false;
+  if (state.quota || total(state) >= AGENT_PROCESS_BUDGET.capacity) return false;
   return (
     kind === "interactive" ||
     state.background < AGENT_PROCESS_BUDGET.backgroundCapacity
@@ -127,6 +130,7 @@ function createLease(
       if (kind === "interactive") state.interactive -= 1;
       else state.background -= 1;
       drain(backend, state);
+      notifyQuotaAdmission(backend);
     },
   };
 }
@@ -175,6 +179,7 @@ export function acquireAgentProcessLease(
     );
   }
   const state = domain(backend);
+  state.quota?.cancel();
   if (
     kind === "interactive" &&
     state.interactiveQueue.length === 0 &&
@@ -292,6 +297,7 @@ export function registerAuxiliaryAgentProcess(
 function stopAgentProcessAdmission(backend: AgentBackendId) {
   const state = domain(backend);
   state.admissionOpen = false;
+  state.quota?.cancel();
   for (const entry of [
     ...state.interactiveQueue,
     ...state.backgroundQueue,
@@ -391,4 +397,49 @@ export function agentProcessBudgetSnapshot(backend: AgentBackendId) {
 /** 只暴露数量，不泄露 child/token；测试与 shutdown 诊断据此证明无残留。 */
 export function agentAuxiliaryProcessCount(backend: AgentBackendId) {
   return domain(backend).auxiliary.size;
+}
+
+
+const quotaListeners = new Set<(backend: AgentBackendId) => void>();
+function notifyQuotaAdmission(backend: AgentBackendId) {
+  for (const listener of quotaListeners) listener(backend);
+}
+export function subscribeQuotaAdmission(listener: (backend: AgentBackendId) => void) {
+  quotaListeners.add(listener);
+  return () => { quotaListeners.delete(listener); };
+}
+export function agentQuotaBlocked(backend: AgentBackendId) {
+  const state = domain(backend);
+  return !state.admissionOpen || state.safetyLocks.size > 0 || state.credentialUsers.size > 0 ||
+    total(state) > 0 || state.interactiveQueue.length > 0 || state.backgroundQueue.length > 0 || Boolean(state.quota);
+}
+/** The reservation is synchronous; callers await ready before accessing native credentials. */
+export function reserveAgentCredentialUse(backend: AgentBackendId) {
+  assertAgentProcessAdmission(backend);
+  const state = domain(backend);
+  const owner = Symbol("credential-use");
+  state.credentialUsers.add(owner);
+  const ready = state.quota?.settled ?? Promise.resolve();
+  state.quota?.cancel();
+  return { ready, release() {
+    if (!state.credentialUsers.delete(owner)) return;
+    notifyQuotaAdmission(backend);
+  } };
+}
+/** No queue: a busy Agent keeps its previous quota snapshot until an active consumer can retry. */
+export function tryAcquireAgentQuotaLease(backend: AgentBackendId, cancel: () => void) {
+  if (agentQuotaBlocked(backend)) return null;
+  const state = domain(backend);
+  let finish!: () => void;
+  const owner = { cancel, settled: new Promise<void>((resolve) => { finish = resolve; }) };
+  state.quota = owner;
+  state.background += 1;
+  return { release() {
+    if (state.quota !== owner) return;
+    state.quota = undefined;
+    state.background -= 1;
+    finish();
+    drain(backend, state);
+    notifyQuotaAdmission(backend);
+  } };
 }

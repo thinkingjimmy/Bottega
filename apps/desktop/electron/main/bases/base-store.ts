@@ -1,8 +1,13 @@
 /**
  * [INPUT]: Depends on shared owner-aware Base/Gallery/navigation schemas, durable file IO, attachments, startup loading, and SerialQueue
- * [OUTPUT]: Provides owner-key indexed frozen Base storage with an id index, rows/gallery/history, canonical navigation mutation, pre-copy query snapshot byte identity, declaration-scoped generation commits, and promotion primitives
+ * [OUTPUT]: Single owner-key Base writer for immutable snapshots, declared row deltas, Gallery/history and versioned synchronization envelopes published by the same generation meta commit.
  * [POS]: Durable Base authority; lifecycle services classify visibility here while renderer projections only consume summaries
  */
+import { BaseSyncApi } from "./store/sync/api";
+import { emptyBaseSync, type BaseSyncEnvelope } from "./store/sync/model";
+import { enqueueBaseMutation } from "./store/sync/queue";
+import { syncAttachmentRoots } from "./store/sync/projection";
+import { serializeSync, syncPath } from "./store/sync/files";
 import { join } from "node:path";
 import {
   BASE_OWNER_KEY_PATTERN,
@@ -84,6 +89,8 @@ export type {
 };
 const NO_BLOBS: ReadonlySet<string> = new Set<string>();
 export class BaseStore {
+  readonly sync: BaseSyncApi;
+  private readonly blockedOwners = new Set<string>();
   readonly basesRoot: string;
   readonly root: string;
   readonly exportsRoot: string;
@@ -102,6 +109,17 @@ export class BaseStore {
     this.exportsRoot = join(this.basesRoot, "exports");
     this.attachments = new BaseAttachmentStore(this.root);
     this.now = dependencies.now ?? Date.now;
+    this.sync = new BaseSyncApi({ queue: this.queue,
+      state: (key, id) => this.requireState(key, id),
+      commit: (key, id, envelope, snapshot) => {
+        const state = this.requireState(key, id);
+        return this.commitLocked(key, id, {
+          meta: { ...(snapshot?.meta ?? state.meta), owner: state.meta.owner, ownerInstanceId: id, navigation: state.meta.navigation, revision: state.meta.revision + 1 },
+          rows: snapshot?.rows ?? state.rows, changedRowIds: snapshot ? ALL_ROWS_CHANGED : NO_ROWS_CHANGED,
+          operation: "sync-reconcile",
+        }, envelope);
+      },
+    }, dependencies.storageMode);
     this.files = new BaseStoreFiles(this.root, {
       readText: dependencies.readText,
       atomicWrite: dependencies.atomicWrite,
@@ -111,8 +129,8 @@ export class BaseStore {
     chats: ReadonlyMap<string, BaseIdentity>,
     projectIds: ReadonlySet<string> = new Set()
   ) {
-    await this.queue.enqueue(() =>
-      initializeBaseStoreStartup({
+    await this.queue.enqueue(async () => {
+      await initializeBaseStoreStartup({
         root: this.root,
         exportsRoot: this.exportsRoot,
         files: this.files,
@@ -121,8 +139,9 @@ export class BaseStore {
         chats,
         projectIds,
         now: this.now,
-      })
-    );
+      });
+      this.blockedOwners.clear();
+    });
   }
   /** 唯一查表面：在册即状态，不在册即 null。没有第三种存在方式。 */
   get(ownerKey: string, ownerInstanceId?: string): BaseSnapshot | null {
@@ -323,6 +342,7 @@ export class BaseStore {
 
   private lookup(ownerKey: string, ownerInstanceId?: string) {
     this.assertOwnerKey(ownerKey);
+    if (this.blockedOwners.has(ownerKey)) throw new Error("Base save outcome is unknown; reopen storage before editing");
     const state = this.states.get(ownerKey);
     if (!state) return null;
     if (ownerInstanceId) this.assertInstance(state.meta, ownerInstanceId);
@@ -340,6 +360,7 @@ export class BaseStore {
 
   private requireState(ownerKey: string, ownerInstanceId: string) {
     this.assertOwnerKey(ownerKey);
+    if (this.blockedOwners.has(ownerKey)) throw new Error("Base save outcome is unknown; reopen storage before editing");
     const state = this.states.get(ownerKey);
     if (!state) throw new BaseNotFoundError("Base 不存在");
     this.assertInstance(state.meta, ownerInstanceId);
@@ -361,6 +382,7 @@ export class BaseStore {
   private async ensureLocked(identity: BaseOwnerIdentity) {
     const ownerKey = ownerKeyOf(identity.owner);
     this.assertOwnerKey(ownerKey);
+    if (this.blockedOwners.has(ownerKey)) throw new Error("Base recovery is required");
     const existing = this.states.get(ownerKey);
     if (existing) {
       this.assertInstance(existing.meta, identity.ownerInstanceId);
@@ -372,7 +394,11 @@ export class BaseStore {
         ? this.commitLocked(ownerKey, identity.ownerInstanceId, mutation)
         : snapshot;
     }
+    if (await this.files.readMetaIfPresent(ownerKey)) throw new Error("Base exists on disk and must be recovered before use");
+    const sync = emptyBaseSync(identity.ownerInstanceId);
+    const syncFile = serializeSync(sync);
     const meta = baseMetaSchema.parse({
+      syncGeneration: 0, syncHash: syncFile.hash,
       owner: identity.owner,
       ownerInstanceId: identity.ownerInstanceId,
       name: identity.title?.trim() || "Untitled Base",
@@ -414,11 +440,12 @@ export class BaseStore {
       this.files.historyPath(ownerKey, 0),
       this.files.serializeHistory(history)
     );
+    await this.files.atomicWrite(syncPath(this.root, ownerKey, 0), syncFile.content);
     await this.files.atomicWrite(
       this.files.metaPath(ownerKey),
       this.files.serializeMeta(meta)
     );
-    const state = storedBase({ meta, rows, gallery, history });
+    const state = storedBase({ meta, rows, gallery, history, sync });
     this.states.set(ownerKey, state);
     return this.snapshot(state);
   }
@@ -432,12 +459,17 @@ export class BaseStore {
   private async commitLocked(
     ownerKey: string,
     ownerInstanceId: string,
-    input: BaseStoreMutation
+    input: BaseStoreMutation,
+    syncOverride?: BaseSyncEnvelope
   ) {
     const current = this.requireState(ownerKey, ownerInstanceId);
     if (input.meta.revision !== current.meta.revision + 1) {
       throw new Error("Base commit revision 必须恰好递增 1");
     }
+    const sync = syncOverride ?? enqueueBaseMutation(current, input);
+    const syncChanged = sync !== current.sync;
+    const syncGeneration = (current.meta.syncGeneration ?? 0) + Number(syncChanged);
+    const syncFile = syncChanged ? serializeSync(sync) : null;
     const rowsChanged = mutationTouchesRows(input);
     if (!rowsChanged && input.rows !== current.rows) {
       throw new Error("meta-only commit 不允许修改 rows");
@@ -490,6 +522,7 @@ export class BaseStore {
       ...input.meta,
       owner: current.meta.owner,
       ownerInstanceId,
+      syncGeneration, syncHash: syncFile?.hash ?? current.meta.syncHash,
       rowsGeneration: generation,
       galleryGeneration,
       historyGeneration,
@@ -536,14 +569,22 @@ export class BaseStore {
         this.files.serializeHistory(history)
       );
     }
-    // meta 是发布点：写不下去就整单不提交，内存状态原样保留。
-    await this.files.atomicWrite(this.files.metaPath(ownerKey), metaContent);
-    const attachmentBlobIds = this.trackAttachments(current, meta, next.rows);
+    if (syncFile) await this.files.atomicWrite(syncPath(this.root, ownerKey, syncGeneration), syncFile.content);
+    // A post-rename error is unknown, so freeze this owner until a validated reopen.
+    try {
+      await this.files.atomicWrite(this.files.metaPath(ownerKey), metaContent);
+    } catch (cause) {
+      const durable = await this.files.readMetaIfPresent(ownerKey).catch(() => null);
+      if (!durable || durable.revision !== current.meta.revision) this.blockedOwners.add(ownerKey);
+      throw cause;
+    }
+    const attachmentBlobIds = new Set([...(syncChanged ? collectRowAttachmentBlobIds(next.rows) : this.trackAttachments(current, meta, next.rows)), ...syncAttachmentRoots(sync)]);
     const committed = storedBase({
       meta,
       rows: next.rows,
       rowsById: next.rowsById,
       attachmentBlobIds,
+      sync,
       gallery,
       history,
     });
@@ -562,7 +603,8 @@ export class BaseStore {
           ownerKey,
           generation,
           galleryGeneration,
-          historyGeneration
+          historyGeneration,
+          syncGeneration
         )
         .catch((cause) =>
           console.warn(`Base ${ownerKey} 旧世代清理失败：${errorMessage(cause)}`)
@@ -601,6 +643,7 @@ export class BaseStore {
 
   private async removeLocked(ownerKey: string, ownerInstanceId?: string) {
     this.assertOwnerKey(ownerKey);
+    if (this.blockedOwners.has(ownerKey)) throw new Error("Base save outcome is unknown; reopen storage before editing");
     const state = this.states.get(ownerKey);
     if (
       state &&

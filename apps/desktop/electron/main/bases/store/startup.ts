@@ -1,16 +1,18 @@
 /**
  * [INPUT]: Depends on BaseStoreFiles/BaseAttachmentStore, the strict Base meta schema, canonical chat identities and live Project ids
- * [OUTPUT]: Provides initializeBaseStoreStartup: mount every v2 owner into the Store map frozen and id-indexed, reconcile owner liveness, and isolate any owner that fails to load
+ * [OUTPUT]: Mounts only complete current Base generations, validates owner incarnation and fails closed on missing or corrupt published dependencies without an empty replacement.
  * [POS]: The load half of bases/store; BaseStore keeps the queue, transactions and commits, this file only turns disk into memory
  */
 
+import { readSync } from "./sync/files";
+import { syncAttachmentRoots, projectBase } from "./sync/projection";
+import { canonicalJson } from "../../../../shared/local-storage/contracts";
 import { mkdir, readdir } from "node:fs/promises";
 import {
   BASE_META_BYTE_LIMIT,
   ownerKeyOf,
   type BaseMeta,
-  type BaseRow,
-} from "../../../../shared/bases-ipc";
+  } from "../../../../shared/bases-ipc";
 import { baseMetaSchema } from "../../../../shared/bases-schema";
 import { errorMessage } from "../../errors";
 import {
@@ -80,13 +82,14 @@ async function loadOwner(input: StartupInput, ownerKey: string) {
       throw new Error("meta owner 与文件名不一致");
     }
   } catch (cause) {
-    await isolate(input, ownerKey, null, cause);
-    return;
+    throw new Error(`Base ${ownerKey} cannot be opened; original files were preserved`, { cause });
   }
-  if (!(await reconcileOwner(input, meta))) return;
+  const sync = await readSync(input.files, input.root, meta);
+  if (!(await reconcileOwner(input, meta, sync.cloudState !== "local-only" || sync.detachedCustody.length > 0))) return;
 
   try {
     const rows = await input.files.readRows(meta);
+    if (sync.confirmed && canonicalJson(projectBase(sync).rows) !== canonicalJson(rows)) throw new Error("Base rows and synchronization projection disagree");
     const gallery = await input.files.readGallery(meta);
     const history = await input.files.readHistory(meta);
     const rowsById = validateStoredBase(meta, rows, gallery, {
@@ -96,15 +99,17 @@ async function loadOwner(input: StartupInput, ownerKey: string) {
     });
     input.states.set(
       ownerKey,
-      storedBase({ meta, rows, rowsById, gallery, history })
+      storedBase({ meta, rows, rowsById, gallery, history, sync,
+        attachmentBlobIds: new Set([...collectRowAttachmentBlobIds(rows), ...syncAttachmentRoots(sync)]) })
     );
-    await gcAttachments(input, ownerKey, meta.ownerInstanceId, rows);
+    await input.attachments.gcFamily(ownerFileStem(ownerKey), meta.ownerInstanceId, input.states.get(ownerKey)!.attachmentBlobIds);
     await input.files
       .gcGenerations(
         ownerKey,
         meta.rowsGeneration,
         meta.galleryGeneration,
-        meta.historyGeneration
+        meta.historyGeneration,
+        meta.syncGeneration
       )
       .catch((cause) =>
         console.warn(
@@ -113,12 +118,12 @@ async function loadOwner(input: StartupInput, ownerKey: string) {
       );
   } catch (cause) {
     input.states.delete(ownerKey);
-    await isolate(input, ownerKey, meta.ownerInstanceId, cause);
+    throw new Error(`Base ${ownerKey} recovery failed; original files were preserved`, { cause });
   }
 }
 
 /** true 表示 owner 仍然活着、可以继续加载。 */
-async function reconcileOwner(input: StartupInput, meta: BaseMeta) {
+async function reconcileOwner(input: StartupInput, meta: BaseMeta, retained: boolean) {
   const ownerKey = ownerKeyOf(meta.owner);
   if (meta.owner.kind === "chat") {
     const chat = input.chats.get(meta.owner.chatId);
@@ -130,6 +135,7 @@ async function reconcileOwner(input: StartupInput, meta: BaseMeta) {
       chat.incarnationId !== meta.owner.incarnationId ||
       chat.incarnationId !== meta.ownerInstanceId
     ) {
+      if (retained) throw new Error("BASE_OWNER_RECOVERY_REQUIRED");
       await input.files.removeFamilyFiles(ownerKey);
       await input.attachments.releaseFamily(
         ownerFileStem(ownerKey),
@@ -141,6 +147,7 @@ async function reconcileOwner(input: StartupInput, meta: BaseMeta) {
     return true;
   }
   if (input.projectIds.has(meta.owner.projectId)) return true;
+  if (retained) throw new Error("BASE_PROJECT_RECOVERY_REQUIRED");
   const isolatedAt = input.now();
   await input.files.isolateFamily(ownerKey, isolatedAt);
   await input.attachments.isolateFamily(
@@ -150,43 +157,4 @@ async function reconcileOwner(input: StartupInput, meta: BaseMeta) {
   );
   console.warn(`Project Base ${ownerKey} 缺少 Project 记录，已保守隔离`);
   return false;
-}
-
-async function isolate(
-  input: StartupInput,
-  ownerKey: string,
-  ownerInstanceId: string | null,
-  cause: unknown
-) {
-  const isolatedAt = input.now();
-  await input.files.isolateFamily(ownerKey, isolatedAt);
-  if (ownerInstanceId) {
-    await input.attachments.isolateFamily(
-      ownerFileStem(ownerKey),
-      ownerInstanceId,
-      isolatedAt
-    );
-  }
-  console.warn(
-    `Base ${ownerKey} 无法加载，已隔离为 .orphan-${isolatedAt}：${errorMessage(cause)}`
-  );
-}
-
-async function gcAttachments(
-  input: StartupInput,
-  ownerKey: string,
-  ownerInstanceId: string,
-  rows: readonly BaseRow[]
-) {
-  await input.attachments
-    .gcFamily(
-      ownerFileStem(ownerKey),
-      ownerInstanceId,
-      collectRowAttachmentBlobIds(rows)
-    )
-    .catch((cause) =>
-      console.warn(
-        `Base ${ownerKey} attachment GC 失败：${errorMessage(cause)}`
-      )
-    );
 }

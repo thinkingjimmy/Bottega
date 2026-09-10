@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on projected assistant messages, the persisted ProductFailure when one exists, localized copy/fork action, and a prebuilt process timeline
- * [OUTPUT]: Provides RegularChatTurn, the final-response/error/usage-limit presentation and optional fork action for non-plan assistant turns; an error row without a persisted failure shows its raw text and never a synthesized code
+ * [OUTPUT]: Renders regular assistant messages with copy/Fork actions, failure copy, usage-limit retry, and accessible structured interruption status.
  * [POS]: Chat transcript terminal renderer; keeps user-facing failure projection separate from the process-heavy turn renderer
  */
 
@@ -23,8 +23,6 @@ export function RegularChatTurn({
   backendId,
   backendDisplayName,
   message,
-  showContinue,
-  onContinue,
   onRetry,
   process,
   onFork,
@@ -33,8 +31,6 @@ export function RegularChatTurn({
   backendDisplayName: string;
   backendId?: AgentBackendId;
   message: AssistantChatMessage;
-  showContinue: boolean;
-  onContinue: () => void;
   onRetry: () => void;
   process: ReactNode;
   onFork?: () => void;
@@ -61,6 +57,7 @@ export function RegularChatTurn({
   return (
     <Message from="assistant">
       {process}
+      {message.completion === "interrupted" && <p role="status" className="text-sm text-muted-foreground">{t("chat.interrupted")}</p>}
       {usageLimit ? (
         <UsageLimitCard
           backendId={backendId}
@@ -76,7 +73,6 @@ export function RegularChatTurn({
           backendId={backendId}
           failure={failure}
           message={content}
-          onContinue={showContinue ? onContinue : undefined}
         />
       ) : (
         <MessageContent>
@@ -84,7 +80,7 @@ export function RegularChatTurn({
         </MessageContent>
       )}
       <ChatMessageActions
-        content={content}
+        content={message.completion === "interrupted" ? `${content}\n\n[${t("chat.interrupted")}]` : content}
         contextReceipt={message.contextReceipt}
         createdAt={message.createdAt}
         onFork={onFork}

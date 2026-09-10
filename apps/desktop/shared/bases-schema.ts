@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the constants and types of zod, bases-ipc, chart-payload of CHART_TYPES, base-aggregations, base-view-config and attachment schema of bases/gallery-attachments
- * [OUTPUT]: Provides the strict Base owner/columns/rows/filters/six-category row-backed view/meta schemas, stable XLSX issue reports, every IPC input and the discriminated mutation-result checker, plus uniqueIds/Gallery column refinements shared across files
+ * [OUTPUT]: Strict Base snapshot and save-state validation, retaining existing row/column/view budgets.
  * [POS]: Shared Base zod-validation layer; kept in lockstep with the types and constants bases-ipc owns (mirroring how agent-schema relates to agent-ipc), so only main needs zod to validate IPC input, not the renderer
  */
 
@@ -431,6 +431,8 @@ export const baseMetaSchema: z.ZodType<BaseMeta> = z
     views: z.array(baseViewSchema).min(1).max(BASE_VIEW_LIMIT),
     activeViewId: entityIdSchema,
     revision: z.number().int().nonnegative(),
+    syncGeneration: z.number().int().nonnegative().optional(),
+    syncHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     rowsGeneration: z.number().int().nonnegative(),
     galleryGeneration: z.number().int().nonnegative(),
     historyGeneration: z.number().int().nonnegative(),

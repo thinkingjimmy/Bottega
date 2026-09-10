@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React, router, Apps i18n, AppsProvider, and AppDialog form primitives
- * [OUTPUT]: Provides SaveAsAppDialog with durable ambiguous-attempt replay using the exact requestId and payload
+ * [OUTPUT]: Provides SaveAsAppDialog with durable ambiguous-attempt replay using the exact requestId and payload, explained above the fields it freezes
  * [POS]: Sole Base-to-App conversion form shared by full pages, panels, and the Sidebar
  */
 
@@ -21,6 +21,8 @@ import {
   DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import { Input } from "@ai-chat/ui/components/ui/input";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
+import { cn } from "@ai-chat/ui/lib/utils";
 import { useApps } from "@/components/providers/apps-provider";
 import { errorMessage } from "@/lib/errors";
 import { SaveAsAppRejectedError } from "@/lib/apps-client";
@@ -133,21 +135,37 @@ function OpenSaveAsAppDialog({
     }
   };
 
+  /* 冻结态的解释要落在被冻结的东西上面。重放态把名称与图标一起锁死，而
+     唯一的说明此前是弹窗**底部**一行红字——读者读到它之前，人已经在点那个
+     点不动的输入框了。 */
+  const frozen = Boolean(attempt);
+  const errorNode = error ? (
+    <p className="text-[13px]/[1.45] text-destructive" role="alert">
+      {error}
+    </p>
+  ) : null;
+
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <AppDialogContent aria-busy={busy}>
-        <DialogHeader className="shrink-0 text-left">
-          <DialogTitle>{t("apps.saveAs.title")}</DialogTitle>
-          <DialogDescription>
+        <DialogHeader className="mb-5 shrink-0 gap-0 text-left">
+          <DialogTitle className="text-xl/7 font-semibold">
+            {t("apps.saveAs.title")}
+          </DialogTitle>
+          <DialogDescription className="mt-3 text-[15px]/[1.4]">
             {t("apps.saveAs.description")}
           </DialogDescription>
         </DialogHeader>
-        <AppDialogBody className="mt-5 flex flex-col gap-4">
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="font-medium">{t("apps.saveAs.name")}</span>
+        <AppDialogBody className="flex flex-col gap-4">
+          {frozen && errorNode}
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13px]/[1.45] font-medium text-muted-foreground">
+              {t("apps.saveAs.name")}
+            </span>
             <Input
               autoFocus
-              disabled={busy || Boolean(attempt)}
+              size="lg"
+              disabled={busy || frozen}
               maxLength={120}
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -157,14 +175,22 @@ function OpenSaveAsAppDialog({
             />
           </label>
           <fieldset className="flex flex-col gap-2">
-            <legend className="font-medium text-sm">{t("apps.saveAs.icon")}</legend>
+            <legend className="mb-2 text-[13px]/[1.45] font-medium text-muted-foreground">
+              {t("apps.saveAs.icon")}
+            </legend>
             <div className="flex flex-wrap gap-2">
               {ICONS.map((candidate) => (
                 <Button
                   aria-label={t("apps.saveAs.chooseIcon", { icon: candidate })}
                   aria-pressed={icon === candidate}
-                  className="text-lg"
-                  disabled={busy || Boolean(attempt)}
+                  /* 28px 方格里 18px 的字面图形，六个挨在一起——选中与未选中
+                     只差一层 secondary 浅灰底，在这套无强调色的配色里几乎读不
+                     出来。方格放到 40px，选中态在填色之外再加一道前景描边。 */
+                  className={cn(
+                    "size-10 rounded-xl text-xl",
+                    icon === candidate && "border-foreground/40"
+                  )}
+                  disabled={busy || frozen}
                   key={candidate}
                   onClick={() => setIcon(candidate)}
                   size="icon"
@@ -176,23 +202,28 @@ function OpenSaveAsAppDialog({
               ))}
             </div>
           </fieldset>
-          {error && (
-            <p role="alert" className="text-destructive text-sm">
-              {error}
-            </p>
-          )}
+          {!frozen && errorNode}
         </AppDialogBody>
-        <DialogFooter className="mt-5 shrink-0">
+        <DialogFooter className="mt-5 shrink-0 sm:gap-3">
           <Button
+            className="text-muted-foreground hover:text-foreground"
             disabled={busy}
             onClick={() => onOpenChange(false)}
+            size="pill"
             type="button"
             variant="ghost"
           >
             {t("common.cancel")}
           </Button>
-          <Button disabled={busy || !name.trim()} onClick={() => void submit()}>
-            {busy ? t("apps.saveAs.creating") : t("apps.saveAs.title")}
+          {/* 忙态只加一颗 spinner，文案一个字不动：换成「Creating…」会让按钮
+              在按下的那一刻改变宽度，整排页脚跟着抖一下。 */}
+          <Button
+            disabled={busy || !name.trim()}
+            onClick={() => void submit()}
+            size="pill"
+          >
+            {busy && <Spinner />}
+            {t("apps.saveAs.submit")}
           </Button>
         </DialogFooter>
       </AppDialogContent>

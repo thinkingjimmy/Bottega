@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on shared UTF-8 byte-budget truncation, canonical Chat and readonly-record schemas, preview projection, SQLite connection, aggregate admission, the shared imported-entry SQL, closed commands, and repository codecs
- * [OUTPUT]: Provides all-Chat or single-Chat metadata that never projects a readonly Chat without an active generation, budgeted aggregates including empty readonly records, and byte-bounded native/imported timeline projections (one canonical turn per imported assistant entry: folded process statements unfold into text/tool parts, a plan payload becomes kind "plan") while delegating transcript navigation queries
+ * [OUTPUT]: Bounded canonical and imported projections, including zero-message materialized records, while portable mirrors remain outside native authority.
  * [POS]: Read-only query layer beneath the ChatRepository facade
  */
 
+import { completionMetadataSchema } from "../../../../../shared/local-storage/contracts";
 import { importedBackend } from "../history/source";
 import { turnOptionsSchema } from "../../../../../shared/chat-agent/options";
 import { truncateUtf8 } from "../../../../../shared/truncate-utf8";
@@ -164,14 +165,10 @@ export class ChatRepositoryReader {
     if (row.lifecycle_kind === "external-readonly") {
       return this.readonlyMetadataFromRow(row);
     }
-    /* 不在这里 messageSchema.parse：下面的 chatRecordSchema 的 messages 字段
-       用的就是同一个 schema，先验一遍等于把每条 Chat 的最后一条消息验两遍。
-       两条路径的产物逐字节相同（同一 schema、同样剥未知键），删掉的只是那
-       第二遍——1 万条 Chat 的启动投影里，这是白花的一半钱。 */
+    // The record codec validates the bounded preview once, including empty materialized Chats.
     const lastMessage = row.last_message_json
       ? parseJson(row.last_message_json, "last message")
       : null;
-    if (!lastMessage) throw new Error("native Chat metadata has no retained message");
     const session = row.session_backend && row.session_id
       ? {
           backend: row.session_backend,
@@ -233,7 +230,7 @@ export class ChatRepositoryReader {
       archivedAt: row.local_archived_at ?? row.archived_at ?? undefined,
       nextSeq: row.next_seq,
       trimmedThroughSeq: row.trimmed_through_seq || undefined,
-      messages: [lastMessage],
+      messages: lastMessage ? [lastMessage] : [],
     });
     return metadataOf(record);
   }
@@ -751,6 +748,7 @@ export class ChatRepositoryReader {
     return {
       ...common,
       role: "assistant",
+      ...completionMetadataSchema.parse(payload),
       backend: importedBackend(this.database, String(row.entry_version_id)),
       ...(parts.length ? { parts } : {}),
       /* 计划正文是本轮权威产出：与原生 planMessageKind 同律，空正文不成卡片。 */
@@ -760,7 +758,6 @@ export class ChatRepositoryReader {
         : {}),
     };
   }
-
   private importedContent(row: Row) {
     if (Number(row.byte_size) <= IMPORTED_MESSAGE_BYTE_LIMIT) {
       return String(row.content_text ?? "");
@@ -769,7 +766,6 @@ export class ChatRepositoryReader {
     const preview = truncateUtf8(String(payload.preview ?? ""), IMPORTED_MESSAGE_BYTE_LIMIT / 2, "…").value;
     return `${preview}\n\n[Imported content retained outside the renderer: ${Number(row.byte_size)} bytes]`;
 }
-
   private readSubagents(chatId: string): Record<string, PersistedSubagent> {
     const value = Object.fromEntries((this.database.prepare(
       "SELECT agent_thread_id, meta_json, parts_json FROM chat_subagents WHERE chat_id = ? ORDER BY agent_thread_id"

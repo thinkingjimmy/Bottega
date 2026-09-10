@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, domain services, Apps, Update, MCP, and window security
+ * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, history/quota services, Apps, Update, MCP, and window security
  * [OUTPUT]: Provides createMainWindow, exact-Project Tools/MCP and Extension IPC, managed-worktree admission/seatbelt roots, canonical turn validation, and App-window creation
  * [POS]: Interactive main-window authority boundary; renderer identities are routing hints and main re-derives every Project lifecycle fact
  */
@@ -48,6 +48,7 @@ import type { SkillsCatalog, WorkspaceResolver } from "../skills-catalog";
 import type { WorkspaceFileCatalog } from "../workspace-files";
 import { initiatorResultByteBudget, type BuiltinMcpLeaseStore } from "../tools/lease";
 import type { UsageService } from "../usage/usage-service";
+import type { AgentUsageLimitsService } from "../usage-limits/service";
 import type { GalleryMediaService } from "../gallery/media-service";
 import type { TurnEventsBroker } from "../gallery/turn-events-broker";
 import { resolveConversationContext } from "../workspace-resolver";
@@ -115,6 +116,7 @@ type MainWindowDependencies = {
   turnCustody: AgentTurnCustodyRuntime;
   coordinator: ConversationCoordinator;
   usage: UsageService;
+  usageLimits: AgentUsageLimitsService;
   memory: MemoryService;
   memoryRuntimes: ManagedRuntimeRegistry;
   memorySettingsOwner: MemorySettingsOwner;
@@ -152,6 +154,7 @@ export function createMainWindow({
   turnCustody,
   coordinator,
   usage,
+  usageLimits,
   memory,
   memoryRuntimes,
   memorySettingsOwner,
@@ -302,7 +305,7 @@ export function createMainWindow({
       }
     },
   });
-  registerUsage(window, rendererUrl, usage);
+  registerUsage(window, rendererUrl, usage, usageLimits);
   if (platformSupport.capabilities.memory) {
     memory.register(window, rendererUrl);
     memoryRuntimes.register(window, rendererUrl);

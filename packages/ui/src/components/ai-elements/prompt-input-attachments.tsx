@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on attachment display primitives, prompt-input attachment hooks, dialog controls, and host-injected shared UI text
- * [OUTPUT]: Provides localized PromptInputAttachments preview/remove controls with an image lightbox
+ * [INPUT]: Depends on attachment display primitives, cancellable Blob reading, dialog controls, and host-injected shared UI text.
+ * [OUTPUT]: Provides CSP-compatible image previews, host-owned edit actions, remove controls, and an image lightbox.
  * [POS]: The attachment visual layer of ai-elements PromptInput; The attachment status and blob URL lifecycle are in context/hooks, not here
  */
 
@@ -24,7 +24,8 @@ import { Dialog, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useUiText } from "@ai-chat/ui/lib/ui-text";
 import { FileIcon, XIcon } from "lucide-react";
-import { useState, type ComponentProps } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { readBlobDataUrl } from "../../lib/attachments/data-url";
 
 // ─── 输入框附件预览条：删除默认可见，仅细指针 hover 环境允许静置隐藏 ───
 
@@ -46,10 +47,29 @@ const imageRemoveClass =
 export type PromptInputAttachmentsProps = Omit<
   ComponentProps<typeof PromptInputHeader>,
   "children"
->;
+> & {
+  /** Host-owned editable attachments can replace the default image preview. */
+  attachmentAction?: (file: ReturnType<typeof usePromptInputAttachments>["files"][number]) => { label: string; badge?: ReactNode; onClick(): void } | undefined;
+};
+
+function AttachmentImage({ file, ...props }: Omit<ComponentProps<"img">, "src"> & { file: ReturnType<typeof usePromptInputAttachments>["files"][number] }) {
+  const [preview, setPreview] = useState<{ file: File; url: string }>();
+  useEffect(() => {
+    const nativeFile = file.nativeFile;
+    if (!nativeFile) return;
+    const cancellation = new AbortController();
+    void readBlobDataUrl(nativeFile, cancellation.signal).then((url) => {
+      if (!cancellation.signal.aborted) setPreview({ file: nativeFile, url });
+    }).catch(() => {});
+    return () => cancellation.abort();
+  }, [file.nativeFile]);
+  const src = file.nativeFile ? preview?.file === file.nativeFile ? preview.url : undefined : file.url;
+  return <img {...props} src={src} />;
+}
 
 export const PromptInputAttachments = ({
   className,
+  attachmentAction,
   ...props
 }: PromptInputAttachmentsProps) => {
   const attachments = usePromptInputAttachments();
@@ -67,6 +87,7 @@ export const PromptInputAttachments = ({
     <PromptInputHeader className={cn("pb-0", className)} {...props}>
       <AttachmentGroup>
         {attachments.files.map((file) => {
+          const action = attachmentAction?.(file);
           const isImage = file.mediaType?.startsWith("image/") === true;
           const name = file.filename ?? attachmentLabel;
 
@@ -84,21 +105,21 @@ export const PromptInputAttachments = ({
                 className={cn(isImage && "size-full rounded-[inherit]")}
               >
                 {isImage && file.url ? (
-                  /* 预览用 blob URL，提交时才转换 data URL。
-                     缩略图是 object-cover 的 80px 裁切，看不清全貌，故整块
-                     即触发器——type=button 不可省，这里身处 PromptInput 的
-                     <form> 内，默认的 submit 会让「想看清楚」变成「发出去」。 */
+                  /* Read the native file for CSP-compatible previews. The full thumbnail
+                     opens its host action; type=button keeps preview clicks out of submit. */
                   <button
-                    aria-label={`${previewLabel}: ${name}`}
-                    className="size-full cursor-zoom-in rounded-[inherit] outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    onClick={() => setPreviewId(file.id)}
+                    aria-label={action?.label ?? `${previewLabel}: ${name}`}
+                    title={action?.label}
+                    className={cn("relative size-full rounded-[inherit] outline-none focus-visible:ring-2 focus-visible:ring-ring/40", action ? "cursor-pointer" : "cursor-zoom-in")}
+                    onClick={() => action ? action.onClick() : setPreviewId(file.id)}
                     type="button"
                   >
-                    <img
+                    <AttachmentImage
+                      file={file}
                       alt={name}
                       className="size-full rounded-[inherit] object-cover"
-                      src={file.url}
                     />
+                    {action?.badge}
                   </button>
                 ) : (
                   <FileIcon />
@@ -146,10 +167,10 @@ export const PromptInputAttachments = ({
             {preview?.filename ?? attachmentLabel}
           </DialogTitle>
           {preview?.url && (
-            <img
+            <AttachmentImage
+              file={preview}
               alt={preview.filename ?? attachmentLabel}
               className="max-h-[calc(100vh-8rem)] w-auto max-w-full self-center rounded-[0.9rem] object-contain"
-              src={preview.url}
             />
           )}
         </AppDialogContent>

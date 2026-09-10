@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The sequencing type of shared Agent/Settings only
- * [OUTPUT]: Defines foreign history and same-source adoption contracts, including the closed optional authentication retry intent.
+ * [OUTPUT]: Foreign-history contracts retaining structured completion through source tools, messages and folded process steps.
  * [POS]: The single source of truth for the shared history-import wire; the renderer never receives a source file path and cannot forge a SessionRef
  */
 
@@ -48,7 +48,7 @@ export type ForeignHistorySummary = Readonly<{
   incompleteTail: boolean;
 }>;
 
-export type ForeignToolEvent = Readonly<{
+export type ForeignToolEvent = Readonly<import("./local-storage/contracts").CompletionMetadata & {
   id: string;
   name: string;
   input?: string;
@@ -75,7 +75,7 @@ export type ForeignProcessStep = Readonly<{
  * JSON。运行时记录不是对话内容，适配器直接跳过即可；能消失的分支
  * 永远比能写对的分支更优雅。
  * ────────────────────────────────────────────────────────── */
-export type ForeignHistoryMessage = Readonly<{
+export type ForeignHistoryMessage = Readonly<import("./local-storage/contracts").CompletionMetadata & {
   kind: "message";
   id: string;
   nativeTurnId: string;

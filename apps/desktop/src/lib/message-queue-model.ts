@@ -122,7 +122,9 @@ const contentBytes = (content: SubmissionContentV1 | undefined) =>
     ? new TextEncoder().encode(JSON.stringify(content)).byteLength
     : 0;
 
-export const queuedBytes = (queue: MessageQueue) =>
+export type QueueExtraBytes = (queue: MessageQueue) => number;
+const noExtraBytes: QueueExtraBytes = () => 0;
+export const queuedBytes = (queue: MessageQueue, extraBytes: QueueExtraBytes = noExtraBytes) =>
   queue.items.reduce(
     (total, item) =>
       total +
@@ -136,7 +138,7 @@ export const queuedBytes = (queue: MessageQueue) =>
       ) +
       contentBytes(item.content),
     0
-  );
+  ) + extraBytes(queue);
 
 const attachmentFromPart = (
   file: PromptInputFilePart & {
@@ -264,7 +266,8 @@ export type QueueMutationResult = {
 export function enqueue(
   queue: MessageQueue,
   item: QueueItem,
-  globalBytes = queuedBytes(queue)
+  globalBytes?: number,
+  extraBytes: QueueExtraBytes = noExtraBytes
 ): QueueMutationResult {
   if (queue.items.length >= QUEUE_LIMIT) {
     return {
@@ -273,12 +276,13 @@ export function enqueue(
       reason: { copyKey: "chat.queue.limit", values: { count: QUEUE_LIMIT } },
     };
   }
-  const bytes = queuedBytes({ ...queue, items: [...queue.items, item] });
-  const added = bytes - queuedBytes(queue);
+  const bytes = queuedBytes({ ...queue, items: [...queue.items, item] }, extraBytes);
+  const previousBytes = queuedBytes(queue, extraBytes);
+  const added = bytes - previousBytes;
   if (bytes > QUEUE_BYTE_BUDGET) {
     return { queue, accepted: false, reason: { copyKey: "chat.queue.chatBudget" } };
   }
-  if (globalBytes + added > QUEUE_BYTE_BUDGET_GLOBAL) {
+  if ((globalBytes ?? previousBytes) + added > QUEUE_BYTE_BUDGET_GLOBAL) {
     return { queue, accepted: false, reason: { copyKey: "chat.queue.globalBudget" } };
   }
   return {
@@ -358,13 +362,15 @@ export function tryFreeze(
   id: string,
   token: string,
   envelope: ManualTurnSubmission,
-  globalBytes = queuedBytes(queue),
-  now = Date.now()
+  globalBytes: number | undefined = undefined,
+  now = Date.now(),
+  extraBytes: QueueExtraBytes = noExtraBytes
 ): QueueMutationResult {
   const item = queue.items.find((candidate) => candidate.id === id);
   if (!item || item.state !== "submitting" || item.owner !== token) return { queue, accepted: false };
-  const added = contentBytes(envelope.content);
-  if (queuedBytes(queue) + added > QUEUE_BYTE_BUDGET || globalBytes + added > QUEUE_BYTE_BUDGET_GLOBAL) {
+  const candidate = replaceItem(queue, id, (current) => ({ ...current, ...(envelope.content ? { content: envelope.content } : {}), custodyIntentId: envelope.intentId, frozenAt: now }));
+  const previousBytes = queuedBytes(queue, extraBytes), candidateBytes = queuedBytes(candidate, extraBytes);
+  if (candidateBytes > QUEUE_BYTE_BUDGET || (globalBytes ?? previousBytes) - previousBytes + candidateBytes > QUEUE_BYTE_BUDGET_GLOBAL) {
     const reset = replaceItem(queue, id, (current) => ({ ...current, state: "queued", owner: undefined }));
     const reason = { copyKey: "chat.queue.frozenBudget" } as const;
     return {
@@ -374,12 +380,7 @@ export function tryFreeze(
     };
   }
   return {
-    queue: replaceItem(queue, id, (current) => ({
-      ...current,
-      ...(envelope.content ? { content: envelope.content } : {}),
-      custodyIntentId: envelope.intentId,
-      frozenAt: now,
-    })),
+    queue: candidate,
     accepted: true,
   };
 }
@@ -441,7 +442,7 @@ export const canSteerQueueItem = (
   editableItem(item) &&
   !item.prompt.richValue.some((node) => node.type === "workspace-file");
 
-export function swapWithInput(queue: MessageQueue, id: string, current?: QueuedPrompt) {
+export function swapWithInput(queue: MessageQueue, id: string, current?: QueuedPrompt, globalBytes?: number, extraBytes: QueueExtraBytes = noExtraBytes): { queue: MessageQueue; prompt?: QueuedPrompt; reason?: QueueError } {
   const item = queue.items.find((candidate) => candidate.id === id);
   if (!item || !editableItem(item)) return { queue, prompt: undefined };
   const items = current
@@ -449,7 +450,11 @@ export function swapWithInput(queue: MessageQueue, id: string, current?: QueuedP
         candidate.id === id ? { ...candidate, prompt: current } : candidate
       )
     : queue.items.filter((candidate) => candidate.id !== id);
-  return { queue: revise(queue, { items }), prompt: item.prompt };
+  const candidate = revise(queue, { items });
+  const previousBytes = queuedBytes(queue, extraBytes), candidateBytes = queuedBytes(candidate, extraBytes);
+  if (candidateBytes > QUEUE_BYTE_BUDGET) return { queue, reason: { copyKey: "chat.queue.chatBudget" } };
+  if ((globalBytes ?? previousBytes) - previousBytes + candidateBytes > QUEUE_BYTE_BUDGET_GLOBAL) return { queue, reason: { copyKey: "chat.queue.globalBudget" } };
+  return { queue: candidate, prompt: item.prompt };
 }
 
 export const queuedFileNodeIds = (queue: MessageQueue) =>

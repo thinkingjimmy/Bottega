@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on shared appDisplayName, react-router, Apps i18n/provider, the main-owned AppRecordProjection, Base detail, README/settings surfaces, the shared useAppEditor command, Apps client, and Web App frame/edit/repair components
+ * [INPUT]: Depends on localized surface migration failure projection; Depends on shared appDisplayName, react-router, Apps i18n/provider, the main-owned AppRecordProjection, Base detail, README/settings surfaces, the shared useAppEditor command, Apps client, and Web App frame/edit/repair components
  * [OUTPUT]: Provides AppDetailView, residence-gated Base Studio rendering, App-window handoff, Editor navigation, Base/Web distribution, retry/cancel, README, and settings
  * [POS]: App detail route; web runtime start is gated by the positive servesWebRuntime predicate, and a nonresident main route renders a transfer card before any Base Studio hook or mutation surface mounts
  */
@@ -49,6 +49,7 @@ import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { toast } from "@ai-chat/ui/components/ui/sonner";
 import { errorMessage } from "@/lib/errors";
+import { surfaceErrorMessage } from "@/lib/chat-composer/errors";
 import {
   appStudioSurface,
   canonicalAppSurfaceRoute,
@@ -128,7 +129,7 @@ export function AppDetailView() {
       navigate("/apps", { replace: true });
     } catch (cause) {
       toast.error(t("windowSurface.openInWindowFailed"), {
-        description: errorMessage(cause),
+        description: surfaceErrorMessage(cause, t("windowSurface.openInWindowFailed")),
       });
     }
   };

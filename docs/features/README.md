@@ -9,9 +9,16 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Connect Codex, Claude Code, Kimi Code, and OpenCode through one backend-neutral ACP transport.
 - Switch the next Agent in an idle chat while preserving its transcript, per-reply authors, and bounded history handoff. Each provider keeps its own authentication and quota model.
 - See runtime and authentication availability in the composer, with scoped installation, sign-in, and retry actions.
+- Read available Codex, Claude Code, and Kimi quota windows, remaining amounts, and reset times in Settings and the Agent selector. OpenCode explicitly reports that unified quota information is unavailable.
 - Use Plan mode, live steering, queued messages, and visible tool activity without hiding backend differences.
 - Create Sections and Subagents for parallel work, inspect their progress, pass bounded context between them, and promote useful results into durable Sections.
 - Search and adopt supported local CLI histories without silently rewriting their original records.
+
+## Sketch
+
+- Open **+ → Sketch** in the composer to draw, add text or eight kinds of shapes, and erase selected parts of strokes or shapes.
+- Use undo/redo, color, and stroke-width controls on a responsive square canvas with floating tools.
+- Reopen sketches from drafts and restored queues to keep editing; send the final white-background PNG through the normal image attachment flow.
 
 ## Base
 
@@ -24,6 +31,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 ## App
 
 - Install static, server, or Base-backed Apps from immutable Git revisions.
+- Use React interfaces across the bundled Development Kanban, Expense Tracker, Fitness Log, and Design Canvas, with shared interface conventions.
 - Check each App's minimum Bottega version before installation, rebuilding, authorization, or activation; return to the original candidate after upgrading. All four first-party Apps require Bottega 0.1.3 or newer.
 - Rename an App without rebuilding its active version or changing its data and permissions.
 - Use the bundled Bottega Design Canvas to create self-contained HTML directions, compare live and historical versions, and send numbered visual anchors back to the Agent without granting the preview network or storage access.
@@ -49,11 +57,18 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Separate trusted product instructions from recalled, untrusted facts before sending context to an Agent.
 - Show delivery, rebuild, source, version, and attention state instead of collapsing “unavailable” into “empty.”
 
-## Background activity on macOS
+## Background activity
 
-- Independently opt into launch at login, keep running after closing the main window, and a floating task panel; all are off by default.
-- Follow running tasks and pending requests from the top of the screen, navigate with the keyboard, and return to the related chat.
-- Use the available menu-bar entry to reopen or quit Bottega while background activity is enabled.
+- Enable background operation with one setting; launch at login remains a separate option. Both default to off.
+- On macOS, choose a Bottega Logo icon, a monochrome menu-bar icon, or the notch task panel. The selection is remembered, with an icon available when no notched display is connected. Windows and Linux use their system tray.
+- Follow running tasks and pending requests in the notch panel, navigate with the keyboard, and return to the related chat.
+- Reopen or quit Bottega through the available background entry.
+
+## Local storage
+
+- Keep Chat, Base, Project, App, and attachment data under durable local ownership, with interrupted-operation recovery and explicit retention rules.
+- Use Bottega without a cloud account; ordinary local work does not queue uploads. Cloud synchronization is not included in 0.1.4.
+- Back up the complete application data folder before changing versions. 0.1.4 requires a fresh folder when upgrading from 0.1.3 or earlier; see the [upgrade guide](../getting-started/README.md#upgrading-to-014).
 
 ## Product foundations
 

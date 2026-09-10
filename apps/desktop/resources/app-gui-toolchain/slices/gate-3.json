@@ -33,7 +33,7 @@
       "sha256": "sha256:b12d603b6284d0e593fa8c94d88ef385fe6b5a3c0ba393387848222606fa8d75"
     }
   ],
-  "runtimeSbomDigest": "sha256:6c8ca760235bdc93e3cc5badb56d65e69b001fba0591bbdacf89e70a9f791547",
+  "runtimeSbomDigest": "sha256:bc96ec401b5743ceabe543083014c1bb9c02ed34395a6d59caf2aea07b4ec35a",
   "noticesDigest": "sha256:46f9cb58165526708c463acfa3eb6a3fb53039518fde20de9ae74ddc641b681a",
   "authoringContracts": [
     "bottega-ui-blocks-v1",

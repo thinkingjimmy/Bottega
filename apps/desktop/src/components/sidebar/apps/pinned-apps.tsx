@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on shared appDisplayName, AppsProvider pinned records, the exclusive App target, shared Sidebar App activation, root-aligned Sidebar primitives, window intents, dropdown menu, and sonner
+ * [INPUT]: Depends on localized surface migration failure projection; Depends on shared appDisplayName, AppsProvider pinned records, the exclusive App target, shared Sidebar App activation, root-aligned Sidebar primitives, window intents, dropdown menu, and sonner
  * [OUTPUT]: Provides PinnedApps: exclusively active root App rows with generation-fenced activation, AppWindow, and direct Unpin
  * [POS]: components/sidebar/apps projection aligned with the parent Apps row; durable pin truth remains in the main-owned AppStore and App windows never own this management surface
  */
@@ -27,6 +27,7 @@ import { toast } from "@ai-chat/ui/components/ui/sonner";
 import { useApps } from "@/components/providers/apps-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { errorMessage } from "@/lib/errors";
+import { surfaceErrorMessage } from "@/lib/chat-composer/errors";
 import { openSurfaceInWindow } from "@/lib/window-surfaces-client";
 import type { AppRecord } from "../../../../shared/apps-ipc";
 import {
@@ -69,7 +70,7 @@ export function PinnedApps() {
       if (!result) throw new Error(t("windowSurface.openInWindowUnavailable"));
     } catch (cause) {
       toast.error(t("windowSurface.openInWindowFailed"), {
-        description: errorMessage(cause),
+        description: surfaceErrorMessage(cause, t("windowSurface.openInWindowFailed")),
       });
     }
   };

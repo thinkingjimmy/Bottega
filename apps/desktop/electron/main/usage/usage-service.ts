@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node homedir/stat, shared Usage IPC contracts, the three source adapters, UsageCache, PricingStore, and the merge/stats functions
  * [OUTPUT]: Provides UsageService (pricing-revision-aware summary aggregation), UsageCancelledError, and assertUsageRequest for validating renderer usage-query params
- * [POS]: The usage domain's long-lived service owner; coalesces per-source scans, holds the pricing snapshot and per-source result memoization, composes summaries for IPC, and drains/reopens the cache and pricing store across app lifecycle
+ * [POS]: The usage domain's long-lived service owner; coalesces per-source scans, merges inside the scan so raw events never outlive it, keeps only per-source merged facts keyed by timezone and pricing table, composes summaries for IPC, and drains/reopens the cache and pricing store across app lifecycle
  */
 
 import { homedir } from "node:os";
@@ -42,12 +42,25 @@ import {
 } from "./pricing/pricing-store";
 import type { PricingTable } from "./pricing/pricing";
 
-type SourceResult = {
+/* ============================================================
+ * 一次扫描留下什么：合并后的事实，不含原始事件。
+ *
+ * 原始事件此前跟着 latest 常驻，唯一用途是价格表变了能在内存里重算。
+ * 代价是本机 41 万个 event 对象、221 MiB 主进程堆，一直到退出为止——
+ * 而价格表一天最多动一次（models.dev 24h TTL）。现在换成：合并就地做完，
+ * 事件出栈；价格或时区变了就重扫一次，那条路径全部命中缓存。
+ * ============================================================ */
+type SourceSummary = {
   source: UsageSourceId;
-  byFile: Map<string, FileEvents>;
+  merged: MergeResult;
+  timeZone: string;
+  table: PricingTable;
   scannedFiles: number;
   issues: UsageIssue[];
 };
+
+/** 一份合并结果只在这一组输入下成立。 */
+type MergeInputs = { timeZone: string; table: PricingTable };
 
 type SourceAdapter = {
   cached: boolean;
@@ -82,15 +95,17 @@ type Deferred<T> = {
 type ActiveScan = {
   scanId: number;
   forced: boolean;
+  inputs: MergeInputs;
   controller: AbortController;
-  promise: Promise<SourceResult>;
+  promise: Promise<SourceSummary>;
 };
 
 type SourceState = {
   nextScanId: number;
   current: ActiveScan | null;
-  queued: Deferred<SourceResult> | null;
-  latest: SourceResult | null;
+  queued: Deferred<SourceSummary> | null;
+  queuedInputs: MergeInputs | null;
+  latest: SourceSummary | null;
   progress: UsageScanProgress | null;
 };
 
@@ -115,8 +130,12 @@ const DEFAULT_ADAPTERS: Record<UsageSourceId, SourceAdapter> = {
     listFiles: listCodexFiles,
     parseFile: parseCodexFile,
   },
+  /* claude 与 kimi 一样是「一个文件解析成一组孤立事件、无跨文件状态」，
+     完全满足快照缓存的契约。它此前是唯一一个 cached: false 的源，于是每次
+     启动后首开都要把 ~1.2 GB 日志全量重解析一遍（本机实测 4.4 s，占那次
+     打开墙钟的 95%）。 */
   claude: {
-    cached: false,
+    cached: true,
     listFiles: listClaudeFiles,
     parseFile: parseClaudeFile,
   },
@@ -142,6 +161,7 @@ function emptyState(): SourceState {
     nextScanId: 0,
     current: null,
     queued: null,
+    queuedInputs: null,
     latest: null,
     progress: null,
   };
@@ -230,10 +250,6 @@ export class UsageService {
   private readonly states = new Map<UsageSourceId, SourceState>(
     USAGE_SOURCE_ORDER.map((source) => [source, emptyState()])
   );
-  private readonly mergeCache = new WeakMap<
-    SourceResult,
-    { timeZone: string; table: PricingTable; merged: MergeResult }
-  >();
   private cacheEntries = new Map<string, UsageCacheEntry>();
   private cacheLoad: Promise<void> | null = null;
   private cacheDamaged = false;
@@ -285,19 +301,20 @@ export class UsageService {
     void this.pricing.refreshIfNeeded();
     const table = this.pricing.current();
     const pricingRevision = this.pricing.revision();
+    const timeZone = this.timeZone();
+    /* 输入在发起扫描前定下，扫描按它合并：于是返回的每一份结果都确实是
+       用这一版价格与时区算出来的，pricingRevision 不会指着别人的数字。 */
+    const inputs: MergeInputs = { timeZone, table };
     const selected = sourcesFor(target);
     const results = await Promise.all(
       selected.map((source) =>
-        this.requestSource(source, options.forceRefresh === true)
+        this.requestSource(source, options.forceRefresh === true, inputs)
       )
     );
     if (!this.accepting) throw new UsageCancelledError();
 
-    const timeZone = this.timeZone();
     const todayKey = dayKey(this.now(), timeZone);
-    const merged = combineMergeResults(
-      results.map((result) => this.mergeSource(result, timeZone, table))
-    );
+    const merged = combineMergeResults(results.map((result) => result.merged));
     const issues = results.flatMap((result) => result.issues);
     for (const path of merged.degradedCodexFiles) {
       if (
@@ -320,7 +337,7 @@ export class UsageService {
     }
     const stats = computeStats(
       merged.daily,
-      merged.perFileTs,
+      merged.longestChatMs,
       todayKey,
       merged.dailyCostUsd
     );
@@ -355,10 +372,11 @@ export class UsageService {
     if (!this.accepting) return;
     this.accepting = false;
     const cancellation = new UsageCancelledError();
-    const active: Promise<SourceResult>[] = [];
+    const active: Promise<SourceSummary>[] = [];
     for (const state of this.states.values()) {
       state.queued?.reject(cancellation);
       state.queued = null;
+      state.queuedInputs = null;
       if (state.current) {
         active.push(state.current.promise);
         state.current.controller.abort(cancellation);
@@ -381,62 +399,48 @@ export class UsageService {
     }
   }
 
-  /* ==========================================================
-   * 每份 SourceResult 只合并一次。缓存以 SourceResult 的对象
-   * 身份为键：重新扫描必然产生新对象，失效因此是结构保证的，
-   * 不需要任何手写的失效规则；WeakMap 也让旧代自动可回收。
-   *
-   * 这消掉了「All 与三个 per-source 各合并一遍 = 两倍工作量」，
-   * 首次打开 Usage 从 6 次合并降到 3 次。
-   * ========================================================== */
-
-  private mergeSource(
-    result: SourceResult,
-    timeZone: string,
-    table: PricingTable
-  ): MergeResult {
-    const cached = this.mergeCache.get(result);
-    if (
-      cached &&
-      cached.timeZone === timeZone &&
-      cached.table === table
-    ) {
-      return cached.merged;
-    }
-    const merged = mergeUsageFiles(
-      [...result.byFile].map(([path, file]) => ({
-        source: result.source,
-        path,
-        file,
-      })),
-      timeZone,
-      table
-    );
-    this.mergeCache.set(result, { timeZone, table, merged });
-    return merged;
-  }
-
   private state(source: UsageSourceId) {
     return this.states.get(source)!;
   }
 
-  private requestSource(source: UsageSourceId, force: boolean) {
+  /* 「这份结果算的是不是我要的东西」只由输入决定：All 与三个 per-source
+     在同一毫秒里问的是同一组输入，故互相搭车；时区或价格表变了则不能搭，
+     否则会拿到一份用旧价算出来的数字。 */
+  private requestSource(
+    source: UsageSourceId,
+    force: boolean,
+    inputs: MergeInputs
+  ) {
     if (!this.accepting) return Promise.reject(new UsageCancelledError());
     const state = this.state(source);
+    const matches = (candidate: MergeInputs) =>
+      candidate.timeZone === inputs.timeZone && candidate.table === inputs.table;
     if (state.current) {
-      if (!force || state.current.forced) return state.current.promise;
-      if (!state.queued) state.queued = deferred<SourceResult>();
+      if (!force && matches(state.current.inputs)) return state.current.promise;
+      state.queuedInputs = inputs;
+      if (!state.queued) state.queued = deferred<SourceSummary>();
       return state.queued.promise;
     }
-    if (!force && state.latest) return Promise.resolve(state.latest);
-    return this.startScan(source, force);
+    if (!force && state.latest && matches(state.latest)) {
+      return Promise.resolve(state.latest);
+    }
+    return this.startScan(source, force, inputs);
   }
 
-  private startScan(source: UsageSourceId, forced: boolean) {
+  private startScan(
+    source: UsageSourceId,
+    forced: boolean,
+    inputs: MergeInputs
+  ) {
     const state = this.state(source);
     const scanId = ++state.nextScanId;
     const controller = new AbortController();
-    const promise = this.executeScan(source, scanId, controller.signal).catch(
+    const promise = this.executeScan(
+      source,
+      scanId,
+      controller.signal,
+      inputs
+    ).catch(
       (cause) => {
         const cancelled =
           controller.signal.aborted || cause instanceof UsageCancelledError;
@@ -455,7 +459,7 @@ export class UsageService {
         throw cause;
       }
     );
-    const active: ActiveScan = { scanId, forced, controller, promise };
+    const active: ActiveScan = { scanId, forced, inputs, controller, promise };
     state.current = active;
     void promise.then(
       (result) => {
@@ -472,13 +476,29 @@ export class UsageService {
     if (state.current !== active) return;
     state.current = null;
     const queued = state.queued;
+    const inputs = state.queuedInputs ?? active.inputs;
     state.queued = null;
-    if (!queued) return;
-    if (!this.accepting) {
-      queued.reject(new UsageCancelledError());
+    state.queuedInputs = null;
+    if (!queued) {
+      this.releaseCacheWhenIdle();
       return;
     }
-    void this.startScan(source, true).then(queued.resolve, queued.reject);
+    if (!this.accepting) {
+      queued.reject(new UsageCancelledError());
+      this.releaseCacheWhenIdle();
+      return;
+    }
+    void this.startScan(source, true, inputs).then(queued.resolve, queued.reject);
+  }
+
+  /* 缓存条目只在扫描期间被查。最后一次扫描落地时一起放掉，主进程于是不必
+     为一页 Settings 常驻整份 usage-cache.json；下一次扫描从盘上读回来，
+     一次打开至多一次。 */
+  private releaseCacheWhenIdle() {
+    for (const state of this.states.values()) if (state.current) return;
+    this.cacheEntries = new Map();
+    this.cacheLoad = null;
+    this.cache.release();
   }
 
   private async ensureCache() {
@@ -494,8 +514,9 @@ export class UsageService {
   private async executeScan(
     source: UsageSourceId,
     scanId: number,
-    signal: AbortSignal
-  ): Promise<SourceResult> {
+    signal: AbortSignal,
+    inputs: MergeInputs
+  ): Promise<SourceSummary> {
     await this.ensureCache();
     signal.throwIfAborted();
     const adapter = this.adapters[source];
@@ -533,7 +554,9 @@ export class UsageService {
       });
       return {
         source,
-        byFile: new Map(),
+        merged: mergeUsageFiles([], inputs.timeZone, inputs.table),
+        timeZone: inputs.timeZone,
+        table: inputs.table,
         scannedFiles: 0,
         issues: [
           ...issues,
@@ -665,7 +688,20 @@ export class UsageService {
       scanned,
       total: paths.length,
     });
-    return { source, byFile, scannedFiles: paths.length, issues };
+    /* 合并就地做完，byFile 随本次调用一起出栈。留到调用方那一层再合并，
+       就等于把这一源的全部事件挂到 latest 上活到进程结束。 */
+    return {
+      source,
+      merged: mergeUsageFiles(
+        [...byFile].map(([path, file]) => ({ source, path, file })),
+        inputs.timeZone,
+        inputs.table
+      ),
+      timeZone: inputs.timeZone,
+      table: inputs.table,
+      scannedFiles: paths.length,
+      issues,
+    };
   }
 
   private publishProgress(progress: UsageScanProgress) {

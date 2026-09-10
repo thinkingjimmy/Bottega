@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Chat and Agent IPC turn-item vocabulary
- * [OUTPUT]: Provides sequential TurnDraft, Plan projection, delta/item/finalize state machines, ProductFailure-preserving terminal and warning projection, and the SubagentSettleOutcome ruler that converges still-running subagents by the turn's own terminal
+ * [OUTPUT]: Canonical turn reduction that settles incomplete tools/subagents as interrupted and preserves structured terminal metadata.
  * [POS]: Shared turn-state core consumed by main persistence and renderer live projection
  */
 
@@ -248,11 +248,11 @@ export function finalize(
     .filter((part) => part.type !== "text" || part.text.trim())
     .map((part) =>
       part.type === "tool" && part.status === "running"
-        ? { ...part, status: "failed" as const }
+        ? { ...part, status: "failed" as const, completion: "interrupted" as const, completionReason: "execution-unconfirmed" as const }
         : /* 工具没报完成就是失败（工具必报终态）；子 agent 不是——它的终态
              由 turn 终态收敛，见 SubagentSettleOutcome。 */
           part.type === "subagent" && part.status === "running"
-          ? { ...part, status: SUBAGENT_PART_STATUS[subagentOutcome] }
+          ? { ...part, status: SUBAGENT_PART_STATUS[subagentOutcome], ...(subagentOutcome === "interrupted" ? { completion: "interrupted" as const, completionReason: "execution-unconfirmed" as const } : {}) }
         : (part as ChatPart)
     );
   // 最终正文取「最后一个 plan part，否则最后一条 text」——计划是本轮权威产出，

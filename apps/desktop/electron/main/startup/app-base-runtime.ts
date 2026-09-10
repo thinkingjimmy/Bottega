@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppsService GUI/data-migration ports, ProjectsService App custody lookup, and BasesService main-owned mutations
- * [OUTPUT]: Provides App GUI Base snapshot/query/mutation adapters, App data migration wiring, and startup migration reconciliation reporting
+ * [OUTPUT]: Provides App GUI Base adapters, mutation-time App migration authorization, and startup reconciliation reporting
  * [POS]: Startup composition seam between Apps and Bases; the Electron root supplies owners but does not implement cross-domain policy
  */
 
@@ -59,10 +59,10 @@ export async function configureAppBaseRuntime(input: Readonly<{
       ),
   });
   input.apps.configureAppDataMigrations({
-    apply: async (appId, file) => {
+    apply: async (appId, file, assertMutationAllowed) => {
       const project = input.projects.findByAppId(appId);
       if (!project) throw new Error("App 对应的 Project 不存在");
-      await input.bases.applyAppDataMigration(`project:${project.id}`, file);
+      await input.bases.applyAppDataMigration(`project:${project.id}`, file, assertMutationAllowed);
     },
   });
   for (const failure of await input.apps.reconcileAppDataMigrations()) {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the ledger schema, relay release, submission-outcome helpers, and the staging-owner map; every operation receives and mutates a LedgerState draft directly
- * [OUTPUT]: Provides transitionManual/transitionCreateIntent/notice-outbox phase mutations, failArchived (converts orphaned claimed+unknown manual intents and stuck relays to failed+ARCHIVED), and releaseConversationResources (drops a chat's relay/create/manual/steer/notice records and returns retained staging payloads) — all pure mutations on the LedgerState draft
+ * [OUTPUT]: Pure manual/create/notice lifecycle mutations with handoff-aware terminal payload retention.
  * [POS]: Manual/create-intent lifecycle unit of coordinator/state/operations; RelayLedger owns persistence, indexing, and event emission around these mutations
  */
 
@@ -100,7 +100,7 @@ export function transitionManual(
   }
   const candidate: Record<string, unknown> = { ...current, phase };
   if (phase === "settled") {
-    delete candidate.payload;
+    if (current.cloudHandoff?.state !== "pending") delete candidate.payload;
     candidate.terminalAt = now;
   }
   const next = manualIntentSchema.parse(candidate);

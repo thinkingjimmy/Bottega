@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow, owner-aware Bases schemas, canonical Chat/Project records, BaseStore/owner resolution, row mutation, IO, promotion, attachment, and file-dialog ports, plus the shared statusError constructor from main/errors
- * [OUTPUT]: Provides ownerKey CRUD/CAS/LWW, pre-copy Query snapshot descriptors, replay-aware App GUI row commands, exact App-renderer owner fences, Project probes, Section resolution, retained-data navigation promotion, attachment events, and CSV/JSON/XLSX operations
+ * [OUTPUT]: Provides ownerKey CRUD/CAS/LWW, pre-copy Query snapshot descriptors, replay-aware App GUI row commands, exact App-renderer owner fences, Project probes, Section resolution, retained-data navigation promotion, mutation-time migration guards, attachment events, and CSV/JSON/XLSX operations
  * [POS]: Bases application service; owner and trusted App-renderer boundaries are resolved here while format IO and cross-store promotion remain delegated
  */
 
@@ -381,9 +381,10 @@ export class BasesService {
   /** App 包声明、平台执行；一个 owner queue、一个 revision、一次事件。 */
   async applyAppDataMigration(
     ownerKey: string,
-    file: AppBaseDataMigrationFile
+    file: AppBaseDataMigrationFile,
+    assertMutationAllowed?: () => void
   ) {
-    return this.rowMutations.applyAppDataMigration(ownerKey, file);
+    return this.rowMutations.applyAppDataMigration(ownerKey, file, assertMutationAllowed);
   }
 
   async updateMeta(input: {

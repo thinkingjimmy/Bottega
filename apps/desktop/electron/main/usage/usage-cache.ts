@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, persistence's SerialQueue, and usage-merge's FileEvents
- * [OUTPUT]: Provides UsageCache: strict v2 schema validation on load, per-event model/four-bucket parsing, atomic replace, and per-source commitBatch
+ * [OUTPUT]: Provides UsageCache: strict v2 schema validation on load, per-event model/four-bucket parsing, atomic replace, per-source commitBatch, and release for dropping the resident copy between scans
  * [POS]: The usage-domain read cache; stores only raw events/meta/file snapshots, never timezone, root scope, price, or aggregated results
  */
 
@@ -46,6 +46,7 @@ export interface UsageCacheLike {
     source: UsageSourceId,
     entries: Map<string, UsageCacheEntry>
   ): Promise<void>;
+  release(): void;
   closeAndFlush(): Promise<void>;
   reopen(): void;
 }
@@ -265,6 +266,15 @@ export class UsageCache implements UsageCacheLike {
         throw cause;
       }
     });
+  }
+
+  /* 条目只在扫描期间被查。扫完仍持有等于把整份缓存钉在主进程里——本机
+     54 MiB JSON、41 万 events、221 MiB 堆。放掉之后下一次扫描从盘上读回来，
+     一次启动至多一次。写入路径不受影响：commitBatch 在扫描内被 await，
+     调用方只在所有扫描落地后才 release。 */
+  release() {
+    this.entries = new Map();
+    this.loaded = false;
   }
 
   async closeAndFlush() {

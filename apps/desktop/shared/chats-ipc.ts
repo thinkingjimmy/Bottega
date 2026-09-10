@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on shared Agent, ProductFailure, project, and submission contracts
- * [OUTPUT]: Provides schema v13 messages/notices with fork lineage and managed-worktree execution facts, transcript-backed image provenance, message-free renderer runtime context, ProductFailure-aware snapshots/events, fenced timeline queries, revisions, and Chats bridge
+ * [OUTPUT]: Canonical Chat message/part/subagent completion fields, fork provenance, bounded runtime/timeline projections and desktop IPC.
  * [POS]: Backend-independent durable Chat wire authority shared by main, preload, and renderer
  */
 
@@ -36,7 +36,7 @@ export const REVISION_NOT_IDLE = "REVISION_NOT_IDLE";
 export type AppChatRole = "edit" | "use";
 
 // ─── 过程条目：一 turn 一条 assistant 消息（决策 1），落盘不含 running 态 ───
-export type ChatToolPart = {
+export type ChatToolPart = import("./local-storage/contracts").CompletionMetadata & {
   type: "tool";
   itemId: string;
   /** 由 AgentTurnItemKind 派生：文本类（agent-message/plan）走 ChatTextPart，不落工具行 */
@@ -51,7 +51,7 @@ export type ChatToolPart = {
   mediaSource?: TranscriptGallerySourceRef;
 };
 
-export type ChatTextPart = {
+export type ChatTextPart = import("./local-storage/contracts").CompletionMetadata & {
   type: "text";
   itemId: string;
   text: string;
@@ -59,7 +59,7 @@ export type ChatTextPart = {
   kind?: "plan";
 };
 
-export type ChatSubagentPart = {
+export type ChatSubagentPart = import("./local-storage/contracts").CompletionMetadata & {
   type: "subagent";
   itemId: string;
   agentThreadId: string;
@@ -79,7 +79,7 @@ export type PersistedSubagentStatus =
   | "shutdown"
   | "interrupted";
 
-export type PersistedSubagentMeta = {
+export type PersistedSubagentMeta = import("./local-storage/contracts").CompletionMetadata & {
   agentThreadId: string;
   name: string;
   model?: string;
@@ -210,6 +210,10 @@ export type UserChatMessage = ChatMessageBase & {
 };
 
 export type AssistantChatMessage = ChatMessageBase & {
+  turnId?: string;
+  completion?: "complete" | "interrupted";
+  completionReason?: "execution-unconfirmed" | "final-result-missing" | "source-error" | "source-cancelled";
+  resultHash?: string;
   role: "assistant";
   backend: AgentBackendId;
   /** 原生 Plan turn 的最终计划 */

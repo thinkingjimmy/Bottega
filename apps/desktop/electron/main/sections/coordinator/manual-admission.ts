@@ -178,7 +178,7 @@ export async function submitManualAdmission(
         await dependencies.chats.beginCreation(submission);
       }
       let lease;
-      let sequence: { noticeSeq?: number; userSeq: number; assistantSeq: number };
+      let sequence: { executorNoticeSeq?: number; noticeSeq?: number; userSeq: number; assistantSeq: number };
       let intent;
       let preparedCustody = false;
       try {
@@ -208,6 +208,7 @@ export async function submitManualAdmission(
           submissionHash,
           requestId: submission.turn.requestId,
           userMessage,
+          executorNoticeSeq: sequence.executorNoticeSeq,
           noticeSeq: sequence.noticeSeq,
           userSeq: sequence.userSeq,
           assistantSeq: sequence.assistantSeq,

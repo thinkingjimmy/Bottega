@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Library-first Skills discovery/import, settingsStore, i18n, and Button
- * [OUTPUT]: Provides the one-time main-ready Skills import card for an empty personal Library
+ * [OUTPUT]: Provides the one-time main-ready Skills import notice with separate title, description, and wrapping actions
  * [POS]: Chat-shell onboarding affordance; it never reads Agent paths and retires itself durably as done or skipped
  */
 
@@ -74,21 +74,26 @@ export function SkillsOnboardingCard() {
   };
 
   return (
-    <aside className="mx-auto mt-4 flex w-[min(46rem,calc(100%-2rem))] shrink-0 items-center gap-3 rounded-xl border bg-card p-4 shadow-sm">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-        <Sparkles className="size-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-sm">{t("onboarding.skillsFound", { count })}</p>
-        {error && <p role="alert" className="mt-1 text-destructive text-xs">{error}</p>}
+    <aside className="mx-auto mt-4 flex w-[min(46rem,calc(100%-2rem))] shrink-0 flex-wrap items-center gap-x-5 gap-y-3 rounded-lg border border-border/70 bg-muted/20 px-4 py-3 shadow-none">
+      <div className="flex min-w-0 flex-1 basis-80 items-start gap-3">
+        <span aria-hidden="true" className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+          <Sparkles className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] leading-5 font-medium">{t("onboarding.skillsImportTitle", { count })}</p>
+          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t("onboarding.skillsImportDescription")}</p>
+          {error && <p role="alert" className="mt-1 text-xs break-words text-destructive">{error}</p>}
+        </div>
       </div>
-      <Button disabled={busy} onClick={() => void retire("skipped")} variant="ghost">
-        {t("onboarding.skillsSkip")}
-      </Button>
-      <Button disabled={busy} onClick={() => void importAll()}>
-        {busy && <Spinner className="size-3.5" />}
-        {t("onboarding.skillsImportAll")}
-      </Button>
+      <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+        <Button className="text-muted-foreground" disabled={busy} onClick={() => void retire("skipped")} size="lg" variant="ghost">
+          {t("onboarding.skillsSkip")}
+        </Button>
+        <Button disabled={busy} onClick={() => void importAll()} size="lg">
+          {busy && <Spinner className="size-3.5" />}
+          {t("onboarding.skillsImportAll")}
+        </Button>
+      </div>
     </aside>
   );
 }

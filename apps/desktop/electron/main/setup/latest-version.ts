@@ -1,12 +1,14 @@
 /**
- * [INPUT]: Depends on descriptor latestVersion Extended, 24h clock and display generation
- * [OUTPUT]: Provides LatestVersionCache and GitHub Release to read the latest stable version
+ * [INPUT]: Depends on descriptor version loaders, a 24-hour cache clock, retry cooldown and bounded GitHub requests.
+ * [OUTPUT]: Provides LatestVersionCache with generation-safe results and non-blocking latest stable release reads.
  * [POS]: setup's non-blocking version-check boundary; callers read a cached result immediately and never wait on the network
  */
 
 import type { AgentBackendId } from "../../../shared/agent-ipc";
 
 const TTL_MS = 24 * 60 * 60 * 1_000;
+const RETRY_MS = 5 * 60 * 1_000;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 type Entry = {
   generation: number;
@@ -37,7 +39,7 @@ export class LatestVersionCache {
   ) {
     const now = (this.dependencies.now ?? Date.now)();
     const current = this.entries.get(backend);
-    if (!force && current?.version && current.expiresAt > now) {
+    if (!force && current && !current.checking && current.expiresAt > now) {
       return Promise.resolve(current);
     }
     const active = this.flights.get(backend);
@@ -49,7 +51,7 @@ export class LatestVersionCache {
       version: current?.version,
       checking: true,
     });
-    const request = load()
+    const request = Promise.resolve().then(load)
       .then((version): Entry => ({
         generation,
         version,
@@ -61,7 +63,7 @@ export class LatestVersionCache {
       .catch((): Entry => ({
         generation,
         version: current?.version,
-        expiresAt: current?.expiresAt ?? 0,
+        expiresAt: (this.dependencies.now ?? Date.now)() + RETRY_MS,
         checking: false,
       }))
       .then((entry) => {
@@ -91,6 +93,7 @@ export async function githubLatestVersion(
         Accept: "application/vnd.github+json",
         "User-Agent": "bottega",
       },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     }
   );
   if (!response.ok) {

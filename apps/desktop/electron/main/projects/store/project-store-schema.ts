@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on zod plus shared Project, App grant, and workspace identity contracts
- * [OUTPUT]: Provides the strict projects.json v8 grammar, Project App placement/grant invariants, hidden Base custody, lifecycle cleanup, and monotonic generations
+ * [OUTPUT]: Strict ProjectFile v9 with local workspace/grant facts separated from nullable scoped portable association and existing mirror/lifecycle invariants.
  * [POS]: Project persistence schema boundary; ProjectStore owns mutations while this module owns validation, and any other schemaVersion is corruption
  */
 
+import { projectSyncAssociationSchema } from "./portable/contract";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import {
@@ -12,7 +13,7 @@ import {
   type Project,
 } from "../../../../shared/projects-ipc";
 
-export const PROJECT_STORE_SCHEMA_VERSION = 8;
+export const PROJECT_STORE_SCHEMA_VERSION = 9;
 export const projectSortModeSchema = z.enum(["last-updated", "manual"]);
 
 const projectIdentityFields = {
@@ -200,6 +201,7 @@ const workspaceCapabilitiesSchema = z.record(
 export const storedProjectSchema = z
   .object({
     ...projectIdentityFields,
+    sync: projectSyncAssociationSchema.optional(),
     appearance: projectAppearanceSchema.optional(),
     workspaceBinding: workspaceBindingSchema,
     role: z.enum(["workspace", "base-custody"]).default("workspace"),

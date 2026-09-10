@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node filesystem/crypto paths, the current App catalog schema version, and durable atomic text/byte replacement
- * [OUTPUT]: Provides typed marker/catalog authority inspection, receipt-gated byte-preserving repair, and foreign-schema quarantine followed by an empty current-schema publication
+ * [OUTPUT]: App authority startup classification and receipt-fenced explicit repair; unsupported or corrupt files remain byte-identical and are never replaced automatically.
  * [POS]: AppStore authority witness and sole startup catalog replacement owner; separates schema discontinuity, catalog damage, and marker I/O while forbidding canonical replacement without durable evidence
  */
 
@@ -85,35 +85,8 @@ export class AppStoreAuthorityEvidence {
       return degraded("marker", catalog, marker);
     }
     if (catalog.kind === "foreign") {
-      console.warn(
-        `[apps] apps.json schemaVersion ${String(catalog.schemaVersion)} 不是 v${input.schemaVersion}，隔离原件后按空目录冷启动`
-      );
-      if (!catalog.quarantine) {
-        console.warn("[apps] foreign App catalog 无 durable 原字节隔离 receipt，禁止覆盖");
-        return degraded("catalog", catalog, marker);
-      }
-      if (marker.kind === "missing") {
-        try {
-          await this.establish();
-          marker = { kind: "valid" };
-        } catch (cause) {
-          marker = { kind: "invalid", cause };
-        }
-      }
-      if (marker.kind !== "valid") {
-        this.warnMarker(marker.cause);
-        return degraded("marker", catalog, marker);
-      }
-      try {
-        /* 隔离件先持久化，再紧邻覆盖动作复验 canonical；即使另一个进程在
-           inspection 中途换了字节，这个 writer 也没有资格抹掉新真相。 */
-        await this.assertReceipt(input.filePath, catalog.quarantine);
-        await durableReplaceFile(input.filePath, input.emptyContent);
-        return established({ kind: "valid", count: 0 }, marker, false);
-      } catch (cause) {
-        console.warn("[apps] foreign App catalog empty publication failed", cause);
-        return degraded("catalog", catalog, marker);
-      }
+      console.warn(`[apps] App catalog format ${String(catalog.schemaVersion)} is not supported; original bytes were preserved`);
+      return degraded("catalog", catalog, marker);
     }
     if (catalog.kind === "missing" && marker.kind === "missing") {
       try {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto, zod and shared Base GUI generation/access identity, and statusError from main/errors
- * [OUTPUT]: Provides BaseGuiGrantStore plus BASE_GUI_PARTIAL_DECISION: durable compatibility-bound capability decisions, all-or-nothing decide (exact request coverage or decline), idempotent compatibility-ref binding, self-administered approval, append-only revoke tombstones, revision-CAS persistence via fsynced atomic replacement, and quarantine-on-corruption cold start
+ * [OUTPUT]: Base GUI grants v2 single writer with exact consent and generation/compatibility fencing; incompatible or corrupt bytes block admission and remain unchanged.
  * [POS]: The authoritative grant ledger of apps/base-gui; App manifests only request capabilities, the live GUI is authorized only by the ledger's exact approved decision
  */
 
@@ -18,7 +18,6 @@ import { statusError } from "../../errors";
 import {
   DurableFileCorruptionError,
   durableReplaceFile,
-  quarantineDurableFile,
 } from "../../persistence/durable-json";
 
 const digestSchema = z
@@ -110,6 +109,7 @@ const empty = (): StoreFile => ({
 export class BaseGuiGrantStore {
   readonly filePath: string;
   private state = empty();
+  private blocked = true;
   private serial = Promise.resolve();
 
   constructor(userData: string) {
@@ -117,31 +117,16 @@ export class BaseGuiGrantStore {
   }
 
   async initialize() {
+    this.blocked = true;
     try {
       const content = await readFile(this.filePath, "utf8");
-      try {
-        this.state = fileSchema.parse(JSON.parse(content));
-      } catch (cause) {
-        throw new DurableFileCorruptionError(this.filePath, cause);
-      }
-      return;
+      try { this.state = fileSchema.parse(JSON.parse(content)); }
+      catch (cause) { throw new DurableFileCorruptionError(this.filePath, cause); }
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
-        await this.persist();
-        return;
-      }
-      if (!(cause instanceof DurableFileCorruptionError)) throw cause;
-      /* 旧 schema/损坏不阻断启动：隔离原件后以空账本冷启动（照
-         memory/delivery/maintenance-store 的既有隔离惯例）。后果如实——
-         全部 generation 的 grant 归空，Base App 重装后重新逐项授权。 */
-      console.warn(
-        `[apps] Base GUI 授权账本无法读取，已隔离旧版数据（备份至 ${this.filePath}.quarantine-*），Base App 请重装`,
-        cause
-      );
+      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+      await this.persist();
     }
-    await quarantineDurableFile(this.filePath);
-    this.state = empty();
-    await this.persist();
+    this.blocked = false;
   }
 
   createDecision(input: {
@@ -373,6 +358,7 @@ export class BaseGuiGrantStore {
   }
 
   private async mutate<T>(operation: () => T) {
+    if (this.blocked) throw new Error("Base GUI grants cannot be opened; original bytes were preserved");
     const wait = this.serial;
     let release!: () => void;
     this.serial = new Promise<void>((resolve) => {

@@ -203,7 +203,7 @@ export const kimiBackend: BackendDescriptor = {
         command: INSTALL_COMMAND,
         dangerous: true,
       },
-      login: { command: "kimi", dangerous: false },
+      login: { command: "kimi login", dangerous: false },
     },
   },
   /* headless / maintenance 两块随声明一起清空——理由、代码保留策略与

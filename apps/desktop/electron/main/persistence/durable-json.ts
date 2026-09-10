@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, Zod schemas, and SerialQueue
- * [OUTPUT]: Provides the errno predicate, directory fsync, durable directory publication, atomic text/byte replacement, explicit corruption errors with retained diagnostics, quarantine, initialization that quarantines untrusted content (an older or unknown schema included) and rebuilds empty (reporting `quarantined`), and serialized rollback-safe mutation
+ * [OUTPUT]: Parent-synced atomic publication and strict ledger loading; unsupported or corrupt canonical bytes block the writer and are preserved without automatic quarantine or empty replacement.
  * [POS]: The persistence I/O boundary; DurableJson owns the recovery decision for unreadable content so no ledger can turn a schema drift into a fatal startup
  */
 
@@ -184,12 +184,7 @@ export class DurableJson<T> {
     this.state = empty();
   }
 
-  /* Quarantine-and-rebuild is the default recovery, not an owner option: bytes
-     that parse but fail the strict schema — an older or unknown schemaVersion
-     included — are renamed for evidence and replaced by the empty state, and the
-     caller learns `quarantined`. There is no upgrade hook; an old ledger is
-     evidence, never input. I/O errors still throw: an empty state cannot be
-     written to a disk that does not move either. */
+  // Unsupported or corrupt persisted authority never becomes a writable empty ledger.
   async initialize() {
     if (this.poisoned) {
       throw new Error(`Durable authority 已 poisoned，必须新建实例重开：${this.filePath}`);
@@ -207,14 +202,8 @@ export class DurableJson<T> {
         this.ready = true;
         return { quarantined: false };
       }
-      console.warn(
-        `[durable-json] 账本无法读取，已隔离原件后空态重建（备份至 ${this.filePath}.quarantine-*）`,
-        loaded.error
-      );
-      await quarantineDurableFile(this.filePath);
-      await this.persistOrPoison(this.state);
-      this.ready = true;
-      return { quarantined: true };
+      this.poisoned = true;
+      throw loaded.error;
     });
   }
 

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, shared owner-aware Base/Gallery schema, and the commit-kernel durable write and errno guard; receives the v2 root plus optional read/write injections
- * [OUTPUT]: Provides ownerKey→v2 file naming, bounded meta/rows/gallery/history IO, generation GC, and family delete/isolate
+ * [OUTPUT]: Owner-key generation files, with required sync envelope digest and generation referenced by meta; rows, Gallery, history and sync dependencies publish before meta.
  * [POS]: The v2 file layout of bases/store borders on the IO; BaseStore only holds the status machine and submit order
  */
 
@@ -225,17 +225,18 @@ export class BaseStoreFiles {
     ownerKey: string,
     currentRows: number,
     currentGallery: number,
-    currentHistory: number
+    currentHistory: number,
+    currentSync?: number
   ) {
     const entries = await readdir(this.root, { withFileTypes: true });
     const pattern = new RegExp(
-      `^${escapePattern(ownerFileStem(ownerKey))}\\.(rows|gallery|history)\\.(\\d+)\\.json$`
+      `^${escapePattern(ownerFileStem(ownerKey))}\\.(rows|gallery|history|sync)\\.(\\d+)\\.json$`
     );
     await Promise.all(
       entries.flatMap((entry) => {
         const match = entry.isFile() ? pattern.exec(entry.name) : null;
         const generation = match ? Number(match[2]) : -1;
-        const current =
+        const current = match?.[1] === "sync" ? currentSync :
           match?.[1] === "gallery"
             ? currentGallery
             : match?.[1] === "history"
@@ -244,7 +245,7 @@ export class BaseStoreFiles {
         if (
           !match ||
           generation === current ||
-          generation === current - 1
+          generation === (current ?? 0) - 1
         ) {
           return [];
         }
@@ -256,7 +257,7 @@ export class BaseStoreFiles {
   async removeFamilyFiles(ownerKey: string) {
     const entries = await readdir(this.root, { withFileTypes: true });
     const pattern = new RegExp(
-      `^${escapePattern(ownerFileStem(ownerKey))}(?:\\.json|\\.(?:rows|gallery|history)\\.\\d+\\.json)$`
+      `^${escapePattern(ownerFileStem(ownerKey))}(?:\\.json|\\.(?:rows|gallery|history|sync)\\.\\d+\\.json)$`
     );
     await Promise.all(
       entries
@@ -271,7 +272,7 @@ export class BaseStoreFiles {
     const entries = await readdir(this.root, { withFileTypes: true });
     const stem = ownerFileStem(ownerKey);
     const pattern = new RegExp(
-      `^${escapePattern(stem)}(?:\\.json|\\.(?:rows|gallery|history)\\.\\d+\\.json)$`
+      `^${escapePattern(stem)}(?:\\.json|\\.(?:rows|gallery|history|sync)\\.\\d+\\.json)$`
     );
     for (const entry of entries) {
       if (!entry.isFile() || !pattern.test(entry.name)) continue;

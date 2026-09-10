@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Agent backend identities and the shared locale type.
- * [OUTPUT]: Provides versioned presence with atomic failure/retry targets, task/receipt identities, observations, manual panel opening, shortcut availability, and least-privilege panel contracts with shared expansion state and a native menu intent.
+ * [OUTPUT]: Provides icon/notch selection, platform and screen capabilities, actual entry availability, typed display retry targets, and versioned presence with task/receipt identities, observations, manual panel opening, shortcut availability, and least-privilege panel contracts with shared expansion state and a native menu intent.
  * [POS]: Shared transport contract for main, product preload, and the isolated task panel.
  */
 
@@ -8,13 +8,19 @@ import type { AgentBackendId } from "./agent-ipc";
 
 export type PresenceStatus = "disabled" | "pending" | "enabled" | "blocked" | "failed" | "unsupported";
 export type PresenceReason = "platform" | "development" | "approval" | "system-disabled" | "login-failed" |
-  "shortcut-unavailable" | "save-failed" | "tray-unavailable" | "panel-unavailable" | "screen-unavailable" | "native-unavailable" | null;
+  "shortcut-unavailable" | "save-failed" | "tray-unavailable" | "panel-unavailable" | "screen-unavailable" | "native-unavailable" | "no-notch" | null;
+export type PresenceDisplayMode = "icon" | "notch";
+export type NotchCapability = Readonly<{ status: "checking" | "available" | "unavailable"; reason: PresenceReason }>;
+export type EffectiveDisplayPresence = Readonly<{ status: PresenceStatus; reason: PresenceReason; retryTarget?: PresenceDisplayMode }>;
 export type EffectivePresence = Readonly<{ status: PresenceStatus; reason: PresenceReason; retryTarget?: boolean }>;
 export type PresenceSnapshot = Readonly<{
   quitting?: boolean;
   revision: number;
   preferenceRevision: number;
   preferences: Readonly<{ launchAtLogin: boolean; keepRunningInBackground: boolean; showTaskStatusAtTop: boolean }>;
+  capabilities: Readonly<{ background: boolean; displayModeSelection: boolean; notch: NotchCapability }>;
+  effectiveDisplayMode: PresenceDisplayMode | null;
+  display: EffectiveDisplayPresence;
   login: EffectivePresence;
   retention: EffectivePresence;
   top: EffectivePresence;
@@ -40,6 +46,7 @@ export type TaskActivitySnapshot = Readonly<{
 export const PRESENCE_CHANNEL = {
   snapshot: "presence:snapshot", changed: "presence:changed", refresh: "presence:refresh",
   setLaunchAtLogin: "presence:set-launch-at-login", setWindowRetention: "presence:set-window-retention",
+  setDisplayMode: "presence:set-display-mode",
   openPanel: "presence:open-panel", togglePanel: "presence:toggle-panel",
   openSystemSettings: "presence:open-system-settings", observe: "presence:observe",
   activities: "presence:activities", activityChanged: "presence:activity-changed", openTask: "presence:open-task",
@@ -52,6 +59,7 @@ export type PresenceBridge = {
   refresh(): Promise<PresenceSnapshot>;
   setLaunchAtLogin(enabled: boolean): Promise<PresenceSnapshot>;
   setWindowRetention(enabled: boolean): Promise<PresenceSnapshot>;
+  setDisplayMode(mode: PresenceDisplayMode): Promise<PresenceSnapshot>;
   openPanel(): Promise<void>;
   togglePanel(): Promise<void>;
   openSystemSettings(): Promise<void>;

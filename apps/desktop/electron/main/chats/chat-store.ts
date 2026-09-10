@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on Node crypto, ProductFailure, chat lifecycle/projection collaborators, device identity, the typed SQLite worker client, and the shared ChatStoreState cell with read, history, fork, transition, and persistence collaborators
- * [OUTPUT]: Provides the canonical ChatStore facade with receipt-gated SQLite mutations/forks, generation-fenced imported Fork prefixes, external-history sync/continuation, queued maintenance, runtime diagnostics, metadata cache, bounded reads, and durable revisions
+ * [OUTPUT]: Receipt-gated canonical Chat facade with bounded reads, explicit local synchronization API, lifecycle-controlled classification changes and deletion custody.
  * [POS]: Main-process Chat domain queue and metadata owner; durable writes, fork construction, pure transitions, read projections, and import/continuation sagas live in focused composed siblings
  */
 
 import { patchChatOptions, prepareSwitchCommand, switchChatAgent } from "./store/agent-switch/store";
-import { readSwitchReservation, reserveAgentSwitchSequences } from "./store/agent-switch/reservation";
+import { readSwitchReservation, reserveAgentSwitchSequences, reserveTurnSequences } from "./store/agent-switch/reservation";
 import type { ChatOptionsPatch } from "../../../shared/chat-agent/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import type { AgentBackendId, SessionRef } from "../../../shared/agent-ipc";
@@ -63,6 +63,7 @@ import {
   setProjectRecord,
   setUserTitleRecord,
 } from "./store/transitions";
+import { ChatSyncApi, persistLocalClassification } from "./store/sync/api";
 import { chatDatabasePath } from "./sqlite/paths";
 import {
   persistAppendedMessageToStorage,
@@ -99,6 +100,7 @@ const requestHash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 export class ChatStore {
+  readonly sync: ChatSyncApi;
   /* 组合而非继承：一个可变格子 + 两个只拿到它的协作者。ChatStore 仍是
      唯一的公开门面，读投影与 import/continuation saga 只是它显式转交的两半。 */
   private readonly state: ChatStoreState;
@@ -113,6 +115,7 @@ export class ChatStore {
     private readonly dependencies: ChatStoreDependencies = {}
   ) {
     this.state = new ChatStoreState(userData, dependencies.now ?? Date.now);
+    this.sync = new ChatSyncApi(this.state);
     this.reads = new ChatReadModel(this.state);
     this.history = new ChatHistorySagaApi(this.state, this.reads);
     this.forks = new ChatForkStoreApi(this.state);
@@ -313,6 +316,8 @@ export class ChatStore {
   reserveAgentSwitchSequences(input: Parameters<typeof reserveAgentSwitchSequences>[1]) { return reserveAgentSwitchSequences(this.state, input); }
   agentSwitchReservation(input: Parameters<typeof readSwitchReservation>[1]) { return readSwitchReservation(this.state, input); }
 
+  reserveTurnSequences(input: Parameters<typeof reserveTurnSequences>[1]) { return reserveTurnSequences(this.state, input); }
+
   async reserveSequences(chatId: string, count: number) {
     if (!Number.isInteger(count) || count < 1) {
       throw new Error("消息序号预留数量无效");
@@ -422,7 +427,7 @@ export class ChatStore {
   /** 只允许根级 chat 单向升级为一个 Project；不改变消息 revision。 */
   setProjectId(chatId: string, projectId: string) {
     return this.updateFacts(chatId, (current) =>
-      setProjectRecord(current, projectId, this.dependencies.isAppProject)
+      setProjectRecord(current, projectId, this.dependencies.isAppProject), true
     );
   }
 
@@ -436,13 +441,13 @@ export class ChatStore {
     }
   ) {
     return this.updateFacts(chatId, (current) =>
-      moveProjectRecord(current, input, this.dependencies)
+      moveProjectRecord(current, input, this.dependencies), true
     );
   }
 
   /** 只供记录丢失的 Project 抢救；null 输入态幂等，不改变消息 revision。 */
   clearProjectId(chatId: string) {
-    return this.updateFacts(chatId, clearProjectRecord);
+    return this.updateFacts(chatId, clearProjectRecord, true);
   }
 
   /** 仅在标题仍为 null 时写入生成标题：用户改名永远不会被后到的生成结果覆盖 */
@@ -641,7 +646,8 @@ export class ChatStore {
      缓存的整聚合随即作废——绝不留下一份 revision 已过期的 record。 */
   private updateFacts(
     chatId: string,
-    update: (current: ChatFacts) => unknown
+    update: (current: ChatFacts) => unknown,
+    lifecycleConversion = false
   ) {
     return this.state.queue.enqueue(async () => {
       assertChatId(chatId);
@@ -654,7 +660,10 @@ export class ChatStore {
         withFactRevision(current, candidate as ChatFacts)
       ) as ChatFacts;
       assertReadonlyPresentationMutation(current, facts);
-      await persistFactsToStorage({
+      if (lifecycleConversion) {
+        await persistLocalClassification({ database: this.state.requireDatabase(), deviceId: this.state.requireDeviceId(), current, facts });
+        this.state.touch();
+      } else await persistFactsToStorage({
         facts,
         database: this.state.database,
         deviceId: this.state.deviceId,

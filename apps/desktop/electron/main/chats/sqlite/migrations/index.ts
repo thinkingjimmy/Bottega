@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto, the connection transaction helper, typed ChatSchemaError, and the single Chat schema module
- * [OUTPUT]: Provides CHAT_STORE_APPLICATION_ID, CHAT_STORE_SCHEMA_VERSION, and ensureChatSchema: install the current schema on a fresh database, or fail closed on any database that records a different one (an older schema chain, edited schema bytes, a foreign application_id, a newer user_version)
+ * [OUTPUT]: Installs one complete v6 schema and identity on an empty database; mismatched versions, checksums and foreign applications are refused unchanged.
  * [POS]: SQLite schema identity gate; worker initialization must pass through it before any repository query — there is no upgrade path, an older database is refused and left untouched
  */
 
@@ -11,7 +11,7 @@ import { ChatSchemaError } from "../failure";
 import { CHAT_STORE_SCHEMA } from "./0001-chat-store";
 
 export const CHAT_STORE_APPLICATION_ID = 0x424f5454;
-export const CHAT_STORE_SCHEMA_VERSION = 5;
+export const CHAT_STORE_SCHEMA_VERSION = 6;
 const CHAT_STORE_SCHEMA_NAME = "chat-store";
 
 /* The identity row binds a database to the exact schema bytes that created it.
@@ -45,41 +45,28 @@ export function ensureChatSchema(database: SqliteDatabase, now = Date.now) {
     );
   }
 
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      version INTEGER PRIMARY KEY,
-      name TEXT UNIQUE NOT NULL,
-      checksum TEXT NOT NULL,
-      applied_at INTEGER NOT NULL
-    ) STRICT;
-  `);
+  const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{name: string}>;
+  if (!tables.some(table => table.name === "schema_migrations")) {
+    if (tables.length || userVersion !== 0 || applicationId !== 0) {
+      throw new ChatSchemaError("corrupt", "Existing database has no Chat schema identity");
+    }
+    transaction(database, () => {
+      database.exec(`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL,
+        checksum TEXT NOT NULL, applied_at INTEGER NOT NULL) STRICT`);
+      database.exec(CHAT_STORE_SCHEMA);
+      database.prepare("INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES(?,?,?,?)")
+        .run(CHAT_STORE_SCHEMA_VERSION, CHAT_STORE_SCHEMA_NAME, CHAT_STORE_SCHEMA_CHECKSUM, now());
+      database.exec(`PRAGMA user_version = ${CHAT_STORE_SCHEMA_VERSION}`);
+      database.exec(`PRAGMA application_id = ${CHAT_STORE_APPLICATION_ID}`);
+    });
+    return;
+  }
   const rows = database
     .prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version")
     .all() as Array<{ version: number; name: string; checksum: string }>;
 
-  if (rows.length === 0) {
-    if (userVersion !== 0) {
-      throw new ChatSchemaError(
-        "corrupt",
-        `SQLite schema ${userVersion} carries no Chat schema identity`
-      );
-    }
-    transaction(database, () => {
-      database.exec(CHAT_STORE_SCHEMA);
-      database
-        .prepare(
-          "INSERT INTO schema_migrations(version, name, checksum, applied_at) VALUES (?, ?, ?, ?)"
-        )
-        .run(
-          CHAT_STORE_SCHEMA_VERSION,
-          CHAT_STORE_SCHEMA_NAME,
-          CHAT_STORE_SCHEMA_CHECKSUM,
-          now()
-        );
-      database.exec(`PRAGMA user_version = ${CHAT_STORE_SCHEMA_VERSION}`);
-      database.exec(`PRAGMA application_id = ${CHAT_STORE_APPLICATION_ID}`);
-    });
-  } else {
+  if (rows.length === 0) throw new ChatSchemaError("corrupt", "Existing Chat database has no schema identity row");
+  {
     const [row] = rows;
     if (
       rows.length !== 1 ||

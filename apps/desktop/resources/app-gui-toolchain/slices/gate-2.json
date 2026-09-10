@@ -58,7 +58,7 @@
       "sha256": "sha256:2796c5a4235667edd6113d577f2dfd5d5e552a5327650d2f109101b6036ffced"
     }
   ],
-  "runtimeSbomDigest": "sha256:d377f6a1816473ed6cf48fc0093709ff093eb13084245d88d66417a8a9304e81",
+  "runtimeSbomDigest": "sha256:b11b512d2e4d4ef49c66a6dabf2bfc3e6fee153357991c0c6b0297f183c24f62",
   "noticesDigest": "sha256:29dc4d3208217fc98b4d209f1c5fb9bc7812a979fb9be62d5091ff841ee470a4",
   "authoringContracts": [
     "app-react-data-hooks-v1",

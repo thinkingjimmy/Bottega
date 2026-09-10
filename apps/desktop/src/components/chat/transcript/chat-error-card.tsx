@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shared AgentFailureNotice and its diagnostic labels, ProductFailureNotice, the touch-target-44 hit-area utility, ProductFailure/backend identity, UI Button, a Lucide status icon, and the common localized Continue action
- * [OUTPUT]: Provides TurnErrorCard (localized human-first copy with folded diagnostics when a ProductFailure exists, the raw error text on the same notice when none was persisted, optional continuation action) and FailureCard, the transcript-level "this is not an assistant message" card
+ * [INPUT]: Depends on shared AgentFailureNotice and its localized diagnostic labels, ProductFailureNotice, ProductFailure/backend identity, UI Button, and a Lucide status icon
+ * [OUTPUT]: Provides TurnErrorCard with localized recovery copy and folded diagnostics or the raw error text, and FailureCard with an explicit transcript-level recovery action
  * [POS]: Default structured Agent failure card for chat/transcript, selected by ChatTurn when no specialized usage-limit surface applies
  */
 
@@ -16,44 +16,27 @@ import { ProductFailureNotice } from "@/components/product-failure-notice";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import type { ProductFailure } from "../../../../shared/product-failure";
 
-/* 主文案与诊断在 DOM 上分离：role=alert 只包标题、解释和解决步骤，
- * 默认折叠的后端原文不会被读屏器当作新错误整段播报。 */
+// Keep folded diagnostics outside the alert so screen readers announce only recovery copy.
 
 export function TurnErrorCard({
   failure,
   message,
   backend,
   backendId,
-  onContinue,
 }: {
-  /** 缺席即该行没有 ProductFailure：原文照登，不替它编一个错误码 */
+  /** Render the raw message when no structured failure was persisted. */
   failure?: ProductFailure;
   message: string;
   backend: string;
   backendId?: AgentBackendId;
-  /** 「继续」只在失败 turn 成立，故它长在卡片里，与限流卡的「立即重试」同位 */
-  onContinue?: () => void;
 }) {
   const { t } = useAppTranslation();
-  const action = onContinue && (
-    <Button
-      className="relative mt-3 touch-manipulation touch-target-44 [--touch-target-inset:-4px]"
-      onClick={onContinue}
-      size="sm"
-      type="button"
-      variant="outline"
-    >
-      {t("common.continue")}
-    </Button>
-  );
   if (!failure) {
     return (
       <ProductFailureNotice
         copy={{ title: message, explanation: "", resolution: "" }}
         labels={agentFailureNoticeLabels(t)}
-      >
-        {action}
-      </ProductFailureNotice>
+      />
     );
   }
   return (
@@ -61,14 +44,11 @@ export function TurnErrorCard({
       backend={backend}
       backendId={backendId}
       failure={failure}
-    >
-      {action}
-    </AgentFailureNotice>
+    />
   );
 }
 
-/* 失败不是一条助手消息：它是一张卡片，跟 UsageLimitCard 用同一套语言。
-   整块染红只会把注意力烧在背景上，图标与标题才是真正要读的那两行。 */
+// Transcript-level failures share the neutral surface used by usage-limit cards.
 export function FailureCard({
   action,
   body,

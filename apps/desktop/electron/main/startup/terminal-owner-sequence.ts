@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the composition root's already-fenced terminal owner ports and irreversible-boundary callback
- * [OUTPUT]: Closes every desktop durable/runtime owner in the single canonical shutdown order
+ * [OUTPUT]: Closes the quota service and every desktop durable/runtime owner in the single canonical shutdown order
  * [POS]: Terminal shutdown ordering authority; admission fencing, recovery, UI notification, and Electron quit remain outside this module
  */
 
@@ -28,6 +28,7 @@ export type TerminalOwnerSequence = {
   projectStore: Maybe<CloseAndFlush>;
   settings: Maybe<CloseAndFlush>;
   usage: Maybe<Shutdown>;
+  usageLimits?: Maybe<Shutdown>;
   setup: Shutdown;
   apps: Maybe<Shutdown>;
   turnCustody: Maybe<Close>;
@@ -55,6 +56,7 @@ export async function closeTerminalOwnerSequence(owners: TerminalOwnerSequence) 
   await owners.chatHome?.closeAndFlush();
   await owners.projectStore?.closeAndFlush();
   await owners.settings?.closeAndFlush();
+  await owners.usageLimits?.shutdown();
   await owners.usage?.shutdown();
   await owners.setup.shutdown();
   await owners.apps?.shutdown();

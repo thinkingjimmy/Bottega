@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BaseStore single-owner queues, base-store-model sameJson, shared Base row/meta types, view scrubbing, and mutation validation, plus the shared statusError constructor from main/errors
- * [OUTPUT]: Provides CAS row/meta mutations that declare the exact rows they touched, App GUI attachment rules, no-op detection, and event projection
+ * [OUTPUT]: Provides CAS row/meta mutations, mutation-time App migration guards after no-op detection, attachment rules and event projection
  * [POS]: Base mutation core; BasesService owns authority and event order while this module owns canonical state transitions
  */
 
@@ -80,7 +80,8 @@ export class BaseRowMutations {
   /** App 包声明、平台执行；一个 owner queue、一个 revision、一次事件。 */
   async applyAppDataMigration(
     ownerKey: string,
-    file: AppBaseDataMigrationFile
+    file: AppBaseDataMigrationFile,
+    assertMutationAllowed?: () => void
   ) {
     this.options.assertAdmission();
     const current = this.store.get(ownerKey);
@@ -96,6 +97,7 @@ export class BaseRowMutations {
         this.options.assertAdmission();
         const migration = applyAppBaseDataMigration(candidate, file);
         if (!migration) return null;
+        assertMutationAllowed?.();
         changed = true;
         changedRowIds = migration.changedRowIds;
         return {

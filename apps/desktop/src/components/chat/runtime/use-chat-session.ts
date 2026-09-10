@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, renderer locale/catalog runtime and data providers, canonical chat/turn snapshots, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
- * [OUTPUT]: Composes stable Chat controllers, shared sendability, typed retry recovery and fixed Agent settings navigation while keeping active controls independent.
+ * [OUTPUT]: Composes stable Chat controllers with transcript retry recovery, shared sendability, and fixed Agent settings navigation while keeping active controls independent.
  * [POS]: The thin composition root of chat/runtime; durable authority remains in main while renderer owns view generation. Routing stays outside: post-send navigation is the chat route's draft-residence observation, not a session concern
  */
 
@@ -11,7 +11,6 @@ import type { ChatStatus } from "ai";
 import { richValueDisplayText, type RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import type { AgentBackendId, AgentScope, SessionRef, SteerOutboxProjection } from "../../../../shared/agent-ipc";
 import type { AppChatRole, ChatMessage } from "../../../../shared/chats-ipc";
-import { isFailedAssistant } from "../../../../shared/chat-failure";
 import { useChats } from "@/components/providers/chats-provider";
 import { useProjects } from "@/components/providers/projects-provider";
 import {
@@ -241,7 +240,6 @@ export function useChatSession({
     approvalBusy,
     approvalError,
     cancelPending,
-    continueTurn,
     handleStop: stopTurn,
     pendingPlanDecision,
     pendingUserInput,
@@ -575,6 +573,9 @@ export function useChatSession({
           ? {
             requestId: projectionStatus.requestId,
             retryToken: projectionStatus.retryToken,
+            /* 0 = 第一次就没能恢复；>0 = 已经重试过又落回来。恢复弹窗靠它
+               把推荐从「重试同一会话」挪到「开启新会话」，不需要新字段。 */
+            retried: (projectionStatus.generation ?? 0) > 0,
             allowedActions: projectionStatus.allowedActions ?? {
               sameSession: false,
               freshSession: false,
@@ -586,6 +587,7 @@ export function useChatSession({
       projectionStatus.phase,
       projectionStatus.requestId,
       projectionStatus.retryToken,
+      projectionStatus.generation,
       projectionStatus.allowedActions,
     ]
   );
@@ -642,15 +644,6 @@ export function useChatSession({
     const next = await addProject();
     if (next) setComposerProject(chatId, next.id);
   }, [addProject, chatId]);
-  const lastMessage = messages[messages.length - 1];
-  const canContinue =
-    status === "ready" &&
-    Boolean(agentSession) &&
-    Boolean(lastMessage) &&
-    isFailedAssistant(lastMessage) &&
-    // 限流卡片自带「立即重试」，通用「继续」在此让位，避免两个按钮抢同一件事
-    lastMessage.failureKind !== "usage-limit" &&
-    !/安全锁定|进程组清理失败/.test(lastMessage.content);
   const sections = useMemo(
     () =>
       chats
@@ -683,8 +676,6 @@ export function useChatSession({
       livePreviews,
       hasPendingApproval: approvals.length > 0,
       queued,
-      canContinue,
-      continueTurn,
       retryTurn,
     retryAuthentication,
       openPlanPanel,

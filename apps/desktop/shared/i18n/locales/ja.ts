@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides the complete Japanese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
  * [POS]: Japanese desktop locale; compile-time structure must match English exactly
  */
+import { sketchJa } from "./sketch/ja";
 import { appHostJa } from "./app-host/ja";
 import { agentAvailabilityJa } from "./agent-availability/ja";
 
@@ -37,6 +38,7 @@ import { agentFailureJa } from "./agent-failure/ja";
 import { chatStorageJa } from "./chat-storage/ja";
 
 export const ja: Catalog = {
+  sketch: sketchJa,
   appHost: appHostJa,
   agentAvailability: agentAvailabilityJa,
   common: {
@@ -338,11 +340,21 @@ export const ja: Catalog = {
       },
     },
     resumeFailure: {
-      title: "保存済み Session を再開できません",
-      description: "バックエンドが保存済み Session を拒否しました。メッセージと添付は保存済みで、重複して書き込まれません。",
-      sameSession: "同じ Session を再試行",
-      freshSession: "新しい Session を開始",
+      title: "{{backend}} がこのチャットの保存済みセッションを開けません",
+      description: "メッセージと添付ファイルは保存済みで、まだ送信されていません。",
+      retriedTitle: "元のセッションでの再試行に失敗しました",
+      retriedDescription: "このセッションは {{backend}} 側にもう残っていない可能性が高いです。メッセージと添付ファイルは保存されたままで、まだ送信されていません。",
+      recommended: "推奨",
+      sameSession: "元のセッションで再試行",
+      sameSessionDetail: "元のセッションにもう一度つなぎます。成功すればエージェントはこのチャットの文脈をすべて保ったままです。",
+      sameSessionRetry: "もう一度再試行",
+      sameSessionRetryDetail: "同じ接続をもう一度試します。すでに一度失敗しています。",
+      freshSession: "新しいセッションを開始",
+      freshSessionDetail: "元のセッションを手放し、直近のやり取りの要約からエージェントに始め直してもらいます。それより前の内容は直接には見えなくなります。",
+      freshSessionBlocked: "このチャットは外部から取り込まれ、取り込み時のセッションに紐づいたままなので、新しいセッションには移せません。",
       abandon: "このターンを破棄",
+      abandonDetail: "送信せずにこのターンを終了します。メッセージはこのチャットに残ります。",
+      actionFailed: "実行できませんでした: {{message}}",
     },
     readOnly: "このチャットは現在読み取り専用です",
     backendUnavailable: "{{backend}} は現在利用できません。",

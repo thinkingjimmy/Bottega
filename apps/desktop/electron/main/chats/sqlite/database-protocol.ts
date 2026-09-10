@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Chat/adoption contracts, Chat metadata, Chat facts, and connection modes
- * [OUTPUT]: Provides the closed query/narrow-fact/mutation/import/continuation/maintenance command vocabulary whose history-import entry is always one whole source message, the keyset search-document cursor, result map, receipts, transport envelopes, and delegated runtime decoders
+ * [OUTPUT]: Closed worker command/result vocabulary for canonical Chat operations, generic turn sequence reservations and bounded synchronization mutations/queries.
  * [POS]: Trust boundary between Electron main and the sole SQLite owner; arbitrary SQL can never cross this port
  */
 
@@ -184,12 +184,16 @@ export type ContinuationHomeEvidence = Readonly<{
 }>;
 
 export type DatabaseCommand =
+  | import("./cloud/protocol").CloudMutation
+  | import("./cloud/protocol").CloudRead
   | { kind: "prepare-chat-history"; chatId: string; deviceId: string; nativeBeforeSeq: number }
   | { kind: "read-chat-history"; deviceId: string; input: import("../../../../shared/chat-agent/history").HistoryReadCommand }
   | import("./agent-switch/command").SwitchAgentCommand
   | import("./agent-switch/command").ReserveSwitchSequencesCommand
+  | import("./agent-switch/command").ReserveTurnSequencesCommand
   | {
       kind: "initialize";
+      storageMode?: import("../../../../shared/local-storage/contracts").StorageMode;
       backendDefaults?: import("../../../../shared/settings-ipc").DefaultChatOptionsByBackend;
       databasePath: string;
       deviceId: string;
@@ -473,7 +477,10 @@ export type RemoveResult = Readonly<{
 }>;
 
 export type DatabaseResults = {
+  "cloud-mutate": MutationOutcome<import("./cloud/protocol").CloudResult>;
+  "cloud-read": import("./cloud/protocol").CloudResult;
   "switch-agent": MutationOutcome<import("../../../../shared/chat-agent/contracts").AgentSwitchReceipt>;
+  "reserve-turn-sequences": MutationOutcome<import("./agent-switch/command").SwitchSequenceReservation>;
   "reserve-switch-sequences": MutationOutcome<import("./agent-switch/command").SwitchSequenceReservation>;
   initialize: {
     sqliteVersion: string;

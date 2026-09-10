@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on crypto, closed history-import commands, SQLite rows, deterministic codecs, the content-addressed ImportBlobStore, the retired-generation reclamation sweep, and ChatRecordWriter search projection
- * [OUTPUT]: Provides identity-bearing readonly Chat creation refused for adopted sources whose title search document is rewritten on every re-import (so a changed source title can never leave the projection drifted), resumable immutable generations, chunk/blob content, bounded FTS merge policy, revision-converging activation, cancellation, the sole no-op-on-equal source_status writer ("changed" has no producer and is unreachable), startup reaping of interrupted runs, saga-fenced bounded GC of superseded and abandoned generations, and run inspection
+ * [OUTPUT]: Resumable immutable import generations, complete options at readonly creation, structured completion, active-run fencing and refusal to rescan a source frozen for synchronization.
  * [POS]: External-history write model beneath ChatRepository; it never reads source files, stores nothing but whole source messages, and commits exactly one bounded batch at a time
  */
 
@@ -507,7 +507,7 @@ export class HistoryImportRepository {
      append 的 CAS 都失败。这里直接拒绝，不建代、不改任何一行。 */
   private assertReadonlySource(source: HistoryImportSource) {
     const row = prepared(this.database,
-      `SELECT c.lifecycle_kind FROM chat_import_origins o
+      `SELECT c.lifecycle_kind,c.cloud_state FROM chat_import_origins o
          JOIN chats c ON c.id = o.chat_id
         WHERE o.source_kind = ? AND o.storage_fingerprint = ? AND o.canonical_native_id = ?`
     ).get(
@@ -515,6 +515,7 @@ export class HistoryImportRepository {
       source.storageFingerprint,
       source.canonicalNativeId
     ) as Row | undefined;
+    if (row && row.cloud_state !== "local-only") throw new Error("HISTORY_SOURCE_FROZEN_FOR_SYNC");
     if (row && row.lifecycle_kind !== "external-readonly") {
       throw new Error("HISTORY_SOURCE_MANAGED");
     }
@@ -537,6 +538,7 @@ export class HistoryImportRepository {
     ).get(source.sourceKind, source.storageFingerprint, source.canonicalNativeId) as Row | undefined;
     if (existing) {
       const chatId = String(existing.chat_id);
+      this.database.prepare("UPDATE chats SET portable_project_id=? WHERE id=?").run(source.projectId, chatId);
       this.database.prepare(
         `UPDATE chats
             SET title = CASE WHEN title_source = 'user' THEN title ELSE ? END,
@@ -590,8 +592,8 @@ export class HistoryImportRepository {
       `INSERT INTO chats(
          id, lifecycle_kind, agent, title, title_source, created_at, updated_at,
          archived_at, incarnation_id, next_seq, trimmed_through_seq,
-         branches_trimmed_through_seq, core_revision, native_message_revision, options_json
-       ) VALUES (?, 'external-readonly', ?, ?, 'local-fallback', ?, ?, ?, ?, NULL, 0, 0, 1, 0, ?)`
+         branches_trimmed_through_seq, core_revision, native_message_revision, options_json, portable_project_id
+       ) VALUES (?, 'external-readonly', ?, ?, 'local-fallback', ?, ?, ?, ?, NULL, 0, 0, 1, 0, ?, ?)`
     ).run(
       chatId,
       source.sourceKind,
@@ -600,7 +602,7 @@ export class HistoryImportRepository {
       source.updatedAt,
       source.archivedAt ?? null,
       incarnationId,
-      json(backendDefaults(this.defaults, source.sourceKind))
+      json(backendDefaults(this.defaults, source.sourceKind)), source.projectId
     );
     this.database.prepare(
       `INSERT INTO chat_local_aggregate_state(

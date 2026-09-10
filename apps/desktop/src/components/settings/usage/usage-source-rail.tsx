@@ -83,7 +83,7 @@ export function UsageSourceRail({
                 key={source.target}
                 value={source.target}
                 data-testid={`usage-tab-${source.target}`}
-                className="h-auto flex-none cursor-pointer justify-start gap-2 rounded-none px-4 py-3 text-sm"
+                className="h-auto flex-none cursor-pointer justify-start gap-2 rounded-none px-4 py-3 text-sm @max-xl:min-w-0 @max-xl:flex-1"
               >
                 {source.icon ? (
                   <AgentBackendIcon backend={source.icon} className="size-4" />
@@ -99,13 +99,17 @@ export function UsageSourceRail({
                     : source.label}
                 </span>
                 {/* 数字用与 memory 页签同形的药丸：同一个位置只能有一种
-                    形状，含义交给内容。它紧跟名称；等宽由外层 tab 承担。 */}
+                    形状，含义交给内容。它紧跟名称；等宽由外层 tab 承担。
+
+                    窄到装不下时它先走：表面是 overflow-hidden，页签排不下不会
+                    滚而是被裁掉——200% 缩放下最后一个源就点不到了。丢掉数字换回
+                    四个源都可达，比丢掉一个源划算。 */}
                 {summary ? (
-                  <span className="shrink-0 rounded-full bg-foreground/[0.06] px-2 py-0.5 font-medium text-[11px] tabular-nums">
+                  <span className="shrink-0 rounded-full bg-foreground/[0.06] px-2 py-0.5 font-medium text-[11px] tabular-nums @max-xl:hidden">
                     {formatCompactTokens(summary.stats.lifetimeTokens)}
                   </span>
                 ) : (
-                  <Skeleton className="h-4 w-10 shrink-0 rounded-full" />
+                  <Skeleton className="h-4 w-10 shrink-0 rounded-full @max-xl:hidden" />
                 )}
                 {note ? <UsageInfoTip text={note} /> : null}
               </TabsTrigger>

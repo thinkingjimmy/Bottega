@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Message, Thinking, Terminal, Plan, image source custody, subagent, structured Agent failure notices, RegularChatTurn, fork actions, cold-turn projection, and Chat formatting components
- * [OUTPUT]: Provides TurnParts/ChatTurn/ChatTurnDraft with warning projection, Subagent availability, elapsed work, process folding, Plan composition, fork controls, and hot/cold rendering
+ * [OUTPUT]: Plan and process rendering with consistent interrupted-state disclosure, copy annotation, media and Subagent projections.
  * [POS]: Assistant-turn process renderer for chat/transcript; delegates non-plan terminal presentation to chat-regular-turn
  */
 
@@ -543,8 +543,10 @@ function PlanTurn({
   onFork?: () => void;
   forkDisabledReason?: string;
 }) {
+  const { t } = useAppTranslation();
   return (
     <Message from="assistant">
+      {message.completion === "interrupted" && <p role="status" className="text-sm text-muted-foreground">{t("chat.interrupted")}</p>}
       <TurnProcess
         message={message}
         onOpenSubagent={onOpenSubagent}
@@ -560,7 +562,7 @@ function PlanTurn({
         onToggle={onToggle}
       />
       <ChatMessageActions
-        content={message.content}
+        content={message.completion === "interrupted" ? `${message.content}\n\n[${t("chat.interrupted")}]` : message.content}
         contextReceipt={message.contextReceipt}
         createdAt={message.createdAt}
         onFork={onFork}
@@ -578,8 +580,6 @@ export function ChatTurn(props: {
   backendId?: AgentBackendId;
   message: AssistantChatMessage;
   isPlanExpanded?: boolean;
-  showContinue: boolean;
-  onContinue: () => void;
   onRetry: () => void;
   onTogglePlan?: () => void;
   subagents: Record<string, ProjectedSubagent>;
@@ -634,7 +634,6 @@ export function ChatTurn(props: {
       backendDisplayName={backendLabel(props.message.backend)}
       backendId={props.message.backend}
       message={message}
-      onContinue={props.onContinue}
       onRetry={props.onRetry}
       process={
         <TurnProcess
@@ -649,7 +648,6 @@ export function ChatTurn(props: {
       }
       onFork={props.onFork}
       forkDisabledReason={props.forkDisabledReason}
-      showContinue={props.showContinue}
     />
   );
   return <div><div className="mb-1 flex items-center gap-1.5 text-muted-foreground text-xs"><AgentBackendIcon backend={props.message.backend} className="size-3" /><span>{backendLabel(props.message.backend)}</span></div>{content}</div>;

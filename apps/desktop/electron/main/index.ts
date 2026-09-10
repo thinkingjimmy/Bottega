@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Electron lifecycle, Node filesystem, shared five-locale translation, and every main-owned service, including signed-update compatibility, scoped Extensions, Project cleanup/Tools, Agent policy, Chat continuation recovery, coordinator/custody, Apps, Design, browser, and usage, presence lifecycle/composition and crash-aware main readiness.
- * [OUTPUT]: Provides the desktop composition root, pre-Project App authority repair, the trust-gated signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown, background retention, shared quit authorization, and task status startup.
+ * [INPUT]: Depends on Electron lifecycle, Node filesystem, shared five-locale translation, and every main-owned service, including signed-update compatibility, scoped Extensions, Project cleanup/Tools, Agent policy, Chat continuation recovery, coordinator/custody, Apps, Design, browser, local usage history, account quota service, presence lifecycle/composition and crash-aware main readiness.
+ * [OUTPUT]: Provides the desktop composition root, pre-Project App authority repair, the trust-gated signed candidate preflight, App Query snapshot wiring, scoped inventory and Project Tools wiring, Chat Home/SQLite continuation reconciliation, post-reconciliation external-history sync, the periodic chat-store maintenance gate, cleanup participants, recovery order, windows, and two-phase shutdown, background retention based on actual entry availability, shared quit authorization, and task status startup.
  * [POS]: The root lifecycle owner of the desktop main process
  */
 import { mkdir, realpath } from "node:fs/promises";
@@ -59,6 +59,7 @@ import type { AgentTurnCustodyRuntime } from "./backends/agent-turn-custody-runt
 import { BuiltinMcpLeaseStore } from "./tools/lease";
 import { BuiltinToolRegistry } from "./tools/registry";
 import { UsageService } from "./usage/usage-service";
+import { AgentUsageLimitsService } from "./usage-limits/service";
 import type { MemoryService } from "./memory/service/memory-service";
 import type { ManagedRuntimeRegistry } from "./memory/runtime/managed-registry";
 import type { MemorySettingsOwner } from "./memory/service/settings-owner";
@@ -128,7 +129,7 @@ registerAllCatalogs();
 let presenceRuntime: ReturnType<typeof createPresenceRuntime> | null = null;
 const stopOperations = () => uniqueStopOperations([...agentStopOperations(), ...(sectionCoordinator?.pendingStopOperations() ?? [])]);
 const presenceLifecycle = createApplicationPresence({ safeQuit: () => safeQuit, locale: () => currentLocale(), snapshot: stopOperations,
-  enabled: () => presenceRuntime?.service.snapshot().retention.status === "enabled",
+  enabled: () => presenceRuntime?.service.snapshot().effectiveDisplayMode != null,
   refresh: () => { void presenceRuntime?.service.refresh(); }, changed: () => presenceRuntime?.service.notifyLifecycle() });
 const { loginItem, openedAtLogin, retention: windowRetention, requestQuit: requestUserQuit } = presenceLifecycle;
 
@@ -156,6 +157,7 @@ let turnCustody: AgentTurnCustodyRuntime | null = null;
 let relayLedger: RelayLedger | null = null;
 let sectionCoordinator: ConversationCoordinator | null = null;
 let usageService: UsageService | null = null;
+let usageLimits: AgentUsageLimitsService | null = null;
 let memoryService: MemoryService | null = null;
 let memoryRuntimes: ManagedRuntimeRegistry | null = null;
 let memorySettingsOwner: MemorySettingsOwner | null = null;
@@ -216,6 +218,7 @@ if (!hasSingleInstanceLock) {
       await initializeAgentInputStaging(agentInputStagingRoot);
       appsService = new AppsService(userData);
       appsService.configureLocale(currentLocale);
+      usageLimits = new AgentUsageLimitsService();
       usageService = new UsageService(userData, {
         pricingRefreshEnabled: () =>
           settingsStore?.get().usagePricingAutoRefresh ?? true,
@@ -679,7 +682,7 @@ if (!hasSingleInstanceLock) {
         builtinLeases: activeBuiltinLeases,
         turnCustody: turnCustody!,
         coordinator: activeCoordinator,
-        usage: usageService,
+        usage: usageService, usageLimits,
         memory: memoryService,
         memoryRuntimes,
         memorySettingsOwner,
@@ -699,7 +702,7 @@ if (!hasSingleInstanceLock) {
         update: updateService, coordinator: activeCoordinator, login: loginItem, retention: windowRetention, locale: currentLocale, quitting: () => safeQuit.requested, quit: () => { void requestUserQuit(); } });
       await presenceRuntime.initialize();
       const restartHidden = await presenceLifecycle.consumeRestartPresentation();
-      await windowRetention.initialize((restartHidden || (openedAtLogin && settingsStore.get().launchAtLogin)) && presenceRuntime.service.snapshot().retention.status === "enabled");
+      await windowRetention.initialize((restartHidden || (openedAtLogin && settingsStore.get().launchAtLogin)) && presenceRuntime.service.snapshot().effectiveDisplayMode !== null);
       presenceLifecycle.bindPower();
       startChatStoreMaintenance(chatStore, (failure) => chatsService?.publishStorageFailure(failure));
       updateService.start();
@@ -763,7 +766,7 @@ async function closeTerminalOwners() {
     chats: chatsService, browser: browserRuntime, bases: basesService,
     relay: relayLedger, archive: archiveService, lifecycleIntents,
     chatStore, chatHome: chatHomeLedger, projectStore, settings: settingsStore,
-    usage: usageService, setup: setupService, apps: appsService, turnCustody,
+    usage: usageService, usageLimits, setup: setupService, apps: appsService, turnCustody,
     turnCustodyJournal, builtinBridge, update: updateService,
   });
 }

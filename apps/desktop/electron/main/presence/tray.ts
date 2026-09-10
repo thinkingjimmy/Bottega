@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Electron Tray/Menu, template assets, localized activity/update snapshots, window content size, and quit/open actions.
- * [OUTPUT]: Provides the fallback tray and shared native menu anchored below the persistent top strip in content coordinates, including open, quit, and update actions.
+ * [INPUT]: Depends on Electron Tray/Menu, product logo assets, localized activity/update snapshots, window content size, and quit/open actions.
+ * [OUTPUT]: Provides an adaptive monochrome macOS logo or full-color system tray and shared native menu anchored below the persistent top strip in content coordinates, including open, quit, and update actions.
  * [POS]: Presence native menu adapter; the service chooses the top strip or this fallback tray as the recovery entry.
  */
 
@@ -19,9 +19,10 @@ export class PresenceTray {
   async enable(): Promise<EffectivePresence> {
     if (this.available()) return { status: "enabled", reason: null };
     try {
-      const icon = nativeImage.createFromPath(join(this.ports.resources, "presence/trayTemplate.png"));
+      const isMac = process.platform === "darwin";
+      const icon = nativeImage.createFromPath(join(this.ports.resources, "presence", isMac ? "trayTemplate.png" : "trayIcon.png"));
       if (icon.isEmpty()) throw new Error("TRAY_ICON_MISSING");
-      icon.setTemplateImage(true);
+      icon.setTemplateImage(isMac);
       this.tray = new Tray(icon); this.refresh();
       if (!this.available()) throw new Error("TRAY_UNAVAILABLE");
       return { status: "enabled", reason: null };

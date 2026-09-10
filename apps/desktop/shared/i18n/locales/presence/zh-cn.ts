@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides zh-cn settings, tray, quit, and task-panel translations, including persistent top-bar/menu access, keyboard hints, and task failures.
+ * [OUTPUT]: Provides zh-cn settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut-only settings hints, and task failures, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -11,17 +11,21 @@ export const presenceZhCN = {
   "openHint": "打开",
   "spaceKey": "空格",
   "taskFailed": "失败",
-  "openPanel": "打开任务面板",
   "empty": "暂无运行中的任务",
   "emptyDescription": "在 Bottega 中开始任务后，进度会显示在这里。",
-  "shortcutUnavailable": "快捷键不可用。请在「键盘快捷键」中修改，或使用按钮打开面板。",
+  "shortcutUnavailable": "快捷键不可用，请在「键盘快捷键」中修改。",
+  "displayMode": "显示方式",
+  "iconMode": "菜单栏图标",
+  "notchMode": "刘海任务面板",
+  "iconDescription": "通过菜单栏图标打开 Bottega 和查看任务状态。",
+  "notchDescription": "使用其他应用时，在刘海区域查看任务和待处理请求。点击任务可返回对应会话。",
+  "noNotch": "当前未检测到刘海屏，使用菜单栏图标。",
+  "retentionDescriptionTray": "关闭主窗口后 Bottega 继续运行，可通过系统托盘图标重新打开。",
   "title": "后台运行",
   "login": "登录系统时启动 Bottega",
   "loginDescription": "登录系统后自动启动。开启后台运行时不显示窗口。",
   "retention": "关闭主窗口后保持运行",
-  "retentionDescription": "关闭主窗口后，正在进行的任务继续运行。可从菜单栏或 Dock 重新打开。",
-  "top": "显示悬浮任务面板",
-  "topDescription": "在使用其他应用时查看 Bottega 任务和待处理请求。顶部状态条持续显示，并替代菜单栏图标。点击任务可返回对应会话。",
+  "retentionDescription": "关闭主窗口后 Bottega 继续运行，可通过所选后台入口重新打开。",
   "notice": "退出 Bottega 会停止本机任务。电脑休眠时任务和远程控制可能暂停。",
   "open": "打开 Bottega",
   "quitting": "正在退出…",
@@ -46,7 +50,6 @@ export const presenceZhCN = {
   "closeFailed": "未能移交窗口草稿，请重试关闭窗口。",
   "retry": "重试",
   "systemSettings": "打开系统设置",
-  "applying": "正在应用…",
   "disabled": "已关闭",
   "enabled": "已开启",
   "blocked": "需要处理",
@@ -57,7 +60,7 @@ export const presenceZhCN = {
   "systemDisabled": "已被系统关闭",
   "loginFailed": "无法核验登录项",
   "saveFailed": "无法保存偏好",
-  "trayUnavailable": "菜单栏入口不可用",
+  "trayUnavailable": "后台图标不可用",
   "panelUnavailable": "无法显示任务状态",
   "screenUnavailable": "当前屏幕空间不足",
   "nativeUnavailable": "屏幕适配器不可用",

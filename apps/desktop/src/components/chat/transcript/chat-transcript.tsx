@@ -86,9 +86,7 @@ export const ChatAssistantRow = memo(function ChatAssistantRow({
   isPlanExpanded,
   backendDisplayName,
   backendId,
-  showContinue,
   enableSidePanel,
-  onContinue,
   onRetry,
   onOpenPlan,
   onClosePlan,
@@ -104,9 +102,7 @@ export const ChatAssistantRow = memo(function ChatAssistantRow({
   isPlanExpanded: boolean;
   backendDisplayName: string;
   backendId?: AgentBackendId;
-  showContinue: boolean;
   enableSidePanel: boolean;
-  onContinue: () => void;
   onRetry: () => void;
   onOpenPlan: (message: AssistantChatMessage) => void;
   onClosePlan: () => void;
@@ -131,8 +127,6 @@ export const ChatAssistantRow = memo(function ChatAssistantRow({
         backendId={backendId}
         isPlanExpanded={isPlanExpanded}
         message={message}
-        showContinue={showContinue}
-        onContinue={onContinue}
         onRetry={onRetry}
         onOpenSubagent={enableSidePanel ? onOpenSubagent : undefined}
         onOpenImage={enableSidePanel ? onOpenImage : undefined}
@@ -180,8 +174,6 @@ function TranscriptRows({
     livePreviews,
     hasPendingApproval,
     queued,
-    canContinue,
-    continueTurn,
     retryTurn,
     openPlanPanel,
     openDraftPlanPanel,
@@ -531,7 +523,6 @@ function TranscriptRows({
         onClosePlan={onClosePlan}
         backendDisplayName={backendDisplayName}
         backendId={backendId}
-        onContinue={continueTurn}
         onRetry={retryTurn}
         onOpenPlan={openPlanPanel}
         onOpenSubagent={openSubagent}
@@ -552,7 +543,6 @@ function TranscriptRows({
             ? t("chat.fork.unavailable")
             : undefined
         }
-        showContinue={canContinue && message.id === messages.at(-1)?.id}
         subagents={subagentsByMessage.get(message.id) ?? EMPTY_SUBAGENTS}
       />
     );

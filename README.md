@@ -38,6 +38,7 @@
 # Key features
 
 - **Your Agents, one sidebar.** Run Codex, Claude Code, Kimi Code, and OpenCode through their official local CLIs. Switch Agents for the next turn in an idle chat while keeping the same transcript.
+- **Sketch your next prompt.** Draw, add text and shapes, and erase details in the composer. Keep sketches editable until they are sent as PNG images.
 - **Build AI-native Apps.** Describe the workflow you need and turn it into a durable App with its own interface, data, and permissions—not another result trapped in a transcript.
 - **Customize by chatting.** Open an editable App's source Chat, describe the change, and let your Agent update its features, data, and interface directly.
 - **Every Chat, one data space.** Give a Chat or Project a structured Base, then work with the same rows as a table, list, Kanban board, map, chart, or gallery.
@@ -52,9 +53,9 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 
 [Download the latest release →](https://github.com/thinkingjimmy/Bottega/releases/latest)
 
-**Upgrading to 0.1.3?** Back up the complete application data folder first. Earlier chat databases cannot be migrated; 0.1.3 requires a fresh data folder. Read the [upgrade instructions](./docs/getting-started/README.md#upgrading-to-013).
+**Upgrading to 0.1.4?** Back up the complete application data folder first. Data from 0.1.3 and earlier cannot be migrated; 0.1.4 requires a fresh data folder. Read the [upgrade instructions](./docs/getting-started/README.md#upgrading-to-014).
 
-**Upgrading from 0.1.0 or 0.1.1?** Install [0.1.3](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.3) manually once to receive the updater fix.
+**Upgrading from 0.1.0 or 0.1.1?** Install [0.1.4](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.4) manually once to receive the updater fix.
 
 | Platform | Download |
 | --- | --- |
@@ -75,7 +76,7 @@ xattr -rd com.apple.quarantine /Applications/Bottega.app
 **Linux (x64).** Make the AppImage executable and run it:
 
 ```bash
-chmod +x Bottega-0.1.3-linux-x86_64.AppImage && ./Bottega-0.1.3-linux-x86_64.AppImage
+chmod +x Bottega-0.1.4-linux-x86_64.AppImage && ./Bottega-0.1.4-linux-x86_64.AppImage
 ```
 
 Bottega drives the Codex, Claude Code, Kimi Code, and OpenCode CLIs already installed and logged in on your machine. On first launch, pick a Chat Homes directory, let Bottega detect the CLIs, create a task, and choose its Agent before sending the first message. The [getting-started guide](./docs/getting-started/README.md) lists the supported CLI versions.

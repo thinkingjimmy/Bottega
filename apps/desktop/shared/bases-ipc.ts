@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Base value/view/attachment contracts and the canonical BaseCellContext evaluation kernel
- * [OUTPUT]: Provides Base owner/IPC DTOs with required navigation, limits, mutation results, change/removed/moved/warning events, the filter column walker, and context-required filter/project/group functions with language-neutral group descriptors
+ * [OUTPUT]: Owner-aware Base/navigation IPC with local-only, preparing, pending, candidate and confirmed save-state projections.
  * [POS]: The shared Base wire and projection authority used by main, renderer, and the builtin-tool server; projection never manufactures its own partial evaluation context
  */
 
@@ -168,6 +168,8 @@ export type BaseMeta = {
   views: BaseView[];
   activeViewId: string;
   revision: number;
+  syncGeneration?: number;
+  syncHash?: string;
   rowsGeneration: number;
   galleryGeneration: number;
   historyGeneration: number;

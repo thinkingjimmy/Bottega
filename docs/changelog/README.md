@@ -4,6 +4,40 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-09-10 — v0.1.4
+
+**Before upgrading:** 0.1.4 uses a new local storage format and cannot open or automatically migrate data from 0.1.3 or earlier. Quit Bottega completely, back up the entire application data folder, and keep your external Chat Homes and Project folders. Move the old application data folder to a backup location before launching 0.1.4 with a fresh folder. Previous Bottega chats, settings, and installed App records are not imported automatically. See the [backup and setup instructions](../getting-started/README.md#upgrading-to-014).
+
+### What's new
+
+- **Sketch directly in your prompt.** Open **+ → Sketch** to draw, add text or one of eight shapes, and erase part of a stroke or shape. Undo, redo, colors, and stroke widths stay close to the canvas. Saved sketches remain editable in drafts and restored queues, then reach the Agent as white-background PNG images.
+- **See Agent quota before choosing.** Settings and the Agent selector show available Codex, Claude Code, and Kimi quota windows, remaining amounts, and reset times. OpenCode clearly reports that unified quota information is unavailable. Returning to the app resumes an interrupted first query; sign-in, installation, and repair actions remain available beside Agent status.
+- **Keep local work durable.** Chat, Base, Project, App, and attachment storage now share stronger consistency and recovery rules. Interrupted work preserves its recorded state. Normal use remains local and requires no cloud account; cloud synchronization is not included in this release.
+- **Use consistent first-party Apps.** Development Kanban, Expense Tracker, Fitness Log, and Design Canvas now use React and shared interface conventions while retaining their existing data and workflows. The bundled Apps still require Bottega 0.1.3 or newer.
+- **Choose your background entry.** One setting controls background operation. On macOS, choose a Bottega Logo icon, a monochrome menu-bar icon, or the notch task panel; Bottega remembers the choice and uses an icon when no notched display is available. Launch at login remains a separate option, and both startup options default to off.
+- **Smoother everyday controls.** Settings navigation, font sizing, rename dialogs, App progress, failure recovery, and sharing dialogs now provide clearer actions and more consistent layouts. Sketch opens in a responsive square canvas with floating controls and an in-place loading state.
+
+### Download and install
+
+The assets below include macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage installers. These builds are **unsigned and not notarized**. macOS remains the primary platform; native App isolation and full feature parity on Windows/Linux are still in progress.
+
+**macOS (Apple silicon):** open the DMG and drag Bottega into Applications. For the unsigned download, remove its quarantine flag once in Terminal, then open Bottega:
+
+```bash
+xattr -rd com.apple.quarantine /Applications/Bottega.app
+```
+
+**Windows (x64):** run the installer. If SmartScreen blocks the unrecognized publisher, choose **More info → Run anyway**.
+
+**Linux (x64):** make the AppImage executable and launch it:
+
+```bash
+chmod +x Bottega-0.1.4-linux-x86_64.AppImage
+./Bottega-0.1.4-linux-x86_64.AppImage
+```
+
+Install and authenticate at least one supported local CLI before starting a conversation. Users on 0.1.0 or 0.1.1 must install 0.1.4 manually because those versions contain the earlier updater bug. The storage preparation above applies to every earlier version.
+
 ## 2026-09-08 — v0.1.3
 
 **Before upgrading:** 0.1.3 uses a new local storage format. Chat databases from 0.1.2 and earlier cannot be opened or automatically migrated. Quit Bottega and back up the complete application data folder before upgrading. Keep that folder for use with the older version; starting 0.1.3 requires a fresh data folder, and previous Bottega chats and settings are not imported automatically. Follow the [backup and setup instructions](../getting-started/README.md#upgrading-to-013).

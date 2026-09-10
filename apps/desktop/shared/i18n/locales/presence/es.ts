@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides es settings, tray, quit, and task-panel translations, including persistent top-bar/menu access, keyboard hints, and task failures.
+ * [OUTPUT]: Provides es settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut-only settings hints, and task failures, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -11,17 +11,21 @@ export const presenceEs = {
   "openHint": "Abrir",
   "spaceKey": "Espacio",
   "taskFailed": "Error",
-  "openPanel": "Abrir el panel de tareas",
   "empty": "No hay tareas activas",
   "emptyDescription": "Las tareas aparecerán aquí cuando empieces a trabajar en Bottega.",
-  "shortcutUnavailable": "Este atajo no está disponible. Cámbialo en Atajos de teclado o abre el panel con el botón.",
+  "shortcutUnavailable": "Este atajo no está disponible. Cámbialo en Atajos de teclado.",
+  "displayMode": "Modo de visualización",
+  "iconMode": "Icono de la barra de menús",
+  "notchMode": "Panel de tareas en la muesca",
+  "iconDescription": "Abre Bottega y consulta las tareas desde el icono de la barra de menús.",
+  "notchDescription": "Consulta las tareas y solicitudes junto a la muesca mientras usas otras apps. Haz clic en una tarea para volver a su chat.",
+  "noNotch": "No hay ninguna pantalla con muesca disponible. Se usa el icono de la barra de menús.",
+  "retentionDescriptionTray": "Mantén Bottega en ejecución al cerrar la ventana principal. Vuelve a abrirlo desde el icono de la bandeja del sistema.",
   "title": "Actividad en segundo plano",
   "login": "Iniciar Bottega al iniciar sesión",
   "loginDescription": "Iniciar tras acceder al ordenador. Sin mostrar la ventana si la actividad en segundo plano está activada.",
   "retention": "Seguir ejecutando al cerrar la ventana principal",
-  "retentionDescription": "Las tareas continúan. Abre Bottega desde la barra de menús o el Dock.",
-  "top": "Mostrar el panel flotante de tareas",
-  "topDescription": "Consulta las tareas de Bottega y las solicitudes de respuesta mientras usas otras apps. La barra superior permanece visible y sustituye al icono de la barra de menús. Haz clic en una tarea para volver a su conversación.",
+  "retentionDescription": "Mantén Bottega en ejecución al cerrar la ventana principal. Vuelve a abrirlo desde el acceso en segundo plano elegido.",
   "notice": "Salir de Bottega detiene las tareas locales. La suspensión puede pausar las tareas y el control remoto.",
   "open": "Abrir Bottega",
   "quitting": "Cerrando…",
@@ -46,7 +50,6 @@ export const presenceEs = {
   "closeFailed": "No se pudo transferir el borrador. Intenta cerrar la ventana de nuevo.",
   "retry": "Reintentar",
   "systemSettings": "Abrir Ajustes del Sistema",
-  "applying": "Aplicando…",
   "disabled": "Desactivado",
   "enabled": "Activado",
   "blocked": "Requiere atención",
@@ -57,7 +60,7 @@ export const presenceEs = {
   "systemDisabled": "Desactivado en Ajustes del Sistema",
   "loginFailed": "No se pudo verificar el ítem de inicio",
   "saveFailed": "No se pudo guardar la preferencia",
-  "trayUnavailable": "La entrada de la barra de menús no está disponible",
+  "trayUnavailable": "El icono en segundo plano no está disponible",
   "panelUnavailable": "No se pueden mostrar las tareas",
   "screenUnavailable": "Esta pantalla no tiene espacio suficiente",
   "nativeUnavailable": "El adaptador de pantalla no está disponible",

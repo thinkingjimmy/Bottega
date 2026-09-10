@@ -1,9 +1,12 @@
 /**
- * [INPUT]: Depends on React, PageShell, settings SettingsCanvas/Surface/List/Row/Switch, SourceRail/UsageToday/UsageRegion/StatRow/Heatmap, Module level usageStore/settingsStore, backendLabel, Button/Skeleton
- * [OUTPUT]: Provides UsageSettingsView: one page hosting Today / year-long activity / lifetime archive views on the same surface, skeleton loading states, an issue banner for the active source, and the pricing auto-refresh switch
+ * [INPUT]: Depends on React, PageShell, Settings/Usage primitives, UsageLimitsSection, quota/history/settings stores, backendLabel and existing controls.
+ * [OUTPUT]: Provides account quotas/reset details above independent history and a combined refresh action in UsageSettingsView: one page hosting Today / year-long activity / lifetime archive views on the same surface, skeleton loading states, an issue banner for the active source, and the pricing auto-refresh switch
  * [POS]: Settings layer's Usage view; holds no snapshot of its own — subscribes to usageStore and dispatches intents
  */
 
+import { UsageLimitsSection } from "@/components/settings/usage/limits/section";
+import { usageLimitsStore } from "@/lib/usage-limits/store";
+import { useUsageLimits } from "@/lib/usage-limits/hooks";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { AlertTriangle, ChartNoAxesColumnIncreasing, RefreshCw } from "lucide-react";
@@ -197,7 +200,8 @@ export function UsageSettingsView() {
     view.summaries[target]?.issues.filter((issue) => issue.affectsSummary) ??
     [];
   /* 请求在飞或后台还在扫盘，都归结为同一个字：忙 */
-  const busy = status === "loading" || Object.keys(progress).length > 0;
+  const quota = useUsageLimits();
+  const busy = status === "loading" || Object.keys(progress).length > 0 || quota.snapshot.agents.some((agent) => agent.fetchState === "refreshing");
 
   return (
     <PageShell
@@ -211,13 +215,15 @@ export function UsageSettingsView() {
           aria-label={t("settings.usage.refresh")}
           data-testid="usage-refresh"
           data-busy={busy}
-          onClick={usageStore.refresh}
+          onClick={() => { void usageStore.refresh(); void usageLimitsStore.refresh(); }}
         >
           <RefreshCw className={busy ? "animate-spin" : ""} />
         </Button>
       }
     >
       <SettingsCanvas>
+        <UsageLimitsSection />
+        <h2 className="mb-3 font-heading text-sm font-semibold">{t("settings.usage.limits.history")}</h2>
         <div
           data-testid="usage-view"
           data-target={target}

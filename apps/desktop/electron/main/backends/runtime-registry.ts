@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on descriptors, supervised runtime probes, filesystem identity, bounded leases and the registry-owned availability ledger.
- * [OUTPUT]: Owns snapshots with last-confirmed capabilities, independent runtime/auth flights, environment generation invalidation, scoped evidence and purpose eligibility.
+ * [OUTPUT]: Owns runtime/auth snapshots, command-derived setup capabilities, observable environment invalidation, credential reservations, scoped evidence and purpose eligibility.
  * [POS]: The only owner of the backends running time and discovery/auth subprocess; Chat, Section, Settings and Background tasks cannot detect CLI on their own
  */
 
@@ -28,6 +28,7 @@ import type {
 } from "./types";
 import {
   acquireAgentProcessLease,
+  reserveAgentCredentialUse,
   type AgentProcessLease,
 } from "../agent-process-supervisor";
 
@@ -79,6 +80,7 @@ export class BackendRuntimeRegistry {
       .get(backend)
       ?.controller.abort(new Error(`${backend} runtime generation 已失效`));
     this.flights.delete(backend);
+    for (const listener of this.listeners) listener(backend, this.snapshot(backend));
     return generation;
   }
 
@@ -104,10 +106,18 @@ export class BackendRuntimeRegistry {
     if (this.shuttingDown) return Promise.reject(new Error("Runtime registry is shutting down"));
     const existing = this.authFlights.get(backend);
     if (existing) return existing.promise;
+    let credentialUse: ReturnType<typeof reserveAgentCredentialUse> | undefined;
+    let ready: Promise<void>;
+    try { credentialUse = reserveAgentCredentialUse(backend); ready = credentialUse.ready; }
+    catch (cause) { ready = Promise.reject(cause); }
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(new Error("Availability check deadline exceeded")), FULL_CHECK_MS);
     const probe = this.evidence.beginProbe(backend);
-    const promise = this.checkAuthentication(backend, probe, controller.signal).finally(() => {
+    // Publish the discovery flight synchronously; warm reads must join it rather than invalidate this check.
+    const discovery = this.resolve(backend, true);
+    void discovery.catch(() => undefined);
+    const promise = this.checkAuthentication(backend, probe, controller.signal, discovery, ready).finally(() => {
+      credentialUse?.release();
       clearTimeout(deadline);
       if (this.authFlights.get(backend)?.promise === promise) this.authFlights.delete(backend);
     });
@@ -119,11 +129,12 @@ export class BackendRuntimeRegistry {
     this.authFlights.get(backend)?.controller.abort(new Error("Availability check cancelled"));
   }
 
-  private async checkAuthentication(backend: AgentBackendId, probe: number, signal: AbortSignal) {
+  private async checkAuthentication(backend: AgentBackendId, probe: number, signal: AbortSignal, discovery: Promise<BackendRuntimeSnapshot>, ready: Promise<void>) {
     let expectedEnvironment = this.generation(backend);
     try {
+      await waitForSignal(ready, signal);
       // A fresh runtime flight never owns or waits for authentication resources.
-      const snapshot = await waitForSignal(this.resolve(backend, true), signal);
+      const snapshot = await waitForSignal(discovery, signal);
       if (snapshot.runtimeStatus !== "installed") {
         this.evidence.confirm(backend, probe, snapshot.generation, "error");
         const stored = this.snapshots.get(backend);
@@ -605,7 +616,8 @@ export class BackendRuntimeRegistry {
       identity: identityAfter,
       capabilities: {
         ...descriptor.capabilitiesFor(runtime),
-        terminalAuth: descriptor.sessionCapabilityPolicy.terminalAuth,
+        // Setup commands are independent of ACP terminal-auth negotiation.
+        terminalAuth: Boolean(descriptor.setup?.commands.login),
       },
     };
     return validation.status === "unsupported"

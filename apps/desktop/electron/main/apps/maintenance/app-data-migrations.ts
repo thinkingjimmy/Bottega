@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AppStore, the shared strict migration schema, and Node's read-only file interface
- * [OUTPUT]: Provides AppDataMigrations: reads `migrations/base.json`, short-circuits on an unchanged descriptor digest, and hands the descriptor to the injected Base port on a per-App lane
+ * [OUTPUT]: App migration validation and single-flight reconciliation with mutation-time scope guards; empty and already applied descriptors remain usable.
  * [POS]: The apps→Bases migration seam; ordering comes from the descriptor shipped in the package, never from a presetId
  */
 
@@ -17,7 +17,7 @@ const DESCRIPTOR = join("migrations", "base.json");
 const MAX_DESCRIPTOR_BYTES = 512 * 1024;
 
 export type AppDataMigrationPort = {
-  apply(appId: string, file: AppBaseDataMigrationFile): Promise<void>;
+  apply(appId: string, file: AppBaseDataMigrationFile, assertMutationAllowed: () => void): Promise<void>;
 };
 
 export class AppDataMigrations {
@@ -81,7 +81,7 @@ export class AppDataMigrations {
     const file = appBaseDataMigrationFileSchema.parse(
       JSON.parse(bytes.toString("utf8"))
     );
-    await this.port.apply(appId, file);
+    await this.port.apply(appId, file, () => this.store.portable.assertMigrationAllowed(appId));
     this.applied.set(appId, digest);
   }
 }

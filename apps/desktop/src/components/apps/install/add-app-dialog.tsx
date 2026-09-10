@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * [INPUT]: Depends on repo preflight IPC, the shared GitHub repo URL normalizer, Apps i18n, the install grant card plus a local README disclosure, requirements, AgentSelect, Apps/Setup providers, and dialog primitives
+ * [INPUT]: Depends on the shared AppDialog shell, repo preflight IPC, the shared GitHub repo URL normalizer, Apps i18n, the install grant card plus a local README disclosure, requirements, AgentSelect, Apps/Setup providers, and dialog primitives
  * [OUTPUT]: Provides source preflight and authorization with a request-bound host reminder, one-shot latest-candidate selection and focus restoration to the return entry.
  * [POS]: Sole Apps creation entry; renderer owns review UI while main owns submitted durable install intents
  */
@@ -14,8 +14,11 @@ import { useNavigate } from "react-router";
 import { Plus } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
+  AppDialogBody,
+  AppDialogContent,
+} from "@ai-chat/ui/components/ui/app-dialog";
+import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -455,12 +458,15 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
           <Plus />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-md" onCloseAutoFocus={(event) => {
+      {/* 这张弹窗此前独自留在旧外壳上：448px、12px 正文、黑 80% 加模糊的
+          遮罩、h-7 的页脚。它与 Save as App、Share、Delete 是同一族——一张
+          问「装哪个仓库」的表单，没有理由自成一格。 */}
+      <AppDialogContent onCloseAutoFocus={(event) => {
         if (resumeFocus.current) { event.preventDefault(); resumeFocus.current.focus(); resumeFocus.current = null; }
       }}>
         {compatibility ? <CompatibilityReminder failure={compatibility} onClose={() => { setOpen(false); reset(); }} onRetry={() => { setCompatibility(null); void review(); }} /> : <>
-        <DialogHeader>
-          <DialogTitle>
+        <DialogHeader className="mb-4 shrink-0 gap-0 text-left">
+          <DialogTitle className="text-xl/7 font-semibold">
             {t(
               STAGE_TEXT[stage].titleKey,
               stage === "base-confirm" && probe?.kind === "base"
@@ -468,10 +474,14 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
                 : undefined
             )}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="mt-3 text-[15px]/[1.4]">
             {t(STAGE_TEXT[stage].descriptionKey)}
           </DialogDescription>
         </DialogHeader>
+        {/* 旧外壳自己就是滚动容器（overflow-y-auto 直接挂在圆角盒上，系统
+            滚动条会骑在弧线上）。新外壳把滚动交给正文层，gap-4 则接回从前
+            由 DialogContent 的 grid 提供的那 16px 段距。 */}
+        <AppDialogBody className="flex flex-col gap-4">
 
         {stage === "blocked" ? (
           <div className="flex flex-col gap-3">
@@ -652,6 +662,7 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
                 autoComplete="off"
                 spellCheck={false}
                 className="font-mono"
+                size="lg"
                 placeholder="https://github.com/owner/repo"
                 value={repoUrl}
                 onChange={(event) => {
@@ -679,8 +690,11 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
           </p>
         )}
 
-        <DialogFooter>
+        </AppDialogBody>
+
+        <DialogFooter className="mt-4 shrink-0 sm:gap-3">
           <Button
+            size="pill"
             variant="outline"
             disabled={actions.secondary.disabled}
             onClick={actions.secondary.run}
@@ -688,6 +702,7 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
             {actions.secondary.label}
           </Button>
           <Button
+            size="pill"
             disabled={actions.primary.disabled}
             onClick={actions.primary.run}
           >
@@ -695,7 +710,7 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
           </Button>
         </DialogFooter>
         </>}
-      </DialogContent>
+      </AppDialogContent>
     </Dialog>
   );
 }

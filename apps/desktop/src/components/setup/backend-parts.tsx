@@ -1,11 +1,10 @@
 /**
- * [INPUT]: Depends on React, ui/button and ui/tooltip, agent-backends authentication predicates, and the shared backend DTO
- * [OUTPUT]: Projects shared availability states into neutral/positive/attention badges and independent installation/login recovery actions.
+ * [INPUT]: Depends on React, ui/button, ui/tooltip, shared availability facts and an explicit presentation clock.
+ * [OUTPUT]: Projects backend facts into consistent badges, verification explanations, progress and installation/login/update actions.
  * [POS]: The setup module's atomic presentation layer; it turns runtime/auth facts into one honest status and action model shared by Settings and Onboarding
  */
 import { projectAvailability } from "../../../shared/agent-availability/projection";
-
-
+import type { AvailabilityState } from "../../../shared/agent-availability/types";
 import type { ComponentProps, ReactNode } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
@@ -13,31 +12,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@ai-chat/ui/components/ui/tooltip";
-import { needsBackendLogin } from "@/lib/agent-backends";
 import type { BackendInfo } from "../../../shared/agent-ipc";
 
-/* ============================================================
- * 两条事实，一份呈现。
- *
- * `status` 是兼容投影，会把 installed + unknown 折成 ready；它适合旧消费方，
- * 却不足以回答 Setup 的两个问题：「现在确知什么」「下一步能做什么」。这里
- * 直接从 runtimeStatus/authStatus 生成徽标、引导与动作，避免绿色 Ready 与
- * Sign in 同时出现这种双重真相。
- * ============================================================ */
-export type BackendSetupStatus =
-  | "missing"
-  | "unsupported"
-  | "auth-required"
-  | "ready"
-  | "error"
-  | "installed"
-  | "checking";
 export type BackendStatusTone = "positive" | "attention" | "neutral";
 export type BackendLoginAction = "login" | "manage";
 
 export type BackendSetupPresentation = {
-  status: BackendSetupStatus;
+  status: AvailabilityState;
   tone: BackendStatusTone;
+  refreshing: boolean;
+  hint: "checking" | "unverified" | "expired" | "failed" | null;
   showGuide: boolean;
   canInstall: boolean;
   loginAction: BackendLoginAction | null;
@@ -46,49 +30,53 @@ export type BackendSetupPresentation = {
 
 const STATUS_TONES = {
   ready: "positive",
-  installed: "neutral",
+  unverified: "neutral",
   checking: "neutral",
   missing: "attention",
   unsupported: "attention",
-  "auth-required": "attention",
-  error: "attention",
-} as const satisfies Record<BackendSetupStatus, BackendStatusTone>;
+  "sign-in": "attention",
+  "cannot-check": "attention",
+  "cannot-start": "attention",
+  "usage-limit": "attention",
+  "recent-sign-in": "attention",
+  connection: "attention",
+  service: "attention",
+} as const satisfies Record<AvailabilityState, BackendStatusTone>;
 
-const GUIDELESS_SETUP_STATUSES = new Set<BackendSetupStatus>([
+const GUIDELESS_SETUP_STATUSES = new Set<AvailabilityState>([
   "ready",
-  "installed",
+  "unverified",
   "checking",
 ]);
 
-const setupStatus = (backend: BackendInfo): BackendSetupStatus => {
-  const state = projectAvailability(backend, Date.now()).state;
-  if (state === "unverified") return "installed";
-  if (state === "sign-in") return "auth-required";
-  if (state === "cannot-check" || state === "cannot-start" || state === "usage-limit" || state === "recent-sign-in" || state === "connection" || state === "service") return "error";
-  return state;
-};
-
-const loginAction = (backend: BackendInfo): BackendLoginAction | null => {
-  if (
-    backend.runtimeStatus !== "installed" ||
-    backend.authStatus === "checking"
-  ) {
-    return null;
-  }
-  if (needsBackendLogin(backend)) return "login";
-  return backend.capabilities.terminalAuth === true ? "manage" : null;
-};
-
 export const backendSetupPresentation = (
-  backend: BackendInfo
+  backend: BackendInfo,
+  now = Date.now()
 ): BackendSetupPresentation => {
-  const status = setupStatus(backend);
+  const availability = projectAvailability(backend, now);
+  const refreshing = availability.refreshing || backend.authStatus === "checking";
+  // Preserve confirmed facts during refresh; explain incomplete checks separately.
+  const status = availability.state === "unverified" && refreshing
+    ? "checking" : availability.state;
+  const confirmed = backend.availability?.lastConfirmedAuth;
+  const expired = confirmed?.status === "authenticated" &&
+    confirmed.environmentGeneration === backend.availability?.environmentGeneration &&
+    confirmed.expiresAt !== undefined && confirmed.expiresAt <= now;
+  const hint = backend.runtimeStatus !== "installed" ? null
+    : refreshing ? "checking"
+    : backend.authStatus === "error" ? "failed"
+    : status === "unverified" ? expired ? "expired" : "unverified"
+    : null;
   return {
     status,
     tone: STATUS_TONES[status],
+    refreshing,
+    hint,
     showGuide: !GUIDELESS_SETUP_STATUSES.has(status),
     canInstall: backend.runtimeStatus === "missing",
-    loginAction: loginAction(backend),
+    loginAction: backend.runtimeStatus !== "installed" ? null
+      : status === "sign-in" ? "login"
+      : backend.capabilities.terminalAuth ? "manage" : null,
     canUpdate:
       backend.runtimeStatus === "unsupported" || Boolean(backend.updateAvailable),
   };

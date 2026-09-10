@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on shared owner-aware Base/Gallery/navigation types, schemas, budgets, and gallery-ledger facts
- * [OUTPUT]: Provides BaseStore identity/mutation types with declared row changes, the frozen stored entry factory, incremental row validation, the store error classes, and the shared sameJson equality
+ * [OUTPUT]: Frozen owner-indexed Base state and declared mutation types, including optional exact synchronization intent and candidate-aware attachment roots.
  * [POS]: The base layer of the Store is pure model; base-store.ts holds the IO/ queue, and this file closes without any side effects rules
  */
 
+import { emptyBaseSync, type BaseSyncEnvelope, type BaseSyncIntent } from "./store/sync/model";
 import { randomUUID } from "node:crypto";
 import {
   BASE_COLUMN_LIMIT,
@@ -29,6 +30,7 @@ import {
 } from "./store/gallery-ledger";
 
 export type StoredBase = {
+  sync: BaseSyncEnvelope;
   meta: BaseMeta;
   rows: BaseRow[];
   /** rows 的 id 索引：附件读取、Gallery 派生、历史差分一律直取，不再扫全表。 */
@@ -73,6 +75,7 @@ export const sameJson = (left: unknown, right: unknown) =>
  * 单格编辑就永远只值一格的钱。
  */
 export type BaseStoreMutation = {
+  syncIntent?: BaseSyncIntent;
   meta: BaseMeta;
   rows: BaseRow[];
   changedRowIds: BaseMutationRowIds;
@@ -106,6 +109,7 @@ export type BaseOwnerIdentity = {
 };
 
 export type BaseStoreDependencies = {
+  storageMode?: import("../../../shared/local-storage/contracts").StorageMode;
   atomicWrite?: (path: string, content: string) => Promise<void>;
   readText?: (path: string) => Promise<string>;
   now?: () => number;
@@ -219,6 +223,7 @@ export function freezeStoredSnapshot(meta: BaseMeta, rows: readonly BaseRow[]) {
 
 /** 挂载一份状态的唯一入口：冻结 + 建索引 + 记住附件引用集。 */
 export function storedBase(input: {
+  sync?: BaseSyncEnvelope;
   meta: BaseMeta;
   rows: BaseRow[];
   gallery: BaseGalleryLedger;
@@ -228,6 +233,7 @@ export function storedBase(input: {
 }): StoredBase {
   freezeStoredSnapshot(input.meta, input.rows);
   return {
+    sync: input.sync ?? emptyBaseSync(input.meta.ownerInstanceId),
     meta: input.meta,
     rows: input.rows,
     rowsById: input.rowsById ?? indexRows(input.rows),

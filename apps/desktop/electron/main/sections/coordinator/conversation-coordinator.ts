@@ -118,10 +118,7 @@ export class ConversationCoordinator {
     });
   }
   async initialize(openAdmission = true) {
-    const initialization = await this.dependencies.ledger.initialize();
-    if (initialization.recovered) {
-      this.dependencies.chats.store.pushWarning(initialization.warning);
-    }
+    await this.dependencies.ledger.initialize();
     await this.dependencies.reconcileMemory?.(this.dependencies.ledger);
     await this.dependencies.reconcileStaging?.(
       this.dependencies.ledger.liveStagingOwners()

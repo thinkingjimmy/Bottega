@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the shared preset DTO; product source owns publishing metadata, canonical GitHub URLs, immutable pins, and optional packaged factory digests
+ * [INPUT]: Depends on the shared preset DTO; product source owns publishing metadata, canonical GitHub URLs, immutable pins, and the packaged React Design factory digest
  * [OUTPUT]: Provides FIRST_PARTY_PRESETS and PresetCatalog with stable presetId, sourceDirectory, canonical URL, immutable source/compatibility pin, requirements, icons, and optional factory tree digest
  * [POS]: The main process trust root for preset source identity and install facts; renderer projects product copy from presetId through its locale catalog
  */
@@ -20,10 +20,10 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-design-canvas.git",
-    catalogPin: "8ef25085e43720d7359cdb9864c8d0db4ac920e0",
+    catalogPin: "13e0558131b55fce96d5392797be0bf12e72d272",
     sourceDirectory: "Bottega-app-design-canvas",
     factoryTreeDigest:
-      "sha256:80f1f06330b000551114100705bde9d40a6a00f8a121fa5d9927ded10bd595ae",
+      "sha256:b3bdc4105f25d83124a250179388f07e09dc2160d7fd55e87b52909194240786",
   },
   {
     id: "dev-kanban",
@@ -31,7 +31,7 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-dev-kanban.git",
-    catalogPin: "43825844e726d89b52aeb789fff6df6a62b033b5",
+    catalogPin: "03300161eea6c53e7233ba79774a8760ab3eb3e4",
     sourceDirectory: "Bottega-app-dev-kanban",
   },
   {
@@ -40,7 +40,7 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-expense-tracker.git",
-    catalogPin: "88fd198eae486738a19c4304e1cc60d5f9497a80",
+    catalogPin: "8ad2ba85acdea3379c31819ca2f502af564e5cd1",
     sourceDirectory: "Bottega-app-expense-tracker",
   },
   {
@@ -49,7 +49,7 @@ export const FIRST_PARTY_PRESETS = [
     requirements: [],
     canonicalRepoUrl:
       "https://github.com/thinkingjimmy/Bottega-app-fitness-log.git",
-    catalogPin: "f50e4ae4036dc4d570267f9c9a4cb50fa94f49f7",
+    catalogPin: "2147526a3ae4371fceca41407bc7b237bbe00a46",
     sourceDirectory: "Bottega-app-fitness-log",
   },
 ] as const satisfies readonly PresetCatalogEntry[];

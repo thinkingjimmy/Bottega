@@ -2,12 +2,13 @@
 
 /**
  * [INPUT]: Depends on React focus control, shared Dialog/Button/SlimScroller primitives, host UI text, and class merging
- * [OUTPUT]: Provides AppDialogContent, AppDialogBody — the sole scroller, and therefore the sole clipping box, so it carries the headroom its children's rings and shadows are painted into — and ConfirmationDialog with explicit focus/dismiss policies plus responsive cancel, secondary, destructive, and primary actions
+ * [OUTPUT]: Provides AppDialogContent, AppDialogBody — the sole scroller, and therefore the sole clipping box, so it carries the headroom its children's rings and shadows are painted into — DialogChoice, the two-line option row for dialogs that pose a choice rather than a confirmation (bordered when it holds a selected value, plain when it is simply pressed; an optional leading icon slot houses the busy spinner so the row never shifts), and ConfirmationDialog with explicit focus/dismiss policies plus responsive cancel, secondary, destructive, and primary actions whose busy spinner lands on the button that was actually pressed
  * [POS]: The shared accessible dialog shell and confirmation surface for packages/ui consumers
  */
 
 import {
   useRef,
+  useState,
   type ComponentProps,
   type ReactNode,
 } from "react";
@@ -21,6 +22,7 @@ import {
   DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
+import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useUiText } from "@ai-chat/ui/lib/ui-text";
 import { cn } from "@ai-chat/ui/lib/utils";
 
@@ -103,6 +105,148 @@ export function AppDialogBody({
   );
 }
 
+/* ── 选项行：把「后果」贴回选项本体 ────────────────────────────────
+ * 一排平权按钮只能承载动词——「重试」「新建」「放弃」；选了会怎样只能
+ * 写在别处，于是要么写进描述句里替按钮转述（读者得自己配对），要么根本
+ * 不写（读者只能猜）。两行的选项行让每个答案自带代价，弹窗的描述句随之
+ * 可以只说事实、不再替按钮说话。
+ *
+ * 它不是 Button 的一种 variant：要放两行字、左对齐、随宽换行，而 Button
+ * 焊死了 h-7 / whitespace-nowrap / justify-center。掰这三条比自己长一个更脏。
+ *
+ * 危险项静置时与安全项等重——它是正当选择而非陷阱，红只落在标题与悬停上，
+ * 让人在按下之前而不是看见之时收到警告。
+ *
+ * size 存在是因为宿主有两种字号：DialogContent（12px 正文）与
+ * AppDialogContent 里 ConfirmationDialog 那套（20px 标题 / 15px 描述）。
+ * 选项行该跟着所在弹窗的字号走，而不是反过来要求两种弹窗统一。
+ * ───────────────────────────────────────────────────────────────── */
+export type DialogChoiceProps = Omit<ComponentProps<"button">, "title"> & {
+  title: ReactNode;
+  detail?: ReactNode;
+  /** 引导标记（如「推荐」）；只在需要替读者做决定时给。 */
+  badge?: ReactNode;
+  tone?: "default" | "danger";
+  size?: "sm" | "md";
+  busy?: boolean;
+  /** 单选组的选中态。点了即执行的动作行不需要它——那种行没有「当前答案」。 */
+  selected?: boolean;
+  /** 前导标记。给了它，spinner 就住进这个槽，忙起来时行的几何一分不动。 */
+  icon?: ReactNode;
+  /**
+   * bordered：一个装得住状态的盒子。plain：一份可按的清单。
+   * 判据是这一行**有没有当前值**——单选组的选中态要填色，填色需要边框兜住；
+   * 点了即执行的选项没有值可存，那圈框就只是一圈没有职责的描边。
+   */
+  variant?: "bordered" | "plain";
+};
+
+export function DialogChoice({
+  title,
+  detail,
+  badge,
+  tone = "default",
+  size = "md",
+  busy = false,
+  selected = false,
+  disabled = false,
+  icon,
+  variant = "bordered",
+  className,
+  ...props
+}: DialogChoiceProps) {
+  const danger = tone === "danger";
+  const plain = variant === "plain";
+  /* 槽位只要出现过就一直占位。若只在 busy 时插一个 spinner，标题会在按下的
+     那一刻整体右移——页脚按钮上刚除掉的那种抖动，没有理由留在选项行里。 */
+  const slot = icon !== undefined;
+  return (
+    <button
+      data-slot="dialog-choice"
+      type="button"
+      disabled={disabled}
+      className={cn(
+        "cursor-pointer bg-clip-padding text-left transition-all outline-none",
+        "focus-visible:ring-2 disabled:pointer-events-none",
+        plain
+          ? "rounded-xl"
+          : "rounded-md border border-border focus-visible:border-ring dark:bg-input/30",
+        size === "sm" ? "px-3 py-2" : plain ? "px-2.5 py-2" : "px-3.5 py-2.5",
+        danger
+          ? cn(
+              "hover:bg-destructive/10 focus-visible:ring-destructive/20",
+              !plain && "hover:border-destructive/40 focus-visible:border-destructive/40"
+            )
+          : cn(
+              plain ? "hover:bg-muted/60" : "hover:bg-input/50",
+              "focus-visible:ring-ring/30"
+            ),
+        // 被推荐的那行靠描边取得主次，不靠色块——这套配色没有强调色，
+        // 填色会被读成「已选中」。
+        badge && !danger && "border-foreground/25",
+        // 而真的被选中时，「填色会被读成已选中」正是要的那个读法：描边定
+        // 主次，填色定「当前就是它」，两者一起才在六行里一眼认得出来。
+        // 危险项选中时照样上红——静置时与安全项等重是为了不设陷阱，选中后
+        // 如实告诉读者他此刻选的是哪一种，是另一回事。
+        selected &&
+          (danger
+            ? "border-destructive/40 bg-destructive/10"
+            : "border-foreground/25 bg-input/50"),
+        // 只暗掉没被点的那个：正在跑的那行还要靠自己的 spinner 说话。
+        disabled && !busy && "opacity-50",
+        className
+      )}
+      {...props}
+    >
+      <span className="flex items-start gap-2.5">
+        {slot && (
+          <span
+            aria-hidden={busy ? undefined : "true"}
+            className={cn(
+              "grid size-5 shrink-0 place-items-center",
+              danger ? "text-destructive" : "text-foreground/65",
+              "[&_svg:not([class*='size-'])]:size-4"
+            )}
+          >
+            {busy ? <Spinner className="size-4" /> : icon}
+          </span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span
+            data-slot="dialog-choice-title"
+            className={cn(
+              "flex items-center gap-1.5 font-medium",
+              size === "md" && "text-[15px]/5",
+              danger && "text-destructive"
+            )}
+          >
+            {/* 没有槽位的行退回原样：spinner 直接插在标题前，行为与从前一致。 */}
+            {busy && !slot && (
+              <Spinner className={size === "sm" ? "size-3" : "size-3.5"} />
+            )}
+            {title}
+            {badge && (
+              <span className="shrink-0 rounded-full bg-muted px-1.5 text-[11px]/[17px] font-medium text-foreground">
+                {badge}
+              </span>
+            )}
+          </span>
+          {detail && (
+            <span
+              className={cn(
+                "mt-0.5 block text-muted-foreground",
+                size === "md" && "mt-[3px] text-[13px]/[1.45]"
+              )}
+            >
+              {detail}
+            </span>
+          )}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 export type ConfirmationDialogProps = {
   open: boolean;
   title: ReactNode;
@@ -153,6 +297,12 @@ export function ConfirmationDialog({
   /* 「取消」是这颗原语自带的那半句话，不是调用方每次都要重说一遍的参数：
      默认值走宿主目录，于是全应用的确认弹窗一次性跟着语言走。 */
   const fallbackCancel = useUiText("cancel", "Cancel");
+  /* busy 只说「有动作在飞」，没说是哪一颗按钮在飞——而三颗动作按钮同时变淡
+     等于谁都没在说话。记下被按的那一颗，spinner 就落在读者刚点过的地方；
+     没人按过（父组件自己把 busy 打开）时它是 null，退回「只变淡」。 */
+  const [pressed, setPressed] = useState<
+    "confirm" | "secondary" | "destructive" | null
+  >(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const secondaryRef = useRef<HTMLButtonElement>(null);
   const destructiveRef = useRef<HTMLButtonElement>(null);
@@ -240,8 +390,12 @@ export function ConfirmationDialog({
               size="pill"
               disabled={busy || secondaryDisabled}
               className="w-full cursor-pointer disabled:cursor-not-allowed sm:w-auto"
-              onClick={onSecondary}
+              onClick={() => {
+                setPressed("secondary");
+                onSecondary();
+              }}
             >
+              {busy && pressed === "secondary" && <Spinner />}
               {secondaryLabel}
             </Button>
           )}
@@ -253,8 +407,12 @@ export function ConfirmationDialog({
               size="pill"
               disabled={busy || destructiveDisabled}
               className="w-full cursor-pointer border-destructive/15 disabled:cursor-not-allowed sm:w-auto"
-              onClick={onDestructive}
+              onClick={() => {
+                setPressed("destructive");
+                onDestructive();
+              }}
             >
+              {busy && pressed === "destructive" && <Spinner />}
               {destructiveLabel}
             </Button>
           )}
@@ -268,8 +426,12 @@ export function ConfirmationDialog({
               "w-full cursor-pointer disabled:cursor-not-allowed sm:w-auto",
               confirmTone === "destructive" && "border-destructive/15"
             )}
-            onClick={onConfirm}
+            onClick={() => {
+              setPressed("confirm");
+              onConfirm();
+            }}
           >
+            {busy && pressed === "confirm" && <Spinner />}
             {confirmLabel}
           </Button>
         </DialogFooter>

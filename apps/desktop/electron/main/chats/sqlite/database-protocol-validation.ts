@@ -1,9 +1,11 @@
 /**
  * [INPUT]: Depends on the database protocol's command, request, response, and failure types
- * [OUTPUT]: Provides exact command-envelope validation and command-specific response validation
+ * [OUTPUT]: Strict command and per-action result decoding, including scoped sync actions, current portable mirrors and receipt/source projections.
  * [POS]: Runtime codec for the main/worker trust boundary; protocol types remain declarative in database-protocol.ts
  */
 
+import { cloudMutationSchema, cloudReadSchema, cloudResultSchema } from "./cloud/protocol";
+import { storageModeSchema } from "../../../../shared/local-storage/contracts";
 import type {
   ChatDatabaseFailure,
   DatabaseCommand,
@@ -65,11 +67,13 @@ const nativeMessageSelector: Rule = (value) =>
   shape({ kind: literal("seq"), seq: number }, {}, true)(value);
 
 const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
+  "cloud-mutate": value => cloudMutationSchema.safeParse(value).success,
+  "cloud-read": value => cloudReadSchema.safeParse(value).success,
   initialize: command({
     databasePath: string,
     deviceId: string,
     mode: literal("canonical", "verification"),
-  }, { backendDefaults: object }),
+  }, { backendDefaults: object, storageMode: value => storageModeSchema.safeParse(value).success }),
   "list-metadata": command({ deviceId: string }, { chatId: string }),
   "get-record": command(chatDevice),
   "prepare-chat-history": command({ ...chatDevice, nativeBeforeSeq: number }),
@@ -89,7 +93,8 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
   "switch-agent": command({ ...op, ...chatDevice, incarnationId: string, intentId: string,
     submissionHash: string, intent: object, expectedAggregateRevision: number, targetOptions: object,
     notice: object, userMessage: object, assistantMessageId: string, assistantSeq: number }),
-  "reserve-switch-sequences": command({ ...op, ...chatDevice, incarnationId: string, intentId: string, submissionHash: string, intent: object }),
+  "reserve-turn-sequences": command({ ...op, ...chatDevice, incarnationId: string, intentId: string, submissionHash: string }, { executorNotice: boolean }),
+  "reserve-switch-sequences": command({ ...op, ...chatDevice, incarnationId: string, intentId: string, submissionHash: string, intent: object }, { executorNotice: boolean }),
   "upsert-record": command({ ...op, record: object, deviceId: string }, {
     lifecycleKind: literal("native", "external-managed"),
     expectedAggregateRevision: nullable(number),
@@ -221,6 +226,8 @@ const mutation = (kind: DatabaseCommand["kind"], result: Rule): Rule => (value) 
 const nullableObject = nullable(object);
 
 const RESULT_RULES: Record<DatabaseCommand["kind"], Rule> = {
+  "cloud-mutate": mutation("cloud-mutate", value => cloudResultSchema.safeParse(value).success),
+  "cloud-read": value => cloudResultSchema.safeParse(value).success,
   initialize: shape({ sqliteVersion: string, compileOptions: arrayOf(string), startupMs: number }),
   "list-metadata": arrayOf(object),
   "get-record": nullableObject,
@@ -232,7 +239,8 @@ const RESULT_RULES: Record<DatabaseCommand["kind"], Rule> = {
   "get-outline-page": nullableObject,
   "find-messages": nullable(shape({ items: array, total: number, nextCursor: nullableObject })),
   "switch-agent": mutation("switch-agent", object),
-  "reserve-switch-sequences": mutation("reserve-switch-sequences", shape({ chatId: string, chatRecordRevision: number, noticeSeq: number, userSeq: number, assistantSeq: number }, {}, true)),
+  "reserve-switch-sequences": mutation("reserve-switch-sequences", shape({ chatId: string, chatRecordRevision: number, userSeq: number, assistantSeq: number }, { noticeSeq: number, executorNoticeSeq: number }, true)),
+  "reserve-turn-sequences": mutation("reserve-turn-sequences", shape({ chatId: string, chatRecordRevision: number, userSeq: number, assistantSeq: number }, { noticeSeq: number, executorNoticeSeq: number }, true)),
   "prepare-chat-history": nullableObject,
   "read-chat-history": object,
   "upsert-record": mutation("upsert-record", upsertResult),

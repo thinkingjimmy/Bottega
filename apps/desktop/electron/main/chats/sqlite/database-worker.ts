@@ -1,13 +1,12 @@
 /**
  * [INPUT]: Depends on worker_threads/path, the closed database protocol, ChatSqliteConnection, ChatRepository, and typed schema errors
- * [OUTPUT]: Provides the sole node:sqlite/blob owner, startup reaping of interrupted imports, and the serial narrow-query/mutation dispatcher whose committed receipt is posted before cadence-bounded WAL/FTS maintenance and the self-healing search-projection reconcile run on the same serial tail
+ * [OUTPUT]: Sole SQLite worker dispatcher, receipt-first publication and interrupted-import recovery; local-only by default and fixture activation restricted to verification outside Electron.
  * [POS]: Process isolation boundary between Electron main and synchronous SQLite; it never accepts SQL text
  */
 
 import { HistorySource } from "./history/source";
 import { ChatHistoryReader } from "./history/reader";
 import { initializeHistoryParts } from "./history/parts";
-import { initializeChatOptions } from "./agent-switch/initialize";
 import type { MessagePort } from "node:worker_threads";
 import { parentPort } from "node:worker_threads";
 import { dirname } from "node:path";
@@ -67,14 +66,17 @@ class DatabaseWorkerRuntime {
   async execute(command: DatabaseCommand): Promise<unknown> {
     if (command.kind === "initialize") {
       if (this.connection) throw new Error("database worker is already initialized");
+      if (command.storageMode && command.storageMode.kind !== "local-only" && (command.mode !== "verification" || Boolean(process.versions.electron))) {
+        throw new Error("Fixture synchronization is unavailable in production");
+      }
       const startedAt = performance.now();
       this.connection = await ChatSqliteConnection.open(command.databasePath, command.mode);
-      initializeChatOptions(this.connection.database, command.backendDefaults);
       initializeHistoryParts(this.connection.database);
       this.history = new ChatHistoryReader(new HistorySource(this.connection.database, chatImportBlobsRoot(dirname(command.databasePath))));
       this.repository = new ChatRepository(this.connection.database, Date.now, {
         importBlobsRoot: chatImportBlobsRoot(dirname(command.databasePath)),
         backendDefaults: command.backendDefaults,
+        storageMode: command.storageMode,
       });
       const version = this.connection.database
         .prepare("SELECT sqlite_version() version")
@@ -98,6 +100,8 @@ class DatabaseWorkerRuntime {
     }
     const repository = this.repository;
     switch (command.kind) {
+      case "cloud-read": return repository.cloudRead(command);
+      case "cloud-mutate": return this.mutated(repository.cloudMutate(command));
       case "prepare-chat-history": return this.history!.prepare(command.chatId, command.deviceId, command.nativeBeforeSeq);
       case "read-chat-history": return this.history!.read(command.input, command.deviceId);
       case "list-metadata": return repository.listMetadata(command.deviceId, command.chatId);
@@ -110,6 +114,7 @@ class DatabaseWorkerRuntime {
       case "get-outline-page": return repository.getOutlinePage(command.chatId, command.cursor, command.limit, command.deviceId);
       case "find-messages": return repository.findMessages(command);
       case "switch-agent": return this.mutated(repository.switchAgent(command));
+      case "reserve-turn-sequences":
       case "reserve-switch-sequences": return this.mutated(repository.reserveSwitchSequences(command));
       case "upsert-record": return this.mutated(repository.upsertRecord(command));
       case "update-chat-facts": return this.mutated(repository.updateChatFacts(command));

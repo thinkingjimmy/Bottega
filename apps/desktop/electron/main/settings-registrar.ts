@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron dialog/BrowserWindow, Node fs/path, shared Settings, platform capabilities, ChatHomeService, backend runtime registry, memory service, workspace resolver, trusted renderer IPC, and surface residence
- * [OUTPUT]: Registers settings and model APIs; backend catalog reads return four snapshots immediately and model discovery uses runtime-only resolution.
+ * [OUTPUT]: Registers settings and model APIs while excluding presence-owned mode writes; backend catalog reads return four snapshots immediately and model discovery uses runtime-only resolution.
  * [POS]: Main Settings admission boundary; App windows receive no global settings envelope and only the backend/session projections required by their resident use chat
  */
 
@@ -49,7 +49,6 @@ const RENDERER_SETTINGS_KEYS = new Set([
   "disabledBuiltinTools",
   "usagePricingAutoRefresh",
   "skillsOnboarding",
-  "showTaskStatusAtTop",
   "theme",
   "language",
   "keyboardShortcuts",

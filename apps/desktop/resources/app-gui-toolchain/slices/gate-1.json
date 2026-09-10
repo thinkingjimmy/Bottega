@@ -273,7 +273,7 @@
       "sha256": "sha256:fd93d05f1b44db53d4cb6ef8f9fa494fbbc81210b0de9a8b7b86287db686b3c4"
     }
   ],
-  "runtimeSbomDigest": "sha256:65867776670c12b25af282c79cc4b738d08a3a5b859aee62d5bf2a2414fb6859",
+  "runtimeSbomDigest": "sha256:34ab2a0ff8ec1a10b40f76ace9cb1475c6679c8a56e0ce3cd5427522bfc21840",
   "noticesDigest": "sha256:8980166ffd25731775e9a3e31571084ecb75752fc3b940c3a0f9a1cc11fcc35b",
   "authoringContracts": [
     "bottega-react-v1",

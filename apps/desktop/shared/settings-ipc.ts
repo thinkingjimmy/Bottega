@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared/agent-ipc backend, workspace scope, model and turn-by-turn combined type
- * [OUTPUT]: Provides settings v11, revision envelopes, Skills-onboarding state, Memory/Chat Home APIs, model/session options, and the transient session-effective reset bridge contract
+ * [OUTPUT]: Provides settings v11 with main-owned presence preference writes, revision envelopes, Skills-onboarding state, Memory/Chat Home APIs, model/session options, and the transient session-effective reset bridge contract
  * [POS]: Single source of truth for shared multi-process settings; main, preload, and renderer exchange only what this contract defines
  */
 
@@ -65,6 +65,7 @@ export type AppSettings = {
   chatHomeState: ChatHomeState;
   launchAtLogin: boolean;
   keepRunningInBackground: boolean;
+  /** Remembered notch preference; effective only while background retention is enabled. */
   showTaskStatusAtTop: boolean;
   allowCrossChatRead: boolean;
   /** 宽松持久化、消费时与当前 ambient 工具集求交；下一轮 turn 生效。 */
@@ -140,6 +141,7 @@ export type RendererSettingsPatch = Partial<
     | "memory"
     | "launchAtLogin"
     | "keepRunningInBackground"
+    | "showTaskStatusAtTop"
   >
 >;
 

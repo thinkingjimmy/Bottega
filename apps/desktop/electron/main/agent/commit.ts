@@ -1,9 +1,12 @@
 /**
  * [INPUT]: Depends on turn draft, Plan request state, effective terminal, subagent registry, backend identity, Memory outcome, and reserved assistant identity
- * [OUTPUT]: Provides prepareTurnCommit with ProductFailure structure, Plan synthesis, Memory outcome, the single subagent-convergence derivation shared by part and meta, and canonical message/subagent deltas without persistence-time fallback copy
+ * [OUTPUT]: Canonical assistant and subagent terminal projection, preserving interrupted partial content, turn identity, completion reason and normalized result hash without failure placeholder text.
  * [POS]: Pure final projection for the agent module; persistence receives structure and never display fallback text
  */
 
+import { createHash } from "node:crypto";
+import { canonicalJson } from "../../../shared/local-storage/contracts";
+import { normalizeMessage } from "../chats/chat-commit";
 import {
   settle,
   type SubagentSettleOutcome,
@@ -77,7 +80,7 @@ export function prepareTurnCommit(
   );
   const subagentsDelta = entry.subagents.settle(subagentOutcome);
   const assistantMessagePresent = Boolean(
-    result && terminal.type !== "cancelled"
+    result
   );
   if (!result || !assistantMessagePresent) {
     return subagentsDelta && Object.keys(subagentsDelta).length
@@ -95,12 +98,14 @@ export function prepareTurnCommit(
       terminalType: terminal.type,
       content: result.content,
     });
-  return {
-    message: {
+  const message = normalizeMessage({
       id: entry.messageId,
       seq: entry.assistantSeq,
       role: "assistant",
       backend: entry.backend,
+      turnId: entry.requestId,
+      completion: terminal.type === "done" ? "complete" : "interrupted",
+      ...(terminal.type === "done" ? {} : { completionReason: terminal.type === "cancelled" ? "source-cancelled" as const : "source-error" as const }),
       content: result.content,
       ...(result.parts ? { parts: result.parts } : {}),
       durationMs: result.durationMs,
@@ -119,7 +124,10 @@ export function prepareTurnCommit(
           }
         : {}),
       createdAt: Date.now(),
-    } satisfies ChatMessage,
+    } satisfies ChatMessage);
+  if (message.role !== "assistant") throw new Error("Invalid assistant projection");
+  const resultHash = createHash("sha256").update(canonicalJson(message)).digest("hex");
+  return { message: { ...message, resultHash },
     ...(subagentsDelta && Object.keys(subagentsDelta).length
       ? { subagentsDelta }
       : {}),

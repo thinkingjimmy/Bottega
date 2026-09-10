@@ -3,6 +3,7 @@
  * [OUTPUT]: Provides the complete English catalog and its Catalog type, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
  * [POS]: Reference and fallback locale for desktop i18n
  */
+import { sketchEn } from "./sketch/en";
 import { appHostEn } from "./app-host/en";
 import { agentAvailabilityEn } from "./agent-availability/en";
 
@@ -36,6 +37,7 @@ import { agentFailureEn } from "./agent-failure/en";
 import { chatStorageEn } from "./chat-storage/en";
 
 export const en = {
+  sketch: sketchEn,
   appHost: appHostEn,
   agentAvailability: agentAvailabilityEn,
   common: {
@@ -346,11 +348,21 @@ export const en = {
       },
     },
     resumeFailure: {
-      title: "Saved session could not resume",
-      description: "The backend rejected the saved session. Your message and attachments remain stored; choose how to recover without writing them twice.",
-      sameSession: "Retry same session",
-      freshSession: "Start fresh session",
-      abandon: "Abandon turn",
+      title: "{{backend}} can't open this chat's saved session",
+      description: "Your message and attachments are saved, and still unsent.",
+      retriedTitle: "Retrying the original session failed",
+      retriedDescription: "That session is most likely gone from {{backend}}. Your message and attachments are still saved, and still unsent.",
+      recommended: "Recommended",
+      sameSession: "Retry the original session",
+      sameSessionDetail: "Reconnect to the original session. If it works, the agent keeps everything it knows about this chat.",
+      sameSessionRetry: "Try the original session again",
+      sameSessionRetryDetail: "Attempt the same reconnection once more. It already failed once.",
+      freshSession: "Start a fresh session",
+      freshSessionDetail: "Drop the original session and let the agent start over from a summary of the recent conversation. Anything earlier is no longer in front of it.",
+      freshSessionBlocked: "This chat was imported from outside and stays bound to the session it came with, so it can't move to a new one.",
+      abandon: "Abandon this turn",
+      abandonDetail: "Nothing is sent; this turn ends here. Your message stays in this chat.",
+      actionFailed: "That didn't work: {{message}}",
     },
     readOnly: "This chat is currently read-only",
     backendUnavailable: "{{backend}} is currently unavailable.",

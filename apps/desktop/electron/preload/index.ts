@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, and all shared renderer IPC contracts
- * [OUTPUT]: Exposes validated renderer bridges and fixed-purpose panel opening, preserving manual/adopt retry intent and fixed-purpose Agent management while rejecting extra navigation arguments.
+ * [OUTPUT]: Exposes renderer bridges including nested quota snapshot/demand access, fixed-purpose background display selection and panel/Agent management and explicit manual/adopt retry intents; rejects extra navigation arguments.
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge
  */
 
+import { LIMITS_CHANNEL, type UsageLimitsSnapshot } from "../../shared/usage-limits/types";
 import {
   contextBridge,
   ipcRenderer,
@@ -304,6 +305,7 @@ contextBridge.exposeInMainWorld("presence", {
   observe: () => ipcRenderer.invoke(PRESENCE_CHANNEL.observe),
   setLaunchAtLogin: (enabled) => ipcRenderer.invoke(PRESENCE_CHANNEL.setLaunchAtLogin, enabled),
   setWindowRetention: (enabled) => ipcRenderer.invoke(PRESENCE_CHANNEL.setWindowRetention, enabled),
+  setDisplayMode: (mode) => ipcRenderer.invoke(PRESENCE_CHANNEL.setDisplayMode, mode),
   openPanel: () => ipcRenderer.invoke(PRESENCE_CHANNEL.openPanel),
   togglePanel: () => ipcRenderer.invoke(PRESENCE_CHANNEL.togglePanel),
   openSystemSettings: () => ipcRenderer.invoke(PRESENCE_CHANNEL.openSystemSettings),
@@ -696,6 +698,12 @@ contextBridge.exposeInMainWorld("setup", {
 } satisfies SetupBridgeApi);
 
 contextBridge.exposeInMainWorld("usage", {
+  limits: {
+    getSnapshot: () => ipcRenderer.invoke(LIMITS_CHANNEL.snapshot),
+    setDemand: (demand) => ipcRenderer.invoke(LIMITS_CHANNEL.demand, demand),
+    refresh: (request) => ipcRenderer.invoke(LIMITS_CHANNEL.refresh, request),
+    onChanged: subscribe<UsageLimitsSnapshot>(LIMITS_CHANNEL.changed),
+  },
   getSummary: (target, options) =>
     ipcRenderer.invoke(USAGE_CHANNEL.getSummary, target, options),
   onScanProgress: (callback) => {
