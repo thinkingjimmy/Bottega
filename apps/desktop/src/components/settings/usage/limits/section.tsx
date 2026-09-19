@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared quota store, localized formatting, Settings navigation, SettingsSurface, UsageRegion, UsageInfoTip and ui Tabs.
- * [OUTPUT]: Renders one rail tab per Agent with its headline quota, and the selected Agent's pools, windows, reset dates and recovery states.
+ * [OUTPUT]: Renders per-Agent headline quotas, complete calendar-aware windows, resets, recovery states and refresh actions for all readers; opens on a requested Agent's tab.
  * [POS]: Account quota section above local usage history; shares the source-rail grammar with it and never aggregates percentages across pools.
  */
 import { useEffect, useRef, useState } from "react";
@@ -37,7 +37,7 @@ function QuotaWindowRow({ agent, pool, window, now }: { agent: AgentUsageLimits;
   const { t } = useAppTranslation();
   const value = currentRemaining(window, now);
   const old = remainingPercent(window.usedPercent);
-  const title = quotaPeriod(window.windowDurationMins, t);
+  const title = quotaPeriod(window, t);
   const reset = quotaReset(window, agent, now, t);
   const percent = quotaPercent(value);
   const text = value === null ? t("settings.usage.limits.unknown") : t("settings.usage.limits.left", { percent });
@@ -82,10 +82,10 @@ function AgentLimits({ agent, now }: { agent: AgentUsageLimits; now: number }) {
       action={<div className="flex shrink-0 items-center gap-2">
         {agent.receivedAt !== null && <span className="text-muted-foreground text-xs tabular-nums" data-stale={quotaStale(agent, now)}>{t("settings.usage.limits.checked", { date: quotaDate(agent.receivedAt) })}</span>}
         {recovery && navigation && <Button type="button" variant="ghost" size="xs" onClick={navigation.openAgents}>{t("settings.usage.limits.manage")}</Button>}
-        {agent.backend !== "opencode" && <Button type="button" variant="ghost" size="icon-xs" disabled={loading || cooldown || agent.fetchState === "deferred"}
+        <Button type="button" variant="ghost" size="icon-xs" disabled={loading || cooldown || agent.fetchState === "deferred"}
           aria-label={t("settings.usage.limits.refresh", { agent: backendLabel(agent.backend) })} onClick={() => void usageLimitsStore.refresh(agent.backend)}>
           <RefreshCw aria-hidden="true" className={`size-3.5 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} />
-        </Button>}
+        </Button>
       </div>}
     >
       <div className="space-y-3">
@@ -130,20 +130,20 @@ function QuotaTab({ agent, now }: { agent: AgentUsageLimits; now: number }) {
   </TabsTrigger>;
 }
 
-export function UsageLimitsSection() {
+export function UsageLimitsSection({ focusAgent = null }: { focusAgent?: AgentBackendId | null }) {
   const { t } = useAppTranslation();
   const { snapshot, now } = useUsageLimits();
   const region = useRef<HTMLDivElement>(null);
   const [chosen, setChosen] = useState<AgentBackendId | null>(null);
   useEffect(() => { region.current?.focus({ preventScroll: true }); }, []);
   useUsageLimitsDemand(true, "settings");
-  /* Until the reader picks a tab, land on the first Agent that actually has
-     windows. The fallback only ever moves toward content, and the reader's
-     first click pins it. */
+  /* Until the reader picks a tab, land on the Agent whose card sent them here,
+     else on the first Agent that actually has windows. The fallback only ever
+     moves toward content, and the reader's first click pins it. */
   const fallback = snapshot.agents.find((agent) => agent.pools.length > 0)
     ?? snapshot.agents.find((agent) => agent.availability === "available")
     ?? snapshot.agents[0];
-  const selected = chosen ?? fallback?.backend;
+  const selected = chosen ?? focusAgent ?? fallback?.backend;
   return <div ref={region} tabIndex={-1} aria-label={t("settings.usage.limits.title")} className="mb-6 outline-none" data-testid="usage-limits">
     <h2 className="font-heading font-semibold text-sm">{t("settings.usage.limits.title")}</h2>
     <p className="mt-1 mb-3 text-xs leading-relaxed text-muted-foreground">{t("settings.usage.limits.note", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })}</p>

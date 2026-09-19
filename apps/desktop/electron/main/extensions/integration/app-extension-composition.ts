@@ -5,8 +5,8 @@
  */
 
 import type { AppExtensionGenerationPort } from "../../apps/generation/app-extension-generation";
-import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/app-generation-build-participants";
-import type { AppGenerationDrainProviderRegistry } from "../../lifecycle/app-generation-drain-providers";
+import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/generation/build-participants";
+import type { AppGenerationDrainProviderRegistry } from "../../lifecycle/generation/drain-providers";
 import { ExtensionRegistryStore } from "../registry-store";
 import {
   ExtensionInstaller,

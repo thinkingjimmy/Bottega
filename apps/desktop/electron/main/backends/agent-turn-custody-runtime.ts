@@ -4,6 +4,7 @@
  * [POS]: Turn-side custody driver for backends; the actual process mechanics live in .../custody, this file only interprets and restores custody state for a turn
  */
 
+import { assertRecoveredAuthority } from "../persistence/recovery-policy";
 import { join } from "node:path";
 import type {
   AgentTurnCustodyDependency,
@@ -124,6 +125,7 @@ export class AgentTurnCustodyRuntime {
     backendRuntimeIdentity: string;
     dependencies: readonly AgentTurnCustodyDependency[];
   }): Promise<AgentTurnCustodyHandle> {
+    assertRecoveredAuthority();
     if (!this.accepting) throw new Error("turn custody 尚未开放准入");
     await this.assertAdmissible(input.owner, input.dependencies);
     const attachment = new CustodyAttachment(

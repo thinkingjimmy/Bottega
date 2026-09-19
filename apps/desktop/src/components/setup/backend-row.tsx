@@ -1,114 +1,58 @@
 /**
- * [INPUT]: Depends on SetupProvider's shared clock/actions, localized setup guidance, backend identity and backend-parts' presentation projection.
- * [OUTPUT]: Renders compact Agent setup rows with known versions, verification recovery guidance, badge/refresh progress and no repeated checking subtitle.
- * [POS]: The setup module's only row form, consumed by Backends Settings and Onboarding without reinterpreting backend state
+ * [INPUT]: Depends on Setup context, shared CheckIssue facts and presentation, prioritized actions, diagnostic feedback and i18n.
+ * [OUTPUT]: Renders a detailed Agent Settings row with historical timestamps and local recovery.
+ * [POS]: Settings availability surface; onboarding uses the separate installation-only list.
  */
 
-import { Download, Info, LogIn, RefreshCw } from "lucide-react";
 import { useSetup } from "@/components/providers/setup-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { SettingsButton } from "@/components/settings/settings-layout";
-import { AgentBackendIcon, backendGuideKey } from "@/lib/agent-backends";
+import { AgentBackendIcon } from "@/lib/agent-backends";
 import type { BackendInfo } from "../../../shared/agent-ipc";
-import {
-  BackendIconAction,
-  BackendStatusBadge,
-  backendSetupPresentation,
-} from "./backend-parts";
+import type { CheckIssue } from "../../../shared/agent-availability/types";
+import { BackendStatusBadge, backendSetupPresentation } from "./backend-parts";
+import { BackendActions } from "./backend-actions";
+import { SetupDiagnostics, SetupFeedbackNotice } from "./backend-feedback";
+
+const checkIssueKeys = {
+  timeout: "setup.checkIssue.timeout",
+  connection: "setup.checkIssue.connection",
+  busy: "setup.checkIssue.busy",
+  failed: "setup.checkIssue.failed",
+} as const satisfies Record<CheckIssue, string>;
 
 export function SetupBackendRow({ backend }: { backend: BackendInfo }) {
   const setup = useSetup();
-  const { t } = useAppTranslation();
-  const busy = Boolean(setup.busy[backend.id]);
+  const { t, i18n } = useAppTranslation();
   const presentation = backendSetupPresentation(backend, setup.now);
-  const checking = presentation.refreshing || setup.busy[backend.id] === "recheck" ||
-    Boolean(setup.latestChecking[backend.id]);
-  const guide = presentation.showGuide && !presentation.canInstall
-    ? t(backendGuideKey(backend)) : "";
-  const verificationHints = {
-    checking: "",
-    unverified: t("setup.verification.unverified"),
-    expired: t("setup.verification.expired"),
-    failed: t("setup.verification.failed"),
+  const feedback = setup.feedback[backend.id];
+  const hintKeys = {
+    checking: "", unverified: "setup.verification.unverified", expired: "setup.verification.expired",
+    failed: "setup.verification.failed", unsupported: "setup.verification.updateRequired",
+    "sign-in": "setup.verification.signInRequired", "cannot-check": "setup.verification.cannotCheck",
+    "cannot-start": "setup.verification.cannotStart", waiting: "setup.verification.waiting",
   };
-  const hint = presentation.hint ? verificationHints[presentation.hint] : guide;
-
-  return (
-    <div role="group" aria-label={backend.displayName} className="px-4 py-2.5">
-      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-2">
-        <AgentBackendIcon backend={backend.id} className="size-4 shrink-0" />
-        <span className="w-24 shrink-0 truncate font-medium text-sm">
-          {backend.displayName}
-        </span>
-        <BackendStatusBadge tone={presentation.tone}>
-          {t(`agentAvailability.state.${presentation.status}`)}
-        </BackendStatusBadge>
-        {backend.version && (
-          <span
-            className="min-w-0 truncate font-mono text-[11px] text-muted-foreground"
-            title={backend.path}
-          >
-            {`v${backend.version}`}
-          </span>
-        )}
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          {presentation.canInstall && (
-            <SettingsButton
-              variant="outline"
-              disabled={busy}
-              onClick={() => void setup.terminalAction(backend.id, "install")}
-            >
-              <Download /> {t("setup.install")}
-            </SettingsButton>
-          )}
-          {presentation.loginAction && (
-            <SettingsButton
-              variant="outline"
-              disabled={busy || presentation.refreshing}
-              onClick={() => void setup.terminalAction(backend.id, "login")}
-            >
-              <LogIn />
-              {presentation.loginAction === "manage"
-                ? t("setup.manageLogin")
-                : t("setup.login")}
-            </SettingsButton>
-          )}
-          {presentation.canUpdate && (
-            <SettingsButton
-              aria-label={t("setup.updateAria", { backend: backend.displayName })}
-              title={backend.latestVersion}
-              variant="outline"
-              disabled={busy}
-              onClick={() => void setup.terminalAction(backend.id, "update")}
-            >
-              <RefreshCw /> {t("setup.update")}
-            </SettingsButton>
-          )}
-          {backend.reason && (
-            <BackendIconAction
-              label={t("setup.details", { backend: backend.displayName })}
-              detail={
-                <span className="flex flex-col gap-1">
-                  <span className="font-medium">{t("agentFailure.technicalDetails")}</span>
-                  <span className="line-clamp-6 break-words font-mono text-[11px]">
-                    {backend.reason}
-                  </span>
-                </span>
-              }
-            >
-              <Info />
-            </BackendIconAction>
-          )}
-          <BackendIconAction
-            label={t("setup.recheck", { backend: backend.displayName })}
-            disabled={busy || checking}
-            onClick={() => void setup.recheckBackend(backend.id)}
-          >
-            <RefreshCw className={checking ? "animate-spin" : undefined} />
-          </BackendIconAction>
-        </div>
-      </div>
-      {hint && <p className="pt-1 pl-7 text-xs text-muted-foreground" role="status">{hint}</p>}
+  const hintKey = presentation.hint ? hintKeys[presentation.hint] : "";
+  const hint = presentation.hint === "failed" && backend.availability?.checkIssue
+    ? t(checkIssueKeys[backend.availability.checkIssue])
+    : hintKey ? t(hintKey, { version: backend.version, minimum: backend.minimumVersion }) : "";
+  const showCheckedAt = presentation.checkedAt !== undefined;
+  return <div role="group" aria-label={backend.displayName} aria-busy={presentation.refreshing} className="px-4 py-3">
+    <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-2">
+      <AgentBackendIcon backend={backend.id} className="size-4 shrink-0" />
+      <span className="w-24 shrink-0 truncate font-medium text-sm">{backend.displayName}</span>
+      <BackendStatusBadge tone={presentation.tone}>{t(presentation.labelKey)}</BackendStatusBadge>
+      {backend.version && <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={backend.path}>{`v${backend.version}`}</span>}
+      <BackendActions backend={backend} presentation={presentation} />
     </div>
-  );
+    <div className="min-w-0 pl-7">
+      {hint && <p className="pt-1 text-xs text-muted-foreground" role="status">{hint}</p>}
+      {showCheckedAt && <p className="pt-1 text-[11px] text-muted-foreground">{t("setup.checkedAt", {
+        time: new Intl.DateTimeFormat(i18n.resolvedLanguage, { dateStyle: "short", timeStyle: "short" }).format(presentation.checkedAt),
+      })}</p>}
+      {backend.reason && <SetupDiagnostics reason={backend.reason} />}
+      {feedback && <div className="pt-2"><SetupFeedbackNotice feedback={feedback} disabled={Boolean(setup.busy[backend.id])}
+        onRetry={() => void (feedback.kind === "clipboard" || feedback.operation === "check" || feedback.operation === "load"
+          ? setup.recheckBackend(backend.id) : setup.terminalAction(backend.id, feedback.operation))} /></div>}
+    </div>
+  </div>;
 }

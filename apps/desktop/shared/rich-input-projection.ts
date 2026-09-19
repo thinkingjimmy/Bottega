@@ -86,7 +86,7 @@ export const richInputValueSchema = z
   .array(richInputNodeSchema)
   .max(RICH_INPUT_NODE_LIMIT);
 
-type CanonicalRichInputNode = z.infer<typeof richInputNodeSchema>;
+export type CanonicalRichInputNode = z.infer<typeof richInputNodeSchema>;
 export type RichInputAgentInput = Exclude<
   AgentUserInput,
   { type: "image" }

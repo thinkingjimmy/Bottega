@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on shared Project/Chat contracts, main/errors, lifecycle-fenced ProjectStore, filesystem validation, ProjectResourceCleanupCoordinator, rebind saga, and cross-domain cleanup ports
- * [OUTPUT]: Provides Project CRUD/workspace operations, Project-scoped branch mutations, conversation-scoped managed-worktree branch reads, authoritative reveal-directory resolution, canonical lifecycle contexts, exact held App-placement planning/cleanup, rebuildable removal handlers, and startup cleanup recovery
+ * [OUTPUT]: Provides Project operations, unbound folder binding, throttled Git origin refresh, configured cloud-removal handoff and deletion-fenced navigation without discarding native custody.
  * [POS]: Main Project authority; archive/rebind preserve incarnation while permanent removal is delegated only to the durable resource cleanup coordinator
  */
 
 import { realpath } from "node:fs/promises";
 import { basename } from "node:path";
-import { dialog, type BrowserWindow } from "electron";
+import type { BrowserWindow } from "electron";
 import {
   PROJECT_UNAVAILABLE,
   PROJECTS_CHANNEL,
@@ -23,6 +23,10 @@ import type { AppChatRole, ChatSummary } from "../../../shared/chats-ipc";
 import { translate } from "../../../shared/i18n/runtime";
 import { errorMessage, statusError } from "../errors";
 import { SerialQueue } from "../persistence/serial-queue";
+import { projectCloudDisplay } from "./service/portable-display";
+import { pickProjectDirectory } from "./service/folder-picker";
+import { ProjectRemoteRefresh } from "./git/remote-refresh";
+import { releaseLocalMissingProject } from "./rescue/local";
 import { publishProjectsEvent } from "./service/renderer-policy";
 import type { BuiltinMcpLease } from "../tools/lease";
 import {
@@ -39,6 +43,7 @@ import {
   type ProjectRemovalOperation,
   type StoredProject,
 } from "./store/project-store";
+import { bindRestoredProject } from "./rebind/cloud-binding";
 import type { ProjectRebindCapsule } from "./rebind/rebind-journal";
 import {
   driveProjectRebind,
@@ -56,12 +61,23 @@ export class ProjectsService {
   private readonly deletingProjects = new Set<string>();
   private window: BrowserWindow | null = null;
   private admissionOpen = true;
+  private cloudRemoval: ((projectId: string) => Promise<void>) | null = null;
+  private rescueMissing: ((projectId: string) => Promise<number>) | null = null;
   readonly resourceCleanup: ProjectResourceCleanupCoordinator;
+  private readonly remoteRefresh: ProjectRemoteRefresh;
   constructor(readonly store: ProjectStore,
     readonly options: ProjectsServiceOptions) {
     this.resourceCleanup = options.resourceCleanup;
+    /* Only the probe that actually moved the origin publishes: an unchanged value must not wake
+       every Sidebar row once per Project per refresh window. */
+    this.remoteRefresh = options.remoteRefresh ?? new ProjectRemoteRefresh({ write: async (projectId, gitRemote) => {
+      if (this.store.get(projectId)?.gitRemote === gitRemote) return;
+      await this.store.setGitRemote(projectId, gitRemote);
+      this.publishStored(projectId);
+    } });
     this.registerResourceCleanupHandlers();
   }
+  private locale() { return this.options.locale?.() ?? "en"; }
   async initialize() { await this.options.rebindJournal?.initialize(); }
   async recoverMemoryRebinds() {
     const journal = this.options.rebindJournal;
@@ -77,9 +93,7 @@ export class ProjectsService {
       }
     }
   }
-  recoverResourceCleanup() {
-    return this.resourceCleanup.recoverPending();
-  }
+  recoverResourceCleanup() { return this.resourceCleanup.recoverPending(); }
   async cleanupEmptyBaseCustody() {
     if (!this.options.hasBaseForProject) return [];
     const failures: Array<{ projectId: string; message: string }> = [];
@@ -122,24 +136,14 @@ export class ProjectsService {
   }
 
   /** chooser 只冻结规范路径；history-import 的计数发生在真正落 Project 之前。 */
-  async prepareExternalProject(window?: BrowserWindow) {
+  prepareExternalProject(window?: BrowserWindow) {
     this.assertAdmission();
-    const options = {
-      title: translate(
-        this.options.locale?.() ?? "en",
-        "settings.native.chooseProject"
-      ),
-      properties: ["openDirectory", "createDirectory"] as Array<"openDirectory" | "createDirectory">,
-    };
-    const parent = window ?? this.window;
-    const result = parent
-      ? await dialog.showOpenDialog(parent, options)
-      : await dialog.showOpenDialog(options);
-    const selected = result.filePaths[0];
-    if (result.canceled || !selected) return null;
-    const canonicalRoot = await realpath(selected);
-    if (!isUsableDirectory(canonicalRoot)) throw new Error("所选文件夹不可用");
-    return { canonicalRoot, name: basename(canonicalRoot) || canonicalRoot };
+    return pickProjectDirectory(this.locale(), window ?? this.window);
+  }
+  /** Sidebar "Choose folder…" for a Project restored without this computer's workspace row. */
+  chooseWorkspaceFolder(projectId: string) {
+    this.assertAdmission();
+    return bindRestoredProject(this, projectId);
   }
 
   /** prepare→commit 的唯一落盘点；重复目录只返回已有实体，调用者不得重放 onboarding 配置。 */
@@ -157,6 +161,7 @@ export class ProjectsService {
         appId: null,
       });
       const wire = this.withMissing(project);
+      this.remoteRefresh.schedule(project.id, canonical);
       this.emit({ type: "upserted", project: wire });
       return { project: wire, created: true } as const;
     });
@@ -166,12 +171,12 @@ export class ProjectsService {
   }
   private snapshot(): ProjectsSnapshot {
     const stored = this.store.list().filter((project) => project.role !== "base-custody");
-    const storedIds = new Set(stored.map((project) => project.id));
+    const storedIds = new Set(this.store.list().map((project) => project.id));
     const placeholders = [...this.options.listProjectRefs()]
       .filter(([projectId]) => !storedIds.has(projectId))
       .map(([id, reference]): Project => ({
         id,
-        name: "已丢失的 Project",
+        name: translate(this.locale(), "projects.missingName"),
         dir: "",
         workspaceBinding: { kind: "none" },
         role: "workspace",
@@ -191,9 +196,8 @@ export class ProjectsService {
           right.updatedAt - left.updatedAt || left.id.localeCompare(right.id)
       );
     return {
-      projects: [...stored.map((project) => this.withMissing(project)), ...placeholders],
+      projects: [...stored.filter(project => !(project.sync?.deleted && project.sync.retention === "mirror")).map((project) => this.withMissing(project)), ...placeholders],
       sortMode: this.store.getSortMode(),
-      ...(this.store.getWarning() ? { warning: this.store.getWarning() } : {}),
     };
   }
   managedDirs() {
@@ -203,13 +207,14 @@ export class ProjectsService {
     const {
       deletionCheckpoint: _checkpoint,
       resourceAdmissions: _resourceAdmissions,
+      sync: _sync,
       ...wire
     } = project;
     const binding = project.workspaceBinding;
     /* external 由 opaque capability→路径；丢失判定只认 capability owner。 */
     const capabilityId = workspaceCapabilityId(binding);
     return {
-      ...wire,
+      ...wire, ...projectCloudDisplay(project, this.options.isAppProjectAvailable),
       missing: capabilityId
         ? !isUsableDirectory(this.store.resolveWorkspace(binding) ?? "")
         : binding.kind === "app" &&
@@ -329,6 +334,7 @@ export class ProjectsService {
       }
       return { workspace: app.dir, appId: binding.appId };
     }
+    if (binding.kind === "unbound") throw new Error(`${PROJECT_UNAVAILABLE}: ${translate(this.locale(), "projects.unbound.turnRefused")}`);
     if (binding.kind === "none") {
       throw new Error(`${PROJECT_UNAVAILABLE}: Project 未绑定工作目录`);
     }
@@ -336,23 +342,20 @@ export class ProjectsService {
     if (!workspace || !isUsableDirectory(workspace)) {
       throw new Error(`${PROJECT_UNAVAILABLE}: Project 文件夹已丢失`);
     }
+    this.remoteRefresh.schedule(projectId, workspace);
     return { workspace };
   }
-  getWorkspaceBinding(projectId: string) {
-    return this.store.get(projectId)?.workspaceBinding;
-  }
-  getMembershipRevision(projectId: string) {
-    return this.store.get(projectId)?.membershipRevision;
-  }
-  getProjectLifecycleRevision(projectId: string) {
-    return this.store.projectLifecycleRevision(projectId);
-  }
+  getWorkspaceBinding(projectId: string) { return this.store.get(projectId)?.workspaceBinding; }
+  getMembershipRevision(projectId: string) { return this.store.get(projectId)?.membershipRevision; }
+  getProjectLifecycleRevision(projectId: string) { return this.store.projectLifecycleRevision(projectId); }
   resolveConversationContext(projectId: string, homeDir: string) {
     this.assertNoMemoryRebind(projectId);
     const project = this.store.get(projectId);
     if (!project) {
       throw new Error(`${PROJECT_UNAVAILABLE}: Project 记录不存在`);
     }
+    /* A Project that never owned a folder runs in the Chat Home by design; one that lost its local
+       workspace row must not inherit that fallback, or its turns would silently run somewhere else. */
     return project.workspaceBinding.kind === "none"
       ? { workspace: homeDir }
       : this.resolveCodexContext(projectId);
@@ -373,6 +376,7 @@ export class ProjectsService {
       createGitBranch(workspace, name)
     );
   }
+  configureCloudRemoval(handler: (projectId: string) => Promise<void>) { if (this.cloudRemoval) throw new Error("Cloud Project removal is already configured"); this.cloudRemoval = handler; }
   async deleteProjectData(projectId: string) {
     await this.runExclusive(async () => {
       this.assertProjectRemovalOpen(projectId, "delete-project-data");
@@ -385,6 +389,7 @@ export class ProjectsService {
       this.deletingProjects.add(projectId);
     });
     try {
+      await this.cloudRemoval?.(projectId);
       /* Project queue 只负责发布 product fence；cancel、Policy/Delivery drain 与
          Chat bytes 删除都在门外推进，避免一个慢 provider 阻塞全局 Project。 */
       await this.resourceCleanup.remove(projectId, "delete-project-data");
@@ -429,10 +434,8 @@ export class ProjectsService {
     await this.removeProjectHeld(projectId);
   }
   /** Archive purge 已完成 chat 删除；仍必须经过统一资源收敛器后才能删 Project 行。 */
-  async purgeProjectHeld(
-    projectId: string,
-    purgeIntentId: string
-  ) {
+  async purgeProjectHeld(projectId: string, purgeIntentId: string) {
+    await this.cloudRemoval?.(projectId);
     await this.resourceCleanup.remove(projectId, "archive-purge", purgeIntentId);
     this.emit({ type: "removed", projectId });
   }
@@ -567,18 +570,14 @@ export class ProjectsService {
       };
     });
   }
-  releaseMissing(projectId: string) {
-    return this.runExclusive(async () => {
-      if (this.store.get(projectId)) {
-        throw statusError(409, "只允许抢救 Project 记录已丢失的聊天");
-      }
-      const chatIds = this.options.listChatsByProject(projectId);
-      for (const chatId of chatIds) {
-        await this.options.releaseChatProject(chatId);
-      }
-      this.emit({ type: "removed", projectId });
-      return chatIds.length;
-    });
+  configureMissingRescue(release: (projectId: string) => Promise<number>) {
+    this.rescueMissing = release;
+  }
+  async releaseMissing(projectId: string) {
+    const count = this.rescueMissing ? await this.rescueMissing(projectId) :
+      await this.runExclusive(() => releaseLocalMissingProject(projectId, this.store, this.options));
+    this.emit({ type: "removed", projectId });
+    return count;
   }
   runExclusive<T>(job: () => Promise<T>): Promise<T> {
     this.assertAdmission();
@@ -648,7 +647,7 @@ export class ProjectsService {
     this.admissionOpen = false;
   }
   async closeAndFlush() {
-    await Promise.allSettled([...this.activeRebinds]);
+    await Promise.allSettled([this.remoteRefresh.flush(), ...this.activeRebinds]);
     this.queue.close();
     await this.queue.flush();
     await this.options.rebindJournal?.closeAndFlush();
@@ -664,7 +663,7 @@ export class ProjectsService {
 
   private isProjectOpen(projectId: string) {
     return !this.deletingProjects.has(projectId) &&
-      !this.store.get(projectId)?.deletionCheckpoint &&
+      !this.store.get(projectId)?.deletionCheckpoint && !this.store.get(projectId)?.sync?.deleted &&
       !this.store.get(projectId)?.archivedAt &&
       (this.options.isProjectOpen?.(projectId) ?? true);
   }

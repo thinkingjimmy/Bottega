@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on native quota response objects and the shared pool/window contract.
- * [OUTPUT]: Normalizes Codex, Claude and Kimi without inferring missing values or merging unrelated pools.
+ * [OUTPUT]: Normalizes Codex, Claude, Kimi and OpenCode Go without inferring missing values or merging unrelated pools.
  * [POS]: Sole provider mapping authority, independent of process and renderer lifecycles.
  */
 import type { AgentQuotaPool, AgentQuotaWindow } from "../../../shared/usage-limits/types";
@@ -102,4 +102,17 @@ export function normalizeKimi(raw: unknown, receivedAt: number): QuotaReadResult
     identities.set(key, next); windows.push(next);
   }
   return { source: "kimi-local-api", pools: windows.length ? sortQuotaPools([{ id: "general", isGeneral: true, label: null, windows }]) : [], planLabel: null, receivedAt };
+}
+
+export function normalizeOpencodeGo(raw: unknown, receivedAt: number): QuotaReadResult {
+  const usage = object(object(raw).usage);
+  const windows: AgentQuotaWindow[] = [];
+  for (const [id, minutes] of [["rolling", 300], ["weekly", 10080], ["monthly", null]] as const) {
+    const value = object(usage[id]);
+    if (value.status !== "ok" && value.status !== "rate-limited") throw new QuotaReadError("invalid-response");
+    windows.push({ ...window(id, minutes, finite(value.percent), timestamp(value.resetsAt), receivedAt),
+      ...(id === "monthly" ? { calendarPeriod: "month" as const } : {}) });
+  }
+  return { source: "opencode-go-api", planLabel: "OpenCode Go", receivedAt,
+    pools: [{ id: "opencode-go", isGeneral: true, label: "OpenCode Go", windows }] };
 }

@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, the locale catalog, AppsProvider, selectable HistoryProvider Project, import coordinator, shared Projects, and projects-client contracts
- * [OUTPUT]: Provides ProjectsProvider/useProjects with epoch refresh, buffered events, authoritative placement convergence, App focus, localized reveal/detach/missing failures, and Git branch operations
+ * [INPUT]: Depends on React Context, the locale catalog, AppsProvider, HistoryProvider, popup feedback, startup marks, shared Projects, and projects-client contracts
+ * [OUTPUT]: Provides ProjectsProvider/useProjects with ordered refresh/events, focus revalidation, background warnings, popup mutation failures, caller-owned detach/rescue failures, placements, and Git branch operations
  * [POS]: Renderer Project single source of truth; mutation Promise records never bypass ordered snapshot/event adoption
  */
 
@@ -42,9 +42,11 @@ import {
   setProjectAppPinned as setProjectAppPinnedViaClient,
   setProjectsSortMode,
 } from "@/lib/projects-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
+import { markStartup } from "@/lib/startup-marks";
 import { useOptionalHistory } from "./history/history-provider";
 import { useAppTranslation } from "./i18n-provider";
+import { toast } from "@ai-chat/ui/components/ui/sonner";
 
 type ProjectsContextValue = {
   projects: Project[];
@@ -141,13 +143,24 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         refreshing.current = false;
         bufferedEvents.current = [];
         setLoading(false);
+        markStartup("projects-loaded");
       }
     }
   }, [t]);
 
   useEffect(() => {
     const unsubscribe = onProjectsEvent(receive);
-    const onFocus = () => void refresh();
+    /* Main pushes every mutation it performs, but `missing` is derived from the
+       filesystem inside each snapshot and no watcher reports a workspace folder
+       being deleted or restored behind the app's back — asking again is the only
+       way that fact ever arrives, and regaining focus is when it is most likely
+       to have changed. The guard matters at launch: without it the window's
+       first focus fires a second listProjects on top of the mount refresh, in
+       the middle of the busiest stretch of startup. */
+    const onFocus = () => {
+      if (refreshing.current) return;
+      void refresh();
+    };
     window.addEventListener("focus", onFocus);
     void refresh();
     return () => {
@@ -175,7 +188,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       try {
         return await action();
       } catch (cause) {
-        setWarning(failureCopy(errorMessage(cause)));
+        toast.error(failureCopy(errorMessage(cause)));
         throw cause;
       }
     },
@@ -218,21 +231,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           throw cause;
         }
       },
-      detachLocalProject: (projectId) =>
-        run(
-          () => detachLocalProjectViaClient(projectId),
-          (message) => t("projects.provider.detachFailed", { message })
-        ),
+      detachLocalProject: detachLocalProjectViaClient,
       revealProject: (projectId) =>
         run(
           () => revealProjectViaClient(projectId),
           (message) => t("projects.provider.revealFailed", { message })
         ),
-      releaseMissingProject: (projectId) =>
-        run(
-          () => releaseMissingProjectViaClient(projectId),
-          (message) => t("projects.provider.releaseFailed", { message })
-        ),
+      releaseMissingProject: releaseMissingProjectViaClient,
       setSortMode: async (mode) => {
         await run(
           () => setProjectsSortMode(mode),

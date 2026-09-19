@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React layout lifecycle, renderer locale/catalog runtime, submission status setters, session refs, message projection, and attachment preview combinator
- * [OUTPUT]: Provides keyed mount-aware useSessionViewFence with generation-scoped createSessionSubmitLifecycle
+ * [OUTPUT]: Provides keyed submission lifecycle and acknowledges unsequenced queues without fabricating canonical messages
  * [POS]: The renderer lifecycle adapter for chat/runtime/session; The naked setter is isolated and blocks the old Chat that has been transferred to the main from re-infesting the current view. Post-send navigation is deliberately absent: the fence rightly voids late receipts after a keyed remount, so page switching belongs to the route's draft-residence observation, never to receipts
  */
 
@@ -27,7 +27,7 @@ import {
   type TurnDraft,
 } from "../../../../../shared/chat-turn-reducer";
 import type { AgentRequest } from "@/lib/agent-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { effectiveLocale } from "@/lib/i18n-locale";
 import { translate } from "../../../../../shared/i18n/runtime";
 import {
@@ -187,8 +187,10 @@ export function createSessionSubmitLifecycle({
           translate(effectiveLocale(), "chat.runtime.submission.relayPending")
         );
       }
-      appendPreviews(receipt.userMessage.id, previews);
-      appendProjected(receipt.userMessage);
+      if (receipt.userMessage) {
+        appendPreviews(receipt.userMessage.id, previews);
+        appendProjected(receipt.userMessage);
+      }
       createTurnDraft();
       markPersisted();
     },

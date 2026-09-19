@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path/crypto/timers and shared history-import contracts
- * [OUTPUT]: Provides the read-only HistoryAdapter port, 4-GiB constant-memory message streams, separately capped compatibility reads, stable JSONL streaming, two-depth scans, file/storage fingerprints, the coded HISTORY_REVISION_CHANGED error, containment, per-line limits, titles, abort checkpoints, and compatibility collection
+ * [OUTPUT]: Provides the read-only HistoryAdapter port (with optional warm-up), 4-GiB constant-memory message streams, separately capped compatibility reads, stable JSONL streaming, two-depth scans, the SCAN_FANOUT/mapWithLimit bounded fan-out every per-file scan uses, file/storage fingerprints, the coded HISTORY_REVISION_CHANGED error, containment, per-line limits, titles, abort checkpoints, and compatibility collection
  * [POS]: Mechanistic history-import adapter kernel shared by main projections and the dedicated parser worker; its parser version is what retires every generation an older parser produced, and its entries carry no Project ownership — HistoryImportService.scanOwned stamps that
  */
 
@@ -126,6 +126,8 @@ export interface HistoryAdapter {
   readonly sourceKind: HistorySourceKind;
   readonly parserVersion: number;
   scanProject(canonicalRoot: string, depth?: ScanDepth): Promise<AdapterScan>;
+  /** Optional: build whatever index a scan needs before the folder is known, so the scan that follows a pick answers from memory. */
+  warm?(): Promise<void>;
   /** Built-in adapters implement this; optional keeps injected bounded test adapters minimal. */
   parseBatches?(entry: AdapterEntry, signal?: AbortSignal): HistoryBlockBatches;
   parse(entry: AdapterEntry, signal?: AbortSignal): Promise<ParsedHistory>;
@@ -239,6 +241,30 @@ export function sameFingerprint(
     left.size === right.size &&
     left.parserVersion === right.parserVersion
   );
+}
+
+/* ── 扫描扇出 ──────────────────────────────────────────────────
+ * 一次扫描的成本是每个文件一次 open+read。几千个文件逐个 await，几十微秒的
+ * 系统调用就累成秒级——本机 4,090 个 Codex rollout 串行读头要 2 秒。上限不
+ * 是越大越好：它同时限制同时打开的文件句柄数。
+ * ────────────────────────────────────────────────────────── */
+export const SCAN_FANOUT = 32;
+
+export async function mapWithLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await task(items[index]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }
 
 export function isWithin(root: string, candidate: string) {

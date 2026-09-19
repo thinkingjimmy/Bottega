@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shared agent/MCP DTOs, the apps/runtime/agent-tools AgentToolInventory type, AbortSignal, and the Node subprocess environment type
- * [OUTPUT]: Defines backend descriptors, structured failure targets, active capabilities, authentication progress and headless/maintenance execution contracts.
+ * [INPUT]: Depends on shared agent/MCP DTOs, model-catalog probe admission, the apps/runtime/agent-tools AgentToolInventory type, AbortSignal, and the Node subprocess environment type
+ * [OUTPUT]: Defines backend contracts, optional model-probe admission, the optional resident ACP connection port, the credential-safe authentication-check claim and main-only turn authority with optional exact-conversation Full Access validation.
  * [POS]: The backends contract module; runtime registry, transports, and product callers recognise each other only through the types declared here
  */
 
@@ -25,6 +25,7 @@ import type {
   TurnFilesystemAccess,
 } from "../../../shared/agent-ipc";
 import type { ServerFactBinding } from "./acp/session/server-facts";
+import type { ModelCatalogProbeRunner } from "./model-catalog";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import type { CleanupResult } from "../process-group";
 import type {
@@ -124,7 +125,7 @@ export type ResolvedAgentInput = {
 export type AgentTurnCallbacks = {
   onThread: (session: SessionRef) => Promise<void>;
   onItemDelta: (itemId: string, text: string) => void;
-  onItem: (item: AgentTurnItem) => void;
+  onItem: (item: AgentTurnItem, metadata?: { locations?: string[]; title?: string }) => void;
   onItemRemoved: (itemId: string) => void;
   onConfigOptionUpdate?: (
     options: readonly import("@agentclientprotocol/sdk").SessionConfigOption[]
@@ -231,7 +232,17 @@ export type AgentProcessHost = {
   readonly delivered: Promise<void>;
 };
 
+/** Main-only authority; never serialized or accepted from renderer payloads. */
+export type TrustedTurnAuthority = {
+  validate(): Promise<void>;
+  current(): void;
+  fullAccessFor?(conversationId: string, incarnationId: string): boolean;
+};
+
 export type BackendTurnOptions = {
+  onSessionPrompt?(sessionId: string, texts: string[]): Promise<void>;
+  sessionRecovery?: { candidate: import("../library/sessions/boundary").NativeSessionHint | null; complete(outcome: "resumed" | "replayed"): Promise<void> };
+  trustedAuthority?: TrustedTurnAuthority;
   payload: AgentSendPayload;
   input: ResolvedAgentInput;
   callbacks: AgentTurnCallbacks;
@@ -239,6 +250,12 @@ export type BackendTurnOptions = {
   workspace: string;
   /** 缺省是直连 spawn；产品路径恒由组合根注入 custody guardian 宿主 */
   processHost?: AgentProcessHost;
+  /**
+   * 已经付过 spawn + custody + initialize 的 ACP 连接。给出它即表示本轮
+   * **不拥有**进程：turn 只认领它、用完归还，进程的去留归所有者。非 ACP
+   * 后端恒忽略这一格。
+   */
+  connection?: import("./acp/connection/acp-connection").AcpConnection;
   processEnv?: NodeJS.ProcessEnv;
   /** 第一次 createTurn 前冻结；同一 request 的 resume/retry 复用，不回读 live Settings。 */
   backendSessionConfig?: Readonly<{
@@ -262,6 +279,7 @@ export type BackendTurnOptions = {
   /** runtime CAS 后冻结；ACP oracle 将它与服务端返回的 session facts 同章。 */
   serverFactBinding?: ServerFactBinding;
   /** main 在 runtime CAS 后冻结的产品上下文；逐 spawn 作为 prompt 首块下发。 */
+  artifactDirectory?: string;
   productContext?: string;
   /** 通用敏感 prompt contribution；backend 只消费 lease，不理解其业务来源。 */
   sensitiveContribution?: {
@@ -300,6 +318,9 @@ export type AuthCheckStatus = Extract<
 
 export type AuthCheckResult = {
   status: AuthCheckStatus;
+  startup?: "ready" | "cannot-start";
+  checkIssue?: import("../../../shared/agent-availability/types").CheckIssue;
+  unknownReason?: "provider-scoped" | "not-supported";
   /** 探针给出的原始可操作诊断；Registry 必须原样投影给 UI 与 runner。 */
   reason?: string;
 };
@@ -308,6 +329,9 @@ export type AuthExtension = {
   check(runtime: ResolvedRuntime, signal?: AbortSignal, onAuthenticationStarted?: () => void): Promise<AuthCheckResult>;
   /** provider 表示单次模型 turn 不能代表整个 backend 的认证态。 */
   turnEvidence?: "backend" | "provider";
+  /** 该检查跑在一次性 state 根 + 无网络 Seatbelt 里，既刷新不了也改写不了凭据：
+      因此不需要独占凭据，可与额度读取并行。只有具备准备好的只读环境的探针有资格声明。 */
+  credentialSafe?: boolean;
 };
 
 /* ============================================================
@@ -334,7 +358,7 @@ export type AcpLaunchOverlay = {
    * 数据本来就没有；缺席即按最严档位落地。
    */
   session?: {
-    approveForMe?: boolean;
+    artifactDirectory?: string;    approveForMe?: boolean;
     planMode?: boolean;
     builtinMcp?: BuiltinMcpServerSpec;
     thirdPartyMcpPlan?: import("../../../shared/mcp-servers-ipc").ThirdPartyMcpPlan;
@@ -350,7 +374,8 @@ export type ModelsExtension = {
   list(
     runtime: ResolvedRuntime,
     workspace: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    runProbe?: ModelCatalogProbeRunner
   ): Promise<BackendModelInfo[]>;
   /** 用户显式 Recheck 时丢弃本后端的目录缓存；TTL 是省事的默认，不是真相。 */
   invalidate?(): void;
@@ -474,6 +499,7 @@ export type MaintenanceAdapter = {
 export type ConnectionDescriptor = {
   id: AgentBackendId;
   displayName: string;
+  minimumVersion?: string;
   workspaceDirName: string;
   /**
    * 按发现优先级返回全部可执行候选；Registry 负责逐个验证版本与文件身份。

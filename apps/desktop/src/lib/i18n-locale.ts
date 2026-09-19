@@ -4,7 +4,7 @@
  * [POS]: Non-React locale boundary in the renderer; lets pure formatting functions read the same effective locale as React components
  */
 
-import type { AppLocale } from "../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { useSyncExternalStore } from "react";
 
 const INTL_LOCALES: Record<AppLocale, string> = {

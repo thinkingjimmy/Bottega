@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on injectable renderer IPC registration, ChatStore, surface-scoped read policy, strict chat/attachment ids, Gallery redaction, and injected rename/remove/attachment ports
+ * [INPUT]: Depends on injectable renderer IPC registration, ChatStore, surface-scoped read policy, strict Chat-scoped attachment ids, Gallery redaction, and injected rename/remove/attachment ports
  * [OUTPUT]: Provides registerChatRendererIpc for scoped reads plus strict main-only fork preflight/create/managed-commit mutations
  * [POS]: The chats renderer IPC adapter; ChatsService supplies domain callbacks while this module owns channel validation and window scope
  */
@@ -34,11 +34,12 @@ type ChatRendererIpcPorts = {
   isProjectArchived?(projectId: string): boolean;
   assertAdmission(): void;
   rename(input: unknown): Promise<unknown>;
+  setSortKey(input: unknown): Promise<unknown>;
   remove(chatId: string): Promise<void>;
   forkPreflight?(input: ForkChatPreflightInput): Promise<unknown>;
   fork?(input: ForkChatRequest): Promise<unknown>;
   commitManagedWorktree?(input: CommitManagedWorktreeInput): Promise<unknown>;
-  readAttachment(attachmentId: string): Promise<unknown>;
+  readAttachment(chatId: string, attachmentId: string): Promise<unknown>;
 };
 
 const assertChatId = (chatId: unknown) => {
@@ -227,6 +228,10 @@ export function registerChatRendererIpc(
       ports.assertAdmission();
       return ports.rename(input);
     })
+    .handle(CHATS_CHANNEL.setSortKey, (input) => {
+      ports.assertAdmission();
+      return ports.setSortKey(input);
+    })
     .handle(CHATS_CHANNEL.remove, async (chatId) => {
       ports.assertAdmission();
       await ports.remove(assertChatId(chatId));
@@ -234,23 +239,30 @@ export function registerChatRendererIpc(
     .roles("main", "app-window")
     .handleWithContext(
       CHATS_CHANNEL.readAttachment,
-      async (context, attachmentId) => {
+      async (context, input) => {
+        const { chatId, attachmentId } = (input ?? {}) as {
+          chatId?: unknown;
+          attachmentId?: unknown;
+        };
         if (
           typeof attachmentId !== "string" ||
           !ATTACHMENT_ID_PATTERN.test(attachmentId)
         ) {
           throw new Error("附件 id 格式无效");
         }
+        const owner = assertChatId(chatId);
         if (context.role === "app-window") {
           const scoped = surfaceWindowController.appWindowUseChat(context);
-          const referenced = scoped
-            ? await ports.store.hasAttachmentReference(scoped.chatId, attachmentId)
-            : false;
-          if (!referenced) {
+          if (scoped?.chatId !== owner) {
             throw new Error("App window attachment read rejected");
           }
         }
-        return ports.readAttachment(attachmentId);
+        /* Attachment bytes belong to one Chat directory, so the caller must name the owner
+           and the owner must actually reference it — an id alone identifies nothing. */
+        if (!(await ports.store.hasAttachmentReference(owner, attachmentId))) {
+          throw new Error("attachment does not belong to this chat");
+        }
+        return ports.readAttachment(owner, attachmentId);
       }
     );
 }

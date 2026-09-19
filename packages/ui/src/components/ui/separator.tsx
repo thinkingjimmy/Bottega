@@ -1,4 +1,9 @@
 "use client"
+/**
+ * [INPUT]: Depends on React, the radix-ui Separator primitive and cn of lib/utils.
+ * [OUTPUT]: Provides Separator, decorative by default, in horizontal and vertical orientations.
+ * [POS]: components/ui's single divider primitive; the desktop chat composer is its only consumer today.
+ */
 
 import * as React from "react"
 import { Separator as SeparatorPrimitive } from "radix-ui"

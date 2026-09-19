@@ -39,7 +39,7 @@ import { readGalleryState } from "@/lib/gallery/store";
 import { sketchQueueExtraBytes } from "@/lib/chat-composer/resources";
 import { swapComposerQueue } from "@/lib/chat-composer/sketch";
 import { sketchErrorMessage } from "@/lib/chat-composer/errors";
-import { reportedFailure } from "@/lib/errors";
+import { reportedFailure } from "@ai-chat/ui/lib/errors";
 import {
   claimItem,
   claimNext,

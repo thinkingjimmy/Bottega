@@ -1,8 +1,9 @@
 /**
- * [INPUT]: Depends only on clone-safe primitives shared by Electron main, preload, and renderer
+ * [INPUT]: Depends on clone-safe primitives and workspace-reference identities shared by Electron main, preload, and renderer
  * [OUTPUT]: Provides window role/bootstrap, exact App Studio route helpers, navigation-intent-fenced surface DTOs, migration commands, IPC channels, and WindowSurfacesBridgeApi
  * [POS]: Shared wire truth for one-surface-one-window routing; renderer submits intents while main owns residency and migration
  */
+import type { RemoteFileReference } from "@ai-chat/cloud-protocol/remote/input/references";
 
 export const WINDOW_ROLE_ARGUMENT = "--bottega-window-role=";
 export const WINDOW_ID_ARGUMENT = "--bottega-window-id=";
@@ -39,6 +40,7 @@ export type SurfaceComposerCapsule = Readonly<{
   /* 工作区身份必须随胶囊迁移：目标窗以空身份挂载会把迁来的 file 节点
      判为跨工作区污染并释放刚重绑的授权（零草稿丢失合同的反例）。 */
   workspaceIdentityKey: string;
+  workspaceReferences?: readonly RemoteFileReference[];
   projectId: string | null;
   richValue: unknown;
   attachmentRefs: readonly string[];

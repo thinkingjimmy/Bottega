@@ -7,7 +7,7 @@
 import { clipboard, type BrowserWindow } from "electron";
 import { APP_CHANNEL } from "../../../../shared/app-ipc";
 import type { AgentWorkspaceScope } from "../../../../shared/agent-ipc";
-import type { resolveAppLocale } from "../../../../shared/i18n/locale";
+import type { resolveAppLocale } from "@ai-chat/ui/lib/locale";
 import type { FileAuthorizationStore } from "../../file-authorizations";
 import { rendererIpc } from "../../ipc-registrar";
 import type { WorkspaceResolver } from "../../skills-catalog";

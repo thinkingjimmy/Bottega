@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on lifecycle admission/intents, App/Project/Chat/Base authorities, generation/build/data/grant settlement ports, App shell cleanup, the main/errors statusError factory, and idempotent finalization
- * [OUTPUT]: Provides replayable cascade/retain-data deletion in data→placement→shell order; placement cleanup is idempotent and reports the Projects it actually touched
+ * [OUTPUT]: Exports deletion participants and replayable local-only cascade/retain-data deletion; cloud-managed identities require their dedicated disposition controls.
  * [POS]: Durable App deletion saga; same-mode concurrent clicks, retries, and crash recovery converge on one monotonic intent, a differing mode is refused instead of silently adopting the flight's disposition, and a recordless replay only finalizes because startup reconciliation owns orphan placements
  */
 
@@ -19,7 +19,7 @@ import type { ProjectsService } from "../../projects/projects-service";
 import type { ConversationCoordinator } from "../../sections/coordinator/conversation-coordinator";
 import type { AppStore } from "../store/app-store";
 
-type AppDeleteDependencies = {
+export type AppDeleteDependencies = {
   store: AppStore;
   projects: ProjectsService;
   intents: LifecycleIntentStore;
@@ -110,6 +110,9 @@ export class AppDeleteService {
      承诺,调用方会拿到一张说「已保留数据」的回执,而数据早已被级联删掉。
      两种处置互斥,后到的那一次只能被如实拒绝。 */
   remove(input: RemoveAppInput) {
+    if (this.dependencies.store.portable.isCloudManaged(input.appId)) {
+      return Promise.reject(statusError(409, "Use the cloud App controls to remove this installation or delete it across devices.", { code: "CLOUD_APP_DISPOSITION_REQUIRED" }));
+    }
     const active = this.flights.get(input.appId);
     if (active && active.mode !== input.mode) {
       return Promise.reject(

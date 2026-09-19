@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shell-free executable discovery, platform PATH/environment facts and cancellable runtime/version probes
- * [OUTPUT]: Provides ordered CLI discovery, Windows-required non-secret environment and existing version/capability admission
+ * [INPUT]: Depends on shell-free executable discovery, platform PATH/environment facts, the shared RUNTIME_TTL_MS freshness window and cancellable runtime/version probes
+ * [OUTPUT]: Provides runtime candidates, version validation, login-shell PATH cache expiry for explicit rechecks, and exact OS launch/crash classification without interpreting network failures as startup failures.
  * [POS]: The backends are found when running the kernel; The lifecycle of the asynchronous process is called by its Runtime Registry flight unified with the canceled and drained
  */
 
@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { AgentBackendId } from "../../../shared/agent-ipc";
+import { RUNTIME_TTL_MS } from "../../../shared/agent-availability/types";
 import type { AgentRuntime } from "./types";
 import { environmentValue, findExecutable, platformPathEnvironment } from "../custody/executable-path";
 
@@ -24,9 +25,35 @@ async function commandPathAsync(
   return findExecutable(command, { ...platformPathEnvironment(process.env), PATH: envPath }, signal);
 }
 
-async function loginShellPathAsync(signal?: AbortSignal) {
-  if (process.platform === "win32") return undefined;
-  const shell = process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/sh");
+/* ── One login shell per launch, not one per backend ──────────────────────
+ * `zsh -ilc` runs the user's whole rc chain: 150-230 ms each, and four backends
+ * probe in parallel at startup while two more re-probe after the window shows.
+ * Six identical spawns produce one identical PATH, so callers share a single
+ * flight and then its result for RUNTIME_TTL_MS — the same freshness window the
+ * registry already applies to the runtimes derived from it.
+ *
+ * Cancellation stays honest in both directions: a caller that aborts stops
+ * waiting immediately but does not kill a shell its peers still need, and the
+ * shell is only killed once the last waiter is gone. A rejected flight is never
+ * cached, so a broken rc file is retried rather than remembered.
+ * ───────────────────────────────────────────────────────────────────────── */
+type LoginShellFlight = {
+  shell: string;
+  waiters: number;
+  controller: AbortController;
+  promise: Promise<string | undefined>;
+};
+
+let loginShellFlight: LoginShellFlight | undefined;
+let loginShellCache:
+  | Readonly<{ shell: string; value: string | undefined; expiresAt: number }>
+  | undefined;
+
+function loginShellCommand() {
+  return process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/sh");
+}
+
+async function spawnLoginShellPath(shell: string, signal: AbortSignal) {
   const { stdout } = await execFileAsync(shell, ["-ilc", "/usr/bin/env -0"], {
     encoding: "utf8",
     timeout: SHELL_PROBE_TIMEOUT_MS,
@@ -38,6 +65,60 @@ async function loginShellPathAsync(signal?: AbortSignal) {
     .map((entry) => entry.slice(entry.lastIndexOf("\n") + 1))
     .find((entry) => entry.startsWith("PATH="))
     ?.slice(5);
+}
+
+function startLoginShellFlight(shell: string) {
+  const controller = new AbortController();
+  const flight = { shell, waiters: 0, controller } as LoginShellFlight;
+  flight.promise = spawnLoginShellPath(shell, controller.signal)
+    .then((value) => {
+      loginShellCache = { shell, value, expiresAt: Date.now() + RUNTIME_TTL_MS };
+      return value;
+    })
+    .finally(() => {
+      if (loginShellFlight === flight) loginShellFlight = undefined;
+    });
+  // An abandoned flight must not surface as an unhandled rejection.
+  flight.promise.catch(() => undefined);
+  loginShellFlight = flight;
+  return flight;
+}
+
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal) {
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    promise
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+/** A user-initiated recheck means "I changed my shell environment": drop the cached PATH, keep any in-flight probe. */
+export function expireLoginShellPath() {
+  loginShellCache = undefined;
+}
+
+async function loginShellPathAsync(signal?: AbortSignal) {
+  if (process.platform === "win32") return undefined;
+  signal?.throwIfAborted();
+  const shell = loginShellCommand();
+  const cached = loginShellCache;
+  if (cached?.shell === shell && cached.expiresAt > Date.now()) return cached.value;
+  const flight =
+    loginShellFlight?.shell === shell ? loginShellFlight : startLoginShellFlight(shell);
+  flight.waiters += 1;
+  try {
+    return await (signal ? untilAborted(flight.promise, signal) : flight.promise);
+  } finally {
+    flight.waiters -= 1;
+    if (flight.waiters === 0 && loginShellFlight === flight) {
+      /* Retire it before killing the shell, so a caller arriving during the
+         teardown starts a fresh flight instead of inheriting the cancellation. */
+      loginShellFlight = undefined;
+      flight.controller.abort();
+    }
+  }
 }
 
 export function commonCommandPaths(command: string) {
@@ -119,6 +200,13 @@ export async function probeRuntimeCandidatesAsync(options: {
   return candidates;
 }
 
+/** Only OS launch errors and crash signals prove an unusable process. */
+export function isProcessStartupFailure(cause: unknown) {
+  const error = cause as { code?: unknown; signal?: unknown; killed?: boolean } | null;
+  return ["ENOENT", "EACCES", "ENOEXEC"].includes(String(error?.code)) ||
+    (!error?.killed && ["SIGABRT", "SIGSEGV", "SIGILL", "SIGBUS"].includes(String(error?.signal)));
+}
+
 export async function runtimeVersionAsync(
   runtime: AgentRuntime,
   args: string[] = ["--version"],
@@ -133,8 +221,9 @@ export async function runtimeVersionAsync(
       signal,
     });
     return normalizeCliVersion(String(stdout).trim());
-  } catch {
+  } catch (cause) {
     signal?.throwIfAborted();
+    if (isProcessStartupFailure(cause)) throw cause;
     return undefined;
   }
 }

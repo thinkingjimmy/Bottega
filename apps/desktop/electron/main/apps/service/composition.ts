@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the Apps store/gateway/runtime/installer, the durable generation/reference/data/custody ledgers, the compiled Base GUI runtime, the Design integration, and the turn/delete/edit sub-domains
+ * [INPUT]: Depends on the explicit runtime storage mode and Apps store/gateway/runtime/installer, the durable generation/reference/data/custody ledgers, the compiled Base GUI runtime, the Design integration, and the turn/delete/edit sub-domains
  * [OUTPUT]: Assembles App collaborators and injects passive cached inventory into ordinary capability reads.
  * [POS]: The apps composition factory; AppsService owns policy and lifecycle while the object graph is assembled here
  */
@@ -11,12 +11,12 @@ import type {
   AppRecord,
   AppRecordProjection,
 } from "../../../../shared/apps-ipc";
-import type { AppLocale } from "../../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { resolvePlatformCapabilities } from "../../../../shared/platform-capabilities";
 import { DESIGN_PRESET_ID } from "../../design/enabled";
 import type { AppExtensionIntegration } from "../../extensions/integration/app-extension-composition";
 import { ThirdPartyMcpPlanLedger } from "../../extensions/lifecycle/third-party-mcp-plan-ledger";
-import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/app-generation-build-participants";
+import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/generation/build-participants";
 import { AppPlatformAdmission } from "../../lifecycle/app-platform-admission";
 import { AppDataArchiveStore } from "../server/app-data-archive";
 import { AppDataCutoverLedger } from "../server/app-data-cutover-ledger";
@@ -73,7 +73,10 @@ type AppsRuntimeHost = Readonly<{
 }>;
 
 type ComposeAppsRuntimeInput = Readonly<{
+  /** The selected folder. Null only before the first selection, where the catalog reads as empty. */
+  libraryRoot: () => string | null;
   userData: string;
+  storageMode?: import("../../../../shared/local-storage/contracts").RuntimeStorageMode;
   guardianArgs: readonly string[];
   inspectCapabilityInventory?: (
     appId: string
@@ -93,7 +96,8 @@ export function composeAppsRuntime(input: ComposeAppsRuntimeInput) {
   const requireSurfaceLeases = () =>
     requireConfigured(host.surfaceLeases(), "App surface leases");
 
-  const store = new AppStore(userData);
+  const store = new AppStore(userData, undefined, input.storageMode, input.libraryRoot);
+  store.configureLocale(() => host.locale());
   store.configureAppGuiCompiler(createAppGuiBuildService(userData));
   /* 唯一的 status 发源地：AppStore 每提交一条记录就在这里转成 renderer 事件。
      IPC、工厂 provisioning、installer、runtime、启动自愈走的是同一个闸口，

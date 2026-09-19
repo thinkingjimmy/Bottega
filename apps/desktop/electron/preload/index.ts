@@ -1,10 +1,14 @@
 /**
- * [INPUT]: Depends on Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, and all shared renderer IPC contracts
- * [OUTPUT]: Exposes renderer bridges including nested quota snapshot/demand access, fixed-purpose background display selection and panel/Agent management and explicit manual/adopt retry intents; rejects extra navigation arguments.
+ * [INPUT]: Depends on Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, and all shared renderer IPC contracts, and the build-gated cloud account lifecycle.
+ * [OUTPUT]: Exposes renderer bridges including nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, and the launch-flagged startup trace mark channel; rejects extra navigation arguments.
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge
  */
 
+import { createArtifactBridge } from "./artifacts";
 import { LIMITS_CHANNEL, type UsageLimitsSnapshot } from "../../shared/usage-limits/types";
+import { installCloudBridge } from "./cloud";
+import { createBaseImagesBridge } from "./base-images";
+declare const __BOTTEGA_CLOUD_CONFIG__: object | null;
 import {
   contextBridge,
   ipcRenderer,
@@ -12,6 +16,8 @@ import {
   type IpcRendererEvent,
 } from "electron";
 import { PRESENCE_CHANNEL, type PresenceBridge } from "../../shared/presence-ipc";
+import { STARTUP_TRACE_ARGUMENT, STARTUP_TRACE_CHANNEL } from "../../shared/startup-trace";
+import { STARTUP_SNAPSHOT_ARGUMENT, decodeStartupSnapshot } from "../../shared/startup-snapshot";
 import {
   APP_CHANNEL,
   systemFileManagerForPlatform,
@@ -23,6 +29,10 @@ import {
   type AppsBridgeApi,
 } from "../../shared/apps-ipc";
 import { AGENT_CHANNEL, type AgentBridgeApi } from "../../shared/agent-ipc";
+import {
+  AGENT_CONNECTIONS_CHANNEL,
+  type AgentConnectionsBridgeApi,
+} from "../../shared/agent-connections-ipc";
 import {
   CHATS_CHANNEL,
   type ChatsBridgeApi,
@@ -44,13 +54,10 @@ import {
   type ProjectsEvent,
 } from "../../shared/projects-ipc";
 import {
-  INITIAL_DARK_ARGUMENT,
   INITIAL_LANGUAGE_ARGUMENT,
-  SETTINGS_CHANNEL,
-  type SettingsBridgeApi,
-  type SettingsEnvelope,
 } from "../../shared/settings-ipc";
-import { DEFAULT_APP_LOCALE, isAppLocale } from "../../shared/i18n/locale";
+import { installSettingsBridge } from "./settings/bridge";
+import { DEFAULT_APP_LOCALE, isAppLocale } from "@ai-chat/ui/lib/locale";
 import {
   SETUP_CHANNEL,
   type SetupBridgeApi,
@@ -172,9 +179,21 @@ const initialLanguage = isAppLocale(initialLanguageValue)
 
 const startupArgument = (prefix: string) =>
   process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
+/* Tracing is opt-in per launch, so the bridge only exists when main passed the flag. */
+if (process.argv.includes(STARTUP_TRACE_ARGUMENT)) {
+  contextBridge.exposeInMainWorld("startupTrace", {
+    mark: (name: string) => ipcRenderer.send(STARTUP_TRACE_CHANNEL, name),
+  });
+}
 const roleValue = startupArgument(WINDOW_ROLE_ARGUMENT);
 const windowRole: ProductWindowRole =
   roleValue === "app-window" ? "app-window" : "main";
+/* Facts main already knew at window creation, decoded once here: argv is the only
+   channel a sandboxed preload can read before the first IPC answer exists. */
+const startupSnapshot = windowRole === "main" ? decodeStartupSnapshot(startupArgument(STARTUP_SNAPSHOT_ARGUMENT) ?? "") : null;
+if (startupSnapshot) contextBridge.exposeInMainWorld("startupSnapshot", startupSnapshot);
+if (windowRole === "main") contextBridge.exposeInMainWorld("artifacts", createArtifactBridge((channel, input) => ipcRenderer.invoke(channel, input)));
+if (__BOTTEGA_CLOUD_CONFIG__ && windowRole === "main") installCloudBridge();
 const windowContext = Object.freeze({
   windowId: startupArgument(WINDOW_ID_ARGUMENT) || "main",
   role: windowRole,
@@ -266,6 +285,7 @@ contextBridge.exposeInMainWorld("agent", {
     ipcRenderer.invoke(AGENT_CHANNEL.abandonFatalTurn, conversationId),
   acknowledgeCleanupFailure: (conversationId) =>
     ipcRenderer.invoke(AGENT_CHANNEL.acknowledgeCleanupFailure, conversationId),
+  abandonResumeFailure: (requestId, retryToken) => ipcRenderer.invoke(AGENT_CHANNEL.abandonResumeFailure, requestId, retryToken),
   retryWithoutSession: (requestId, retryToken) =>
     ipcRenderer.invoke(AGENT_CHANNEL.retryWithoutSession, requestId, retryToken),
   retrySameSession: (requestId, retryToken) =>
@@ -279,6 +299,10 @@ contextBridge.exposeInMainWorld("agent", {
   ackSteerIntents: (outboxRefs) =>
     ipcRenderer.invoke(AGENT_CHANNEL.ackSteerIntents, outboxRefs),
 } satisfies AgentBridgeApi);
+
+contextBridge.exposeInMainWorld("agentConnections", {
+  warm: (intent) => ipcRenderer.send(AGENT_CONNECTIONS_CHANNEL.warm, intent),
+} satisfies AgentConnectionsBridgeApi);
 
 contextBridge.exposeInMainWorld("app", {
   systemFileManager: systemFileManagerForPlatform(process.platform),
@@ -516,9 +540,10 @@ contextBridge.exposeInMainWorld("chats", {
   commitManagedWorktree: (input) =>
     ipcRenderer.invoke(CHATS_CHANNEL.commitManagedWorktree, input),
   rename: (input) => ipcRenderer.invoke(CHATS_CHANNEL.rename, input),
+  setSortKey: (input) => ipcRenderer.invoke(CHATS_CHANNEL.setSortKey, input),
   remove: (chatId: string) => ipcRenderer.invoke(CHATS_CHANNEL.remove, chatId),
-  readAttachment: (attachmentId: string) =>
-    ipcRenderer.invoke(CHATS_CHANNEL.readAttachment, attachmentId),
+  readAttachment: (chatId: string, attachmentId: string) =>
+    ipcRenderer.invoke(CHATS_CHANNEL.readAttachment, { chatId, attachmentId }),
   onEvent: subscribe<ChatsEvent>(CHATS_CHANNEL.event),
 } satisfies ChatsBridgeApi);
 
@@ -533,7 +558,9 @@ contextBridge.exposeInMainWorld("galleryMedia", {
 } satisfies GalleryMediaBridgeApi);
 
 contextBridge.exposeInMainWorld("bases", {
+  images: createBaseImagesBridge((channel, input) => ipcRenderer.invoke(channel, input)),
   get: (input) => ipcRenderer.invoke(BASES_CHANNEL.get, input),
+  getRecovery: (input) => ipcRenderer.invoke(BASES_CHANNEL.recovery, input),
   ensure: (input) => ipcRenderer.invoke(BASES_CHANNEL.ensure, input),
   listRootBases: () => ipcRenderer.invoke(BASES_CHANNEL.listRoot),
   listProjectBases: () => ipcRenderer.invoke(BASES_CHANNEL.listProject),
@@ -574,6 +601,8 @@ contextBridge.exposeInMainWorld("projects", {
     ipcRenderer.invoke(PROJECTS_CHANNEL.setAppPinned, input),
   detachLocal: (projectId: string) =>
     ipcRenderer.invoke(PROJECTS_CHANNEL.detachLocal, projectId),
+  chooseFolder: (projectId: string) =>
+    ipcRenderer.invoke(PROJECTS_CHANNEL.chooseFolder, projectId),
   releaseMissing: (projectId: string) =>
     ipcRenderer.invoke(PROJECTS_CHANNEL.releaseMissing, projectId),
   setSortMode: (sortMode) =>
@@ -614,32 +643,7 @@ contextBridge.exposeInMainWorld("globalSearch", {
   cancel: (jobId) => ipcRenderer.invoke(SEARCH_JOB_CHANNEL.cancel, jobId),
 } satisfies SearchJobBridgeApi);
 
-contextBridge.exposeInMainWorld("settings", {
-  /* 首帧主题只能同步到达，异步 IPC 一律晚于第一次绘制；建窗参数是
-     唯一「main 已知、renderer 未跑一行代码就能读」的通道。 */
-  initialDark: process.argv.some(
-    (argument) => argument === `${INITIAL_DARK_ARGUMENT}true`
-  ),
-  initialLanguage,
-  onThemeResolved: subscribe<boolean>(SETTINGS_CHANNEL.themeResolved),
-  get: () => ipcRenderer.invoke(SETTINGS_CHANNEL.get),
-  set: (patch) => ipcRenderer.invoke(SETTINGS_CHANNEL.set, patch),
-  mutateMemory: (mutation) =>
-    ipcRenderer.invoke(SETTINGS_CHANNEL.mutateMemory, mutation),
-  onChanged: subscribe<SettingsEnvelope>(SETTINGS_CHANNEL.changed),
-  getChatHomeStatus: () =>
-    ipcRenderer.invoke(SETTINGS_CHANNEL.getChatHomeStatus),
-  chooseChatHomesRoot: () =>
-    ipcRenderer.invoke(SETTINGS_CHANNEL.chooseChatHomesRoot),
-  acknowledgeFullAccess: () =>
-    ipcRenderer.invoke(SETTINGS_CHANNEL.acknowledgeFullAccess),
-  listBackends: () => ipcRenderer.invoke(SETTINGS_CHANNEL.listBackends),
-  listModels: (backend, scope) =>
-    ipcRenderer.invoke(SETTINGS_CHANNEL.listModels, backend, scope),
-  getBackendDefaults: (backend) => ipcRenderer.invoke(SETTINGS_CHANNEL.getBackendDefaults, backend),
-  rememberChatDefaults: (options) => ipcRenderer.invoke(SETTINGS_CHANNEL.rememberChatDefaults, options),
-  patchChatOptions: (input, reset) => ipcRenderer.invoke(SETTINGS_CHANNEL.patchChatOptions, input, reset),
-} satisfies SettingsBridgeApi);
+installSettingsBridge(initialLanguage, subscribe);
 
 contextBridge.exposeInMainWorld("projectTools", {
   get: (input) => ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.get, input),
@@ -681,11 +685,12 @@ contextBridge.exposeInMainWorld("archive", {
 
 contextBridge.exposeInMainWorld("setup", {
   check: () => ipcRenderer.invoke(SETUP_CHANNEL.check),
-  recheck: (backend) => ipcRenderer.invoke(SETUP_CHANNEL.recheck, backend),
+  refreshIfNeeded: (scope) => ipcRenderer.invoke(SETUP_CHANNEL.refreshIfNeeded, scope),
+  recheck: (backend, scope) => ipcRenderer.invoke(SETUP_CHANNEL.recheck, backend, scope),
   refreshLatest: (backend) =>
     ipcRenderer.invoke(SETUP_CHANNEL.refreshLatest, backend),
-  terminalAction: (backend, action) =>
-    ipcRenderer.invoke(SETUP_CHANNEL.terminalAction, { backend, action }),
+  terminalAction: (backend, action, scope) =>
+    ipcRenderer.invoke(SETUP_CHANNEL.terminalAction, { backend, action, scope }),
   cancelCheck: (backend) => ipcRenderer.invoke(SETUP_CHANNEL.cancelCheck, backend),
   openManagement: (...args: unknown[]) => args.length
     ? Promise.reject(new Error("Agent management accepts no route or URL"))

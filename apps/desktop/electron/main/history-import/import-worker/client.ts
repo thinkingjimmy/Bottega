@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on worker_threads, crypto/path/url, the closed import-worker protocol, and adapter entries
  * [OUTPUT]: Provides an abortable AsyncIterable of precomputed history-import batches with race-free wakeups and one-batch look-ahead backpressure
- * [POS]: Main-side parser transport; one lazily spawned worker serves every request of this client's lifetime and is terminated in close()
+ * [POS]: Main-side parser transport; one lazily spawned worker serves consecutive requests, is terminated after an idle period and respawned on the next request, and is always terminated in close()
  */
 
 import { randomUUID } from "node:crypto";
@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import type { AdapterEntry } from "../adapter";
 import type { PreparedHistoryImportBatch } from "../../chats/sqlite/database-protocol";
+import { WORKER_RESOURCE_LIMITS } from "../../worker-limits";
 import {
   parseImportWorkerResponse,
   type ImportWorkerAck,
@@ -36,11 +37,12 @@ function createWorker() {
       "require(workerData.entry);",
     ].join("\n"), {
       eval: true,
-      execArgv: process.execArgv.filter((argument) => !argument.startsWith("--input-type")),
+      execArgv: [], // The explicit loader owns source execution; parent CLI flags are not Worker options.
+      resourceLimits: { ...WORKER_RESOURCE_LIMITS },
       workerData: { loader, entry: fileURLToPath(entry) },
     });
   }
-  return new Worker(entry);
+  return new Worker(entry, { resourceLimits: { ...WORKER_RESOURCE_LIMITS } });
 }
 
 /* ── 一个客户端一个 worker ────────────────────────────────────────
@@ -50,10 +52,23 @@ function createWorker() {
  * 让 ack 认错主人。
  * 中途放弃时不再 terminate，而是发一枚 cancel：worker 立刻从 ack 等待里
  * 脱身，下一条请求无须等它超时。
+ *
+ * 复用到此为止：导入是启动时跑一遍、之后几乎不再发生的事，而这条线程解析过
+ * 一份大 JSONL 之后堆就不再回落（实测空闲 10.2 MB 已用 / 21.8 MB 已提交），
+ * 于是它靠「万一还有下一条」的理由驻留到关机。空闲满 IDLE_TERMINATE_MS 就
+ * 终止，下一条请求按原有的 ensureWorker() 重开——重开一次约几十毫秒，发生在
+ * 用户主动导入的那一刻，而不是每一分钟的空闲里。
  * ────────────────────────────────────────────────────────── */
+const IDLE_TERMINATE_MS = 60_000;
+
 export class HistoryImportWorkerClient {
   private worker: Worker | null = null;
   private queue: Promise<void> = Promise.resolve();
+  private inFlight = 0;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /* 空闲时限只为测试可注入：60 s 的真实等待不是一条可跑的断言。 */
+  constructor(private readonly idleTerminateMs: number = IDLE_TERMINATE_MS) {}
 
   async *parseBatches(
     home: string,
@@ -65,17 +80,46 @@ export class HistoryImportWorkerClient {
     let release!: () => void;
     this.queue = new Promise<void>((resolve) => { release = resolve; });
     await previous.catch(() => undefined);
+    this.enterRequest();
     try {
       return yield* this.parseOnWorker(home, entry, signal);
     } finally {
+      this.leaveRequest();
       release();
     }
   }
 
   async close() {
+    this.disarmIdleTermination();
     const worker = this.worker;
     this.worker = null;
     if (worker) await worker.terminate();
+  }
+
+  /* 在途请求期间绝不终止：计数归零才重新上表，归零之前的每一次进入都先撤表。 */
+  private enterRequest() {
+    this.inFlight += 1;
+    this.disarmIdleTermination();
+  }
+
+  private leaveRequest() {
+    this.inFlight -= 1;
+    if (this.inFlight > 0 || !this.worker) return;
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      if (this.inFlight > 0) return;
+      const worker = this.worker;
+      this.worker = null;
+      void worker?.terminate();
+    }, this.idleTerminateMs);
+    /* 与 worker.unref() 同一条理由：忘记 close() 不该把进程钉在退出门口。 */
+    this.idleTimer.unref?.();
+  }
+
+  private disarmIdleTermination() {
+    if (!this.idleTimer) return;
+    clearTimeout(this.idleTimer);
+    this.idleTimer = null;
   }
 
   private ensureWorker() {

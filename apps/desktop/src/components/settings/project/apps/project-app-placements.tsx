@@ -51,7 +51,7 @@ import {
 } from "@/components/settings/settings-layout";
 import { APP_DATA_LEVEL_KEYS } from "@/components/apps/data-levels";
 import { setAppGrantState } from "@/lib/apps-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 
 type AppsSnapshotState = "loading" | "failed" | "ready";
 

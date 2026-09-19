@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on Base/Apps/Chats/Projects providers, router navigation, dialogs, menus, i18n, and structured client error codes
- * [OUTPUT]: Provides BaseHeaderActions and useBaseAppActions; XLSX issue disclosure and the promotion attempt fence stay module-private
+ * [OUTPUT]: Provides BaseHeaderActions and useBaseAppActions; XLSX issue disclosure stays local and Project promotion delegates original-request review to its dialog
  * [POS]: Header action boundary for components/bases/chrome; transport codes are translated here and Base data mutations stay in providers
  */
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { Link, useNavigate } from "react-router";
 import {
@@ -21,6 +21,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "lucide-react";
+import { ProjectPromotionDialog } from "./promotion/dialog";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
@@ -37,15 +38,12 @@ import {
 import { useOptionalApps } from "@/components/providers/apps-provider";
 import { useOptionalChats } from "@/components/providers/chats-provider";
 import { useOptionalProjects } from "@/components/providers/projects-provider";
-import { SaveAsAppDialog } from "@/components/apps/dialogs/save-as-app-dialog";
+import { SaveAsAppDialog } from "@/components/apps/dialogs/save-as-app";
 import { panelChromeClassName } from "@/components/page-shell";
 import { cn } from "@ai-chat/ui/lib/utils";
-import {
-  ownerFromKey,
-  type BaseColumn,
-  type BaseXlsxIssue,
-} from "../../../../shared/bases-ipc";
-import { errorMessage } from "@/lib/errors";
+import { type BaseColumn, type BaseXlsxIssue } from "../../../../shared/bases-ipc";
+import { ownerFromKey } from "@ai-chat/base-ui/model/owner-key";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 
 export function useBaseAppActions(ownerKey: string, chatId?: string) {
   const { t } = useAppTranslation();
@@ -217,21 +215,6 @@ function headerErrorCopyKey(cause: unknown) {
     : null;
 }
 
-/* 一次升格只有一个 requestId：终态之前的重复点击必须落在同一次尝试上，
-   否则 main 侧会看见两次「新建 Project Base」的请求。 */
-class PromotionAttemptFence {
-  private requestId = "";
-
-  begin(create: () => string = () => crypto.randomUUID()): string {
-    this.requestId ||= create();
-    return this.requestId;
-  }
-
-  settle() {
-    this.requestId = "";
-  }
-}
-
 export function BaseHeaderActions({
   chatId,
   projectId,
@@ -266,10 +249,8 @@ export function BaseHeaderActions({
   } = useBaseAppActions(ownerKey, chatId);
   const [saveOpen, setSaveOpen] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
-  const [promoting, setPromoting] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const promotionAttempt = useRef(new PromotionAttemptFence());
   const owner = ownerFromKey(ownerKey);
   const projectOwnerKey = projectId
     ? `project:${projectId}`
@@ -287,28 +268,6 @@ export function BaseHeaderActions({
         navigation.source === "retained-app-data";
     }
   );
-  const promote = async () => {
-    if (owner.kind !== "chat") return;
-    setPromoting(true);
-    const requestId = promotionAttempt.current.begin();
-    try {
-      const receipt = await bases.promoteToProject({
-        chatId: owner.chatId,
-        requestId,
-      });
-      setPromoteOpen(false);
-      promotionAttempt.current.settle();
-      void navigate(ownerRoute(receipt.ownerKey), { replace: true });
-    } catch (cause) {
-      promotionAttempt.current.settle();
-      console.warn(
-        `[bases] promotion failed ownerKey=${ownerKey}`,
-        cause
-      );
-    } finally {
-      setPromoting(false);
-    }
-  };
   const removeRetained = async () => {
     if (!retainedBase) return;
     setRemoving(true);
@@ -490,15 +449,9 @@ export function BaseHeaderActions({
       >
         <XIcon />
       </Button>
-      <ConfirmationDialog
-        busy={promoting}
-        confirmLabel={t("bases.header.promoteConfirm")}
-        description={t("bases.header.promoteDescription")}
-        onConfirm={() => void promote()}
-        onOpenChange={setPromoteOpen}
-        open={promoteOpen}
-        title={t("bases.header.promoteTitle")}
-      />
+      {promoteOpen && owner.kind === "chat" && <ProjectPromotionDialog chatId={owner.chatId}
+        promote={bases.promoteToProject} onOpenChange={setPromoteOpen}
+        onPromoted={receipt => void navigate(ownerRoute(receipt.ownerKey), { replace: true })} />}
       <ConfirmationDialog
         busy={removing}
         confirmLabel={t("bases.header.deleteRetainedConfirm")}

@@ -36,6 +36,11 @@ function bridge(): BasesBridgeApi {
   if (!api) throw new Error("Base bridge unavailable");
   return api;
 }
+export function baseImagesBridge() {
+  const images = bridge().images;
+  if (!images) throw capabilityError("image_transfer_unavailable");
+  return images;
+}
 
 /* 能力缺席（preload 版本落后于渲染层）与桥缺席是两件事：前者可能只少一项，
    故各自给出稳定 code，让视图边界翻成本地化文案，而不是把英文抛给用户。

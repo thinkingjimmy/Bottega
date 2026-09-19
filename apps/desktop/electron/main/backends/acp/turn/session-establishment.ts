@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on ACP session new/load/resume, frozen BackendTurnOptions/AcpSpawnConfig, configuration convergence, and negotiated server-fact observation
+ * [INPUT]: Depends on ACP session load/resume, identity-bound absence classification, actual sent-prompt replay proofs and final session configuration publication.
  * [OUTPUT]: Provides establishAcpSession with one bind-and-final-config callback order for fresh and resumed sessions
  * [POS]: ACP turn/session establishment unit; the parent retains transport and terminal ownership
  */
 
+import type { SessionReplayProof } from "../../../library/sessions/boundary";
 import {
   AGENT_METHODS,
   type ClientContext,
@@ -27,6 +28,8 @@ type EstablishInput = Readonly<{
   config: AcpSpawnConfig;
   serverFacts?: Pick<NegotiatedServerFactsOracle, "observeSession">;
   onSessionId(sessionId: string): void;
+  replay?: SessionReplayProof;
+  onRecoveryOutcome?(outcome: "resumed" | "replayed"): void;
 }>;
 
 export async function establishAcpSession(
@@ -37,24 +40,38 @@ export async function establishAcpSession(
   if (resume && options.payload.turnOptions.backend !== resume.backend) {
     throw new Error("ACP session 与后端不匹配");
   }
+  const recovery = !resume ? options.sessionRecovery : undefined;
+  if (recovery?.candidate && input.replay && config.validateSessionId(recovery.candidate.sessionId)) {
+    const candidate = recovery.candidate;
+    input.replay.begin(candidate.sessionId);
+    let loaded: unknown = null, verified = false;
+    try {
+      loaded = await context.request(AGENT_METHODS.session_load, {
+        sessionId: candidate.sessionId, cwd: options.workspace, mcpServers: acpMcpServers(options, config),
+        ...(config.sessionMeta ? { _meta: config.sessionMeta(options) } : {}),
+      });
+      verified = input.replay.matches(candidate.boundary, candidate.sentBoundary);
+    } catch (cause) {
+      if (!isResumeMissing(cause, config.resumeMissingPolicy, { backend: candidate.backend, id: candidate.sessionId }) && (cause as { code?: number })?.code !== -32601) throw cause;
+    } finally { input.replay.end(); }
+    if (verified) {
+      onSessionId(candidate.sessionId);
+      const state = await applyTurnConfiguration(context, candidate.sessionId, sessionConfigState(loaded), options.payload, config);
+      serverFacts?.observeSession(candidate.sessionId, state);
+      await recovery.complete("resumed"); input.onRecoveryOutcome?.("resumed");
+      await publishBoundState(options, candidate.sessionId, state); return candidate.sessionId;
+    }
+  }
   if (!resume) {
     const created = await context.request(AGENT_METHODS.session_new, {
-      cwd: options.workspace,
-      mcpServers: acpMcpServers(options, config),
+      cwd: options.workspace, mcpServers: acpMcpServers(options, config),
       ...(config.sessionMeta ? { _meta: config.sessionMeta(options) } : {}),
     });
-    const id = assertAcpSessionId(created, config.validateSessionId);
-    onSessionId(id);
-    const state = await applyTurnConfiguration(
-      context,
-      id,
-      created,
-      options.payload,
-      config
-    );
+    const id = assertAcpSessionId(created, config.validateSessionId); onSessionId(id);
+    const state = await applyTurnConfiguration(context, id, created, options.payload, config);
     serverFacts?.observeSession(id, state);
-    await publishBoundState(options, id, state);
-    return id;
+    if (recovery) { await recovery.complete("replayed"); input.onRecoveryOutcome?.("replayed"); }
+    await publishBoundState(options, id, state); return id;
   }
   try {
     const resumed = await context.request(
@@ -80,7 +97,7 @@ export async function establishAcpSession(
     await publishBoundState(options, resume.id, state);
     return resume.id;
   } catch (cause) {
-    if (isResumeMissing(cause, config.resumeMissingPolicy)) return undefined;
+    if (isResumeMissing(cause, config.resumeMissingPolicy, resume)) return undefined;
     throw cause;
   }
 }

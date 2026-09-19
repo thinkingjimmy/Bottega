@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared/agent-ipc backend, workspace scope, model and turn-by-turn combined type
- * [OUTPUT]: Provides settings v11 with main-owned presence preference writes, revision envelopes, Skills-onboarding state, Memory/Chat Home APIs, model/session options, and the transient session-effective reset bridge contract
+ * [OUTPUT]: Provides settings v11 with durable default execution-device, local archive-confetti and Lab Agent-connections preferences, the single-backend title Agent, main-owned presence writes, revision envelopes, Memory/Chat Home APIs including the dialog-free folder retry, and model/session options
  * [POS]: Single source of truth for shared multi-process settings; main, preload, and renderer exchange only what this contract defines
  */
 
@@ -11,7 +11,7 @@ import type {
   BackendInfo,
   BackendModelInfo,
 } from "./agent-ipc";
-import type { AppLocale, LanguagePreference } from "./i18n/locale";
+import type { AppLocale, LanguagePreference } from "@ai-chat/ui/lib/locale";
 
 export type DefaultChatOptionsByBackend = {
   [K in AgentBackendId]?: Extract<AgentTurnOptions, { backend: K }>;
@@ -26,6 +26,7 @@ export const CHAT_HOME_NOT_READY = "CHAT_HOME_NOT_READY";
 export type ChatHomeStatus = {
   root: string | null;
   state: ChatHomeState;
+  progress?: { phase: "opening" | "saving"; completed: number; total: number; failed: number } | null;
 };
 
 /* ============================================================
@@ -59,6 +60,9 @@ export type ShortcutBinding = {
 };
 
 export type AppSettings = {
+  /** Main-owned portable folder identity; never writable through generic settings IPC. */
+  libraryRoot?: string | null;
+  libraryId?: string | null;
   /** 只能经 Chat Home 专用 API 修改。 */
   chatHomesRoot: string | null;
   /** 只能经 Chat Home 专用 API 修改。 */
@@ -74,12 +78,19 @@ export type AppSettings = {
   fullAccessAcknowledgedAt: number | null;
   /** auto 表示交还平台；main 据此设定 nativeTheme.themeSource。 */
   theme: ThemePreference;
+  /** Local profile preference; system reduced motion still takes precedence. */
+  archiveConfettiEnabled: boolean;
+  /** Lab opt-in: warm an Agent process per conversation and reuse it for that conversation's turns. */
+  agentConnectionsEnabled: boolean;
   /** auto 按系统首选语言解析，未命中受支持语言时回落英语。 */
   language: LanguagePreference;
-  titleAgent: AgentBackendId | "auto";
+  /** Exactly one backend generates Chat titles; there is no implicit fallback chain. */
+  titleAgent: AgentBackendId;
   titleModelByBackend: Partial<Record<AgentBackendId, string | null>>;
   defaultChatOptionsByBackend: DefaultChatOptionsByBackend;
   lastSelectedBackend: AgentBackendId;
+  /** Durable local preference; availability only gates sending, never onboarding. */
+  defaultExecutionDeviceId?: string | null;
   /** 每条跨 Section 链可自动触发的 turn 数；0 表示无限。 */
   autoRelayLimit: number;
   /** Usage 页是否允许按 24h TTL 从 models.dev 自动刷新价格。 */
@@ -136,6 +147,8 @@ export type RendererSettingsPatch = Partial<
   Omit<
     AppSettings,
     | "chatHomesRoot"
+    | "libraryRoot"
+    | "libraryId"
     | "chatHomeState"
     | "fullAccessAcknowledgedAt"
     | "memory"
@@ -162,7 +175,10 @@ export const SETTINGS_CHANNEL = {
   themeResolved: "settings:theme:resolved",
   mutateMemory: "settings:memory:mutate",
   getChatHomeStatus: "settings:chat-home:get-status",
+  chatHomeChanged: "settings:chat-home:changed",
   chooseChatHomesRoot: "settings:chat-home:choose-root",
+  retryLibrary: "settings:library:retry",
+  revealLibrary: "settings:library:reveal",
   acknowledgeFullAccess: "settings:full-access:acknowledge",
   listBackends: "settings:list-backends",
   listModels: "settings:list-models",
@@ -184,7 +200,11 @@ export type SettingsBridgeApi = {
   ) => Promise<SettingsEnvelope>;
   onChanged: (callback: (envelope: SettingsEnvelope) => void) => () => void;
   getChatHomeStatus: () => Promise<ChatHomeStatus>;
+  onChatHomeStatus?: (callback: (status: ChatHomeStatus) => void) => () => void;
   chooseChatHomesRoot: () => Promise<ChatHomeStatus | null>;
+  /** Reopens the folder already configured; a failed first open must not ask for the path again. */
+  retryLibrary?: () => Promise<ChatHomeStatus>;
+  revealLibrary?: () => Promise<void>;
   acknowledgeFullAccess: () => Promise<SettingsEnvelope>;
   listBackends: () => Promise<BackendInfo[]>;
   listModels: (

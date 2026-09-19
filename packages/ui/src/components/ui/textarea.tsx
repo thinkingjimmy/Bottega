@@ -1,3 +1,8 @@
+/**
+ * [INPUT]: Depends on React native textarea props and cn of lib/utils.
+ * [OUTPUT]: Provides Textarea with field-sizing-content auto-growth, suppressed manual resize and accessible focus/invalid states.
+ * [POS]: components/ui's single multi-line text primitive, sibling to input.tsx; composers layer their own chrome on top of it.
+ */
 import * as React from "react"
 
 import { cn } from "@ai-chat/ui/lib/utils"

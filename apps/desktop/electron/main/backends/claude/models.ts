@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the Claude ACP adapter's supervised session configuration options, ResolvedRuntime, workspace and caller AbortSignal
- * [OUTPUT]: Provides Claude model identification, definable listClaudeModels and createClaudeModelCatalog; In the Abort+generation, the old flight is isolated, ACP default sentinel permanently closed and model-by-model Effort cached
+ * [INPUT]: Depends on the Claude ACP adapter's supervised session configuration options, ResolvedRuntime, workspace, caller AbortSignal and optional model-probe admission
+ * [OUTPUT]: Provides Claude model identification, listClaudeModels and createClaudeModelCatalog with probe-only admission, generation isolation, hidden default sentinels and per-model Effort
  * [POS]: The boundary of the Claude backend model directory; UI candidates and turn pre-test participants share the same ACP fact source, process ownership and cancellation to the Unified Supervisor
  */
 
@@ -8,7 +8,7 @@ import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import type { BackendModelInfo } from "../../../../shared/agent-ipc";
 import { inspectAcpSession } from "../acp/probe";
 import { OPAQUE_CONFIG_VALUE_PATTERN } from "../capability-validation";
-import { createModelCatalog } from "../model-catalog";
+import { createModelCatalog, type ModelCatalogProbeRunner } from "../model-catalog";
 import type { ResolvedRuntime } from "../types";
 import { claudeAdapterArgs } from "./adapter-entry";
 import {
@@ -55,7 +55,8 @@ export type ClaudeModelCatalog = {
   (
     runtime: ResolvedRuntime,
     workspace: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    runProbe?: ModelCatalogProbeRunner
   ): Promise<BackendModelInfo[]>;
   invalidate(): void;
 };
@@ -375,6 +376,7 @@ export function createClaudeModelCatalog(
 ): ClaudeModelCatalog {
   const dependencies = catalogDependencies(overrides);
   const catalog = createModelCatalog<ResolvedRuntime>({
+    backend: "claude",
     label: "Claude 模型目录",
     key: (runtime, workspace) =>
       [runtime.executable, runtime.path, runtime.version, workspace].join("\0"),
@@ -383,8 +385,8 @@ export function createClaudeModelCatalog(
     now: dependencies.now,
     ttlMs: dependencies.ttlMs,
   });
-  const list = ((runtime, workspace, signal) =>
-    catalog.list(runtime, workspace, signal)) as ClaudeModelCatalog;
+  const list = ((runtime, workspace, signal, runProbe) =>
+    catalog.list(runtime, workspace, signal, runProbe)) as ClaudeModelCatalog;
   list.invalidate = catalog.invalidate;
   return list;
 }

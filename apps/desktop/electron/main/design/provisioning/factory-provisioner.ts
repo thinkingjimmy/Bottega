@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DurableJson, immutable package inspection/copy/digest primitives, an exact catalog trust tuple, and narrow App lifecycle/grant/custody ports
+ * [INPUT]: Depends on DurableJson, immutable package inspection/copy/digest primitives, an exact catalog trust tuple, and App lifecycle/grant/custody ports with terminal package-rejection proof
  * [OUTPUT]: Provides DesignFactoryProvisioner with offline eager installation, resumable final-grant commit, owner-exact delete tombstone, user-explicit offline reinstall including missing-owner legacy recovery, drift state, and rollback-safe reset-to-pin
  * [POS]: Design factory delivery state machine; it alone may auto-approve the factory grant set and never treats preset identity without exact bytes as trust
  */
@@ -80,6 +80,7 @@ export type DesignFactoryApp = Readonly<{
 
 export type DesignFactoryPorts = Readonly<{
   find(appId: string | null): DesignFactoryApp | null;
+  wasInstallRejected(requestId: string): Promise<boolean>;
   install(input: {
     requestId: string;
     packageRoot: string;
@@ -177,7 +178,20 @@ export class DesignFactoryProvisioner {
           : "pin-drift";
         return this.record({ condition, appId: app.id, error: null });
       }
-      if (!app) app = await this.install(sourceRoot, trust);
+      if (!app) {
+        /* A failed pre-delivery request is immutable. Only its terminal rejection permits a
+           fresh identity; interrupted requests keep their original identity for recovery. */
+        if (state.phase === "none" && await this.requirePorts().wasInstallRejected(state.requestId)) {
+          await this.file.mutate(current => {
+            current.requestId = this.createId();
+            current.condition = "provisioning";
+            current.error = null;
+            current.revision += 1;
+            current.updatedAt = this.now();
+          });
+        }
+        app = await this.install(sourceRoot, trust);
+      }
       if (app.pending) {
         app = await this.requirePorts().approveFactoryGui(app.id);
         await this.record({ phase: "gui-approved", appId: app.id, trust });

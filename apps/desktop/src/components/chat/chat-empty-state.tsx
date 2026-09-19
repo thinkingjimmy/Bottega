@@ -1,15 +1,11 @@
 /**
- * [INPUT]: Depends on i18n, the product wordmark from lib/brand, composer controller Project projection, and ChatProjectMenu
+ * [INPUT]: Depends on i18n, the shared Chat empty-state renderer, composer controller Project projection, and ChatProjectMenu
  * [OUTPUT]: Provides ChatEmptyState: product wordmark plus a title/description prompt, with an inline Project-name control when a Project is selected
  * [POS]: Chat's empty-state screen, occupying the same vertical slot as ChatTranscript; title/description let App panels supply their own copy
  */
 
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import {
-  PRODUCT_MARK_SIZE,
-  PRODUCT_MARK_URL,
-  PRODUCT_NAME,
-} from "@/lib/brand";
+import { ChatEmptyState as SharedChatEmptyState } from "@ai-chat/chat-ui/empty-state";
 import { ChatProjectMenu } from "./composer/chat-project-selector";
 import type { ChatSessionController } from "./runtime/use-chat-session";
 
@@ -76,34 +72,5 @@ export function ChatEmptyState({
   const project = composer.projects.find(
     (item) => item.id === composer.selectedProjectId
   );
-  return (
-    <div
-      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-8 text-center"
-      data-testid="chat-empty-state"
-    >
-      <img
-        alt={PRODUCT_NAME}
-        className="pointer-events-none h-14 w-auto select-none"
-        draggable={false}
-        height={PRODUCT_MARK_SIZE.height}
-        src={PRODUCT_MARK_URL}
-        width={PRODUCT_MARK_SIZE.width}
-      />
-      <div className="space-y-2">
-        <h2 className="text-balance font-medium text-xl">
-          {title ??
-            (project ? (
-              <ProjectPrompt composer={composer} name={project.name} />
-            ) : (
-              t("chat.emptyPrompt")
-            ))}
-        </h2>
-        {description && (
-          <p className="max-w-md text-balance text-muted-foreground text-sm">
-            {description}
-          </p>
-        )}
-      </div>
-    </div>
-  );
+  return <SharedChatEmptyState description={description} title={title ?? (project ? <ProjectPrompt composer={composer} name={project.name} /> : t("chat.emptyPrompt"))} />;
 }

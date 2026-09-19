@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on type-only Apps lifecycle, grant, package, surface, and Design command DTOs
- * [OUTPUT]: Defines App lifecycle/package bridges, typed compatibility return/resume/apply channels and explicit tool inspection separate from passive capabilities.
+ * [OUTPUT]: Defines App lifecycle/package bridges, compatibility and tool inspection, plus main-owned Studio and cloud-management facts.
  * [POS]: Shared Apps wire boundary; keeps channel routing and preload shape separate from durable domain records
  */
 
@@ -163,7 +163,7 @@ export const APPS_CHANNEL = {
  * 必填之后，谁要读投影就得先拿到投影。
  * ============================================================ */
 export type AppRecordProjection = AppRecord &
-  Readonly<{ studioSurfaceReady: boolean }>;
+  Readonly<{ studioSurfaceReady: boolean; cloudManaged?: true }>;
 
 export type AppsProjectionSnapshot = Readonly<{
   apps: AppRecordProjection[];

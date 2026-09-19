@@ -12,7 +12,7 @@ import type {
   WorkspaceFileReadResult,
   WorkspaceFileResignInput,
 } from "../../shared/workspace-files-ipc";
-import { errorMessage } from "./errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { effectiveLocale } from "./i18n-locale";
 import { translate } from "../../shared/i18n/runtime";
 

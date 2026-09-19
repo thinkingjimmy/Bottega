@@ -16,7 +16,7 @@ import type {
   SteerOutboxProjection,
 } from "../../../../shared/agent-ipc";
 import type { TurnDraft } from "../../../../shared/chat-turn-reducer";
-import { attachToAgent, type AgentRequest } from "@/lib/agent-client";
+import { type AgentRequest } from "@/lib/agent-client";
 import {
   applyTurnEvent,
   mergeChatMessages,
@@ -31,11 +31,11 @@ import {
   updateChatHydration,
   type ChatHydration,
 } from "@/lib/chat-hydration";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { effectiveLocale } from "@/lib/i18n-locale";
 import { translate } from "../../../../shared/i18n/runtime";
 import { projectPendingUserInput } from "@/lib/chat-user-input-state";
-import { loadInitialChatMessages } from "@/lib/chat-messages-store";
+import { localChatReads } from "@/lib/cloud/chat/platform/local";
 import {
   messageId,
   type PendingPlanDecisionState,
@@ -91,6 +91,7 @@ export function coalesceProjectionEvent(
 }
 
 export type ChatAttachmentBinding = {
+  platform?: Pick<typeof localChatReads, "transcript" | "live">;
   chatId: string;
   getChat: (chatId: string) => Promise<ChatRuntimeContext | null>;
   onRecordAgent?: (agent: AgentBackendId) => void;
@@ -275,7 +276,8 @@ export function bindChatAttachment(binding: ChatAttachmentBinding) {
     }
   };
 
-  const attachment = attachToAgent(binding.chatId, {
+  const platform = binding.platform ?? localChatReads;
+  const attachment = platform.live.attach(binding.chatId, {
     onSnapshot(result) {
       flushEvents();
       snapshot = result.turn;
@@ -308,7 +310,7 @@ export function bindChatAttachment(binding: ChatAttachmentBinding) {
       if (!active) return;
       record = nextRecord;
       binding.onRecord?.(record);
-      if (record) loadInitialChatMessages(record.id);
+      if (record) platform.transcript.load(record.id);
       if (record) binding.onRecordAgent?.(record.agent);
       refs.recordExists.current = Boolean(record);
       if (refs.incarnationId) {

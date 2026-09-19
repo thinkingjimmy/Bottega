@@ -7,7 +7,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { openProductDestination } from "@/lib/product-navigation";
 import type { AppEditorDestination } from "../../shared/placement/facts";
 

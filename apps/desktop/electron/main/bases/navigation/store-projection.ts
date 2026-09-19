@@ -4,11 +4,8 @@
  * [POS]: Bases navigation policy module; BaseStore delegates pure visibility projection and metadata mutation here
  */
 
-import {
-  ownerKeyOf,
-  type BaseSnapshot,
-  type BaseNavigationSummary,
-} from "../../../../shared/bases-ipc";
+import { type BaseSnapshot, type BaseNavigationSummary } from "../../../../shared/bases-ipc";
+import { ownerKeyOf } from "@ai-chat/base-ui/model/owner-key";
 import {
   appearsInProjectBase,
   appearsInRootBases,
@@ -23,7 +20,7 @@ import {
 } from "../base-store-model";
 
 export function rootBaseSummaries(
-  states: Iterable<StoredBase>
+  states: Iterable<Pick<StoredBase, "meta">>
 ): BaseNavigationSummary[] {
   return [...states]
     .filter(({ meta }) => appearsInRootBases(meta.navigation))
@@ -36,7 +33,7 @@ export function rootBaseSummaries(
 }
 
 export function projectBaseSummaries(
-  states: Iterable<StoredBase>
+  states: Iterable<Pick<StoredBase, "meta">>
 ): BaseNavigationSummary[] {
   return [...states]
     .filter(({ meta }) => {

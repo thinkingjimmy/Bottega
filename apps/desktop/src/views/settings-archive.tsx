@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, route search params and canonical archive locators, archive-client, the optional History warning, shared Archive DTOs, the archive-list presentation module, PageShell, Settings primitives, confirmation dialog, and Tooltip
- * [OUTPUT]: Provides one chronological archived-item list for product Chats and Projects, unified targeted focus/selection/restore, capability-aware delete actions, and a single-container purge confirmation whose only box is the deleted-path evidence, zero-valued facts omitted and Memory rebuild offered as an opt-in checkbox
+ * [INPUT]: Depends on React, route search params and canonical archive locators, archive-client, the optional History warning, shared Archive DTOs, shared Archive presentation, PageShell, Settings controls, confirmation dialog, and Tooltip
+ * [OUTPUT]: Combines archive rows, receipt-gated bulk cleanup and discoverable retained-content dialogs.
  * [POS]: Settings archive composition surface; main owns purge authority and read-only entities keep an accessible non-destructive delete boundary
  */
 
@@ -8,6 +8,14 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { Archive } from "lucide-react";
+import {
+  useCloudArchiveItems,
+  type MirrorArchiveItem,
+} from "./cloud-chat/archive/items";
+import { MirrorArchiveRow } from "./cloud-chat/archive/row";
+import { RetainedContentEntry } from "./cloud-chat/retained/catalog";
+import { chatCopy } from "@ai-chat/chat-ui/copy";
+import { compareIdentity } from "@ai-chat/cloud-protocol/chats/order";
 import type {
   ArchivePurgeMode,
   ArchiveTarget,
@@ -28,13 +36,12 @@ import {
   type ArchiveListItem,
 } from "./settings-archive-list";
 import { PageShell } from "@/components/page-shell";
+import { SettingsButton } from "@/components/settings/settings-layout";
 import {
-  SettingsButton,
-  SettingsCanvas,
-  SettingsEmpty,
-  SettingsList,
-  SettingsSection,
-} from "@/components/settings/settings-layout";
+  ArchiveContent,
+  ArchiveEmpty,
+  ArchiveList,
+} from "@ai-chat/ui/components/archive/section";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import {
   Tooltip,
@@ -221,7 +228,7 @@ export function PurgePreviewDescription({
         className={cn(
           "mt-4 flex cursor-pointer items-start gap-3 rounded-lg p-3 transition-colors",
           rebuilding && "bg-muted",
-          !memory && "cursor-not-allowed opacity-50"
+          !memory && "cursor-not-allowed opacity-50",
         )}
       >
         <input
@@ -231,7 +238,9 @@ export function PurgePreviewDescription({
           disabled={!memory}
           onChange={(event) =>
             onModeChange?.(
-              event.currentTarget.checked ? "cleanup-and-rebuild" : "local-only"
+              event.currentTarget.checked
+                ? "cleanup-and-rebuild"
+                : "local-only",
             )
           }
         />
@@ -267,17 +276,27 @@ export function ArchiveSettingsView() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pendingPurge, setPendingPurge] = useState<PendingPurge | null>(null);
 
+  const cloud = useCloudArchiveItems();
+  const cloudCopy = chatCopy(useAppTranslation().i18n.language);
   const entities = snapshot.entities;
-  const items = useMemo<ArchiveListItem[]>(() => {
-    const productItems: ArchiveListItem[] = entities.map((entity) => ({
-      key: keyOf(entity.target),
-      archivedAt: entity.archivedAt,
-      entity,
-    }));
-    return productItems.sort(
-      (left, right) => right.archivedAt - left.archivedAt
-    );
-  }, [entities]);
+  const localItems = useMemo<ArchiveListItem[]>(
+    () =>
+      entities.map((entity) => ({
+        key: keyOf(entity.target),
+        archivedAt: entity.archivedAt,
+        entity,
+      })),
+    [entities],
+  );
+  const items = useMemo<(ArchiveListItem | MirrorArchiveItem)[]>(
+    () =>
+      [...localItems, ...cloud.items].sort(
+        (left, right) =>
+          right.archivedAt - left.archivedAt ||
+          compareIdentity(left.key, right.key),
+      ),
+    [localItems, cloud.items],
+  );
   const searchTarget = searchParams.get("target");
   const resolvedSearchTarget = items.some((item) => item.key === searchTarget)
     ? searchTarget
@@ -289,18 +308,18 @@ export function ArchiveSettingsView() {
     row?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [resolvedSearchTarget]);
   const selectedItems = useMemo(
-    () => items.filter((item) => selected.has(item.key)),
-    [items, selected]
+    () => localItems.filter((item) => selected.has(item.key)),
+    [localItems, selected],
   );
   const selectedTargets = selectedItems.map((item) => item.entity.target);
   const operationBusy = busy;
   const selectionIncludesReadOnly = selectedItems.some(
-    (item) => item.entity.readOnly === true
+    (item) => item.entity.readOnly === true,
   );
 
   const commit = async (
     task: Parameters<typeof run>[0],
-    clearSelection = true
+    clearSelection = true,
   ) => {
     const completed = await run(task);
     if (completed && clearSelection) setSelected(new Set());
@@ -312,7 +331,7 @@ export function ArchiveSettingsView() {
      两个复数——中日英法西的连接词与量词规则不同，硬拼必翻车。 */
   const purgeTitle = (purgeTargets: ArchiveTarget[]) => {
     const projects = purgeTargets.filter(
-      (target) => target.kind === "project"
+      (target) => target.kind === "project",
     ).length;
     const chats = purgeTargets.length - projects;
     if (chats && projects) {
@@ -343,8 +362,8 @@ export function ArchiveSettingsView() {
       executePurge(
         pendingPurge.preview.executionToken,
         pendingPurge.targets,
-        pendingPurge.mode
-      )
+        pendingPurge.mode,
+      ),
     );
     if (completed) setPendingPurge(null);
   };
@@ -382,145 +401,161 @@ export function ArchiveSettingsView() {
    * ========================================================== */
 
   const allSelected =
-    items.length > 0 && selectedItems.length === items.length;
+    localItems.length > 0 && selectedItems.length === localItems.length;
 
   // 与侧栏同名：这一页收 Chat、Project 与导入历史，items 才盖得住
   return (
     <PageShell title={t("common.archivedItems")} icon={<Archive />}>
-      <SettingsCanvas>
-        <div className="space-y-8">
-          <SettingsSection
-            title={t("archive.sectionTitle")}
-            description={t("archive.description")}
-            alert={error || history?.warning}
-          >
-            {items.length === 0 ? (
-              <SettingsEmpty
-                icon={<Archive />}
-                title={t("archive.emptyTitle")}
-                hint={t("archive.emptyDetail")}
-              />
-            ) : (
-              <SettingsList data-testid="archive-list">
-                <div className="flex items-center gap-2 pr-2 pl-1">
-                  <ArchiveSelectBox
-                    label={
-                      allSelected
-                        ? t("archive.deselectAll")
-                        : t("archive.selectAll")
-                    }
-                    showLabel
-                    checked={allSelected}
-                    indeterminate={selectedItems.length > 0 && !allSelected}
-                    disabled={operationBusy}
-                    onChange={(checked) =>
-                      setSelected(
-                        checked
-                          ? new Set(items.map((item) => item.key))
-                          : new Set()
-                      )
-                    }
-                  />
-                  {selectedItems.length > 0 && (
-                    <div
-                      data-testid="archive-bulk-actions"
-                      className="ml-auto flex items-center gap-2"
+      <ArchiveContent
+        before={<RetainedContentEntry />}
+        title={t("archive.sectionTitle")}
+        description={t("archive.description")}
+        alert={error || history?.warning}
+      >
+        {cloud.error && (
+          <p role="alert">
+            {cloudCopy.unavailable}{" "}
+            <SettingsButton onClick={cloud.retry}>
+              {t("common.retry")}
+            </SettingsButton>
+          </p>
+        )}
+        {cloud.loading && <p role="status">{t("common.loading")}</p>}
+        {items.length === 0 ? (
+          !cloud.loading &&
+          !cloud.error && (
+            <ArchiveEmpty
+              title={t("archive.emptyTitle")}
+              hint={t("archive.emptyDetail")}
+            />
+          )
+        ) : (
+          <ArchiveList>
+            {localItems.length > 0 && (
+              <div className="flex items-center gap-2 pr-2 pl-1">
+                <ArchiveSelectBox
+                  label={
+                    allSelected
+                      ? t("archive.deselectAll")
+                      : t("archive.selectAll")
+                  }
+                  showLabel
+                  checked={allSelected}
+                  indeterminate={selectedItems.length > 0 && !allSelected}
+                  disabled={operationBusy}
+                  onChange={(checked) =>
+                    setSelected(
+                      checked
+                        ? new Set(localItems.map((item) => item.key))
+                        : new Set(),
+                    )
+                  }
+                />
+                {selectedItems.length > 0 && (
+                  <div
+                    data-testid="archive-bulk-actions"
+                    className="ml-auto flex items-center gap-2"
+                  >
+                    <span className="text-muted-foreground text-xs tabular-nums">
+                      {t("archive.selected", { count: selectedItems.length })}
+                    </span>
+                    <SettingsButton
+                      variant="ghost"
+                      disabled={operationBusy}
+                      onClick={() => setSelected(new Set())}
                     >
-                      <span className="text-muted-foreground text-xs tabular-nums">
-                        {t("archive.selected", { count: selectedItems.length })}
-                      </span>
-                      <SettingsButton
-                        variant="ghost"
-                        disabled={operationBusy}
-                        onClick={() => setSelected(new Set())}
-                      >
-                        {t("archive.clearSelection")}
-                      </SettingsButton>
-                      <SettingsButton
-                        variant="outline"
-                        disabled={operationBusy}
-                        onClick={() => void restoreSelected()}
-                      >
-                        {t("archive.restoreSelected")}
-                      </SettingsButton>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <SettingsButton
-                            data-testid="archive-bulk-delete"
-                            variant="destructive"
-                            aria-disabled={selectionIncludesReadOnly || undefined}
-                            aria-description={
-                              selectionIncludesReadOnly
-                                ? t("archive.importedDeleteUnavailable")
-                                : undefined
-                            }
-                            disabled={operationBusy}
-                            className={cn(
-                              selectionIncludesReadOnly &&
-                                "cursor-not-allowed bg-transparent text-muted-foreground opacity-50 hover:bg-transparent hover:text-muted-foreground"
-                            )}
-                            onClick={
-                              selectionIncludesReadOnly
-                                ? undefined
-                                : () => void requestPurge(selectedTargets)
-                            }
-                          >
-                            {t("archive.deleteSelected")}
-                          </SettingsButton>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">
-                          {selectionIncludesReadOnly
-                            ? t("archive.importedDeleteUnavailable")
-                            : t("archive.deleteSelected")}
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  )}
-                </div>
-
-                {items.map((item) => (
-                  <ArchivedItemRow
-                    key={item.key}
-                    item={item}
-                    searchTargeted={resolvedSearchTarget === item.key}
-                    checked={selected.has(item.key)}
-                    onChange={(checked) => toggle(item.key, checked)}
-                    busy={operationBusy}
-                    onRestore={() =>
-                      void commit(() =>
-                        restoreArchiveTargets([item.entity.target])
-                      )
-                    }
-                    onPurge={
-                      item.entity.readOnly
-                        ? undefined
-                        : () => void requestPurge([item.entity.target])
-                    }
-                  />
-                ))}
-              </SettingsList>
+                      {t("archive.clearSelection")}
+                    </SettingsButton>
+                    <SettingsButton
+                      variant="outline"
+                      disabled={operationBusy}
+                      onClick={() => void restoreSelected()}
+                    >
+                      {t("archive.restoreSelected")}
+                    </SettingsButton>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <SettingsButton
+                          data-testid="archive-bulk-delete"
+                          variant="destructive"
+                          aria-disabled={selectionIncludesReadOnly || undefined}
+                          aria-description={
+                            selectionIncludesReadOnly
+                              ? t("archive.importedDeleteUnavailable")
+                              : undefined
+                          }
+                          disabled={operationBusy}
+                          className={cn(
+                            selectionIncludesReadOnly &&
+                              "cursor-not-allowed bg-transparent text-muted-foreground opacity-50 hover:bg-transparent hover:text-muted-foreground",
+                          )}
+                          onClick={
+                            selectionIncludesReadOnly
+                              ? undefined
+                              : () => void requestPurge(selectedTargets)
+                          }
+                        >
+                          {t("archive.deleteSelected")}
+                        </SettingsButton>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        {selectionIncludesReadOnly
+                          ? t("archive.importedDeleteUnavailable")
+                          : t("archive.deleteSelected")}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
+              </div>
             )}
-          </SettingsSection>
-        </div>
-      </SettingsCanvas>
+
+            {items.map((item) =>
+              "kind" in item ? (
+                <MirrorArchiveRow
+                  key={item.key}
+                  item={item}
+                  targeted={resolvedSearchTarget === item.key}
+                />
+              ) : (
+                <ArchivedItemRow
+                  key={item.key}
+                  item={item}
+                  searchTargeted={resolvedSearchTarget === item.key}
+                  checked={selected.has(item.key)}
+                  onChange={(checked) => toggle(item.key, checked)}
+                  busy={operationBusy}
+                  onRestore={() =>
+                    void commit(() =>
+                      restoreArchiveTargets([item.entity.target]),
+                    )
+                  }
+                  onPurge={
+                    item.entity.readOnly
+                      ? undefined
+                      : () => void requestPurge([item.entity.target])
+                  }
+                />
+              ),
+            )}
+          </ArchiveList>
+        )}
+      </ArchiveContent>
 
       <ConfirmationDialog
         open={pendingPurge !== null}
         title={pendingPurge ? purgeTitle(pendingPurge.targets) : ""}
         description={
-          pendingPurge
-            ? (
-                <PurgePreviewDescription
-                  preview={pendingPurge.preview}
-                  mode={pendingPurge.mode}
-                  onModeChange={(mode) =>
-                    setPendingPurge((current) =>
-                      current ? { ...current, mode } : current
-                    )
-                  }
-                />
-              )
-            : null
+          pendingPurge ? (
+            <PurgePreviewDescription
+              preview={pendingPurge.preview}
+              mode={pendingPurge.mode}
+              onModeChange={(mode) =>
+                setPendingPurge((current) =>
+                  current ? { ...current, mode } : current,
+                )
+              }
+            />
+          ) : null
         }
         confirmLabel={
           pendingPurge?.mode === "cleanup-and-rebuild"

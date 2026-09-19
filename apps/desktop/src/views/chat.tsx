@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on router, i18n, Chats/Projects/Setup providers, canonical chat context, the exact App Editor route gate, draft routing/residence, PageShell, side-panel capability policy, and ChatView
- * [OUTPUT]: Composes native/imported/App Chat views, shared availability identity and same-source adoption preflight with explicit retry intent.
+ * [INPUT]: Depends on router, i18n, Chats/Projects/Setup providers, canonical chat context, the exact App Editor route gate, draft routing/residence, the Agent connection warm-up client, PageShell, idle chunk prefetch, side-panel capability policy, and ChatView
+ * [OUTPUT]: One ChatPage with selected local/cloud session ports and imported first turns, the cloud port warmed and kept resolved at idle so an executor change swaps ports in one commit and hands the caret back to the rebuilt composer; missing conversations never open draft composers
  * [POS]: The sole product chat route adapter in views
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { ChatPage, type ChatPageRenderer } from "@ai-chat/chat-ui/chat-page";
 import { ChatView, ChatViewFrame } from "@/components/chat/chat-view";
 import type {
   ChatForkViewContext,
@@ -17,34 +18,118 @@ import {
   nextSidePanelCommandNonce,
   type SidePanelRequest,
 } from "@/components/chat/runtime/chat-session-model";
-import { PageShell, panelChromeClassName } from "@/components/page-shell";
+import { PageShell, DesktopWorkspaceHeader, panelChromeClassName } from "@/components/page-shell";
 import { useChats } from "@/components/providers/chats-provider";
 import { useProjects } from "@/components/providers/projects-provider";
 import { projectAvailability, submissionDecision } from "../../shared/agent-availability/projection";
 import { useSetup } from "@/components/providers/setup-provider";
 import { useHistory } from "@/components/providers/history/history-provider";
 import { AgentBackendIcon } from "@/lib/agent-backends";
+import { useConversationWarmup } from "@/lib/agent-connections-client";
 import { claimActiveChat } from "@/lib/chat-activity-store";
 import { setDraftRouteProject, useDraftChatId } from "@/lib/chat-composer-store";
+import { useContinuationDraft } from "@/lib/cloud/chat/draft";
 import { useDraftChatResidence } from "@/lib/draft-chat-residence";
 import { chatExitRoute } from "@/lib/draft-route";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { Button } from "@ai-chat/ui/components/ui/button";
+import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 // 第三栏在右侧，用 SidebarTrigger 同族的 Panel 图标；
 // PanelRight 本就是 PanelLeft 的水平镜像，比给左向图标套 scale-x-[-1] 更正。
 import { PanelRightIcon } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { adoptHistory } from "@/lib/history/client";
+import { submitHistoryAdoption } from "@/lib/chat-agent-draft/submission";
 import { openProductDestination } from "@/lib/product-navigation";
 import { AppEditorRouteGate } from "./app-editor-route-gate";
 import { CHAT_PANEL_CAPABILITIES } from "../../shared/placement/facts";
 import type { ForeignHistorySummary } from "../../shared/history-import-ipc";
+import type { ChatSummary } from "../../shared/chats-ipc";
 import { useChatSession, type ChatProjectMode } from "@/components/chat/runtime/use-chat-session";
 import { assembleFirstTurnPayload } from "@/components/chat/runtime/session/create-session-submit";
 import { onChatsEvent } from "@/lib/chats-client";
 import type { PromptInputMessage } from "@ai-chat/ui/components/ai-elements/prompt-input";
+import { useCloudChatHead } from "@/lib/cloud/chat/catalog";
+import { useCloudAccount } from "@/lib/cloud/client";
+import { prefetchWhenIdle } from "@/lib/idle-prefetch";
+/* Named loaders, not inline imports: `prefetchWhenIdle` keys its once-guard on loader identity.
+   The resolved module is kept here as well: `lazy` suspends for at least one tick even on an
+   already-fetched chunk, and that tick tears the columns down in the middle of a turn. */
+let cloudSessionChunk: typeof import("./cloud-chat/session") | null = null;
+const loadCloudSessionChunk = () => import("./cloud-chat/session").then(module => (cloudSessionChunk = module));
+const loadCloudPageChunk = () => import("@ai-chat/chat-ui/page/cloud");
+const NativeCloudStatus = lazy(() => import("./cloud-chat/native/status").then(module => ({ default: module.NativeCloudStatus })));
+const NativeCloudComposer = lazy(() => import("./cloud-chat/native/status").then(module => ({ default: module.NativeCloudComposer })));
 
 export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean }) {
+  return <ChatPage session={renderPage => <DesktopChatSession surfaceVisible={surfaceVisible} renderPage={renderPage} />} />;
+}
+function DesktopChatSession({ surfaceVisible, renderPage }: { surfaceVisible: boolean; renderPage: ChatPageRenderer }) {
+  const { id } = useParams(), cloud = useCloudChatHead(id), account = useCloudAccount(), { chats, loading: chatsLoading } = useChats();
+  const { t } = useAppTranslation();
+  const draftChatId = useDraftChatId();
+  const continuationDraft = useContinuationDraft(id, cloud.head?.chat.classification.conversationKind === "ordinary" ? cloud.head.chat.incarnationId : undefined, account.profile?.userId);
+  const local = !id || chats.some(chat => chat.id === id);
+  /* The executor can move mid-turn, and the route follows it into the cloud port with no
+     warning. Warm both halves of that port while the thread is idle so the flip renders the
+     conversation instead of a "Loading" shell over a turn the user is still steering. */
+  const cloudCapable = Boolean(cloud.sources);
+  useEffect(() => {
+    if (!cloudCapable) return;
+    const cancels = [prefetchWhenIdle(loadCloudSessionChunk), prefetchWhenIdle(loadCloudPageChunk)];
+    return () => { for (const cancel of cancels) cancel(); };
+  }, [cloudCapable]);
+  const cloudHead = id && cloud.sources && cloud.head && (cloud.residence === "mirror" || cloud.head.executorDeviceId !== account.deviceId ||
+    cloud.head.pendingExecutor && cloud.head.pendingExecutor.deviceId !== account.deviceId) ? cloud.head : null;
+  /* One conversation, two ports. Choosing another computer is not navigation: the columns, the
+     transcript position and the draft all stay, so the only thing the rebuilt tree owes the
+     reader is the caret they were typing with. */
+  const [port, setPort] = useState({ id, cloud: cloudHead !== null, swapped: false });
+  // Only a port that moved under the same conversation is a swap; a different chat is navigation.
+  if (port.id !== id || port.cloud !== (cloudHead !== null)) setPort({ id, cloud: cloudHead !== null, swapped: port.id === id });
+  const [chunk, setChunk] = useState(cloudSessionChunk);
+  if (!chunk && cloudSessionChunk) setChunk(cloudSessionChunk);
+  const needsCloudPort = cloudHead !== null;
+  useEffect(() => {
+    if (!needsCloudPort || chunk) return;
+    void loadCloudSessionChunk().then(setChunk).catch(() => {});
+  }, [chunk, needsCloudPort]);
+  if (id && !local && cloud.sources && cloud.head === undefined && !cloud.error) return <PageShell title={t("common.chats")}><p role="status">{t("common.loading")}</p></PageShell>;
+  if (cloudHead && cloud.sources) {
+    /* The cold-start placeholder is the page's own frame, not a loading shell: the columns must
+       not change width between the two ports. */
+    return chunk
+      ? <chunk.DesktopCloudSession renderPage={renderPage} key={id} head={cloudHead} sources={cloud.sources} draft={continuationDraft} focusComposer={port.swapped} />
+      : renderPage({ conversation: { empty: false, mounted: false, emptyView: null, fallback: null, transcript: null } });
+  }
+  if (conversationMissing({ id, chats, chatsLoading, draftChatId })) {
+    /* The directory still recognizes this head but the local machine has no row for
+       it at all — that can only mean it was deleted elsewhere and the local machine
+       received the tombstone: say so precisely. Every other case (not signed in,
+       switched accounts, never existed here) just says "not on this device". */
+    const deleted = cloud.deleted || Boolean(cloud.head && !cloud.residence);
+    return <PageShell title={t("common.chats")}>
+      <p className="p-4 text-sm text-muted-foreground" role="status">{t(deleted ? "chat.cloud.deleted" : "chat.cloud.unavailable")}</p>
+    </PageShell>;
+  }
+  return <LocalChatRoute renderPage={renderPage} surfaceVisible={surfaceVisible} cloudFacts={Boolean(cloud.head)} />;
+}
+
+/* The route points at a chat the local machine doesn't have: deleted elsewhere, or
+   belonging to an account that isn't signed in right now. This must never fall
+   through to the draft composer — that would bind the blank page to a dead id with
+   nowhere for the user's typing to go. A live draft slot isn't in this list: it
+   was never persisted in the first place, and the blank page is its home; nothing
+   can be asserted before the list has finished loading either. */
+export function conversationMissing({ id, chats, chatsLoading, draftChatId }: {
+  id?: string;
+  chats: readonly Pick<ChatSummary, "id">[];
+  chatsLoading: boolean;
+  draftChatId: string;
+}) {
+  return Boolean(id) && !chatsLoading && id !== draftChatId && !chats.some((chat) => chat.id === id);
+}
+
+function LocalChatRoute({ surfaceVisible = true, cloudFacts = false, renderPage }: { surfaceVisible?: boolean; cloudFacts?: boolean; renderPage: ChatPageRenderer }) {
   const { t } = useAppTranslation();
   const navigate = useNavigate();
   const { id } = useParams();
@@ -147,13 +232,16 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
       { replace: true }
     ).catch(() => undefined);
   }, [navigate, summary]);
+  /* 预热只认「已解析的后端」：空白草稿的后端由 composer 自己说了算，这里
+     宁可不发，也不能拿默认值替用户挑一家去占进程（Lab 开关关闭时全静默）。 */
+  useConversationWarmup(summary?.agent ? { conversationId: chatId, backend: summary.agent } : null);
   if (id && (chatsLoading || projectsLoading)) {
     return (
       <PageShell
         title={
-          <span
+          <Skeleton
             aria-hidden
-            className="inline-block h-4 w-40 animate-pulse rounded-md bg-muted"
+            className="inline-block h-4 w-40 motion-reduce:animate-none"
           />
         }
       >
@@ -175,9 +263,9 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
   const headerTitle = !id ? undefined : summary?.title === null ? (
     <>
       <span className="sr-only">{t("chat.generatingTitle")}</span>
-      <span
+      <Skeleton
         aria-hidden
-        className="inline-block h-4 w-40 animate-pulse rounded-md bg-muted"
+        className="inline-block h-4 w-40 motion-reduce:animate-none"
       />
     </>
   ) : (
@@ -218,8 +306,8 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
       }
     : undefined;
 
-  const page = (
-    <PageShell
+  const header = (
+    <DesktopWorkspaceHeader
       title={headerTitle}
       icon={
         summary && panelAllowed ? (
@@ -257,18 +345,24 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
           </Button>
         ) : undefined
       }
-    >
-      <div className="flex h-full min-h-0 flex-col">
+    />
+  );
+  const notices = <>
         <SkillsOnboardingCard />
+        {id && cloudFacts && window.cloudChat && <Suspense fallback={null}><NativeCloudStatus chatId={id} /></Suspense>}
         {recoveryTruncated && (
           <div className="mx-3 mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs" role="status">
             {t("chat.fork.recoveryTruncated")}
           </div>
         )}
-        <div className="min-h-0 flex-1">
-          {summary?.readOnlyReason === "external-readonly" && canonicalHistory ? (
+  </>;
+  const page = (
+          summary?.readOnlyReason === "external-readonly" && canonicalHistory ? (
             <ImportedChatView
+              renderPage={renderPage}
               key={chatId}
+              header={header}
+              notices={notices}
               chatId={chatId}
               history={canonicalHistory[1].summary}
               importSegment={importSegment}
@@ -282,8 +376,13 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
             />
           ) : (
             <ChatView
+              renderPage={renderPage}
               key={chatId}
+              header={header}
+              notices={notices}
+              existingChat={Boolean(summary)}
               scope={{ conversationId: chatId }}
+              composerWrapper={id && cloudFacts ? composer => <Suspense fallback={composer}><NativeCloudComposer chatId={id}>{composer}</NativeCloudComposer></Suspense> : undefined}
         /* 草稿与持久会话一视同仁地抢焦点：换 chat 即换 key 重挂，光标该在的地方
            永远是输入框——用户点侧栏是为了说话，不是为了先按一次 Tab。落点分歧
            由 RichInput 抹平（从外部进入落到内容末尾）。只有主聊天路由这样做：
@@ -302,10 +401,7 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
                 setSidePanelRequest((current) => consumeSidePanelRequest(current, nonce))
               }
             />
-          )}
-        </div>
-      </div>
-    </PageShell>
+          )
   );
   return editorDestination ? (
     <AppEditorRouteGate destination={editorDestination}>
@@ -315,6 +411,9 @@ export function ChatRoute({ surfaceVisible = true }: { surfaceVisible?: boolean 
 }
 
 function ImportedChatView({
+  renderPage,
+  header,
+  notices,
   chatId,
   history,
   importSegment,
@@ -324,6 +423,9 @@ function ImportedChatView({
   surfaceVisible,
   onConsumeSidePanelRequest,
 }: {
+  renderPage: ChatPageRenderer;
+  header: React.ReactNode;
+  notices: React.ReactNode;
   chatId: string;
   history: ForeignHistorySummary;
   importSegment?: ImportSegmentFacts;
@@ -334,10 +436,11 @@ function ImportedChatView({
   onConsumeSidePanelRequest(nonce: number): void;
 }) {
   const { t } = useAppTranslation();
-  const navigate = useNavigate();
   const session = useChatSession({ scope: { conversationId: chatId }, project });
   const { turnOptions, selectedBackend, planMode } = session.composer;
+  const canContinue = history.canResume || turnOptions.backend !== history.sourceKind;
   const submit = useCallback(async (message: PromptInputMessage, options?: { authenticationRetry?: import("../../shared/agent-availability/types").AuthenticationRetryIntent }) => {
+    if (!canContinue) throw new Error(t("history.resumeUnavailable"));
     const decision = submissionDecision(selectedBackend, Date.now());
     if (decision.decision !== "allow" && !(options?.authenticationRetry && decision.reason === "auth-required")) throw new Error(t("agentAvailability.blocked", { backend: selectedBackend?.displayName ?? turnOptions.backend }));
     const submission = assembleFirstTurnPayload({
@@ -348,29 +451,30 @@ function ImportedChatView({
       planMode,
     });
     if (!submission.displayText && !submission.attachmentPayloads?.length) return;
-    const receipt = await adoptHistory({
+    await submitHistoryAdoption(chatId, {
       ...(options?.authenticationRetry ? { authenticationRetry: options.authenticationRetry } : {}),
       opaqueId: history.opaqueId,
       expectedHistoryRevision: history.historyRevision,
       submission,
       turnOptions,
     });
-    await navigate(`/chat/${encodeURIComponent(receipt.chatId)}`, { replace: true });
-  }, [chatId, history.historyRevision, history.opaqueId, navigate, planMode, selectedBackend, t, turnOptions]);
+  }, [canContinue, chatId, history.historyRevision, history.opaqueId, planMode, selectedBackend, t, turnOptions]);
   const composer = useMemo(() => ({
     ...session.composer,
     persisted: true,
-    inputDisabled: session.composer.inputDisabled || !history.canResume,
+    inputDisabled: session.composer.inputDisabled || !canContinue,
+    attachmentNotice: canContinue ? session.composer.attachmentNotice : t("history.resumeUnavailable"),
     handleSubmit: submit,
-  }), [history.canResume, session.composer, submit]);
+  }), [canContinue, session.composer, submit, t]);
   const controller = useMemo(() => ({ ...session, composer }), [composer, session]);
   return (
     <ChatViewFrame
-      /* 不能续聊时把原因说在输入框上：这是 main 唯一说过这句话的地方，
-         也是用户此刻唯一会看的地方。 */
-      composerLockedReason={
-        history.canResume ? undefined : t("history.resumeUnavailable")
-      }
+      renderPage={renderPage}
+      header={header}
+      notices={notices}
+      /* An imported conversation is history by definition: it always has
+         messages to wait for. */
+      existingChat
       controller={controller}
       focusComposer
       importSegment={importSegment}

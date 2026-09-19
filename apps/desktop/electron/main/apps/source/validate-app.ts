@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on package inspection, manifest/Base schemas, skill conventions, and the shared frozen-source React GUI validator
+ * [INPUT]: Depends on package inspection, manifest/Base schemas, skill conventions, and the shared frozen-source React GUI validator (loaded on demand so the TypeScript compiler stays off the startup graph)
  * [OUTPUT]: Provides structured package findings for static HTML or compiled React source without changing the App
  * [POS]: Apps package validator; the same checks back the validate_app tool exposed to the Agent, so there is one validation truth, not a separate human-facing one
  */
@@ -18,8 +18,6 @@ import { validateConfigRequirements } from "../share/app-config-store";
 import { inspectPackage } from "../share/package/package-contract";
 import { APP_SKILL_PLACEHOLDER, README_SKELETON_HINT } from "./templates";
 import { AppSourcePreparer } from "../gui-build/pipeline/source-preparer";
-import { validateCompiledGuiSource } from "../gui-build/pipeline/source-validator";
-import { analyzeAuthorSource } from "../gui-build/source-analysis";
 
 type AppFinding = { file: string; reason: string };
 type AppValidation = {
@@ -220,6 +218,12 @@ async function checkGui(
   report: Report
 ) {
   if (manifest?.kind === "base" && manifest.gui?.build) {
+    /* Both modules carry the 9 MB TypeScript compiler; validation is the only
+       startup-reachable importer, so the cost lands on the first validate call. */
+    const [{ validateCompiledGuiSource }, { analyzeAuthorSource }] = await Promise.all([
+      import("../gui-build/pipeline/source-validator"),
+      import("../gui-build/source-analysis"),
+    ]);
     const root = await mkdtemp(join(tmpdir(), "validate-compiled-gui-"));
     const preparer = new AppSourcePreparer();
     let source: Awaited<ReturnType<AppSourcePreparer["freeze"]>> | undefined;

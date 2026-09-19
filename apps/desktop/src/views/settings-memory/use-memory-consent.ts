@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { memoryStore } from "@/lib/memory-store";
 import { settingsStore } from "@/lib/settings-store";
 import type {

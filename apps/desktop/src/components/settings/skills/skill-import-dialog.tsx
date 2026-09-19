@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on main-produced candidate previews/source facts, i18n, dialog primitives, and caller-owned selection/import callbacks
- * [OUTPUT]: Provides a two-stage source/candidate import dialog with no target or projection concepts
+ * [INPUT]: Depends on main-produced candidate previews/source facts, inline operation errors, i18n, dialog primitives, and caller-owned selection/import callbacks
+ * [OUTPUT]: Provides a two-stage source/candidate import dialog with visible Library scope and local failure feedback
  * [POS]: Sole Skills acquisition dialog; importing always means copy into the product Library and enable
  */
 
 import { ArrowLeft, FolderOpen } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { SettingsAlert } from "@/components/settings/settings-layout";
 import { AppDialogBody, AppDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
@@ -28,6 +29,7 @@ export function SkillImportDialog({
   preview,
   selected,
   busy,
+  error,
   onOpenChange,
   onOpenSource,
   onBack,
@@ -39,6 +41,7 @@ export function SkillImportDialog({
   preview: ManagedSkillImportPreview | null;
   selected: ReadonlySet<string>;
   busy: boolean;
+  error?: string;
   onOpenChange(open: boolean): void;
   onOpenSource(source: ManagedSkillAgent | "local-folder"): void;
   onBack(): void;
@@ -54,6 +57,7 @@ export function SkillImportDialog({
           <DialogDescription>{t("settings.skills.description")}</DialogDescription>
         </DialogHeader>
         <AppDialogBody className="space-y-3 py-4">
+          {error && <SettingsAlert>{error}</SettingsAlert>}
           {preview ? (
             <>
               <Button onClick={onBack} size="sm" variant="ghost">

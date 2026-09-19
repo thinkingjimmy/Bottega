@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on guarded Node fs/crypto/path, the shared 8 MiB image data-URL limits, canonical ChatAttachmentMeta, main/errors, and the persistence errno predicate
- * [OUTPUT]: Provides exportAttachmentFile: O_NOFOLLOW|O_NONBLOCK on both ends, MIME and length agreement, 0700/0600 modes, and an atomic rename from a randomly named temporary file
- * [POS]: Security kernel of attachment export; ChatsService owns ownership checks while this file owns the file-system state machine and its injectable failure seams
+ * [OUTPUT]: Provides exportAttachmentFile: a verified data URL in, O_NOFOLLOW|O_NONBLOCK targets, MIME and length agreement, 0700/0600 modes, and an atomic rename from a randomly named temporary file
+ * [POS]: Security kernel of attachment export; AttachmentStore proves the source bytes and ChatsService proves ownership, while this file owns the target file-system state machine and its injectable failure seams
  */
 
 import { randomUUID } from "node:crypto";
@@ -22,7 +22,8 @@ export type AttachmentExportDependencies = {
 };
 
 export async function exportAttachmentFile(input: {
-  sourcePath: string;
+  /** Already integrity-checked by the owning store; never a path the Agent could redirect. */
+  dataUrl: string;
   exportsRoot: string;
   attachmentId: string;
   meta: ChatAttachmentMeta;
@@ -31,7 +32,10 @@ export async function exportAttachmentFile(input: {
   if (input.meta.byteSize > ATTACHMENT_BYTE_LIMIT) {
     throw statusError(413, "附件元数据超过 8 MB 上限");
   }
-  const dataUrl = await readGuardedText(input.sourcePath, ENCODED_CAP);
+  const { dataUrl } = input;
+  if (Buffer.byteLength(dataUrl, "utf8") > ENCODED_CAP) {
+    throw statusError(413, "附件源编码体积超限");
+  }
   if (!isValidImageDataUrl(dataUrl)) throw new Error("附件内容已损坏");
   const comma = dataUrl.indexOf(",");
   const mediaType = dataUrl.slice(5, dataUrl.indexOf(";", 5));
@@ -63,18 +67,6 @@ export async function exportAttachmentFile(input: {
 const ENCODED_CAP = Math.ceil(ATTACHMENT_BYTE_LIMIT / 3) * 4 + 256;
 const guardedReadFlags =
   fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
-
-async function readGuardedText(path: string, byteLimit: number) {
-  const handle = await open(path, guardedReadFlags);
-  try {
-    const info = await handle.stat();
-    if (!info.isFile()) throw new Error("附件源必须是普通文件");
-    if (info.size > byteLimit) throw statusError(413, "附件源编码体积超限");
-    return handle.readFile("utf8");
-  } finally {
-    await handle.close();
-  }
-}
 
 async function ensurePrivateDirectory(root: string) {
   await mkdir(root, { recursive: true, mode: 0o700 });

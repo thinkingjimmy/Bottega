@@ -1,31 +1,20 @@
 /**
- * [INPUT]: Depends on the chatComposerEn structural type
+ * [INPUT]: Shared native/Web Project selector and Plan catalogs and the English Chat composer structural type.
  * [OUTPUT]: Provides the Spanish Chat composer catalog with the exact English structure
  * [POS]: Spanish Chat composer locale leaf; assembled inside the top-level chat.composer namespace
  */
 
 import type { chatComposerEn } from "./en";
 
+import { copy as sharedComposer } from "@ai-chat/chat-ui/composer-control-copy/es";
+import { projectSelectorEs } from "@ai-chat/chat-ui/project-copy";
+
 export const chatComposerEs: typeof chatComposerEn = {
   modelFallback: {
     defaultEffort: "Predeterminado",
     standardSpeed: "Estándar",
   },
-  approval: {
-    requestChanges: "Solicitar cambios",
-    decline: "Rechazar",
-    allowSession: "Permitir en esta sesión",
-    approvePlan: "Aprobar el Plan",
-    allowOnce: "Permitir una vez",
-    planTitle: "¿Continuar con este Plan?",
-    commandTitle: "¿Permitir este comando?",
-    fileChangeTitle: "¿Permitir estos cambios de archivos?",
-    permissionTitle: "¿Permitir acceso adicional?",
-    location: "Ubicación",
-    network: "Red",
-    plan: "Plan",
-    details: "Detalles",
-  },
+  approval: sharedComposer.approval,
   branch: {
     uncommitted_one: "{{count}} archivo sin confirmar",
     uncommitted_other: "{{count}} archivos sin confirmar",
@@ -56,53 +45,8 @@ export const chatComposerEs: typeof chatComposerEn = {
     previewWorkspaceFile: "Previsualizar archivo de Workspace",
     queueSubmit: "Añadir a la cola",
   },
-  plan: {
-    closeChip: "Desactivar el Plan",
-    decisionTitle: "¿Implementar este Plan?",
-    closeDecision: "Cerrar la decisión del Plan",
-    implement: "Sí, implementar este Plan",
-    reviseLabel: "Indicar al Agent cómo revisar el Plan",
-    revisePlaceholder: "No. Indica al Agent qué debe hacer de otra forma",
-    send: "Enviar",
-    skip: "Omitir",
-  },
-  project: {
-    selector: "Selector de Project",
-    search: "Buscar Projects",
-    empty: "No se encontraron Projects",
-    create: "Nuevo Project",
-    workInChat: "Trabajar en el Chat",
-    current: "Project actual del Chat: {{project}}",
-    chat: "Chat",
-  },
-  userInput: {
-    countdown: "{{count}} s",
-    skip: "Omitir",
-    progress: "{{current}} de {{total}}",
-    skipQuestion: "Omitir pregunta",
-    pendingList: "Preguntas simultáneas pendientes",
-    pending: "Pendiente",
-    pendingCount: "{{count}} pendientes",
-    mainAgent: "Agent principal",
-    waiting: "Esperando una respuesta",
-    other: "Ninguna; indicar otro enfoque al Agent",
-    confirm: "Confirmar selección",
-    decisionPlaceholder: "Indica tu decisión al Agent…",
-    send: "Enviar",
-  },
-  queue: {
-    pickedUp: "Mensaje en cola seleccionado. Usa las flechas Arriba y Abajo para moverlo.",
-    reorderCancelled: "Reordenación cancelada",
-    moved: "Movido a la posición {{position}}",
-    unchanged: "La posición no cambió",
-    paused: "Cola en pausa",
-    resume: "Reanudar envío",
-    dismissError: "Cerrar error de la cola",
-    drag: "Mover elemento {{position}} de {{count}}",
-    resend: "Reenviar este mensaje",
-    deleteAmbiguous: "Eliminar este mensaje ambiguo",
-    steer: "Enviar a continuación en la tarea activa",
-    delete: "Eliminar este mensaje en cola",
-    edit: "Editar este mensaje en cola",
-  },
+  plan: sharedComposer.chat.composer.plan,
+  project: projectSelectorEs,
+  userInput: sharedComposer.userInput,
+  queue: sharedComposer.chat.composer.queue,
 };

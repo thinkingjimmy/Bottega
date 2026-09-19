@@ -1,31 +1,20 @@
 /**
- * [INPUT]: Depends on the chatComposerEn structural type
+ * [INPUT]: Shared native/Web Project selector and Plan catalogs and the English Chat composer structural type.
  * [OUTPUT]: Provides the Japanese Chat composer catalog with the exact English structure
  * [POS]: Japanese Chat composer locale leaf; assembled inside the top-level chat.composer namespace
  */
 
 import type { chatComposerEn } from "./en";
 
+import { copy as sharedComposer } from "@ai-chat/chat-ui/composer-control-copy/ja";
+import { projectSelectorJa } from "@ai-chat/chat-ui/project-copy";
+
 export const chatComposerJa: typeof chatComposerEn = {
   modelFallback: {
     defaultEffort: "既定",
     standardSpeed: "標準",
   },
-  approval: {
-    requestChanges: "変更を依頼",
-    decline: "拒否",
-    allowSession: "このセッションで許可",
-    approvePlan: "Plan を承認",
-    allowOnce: "今回のみ許可",
-    planTitle: "この Plan で続行しますか？",
-    commandTitle: "このコマンドを許可しますか？",
-    fileChangeTitle: "このファイル変更を許可しますか？",
-    permissionTitle: "追加アクセスを許可しますか？",
-    location: "場所",
-    network: "ネットワーク",
-    plan: "Plan",
-    details: "詳細",
-  },
+  approval: sharedComposer.approval,
   branch: {
     uncommitted_one: "未コミットのファイル {{count}} 件",
     uncommitted_other: "未コミットのファイル {{count}} 件",
@@ -56,53 +45,8 @@ export const chatComposerJa: typeof chatComposerEn = {
     previewWorkspaceFile: "Workspace ファイルをプレビュー",
     queueSubmit: "キューに追加",
   },
-  plan: {
-    closeChip: "Plan をオフにする",
-    decisionTitle: "この Plan を実行しますか？",
-    closeDecision: "Plan の判断を閉じる",
-    implement: "はい、この Plan を実行する",
-    reviseLabel: "Plan の修正方法を Agent に伝える",
-    revisePlaceholder: "実行せず、Agent に修正内容を伝える",
-    send: "送信",
-    skip: "スキップ",
-  },
-  project: {
-    selector: "Project セレクター",
-    search: "Project を検索",
-    empty: "Project が見つかりません",
-    create: "新しい Project",
-    workInChat: "Chat で作業",
-    current: "現在の Chat Project：{{project}}",
-    chat: "Chat",
-  },
-  userInput: {
-    countdown: "残り {{count}} 秒",
-    skip: "スキップ",
-    progress: "{{total}} 件中 {{current}} 件目",
-    skipQuestion: "質問をスキップ",
-    pendingList: "待機中の同時質問",
-    pending: "待機中",
-    pendingCount: "{{count}} 件待機中",
-    mainAgent: "メイン Agent",
-    waiting: "入力待ち",
-    other: "該当なし。別の方法を Agent に伝える",
-    confirm: "選択を確定",
-    decisionPlaceholder: "判断を Agent に伝える…",
-    send: "送信",
-  },
-  queue: {
-    pickedUp: "キューのメッセージを選択しました。上下矢印キーで移動できます。",
-    reorderCancelled: "並べ替えをキャンセルしました",
-    moved: "{{position}} 番目に移動しました",
-    unchanged: "位置は変わりませんでした",
-    paused: "キューは一時停止中です",
-    resume: "送信を再開",
-    dismissError: "キューのエラーを閉じる",
-    drag: "{{count}} 件中 {{position}} 件目を移動",
-    resend: "このメッセージを再送信",
-    deleteAmbiguous: "この不確定なメッセージを削除",
-    steer: "実行中のタスクで次に送信",
-    delete: "このキュー済みメッセージを削除",
-    edit: "このキュー済みメッセージを編集",
-  },
+  plan: sharedComposer.chat.composer.plan,
+  project: projectSelectorJa,
+  userInput: sharedComposer.userInput,
+  queue: sharedComposer.chat.composer.queue,
 };

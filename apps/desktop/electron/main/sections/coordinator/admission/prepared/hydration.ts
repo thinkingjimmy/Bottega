@@ -159,6 +159,7 @@ async function hydratePersistence(
       filename: blob.filename,
       mediaType: blob.mediaType,
       dataUrl: await blobDataUrl(blob),
+      ...(blob.remote ? { remote: blob.remote } : {}),
     }))
   );
   const input = {

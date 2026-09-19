@@ -4,6 +4,7 @@
  * [POS]: apps/runtime's server-side custody driver (D29); after a restart the guardian's control channel is gone and never reconnects, so reconcile() always revokes activation and kills rather than attempting takeover
  */
 
+import { assertRecoveredAuthority } from "../../persistence/recovery-policy";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { join } from "node:path";
 import type { AppProcessCustodyEntry } from "../../../../shared/app-lifecycle";
@@ -92,6 +93,7 @@ export class AppServerCustodyRuntime {
     lifecycleRevision: number;
     dataEpochId: string;
   }): Promise<AppServerCustodyHandle> {
+    assertRecoveredAuthority();
     if (!this.accepting) throw new Error("App server custody 尚未开放准入");
     /* guardian entry 缺席时宁可当场失败：空 args 会让 spawn 出一个什么都不做
        的解释器，症状表现成「启动卡到预算耗尽」，与真正的握手失败无从区分。 */

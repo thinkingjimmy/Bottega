@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on TurnRegistry projection lane, bridge, stabilization/Steer durable finalizer, port, canonical commit, projection and process group clearance
- * [OUTPUT]: Provides Agent turn cleanup, resume-failure attempt settlement, fresh sensitive lease release, ordered projection waits, structured terminal commit, settled/persist trace and continuous sequencing
+ * [OUTPUT]: Provides Agent turn cleanup, borrowed-connection return, resume-failure attempt settlement, fresh sensitive lease release, artifact settlement, ordered projection waits, structured terminal commit, settled/persist trace and continuous sequencing
  * [POS]: The agent module's terminal transaction owner; agent-bridge is only responsible for launching, event routing and lifecycle
  */
 
+import { artifactRuntime } from "../artifacts/runtime";
 import { randomUUID } from "node:crypto";
 import { SubagentRegistry } from "../../../shared/subagent-registry";
 import {
@@ -58,6 +59,10 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
        dead attempt before the new custody identity can replace its evidence. */
     await entry.custody?.beginRelease();
     const result = await cleanupAgentTurn(turn);
+    const claimed = entry.connection;
+    entry.connection = undefined;
+    /* resume 重试要换一个进程身份：这条连接的会话已被上游判定不存在。 */
+    if (claimed) await claimed.release("dead");
     entry.processLease?.release();
     entry.processLease = undefined;
     if (!result.ok) {
@@ -144,6 +149,7 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
             result.error ?? new Error("turn 持久化发生不可恢复错误");
         }
         if (["stored", "empty", "missing", "fatal"].includes(result.outcome)) {
+          await artifactRuntime()?.settled(entry, result.outcome === "stored");
           await options.onTurnSettled?.({
             conversationId: entry.conversationId,
             requestId: entry.requestId,
@@ -193,6 +199,13 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
     await turns.drainProjections(entry);
     turns.lockSourceTerminal(entry, source);
     const finalizing = turns.runFinalize(entry, async () => {
+      for (const [agentThreadId, projection] of entry.artifacts?.children ?? []) {
+        const agent = entry.subagents.get(agentThreadId);
+        for (const event of await projection.settle(source.type !== "done")) {
+          if (agent && event.type === "item") publish(entry, { type: "subagent-item", agentThreadId, agent, item: event.item });
+        }
+      }
+      for (const event of await entry.artifacts?.projection.settle(source.type !== "done") ?? []) publish(entry, event);
       entry.memoryContribution?.release();
       entry.memoryContribution = undefined;
       const fence = await turns.closeSteerFence(entry);
@@ -247,6 +260,11 @@ export function createBridgeFinalizer(ports: FinalizerPorts) {
              钉住，交给下次启动的 reconcile 收敛——这正是 D33 要的顺序。 */
           if (entry.context) await options.releaseContext?.(entry.context);
         } finally {
+          /* 借来的连接的归还与本轮成败无关：它必须发生，且必须在槽位归还
+             之前——池要在同一时刻把常驻位重新占回来，中间不能有真空。 */
+          const claimed = entry.connection;
+          entry.connection = undefined;
+          if (claimed) await claimed.release();
           entry.processLease?.release();
           entry.processLease = undefined;
         }

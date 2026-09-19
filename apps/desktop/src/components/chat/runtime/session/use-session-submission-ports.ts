@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React memo, the latest SessionSubmitInput factory, the Conversation Coordinator/Agent queue client
+ * [INPUT]: Depends on React memo, fresh SessionSubmitInput, the native CommandSink and existing coordinator outcome clients.
  * [OUTPUT]: Provides useSessionSubmissionPorts and useSessionQueuePorts, whose stable callbacks each read a fresh SessionSubmitInput snapshot at call time rather than closing over stale state
  * [POS]: The submission-port composition layer of chat/runtime/session; keeps use-chat-session from redeclaring manual/steer/outcome wiring itself
  */
@@ -8,8 +8,8 @@ import { useMemo } from "react";
 import {
   ackAgentSteerIntents,
   decideAgentSteer,
-  steerAgent,
 } from "@/lib/agent-client";
+import { nativeChatCommands } from "@/lib/cloud/chat/platform/commands";
 import {
   ackManualIntents,
   ackSubmissionOutcome,
@@ -44,7 +44,7 @@ export function useSessionQueuePorts(
     assemble: submission.assembleSubmission,
     admit: submission.admitSubmission,
     assembleSteer: submission.assembleSteer,
-    steer: steerAgent,
+    steer: nativeChatCommands.steer,
     decideSteer: decideAgentSteer,
     ackManual: ackManualIntents,
     ackSteer: ackAgentSteerIntents,

@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on shared ChatStorageFailure, renderer i18n, Chat-storage copy/issue-draft projection, ProductFailureNotice, and ReportIssueButton
- * [OUTPUT]: Provides ChatStorageFailureNotice for human-first Sidebar storage recovery guidance with a one-click GitHub report fallback
- * [POS]: Domain wrapper that keeps storage diagnostics out of primary Sidebar copy
+ * [OUTPUT]: Provides ChatStorageFailureNotice for storage recovery guidance inside the workspace failure popup with a one-click GitHub report fallback
+ * [POS]: Domain wrapper consumed by the Sidebar feedback dialog
  */
 
 import type { ChatStorageFailure } from "../../shared/product-failure";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { chatStorageFailureCopy, chatStorageIssueDraft } from "@/lib/chat-storage-failure";
-import { ProductFailureNotice } from "./product-failure-notice";
+import { ProductFailureNotice } from "@ai-chat/ui/components/feedback/failure-notice";
 import { ReportIssueButton } from "./report-issue-button";
 
 export function ChatStorageFailureNotice({

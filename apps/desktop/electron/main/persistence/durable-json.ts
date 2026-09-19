@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, Zod schemas, and SerialQueue
- * [OUTPUT]: Parent-synced atomic publication and strict ledger loading; unsupported or corrupt canonical bytes block the writer and are preserved without automatic quarantine or empty replacement.
+ * [OUTPUT]: Parent-synced atomic publication, durable and cheap directory guards, optional final byte-publication guards and strict ledger loading; unsupported canonical bytes are preserved without empty replacement.
  * [POS]: The persistence I/O boundary; DurableJson owns the recovery decision for unreadable content so no ledger can turn a schema drift into a fatal startup
  */
 
@@ -9,6 +9,7 @@ import { lstat, mkdir, open, readdir, readFile, rename, rm } from "node:fs/promi
 import { dirname, join } from "node:path";
 import type { z } from "zod";
 import { SerialQueue } from "./serial-queue";
+import { recoverDurableCorruption, DurableRecoveryHeldError } from "./recovery-policy";
 
 export const isErrnoCode = (cause: unknown, code: string) =>
   cause instanceof Error && (cause as NodeJS.ErrnoException).code === code;
@@ -54,17 +55,20 @@ export async function durableReplaceFile(
 export async function durableReplaceBytes(
   filePath: string,
   content: Uint8Array,
-  mode = 0o600
+  mode = 0o600,
+  guard?: () => void
 ) {
-  return durableReplace(filePath, content, mode);
+  return durableReplace(filePath, content, mode, {}, guard);
 }
 
 async function durableReplace(
   filePath: string,
   content: string | Uint8Array,
   mode: number,
-  faults: DurableReplaceFileFaults = {}
+  faults: DurableReplaceFileFaults = {},
+  guard?: () => void
 ) {
+  guard?.();
   const directory = dirname(filePath);
   await ensureDurableDirectory(directory, 0o700, faults);
   const temporary = `${filePath}.${randomUUID()}.tmp`;
@@ -81,6 +85,7 @@ async function durableReplace(
     throw cause;
   }
   try {
+    guard?.();
     await rename(temporary, filePath);
   } catch (cause) {
     await rm(temporary, { force: true }).catch(() => undefined);
@@ -90,6 +95,7 @@ async function durableReplace(
     await faults.afterRename?.({ filePath, content });
   }
   await syncDirectory(directory);
+  guard?.();
 }
 
 /**
@@ -132,6 +138,17 @@ export async function ensureDurableDirectory(
   await faults.afterDirectoryParentSynced?.({ directory, parent, created });
 }
 
+/**
+ * Cheap sibling of ensureDurableDirectory for rebuildable caches: the same 0o700
+ * creation and symlink guard without the ancestor barrier, so a per-file
+ * re-validation in a hot loop does not pay a directory fsync every time.
+ */
+export async function ensureGuardedDirectory(directory: string, failure: string, mode = 0o700) {
+  await mkdir(directory, { mode }).catch(cause => { if (!isErrnoCode(cause, "EEXIST")) throw cause; });
+  const metadata = await lstat(directory);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error(failure);
+}
+
 /** Filesystems that cannot fsync a directory handle (EINVAL/ENOTSUP) have nothing further to flush. */
 export async function syncDirectory(directory: string) {
   const handle = await open(directory, "r");
@@ -149,14 +166,15 @@ export async function syncDirectory(directory: string) {
  * initialize 读到无法信任的内容时自动走这里；owner 只在自己的领域不变量
  * 失败时才需要手动调用它。
  * ============================================================ */
-export async function quarantineDurableFile(filePath: string) {
+export async function quarantineDurableFile(filePath: string, createId: () => string = randomUUID) {
   const directory = dirname(filePath);
   await ensureDurableDirectory(directory);
   try {
-    await rename(filePath, `${filePath}.quarantine-${Date.now()}`);
+    await rename(filePath, `${filePath}.quarantine-${Date.now()}-${createId()}`);
   } catch (cause) {
     if (!isErrnoCode(cause, "ENOENT")) throw cause;
   }
+  await syncDirectory(directory);
   const prefix = `${filePath.slice(directory.length + 1)}.quarantine-`;
   const entries = (await readdir(directory).catch(() => []))
     .filter((entry) => entry.startsWith(prefix))
@@ -173,6 +191,7 @@ export class DurableJson<T> {
   private state: T;
   private ready = false;
   private poisoned = false;
+  private held = false;
   private readonly queue = new SerialQueue();
 
   constructor(
@@ -192,6 +211,7 @@ export class DurableJson<T> {
     return this.queue.enqueue(async (): Promise<{ quarantined: boolean }> => {
       const content = await this.readExisting();
       if (content === null) {
+        if (await this.recover(content)) return { quarantined: true };
         await this.persistOrPoison(this.state);
         this.ready = true;
         return { quarantined: false };
@@ -202,9 +222,22 @@ export class DurableJson<T> {
         this.ready = true;
         return { quarantined: false };
       }
+      if (await this.recover(content)) return { quarantined: true };
       this.poisoned = true;
       throw loaded.error;
     });
+  }
+
+  private async recover(content: string | null) {
+    const recovery = await recoverDurableCorruption(this.filePath, content);
+    if (!recovery) return false;
+    this.held = recovery.held;
+    if (this.held) recovery.released(() => this.queue.enqueue(async () => {
+      await this.persistOrPoison(this.state); this.held = false; this.ready = true;
+    }));
+    else await this.persistOrPoison(this.state);
+    this.ready = true;
+    return true;
   }
 
   private decode(
@@ -230,6 +263,7 @@ export class DurableJson<T> {
   mutate<R>(operation: (state: T) => R | Promise<R>) {
     return this.queue.enqueue(async () => {
       this.assertReady();
+      if (this.held) throw new DurableRecoveryHeldError();
       const previous = structuredClone(this.state);
       try {
         const result = await operation(this.state);

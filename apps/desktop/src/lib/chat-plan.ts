@@ -1,21 +1,6 @@
 /**
- * [INPUT]: No external dependencies; a self-contained pure rule module
- * [OUTPUT]: Provides PlanDecision type and implement/revise/skip follow-up turn alignment rules
- * [POS]: Renderer's purely rule-based Plan decision layer; a Plan message's authority classification is decided once (cached by shared/chat-plan-kind, computed in main) and never recomputed by the renderer
+ * [INPUT]: Shared Plan decisions.
+ * [OUTPUT]: Desktop aliases for PlanDecision and planDecisionInput.
+ * [POS]: Native adapter to the shared next-turn policy.
  */
-
-export type PlanDecision =
-  | { kind: "implement" }
-  | { kind: "revise"; feedback: string }
-  | { kind: "skip" };
-
-export function planDecisionInput(
-  decision: PlanDecision
-): { displayText: string; planMode: boolean } | null {
-  if (decision.kind === "skip") return null;
-  if (decision.kind === "implement") {
-    return { displayText: "Implement this plan.", planMode: false };
-  }
-  const displayText = decision.feedback.trim();
-  return displayText ? { displayText, planMode: true } : null;
-}
+export { planDecisionInput, type PlanDecision } from "@ai-chat/chat-ui/composer-plan";

@@ -1,31 +1,20 @@
 /**
- * [INPUT]: Depends on the chatComposerEn structural type
+ * [INPUT]: Shared native/Web Project selector and Plan catalogs and the English Chat composer structural type.
  * [OUTPUT]: Provides the French Chat composer catalog with the exact English structure
  * [POS]: French Chat composer locale leaf; assembled inside the top-level chat.composer namespace
  */
 
 import type { chatComposerEn } from "./en";
 
+import { copy as sharedComposer } from "@ai-chat/chat-ui/composer-control-copy/fr";
+import { projectSelectorFr } from "@ai-chat/chat-ui/project-copy";
+
 export const chatComposerFr: typeof chatComposerEn = {
   modelFallback: {
     defaultEffort: "Par défaut",
     standardSpeed: "Standard",
   },
-  approval: {
-    requestChanges: "Demander des modifications",
-    decline: "Refuser",
-    allowSession: "Autoriser pour cette session",
-    approvePlan: "Approuver le Plan",
-    allowOnce: "Autoriser une fois",
-    planTitle: "Continuer avec ce Plan ?",
-    commandTitle: "Autoriser cette commande ?",
-    fileChangeTitle: "Autoriser ces modifications de fichiers ?",
-    permissionTitle: "Autoriser un accès supplémentaire ?",
-    location: "Emplacement",
-    network: "Réseau",
-    plan: "Plan",
-    details: "Détails",
-  },
+  approval: sharedComposer.approval,
   branch: {
     uncommitted_one: "{{count}} fichier non validé",
     uncommitted_other: "{{count}} fichiers non validés",
@@ -56,53 +45,8 @@ export const chatComposerFr: typeof chatComposerEn = {
     previewWorkspaceFile: "Prévisualiser le fichier Workspace",
     queueSubmit: "Ajouter à la file",
   },
-  plan: {
-    closeChip: "Désactiver le Plan",
-    decisionTitle: "Implémenter ce Plan ?",
-    closeDecision: "Fermer la décision du Plan",
-    implement: "Oui, implémenter ce Plan",
-    reviseLabel: "Indiquer à l’Agent comment réviser le Plan",
-    revisePlaceholder: "Non. Indiquez à l’Agent ce qu’il doit modifier",
-    send: "Envoyer",
-    skip: "Ignorer",
-  },
-  project: {
-    selector: "Sélecteur de Project",
-    search: "Rechercher des Projects",
-    empty: "Aucun Project trouvé",
-    create: "Nouveau Project",
-    workInChat: "Travailler dans le Chat",
-    current: "Project du Chat actuel : {{project}}",
-    chat: "Chat",
-  },
-  userInput: {
-    countdown: "{{count}} s",
-    skip: "Ignorer",
-    progress: "{{current}} sur {{total}}",
-    skipQuestion: "Ignorer la question",
-    pendingList: "Questions simultanées en attente",
-    pending: "En attente",
-    pendingCount: "{{count}} en attente",
-    mainAgent: "Agent principal",
-    waiting: "En attente d’une réponse",
-    other: "Aucune de ces réponses ; proposer une autre approche à l’Agent",
-    confirm: "Confirmer la sélection",
-    decisionPlaceholder: "Indiquez votre décision à l’Agent…",
-    send: "Envoyer",
-  },
-  queue: {
-    pickedUp: "Message en file sélectionné. Utilisez les flèches Haut et Bas pour le déplacer.",
-    reorderCancelled: "Réorganisation annulée",
-    moved: "Déplacé à la position {{position}}",
-    unchanged: "Position inchangée",
-    paused: "File en pause",
-    resume: "Reprendre l’envoi",
-    dismissError: "Fermer l’erreur de la file",
-    drag: "Déplacer l’élément {{position}} sur {{count}}",
-    resend: "Renvoyer ce message",
-    deleteAmbiguous: "Supprimer ce message ambigu",
-    steer: "Envoyer ensuite dans la tâche en cours",
-    delete: "Supprimer ce message en file",
-    edit: "Modifier ce message en file",
-  },
+  plan: sharedComposer.chat.composer.plan,
+  project: projectSelectorFr,
+  userInput: sharedComposer.userInput,
+  queue: sharedComposer.chat.composer.queue,
 };

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared unified-skills-ipc candidate/status/reason types, package SkillFolderInspection and library-store entry type (type-only)
- * [OUTPUT]: Provides CandidateAuthority, OwnerFacts, CandidateClassification, buildOwnerFacts (library entries → name-keyed owner facts), classifyCandidates (the single new/update/current/blocked decision incl. intra-batch first-seen-owns-name and the refined name-taken family) and candidateView (authority + classification → renderer DTO)
+ * [OUTPUT]: Provides CandidateAuthority, OwnerFacts, CandidateClassification, buildOwnerFacts (library entries → name-keyed owner facts), classifyCandidates (the single new/update/current/blocked decision incl. intra-batch first-seen-owns-name) and candidateView (authority + classification → renderer DTO)
  * [POS]: The single classifier of skills-management; refreshCandidates counting, held-preview blocking and the candidate DTO all consume this one decision — one judgment, written once
  */
 
@@ -22,11 +22,11 @@ export type CandidateAuthority = Readonly<{
   inspection: SkillFolderInspection;
 }>;
 
-/* 一个 name 的库内事实：谁占着它、活跃代的内容身份是什么。
-   digest 可空只为批内先见者——它可能是个超预算未哈希的候选；
-   库内条目的活跃代 digest 恒在（导入时 hashAll 补算）。 */
+/* The in-library fact for one name: what the active generation's content identity is.
+   digest is nullable only for an intra-batch first-seen owner — it may be an
+   over-budget candidate that wasn't hashed; a library entry's active-generation
+   digest is always present (hashAll backfills it on import). */
 export type OwnerFacts = Readonly<{
-  sourceIdentity: string;
   digest: `sha256:${string}` | null;
   sourceRevision: string;
 }>;
@@ -36,28 +36,29 @@ export type CandidateClassification =
   | Readonly<{ status: "blocked"; reason: ManagedSkillReason }>;
 
 export function buildOwnerFacts(entries: readonly ManagedSkillsLibraryEntry[]) {
-  return new Map<string, OwnerFacts>(entries.map((entry) => {
+  return new Map<string, OwnerFacts>(entries.filter(entry => entry.tombstoneAt === null).map((entry) => {
     const active = entry.generations.find((item) => item.generationId === entry.activeGenerationId)!;
     return [entry.name, {
-      sourceIdentity: entry.provenance.sourceIdentity,
       digest: active.digest as `sha256:${string}`,
       sourceRevision: active.sourceRevision,
     }];
   }));
 }
 
-/* ── 候选结局只判一次 ────────────────────────────────────────────
- * 从前这套 owner 遍历写了两遍：refreshCandidates 里数「未纳管」，
- * nameTakenRefs 里挑「收不进来」——同一个问题两份真相源。现在四种结局
- * （new / update / current / blocked）出自同一张表、同一次循环：
+/* ── A candidate's outcome is judged exactly once ─────────────────────────
+ * This owner walk used to be written twice: refreshCandidates counted
+ * "unmanaged", nameTakenRefs picked out "can't be admitted" — two sources of
+ * truth for the same question. Now all four outcomes (new / update / current /
+ * blocked) come out of the same table, in the same pass:
  *
- * 1. 读不出来 → blocked（勘察理由原样带出）；
- * 2. 他源占名 → blocked，内容可比时三分：同内容 name-taken-same、
- *    异内容 name-taken-differs、任一侧 digest 缺失退回裸 name-taken；
- * 3. 无主 → new，且批内先见者当场占名（库内与批内本是同一个问题）；
- * 4. 同源：digest 在场比 digest；候选超预算未哈希时比导入复核存下的
- *    sourceRevision。
- * ──────────────────────────────────────────────────────────── */
+ * 1. Unreadable -> blocked (the inspection reason is passed through as-is);
+ * 2. Unowned -> new, and an intra-batch first-seen candidate claims the name
+ *    on the spot (the in-library and intra-batch cases are the same problem);
+ * 3. Owned: compare digest when present; for an over-budget unhashed candidate,
+ *    compare against the sourceRevision recorded at import review — a matching
+ *    name means another generation of the same Skill, so import just adds a
+ *    generation.
+ * ────────────────────────────────────────────────────────────────────────── */
 export function classifyCandidates(
   authorities: Iterable<CandidateAuthority>,
   owners: ReadonlyMap<string, OwnerFacts>
@@ -72,13 +73,8 @@ export function classifyCandidates(
     }
     const skill = inspection.skill;
     const owner = working.get(skill.name);
-    if (owner && owner.sourceIdentity !== authority.sourceIdentity) {
-      out.set(authority.ref, { status: "blocked", reason: nameTakenReason(skill.digest, owner.digest) });
-      continue;
-    }
     if (!owner) {
       working.set(skill.name, {
-        sourceIdentity: authority.sourceIdentity,
         digest: skill.digest,
         sourceRevision: skill.revision,
       });
@@ -88,14 +84,6 @@ export function classifyCandidates(
     out.set(authority.ref, { status: sameContent(skill, owner) ? "current" : "update" });
   }
   return out;
-}
-
-function nameTakenReason(
-  candidateDigest: `sha256:${string}` | null,
-  ownerDigest: `sha256:${string}` | null
-): ManagedSkillReason {
-  if (!candidateDigest || !ownerDigest) return { code: "name-taken" };
-  return { code: candidateDigest === ownerDigest ? "name-taken-same" : "name-taken-differs" };
 }
 
 function sameContent(
@@ -122,9 +110,8 @@ export function safeReason(cause: unknown): ManagedSkillReason {
 
 const MANAGED_REASON_CODES = [
   "acquisition-failed", "changed", "invalid-frontmatter", "invalid-name", "missing",
-  "missing-skill-md", "name-taken", "name-taken-differs", "name-taken-same",
-  "not-a-directory", "postcondition-changed", "ref-invalid", "skill-md-too-large",
-  "source-gone", "symlink", "timeout", "too-many-candidates",
+  "missing-skill-md", "not-a-directory", "postcondition-changed", "ref-invalid",
+  "skill-md-too-large", "source-gone", "symlink", "timeout", "too-many-candidates",
   "too-many-directories", "unreadable", "unknown", "unsafe-path",
 ] as const satisfies readonly ManagedSkillReason["code"][];
 

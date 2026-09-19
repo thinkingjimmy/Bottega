@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on worker_threads, crypto/path/url, and the closed database protocol
- * [OUTPUT]: Provides the main-owned worker client, separate read and mutation/maintenance request deadlines, single-flight safe-read restart, trusted-exit fencing, receipt reconciliation, and graceful close
+ * [INPUT]: Depends on worker_threads, crypto/path/url, the shared worker resource limits, and the closed database protocol
+ * [OUTPUT]: Provides the main-owned worker client, separate read and mutation/maintenance request deadlines, single-flight safe-read restart with acknowledged scope restoration, trusted-exit fencing, receipt reconciliation, and graceful close
  * [POS]: Only main-process access path to Chat SQLite; transport uncertainty never becomes an assumed rollback
  */
 
@@ -9,6 +9,7 @@ import { Worker } from "node:worker_threads";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { WORKER_RESOURCE_LIMITS } from "../../worker-limits";
 import {
   parseDatabaseResponse,
   type ChatDatabaseFailure,
@@ -19,7 +20,10 @@ import {
   type MutationReceipt,
 } from "./database-protocol";
 
-type WorkerLike = Pick<Worker, "on" | "postMessage" | "terminate"> & { unref?(): void };
+type WorkerLike = Pick<Worker, "postMessage" | "terminate"> & {
+  on(...args: Parameters<Worker["on"]>): unknown;
+  unref?(): void;
+};
 type WorkerFactory = () => WorkerLike;
 type Initialization = Extract<DatabaseCommand, { kind: "initialize" }>;
 type MutationCommand = Extract<DatabaseCommand, { operationId: string; requestHash: string }>;
@@ -34,6 +38,9 @@ const RETRYABLE_READS = new Set<DatabaseCommand["kind"]>([
   "get-timeline-around",
   "get-outline-page",
   "find-messages",
+  "read-library-import",
+  "read-library-native",
+  "list-library-mirrors",
   "prepare-chat-history",
   "read-chat-history",
   "get-operation-receipt",
@@ -91,14 +98,16 @@ const createDefaultWorker = () => {
     ].join("\n");
     return new Worker(source, {
       eval: true,
-      execArgv: process.execArgv.filter((argument) => !argument.startsWith("--input-type")),
+      // The source loader is installed explicitly below; parent CLI/V8 flags are not Worker options.
+      execArgv: [],
+      resourceLimits: { ...WORKER_RESOURCE_LIMITS },
       workerData: {
         loader,
         entry: fileURLToPath(entry),
       },
     });
   }
-  return new Worker(entry);
+  return new Worker(entry, { resourceLimits: { ...WORKER_RESOURCE_LIMITS } });
 };
 
 export class ChatDatabaseClient {
@@ -135,6 +144,12 @@ export class ChatDatabaseClient {
     command: Extract<DatabaseCommand, { kind: K }>
   ): Promise<DatabaseResults[K]> {
     const typedCommand = command as DatabaseCommand;
+    if (typedCommand.kind === "configure-storage-mode") {
+      const mode = await this.read(typedCommand) as DatabaseResults["configure-storage-mode"];
+      if (!this.initialization) throw new Error("database client is not initialized");
+      this.initialization = { ...this.initialization, storageMode: mode };
+      return mode as DatabaseResults[K];
+    }
     if ("operationId" in command && "requestHash" in command) {
       return this.mutate(command as MutationCommand) as Promise<DatabaseResults[K]>;
     }

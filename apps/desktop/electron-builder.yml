@@ -1,4 +1,4 @@
-# [INPUT]: Depends on electron-vite output, test-receipt exclusion, the keep-node-module-types hook, root LICENSE, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons, entitlements, and pinned react-grab assets
+# [INPUT]: Depends on electron-vite output, test-receipt exclusion, the keep-node-module-types hook, root LICENSE, original sumo ISC notice, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons, entitlements, and pinned react-grab assets
 # [OUTPUT]: Produces Bottega macOS arm64 DMG (UDBZ) / ZIP (deflate -9), Windows x64 NSIS, and Linux x64 AppImage (gzip squashfs) artifacts whose packaged app.name is Bottega (own userData, never the dev directory), with an offline fail-closed App GUI compiler, no test-only receipt, TypeScript declaration files kept and the whole node_modules tree unpacked next to the ASAR for the packaged compiler, and no vendored Codex/Claude CLI platform packages (the product only spawns the user's own CLI)
 # [POS]: The only desktop packaging configuration; release signing is fail-closed in release scripts while ordinary CI packaging remains unsigned
 
@@ -44,6 +44,8 @@ extraResources:
     filter: ["bin/screen-bridge"]
   - from: ../../LICENSE
     to: LICENSE
+  - from: ../../packages/cloud-crypto/NOTICE.txt
+    to: licenses/libsodium-0.8.4.txt
   - from: resources/icon.png
     to: icon.png
   - from: resources/skills
@@ -99,3 +101,7 @@ publish:
   provider: github
   owner: thinkingjimmy
   repo: Bottega
+protocols:
+  - name: Bottega
+    schemes:
+      - bottega

@@ -35,7 +35,7 @@ import { useApps } from "@/components/providers/apps-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useSetup } from "@/components/providers/setup-provider";
 import { maintenanceCapableBackends } from "@/lib/agent-backends";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { normalizeGithubRepoUrl } from "../../../../shared/github-repo";
 import {
   discardAppProbe,
@@ -286,7 +286,7 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
     if (installing.current) return;
     if (!setup.ready && (probe?.kind !== "web" || agentAnalysis)) {
       setOpen(false);
-      setup.openOnboarding();
+      setup.openOnboarding("agent");
       return;
     }
     installing.current = true;
@@ -371,7 +371,7 @@ export function AddAppDialog({ onInstallStarted, resumeRequestId, onResumeClosed
         disabled: false,
         run: () => {
           setOpen(false);
-          setup.openOnboarding();
+          setup.openOnboarding("agent");
         },
       },
     },

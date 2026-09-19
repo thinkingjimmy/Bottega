@@ -6,7 +6,7 @@
 import {
   validateDocument,
   type SketchDocument,
-} from "../../components/chat/sketch/model/document";
+} from "@ai-chat/chat-ui/sketch/model/document";
 import type { MessageQueue } from "../message-queue-model";
 export type ComposerSketchResources = Readonly<{
   sketchAttachmentIds: ReadonlySet<string>;

@@ -1,27 +1,15 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow, owner-aware Bases schemas, canonical Chat/Project records, BaseStore/owner resolution, row mutation, IO, promotion, attachment, and file-dialog ports, plus the shared statusError constructor from main/errors
- * [OUTPUT]: Provides ownerKey CRUD/CAS/LWW, pre-copy Query snapshot descriptors, replay-aware App GUI row commands, exact App-renderer owner fences, Project probes, Section resolution, retained-data navigation promotion, mutation-time migration guards, attachment events, and CSV/JSON/XLSX operations
+ * [OUTPUT]: Provides ownerKey CRUD/CAS/LWW, stable Agent batch results, pre-copy Query snapshots, on-screen read evidence for cloud subscriptions, replay-aware App GUI commands, exact App-renderer fences, retained navigation, migration guards, attachments and format IO.
  * [POS]: Bases application service; owner and trusted App-renderer boundaries are resolved here while format IO and cross-store promotion remain delegated
  */
 
 import type { BrowserWindow } from "electron";
-import {
-  ownerKeyOf,
-  type BaseExportResult,
-  type BaseMetaPatch,
-  type BaseRow,
-  type BaseRowPatch,
-  type BasesEvent,
-  type BaseSnapshot,
-  type ListGalleryEntriesInput,
-  type PutAttachmentInput,
-  type PutAttachmentRequest,
-  type PutAttachmentResult,
-  type ReadAttachmentThumbnailInput,
-} from "../../../shared/bases-ipc";
+import { type BaseExportResult, type BaseAttachmentValue, type BaseMetaPatch, type BaseRow, type BaseRowPatch, type BasesEvent, type BaseSnapshot, type ListGalleryEntriesInput, type PutAttachmentInput, type PutAttachmentRequest, type PutAttachmentResult, type ReadAttachmentThumbnailInput } from "../../../shared/bases-ipc";
+import { ownerKeyOf } from "@ai-chat/base-ui/model/owner-key";
 import { putAttachmentInputSchema } from "../../../shared/bases/gallery-attachments";
 import type { BaseHistoryActor } from "../../../shared/bases/history-ledger-schema";
-import type { BaseSnapshotFile } from "../../../shared/base-snapshot";
+import { baseSnapshotFile, type BaseSnapshotFile } from "../../../shared/base-snapshot";
 import type { AppBaseDataMigrationFile } from "../../../shared/app-data-migration";
 import type { BaseGuiLiveBinding } from "../../../shared/apps-ipc";
 import type { ChatRecord } from "../../../shared/chats-ipc";
@@ -29,6 +17,7 @@ import { BaseConflictError, BaseStore } from "./base-store";
 import type { CompletedImageEventV1 } from "../gallery/turn-events-broker";
 import type { GalleryMediaSourceRef } from "../../../shared/gallery-media-ipc";
 import { BaseAttachmentService } from "./attachment/attachment-service";
+import { BaseImageService } from "./attachment/image-service";
 import {
   BaseOwnerResolver,
   type BaseChatRef,
@@ -68,6 +57,7 @@ export class BasesService {
   private admission: "accepting" | "draining" | "closed" = "accepting";
   private readonly now: () => number;
   private readonly attachmentService: BaseAttachmentService;
+  private readonly imageService: BaseImageService;
   private readonly io: BaseIoFacade;
   private readonly rowMutations: BaseRowMutations;
   private readonly appGuiMutations: BaseAppGuiMutations;
@@ -133,6 +123,15 @@ export class BasesService {
       emitChange: (snapshot, delta) => this.events.changed(snapshot, delta),
       conflict: (message) => new BaseConflictError(message),
     });
+    this.imageService = new BaseImageService(this, {
+      authorize: async (input, operation) => {
+        this.assertAdmission();
+        const authority = await this.rendererAuthority({ ...input, operation, expectedRevision: null });
+        const identity = await this.mutationIdentity(input.ownerKey, authority, operation);
+        if (identity.ownerInstanceId !== input.ownerInstanceId) throw statusError(409, "Base owner instance changed", { code: "base_scope_changed" });
+      },
+      emit: (snapshot, rowId) => this.events.changed(snapshot, { upserts: snapshot.rows.filter(row => row.id === rowId) }),
+    });
     this.appGuiMutations = new BaseAppGuiMutations(
       this.rowMutations,
       this.attachmentService,
@@ -164,6 +163,7 @@ export class BasesService {
 
   register(window: BrowserWindow, rendererUrl: string) {
     this.events.bind(window);
+    this.imageService.register(window, rendererUrl);
     registerBasesRendererIpc(window, rendererUrl, this, {
       rendererAuthority: (input) => this.rendererAuthority(input),
       putAttachment: (input) => this.putAttachmentFromRenderer(input),
@@ -179,7 +179,10 @@ export class BasesService {
 
   async get(ownerKey: string): Promise<BaseSnapshot | null> {
     const identity = await this.ownerResolver.identityForOwnerKey(ownerKey);
-    return this.store.get(ownerKey, identity.ownerInstanceId || undefined);
+    const snapshot = this.store.get(ownerKey, identity.ownerInstanceId || undefined);
+    // A renderer or App window asking for this Base is what tells cloud synchronization it is on screen.
+    if (snapshot) this.store.noteSurfaceRead(ownerKey, snapshot.meta.ownerInstanceId);
+    return snapshot;
   }
 
   async querySnapshot(ownerKey: string) {
@@ -188,6 +191,7 @@ export class BasesService {
       ownerKey,
       identity.ownerInstanceId || undefined
     );
+    if (descriptor) this.store.noteSurfaceRead(ownerKey, descriptor.baseInstanceId);
     return descriptor && {
       ...descriptor,
       copy: async () => this.store.copyQuerySnapshot({ ownerKey, ...descriptor }),
@@ -404,6 +408,14 @@ export class BasesService {
     return this.rowMutations.insertRows(input);
   }
 
+  toolRows(input: Parameters<BaseRowMutations["toolRows"]>[0]) {
+    return this.rowMutations.toolRows(input);
+  }
+
+  toolMeta(input: Parameters<BaseRowMutations["toolMeta"]>[0]) {
+    return this.rowMutations.toolMeta(input);
+  }
+
   async insertRowsFromAppGui(input: {
     ownerKey: string;
     binding: BaseGuiLiveBinding;
@@ -502,12 +514,14 @@ export class BasesService {
   async ingestCompletedImage(
     event: CompletedImageEventV1,
     bytes: Buffer,
-    filename = `${event.sourceRef.itemId}.png`
+    filename = `${event.sourceRef.itemId}.png`,
+    localAvailability?: BaseAttachmentValue["localAvailability"]
   ): Promise<PutAttachmentResult> {
     return this.attachmentService.ingestCompletedImage(
       event,
       bytes,
-      filename
+      filename,
+      localAvailability
     );
   }
 
@@ -582,6 +596,21 @@ export class BasesService {
     expectedRevision?: number
   ): Promise<BaseSnapshot> {
     return this.io.importJson(ownerKey, file, authority, expectedRevision);
+  }
+
+  async commitArtifactImport(identity: import("./base-store").BaseOwnerIdentity,
+    parsed: { columns: BaseSnapshot["meta"]["columns"]; rows: BaseRow[] }, expectedRevision: number | null) {
+    this.assertAdmission();
+    const ownerKey = ownerKeyOf(identity.owner);
+    if (expectedRevision === null) {
+      const snapshot = await this.store.createArtifact(identity, parsed);
+      this.events.changed(snapshot, { meta: snapshot.meta });
+      return snapshot;
+    }
+    const current = await this.get(ownerKey);
+    if (!current || current.meta.ownerInstanceId !== identity.ownerInstanceId) throw new Error("artifact-base-changed");
+    const authority = await this.rendererAuthority({ ownerKey, operation: "json-import", expectedRevision });
+    return this.importJson(ownerKey, baseSnapshotFile({ ...current, meta: { ...current.meta, columns: parsed.columns }, rows: parsed.rows }), authority, expectedRevision);
   }
 
   exportXlsxForRenderer(ownerKey: string): Promise<BaseExportResult> {
@@ -677,8 +706,9 @@ export class BasesService {
     this.store.reopen();
   }
 
-  closeAndFlush() {
+  async closeAndFlush() {
     this.closeAdmission();
+    await this.imageService.close();
     return this.store.closeAndFlush();
   }
 

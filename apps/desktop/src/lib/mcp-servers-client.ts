@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on preload-exposed window.mcpServers, the shared exact-scope masked MCP DTO, and lib/snapshot-controller
- * [OUTPUT]: Provides createMcpServersController — a lifecycle-aware, revision-monotonic, CAS-serialized controller for one global or exact-Project manual MCP projection
+ * [OUTPUT]: Provides createMcpServersController — a subscription-scoped, revision-monotonic, CAS-serialized controller for one global or exact-Project manual MCP projection
  * [POS]: Sole renderer authority for manual MCP; it supplies scope matching, the CAS fence and save/remove commands on top of the shared snapshot-controller core, never invents a writable browser store and never exposes secret text
  */
 
@@ -107,6 +107,5 @@ export function createMcpServersController(scope: ProductResourceScope) {
       core.mutate(`server:${server.serverId}`, (current) =>
         bridge().remove({ ...fence(scope, current), serverId: server.serverId })
       ),
-    dispose: core.dispose,
   };
 }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, node:crypto SHA-256, and the shared five-locale enum
- * [OUTPUT]: Closed lifecycle input/phase/claim contracts, including fixed Home materialization and ordered cross-store scope cleanup.
+ * [OUTPUT]: Defines closed lifecycle inputs, phases and claims for App installation/removal, Home materialization, Project rescue and scope cleanup.
  * [POS]: The type truth source of the lifecycle domain, covenant v3, second paragraph of the machine image; consumed by intent-store/admission-gate in a single direction
  */
 
@@ -8,13 +8,20 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { portableChatSchema, syncScopeSchema } from "../../../shared/local-storage/contracts";
 import { scopeCleanupPlanSchema } from "./scope-cleanup/model";
-import { APP_LOCALES } from "../../../shared/i18n/locale";
+import { cloudAppInstallSchema } from "../apps/install/cloud/contract";
+import { APP_REMOVAL_PHASES, localAppRemovalSchema, cloudAppRetirementSchema } from "../apps/conversion/removal/contract";
+import { extensionFulfillmentSchema, installAuthorizationSchema } from "../apps/install/delivery/contract";
+import { APP_LOCALES } from "@ai-chat/ui/lib/locale";
 
 /* ── phase 单调枚举:首档恒为 "proposed"(身份已定、尚未准入——R7/P0-1:
  * 落盘与取 gate 之间存在崩溃窗口,重启后必须能区分「已准入」与「仅提案」,
  * 否则两个提案态互相看作 rival 而永久互锁),第二档起为准入后的推进序。 ── */
 export const INTENT_PHASES = {
+  "app-local-remove": APP_REMOVAL_PHASES,
+  "app-cloud-retire": APP_REMOVAL_PHASES,
+  "app-cloud-install": ["proposed", "admitted", "source-ready", "extensions-ready", "generation-ready", "activated", "workspace-ready", "installed"],
   "chat-materialize": ["proposed", "admitted", "home-committed", "chat-committed"],
+  "project-chat-rescue": ["proposed", "admitted", "classification-committed"],
   "scope-cleanup": ["proposed", "admitted", "homes", "blobs", "bases", "projects", "apps", "chats"],
   "save-as-app": [
     "proposed",
@@ -113,29 +120,8 @@ const importInputFields = {
   confirmedDigest: z.string().regex(/^[0-9a-f]{64}$/),
   packageRoot: z.string().min(1),
   agent: z.enum(["codex", "claude", "kimi", "opencode"]),
-  extensionFulfillment: z.array(z.object({
-    declaredComponentIdentity: z.string().min(1),
-    scope: z.discriminatedUnion("kind", [
-      z.object({ kind: z.literal("global") }).strict(),
-      z.object({
-        kind: z.literal("project"),
-        projectId: z.string().min(1),
-      }).strict(),
-    ]),
-    projectLifecycleRevision: z.number().int().positive().nullable(),
-    scopeRevision: z.number().int().nonnegative(),
-    repoUrl: z.string().min(1),
-    requestedRef: z.string(),
-    resolvedCommit: z.string().min(1),
-    contentDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-    capabilityDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  }).strict()).default([]),
-  authorization: z
-    .object({
-      scope: z.literal("studio-only"),
-      decision: z.literal("approve-requested"),
-    })
-    .strict(),
+  extensionFulfillment: extensionFulfillmentSchema,
+  authorization: installAuthorizationSchema,
 };
 const baseImportInput = z
   .object({ origin: z.literal("github"), ...importInputFields })
@@ -151,8 +137,12 @@ const presetInstallInput = z
   .strict();
 
 export const INTENT_INPUT_SCHEMAS: Record<LifecycleKind, z.ZodType> = {
+  "app-local-remove": localAppRemovalSchema,
+  "app-cloud-retire": cloudAppRetirementSchema,
+  "app-cloud-install": cloudAppInstallSchema,
   "scope-cleanup": scopeCleanupPlanSchema,
   "chat-materialize": z.object({ scope: syncScopeSchema, chat: portableChatSchema }).strict(),
+  "project-chat-rescue": z.object({ chatId: z.string().min(1), incarnationId: z.string().min(1), projectId: z.string().min(1) }).strict(),
   "save-as-app": saveAsAppInput,
   "base-promotion": basePromotionInput,
   "chat-slot": chatSlotInput,
@@ -318,6 +308,19 @@ export function claimsOf(
     return `${dim}:${value}`;
   };
   switch (kind) {
+    case "app-local-remove": {
+      const removal = localAppRemovalSchema.parse(input);
+      return ["sync-scope", `app:${removal.appId}`, need("allocated.projectId", project, "project")];
+    }
+    case "app-cloud-retire": {
+      const removal = cloudAppRetirementSchema.parse(input);
+      if (project !== removal.deletion.projectId) throw new Error("APP_RETIREMENT_PROJECT_CHANGED");
+      return ["sync-scope", `app:${removal.appId}`, need("allocated.projectId", project, "project")];
+    }
+    case "app-cloud-install": {
+      const install = cloudAppInstallSchema.parse(input);
+      return ["sync-scope", `app:${install.descriptor.appId}`, `project:${install.descriptor.projectId}`];
+    }
     case "chat-materialize": {
       const portable = portableChatSchema.parse(input.chat);
       return ["sync-scope", `chat:${portable.id}`, ...(portable.classification.projectId ? [`project:${portable.classification.projectId}`] : [])];
@@ -325,7 +328,8 @@ export function claimsOf(
     case "scope-cleanup": {
       const plan = scopeCleanupPlanSchema.parse(input);
       return [...new Set(["sync-scope", ...plan.chats.map(item => `chat:${item.chatId}`),
-        ...plan.projectIds.map(id => `project:${id}`), ...plan.appIds.map(id => `app:${id}`), ...plan.bases.map(item => item.ownerKey)])];
+        ...[...plan.projectIds, ...(plan.discardedProjectIds ?? [])].map(id => `project:${id}`),
+        ...[...plan.appIds, ...(plan.discardedAppIds ?? [])].map(id => `app:${id}`), ...plan.bases.map(item => item.ownerKey)])];
     }
     case "save-as-app":
       /* 闭包含未来子 promotion 的 project(R8:否则同 project 的另一 promotion 可穿透)。 */
@@ -334,6 +338,7 @@ export function claimsOf(
         need("allocated.appId", app, "app"),
         need("allocated.projectId", project, "project"),
       ];
+    case "project-chat-rescue":
     case "base-promotion":
       return [
         need("input.chatId", chat, "chat"),

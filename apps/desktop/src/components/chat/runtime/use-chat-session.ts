@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on React, renderer locale/catalog runtime and data providers, canonical chat/turn snapshots, PanelSessionContext, session subcontrollers, Agent attach, workspace/skills/files, and Gallery projections
- * [OUTPUT]: Composes stable Chat controllers with transcript retry recovery, shared sendability, and fixed Agent settings navigation while keeping active controls independent.
+ * [OUTPUT]: Composes stable Chat controllers with dismissible resume recovery, unresolved-turn send/queue locks, transcript retry, and fixed Agent settings navigation
  * [POS]: The thin composition root of chat/runtime; durable authority remains in main while renderer owns view generation. Routing stays outside: post-send navigation is the chat route's draft-residence observation, not a session concern
  */
 
+import { useLocalPlatform } from "@/lib/cloud/chat/platform/local";
 import { assertNoPendingAgent } from "@/lib/chat-agent-draft/submission";
 import { readAgentDraft, undoAgentSelection } from "@/lib/chat-agent-draft/state";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -16,12 +17,9 @@ import { useProjects } from "@/components/providers/projects-provider";
 import {
   abandonFatalTurn,
   acknowledgeCleanupFailure,
-  cancelAgentRequest,
-  retryAgentSameSession,
-  retryAgentWithoutSession,
   type AgentRequest,
 } from "@/lib/agent-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { useEffectiveLocale } from "@/lib/i18n-locale";
 import { translate } from "../../../../shared/i18n/runtime";
 import { mergeChatMessages, sameProjectionStatus, type ChatProjectionStatus, type ChatTurnProjection, type ProjectedSubagent } from "@/lib/chat-turn-attach";
@@ -49,12 +47,14 @@ import { useSessionInteractions, type SessionSubmit } from "./session/use-sessio
 import { useSessionSidePanel } from "./session/use-session-side-panel";
 import { useStableController } from "./use-stable-controller";
 import { useSessionRevision } from "./session/use-session-revision";
+import { useResumeRecovery } from "./session/recovery/use-resume-recovery";
 import {
   useSessionQueuePorts,
   useSessionSubmissionPorts,
 } from "./session/use-session-submission-ports";
 import { useSessionMessageProjection, useSessionRuntimeCatalogs } from "./session/use-session-runtime-projections";
 export type { ChatProjectMode, PendingPlanDecisionState, PendingUserInputState, SidePanelState } from "./chat-session-model";
+const EMPTY_INTERACTION_RESULTS: NonNullable<ChatProjectionStatus["interactionResults"]> = [];
 
 export function useChatSession({
   scope: inputScope,
@@ -85,6 +85,7 @@ export function useChatSession({
     [fixedAppId, fixedAppRole, projectKind]
   );
   const { chats, loading: chatsLoading, getChat } = useChats();
+  const platform = useLocalPlatform(getChat);
   const { projects, loading: projectsLoading, addProject, ensureForApp, listBranches, checkoutBranch, createBranch } = useProjects();
   const captureView = useSessionViewFence(chatId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -157,7 +158,7 @@ export function useChatSession({
     [appendProjected, chatId]
   );
   const messageSnapshot = useSessionMessageProjection({
-    chatId, hydratedChatId, projectionRef, messagesRef, setMessages,
+    chatId, hydratedChatId, projectionRef, messagesRef, setMessages, platform,
   });
   const {
     workspaceIdentityKey,
@@ -272,7 +273,8 @@ export function useChatSession({
     () =>
       bindChatAttachment({
         chatId,
-        getChat,
+        getChat: platform.chats.head,
+        platform,
         onRecordAgent: (agent) => {
           void lockBackend(agent).catch((cause) =>
             appendLocalAssistant(
@@ -320,7 +322,7 @@ export function useChatSession({
       appendLocalAssistant,
       applyProjectionStatus,
       chatId,
-      getChat,
+      getChat, platform,
       setApprovalBusy,
       setApprovalError,
       setApprovals,
@@ -489,7 +491,9 @@ export function useChatSession({
     },
     []
   );
-  const { canDrain, inputDisabled, turnControlsDisabled } = composerGates({
+  const recovery = useResumeRecovery(chatId, projectionStatus);
+  const { resumeFailure } = recovery;
+  const { canDrain: composerCanDrain, inputDisabled, turnControlsDisabled } = composerGates({
     loading,
     settingsLoading: settings.settingsLoading,
     settingsSaving: settings.settingsSaving,
@@ -505,6 +509,7 @@ export function useChatSession({
       Boolean(pendingPlanDecision) ||
       approvals.length > 0,
   });
+  const canDrain = composerCanDrain && !resumeFailure;
   const queuePorts = useSessionQueuePorts(submissionPorts, setAttachmentNotice);
   const pendingQueue = useMessageQueue({
     chatId,
@@ -541,7 +546,6 @@ export function useChatSession({
     inputDisabled,
     status,
     queued: pendingQueue.items.length > 0 || pendingQueue.paused,
-    adopted,
   });
   const canRevise =
     persisted &&
@@ -549,13 +553,14 @@ export function useChatSession({
     !revisionUnavailableReason;
   const handleQueueOrSubmit = useCallback<SessionSubmit>(
     (message, options) => {
+      if (resumeFailure) return Promise.reject(new Error(translate(locale, "chat.resumeFailure.pendingDetail")));
       if (sendDirectly) return handleSubmit(message, options);
       assertNoPendingAgent(chatId);
       if (backendState !== "ready" || options?.authenticationRetry) return Promise.reject(new Error("Agent is unavailable for queued messages"));
       enqueuePending(message);
       return Promise.resolve();
     },
-    [chatId, backendState, enqueuePending, handleSubmit, sendDirectly]
+    [chatId, backendState, enqueuePending, handleSubmit, locale, resumeFailure, sendDirectly]
   );
   const pausePending = pendingQueue.pause;
   const handleStop = useCallback(async () => {
@@ -565,32 +570,6 @@ export function useChatSession({
   }, [pausePending, stopTurn]);
   const canAbandonFatal = projectionStatus.persist === "fatal";
   const canAcknowledgeCleanup = projectionStatus.cleanup === "failed";
-  const resumeFailure = useMemo(
-    () =>
-      projectionStatus.phase === "resume-failed" &&
-      projectionStatus.requestId &&
-      projectionStatus.retryToken
-          ? {
-            requestId: projectionStatus.requestId,
-            retryToken: projectionStatus.retryToken,
-            /* 0 = 第一次就没能恢复；>0 = 已经重试过又落回来。恢复弹窗靠它
-               把推荐从「重试同一会话」挪到「开启新会话」，不需要新字段。 */
-            retried: (projectionStatus.generation ?? 0) > 0,
-            allowedActions: projectionStatus.allowedActions ?? {
-              sameSession: false,
-              freshSession: false,
-              abandon: false,
-            },
-          }
-        : null,
-    [
-      projectionStatus.phase,
-      projectionStatus.requestId,
-      projectionStatus.retryToken,
-      projectionStatus.generation,
-      projectionStatus.allowedActions,
-    ]
-  );
   const reportActionFailure = useCallback(
     (action: string, cause: unknown) =>
       appendLocalAssistant(
@@ -620,26 +599,6 @@ export function useChatSession({
         : Promise.resolve(),
     [canAcknowledgeCleanup, chatId, locale, reportActionFailure]
   );
-  const retryWithoutSession = useCallback(async () => {
-    assertNoPendingAgent(chatId);
-    if (!resumeFailure?.allowedActions.freshSession) return;
-    await retryAgentWithoutSession(
-      resumeFailure.requestId,
-      resumeFailure.retryToken
-    );
-  }, [chatId, resumeFailure]);
-  const retrySameSession = useCallback(async () => {
-    assertNoPendingAgent(chatId);
-    if (!resumeFailure?.allowedActions.sameSession) return;
-    await retryAgentSameSession(
-      resumeFailure.requestId,
-      resumeFailure.retryToken
-    );
-  }, [chatId, resumeFailure]);
-  const abandonResumeFailure = useCallback(() => {
-    if (!resumeFailure?.allowedActions.abandon) return;
-    cancelAgentRequest(resumeFailure.requestId);
-  }, [resumeFailure]);
   const createProject = useCallback(async () => {
     const next = await addProject();
     if (next) setComposerProject(chatId, next.id);
@@ -692,6 +651,7 @@ export function useChatSession({
       submitRevision,
     });
   const sidePanelController = useStableController({
+      openArtifact: sidePanel.openArtifact,
       state: sidePanelState,
       context: panelContext,
       subagents,
@@ -719,6 +679,7 @@ export function useChatSession({
       approval: approvals[0],
       approvalBusy,
       approvalError,
+      interactionResults: projectionStatus.interactionResults ?? EMPTY_INTERACTION_RESULTS,
       respondApproval,
       pendingUserInput,
       respondUserInput,
@@ -779,12 +740,9 @@ export function useChatSession({
         selectedBackend?.capabilities.imageInput ?? false,
       openSetup: setup.openAgentSettings,
       retryAuthentication,
-      resumeFailure,
-      retryWithoutSession,
-      retrySameSession,
-      abandonResumeFailure,
+      ...recovery,
     });
-  return useStableController({ transcript: transcriptController, sidePanel: sidePanelController, composer: composerController });
+  return useStableController({ platform, transcript: transcriptController, sidePanel: sidePanelController, composer: composerController });
 }
 
 export type ChatSessionController = ReturnType<typeof useChatSession>;

@@ -1,14 +1,16 @@
 /**
- * [INPUT]: Depends on Electron dialog/clipboard, shared i18n, fixed descriptor SetupCommand and macOS osascript
- * [OUTPUT]: Provides launchSetupTerminalAction, AppleScript/shell quoting and downgrade to clipboard
- * [POS]: the terminal security boundaries of the setup; Renderer can never submit raw commands
+ * [INPUT]: Depends on Electron confirmation/clipboard, fixed commands, safe diagnostics and an optional pre-launch reservation.
+ * [OUTPUT]: Confirms before reserving, launches fixed Terminal commands and reports cancelled, clipboard or clipboard-failed delivery.
+ * [POS]: Setup delivery boundary; renderer callers cannot submit shell commands or credentials.
  */
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { clipboard, dialog, type BrowserWindow } from "electron";
+import type { SetupTerminalResult } from "../../../shared/setup-ipc";
+import { diagnosticFailureDetails } from "../../../shared/product-failure";
 import type { SetupCommand } from "../backends/types";
-import type { AppLocale } from "../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { translate } from "../../../shared/i18n/runtime";
 
 const execFileAsync = promisify(execFile);
@@ -21,11 +23,6 @@ export function appleScriptQuote(value: string) {
   return JSON.stringify(value);
 }
 
-export type TerminalActionResult = {
-  launched: boolean;
-  delivery: "terminal" | "clipboard" | "cancelled";
-};
-
 export async function launchSetupTerminalAction(
   window: BrowserWindow | null,
   action: SetupCommand,
@@ -34,9 +31,10 @@ export async function launchSetupTerminalAction(
     confirm?: (command: string) => Promise<boolean>;
     execute?: (script: string) => Promise<void>;
     copy?: (command: string) => void;
+    beforeLaunch?: () => Promise<void>;
     locale?: () => AppLocale;
   } = {}
-): Promise<TerminalActionResult> {
+): Promise<SetupTerminalResult> {
   const confirm =
     dependencies.confirm ??
     (async (command) => {
@@ -61,13 +59,20 @@ export async function launchSetupTerminalAction(
     return { launched: false, delivery: "cancelled" };
   }
   const copy = dependencies.copy ?? ((value) => clipboard.writeText(value));
+  const copyCommand = (): SetupTerminalResult => {
+    try { copy(action.command); return { launched: false, delivery: "clipboard" }; }
+    catch (cause) {
+      const details = diagnosticFailureDetails(cause);
+      return { launched: false, delivery: "clipboard-failed", diagnostic: details.kind === "diagnostic" ? details.message : undefined };
+    }
+  };
   if ((dependencies.platform ?? process.platform) !== "darwin") {
-    copy(action.command);
-    return { launched: false, delivery: "clipboard" };
+    return copyCommand();
   }
+  await dependencies.beforeLaunch?.();
   const command = `/bin/zsh -lc ${shellQuote(action.command)}`;
   const script =
-    `tell application "Terminal" to do script ${appleScriptQuote(command)}`;
+    `tell application "Terminal" to do script ${appleScriptQuote(command)}\ntell application "Terminal" to activate`;
   try {
     await (
       dependencies.execute ??
@@ -79,7 +84,6 @@ export async function launchSetupTerminalAction(
     )(script);
     return { launched: true, delivery: "terminal" };
   } catch {
-    copy(action.command);
-    return { launched: false, delivery: "clipboard" };
+    return copyCommand();
   }
 }

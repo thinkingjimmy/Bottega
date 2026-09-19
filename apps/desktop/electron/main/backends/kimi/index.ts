@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Registry first-valid flight Kimi CLI candidates/ACP, provider model/Thinking, authorized processEnv, installer, headless/maintenance, buildtinTools oracle and system Skill root
- * [OUTPUT]: Provides kimiBackend: Unified ACP Chat, authorization environment, models, images, Plan, version control tools, runtime discovery and background extensions
+ * [OUTPUT]: Provides kimiBackend: Unified ACP Chat, a credential-safe authentication check, authorization environment, models with optional probe admission, images, Plan, version control tools, runtime discovery and background extensions
  * [POS]: The only installation point for the Kimi descriptor; When running, the registry is handing over the rights and capabilities
  */
 
@@ -144,6 +144,7 @@ const capabilities: Omit<
 export const kimiBackend: BackendDescriptor = {
   id: "kimi",
   displayName: "Kimi",
+  minimumVersion: MINIMUM_VERSION,
   workspaceDirName: "kimi-workspace",
   sessionCapabilityPolicy: SESSION_CAPABILITY_POLICY.kimi,
   detectRuntime: findKimiRuntime,
@@ -162,14 +163,14 @@ export const kimiBackend: BackendDescriptor = {
     builtinTools: builtinToolsForVersion("kimi", runtime.version),
   }),
   classifyFailure: classifyAcpFailure,
-  auth: { check: createKimiAuthCheck() },
+  auth: { check: createKimiAuthCheck(), credentialSafe: true },
   validateTurnOptions: validate,
   validateSessionId: validateKimiSessionId,
   models: {
     /* The adapter is catalog-driven and already carries multiple Effort values.
        Current Kimi model rows simply do not declare `support_efforts`; when
        upstream does, the existing list-only selector unlocks with zero code. */
-    list: (runtime, _workspace, signal) => listKimiModels(runtime, signal),
+    list: (runtime, _workspace, signal, runProbe) => listKimiModels(runtime, signal, runProbe),
     invalidate: invalidateKimiModels,
   },
   createTurn: (options) => {

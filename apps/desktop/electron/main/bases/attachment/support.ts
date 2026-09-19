@@ -162,7 +162,7 @@ export function galleryFailure(
   error: BaseAttachmentFailure["error"]
 ): GalleryMediaError {
   const code =
-    error.code === "INCARNATION_MISMATCH"
+    error.code === "SOURCE_LOCAL_ONLY" ? "SOURCE_LOCAL_ONLY" : error.code === "INCARNATION_MISMATCH"
       ? "INCARNATION_MISMATCH"
       : error.code === "BUDGET_EXCEEDED"
         ? "BUDGET_EXCEEDED"

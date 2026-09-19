@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared turn reducer, Agent/chats agreement with conversation level SubagentRegistry; TurnOrigin in this file defines, agent/ just export
- * [OUTPUT]: Provides TurnRegistry lifecycle ownership, exact terminal sequence identities, current-generation subagent outcomes, steering fences, input leases, retry claims, tombstones, and drain.
+ * [OUTPUT]: Provides TurnRegistry lifecycle ownership, ordered event observers, exact terminal identities, Subagent outcomes, steering fences, input leases, retry claims, tombstones and drain.
  * [POS]: Electron main's single source of truth for turn lifecycle; carries no Electron dependency itself, with IO and release owned by agent-bridge.ts
  */
 
@@ -109,7 +109,9 @@ export type SteerOperation = {
   finish(): void;
 };
 
-export type TurnEntry<TTurn extends RegistryTurn = RegistryTurn> = {
+import { completeInteraction, type InteractionState } from "./agent/controls/completion";
+
+export type TurnEntry<TTurn extends RegistryTurn = RegistryTurn> = InteractionState & {
   backend: AgentBackendId;
   conversationId: string;
   requestId: string;
@@ -159,7 +161,7 @@ export type TurnEntry<TTurn extends RegistryTurn = RegistryTurn> = {
   tombstoneExpiresAt?: number;
 };
 
-export type RetryClaim<TTurn extends RegistryTurn = RegistryTurn> = {
+export type RetryClaim<TTurn extends RegistryTurn = RegistryTurn> = InteractionState & {
   entry: TurnEntry<TTurn>;
   generation: number;
   token: string;
@@ -192,6 +194,10 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
   private readonly seededSubagents = new Map<string, Record<string, PersistedSubagent>>();
   private readonly tombstoneTimers = new Map<string, NodeJS.Timeout>();
   private sequence = 0;
+  private readonly eventListeners = new Set<(event: AgentEvent) => void>();
+  subscribeEvents(listener: (event: AgentEvent) => void) {
+    this.eventListeners.add(listener); return () => { this.eventListeners.delete(listener); };
+  }
   private draftObserver?: (
     entry: TurnEntry<TTurn>,
     observation: DraftObservation
@@ -453,7 +459,8 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
     return { entry, generation: entry.generation, token: retryToken };
   }
 
-  restoreRetry(claim: RetryClaim<TTurn>) {
+  /** `retryToken` re-arms the recovery with a fresh durable identity when the claimed one is already settled. */
+  restoreRetry(claim: RetryClaim<TTurn>, retryToken = claim.token) {
     const { entry } = claim;
     if (
       entry.phase === "retry-claiming" &&
@@ -463,7 +470,7 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
     ) {
       const retryClaim = entry.retryClaim;
       entry.phase = "resume-failed";
-      entry.resumeRetryToken = claim.token;
+      entry.resumeRetryToken = retryToken;
       entry.retryClaim = undefined;
       retryClaim.resolve();
     }
@@ -649,6 +656,7 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
     const entry = this.entries.get(conversationId);
     const seq = ++this.sequence;
     if (entry && entry.requestId === body.requestId) {
+      body = completeInteraction(entry, body);
       this.applyBody(entry, body);
       if (entry.effectiveTerminal && entry.terminalSeq === undefined &&
           ["done", "cancelled", "error"].includes(body.type)) entry.terminalSeq = seq;
@@ -658,7 +666,11 @@ export class TurnRegistry<TTurn extends RegistryTurn = RegistryTurn> {
         else entry.currentSubagents.delete(body.agent.agentThreadId);
       }
     }
-    return { ...body, conversationId, seq } as AgentEvent;
+    const event = { ...body, conversationId, seq } as AgentEvent;
+    for (const listener of this.eventListeners) {
+      try { listener(event); } catch (error) { console.warn("[turn-registry] event observer failed", error); }
+    }
+    return event;
   }
 
   enqueueProjection(

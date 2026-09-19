@@ -1,21 +1,21 @@
 /**
- * [INPUT]: Depends on shared owner-aware Base/Gallery/navigation schemas, durable file IO, attachments, startup loading, and SerialQueue
- * [OUTPUT]: Single owner-key Base writer for immutable snapshots, declared row deltas, Gallery/history and versioned synchronization envelopes published by the same generation meta commit.
- * [POS]: Durable Base authority; lifecycle services classify visibility here while renderer projections only consume summaries
+ * [INPUT]: Depends on owner-aware Base schemas, durable generations, stable tool provenance, attachment/startup leaves and SerialQueue.
+ * [OUTPUT]: Single owner-key Base writer for snapshots, synchronization envelopes, original Agent receipts, identity recovery copies, deferred reloads of owners an absent Chat or Project held back, confirmed navigation, transfers, image-cache admission and on-screen read evidence for cloud subscriptions.
+ * [POS]: Durable Base authority rooted in the selected folder; lifecycle services classify visibility here while renderer projections only consume summaries
  */
 import { BaseSyncApi } from "./store/sync/api";
+import { publishCandidateCopy } from "./store/sync/candidates/copy";
+import { recoverInitialIdentity } from "./store/sync/identity/recovery";
+import { repairIncompleteBase, type BaseRepairProof, type IncompleteBase } from "./store/folder/incomplete";
+import { prepareTool, replayTool, toolEvidence } from "./store/tool/kernel";
+import type { BaseToolIdentity } from "./store/tool/model";
 import { emptyBaseSync, type BaseSyncEnvelope } from "./store/sync/model";
 import { enqueueBaseMutation } from "./store/sync/queue";
 import { syncAttachmentRoots } from "./store/sync/projection";
-import { serializeSync, syncPath } from "./store/sync/files";
+import { readSync, serializeSync, syncPath } from "./store/sync/files";
 import { join } from "node:path";
-import {
-  BASE_OWNER_KEY_PATTERN,
-  ownerKeyOf,
-  type BaseMeta,
-  type BaseRow,
-  type BaseSnapshot,
-} from "../../../shared/bases-ipc";
+import { BASE_OWNER_KEY_PATTERN, type BaseMeta, type BaseRow, type BaseSnapshot } from "../../../shared/bases-ipc";
+import { ownerKeyOf } from "@ai-chat/base-ui/model/owner-key";
 import type { BaseNavigation } from "../../../shared/placement/facts";
 import {
   baseMetaSchema,
@@ -41,8 +41,11 @@ import {
   emptyHistoryLedger,
   historyForRow,
 } from "./store/history-ledger";
-import { prepareProjectBase } from "./store/base-promotion";
-import { initializeBaseStoreStartup } from "./store/startup";
+import { BasePromotionApi } from "./store/promotion/api";
+import type { RemoteBasePromotion } from "./store/promotion/remote";
+import { type ConfirmedBasePromotion } from "./store/promotion/cloud";
+import { initializeBaseStoreStartup, listBaseOwnerKeys, reloadBaseOwner } from "./store/startup";
+import { libraryDirectory } from "../library/paths";
 import {
   ALL_ROWS_CHANGED,
   NO_ROWS_CHANGED,
@@ -88,49 +91,72 @@ export type {
   ReadonlyBaseSnapshot,
 };
 const NO_BLOBS: ReadonlySet<string> = new Set<string>();
+/* How long a renderer read keeps a Base "on screen" for cloud synchronization. Two live Convex
+   subscriptions per Base are only worth holding while a window is actually showing it. */
+const SURFACE_WINDOW_MS = 10 * 60_000;
 export class BaseStore {
   readonly sync: BaseSyncApi;
   private readonly blockedOwners = new Set<string>();
-  readonly basesRoot: string;
-  readonly root: string;
+  private incompleteOwners = new Map<string, IncompleteBase>();
+  /** Bases live in the folder and nowhere else; nothing may be read or written before one is selected. */
+  get root() { const root = this.dependencies.libraryRoot(); if (!root) throw new Error("LIBRARY_NOT_CONFIGURED"); return join(root, "bases"); }
+  /** CSV exports are this computer's scratch output, not Base content, so they stay beside the profile. */
   readonly exportsRoot: string;
   readonly attachments: BaseAttachmentStore;
   private readonly queue = new SerialQueue();
   private readonly states = new Map<string, StoredBase>();
   private readonly files: BaseStoreFiles;
+  private readonly promotion: BasePromotionApi;
   private readonly now: () => number;
+  private readonly surfaceReads = new Map<string, number>();
+  private readonly surfaceListeners = new Set<(ownerKey: string, ownerInstanceId: string) => void>();
   constructor(
     userData: string,
-    private readonly dependencies: BaseStoreDependencies = {}
+    private readonly dependencies: BaseStoreDependencies
   ) {
-    /* 目录布局是既有数据的既成事实：bases/ 下 v2 与 exports 的路径字节不可动。 */
-    this.basesRoot = join(userData, "bases");
-    this.root = join(this.basesRoot, "v2");
-    this.exportsRoot = join(this.basesRoot, "exports");
-    this.attachments = new BaseAttachmentStore(this.root);
+    /* The directory layout is a fait accompli of existing data: the bases/exports path bytes cannot move. */
+    this.exportsRoot = join(userData, "bases", "exports");
+    this.attachments = new BaseAttachmentStore(() => this.root);
     this.now = dependencies.now ?? Date.now;
-    this.sync = new BaseSyncApi({ queue: this.queue,
+    this.sync = new BaseSyncApi({ queue: this.queue, attachments: this.attachments,
+      files: { readCiphertext: (key, hash) => this.files.readCiphertext(key, hash), writeCiphertext: (key, content) => this.files.writeCiphertext(key, content) },
       state: (key, id) => this.requireState(key, id),
+      scopes: () => [...this.states.values()].map(state => state.sync.scope ?? state.sync.initialCiphertext?.scope ?? null),
+      states: () => this.states.values(),
+      publishCopy: plan => publishCandidateCopy({ states: this.states, files: this.files, attachments: this.attachments }, plan),
+      recoverIdentity: (source, plan, confirmed, tombstones) => recoverInitialIdentity({ states: this.states, files: this.files,
+        attachments: this.attachments, block: key => this.blockedOwners.add(key) }, source, plan, confirmed, tombstones),
       commit: (key, id, envelope, snapshot) => {
         const state = this.requireState(key, id);
         return this.commitLocked(key, id, {
-          meta: { ...(snapshot?.meta ?? state.meta), owner: state.meta.owner, ownerInstanceId: id, navigation: state.meta.navigation, revision: state.meta.revision + 1 },
+          meta: { ...(snapshot?.meta ?? state.meta), owner: state.meta.owner, ownerInstanceId: id, revision: state.meta.revision + 1 },
           rows: snapshot?.rows ?? state.rows, changedRowIds: snapshot ? ALL_ROWS_CHANGED : NO_ROWS_CHANGED,
           operation: "sync-reconcile",
         }, envelope);
       },
     }, dependencies.storageMode);
-    this.files = new BaseStoreFiles(this.root, {
+    this.files = new BaseStoreFiles(() => this.root, {
+      syncRoot: join(userData, "bases-sync"),
+      folderCheckpoint: dependencies.folderCheckpoint,
       readText: dependencies.readText,
       atomicWrite: dependencies.atomicWrite,
     });
+    this.promotion = new BasePromotionApi({ queue: this.queue, states: this.states, files: this.files, attachments: this.attachments,
+      requireState: (key, id) => this.requireState(key, id), remove: (key, id) => this.removeLocked(key, id),
+      commitSync: (key, source, envelope) => this.commitLocked(key, source.meta.ownerInstanceId, {
+        meta: { ...source.meta, revision: source.meta.revision + 1 }, rows: source.rows, changedRowIds: NO_ROWS_CHANGED, operation: "sync-reconcile",
+      }, envelope) });
   }
   async initialize(
     chats: ReadonlyMap<string, BaseIdentity>,
     projectIds: ReadonlySet<string> = new Set()
   ) {
     await this.queue.enqueue(async () => {
-      await initializeBaseStoreStartup({
+      const root = this.dependencies.libraryRoot();
+      /* Onboarding has not selected a folder yet; the first selection mounts every store again. */
+      if (!root) return;
+      await libraryDirectory(root, "bases");
+      const failures = await initializeBaseStoreStartup({
         root: this.root,
         exportsRoot: this.exportsRoot,
         files: this.files,
@@ -141,7 +167,55 @@ export class BaseStore {
         now: this.now,
       });
       this.blockedOwners.clear();
+      this.incompleteOwners = failures;
+      for (const key of failures.keys()) this.blockedOwners.add(key);
     });
+  }
+  /**
+   * A departed owner is only departed against the identities startup could see. Deferred Chat
+   * materialization changes that set, so every owner an absent dependency kept out of `states` gets
+   * the same load again — the two recorded failure reasons, plus the owners a missing Chat identity
+   * dropped without a record at all. One at a time, on the same queue; a healthy state is never
+   * touched, and an owner whose dependency is still gone keeps exactly the entry it had.
+   */
+  reloadIncompleteOwners(chats: ReadonlyMap<string, BaseIdentity>, projectIds: ReadonlySet<string> = new Set()) {
+    return this.queue.enqueue(async () => {
+      if (!this.dependencies.libraryRoot()) return [];
+      const pending = new Set([...this.incompleteOwners].filter(([, failure]) =>
+        failure.reason === "owner-incarnation-changed" || failure.reason === "project-missing").map(([ownerKey]) => ownerKey));
+      for (const ownerKey of await listBaseOwnerKeys(this.root).catch(() => [])) {
+        if (!this.states.has(ownerKey) && !this.incompleteOwners.has(ownerKey)) pending.add(ownerKey);
+      }
+      const recovered: Array<{ ownerKey: string; snapshot: BaseSnapshot }> = [];
+      for (const ownerKey of pending) {
+        const failure = await reloadBaseOwner({ root: this.root, exportsRoot: this.exportsRoot, files: this.files,
+          attachments: this.attachments, states: this.states, chats, projectIds, now: this.now }, ownerKey)
+          .catch((cause) => { console.warn(`Base ${ownerKey} reload failed: ${errorMessage(cause)}`); return undefined; });
+        const state = this.states.get(ownerKey);
+        if (!state) { if (failure) this.incompleteOwners.set(ownerKey, failure); continue; }
+        this.incompleteOwners.delete(ownerKey); this.blockedOwners.delete(ownerKey);
+        recovered.push({ ownerKey, snapshot: this.snapshot(state) });
+      }
+      return recovered;
+    });
+  }
+  /* Surface evidence, not durable state: the renderer and App-window read paths report here, and cloud
+     synchronization only ever asks. `sync.read`, `listAll` and every internal lookup stay silent, so a Base
+     nothing is showing decays to idle and loses its subscriptions. */
+  noteSurfaceRead(ownerKey: string, ownerInstanceId: string) {
+    const key = `${ownerKey}/${ownerInstanceId}`, now = this.now();
+    const idle = now - (this.surfaceReads.get(key) ?? 0) > SURFACE_WINDOW_MS;
+    this.surfaceReads.set(key, now);
+    if (this.surfaceReads.size > 256) for (const [entry, at] of this.surfaceReads) if (now - at > SURFACE_WINDOW_MS) this.surfaceReads.delete(entry);
+    if (idle) for (const listener of this.surfaceListeners) listener(ownerKey, ownerInstanceId);
+  }
+  onSurfaceRead(listener: (ownerKey: string, ownerInstanceId: string) => void) {
+    this.surfaceListeners.add(listener);
+    return () => { this.surfaceListeners.delete(listener); };
+  }
+  surfaced(ownerKey: string, ownerInstanceId: string) {
+    const at = this.surfaceReads.get(`${ownerKey}/${ownerInstanceId}`);
+    return at !== undefined && this.now() - at <= SURFACE_WINDOW_MS;
   }
   /** 唯一查表面：在册即状态，不在册即 null。没有第三种存在方式。 */
   get(ownerKey: string, ownerInstanceId?: string): BaseSnapshot | null {
@@ -182,10 +256,24 @@ export class BaseStore {
     }));
   }
   listRootBases() {
-    return rootBaseSummaries(this.states.values());
+    return rootBaseSummaries([...this.states.values(), ...this.incompleteMetadata()]);
   }
   listProjectBases() {
-    return projectBaseSummaries(this.states.values());
+    return projectBaseSummaries([...this.states.values(), ...this.incompleteMetadata()]);
+  }
+  private incompleteMetadata() { return [...this.incompleteOwners.values()].flatMap(item => item.meta ? [{ meta: item.meta }] : []); }
+  incomplete(ownerKey: string) { return structuredClone(this.incompleteOwners.get(ownerKey) ?? null); }
+  async incompleteEnvelope(ownerKey: string) {
+    const meta = this.incompleteOwners.get(ownerKey)?.meta;
+    return meta ? readSync(this.files, this.root, meta) : null;
+  }
+  repairIncomplete(ownerKey: string, proof: BaseRepairProof, current: () => void) {
+    return this.queue.enqueue(async () => {
+      const original = this.incompleteOwners.get(ownerKey); if (!original) throw new Error("BASE_FOLDER_REPAIR_CHANGED");
+      const state = await repairIncompleteBase(this.files, ownerKey, original, proof, current);
+      this.states.set(ownerKey, state); this.incompleteOwners.delete(ownerKey); this.blockedOwners.delete(ownerKey);
+      return this.snapshot(state);
+    });
   }
   setNavigation(
     ownerKey: string,
@@ -202,6 +290,12 @@ export class BaseStore {
       "owner" in identity ? identity : chatOwnerIdentity(identity);
     return this.queue.enqueue(() => this.ensureLocked(ownerIdentity));
   }
+  createArtifact(identity: BaseOwnerIdentity, seed: { columns: BaseMeta["columns"]; rows: BaseRow[] }): Promise<BaseSnapshot> {
+    return this.queue.enqueue(() => {
+      if (this.states.has(ownerKeyOf(identity.owner))) throw new BaseConflictError("Base already exists");
+      return this.ensureLocked(identity, seed);
+    });
+  }
   transact(
     ownerKey: string,
     ownerInstanceId: string,
@@ -215,6 +309,39 @@ export class BaseStore {
       return mutation
         ? this.commitLocked(ownerKey, ownerInstanceId, mutation)
         : current;
+    });
+  }
+  transactTool(ownerKey: string, ownerInstanceId: string, identity: BaseToolIdentity,
+    mutate: (current: BaseSnapshot) => BaseStoreMutation | null) {
+    return this.queue.enqueue(async () => {
+      const state = this.requireState(ownerKey, ownerInstanceId);
+      const existing = replayTool(state, identity);
+      if (existing) return { snapshot: this.snapshot(state), receipt: existing, sync: toolEvidence(state.sync, identity.operationId), replayed: true };
+      let mutation: BaseStoreMutation | null = null;
+      let rejection: { status: "rejected" | "conflicted"; reason: string } | null = null;
+      try {
+        if (state.sync.tombstones.includes("base")) throw Object.assign(new Error("Base was deleted"), { status: 404, code: "deleted" });
+        mutation = mutate(this.snapshot(state));
+      }
+      catch (cause) {
+        const error = cause as { status?: number; code?: string };
+        if (![400, 404, 409, 413].includes(error.status ?? 0)) throw cause;
+        rejection = { status: error.status === 409 ? "conflicted" : "rejected", reason: error.code ?? "invalid_mutation" };
+      }
+      mutation ??= { meta: { ...state.meta, revision: state.meta.revision + 1 }, rows: state.rows,
+        changedRowIds: NO_ROWS_CHANGED, actor: "agent", operation: "tool-result" };
+      let prepared;
+      try { prepared = prepareTool(state, mutation, identity, rejection); }
+      catch (cause) {
+        const error = cause as { status?: number; code?: string };
+        if (![400, 404, 409, 413].includes(error.status ?? 0)) throw cause;
+        mutation = { meta: { ...state.meta, revision: state.meta.revision + 1 }, rows: state.rows,
+          changedRowIds: NO_ROWS_CHANGED, actor: "agent", operation: "tool-result" };
+        prepared = prepareTool(state, mutation, identity, { status: error.status === 409 ? "conflicted" : "rejected", reason: error.code ?? "invalid_mutation" });
+      }
+      const { envelope, receipt } = prepared;
+      const snapshot = await this.commitLocked(ownerKey, ownerInstanceId, mutation, envelope);
+      return { snapshot, receipt, sync: toolEvidence(envelope, identity.operationId), replayed: false };
     });
   }
   transactGallery<T>(
@@ -256,80 +383,20 @@ export class BaseStore {
     );
   }
   remove(ownerKey: string, ownerInstanceId?: string): Promise<boolean> {
-    return this.queue.enqueue(() =>
-      this.removeLocked(ownerKey, ownerInstanceId)
-    );
-  }
-  /**
-   * Promotion 的本地提交点：先完整复制 attachment/rows/gallery，再发布 project meta。
-   * lifecycle intent 的 phase 推进与终态不在叶子 queue 内执行。
-   */
-  preparePromotion(
-    chatId: string,
-    projectId: string,
-    intentId: string
-  ): Promise<BaseSnapshot> {
-    return this.queue.enqueue(async () => {
-      const fromKey = `chat:${chatId}`;
-      const toKey = `project:${projectId}`;
-      const existing = this.states.get(toKey);
-      if (existing) {
-        if (existing.meta.ownerInstanceId !== intentId) {
-          throw new BaseConflictError("Project 已有 Base");
-        }
-        return this.snapshot(existing);
-      }
-      const source = this.requireState(
-        fromKey,
-        this.states.get(fromKey)?.meta.ownerInstanceId ?? ""
-      );
-      const state = await prepareProjectBase({
-        source,
-        fromKey,
-        toKey,
-        projectId,
-        intentId,
-        files: this.files,
-        attachments: this.attachments,
-        writeMeta: (ownerKey, content) =>
-          this.files.atomicWrite(this.files.metaPath(ownerKey), content),
-      });
-      this.states.set(toKey, state);
-      return this.snapshot(state);
+    return this.queue.enqueue(() => {
+      if (this.states.get(ownerKey)?.sync.promotionExport) throw new BaseConflictError("BASE_PROMOTION_IN_PROGRESS");
+      return this.removeLocked(ownerKey, ownerInstanceId);
     });
   }
-  finalizePromotion(
-    chatId: string,
-    projectId: string,
-    intentId: string
-  ): Promise<BaseSnapshot> {
-    return this.queue.enqueue(async () => {
-      const fromKey = `chat:${chatId}`;
-      const toKey = `project:${projectId}`;
-      const target = this.requireState(toKey, intentId);
-      const source = this.states.get(fromKey);
-      await this.removeLocked(fromKey, source?.meta.ownerInstanceId);
-      return this.snapshot(target);
-    });
+  preparePromotion(chatId: string, projectId: string, intentId: string, cloud?: ConfirmedBasePromotion) {
+    return this.promotion.preparePromotion(chatId, projectId, intentId, cloud);
   }
-
-  rollbackPromotion(projectId: string, intentId: string) {
-    return this.queue.enqueue(async () => {
-      const ownerKey = `project:${projectId}`;
-      const state = this.states.get(ownerKey);
-      if (state && state.meta.ownerInstanceId !== intentId) {
-        throw new BaseIncarnationError("待回滚 Project Base 生命周期已变化");
-      }
-      await this.files.removeFamilyFiles(ownerKey);
-      await this.attachments.releaseFamily(
-        ownerFileStem(ownerKey),
-        intentId,
-        "deleted-proven"
-      );
-      this.states.delete(ownerKey);
-      return Boolean(state);
-    });
+  prepareRemotePromotion(chatId: string, projectId: string, intentId: string, input?: RemoteBasePromotion) {
+    return this.promotion.prepareRemotePromotion(chatId, projectId, intentId, input);
   }
+  finalizePromotion(chatId: string, projectId: string, intentId: string) { return this.promotion.finalizePromotion(chatId, projectId, intentId); }
+  rollbackPromotion(projectId: string, intentId: string) { return this.promotion.rollbackPromotion(projectId, intentId); }
+  promotedSnapshot(projectId: string, intentId: string) { return this.promotion.promotedSnapshot(projectId, intentId); }
 
   closeAndFlush() {
     this.queue.close();
@@ -379,7 +446,7 @@ export class BaseStore {
     }
   }
 
-  private async ensureLocked(identity: BaseOwnerIdentity) {
+  private async ensureLocked(identity: BaseOwnerIdentity, seed?: { columns: BaseMeta["columns"]; rows: BaseRow[] }) {
     const ownerKey = ownerKeyOf(identity.owner);
     this.assertOwnerKey(ownerKey);
     if (this.blockedOwners.has(ownerKey)) throw new Error("Base recovery is required");
@@ -394,6 +461,7 @@ export class BaseStore {
         ? this.commitLocked(ownerKey, identity.ownerInstanceId, mutation)
         : snapshot;
     }
+    if ([...this.states.values()].some(state => state.meta.ownerInstanceId === identity.ownerInstanceId)) throw new BaseConflictError("BASE_OWNER_TRANSFERRED");
     if (await this.files.readMetaIfPresent(ownerKey)) throw new Error("Base exists on disk and must be recovered before use");
     const sync = emptyBaseSync(identity.ownerInstanceId);
     const syncFile = serializeSync(sync);
@@ -407,7 +475,7 @@ export class BaseStore {
           ? { kind: "project-contained", projectId: identity.owner.projectId }
           : { kind: "conversation-contained", chatId: identity.owner.chatId }
       ),
-      columns: [],
+      columns: seed?.columns ?? [],
       views: [
         {
           id: "table",
@@ -422,7 +490,9 @@ export class BaseStore {
       galleryGeneration: 0,
       historyGeneration: 0,
     });
-    const rows: BaseRow[] = [];
+    const rows: BaseRow[] = seed?.rows ?? [];
+    validateBaseShape(meta, rows.length);
+    validateStoredRows(rows, new Set(meta.columns.map(column => column.id)));
     const gallery = emptyGalleryLedger(
       galleryOwnerId(meta),
       meta.ownerInstanceId
@@ -440,7 +510,7 @@ export class BaseStore {
       this.files.historyPath(ownerKey, 0),
       this.files.serializeHistory(history)
     );
-    await this.files.atomicWrite(syncPath(this.root, ownerKey, 0), syncFile.content);
+    await this.files.atomicWrite(syncPath(this.files.syncRoot, ownerKey, 0), syncFile.content);
     await this.files.atomicWrite(
       this.files.metaPath(ownerKey),
       this.files.serializeMeta(meta)
@@ -463,6 +533,7 @@ export class BaseStore {
     syncOverride?: BaseSyncEnvelope
   ) {
     const current = this.requireState(ownerKey, ownerInstanceId);
+    if (current.sync.promotionExport && !syncOverride) throw new BaseConflictError("BASE_PROMOTION_IN_PROGRESS");
     if (input.meta.revision !== current.meta.revision + 1) {
       throw new Error("Base commit revision 必须恰好递增 1");
     }
@@ -569,7 +640,7 @@ export class BaseStore {
         this.files.serializeHistory(history)
       );
     }
-    if (syncFile) await this.files.atomicWrite(syncPath(this.root, ownerKey, syncGeneration), syncFile.content);
+    if (syncFile) await this.files.atomicWrite(syncPath(this.files.syncRoot, ownerKey, syncGeneration), syncFile.content);
     // A post-rename error is unknown, so freeze this owner until a validated reopen.
     try {
       await this.files.atomicWrite(this.files.metaPath(ownerKey), metaContent);

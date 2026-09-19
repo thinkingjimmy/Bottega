@@ -1,3 +1,8 @@
+/**
+ * [INPUT]: React native input props, shared class merging and UI theme utilities.
+ * [OUTPUT]: Provides Input with compact and large form sizes, native refs and accessible focus/error states.
+ * [POS]: Shared text input primitive consumed by form and settings fields.
+ */
 import * as React from "react"
 
 import { cn } from "@ai-chat/ui/lib/utils"

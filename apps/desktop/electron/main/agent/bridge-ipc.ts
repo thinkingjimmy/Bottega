@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow, Agent IPC DTO/approval decision wording, shared plan-review decision to be made, payload/user-input testing and renderer IPc
- * [OUTPUT]: Provides registerAgentBridgeIpc with actual-sender subscription routing and residence checks for approval/user-input mutation
- * [POS]: Thin Agent renderer IPC; TrustedRendererContext proves the window and SurfaceWindowController proves conversation residency
+ * [INPUT]: Depends on original Agent runtime handlers, trusted renderer residency, exact interaction stamps and durable control receipts.
+ * [OUTPUT]: Provides local/remote first-writer approval, user-input and cancel handlers plus original Steer routing.
+ * [POS]: Agent IPC and main control adapter; backend behavior remains owned by the original runtime.
  */
 
 import type { BrowserWindow } from "electron";
@@ -32,6 +32,7 @@ import type {
 } from "../turn-registry";
 import { surfaceWindowController } from "../window/surfaces/surface-window-controller";
 import type { TrustedRendererContext } from "../window/surfaces/trusted-renderer-context";
+import { runAgentControl, agentControlGeneration, agentControlUnresolved, assertAgentControlOrigin, type TrustedControl, type ControlResult } from "./controls/decisions";
 
 export type AgentBridgeIpcHandlers = {
   attach(
@@ -44,18 +45,19 @@ export type AgentBridgeIpcHandlers = {
   listActivity(): ChatActivitySnapshot[];
   conversationForRequest(requestId: string): string | undefined;
   conversationForOutboxRef(outboxRef: string): string | undefined;
-  retryWithoutSession(requestId: string, retryToken: string): Promise<void>;
-  retrySameSession(requestId: string, retryToken: string): Promise<void>;
-  respondApproval(response: AgentApprovalResponse): Promise<void>;
+  abandonResumeFailure(requestId: string, retryToken: string, trusted?: TrustedControl): Promise<void>;
+  retryWithoutSession(requestId: string, retryToken: string, trusted?: TrustedControl): Promise<void>;
+  retrySameSession(requestId: string, retryToken: string, trusted?: TrustedControl): Promise<void>;
+  respondApproval(response: AgentApprovalResponse, trusted?: TrustedControl): Promise<ControlResult>;
   pendingUserInputQuestionIds(
     requestId: string,
     userInputId: string
   ): string[] | undefined;
-  respondUserInput(response: AgentUserInputResponse): void;
+  respondUserInput(response: AgentUserInputResponse, trusted?: TrustedControl): Promise<ControlResult>;
   detach(conversationId: string, attachmentId: string, window: BrowserWindow): void;
-  cancel(requestId: string): void;
+  cancel(requestId: string, trusted?: TrustedControl): Promise<ControlResult>;
   removeSubscriber(window: BrowserWindow): void;
-  steer(input: SteerAdmission): Promise<SteerIpcReceipt>;
+  steer(input: SteerAdmission, trusted?: TrustedControl): Promise<SteerIpcReceipt>;
   decideSteer(input: SteerDecision): Promise<SteerIpcReceipt>;
   ackSteerIntents(outboxRefs: string[]): Promise<void>;
 };
@@ -67,8 +69,8 @@ type AgentBridgeIpcRuntime = {
   listActivity(): ChatActivitySnapshot[];
   publishState(entry: TurnEntry<AgentTurn>): void;
   clearSafetyLock(backend: TurnEntry<AgentTurn>["backend"]): void;
-  retryWithoutSession(requestId: string, retryToken: string): Promise<void>;
-  retrySameSession(requestId: string, retryToken: string): Promise<void>;
+  retryWithoutSession(requestId: string, retryToken: string, trusted?: TrustedControl): Promise<void>;
+  retrySameSession(requestId: string, retryToken: string, trusted?: TrustedControl): Promise<void>;
   cancel(requestId: string): void;
   steer(input: SteerAdmission): Promise<SteerIpcReceipt>;
   decideSteer(input: SteerDecision): Promise<SteerIpcReceipt>;
@@ -84,6 +86,13 @@ type AgentBridgeIpcRuntime = {
 export function createAgentBridgeIpcHandlers(
   runtime: AgentBridgeIpcRuntime
 ): AgentBridgeIpcHandlers {
+  const retry = async (mode: "retrySameSession" | "retryWithoutSession" | "abandonResumeFailure", requestId: string, retryToken: string, trusted?: TrustedControl) => {
+    const entry = runtime.turns.byRequest(requestId); if (!entry) throw new Error("request-not-active");
+    const key = `recovery:${retryToken}`, generation = trusted?.generation ?? agentControlGeneration(entry, key);
+    await runAgentControl({ entry, generation, trusted, key, payload: { requestId, retryToken, mode },
+      verify: () => { if (runtime.turns.byRequest(requestId) !== entry || entry.phase !== "resume-failed" || entry.resumeRetryToken !== retryToken || entry.sourceTerminal) throw new Error("interaction-expired"); },
+      apply: () => mode === "abandonResumeFailure" ? runtime.cancel(requestId) : runtime[mode](requestId, retryToken, trusted) });
+  };
   return {
     attach: async (conversationId, attachmentId, window) => {
       runtime.subscriptions.attach(conversationId, attachmentId, window);
@@ -106,21 +115,28 @@ export function createAgentBridgeIpcHandlers(
     conversationForRequest: (requestId) =>
       runtime.turns.byRequest(requestId)?.conversationId,
     conversationForOutboxRef: runtime.conversationForOutboxRef,
-    retryWithoutSession: runtime.retryWithoutSession,
-    retrySameSession: runtime.retrySameSession,
-    respondApproval: async (response) => {
+    abandonResumeFailure: (requestId, token, trusted) => retry("abandonResumeFailure", requestId, token, trusted),
+    retryWithoutSession: (requestId, token, trusted) => retry("retryWithoutSession", requestId, token, trusted),
+    retrySameSession: (requestId, token, trusted) => retry("retrySameSession", requestId, token, trusted),
+    respondApproval: async (response, trusted) => {
       const entry = runtime.turns.byRequest(response.requestId);
       if (!entry?.turn) throw new Error("审批请求已结束");
       /* plan-review 的决策同时改写本轮语义：批准退出 Plan 后，终态
          正文应是实施结果而非计划——settle 前必须让 planRequested 与
          用户的选择一致，否则已实施的 turn 会被误判回 plan 消息。
          approval 副本要在 respond 前取：回执会同步清掉 stamp 表。 */
-      const approval = entry.approvals.get(response.approvalId);
-      await entry.turn.respondApproval(response.approvalId, response.decision);
-      const planRequested = approval
-        ? planModeAfterPlanReview(approval, response.decision)
-        : undefined;
-      if (planRequested !== undefined) entry.planRequested = planRequested;
+      return runAgentControl({ entry, trusted, key: `approval:${response.approvalId}`, payload: response,
+        verify: () => {
+          const approval = entry.approvals.get(response.approvalId);
+          if (runtime.turns.byRequest(response.requestId) !== entry || entry.fenceClosed || entry.sourceTerminal || trusted && !approval) throw new Error("interaction-expired");
+          if (trusted && approval && (response.decision === "accept-for-session" && !approval.canAcceptForSession ||
+            (approval.choices?.length || response.decision.startsWith("choice:")) && !approval.choices?.some(choice => choice.decision === response.decision))) throw new Error("interaction-expired");
+        }, apply: async () => {
+          const approval = entry.approvals.get(response.approvalId);
+          await entry.turn!.respondApproval(response.approvalId, response.decision);
+          const planRequested = approval ? planModeAfterPlanReview(approval, response.decision) : undefined;
+          if (planRequested !== undefined) entry.planRequested = planRequested;
+        } });
     },
     pendingUserInputQuestionIds: (requestId, userInputId) => {
       const turn = runtime.turns.byRequest(requestId)?.turn;
@@ -129,17 +145,33 @@ export function createAgentBridgeIpcHandlers(
         .pendingUserInput(userInputId)
         ?.questions.map((question) => question.id);
     },
-    respondUserInput: (response) => {
-      runtime.turns
-        .byRequest(response.requestId)
-        ?.turn?.respondUserInput?.(response.userInputId, response.answers);
+    respondUserInput: async (response, trusted) => {
+      const entry = runtime.turns.byRequest(response.requestId);
+      if (!entry?.turn?.respondUserInput) throw new Error("interaction-expired");
+      return runAgentControl({ entry, trusted, key: `input:${response.userInputId}`, payload: response,
+        verify: () => {
+          const pending = entry.turn?.pendingUserInput?.(response.userInputId);
+          const expiresAt = entry.userInputs.get(response.userInputId)?.expiresAt;
+          if (runtime.turns.byRequest(response.requestId) !== entry || entry.fenceClosed || entry.sourceTerminal || !pending ||
+            expiresAt !== undefined && Date.now() >= expiresAt || trusted && pending.questions.some(question => question.isSecret)) throw new Error("interaction-expired");
+          validateUserInputResponse(response, pending.questions.map(question => question.id));
+        }, apply: () => entry.turn!.respondUserInput!(response.userInputId, response.answers) });
     },
     detach: (conversationId, attachmentId, window) =>
       runtime.subscriptions.detach(conversationId, attachmentId, window),
-    cancel: runtime.cancel,
+    cancel: async (requestId, trusted) => {
+      const entry = runtime.turns.byRequest(requestId); if (!entry) throw new Error("request-not-active");
+      /* Stop shares the recovery interaction so a remote abandon cannot be applied twice, but a
+         recovery whose winner is settled non-applied would make Stop permanently `outcome-unknown`. */
+      const recovery = entry.resumeRetryToken ? `recovery:${entry.resumeRetryToken}` : undefined;
+      const key = recovery && !agentControlUnresolved(entry, recovery, agentControlGeneration(entry, recovery)) ? recovery : "cancel";
+      return runAgentControl({ entry, trusted, generation: trusted?.generation ?? agentControlGeneration(entry, key), key, payload: { requestId },
+        verify: () => { if (runtime.turns.byRequest(requestId) !== entry || entry.sourceTerminal) throw new Error("request-not-active"); },
+        apply: () => runtime.cancel(requestId) });
+    },
     removeSubscriber: (window) =>
       runtime.subscriptions.removeSubscriber(window),
-    steer: runtime.steer,
+    steer: (input, trusted) => { assertAgentControlOrigin(input.outboxRef, trusted); return runtime.steer(input); },
     decideSteer: runtime.decideSteer,
     ackSteerIntents: runtime.ackSteerIntents,
   };
@@ -150,6 +182,7 @@ export function registerAgentBridgeIpc(
   rendererUrl: string,
   handlers: AgentBridgeIpcHandlers
 ) {
+  mainHandlers = handlers;
   const assertConversation = (
     context: TrustedRendererContext,
     conversationId: string
@@ -231,6 +264,11 @@ export function registerAgentBridgeIpc(
       for (const outboxRef of outboxRefs) assertOutbox(context, outboxRef);
       return handlers.ackSteerIntents(outboxRefs);
     })
+    .handleWithContext(AGENT_CHANNEL.abandonResumeFailure, (context, requestId, retryToken) => {
+      if (typeof requestId !== "string" || typeof retryToken !== "string" || !retryToken || retryToken.length > 256) throw new Error("Invalid recovery identity");
+      assertRequest(context, requestId);
+      return handlers.abandonResumeFailure(requestId, retryToken);
+    })
     .handleWithContext(
       AGENT_CHANNEL.retryWithoutSession,
       (context, requestId, retryToken) => {
@@ -284,7 +322,7 @@ export function registerAgentBridgeIpc(
       );
       if (!questionIds) throw new Error("用户输入请求已过期或不存在");
       validateUserInputResponse(value, questionIds);
-      handlers.respondUserInput(value as AgentUserInputResponse);
+      return handlers.respondUserInput(value as AgentUserInputResponse);
     })
     .onWithContext(AGENT_CHANNEL.turnDetach, (context, conversationId, attachmentId) => {
       if (typeof conversationId === "string" && typeof attachmentId === "string") {
@@ -299,9 +337,14 @@ export function registerAgentBridgeIpc(
     .onWithContext(AGENT_CHANNEL.cancel, (context, requestId) => {
       if (typeof requestId === "string") {
         assertRequest(context, requestId);
-        handlers.cancel(requestId);
+        void handlers.cancel(requestId).catch(() => {});
       }
     });
 
   window.once("closed", () => handlers.removeSubscriber(window));
+}
+let mainHandlers: AgentBridgeIpcHandlers | null = null;
+export function currentAgentControlHandlers() {
+  if (!mainHandlers) throw new Error("execution-not-ready");
+  return mainHandlers;
 }

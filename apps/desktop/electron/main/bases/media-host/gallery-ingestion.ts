@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the TurnEventsBroker durable journal, GalleryMediaCache app-owned custody, ImageCodecHost, BasesService attachment ingestion/event publication, and main/errors
- * [OUTPUT]: Provides GalleryIngestion: cache-first auto-ingestion of completed images via ingest(), an idempotent ACK on success or deterministic conflict, and reconcile()/reconcileAll() that reissue broker leases to recover any window missed at startup
+ * [OUTPUT]: Provides cache-first automatic ingestion, isolated validation of byte-exact oversized originals and receipt-gated ACK/recovery-window release.
  * [POS]: bases/media-host's ingestion boundary; never touches TurnRegistry directly and never accepts a bare filesystem path — it copies the source into the app-owned cache before decoding
  */
 
@@ -13,23 +13,30 @@ import type {
   TurnEventsBroker,
 } from "../../gallery/turn-events-broker";
 import { ImageCodecHost } from "./codec-host";
+import { BASE_ATTACHMENT_BYTE_LIMIT } from "../../../../shared/bases/gallery-attachments";
 
 export class GalleryIngestion {
   constructor(
     private readonly cache: GalleryMediaCache,
     private readonly bases: BasesService,
     private readonly broker: TurnEventsBroker,
-    private readonly codec = new ImageCodecHost()
+    private readonly codec = new ImageCodecHost(),
+    private readonly sourceDeviceId?: string
   ) {}
 
   async ingest(event: CompletedImageEventV1) {
     const record = await this.cache.ingest(event);
     const input = await this.cache.readCached(event.sourceRef, record);
-    const output = await this.codec.normalize(input);
+    const localAvailability = input.length > BASE_ATTACHMENT_BYTE_LIMIT
+      ? { sourceDeviceId: this.sourceDeviceId ?? "" } : undefined;
+    if (localAvailability && !localAvailability.sourceDeviceId) throw new Error("Source device identity is unavailable");
+    // Oversized originals keep their exact bytes; the isolated decoder still validates their pixels.
+    const output = localAvailability ? (await this.codec.thumbnail(input, 160), input) : await this.codec.normalize(input);
     const result = await this.bases.ingestCompletedImage(
       event,
       output,
-      `${event.sourceRef.itemId}.${parseAttachmentImageHeader(output).extension}`
+      `${event.sourceRef.itemId}.${parseAttachmentImageHeader(output).extension}`,
+      localAvailability
     );
     if (!result.ok) {
       this.warn(`图片 ${event.logicalKey} 自动入库失败：${result.error.message}`);

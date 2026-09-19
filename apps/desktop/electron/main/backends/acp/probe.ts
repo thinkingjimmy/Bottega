@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node detached child_process/readline JSON-RPC framing, AcpProcessEvidence stderr tail, the agent process supervisor, and process-group cleanup
- * [OUTPUT]: Provides AcpRequestError, protocol/session-id assertions, the Codex/Claude unpersisted-session-cleanup matcher, and inspectAcpSession — a cancellable, redacting ACP readiness probe with deterministic process cleanup
+ * [OUTPUT]: Provides ACP session inspection bounded by a per-request budget plus a total spawn-anchored cap, exact adapter-wrapped session absence matching, and typed failures that survive redaction and cleanup.
  * [POS]: Core of ACP readiness probing — a short-lived handshake subprocess; registers/deregisters with the process supervisor before lease release and leaves failure classification to the backend descriptor
  */
 
@@ -10,7 +10,7 @@ import {
   type SpawnOptionsWithoutStdio,
 } from "node:child_process";
 import { createInterface } from "node:readline";
-import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
+import { PROTOCOL_VERSION, RequestError } from "@agentclientprotocol/sdk";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import {
   assertAgentProcessAdmission,
@@ -47,12 +47,17 @@ export class AcpRequestError extends Error {
   }
 }
 
+/** Only failures witnessed at process creation, process exit or protocol validation carry this marker. */
+export class AcpStartupError extends Error {
+  readonly startupFailure = true;
+}
+
 export function assertAcpProtocolVersion(value: unknown) {
   const protocolVersion = (
     value as { protocolVersion?: unknown } | null
   )?.protocolVersion;
   if (protocolVersion !== PROTOCOL_VERSION) {
-    throw new Error(
+    throw new AcpStartupError(
       `ACP protocolVersion 不兼容：${String(protocolVersion)}`
     );
   }
@@ -68,7 +73,7 @@ export function assertAcpSessionId(
     Buffer.byteLength(sessionId, "utf8") === 0 ||
     !validateSessionId(sessionId)
   ) {
-    throw new Error("ACP session/new 返回了无效 sessionId");
+    throw new AcpStartupError("ACP session/new returned an invalid sessionId");
   }
   return sessionId;
 }
@@ -80,7 +85,10 @@ export type AcpProbeOptions = {
   env: NodeJS.ProcessEnv;
   cwd: string;
   validateSessionId: (id: string) => boolean;
+  /** Patience for a single JSON-RPC request, rearmed per request. */
   timeoutMs?: number;
+  /** Hard cap for the whole probe, measured from spawn. */
+  totalTimeoutMs?: number;
   signal?: AbortSignal;
 };
 
@@ -104,14 +112,14 @@ export type AcpSessionInspection = {
 };
 
 function requestDetails(cause: Error) {
-  if (!(cause instanceof AcpRequestError) || cause.code !== -32_603) {
+  if (!(cause instanceof AcpRequestError || cause instanceof RequestError) || cause.code !== -32_603) {
     return undefined;
   }
   const details = (cause.data as { details?: unknown } | null)?.details;
   return typeof details === "string" ? details : undefined;
 }
 
-export function isAcpUnpersistedSessionCleanup(
+export function isAcpSessionMissing(
   backend: AgentBackendId,
   sessionId: string,
   cause: unknown
@@ -161,7 +169,8 @@ export async function inspectAcpSession<T>(
       if (cached) return cached;
     }
     const source = asError(cause);
-    const error = new Error(redactDiagnostic(source.message));
+    const error = (cause as { startupFailure?: boolean } | null)?.startupFailure
+      ? new AcpStartupError(redactDiagnostic(source.message)) : new Error(redactDiagnostic(source.message));
     error.name = source.name;
     const meta = cause as { code?: unknown; data?: unknown } | null;
     if (typeof meta?.code === "number" || typeof meta?.code === "string") {
@@ -181,7 +190,8 @@ export async function inspectAcpSession<T>(
     }
     return error;
   };
-  const child = (dependencies.spawnProcess ?? spawn)(
+  let child: ChildProcessWithoutNullStreams;
+  try { child = (dependencies.spawnProcess ?? spawn)(
     options.command,
     options.args,
     {
@@ -189,7 +199,7 @@ export async function inspectAcpSession<T>(
       detached: true,
       env: options.env,
     }
-  );
+  ); } catch (cause) { throw new AcpStartupError(redactDiagnostic(asError(cause).message)); }
   child.once("error", () => undefined);
   let settle!: () => void;
   const settled = new Promise<void>((resolve) => {
@@ -275,14 +285,14 @@ export async function inspectAcpSession<T>(
      再失败一次。 */
   let transportDown = false;
   const closed = new Promise<never>((_resolve, reject) => {
-    child.once("error", (cause) => reject(diagnosticError(cause)));
+    child.once("error", (cause) => reject(new AcpStartupError(redactDiagnostic(cause.message))));
     child.stdin.once("error", (cause) => {
-      stdinError ??= diagnosticError(cause);
+      stdinError ??= new AcpStartupError(redactDiagnostic(cause.message));
       reject(stdinError);
     });
     child.once("close", (code) => {
       reject(
-        new Error(
+        new AcpStartupError(
           redactDiagnostic(
             `ACP probe 进程提前退出 code=${String(code)} ${evidence.rawTail()}`
           )
@@ -294,16 +304,29 @@ export async function inspectAcpSession<T>(
     transportDown = true;
   });
   let requestId = 0;
+  /* Two budgets, because one spawn-anchored deadline cannot tell a slow agent
+     from a wedged one: at launch every step legitimately costs seconds (codex
+     refetches its remote model cache on each session/new), yet a dead
+     transport must still be cut loose. Each request gets its own patience;
+     the total cap bounds the probe as a whole. */
   const timeoutMs = options.timeoutMs ?? 12_000;
-  let timeout: NodeJS.Timeout | undefined;
+  const totalTimeoutMs = options.totalTimeoutMs ?? 30_000;
   let deadlineFired = false;
-  const deadline = new Promise<never>((_resolve, reject) => {
-    timeout = setTimeout(() => {
-      deadlineFired = true;
-      reject(new Error("ACP readiness probe 超时"));
-    }, timeoutMs);
-    timeout.unref?.();
+  let timeoutCause: DOMException | undefined;
+  /* One object for both budgets: the diagnostic cache keys on cause identity,
+     so a single timeout must not surface as two distinct deaths. */
+  const timedOut = () => {
+    deadlineFired = true;
+    timeoutCause ??= new DOMException("Agent check timed out", "TimeoutError");
+    return timeoutCause;
+  };
+  let totalTimeout: NodeJS.Timeout | undefined;
+  const totalDeadline = new Promise<never>((_resolve, reject) => {
+    totalTimeout = setTimeout(() => reject(timedOut()), totalTimeoutMs);
+    totalTimeout.unref?.();
   });
+  /* inspect() may work between requests, so nothing races the cap just then. */
+  totalDeadline.catch(() => undefined);
   let abortListener: (() => void) | undefined;
   const aborted = new Promise<never>((_resolve, reject) => {
     const signal = options.signal;
@@ -320,8 +343,14 @@ export async function inspectAcpSession<T>(
   });
   const request = (method: string, params: unknown) => {
     const id = ++requestId;
+    let timeout: NodeJS.Timeout | undefined;
     const response = new Promise<unknown>((resolve, reject) => {
       pending.set(id, { resolve, reject });
+      timeout = setTimeout(() => {
+        pending.delete(id);
+        reject(timedOut());
+      }, timeoutMs);
+      timeout.unref?.();
       try {
         child.stdin.write(`${JSON.stringify({
           jsonrpc: "2.0",
@@ -335,7 +364,11 @@ export async function inspectAcpSession<T>(
         reject(stdinError);
       }
     });
-    return Promise.race([response, closed, deadline, aborted]);
+    return Promise.race([response, closed, totalDeadline, aborted]).finally(
+      () => {
+        if (timeout) clearTimeout(timeout);
+      }
+    );
   };
   let initialized: unknown;
   let outcome:
@@ -395,7 +428,7 @@ export async function inspectAcpSession<T>(
       const cleanupCause = diagnosticError(cause);
       if (
         !sessionId ||
-        !isAcpUnpersistedSessionCleanup(
+        !isAcpSessionMissing(
           options.backend,
           sessionId,
           cleanupCause
@@ -404,7 +437,7 @@ export async function inspectAcpSession<T>(
         sessionCleanupError = cleanupCause;
       }
     }
-    if (timeout) clearTimeout(timeout);
+    if (totalTimeout) clearTimeout(totalTimeout);
     if (abortListener) {
       options.signal?.removeEventListener("abort", abortListener);
     }

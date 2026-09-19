@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Electron IPC, Node crypto/fs, Chat/Project stores, ChatHome/Purge journals, Coordinator pending CreationIntent/conversation critical area, ProjectsService durable cleanup, ChatsService deletion-resource chain, and optional Memory rebuild port
  * [OUTPUT]: Provides archiveService: explicitly archived Agent-identified Chat projection carrying read-only capability, admission-first immutable local-only/cleanup-and-rebuild purge that refuses read-only Chats, short Project intent/CAS, canonical+pending member snapshot, verified/record-only tokenized preview, and legacy Home convergence through the shared deletion helper
- * [POS]: The trans-book coordinator of the archive module; The product gate only packs intent/CAS, Memory receipt/drain/network both outside the gate and hold multiple conversation locks at different times
+ * [POS]: The trans-book coordinator of the archive module; initialize only publishes gates and the caller resumes interrupted purges through recoverPurge; The product gate only packs intent/CAS, Memory receipt/drain/network both outside the gate and hold multiple conversation locks at different times
  */
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -94,7 +94,6 @@ export class ArchiveService {
             : "open"
       );
     }
-    await this.recoverPurge();
   }
 
   register(window: BrowserWindow, rendererUrl: string) {
@@ -610,7 +609,9 @@ export class ArchiveService {
     }
   }
 
-  private async recoverPurge() {
+  /* Resuming an interrupted purge is recovery, not first-frame state: startup calls it
+     once the window is up, after initialize has published every archive gate. */
+  async recoverPurge() {
     for (const intent of this.purgeJournal.listActive()) {
       try {
         await this.runPurge(

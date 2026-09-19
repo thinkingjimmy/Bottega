@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on the preload unifiedSkills bridge, shared intent/job DTOs, and ProductResult unwrapping
- * [OUTPUT]: Provides renderer calls for Skills commands, import-all onboarding, full snapshot changes, and lightweight job-progress events
+ * [INPUT]: Depends on the preload unifiedSkills bridge, shared intent/snapshot DTOs, and ProductResult unwrapping
+ * [OUTPUT]: Provides renderer calls for Skills commands, import-all onboarding, and full snapshot changes
  * [POS]: Thin renderer boundary for unified Skills; views never inspect IPC envelopes or touch native paths
  */
 
 import type {
   ManagedSkillAgent,
-  ManagedSkillJobProgress,
   UnifiedSkillsBridgeApi,
   UnifiedSkillsSnapshot,
 } from "../../shared/unified-skills-ipc";
@@ -42,14 +41,8 @@ export const applyUnifiedSkillPlan = async (
   input: Parameters<UnifiedSkillsBridgeApi["applyPlan"]>[0]
 ) => unwrapProductResult(await bridge().applyPlan(input));
 
-export const undoUnifiedSkillPlan = async (undoToken: string) =>
-  unwrapProductResult(await bridge().undoPlan(undoToken));
-
 export const onUnifiedSkillsChanged = (listener: (snapshot: UnifiedSkillsSnapshot) => void) =>
   window.unifiedSkills?.onChanged(listener) ?? (() => {});
-
-export const onUnifiedSkillsProgress = (listener: (progress: ManagedSkillJobProgress) => void) =>
-  window.unifiedSkills?.onProgress(listener) ?? (() => {});
 
 /** Import every currently actionable discovered Skill into the personal Library. */
 export async function importAllDiscoveredSkills() {

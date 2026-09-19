@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Reads saved App configuration through the common command resolver; Depends on repair journals, source snapshots, custody and the shared structured App command interpreter
- * [OUTPUT]: Provides transactional repair, data-bound server preflight and existing source/cancellation/recovery fences
+ * [OUTPUT]: Provides transactional repair, data-bound preflight and publication recovery before classifying interrupted swaps.
  * [POS]: The install/repair transaction coordinator; it arranges safe ordering only, staging-vs-copy lives in site.ts, and manifest/command policy is injected by the adapter
  */
 
 import { rm } from "node:fs/promises";
+import type { DirectoryPublisher } from "../../store/folder/publication";
 import { join } from "node:path";
 import type {
   AppInstallEvent,
@@ -54,6 +55,7 @@ export type RepairContext = {
 };
 
 export type RepairRunnerDeps = {
+  publication?: DirectoryPublisher;
   userData: string;
   store: AppStore;
   runtime: AppRuntime;
@@ -125,7 +127,7 @@ export class RepairRunner {
     this.assertReady();
     const record = this.deps.store.get(appId);
     if (!record) return;
-    const site = repairSiteFor(siteKind);
+    const site = repairSiteFor(siteKind, this.deps.publication);
     this.deps.gate.acquire(appId, runId);
     const journal = this.newJournal(site, appId, runId);
     const context = this.context(record, journal, task);
@@ -163,7 +165,7 @@ export class RepairRunner {
   }
 
   private newJournal(site: RepairSite, appId: string, runId: string): RepairJournal {
-    const roots = { userData: this.deps.userData, appsRoot: this.deps.store.appsRoot };
+    const roots = { userData: this.deps.userData, appsRoot: this.deps.store.appsRoot, stagingRoot: this.deps.store.stagingRoot };
     return {
       appId,
       runId,
@@ -403,7 +405,7 @@ export class RepairRunner {
     });
     if (!harvested) return false;
     await rm(context.journal.workspace, { recursive: true, force: true });
-    const site = repairSiteFor(context.journal.site);
+    const site = repairSiteFor(context.journal.site, this.deps.publication);
     await this.deps.store.update(context.record.id, (record) =>
       site.failedPatch(record, context.record, error)
     );
@@ -442,7 +444,7 @@ export class RepairRunner {
         retainLock = true;
         return;
       }
-      const site = repairSiteFor(journal.site);
+      const site = repairSiteFor(journal.site, this.deps.publication);
       if (["preparing", "running", "finalizing"].includes(journal.phase)) {
         retainLock = !(await this.fail(
           this.context(record, journal, this.recoveredTask(false)),
@@ -497,6 +499,7 @@ export class RepairRunner {
     record: AppRecord,
     journal: RepairJournal
   ): Promise<"locked" | "failed" | "forward"> {
+    await site.recoverSwap({ record, journal });
     const disposition = site.classifySwap(await this.swapPresence(record, journal));
     if (disposition === "locked") {
       await this.lockFailed(record, "修复提交现场状态未知，请手工检查 journal");

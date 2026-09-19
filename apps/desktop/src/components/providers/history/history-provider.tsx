@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React lazy/Suspense, shared history-import contracts, lib/history/client, I18n, and the shared toast channel
- * [OUTPUT]: Provides HistoryProvider/useHistory: event-first snapshots, one Project Add flight with preflight counts and automatic empty-project creation, enable/refresh, and Memory confirmation
+ * [INPUT]: Depends on React lazy/Suspense, shared history-import contracts, lib/history/client, and the shared toast channel
+ * [OUTPUT]: Provides HistoryProvider/useHistory: event-first background warnings, shared Project Add with preflight counts and its `pendingProject` flight (name + whether the scan is still running) for in-place placeholders, popup operation failures, and caller-owned import/Memory confirmation errors
  * [POS]: The single renderer owner of external history and Project onboarding; presentation actions on a synchronized history belong to the canonical Chat, not here
  */
 
@@ -19,8 +19,7 @@ import {
   setHistoryProjectEnabled,
   commitHistoryMemory,
 } from "@/lib/history/client";
-import { errorMessage } from "@/lib/errors";
-import { useAppTranslation } from "../i18n-provider";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { toast } from "@ai-chat/ui/components/ui/sonner";
 
 const ProjectImportDialog = lazy(() =>
@@ -34,10 +33,15 @@ const HistoryMemoryPreviewDialog = lazy(() =>
   }))
 );
 
+/* 选定文件夹到这次添加落定之间的那个 Project：它还不是成员，但已经有名字和位置。
+   scanning 只在预检计数还没回来时为真——弹窗打开后没有什么在跑，占位行不该再转。 */
+export type PendingProject = { name: string; canonicalRoot: string; scanning: boolean };
+
 type HistoryContextValue = {
   snapshot: HistoryImportSnapshot;
   loading: boolean;
   warning: string;
+  pendingProject: PendingProject | null;
   addProject(): Promise<Project | null>;
   commitProject(input: { token: string; importHistory: boolean; previewMemory: boolean }): Promise<ProjectHistoryCommitResult>;
   commitMemory(snapshotId: string, digest: string): Promise<void>;
@@ -49,10 +53,10 @@ const initial: HistoryImportSnapshot = { revision: 0, entries: [], canonicalRout
 const HistoryContext = createContext<HistoryContextValue | null>(null);
 
 export function HistoryProvider({ children }: { children: React.ReactNode }) {
-  const { t } = useAppTranslation();
   const [snapshot, setSnapshot] = useState(initial);
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState("");
+  const [pendingProject, setPendingProject] = useState<PendingProject | null>(null);
   const [confirmation, setConfirmation] = useState<{
     prepared: PreparedProjectHistoryImport;
     counts: HistorySourceCount[];
@@ -104,19 +108,21 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
     try {
       return await action();
     } catch (cause) {
-      setWarning(errorMessage(cause));
+      toast.error(errorMessage(cause));
       throw cause;
     }
   }, []);
 
   const completeProject = useCallback((project: Project | null) => {
     setConfirmation(null);
+    setPendingProject(null);
     addFlight.current?.resolve(project);
     addFlight.current = null;
   }, []);
 
   /* 四个来源都明确为零才跳过确认；扫描失败或缺少来源回执都保留选择。
-     扫描使用非阻塞进度提示，Sidebar 与 Composer 共享同一次添加。 */
+     等待不走通知通道：选定文件夹起，pendingProject 就站在侧栏它将来的位置
+     （超过门槛才显形），Sidebar 与 Composer 共享同一次添加。 */
   const addProject = useCallback(() => {
     if (addFlight.current) return addFlight.current.promise;
     let resolve!: (project: Project | null) => void;
@@ -125,41 +131,35 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
     void run(async () => {
       const prepared = await prepareHistoryProject();
       if (!prepared) return completeProject(null);
-      const progress = toast.loading(t("history.projectScanningDescription"));
-      try {
-        const counts = await countHistoryProject(prepared.token).catch(() => []);
-        const empty = HISTORY_SOURCE_KINDS.every((kind) =>
-          counts.find((item) => item.sourceKind === kind)?.count === 0
-        );
-        if (!empty) {
-          setConfirmation({ prepared, counts });
-          return;
-        }
-        const { project } = await commitHistoryProject({
-          token: prepared.token,
-          importHistory: false,
-          previewMemory: false,
-        });
-        completeProject(project);
-      } finally {
-        toast.dismiss(progress);
+      const pending = { name: prepared.name, canonicalRoot: prepared.canonicalRoot };
+      setPendingProject({ ...pending, scanning: true });
+      const counts = await countHistoryProject(prepared.token).catch(() => []);
+      const empty = HISTORY_SOURCE_KINDS.every((kind) =>
+        counts.find((item) => item.sourceKind === kind)?.count === 0
+      );
+      if (!empty) {
+        setPendingProject({ ...pending, scanning: false });
+        setConfirmation({ prepared, counts });
+        return;
       }
+      const { project } = await commitHistoryProject({
+        token: prepared.token,
+        importHistory: false,
+        previewMemory: false,
+      });
+      completeProject(project);
     }).catch(() => completeProject(null));
     return promise;
-  }, [completeProject, run, t]);
-
-  const commitMemory = useCallback(
-    (snapshotId: string, digest: string) => run(() => commitHistoryMemory(snapshotId, digest)),
-    [run]
-  );
+  }, [completeProject, run]);
 
   const value = useMemo<HistoryContextValue>(() => ({
     snapshot,
     loading,
     warning,
+    pendingProject,
     addProject,
-    commitProject: (input) => run(() => commitHistoryProject(input)),
-    commitMemory,
+    commitProject: commitHistoryProject,
+    commitMemory: commitHistoryMemory,
     setEnabled: async (projectId, enabled) => {
       await run(() => setHistoryProjectEnabled(projectId, enabled)).catch(() => {});
     },
@@ -167,7 +167,7 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
       const result = await run(() => refreshHistoryProject(projectId)).catch(() => null);
       setRefreshPreview(result?.memoryPreview ?? null);
     },
-  }), [addProject, commitMemory, loading, run, snapshot, warning]);
+  }), [addProject, loading, pendingProject, run, snapshot, warning]);
 
   return (
     <HistoryContext.Provider value={value}>
@@ -187,7 +187,7 @@ export function HistoryProvider({ children }: { children: React.ReactNode }) {
           <HistoryMemoryPreviewDialog
             preview={refreshPreview}
             onClose={() => setRefreshPreview(null)}
-            onCommit={commitMemory}
+            onCommit={commitHistoryMemory}
           />
         </Suspense>
       )}

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the BrowserPanelService tab registry, webContents.debugger, the shared BrowserAction, the per-tab execution lane, cancelable action execution, the Agent overlay, AbortSignal, and the main error vocabulary (asError/statusError)
+ * [INPUT]: Depends on the BrowserPanelService tab registry (waking sleeping tabs before attaching), webContents.debugger, the shared BrowserAction, the per-tab execution lane, cancelable action execution, the Agent overlay, AbortSignal, and the main error vocabulary (asError/statusError)
  * [OUTPUT]: Provides CdpHarness: cross-frame/OOPIF AX snapshots, versioned refs, budget compression, batched actions, stop semantics, and the final feedback snapshot
  * [POS]: The main/browser Agent kernel; it composes lane serialization, action execution, cancellation, AX/ref/action semantics, and result budgets
  */
@@ -221,8 +221,11 @@ export class CdpHarness {
   }
 
   private async ensureAttached(tabId: string) {
-    const record = this.browser.requireTab(tabId);
-    const contents = record.view.webContents;
+    // A sleeping tab has no webContents to debug: wake it and let the reload
+    // settle first, so the snapshot the Agent gets describes a real page.
+    const record = await this.browser.ensureAwake(tabId);
+    const contents = record.view?.webContents;
+    if (!contents) throw statusError(503, "浏览器 tab 唤醒失败，无法附加调试器");
     this.browser.assertRegisteredWebContents(contents);
     const existing = this.states.get(tabId);
     if (

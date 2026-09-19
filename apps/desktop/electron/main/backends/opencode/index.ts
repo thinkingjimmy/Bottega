@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on OpenCode CLI native ACP, external-override existence gate, model catalog, frozen third-party plus turn-leased built-in MCP overlay, AcpTurn and ACP failure classification
- * [OUTPUT]: Provides opencodeBackend with turn-start override fail-close, locked listening/random Basic Auth, two-tier permissions with Plan, read-only built-in tools, model catalog and provider-scoped auth proofs
+ * [INPUT]: Depends on OpenCode CLI native ACP, the launch-environment external-override gate, model catalog, frozen third-party plus turn-leased built-in MCP overlay, AcpTurn and ACP failure classification
+ * [OUTPUT]: Provides opencodeBackend, its minimum supported version, override validation against the spawn environment, authenticated local transport, permission modes, read-only tools, models with optional probe admission and provider-scoped auth checks.
  * [POS]: The only installation point for the OpenCode descriptor; it stats but never reads or copies user/agent override configuration or credentials
  */
 
@@ -149,6 +149,7 @@ export function opencodeSpawnConfig(
 export const opencodeBackend: BackendDescriptor = {
   id: "opencode",
   displayName: "OpenCode",
+  minimumVersion: MINIMUM_VERSION,
   workspaceDirName: "opencode-workspace",
   sessionCapabilityPolicy: SESSION_CAPABILITY_POLICY.opencode,
   detectRuntime: findOpencodeRuntime,
@@ -187,14 +188,18 @@ export const opencodeBackend: BackendDescriptor = {
   validateTurnOptions: validate,
   validateSessionId: validateOpencodeSessionId,
   models: {
-    list: (runtime, _workspace, signal) =>
-      listOpencodeModels(runtime, signal),
+    list: (runtime, _workspace, signal, runProbe) =>
+      listOpencodeModels(runtime, signal, runProbe),
     invalidate: invalidateOpencodeModels,
   },
   createTurn: (options) => {
     validate(options.payload.turnOptions);
-    assertNoExternalOpencodeOverrides();
-    return new AcpTurn(options, opencodeSpawnConfig(options));
+    /* 闸门判的必须是**这一次**要 spawn 的那份环境，不是宿主的 `process.env`：
+       启动环境把 `XDG_CONFIG_HOME` 钉在 app-owned 空根上，按宿主判会让一份
+       子进程根本读不到的 `~/.config/opencode/*` 否决全部 turn。 */
+    const spawnConfig = opencodeSpawnConfig(options);
+    assertNoExternalOpencodeOverrides(spawnConfig.env);
+    return new AcpTurn(options, spawnConfig);
   },
   setup: {
     latestVersion: () => githubLatestVersion("sst/opencode"),

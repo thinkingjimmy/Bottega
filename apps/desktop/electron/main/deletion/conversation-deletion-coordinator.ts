@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node fs/promises durable-write primitives and shared ChatRecord/ChatAttachmentMeta types; drives caller-supplied DeletionCallbacks through fence, memory-policy, drain, delivery, and pre/post resource-release steps
- * [OUTPUT]: Provides ConversationDeletionCoordinator: a monotonic-mode durable memory-intent journal, per-key claim serialization, pre/post resource-release checkpoints, deleted-proven/unknown proof, and idempotent resume-to-completion
+ * [INPUT]: Depends on Node fs/promises durable-write primitives and minimal deletion identity/message snapshots and shared ChatAttachmentMeta types; drives caller-supplied DeletionCallbacks through fence, memory-policy, drain, delivery, and pre/post resource-release steps
+ * [OUTPUT]: Provides ConversationDeletionCoordinator: a durable memory-intent journal with monotonic mode and immutable App retention disposition, per-key claim serialization, pre/post resource-release checkpoints, deleted-proven/unknown proof, and idempotent resume-to-completion
  * [POS]: Main process's sole source of truth for deletion proof; enforces fence→policy→drain→delivery→chat-removal ordering, with receipts and resource checkpoints keyed by operationId
  */
 
@@ -38,7 +38,8 @@ export type DeletionMemoryIntent = Readonly<{
 }>;
 
 export type DeletionRecord = Pick<ChatRecord, "id" | "incarnationId"> &
-  Partial<Pick<ChatRecord, "projectId">>;
+  Partial<Pick<ChatRecord, "projectId">> & { retainedAppId?: string };
+export type DeletionSnapshot = DeletionRecord & Pick<ChatRecord, "messages">;
 
 export type ConversationDeletionResource = {
   id: string;
@@ -114,7 +115,7 @@ export class ConversationDeletionCoordinator {
   constructor(private readonly root: string) {}
 
   async remove(
-    record: ChatRecord,
+    record: DeletionSnapshot,
     callbacks: DeletionCallbacks,
     mode: ConversationDeletionMode = "local-only"
   ) {
@@ -123,7 +124,7 @@ export class ConversationDeletionCoordinator {
   }
 
   prepare(
-    record: ChatRecord,
+    record: DeletionSnapshot,
     callbacks: DeletionCallbacks,
     mode: ConversationDeletionMode = "local-only",
     preparedMemory?: DeletionMemoryIntent
@@ -133,6 +134,7 @@ export class ConversationDeletionCoordinator {
       await mkdir(this.root, { recursive: true });
       const existing = await this.read(key);
       if (existing && existing.stage !== "cleaned") {
+        if (existing.record.retainedAppId !== record.retainedAppId) throw new Error("Deletion disposition changed");
         /* mode 只允许单调升级：用户在 local-only 卡住后改选「删除并重建」，
            不得被旧 journal 静默降级成零 CleanupRequest 的「成功」。 */
         if (existing.mode === "local-only" && mode === "cleanup-and-rebuild") {
@@ -152,6 +154,7 @@ export class ConversationDeletionCoordinator {
         id: record.id,
         incarnationId: record.incarnationId,
         ...(record.projectId ? { projectId: record.projectId } : {}),
+        ...(record.retainedAppId ? { retainedAppId: record.retainedAppId } : {}),
       };
       const memory = preparedMemory ??
         await callbacks.snapshot(deletionRecord, operationId);
@@ -340,6 +343,7 @@ export class ConversationDeletionCoordinator {
         typeof raw.memory.memorySpaceId !== "string" ||
         typeof raw.record.id !== "string" ||
         typeof raw.record.incarnationId !== "string" ||
+        (raw.record.retainedAppId !== undefined && (typeof raw.record.retainedAppId !== "string" || !raw.record.retainedAppId)) ||
         !ORDER.includes(raw.stage as Stage) ||
         !Array.isArray(raw.attachments) ||
         (raw.policyReceiptDigest !== null &&

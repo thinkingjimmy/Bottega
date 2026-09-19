@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on chat-turn/chats/codex contracts, canonical Project scope, Extension generation identities, and Project Tools session receipts
- * [OUTPUT]: Defines backend runtime/auth/static capability facts, typed availability evidence and structured execution failure contracts.
+ * [INPUT]: Uses public transcript/attachment budgets and depends on the public backend identity tuple, chat-turn/chats/codex contracts, canonical Project scope, Extension generation identities, and Project Tools session receipts
+ * [OUTPUT]: Provides shared Agent IPC contracts including descriptor minimum versions, pending terminal actions and availability facts.
  * [POS]: Shared Agent wire truth connecting Electron main, preload, and renderer without exposing mutable scope authority
  */
 
@@ -25,12 +25,8 @@ export type { CodexTurnOptions } from "./codex-ipc";
 // 元组是唯一真相，联合由它派生。反过来写（联合独立声明、数组被联合约束）
 // 会留下一个 fail-open 缺口：往联合里加成员而忘记加进数组，编译器一声不吭，
 // 于是注册表、渲染顺序、zod schema 全部悄悄少一个后端。
-export const AGENT_BACKEND_ORDER = [
-  "codex",
-  "claude",
-  "kimi",
-  "opencode",
-] as const;
+export { AGENT_BACKEND_ORDER } from "@ai-chat/cloud-protocol/chats/options";
+import { AGENT_BACKEND_ORDER } from "@ai-chat/cloud-protocol/chats/options";
 
 export type AgentBackendId = (typeof AGENT_BACKEND_ORDER)[number];
 
@@ -150,6 +146,11 @@ export type BackendInfo = {
   version?: string;
   path?: string;
   latestVersion?: string;
+  minimumVersion?: string;
+  /** Restored from the last launch's snapshot; not yet confirmed by this launch's discovery. */
+  provisional?: true;
+  /** A fixed terminal action is awaiting a return check; no check is running. */
+  setupAction?: "install" | "update" | "login";
   updateAvailable?: boolean;
   /**
    * runtime/auth 探针的原始诊断：CLI 原文与机器事实，永不翻译。
@@ -264,7 +265,7 @@ export const SECTION_ATTACHMENT_COUNT_LIMIT = 4;
 export const SECTION_ATTACHMENT_TOTAL_BYTE_LIMIT = 8 * 1024 * 1024;
 
 /** 工具 detail / 过程文本单条截断上限（决策 7），协议层与持久化层共用 */
-export const TOOL_DETAIL_BYTE_LIMIT = 4 * 1024;
+export { TOOL_DETAIL_BYTE_LIMIT } from "@ai-chat/cloud-protocol/chats/content/budgets";
 
 /* ── 导入历史的工具详情另有一档 ──────────────────────────────────
  * 4 KiB 是原生 turn 的落盘约定：过程条目由我们自己生成，截短一点无非
@@ -272,11 +273,11 @@ export const TOOL_DETAIL_BYTE_LIMIT = 4 * 1024;
  * 日志，剪到 4 KiB 就等于把证据剪掉一半。它仍在 32 KiB 的消息预算之内，
  * 只是把这一格让给真正需要的一方。
  * ────────────────────────────────────────────────────────── */
-export const IMPORTED_TOOL_DETAIL_BYTE_LIMIT = 16 * 1024;
+export { IMPORTED_TOOL_DETAIL_BYTE_LIMIT } from "@ai-chat/cloud-protocol/chats/content/budgets";
 
-export const ATTACHMENT_LIMIT = 8;
+export { ATTACHMENT_LIMIT } from "@ai-chat/cloud-protocol/chats/content/budgets";
 export const ATTACHMENT_BYTE_LIMIT = 8 * 1024 * 1024;
-export const ATTACHMENT_FILENAME_BYTE_LIMIT = 255;
+export { ATTACHMENT_FILENAME_BYTE_LIMIT } from "@ai-chat/cloud-protocol/chats/content/budgets";
 export const AGENT_INPUT_LIMIT = 32;
 export const OPAQUE_REF_BYTE_LIMIT = 256;
 export const IMAGE_DATA_URL_PATTERN = /^data:image\/[a-z0-9+.-]+;base64,/i;
@@ -307,6 +308,7 @@ export type AgentApprovalRequest = {
   command?: string;
   cwd?: string;
   reason?: string;
+  diff?: string;
   networkHost?: string;
   canAcceptForSession: boolean;
   agentName?: string;
@@ -534,6 +536,7 @@ export type SessionServiceTierEffective = Readonly<{
   at: number;
 }>;
 
+export type ControlResult = "applied" | "already-resolved";
 export type TurnSnapshot = {
   generation?: number;
   terminalSeq?: number;
@@ -562,6 +565,7 @@ export type TurnSnapshot = {
     abandon: boolean;
   }>;
   draft: SerializedTurnDraft;
+  interactionResults?: import("@ai-chat/cloud-protocol/turns/live").InteractionResult[];
   approvals: AgentApprovalRequest[];
   userInputs: AgentUserInputRequest[];
   liveSubagents: Record<string, AgentLiveSubagent>;
@@ -597,13 +601,13 @@ export type AgentEventBody =
       type: "approval-requested";
       approval: AgentApprovalRequest;
     }
-  | { requestId: string; type: "approval-closed"; approvalId: string }
+  | { requestId: string; type: "approval-closed"; approvalId: string; resolvedBy?: import("@ai-chat/cloud-protocol/turns/live").InteractionSource }
   | {
       requestId: string;
       type: "user-input-requested";
       request: AgentUserInputRequest;
     }
-  | { requestId: string; type: "user-input-closed"; userInputId: string }
+  | { requestId: string; type: "user-input-closed"; userInputId: string; resolvedBy?: import("@ai-chat/cloud-protocol/turns/live").InteractionSource }
   | {
       requestId: string;
       type: "subagent-update";
@@ -651,6 +655,8 @@ export type AgentEvent = AgentEventBody & {
 // waiting 是「turn 还在跑，但卡在你身上」——存在未闭合的审批或追问。
 // 它不是 running 的替代而是其子态：running 为假时 waiting 必假。
 export type ActivityTurnIdentity = {
+  /** Unread sequence domain; absent for the native event stream. */
+  sourceId?: string;
   incarnationId?: string;
   requestId?: string;
   generation?: number;
@@ -680,6 +686,7 @@ export const AGENT_CHANNEL = {
   turnDetach: "agent:turn-detach",
   abandonFatalTurn: "agent:abandon-fatal-turn",
   acknowledgeCleanupFailure: "agent:acknowledge-cleanup-failure",
+  abandonResumeFailure: "agent:abandon-resume-failure",
   retryWithoutSession: "agent:retry-without-session",
   retrySameSession: "agent:retry-same-session",
   activity: "agent:activity",
@@ -691,8 +698,8 @@ export const AGENT_CHANNEL = {
 
 export type AgentBridgeApi = {
   cancel: (requestId: string) => void;
-  respondApproval: (response: AgentApprovalResponse) => Promise<void>;
-  respondUserInput: (response: AgentUserInputResponse) => Promise<void>;
+  respondApproval: (response: AgentApprovalResponse) => Promise<ControlResult>;
+  respondUserInput: (response: AgentUserInputResponse) => Promise<ControlResult>;
   attachTurn: (
     conversationId: string,
     attachmentId: string
@@ -700,6 +707,7 @@ export type AgentBridgeApi = {
   detachTurn: (conversationId: string, attachmentId: string) => void;
   abandonFatalTurn: (conversationId: string) => Promise<void>;
   acknowledgeCleanupFailure: (conversationId: string) => Promise<void>;
+  abandonResumeFailure: (requestId: string, retryToken: string) => Promise<void>;
   retryWithoutSession: (requestId: string, retryToken: string) => Promise<void>;
   retrySameSession: (requestId: string, retryToken: string) => Promise<void>;
   onEvent: (callback: (event: AgentEvent) => void) => () => void;

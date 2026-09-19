@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, the locale catalog, the shared AppRecordProjection/PresetAppSummary read models, the shared GitHub repo URL normalizer, apps-client, and an optional fixed App-window identity
- * [OUTPUT]: Provides AppsProvider/useApps/useOptionalApps carrying main's AppRecordProjection end to end, with epoch-fenced snapshot adoption, buffered App events, explicit list state, retryable refresh, durable global pins, deletion-aware cleanup, full main-window operations, or a fixed-App projection that never requests presets
+ * [INPUT]: Depends on React Context, the locale catalog, the shared AppRecordProjection/PresetAppSummary read models, the shared GitHub repo URL normalizer, apps-client, startup marks, and an optional fixed App-window identity
+ * [OUTPUT]: Provides AppsProvider/useApps/useOptionalApps carrying main's AppRecordProjection end to end, with epoch-fenced snapshot adoption, buffered App events, explicit list state, the apps-loaded startup mark, retryable refresh, durable global pins, deletion-aware cleanup, full main-window operations, or a fixed-App projection that never requests presets
  * [POS]: Renderer Apps state owner; fixed App windows retain one exact record while the main product owns global catalogs, management projections, and stale-operation eviction
  */
 
@@ -53,7 +53,8 @@ import {
   ensureAppChatSlot,
   retryAppSkill,
 } from "@/lib/apps-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
+import { markStartup } from "@/lib/startup-marks";
 import { normalizeGithubRepoUrl } from "../../../shared/github-repo";
 import { useAppTranslation } from "./i18n-provider";
 
@@ -307,6 +308,7 @@ export function AppsProvider({
         listRefreshing.current = false;
         bufferedEvents.current = [];
         setLoading(false);
+        markStartup("apps-loaded");
       });
     /* 预设目录是 main 内的编译期常量，唯一失败面是 IPC 桥缺席——与 listApps
      * 同一故障类，页面级告警由它承担，这里降级记录即可。 */

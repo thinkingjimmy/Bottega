@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides fr settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut-only settings hints, and task failures, without transient settings loading copy.
+ * [OUTPUT]: Provides fr settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut conflict guidance, and task failures, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -47,6 +47,7 @@ export const presenceFr = {
   "more": "{{tasks}} de plus",
   "unavailable": "Indisponible",
   "recovered": "La fenêtre a été restaurée après un problème. Les conversations enregistrées sont disponibles ; les brouillons non enregistrés peuvent avoir été perdus.",
+  "backgroundNotice": "Bottega continue en arrière-plan. Quittez depuis la barre de menus.",
   "closeFailed": "Le brouillon n’a pas pu être transféré. Réessayez de fermer la fenêtre.",
   "retry": "Réessayer",
   "systemSettings": "Ouvrir Réglages Système",

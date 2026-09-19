@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends only on SQLite DDL supported by the packaged Electron runtime
- * [OUTPUT]: Complete candidate Chat schema v6, including NOT NULL options, portable classification, scoped outbox/receipts, mirrors, candidates and independent retained-source roots.
- * [POS]: The only Chat SQLite schema; it is created whole on a fresh database and never altered in place — repositories may depend on it but may not create ad-hoc tables
+ * [INPUT]: Depends on the cloud schema and SQLite DDL supported by the packaged Electron runtime.
+ * [OUTPUT]: Complete Chat schema v8, including NOT NULL options, portable classification, the manual sort_key, scoped outbox/receipts, mirrors, candidates and retained-source roots.
+ * [POS]: Canonical fresh-database schema; supported v6/v7 identities enter through explicit upgrades before repository access.
  */
 
 import { CHAT_CLOUD_SCHEMA } from "../cloud/schema";
@@ -32,6 +32,8 @@ CREATE TABLE chats (
   created_at INTEGER NOT NULL CHECK (created_at >= 0),
   updated_at INTEGER NOT NULL CHECK (updated_at >= created_at),
   archived_at INTEGER,
+  -- NULL keeps creation order; REAL preserves fractional positions between neighbors.
+  sort_key REAL,
   -- 每条 Chat 从诞生起就有身份，只读导入也不例外：读侧因此永远不必从
   -- 代际 id 摘一个假 incarnation，续聊也只是沿用它，而不是换一个新的。
   incarnation_id TEXT NOT NULL,

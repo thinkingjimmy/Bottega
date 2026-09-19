@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the one-shot build manifest (appPath/appOutDir/resourcesPath/installers), @electron/asar listPackage/extractFile, runtime-dependencies.json, electron-builder.yml extraResources targets, and an optional release-budgets.json
- * [OUTPUT]: Verifies the packaged tree structurally (every manifest package present in the ASAR or unpacked tree with matching name and version, every excludedGlobs match absent, every extraResources target present), writes release/dist-size-receipt.json with installer bytes and unpackedPayloadBytes, and asserts current-platform budgets when release-budgets.json declares them; platforms without budget keys are measure-only, cross-platform color tray resources plus macOS templates and native executable checks.
+ * [INPUT]: Depends on the one-shot build manifest (appPath/appOutDir/resourcesPath/installers), @electron/asar listPackage/extractFile, runtime-dependencies.json, electron-builder.yml extraResources targets, the original sumo ISC notice, and an optional release-budgets.json
+ * [OUTPUT]: Verifies the packaged tree structurally (every manifest package present in the ASAR or unpacked tree with matching name and version, every excludedGlobs match absent, every extraResources target present and crypto notice bytes exact), writes release/dist-size-receipt.json with installer bytes and unpackedPayloadBytes, and asserts current-platform budgets when release-budgets.json declares them; platforms without budget keys are measure-only, cross-platform color tray resources plus macOS templates and native executable checks.
  * [POS]: Production build verification shared by the private dist smoke; it contains no behavior test so the same file can later run inside the public build job. The dependency manifest owns what must exist, this file proves the packaged bytes agree
  */
 
@@ -105,6 +105,8 @@ export async function verifyPackagedPayload({ desktop, buildManifest, log = (lin
   /* 3. extraResources 的每个目标都必须在 Resources 下存在。 */
   const absent = extraResourceTargets(desktop).filter((target) => !existsSync(join(resources, target)));
   assert.equal(absent.length, 0, `extraResources 目标缺失：${absent.join(", ")}`);
+  assert(readFileSync(join(resources, "licenses/libsodium-0.8.4.txt")).equals(
+    readFileSync(join(desktop, "../../packages/cloud-crypto/NOTICE.txt"))), "Packaged crypto ISC notice bytes differ");
   const presenceResources = ["trayIcon.png", "trayIcon@2x.png"];
   if (buildManifest.platform === "darwin") presenceResources.push("trayTemplate.png", "trayTemplate@2x.png", "bin/screen-bridge");
   for (const name of presenceResources) {

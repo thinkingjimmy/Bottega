@@ -70,6 +70,7 @@ export function claudeAdapterEnvironment(
     ...selectClaudeProductEnvironment(source),
     ELECTRON_RUN_AS_NODE: "1",
     CLAUDE_CODE_EXECUTABLE: runtime.executable,
+    CLAUDE_CODE_ARTIFACT_AUTO_OPEN: "0",
     CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1",
   } satisfies NodeJS.ProcessEnv;
 }
@@ -78,5 +79,5 @@ export function claudeAdapterEnvironment(
 export const claudeAcpLaunch: AcpLauncher = (runtime, overlay) => ({
   command: process.execPath,
   args: claudeAdapterArgs(),
-  env: { ...claudeAdapterEnvironment(runtime), ...overlay?.processEnv },
+  env: { ...claudeAdapterEnvironment(runtime), ...overlay?.processEnv, CLAUDE_CODE_ARTIFACT_AUTO_OPEN: "0" },
 });

@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node child_process/path, shared attachment, limitations, Gallery header parser and codec framing; Receiving incredible image bytes
- * [OUTPUT]: Provides single-parallel, borderline queues, independent process groups, convergence seatbelts, V8 heap/RSS/pixel triple budget, overtime and the entire group TERM→KILL→reap
- * [POS]: The parent process supervisor for the codec bases/media-host; The image decoding only occurs in the locked version of the sharp subprocess, main only as a secondary header
+ * [INPUT]: Depends on Node process supervision, attachment budgets, image headers and bounded codec frames.
+ * [OUTPUT]: Provides bounded normalization/thumbnail jobs, isolated process groups, seatbelts, V8/RSS/pixel budgets and cancellation.
+ * [POS]: Main supervises the pinned Sharp subprocess and validates its output without decoding pixels itself.
  */
 
 import {
@@ -25,7 +25,7 @@ import { decodeCodecFrames, encodeCodecFrames } from "./protocol";
 
 const INPUT_LIMIT = 64 * 1024 * 1024;
 const STDERR_LIMIT = 64 * 1024;
-// child 出流恒为单帧 ≤8MiB 产物 + terminal；64B 余量覆盖帧头。
+// At most 50 MB across bounded frames; 64 bytes cover all frame headers and the terminal.
 const OUTPUT_WIRE_LIMIT = BASE_ATTACHMENT_BYTE_LIMIT + 64;
 const TIMEOUT_MS = 10_000;
 const KILL_GRACE_MS = 500;
@@ -58,6 +58,15 @@ export class ImageCodecHost {
   constructor(private readonly options: ImageCodecHostOptions = {}) {}
 
   normalize(bytes: Buffer, signal?: AbortSignal) {
+    return this.enqueue(bytes, signal);
+  }
+
+  thumbnail(bytes: Buffer, maxEdge: number, signal?: AbortSignal) {
+    if (!Number.isSafeInteger(maxEdge) || maxEdge < 1 || maxEdge > 4096) return Promise.reject(codecError("BUDGET_EXCEEDED"));
+    return this.enqueue(bytes, signal, maxEdge);
+  }
+
+  private enqueue(bytes: Buffer, signal?: AbortSignal, maxEdge?: number) {
     if (!bytes.length || bytes.length > INPUT_LIMIT) {
       return Promise.reject(codecError("BUDGET_EXCEEDED"));
     }
@@ -66,7 +75,7 @@ export class ImageCodecHost {
     }
     this.queued += 1;
     this.queuedBytes += bytes.length;
-    const task = this.tail.then(() => this.run(bytes, signal));
+    const task = this.tail.then(() => this.run(bytes, signal, maxEdge));
     this.tail = task.then(() => undefined, () => undefined);
     return task.finally(() => {
       this.queued -= 1;
@@ -81,7 +90,7 @@ export class ImageCodecHost {
     );
   }
 
-  private async run(bytes: Buffer, signal?: AbortSignal) {
+  private async run(bytes: Buffer, signal?: AbortSignal, maxEdge?: number) {
     const now = Date.now();
     this.crashes = this.crashes.filter(
       (timestamp) => now - timestamp < CRASH_WINDOW_MS
@@ -90,9 +99,14 @@ export class ImageCodecHost {
       throw codecError("HOST_UNAVAILABLE");
     }
     try {
-      const wire = await runCodecProcess(bytes, signal, this.options);
+      if (signal?.aborted) throw codecError("CANCELLED");
+      const wire = await runCodecProcess(bytes, signal, this.options, maxEdge);
       const output = decodeOutput(wire);
       assertCodecOutput(output);
+      if (maxEdge !== undefined) {
+        const header = parseAttachmentImageHeader(output);
+        if (header.extension !== "png" || Math.max(header.width, header.height) > maxEdge) throw codecError("PROTOCOL");
+      }
       return output;
     } catch (cause) {
       if (isHostCrash(cause)) this.crashes.push(Date.now());
@@ -115,7 +129,8 @@ function decodeOutput(wire: Buffer) {
 async function runCodecProcess(
   bytes: Buffer,
   signal: AbortSignal | undefined,
-  options: ImageCodecHostOptions
+  options: ImageCodecHostOptions,
+  maxEdge?: number
 ) {
   const executable = options.executable ?? process.execPath;
   const entry = canonical(
@@ -123,7 +138,7 @@ async function runCodecProcess(
   );
   const platform = options.platform ?? process.platform;
   const scratch = await mkdtemp(join(tmpdir(), "ai-chat-codec-"));
-  const command = codecCommand(executable, entry, platform, scratch);
+  const command = codecCommand(executable, entry, platform, scratch, maxEdge === undefined ? [] : ["--thumbnail", String(maxEdge)]);
   const spawnProcess = options.spawnProcess ?? spawn;
   const grouped = platform !== "win32";
   try {
@@ -151,12 +166,13 @@ function codecCommand(
   executable: string,
   entry: string,
   platform: NodeJS.Platform,
-  scratch: string
+  scratch: string,
+  requestArgs: string[]
 ) {
   if (platform !== "darwin") {
     return {
       executable,
-      args: [`--max-old-space-size=${V8_HEAP_LIMIT_MIB}`, entry],
+      args: [`--max-old-space-size=${V8_HEAP_LIMIT_MIB}`, entry, ...requestArgs],
     };
   }
   return {
@@ -167,6 +183,7 @@ function codecCommand(
       executable,
       `--max-old-space-size=${V8_HEAP_LIMIT_MIB}`,
       entry,
+      ...requestArgs,
     ],
   };
 }

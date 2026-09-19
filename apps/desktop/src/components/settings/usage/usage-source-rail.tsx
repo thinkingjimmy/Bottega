@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Depends on i18n, shared USAGE_SOURCE_ORDER/UsageQueryTarget, lib/agent-backends branded icons, compact-token formatting, the sibling UsageInfoTip, settings-layout's SettingsSurface, and ui Tabs/Skeleton
- * [OUTPUT]: Provides UsageSourceRail, a single-surface tab rail where each tab pairs a source's name with its lifetime token for horizontal comparison
- * [POS]: settings/usage's source-navigation surface for horizontal comparison; the tab selector is pure data while the panel content is supplied via children
+ * [INPUT]: Depends on React useId, i18n, shared usage source contracts, branded Agent icons, token formatting, UsageInfoTip, SettingsSurface, and UI Tabs/Skeleton.
+ * [OUTPUT]: Provides UsageSourceRail with source totals and a persistent active panel that preserves layout and chart preferences across source changes.
+ * [POS]: settings/usage's source-navigation surface; the caller supplies the selected source's content without remounting the panel.
  */
 
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { Layers } from "lucide-react";
 import {
   USAGE_SOURCE_ORDER,
@@ -63,6 +63,7 @@ export function UsageSourceRail({
   children: ReactNode;
 }) {
   const { t } = useAppTranslation();
+  const panelId = useId();
   return (
     <Tabs
       value={value}
@@ -82,6 +83,7 @@ export function UsageSourceRail({
               <TabsTrigger
                 key={source.target}
                 value={source.target}
+                aria-controls={panelId}
                 data-testid={`usage-tab-${source.target}`}
                 className="h-auto flex-none cursor-pointer justify-start gap-2 rounded-none px-4 py-3 text-sm @max-xl:min-w-0 @max-xl:flex-1"
               >
@@ -116,13 +118,9 @@ export function UsageSourceRail({
             );
           })}
         </TabsList>
-        {/* 面板只画一次：没被选中的页签在 Radix 里根本不挂载，调用方也就
-            不必为四个源各备一份 props。 */}
-        {SOURCES.map((source) => (
-          <TabsContent key={source.target} value={source.target}>
-            {source.target === value ? children : null}
-          </TabsContent>
-        ))}
+        {/* Keep the panel mounted: removing it between sources collapses the
+            scroll range and resets chart preferences before the next panel mounts. */}
+        <TabsContent id={panelId} value={value}>{children}</TabsContent>
       </SettingsSurface>
     </Tabs>
   );

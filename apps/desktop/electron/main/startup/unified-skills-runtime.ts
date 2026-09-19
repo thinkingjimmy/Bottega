@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on initialized Extension integration, BackendRuntimeRegistry, SkillsCatalog, UnifiedSkillsService, and userData/home/env/folder chooser
- * [OUTPUT]: Provides createUnifiedSkillsService with durable Library-first initialization, installed-runtime authority, and catalog invalidation wiring
+ * [OUTPUT]: Provides createUnifiedSkillsService with a required folder root, durable Library-first initialization, installed-runtime authority, and catalog invalidation wiring
  * [POS]: Post-cutover startup composition for Unified Skills; it contains no Codex-native or projection bridge
  */
 
@@ -12,6 +12,7 @@ import type { LibraryCustodyProbe } from "../skills-management/library-store";
 
 export async function createUnifiedSkillsService(input: Readonly<{
   userData: string;
+  libraryRoot: () => string | null;
   userHome: string;
   env: NodeJS.ProcessEnv;
   extensions: AppExtensionIntegration;
@@ -21,6 +22,7 @@ export async function createUnifiedSkillsService(input: Readonly<{
 }>) {
   const service = new UnifiedSkillsService({
     userData: input.userData,
+    libraryRoot: input.libraryRoot,
     userHome: input.userHome,
     env: input.env,
     registry: input.extensions.registry,

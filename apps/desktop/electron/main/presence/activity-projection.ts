@@ -45,10 +45,13 @@ export class ActivityProjection<TTurn extends RegistryTurn> {
   private refresh() {
     const now = this.ports.now?.() ?? Date.now();
     const tasks: PresenceTask[] = [];
+    const remoteTasks = this.ports.activity.remoteTasks?.() ?? [];
+    const remoteIds = new Set(remoteTasks.map(task => task.chatId));
     const newTerminals: TerminalPhase[] = [];
     const activeKeys = new Set<string>();
     let nextExpiry = Infinity;
     for (const entry of this.ports.turns.liveEntries()) {
+      if (remoteIds.has(entry.conversationId)) continue;
       if (!entry.origin || !["manual", "relay"].includes(entry.origin.kind)) continue;
       const chat = this.ports.chats.store.getChatRef(entry.conversationId);
       if (!chat || (entry.incarnationId && chat.incarnationId !== entry.incarnationId)) continue;
@@ -65,6 +68,17 @@ export class ActivityProjection<TTurn extends RegistryTurn> {
       tasks.push({ chatId: chat.id, incarnationId: chat.incarnationId, requestId: entry.requestId,
         generation: entry.generation, backend: entry.backend, title: chat.title?.slice(0, 160) ?? null,
         context: null, startedAt: entry.startedAt || null, phase, subtaskCount: entry.currentSubagents?.size ?? 0 });
+    }
+    for (const task of remoteTasks) {
+      const key = JSON.stringify([task.chatId, task.incarnationId, task.requestId, task.generation]);
+      activeKeys.add(key);
+      if (finished(task.phase)) {
+        if (!this.terminalAt.has(key)) newTerminals.push(task.phase);
+        const at = this.terminalAt.get(key) ?? now; this.terminalAt.set(key, at);
+        if (now >= at + 5_000) continue;
+        nextExpiry = Math.min(nextExpiry, at + 5_000);
+      } else this.terminalAt.delete(key);
+      tasks.push(task);
     }
     for (const pending of this.ports.pending?.() ?? []) {
       const existing = tasks.findIndex((task) => task.chatId === pending.conversationId);

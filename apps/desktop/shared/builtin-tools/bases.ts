@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod, shared Base schemas, and builtin-tools platform queries/annotations/spec contracts
- * [OUTPUT]: Provides the single `read_base` read spec plus Base mutation/export specs, six row-backed view schemas, Gallery/Chart configuration, and `$ref`-free wire schemas; disk export is explicitly side-effecting and Plan-excluded
+ * [OUTPUT]: Provides Base read/export specs, stable Agent batch keys and result pagination, explicit atomic groups, six view schemas and reference-free wire schemas.
  * [POS]: The builtin-tools Base-domain authority; it maps Base permissions separately from environmental side-effect annotations
  */
 
@@ -33,6 +33,13 @@ import {
 
 const basesHint =
   "Base 是当前 chat 可写的本地数据表：优先使用 chat 自有 Base，无自有 Base 时使用所属 Project 的共享 Base；用户要建表格/记账/清单时优先使用 Base 工具，不要在工作区另建电子表格文件。操作本轮已附加 App 的 Base 时必须显式传 target。";
+const batchShape = {
+  batch_id: entityId.optional().describe("Use the returned batchKey to check the original items, including in a later turn. Never change an existing item's payload. Use a new batch key only for corrected failed items or an intentional new edit."),
+  result_offset: z.number().int().nonnegative().max(20000).default(0).describe("For a truncated result, repeat the original rows with batch_id set to the returned batchKey and this offset set to nextResultOffset. Successful items are not replayed."),
+  atomic: z.boolean().default(false).describe("Keep the entire request indivisible. Each row is already atomic. Oversized atomic groups are rejected, never split."),
+};
+const batchHint = " Returns per-field results and counts. pending-sync means saved locally, never cloud success. Repeat the original batch to check its receipts; only conflicted/rejected items need a corrected retry with a new batch identity.";
+const validBatchPage = (value: { result_offset: number; batch_id?: string }) => value.result_offset === 0 || Boolean(value.batch_id);
 /* target 的语义必须写在参数自己身上：工具 description 走 tools/list，是四家
    CLI 都必然转交模型的通道；server-level instructions 则不是（部分 CLI 丢弃）。 */
 const appTarget = z
@@ -266,20 +273,21 @@ export const BASE_TOOL_SPECS = [
     name: "base_insert_rows",
     domainId: "bases",
     access: "mutate",
-    description: "按调用方稳定 row id 幂等插入当前 Base；同 id 同内容跳过、不同内容返回 409，单批最多 500 行。",
+    description: "Insert up to 500 rows using stable row IDs; equal rows are idempotent and differing existing rows produce item conflicts." + batchHint,
     inputSchema: z
       .object({
         rows: z.array(baseRowSchema).min(1).max(BASE_INSERT_LIMIT),
         target: appTarget,
+        ...batchShape,
       })
-      .strict(),
+      .strict().refine(validBatchPage, "result_offset requires the original batchKey in batch_id"),
     annotations: mutation,
   },
   {
     name: "base_patch_rows",
     domainId: "bases",
     access: "mutate",
-    description: "字段级 LWW 批量 patch 当前 Base；null 清空单元格，目标行被并发删除时报 404，单批最多 100 行。",
+    description: "Patch up to 100 rows by field; null clears a cell. Each row's fields commit atomically; missing rows and invalid fields produce item results." + batchHint,
     inputSchema: z
       .object({
         rows: z
@@ -294,21 +302,23 @@ export const BASE_TOOL_SPECS = [
           .min(1)
           .max(100),
         target: appTarget,
+        ...batchShape,
       })
-      .strict(),
+      .strict().refine(validBatchPage, "result_offset requires the original batchKey in batch_id"),
     annotations: mutation,
   },
   {
     name: "base_delete_rows",
     domainId: "bases",
     access: "mutate",
-    description: "删除当前 Base 的行，单批最多 100 行；不存在的 id 是 no-op。",
+    description: "Delete up to 100 rows using stable item identities; missing IDs are idempotent." + batchHint,
     inputSchema: z
       .object({
         row_ids: z.array(entityId).min(1).max(Math.min(100, BASE_DELETE_LIMIT)),
         target: appTarget,
+        ...batchShape,
       })
-      .strict(),
+      .strict().refine(validBatchPage, "result_offset requires the original batchKey in batch_id"),
     annotations: { ...mutation, destructiveHint: true },
   },
 ] as const satisfies readonly BuiltinToolSpec[];

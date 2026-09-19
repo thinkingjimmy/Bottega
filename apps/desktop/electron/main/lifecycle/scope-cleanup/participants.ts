@@ -37,22 +37,36 @@ export function storageCleanupParticipants(owners: {
       const proofs = [];
       for (const base of plan.bases) {
         const current = owners.bases.get(base.ownerKey, base.ownerInstanceId);
-        if (!current) throw new Error("CLEANUP_BASE_UNAVAILABLE");
-        await owners.bases.sync.cleanup(base.ownerKey, base.ownerInstanceId, plan.scope, true);
-        proofs.push({ ...base, local: true });
+        if (!current) {
+          if (base.retain) throw new Error("CLEANUP_BASE_UNAVAILABLE");
+          proofs.push({ ...base, removed: true }); continue;
+        }
+        if (base.retain) {
+          const retainedApp = owners.apps.portable.list().find(entry => sameScope(entry.scope, plan.scope) &&
+            entry.deletion?.retainBase && entry.deletion.baseId === base.ownerInstanceId)?.deletion;
+          const deleted = owners.bases.sync.read(base.ownerKey, base.ownerInstanceId).tombstones.includes("base");
+          await owners.bases.sync.cleanup(base.ownerKey, base.ownerInstanceId, plan.scope, true, deleted ? undefined : retainedApp);
+        }
+        else {
+          const envelope = owners.bases.sync.read(base.ownerKey, base.ownerInstanceId);
+          if (envelope.cloudState !== "mirror" || !sameScope(envelope.scope, plan.scope)) throw new Error("CLEANUP_BASE_RETENTION_CHANGED");
+          await owners.bases.remove(base.ownerKey, base.ownerInstanceId);
+        }
+        proofs.push({ ...base, local: base.retain });
       }
       return proofs;
     },
     projects: async plan => {
       const changed = owners.projects.list().filter(project => project.sync && sameScope(project.sync.scope, plan.scope));
-      if (changed.some(project => !plan.projectIds.includes(project.id))) throw new Error("CLEANUP_PROJECT_PLAN_INCOMPLETE");
-      await owners.projects.portable.detachScope(plan.scope);
+      if (changed.some(project => ![...plan.projectIds, ...(plan.discardedProjectIds ?? [])].includes(project.id))) throw new Error("CLEANUP_PROJECT_PLAN_INCOMPLETE");
+      const retainedApps = owners.apps.portable.list().flatMap(entry => sameScope(entry.scope, plan.scope) && entry.deletion?.retainBase ? [entry.deletion] : []);
+      await owners.projects.portable.detachScope(plan.scope, plan.discardedProjectIds, retainedApps);
       return { retained: plan.projectIds };
     },
     apps: async plan => {
-      const changed = owners.apps.portable.list().filter(entry => sameScope(entry.scope, plan.scope));
-      if (changed.some(entry => !plan.appIds.includes(entry.descriptor.appId))) throw new Error("CLEANUP_APP_PLAN_INCOMPLETE");
-      await owners.apps.portable.detachScope(plan.scope);
+      const changed = [...owners.apps.portable.list(), ...owners.apps.portable.pending()].filter(entry => sameScope(entry.scope, plan.scope));
+      if (changed.some(entry => ![...plan.appIds, ...(plan.discardedAppIds ?? [])].includes(entry.descriptor.appId))) throw new Error("CLEANUP_APP_PLAN_INCOMPLETE");
+      await owners.apps.portable.detachScope(plan.scope, plan.discardedAppIds);
       return { retained: plan.appIds };
     },
     chats: async plan => {

@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React, router, Apps i18n, AppsProvider, and AppDialog form primitives
- * [OUTPUT]: Provides SaveAsAppDialog with durable ambiguous-attempt replay using the exact requestId and payload, explained above the fields it freezes
+ * [INPUT]: Depends on React, router, Apps i18n, AppsProvider, cloud conversion review, and AppDialog form primitives.
+ * [OUTPUT]: Provides original-request conversion replay, classification comparison and retryable keep-original decisions, with uncertainty explained above frozen fields.
  * [POS]: Sole Base-to-App conversion form shared by full pages, panels, and the Sidebar
  */
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { ConversionStatus, useConversionReview } from "./save/cloud-review";
 import { useNavigate } from "react-router";
 import {
   AppDialogBody,
@@ -24,10 +25,11 @@ import { Input } from "@ai-chat/ui/components/ui/input";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useApps } from "@/components/providers/apps-provider";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { SaveAsAppRejectedError } from "@/lib/apps-client";
 import type { SaveAsAppInput } from "../../../../shared/apps-ipc";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import type { ConversionReview } from "../../../../shared/cloud/conversion/model";
 
 const ICONS = ["📦", "📊", "🧭", "🗂️", "💡", "🧰"] as const;
 type SaveAttempt = Readonly<{ input: Readonly<SaveAsAppInput> }>;
@@ -51,11 +53,11 @@ export function SaveAsAppDialog({
     attempt?.input.chatId === chatId
       ? attempt
       : pendingAttempts.get(chatId) ?? null;
-  const setAttempt = (next: SaveAttempt | null) => {
+  const setAttempt = useCallback((next: SaveAttempt | null) => {
     if (next) pendingAttempts.set(chatId, next);
     else pendingAttempts.delete(chatId);
     setAttemptState(next);
-  };
+  }, [chatId]);
   if (!open) return null;
   return (
     <OpenSaveAsAppDialog
@@ -93,13 +95,29 @@ function OpenSaveAsAppDialog({
     (attempt?.input.icon as (typeof ICONS)[number]) ?? "📦"
   );
   const [busy, setBusy] = useState(false);
+  const [decisionFailed, setDecisionFailed] = useState(false);
   const [error, setError] = useState(
     attempt ? t("apps.saveAs.uncertain") : ""
   );
   const submitting = useRef(false);
+  const nameInput = useRef<HTMLInputElement>(null);
+  const receiveReview = useCallback((review: ConversionReview | null) => {
+    const restored = review?.input;
+    if (restored) {
+      onAttemptChange({ input: Object.freeze(restored) }); setName(restored.name); setIcon(restored.icon as (typeof ICONS)[number]);
+    }
+  }, [onAttemptChange]);
+  const conversion = useConversionReview(chatId, receiveReview);
+  const keepOriginal = async () => {
+    if (submitting.current) return;
+    submitting.current = true; setBusy(true); setError(""); setDecisionFailed(false);
+    try { await conversion.keepOriginal(); onAttemptChange(null); requestAnimationFrame(() => nameInput.current?.focus()); }
+    catch { setDecisionFailed(true); setError(t("apps.saveAs.cloud.reviewFailed")); }
+    finally { submitting.current = false; setBusy(false); }
+  };
 
   const submit = async () => {
-    if (submitting.current) return;
+    if (submitting.current || conversion.checking || conversion.failed || conversion.review?.state === "conflicted") return;
     const normalized = name.trim();
     if (!attempt && !normalized) {
       setError(t("apps.saveAs.enterName"));
@@ -129,17 +147,16 @@ function OpenSaveAsAppDialog({
         onAttemptChange(null);
       }
       setError(errorMessage(cause, t("apps.saveAs.failed")));
+      await conversion.refresh();
     } finally {
       submitting.current = false;
       setBusy(false);
     }
   };
 
-  /* 冻结态的解释要落在被冻结的东西上面。重放态把名称与图标一起锁死，而
-     唯一的说明此前是弹窗**底部**一行红字——读者读到它之前，人已经在点那个
-     点不动的输入框了。 */
+  // Explain a frozen replay before the fields the user cannot edit.
   const frozen = Boolean(attempt);
-  const errorNode = error ? (
+  const errorNode = error && (decisionFailed || !conversion.review) ? (
     <p className="text-[13px]/[1.45] text-destructive" role="alert">
       {error}
     </p>
@@ -147,7 +164,7 @@ function OpenSaveAsAppDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <AppDialogContent aria-busy={busy}>
+      <AppDialogContent aria-busy={busy || conversion.checking}>
         <DialogHeader className="mb-5 shrink-0 gap-0 text-left">
           <DialogTitle className="text-xl/7 font-semibold">
             {t("apps.saveAs.title")}
@@ -163,9 +180,10 @@ function OpenSaveAsAppDialog({
               {t("apps.saveAs.name")}
             </span>
             <Input
+              ref={nameInput}
               autoFocus
               size="lg"
-              disabled={busy || frozen}
+              disabled={busy || conversion.checking || frozen}
               maxLength={120}
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -183,14 +201,11 @@ function OpenSaveAsAppDialog({
                 <Button
                   aria-label={t("apps.saveAs.chooseIcon", { icon: candidate })}
                   aria-pressed={icon === candidate}
-                  /* 28px 方格里 18px 的字面图形，六个挨在一起——选中与未选中
-                     只差一层 secondary 浅灰底，在这套无强调色的配色里几乎读不
-                     出来。方格放到 40px，选中态在填色之外再加一道前景描边。 */
                   className={cn(
                     "size-10 rounded-xl text-xl",
                     icon === candidate && "border-foreground/40"
                   )}
-                  disabled={busy || frozen}
+                  disabled={busy || conversion.checking || frozen}
                   key={candidate}
                   onClick={() => setIcon(candidate)}
                   size="icon"
@@ -202,6 +217,8 @@ function OpenSaveAsAppDialog({
               ))}
             </div>
           </fieldset>
+          {conversion.review && <ConversionStatus review={conversion.review} busy={busy || conversion.checking} keepOriginal={() => void keepOriginal()} />}
+          {conversion.failed && <p role="alert" className="text-destructive text-sm">{t("apps.saveAs.cloud.reviewFailed")}</p>}
           {!frozen && errorNode}
         </AppDialogBody>
         <DialogFooter className="mt-5 shrink-0 sm:gap-3">
@@ -215,15 +232,13 @@ function OpenSaveAsAppDialog({
           >
             {t("common.cancel")}
           </Button>
-          {/* 忙态只加一颗 spinner，文案一个字不动：换成「Creating…」会让按钮
-              在按下的那一刻改变宽度，整排页脚跟着抖一下。 */}
           <Button
-            disabled={busy || !name.trim()}
-            onClick={() => void submit()}
+            disabled={busy || conversion.checking || !name.trim() || conversion.review?.state === "conflicted"}
+            onClick={() => conversion.failed ? void conversion.refresh() : void submit()}
             size="pill"
           >
             {busy && <Spinner />}
-            {t("apps.saveAs.submit")}
+            {conversion.review || conversion.failed ? t("apps.saveAs.cloud.retry") : t("apps.saveAs.submit")}
           </Button>
         </DialogFooter>
       </AppDialogContent>

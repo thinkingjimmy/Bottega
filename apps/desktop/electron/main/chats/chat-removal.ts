@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ChatStore, ChatDeletionDriver advisory/resource phases, conversation lifecycle/cancellation ports, optional App chat deactivation, and main/errors
- * [OUTPUT]: Provides ChatRemovalController with purge-wide read-only admission for renderer, App-held, purge, and Project-held deletion paths
+ * [OUTPUT]: Provides receipt-before-cleanup cloud handoff for native/bulk deletion and separate App-held retained-transcript disposition.
  * [POS]: The chats deletion orchestration boundary; ChatsService delegates removal while durable deletion details remain in ChatDeletionDriver
  */
 
@@ -24,12 +24,17 @@ type ChatRemovalPorts = {
 };
 
 export class ChatRemovalController {
+  private cloudRemoval: ((chatId: string) => Promise<void>) | null = null;
   private appDeactivation: ((
     chat: ChatLifecycleFacts,
     action: "archive" | "delete"
   ) => Promise<void>) | null = null;
 
   constructor(private readonly ports: ChatRemovalPorts) {}
+  configureCloudRemoval(handler: (chatId: string) => Promise<void>) {
+    if (this.cloudRemoval) throw new Error("Cloud Chat removal is already configured");
+    this.cloudRemoval = handler;
+  }
 
   configureAppDeactivation(
     handler: (chat: ChatLifecycleFacts, action: "archive" | "delete") => Promise<void>
@@ -64,6 +69,7 @@ export class ChatRemovalController {
       throw statusError(409, "导入的只读会话不能永久删除");
     }
     await this.ports.deletion.admit([candidate]);
+    await this.cloudRemoval?.(chatId);
     await this.appDeactivation?.(candidate, "delete");
     const memory = await this.ports.deletion.snapshot(candidate);
     let record: ChatRecord | null = null;
@@ -96,9 +102,10 @@ export class ChatRemovalController {
     const memory = await this.ports.deletion.snapshot(candidate);
     const current = await this.requireRecord(chatId);
     this.assertSnapshotCurrent(candidate, current);
-    await this.ports.deletion.prepare(current, "local-only", memory);
+    const retained = { ...current, retainedAppId: appId };
+    await this.ports.deletion.prepare(retained, "local-only", memory);
     await this.ports.cancelConversations([chatId]);
-    await this.ports.deletion.drive(current);
+    await this.ports.deletion.drive(retained);
     this.ports.releaseConversations?.([chatId]);
   }
 
@@ -106,6 +113,7 @@ export class ChatRemovalController {
     chatId: string,
     mode: ConversationDeletionMode = "local-only"
   ) {
+    await this.cloudRemoval?.(chatId);
     const candidate = await this.requireRecord(chatId);
     await this.ports.deletion.admit([candidate]);
     const memory = await this.ports.deletion.snapshot(candidate);
@@ -128,6 +136,7 @@ export class ChatRemovalController {
     await this.ports.deletion.admit(candidates);
     for (const candidate of candidates) {
       const chatId = candidate.id;
+      await this.cloudRemoval?.(chatId);
       const memory = await this.ports.deletion.snapshot(candidate);
       let record: ChatRecord | null = null;
       const prepare = async () => {

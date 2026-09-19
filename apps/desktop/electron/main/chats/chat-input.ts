@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod, shared chat/agent/project Limit, renderer ManualTurn and main-only Trusted adopt
- * [OUTPUT]: Provides strict create/adopt/append/revision/fork/worktree-commit inputs, attachment validation, reusable user envelopes, and sorted attachment load types
+ * [OUTPUT]: Provides strict local and main-authenticated remote append validation with real attachment parity.
  * [POS]: The input boundary of the chats module; renderer cannot construct an adopt, main trusted path to parse without performing perpetuation or lifecycle side effects
  */
 
@@ -17,6 +17,7 @@ import {
 import {
   MESSAGE_BYTE_LIMIT,
   type AdoptChatInput,
+  type NoticeChatMessage,
   type CommitManagedWorktreeInput,
   type CreateAppChatInput,
   type ForkChatPreflightInput,
@@ -25,7 +26,8 @@ import {
 import { HISTORY_SOURCE_KINDS } from "../../../shared/history-import-ipc";
 import { PROJECT_ID_PATTERN } from "../../../shared/projects-ipc";
 import { incarnationPreconditionSchema } from "../../../shared/submission";
-import { CHAT_ID_PATTERN, utf8Length } from "./chat-schema";
+import { CHAT_ID_PATTERN, messageSchema, utf8Length } from "./chat-schema";
+import { remoteAttachmentPayloadSchema } from "./lifecycle/remote-input";
 
 const userMessageInputSchema = z
   .object({
@@ -164,22 +166,32 @@ export const adoptInputSchema = z
         planDigest: z.string().regex(/^[a-f0-9]{64}$/),
         projectId: z.string().regex(PROJECT_ID_PATTERN).nullable(),
       }).strict().optional(),
-    }).strict(),
+    }).strict().nullable(),
     importOrigin: z.object({
       sourceKind: z.enum(HISTORY_SOURCE_KINDS), storageFingerprint: z.string().min(1).max(512),
       canonicalNativeId: z.string().min(1).max(512), aliases: z.array(z.string().min(1).max(512)).max(64),
       resumeAlias: z.string().min(1).max(512), originalCwd: z.string().min(1), historyRevision: z.string().min(1).max(512),
-      adoptionSnapshotId: z.string().regex(/^adopt_[a-f0-9]{64}$/), sourceSize: z.number().int().nonnegative(), sourceMtimeNs: z.string().regex(/^\d+$/),
+      adoptionSnapshotId: z.string().regex(/^adopt_[a-f0-9]{64}$/).optional(), sourceSize: z.number().int().nonnegative(), sourceMtimeNs: z.string().regex(/^\d+$/),
+      sourceStatus: z.enum(["match", "changed", "missing"]).optional(), incompleteTail: z.boolean().optional(),
     }).strict(),
-    snapshotDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    snapshotDigest: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+    replay: z.object({
+      generationId: z.string().min(1), expectedChatRecordRevision: z.number().int().positive(),
+      noticeId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+      notice: messageSchema.refine((value) => value.role === "notice").transform((value) => value as NoticeChatMessage).optional(),
+    }).strict().optional(),
     attachmentPayloads: attachmentPayloadsSchema,
   })
   .strict()
   .superRefine((input, context) => {
     requireMessageOrAttachments(input.firstMessage, input.attachmentPayloads, context, "firstMessage");
-    if (input.session.backend !== input.agent || input.importOrigin.sourceKind !== input.agent) {
+    if (input.session && (input.session.backend !== input.agent || input.importOrigin.sourceKind !== input.agent || input.replay || !input.snapshotDigest || !input.importOrigin.adoptionSnapshotId)) {
       context.addIssue({ code: "custom", path: ["session"], message: "收养来源、SessionRef 与 Agent 必须同源" });
     }
+    if (!input.session && (!input.replay || !input.options || input.agent === input.importOrigin.sourceKind || input.snapshotDigest !== null || input.importOrigin.adoptionSnapshotId)) {
+      context.addIssue({ code: "custom", path: ["replay"], message: "Saved-history replay requires a different Agent and a fenced imported generation" });
+    }
+    if (input.options && input.options.backend !== input.agent) context.addIssue({ code: "custom", path: ["options"], message: "Chat options must match its Agent" });
   }) satisfies z.ZodType<AdoptChatInput>;
 
 export const appendInputSchema = z
@@ -215,11 +227,24 @@ export const appendInputSchema = z
     }
   });
 
+/** Only the coordinator's authenticated remote-origin path may use this parser. */
+export const remoteAppendInputSchema = appendInputSchema.safeExtend({
+  attachmentPayloads: z.array(remoteAttachmentPayloadSchema).max(ATTACHMENT_LIMIT).optional(),
+});
+
 // 标题限额与 chatRecordSchema 同构：trim 后 1–200 字符
 export const renameInputSchema = z
   .object({
     chatId: z.string().regex(CHAT_ID_PATTERN),
     title: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
+// 排序键与 chatSortKeySchema 同构：有限非负 double；null 表示回到创建序
+export const setSortKeyInputSchema = z
+  .object({
+    chatId: z.string().regex(CHAT_ID_PATTERN),
+    sortKey: z.number().min(0).max(Number.MAX_SAFE_INTEGER).nullable(),
   })
   .strict();
 

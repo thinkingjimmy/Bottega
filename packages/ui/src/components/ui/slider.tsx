@@ -1,3 +1,8 @@
+/**
+ * [INPUT]: Depends on React, the radix-ui Slider primitive and cn of lib/utils.
+ * [OUTPUT]: Provides Slider, a themed Root/Track/Range/Thumb composition that derives its thumb count from value or defaultValue.
+ * [POS]: components/ui's single range-input primitive; sibling form controls stay on input.tsx and textarea.tsx.
+ */
 import * as React from "react"
 import { Slider as SliderPrimitive } from "radix-ui"
 

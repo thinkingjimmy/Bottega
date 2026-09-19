@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node Writable and ACP JSON-RPC session/prompt wire
- * [OUTPUT]: Provides PromptHandoffTracker, projecting pending/accepted/rejected prompt state from child-stdin write completion, and AcpOutboundSink, the observing wrapper around the outbound JSON-RPC stream
+ * [OUTPUT]: Provides PromptHandoffTracker, projecting pending/accepted/rejected prompt state from child-stdin write completion, PromptHandoffSink, the write-side face a connection routes to the attached turn, and AcpOutboundSink, the observing wrapper around the outbound JSON-RPC stream
  * [POS]: Shared write-acknowledgement substrate for backends/acp/turn; prompt pending/accepted/rejected state is derived by observing outbound stdin writes, not from a separate ack channel
  */
 
@@ -8,6 +8,15 @@ import { Writable } from "node:stream";
 import type { PromptHandoff } from "../../../../../shared/agent-ipc";
 
 type HandoffWaiter = (value: PromptHandoff) => void;
+
+/**
+ * 写入侧只需要这三格。常驻连接的 sink 在构造时还不知道哪一轮会用它，
+ * 所以它持有的是这张面，由连接把调用转给**当前**附着的 tracker。
+ */
+export type PromptHandoffSink = Pick<
+  PromptHandoffTracker,
+  "pending" | "accepted" | "rejected"
+>;
 
 export class PromptHandoffTracker {
   private value: PromptHandoff = Object.freeze({ kind: "not-created" });
@@ -64,7 +73,7 @@ export class AcpOutboundSink extends Writable {
 
   constructor(
     private readonly destination: Writable,
-    private readonly tracker: PromptHandoffTracker,
+    private readonly tracker: PromptHandoffSink,
     private readonly observe?: (line: string) => void
   ) {
     super();

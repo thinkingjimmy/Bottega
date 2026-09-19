@@ -10,7 +10,7 @@ import type {
   TrustedManualTurnSubmission as ManualTurnSubmission,
 } from "../../../../shared/sections-ipc";
 import type { TurnOrigin } from "../../agent/bridge-types";
-import type { ResolvedAgentInput } from "../../backends/types";
+import type { ResolvedAgentInput, TrustedTurnAuthority } from "../../backends/types";
 import type { ChatsService } from "../../chats/chats-service";
 import type { SettingsStore } from "../../settings-store";
 import {
@@ -64,7 +64,8 @@ export type CoordinatorDependencies = {
     resolvedInput?: ResolvedAgentInput,
     assistantSeq?: number,
     admissionHeld?: boolean,
-    projectTools?: HydratedProjectTools
+    projectTools?: HydratedProjectTools,
+    trustedAuthority?: TrustedTurnAuthority
   ): Promise<void>;
   /** Clears the exact stale native session and its in-memory resume authority. */
   rebuildSessionForTools?: (

@@ -5,14 +5,8 @@
  */
 
 import type { BrowserWindow } from "electron";
-import {
-  BASE_EVENT_BYTE_LIMIT,
-  BASES_CHANNEL,
-  ownerKeyOf,
-  type BaseChangedEvent,
-  type BasesEvent,
-  type BaseSnapshot,
-} from "../../../../shared/bases-ipc";
+import { BASE_EVENT_BYTE_LIMIT, BASES_CHANNEL, type BaseChangedEvent, type BasesEvent, type BaseSnapshot } from "../../../../shared/bases-ipc";
+import { ownerKeyOf } from "@ai-chat/base-ui/model/owner-key";
 import { rendererEventBus } from "../../window/surfaces/renderer-event-bus";
 
 export class BaseEventPublisher {

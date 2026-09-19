@@ -6,7 +6,7 @@
 
 import { getI18n } from "react-i18next";
 import type { ProductFailure } from "../../shared/product-failure";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 
 export function skillFailureText(
   t: (key: string, options?: Record<string, unknown>) => string,

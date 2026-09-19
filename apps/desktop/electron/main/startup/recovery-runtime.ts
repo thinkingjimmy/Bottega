@@ -1,15 +1,20 @@
 /**
- * [INPUT]: Depends on Agent custody journals, App/Chat ownership probes, native-only Chat history segments, Memory owners, Project recovery, Settings, the lifecycle RecoveryReport, and the platform capability matrix
- * [OUTPUT]: Provides ordered startup recovery for Agent custody and paged Memory history plus lifecycle reconciliation reporting
+ * [INPUT]: Depends on Agent custody journals, App ownership probes, the Memory-facing Chat store, native-only Chat history segments, Memory owners, Project recovery, Settings, the lifecycle RecoveryReport, and the platform capability matrix
+ * [OUTPUT]: Provides startup recovery for Agent custody with the exported store-backed custody owner probe (shared by reconciliation, which runs before adopt() and therefore releases every previous-life chat turn, and by live spawn admission for chat turns, App-internal turns and resident connections) and paged Memory history plus lifecycle reconciliation reporting
  * [POS]: The startup recovery composition boundary; index.ts retains lifecycle order while this module owns recovery-specific wiring
  */
 
+import { recoverOrDefer } from "../persistence/recovery-policy";
 import { join } from "node:path";
 import type { PlatformCapabilities } from "../../../shared/platform-capabilities";
 import { asError } from "../errors";
 import type { AppsService } from "../apps/apps-service";
 import { AgentTurnCustodyJournal } from "../backends/agent-turn-custody-journal";
-import { AgentTurnCustodyRuntime } from "../backends/agent-turn-custody-runtime";
+import {
+  AgentTurnCustodyRuntime,
+  type CustodyOwnerProbe,
+  type CustodyReconcileReport,
+} from "../backends/agent-turn-custody-runtime";
 import type { ChatStore } from "../chats/chat-store";
 import type { RecoveryReport } from "../lifecycle/reconciliation";
 import { ManagedRuntimeRegistry } from "../memory/runtime/managed-registry";
@@ -19,11 +24,31 @@ import { MemorySettingsOwner } from "../memory/service/settings-owner";
 import type { ProjectsService } from "../projects/projects-service";
 import type { SettingsStore } from "../settings-store";
 
+/**
+ * One probe, two callers. At startup reconciliation it decides whether a
+ * previous life's turn owner still exists; at spawn time the custody runtime
+ * asks it again before binding a new turn (CUSTODY_OWNER_NOT_LIVE otherwise).
+ * 2026-09-13 product decision: reconciliation runs before the Chat store has
+ * adopted its projection, so every previous-life chat turn is released — the
+ * store answers "no" there on purpose, and "yes" for live chats once adopted.
+ */
+export const custodyOwnerProbe =
+  (chats: Pick<ChatStore, "has">): CustodyOwnerProbe =>
+  (owner) =>
+    owner.kind === "chat-turn"
+      ? chats.has(owner.ownerId)
+      : /* A resident connection's owner is the pool that is opening it right now,
+           so it is live by construction; a previous life's entry is retired by
+           phase during reconciliation, never through this probe. Answering "no"
+           here rejects every connection intent, which fails the open before the
+           CLI is ever spawned. */
+        owner.kind === "app-internal-turn" || owner.kind === "connection";
+
 type AgentCustodyDependencies = Readonly<{
   userData: string;
   mainDirectory: string;
   apps: AppsService;
-  chats: ChatStore;
+  chats: Pick<ChatStore, "has">;
 }>;
 
 export async function recoverAgentTurnCustody({
@@ -49,14 +74,11 @@ export async function recoverAgentTurnCustody({
       dependency.kind === "extension-plan" &&
       apps.isTurnPlanActive(dependency.planInstanceId)
   );
-  runtime.setOwnerProbe((owner) =>
-    owner.kind === "chat-turn"
-      ? chats.has(owner.ownerId)
-      : owner.kind === "app-internal-turn"
-  );
+  runtime.setOwnerProbe(custodyOwnerProbe(chats));
   await runtime.initialize();
-  const report = await runtime.reconcile();
-
+  const report: CustodyReconcileReport = { released: [], aborted: [], quarantined: [] };
+  await recoverOrDefer(async () => {
+  Object.assign(report, await runtime.reconcile());
   for (const settled of [...report.released, ...report.aborted]) {
     await apps.releaseTurnApps(settled.turnRequestId);
   }
@@ -66,6 +88,7 @@ export async function recoverAgentTurnCustody({
     );
   }
   runtime.openAdmission();
+  });
   return { journal, runtime, report };
 }
 
@@ -139,7 +162,7 @@ export async function initializeMemoryRuntime({
   );
   if (platformSupport.capabilities.memory) {
     await service.prepareRebuildRecovery();
-    await projects.recoverMemoryRebinds();
+    await recoverOrDefer(async () => { await projects.recoverMemoryRebinds(); });
   }
   return { runtimes, service, settingsOwner, lifecycle };
 }

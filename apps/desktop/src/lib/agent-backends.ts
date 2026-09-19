@@ -1,13 +1,12 @@
 /**
- * [INPUT]: Depends on React, inline brand logos, shared BackendInfo and pure availability projections.
- * [OUTPUT]: Provides fixed backend identities, sendable candidates, startup admission, shared status predicates and purpose-qualified title/maintenance choices; branding stays independent of health.
+ * [INPUT]: Depends on shared Agent identity, shared BackendInfo and pure availability projections.
+ * [OUTPUT]: Provides backend identity, shared admission helpers and the always-complete title-Agent option list with its confirmed-blocker notices; first checks wait while same-environment background checks preserve eligibility.
  * [POS]: The renderer's single source of backend presentation truth; Composer, Sidebar, Header, and Settings never hard-code backend icons or readiness rules
  */
 import { projectAvailability, submissionDecision } from "../../shared/agent-availability/projection";
+import type { AvailabilityState } from "../../shared/agent-availability/types";
 
 
-import { createElement, type ComponentProps } from "react";
-import { AGENT_LOGO_MARKUP } from "../../../../packages/model-logos/inline";
 import {
   AGENT_BACKEND_ORDER,
   type AgentBackendId,
@@ -15,42 +14,10 @@ import {
   type HeadlessPurpose,
 } from "../../shared/agent-ipc";
 
-const labels: Record<AgentBackendId, string> = {
-  codex: "Codex",
-  claude: "Claude",
-  kimi: "Kimi",
-  opencode: "OpenCode",
-};
-
-/* ============================================================
- * 标记内联进 DOM，而不是当 background/mask 贴上去——`currentColor` 只有在
- * 宿主文档里才有主人。于是四枚资产各自自陈其色：claude 通体品牌橙，kimi
- * 主体随语境 + 品牌蓝点，openai/opencode 本无颜色可言故通体随语境。
- *
- * 「这张图能不能上品牌色」曾是图形表里的一列布尔，也曾在组件里换来一个
- * mask/background 分支。内联之后两者一起消失了：没有降级要判，因为没有
- * 谁需要降级。
- * ============================================================ */
-
-/* 资产带 `width/height="1em"` 与 `<title>`：前者会压过调用方的 `size-*`，
-   后者会在 hover 时冒出一个原生 tooltip，与我们自己的 tooltip 打架。
-   装配时一次性剥掉，运行期不再有人记得这回事。 */
-const inlineLogo = (markup: string) =>
-  markup
-    .replace(/<title>[\s\S]*?<\/title>/, "")
-    .replace(/ (?:width|height)="1em"/g, "");
-
-const logos: Record<AgentBackendId, string> = {
-  codex: inlineLogo(AGENT_LOGO_MARKUP.codex),
-  claude: inlineLogo(AGENT_LOGO_MARKUP.claude),
-  kimi: inlineLogo(AGENT_LOGO_MARKUP.kimi),
-  opencode: inlineLogo(AGENT_LOGO_MARKUP.opencode),
-};
-
 export const isAgentBackendId = (value: string): value is AgentBackendId =>
   (AGENT_BACKEND_ORDER as readonly string[]).includes(value);
 
-export const backendLabel = (backend: AgentBackendId) => labels[backend];
+export { backendLabel } from "@ai-chat/ui/components/identity/agent";
 
 export const sendableAgentBackends = (backends: BackendInfo[]) =>
   backends.filter((backend) => submissionDecision(backend, Date.now()).decision === "allow");
@@ -67,9 +34,16 @@ const MAINTENANCE_PURPOSES: HeadlessPurpose[] = [
   "serve",
 ];
 
-/** Startup waits for an active auth probe; an inconclusive result remains usable. */
+/**
+ * Startup waits for an active auth probe; an inconclusive result remains usable.
+ * A provisional entry is last launch's belief, so it opens the onboarding gate but
+ * never counts as admission evidence — installing an App or entering a workbench
+ * needs a CLI this launch actually found.
+ */
 export const canEnterAgentBackend = (backend: BackendInfo) =>
-  backend.authStatus !== "checking" && submissionDecision(backend, Date.now()).decision === "allow";
+  !backend.provisional &&
+  (backend.authStatus !== "checking" || backend.availability?.lastCheckedAt !== undefined) &&
+  !backend.setupAction && submissionDecision(backend, Date.now()).decision === "allow";
 
 /**
  * 该不该给登录入口。这是一个确凿结论，不是"除已登录之外的一切"：
@@ -109,39 +83,37 @@ function purposeAvailable(backend: BackendInfo, purpose: HeadlessPurpose, now: n
     : backend.authStatus === "authenticated";
 }
 
-const titleCapableBackends = (backends: BackendInfo[], now: number) =>
-  backends.filter(
-    (backend) =>
-      backend.runtimeStatus === "installed" &&
-      backend.capabilities.headless.includes("title") &&
-      purposeAvailable(backend, "title", now)
-  );
+/**
+ * Every backend is always selectable as the title Agent, so the row carries a
+ * readiness notice instead of hiding choices: a confirmed blocker names itself
+ * (localized from the shared availability vocabulary), while a backend that is
+ * merely still being checked stays neutral rather than claiming a fault.
+ */
+export const titleAgentNotice = (
+  backend: BackendInfo | undefined,
+  now = Date.now()
+): AvailabilityState | undefined =>
+  backend && submissionDecision(backend, now).decision === "block"
+    ? projectAvailability(backend, now).state
+    : undefined;
 
-export type TitleAgent = AgentBackendId | "auto";
+export type TitleAgentOption = {
+  id: AgentBackendId;
+  notice?: AvailabilityState;
+};
 
+/** All four backends, always, in the canonical order — each with its own notice. */
 export const titleAgentOptions = (
   backends: BackendInfo[] | undefined,
   now = Date.now()
-): TitleAgent[] => [
-  "auto",
-  ...titleCapableBackends(backends ?? [], now).map((backend) => backend.id),
-];
-
-/**
- * 已持久化的选择可能因后端下线、登出或能力收缩而失效——呈现回落到
- * Auto，但**绝不写回档案**：用户没做任何选择，磁盘上的偏好不该被一次
- * 渲染悄悄改写。`backends` 未到达（undefined）时同样不判失效，
- * 「还不知道」不是「不可用」。
- */
-export const effectiveTitleAgent = (
-  persisted: TitleAgent | undefined,
-  backends: BackendInfo[] | undefined,
-  now = Date.now()
-): TitleAgent => {
-  if (!persisted) return "auto";
-  if (!backends) return persisted;
-  return titleAgentOptions(backends, now).includes(persisted) ? persisted : "auto";
-};
+): TitleAgentOption[] =>
+  AGENT_BACKEND_ORDER.map((id) => {
+    const notice = titleAgentNotice(
+      backends?.find((backend) => backend.id === id),
+      now
+    );
+    return notice ? { id, notice } : { id };
+  });
 
 export const maintenanceCapableBackends = (backends: BackendInfo[], now = Date.now()) =>
   backends.filter(
@@ -154,27 +126,4 @@ export const maintenanceCapableBackends = (backends: BackendInfo[], now = Date.n
       )
   );
 
-/** Brand identity is independent of health; mono remains an explicit visual option. */
-export type AgentIconTone = "brand" | "mono";
-
-export function AgentBackendIcon({
-  backend,
-  tone = "brand",
-  className,
-  ...props
-}: {
-  backend: AgentBackendId;
-  tone?: AgentIconTone;
-} & ComponentProps<"span">) {
-  const labelled = Boolean(props["aria-label"]);
-  return createElement("span", {
-    ...props,
-    "aria-hidden": labelled ? undefined : true,
-    role: props.role ?? (labelled ? "img" : undefined),
-    /* CSS 的 fill 压得过资产里的 fill 呈现属性，故 mono 无需第二份图形。 */
-    className: `inline-block shrink-0 [&>svg]:block [&>svg]:size-full ${
-      tone === "mono" ? "[&_*]:fill-current " : ""
-    }${className ?? ""}`,
-    dangerouslySetInnerHTML: { __html: logos[backend] },
-  });
-}
+export { AgentBackendIcon, type AgentIconTone } from "@ai-chat/ui/components/identity/agent";

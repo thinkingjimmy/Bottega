@@ -327,9 +327,16 @@ export function wrapInteractiveWithSeatbelt(input: {
   const controlRoot = absolutePath(input.controlRoot, "controlRoot");
   const controlParent = dirname(controlRoot);
   if (input.permissionMode === "full-access") {
+    /* The workspace rejoins the profile as an explicit allow: a protected root may now be
+       an ancestor of it (a folder denies `chats/` as a whole), and `(allow default)` alone
+       would leave that deny as the last match for the Agent's own Home. */
     const profile = [
       "(version 1)",
       "(allow default)",
+      ...writeRules(
+        uniquePaths([input.workspace], "workspace"),
+        uniquePaths(input.readOnlyRoots, "protected content")
+      ),
       `(deny file-write* (subpath ${sbplString(controlRoot)}))`,
       `(deny file-write* (literal ${sbplString(controlParent)}))`,
       "",

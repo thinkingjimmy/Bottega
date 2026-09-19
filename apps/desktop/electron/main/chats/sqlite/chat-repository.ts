@@ -1,9 +1,9 @@
 /**
  * [INPUT]: Depends on focused repository reader/writer collaborators, canonical Chat schemas, SQLite transactions, optional import-blob storage, and the closed database protocol
- * [OUTPUT]: Single-connection transactional Chat authority; business mutations share the receipt transaction with scoped outbox publication, imported source freezing and deletion custody.
+ * [OUTPUT]: Provides receipt-atomic Chat writes, frozen executor checks, scoped outbox publication and original App transcript custody before native removal.
  * [POS]: Chat domain SQL transaction authority inside the dedicated worker; row projection details live in repository collaborators
  */
-
+import { guardRecordUsers } from "./cloud/execution/commit";
 import { ChatCloudRepository } from "./cloud/repository";
 import { collectRetainedAttachmentIds } from "./cloud/retention";
 import type { CloudMutation, CloudRead } from "./cloud/protocol";
@@ -11,7 +11,6 @@ import { commitAgentSwitch } from "./agent-switch/commit";
 import { reserveSwitchSequences } from "./agent-switch/reserve";
 import type { SwitchSequenceReservation } from "./agent-switch/command";
 import type { AgentSwitchReceipt } from "../../../../shared/chat-agent/contracts";
-import type { ChatRecord } from "../../../../shared/chats-ipc";
 import {
   matchSearchTokens,
   normalizeSearchText,
@@ -44,41 +43,23 @@ import {
   receiptFromRow,
   type Row,
 } from "./repository/codec";
-import { ACTIVE_GENERATION_DOCUMENT_FENCE } from "./repository/imported-sql";
+import { searchDocuments } from "./search/documents";
+import { indexConfirmedMirror } from "./search/mirrors";
+import { readMirrorDownload } from "./cloud/mirror/downloads";
+import { readRetainedSource } from "./cloud/inventory/source";
+import { chatBodySchema } from "@ai-chat/cloud-protocol/chats/transcript/body";
 import { ChatRepositoryReader } from "./repository/reader";
 import { ChatRecordWriter } from "./repository/writer";
 import { HistoryImportRepository } from "./repository/imports";
 import { ContinuationSagaRepository } from "./repository/continuation";
 import { ChatMemoryReader } from "./repository/readers/memory";
 import { ChatFactReader } from "./repository/readers/facts";
+import { readLibraryNative, listLibraryMirrors } from "../../library/mirrors/native-source";
 
 type MutationCommand = Extract<
   DatabaseCommand,
   { operationId: string; requestHash: string }
 >;
-
-/* 一次搜索页里同一个 Chat 的三类文档必须有确定次序：标题、原生消息、
-   导入 entry。它同时是键集游标的第三段，因此排序与断点只能有一份写法。 */
-const SEARCH_DOCUMENT_KIND_RANK =
-  "CASE d.document_kind WHEN 'title' THEN 0 WHEN 'native' THEN 1 ELSE 2 END";
-
-/* node:sqlite 只接受纯匿名占位符，因此断点的四段键按顺序重复绑定：
-   updatedAt, updatedAt, chatId, chatId, kindRank, kindRank, rowId。 */
-const SEARCH_DOCUMENT_KEYSET_AFTER = `(
-  c.updated_at < ?
-  OR (c.updated_at = ? AND (
-        c.id > ?
-        OR (c.id = ? AND (
-              ${SEARCH_DOCUMENT_KIND_RANK} > ?
-              OR (${SEARCH_DOCUMENT_KIND_RANK} = ? AND d.row_id > ?)
-           ))
-     ))
-)`;
-
-const nullableString = (value: unknown) =>
-  value === null || value === undefined ? null : String(value);
-const nullableNumber = (value: unknown) =>
-  value === null || value === undefined ? null : Number(value);
 
 export class ChatRepository {
   private readonly cloud: ChatCloudRepository;
@@ -102,19 +83,23 @@ export class ChatRepository {
     this.facts = new ChatFactReader(database);
     this.cloud = new ChatCloudRepository(database, this.reader, this.writer, now, storage?.storageMode);
   }
-
   cloudRead(command: CloudRead) { return this.cloud.read(command); }
+  configureStorageMode(mode: import("../../../../shared/local-storage/contracts").RuntimeStorageMode) { return this.cloud.configureMode(mode); }
 
   cloudMutate(command: CloudMutation) {
     return this.simpleMutation(command, null, () => this.cloud.mutate(command));
   }
-
   listMetadata(deviceId: string, chatId?: string) {
     return this.reader.listMetadata(deviceId, chatId);
   }
   getRecord(chatId: string, deviceId: string) {
     return this.reader.getRecord(chatId, deviceId);
   }
+  readLibraryNative(command: Extract<DatabaseCommand, { kind: "read-library-native" }>) {
+    return readLibraryNative(this.database, command, this.cloud.searchScope);
+  }
+  get libraryScope() { return this.cloud.searchScope; }
+  listLibraryMirrors(afterId: string | null, known?: Readonly<Record<string, string>>) { return listLibraryMirrors(this.database, this.cloud.searchScope, afterId, known); }
 
   getNativeMessage(command: Extract<DatabaseCommand, { kind: "get-native-message" }>) {
     return this.facts.getMessage(command);
@@ -160,7 +145,7 @@ export class ChatRepository {
       return transaction(this.database, () => {
         const replay = this.replay<SwitchSequenceReservation>(command);
         if (replay) return { status: "committed", receipt: replay };
-        const result = reserveSwitchSequences(this.reader, this.writer, command);
+        const result = reserveSwitchSequences(this.database, this.reader, this.writer, command);
         return { status: "committed", receipt: this.commitReceipt(command, result, command.chatId) };
       });
     } catch (cause) {
@@ -196,6 +181,7 @@ export class ChatRepository {
             command.expectedAggregateRevision
           );
         }
+        guardRecordUsers(this.database, this.reader, command.deviceId, record, command.executorCommit);
         const lifecycle = command.lifecycleKind ??
           (record.importOrigin ? "external-managed" : "native");
         this.writer.writeCore(record, lifecycle);
@@ -349,7 +335,7 @@ export class ChatRepository {
            来源不再被任何墓碑记恨。下一次扫描于是能重新导入同一个来源。
            「不许永久删除只读会话」是产品栅栏，住在 ChatsService 与归档面，
            不在这里——否则删除 Project 与清空归档会半路夭折。 */
-        this.cloud.archiveBeforeRemoval(command.chatId, command.deviceId, command.operationId);
+        this.cloud.archiveBeforeRemoval(command.chatId, command.deviceId, command.operationId, command.retainedAppId);
         const attachments = this.attachmentRows(command.chatId);
         this.database.prepare("DELETE FROM chats WHERE id = ?").run(command.chatId);
         /* Forks deliberately share ordinary attachment ids. Deletion therefore returns
@@ -420,109 +406,8 @@ export class ChatRepository {
     return this.memory.getSegment(command);
   }
 
-  /* 键集分页：游标就是上一页最后一条命中的排序键。OFFSET 分页在扫描期间
-     被任何一次 chats.updated_at 写入整体推移窗口——被 touch 的那条跑到最前，
-     它身后所有还没读到的行同时后移一格，于是重发一条、漏发一条。键集只问
-     "严格排在这个键之后的下一批"，被 touch 的 Chat 至多出现一次，未被动过
-     的邻居一条都不会被跳过。 */
   searchDocuments(command: Extract<DatabaseCommand, { kind: "search-documents" }>) {
-    if (!command.grams.length) return { hits: [], nextCursor: null };
-    const match = command.grams.map((gram) => `"${gram}"`).join(" AND ");
-    const cursor = command.cursor;
-    const rows = this.database.prepare(
-      `SELECT d.*, ${SEARCH_DOCUMENT_KIND_RANK} kind_rank,
-              c.title, c.agent, c.updated_at, c.incarnation_id,
-              la.aggregate_revision core_revision,
-              la.timeline_revision native_message_revision,
-              a.generation_id active_generation_id,
-              m.payload_json message_json,
-              m.message_id native_message_id, m.seq native_message_seq,
-              m.role native_message_role,
-              ie.delivery_seq imported_message_seq,
-              iv.entry_version_id imported_message_id,
-              iv.role imported_message_role
-         FROM chat_search_fts f
-         JOIN chat_search_documents d ON d.row_id = f.rowid
-         JOIN chats c ON c.id = d.chat_id
-         JOIN chat_local_memberships lm
-           ON lm.chat_id = c.id AND lm.device_id = ?
-         JOIN chat_local_aggregate_state la
-           ON la.chat_id = c.id AND la.device_id = ?
-         LEFT JOIN chat_active_import_generations a ON a.chat_id = c.id
-         LEFT JOIN chat_messages m
-           ON d.document_kind = 'native' AND CAST(m.row_id AS TEXT) = d.source_row_id
-         LEFT JOIN chat_import_entry_versions iv
-           ON d.document_kind = 'imported-version' AND iv.entry_version_id = d.source_row_id
-         LEFT JOIN chat_import_generation_entries ie
-           ON ie.chat_id = d.chat_id
-          AND ie.generation_id = a.generation_id
-          AND ie.entry_version_id = iv.entry_version_id
-        WHERE chat_search_fts MATCH ?
-          AND ${ACTIVE_GENERATION_DOCUMENT_FENCE}
-          ${cursor ? `AND ${SEARCH_DOCUMENT_KEYSET_AFTER}` : ""}
-        ORDER BY c.updated_at DESC, c.id, ${SEARCH_DOCUMENT_KIND_RANK}, d.row_id
-        LIMIT ?`
-    ).all(
-      command.deviceId,
-      command.deviceId,
-      match,
-      ...(cursor
-        ? [
-            cursor.updatedAt,
-            cursor.updatedAt,
-            cursor.chatId,
-            cursor.chatId,
-            cursor.kindRank,
-            cursor.kindRank,
-            cursor.rowId,
-          ]
-        : []),
-      command.limit + 1
-    ) as Row[];
-    const page = rows.slice(0, command.limit);
-    const hits: SearchDocumentHit[] = page.map((row) => ({
-      chatId: String(row.chat_id),
-      documentKind: row.document_kind as SearchDocumentHit["documentKind"],
-      sourceRowId: String(row.source_row_id),
-      searchText: String(row.search_text),
-      message: row.message_json
-        ? messageSchema.parse(parseJson(row.message_json, "search message"))
-        : null,
-      messageId: nullableString(row.native_message_id ?? row.imported_message_id),
-      messageSeq: nullableNumber(row.native_message_seq ?? row.imported_message_seq),
-      messageRole: (row.native_message_role ?? row.imported_message_role ?? null) as
-        | "user"
-        | "assistant"
-        | null,
-      timelineSegment: row.document_kind === "native"
-        ? "native"
-        : row.document_kind === "imported-version"
-          ? "imported"
-          : null,
-      title: row.title === null ? null : String(row.title),
-      agent: row.agent as ChatRecord["agent"],
-      updatedAt: Number(row.updated_at),
-      activeGenerationId: row.active_generation_id === null
-        ? null
-        : String(row.active_generation_id),
-      incarnationId: row.incarnation_id === null
-        ? null
-        : String(row.incarnation_id),
-      coreRevision: Number(row.core_revision),
-      nativeMessageRevision: Number(row.native_message_revision),
-    }));
-    const last = page.at(-1);
-    return {
-      hits,
-      nextCursor: rows.length > command.limit && last
-        ? {
-            updatedAt: Number(last.updated_at),
-            chatId: String(last.chat_id),
-            kindRank: Number(last.kind_rank),
-            rowId: Number(last.row_id),
-          }
-        : null,
-    };
+    return searchDocuments(this.database, command, this.cloud.searchScope);
   }
 
   beginContinuationSaga(
@@ -651,16 +536,25 @@ export class ChatRepository {
      SQLite 不给任何保证。 */
   reconcileSearchProjection() {
     return transaction(this.database, () => {
+      let added = 0;
+      const mirrors = this.database.prepare("SELECT id,cloud_environment,cloud_user_id FROM chats WHERE cloud_state='mirror'").all() as Row[];
+      for (const mirror of mirrors) {
+        const scope = { environment: String(mirror.cloud_environment), userId: String(mirror.cloud_user_id) };
+        if (readMirrorDownload(this.database, scope, String(mirror.id))?.complete) added += indexConfirmedMirror(this.database, this.writer, scope, String(mirror.id));
+      }
       const documents = this.database.prepare(
         `SELECT d.*, c.title,
                 m.message_id, m.seq, m.role, m.content, m.created_at, m.payload_json,
-                v.payload_json imported_payload_json
+                v.payload_json imported_payload_json, s.source_id mirror_source_id, s.digest mirror_digest
            FROM chat_search_documents d
            JOIN chats c ON c.id = d.chat_id
            LEFT JOIN chat_messages m
              ON d.document_kind = 'native' AND CAST(m.row_id AS TEXT) = d.source_row_id
            LEFT JOIN chat_import_entry_versions v
              ON d.document_kind = 'imported-version' AND v.entry_version_id = d.source_row_id
+           LEFT JOIN chat_retained_sources s
+             ON d.document_kind='native' AND d.source_row_id='mirror:' || s.source_id
+            AND s.chat_id=c.id AND s.environment=c.cloud_environment AND s.user_id=c.cloud_user_id AND s.kind='mirror-body'
           ORDER BY d.row_id`
       ).iterate() as Iterable<Row>;
       const drifted: Array<{
@@ -669,14 +563,17 @@ export class ChatRepository {
         sourceRowId: string;
         text: string;
       }> = [];
+      const stale: number[] = [];
       let count = 0;
       for (const document of documents) {
         count += 1;
         const kind = String(document.document_kind) as "title" | "native" | "imported-version";
+        const cached = kind === "native" && String(document.source_row_id).startsWith("mirror:");
+        if (cached && !document.mirror_source_id) { stale.push(Number(document.row_id)); continue; }
         const text = kind === "title"
           ? normalizeSearchText(String(document.title ?? ""))
           : kind === "native"
-            ? messageSearchText(messageFromRow(document))
+            ? messageSearchText(cached ? chatBodySchema.parse(readRetainedSource(this.database, { sourceId: String(document.mirror_source_id), digest: String(document.mirror_digest) })).message : messageFromRow(document))
             : this.searchTextForImportedPayload(document.imported_payload_json);
         const grams = gramTokens(text).join(" ");
         if (
@@ -692,8 +589,9 @@ export class ChatRepository {
           text,
         });
       }
+      for (const rowId of stale) this.database.prepare("DELETE FROM chat_search_documents WHERE row_id=?").run(rowId);
       this.writer.writeSearchDocumentsBatch(drifted);
-      return { documents: count, repaired: drifted.length };
+      return { documents: count, repaired: drifted.length + stale.length + added };
     });
   }
 

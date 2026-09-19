@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on admitted source candidates, final allowed-tools eligibility, plan mode, and four backend capability proofs
  * [OUTPUT]: Provides EffectiveSkillSnapshot plus durable prepared-candidate receipts with frozen owner/generation/digest identity, channels, negative shadowing, and source errors
- * [POS]: Per-turn Skills truth; catalog, prompt inventory, picker, and use_skill consume this module instead of composing their own worlds
+ * [POS]: Per-turn Skills truth; catalog, prompt inventory, picker, and use_skill consume this module instead of composing their own worlds, and it is the single gate that admits only SKILL.md-file candidate paths
  */
 
+import { basename } from "node:path";
 import type { AgentBackendId } from "../../../shared/agent-ipc";
 import type { PreparedSkillSelectionReceipt } from "../../../shared/agent-ipc";
 import type { ExtensionPackageGenerationRef } from "../../../shared/extensions-ipc";
@@ -47,6 +48,9 @@ export type EffectiveSkillCandidate = Readonly<{
   enabled: boolean;
   requires?: string;
   metadata: EffectiveSkillMetadata;
+  /* Always the SKILL.md file, never its folder: every consumer derives the
+     generation directory with dirname(). Library, Extension, project and system
+     producers normalize before handing a candidate over. */
   path: string;
   ownerRef: string;
   extensionSelection?: Readonly<{
@@ -80,10 +84,17 @@ export type EffectiveSkillEntry = Readonly<{
   extensionSelection?: EffectiveSkillCandidate["extensionSelection"];
 }>;
 
+export type EffectiveSkillPathRejection = Readonly<{
+  ok: false;
+  code: "invalid-path";
+  value: string;
+  reason: "not-skill-md";
+}>;
+
 export type EffectiveSkillSourceError = Readonly<{
   sourceKind: EffectiveSkillSourceKind;
   ownerRef: string;
-  admission: Exclude<SkillSlugAdmission, { ok: true }>;
+  admission: Exclude<SkillSlugAdmission, { ok: true }> | EffectiveSkillPathRejection;
 }>;
 
 export type EffectiveSkillSnapshot = Readonly<{
@@ -130,6 +141,19 @@ export function composeEffectiveSkillSnapshot(input: Readonly<{
   const admitted: Array<EffectiveSkillCandidate & { slug: SkillSlug }> = [];
   const sourceErrors: EffectiveSkillSourceError[] = [];
   for (const candidate of candidates) {
+    if (basename(candidate.path) !== "SKILL.md") {
+      sourceErrors.push({
+        sourceKind: candidate.sourceKind,
+        ownerRef: candidate.ownerRef,
+        admission: {
+          ok: false,
+          code: "invalid-path",
+          value: candidate.path,
+          reason: "not-skill-md",
+        },
+      });
+      continue;
+    }
     const admission = admitSkillSlug(candidate.name);
     if (!admission.ok) {
       sourceErrors.push({

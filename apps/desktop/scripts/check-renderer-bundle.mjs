@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node fs/path/zlib, the built renderer index.html plus its eager module JS, and the temporary Rollup chunk→module report
- * [OUTPUT]: Enforces eager raw/gzip budgets and independent dynamic boundaries for charts, locales, Konva, and React-Konva, including negative self-tests.
+ * [INPUT]: Depends on the closed output-root parser, the shared LAZY_LANES table, Node fs/path/zlib, the selected assembly's renderer HTML and eager JS, and the temporary Rollup module report.
+ * [OUTPUT]: Enforces eager raw/gzip budgets and independent dynamic boundaries for charts, native/composer locales, Konva, and React-Konva, including negative self-tests.
  * [POS]: Last segment of the desktop build script; the renderer first-load boundary is enforced mechanically here and the module report is deleted after checking so it never ships
  */
 
@@ -9,39 +9,83 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import console from "node:console";
 import process from "node:process";
 import { gzipSync } from "node:zlib";
-
-/**
- * 闸门只说「胖了」，说不出「为什么不该胖」。所以数字之外还有一张懒边界表：
- * 每一条都声明「这类模块必须存在、且只能在动态边界之后」。数字防的是缓慢
- * 增重，结构断言防的是某次重构悄悄把整条边界拆掉——后者才是首包真正的死因。
- * 新增一条懒边界，就是往表里加一行，而不是再抄一遍三十行遍历。
- */
-const LAZY_LANES = [
-  {
-    name: "Konva",
-    pattern: /(?:^|\/)konva(?:@[^/]+)?\//,
-    sample: "node_modules/konva/lib/index.js",
-  },
-  {
-    name: "React-Konva",
-    pattern: /(?:^|\/)react-konva(?:@[^/]+)?\//,
-    sample: "node_modules/react-konva/lib/ReactKonva.js",
-  },
-  {
-    name: "ECharts",
-    pattern: /(?:^|\/)(?:echarts(?:@[^/]+)?\/|node_modules\/echarts\/)/,
-    sample: "node_modules/echarts/core.js",
-  },
-  {
-    name: "非 en 语言目录",
-    pattern: /shared\/i18n\/locales\/(?:zh-cn|ja|fr|es)\.ts$/,
-    sample: "shared/i18n/locales/ja.ts",
-  },
-];
+import { resolveOutputRoot } from "./assembly/output-root.mjs";
+import { LAZY_LANES } from "./assembly/lazy-lanes.mjs";
 
 const MAX_RAW_BYTES = 3_520_000;
-const MAX_GZIP_BYTES = 742_000;
-const rendererRoot = resolve(import.meta.dirname, "../out/renderer");
+/* 2026-09-12: 741,599 → 744,886 (stable, CI) / 745,112 (staging, the default local `pnpm build` output, which carries
+   ~220 B more cloud config) for sidebar drag reordering: row wiring, optimistic provider path and five-language copy stay eager;
+   the reorder runtime is a lazy chunk, @dnd-kit/core itself was already eager through the composer queue. Raised by the measured
+   delta, as on 2026-08-15, not by a round number, and sized against the heavier flavour so both builds pass the same gate. */
+// Main integration measures 746,514 (stable) and 747,068 (staging) gzip bytes.
+// Cover both assemblies at the measured maximum; raw and lazy-lane gates stay unchanged.
+/* 2026-09-13: 747,068 → 748,817 (staging) for startup loading states: sidebar/transcript/Apps-list
+   skeletons, the SidebarMenuSkeleton primitive, the cached Skills onboarding snapshot and the
+   renderer startup marks all sit on the first-paint path by design. Raised by the measured delta. */
+/* 2026-09-13 (phase 2): 748,817 → 749,473 (staging) for the startup snapshot decoder (gate opens
+   on the first render without IPC), the idle prefetch helper and the draft-page transcript
+   placeholder. Raised by the measured delta. */
+/* 2026-09-13 (memory): 749,473 → 761,296 (staging) for zod 4.4.3 → 4.6.4. The whole delta is zod
+   itself (+47,169 raw in the client chunk, the eager raw total's entire movement); no product code
+   entered the first load. It buys back 25 MB of main-isolate heap and 6.5 MB of renderer heap,
+   because 4.5 stopped binding methods per instance and 4.6 moved eight metadata members off the
+   instance — a resident schema tree drops roughly four fifths. 47 KB of extra parse against
+   31 MB of resident heap is not a close trade, and this binary is not downloaded per visit.
+   Raised by the measured delta, as before. */
+/* 2026-09-13 (browser tab sleep): 761,296 -> 761,315 (staging) for the sleeping browser tab in the
+   side-panel strip: one dim class, one tooltip and the five-language `chat.sidePanel.sleepingTab`
+   copy. The sleep/wake machinery itself is main-process only. Raised by the measured delta, as before. */
+/* 2026-09-17 (ledger): ac637c77 still rebuilds to 761,296, byte for byte the number in its own note, so this
+   gate is reproducible on any machine. 6d1a444d declared 761,315 but rebuilds to 761,910 — it was never run on
+   that commit, and its +19 accounted only for the browser tab sleep, not the usage-limits reader shipped beside it.
+   The 09-15/16 Cloud Web ↔ desktop sharing work is net −187 B: it moved code between packages, it did not add. */
+/* 2026-09-17 (i18n reclaim): 761,723 → 670,609 (staging) / 761,589 → 670,463 (stable). This is a structural
+   reclaim, not an addition: sixteen feature catalogs that packed all five languages into one module were split
+   into per-language directories, so the four non-English leaves finally sit behind the lazy boundary the locale
+   entries always claimed, and the Confetti icon stopped importing the Phosphor barrel. Lowered to the measured
+   maximum of the two flavours, sized against the heavier staging one, as every entry above is. A budget only
+   moves up against a proven first-paint need; after a reclaim it must move down, or it is just a longer rope. */
+/* 2026-09-17 (cloud review): 607,422 staging / 607,260 stable after G3–G7 and shared UI catalogs.
+   Queue drag, canvas, model menu and App/Base dialogs now cross independent lazy boundaries. Base owner
+   keys and version scalars no longer pull validation/compute into eager consumers. The heavier measured
+   assembly sets the ceiling; retain Sonner's single instance rather than adding a second toast runtime. */
+/* 2026-09-17 (phone control): 608,043 staging / 607,888 stable after keeping completion UI lazy and
+   the interaction reducer schema-free. The 621-byte staging increase is the live winning-device
+   projection and its attach/IPC state, coarse Enter policy and protocol v6 presence/reason fields;
+   completion labels and the remote composer catalog stay outside first paint. */
+/* Connection recovery adds the server epoch and conditional heartbeat predecessor to protocol v6.
+   Measured staging is 608,048 bytes: five additional gzip bytes, with all lazy boundaries retained. */
+/* Protocol v7 and the unified ChatPage add first-paint queue/target facts, capabilities and shared
+   controls. After retaining lazy remote draft execution and both model menus, staging measures
+   617,004 bytes. The 8,956-byte increase is measured feature cost; raw and all lazy gates remain. */
+/* 2026-09-18 (remote-control review): 617,004 → 618,019 (staging), measured in two parts on this machine.
+   +334 is the shared remote conversation alone, with the desktop renderer reverted: the executor-change
+   notice and the withdrawal custody it needs. +681 is the desktop composer's account gate — it now asks the
+   account, not the injected `window.cloudRemote` (handed to every main window, signed in or not), whether an
+   account-owned draft adapter could do anything at all, warms that chunk at idle, and names the executor on
+   the branch control a remote draft cannot use. The adapter itself stays behind its lazy boundary at 21,577
+   raw / 5,730 gzip, which is why only the gate is in this number. Raised by the measured delta, as above. */
+/* 2026-09-18 (seamless executor switch): 618,019 → 618,411 (staging) / 618,239 (stable). Moving one
+   conversation to another computer used to remount the page behind a Suspense boundary: the columns
+   blanked for a tick and the transcript reopened on the newest row. The +392 is the timeline's
+   cross-mount anchor memory (the row the reader was on and its pixel offset, plus the restore that
+   puts it back), the page's composer-focus restore, and the two resolved-chunk latches that replace
+   the suspending boundaries on both halves of the cloud port — the chunks themselves stay lazy and
+   every lane above still holds. Raised by the measured delta, sized against the heavier staging
+   assembly, as every entry above is. */
+/* 2026-09-18 (Agent connections, Settings › Lab): 618,411 → 619,427 (staging). The +1,016 is the
+   warm-intent client and its two hooks — the chat page's 800 ms dwell and the composer's focus
+   path — plus the Lab section's navigation entry, overlay routing, the settings key and the
+   switch's English copy. The Lab view itself is a lazy chunk like every other settings view, and
+   nothing else moved into the eager set. Raised by the measured delta, sized against the heavier
+   staging assembly, as every entry above is. */
+/* 2026-09-18 (read-only chats and the model reconciliation): 619,427 → 619,595 (staging). The +168 is the
+   stricter reconciliation guard, the quiet write path that keeps an automatic reconciliation from
+   surfacing as a failed manual save, and the CHAT_NOT_WRITABLE → read-only/archived copy mapping.
+   Raised by the measured delta, sized against the heavier staging assembly, as every entry above is. */
+const MAX_GZIP_BYTES = 619_595;
+const outputRoot = resolveOutputRoot(process.argv.slice(2), process.env, ["--self-test"]);
+const rendererRoot = resolve(import.meta.dirname, "..", outputRoot, "renderer");
 const indexPath = resolve(rendererRoot, "index.html");
 const reportPath = resolve(rendererRoot, ".chart-module-report.json");
 

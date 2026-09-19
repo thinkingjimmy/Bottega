@@ -12,7 +12,7 @@ export async function commitSwitchWithAttachments(store: ChatStore, attachments:
   command: SwitchAgentCommand, payloads: ChatAttachmentPayload[], publish: (metadata: ChatMetadata) => void, emit: (event: ChatsEvent) => void) {
   const metas = command.userMessage.attachments ?? [];
   if (payloads.length !== metas.length) throw new Error("AGENT_SWITCH_ATTACHMENTS_CONFLICT");
-  await attachments.persist(payloads, metas.map(meta => meta.id));
+  await attachments.persist(payloads, metas.map(meta => meta.id), command.chatId);
   const result = await store.switchAgent(command);
   publish(result.metadata);
   emit({ type: "messages-delta", chatId: command.chatId, incarnationId: command.incarnationId,

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on React tabs, PanelSessionContext/eligibility, slot store, Browser tabs, the shared App authorization dialog/badge, the Base navigation/snapshot provider slices, and product-only Base/App/Image/Subagent panels
- * [OUTPUT]: Provides one tablist with a unified installed-App add flow, independent App tabs, per-App authorization triggers, localized fallbacks, restore sanitization, and product-query short circuits
- * [POS]: The side-panel tab composition root and sole renderer of panel regions
+ * [OUTPUT]: Provides one tablist with a unified installed-App add flow, independent App tabs, per-App authorization triggers, dimmed sleeping web tabs, localized fallbacks, restore sanitization, and product-query short circuits
+ * [POS]: Native panel data/effect adapter; shared PanelHost owns tab chrome and retained regions
  */
 
 import {
@@ -12,18 +12,9 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
-  type ReactNode,
 } from "react";
-import { XIcon } from "lucide-react";
-import { Button } from "@ai-chat/ui/components/ui/button";
-import { cn } from "@ai-chat/ui/lib/utils";
-import { panelChromeClassName } from "@/components/page-shell";
-import {
-  baseTabActionButtonClass,
-  baseTabShellClass,
-} from "@/components/bases/chrome/base-tab-chrome";
-import { BaseWorkbench } from "@/components/bases/base-workbench";
+import { PanelHost, type PanelLeaf } from "@ai-chat/chat-ui/side-panel/frame";
+const BaseWorkbench = lazy(() => import("@/components/bases/base-workbench").then(module => ({ default: module.BaseWorkbench })));
 import {
   useBaseSnapshots,
   useBasesNavigation,
@@ -60,7 +51,7 @@ import {
   setDesignAutoOpen,
 } from "@/lib/apps-client";
 import type { AvailableAttachedApp } from "../../../../shared/apps-ipc";
-import { AppTabPanel } from "./app-tab-panel";
+const AppTabPanel = lazy(() => import("./app-tab-panel").then(module => ({ default: module.AppTabPanel })));
 import { AppGrantBadge } from "./grant/app-grant-badge";
 import {
   ImageTabPanel,
@@ -74,31 +65,6 @@ const SubagentPanel = lazy(() =>
     default: module.SubagentPanel,
   }))
 );
-
-/** tabpanel 外壳：常驻挂载、hidden 切换，宿主不因切 tab 重建 */
-function TabPanel({
-  id,
-  active,
-  labelledBy,
-  children,
-}: {
-  id: PanelRegion;
-  active: boolean;
-  labelledBy?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      aria-labelledby={labelledBy ?? `panel-tab-${id}-trigger`}
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      hidden={!active}
-      id={`panel-tab-${id}`}
-      role="tabpanel"
-    >
-      {children}
-    </div>
-  );
-}
 
 const regionCapability = (id: PanelRegion): PanelCapability =>
   id === "browser"
@@ -488,6 +454,9 @@ export function PanelTabs({
       closeLabel: t("chat.sidePanel.closeNamedTab", {
         name: tab.title || t("chat.sidePanel.webPage"),
       }),
+      // 休眠只改观感，不改可达性：标签仍是同一枚 tab，名字照旧，点下去自己醒。
+      dim: tab.sleeping,
+      ...(tab.sleeping ? { hint: t("chat.sidePanel.sleepingTab") } : {}),
       select: () => {
         panelSlotStore.activate(slotKey, "browser");
         // 已选中就别再喊一遍：activateTab 会让 main 重挂 WebContentsView，
@@ -500,7 +469,7 @@ export function PanelTabs({
     })),
   ];
   // 无人选中时（首帧、或激活区域正在退位）仍要留一个键盘入口，否则整条 tablist 不可达。
-  const rovingKey = (items.find((item) => item.selected) ?? items[0])?.key;
+
 
   const closeAt = (index: number) => {
     const item = items[index]!;
@@ -515,109 +484,10 @@ export function PanelTabs({
     );
   };
 
-  const onTabKeyDown = (
-    event: KeyboardEvent<HTMLDivElement>,
-    index: number
-  ) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      items[index]!.select();
-      return;
-    }
-    const targetIndex =
-      event.key === "ArrowRight"
-        ? (index + 1) % items.length
-        : event.key === "ArrowLeft"
-          ? (index - 1 + items.length) % items.length
-          : event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? items.length - 1
-              : -1;
-    if (targetIndex < 0) return;
-    event.preventDefault();
-    const target = items[targetIndex]!;
-    target.select();
-    tabRefs.current.get(target.key)?.focus();
-  };
 
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <header className="flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-1 border-b px-2 [-webkit-app-region:drag]">
-        <div className="flex min-w-0 flex-1 items-center gap-1 [-webkit-app-region:no-drag]">
-          <div
-            aria-label={t("chat.sidePanel.tabsAriaLabel")}
-            className="flex min-w-0 items-center gap-1 overflow-x-auto"
-            role="tablist"
-          >
-            {items.map((item, index) => (
-              <div
-                aria-controls={item.panelId}
-                aria-selected={item.selected}
-                className={cn(
-                  baseTabShellClass(item.selected),
-                  "h-7 shrink-0 gap-1.5",
-                  item.widthClass
-                )}
-                id={`panel-tab-${item.key}-trigger`}
-                key={item.key}
-                onClick={item.select}
-                onKeyDown={(event) => onTabKeyDown(event, index)}
-                ref={(node) => {
-                  if (node) tabRefs.current.set(item.key, node);
-                  return () => {
-                    tabRefs.current.delete(item.key);
-                  };
-                }}
-                role="tab"
-                tabIndex={item.key === rovingKey ? 0 : -1}
-              >
-                {item.icon}
-                <span className="truncate">{item.label}</span>
-                {item.actions}
-                <button
-                  aria-label={item.closeLabel}
-                  className={baseTabActionButtonClass}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    closeAt(index);
-                  }}
-                  title={t("chat.sidePanel.closeTab")}
-                  type="button"
-                >
-                  <XIcon className="size-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-          <AddPanelMenu
-            appsDisabled={!productRef}
-            disabledFor={catalogDisabled}
-            disabledReasonFor={catalogDisabledReason}
-            onOpen={openFromCatalog}
-            onOpenApp={() => setAddAppOpen(true)}
-          />
-        </div>
-        <div className="[-webkit-app-region:no-drag]">
-          {activeHeaderActions ?? (
-            <Button
-              aria-label={t("chat.sidePanel.closePanel")}
-              className={cn("cursor-pointer", panelChromeClassName)}
-              onClick={onClose}
-              size="icon-lg"
-              title={t("chat.sidePanel.closePanel")}
-              type="button"
-              variant="ghost"
-            >
-              <XIcon />
-            </Button>
-          )}
-        </div>
-      </header>
-      {productRef && tabs.includes("base") && (
-        <TabPanel active={activeTabId === "base"} id="base">
-          {effectiveBaseOwnerKey ? (
-            <BaseWorkbench
+  const leaves: PanelLeaf[] = [
+    ...(productRef && tabs.includes("base") ? [{ id: "base", view: effectiveBaseOwnerKey ? (
+            <Suspense fallback={null}><BaseWorkbench
               key={effectiveBaseOwnerKey}
               ownerKey={effectiveBaseOwnerKey}
               compact
@@ -629,17 +499,13 @@ export function PanelTabs({
                     }
                   : undefined
               }
-            />
+            /></Suspense>
           ) : (
             <div className="grid min-h-0 flex-1 place-items-center px-6 text-center text-muted-foreground text-sm">
               {baseOwnerError || t("chat.sidePanel.resolvingBase")}
             </div>
-          )}
-        </TabPanel>
-      )}
-      {productRef && tabs.includes("subagents") && (
-        <TabPanel active={activeTabId === "subagents"} id="subagents">
-          {selectedAgent ? (
+          ) }] : []),
+    ...(productRef && tabs.includes("subagents") ? [{ id: "subagents", view: selectedAgent ? (
             <Suspense fallback={null}>
               <SubagentPanel
                 agent={selectedAgent}
@@ -653,64 +519,35 @@ export function PanelTabs({
               onOpen={setSelectedAgentThreadId}
               subagents={subagents}
             />
-          )}
-        </TabPanel>
-      )}
-      {productRef && tabs.filter(isAppRegion).map((region) => {
-        const app = visibleApps.find((item) => item.appId === appIdOf(region));
-        return (
-          <TabPanel active={activeTabId === region} id={region} key={region}>
-            {app ? (
-              <AppTabPanel
+          ) }] : []),
+    ...(productRef ? tabs.filter(isAppRegion).map(region => {
+      const app = visibleApps.find(item => item.appId === appIdOf(region));
+      return { id: region, view: app ? (
+              <Suspense fallback={<div className="min-h-0 flex-1" aria-busy="true" />}><AppTabPanel
                 app={app}
                 chatId={productRef.chatId}
                 incarnationId={productRef.incarnationId}
                 visible={activeTabId === region}
-              />
+              /></Suspense>
             ) : (
               <div className="grid min-h-0 flex-1 place-items-center px-6 text-center text-muted-foreground text-sm">
                 {t("chat.sidePanel.appSlotUnavailable")}
               </div>
-            )}
-          </TabPanel>
-        );
-      })}
-      {tabs.filter(isImageRegion).map((region) => (
-        <TabPanel active={activeTabId === region} id={region} key={region}>
-          <ImageTabPanel
-            active={activeTabId === region}
-            hydrated={galleryProjection?.hydrated ?? false}
-            image={resolvedImages.get(region) ?? null}
-          />
-        </TabPanel>
-      ))}
-      {(browser.snapshot.tabs.length > 0 || activeTabId === "browser") && (
-        <TabPanel
-          active={activeTabId === "browser"}
-          id="browser"
-          labelledBy={
-            browser.snapshot.selectedTabId
-              ? `panel-tab-${browser.snapshot.selectedTabId}-trigger`
-              : undefined
-          }
-        >
-          <BrowserPanel
-            controller={browser}
-            visible={activeTabId === "browser"}
-          />
-        </TabPanel>
-      )}
-      {/* 栅栏用 baseResolved 而非 baseExists：只抑制首帧那一下「空白页→Base」
-          的闪现，此后任何重渲染都不会把已经端出去的空白页再闪掉。 */}
-      {!items.length && !activeTabId && baseResolved && (
-        <PanelTabsEmpty
-          disabledFor={catalogDisabled}
-          disabledReasonFor={catalogDisabledReason}
-          onOpen={openFromCatalog}
-          onOpenApp={() => setAddAppOpen(true)}
-        />
-      )}
-      {productRef && (
+            ) };
+    }) : []),
+    ...tabs.filter(isImageRegion).map(region => ({ id: region, view: <ImageTabPanel active={activeTabId === region}
+      hydrated={galleryProjection?.hydrated ?? false} image={resolvedImages.get(region) ?? null} /> })),
+    ...(browser.snapshot.tabs.length > 0 || activeTabId === "browser" ? [{ id: "browser",
+      labelledBy: browser.snapshot.selectedTabId ? `panel-tab-${browser.snapshot.selectedTabId}-trigger` : undefined,
+      view: <BrowserPanel controller={browser} visible={activeTabId === "browser"} /> }] : []),
+  ];
+  return <PanelHost native close={onClose} copy={{ close: t("chat.sidePanel.closePanel") }} actions={activeHeaderActions}
+    items={items} refs={tabRefs} onCloseTab={closeAt} tabsLabel={t("chat.sidePanel.tabsAriaLabel")} closeTabLabel={t("chat.sidePanel.closeTab")}
+    active={activeTabId} leaves={leaves}
+    add={<AddPanelMenu appsDisabled={!productRef} disabledFor={catalogDisabled} disabledReasonFor={catalogDisabledReason}
+      onOpen={openFromCatalog} onOpenApp={() => setAddAppOpen(true)} />}
+    empty={baseResolved && <PanelTabsEmpty disabledFor={catalogDisabled} disabledReasonFor={catalogDisabledReason} onOpen={openFromCatalog} onOpenApp={() => setAddAppOpen(true)} />}
+    footer={productRef && (
         <AppAuthorizationDialog
           mode="add"
           onCommitted={async (appId) => {
@@ -729,7 +566,5 @@ export function PanelTabs({
             expectedConversationIncarnationId: productRef.incarnationId,
           }}
         />
-      )}
-    </div>
-  );
+    )} />;
 }

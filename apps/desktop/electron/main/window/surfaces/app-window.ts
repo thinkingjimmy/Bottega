@@ -11,7 +11,7 @@ import {
   INITIAL_DARK_ARGUMENT,
   INITIAL_LANGUAGE_ARGUMENT,
 } from "../../../../shared/settings-ipc";
-import { resolveAppLocale } from "../../../../shared/i18n/locale";
+import { resolveAppLocale } from "@ai-chat/ui/lib/locale";
 import {
   WINDOW_APP_ID_ARGUMENT,
   WINDOW_ID_ARGUMENT,

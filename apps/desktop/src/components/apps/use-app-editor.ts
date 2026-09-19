@@ -7,7 +7,7 @@
 import { useNavigate } from "react-router";
 import { toast } from "@ai-chat/ui/components/ui/sonner";
 import { openAppEditor } from "@/lib/apps-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { productDestinationRoute } from "@/lib/product-navigation";
 import { windowContext } from "@/lib/window-surfaces-client";
 import { useAppTranslation } from "@/components/providers/i18n-provider";

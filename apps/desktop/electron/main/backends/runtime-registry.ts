@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on descriptors, supervised runtime probes, filesystem identity, bounded leases and the registry-owned availability ledger.
- * [OUTPUT]: Owns runtime/auth snapshots, command-derived setup capabilities, observable environment invalidation, credential reservations, scoped evidence and purpose eligibility.
+ * [INPUT]: Depends on descriptors (including their credential-safe check claim), supervised runtime probes, filesystem identity, bounded leases and the registry-owned availability ledger.
+ * [OUTPUT]: Owns 60-second runtime and five-minute full checks, cancellation-preserved evidence, independent startup facts and scoped purpose eligibility.
  * [POS]: The only owner of the backends running time and discovery/auth subprocess; Chat, Section, Settings and Background tasks cannot detect CLI on their own
  */
 
@@ -10,8 +10,9 @@ import type {
 } from "../../../shared/agent-ipc";
 import { createHash } from "node:crypto";
 import { AGENT_BACKEND_ORDER, type HeadlessPurpose } from "../../../shared/agent-ipc";
-import { RUNTIME_TTL_MS, type RuntimeIssue, type ExecutionTarget } from "../../../shared/agent-availability/types";
+import { AUTH_TTL_MS, RUNTIME_TTL_MS, type RuntimeIssue, type ExecutionTarget } from "../../../shared/agent-availability/types";
 import { CHECK_QUEUE_MS, MAX_RUNTIME_CANDIDATES, RUNTIME_DISCOVERY_MS, FULL_CHECK_MS } from "./availability/budgets";
+import { expireLoginShellPath, isProcessStartupFailure } from "./runtime-probe";
 import { AvailabilityEvidence, type TurnEvidenceStart } from "./availability/evidence";
 import { executionScope, runtimeEnvironmentIdentity, type ScopePlan } from "./availability/scope";
 import { DISABLED_CAPABILITIES, candidateDiagnostic, summarizeCandidateDiagnostics, executableIdentity, sameIdentity, waitForSignal,
@@ -60,6 +61,10 @@ export class BackendRuntimeRegistry {
     return this.snapshots.get(backend)?.snapshot;
   }
 
+  private readonly invalidationListeners = new Set<
+    (backend: AgentBackendId) => void
+  >();
+
   subscribe(
     listener: (backend: AgentBackendId, snapshot: BackendRuntimeSnapshot) => void
   ) {
@@ -67,7 +72,18 @@ export class BackendRuntimeRegistry {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * 代次作废的旁路观察者。`subscribe` 广播的是"新快照"，订阅者据此刷新 UI；
+   * 常驻连接要的是另一件事——**旧代次到此为止**，它必须在任何人拿到新快照
+   * 之前就把按旧身份起的进程关掉。两件事，两条订阅。
+   */
+  onInvalidated(listener: (backend: AgentBackendId) => void) {
+    this.invalidationListeners.add(listener);
+    return () => this.invalidationListeners.delete(listener);
+  }
+
   invalidate(backend: AgentBackendId) {
+    for (const listener of this.invalidationListeners) listener(backend);
     const generation = this.generation(backend) + 1;
     this.generations.set(backend, generation);
     this.evidence.invalidate(backend, generation);
@@ -101,22 +117,38 @@ export class BackendRuntimeRegistry {
 
   recheck(backend: AgentBackendId) { return this.fullCheck(backend, "user-recheck"); }
 
-  fullCheck(backend: AgentBackendId, intent: "startup" | "user-recheck" | "login-return") {
+  async refreshIfNeeded(backend: AgentBackendId) {
+    const facts = this.evidence.facts(backend);
+    if (facts.lastCheckedAt === undefined || facts.lastCheckedAt + AUTH_TTL_MS <= this.evidence.now()) {
+      return this.fullCheck(backend, "automatic");
+    }
+    const snapshot = await this.resolve(backend);
+    if (this.evidence.facts(backend).environmentGeneration !== facts.environmentGeneration) {
+      return this.fullCheck(backend, "automatic");
+    }
+    return snapshot;
+  }
+
+  fullCheck(backend: AgentBackendId, intent: "startup" | "user-recheck" | "login-return" | "automatic") {
     void intent;
     if (this.shuttingDown) return Promise.reject(new Error("Runtime registry is shutting down"));
     const existing = this.authFlights.get(backend);
     if (existing) return existing.promise;
     let credentialUse: ReturnType<typeof reserveAgentCredentialUse> | undefined;
     let ready: Promise<void>;
-    try { credentialUse = reserveAgentCredentialUse(backend); ready = credentialUse.ready; }
+    /* A credential-safe check cannot read or rewrite the account, so reserving credentials
+       would only make the quota read wait for something it never contends with. */
+    if (this.dependencies.descriptorFor(backend).auth?.credentialSafe) ready = Promise.resolve();
+    else try { credentialUse = reserveAgentCredentialUse(backend); ready = credentialUse.ready; }
     catch (cause) { ready = Promise.reject(cause); }
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(new Error("Availability check deadline exceeded")), FULL_CHECK_MS);
+    const previous = this.snapshot(backend);
     const probe = this.evidence.beginProbe(backend);
     // Publish the discovery flight synchronously; warm reads must join it rather than invalidate this check.
     const discovery = this.resolve(backend, true);
     void discovery.catch(() => undefined);
-    const promise = this.checkAuthentication(backend, probe, controller.signal, discovery, ready).finally(() => {
+    const promise = this.checkAuthentication(backend, probe, controller.signal, discovery, ready, previous).finally(() => {
       credentialUse?.release();
       clearTimeout(deadline);
       if (this.authFlights.get(backend)?.promise === promise) this.authFlights.delete(backend);
@@ -125,11 +157,13 @@ export class BackendRuntimeRegistry {
     return promise;
   }
 
+  waitForCheck(backend: AgentBackendId) { return this.authFlights.get(backend)?.promise; }
+
   cancelCheck(backend: AgentBackendId) {
-    this.authFlights.get(backend)?.controller.abort(new Error("Availability check cancelled"));
+    this.authFlights.get(backend)?.controller.abort(new DOMException("Availability check cancelled", "AbortError"));
   }
 
-  private async checkAuthentication(backend: AgentBackendId, probe: number, signal: AbortSignal, discovery: Promise<BackendRuntimeSnapshot>, ready: Promise<void>) {
+  private async checkAuthentication(backend: AgentBackendId, probe: number, signal: AbortSignal, discovery: Promise<BackendRuntimeSnapshot>, ready: Promise<void>, previous: BackendRuntimeSnapshot) {
     let expectedEnvironment = this.generation(backend);
     try {
       await waitForSignal(ready, signal);
@@ -162,24 +196,32 @@ export class BackendRuntimeRegistry {
           if (current) this.publish(backend, expectedEnvironment, current);
         };
         if (lease) authenticationStarted();
-        const result = descriptor.auth ? await waitForSignal(descriptor.auth.check(snapshot.runtime, signal, authenticationStarted), signal) : { status: "unknown" as const };
+        const result = descriptor.auth ? await waitForSignal(descriptor.auth.check(snapshot.runtime, signal, authenticationStarted), signal) : { status: "unknown" as const, unknownReason: "not-supported" as const };
         const target = await this.executionTarget(backend, snapshot);
         const auth = backend === "kimi" && !target.scopeKey && result.status !== "error"
-          ? { ...result, status: "unknown" as const } : result;
-        if (!this.evidence.confirm(backend, probe, snapshot.generation, auth.status, target.scopeKey)) return this.snapshot(backend);
+          ? { ...result, status: "unknown" as const, unknownReason: "provider-scoped" as const } : result;
+        if (!this.evidence.confirm(backend, probe, snapshot.generation, auth.status, target.scopeKey, auth)) return this.snapshot(backend);
         const latest = this.snapshots.get(backend)!;
         if (latest.snapshot.runtimeStatus !== "installed") return latest.snapshot;
-        this.publish(backend, snapshot.generation, { ...latest, snapshot: { ...latest.snapshot, authStatus: auth.status, reason: auth.reason } });
+        this.publish(backend, snapshot.generation, { ...latest, snapshot: { ...latest.snapshot, authStatus: auth.status, reason: auth.reason ?? (this.evidence.facts(backend).runtimeCheck?.phase === "error" ? latest.snapshot.reason : undefined) } });
       } finally { lease?.release(); }
     } catch (cause) {
       const flight = this.authFlights.get(backend);
       if (flight?.controller.signal === signal && flight.environmentGeneration === undefined) {
         expectedEnvironment = this.generation(backend);
       }
-      if (this.evidence.confirm(backend, probe, expectedEnvironment, "error")) {
+      const cancelled = signal.aborted && signal.reason?.name === "AbortError";
+      if (cancelled ? this.evidence.cancel(backend, probe, expectedEnvironment) : this.evidence.confirm(backend, probe, expectedEnvironment, "error", undefined, {
+        checkIssue: signal.aborted ? "timeout" : (cause as Error)?.name === "TimeoutError" ? "busy" : "failed",
+      })) {
         const latest = this.snapshots.get(backend) ?? { snapshot: this.snapshot(backend) };
-        this.publish(backend, latest.snapshot.generation, { ...latest, snapshot: { ...latest.snapshot, authStatus: "error",
-          reason: cause instanceof Error ? cause.message : String(cause) } });
+        const snapshot = latest.snapshot;
+        const prior = previous.generation === snapshot.generation ? previous : undefined;
+        const reason = cancelled ? prior?.reason : cause instanceof Error ? cause.message : String(cause);
+        const next: BackendRuntimeSnapshot = snapshot.runtimeStatus === "installed" || snapshot.runtimeStatus === "unsupported"
+          ? { ...snapshot, authStatus: cancelled ? prior?.authStatus === "checking" ? "unknown" : prior?.authStatus ?? "unknown" : "error", reason }
+          : { ...snapshot, authStatus: cancelled ? "unknown" : "error", reason };
+        this.publish(backend, snapshot.generation, { ...latest, snapshot: next });
       }
     }
     return this.snapshot(backend);
@@ -189,6 +231,9 @@ export class BackendRuntimeRegistry {
     if (this.shuttingDown) {
       return Promise.reject(new Error("Runtime Registry 正在退出"));
     }
+    /* A forced refresh is the user (or a login return) saying the environment changed;
+       the shared login-shell PATH must be re-read, not served from the 60 s cache. */
+    if (refresh) expireLoginShellPath();
     const generation = this.generation(backend);
     const existing = this.flights.get(backend);
     if (existing?.generation === generation) return existing.promise;
@@ -201,7 +246,7 @@ export class BackendRuntimeRegistry {
     }
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(new Error("Runtime discovery deadline exceeded")), RUNTIME_DISCOVERY_MS);
-    this.evidence.update(backend, { runtimeCheck: { phase: "queued", startedAt: this.evidence.now() } });
+    this.evidence.update(backend, { runtimeCheck: { ...this.evidence.facts(backend).runtimeCheck, phase: "queued", startedAt: this.evidence.now() } });
     const promise: Promise<BackendRuntimeSnapshot> = this.discover(
       backend,
       generation,
@@ -403,6 +448,7 @@ export class BackendRuntimeRegistry {
     return {
       id: backend,
       displayName: descriptor.displayName,
+      minimumVersion: descriptor.minimumVersion,
       runtimeStatus: snapshot.runtimeStatus,
       authStatus: snapshot.authStatus,
       capabilities: snapshot.capabilities,
@@ -468,7 +514,7 @@ export class BackendRuntimeRegistry {
       );
     }
     try {
-      this.evidence.update(backend, { runtimeCheck: { phase: "discovery", startedAt: this.evidence.now() } });
+      this.evidence.update(backend, { runtimeCheck: { ...this.evidence.facts(backend).runtimeCheck, phase: "discovery", startedAt: this.evidence.now() } });
       return await this.discoverLeased(backend, generation, signal);
     } finally {
       lease.release();
@@ -497,6 +543,7 @@ export class BackendRuntimeRegistry {
       return this.finishMissing(backend, generation, "missing");
     }
     const diagnostics: string[] = [];
+    let allFailedToStart = true;
     let unsupported:
       | Extract<InspectedCandidate, { kind: "unsupported" }>
       | undefined;
@@ -507,6 +554,7 @@ export class BackendRuntimeRegistry {
         signal
       );
       if (inspected.kind === "unusable") {
+        allFailedToStart &&= Boolean(inspected.cannotStart);
         diagnostics.push(inspected.diagnostic);
         continue;
       }
@@ -549,7 +597,8 @@ export class BackendRuntimeRegistry {
       "error",
       diagnostics.length > 0
         ? diagnosticSummary
-        : `${descriptor.displayName} CLI 候选探测失败`
+        : `${descriptor.displayName} CLI 候选探测失败`,
+      allFailedToStart ? "cannot-start" : "probe-failed"
     );
   }
 
@@ -584,6 +633,7 @@ export class BackendRuntimeRegistry {
       signal.throwIfAborted();
       return {
         kind: "unusable",
+        cannotStart: isProcessStartupFailure(cause),
         diagnostic: candidateDiagnostic(
           candidate,
           cause instanceof Error ? cause.message : String(cause)
@@ -670,6 +720,7 @@ export class BackendRuntimeRegistry {
       runtimeCheck: { phase: "complete", startedAt: this.evidence.now(), checkedAt: this.evidence.now(), expiresAt: this.evidence.now() + RUNTIME_TTL_MS } });
     const snapshot: PresentSnapshot = {
       runtimeStatus: "installed", runtime, capabilities,
+      reason: previous?.snapshot.generation === generation ? previous.snapshot.reason : undefined,
       authStatus: previous?.snapshot.generation === generation ? previous.snapshot.authStatus :
         this.authFlights.has(backend) && !this.authFlights.get(backend)!.controller.signal.aborted ? "checking" : "unknown", generation,
     };
@@ -692,6 +743,17 @@ export class BackendRuntimeRegistry {
     issue: RuntimeIssue = "probe-failed"
   ): BackendRuntimeSnapshot | Promise<BackendRuntimeSnapshot> {
     if (this.generation(backend) !== generation) return this.resolve(backend);
+    if (issue === "cannot-start") this.evidence.update(backend, { startup: {
+      status: "cannot-start", environmentGeneration: generation, checkedAt: this.evidence.now(),
+    } });
+    const previous = this.snapshots.get(backend);
+    const runtimeCheck = this.evidence.facts(backend).runtimeCheck;
+    if (runtimeStatus === "error" && issue !== "cannot-start" && previous?.snapshot.runtimeStatus === "installed" &&
+      (runtimeCheck?.expiresAt ?? 0) > this.evidence.now()) {
+      this.evidence.update(backend, { runtimeIssue: issue, runtimeCheck: { ...runtimeCheck!, phase: "error" } });
+      this.publish(backend, generation, { ...previous, snapshot: { ...previous.snapshot, reason } });
+      return this.snapshot(backend);
+    }
     this.evidence.update(backend, { capabilityKnowledge: "unknown", runtimeIssue: runtimeStatus === "error" ? issue : undefined,
       runtimeCheck: { phase: runtimeStatus === "error" ? "error" : "complete", startedAt: this.evidence.now(), checkedAt: this.evidence.now(), expiresAt: this.evidence.now() + RUNTIME_TTL_MS } });
     const snapshot: MissingSnapshot = {

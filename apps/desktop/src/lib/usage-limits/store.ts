@@ -1,12 +1,13 @@
 /**
  * [INPUT]: Depends on the passive quota bridge, revisioned snapshots and consumer demand identities.
- * [OUTPUT]: Provides one renderer quota store with paired demand ownership and a presentation-only expiry clock.
+ * [OUTPUT]: Provides one renderer quota store with paired demand ownership, bounded shared prefetch of missing or stale readings and a presentation-only expiry clock.
  * [POS]: Shared in-memory cache for Settings and all composer instances; never polls a provider.
  */
 import { AGENT_BACKEND_ORDER, type AgentBackendId } from "../../../shared/agent-ipc";
-import { emptyAgentLimits } from "../../../shared/usage-limits/projection";
-import { LIMITS_TIMING, type LimitsDemand, type UsageLimitsBridgeApi, type UsageLimitsSnapshot } from "../../../shared/usage-limits/types";
+import { emptyAgentLimits, quotaStale } from "../../../shared/usage-limits/projection";
+import { LIMITS_TIMING, type AgentUsageLimits, type LimitsDemand, type UsageLimitsBridgeApi, type UsageLimitsSnapshot } from "../../../shared/usage-limits/types";
 export type QuotaView = { snapshot: UsageLimitsSnapshot; now: number };
+type Prefetch = { consumers: number; generation: number; stop: (remember?: boolean) => void };
 export class UsageLimitsStore {
   private view: QuotaView;
   private listeners = new Set<() => void>();
@@ -15,6 +16,8 @@ export class UsageLimitsStore {
   private clock?: ReturnType<typeof setTimeout>;
   private connected = false;
   private epoch = 0;
+  private prefetches = new Map<AgentBackendId, Prefetch>();
+  private prefetched = new Map<AgentBackendId, number>();
   constructor(private readonly bridge: () => UsageLimitsBridgeApi | undefined, private readonly now = Date.now) {
     this.view = { snapshot: { revision: -1, agents: AGENT_BACKEND_ORDER.map(emptyAgentLimits) }, now: now() };
   }
@@ -70,6 +73,61 @@ export class UsageLimitsStore {
         this.consumers.delete(id);
         if (api) void api.setDemand({ ...demand, active: false }).then((snapshot) => this.accept(snapshot), () => undefined);
       });
+    };
+  }
+  /* A reading seeded from the last launch is real data but not an answer: the warm-up runs
+     for anything the main process would refresh anyway, and ends once a live one lands. */
+  private fresh(agent: AgentUsageLimits) {
+    return agent.receivedAt !== null && !quotaStale(agent, this.now());
+  }
+  prefetch(backends: readonly AgentBackendId[]) {
+    const releases: (() => void)[] = [];
+    if (!this.bridge()) return () => {};
+    for (const backend of new Set(backends)) {
+      let task = this.prefetches.get(backend);
+      if (!task) {
+        const agent = this.view.snapshot.agents.find((entry) => entry.backend === backend) ?? emptyAgentLimits(backend);
+        if (this.fresh(agent) || agent.fetchState === "error" ||
+          ["not-installed", "needs-auth", "unsupported"].includes(agent.availability) ||
+          this.prefetched.get(backend) === agent.generation) continue;
+        let stopped = false;
+        let releaseSnapshot = () => {};
+        let releaseDemand = () => {};
+        /* Main-side singleflight and backoff bound the cost, so an unfinished warm-up is
+           forgotten rather than remembered: the next composer mount may ask again. */
+        const timer = setTimeout(() => task!.stop(false), LIMITS_TIMING.timeoutMs);
+        task = { consumers: 0, generation: agent.generation, stop: (remember = true) => {
+          if (stopped) return;
+          stopped = true;
+          if (remember) this.prefetched.set(backend, task!.generation);
+          this.prefetches.delete(backend);
+          clearTimeout(timer);
+          releaseDemand();
+          releaseSnapshot();
+        } };
+        this.prefetches.set(backend, task);
+        releaseSnapshot = this.subscribe(() => {
+          const current = this.view.snapshot.agents.find((entry) => entry.backend === backend);
+          if (!current) return;
+          task!.generation = current.generation;
+          if (this.fresh(current) || current.fetchState === "error") task!.stop();
+        });
+        releaseDemand = this.demand(`quota:prefetch:${backend}`, "selector", [backend]);
+      }
+      const owned = task;
+      owned.consumers++;
+      releases.push(() => {
+        // A route or StrictMode handoff may acquire the same read before releasing this owner.
+        queueMicrotask(() => {
+          if (--owned.consumers === 0 && this.prefetches.get(backend) === owned) owned.stop(false);
+        });
+      });
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      for (const release of releases) release();
     };
   }
   refresh = async (backend?: AgentBackendId) => {

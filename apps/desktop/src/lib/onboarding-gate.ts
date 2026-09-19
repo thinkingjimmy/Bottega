@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on shared BackendInfo (agent-ipc), ChatHomeState (settings-ipc), and canEnterAgentBackend from agent-backends
- * [OUTPUT]: Owns startup and forced onboarding; preserves an existing workbench only while Chat Home remains satisfied, without a permanent entered-app flag.
+ * [INPUT]: Depends on shared BackendInfo installation facts, durable execution preference and ChatHomeState.
+ * [OUTPUT]: Owns installation-or-remote-preference onboarding admission and held/forced routing; conversation eligibility remains separate.
  * [POS]: Sole determiner of the renderer's startup routing; SetupProvider's entry gate and OnboardingView's step list both read the same verdict, so a missing requirement is always guided into onboarding with no exemption path
  */
 
 import type { BackendInfo } from "../../shared/agent-ipc";
 import type { ChatHomeState } from "../../shared/settings-ipc";
-import { canEnterAgentBackend } from "./agent-backends";
 
 /* ============================================================
  * 完成条件是一份清单，不是散落两处的两个布尔。
@@ -48,19 +47,20 @@ export const chatHomeRequirement = (
   return error ? "missing" : "unknown";
 };
 
-/* 入场判据仍由 canEnterAgentBackend 独占。肯定与否定不对称：任一后端
-   可入场即 satisfied，不必等扫描收尾；missing 却必须以收齐的证据为前提
-   ——全量检测在飞（checking）或任一后端 auth 还在探（"checking" 瞬态）
-   时，看不见可入场者只是「还不知道」。此前 backends 一旦非空就短路
-   checking，流式先到的部分快照被当成全量结论，首启因此闪引导。 */
+/** Installation is enough for onboarding, including versions that need updating before use. */
+export const isAgentInstalled = (backend: Pick<BackendInfo, "runtimeStatus">) =>
+  backend.runtimeStatus === "installed" || backend.runtimeStatus === "unsupported";
+
+/** Positive installation evidence permits continuing before the remaining scan finishes. */
 export const agentRequirement = (
   backends: readonly BackendInfo[] | null,
-  checking: boolean
+  checking: boolean,
+  defaultExecutionDeviceId: string | null = null
 ): RequirementStatus => {
-  if (backends?.some(canEnterAgentBackend)) return "satisfied";
+  if (defaultExecutionDeviceId || backends?.some(isAgentInstalled)) return "satisfied";
   const pending =
     checking ||
-    Boolean(backends?.some((entry) => entry.authStatus === "checking" || entry.runtimeStatus === "unknown"));
+    Boolean(backends?.some((entry) => entry.runtimeStatus === "unknown"));
   return pending ? "unknown" : "missing";
 };
 

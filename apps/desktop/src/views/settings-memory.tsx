@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, shared Memory/AppSettings contracts with MEMORY_SHARING_MODES, app Intl locale, view-local consent/history-import/setup modules, settings/memory components, memoryMasterRow, and memory-store authority flows
- * [OUTPUT]: Provides MemorySettingsView: a provider-bound, backtrackable install-first setup followed by the settled product switch, engine roster, sharing scope, activity, and attention surfaces; the activity header hosts both corpus actions — history import fills those numbers, rebuild clears them
+ * [OUTPUT]: Provides MemorySettingsView: a provider-bound, backtrackable install-first setup (the centred open column, outside the settings canvas) followed by the settled product switch, engine roster, sharing scope, activity, and attention surfaces; the activity header hosts both corpus actions — history import fills those numbers, rebuild clears them
  * [POS]: Settings › Memory product console; this layer declares user intent and dialog orchestration while all durable facts come from main-owned snapshots
  */
 
@@ -34,7 +34,7 @@ import {
 } from "@/components/settings/settings-layout";
 import { memoryStore } from "@/lib/memory-store";
 import { intlLocale } from "@/lib/i18n-locale";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import {
   TONE_SURFACE,
   TONE_TEXT,
@@ -47,6 +47,7 @@ import { settingsStore } from "@/lib/settings-store";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
+import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { cn } from "@ai-chat/ui/lib/utils";
 import type {
   MemoryConfigIssue,
@@ -334,8 +335,8 @@ export function MemorySettingsView() {
         </SettingsIconButton>
       }
     >
-      <SettingsCanvas>
-        {!setupDone ? (
+      {!setupDone ? (
+        <SlimScroller className="flex h-full min-h-0 flex-col overflow-y-auto px-[clamp(2rem,5vw,4rem)] py-6">
           <MemorySetup
             descriptors={providers}
             runtimes={runtimes}
@@ -358,9 +359,11 @@ export function MemorySettingsView() {
             }}
             onConfigSubmit={submitRuntimeConfig}
           />
-        ) : (
-          /* 纵向秩序 = 决定的顺序：要不要记 → 用哪个引擎、怎么管它
-             → 记的东西谁能召回 → 它在干什么。 */
+        </SlimScroller>
+      ) : (
+        <SettingsCanvas>
+          {/* 纵向秩序 = 决定的顺序：要不要记 → 用哪个引擎、怎么管它
+             → 记的东西谁能召回 → 它在干什么。 */}
           <div className="space-y-8">
             {/* 一级：整页唯一的产品级开关。它只说记不记——用哪个引擎是
                 下面那一段自己的事，同一批引擎不在一页里列两遍。 */}
@@ -572,8 +575,8 @@ export function MemorySettingsView() {
               </SettingsSection>
             )}
           </div>
-        )}
-      </SettingsCanvas>
+        </SettingsCanvas>
+      )}
 
       <MemoryDisclosureDialog
         open={consent.intent !== null}

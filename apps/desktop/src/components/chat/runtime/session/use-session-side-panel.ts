@@ -25,7 +25,7 @@ import {
   type DraftPlanProjection,
   type TurnDraft,
 } from "../../../../../shared/chat-turn-reducer";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import {
   readWorkspaceFile,
   resignWorkspaceFile,
@@ -293,6 +293,7 @@ export function useSessionSidePanel({
     },
     [context, setState]
   );
+  const openArtifact = useCallback((fence: import("../../../../../shared/artifact-ipc").ArtifactFence) => setState({ kind: "artifact-preview", fence }), [setState]);
   const openPlan = useCallback((message: ChatMessage) => {
     if (message.role !== "assistant" || message.kind !== "plan") return;
     setState({
@@ -424,6 +425,7 @@ export function useSessionSidePanel({
     openFile,
     openWorkspaceFile,
     openImage,
+    openArtifact,
     openPlan,
     openSubagent,
     reconcileRichValue,
@@ -433,6 +435,7 @@ export function useSessionSidePanel({
     openDraftPlan,
     openFile,
     openImage,
+    openArtifact,
     openPlan,
     openSubagent,
     openTabs,

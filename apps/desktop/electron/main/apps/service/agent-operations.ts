@@ -14,7 +14,7 @@ import type {
   AppRecord,
   SetAppAgentInput,
 } from "../../../../shared/apps-ipc";
-import type { AppLocale } from "../../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { translate } from "../../../../shared/i18n/runtime";
 import {
   backendById,

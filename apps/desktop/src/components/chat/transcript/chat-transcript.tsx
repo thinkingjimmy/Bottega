@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Conversation primitives, bounded Chat reads, backend identity, localized copy, canonical assistant turns, focused fork/static-row/divider siblings, Find, Outline, revision actions, and side-panel Plan/Image commands
- * [OUTPUT]: Provides the localized canonical transcript with cursor-backed upward pagination, imported/native Fork anchors and boundaries, a streaming draft confined to the native segment, scroll compensation, backend-aware failures, generation-fenced anchors, controlled Plan expansion, and Find/Outline
+ * [INPUT]: Depends on shared conversation column geometry, Conversation primitives, bounded Chat reads, backend identity, localized copy, canonical assistant turns, focused fork/static-row/divider/skeleton siblings, Find, Outline, revision actions, and side-panel Plan/Image commands
+ * [OUTPUT]: Provides the localized canonical transcript with paged imported/native segments, immutable-prefix-aware native revisions, Fork boundaries, native streaming, scroll compensation, a reading position the cloud port re-enters on, backend failures, fenced anchors, Plan expansion, and Find/Outline
  * [POS]: The top-level chat/transcript projection for native and imported SQLite timeline segments
  */
 
@@ -8,19 +8,11 @@ import {
   Fragment,
   memo,
   useCallback,
-  useEffect,
   useLayoutEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
-import {
-  Conversation,
-  ConversationContent,
-  ConversationScrollButton,
-  useScrollLockRelease,
-  useStickToBottomContext,
-} from "@ai-chat/ui/components/ai-elements/conversation";
+import { TimelineView } from "@ai-chat/chat-ui/timeline/view";
 import { projectDraftPlan } from "../../../../shared/chat-turn-reducer";
 import type {
   AssistantChatMessage,
@@ -32,34 +24,16 @@ import { ChatOutline, useCanonicalChatOutline } from "./chat-outline";
 import { ChatTurn, ChatTurnDraft } from "./chat-turn";
 import { FailureCard } from "./chat-error-card";
 import { ChartConversationBoundary } from "@/components/charts/chart-scroll-root";
-import {
-  createMessageSubagentCacheStore,
-  EMPTY_SUBAGENTS,
-  projectSubagentsByMessage,
-} from "./subagent-projection";
-import {
-  expandTranscriptAnchor,
-  includeTranscriptTarget,
-  initialTranscriptAnchor,
-  shouldRestoreTranscriptFocus,
-  transcriptWindow,
-} from "./transcript-window";
+import { createMessageSubagentProjector } from "./subagent-projection";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { ChevronUp, Loader2, Trash2Icon } from "lucide-react";
+import { Trash2Icon } from "lucide-react";
 import { TranscriptFind } from "./transcript-find";
-import {
-  findTranscriptTarget,
-  highlightTranscriptTarget,
-  scrollTranscriptTo,
-} from "./transcript-highlight";
 import { UserMessageEditor } from "./user-message-editor";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
-import {
-  loadOlderChatMessages,
-  materializeChatMessage,
-  readChatMessages,
-} from "@/lib/chat-messages-store";
+import { localChatReads } from "@/lib/cloud/chat/platform/local";
+const { earlier: loadOlderChatMessages, materialize: materializeChatMessage, snapshot: readChatMessages } = localChatReads.transcript;
 import { TranscriptDividerRow } from "./transcript-divider";
+import { ChatTranscriptSkeleton } from "./transcript-skeleton";
 import {
   ForkChatDialog,
   ForkLineageDivider,
@@ -145,7 +119,6 @@ function TranscriptRows({
   expandedPlanId,
   onClosePlan,
   showOutline,
-  setHistoryBatch,
   importSegment,
   routeSearch,
   forkContext,
@@ -156,7 +129,6 @@ function TranscriptRows({
   expandedPlanId: string | null;
   onClosePlan: () => void;
   showOutline: boolean;
-  setHistoryBatch: (active: boolean) => void;
   importSegment?: ImportSegmentFacts;
   routeSearch?: string;
   forkContext?: ChatForkViewContext;
@@ -188,253 +160,16 @@ function TranscriptRows({
     submitRevision,
     revisionUnavailableReason,
   } = controller;
-  const { scrollRef } = useStickToBottomContext();
-  const releaseScrollLock = useScrollLockRelease();
-  const [anchor, setAnchor] = useState(() =>
-    initialTranscriptAnchor(messages)
-  );
-  const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
-  const consumedRouteKeyRef = useRef<string | null>(null);
-  const pendingRouteRef = useRef<{ key: string; id: string } | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [forkAnchor, setForkAnchor] = useState<AssistantChatMessage | null>(null);
-  const [announcement, setAnnouncement] = useState<{
-    generation: number;
-    count: number;
-  } | null>(null);
-  const compensation = useRef<{ id: string; top: number } | null>(null);
-  const restoreFocusAfterExpand = useRef(false);
-  const loadedCount = useRef(0);
-  const loadingEarlier = useRef(false);
-  const [loadingEarlierNow, setLoadingEarlierNow] = useState(false);
   const outline = useCanonicalChatOutline(chatId, incarnationId, showOutline);
-  const windowed = useMemo(
-    () => transcriptWindow(messages, anchor),
-    [anchor, messages]
-  );
-  const visibleMessages = windowed.messages;
-  const anchorWasClamped =
-    anchor !== null && windowed.anchor?.id !== anchor.id;
-  const [subagentCache] = useState(createMessageSubagentCacheStore);
-  const subagentProjection = useMemo(
-    () => projectSubagentsByMessage(
-      visibleMessages,
-      subagents,
-      subagentCache.snapshot()
-    ),
-    [subagentCache, subagents, visibleMessages]
-  );
-  const subagentsByMessage = subagentProjection.projections;
-  useLayoutEffect(() => {
-    if (!anchorWasClamped) return;
-    compensation.current = null;
-    subagentCache.clear();
-    const frame = requestAnimationFrame(() => {
-      setAnchor(windowed.anchor);
-      setPendingJumpId(null);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [anchorWasClamped, subagentCache, windowed.anchor]);
-
-  useLayoutEffect(() => {
-    if (anchorWasClamped) return;
-    subagentCache.publish(subagentProjection.cache);
-  }, [anchorWasClamped, subagentCache, subagentProjection.cache]);
-
-  useLayoutEffect(() => {
-    const scroller = scrollRef.current;
-    if (!scroller) return;
-    const pendingCompensation = compensation.current;
-    if (pendingCompensation) {
-      const node = findTranscriptTarget(pendingCompensation.id, scroller);
-      if (node) {
-        scroller.scrollTop +=
-          node.getBoundingClientRect().top - pendingCompensation.top;
-      }
-      compensation.current = null;
-      if (loadedCount.current > 0) {
-        setAnnouncement((current) => ({
-          generation: (current?.generation ?? 0) + 1,
-          count: loadedCount.current,
-        }));
-      }
-    }
-    if (restoreFocusAfterExpand.current) {
-      const first = scroller.querySelector("[data-message-id]");
-      if (first instanceof HTMLElement) first.focus({ preventScroll: true });
-      restoreFocusAfterExpand.current = false;
-    }
-    if (pendingJumpId && !anchorWasClamped) {
-      const node = findTranscriptTarget(pendingJumpId, scroller);
-      if (node) {
-        scrollTranscriptTo(scroller, node, "auto");
-        setPendingJumpId(null);
-        highlightTranscriptTarget(node);
-        const route = pendingRouteRef.current;
-        if (route?.id === pendingJumpId) {
-          consumedRouteKeyRef.current = route.key;
-          pendingRouteRef.current = null;
-        }
-      }
-    }
-    const frame = requestAnimationFrame(() => setHistoryBatch(false));
-    return () => cancelAnimationFrame(frame);
-  }, [
-    anchorWasClamped,
-    pendingJumpId,
-    scrollRef,
-    setHistoryBatch,
-    windowed.anchor?.id,
-  ]);
-
-  const loadEarlier = useCallback(async () => {
-    if (loadingEarlier.current) return;
-    const scroller = scrollRef.current;
-    if (!scroller) return;
-    if (windowed.start <= 0 && !readChatMessages(chatId)?.hasMoreBefore) return;
-    loadingEarlier.current = true;
-    setLoadingEarlierNow(true);
-    releaseScrollLock();
-    setHistoryBatch(true);
-    const scrollerTop = scroller.getBoundingClientRect().top;
-    const firstVisible = [...scroller.querySelectorAll("[data-message-id]")]
-      .find(
-        (node) =>
-          node instanceof HTMLElement &&
-          node.getBoundingClientRect().bottom >= scrollerTop
-      );
-    if (firstVisible instanceof HTMLElement) {
-      compensation.current = {
-        id: firstVisible.dataset.messageId!,
-        top: firstVisible.getBoundingClientRect().top,
-      };
-    }
-    try {
-      if (windowed.start > 0) {
-        const next = expandTranscriptAnchor(messages, windowed.anchor);
-        const nextStart = transcriptWindow(messages, next).start;
-        restoreFocusAfterExpand.current = shouldRestoreTranscriptFocus(
-          nextStart,
-          document.activeElement instanceof HTMLElement &&
-            document.activeElement.hasAttribute("data-load-earlier")
-        );
-        loadedCount.current = windowed.start - nextStart;
-        setAnchor(next);
-        return;
-      }
-      const before = messages.length;
-      const page = await loadOlderChatMessages(chatId);
-      if (!page || page.messages.length <= before) {
-        /* 没有新行就没有位移要补：把补偿留在原地，下一次真正的加载会拿它
-           去对一个早已换过内容的坐标，滚动条于是跳一下。 */
-        compensation.current = null;
-        setHistoryBatch(false);
-        return;
-      }
-      loadedCount.current = page.messages.length - before;
-      setAnchor((current) => expandTranscriptAnchor(page.messages, current));
-    } catch {
-      compensation.current = null;
-      setHistoryBatch(false);
-    } finally {
-      loadingEarlier.current = false;
-      setLoadingEarlierNow(false);
-    }
-  }, [
-    chatId,
-    messages,
-    releaseScrollLock,
-    scrollRef,
-    setHistoryBatch,
-    windowed.anchor,
-    windowed.start,
-  ]);
-
-  useEffect(() => {
-    const scroller = scrollRef.current;
-    if (!scroller) return;
-    const onScroll = () => {
-      if (scroller.scrollTop <= 96 && scroller.scrollHeight > scroller.clientHeight) {
-        void loadEarlier();
-      }
-    };
-    scroller.addEventListener("scroll", onScroll, { passive: true });
-    return () => scroller.removeEventListener("scroll", onScroll);
-  }, [loadEarlier, scrollRef]);
-
-  const jumpTo = useCallback((id: string) => {
-    const scroller = scrollRef.current;
-    if (!scroller) return false;
-    releaseScrollLock();
-    const node = findTranscriptTarget(id, scroller);
-    if (node) {
-      scrollTranscriptTo(scroller, node, "smooth");
-      highlightTranscriptTarget(node);
-      return true;
-    }
-    setHistoryBatch(true);
-    setPendingJumpId(id);
-    setAnchor((current) => includeTranscriptTarget(messages, current, id));
-    void materializeChatMessage(chatId, id)
-      .then((snapshot) => {
-        if (!snapshot) {
-          setPendingJumpId(null);
-          setHistoryBatch(false);
-          return;
-        }
-        setAnchor((current) =>
-          includeTranscriptTarget(snapshot.messages, current, id)
-        );
-      })
-      .catch(() => {
-        setPendingJumpId(null);
-        setHistoryBatch(false);
-      });
-    return false;
-  }, [chatId, messages, releaseScrollLock, scrollRef, setHistoryBatch]);
-
-  useLayoutEffect(() => {
-    const routeKey = routeSearch ?? "";
-    if (consumedRouteKeyRef.current === routeKey) return;
-    const searchParams = new URLSearchParams(routeSearch ?? "");
-    const id = searchParams.get("m");
-    if (!id && searchParams.get("fork") === "divider") {
-      const divider = scrollRef.current?.querySelector("[data-fork-divider]");
-      if (divider instanceof HTMLElement) {
-        releaseScrollLock();
-        divider.scrollIntoView({ behavior: "smooth", block: "center" });
-        divider.focus({ preventScroll: true });
-        highlightTranscriptTarget(divider);
-        consumedRouteKeyRef.current = routeKey;
-      }
-      return;
-    }
-    if (!id) {
-      pendingRouteRef.current = null;
-      return;
-    }
-    pendingRouteRef.current = { key: routeKey, id };
-    if (jumpTo(id)) {
-      consumedRouteKeyRef.current = routeKey;
-      pendingRouteRef.current = null;
-    }
-  }, [jumpTo, releaseScrollLock, routeSearch, scrollRef]);
-
+  /* The reader owns the window, so rows are projected as they render rather than up front over
+     every loaded message; what it stops rendering is forgotten once the list itself changes. */
+  const [subagentProjector] = useState(createMessageSubagentProjector);
+  useLayoutEffect(() => { subagentProjector.retain(messages); }, [messages, subagentProjector]);
+  const earlier = useCallback(async () => (await loadOlderChatMessages(chatId))?.messages, [chatId]);
+  const materialize = useCallback(async (id: string) => (await materializeChatMessage(chatId, id))?.messages, [chatId]);
   const draftPlan = draft ? projectDraftPlan(draft) : null;
-  /* 草稿属于原生段：导入段自带一套从 1 起的 delivery_seq，只比 seq
-     会把流式草稿插进那段只读前传的中间。 */
-  const draftIndex =
-    draft && assistantSeq !== undefined
-      ? visibleMessages.findIndex(
-          (message) => message.segment !== "imported" && message.seq > assistantSeq
-        )
-      : -1;
-  const beforeDraft =
-    draftIndex < 0
-      ? visibleMessages
-      : visibleMessages.slice(0, draftIndex);
-  const afterDraft =
-    draftIndex < 0 ? [] : visibleMessages.slice(draftIndex);
   const lastUserId = messages.findLast((message) => message.role === "user")?.id;
   /* Fork 资格按 transcript 位置而非 seq 判断：adopted Chat 的 imported/native
      两段 seq 会重叠。索引表随 messages 身份缓存一次，行级查询是 O(1)。 */
@@ -491,6 +226,7 @@ function TranscriptRows({
           message={message}
           onEdit={
             canRevise &&
+            message.segment !== "imported" &&
             message.id === lastUserId &&
             !(forkContext?.summary.inheritedThroughSeq &&
               message.seq <= forkContext.summary.inheritedThroughSeq)
@@ -500,12 +236,14 @@ function TranscriptRows({
           editDisabledReason={
             message.id !== lastUserId
               ? undefined
-              : forkContext?.summary.inheritedThroughSeq &&
-                  message.seq <= forkContext.summary.inheritedThroughSeq
-                ? t("chat.fork.inheritedReadOnly")
-                : revisionUnavailableReason
-                  ? t(`chatRevision.unavailable.${revisionUnavailableReason}`)
-                  : undefined
+              : message.segment === "imported"
+                ? t("chatRevision.unavailable.imported-prefix")
+                : forkContext?.summary.inheritedThroughSeq &&
+                    message.seq <= forkContext.summary.inheritedThroughSeq
+                  ? t("chat.fork.inheritedReadOnly")
+                  : revisionUnavailableReason
+                    ? t(`chatRevision.unavailable.${revisionUnavailableReason}`)
+                    : undefined
           }
           onOpenImage={enableSidePanel ? openImage : undefined}
         />
@@ -543,7 +281,7 @@ function TranscriptRows({
             ? t("chat.fork.unavailable")
             : undefined
         }
-        subagents={subagentsByMessage.get(message.id) ?? EMPTY_SUBAGENTS}
+        subagents={subagentProjector.project(message, subagents)}
       />
     );
     return <div className="contents" key={message.id}>{row}</div>;
@@ -567,65 +305,13 @@ function TranscriptRows({
         </TranscriptDividerRow>
       </Fragment>
     ) : renderMessage(message);
-  /* 别人的前传是一处地标：读屏得先知道自己站在哪一段里，那条分隔线只有
-     看得见的人才读得到。display:contents 让 section 只留语义、不留盒子，
-     行与行之间的间距因此仍由 ConversationContent 的栅格说了算。 */
-  const renderRows = (rows: typeof messages) => {
-    const boundary = rows.findIndex((message) => message.segment !== "imported");
-    const imported = boundary < 0 ? rows : rows.slice(0, boundary);
-    const native = boundary < 0 ? [] : rows.slice(boundary);
-    return (
-      <>
-        {imported.length > 0 && (
-          <section
-            aria-label={t("history.importedHistoryLabel")}
-            className="contents"
-          >
-            {imported.map(renderRow)}
-          </section>
-        )}
-        {native.map(renderRow)}
-      </>
-    );
-  };
-
-  return (
-    <ChartConversationBoundary>
-        <ConversationContent
-          className="mx-auto w-full min-w-0 max-w-3xl gap-6"
-          data-transcript-content=""
-          tabIndex={-1}
-        >
-          <TranscriptFind
-            chatId={chatId}
-            jumpTo={jumpTo}
-            surfaceVisible={surfaceVisible}
-          />
-          {(windowed.start > 0 || readChatMessages(chatId)?.hasMoreBefore) && (
-            <TranscriptDividerRow>
-              <button
-                className="inline-flex h-7 items-center gap-1 rounded-full px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 disabled:opacity-60"
-                data-load-earlier=""
-                disabled={loadingEarlierNow}
-                onClick={loadEarlier}
-                type="button"
-              >
-                {loadingEarlierNow ? (
-                  <>
-                    <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />
-                    {t("chat.transcript.loadingEarlier")}
-                  </>
-                ) : (
-                  <>
-                    <ChevronUp className="size-3" />
-                    {t("chat.transcript.loadEarlier")}
-                  </>
-                )}
-              </button>
-            </TranscriptDividerRow>
-          )}
-          {renderRows(beforeDraft)}
-          {draft && (
+  return <TimelineView context={children => <ChartConversationBoundary>{children}</ChartConversationBoundary>} messages={messages} hasMoreBefore={readChatMessages(chatId)?.hasMoreBefore ?? false}
+    /* The same key the cloud port passes: one conversation keeps one reading position across an executor switch. */
+    memoryKey={incarnationId ? `${chatId}/${incarnationId}` : undefined}
+    earlier={earlier} materialize={materialize} routeSearch={routeSearch} row={renderRow}
+    copy={{ earlier: t("chat.transcript.loadEarlier"), loading: t("chat.transcript.loadingEarlier"), imported: t("history.importedHistoryLabel"), loaded: count => t("chat.transcript.loadedEarlier", { count }) }}
+    navigation={jumpTo => <><TranscriptFind chatId={chatId} jumpTo={jumpTo} surfaceVisible={surfaceVisible} />{showOutline && <ChatOutline canonicalItems={outline.items} messages={messages} onJump={jumpTo} />}</>}
+    live={draft ? { seq: assistantSeq, content: (
             <ChatTurnDraft
               backendDisplayName={backendDisplayName}
               backendId={backendId}
@@ -646,10 +332,8 @@ function TranscriptRows({
                   : undefined
               }
               subagents={subagents}
-            />
-          )}
-          {renderRows(afterDraft)}
-          {forkAnchor && forkContext && (
+            />) } : undefined}
+    after={<>          {forkAnchor && forkContext && (
             <ForkChatDialog
               anchor={forkAnchor}
               context={forkContext}
@@ -674,31 +358,13 @@ function TranscriptRows({
               onAct={() => void acknowledgeCleanup()}
               title={t("chat.transcript.cleanupFailedTitle")}
             />
-          )}
-        </ConversationContent>
-        <div aria-live="polite" className="sr-only" role="status">
-          {announcement && (
-            <span key={announcement.generation}>
-              {t("chat.transcript.loadedEarlier", {
-                count: announcement.count,
-              })}
-            </span>
-          )}
-        </div>
-        {showOutline && (
-          <ChatOutline
-            canonicalItems={outline.items}
-            messages={messages}
-            onJump={jumpTo}
-          />
-        )}
-        <ConversationScrollButton />
-      </ChartConversationBoundary>
-  );
+          )}</>} />;
 }
 
 export const ChatTranscript = memo(function ChatTranscript(props: {
   controller: ChatSessionController["transcript"];
+  /** Conversations with stored history get a skeleton while they hydrate. */
+  existingChat?: boolean;
   enableSidePanel: boolean;
   expandedPlanId: string | null;
   onClosePlan: () => void;
@@ -708,17 +374,12 @@ export const ChatTranscript = memo(function ChatTranscript(props: {
   forkContext?: ChatForkViewContext;
   surfaceVisible?: boolean;
 }) {
-  const [historyBatch, setHistoryBatch] = useState(false);
-  if (props.controller.loading) return <div className="min-h-0 flex-1" />;
-  return (
-    <Conversation
-      aria-live={historyBatch ? "off" : undefined}
-      className="min-h-0 min-w-0 flex-1"
-      initial="instant"
-      resize="instant"
-      role={historyBatch ? undefined : "log"}
-    >
-      <TranscriptRows {...props} setHistoryBatch={setHistoryBatch} />
-    </Conversation>
-  );
+  if (props.controller.loading) {
+    return props.existingChat ? (
+      <ChatTranscriptSkeleton />
+    ) : (
+      <div className="min-h-0 flex-1" />
+    );
+  }
+  return <TranscriptRows {...props} />;
 });

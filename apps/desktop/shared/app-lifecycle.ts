@@ -106,7 +106,13 @@ export type ProcessIdentity = Readonly<{
 }>;
 
 export type AgentTurnCustodyOwner =
-  | AppReferenceOwner;
+  | AppReferenceOwner
+  /**
+   * 常驻 Agent 连接：进程的寿命长于任何一轮，所以 owner 不能是某个 turn。
+   * `ownerId` 是连接键的摘要，`ownerRevision` 是池给这条连接的代次——强杀
+   * main 之后，启动对账按同一条路径把它清掉。
+   */
+  | Readonly<{ kind: "connection"; ownerId: string; ownerRevision: number }>;
 
 export type AgentTurnCustodyEntry = Readonly<{
   custodyId: string;

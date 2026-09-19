@@ -6,7 +6,7 @@
 
 import { Menu, nativeImage, Tray, type BrowserWindow } from "electron";
 import { join } from "node:path";
-import type { AppLocale } from "../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { translate } from "../../../shared/i18n/runtime";
 import type { EffectivePresence, TaskActivitySnapshot } from "../../../shared/presence-ipc";
 import type { UpdateSnapshot } from "../../../shared/update-ipc";

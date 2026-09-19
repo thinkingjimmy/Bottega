@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the Codex-ACP, Registry first-valid flight, codex quadrangular auth, ACP turn/models, authorized processEnv, frozen MCP backend-config, installers and headless/maintenance
- * [OUTPUT]: Provides codexBackend: Unified ACP chat, CODEX_CONFIG third-party MCP wiring, read-only Skill discovery source descriptors, reasoned certification, approval, Plan, resume, model, resource, runtime and background expansion
+ * [OUTPUT]: Provides codexBackend, its minimum supported version, ACP chat, third-party MCP wiring, read-only Skill sources, auth, approvals, model options and background capabilities.
  * [POS]: The only chat installation point for the Codex descriptor; Skills are Library-first product state — this backend only declares read-only discovery roots and never writes or reconciles Codex-native Skill config
  */
 
@@ -94,6 +94,7 @@ const capabilities: Omit<
 export const codexBackend: BackendDescriptor = {
   id: "codex",
   displayName: "Codex",
+  minimumVersion: MINIMUM_VERSION,
   workspaceDirName: "codex-workspace",
   sessionCapabilityPolicy: SESSION_CAPABILITY_POLICY.codex,
   serviceTier: CODEX_SERVICE_TIER,
@@ -129,6 +130,7 @@ export const codexBackend: BackendDescriptor = {
       ...codexAcpLaunch(options.runtime, {
         processEnv: options.processEnv,
         session: {
+          artifactDirectory: options.artifactDirectory,
           approveForMe: turnOptions.permissionMode === "approve-for-me",
           builtinMcp: options.builtinMcp?.server,
           thirdPartyMcpPlan: options.thirdPartyMcpPlan,

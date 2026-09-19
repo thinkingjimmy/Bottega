@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * [INPUT]: Depends on localized surface migration failure projection; Depends on shared appDisplayName, AppsProvider pinned records, the exclusive App target, shared Sidebar App activation, root-aligned Sidebar primitives, window intents, dropdown menu, and sonner
- * [OUTPUT]: Provides PinnedApps: exclusively active root App rows with generation-fenced activation, AppWindow, and direct Unpin
+ * [INPUT]: Depends on localized surface migration failure projection; Depends on shared appDisplayName, AppsProvider pinned records and list state, the exclusive App target, shared Sidebar App activation, SidebarLoadingRows, root-aligned Sidebar primitives, window intents, dropdown menu, and sonner
+ * [OUTPUT]: Provides PinnedApps: exclusively active root App rows with generation-fenced activation, AppWindow, and direct Unpin, preceded while listApps is in flight by exactly as many loading rows as the list last had
  * [POS]: components/sidebar/apps projection aligned with the parent Apps row; durable pin truth remains in the main-owned AppStore and App windows never own this management surface
  */
 
 import { appDisplayName } from "../../../../shared/apps-ipc";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppWindowIcon, MoreHorizontal, PinOff } from "lucide-react";
 import { useNavigate } from "react-router";
 import { usePointerOpenedMenu } from "@ai-chat/ui/hooks/use-pointer-opened-menu";
@@ -26,7 +26,7 @@ import {
 import { toast } from "@ai-chat/ui/components/ui/sonner";
 import { useApps } from "@/components/providers/apps-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { surfaceErrorMessage } from "@/lib/chat-composer/errors";
 import { openSurfaceInWindow } from "@/lib/window-surfaces-client";
 import type { AppRecord } from "../../../../shared/apps-ipc";
@@ -40,7 +40,34 @@ import {
   SidebarRowMark,
   SidebarRowTitle,
   sidebarRootMenuActionClass,
-} from "../sidebar-row";
+} from "@ai-chat/ui/components/workspace/row";
+import { SidebarLoadingRows } from "../sidebar-loading-rows";
+
+/* This is the one sidebar group whose empty state is "render nothing", so a
+   fixed row count would flash three placeholders at every user who pins none.
+   The last known length is remembered instead: the placeholder is the size of
+   the list that is about to arrive, and stays absent when there is none. */
+const PINNED_COUNT_KEY = "ai-chat.sidebar-pinned-apps.count.v1";
+const MAX_HINT_ROWS = 8;
+
+function readPinnedCountHint() {
+  try {
+    const stored = Number(window.localStorage.getItem(PINNED_COUNT_KEY));
+    return Number.isInteger(stored) && stored > 0
+      ? Math.min(stored, MAX_HINT_ROWS)
+      : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writePinnedCountHint(count: number) {
+  try {
+    window.localStorage.setItem(PINNED_COUNT_KEY, String(count));
+  } catch {
+    // Storage refused: the hint is a nicety, never a precondition.
+  }
+}
 
 const pinnedRowClass =
   "cursor-pointer pr-14 font-normal! group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-accent-foreground group-has-[:focus-visible]/menu-item:bg-sidebar-accent group-has-[:focus-visible]/menu-item:text-sidebar-accent-foreground";
@@ -49,9 +76,16 @@ export function PinnedApps() {
   const { t } = useAppTranslation();
   const navigate = useNavigate();
   const activeTarget = useSidebarAppTarget();
-  const { pinnedRecords, setPinned } = useApps();
+  const { loading, pinnedRecords, setPinned } = useApps();
   const [busyId, setBusyId] = useState("");
+  const [countHint] = useState(readPinnedCountHint);
+  useEffect(() => {
+    if (!loading) writePinnedCountHint(pinnedRecords.length);
+  }, [loading, pinnedRecords.length]);
 
+  if (loading && !pinnedRecords.length) {
+    return <SidebarLoadingRows rows={countHint} />;
+  }
   if (!pinnedRecords.length) return null;
 
   const showApp = (record: AppRecord) =>

@@ -1,9 +1,9 @@
 /**
  * [INPUT]: Depends on canonical AppStore, ProjectStore and BaseStore facades.
- * [OUTPUT]: Provides restartable fixed-ID BaseApp admission without package seed or permission transfer.
+ * [OUTPUT]: Provides restartable fixed-ID BaseApp admission without package seed or permission transfer, preserving existing confirmed Project metadata.
  * [POS]: Cross-store driver; each leaf commit checkpoints back into the AppStore-owned intent.
  */
-import type { SyncScope } from "../../../../../shared/local-storage/contracts";
+import { canonicalJson, sameScope, type SyncScope } from "../../../../../shared/local-storage/contracts";
 import type { AppStore } from "../app-store";
 import type { ProjectStore } from "../../../projects/store/project-store";
 import type { BaseStore } from "../../../bases/base-store";
@@ -16,10 +16,17 @@ export class PortableAppAdmission {
     if (!intent) intent = await this.apps.portable.begin(scope, operationId, descriptor, {
       baseExists: true, projectExists: Boolean(this.projects.get(descriptor.projectId)),
     });
-    else if (JSON.stringify(intent.descriptor) !== JSON.stringify(descriptor) || JSON.stringify(intent.scope) !== JSON.stringify(scope)) throw new Error("App admission identity changed");
+    else if (canonicalJson(intent.descriptor) !== canonicalJson(descriptor) || !sameScope(intent.scope, scope)) throw new Error("App admission identity changed");
     if (intent.state === "complete") return this.apps.portable.get(descriptor.appId);
     if (!intent.completed.includes("project")) {
-      await this.projects.portable.accept(scope, operationId, { id: descriptor.projectId, name: descriptor.name, sortIndex: 0,
+      const project = this.projects.get(descriptor.projectId);
+      if (project && !project.sync && project.workspaceBinding.kind === "app" && project.workspaceBinding.appId === descriptor.appId) {
+        await this.projects.portable.accept(scope, operationId, { id: descriptor.projectId, name: descriptor.name, sortIndex: project.sortIndex,
+          createdAt: descriptor.createdAt, updatedAt: descriptor.updatedAt, role: "workspace", appId: descriptor.appId, cloudRevision: descriptor.cloudRevision });
+      } else if (project) {
+        if (!project.sync || !sameScope(project.sync.scope, scope) || project.workspaceBinding.kind !== "app" ||
+            project.workspaceBinding.appId !== descriptor.appId) throw new Error("APP_PROJECT_IDENTITY_CONFLICT");
+      } else await this.projects.portable.accept(scope, operationId, { id: descriptor.projectId, name: descriptor.name, sortIndex: 0,
         createdAt: descriptor.createdAt, updatedAt: descriptor.updatedAt, role: "workspace", appId: descriptor.appId, cloudRevision: descriptor.cloudRevision });
       intent = await this.apps.portable.checkpoint(operationId, "project");
     }

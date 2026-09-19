@@ -15,8 +15,8 @@ import {
   type ReactNode,
 } from "react";
 import { I18nextProvider, setI18n, useTranslation } from "react-i18next";
-import type { AppLocale } from "../../../shared/i18n/locale";
-import { resolveAppLocale } from "../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
+import { resolveAppLocale } from "@ai-chat/ui/lib/locale";
 import type { Catalog } from "../../../shared/i18n/locales/en";
 import { loadCatalog } from "../../../shared/i18n/catalogs";
 import { catalogOf, createAppI18n } from "../../../shared/i18n/runtime";

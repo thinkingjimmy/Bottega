@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on immutable backend snapshots, scoped evidence and an explicit clock.
- * [OUTPUT]: Provides common submission, authentication, target and display projections.
+ * [OUTPUT]: Provides shared admission and display judgments that preserve startup blockers and respect runtime/authentication evidence lifetimes.
  * [POS]: Pure decision authority for main admission and every renderer availability surface.
  */
 import type { BackendInfo } from "../agent-ipc";
@@ -47,6 +47,12 @@ export function submissionDecision(info: BackendFacts | undefined, now: number, 
     decision: "block", reason: info.availability?.runtimeIssue === "cannot-start" ? "cannot-start" : "cannot-check",
   };
   const facts = info.availability;
+  if (facts?.startup?.status === "cannot-start" && facts.startup.environmentGeneration === facts.environmentGeneration) {
+    return { decision: "block", reason: "cannot-start" };
+  }
+  if (facts?.runtimeCheck?.phase === "error" && (facts.runtimeCheck.expiresAt ?? 0) <= now) {
+    return { decision: "block", reason: "cannot-check" };
+  }
   const recent = context?.recent;
   if (recent?.outcome === "usage-limit" && recent.limit?.resetsAt && recent.limit.resetsAt > now &&
     recent.conversationId === context?.conversationId && context.target &&

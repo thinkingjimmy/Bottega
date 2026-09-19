@@ -1,8 +1,12 @@
 /**
- * [INPUT]: Depends on the English Catalog shape and Japanese feature catalogs, including Agent and Chat-storage failures, Apps, Chat, and Settings
- * [OUTPUT]: Provides the complete Japanese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
+ * [INPUT]: Depends on the English Catalog shape and Japanese feature catalogs, including Agent and Chat-storage failures, Apps, Chat, and Settings, with shared cloud account/approval and isolated composer copy.
+ * [OUTPUT]: Provides the complete Japanese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery
  * [POS]: Japanese desktop locale; compile-time structure must match English exactly
  */
+import { workspaceCopy } from "@ai-chat/ui/workspace-copy/ja";
+
+import { uiTextJa } from "@ai-chat/ui/lib/ui-text-copy/ja";
+import { cloudCopy } from "@ai-chat/ui/lib/cloud-copy/ja";
 import { sketchJa } from "./sketch/ja";
 import { appHostJa } from "./app-host/ja";
 import { agentAvailabilityJa } from "./agent-availability/ja";
@@ -11,25 +15,24 @@ import { agentAvailabilityJa } from "./agent-availability/ja";
 import { chatAgentSwitchJa } from "./chat-agent-switch/ja";
 import type { Catalog } from "./en";
 import { basesJa } from "./bases/ja";
-import { archiveJa } from "./archive";
-import { memoryJa } from "./memory";
-import { onboardingJa } from "./onboarding";
-import { permissionJa } from "./permission";
-import { projectsJa } from "./projects";
-import { setupJa } from "./setup";
-import { settingsBrowserJa } from "./settings/browser";
-import { settingsSkillsJa } from "./settings/skills";
-import { settingsExtensionsJa } from "./settings/extensions";
-import { settingsToolsJa } from "./settings/tools";
-import { settingsUsageJa } from "./settings/usage";
-import { settingsPersonalizationJa } from "./settings/personalization";
-import { settingsShortcutsJa } from "./settings/shortcuts";
+import { archiveJa } from "./archive/ja";
+import { memoryJa } from "./memory/ja";
+import { onboardingJa } from "./onboarding/ja";
+import { copy as composerCopy } from "@ai-chat/chat-ui/composer-control-copy/ja";
+import { projectsJa } from "./projects/ja";
+import { setupJa } from "./setup/ja";
+import { settingsBrowserJa } from "./settings/browser/ja";
+import { settingsSkillsJa } from "./settings/skills/ja";
+import { settingsExtensionsJa } from "./settings/extensions/ja";
+import { settingsToolsJa } from "./settings/tools/ja";
+import { settingsUsageJa } from "./settings/usage/ja";
+import { settingsPersonalizationJa } from "./settings/personalization/ja";
 import { presenceJa } from "./presence/ja";
-import { settingsAboutJa } from "./settings/about";
-import { historyJa } from "./history";
-import { chatRevisionJa } from "./chat-revision";
-import { projectSettingsJa } from "./project-settings";
-import { chatJa } from "./chat";
+import { settingsAboutJa } from "./settings/about/ja";
+import { historyJa } from "./history/ja";
+import { chatRevisionJa } from "./chat-revision/ja";
+import { projectSettingsJa } from "./project-settings/ja";
+import { chatJa } from "./chat/ja";
 import { chatComposerJa } from "./chat-composer/ja";
 import { chatRuntimeJa } from "./chat-runtime/ja";
 import { chatSurfacesJa } from "./chat-surfaces/ja";
@@ -38,63 +41,65 @@ import { agentFailureJa } from "./agent-failure/ja";
 import { chatStorageJa } from "./chat-storage/ja";
 
 export const ja: Catalog = {
+  cloud: cloudCopy,
   sketch: sketchJa,
   appHost: appHostJa,
   agentAvailability: agentAvailabilityJa,
   common: {
-    auto: "自動",
-    light: "ライト",
-    dark: "ダーク",
-    loading: "読み込み中",
-    loadingView: "画面を読み込み中",
-    close: "閉じる",
-    retry: "再試行",
-    continue: "続行",
-    discard: "破棄",
-    cancel: "キャンセル",
-    save: "保存",
-    reveal: {
+...workspaceCopy.chatCommon,
+auto: "自動",
+light: "ライト",
+dark: "ダーク",
+loading: "読み込み中",
+loadingView: "画面を読み込み中",
+close: "閉じる",
+retry: "再試行",
+continue: "続行",
+discard: "破棄",
+cancel: "キャンセル",
+save: "保存",
+reveal: {
       finder: "Finder に表示",
       fileExplorer: "エクスプローラーで表示",
       fileManager: "ファイルマネージャーで表示",
     },
-    settings: "設定",
-    backToApp: "アプリに戻る",
-    back: "戻る",
-    toggleSidebar: "サイドバーを開閉",
-    newChat: "新しいチャット",
-    apps: "アプリ",
-    projects: "プロジェクト",
-    general: "一般",
-    keyboardShortcuts: "キーボードショートカット",
-    backends: "バックエンド",
-    personalization: "パーソナライズ",
-    browser: "ブラウザ",
-    agentPlugins: "Agent プラグイン",
-    tools: "ツール",
-    skills: "Skills",
-    extensions: "拡張",
-    usage: "使用量",
-    archivedItems: "アーカイブ済み",
-    memory: "メモリ",
-    agents: "Agents",
-    integrations: "連携",
-    archived: "アーカイブ",
-    chats: "チャット",
-    bases: "Bases",
-    toggleActivity: "アクティビティ表示を切り替え",
-    createChat: "チャットを作成",
-    chatsEmpty: "+ を押してチャットを開始",
-    rename: "名前を変更",
-    renameChatTitle: "チャットの名前を変更",
-    renameChatDescription: "このチャットの新しい名前を入力してください。",
-    memoryAttention: "メモリサービスに確認が必要です",
-    memoryAttentionOpen: "メモリサービスに確認が必要です。詳細を開く",
-    appInstalling: "アプリをインストール中",
-    appInstallFailed: "アプリのインストールに失敗しました",
-    appInstallSucceeded: "アプリをインストールしました",
-    promoteBaseToApp: "{{name}} をアプリに昇格",
-  },
+settings: "設定",
+backToApp: "アプリに戻る",
+back: "戻る",
+toggleSidebar: "サイドバーを開閉",
+newChat: "新しいチャット",
+apps: "アプリ",
+projects: "プロジェクト",
+general: "一般",
+keyboardShortcuts: "キーボードショートカット",
+lab: "ラボ",
+stepOf: "ステップ {{current}} / {{total}}",
+backends: "バックエンド",
+personalization: "パーソナライズ",
+browser: "ブラウザ",
+agentPlugins: "Agent プラグイン",
+tools: "ツール",
+skills: "Skills",
+
+usage: "使用量",
+archivedItems: "アーカイブ済み",
+memory: "メモリ",
+agents: "Agents",
+integrations: "連携",
+archived: "アーカイブ",
+chats: "チャット",
+bases: "Bases",
+toggleActivity: "アクティビティ表示を切り替え",
+createChat: "チャットを作成",
+chatsEmpty: "+ を押してチャットを開始",
+rename: "名前を変更",
+memoryAttention: "メモリサービスに確認が必要です",
+memoryAttentionOpen: "メモリサービスに確認が必要です。詳細を開く",
+appInstalling: "アプリをインストール中",
+appInstallFailed: "アプリのインストールに失敗しました",
+appInstallSucceeded: "アプリをインストールしました",
+promoteBaseToApp: "{{name}} をアプリに昇格"
+},
   windowSurface: {
     missingIdentity: "App ウインドウの起動情報がありません",
     checkingResidence: "ウインドウの配置を確認しています…",
@@ -115,7 +120,7 @@ export const ja: Catalog = {
   agentFailure: agentFailureJa,
   chatStorage: chatStorageJa,
   projects: projectsJa,
-  permission: permissionJa,
+  permission: composerCopy.permission,
   history: historyJa,
   chatRevision: chatRevisionJa,
   projectSettings: projectSettingsJa,
@@ -123,72 +128,86 @@ export const ja: Catalog = {
     about: settingsAboutJa,
     presence: presenceJa,
     personalization: settingsPersonalizationJa,
-    shortcuts: settingsShortcutsJa,
     skills: settingsSkillsJa,
     browser: settingsBrowserJa,
     extensions: settingsExtensionsJa,
     backends: {
+      defaultExecutionSaveFailed: "既定のパソコンを保存できませんでした。再試行してください。",
+      defaultExecutionDevice: "既定の実行パソコン",
+      localExecutionDevice: "このパソコン",
+      defaultExecutionDescription: "新しい会話に使用します。送信前に利用状況を確認します。",
       title: "Agent バックエンド",
       description: "認証と使用量は各公式 CLI が管理し、製品はローカル状態のみ確認します。",
       recheck: "再確認",
     },
-    general: {
-      appearance: "外観",
-      theme: "テーマ",
-      themeDescription: "自動はシステムの外観に従います。",
-      language: "言語",
-      languageDescription: "自動検出はシステムの優先言語に従い、未対応なら英語を使用します。",
-      autoDetect: "自動検出",
-      font: "フォント",
-      fontDescription: "アプリ全体で使用するフォントです。",
-      systemFont: "システム",
-      chatHomeLocation: "Chat Home の保存先",
-      chatHomeDescription: "各チャットの作業ファイルを保存します。設定完了までは新規チャットを作成しません。",
-      folder: "フォルダー",
-      notSelected: "未選択",
-      change: "変更…",
-      changeChatHomeFolder: "Chat Home フォルダーを変更",
-      crossChatRead: "チャット間の読み取りアクセス",
-      crossChatReadDescription: "オフでは現在の Chat Home のみ、オンでは他の Chat Home も読み取り専用で利用できます。",
-      chat: "チャット",
-      chatDescription: "新しいチャットのタイトルはバックグラウンドで生成されます。",
-      titleGeneration: "タイトル生成",
-      titleGenerationDescription: "自動は Codex を優先し、モデルはバックエンドごとに保存します。",
-      titleAgent: "タイトル Agent",
-      titleModel: "タイトルモデル",
-      reading: "読み込み中…",
-      autoRelayLimit: "自動リレー上限",
-      autoRelayRisk: "無制限のリレーはループと token 消費のリスクを高めます。",
-      autoRelayDescription: "上限に達した Section 間リレーを一時停止し、続行を待ちます。",
-      rounds_one: "{{count}} 回",
-      rounds_other: "{{count}} 回",
-      unlimitedNotRecommended: "無制限（非推奨）",
-      saveLanguageFailed: "言語設定を保存できませんでした",
-      saveThemeFailed: "テーマ設定を保存できませんでした",
-      saveTitleModelFailed: "タイトルモデル設定を保存できませんでした",
-      saveTitleAgentFailed: "タイトル Agent 設定を保存できませんでした",
-      saveRelayLimitFailed: "リレー上限を保存できませんでした",
-      saveCrossChatReadFailed: "チャット間読み取り設定を保存できませんでした",
-      settingsLoadFailed: "設定を読み込めませんでした",
-      settingsRetry: "設定を再試行",
-      modelDirectoryRetry: "モデル一覧を再試行",
-      chatHomeChangeFailed: "Chat Home の保存場所を変更できませんでした",
-      defaultModelUnavailable: "デフォルト（モデル名なし）",
-      currentModelUnavailable: "{{model}}（現在利用不可）",
+    lab: {
+      title: "ラボ",
+      preamble:
+        "実験的な機能です。既定はオフで、どのリリースでも変更または削除される場合があります。",
+      agentConnections: "Agent 接続を保持",
+      agentConnectionsDescription:
+        "会話を開いた時点で Agent プロセスを温め、その会話のターン間で再利用します。最初のメッセージが速くなる代わりに、メモリを少し多く使います。",
+      saveAgentConnectionsFailed: "Agent 接続の設定を保存できませんでした。もう一度お試しください。",
     },
+    general: {
+...workspaceCopy.chatSettings,
+appearance: "外観",
+theme: "テーマ",
+themeDescription: "自動はシステムの外観に従います。",
+language: "言語",
+languageDescription: "自動検出はシステムの優先言語に従い、未対応なら英語を使用します。",
+autoDetect: "自動検出",
+font: "フォント",
+fontDescription: "アプリ全体で使用するフォントです。",
+saveArchiveConfettiFailed: "紙吹雪の設定を保存できませんでした。もう一度お試しください。",
+systemFont: "システム",
+chatHomeLocation: "Bottega フォルダー",
+chatHomeDescription: "会話のコピーと作業ファイルを保存します。アカウント設定、鍵、端末の権限はこのコンピューターに残ります。",
+folder: "フォルダー",
+notSelected: "未選択",
+crossChatRead: "チャット間の読み取りアクセス",
+crossChatReadDescription: "オフでは現在の Chat Home のみ、オンでは他の Chat Home も読み取り専用で利用できます。",
+chat: "チャット",
+chatDescription: "新しいチャットのタイトルはバックグラウンドで生成されます。",
+titleGeneration: "タイトル生成",
+titleGenerationDescription: "タイトルモデルはバックエンドごとに保存します。",
+titleAgent: "タイトル Agent",
+titleModel: "タイトルモデル",
+reading: "読み込み中…",
+autoRelayLimit: "自動リレー上限",
+autoRelayRisk: "無制限のリレーはループと token 消費のリスクを高めます。",
+autoRelayDescription: "上限に達した Section 間リレーを一時停止し、続行を待ちます。",
+rounds_one: "{{count}} 回",
+rounds_other: "{{count}} 回",
+unlimitedNotRecommended: "無制限（非推奨）",
+saveLanguageFailed: "言語設定を保存できませんでした",
+saveThemeFailed: "テーマ設定を保存できませんでした",
+saveTitleModelFailed: "タイトルモデル設定を保存できませんでした",
+saveTitleAgentFailed: "タイトル Agent 設定を保存できませんでした",
+saveRelayLimitFailed: "リレー上限を保存できませんでした",
+saveCrossChatReadFailed: "チャット間読み取り設定を保存できませんでした",
+settingsLoadFailed: "設定を読み込めませんでした",
+settingsRetry: "設定を再試行",
+modelDirectoryRetry: "モデル一覧を再試行",
+chatHomeChangeFailed: "Chat Home の保存場所を変更できませんでした",
+defaultModelUnavailable: "デフォルト（モデル名なし）",
+currentModelUnavailable: "{{model}}（現在利用不可）"
+},
     native: {
+      library: {
+        missing: "Bottega フォルダーが見つかりません。Bottega を開き直して場所を指定するか、新しいフォルダーで始めてください。",
+        locked: "このコンピューターの別の Bottega がこのフォルダーを使用しています。終了してから再試行してください。",
+        "identity-changed": "このフォルダーには別の Bottega データがあります。これまで使っていたフォルダーを選んでください。",
+        "control-invalid": "このフォルダーの設定を読み取れませんでした。別のフォルダーを選んでください。",
+        "already-configured": "Bottega はすでにフォルダーを開いています。別のフォルダーを開くには再起動してください。",
+        "root-changed": "Bottega は最初に選んだフォルダーを使い続けます。別のフォルダーを開くには再起動してください。",
+      },
       chooseChatHome: "Chat Home の保存先を選択",
       chooseProject: "Project フォルダーを選択",
       externalLinkTitle: "外部リンクを開く",
       externalLinkMessage: "このドメインは信頼済みリストにありません。",
       terminalTitle: "ターミナル操作を確認",
       terminalMessage: "このコマンドはローカル CLI のインストールを変更します。",
-      startupFailureTitle: "Bottega を起動できませんでした",
-      startupFailureMessage: "メインプロセスを初期化できませんでした。アプリを安全に終了します。\n\n{{detail}}",
-      appAuthorityRepairTitle: "App カタログの修復が必要です",
-      appAuthorityRepairMessage: "Bottega は App カタログの権限を確立できませんでした。Project の App ピンは変更されていません。修復では有効なカタログレコードをすべて保持します。カタログが破損している場合は、元のバイト列と一致する隔離コピーを保存できた場合にのみ続行し、欠落または隔離済みのカタログだけを空で再構築します。その後 Bottega を再起動し、利用できない App を指す Project のピンだけを削除します。",
-      appAuthorityRepairAction: "修復して再起動",
-      appAuthorityRepairQuit: "終了",
       quitFailureTitle: "安全に終了できませんでした",
       quitRecovered: "終了準備中にエラーが発生しました。アプリは復旧し、チャットは引き続き利用できます。後でもう一度お試しください。",
       quitUnrecovered: "終了準備から復旧できませんでした。アプリは開いたままですが、チャットとタイトル生成は無効です。残っている Agent プロセスを解決してから再試行してください。",
@@ -201,6 +220,12 @@ export const ja: Catalog = {
         "有効にすると、App のメンテナンスチャットがこれらの skills、MCP、hooks を読み込みます。信頼できるリポジトリの場合のみ続行してください。",
       disableExtensions: "有効にしない",
       enableExtensions: "拡張を有効化",
+      libraryChatsUnreadable_one: "Bottega フォルダ内の {{count}} 件の会話を開けませんでした。そのまま保持しています。",
+      libraryChatsUnreadable_other: "Bottega フォルダ内の {{count}} 件の会話を開けませんでした。そのまま保持しています。",
+      libraryFilesMissing_one: "コピーされた会話が参照する {{count}} 件のファイルが Bottega フォルダにありません。",
+      libraryFilesMissing_other: "コピーされた会話が参照する {{count}} 件のファイルが Bottega フォルダにありません。",
+      libraryOpeningTitle: "Bottega フォルダを開いています",
+      libraryOpeningProgress: "ファイルを開いています… {{completed}} / {{total}}",
     },
     usage: {
       ...settingsUsageJa,
@@ -229,44 +254,11 @@ export const ja: Catalog = {
     changeProject: "Project を変更：{{name}}",
     openSidePanel: "サイドパネルを開く",
     importedReadOnlyReason: "インポート履歴は読み取り専用です。",
-    fork: {
-      action: "ここから Fork",
-      title: "ここからチャットを Fork",
-      description: "この応答から「{{title}}」の独立した続きを作成します。",
-      sameWorkspace: "このワークスペースで Fork",
-      sameWorkspaceDetail: "このメッセージから現在のワークスペースで Fork します。",
-      newWorktree: "新しい worktree で Fork",
-      newWorktreeDetail: "このメッセージから新しい worktree で Fork します。",
-      dirtyWarning: "コピー元のローカル変更はコピーされません。",
-      unsupported: "管理 worktree は macOS 上の対象 Git Project のみ利用できます。",
-      unavailable: "この応答から Fork できません",
-      continuedFrom: "⑂ 元のチャットから継続",
-      openSource: "元のチャット {{title}} を開く",
-      originalUnavailable: "元のチャットは利用できません",
-      inheritedReadOnly: "継承されたメッセージは編集できません",
-      recoveryTruncated: "継承履歴全体がコンテキスト予算を超えたため、Agent には最新部分のみ送信されました。",
-      worktreePermission: "管理対象 worktree では Full Access を使用できません",
-      errors: {
-        pointInvalid: "この応答はもう Fork の起点にできません。チャットを更新して再試行してください。",
-        sourceStale: "このビューの読み込み後にチャットが変更されました。更新して再試行してください。",
-        sourceUnsupported: "このチャットは Fork できません。",
-        prefixTooLarge: "この応答までの履歴が大きすぎて Fork できません。より前の応答を選んでください。",
-        projectUnavailable: "Project が利用できないか、再バインドまたは削除の途中です。",
-        requestConflict: "別の Fork リクエストがこの ID をすでに使用しています。ダイアログを閉じて再試行してください。",
-        recoveryRequired: "この Fork は続行する前に復旧が必要です。",
-        notRepository: "Project フォルダーは Git リポジトリではありません。",
-        notGitRoot: "Project フォルダーは Git リポジトリのルートではありません。",
-        noHead: "リポジトリにまだコミットがありません。先にコミットを作成してください。",
-        bareRepository: "bare リポジトリでは管理 worktree を作成できません。",
-        operationInProgress: "進行中の Git 操作（merge、rebase、cherry-pick、revert、bisect）を先に完了または中止してください。",
-        submodule: "サブモジュールを含むリポジトリはまだサポートされていません。",
-        treeTooLarge: "リポジトリのツリーが大きすぎて、管理 worktree 用の検証ができません。",
-        configUnsafe: "リポジトリの Git 設定が外部プログラム（filter、fsmonitor、alternate refs）を実行します。先に無効化してください。",
-        branchConflict: "Fork ブランチがすでに存在します。復旧が必要です。",
-        pathConflict: "worktree のパスまたは登録がすでに存在します。復旧が必要です。",
-        identityDrift: "Fork 中にリポジトリの ID が変わりました。再試行してください。",
-      },
+    cloud: {
+      unavailable: "この会話はこのデバイスにはありません。",
+      deleted: "この会話は別のデバイスで削除されました。",
     },
+    fork: composerCopy.fork,
     sidePanel: {
       ...chatSurfacesJa.sidePanel,
       addPanel: "パネルを追加",
@@ -285,6 +277,7 @@ export const ja: Catalog = {
       closeNamedTab: "{{name}} タブを閉じる",
       newTab: "新しいタブ",
       webPage: "ウェブページ",
+      sleepingTab: "スリープ中 · クリックで再読み込み",
       baseOwnerResolveFailed: "Base の所有者を特定できませんでした",
       appSlotUnavailable: "App の許可が取り消されたか利用できません。再許可されるまでスロットを保持します。",
       catalog: {
@@ -313,56 +306,11 @@ export const ja: Catalog = {
       galleryComments_other: "{{count}} 件のコメント",
       clearGalleryComments: "画像コメントをすべて消去",
       focusGallery: "ギャラリーにフォーカス",
-      modelSelector: {
-        currentModel: "現在のモデル {{model}}、Effort {{effort}}",
-        selector: "チャットモデルセレクター",
-        advanced: "詳細",
-        model: "モデル",
-        effort: "Effort",
-        speed: "速度",
-        disableFast: "Fast 速度を無効にする",
-        enableFast: "Fast 速度を有効にする",
-        quickTier: "クイックモデル段階",
-        loadingModels: "モデルカタログを読み込み中…",
-        retryModels: "モデルカタログを再試行",
-        resetDefault: "既定値に戻す",
-        onlyOneModel: "利用可能なモデルは 1 つだけです",
-        effortUnavailable: "現在のモデルでは Effort を変更できません",
-        noModels: "利用可能なモデルが見つかりません",
-        backendDefaultModel: "バックエンドの既定モデル",
-        speedDescription:
-          "対応する Opus 5/4.8 モデルでは約 2.5 倍高速です。usage credits の消費は増えますが、サブスクリプションのレート制限枠は消費しません。",
-        speedReason: {
-          modelUnsupported: "現在のモデルは Fast を提供していません",
-          backendOff: "バックエンドがこのセッションで Fast を無効にしました",
-          backendOn: "バックエンドがこのセッションで Fast を有効にしました",
-        },
-      },
+      modelSelector: { ...composerCopy.chat.composer.modelSelector },
     },
-    resumeFailure: {
-      title: "{{backend}} がこのチャットの保存済みセッションを開けません",
-      description: "メッセージと添付ファイルは保存済みで、まだ送信されていません。",
-      retriedTitle: "元のセッションでの再試行に失敗しました",
-      retriedDescription: "このセッションは {{backend}} 側にもう残っていない可能性が高いです。メッセージと添付ファイルは保存されたままで、まだ送信されていません。",
-      recommended: "推奨",
-      sameSession: "元のセッションで再試行",
-      sameSessionDetail: "元のセッションにもう一度つなぎます。成功すればエージェントはこのチャットの文脈をすべて保ったままです。",
-      sameSessionRetry: "もう一度再試行",
-      sameSessionRetryDetail: "同じ接続をもう一度試します。すでに一度失敗しています。",
-      freshSession: "新しいセッションを開始",
-      freshSessionDetail: "元のセッションを手放し、直近のやり取りの要約からエージェントに始め直してもらいます。それより前の内容は直接には見えなくなります。",
-      freshSessionBlocked: "このチャットは外部から取り込まれ、取り込み時のセッションに紐づいたままなので、新しいセッションには移せません。",
-      abandon: "このターンを破棄",
-      abandonDetail: "送信せずにこのターンを終了します。メッセージはこのチャットに残ります。",
-      actionFailed: "実行できませんでした: {{message}}",
-    },
-    readOnly: "このチャットは現在読み取り専用です",
-    backendUnavailable: "{{backend}} は現在利用できません。",
-    backendRetryHint: "続行する前にインストールとサインイン状態を確認してください。",
-    installOrSignIn: "インストールまたはサインイン",
+    resumeFailure: composerCopy.resumeFailure,
     checkAgain: "再確認",
     workedFor: "処理時間 {{duration}}",
-    worked: "処理済み",
     sectionImagesDisclosure:
       "{{backend}} に Section ごと最大 {{count}} 枚の画像（このターン全体で {{megabytes}} MB）を送信します。",
     sectionImagesUnsupported:
@@ -370,6 +318,7 @@ export const ja: Catalog = {
   },
   apps: {
     ...appsJa,
+    state: { ...appsJa.state, restoredSourceNeedsSetup: "復元されたソースを使うには、このコンピューターでこの App をセットアップしてください。" },
     menu: "App メニュー",
     pin: "Sidebar に固定",
     unpin: "Sidebar から固定解除",
@@ -554,8 +503,11 @@ export const ja: Catalog = {
     projectRevokeConfirm:
       "Project「{{target}}」に対する {{app}} の権限を取り消しますか？Project 内のすべての Chat に影響します。",
   },
-  bases: basesJa,
+  bases: { ...basesJa, folderRecoveryRetry: "再確認",
+    folderRecoveryProjectMissing: "この Base は、このパソコンにはもう存在しない Project のものです。ファイルは Bottega フォルダにそのまま残り、Project が戻れば一緒に戻ります。",
+    folderRecoveryOwnerChanged: "この Base を所有する会話は置き換えられました。ファイルは Bottega フォルダにそのまま残っています。" },
   notice: {
+    executorSwitched: "{{device}} で続行",
     manualRecovered: "アプリの再起動で返信が中断されました。もう一度送信してください。",
     skillDescriptionsTruncated:
       "Codex からのお知らせ：コンテキスト予算に収めるため、このターンでは一部の Skill 説明が短縮されました。Codex は引き続きすべての Skill を使用でき、この返信にも影響はありません。これは Codex 自身からの通知で、Bottega の問題ではありません。",
@@ -566,35 +518,5 @@ export const ja: Catalog = {
     discarded: "保留中のリレーを破棄しました",
     stale: "この操作は無効です",
   },
-  ui: {
-    cancel: "キャンセル",
-    uploadFiles: "ファイルをアップロード",
-    loadingRichContent: "リッチコンテンツを読み込み中",
-    loading: "読み込み中",
-    close: "閉じる",
-    sidebar: "サイドバー",
-    sidebarDescription: "モバイルサイドバーを表示します。",
-    toggleSidebar: "サイドバーを切り替え",
-    resizeSidebar: "サイドバーの幅を変更",
-    resizeSidebarHint: "ドラッグしてサイドバーの幅を変更",
-    attachment: "添付ファイル",
-    previewAttachment: "添付ファイルをプレビュー",
-    removeAttachment: "添付ファイルを削除",
-    stop: "停止",
-    submit: "送信",
-    message: "メッセージ",
-    askAnything: "何でも聞いてください",
-    submissionFailed: "送信に失敗しました。もう一度お試しください。",
-    skillSuggestionsEmpty: "利用できる Skill はありません",
-    skillSuggestionsNoMatch: "一致する Skill はありません",
-    mentionSuggestionsEmpty: "利用できる参照はありません",
-    mentionSuggestionsNoMatch: "一致する参照はありません",
-    suggestionChats: "チャット",
-    suggestionFiles: "ファイル",
-    suggestionSkills: "Skills",
-    fileTypeError: "受け付け可能な種類のファイルがありません。",
-    fileSizeError: "すべてのファイルがサイズ上限を超えています。",
-    fileCountError: "ファイルが多すぎるため、一部は追加されませんでした。",
-    terminal: "ターミナル",
-  },
+  ui: { ...uiTextJa },
 };

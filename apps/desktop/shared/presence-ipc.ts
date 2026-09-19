@@ -52,7 +52,7 @@ export const PRESENCE_CHANNEL = {
   activities: "presence:activities", activityChanged: "presence:activity-changed", openTask: "presence:open-task",
   presented: "presence:presented", consumed: "presence:consumed",
 } as const;
-export type TerminalIdentity = Readonly<{ requestId: string; generation: number; terminalSeq: number }>;
+export type TerminalIdentity = Readonly<{ requestId: string; generation: number; terminalSeq: number; sourceId?: string }>;
 export type PresentedChat = TaskReference & TerminalIdentity;
 export type PresenceBridge = {
   snapshot(): Promise<PresenceSnapshot>;
@@ -70,7 +70,7 @@ export type PresenceBridge = {
 };
 
 export const PANEL_CHANNEL = { snapshot: "presence-panel:snapshot", changed: "presence-panel:changed", intent: "presence-panel:intent" } as const;
-export type TaskPanelSnapshot = Readonly<{ activity: TaskActivitySnapshot; expanded: boolean; panelOpen: boolean; segment: "left" | "right" | "full"; locale: import("./i18n/locale").AppLocale }>;
+export type TaskPanelSnapshot = Readonly<{ activity: TaskActivitySnapshot; expanded: boolean; panelOpen: boolean; segment: "left" | "right" | "full"; locale: import("@ai-chat/ui/lib/locale").AppLocale }>;
 export type TaskPanelIntent = { kind: "expand" | "collapse" | "menu" | "open-main" | "open-settings" } | { kind: "open-task"; task: TaskReference };
 export type TaskPanelBridge = Readonly<{
   snapshot(): Promise<TaskPanelSnapshot>;

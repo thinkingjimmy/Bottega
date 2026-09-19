@@ -39,7 +39,7 @@ import {
   type UpdateTone,
 } from "@/lib/about-view";
 import { openExternal, writeClipboardText } from "@/lib/agent-client";
-import { PRODUCT_MARK_SIZE, PRODUCT_MARK_URL, PRODUCT_NAME } from "@/lib/brand";
+import { PRODUCT_MARK_SIZE, PRODUCT_MARK_URL, PRODUCT_NAME } from "@ai-chat/ui/components/workspace/brand";
 import { appInfoStore, RELEASE_URL, updateStore } from "@/lib/update-client";
 import { ISSUES_URL, REPOSITORY_URL } from "@/lib/report-issue";
 

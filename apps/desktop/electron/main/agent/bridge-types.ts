@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent/Chat/MCP/platform DTOs, canonical Project context, hydrated Project Tools and durable Skill receipts, backend session config, App authorization, and built-in MCP leases
- * [OUTPUT]: Carries frozen execution and active capability facts alongside canonical Project, Skill and turn lifecycle context.
+ * [OUTPUT]: Defines bridge dependencies including trusted turn admission and dispatch authorization.
  * [POS]: Narrow Agent bridge contract; Electron composition and executors exchange frozen authority without importing one another
  */
 
@@ -36,6 +36,7 @@ import type { IssuedBuiltinMcp } from "../tools/lease";
 import type { TurnEntry } from "../turn-registry";
 import type { AcpTraceWriter } from "../backends/acp/trace";
 import type { AgentTurnCustodyHandle } from "../backends/agent-turn-custody-runtime";
+import type { ResolvedRuntime } from "../backends/types";
 import type {
   AgentTurnCustodyDependency,
   AgentTurnCustodyOwner,
@@ -76,6 +77,8 @@ export type TurnProjectionInput = Readonly<{
 }>;
 
 export type AgentContext = {
+  sessionRecovery?: BackendTurnOptions["sessionRecovery"];
+  onSessionPrompt?: BackendTurnOptions["onSessionPrompt"];
   activeCapabilities?: BackendCapabilities;
   availabilityStart?: import("../backends/availability/evidence").TurnEvidenceStart;
   workspace: string;
@@ -150,9 +153,12 @@ export type AppendTurnResult = {
 };
 
 export type BridgeEntry = TurnEntry<AgentTurn> & {
+  artifacts?: ReturnType<import("../artifacts/service").ArtifactService["begin"]>;
   payload?: AgentSendPayload;
   context?: AgentContext;
   builtinMcp?: IssuedBuiltinMcp;
+  /** 本轮借来的常驻连接；缺席即本轮自己拥有进程（今天的冷路径）。 */
+  connection?: import("../backends/connections/types").ClaimedAgentConnection;
   processLease?: AgentProcessLease;
   trace?: AcpTraceWriter;
   /** 首次 spawn 前冻结；resume 重试复用同一份，不回读 live 配置。 */
@@ -208,8 +214,8 @@ export type AgentBridgeOptions = {
     backend: AgentBackendId
   ) => Promise<void> | void;
   conversationIncarnation?: (conversationId: string) => string | undefined;
-  assertTurnAdmission?: (payload: AgentSendPayload) => Promise<void> | void;
-  prepareFreshRetry?: (payload: AgentSendPayload) => Promise<AgentSendPayload["handoff"]>;
+  assertTurnAdmission?: (payload: AgentSendPayload, authority?: import("../backends/types").TrustedTurnAuthority) => Promise<void> | void;
+  prepareFreshRetry?: (payload: AgentSendPayload, userMessageId?: string) => Promise<AgentSendPayload["handoff"]>;
   reserveAssistantSequence?: (conversationId: string) => Promise<number>;
   /** 主 turn 的后端中立 item 观察口；发布前同步执行的 void 派生，subagent part 不走此回调。 */
   onTurnItem?: (conversationId: string, item: AgentTurnItem) => void;
@@ -230,8 +236,6 @@ export type AgentBridgeOptions = {
     expected: SessionRef,
     next: SessionRef | null
   ) => Promise<void>;
-  /** 收养会话禁止把 resume 失败偷换成新 session；拒绝必须对用户可见。 */
-  assertRetryWithoutSession?: (conversationId: string) => void;
   projectTurnSnapshot?: (
     conversationId: string,
     snapshot: TurnSnapshot
@@ -306,6 +310,20 @@ export type AgentBridgeOptions = {
     backendRuntimeIdentity: string;
     dependencies: readonly AgentTurnCustodyDependency[];
   }) => Promise<AgentTurnCustodyHandle>;
+  /**
+   * 认领一条常驻连接。缺席、返回 undefined、或 Lab 开关关闭时，本轮走今天的
+   * 冷路径：自己 spawn、自己签发内置 lease、自己进 custody 账。
+   */
+  claimAgentConnection?: (input: {
+    payload: AgentSendPayload;
+    context: AgentContext;
+    generation: number;
+    runtime: ResolvedRuntime;
+    runtimeGeneration: number;
+    thirdPartyMcpPlan?: ThirdPartyMcpPlan;
+  }) => Promise<
+    import("../backends/connections/types").ClaimedAgentConnection | undefined
+  >;
   /** Fires only after the backend has entered the active turn state. */
   onTurnStarted?: (event: {
     conversationId: string;

@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on shared UTF-8 byte-budget truncation, canonical Chat and readonly-record schemas, preview projection, SQLite connection, aggregate admission, the shared imported-entry SQL, closed commands, and repository codecs
- * [OUTPUT]: Bounded canonical and imported projections, including zero-message materialized records, while portable mirrors remain outside native authority.
+ * [INPUT]: Depends on path-free artifact projection, shared UTF-8 byte-budget truncation, canonical Chat and readonly-record schemas, preview projection, SQLite connection, aggregate admission, the shared imported-entry SQL, closed commands, and repository codecs
+ * [OUTPUT]: Reads bounded timelines and saved tools, preserving source provenance independently of resumability and opening imported-only prefixes without an empty native page.
  * [POS]: Read-only query layer beneath the ChatRepository facade
  */
-
+import { projectUnavailableArtifacts } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { completionMetadataSchema } from "../../../../../shared/local-storage/contracts";
 import { importedBackend } from "../history/source";
+import { importedProjectionPayload } from "../cloud/imported/projection";
 import { turnOptionsSchema } from "../../../../../shared/chat-agent/options";
 import { truncateUtf8 } from "../../../../../shared/truncate-utf8";
 import type {
@@ -45,16 +46,16 @@ import {
 } from "./imported-sql";
 import { ChatOutlineReader } from "./outline";
 import { assertFullAggregateBudget } from "./readers/aggregate-budget";
-
 const TIMELINE_PAGE_BYTE_LIMIT = 512 * 1024;
-
 const messageBytes = (message: ChatMessage) =>
   Buffer.byteLength(JSON.stringify(message), "utf8");
-
+/* NULL means "never moved": the key is omitted rather than emitted as undefined so
+   canonical JSON and deep-equal fixtures stay byte-stable. */
+const sortKeyOf = (value: unknown) =>
+  value === null || value === undefined ? {} : { sortKey: Number(value) };
 /* Only a stored 'true' flags a lost tail; any other text reads as complete. */
 const incompleteTailOf = (row: Row) =>
   row.active_generation_incomplete_tail === "true";
-
 function readonlyStartState(row: Row): ChatRecord["startState"] {
   if (row.first_imported_seq === null || row.first_imported_seq === undefined) {
     return { kind: "unstarted" };
@@ -65,7 +66,6 @@ function readonlyStartState(row: Row): ChatRecord["startState"] {
     firstUserMessageSeq: Number(row.first_imported_seq),
   };
 }
-
 function boundedNewest(
   rows: Row[],
   limit: number,
@@ -82,7 +82,6 @@ function boundedNewest(
   }
   return messages;
 }
-
 function boundedAround(messages: ChatMessage[], targetSeq: number) {
   const bounded = [...messages];
   let bytes = bounded.reduce((total, message) => total + messageBytes(message), 0);
@@ -94,17 +93,13 @@ function boundedAround(messages: ChatMessage[], targetSeq: number) {
   }
   return bounded;
 }
-
 export class ChatRepositoryReader {
   private readonly outline: ChatOutlineReader;
-
   constructor(private readonly database: SqliteDatabase) {
     this.outline = new ChatOutlineReader(database);
   }
-
   /* 刷新一条就只查一条：一次外源同步刷新一条 Chat，却把全部 Chat
      的元数据连同子查询重算一遍，是启动同步里最贵的那笔冤枉钱。
-
      没有活跃代的只读 Chat 一行都不投影：投影它必然抛错，而 listMetadata
      是整库的投影——一条中断的导入不该让整个 ChatStore 起不来。启动 reaper
      负责把这种残行清掉，这里只是永不为一行而全盘皆输的那道防线。 */
@@ -122,7 +117,7 @@ export class ChatRepositoryReader {
               o.source_kind, o.storage_fingerprint, o.canonical_native_id,
               o.aliases_json, o.resume_alias, o.original_cwd, o.history_revision,
               o.adoption_snapshot_id, o.snapshot_digest, o.source_size, o.source_mtime_ns,
-              o.source_status,
+              o.source_status, o.can_resume,
               g.generation_id active_generation_id,
               g.entry_count active_generation_entry_count,
               g.incomplete_tail active_generation_incomplete_tail,
@@ -206,7 +201,7 @@ export class ChatRepositoryReader {
       forkAgent: row.fork_agent ?? null,
       session,
       importOrigin,
-      snapshotDigest: row.snapshot_digest ?? null,
+      snapshotDigest: importOrigin ? row.snapshot_digest ?? null : null,
       parentChatId: row.parent_chat_id ?? null,
       parentIncarnationId: row.parent_incarnation_id ?? null,
       parentMessageId: row.parent_message_id ?? null,
@@ -228,6 +223,7 @@ export class ChatRepositoryReader {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       archivedAt: row.local_archived_at ?? row.archived_at ?? undefined,
+      ...sortKeyOf(row.sort_key),
       nextSeq: row.next_seq,
       trimmedThroughSeq: row.trimmed_through_seq || undefined,
       messages: lastMessage ? [lastMessage] : [],
@@ -281,6 +277,7 @@ export class ChatRepositoryReader {
       ...(row.local_archived_at === null && row.archived_at === null
         ? {}
         : { archivedAt: Number(row.local_archived_at ?? row.archived_at) }),
+      ...sortKeyOf(row.sort_key),
       nextSeq: 1,
       preview,
     };
@@ -298,7 +295,7 @@ export class ChatRepositoryReader {
               o.source_kind, o.storage_fingerprint, o.canonical_native_id,
               o.aliases_json, o.resume_alias, o.original_cwd, o.history_revision,
               o.adoption_snapshot_id, o.snapshot_digest, o.source_size, o.source_mtime_ns,
-              o.source_status,
+              o.source_status, o.can_resume,
               g.generation_id active_generation_id, g.entry_count active_generation_entry_count,
               g.incomplete_tail active_generation_incomplete_tail,
               g.byte_size active_generation_byte_size
@@ -320,8 +317,8 @@ export class ChatRepositoryReader {
       return this.readonlyRecordFromRow(core);
     }
     const rows = this.database.prepare(
-      "SELECT * FROM chat_messages WHERE chat_id = ? ORDER BY seq"
-    ).all(chatId) as Row[];
+      "SELECT * FROM chat_messages WHERE chat_id = ? AND seq > ? ORDER BY seq"
+    ).all(chatId, Number(core.trimmed_through_seq ?? 0)) as Row[];
     const subagents = this.readSubagents(chatId);
     const branches = this.readBranches(chatId);
     const session = core.session_backend && core.session_id
@@ -361,7 +358,7 @@ export class ChatRepositoryReader {
       forkAgent: core.fork_agent ?? null,
       session,
       importOrigin,
-      snapshotDigest: core.snapshot_digest ?? null,
+      snapshotDigest: importOrigin ? core.snapshot_digest ?? null : null,
       parentChatId: core.parent_chat_id ?? null,
       parentIncarnationId: core.parent_incarnation_id ?? null,
       parentMessageId: core.parent_message_id ?? null,
@@ -385,6 +382,7 @@ export class ChatRepositoryReader {
       ...(core.local_archived_at === null && core.archived_at === null
         ? {}
         : { archivedAt: core.local_archived_at ?? core.archived_at }),
+      ...sortKeyOf(core.sort_key),
       nextSeq: core.next_seq,
       ...(Number(core.trimmed_through_seq) > 0
         ? { trimmedThroughSeq: core.trimmed_through_seq }
@@ -450,6 +448,7 @@ export class ChatRepositoryReader {
       ...(core.local_archived_at === null && core.archived_at === null
         ? {}
         : { archivedAt: Number(core.local_archived_at ?? core.archived_at) }),
+      ...sortKeyOf(core.sort_key),
       nextSeq: Math.max(1, (messages.at(-1)?.seq ?? 0) + 1),
       messages,
     });
@@ -586,6 +585,7 @@ export class ChatRepositoryReader {
     const hasNativeBefore = rows.length > newest.length;
     const hasImportedBefore = !hasNativeBefore && Boolean(fence.active_generation_id);
     if (hasImportedBefore) {
+      if (!messages.length) return this.importedTimelinePage(chatId, fence, undefined, limit);
       const activeGenerationId = this.activeGeneration(fence);
       return {
         chatId,
@@ -713,11 +713,9 @@ export class ChatRepositoryReader {
     return this.pageOf(chatId, fence, messages, hasMoreBefore, firstSeq, "imported");
   }
 
-  /* 导入的一条 entry 与原生一条消息说同一种话：工具事件投影成 parts、
-     源生工时落到 durationMs，于是 ChatTurn 照常画出「已处理 ›」折叠头。
-     segment 是投影位，只从这里出，落盘侧永不写。 */
+  // Imported rows use the same message and tool projection as native history.
   private importedMessage(row: Row): ChatMessage {
-    const content = this.importedContent(row);
+    const original = this.importedContent(row), content = row.role === "user" ? original : projectUnavailableArtifacts(original);
     const common = {
       id: String(row.entry_version_id),
       content,
@@ -728,7 +726,7 @@ export class ChatRepositoryReader {
       segment: "imported" as const,
     };
     if (row.role === "user") return { ...common, role: "user" };
-    const payload = parseJson(row.payload_json, "imported payload") as {
+    const payload = importedProjectionPayload(this.database, String(row.entry_version_id), row.payload_json) as {
       tools?: unknown;
       workedForMs?: unknown;
       process?: unknown;
@@ -765,7 +763,7 @@ export class ChatRepositoryReader {
     const payload = parseJson(row.payload_json, "imported payload") as { preview?: unknown };
     const preview = truncateUtf8(String(payload.preview ?? ""), IMPORTED_MESSAGE_BYTE_LIMIT / 2, "…").value;
     return `${preview}\n\n[Imported content retained outside the renderer: ${Number(row.byte_size)} bytes]`;
-}
+  }
   private readSubagents(chatId: string): Record<string, PersistedSubagent> {
     const value = Object.fromEntries((this.database.prepare(
       "SELECT agent_thread_id, meta_json, parts_json FROM chat_subagents WHERE chat_id = ? ORDER BY agent_thread_id"

@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on React/router navigation/progress and rejected-destination state, i18n, AppsProvider, App Card/Progress, Add AppDialog, PresetShelf/PresetInstallDialog, Sheet and PageShell
- * [OUTPUT]: Provides AppsListView single-page entry with rejected App navigation evidence; preset authorization leads directly to canonical App detail while Web installs retain progress UI
- * [POS]: views `/apps` import of products; The page only tells you what's installed, the first App only enters from the empty shelf, the page head + goes straight to GitHub installation
+ * [INPUT]: Depends on React/router navigation/progress and rejected-destination state, i18n, AppsProvider, shared App catalog/card presentation, Add AppDialog, PresetShelf/PresetInstallDialog, Sheet and PageShell
+ * [OUTPUT]: Provides AppsListView with the Cloud Dev portable catalog, a card-shaped placeholder grid while listApps is in flight, explicit local installation and a single-page entry with rejected App navigation evidence; preset authorization leads directly to canonical App detail while Web installs retain progress UI
+ * [POS]: Apps route composition; local installations, portable cloud entries and first-party acquisition retain their existing domain owners
  */
 
 import { CompatibilityRequests } from "@/components/apps/compatibility/requests";
+import { CloudAppsCatalog } from "@/components/apps/cloud/catalog";
 import type { AppCompatibilityFailure } from "../../shared/app-host/contract";
 import { useEffect, useState, type ReactNode } from "react";
 import { AddAppHint } from "@/components/apps/add-app-hint";
@@ -17,6 +18,12 @@ import {
   PresetShelf,
 } from "@/components/apps/install/preset-app-shelf";
 import { PageShell } from "@/components/page-shell";
+import {
+  AppCatalogBody,
+  AppCatalogEmpty,
+  AppCatalogGrid,
+  AppCatalogSkeleton,
+} from "@ai-chat/ui/components/catalog/app-catalog";
 import {
   type AppListItem,
   useApps,
@@ -38,7 +45,12 @@ import { canonicalAppSurfaceRoute } from "../../shared/window-surfaces-ipc";
 
 /* epoch 让「再打开一次」成为一次新挂载：安装弹窗因此一次挂载只 probe 一次，
    而关闭不卸载它，退场动画得以完整播完。 */
-type PresetFlow = { requestId?: string; preset: PresetAppSummary; epoch: number; open: boolean };
+type PresetFlow = {
+  requestId?: string;
+  preset: PresetAppSummary;
+  epoch: number;
+  open: boolean;
+};
 
 function ProgressOverlay({ app }: { app: AppListItem }) {
   const { t } = useAppTranslation();
@@ -91,12 +103,6 @@ function ProgressOverlay({ app }: { app: AppListItem }) {
   );
 }
 
-/* ------------------------------------------------------------------------- *
- *  「一张卡都没有」有两种成因，长得也该不一样：
- *  读取失败是一块虚线告警面板——那里本该有东西，我们没读到；
- *  真的没装则是开局引导，货架就摆在里面。虚线的意思是「此处为空」，
- *  一旦填进三张卡，它就不空了，边框自然该退场。
- * ------------------------------------------------------------------------- */
 export function EmptyAppsPanel({
   warning,
   children,
@@ -105,46 +111,15 @@ export function EmptyAppsPanel({
   children?: ReactNode;
 }) {
   const { t } = useAppTranslation();
-
-  if (warning) {
-    return (
-      <div className="my-auto rounded-2xl border border-amber-500/40 border-dashed bg-amber-500/5 px-6 py-10 text-center">
-        <LayoutGrid className="mx-auto size-8 text-muted-foreground" />
-        <h2 className="mt-2 font-medium text-sm">
-          {t("apps.listUnavailable")}
-        </h2>
-        <p className="mt-1 text-muted-foreground text-xs">
-          {t("apps.listUnavailableLead")}
-        </p>
-        <p className="mt-3 text-muted-foreground text-xs">{warning}</p>
-      </div>
-    );
-  }
-
   return (
-    <>
-      {/* 第二条路径不排在引导正文里：它讲的是页头右上角那颗 +，
-          就该长在那颗 + 底下用一根箭头指过去，而不是在页面正中被读一遍。 */}
-      <AddAppHint />
-      {/* 竖向 my-auto 而非 justify-center：两者在有余量时同样居中，但窗口不够高时
-          justify-center 会把溢出的头部裁在滚动区外够不着，auto margin 不会。
-          横向的居中则**不能**也交给 auto margin：flex item 一旦有了 auto 横向
-          外边距就不再 stretch，section 塌成 fit-content，里面的 w-full 货架没了
-          可填的宽度，三张卡被挤到最宽那段文字的尺寸。故 section 保持满宽，
-          限宽与居中下沉到一个普通块级子元素上。 */}
-      <section className="my-auto w-full py-10">
-        <div className="mx-auto flex max-w-4xl flex-col items-center text-center">
-          <LayoutGrid className="size-8 text-muted-foreground" />
-          <h2 className="mt-3 font-heading font-semibold text-base">
-            {t("apps.empty")}
-          </h2>
-          <p className="mt-1.5 max-w-md text-muted-foreground text-sm">
-            {t("apps.emptyLead")}
-          </p>
-          <div className="mt-7 w-full">{children}</div>
-        </div>
-      </section>
-    </>
+    <AppCatalogEmpty
+      title={t(warning ? "apps.listUnavailable" : "apps.empty")}
+      description={t(warning ? "apps.listUnavailableLead" : "apps.emptyLead")}
+      warning={warning}
+      hint={<AddAppHint />}
+    >
+      {children}
+    </AppCatalogEmpty>
   );
 }
 
@@ -180,7 +155,7 @@ export function AppsListView() {
   const progressApp = apps.find(
     (app) =>
       app.record.id === progressRequest.appId &&
-      isWorkingState(app.record.state)
+      isWorkingState(app.record.state),
   );
 
   const openProgress = (appId: string) => {
@@ -209,9 +184,20 @@ export function AppsListView() {
   }, [apps, loading, searchParams, setSearchParams]);
 
   const resumeCompatibility = (failure: AppCompatibilityFailure) => {
-    if (failure.candidate.appId) { presentAppCompatibility(failure); return; }
-    const preset = presets.find((item) => item.id === failure.candidate.presetId);
-    if (preset) setPresetFlow((current) => ({ preset, epoch: (current?.epoch ?? 0) + 1, open: true, requestId: failure.requestId }));
+    if (failure.candidate.appId) {
+      presentAppCompatibility(failure);
+      return;
+    }
+    const preset = presets.find(
+      (item) => item.id === failure.candidate.presetId,
+    );
+    if (preset)
+      setPresetFlow((current) => ({
+        preset,
+        epoch: (current?.epoch ?? 0) + 1,
+        open: true,
+        requestId: failure.requestId,
+      }));
     else setRepoResumeId(failure.requestId);
   };
 
@@ -232,10 +218,20 @@ export function AppsListView() {
       <PageShell
         title={t("common.apps")}
         icon={<LayoutGrid />}
-        actions={<AddAppDialog onInstallStarted={openProgress} resumeRequestId={repoResumeId} onResumeClosed={() => setRepoResumeId(undefined)} />}
+        actions={
+          <AddAppDialog
+            onInstallStarted={openProgress}
+            resumeRequestId={repoResumeId}
+            onResumeClosed={() => setRepoResumeId(undefined)}
+          />
+        }
       >
-        <SlimScroller className="h-full overflow-y-auto p-4">
-          <CompatibilityRequests onResume={resumeCompatibility} highlightedId={searchParams.get("compatibility")} />
+        <AppCatalogBody>
+          {window.cloudApps && <CloudAppsCatalog />}
+          <CompatibilityRequests
+            onResume={resumeCompatibility}
+            highlightedId={searchParams.get("compatibility")}
+          />
           {navigationError && (
             <p
               role="alert"
@@ -255,17 +251,13 @@ export function AppsListView() {
             </p>
           )}
           {loading ? (
-            <p className="text-muted-foreground text-sm">{t("apps.loading")}</p>
+            <AppCatalogSkeleton label={t("apps.loading")} />
           ) : apps.length === 0 ? (
-            /* relative 是给右上角批注的定位锚；h-full + flex 列让空态块拿到
-               「剩余高度」这个概念，my-auto 才有余量可分。 */
-            <div className="relative flex h-full flex-col">
-              <EmptyAppsPanel warning={listWarning}>
-                <PresetShelf onSelect={openPreset} />
-              </EmptyAppsPanel>
-            </div>
+            <EmptyAppsPanel warning={listWarning}>
+              <PresetShelf onSelect={openPreset} />
+            </EmptyAppsPanel>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <AppCatalogGrid>
               {apps.map((app) => (
                 <AppCard
                   key={app.record.id}
@@ -273,9 +265,9 @@ export function AppsListView() {
                   onOpenProgress={openProgress}
                 />
               ))}
-            </div>
+            </AppCatalogGrid>
           )}
-        </SlimScroller>
+        </AppCatalogBody>
       </PageShell>
       {presetFlow && (
         <PresetInstallDialog

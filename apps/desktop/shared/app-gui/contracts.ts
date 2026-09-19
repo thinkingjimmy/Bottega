@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Depends on shared SHA-256 and Base GUI capability primitives
+ * [INPUT]: Depends on shared SHA-256, Base GUI capabilities and the public compiled-preset constant
  * [OUTPUT]: Provides compiled GUI manifest, compatibility, receipt, the producible build-finding catalog, and the enumerable single-source-of-truth runtime error code tuple
  * [POS]: Shared app-gui identity leaf; build and runtime layers consume one discriminated contract
  */
 
 import type { Sha256Digest } from "../extensions-ipc";
 
-export const APP_GUI_PRESET = "bottega-react-v1" as const;
+import { APP_GUI_PRESET } from "@ai-chat/cloud-protocol/apps/schemas/constants";
+export { APP_GUI_PRESET };
 export const LEGACY_BASE_GUI_SDK_VERSION = "base-gui-legacy-v1" as const;
 
 type AppGuiIconLibrary = "lucide" | "phosphor";

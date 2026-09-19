@@ -1,0 +1,60 @@
+{
+  "name": "@ai-chat/cloud-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./config": "./src/config/index.ts",
+    "./auth/*": "./src/auth/*.ts",
+    "./continuity/*": "./src/continuity/*.ts",
+    "./encryption": "./src/encryption/index.ts",
+    "./spaces": "./src/spaces/index.ts",
+    "./blobs/encrypted": "./src/blobs/encrypted/index.ts",
+    "./blobs/encrypted/*": "./src/blobs/encrypted/*.ts",
+    "./bases/encrypted": "./src/bases/encrypted/index.ts",
+    "./bases/encrypted/client": "./src/bases/encrypted/client/index.ts",
+    "./apps/*": "./src/apps/*.ts",
+    "./chats/*": "./src/chats/*.ts",
+    "./remote/*": "./src/remote/*.ts",
+    "./turns/*": "./src/turns/*.ts",
+    "./search/*": "./src/search/*.ts",
+    "./lifecycle/*": "./src/lifecycle/*.ts",
+    "./projects/encrypted": "./src/projects/encrypted/index.ts",
+    "./projects/encrypted/client": "./src/projects/encrypted/client.ts",
+    "./apps/encrypted": "./src/apps/encrypted/index.ts",
+    "./apps/encrypted/client": "./src/apps/encrypted/client.ts",
+    "./chats/encrypted": "./src/chats/encrypted/index.ts",
+    "./chats/encrypted/*": "./src/chats/encrypted/*.ts",
+    "./chats/encrypted/messages": "./src/chats/encrypted/messages/index.ts",
+    "./chats/encrypted/messages/*": "./src/chats/encrypted/messages/*.ts",
+    "./chats/home/encrypted": "./src/chats/home/encrypted/index.ts",
+    "./chats/home/encrypted/*": "./src/chats/home/encrypted/*.ts",
+    "./chats/encrypted/classification": "./src/chats/encrypted/classification/index.ts",
+    "./chats/encrypted/classification/*": "./src/chats/encrypted/classification/*.ts",
+    "./chats/imported/encrypted": "./src/chats/imported/encrypted/index.ts",
+    "./chats/imported/encrypted/*": "./src/chats/imported/encrypted/*.ts",
+    "./remote/encrypted": "./src/remote/encrypted/index.ts",
+    "./remote/encrypted/*": "./src/remote/encrypted/*.ts",
+    "./chats/encrypted/options": "./src/chats/encrypted/options/index.ts",
+    "./chats/encrypted/options/*": "./src/chats/encrypted/options/*.ts",
+    "./artifacts/*": "./src/artifacts/*.ts",
+    "./skills/*": "./src/skills/*.ts",
+    "./remote/input/references": "./src/remote/input/references.ts",
+    "./remote/queue": "./src/remote/queue.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-chat/base-ui": "workspace:*",
+    "@noble/hashes": "2.0.1",
+    "zod": "4.6.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.6",
+    "typescript": "5.9.3"
+  },
+  "sideEffects": false
+}

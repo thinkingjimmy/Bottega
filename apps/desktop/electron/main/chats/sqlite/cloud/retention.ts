@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the worker connection and canonical serialization.
- * [OUTPUT]: Provides immutable source custody, attachment roots, atomic outbox publication and exact mirror archive release.
+ * [OUTPUT]: Provides frozen native/imported source custody, role/timestamp fidelity, attachment roots, outbox publication and source-bounded root release.
  * [POS]: SQLite leaf used inside the caller's existing transaction; it never owns a second connection.
  */
 import type { SqliteDatabase } from "../connection";
@@ -83,8 +83,10 @@ export function collectRetainedAttachmentIds(db: SqliteDatabase) {
   return ids;
 }
 export function releaseRoot(db: SqliteDatabase, rootId: string) {
+  const sources = db.prepare("SELECT source_id FROM chat_retention_roots WHERE root_id=?").all(rootId) as Row[];
   db.prepare("DELETE FROM chat_retention_roots WHERE root_id=?").run(rootId);
-  db.prepare("DELETE FROM chat_retained_sources WHERE NOT EXISTS(SELECT 1 FROM chat_retention_roots r WHERE r.source_id=chat_retained_sources.source_id)").run();
+  const remove = db.prepare("DELETE FROM chat_retained_sources WHERE source_id=? AND NOT EXISTS(SELECT 1 FROM chat_retention_roots r WHERE r.source_id=chat_retained_sources.source_id)");
+  for (const source of sources) remove.run(String(source.source_id));
 }
 
 export function releaseMirrorArchiveRoots(db: SqliteDatabase, scope: SyncScope, chatId: string) {
@@ -105,8 +107,9 @@ export function releaseMirrorArchiveRoots(db: SqliteDatabase, scope: SyncScope, 
 
 /** Freeze immutable import content before generation or Chat reclamation can remove it. */
 export function retainImportedHistory(db: SqliteDatabase, chatId: string, rootId: string, now: number, scope?: SyncScope) {
-  const generation = db.prepare(`SELECT g.generation_id,g.content_digest,g.digest_codec_version,g.incomplete_tail,g.entry_count
-    FROM chat_active_import_generations a JOIN chat_import_generations g ON g.generation_id=a.generation_id WHERE a.chat_id=?`).get(chatId) as Row | undefined;
+  const generation = db.prepare(`SELECT g.generation_id,g.content_digest,g.digest_codec_version,g.incomplete_tail,g.entry_count,o.source_kind
+    FROM chat_active_import_generations a JOIN chat_import_generations g ON g.generation_id=a.generation_id
+    JOIN chat_import_origins o ON o.chat_id=a.chat_id WHERE a.chat_id=?`).get(chatId) as Row | undefined;
   if (!generation) return null;
   const sources: Array<{ sourceId: string; digest: string }> = [];
   const keep = (payload: unknown, revision: number) => {
@@ -114,11 +117,12 @@ export function retainImportedHistory(db: SqliteDatabase, chatId: string, rootId
     sources.push(source);
     return source;
   };
-  for (const entry of db.prepare(`SELECT e.delivery_seq,v.entry_version_id,v.payload_json,v.content_digest,v.digest_codec_version
+  for (const entry of db.prepare(`SELECT e.delivery_seq,v.entry_version_id,v.payload_json,v.content_digest,v.digest_codec_version,v.role,v.created_at
     FROM chat_import_generation_entries e JOIN chat_import_entry_versions v ON v.entry_version_id=e.entry_version_id
     WHERE e.chat_id=? AND e.generation_id=? ORDER BY e.delivery_seq`).iterate(chatId, String(generation.generation_id)) as Iterable<Row>) {
     const source = keep({ entryVersionId: entry.entry_version_id, deliverySeq: entry.delivery_seq,
-      contentDigest: entry.content_digest, digestCodecVersion: entry.digest_codec_version, payload: JSON.parse(String(entry.payload_json)) }, Number(entry.delivery_seq));
+      contentDigest: entry.content_digest, digestCodecVersion: entry.digest_codec_version, role: entry.role, createdAt: entry.created_at,
+      payload: JSON.parse(String(entry.payload_json)) }, Number(entry.delivery_seq));
     for (const chunk of db.prepare("SELECT field_kind,ordinal,content,byte_size,content_digest FROM chat_import_entry_version_chunks WHERE entry_version_id=? ORDER BY field_kind,ordinal").iterate(String(entry.entry_version_id)) as Iterable<Row>) {
       keep({ entryVersionId: entry.entry_version_id, chunk }, Number(entry.delivery_seq));
     }
@@ -128,5 +132,5 @@ export function retainImportedHistory(db: SqliteDatabase, chatId: string, rootId
       keep({ entryVersionId: entry.entry_version_id, fieldKind: blob.field_kind, blob: { sha256: blob.content_digest, bytes: blob.byte_size, mime: "text/plain" } }, Number(entry.delivery_seq));
     }
   }
-  return { generation, sources };
+  return { generation: { ...generation, incomplete_tail: generation.incomplete_tail === "true" }, sources };
 }

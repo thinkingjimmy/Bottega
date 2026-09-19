@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node crypto, the connection transaction helper, typed ChatSchemaError, and the single Chat schema module
- * [OUTPUT]: Installs one complete v6 schema and identity on an empty database; mismatched versions, checksums and foreign applications are refused unchanged.
- * [POS]: SQLite schema identity gate; worker initialization must pass through it before any repository query — there is no upgrade path, an older database is refused and left untouched
+ * [INPUT]: Depends on Node crypto, the SQLite transaction owner, the current schema and checksum-pinned v6/v7 upgrades.
+ * [OUTPUT]: Installs v8 or atomically upgrades verified v0.1.4 and known v7 data; unknown identities are refused unchanged.
+ * [POS]: SQLite schema gate before repository reads; supported historical databases are protected inputs.
  */
 
 import { createHash } from "node:crypto";
@@ -9,14 +9,14 @@ import type { SqliteDatabase } from "../connection";
 import { transaction } from "../connection";
 import { ChatSchemaError } from "../failure";
 import { CHAT_STORE_SCHEMA } from "./0001-chat-store";
+import { RELEASED_V6_CHECKSUM, upgradeReleasedV6 } from "./upgrade-v6";
+import { upgradeKnownV7 } from "./upgrade-v7";
 
 export const CHAT_STORE_APPLICATION_ID = 0x424f5454;
-export const CHAT_STORE_SCHEMA_VERSION = 6;
+export const CHAT_STORE_SCHEMA_VERSION = 8;
 const CHAT_STORE_SCHEMA_NAME = "chat-store";
 
-/* The identity row binds a database to the exact schema bytes that created it.
-   A database whose row says anything else was made by another build of this
-   product; it is evidence, never input. */
+// Historical identities are pinned independently of the evolving fresh schema.
 const CHAT_STORE_SCHEMA_CHECKSUM = createHash("sha256")
   .update(`${CHAT_STORE_SCHEMA_VERSION}\0${CHAT_STORE_SCHEMA_NAME}\0${CHAT_STORE_SCHEMA}`)
   .digest("hex");
@@ -61,11 +61,25 @@ export function ensureChatSchema(database: SqliteDatabase, now = Date.now) {
     });
     return;
   }
-  const rows = database
+  let rows = database
     .prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version")
     .all() as Array<{ version: number; name: string; checksum: string }>;
 
   if (rows.length === 0) throw new ChatSchemaError("corrupt", "Existing Chat database has no schema identity row");
+  if (rows.length === 1 && rows[0]!.version === 6 && rows[0]!.name === CHAT_STORE_SCHEMA_NAME) {
+    if (applicationId !== CHAT_STORE_APPLICATION_ID || userVersion !== 6 || rows[0]!.checksum !== RELEASED_V6_CHECKSUM) {
+      throw new ChatSchemaError("corrupt", "Released Chat schema checksum or identity mismatch");
+    }
+    upgradeReleasedV6(database, CHAT_STORE_SCHEMA_CHECKSUM, now);
+    rows = database.prepare("SELECT version,name,checksum FROM schema_migrations ORDER BY version").all() as typeof rows;
+  }
+  if (rows.length === 1 && rows[0]!.version === 7 && rows[0]!.name === CHAT_STORE_SCHEMA_NAME) {
+    if (applicationId !== CHAT_STORE_APPLICATION_ID || userVersion !== 7) {
+      throw new ChatSchemaError("corrupt", "Chat v7 schema identity mismatch");
+    }
+    upgradeKnownV7(database, CHAT_STORE_SCHEMA_CHECKSUM, now);
+    rows = database.prepare("SELECT version,name,checksum FROM schema_migrations ORDER BY version").all() as typeof rows;
+  }
   {
     const [row] = rows;
     if (
@@ -76,7 +90,7 @@ export function ensureChatSchema(database: SqliteDatabase, now = Date.now) {
       const recorded = rows.map((item) => `${item.version}:${item.name}`).join(",");
       throw new ChatSchemaError(
         "corrupt",
-        `Chat schema ${recorded} was created by another build and is never upgraded`
+        `Chat schema ${recorded} has no supported upgrade path; original data is unchanged`
       );
     }
     if (row!.checksum !== CHAT_STORE_SCHEMA_CHECKSUM) {

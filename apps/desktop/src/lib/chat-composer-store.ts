@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on React external store, nanoid, PromptInput/RichInput, Gallery origin, attachments, message queues and file authorization release
- * [OUTPUT]: Provides per-chat draft/files/queue/ACK and Sketch ownership, renderer source budgets, epoch-fenced atomic publication, and migration export/commit/restore.
+ * [INPUT]: Depends on React external store, nanoid, PromptInput/RichInput, typed attachment matching, Gallery origin, message queues and file authorization release
+ * [OUTPUT]: Provides per-chat draft/files/queue/ACK, draft-owned workspace reference provenance, live input snapshots, attachment commands, Sketch ownership and migration custody.
  * [POS]: lib's single-owner store for uncommitted composer drafts and their identity; unlike the retrievable message caches, this store never LRU-evicts, and a generation-unknown snapshot can never silently replace a known one
  */
 
 import { useCallback, useSyncExternalStore } from "react";
 import { nanoid } from "nanoid";
+import { attachmentMatchesTarget, type AttachmentCommand } from "@ai-chat/ui/hooks/use-attachment-list";
 import type {
   PromptInputFilePart,
   RichNode,
@@ -24,7 +25,8 @@ import {
 import type { SurfaceComposerCapsule } from "../../shared/window-surfaces-ipc";
 import type { QueueItem } from "./message-queue-model";
 import { collectSketchResources, emptySketchResources, sketchQueueExtraBytes, type ComposerSketchResources } from "./chat-composer/resources";
-import { assertBudget, CACHE_BYTES, retainedBytes } from "../components/chat/sketch/model/budget";
+import { assertBudget, CACHE_BYTES, retainedBytes } from "@ai-chat/chat-ui/sketch/model/budget";
+import type { RemoteFileReference } from "@ai-chat/cloud-protocol/remote/input/references";
 
 export type ComposerFile = PromptInputFilePart & {
   id: string;
@@ -49,6 +51,7 @@ export type ComposerState = {
   handledSteerIntents: ReadonlySet<string>;
   draft: { richValue: RichValue; files: ComposerFile[] };
   fileResources: Map<string, FileResource>;
+  workspaceReferences: ReadonlyMap<string, RemoteFileReference>;
   sketch: ComposerSketchResources;
   sketchEditable: boolean;
 };
@@ -61,6 +64,7 @@ const emptyComposer = (incarnationId = ""): ComposerState => ({
   handledSteerIntents: new Set(),
   draft: { richValue: [], files: [] },
   fileResources: new Map(),
+  workspaceReferences: new Map(),
   sketch: emptySketchResources(),
   sketchEditable: true,
 });
@@ -187,6 +191,7 @@ export async function exportComposerCapsule(
     chatId,
     incarnationId: current.incarnationId,
     workspaceIdentityKey: current.workspaceIdentityKey,
+    workspaceReferences: structuredClone([...current.workspaceReferences.values()]),
     projectId: current.projectId,
     richValue: structuredClone(richValue),
     attachmentRefs: [...draftAttachmentRefs],
@@ -333,6 +338,7 @@ export function importComposerCapsule(capsule: SurfaceComposerCapsule, transacti
     incarnationId: capsule.incarnationId,
     /* 身份随胶囊落地：否则目标窗 bind 时把迁来的 file 节点判为跨工作区污染。 */
     workspaceIdentityKey: capsule.workspaceIdentityKey,
+    workspaceReferences: new Map((capsule.workspaceReferences ?? []).map(reference => [reference.path, structuredClone(reference)])),
     projectId: capsule.projectId,
     draft: {
       richValue,
@@ -371,6 +377,11 @@ const publish = (chatId: string, next: ComposerState) => {
 
 export const readComposer = (chatId: string) =>
   entries.get(chatId) ?? EMPTY_COMPOSER;
+
+export function readComposerInput(chatId: string) {
+  const value = readComposer(chatId).draft.richValue;
+  return { kind: "rich" as const, value, displayText: richInputDisplayText(value) };
+}
 
 export function updateComposer(
   chatId: string,
@@ -484,6 +495,20 @@ export function commitDraftChat(chatId: string) {
   for (const listener of draftListeners) listener();
 }
 
+/** Transfer the unsubmitted editor and its file/Sketch custody after a remote creation resolves. */
+export function handoffComposerDraft(from: string, to: string, incarnationId: string, submitted?: import("@ai-chat/ui/components/ai-elements/prompt-input").PromptInputMessage) {
+  const current = readComposer(from);
+  const same = submitted?.input.kind === "rich" && JSON.stringify(current.draft.richValue) === JSON.stringify(submitted.input.value);
+  const submittedUrls = new Set(submitted?.files.map(file => file.url) ?? []);
+  const files = current.draft.files.filter(file => !submittedUrls.has(file.url));
+  const next = { ...current, incarnationId, draft: { richValue: same ? [] : current.draft.richValue, files } };
+  publish(to, next);
+  // Resource ownership moves before the original editor is cleared; do not revoke transferred handles.
+  publish(from, emptyComposer());
+  revokeFiles(current.draft.files.filter(file => submittedUrls.has(file.url)));
+  retainComposerResources(to);
+}
+
 export function primeComposer(chatId: string, incarnationId: string) {
   const current = entries.get(chatId);
   if (!current) {
@@ -515,6 +540,12 @@ export function replaceDraftFiles(chatId: string, files: ComposerFile[]) {
     revokeFiles(current.draft.files.filter((file) => !retained.has(file.id)));
     return { ...current, draft: { ...current.draft, files } };
   });
+}
+
+export function applyComposerAttachmentCommand(chatId: string, command: AttachmentCommand) {
+  const files = readComposer(chatId).draft.files;
+  const remaining = files.filter(file => !command.targets.some(target => attachmentMatchesTarget(file, target)));
+  if (remaining.length !== files.length) replaceDraftFiles(chatId, remaining);
 }
 
 export function retainComposerResources(chatId: string) {

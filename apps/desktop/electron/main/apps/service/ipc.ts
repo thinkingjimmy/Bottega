@@ -1,10 +1,9 @@
 /**
  * [INPUT]: Depends on typed Apps IPC, main-owned services and explicit author-manifest or Agent-analysis install intents
- * [OUTPUT]: Registers strict App lifecycle and residence-fenced operations, including the explicit tool inventory check.
+ * [OUTPUT]: Registers strict residence-fenced operations and publishes main-owned Studio and cloud-management projections.
  * [POS]: apps/service generic renderer adapter; Design command parsing and authority live in integrations/design-ipc.ts
  */
 
-import { join } from "node:path";
 import { shell, type BrowserWindow } from "electron";
 import { customAlphabet } from "nanoid";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
@@ -231,7 +230,7 @@ export function registerAppsIpc(
       await deps.store.reserveId(id);
       const record = createInstallingAppRecord({
         id,
-        dir: join(deps.store.appsRoot, id),
+        dir: deps.store.sourceDirectory(id),
         repoUrl: normalized.repoUrl,
         displayName: normalized.displayName,
         installStrategy: input.installStrategy ?? "author-manifest",
@@ -360,6 +359,7 @@ export function registerAppsIpc(
      的放行判据分了家。投影不进持久化 schema——它是朗读，不是账本。 */
   const project = (record: AppRecord): AppRecordProjection => ({
     ...record,
+    ...(deps.store.portable.isCloudManaged(record.id) ? { cloudManaged: true as const } : {}),
     studioSurfaceReady: deps.studioSurfaceReady(record),
   });
 

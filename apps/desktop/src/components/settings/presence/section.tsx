@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared settings controls, Select sizing and inherited menu typography, localized copy, and main-owned presence capabilities/commands.
- * [OUTPUT]: Provides one background switch and a conditional macOS display selector with hardware-aware availability, a shortcut hint, and stable descriptions while saving.
+ * [OUTPUT]: Provides one background switch and a conditional macOS display selector with hardware-aware availability and stable descriptions while saving.
  * [POS]: General settings presence section; login remains separate from background display selection.
  */
 
@@ -9,7 +9,6 @@ import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { SettingsButton, SettingsList, SettingsRow, SettingsSection, SettingsSwitch } from "../settings-layout";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ai-chat/ui/components/ui/select";
 import { presenceStore } from "@/lib/presence-client";
-import { useShortcutKeys } from "@/lib/shortcuts";
 import type { PresenceDisplayMode, PresenceReason } from "../../../../shared/presence-ipc";
 
 const reasonKey: Record<NonNullable<PresenceReason>, string> = {
@@ -19,7 +18,6 @@ const reasonKey: Record<NonNullable<PresenceReason>, string> = {
 };
 export function PresenceSettings() {
   const { t } = useAppTranslation();
-  const keys = useShortcutKeys("taskPanel");
   const state = useSyncExternalStore(presenceStore.subscribe, presenceStore.getSnapshot);
   const value = state.presence;
   const busy = Object.values(state.commands).some((command) => command?.status === "pending");
@@ -56,7 +54,6 @@ export function PresenceSettings() {
         {displayReason && <span className="mt-1 block" role="status">{copy(reasonKey[displayReason])}</span>}
         {display?.status === "failed" && <span className="mt-2 flex gap-2"><SettingsButton variant="outline" disabled={unavailable}
           onClick={() => void presenceStore.setDisplayMode(displayCommand?.target ?? value.display.retryTarget ?? mode)}>{copy("retry")}</SettingsButton></span>}
-        {panelActive && keys && <span className="mt-2 block text-xs">{keys.join("")}</span>}
       </>} control={<Select value={mode} disabled={unavailable} onValueChange={(next) => void presenceStore.setDisplayMode(next as PresenceDisplayMode)}>
         <SelectTrigger id="presence-display" aria-label={copy("displayMode")} aria-describedby="presence-display-description" size="lg" className="max-w-[40vw]">
           <SelectValue />

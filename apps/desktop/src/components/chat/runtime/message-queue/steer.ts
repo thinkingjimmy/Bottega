@@ -25,7 +25,7 @@ import {
   type QueuedPrompt,
   type QueueExtraBytes,
 } from "@/lib/message-queue-model";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { effectiveLocale } from "@/lib/i18n-locale";
 import { translate } from "../../../../../shared/i18n/runtime";
 

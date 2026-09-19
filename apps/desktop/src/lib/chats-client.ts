@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/chats-ipc and the preload-exposed window.chats bridge
- * [OUTPUT]: Provides the renderer Chat IPC adapter for metadata, bounded timeline/around/outline/find reads, fork preflight/create, rename/delete and events; throws when the bridge is absent
+ * [OUTPUT]: Provides the renderer Chat IPC adapter for metadata, bounded timeline/around/outline/find reads, fork preflight/create, rename/sort-key/delete and events; throws when the bridge is absent
  * [POS]: Renderer-side Chat transport authority; transcript priming reads only the bounded tail and deep navigation uses fenced narrow queries
  */
 
@@ -17,6 +17,7 @@ import type {
   ForkChatPreflightInput,
   ForkChatRequest,
   RenameChatInput,
+  SetChatSortKeyInput,
 } from "../../shared/chats-ipc";
 
 declare global {
@@ -64,6 +65,7 @@ export const findChatMessages = (input: ChatFindInput) =>
   bridge().findMessages(input);
 
 export const renameChat = (input: RenameChatInput) => bridge().rename(input);
+export const setChatSortKey = (input: SetChatSortKeyInput) => bridge().setSortKey(input);
 
 export const deleteChat = (chatId: string) => bridge().remove(chatId);
 

@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on router, canonical Projects/Chats/Setup providers, the exact-Project Tools controller, useMcpServersPort, shared built-in support projection, five Project tab sections, PageShell, and i18n
- * [OUTPUT]: Provides guarded Project Settings with five URL-backed tabs, exact-scope Skills and Extensions, and live-runtime-reprojected Project Tool scope ports that preserve global inheritance
+ * [INPUT]: Depends on router, canonical Projects/Chats/Setup providers, the exact-Project Tools controller, useMcpServersPort, shared built-in support projection, Project tab sections, PageShell, and i18n
+ * [OUTPUT]: Provides guarded Project Settings with four primary tabs, nested Skills/Extensions settings, and live-runtime-reprojected Project Tool scope ports that preserve global inheritance
  * [POS]: The sole `/projects/:projectId/settings` route; keeps the application Sidebar in Library context
  */
 
@@ -16,7 +16,7 @@ import { useChats } from "@/components/providers/chats-provider";
 import { useSetup } from "@/components/providers/setup-provider";
 import { ProjectGeneralSection } from "@/components/settings/project/project-general-section";
 import { ProjectInstructionsSection } from "@/components/settings/project/project-instructions-section";
-import { ProjectSkillsSection } from "@/components/settings/project/project-skills-section";
+import { ProjectSkillsSettings } from "@/components/settings/project/skills/settings";
 import {
   BuiltinToolsSection,
   type BuiltinToolsSectionPort,
@@ -27,7 +27,6 @@ import {
   type McpServersSectionPort,
 } from "@/components/settings/mcp-servers-section";
 import { SettingsCanvas } from "@/components/settings/settings-layout";
-import { ExtensionsContent } from "@/views/settings-extensions";
 import { draftRoute, projectAlive } from "@/lib/draft-route";
 import { createProjectToolsController } from "@/lib/project-tools-client";
 import { PROJECT_TOOLS_BRIDGE_UNAVAILABLE } from "../../shared/project-tools-ipc";
@@ -47,13 +46,13 @@ const PROJECT_TABS = [
   "general",
   "personalization",
   "skills",
-  "extensions",
   "tools",
 ] as const;
 type ProjectTab = (typeof PROJECT_TABS)[number];
 
 const validTab = (value: string | null): ProjectTab =>
-  PROJECT_TABS.includes(value as ProjectTab) ? value as ProjectTab : "general";
+  value === "extensions" ? "skills"
+    : PROJECT_TABS.includes(value as ProjectTab) ? value as ProjectTab : "general";
 
 export function ProjectSettingsView() {
   const { t } = useAppTranslation();
@@ -63,10 +62,6 @@ export function ProjectSettingsView() {
   const { chats } = useChats();
   const project = projects.find((candidate) => candidate.id === projectId);
   const tab = validTab(searchParams.get("tab"));
-  const extensionScope = useMemo(
-    () => ({ kind: "project", projectId } as const),
-    [projectId]
-  );
 
   if (loading) {
     return (
@@ -116,17 +111,7 @@ export function ProjectSettingsView() {
           <ProjectInstructionsSection key={project.id} project={project} />
         </TabsContent>
         <TabsContent className="h-full" value="skills">
-          <ProjectSkillsSection key={project.id} project={project} />
-        </TabsContent>
-        <TabsContent className="h-full" value="extensions">
-          <SettingsCanvas>
-            <ExtensionsContent
-              description={t("projectSettings.extensions.scopeNote")}
-              projectLifecycleRevision={project.projectLifecycleRevision}
-              packageIdentity={searchParams.get("package")}
-              scope={extensionScope}
-            />
-          </SettingsCanvas>
+          <ProjectSkillsSettings key={project.id} project={project} />
         </TabsContent>
         <TabsContent className="h-full" value="tools">
           <ProjectToolsSettings key={project.id} project={project} />
@@ -159,7 +144,6 @@ function ProjectToolsSettings({ project }: { project: Project }) {
 
   useEffect(() => {
     void toolsController.load();
-    return () => toolsController.dispose();
   }, [toolsController]);
 
   const policy = tools.value?.policy;

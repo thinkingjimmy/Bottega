@@ -1,130 +1,15 @@
 /**
- * [INPUT]: Depends on browser localStorage and the available ChatView container width; tolerates untrusted/malformed versioned JSON
- * [OUTPUT]: Provides side-panel width constants, defaultSidePanelWidth/resolveSidePanelGeometry, versioned parse/serialize functions, and read/commit persistence
- * [POS]: Renderer's persistence boundary for the Chat side panel's horizontal layout; persists the user's preferred width while always guaranteeing the main column its 360px minimum
+ * [INPUT]: Shared side-panel geometry and storage helpers.
+ * [OUTPUT]: Desktop geometry exports and persistence bound to the desktop storage key.
+ * [POS]: Desktop boundary over the shared layout contract.
  */
+export * from "@ai-chat/ui/lib/side-panel-layout";
+import { readSidePanelLayout as read, commitSidePanelLayout as commit, type SidePanelLayout, type SidePanelStorage } from "@ai-chat/ui/lib/side-panel-layout";
+const KEY = "ai-chat.side-panel-layout.v1";
+export const readSidePanelLayout = (storage?: SidePanelStorage, viewportWidth?: number) => read(KEY, storage, viewportWidth);
+export const commitSidePanelLayout = (current: SidePanelLayout, patch: Partial<SidePanelLayout>, storage?: SidePanelStorage) => commit(KEY, current, patch, storage);
 
-export const CHAT_MAIN_COLUMN_MIN_WIDTH = 360;
-const SIDE_PANEL_DEFAULT_VIEWPORT_RATIO = 0.42;
-export const SIDE_PANEL_MIN_WIDTH = 320;
-export const SIDE_PANEL_MAX_WIDTH = 960;
-export const SIDE_PANEL_TRANSITION_MS = 200;
-
-export type SidePanelLayout = {
-  width: number;
+export const nativePanelWidths: import("@ai-chat/chat-ui/side-panel/layout").PanelWidths = {
+  read: preview => preview ? 1024 : readSidePanelLayout().width,
+  write: (width, preview) => preview ? width : commitSidePanelLayout(readSidePanelLayout(), { width }).width,
 };
-
-export type SidePanelGeometry = {
-  width: number;
-  minWidth: number;
-  maxWidth: number;
-};
-
-type StoredSidePanelLayout = {
-  version: 1;
-  layout: SidePanelLayout;
-};
-
-type SidePanelStorage = Pick<Storage, "getItem" | "setItem">;
-
-const STORAGE_KEY = "ai-chat.side-panel-layout.v1";
-
-function clampPreferredWidth(width: number) {
-  return Math.min(
-    SIDE_PANEL_MAX_WIDTH,
-    Math.max(SIDE_PANEL_MIN_WIDTH, Math.round(width))
-  );
-}
-
-export function defaultSidePanelWidth(viewportWidth: number) {
-  const safeViewportWidth = Number.isFinite(viewportWidth)
-    ? Math.max(0, viewportWidth)
-    : 0;
-  return clampPreferredWidth(
-    safeViewportWidth * SIDE_PANEL_DEFAULT_VIEWPORT_RATIO
-  );
-}
-
-export function resolveSidePanelGeometry(
-  containerWidth: number,
-  preferredWidth: number
-): SidePanelGeometry {
-  const safeContainerWidth = Number.isFinite(containerWidth)
-    ? Math.max(0, Math.floor(containerWidth))
-    : 0;
-  const maxWidth = Math.min(
-    SIDE_PANEL_MAX_WIDTH,
-    Math.max(0, safeContainerWidth - CHAT_MAIN_COLUMN_MIN_WIDTH)
-  );
-  const minWidth = Math.min(SIDE_PANEL_MIN_WIDTH, maxWidth);
-  return {
-    width: Math.min(maxWidth, Math.max(minWidth, preferredWidth)),
-    minWidth,
-    maxWidth,
-  };
-}
-
-function normalizeLayout(layout: SidePanelLayout): SidePanelLayout {
-  return { width: clampPreferredWidth(layout.width) };
-}
-
-export function parseSidePanelLayout(
-  raw: string | null,
-  viewportWidth: number
-): SidePanelLayout {
-  const fallback = { width: defaultSidePanelWidth(viewportWidth) };
-  if (!raw) return fallback;
-
-  try {
-    const stored = JSON.parse(raw) as Partial<StoredSidePanelLayout>;
-    if (
-      stored.version !== 1 ||
-      typeof stored.layout?.width !== "number" ||
-      !Number.isFinite(stored.layout.width)
-    ) {
-      return fallback;
-    }
-    return normalizeLayout(stored.layout);
-  } catch {
-    return fallback;
-  }
-}
-
-export function serializeSidePanelLayout(layout: SidePanelLayout) {
-  return JSON.stringify({
-    version: 1,
-    layout: normalizeLayout(layout),
-  } satisfies StoredSidePanelLayout);
-}
-
-export function readSidePanelLayout(
-  storage: SidePanelStorage = window.localStorage,
-  viewportWidth: number = window.innerWidth
-): SidePanelLayout {
-  try {
-    return parseSidePanelLayout(storage.getItem(STORAGE_KEY), viewportWidth);
-  } catch {
-    return { width: defaultSidePanelWidth(viewportWidth) };
-  }
-}
-
-function writeSidePanelLayout(
-  layout: SidePanelLayout,
-  storage: SidePanelStorage = window.localStorage
-) {
-  try {
-    storage.setItem(STORAGE_KEY, serializeSidePanelLayout(layout));
-  } catch {
-    // localStorage 不可用时保留当前会话状态，不阻断聊天。
-  }
-}
-
-export function commitSidePanelLayout(
-  current: SidePanelLayout,
-  patch: Partial<SidePanelLayout>,
-  storage: SidePanelStorage = window.localStorage
-) {
-  const next = normalizeLayout({ ...current, ...patch });
-  writeSidePanelLayout(next, storage);
-  return next;
-}

@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on RelayLedger, ChatsService, PreparedManualTurn staging/hydration with route-independent content, steer-projection, read model and bridge steer operation gate
- * [OUTPUT]: Provides route identity/content separation, universal Workspace lifecycle gate, durable steer access for double CAS, fence finalizer and staging gate
+ * [INPUT]: Depends on original ledger controls, Chat persistence, prepared staging and the existing Steer operation gate.
+ * [OUTPUT]: Journals unsequenced steering; injected users append idempotently and queued fallbacks allocate sequences/context only at dispatch.
  * [POS]: The Steer outbox of sections/coordinator is the sole owner; Conversation Coordinator is responsible for life cycle assignments only
  */
 
 import type {
-  SteerAdmission,
+  SteerAdmission as PublicSteerAdmission,
   SteerDecision,
   SteerIpcReceipt,
 } from "../../../../../shared/agent-ipc";
@@ -33,6 +33,7 @@ import {
   type PreparedManualTurn,
 } from "./prepared-manual-turn";
 import { hydratePreparedTurn } from "./prepared/hydration";
+import { tagRemotePrepared, remoteUserMessage } from "../remote/submission";
 import { prepareTextOnlyManualTurn } from "./prepared-manual-text";
 import {
   projectSteerIntent,
@@ -47,6 +48,7 @@ import {
 type SteerOperation = ReturnType<
   NonNullable<CoordinatorDependencies["registerSteerOperation"]>
 >;
+type SteerAdmission = PublicSteerAdmission & Pick<ManualTurnSubmission, "remoteInput">;
 
 type SteerOutboxDependencies = Pick<
   CoordinatorDependencies,
@@ -133,6 +135,7 @@ export class SteerOutbox {
     }
     let lease: PreparedManualLease | undefined;
     let journaled = false;
+    let dispatched = false;
     try {
       return await withConversationWorkspacePrecondition(
         operation.conversationId,
@@ -167,12 +170,11 @@ export class SteerOutbox {
                 async rollback() {},
               };
           operation.assertCurrent();
-          const [userSeq, assistantSeq] =
-            await this.dependencies.chats.store.reserveSequences(
-              operation.conversationId,
-              2
-            );
-          operation.assertCurrent();
+          const remote = this.dependencies.ledger.remote.control(input.outboxRef);
+          if (remote?.remote) {
+            if (remote.payloadHash !== canonicalHash(input) || remote.remote.chatId !== operation.conversationId || remote.remote.incarnationId !== incarnationId) throw new Error("REMOTE_STEER_IDENTITY_CHANGED");
+            lease.prepared = tagRemotePrepared(lease.prepared, remote.remote);
+          }
           await this.dependencies.ledger.putSteerIntent({
             outboxRef: input.outboxRef,
             conversationId: operation.conversationId,
@@ -183,12 +185,10 @@ export class SteerOutbox {
               createdAt: input.createdAt,
               input: lease.prepared.input,
               displayText: input.displayText,
-              userMessage: input.userMessage,
+              userMessage: remoteUserMessage(input.userMessage, remote?.remote),
             },
             stagedSnapshot: lease.prepared,
             envelopeHash: canonicalHash(input),
-            seq: userSeq!,
-            assistantSeq: assistantSeq!,
             phase: "journaled",
             opEpoch: operation.epoch,
             createdAt: input.createdAt,
@@ -202,6 +202,10 @@ export class SteerOutbox {
             input.workspacePrecondition,
             this.dependencies
           );
+          operation.assertCurrent();
+          const authority = remote?.remote ? this.dependencies.ledger.remote.authority(remote.remote) : undefined;
+          await authority?.validate(); operation.assertCurrent(); authority?.current();
+          dispatched = true;
           const outcome = await this.dependencies.steerTurn!(
             input.requestId,
             hydrated.resolvedInput.input
@@ -212,13 +216,14 @@ export class SteerOutbox {
             operation,
             lease,
             hydrated.submission,
-            userSeq!,
-            assistantSeq!,
             outcome
           );
         }
       );
     } catch (cause) {
+      if (!dispatched && this.dependencies.ledger.remote.control(input.outboxRef)?.remote) {
+        await this.dependencies.ledger.remote.settleControl(input.outboxRef, "not-dispatched");
+      }
       return await this.finishFailure(
         input,
         operation,
@@ -264,24 +269,12 @@ export class SteerOutbox {
       intent.conversationId,
       prepared.workspacePrecondition,
       this.dependencies,
-      async () => {
-        const assistantSeq =
-          intent.assistantSeq ??
-          (
-            await this.dependencies.chats.store.reserveSequences(
-              intent.conversationId,
-              1
-            )
-          )[0]!;
-        return this.transfer(
-          input.outboxRef,
-          intent.opEpoch,
-          prepared,
-          envelope.userMessage,
-          intent.seq,
-          assistantSeq
-        );
-      }
+      () => this.transfer(
+        input.outboxRef,
+        intent.opEpoch,
+        prepared,
+        envelope.userMessage
+      )
     );
     if (!transferred) return steerReceipt(intent);
     this.leases.get(input.outboxRef)?.commit();
@@ -378,6 +371,10 @@ export class SteerOutbox {
   }
 
   private assertAdmission(input: SteerAdmission) {
+    if (input.remoteInput?.length) {
+      const control = this.dependencies.ledger.remote.control(input.outboxRef);
+      if (!control?.remote || control.payloadHash !== canonicalHash(input)) throw new Error("REMOTE_STEER_IDENTITY_CHANGED");
+    }
     if (
       !input ||
       input.outboxRef !== input.userMessage.id ||
@@ -440,6 +437,7 @@ export class SteerOutbox {
     };
     return {
       intentId: input.outboxRef,
+      ...(input.remoteInput?.length ? { remoteInput: input.remoteInput } : {}),
       persistence: {
         kind: "append" as const,
         input: {
@@ -467,8 +465,6 @@ export class SteerOutbox {
     operation: SteerOperation,
     lease: PreparedManualLease,
     submission: ManualTurnSubmission,
-    userSeq: number,
-    assistantSeq: number,
     outcome: AdapterSteerOutcome
   ): Promise<SteerIpcReceipt> {
     if (outcome.outcome === "injected") {
@@ -485,7 +481,7 @@ export class SteerOutbox {
       }
       await this.dependencies.chats.appendUserMessage(
         submission.persistence.input,
-        userSeq
+        undefined, undefined, lease.prepared.remoteContext?.origin
       );
       operation.assertCurrent();
       await this.dependencies.ledger.transitionSteer(
@@ -505,9 +501,7 @@ export class SteerOutbox {
         input.outboxRef,
         operation.epoch,
         lease.prepared,
-        input.userMessage,
-        userSeq,
-        assistantSeq
+        input.userMessage
       );
       if (!transferred) throw new Error("steer fallback 转交发生竞态");
       lease.commit();
@@ -588,9 +582,7 @@ export class SteerOutbox {
     outboxRef: string,
     opEpoch: number,
     prepared: PreparedManualTurn,
-    userMessage: UnsequencedUserMessage,
-    userSeq: number,
-    assistantSeq: number
+    userMessage: UnsequencedUserMessage
   ) {
     assertPreparedContentHash(prepared);
     const intentId = steerDerivedIntentId(outboxRef);
@@ -617,9 +609,7 @@ export class SteerOutbox {
         payload,
         submissionHash: canonicalHash(payload),
         requestId,
-        userMessage,
-        userSeq,
-        assistantSeq,
+        userMessage: remoteUserMessage(userMessage, prepared.remoteContext),
         createdAt: userMessage.createdAt,
         phase: "queued",
       }
@@ -656,7 +646,7 @@ export class SteerOutbox {
         }
         await this.dependencies.chats.appendUserMessage(
           hydrated.submission.persistence.input,
-          intent.seq
+          intent.seq, undefined, prepared.remoteContext?.origin
         );
         const persisted = await this.dependencies.ledger.transitionSteer(
           outboxRef,

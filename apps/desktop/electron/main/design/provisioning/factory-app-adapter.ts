@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on AppStore/BaseAppImporter/AppGrantAuthority, factory package paths, and custody activation/orphan callbacks
+ * [INPUT]: Depends on AppStore/BaseAppImporter/AppGrantAuthority, rejected-package receipt reads, factory package paths, and custody activation/orphan callbacks
  * [OUTPUT]: Provides createDesignFactoryPorts, the concrete App lifecycle adapter for factory install, explicit Studio grants, a global grant taken from the shared defaultAppGrantRequest so opening availability never smuggles in an Agent delegation, promotion, legacy missing-owner cleanup, and pending-build-aborted source reset
  * [POS]: Design provisioning's Apps-domain edge; every state change is routed through an AppStore mutator, so AppStore.watch broadcasts it and this adapter carries no publisher of its own
  */
@@ -40,6 +40,7 @@ export function createDesignFactoryPorts(input: {
      的记录投影成 saga 的语言。 */
   return {
     find,
+    wasInstallRejected: (requestId) => input.importer.hasRejectedPackage("preset", requestId),
     install: async ({ requestId, packageRoot, packageDigest, trust }) =>
       project(await input.importer.import({
         requestId,

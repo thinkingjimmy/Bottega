@@ -1,11 +1,11 @@
 /**
- * [INPUT]: Depends on Library-first Skills IPC/client, compact row/batch/import/empty components, i18n, the shared Extensions surface, and Settings primitives
- * [OUTPUT]: Provides `/settings/skills` with name/description/source rows, one enabled switch, main-authored actions, deletion-only confirmation, enablement undo, budget facts, and a positionally identical Skills/Extensions acquisition toolbar
+ * [INPUT]: Depends on Library-first Skills IPC/client, shared Skill rows/search/toolbar/import controller, compact batch/empty components, i18n, the shared Extensions surface, and Settings primitives
+ * [OUTPUT]: Provides `/settings/skills` with name/description/source rows, one enabled switch, main-authored actions, deletion-only confirmation, budget facts, and a positionally identical Skills/Extensions acquisition toolbar
  * [POS]: Sole global Skills management surface; renderer submits intents and contains no Agent-home, projection, native-target, or Codex-special logic
  */
 
 import { useEffect, useState } from "react";
-import { Plus, RefreshCw, Search, Sparkles } from "lucide-react";
+import { Plus, RefreshCw, Sparkles } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { PageShell } from "@/components/page-shell";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
@@ -18,36 +18,29 @@ import { SkillBatchBar } from "@/components/settings/skills/skill-batch-bar";
 import { SkillEmptyState } from "@/components/settings/skills/skill-empty-state";
 import { SkillImportDialog } from "@/components/settings/skills/skill-import-dialog";
 import { SkillLibraryRow } from "@/components/settings/skills/skill-library-row";
+import { SkillSearch } from "@/components/settings/skills/skill-search";
+import { SkillsToolbar } from "@/components/settings/skills/controls/toolbar";
+import { useSkillImport } from "@/components/settings/skills/controls/use-skill-import";
 import {
-  actionableCandidate,
   skillBytesText,
   skillErrorText,
   skillReasonText,
 } from "@/components/settings/skills/skill-text";
 import {
   applyUnifiedSkillPlan,
-  chooseLocalSkillsFolder,
   importAllDiscoveredSkills,
-  listUnifiedSkillCandidates,
   listUnifiedSkills,
   onUnifiedSkillsChanged,
-  onUnifiedSkillsProgress,
   previewUnifiedSkillIntents,
-  undoUnifiedSkillPlan,
 } from "@/lib/unified-skills-client";
 import { ExtensionsContent } from "@/views/settings-extensions";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { Input } from "@ai-chat/ui/components/ui/input";
 import {
   Tabs,
   TabsContent,
-  TabsList,
-  TabsTrigger,
 } from "@ai-chat/ui/components/ui/tabs";
 import type {
-  ManagedSkillAgent,
-  ManagedSkillImportPreview,
   ManagedSkillIntentInput,
   ManagedSkillLibraryItem,
   ManagedSkillPlanPreview,
@@ -64,15 +57,14 @@ export function SkillsSettingsView() {
   const [snapshot, setSnapshot] = useState(cachedSnapshot);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [preview, setPreview] = useState<ManagedSkillImportPreview | null>(null);
-  const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set());
-  const [importOpen, setImportOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ManagedSkillPlanPreview | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [mutationBusy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [extensionsActionHost, setExtensionsActionHost] = useState<HTMLDivElement | null>(
     null
   );
+  const skillImport = useSkillImport({ snapshot, onImported: setSnapshot });
+  const busy = mutationBusy || skillImport.busy;
 
   useEffect(() => {
     cachedSnapshot = snapshot;
@@ -86,13 +78,9 @@ export function SkillsSettingsView() {
     const offChanged = onUnifiedSkillsChanged((value) => {
       if (live) setSnapshot(value);
     });
-    const offProgress = onUnifiedSkillsProgress((latestJob) => {
-      if (live) setSnapshot((current) => current ? { ...current, latestJob } : current);
-    });
     return () => {
       live = false;
       offChanged();
-      offProgress();
     };
     // Translation changes must not restart subscriptions or clear selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -124,30 +112,6 @@ export function SkillsSettingsView() {
     const plan = await previewUnifiedSkillIntents(intents);
     if (plan.consent.length) setPendingDelete(plan);
     else await apply(plan);
-  };
-
-  const openSource = async (source: ManagedSkillAgent | "local-folder") => {
-    const value = source === "local-folder"
-      ? await chooseLocalSkillsFolder()
-      : await listUnifiedSkillCandidates(source, true);
-    if (!value) return;
-    setPreview(value);
-    setSelectedCandidates(new Set(
-      value.candidates.filter(actionableCandidate).map((candidate) => candidate.ref)
-    ));
-  };
-
-  const importSelected = async () => {
-    if (!preview || !selectedCandidates.size) return;
-    await submit([{
-      type: "import-and-enable",
-      previewId: preview.previewId,
-      revision: preview.revision,
-      candidateRefs: [...selectedCandidates],
-    }]);
-    setPreview(null);
-    setSelectedCandidates(new Set());
-    setImportOpen(false);
   };
 
   const importAll = async () => {
@@ -214,27 +178,18 @@ export function SkillsSettingsView() {
         title={t("common.skills")}
       >
         <SettingsCanvas>
-          <div
-            className="mb-4 flex items-center gap-2"
-            data-testid="settings-skills-toolbar"
-          >
-            <TabsList>
-              <TabsTrigger value="skills">{t("settings.skills.tabs.skills")}</TabsTrigger>
-              <TabsTrigger value="extensions">{t("settings.skills.tabs.extensions")}</TabsTrigger>
-            </TabsList>
-            <div className="ml-auto" ref={setExtensionsActionHost}>
-              {tab === "skills" && (
-                <Button
-                  disabled={busy || readOnly}
-                  onClick={() => setImportOpen(true)}
-                  size="lg"
-                >
-                  <Plus />
-                  {t("settings.skills.importTitle")}
-                </Button>
-              )}
-            </div>
-          </div>
+          <SkillsToolbar actionHostRef={setExtensionsActionHost}>
+            {tab === "skills" && (
+              <Button
+                disabled={busy || readOnly}
+                onClick={() => void skillImport.openDialog()}
+                size="lg"
+              >
+                <Plus />
+                {t("settings.skills.importTitle")}
+              </Button>
+            )}
+          </SkillsToolbar>
           <TabsContent className="mt-0 space-y-4" value="skills">
             {error && <SettingsAlert>{error}</SettingsAlert>}
             {snapshot?.availability.kind === "read-only" && (
@@ -242,31 +197,10 @@ export function SkillsSettingsView() {
                 {t("settings.skills.readOnly")}: {skillReasonText(t, snapshot.availability.reason)}
               </SettingsAlert>
             )}
-            {snapshot?.latestJob?.report && (
-              <div className="flex items-center gap-3 rounded-lg bg-muted/60 px-3 py-2 text-xs">
-                <span>{t("settings.skills.jobFinished")}</span>
-                {snapshot.latestJob.report.undoToken && (
-                  <Button
-                    className="ml-auto"
-                    disabled={busy}
-                    onClick={() => void run(async () =>
-                      setSnapshot(await undoUnifiedSkillPlan(snapshot.latestJob!.report!.undoToken!))
-                    )}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    {t("settings.skills.undoActivation")}
-                  </Button>
-                )}
-              </div>
-            )}
             {snapshot && snapshot.personalLibraryEmpty ? (
               <SkillEmptyState
                 busy={busy || readOnly}
-                onChooseFolder={() => {
-                  setImportOpen(true);
-                  void run(() => openSource("local-folder"));
-                }}
+                onChooseFolder={() => void skillImport.openDialog("local-folder")}
                 onImportAll={() => void run(importAll)}
                 scanning={scanning}
                 sources={snapshot.sources}
@@ -275,16 +209,7 @@ export function SkillsSettingsView() {
               <>
                 <div className="flex items-center gap-3">
                   <p className="text-muted-foreground text-xs">{budget}</p>
-                  <div className="relative ml-auto w-full max-w-xs">
-                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      aria-label={t("settings.skills.search")}
-                      className="pl-9"
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder={t("settings.skills.search")}
-                      value={query}
-                    />
-                  </div>
+                  <SkillSearch onChange={setQuery} value={query} />
                 </div>
                 {shown.length ? (
                   <SettingsList>
@@ -340,27 +265,7 @@ export function SkillsSettingsView() {
           </TabsContent>
         </SettingsCanvas>
       </PageShell>
-      <SkillImportDialog
-        busy={busy}
-        onBack={() => {
-          setPreview(null);
-          setSelectedCandidates(new Set());
-        }}
-        onImport={() => void run(importSelected)}
-        onOpenChange={(open) => {
-          setImportOpen(open);
-          if (!open) {
-            setPreview(null);
-            setSelectedCandidates(new Set());
-          }
-        }}
-        onOpenSource={(source) => void run(() => openSource(source))}
-        onSelected={setSelectedCandidates}
-        open={importOpen}
-        preview={preview}
-        selected={selectedCandidates}
-        sources={snapshot?.sources ?? []}
-      />
+      <SkillImportDialog {...skillImport.dialogProps} />
       <ConfirmationDialog
         busy={busy}
         confirmLabel={t("settings.skills.confirmDeleteAction")}

@@ -1,34 +1,41 @@
 /**
- * [INPUT]: Depends on confirmed field versions, pending column declarations, receipt-revision baselines and immutable hashes.
- * [OUTPUT]: Provides causal enqueue/compaction, sealed retries, exact predecessor rebasing and candidate recovery.
+ * [INPUT]: Depends on confirmed versions, pending column/related-row creation, receipt baselines and immutable hashes.
+ * [OUTPUT]: Provides atomic retention, causal enqueue/compaction, exact receipt rebasing and atomic candidate recovery with successor custody and App structural fences.
  * [POS]: Pure state transitions called only while BaseStore owns its leaf queue.
  */
 import { randomUUID } from "node:crypto";
 import type { BaseStoreMutation, StoredBase } from "../../base-store-model";
 import { canonicalJson } from "../../../../../shared/local-storage/contracts";
-import { baseReceiptSchema, baseSyncEnvelopeSchema, fieldKey, operationHash, pendingOperationSchema,
+import { baseReceiptSchema, baseSyncEnvelopeSchema, candidatePatchIndexes, fieldKey, isBasePatchDeleted, operationHash, pendingOperationSchema,
   type BaseOperationReceipt, type BasePatch, type BaseSyncEnvelope, type ConfirmedBase, type PendingBaseOperation } from "./model";
 import { applyPatches, diffBase, projectBase, readPatchValue } from "./projection";
+import { isMetadataField, readMetadataPath } from "@ai-chat/cloud-protocol";
+import { captureBaseEncryptionState } from "@ai-chat/cloud-protocol/bases/encrypted/client";
+import { captureCandidateContext } from "./candidates/context";
 
 function columnsOf(patch: BasePatch): string[] {
   if ("target" in patch) return [patch.target.columnId];
   if (patch.kind === "create-row") return Object.keys(patch.row.values);
   if (patch.kind === "put-column") return [patch.column.id];
   if (patch.kind === "delete-column") return [patch.columnId];
+  if (patch.kind === "set-column-field") return [patch.columnId];
   return [];
 }
-function changesColumn(patch: BasePatch) { return patch.kind === "put-column" || patch.kind === "delete-column"; }
+function changesColumn(patch: BasePatch) { return patch.kind === "put-column" || patch.kind === "delete-column" ||
+  patch.kind === "set-column-field" && (patch.path[0] === "relation" || patch.path[0] === "options" && patch.path.length === 2); }
+function metadataAncestor(patch: BasePatch, previous: BasePatch) {
+  return isMetadataField(patch) && fieldKey(patch).startsWith(fieldKey(previous) + ":");
+}
 function dependsOn(patch: BasePatch, previous: BasePatch) {
-  return fieldKey(previous) === fieldKey(patch) ||
+  return fieldKey(previous) === fieldKey(patch) || metadataAncestor(patch, previous) || metadataAncestor(previous, patch) ||
     columnsOf(previous).some(column => columnsOf(patch).includes(column)) && (changesColumn(previous) || changesColumn(patch)) ||
     "target" in patch && fieldKey(previous) === `row:${patch.target.rowId}` ||
     patch.kind === "set-order" && (patch.field === "columns" ? changesColumn(previous) : previous.kind === "put-view" || previous.kind === "delete-view");
 }
-export function enqueueBaseMutation(current: StoredBase, mutation: BaseStoreMutation, allowCompression = true): BaseSyncEnvelope {
+export function enqueueBaseMutation(current: Pick<StoredBase, "meta" | "rows" | "rowsById" | "sync">, mutation: BaseStoreMutation, allowCompression = true): BaseSyncEnvelope {
   const source = current.sync;
   if (source.cloudState === "local-only") return source;
   if (source.tombstones.includes("base")) throw new Error("BASE_DELETED");
-  if (source.cloudState === "mirror") throw new Error("Base is still preparing its local snapshot");
   if (mutation.operation === "app-data-migration") throw new Error("APP_MIGRATION_REQUIRES_ATOMIC_CLOUD_RECEIPT");
   const patches = mutation.syncIntent?.patches ?? diffBase(current, mutation);
   if (!patches.length) return source;
@@ -37,6 +44,8 @@ export function enqueueBaseMutation(current: StoredBase, mutation: BaseStoreMuta
       canonicalJson({ columns: projected.meta.columns, views: projected.meta.views, name: projected.meta.name, activeViewId: projected.meta.activeViewId }) !==
       canonicalJson({ columns: mutation.meta.columns, views: mutation.meta.views, name: mutation.meta.name, activeViewId: mutation.meta.activeViewId })) throw new Error("Base intent does not describe the committed mutation");
   const envelope = structuredClone(source);
+  // A complete Base snapshot needs no Chat executor; retention joins the first valid edit atomically.
+  envelope.cloudState = "synced";
   const confirmed = envelope.confirmed!;
   const dependencies = new Set<string>();
   const createdColumns = new Set([...patches, ...envelope.pendingOperations.filter(item => item.state === "queued").flatMap(item => item.patches)]
@@ -47,8 +56,13 @@ export function enqueueBaseMutation(current: StoredBase, mutation: BaseStoreMuta
     dependsOnOperationIds: [], atomicGroup: mutation.syncIntent?.atomicGroup ?? null, batchId: mutation.syncIntent?.batchId ?? null,
     actor: mutation.actor === "agent" ? "agent" : mutation.actor === "system" ? "system" : "user",
     sealed: false, attempts: 0, state: "queued",
+    encryptionCapture: captureBaseEncryptionState({ ...confirmed, meta: current.meta, rows: current.rows, tombstones: source.tombstones }, patches),
   };
   for (const patch of patches) {
+    const relations = new Set(current.meta.columns.filter(column => column.type === "relation").flatMap(column => {
+      const value = patch.kind === "set" && patch.target.columnId === column.id ? patch.value : patch.kind === "create-row" ? patch.row.values[column.id] : undefined;
+      return typeof value === "string" ? [value] : [];
+    }));
     const key = fieldKey(patch);
     operation.baseFieldVersions[key] = confirmed.fieldVersions[key] ?? 0;
     operation.baseValues[key] = JSON.parse(JSON.stringify(readPatchValue(confirmed, patch)));
@@ -58,7 +72,7 @@ export function enqueueBaseMutation(current: StoredBase, mutation: BaseStoreMuta
       operation.baseColumnSchemaVersions[columnId] = version ?? 0;
     }
     for (const previous of envelope.pendingOperations) {
-      const related = previous.patches.some(item => dependsOn(patch, item));
+      const related = previous.patches.some(item => dependsOn(patch, item) || item.kind === "create-row" && relations.has(item.row.id));
       if (related) dependencies.add(previous.operationId);
     }
   }
@@ -94,6 +108,7 @@ export function reconcileBase(source: BaseSyncEnvelope, confirmed: ConfirmedBase
     canonicalJson(confirmed.meta.owner) !== canonicalJson(source.confirmed.meta.owner)) throw new Error("BASE_CLOUD_REVISION_STALE");
   if (confirmed.cloudRevision === source.confirmed.cloudRevision && canonicalJson(confirmed) !== canonicalJson(source.confirmed)) throw new Error("BASE_CLOUD_REVISION_CONFLICT");
   if (source.pendingOperations.some(operation => operation.sealed && !receipts.some(receipt => receipt.operationId === operation.operationId) &&
+    !operation.patches.some(patch => isBasePatchDeleted([...source.tombstones, ...tombstones], patch)) &&
     operation.patches.some(patch => patch.kind === "increment" && (confirmed.fieldVersions[fieldKey(patch)] ?? 0) !== (source.confirmed!.fieldVersions[fieldKey(patch)] ?? 0)))) {
     throw new Error("BASE_RECEIPT_REQUIRED_FOR_SEALED_INCREMENT");
   }
@@ -117,7 +132,8 @@ export function reconcileBase(source: BaseSyncEnvelope, confirmed: ConfirmedBase
     envelope.receipts.push(receipt);
     envelope.pendingOperations = envelope.pendingOperations.filter(item => item !== operation);
     if (!successful) {
-      envelope.conflictCandidates.push({ operation, receipt, blockedReason: null, state: "unresolved", resolutionOperationId: null,
+      envelope.conflictCandidates.push({ operation, receipt, blockedReason: null, state: "unresolved", remoteResolved: false, resolutionOperationId: null,
+        recoveryContext: captureCandidateContext(source, operation),
         currentValues: Object.fromEntries(operation.patches.map(patch => [fieldKey(patch), JSON.parse(JSON.stringify(readPatchValue(confirmed, patch)))])) });
     }
     for (const dependent of envelope.pendingOperations) {
@@ -132,7 +148,13 @@ export function reconcileBase(source: BaseSyncEnvelope, confirmed: ConfirmedBase
       if (!baseline) throw new Error("BASE_RECEIPT_BASELINE_REQUIRED");
       for (const patch of dependent.patches) {
         const key = fieldKey(patch);
-        if (operation.patches.some(item => fieldKey(item) === key || "target" in patch && item.kind === "create-row" && item.row.id === patch.target.rowId)) {
+        const ancestor = operation.patches.find(item => metadataAncestor(patch, item));
+        if (ancestor) {
+          const parentKey = fieldKey(ancestor);
+          if (!Object.hasOwn(baseline.values, parentKey)) throw new Error("BASE_RECEIPT_BASELINE_REQUIRED");
+          dependent.baseFieldVersions[key] = baseline.fieldVersions[key] ?? 0;
+          dependent.baseValues[key] = JSON.parse(JSON.stringify(readMetadataPath(baseline.values[parentKey], key.slice(parentKey.length + 1).split(":"))));
+        } else if (operation.patches.some(item => fieldKey(item) === key || "target" in patch && item.kind === "create-row" && item.row.id === patch.target.rowId)) {
           if (!Object.hasOwn(baseline.values, key) || receipt.baseline && !Object.hasOwn(baseline.fieldVersions, key)) throw new Error("BASE_RECEIPT_BASELINE_REQUIRED");
           dependent.baseFieldVersions[key] = baseline.fieldVersions[key] ?? 0;
           dependent.baseValues[key] = JSON.parse(JSON.stringify(baseline.values[key]));
@@ -145,15 +167,21 @@ export function reconcileBase(source: BaseSyncEnvelope, confirmed: ConfirmedBase
         }
       }
       if (operation.patches.some(changesColumn)) dependent.schemaRevision = Math.max(dependent.schemaRevision, baseline.schemaRevision);
+      if (dependent.encryptionCapture) {
+        Object.assign(dependent.encryptionCapture.fieldVersions, baseline.fieldVersions);
+        dependent.encryptionCapture.columnSchemaVersions = { ...dependent.encryptionCapture.columnSchemaVersions, ...baseline.columnSchemaVersions };
+        dependent.encryptionCapture.schemaRevision = dependent.schemaRevision;
+      }
       dependent.payloadHash = operationHash(dependent);
     }
     for (const candidate of envelope.conflictCandidates) {
-      if (candidate.resolutionOperationId === receipt.operationId && successful) candidate.state = "applied";
+      if (candidate.resolutionOperationId === receipt.operationId) {
+        candidate.state = successful ? "applied" : "superseded"; candidate.remoteResolved = true;
+      }
     }
   }
   for (const pending of envelope.pendingOperations) {
-    if (envelope.tombstones.includes("base") || pending.patches.some(patch => envelope.tombstones.includes(fieldKey(patch)) || "target" in patch &&
-      (envelope.tombstones.includes(`row:${patch.target.rowId}`) || envelope.tombstones.includes(`column:${patch.target.columnId}`)))) pending.state = "blocked";
+    if (pending.patches.some(patch => isBasePatchDeleted(envelope.tombstones, patch))) pending.state = "blocked";
   }
   let changed = true;
   while (changed) {
@@ -162,23 +190,33 @@ export function reconcileBase(source: BaseSyncEnvelope, confirmed: ConfirmedBase
       pending.state = "blocked"; changed = true;
     }
   }
-  // Unsent successors need a recoverable local candidate, not a fabricated cloud rejection.
-  for (const operation of envelope.pendingOperations.filter(item => item.state === "blocked" && !item.sealed)) {
-    envelope.conflictCandidates.push({ operation, receipt: null, state: "unresolved", resolutionOperationId: null,
-      blockedReason: operation.dependsOnOperationIds.length ? "dependency" : "tombstone",
+  // A tombstone stops even sealed attempts with unknown outcomes; custody preserves their original identity without inventing a receipt.
+  const retained = new Set<string>();
+  for (const operation of envelope.pendingOperations.filter(item => item.state === "blocked")) {
+    const removed = operation.patches.some(patch => isBasePatchDeleted(envelope.tombstones, patch));
+    if (operation.sealed && !removed) continue;
+    envelope.conflictCandidates.push({ operation, receipt: null, state: "unresolved", remoteResolved: false, resolutionOperationId: null,
+      recoveryContext: captureCandidateContext(source, operation),
+      blockedReason: removed ? "tombstone" : "dependency",
       currentValues: Object.fromEntries(operation.patches.map(patch => [fieldKey(patch), JSON.parse(JSON.stringify(readPatchValue(confirmed, patch)))])) });
+    retained.add(operation.operationId);
   }
-  envelope.pendingOperations = envelope.pendingOperations.filter(item => item.state !== "blocked" || item.sealed);
+  envelope.pendingOperations = envelope.pendingOperations.filter(item => !retained.has(item.operationId));
   return baseSyncEnvelopeSchema.parse(envelope);
 }
 export function restoreBaseCandidate(source: StoredBase, candidateOperationId: string, operationId: string) {
   const candidate = source.sync.conflictCandidates.find(item => item.operation.operationId === candidateOperationId);
   if (!candidate || candidate.state !== "unresolved" || candidate.resolutionOperationId) throw new Error("Base candidate is unavailable");
-  const patches = candidate.operation.patches.filter((_, index) => !candidate.receipt || ["conflicted", "rejected"].includes(candidate.receipt.results[index]!.status));
-  if (patches.some(patch => source.sync.tombstones.includes(fieldKey(patch)) || "target" in patch && (
-    source.sync.tombstones.includes(`row:${patch.target.rowId}`) || source.sync.tombstones.includes(`column:${patch.target.columnId}`)))) throw new Error("Deleted Base data cannot be restored in place");
+  const patches = candidatePatchIndexes(candidate).map(index => candidate.operation.patches[index]!);
+  if (!patches.length) throw new Error("Base candidate is unavailable");
+  if (source.meta.navigation.kind === "internal-app" && patches.some(patch => ["put-column", "delete-column", "set-column-field"].includes(patch.kind))) {
+    throw new Error("APP_STRUCTURE_READONLY");
+  }
+  if (source.sync.tombstones.includes("base")) throw new Error("BASE_DELETED");
+  if (patches.some(patch => isBasePatchDeleted(source.sync.tombstones, patch))) throw new Error("Deleted Base data cannot be restored in place");
   const projected = applyPatches({ meta: source.meta, rows: source.rows }, patches, source.sync.tombstones);
-  const envelope = enqueueBaseMutation(source, { ...projected, changedRowIds: "all", syncIntent: { operationId, patches }, actor: "renderer" }, false);
+  const envelope = enqueueBaseMutation(source, { ...projected, changedRowIds: "all", syncIntent: { operationId, patches,
+    ...(candidate.operation.atomicGroup ? { atomicGroup: randomUUID() } : {}) }, actor: "renderer" }, false);
   envelope.conflictCandidates.find(item => item.operation.operationId === candidateOperationId)!.resolutionOperationId = operationId;
   return { envelope, projected: projectBase(envelope) };
 }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on PromptInput RichNode/RichValue and ReactNode
- * [OUTPUT]: Provides public RichQuery, multi-kind group, suggestion, structured footer action, invalid-state, copy, handle, and props types
+ * [OUTPUT]: Provides public RichQuery, multi-kind group, suggestion, structured footer action, invalid-state, copy, handle, and props types (including the queries off switch)
  * [POS]: Stable RichInput type boundary shared one-way by the state machine, pure model, and candidate view
  */
 
@@ -101,4 +101,8 @@ export type RichInputProps = {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  /** false keeps "@" and "$" as plain text for hosts without suggestions; default true. */
+  queries?: boolean;
+  /** Per-file chip state by ref (busy spinner / bad tone) with an explaining title. */
+  fileStates?: Readonly<Record<string, { kind: "busy" | "bad"; title?: string }>>;
 };

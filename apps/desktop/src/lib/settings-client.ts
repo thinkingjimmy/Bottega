@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/settings-ipc and preload exposed window.settings
- * [OUTPUT]: Provides settings get/set/subscriptions, Memory and Chat Home controls, initial language/theme facts, backend/model catalogs, and scoped chat options with explicit session-effective reset; throws when the bridge is absent
+ * [OUTPUT]: Provides settings get/set/subscriptions, Memory and Chat Home controls including the dialog-free folder retry, initial language/theme facts, backend/model catalogs, and scoped chat options with explicit session-effective reset; throws when the bridge is absent
  * [POS]: The main process of lib sets the IPC's only output and unifies the default model, scope, consolidation and renderer to display semantics
  */
 
@@ -108,6 +108,11 @@ export const subscribeSettings = (
 ) => bridge().onChanged(listener);
 
 export const chooseChatHomesRoot = () => bridge().chooseChatHomesRoot();
+/* Retry never shows a dialog: a configured folder can only be reopened in place,
+   changing folders isn't supported. */
+export const retryLibrary = () => bridge().retryLibrary?.() ?? Promise.resolve(null);
+export const subscribeChatHomeStatus = (listener: (status: import("../../shared/settings-ipc").ChatHomeStatus) => void) =>
+  bridge().onChatHomeStatus?.(listener) ?? (() => {});
 
 export const acknowledgeFullAccess = (): Promise<SettingsEnvelope> =>
   bridge().acknowledgeFullAccess();

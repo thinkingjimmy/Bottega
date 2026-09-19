@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, the locale catalog, shared BaseOwner changed/moved/removed Event rules, and lib/bases client
- * [OUTPUT]: Provides BasesProvider plus the split useBasesNavigation/useBaseSnapshots hooks, bounded move/retire ledgers, an explicit Project Base baseline-loaded fence, and revision-bound Base commands
+ * [INPUT]: Depends on React Context, the locale catalog, shared BaseOwner changed/moved/removed Event rules, lib/bases client and lazily loaded native record commits
+ * [OUTPUT]: Provides split navigation/snapshot contexts, owner/revision-fenced commands and atomic frozen-record commits.
  * [POS]: The single source of truth for the Base real-time state of the renderer; All IPC returns, navigation baseline, delta meta and event pull are through the ownerInstance/revision fence
  */
 
@@ -23,7 +23,8 @@ import type {
   BasesEvent,
   BaseSnapshot,
 } from "../../../shared/bases-ipc";
-import { ownerFromKey, ownerKeyOf } from "../../../shared/bases-ipc";
+
+import { ownerFromKey, ownerKeyOf } from "@ai-chat/base-ui/model/owner-key";
 import {
   appearsInProjectBase,
   appearsInRootBases,
@@ -48,7 +49,8 @@ import {
   resolveBaseForSection,
   updateBaseMeta,
 } from "@/lib/bases/client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
+import type { commitNativeBaseRecord } from "@/lib/bases/native-images";
 import { useAppTranslation } from "./i18n-provider";
 
 /* ============================================================================
@@ -74,6 +76,7 @@ type BasesNavigationValue = {
 };
 
 type BaseSnapshotsValue = {
+  commitRecord: typeof commitNativeBaseRecord;
   snapshots: Readonly<Record<string, BaseSnapshot>>;
   get(ownerKey: string): Promise<BaseSnapshot | null>;
   updateMeta(input: {
@@ -666,6 +669,8 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       wrap(ownerKey, () => insertBaseRows({ ownerKey, rows, surfaceLeaseId })),
     [wrap]
   );
+  const commitRecord = useCallback((input: Parameters<typeof commitNativeBaseRecord>[0]) =>
+    wrap(input.ownerKey, async () => (await import("@/lib/bases/native-images")).commitNativeBaseRecord(input)), [wrap]);
   const patchRow = useCallback(
     (ownerKey: string, rowId: string, patch: BaseRowPatch, surfaceLeaseId?: string) =>
       wrap(ownerKey, () => patchBaseRow({ ownerKey, rowId, patch, surfaceLeaseId })),
@@ -730,6 +735,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
 
   const snapshotsValue = useMemo<BaseSnapshotsValue>(
     () => ({
+      commitRecord,
       snapshots,
       get: reload,
       updateMeta,
@@ -744,6 +750,7 @@ export function BasesProvider({ children }: { children: React.ReactNode }) {
       rowHistory: getBaseRowHistory,
     }),
     [
+      commitRecord,
       deleteRows,
       insertRows,
       importJson,

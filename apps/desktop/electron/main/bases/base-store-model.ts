@@ -6,17 +6,8 @@
 
 import { emptyBaseSync, type BaseSyncEnvelope, type BaseSyncIntent } from "./store/sync/model";
 import { randomUUID } from "node:crypto";
-import {
-  BASE_COLUMN_LIMIT,
-  BASE_ROW_BYTE_LIMIT,
-  BASE_ROW_LIMIT,
-  BASE_VIEW_LIMIT,
-  ownerKeyOf,
-  type BaseMeta,
-  type BaseOwner,
-  type BaseNavigationSummary,
-  type BaseRow,
-} from "../../../shared/bases-ipc";
+import { BASE_COLUMN_LIMIT, BASE_ROW_BYTE_LIMIT, BASE_ROW_LIMIT, BASE_VIEW_LIMIT, type BaseMeta, type BaseNavigationSummary, type BaseRow } from "../../../shared/bases-ipc";
+import { ownerKeyOf, type BaseOwner } from "@ai-chat/base-ui/model/owner-key";
 import type { BaseGalleryLedger } from "../../../shared/bases/gallery-attachments";
 import type {
   BaseHistoryActor,
@@ -109,6 +100,9 @@ export type BaseOwnerIdentity = {
 };
 
 export type BaseStoreDependencies = {
+  /** The selected folder. Null only before the first selection, where there is nothing to mount. */
+  libraryRoot: () => string | null;
+  folderCheckpoint?: (phase: "intent" | "content" | "commit") => Promise<void>;
   storageMode?: import("../../../shared/local-storage/contracts").StorageMode;
   atomicWrite?: (path: string, content: string) => Promise<void>;
   readText?: (path: string) => Promise<string>;

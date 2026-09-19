@@ -26,7 +26,7 @@ type HorizontalDrag = {
   target: HTMLButtonElement
 }
 
-export type HorizontalResizeResult =
+type HorizontalResizeResult =
   | { kind: "underflow" }
   | { kind: "resize"; width: number }
 

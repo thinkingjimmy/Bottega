@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on Radix Dialog, Button, Lucide, icons, style tools and shared UI text
- * [OUTPUT]: Provides Dialog, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, and DialogDescription with localized close controls
+ * [OUTPUT]: Provides Dialog, DialogTrigger, DialogContent (with opt-in sheetOnNarrow bottom-docked geometry below sm), DialogHeader, DialogFooter, DialogTitle, and DialogDescription with localized close controls
  * [POS]: The basic layer of the modular dialog box components/ui, unified Electron no-drag with accessible shutdown movements
  */
 
@@ -56,15 +56,23 @@ function DialogOverlay({
   )
 }
 
+/* Below the sm breakpoint a form dialog docks to the bottom edge like a sheet: a centred box
+   re-centres every time the on-screen keyboard resizes the viewport, a docked one only grows
+   upward. Opt-in per surface so confirmations keep their centred geometry. */
+const SHEET_ON_NARROW_CLASS =
+  "max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:data-open:zoom-in-100 max-sm:data-open:slide-in-from-bottom-8 max-sm:data-closed:zoom-out-100 max-sm:data-closed:slide-out-to-bottom-8"
+
 function DialogContent({
   className,
   overlayClassName,
   children,
   showCloseButton = true,
+  sheetOnNarrow = false,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
   overlayClassName?: string
+  sheetOnNarrow?: boolean
 }) {
   const closeLabel = useUiText("close", "Close")
   return (
@@ -74,6 +82,7 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
           "fixed top-1/2 left-1/2 z-50 grid [-webkit-app-region:no-drag] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-xs/relaxed text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          sheetOnNarrow && SHEET_ON_NARROW_CLASS,
           className
         )}
         {...props}

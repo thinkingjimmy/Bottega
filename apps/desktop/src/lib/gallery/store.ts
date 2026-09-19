@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared RichInput wire projection, React external-store, Agent limits, Gallery model/media IPC, typed target/CAS and chat-composer-store
- * [OUTPUT]: Provides per-chat Gallery FSM, backend/capability epoch, occurrence-scoped, submit attachments, receive promotion fence, accurate consumption/source clearance and comment snapshot
+ * [OUTPUT]: Exposes subscribeGalleryState for shared view adapters; Provides per-chat Gallery FSM, backend/capability epoch, occurrence-scoped, submit attachments, receive promotion fence, accurate consumption/source clearance and comment snapshot
  * [POS]: The renderer's sole owner of non-persisted Gallery state; ChatView and the full-screen Base host only mount it
  */
 
@@ -15,7 +15,7 @@ import {
   galleryOccurrenceKey,
   type GalleryMediaSourceRef,
 } from "../../../shared/gallery-media-ipc";
-import type { GalleryItem } from "./model";
+import type { GalleryItem } from "@ai-chat/base-ui/ui/media/model";
 import {
   readComposer,
   replaceDraftFiles,
@@ -27,13 +27,8 @@ import {
   type AttachmentCommandTarget,
 } from "@ai-chat/ui/hooks/use-attachment-list";
 
-export type GalleryComment = {
-  id: string;
-  version: number;
-  x: number;
-  y: number;
-  text: string;
-};
+import type { GalleryComment } from "@ai-chat/base-ui/ui/platform/gallery";
+export type { GalleryComment } from "@ai-chat/base-ui/ui/platform/gallery";
 
 export type GallerySelection = {
   logicalKey: string;
@@ -78,16 +73,13 @@ const publish = (chatId: string, state: GalleryChatState) => {
   for (const listener of listeners.get(chatId) ?? []) listener();
 };
 
+export function subscribeGalleryState(chatId: string, listener: () => void) {
+  const group = listeners.get(chatId) ?? new Set();
+  group.add(listener); listeners.set(chatId, group);
+  return () => { group.delete(listener); if (!group.size) listeners.delete(chatId); };
+}
 export function useGalleryState(chatId: string) {
-  const subscribe = useCallback((listener: () => void) => {
-    const group = listeners.get(chatId) ?? new Set();
-    group.add(listener);
-    listeners.set(chatId, group);
-    return () => {
-      group.delete(listener);
-      if (!group.size) listeners.delete(chatId);
-    };
-  }, [chatId]);
+  const subscribe = useCallback((listener: () => void) => subscribeGalleryState(chatId, listener), [chatId]);
   const snapshot = useCallback(() => read(chatId), [chatId]);
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }

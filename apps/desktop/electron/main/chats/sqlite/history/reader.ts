@@ -37,7 +37,7 @@ export class ChatHistoryReader {
         records.push(record);
       } catch { missing = true; }
     }
-    return { binding, records, scannedMessages, scannedBytes,
+    return { binding, records, scannedMessages, scannedBytes, totalMessages: this.source.count(binding),
       storageTrimmed: this.source.fence(chatId, deviceId)!.storageTrimmed,
       hasMore: missing || recent.length === 999 || scannedMessages < candidates.length || records.some(record => record.projectionTruncated) };
   }

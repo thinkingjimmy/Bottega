@@ -22,7 +22,7 @@ import {
   authorizeAppStudioAccess,
   declineAppStudioAccess,
 } from "@/lib/apps-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 /* ============================================================

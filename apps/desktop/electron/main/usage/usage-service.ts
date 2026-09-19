@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on Node homedir/stat, shared Usage IPC contracts, the three source adapters, UsageCache, PricingStore, and the merge/stats functions
- * [OUTPUT]: Provides UsageService (pricing-revision-aware summary aggregation), UsageCancelledError, and assertUsageRequest for validating renderer usage-query params
- * [POS]: The usage domain's long-lived service owner; coalesces per-source scans, merges inside the scan so raw events never outlive it, keeps only per-source merged facts keyed by timezone and pricing table, composes summaries for IPC, and drains/reopens the cache and pricing store across app lifecycle
+ * [OUTPUT]: Provides UsageService with bounded parallel file reads, shared refresh generations and pricing-revision-aware summaries, plus UsageCancelledError and assertUsageRequest.
+ * [POS]: The history fact owner; sources complete independently, file results merge in discovery order, and cancellation drains every reader before releasing the cache.
  */
 
 import { homedir } from "node:os";
@@ -145,6 +145,9 @@ const DEFAULT_ADAPTERS: Record<UsageSourceId, SourceAdapter> = {
     parseFile: parseKimiFile,
   },
 };
+
+// Bound open streams and read buffers while allowing each source to make progress.
+const FILE_READ_CONCURRENCY = 8;
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
@@ -416,7 +419,9 @@ export class UsageService {
     const matches = (candidate: MergeInputs) =>
       candidate.timeZone === inputs.timeZone && candidate.table === inputs.table;
     if (state.current) {
-      if (!force && matches(state.current.inputs)) return state.current.promise;
+      if (matches(state.current.inputs) && (!force || state.current.forced)) {
+        return state.current.promise;
+      }
       state.queuedInputs = inputs;
       if (!state.queued) state.queued = deferred<SourceSummary>();
       return state.queued.promise;
@@ -596,7 +601,7 @@ export class UsageService {
       }
     };
 
-    for (const path of paths) {
+    const readFile = async (path: string) => {
       signal.throwIfAborted();
       let before: FileSnapshot;
       try {
@@ -607,8 +612,9 @@ export class UsageService {
           sourceIssue(source, "file", `${path} 读取失败：${message}`, 1)
         );
         advance();
-        continue;
+        return;
       }
+      signal.throwIfAborted();
 
       const cached = adapter.cached ? this.cacheEntries.get(path) : undefined;
       if (
@@ -649,7 +655,19 @@ export class UsageService {
       }
 
       advance();
-    }
+    };
+    let nextFile = 0;
+    const workers = await Promise.allSettled(
+      Array.from({ length: Math.min(FILE_READ_CONCURRENCY, paths.length) }, async () => {
+        while (nextFile < paths.length) {
+          signal.throwIfAborted();
+          await readFile(paths[nextFile++]);
+        }
+      })
+    );
+    // Do not release scan/cache ownership while another cancelled reader is still settling.
+    const failed = workers.find(result => result.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
 
     if (failedLines > 0) {
       issues.push(
@@ -693,7 +711,10 @@ export class UsageService {
     return {
       source,
       merged: mergeUsageFiles(
-        [...byFile].map(([path, file]) => ({ source, path, file })),
+        paths.flatMap(path => {
+          const file = byFile.get(path);
+          return file ? [{ source, path, file }] : [];
+        }),
         inputs.timeZone,
         inputs.table
       ),

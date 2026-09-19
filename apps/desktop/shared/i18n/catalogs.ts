@@ -1,16 +1,21 @@
 /**
- * [INPUT]: Depends on locale type, static English directory and runtime catalogOf/registerCatalog
+ * [INPUT]: Depends on locale type, static English directory, shared composer locale loading and runtime catalogOf/registerCatalog
  * [OUTPUT]: Provides loadCatalog, lazily importing and registering one locale's catalog on demand
- * [POS]: Renderer-side i18n lazy-load point; each non-English locale ships as its own chunk after the English-only initial bundle, registered into the same runtime registry main populates eagerly via resources.ts
+ * [POS]: The i18n lazy-load point for both processes; each non-English locale is its own chunk, and main registers English plus the active locale through here while resources.ts stays the eager five-locale source for tests
  */
 
-import type { AppLocale } from "./locale";
+import { loadWorkspaceCopy } from "@ai-chat/ui/workspace-copy";
+import { loadComposerCatalog } from "@ai-chat/chat-ui/composer-translation";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { en, type Catalog } from "./locales/en";
 import { catalogOf, registerCatalog } from "./runtime";
 
 /**
  * 首包只背英文，其余四语言各自成 chunk。它们服务的界面（Memory/Bases/
  * Archive 等）本就在懒路由之后，文案没有理由比代码更早到场。
+ *
+ * 主进程走同一条路，理由不同：它没有首包预算，但有常驻预算——五语言目录
+ * 在主 isolate 里是 4 MB，而任何一次运行只用得上其中一种。
  */
 const LOADERS: Record<AppLocale, () => Promise<Catalog>> = {
   en: async () => en,
@@ -21,6 +26,7 @@ const LOADERS: Record<AppLocale, () => Promise<Catalog>> = {
 };
 
 export async function loadCatalog(locale: AppLocale): Promise<Catalog> {
+  await Promise.all([loadComposerCatalog(locale), loadWorkspaceCopy(locale)]);
   const resident = catalogOf(locale);
   if (resident) return resident;
   const catalog = await LOADERS[locale]();

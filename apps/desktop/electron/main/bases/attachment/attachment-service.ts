@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BaseStore only submit kernel, sibling support.ts pure rules, shared attachment/Gallery DTO, thumbnail cache, owner-native/manual and canonical chat identity, admission/event narrow ports
- * [OUTPUT]: Provides owner-native manual upload, automatic transcript ingestion, id-indexed ownerKey-scoped attachment reads, thumbnails, immutable occurrence replay, and target-Chat Gallery authorization
+ * [OUTPUT]: Provides owner-scoped manual uploads, byte-exact automatic local-image ingestion, attachment reads, thumbnails and immutable occurrence replay.
  * [POS]: the business owner of bases/attachment; BasesService is only available as an IPC/common line gateway, and this module is exclusive to attachment
  */
 
@@ -151,7 +151,8 @@ export class BaseAttachmentService {
   ingestCompletedImage(
     event: CompletedImageEventV1,
     bytes: Buffer,
-    filename = `${event.sourceRef.itemId}.png`
+    filename = `${event.sourceRef.itemId}.png`,
+    localAvailability?: BaseAttachmentValue["localAvailability"]
   ) {
     return this.ingestTranscriptAttachment({
       chatId: event.sourceRef.chatId,
@@ -164,6 +165,7 @@ export class BaseAttachmentService {
       sourceRevision: event.sourceRevision,
       bytes,
       filename,
+      localAvailability,
     });
   }
 
@@ -178,6 +180,7 @@ export class BaseAttachmentService {
     sourceRevision: string;
     bytes: Buffer;
     filename: string;
+    localAvailability?: BaseAttachmentValue["localAvailability"];
   }): Promise<PutAttachmentResult> {
     try {
       const identity = await this.options.identity(input.chatId);
@@ -347,6 +350,7 @@ export class BaseAttachmentService {
     expectedRevision?: number;
     rowId?: string;
     columnId?: string;
+    localAvailability?: BaseAttachmentValue["localAvailability"];
   }): Promise<PutAttachmentResult> {
     this.options.assertAdmission();
     const { identity } = input;
@@ -359,6 +363,7 @@ export class BaseAttachmentService {
       filename: input.filename,
       bytes: input.bytes,
       sourceRevision: input.sourceRevision,
+      localAvailability: input.localAvailability,
     });
     const generatedRowId = `gallery_${createHash("sha256")
       .update(input.occurrenceId)
@@ -500,6 +505,7 @@ export class BaseAttachmentService {
           filename: input.filename,
           bytes: input.bytes,
           sourceRevision: input.sourceRevision,
+          localAvailability: input.localAvailability,
         });
         if (!sameJson(stored.value, described)) {
           throw new Error("Attachment describe/put 结果不一致");

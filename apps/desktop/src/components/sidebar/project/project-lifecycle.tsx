@@ -2,17 +2,17 @@
 
 /**
  * [INPUT]: Depends on React state, Project/Chat contracts, ProjectsProvider detach mutation, archive client, optional caller-owned archive-success feedback, shared dialogs, and i18n
- * [OUTPUT]: Provides useProjectLifecycle, ProjectLifecycleDialogs — two confirmations on one register, weighted only by reversibility — and localDetachArchiveReasons as one archive/remove state machine with an optional post-archive signal
+ * [OUTPUT]: Provides single-flight Project archive/detach confirmations, with success notification immediately after archive resolution and before leaving or closing
  * [POS]: Shared Project lifecycle controller consumed by Sidebar Project rows and Project Settings General
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ChatSummary } from "../../../../shared/chats-ipc";
 import type { Project, ProjectLocalDetachReason } from "../../../../shared/projects-ipc";
 import { useProjects } from "@/components/providers/projects-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { archiveTargets } from "@/lib/archive-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 
 export function localDetachArchiveReasons(input: {
@@ -42,28 +42,41 @@ export function useProjectLifecycle(
   const [localDetachReasons, setLocalDetachReasons] = useState<ProjectLocalDetachReason[]>([]);
   const [operationError, setOperationError] = useState("");
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
 
   const archive = async () => {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setOperationError("");
     try {
       await archiveTargets([{ kind: "project", id: project.id }]);
-      options.onLeave(true);
+    } catch (cause) {
+      setOperationError(errorMessage(cause));
+      pending.current = false;
+      setBusy(false);
+      return;
+    }
+    try {
       options.onArchived?.();
       setArchiveOpen(false);
       setLocalDetachOpen(false);
-    } catch (cause) {
-      setOperationError(errorMessage(cause));
+      options.onLeave(true);
+    } catch {
+      // A completed archive stays successful even if its route has already disappeared.
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   };
 
   const detachLocal = async () => {
+    if (pending.current) return;
     if (localDetachReasons.length) {
       await archive();
       return;
     }
+    pending.current = true;
     setBusy(true);
     setOperationError("");
     try {
@@ -77,6 +90,7 @@ export function useProjectLifecycle(
     } catch (cause) {
       setOperationError(errorMessage(cause));
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   };

@@ -1,11 +1,12 @@
 /**
- * [INPUT]: Depends on Electron nativeImage/BrowserWindow, ChatStore, GalleryMediaCache, TurnEventsBroker, active-turn query and sourceRef IPC schema
- * [OUTPUT]: Provides sourceRef-only GalleryMediaService, transcript/attachment Submit backsource authorization, cache→canonical lease Backward, incarnation fence, ≤12MP single-fly decoding and dual-budget LRU
+ * [INPUT]: Electron decoding, ChatStore, shared canonical assistant/Subagent proof, cache, broker, active-turn query and closed IPC schema.
+ * [OUTPUT]: Provides occurrence-authorized Gallery reads, bounded synchronization bytes for native/Subagent images, attachment backreferences and budgeted previews.
  * [POS]: The renderer media parsing port of the gallery; Paths are only analyzed by receiving cache index or canonical lease in the main
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { open } from "node:fs/promises";
+import { constants } from "node:fs";
 import { BrowserWindow, nativeImage } from "electron";
 import {
   galleryMaterializeInputSchema,
@@ -24,6 +25,7 @@ import type { GalleryMediaCache } from "./media-cache";
 import type { GalleryMediaIndexRecordV1 } from "../../../shared/gallery-media-ipc";
 import type { TurnEventsBroker } from "./turn-events-broker";
 import { parseAttachmentImageHeader } from "./image-header";
+import { canonicalImage } from "./source";
 
 type CacheEntry<T> = { value: T; bytes: number };
 type AuthorizedTranscriptMedia = {
@@ -65,13 +67,19 @@ export class GalleryMediaService {
   setAttachmentMedia(port: AttachmentMediaPort) {
     this.attachmentMedia = port;
   }
+  async readForSynchronization(sourceRef: GallerySourceRef, subagentId: string | null = null) {
+    const media = await this.authorize(sourceRef, subagentId), bytes = media.bytes ?? await readBoundedMedia(media.path);
+    if (createHash("sha256").update(bytes).digest("hex") !== media.record.sourceRevision) throw codedError("SOURCE_GONE");
+    const header = parseAttachmentImageHeader(bytes.subarray(0, 512 * 1024));
+    return { bytes: new Uint8Array(bytes), mime: header.extension === "jpg" ? "image/jpeg" : `image/${header.extension}` };
+  }
 
   register(window: BrowserWindow, rendererUrl: string) {
     this.broker.attachWindow(window);
     rendererIpc(rendererUrl, "拒绝非主窗口的 Gallery 媒体请求")
       .handle(GALLERY_MEDIA_CHANNEL.thumbnail, async (raw) => {
         const input = galleryThumbnailInputSchema.parse(raw);
-        return this.thumbnail(input.sourceRef, input.maxEdge);
+        return this.thumbnail(input.sourceRef, input.maxEdge, input.subagentId);
       })
       .handle(GALLERY_MEDIA_CHANNEL.materialize, async (raw) => {
         const input = galleryMaterializeInputSchema.parse(raw);
@@ -97,13 +105,13 @@ export class GalleryMediaService {
     await this.authorize(sourceRef);
   }
 
-  private async thumbnail(sourceRef: GalleryMediaSourceRef, maxEdge: number) {
+  private async thumbnail(sourceRef: GalleryMediaSourceRef, maxEdge: number, subagentId: string | null = null) {
     if (sourceRef.kind === "attachment") {
       return this.attachmentMedia?.thumbnail(sourceRef, maxEdge) ??
         mediaFailure(codedError("SOURCE_GONE"));
     }
     try {
-      const media = await this.authorize(sourceRef);
+      const media = await this.authorize(sourceRef, subagentId);
       const { record } = media;
       const bucket =
         GALLERY_THUMB_BUCKETS.find((value) => value >= maxEdge) ?? 1024;
@@ -175,42 +183,32 @@ export class GalleryMediaService {
   }
 
   private async authorize(
-    sourceRef: GallerySourceRef
+    sourceRef: GallerySourceRef, subagentId: string | null = null
   ): Promise<AuthorizedTranscriptMedia> {
     const record = this.store.getMetadata(sourceRef.chatId);
     if (!record || record.incarnationId !== sourceRef.incarnationId) {
       throw codedError("INCARNATION_MISMATCH");
     }
-    const canonical = await this.store.getNativeMessage(sourceRef.chatId, {
-      kind: "seq",
-      seq: sourceRef.assistantSeq,
-    });
-    if (canonical) {
-      const present = canonical.parts?.some(
-        (part) =>
-          part.type === "tool" &&
-          part.tool === "image" &&
-          part.status === "completed" &&
-          part.itemId === sourceRef.itemId
-      );
-      if (!present) throw codedError("SOURCE_GONE");
-    } else if (!this.isActiveSource(sourceRef)) {
+    const proof = await canonicalImage(this.store, sourceRef, subagentId);
+    if (proof.canonical) {
+      if (!proof.image) throw codedError("SOURCE_GONE");
+    } else if (subagentId || !this.isActiveSource(sourceRef)) {
       throw codedError("SOURCE_GONE");
     }
-    await this.broker.join(sourceRef);
-    const indexed = await this.cache.lookup(sourceRef);
+    if (!subagentId) await this.broker.join(sourceRef);
+    const indexed = subagentId ? null : await this.cache.lookup(sourceRef);
     if (indexed) {
       return {
         record: indexed,
         path: this.cache.mediaPath(sourceRef, indexed),
       };
     }
-    const lease = await this.broker.reissueLease(sourceRef);
+    const lease = await this.broker.reissueLease(sourceRef, subagentId);
     if (!lease) {
       const status = this.broker.status(sourceRef);
       throw codedError(status === "pending" ? "CACHE_PENDING" : "SOURCE_GONE");
     }
-    const bytes = await readFile(lease.sourcePath);
+    const bytes = await readBoundedMedia(lease.sourcePath);
     const header = parseAttachmentImageHeader(bytes.subarray(0, 512 * 1024));
     const sourceRevision = createHash("sha256").update(bytes).digest("hex");
     return {
@@ -249,7 +247,7 @@ export class GalleryMediaService {
     this.queued += 1;
     this.queuedBytes += record.width * record.height * 4;
     const task = this.tail.then(async () => {
-      const bytes = media.bytes ?? await readFile(media.path);
+      const bytes = media.bytes ?? await readBoundedMedia(media.path);
       const image = nativeImage.createFromBuffer(bytes);
       if (image.isEmpty()) throw codedError("INVALID_IMAGE");
       const size = image.getSize();
@@ -281,6 +279,22 @@ export class GalleryMediaService {
     });
     return Promise.race([task, timeout]).finally(() => clearTimeout(timer));
   }
+}
+
+async function readBoundedMedia(path: string) {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const before = await file.stat();
+    if (!before.isFile() || before.size > 50_000_000) throw codedError("TOO_LARGE");
+    const bytes = Buffer.alloc(before.size); let offset = 0;
+    while (offset < bytes.length) {
+      const result = await file.read(bytes, offset, Math.min(8 * 1024 * 1024, bytes.length - offset), offset);
+      if (!result.bytesRead) throw codedError("SOURCE_GONE"); offset += result.bytesRead;
+    }
+    const after = await file.stat();
+    if (bytes.length !== before.size || after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs) throw codedError("SOURCE_GONE");
+    return bytes;
+  } finally { await file.close(); }
 }
 
 class LruCache<T> {

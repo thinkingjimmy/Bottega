@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on the Chat and Attachment stores, the durable ConversationDeletionCoordinator, Memory Space intents, deletion admission, and named pre/post resource releasers
- * [OUTPUT]: Provides ChatDeletionDriver: advisory admission, local-only and cleanup-and-rebuild prepare/drive phases, restart recovery, the conversation fence, and a coordinator-free synchronous fallback
+ * [INPUT]: Depends on the Chat store, the durable ConversationDeletionCoordinator, Memory Space intents, deletion admission, and named pre/post resource releasers
+ * [OUTPUT]: Provides ChatDeletionDriver: advisory admission, local-only and cleanup-and-rebuild prepare/drive phases, restart recovery with frozen App transcript disposition, the conversation fence, and a coordinator-free synchronous fallback
  * [POS]: Deletion adapter of the chats module; ChatsService only admits and cancels, while the durable journal and resource details stay behind this seam
  */
 
+import { artifactRuntime } from "../artifacts/runtime";
 import type { ChatRecord, ChatsEvent } from "../../../shared/chats-ipc";
 import type {
   ConversationDeletionCoordinator,
@@ -13,9 +14,9 @@ import type {
   DeletionMemoryIntent,
   DeletionRecord,
 } from "../deletion/conversation-deletion-coordinator";
-import type { AttachmentStore } from "./attachment-store";
 import type { ChatStore } from "./chat-store";
 import { memorySpaceId } from "../memory/core/domain";
+type NativeDeletionRecord = ChatRecord & Pick<DeletionRecord, "retainedAppId">;
 
 export type ChatDeletionOptions = {
   validateDeletionFence?: (record: DeletionRecord) => void;
@@ -66,7 +67,6 @@ const NO_MEMORY_DELETION = {
 export class ChatDeletionDriver {
   constructor(
     private readonly store: ChatStore,
-    private readonly attachments: AttachmentStore,
     private readonly options: ChatDeletionOptions,
     private readonly emit: (event: ChatsEvent) => void
   ) {}
@@ -87,7 +87,7 @@ export class ChatDeletionDriver {
   }
 
   async remove(
-    record: ChatRecord,
+    record: NativeDeletionRecord,
     mode: ConversationDeletionMode = "local-only"
   ) {
     await this.prepare(record, mode);
@@ -95,7 +95,7 @@ export class ChatDeletionDriver {
   }
 
   async prepare(
-    record: ChatRecord,
+    record: NativeDeletionRecord,
     mode: ConversationDeletionMode = "local-only",
     preparedMemory?: DeletionMemoryIntent
   ) {
@@ -111,7 +111,7 @@ export class ChatDeletionDriver {
   }
 
   async drive(
-    record: ChatRecord,
+    record: NativeDeletionRecord,
     mode: ConversationDeletionMode = "local-only"
   ) {
     const coordinator = this.options.deletionCoordinator;
@@ -128,7 +128,7 @@ export class ChatDeletionDriver {
     for (const resource of this.options.deletionPreResources ?? []) {
       await resource.release(record, operationId);
     }
-    const metas = await this.store.remove(record.id, record.incarnationId);
+    const metas = await this.store.remove(record.id, record.incarnationId, record.retainedAppId);
     for (const resource of this.resources()) {
       await resource.release(record, metas, "deleted-proven", operationId);
     }
@@ -162,7 +162,7 @@ export class ChatDeletionDriver {
       ),
       removeChat: async (record: DeletionRecord) => {
         if (!this.store.has(record.id)) return;
-        await this.store.remove(record.id, record.incarnationId);
+        await this.store.remove(record.id, record.incarnationId, record.retainedAppId);
       },
       onChatRemoved: (record: DeletionRecord) => {
         this.emit({ type: "removed", chatId: record.id });
@@ -180,13 +180,9 @@ export class ChatDeletionDriver {
   private resources(): ConversationDeletionResource[] {
     return [
       ...(this.options.deletionResources ?? []),
-      {
-        id: "attachments",
-        release: async (_record, attachments) => {
-          const { failed } = await this.attachments.remove([...attachments]);
-          if (failed.length) throw new Error(`${failed.length} 个附件删除失败`);
-        },
-      },
+      /* Attachment bytes live inside the Chat directory the Home release moves to trash;
+         there is nothing left to collect once the directory is gone. */
+      { id: "artifacts", release: async record => { await artifactRuntime()?.releaseChat(record.id, record.incarnationId); } },
     ];
   }
 

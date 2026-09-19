@@ -17,7 +17,7 @@ import { Button } from "@ai-chat/ui/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 
 const SOURCE_LABEL: Record<HistorySourceKind, string> = { claude: "Claude Code", codex: "Codex", kimi: "Kimi CLI", opencode: "OpenCode" };
 

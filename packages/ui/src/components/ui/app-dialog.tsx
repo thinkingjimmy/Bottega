@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React focus control, shared Dialog/Button/SlimScroller primitives, host UI text, and class merging
- * [OUTPUT]: Provides AppDialogContent, AppDialogBody — the sole scroller, and therefore the sole clipping box, so it carries the headroom its children's rings and shadows are painted into — DialogChoice, the two-line option row for dialogs that pose a choice rather than a confirmation (bordered when it holds a selected value, plain when it is simply pressed; an optional leading icon slot houses the busy spinner so the row never shifts), and ConfirmationDialog with explicit focus/dismiss policies plus responsive cancel, secondary, destructive, and primary actions whose busy spinner lands on the button that was actually pressed
+ * [OUTPUT]: Provides AppDialogContent, AppDialogBody — the sole scroller, and therefore the sole clipping box, so it carries the headroom its children's rings and shadows are painted into — DialogChoice, the two-line option row for dialogs that pose a choice rather than a confirmation (bordered when it holds a selected value, plain when it is simply pressed; an optional leading icon slot houses the busy spinner so the row never shifts), and ConfirmationDialog with explicit initial/return focus and dismiss policies plus responsive cancel, secondary, destructive, and primary actions whose busy spinner lands on the button that was actually pressed
  * [POS]: The shared accessible dialog shell and confirmation surface for packages/ui consumers
  */
 
@@ -265,6 +265,7 @@ export type ConfirmationDialogProps = {
   showCancel?: boolean;
   showCloseButton?: boolean;
   contentClassName?: string;
+  onCloseAutoFocus?: AppDialogContentProps["onCloseAutoFocus"];
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   onSecondary?: () => void;
@@ -289,6 +290,7 @@ export function ConfirmationDialog({
   showCancel = true,
   showCloseButton = false,
   contentClassName,
+  onCloseAutoFocus,
   onOpenChange,
   onConfirm,
   onSecondary,
@@ -321,6 +323,7 @@ export function ConfirmationDialog({
       <AppDialogContent
         aria-busy={busy}
         className={contentClassName}
+        onCloseAutoFocus={onCloseAutoFocus}
         /* 它不是「用户待在里面」的表面，是一个问句加两个答案。
            Cancel 就是那个明确的退出动作，再挂一个 × 是同一条出路的第二块牌子。 */
         showCloseButton={showCloseButton}

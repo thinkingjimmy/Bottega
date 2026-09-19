@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the canonical Chat commit kernel, validators, and SQLite row writers
- * [OUTPUT]: Validates caller CAS and commits Agent/options/session plus notice/user using already reserved sequences
+ * [OUTPUT]: Commits device/Agent notices, user, options and session clearing under the original caller CAS.
  * [POS]: Worker-only atomic switch transition; the repository owns the transaction and receipt
  */
 
@@ -45,11 +45,15 @@ export function commitAgentSwitch(
       current.messages.some(message => message.seq >= notice.seq)) {
     throw new Error("AGENT_SWITCH_SEQUENCE_CONFLICT");
   }
+  const executorNotice = command.executorCommit?.notice && messageSchema.parse(command.executorCommit.notice);
+  if (executorNotice && (executorNotice.role !== "notice" || executorNotice.seq + 1 !== notice.seq ||
+    current.messages.some(message => message.seq >= executorNotice.seq))) throw new Error("CLOUD_EXECUTOR_NOTICE_CONFLICT");
   const switched = {
     ...current, agent: intent.targetAgent, agentRevision: current.agentRevision + 1,
     options: command.targetOptions, session: null,
   };
-  const withNotice = applyTurnCommit(switched, { message: notice }).record;
+  const withExecutor = executorNotice ? applyTurnCommit(switched, { message: executorNotice }).record : switched;
+  const withNotice = applyTurnCommit(withExecutor, { message: notice }).record;
   const record = chatRecordSchema.parse({
     ...applyTurnCommit(withNotice, { message: user }).record,
     chatRecordRevision: current.chatRecordRevision + 1,

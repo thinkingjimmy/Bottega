@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on provider-neutral JetBrains AIR sessionFailure metadata, backend turn callbacks, a transport redactor, a turn-fact sink, and shared ProductFailure constructors
- * [OUTPUT]: Provides strict parsing, semantic projection, coarse terminal facts, monotonic revision tracking, callback-ready notice/terminal projection, and routing of the Codex skills-context-budget notice into the turn fact instead of a transcript item
+ * [OUTPUT]: Provides strict parsing, semantic projection (a refusal naming a newer Codex version becomes runtime-unavailable so the card asks for a CLI update instead of a retry), coarse terminal facts, monotonic revision tracking, callback-ready notice/terminal projection, and routing of the Codex skills-context-budget notice into the turn fact instead of a transcript item
  * [POS]: ACP session extension boundary; adapters may describe incidents, but only this file decides which product failure users see
  */
 
@@ -40,14 +40,27 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+/* ── 「换个新版 CLI」是唯一出路的拒绝 ──────────────────────────────
+   Codex 把「本机 CLI 太旧，跑不了这个模型」报成一条普通的 service/request
+   拒绝：等待与重试永远不会成功，装新版才会。上游整句是线上唯一的信号，
+   所以这里破例按有界子串认——原句仍原样留在 diagnostic 里。 */
+const CLI_UPDATE_REQUIRED_MARKER = "newer version of codex";
+
+function requiresCliUpdate(diagnostic: string) {
+  return diagnostic.toLowerCase().includes(CLI_UPDATE_REQUIRED_MARKER);
+}
+
 function semanticCode(
   category: string,
-  actions: readonly SessionFailureAction[]
+  actions: readonly SessionFailureAction[],
+  diagnostic: string
 ): AgentRuntimeFailureCode {
   if (category === "access" || actions.includes("login")) return "auth-required";
   if (category === "connection") return "connection-lost";
-  if (category === "request") return "request-rejected";
-  if (category === "service") return "service-unavailable";
+  if (category === "request" || category === "service") {
+    if (requiresCliUpdate(diagnostic)) return "runtime-unavailable";
+    return category === "request" ? "request-rejected" : "service-unavailable";
+  }
   if (category !== "limit") return "unknown";
   if (actions.includes("new_session")) return "context-exhausted";
   return actions.includes("retry") ? "rate-limited" : "quota-exhausted";
@@ -93,7 +106,7 @@ export function parseAcpSessionFailure(meta: unknown): AcpSessionFailure | undef
     severity: severity as "warning" | "error",
     actions,
     failure: agentRuntimeFailure(
-      semanticCode(category, actions),
+      semanticCode(category, actions, diagnostic),
       diagnosticFailureDetails(diagnostic)
     ),
   };

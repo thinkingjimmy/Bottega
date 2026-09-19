@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/path, shared ChatHome status, SettingsStore/ChatStore port, ChatHomeLedger, and the persistence errno predicate
+ * [INPUT]: Depends on Node crypto/fs/path, shared ChatHome status, SettingsStore/ChatStore port, ChatHomeLedger, the required LibraryService folder lifetime, and the persistence errno predicate
  * [OUTPUT]: Provides ChatHomeService root selection, fork-worktree-aware ownership, canonical-record recovery, rollback compensation, deletion admission/release, and containment-correct read-only roots
  * [POS]: Chat Home ownership coordinator; cross-store SQLite continuation state remains in the Chat saga
  */
@@ -11,7 +11,6 @@ import {
   readFile,
   readdir,
   realpath,
-  rm,
   rename,
   rmdir,
   stat,
@@ -29,6 +28,9 @@ import { errorMessage } from "../errors";
 import { ChatHomeLedger } from "./chat-home-ledger";
 import type { ChatHomeRecord, RootIdentity } from "./ledger-values";
 import { isErrnoCode } from "../persistence/durable-json";
+import { durableReplaceFile } from "../persistence/durable-json";
+import { libraryChatPath, libraryDirectory, libraryHomePath } from "../library/paths";
+import type { LibraryService } from "../library/service";
 
 const SENTINEL = ".ai-chat-home.json";
 const hash = (value: unknown) =>
@@ -54,6 +56,7 @@ type CreationInput = {
 
 export class ChatHomeService {
   private readonly listeners = new Set<(status: ChatHomeStatus) => void>();
+  private progress: ChatHomeStatus["progress"] = null;
   private worktreeCleanup?: (record: ChatHomeRecord) => Promise<"absent" | "removed" | "recovery">;
   private worktreeAdmission?: (record: ChatHomeRecord) => Promise<"absent" | "clean" | "recovery">;
 
@@ -61,7 +64,8 @@ export class ChatHomeService {
     private readonly settings: SettingsStore,
     private readonly chats: ChatStore,
     readonly ledger: ChatHomeLedger,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    private readonly library: LibraryService,
   ) {}
 
   async initialize() {
@@ -74,7 +78,23 @@ export class ChatHomeService {
     return {
       root: settings.chatHomesRoot,
       state: settings.chatHomeState,
+      ...(this.progress ? { progress: this.progress } : {}),
     };
+  }
+
+  get libraryRoot() { return this.library.root; }
+  /* Every emit republishes the settings snapshot to every renderer subscriber,
+     so an unchanged projection — most of them, while a folder opens — stays silent. */
+  reportProgress(value: { phase: "opening" | "saving"; completed: number; total: number; issues: string[] }) {
+    const next = value.completed < value.total
+      ? { phase: value.phase, completed: value.completed, total: value.total, failed: value.issues.length }
+      : null;
+    const current = this.progress;
+    if (!next && !current) return;
+    if (next && current && current.phase === next.phase && current.completed === next.completed &&
+      current.total === next.total && current.failed === next.failed) return;
+    this.progress = next;
+    this.emit();
   }
 
   onStatus(listener: (status: ChatHomeStatus) => void) {
@@ -101,12 +121,8 @@ export class ChatHomeService {
 
   /* ready 与目录存在性同时成立：先确保根在盘上，再提交状态。
      断代升级后没有迁移期，选定即就绪。 */
-  async chooseRoot(canonicalRoot: string) {
-    await mkdir(canonicalRoot, { recursive: true, mode: 0o700 });
-    await this.settings.setTrusted({
-      chatHomesRoot: canonicalRoot,
-      chatHomeState: "ready",
-    });
+  async openLibrary(canonicalRoot: string) {
+    await this.library.openLibrary(canonicalRoot);
     this.emit();
     return this.status();
   }
@@ -114,7 +130,8 @@ export class ChatHomeService {
   async beginCreation(input: CreationInput) {
     this.assertCanCreateChat();
     const root = await this.verifiedRoot();
-    const homeDir = join(root.canonical, input.chatId);
+    await libraryDirectory(root.canonical, "chats", input.chatId);
+    const homeDir = libraryHomePath(root.canonical, input.chatId);
     const submissionHash = hash(input.submission);
     const existing = this.ledger.get(input.chatId);
     if (
@@ -359,8 +376,9 @@ export class ChatHomeService {
     const trashRoot = join(record.canonicalRoot, ".trash");
     const suffix = createHash("sha256").update(operationId).digest("hex").slice(0, 20);
     const target = join(trashRoot, `${record.chatId}-${suffix}`);
+    const source = libraryChatPath(record.canonicalRoot, record.chatId);
     const [homePresent, targetPresent] = await Promise.all([
-      this.pathExists(record.homeDir),
+      this.pathExists(source),
       this.pathExists(target),
     ]);
     if (homePresent && targetPresent) {
@@ -374,10 +392,7 @@ export class ChatHomeService {
         return;
       }
       await mkdir(trashRoot, { recursive: true, mode: 0o700 });
-      await rename(record.homeDir, target);
-    }
-    if (homePresent || targetPresent) {
-      await rm(target, { recursive: true });
+      await rename(source, target);
     }
     await this.ledger.removeOwnership(candidate.id);
   }
@@ -405,7 +420,7 @@ export class ChatHomeService {
     try {
       const rootStat = await stat(record.canonicalRoot);
       if (!sameIdentity(identity(rootStat), record.rootIdentity)) return undefined;
-      const expected = join(record.canonicalRoot, record.chatId);
+      const expected = libraryHomePath(record.canonicalRoot, record.chatId);
       if ((await realpath(record.homeDir)) !== expected) return undefined;
       if ((await lstat(record.homeDir)).isSymbolicLink()) return undefined;
       if (!(await this.hasMatchingMarker(record))) return undefined;
@@ -424,15 +439,12 @@ export class ChatHomeService {
     const trashRoot = join(verified.canonicalRoot, ".trash");
     await mkdir(trashRoot, { recursive: true, mode: 0o700 });
     const target = join(trashRoot, `${verified.chatId}-${this.now()}`);
-    await rename(verified.homeDir, target);
+    await rename(libraryChatPath(verified.canonicalRoot, verified.chatId), target);
     return target;
   }
 
   private async verifiedRoot() {
-    const configured = this.settings.get().chatHomesRoot;
-    if (!configured) throw new Error("Chat Home root 未配置");
-    await mkdir(configured, { recursive: true, mode: 0o700 });
-    const canonical = await realpath(configured);
+    const canonical = this.library.requireRoot();
     return { canonical, identity: identity(await stat(canonical)) };
   }
 
@@ -471,6 +483,26 @@ export class ChatHomeService {
       await rmdir(record.homeDir).catch(() => {});
       throw cause;
     }
+  }
+
+  /** Opening a folder proves content identity, never a previous process's custody. */
+  async restoreLibraryHome(chatId: string, incarnationId: string) {
+    const existing = this.ledger.get(chatId);
+    const intentId = `library_${hash([chatId, incarnationId]).slice(0, 40)}`;
+    if (existing && !(existing.phase === "planned" && existing.intentId === intentId)) {
+      if (existing.incarnationId !== incarnationId || !await this.verifyRecordOwnership(existing, true)) throw new Error("LIBRARY_HOME_IDENTITY_CHANGED");
+      if (existing.phase !== "committed") { await this.markPrepared(chatId); await this.commitCreation(chatId); }
+      return existing.homeDir;
+    }
+    const root = await this.verifiedRoot();
+    const homeDir = await libraryDirectory(root.canonical, "chats", chatId, "home");
+    await this.ledger.plan({ intentId, chatId, incarnationId, homeDir, canonicalRoot: root.canonical,
+      rootIdentity: root.identity, ownership: "planned", phase: "planned", submissionHash: hash([chatId, incarnationId]),
+      workspaceScope: { kind: "conversation", conversationId: chatId } });
+    await durableReplaceFile(join(homeDir, SENTINEL), JSON.stringify({ intentId, chatId, incarnationId }) + "\n");
+    await this.ledger.transition(chatId, "planned", "materialized", { ownership: "valid" });
+    await this.markPrepared(chatId); await this.commitCreation(chatId);
+    return homeDir;
   }
 
   private async isMatchingMaterializedHome(record: ChatHomeRecord) {

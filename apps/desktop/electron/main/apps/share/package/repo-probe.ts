@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on frozen Git trees, bounded compatibility declarations, the main host version, package projection and existing manifest/Extension preflight authorities.
+ * [INPUT]: Depends on frozen Git trees, bounded compatibility declarations, the main host version, package projection and existing manifest checks and shared delivery Extension preflight authority.
  * [OUTPUT]: Provides source-bound Base/Web probes, typed compatibility rejection, unavailable-commit classification and single-use Base preflight custody.
  * [POS]: Remote package admission: the stable host gate precedes manifest classification for every declared or first-party App.
  */
 
+import { preflightAppExtension } from "../../install/delivery/preflight";
 import { FIRST_PARTY_PRESETS } from "../../../preset-catalog";
 import { APP_COMPATIBILITY_BYTE_LIMIT, APP_COMPATIBILITY_FILE, type AppCandidateIdentity } from "../../../../../shared/app-host/contract";
 import { AppCompatibilityError, checkCompatibilityBytes, firstPartySource, runningBottegaVersion, type CompatibilityReceipt } from "../../compatibility/read";
@@ -21,7 +22,6 @@ import type {
   AppRepoProbeResult,
 } from "../../../../../shared/apps-ipc";
 import type { AppExtensionRequirementDeclaration } from "../../../../../shared/extensions-ipc";
-import { GLOBAL_PRODUCT_RESOURCE_SCOPE } from "../../../../../shared/product-resource-scope";
 import { baseSnapshotFileSchema } from "../../../../../shared/base-snapshot";
 import { sanitizedProcessEnvironment } from "../../../backends/runtime-probe";
 import { appManifestSchema } from "../../install/manifest-schema";
@@ -33,9 +33,7 @@ import {
   PACKAGE_BUDGET,
 } from "./package-contract";
 import { detectCliRequirements } from "../cli-detectors";
-import { digestCanonical } from "../../../extensions/registry-canonical";
 import type {
-  ExtensionInstallPreflight,
   ExtensionInstaller,
 } from "../../../extensions/install/installer";
 
@@ -291,54 +289,8 @@ export class RepoProbeService {
     }
   }
 
-  private async preflightExtension(
-    declaration: AppExtensionRequirementDeclaration
-  ): Promise<AppExtensionInstallPreflight | null> {
-    if (!declaration.source) return null;
-    if (!this.extensions) {
-      throw new Error("带 source 的 extension requirement 缺少 fulfillment owner");
-    }
-    const preflight = await this.extensions.preflight({
-      repoUrl: declaration.source.repoUrl,
-      ...(declaration.source.ref ? { requestedRef: declaration.source.ref } : {}),
-      scope: GLOBAL_PRODUCT_RESOURCE_SCOPE,
-      expectedProjectLifecycleRevision: null,
-      expectedScopeRevision: this.extensions.scopeRevision(
-        GLOBAL_PRODUCT_RESOURCE_SCOPE
-      ),
-    });
-    assertPreflightComponent(
-      preflight,
-      declaration.declaredComponentIdentity
-    );
-    return {
-      declaredComponentIdentity: declaration.declaredComponentIdentity,
-      scope: preflight.scope,
-      projectLifecycleRevision: preflight.projectLifecycleRevision,
-      scopeRevision: preflight.scopeRevision,
-      repoUrl: preflight.source.normalizedUrl,
-      requestedRef: preflight.source.requestedRef,
-      resolvedCommit: preflight.source.resolvedCommit,
-      contentDigest: preflight.contentDigest,
-      capabilityDigest: digestCanonical(preflight.disclosure),
-      capabilities: structuredClone(preflight.disclosure),
-      preflightId: preflight.preflightId,
-      state: "ready",
-    };
-  }
-}
-
-function assertPreflightComponent(
-  preflight: ExtensionInstallPreflight,
-  declaredComponentIdentity: string
-) {
-  const identities = preflight.admission.components.map(
-    (component) => `${preflight.componentNamespace}/${component.componentId}`
-  );
-  if (!identities.includes(declaredComponentIdentity)) {
-    throw new Error(
-      `Extension 来源未提供声明组件：${declaredComponentIdentity}`
-    );
+  private preflightExtension(declaration: AppExtensionRequirementDeclaration) {
+    return preflightAppExtension(declaration, this.extensions);
   }
 }
 

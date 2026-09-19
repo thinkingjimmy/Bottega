@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on library-v3/jobs-v2 ledgers, Extension Registry gates, runtime discovery facts, read-only Agent-home candidate scanning, package verification, and catalog invalidation, and statusError from main/errors
+ * [INPUT]: Depends on library-v3/jobs-v2 ledgers, Extension Registry gates, runtime discovery facts, read-only Agent-home candidate scanning backed by a persisted digest cache, package verification, and catalog invalidation, and statusError from main/errors
  * [OUTPUT]: Provides UnifiedSkillsService for list/discovery/import, enabled toggles, tombstone deletion, deletion-only consent, enablement-only undo, catalog candidates, progress, and restart recovery
  * [POS]: Library-first Skills coordination boundary; it cannot express or perform projection, native-target, Codex config, or Agent-home writes
  */
 
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import type { AgentBackendId } from "../../../shared/agent-ipc";
 import type {
   ManagedSkillAgent,
   ManagedSkillCandidateError,
@@ -64,12 +63,10 @@ import {
   type CandidateState,
   type HeldImport,
 } from "./orchestration/discovery-state";
+import { SkillDigestCacheStore } from "./orchestration/digest-cache";
+import { createRootScanner, installedSkillAgents } from "./orchestration/discovery-scan";
 import { resolveLibrarySources } from "./orchestration/library-sources";
-import { buildExtensionCapabilitySnapshot } from "../extensions/capability-snapshot";
-import {
-  backendExtensionProbe,
-  EXTENSION_PRODUCT_POLICY,
-} from "../extensions/product-policy";
+import { runtimeSkillCandidates } from "./orchestration/runtime-candidates";
 import {
   SKILLS_AUTHORITY_TTL_MS,
   type HeldSkillsPlan,
@@ -83,6 +80,7 @@ export type UnifiedSkillsServiceDependencies = Readonly<{
   runtimeRegistry?: Pick<BackendRuntimeRegistry, "current" | "resolve">;
   chooseLocalFolder(): Promise<string | null>;
   library?: ManagedSkillsLibraryStore;
+  libraryRoot: () => string | null;
   jobs?: SkillsJobLedger;
   scanSkillsRoot?: typeof scanAgentSkillsRoot;
   invalidateCatalog?: () => void;
@@ -93,6 +91,7 @@ export class UnifiedSkillsService {
   readonly library: ManagedSkillsLibraryStore;
   readonly jobs: SkillsJobLedger;
   private readonly targets: readonly ManagedSkillTarget[];
+  private readonly digestCache: SkillDigestCacheStore;
   private readonly userHome: string;
   private readonly imports = new Map<string, HeldImport>();
   private readonly plans = new Map<string, HeldSkillsPlan>();
@@ -112,8 +111,11 @@ export class UnifiedSkillsService {
 
   constructor(private readonly dependencies: UnifiedSkillsServiceDependencies) {
     this.library =
-      dependencies.library ?? new ManagedSkillsLibraryStore(dependencies.userData);
+      dependencies.library ?? new ManagedSkillsLibraryStore(dependencies.userData, {}, dependencies.libraryRoot);
     this.jobs = dependencies.jobs ?? new SkillsJobLedger(dependencies.userData);
+    this.digestCache = new SkillDigestCacheStore(
+      join(dependencies.userData, "skills-digest-cache.json")
+    );
     this.userHome = resolveManagedSkillUserHome(
       dependencies.userHome,
       dependencies.env
@@ -133,6 +135,20 @@ export class UnifiedSkillsService {
       await this.resumeJobs();
     }
     this.startBackgroundDiscovery();
+  }
+
+  /**
+   * Reloads the folder ledger and republishes. Candidate counts are recomputed
+   * from the last discovery scan rather than rescanning four Agent homes: this
+   * runs after every synchronization pass, and the Agent homes did not change.
+   */
+  remountFolder() {
+    return this.serialize(async () => {
+      await this.library.initialize(this.dependencies.custodyReferenced);
+      this.dependencies.invalidateCatalog?.();
+      this.reclassifyCandidates();
+      await this.publish();
+    });
   }
 
   onChanged(listener: (snapshot: UnifiedSkillsSnapshot) => void) {
@@ -322,82 +338,19 @@ export class UnifiedSkillsService {
     });
   }
 
-  async effectiveCandidates(
+  effectiveCandidates(
     projectContext: TurnProjectContext = {
       projectId: null,
       projectLifecycleRevision: null,
     }
   ): Promise<EffectiveSkillCandidate[]> {
-    const inventory = this.dependencies.registry.visibleInventory(projectContext);
-    const eligibleBackends = new Map<string, AgentBackendId[]>();
-    for (const backend of ["codex", "claude", "kimi", "opencode"] as const) {
-      const capability = buildExtensionCapabilitySnapshot({
-        inventory,
-        probe: backendExtensionProbe(
-          backend,
-          `${backend}:skills-current`,
-          "current"
-        ),
-        policy: EXTENSION_PRODUCT_POLICY,
-        selection: "effective",
-      });
-      for (const entry of capability.entries) {
-        const values = eligibleBackends.get(entry.componentInstanceIdentity) ?? [];
-        values.push(backend);
-        eligibleBackends.set(entry.componentInstanceIdentity, values);
-      }
-    }
-    return (await this.runtimeLibrarySources(projectContext)).map((source) => {
-      if (source.local) {
-        const generation = source.local.generations.find(
-          (item) => item.generationId === source.local!.activeGenerationId
-        )!;
-        return {
-          name: source.name,
-          sourceKind: "library",
-          ownerRef: source.ref,
-          generationRef: {
-            kind: "library",
-            libraryId: source.local.libraryId,
-            generationId: generation.generationId,
-          },
-          digest: source.digest,
-          enabled: source.enabled,
-          ...(source.requires ? { requires: source.requires } : {}),
-          metadata: {
-            description: source.description,
-            displayName: source.displayName,
-          },
-          path: join(source.sourcePath, "SKILL.md"),
-        };
-      }
-      return {
-        name: source.name,
-        sourceKind: "extension",
-        ownerRef: source.ref,
-        generationRef: {
-          kind: "extension",
-          componentInstanceIdentity:
-            source.source.componentInstanceIdentity!,
-          package: source.packageGenerationRef!,
-        },
-        digest: source.digest,
-        enabled: source.enabled,
-        ...(source.requires ? { requires: source.requires } : {}),
-        metadata: {
-          description: source.description,
-          displayName: source.displayName,
-        },
-        path: source.sourcePath,
-        extensionSelection: {
-          installIdentity: source.source.installIdentity!,
-          declaredComponentIdentity: source.declaredComponentIdentity!,
-          ownerScope: source.ownerScope!,
-          eligibleBackends:
-            eligibleBackends.get(source.source.componentInstanceIdentity!) ?? [],
-        },
-      };
-    });
+    return this.runtimeLibrarySources(projectContext).then((sources) =>
+      runtimeSkillCandidates({
+        registry: this.dependencies.registry,
+        projectContext,
+        sources,
+      })
+    );
   }
 
   async shutdown() {
@@ -538,6 +491,8 @@ export class UnifiedSkillsService {
         digest: source.digest,
         source: source.source,
         enabled: source.enabled,
+        contentState: source.contentState,
+        ...(source.local?.notice ? { notice: source.local.notice } : {}),
         allowedActions: source.local
           ? ([source.enabled ? "disable" : "enable", "delete"] as const)
           : ([
@@ -590,7 +545,11 @@ export class UnifiedSkillsService {
     const installed = await this.installedAgents();
     const byAgent = new Map<ManagedSkillAgent, CandidateAuthority[]>();
     const errors: ManagedSkillCandidateError[] = [];
-    const scanner = this.dependencies.scanSkillsRoot ?? scanAgentSkillsRoot;
+    await this.digestCache.ready();
+    const scanRoot = createRootScanner(
+      this.dependencies.scanSkillsRoot ?? scanAgentSkillsRoot,
+      this.digestCache
+    );
     for (const target of this.targets) {
       if (!installed.has(target.agent)) {
         byAgent.set(target.agent, []);
@@ -600,7 +559,7 @@ export class UnifiedSkillsService {
       const seen = new Set<string>();
       for (const root of discoveryRoots(target, this.userHome)) {
         try {
-          for (const inspection of await scanner(root)) {
+          for (const inspection of await scanRoot(root)) {
             const sourcePath = inspection.importable
               ? inspection.skill.canonicalPath
               : join(root, inspection.name);
@@ -627,6 +586,25 @@ export class UnifiedSkillsService {
       }
       byAgent.set(target.agent, candidates);
     }
+    await this.digestCache.flush();
+    if (epoch !== this.refreshEpoch) return false;
+    this.lastCandidates = this.classifyScan(byAgent, dedupeErrors(errors));
+    return true;
+  }
+
+  /** Recounts the last scan against the current Library owners; no filesystem work. */
+  private reclassifyCandidates() {
+    if (!this.lastCandidates.revision) return;
+    this.lastCandidates = this.classifyScan(
+      this.lastCandidates.byAgent,
+      this.lastCandidates.errors
+    );
+  }
+
+  private classifyScan(
+    byAgent: CandidateState["byAgent"],
+    errors: CandidateState["errors"]
+  ): CandidateState {
     const owners = buildOwnerFacts(
       this.library
         .snapshot()
@@ -651,8 +629,7 @@ export class UnifiedSkillsService {
         }
       }
     }
-    if (epoch !== this.refreshEpoch) return false;
-    this.lastCandidates = {
+    return {
       revision: privateIdentity(
         JSON.stringify(
           [...byAgent].flatMap(([agent, items]) =>
@@ -671,9 +648,8 @@ export class UnifiedSkillsService {
       upToDateByAgent,
       bytesByAgent,
       unmanagedBytes,
-      errors: dedupeErrors(errors),
+      errors,
     };
-    return true;
   }
 
   private holdImport(
@@ -737,24 +713,7 @@ export class UnifiedSkillsService {
   }
 
   private installedAgents() {
-    if (!this.dependencies.runtimeRegistry) {
-      return Promise.resolve(new Set<ManagedSkillAgent>(AGENTS));
-    }
-    return Promise.all(
-      AGENTS.map(async (agent) => {
-        const snapshot =
-          this.dependencies.runtimeRegistry!.current(agent) ??
-          (await this.dependencies.runtimeRegistry!.resolve(agent).catch(
-            () => null
-          ));
-        return snapshot?.runtimeStatus === "installed" ? agent : null;
-      })
-    ).then(
-      (agents) =>
-        new Set(
-          agents.filter((agent): agent is ManagedSkillAgent => Boolean(agent))
-        )
-    );
+    return installedSkillAgents(this.dependencies.runtimeRegistry);
   }
 
   private startBackgroundDiscovery() {

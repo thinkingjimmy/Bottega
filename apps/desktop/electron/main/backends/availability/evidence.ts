@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared availability contracts and an injected clock.
- * [OUTPUT]: Provides the main-owned authentication ledger, environment-scoped check progress, success and one-operation retry receipts.
+ * [OUTPUT]: Owns environment-scoped startup/authentication evidence, check timestamps, cancellation and existing purpose authorization lifetimes; the allow conclusion follows the shared positiveAuth scope rule, so an unscoped confirmation authorizes a scoped operation target.
  * [POS]: Registry-owned evidence memory; probes own global auth, turns own scoped operation evidence.
  */
 import type { AgentBackendId, BackendAuthStatus, BackendCapabilities, HeadlessPurpose, UsageLimitInfo } from "../../../../shared/agent-ipc";
@@ -41,24 +41,36 @@ export class AvailabilityEvidence {
     this.state(backend).turns.clear();
     this.state(backend).successes.clear();
     this.state(backend).authFailures.clear();
-    return this.update(backend, { environmentGeneration, lastConfirmedAuth: undefined, authCheck: undefined, capabilityKnowledge: "unknown" });
+    return this.update(backend, { environmentGeneration, lastConfirmedAuth: undefined, authCheck: undefined,
+      runtimeCheck: undefined, runtimeIssue: undefined, checkIssue: undefined, startup: undefined, lastCheckedAt: undefined, authUnknownReason: undefined, capabilityKnowledge: "unknown" });
   }
   beginProbe(backend: AgentBackendId) {
     const generation = this.facts(backend).probeGeneration + 1;
     this.update(backend, { probeGeneration: generation, authCheck: { phase: "queued", startedAt: this.now() } });
     return generation;
   }
-  confirm(backend: AgentBackendId, probeGeneration: number, environmentGeneration: number, status: BackendAuthStatus, scopeKey?: string) {
+  confirm(backend: AgentBackendId, probeGeneration: number, environmentGeneration: number, status: BackendAuthStatus, scopeKey?: string,
+    result?: { checkIssue?: import("../../../../shared/agent-availability/types").CheckIssue; startup?: "ready" | "cannot-start"; unknownReason?: "provider-scoped" | "not-supported" }) {
     const facts = this.facts(backend);
     if (facts.probeGeneration !== probeGeneration || facts.environmentGeneration !== environmentGeneration) return false;
     const checkedAt = this.now();
     this.update(backend, {
+      lastCheckedAt: checkedAt,
+      checkIssue: result?.checkIssue,
+      authUnknownReason: result?.unknownReason,
+      ...(result?.startup ? { startup: { status: result.startup, environmentGeneration, checkedAt } } : {}),
       authCheck: { phase: status === "error" ? "error" : "complete", startedAt: facts.authCheck?.startedAt ?? checkedAt, checkedAt },
       ...((status === "authenticated" || status === "unauthenticated") ? {
         lastConfirmedAuth: { id: `${backend}:${++this.sequence}`, revision: this.sequence, environmentGeneration, status, checkedAt, scopeKey,
           ...(status === "authenticated" ? { expiresAt: checkedAt + AUTH_TTL_MS } : {}) },
       } : {}),
     });
+    return true;
+  }
+  cancel(backend: AgentBackendId, probeGeneration: number, environmentGeneration: number) {
+    const facts = this.facts(backend);
+    if (facts.probeGeneration !== probeGeneration || facts.environmentGeneration !== environmentGeneration) return false;
+    this.update(backend, { authCheck: { phase: "cancelled", startedAt: facts.authCheck?.startedAt ?? this.now(), checkedAt: this.now() } });
     return true;
   }
   bindRetry(conversationId: string, requestId: string, target: ExecutionTarget) {
@@ -121,9 +133,19 @@ export class AvailabilityEvidence {
     if (purpose !== "app-binding" && (!capabilities.headless.includes(purpose) ||
       (["repair", "serve", "install-analysis"].includes(purpose) && !capabilities.maintenance))) return { decision: "block", reason: "unsupported" };
     const state = this.state(target.backend);
+    if (state.facts.startup?.status === "cannot-start" && state.facts.startup.environmentGeneration === target.environmentGeneration) {
+      return { decision: "block", reason: "cannot-start" };
+    }
+    if (state.facts.runtimeCheck?.phase === "error" && (state.facts.runtimeCheck.expiresAt ?? 0) <= this.now()) {
+      return { decision: "block", reason: "cannot-check" };
+    }
     if (activeNegative(state.facts.lastConfirmedAuth, target.environmentGeneration, target.scopeKey)) return { decision: "block", reason: "auth-required" };
-    if (target.scopeKey && state.facts.lastConfirmedAuth?.scopeKey === target.scopeKey &&
-      positiveAuth(state.facts.lastConfirmedAuth, target.environmentGeneration, this.now(), target.scopeKey)) {
+    /* positiveAuth already encodes the product rule the renderer uses: an unscoped
+       confirmation is valid for every scope, a scoped one only for its own. The extra
+       equality that used to guard this branch made the probe's confirmation — taken on
+       the default target, which is unscoped for anyone owning a CLI config file — unable
+       to authorize the title target, which always carries a fingerprint. */
+    if (positiveAuth(state.facts.lastConfirmedAuth, target.environmentGeneration, this.now(), target.scopeKey)) {
       return { decision: "allow", expiresAt: state.facts.lastConfirmedAuth?.expiresAt };
     }
     if (target.scopeKey) {

@@ -75,6 +75,7 @@ export async function prepareTurnResult(
       {
         terminal: event.terminal,
         outcome: event.commit.message ? "stored" : "empty",
+        ...(event.commit.subagentsDelta ? { subagents: event.commit.subagentsDelta } : {}),
         ...(event.commit.message
           ? { assistantMessage: event.commit.message }
           : {}),

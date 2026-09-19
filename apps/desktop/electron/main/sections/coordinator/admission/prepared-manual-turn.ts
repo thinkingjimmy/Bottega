@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node filesystem/crypto, manual submission contracts, canonical Project context, frozen Project Tools and Skill selections, fresh input resolution, Section snapshots, workspace preconditions, and prepared staging custody
- * [OUTPUT]: Provides hash-sealed PreparedManualTurn staging with exact Project/Tools/Skill receipts; hydration and custody are delegated to prepared/
+ * [OUTPUT]: Stages immutable turn inputs, including verified remote images and readonly files, with compact recovery snapshots.
  * [POS]: Coordinator admission boundary; durable workspace, Project tool policy, and Extension generation identity precede every manual backend turn
  */
 
@@ -78,6 +78,7 @@ export {
 } from "./prepared/staging";
 
 type StagedBlobRef = {
+  remote?: import("@ai-chat/cloud-protocol/remote/input/model").RemoteAttachment;
   blobId: string;
   kind: "image" | "file" | "skill";
   path: string;
@@ -122,7 +123,9 @@ export type PreparedPersistence =
   | { kind: "append"; input: PreparedAppend };
 
 export type PreparedManualTurn = {
+  remoteContext?: import("../remote/model").RemoteContext;
   sequences?: import("../../../../../shared/chat-agent/sequences").TurnSequences;
+  executorCommit?: import("../../../chats/sqlite/cloud/execution/commit").ExecutorCommit;
   agentSwitch?: ManualTurnSubmission["agentSwitch"];
   expectedAgentRevision?: number;
   switchCommand?: import("../../../chats/sqlite/agent-switch/command").SwitchAgentCommand;
@@ -496,7 +499,14 @@ export async function prepareManualTurn(
   const stagingDir = join(dependencies.stagingRoot, submission.intentId);
   const reservations: FileReservation[] = [];
   const explicitSkills: ExplicitSkillRequirementReceipt[] = [];
-  await mkdir(stagingDir, { recursive: false, mode: 0o700 });
+  try { await mkdir(stagingDir, { recursive: false, mode: 0o700 }); }
+  catch (error) {
+    if (!submission.remoteInput?.length || (error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    // Remote admission and steer replay hold the conversation gate and reuse published custody.
+    // Reaching preparation again means a crash left only unpublished, reproducible staging.
+    await discardPreparedStaging(stagingDir);
+    await mkdir(stagingDir, { recursive: false, mode: 0o700 });
+  }
   try {
     const persistence = await stagePersistence(
       submission.persistence,
@@ -511,6 +521,14 @@ export async function prepareManualTurn(
       persistence.input.attachmentPayloads ?? [],
       explicitSkills
     );
+    for (const item of submission.remoteInput ?? []) {
+      const bytes = await readFile(item.path), attachment = item.attachment;
+      if (attachment.blob.encryption.owner.kind !== "chat" || attachment.blob.encryption.owner.id !== submission.turn.scope.conversationId ||
+        bytes.length !== attachment.blob.bytes || digest(bytes) !== attachment.blob.sha256) throw new Error("attachment-invalid");
+      const blob = { ...await writeBlob(stagingDir, attachment.kind, attachment.filename, attachment.blob.mime, bytes), remote: attachment };
+      persistence.input.attachmentPayloads = [...(persistence.input.attachmentPayloads ?? []), blob];
+      stagedInput.push(attachment.kind === "image" ? { type: "image", blob } : { type: "mention", name: attachment.filename, blob });
+    }
     const input =
       persistence.kind === "append" && persistence.input.revise
         ? [

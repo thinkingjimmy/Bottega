@@ -38,11 +38,11 @@ export type AgentRequest = {
   respondApproval: (
     approvalId: string,
     decision: AgentApprovalDecision
-  ) => Promise<void>;
+  ) => Promise<import("../../shared/agent-ipc").ControlResult>;
   respondUserInput: (
     userInputId: string,
     answers: AgentUserInputResponse["answers"]
-  ) => Promise<void>;
+  ) => Promise<import("../../shared/agent-ipc").ControlResult>;
 };
 
 export const systemFileManager = () =>
@@ -116,6 +116,7 @@ export const retryAgentSameSession = (
   retryToken: string
 ) => bridge().retrySameSession(requestId, retryToken);
 
+export const abandonResumeFailure = (requestId: string, retryToken: string) => bridge().abandonResumeFailure(requestId, retryToken);
 export const cancelAgentRequest = (requestId: string) =>
   bridge().cancel(requestId);
 

@@ -16,7 +16,7 @@ import { windowRegistry } from "../window/surfaces/window-registry";
 import { surfaceWindowController } from "../window/surfaces/surface-window-controller";
 import { WINDOW_SURFACES_CHANNEL, chatSurface, type SurfaceMigrationCommand } from "../../../shared/window-surfaces-ipc";
 import { PRESENCE_CHANNEL, type TaskPanelIntent, type TaskReference } from "../../../shared/presence-ipc";
-import type { AppLocale } from "../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { rendererIpc } from "../ipc-registrar";
 import { presenceCapabilities } from "./platform/capabilities";
 import type { LoginItemPort } from "./platform/login-item";

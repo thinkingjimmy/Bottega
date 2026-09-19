@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useState } from "react";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import type { AppRecordProjection } from "../../../../shared/apps-ipc";
 
 export type AppSettingsTabProps = Readonly<{

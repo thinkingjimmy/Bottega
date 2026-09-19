@@ -24,7 +24,8 @@ import { sketchErrorMessage } from "@/lib/chat-composer/errors";
 import { freezeGalleryDraft } from "@/lib/gallery/submission";
 import type { ChatSessionController } from "../../runtime/use-chat-session";
 import { openSketch } from "./controller";
-import { preloadSketchEditor } from "./editor-loader";
+import { preloadSketchDialog } from "./dialog-loader";
+import { preloadSketchEditor } from "@ai-chat/chat-ui/sketch/host/editor-loader";
 export function useSketchComposer(
   controller: ChatSessionController["composer"],
   editor: RefObject<RichInputHandle | null>,
@@ -69,7 +70,7 @@ export function useSketchComposer(
         }
       : undefined;
   return {
-    preload: preloadSketchEditor,
+    preload: () => { preloadSketchDialog(); preloadSketchEditor(); },
     open: (returnFocus: HTMLElement | null) => open(undefined, returnFocus),
     newDisabled,
     disabledReason:

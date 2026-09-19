@@ -34,7 +34,7 @@ import type {
   GitBranchSnapshot,
   GitBranchTarget,
 } from "../../../../shared/projects-ipc";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { composerContextButtonClass } from "./chat-project-selector";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 

@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on canonical Chat facts, coordinator activity, and the existing submission/relay ledger
- * [OUTPUT]: Provides read-only switch eligibility and exact source-Agent admission fences
+ * [OUTPUT]: Allows imported readonly Agent selection while preserving activity locks, source/revision fences, and Full Access checks for normal switches and saved-history replay
  * [POS]: Main switch policy shared by selector queries, admission, and queued commits
  */
 
+import { ledgerActivityReason } from "./activity";
 import type { CoordinatorDependencies } from "../coordinator-runtime";
 import { conversationAvailability } from "../coordinator-runtime";
 import type { AgentSwitchBlockReason, AgentSwitchEligibility } from "../../../../../shared/chat-agent/contracts";
@@ -15,26 +16,12 @@ export function switchEligibility(dependencies: CoordinatorDependencies, convers
   options: { ownIntentId?: string; recovering?: boolean; running?: boolean } = {}): AgentSwitchEligibility {
   const chat = dependencies.chats.store.getMetadata(conversationId);
   if (!chat) throw new Error("Chat does not exist");
-  let reason: AgentSwitchBlockReason | null = chat.readOnlyReason ? "readonly"
+  let reason: AgentSwitchBlockReason | null = chat.readOnlyReason && chat.readOnlyReason !== "external-readonly" ? "readonly"
     : chat.context.kind !== "ordinary" ? "app-bound"
     : conversationAvailability(dependencies, conversationId, chat.projectId) !== "open" || chat.archivedAt ? "archived"
     : options.recovering ? "recovery"
     : dependencies.switchActivityReason?.(conversationId) ?? (options.running || dependencies.hasActivity([conversationId]) ? "running" : null);
-  if (!reason) reason = dependencies.ledger.read(state => {
-    const others = <T extends { conversationId: string }>(items: Record<string, T>) => Object.entries(items)
-      .filter(([id, item]) => id !== options.ownIntentId && item.conversationId === conversationId).map(([, item]) => item);
-    if (others(state.submissionReservations).some(item => item.state === "reserved")) return "submission";
-    if (others(state.manualIntents).some(item => !["settled", "failed"].includes(item.phase))) return "submission";
-    if (others(state.steerIntents).some(item => item.ackedAt === undefined)) return "submission";
-    if (others(state.manualResultOutbox).some(item => item.state !== "persisted")) return "recovery";
-    if (others(state.submissionOutcomes).some(item => item.retry === "reconcile")) return "recovery";
-    if (others(state.retryCapsules).some(item => item.state !== "expired")) return "recovery";
-    const relays = Object.values(state.relays).filter(item => item.target.chatId === conversationId || item.source.chatId === conversationId);
-    if (relays.some(item => item.pauseReason && item.deliveryPhase !== "settled")) return "paused";
-    if (relays.some(item => item.deliveryPhase !== "settled" || item.assistantOutbox?.state === "pending")) return "queue";
-    if (Object.values(state.noticeOutbox).some(item => item.chatId === conversationId && item.state === "pending")) return "recovery";
-    return null;
-  });
+  if (!reason) reason = ledgerActivityReason(dependencies.ledger, conversationId, options.ownIntentId);
   return { eligible: reason === null, reason, agent: chat.agent, agentRevision: chat.agentRevision, chatRecordRevision: chat.chatRecordRevision };
 }
 
@@ -43,7 +30,23 @@ export function switchReservationInput(submission: TrustedManualTurnSubmission) 
   return { chatId: submission.turn.scope.conversationId, incarnationId: submission.precondition.incarnationId,
     intentId: submission.intentId, submissionHash: canonicalHash(submission), intent: submission.agentSwitch };
 }
-export async function assertSwitchSource(submission: TrustedManualTurnSubmission, dependencies: CoordinatorDependencies) {
+export async function assertSwitchSource(submission: TrustedManualTurnSubmission, dependencies: CoordinatorDependencies, remote?: import("../remote/model").RemoteContext) {
+  const fullAccessAllowed = (chat: { id: string; incarnationId: string }) => remote
+    ? dependencies.ledger.remote.authority(remote).fullAccessFor?.(chat.id, chat.incarnationId)
+    : Boolean(dependencies.settings.get().fullAccessAcknowledgedAt);
+  if (submission.persistence.kind === "adopt" && submission.persistence.input.replay) {
+    const input = submission.persistence.input;
+    const current = dependencies.chats.store.getMetadata(input.id);
+    if (!current || current.readOnlyReason !== "external-readonly" || current.agentRevision !== 0 ||
+      current.agent !== input.importOrigin.sourceKind || current.incarnationId !== input.incarnationId ||
+      current.chatRecordRevision !== input.replay!.expectedChatRecordRevision || input.session !== null ||
+      input.agent !== submission.turn.turnOptions.backend || submission.turn.session) throw new Error("AGENT_REVISION_STALE");
+    if (submission.turn.turnOptions.permissionMode === "full-access" &&
+      (!fullAccessAllowed(current) || current.executionKind === "managed-worktree")) {
+      throw new Error("FULL_ACCESS_ACK_REQUIRED");
+    }
+    return;
+  }
   if (!submission.agentSwitch) return;
   const intent = agentSwitchIntentSchema.parse(submission.agentSwitch);
   if (submission.persistence.kind !== "append" || submission.persistence.input.revise || submission.turn.session ||
@@ -56,7 +59,7 @@ export async function assertSwitchSource(submission: TrustedManualTurnSubmission
       current.chatRecordRevision !== intent.expectedChatRecordRevision &&
         !(reserved?.chatRecordRevision === intent.expectedChatRecordRevision + 1 && current.chatRecordRevision === reserved.chatRecordRevision)) throw new Error("AGENT_REVISION_STALE");
   if (submission.turn.turnOptions.permissionMode === "full-access" &&
-      (!dependencies.settings.get().fullAccessAcknowledgedAt || current.executionKind === "managed-worktree")) {
+      (!fullAccessAllowed(current) || current.executionKind === "managed-worktree")) {
     throw new Error("FULL_ACCESS_ACK_REQUIRED");
   }
 }

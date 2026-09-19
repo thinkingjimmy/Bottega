@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on cmdk, Dialog/InputGroup, Lucide, and other icon and style tools
- * [OUTPUT]: Provides the full Command barrel: CommandDialog for the top-1/3 command-palette surface, CommandInput, CommandList/CommandEmpty/CommandGroup/CommandItem, and CommandShortcut (rendered via data-slot=command-shortcut)
+ * [OUTPUT]: Provides the full Command barrel: CommandDialog for the top-1/3 command-palette surface, CommandInput, CommandList/CommandEmpty/CommandGroup/CommandItem, and CommandShortcut; dialog content focus callbacks remain host-owned
  * [POS]: components/ui's candidate-list core; used both inside a Popover (max-h-72 density) and as the desktop command panel (consumers override CommandList's height)
  */
 
@@ -45,16 +45,19 @@ function CommandDialog({
   children,
   className,
   showCloseButton = false,
+  contentProps,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
   description?: string
   className?: string
   showCloseButton?: boolean
+  contentProps?: Omit<React.ComponentProps<typeof DialogContent>, "children" | "className" | "showCloseButton">
 }) {
   return (
     <Dialog {...props}>
       <DialogContent
+        {...contentProps}
         className={cn(
           "top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0",
           className
@@ -165,7 +168,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "group/command-item relative flex min-h-7 cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-xs/relaxed outline-hidden select-none in-data-[slot=dialog-content]:rounded-md data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 data-selected:*:[svg]:text-foreground",
+        "group/command-item relative flex min-h-7 pointer-coarse:min-h-10 cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-xs/relaxed outline-hidden select-none in-data-[slot=dialog-content]:rounded-md data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 data-selected:*:[svg]:text-foreground",
         className
       )}
       {...props}

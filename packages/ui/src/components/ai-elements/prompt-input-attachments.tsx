@@ -6,15 +6,7 @@
  * [POS]: The attachment visual layer of ai-elements PromptInput; The attachment status and blob URL lifecycle are in context/hooks, not here
  */
 
-import {
-  Attachment,
-  AttachmentAction,
-  AttachmentActions,
-  AttachmentContent,
-  AttachmentGroup,
-  AttachmentMedia,
-  AttachmentTitle,
-} from "@ai-chat/ui/components/ui/attachment";
+import { AttachmentTile, AttachmentGroup } from "@ai-chat/ui/components/ui/attachment";
 import {
   PromptInputHeader,
   usePromptInputAttachments,
@@ -23,26 +15,8 @@ import { AppDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
 import { Dialog, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
 import { cn } from "@ai-chat/ui/lib/utils";
 import { useUiText } from "@ai-chat/ui/lib/ui-text";
-import { FileIcon, XIcon } from "lucide-react";
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import { readBlobDataUrl } from "../../lib/attachments/data-url";
-
-// ─── 输入框附件预览条：删除默认可见，仅细指针 hover 环境允许静置隐藏 ───
-
-/* ── 命中区 44px，身形交还缩略图 ──────────────────────────────────
- * 「看起来多大」与「点得中多大」是两件事。把删除键本身撑成 size-11，命中区
- * 是达标了，代价是一枚实心圆盘盖掉 80px 缩略图一半以上的面积——hover 之后
- * 用户看见的不再是自己那张图，是一个叉。身形交回 size="icon-sm"（24px，含
- * 图标缩放），::after 独自把命中区撑到 44px：向外只扩 10px，窄于卡间 8px 的
- * gap 与卡内 4px 的角距，不会替邻卡收走点击。
- *
- * 带 relative：absolute 的是宿主 AttachmentActions，按钮自身仍在文档流里，
- * 不给包含块 ::after 会挂到卡片外面去。同理它只能长在按钮上——若这枚按钮
- * 哪天自己变成 absolute，relative 与 absolute 同属 position 组，经 cn 的
- * tailwind-merge 后写在后面的赢，本行当场拆台。
- * ────────────────────────────────────────────────────────────── */
-const imageRemoveClass =
-  "relative rounded-full border-background shadow-sm after:absolute after:-inset-2.5 after:content-[''] hover:bg-primary!";
 
 export type PromptInputAttachmentsProps = Omit<
   ComponentProps<typeof PromptInputHeader>,
@@ -92,61 +66,12 @@ export const PromptInputAttachments = ({
           const name = file.filename ?? attachmentLabel;
 
           return (
-            <Attachment
-              key={file.id}
-              size="sm"
-              className={cn(
-                "pr-1",
-                isImage && "size-20 overflow-visible rounded-xl p-0"
-              )}
-            >
-              <AttachmentMedia
-                variant={isImage ? "image" : "icon"}
-                className={cn(isImage && "size-full rounded-[inherit]")}
-              >
-                {isImage && file.url ? (
-                  /* Read the native file for CSP-compatible previews. The full thumbnail
-                     opens its host action; type=button keeps preview clicks out of submit. */
-                  <button
-                    aria-label={action?.label ?? `${previewLabel}: ${name}`}
-                    title={action?.label}
-                    className={cn("relative size-full rounded-[inherit] outline-none focus-visible:ring-2 focus-visible:ring-ring/40", action ? "cursor-pointer" : "cursor-zoom-in")}
-                    onClick={() => action ? action.onClick() : setPreviewId(file.id)}
-                    type="button"
-                  >
-                    <AttachmentImage
-                      file={file}
-                      alt={name}
-                      className="size-full rounded-[inherit] object-cover"
-                    />
-                    {action?.badge}
-                  </button>
-                ) : (
-                  <FileIcon />
-                )}
-              </AttachmentMedia>
-              {!isImage && (
-                <AttachmentContent>
-                  <AttachmentTitle className="max-w-32">{name}</AttachmentTitle>
-                </AttachmentContent>
-              )}
-              <AttachmentActions
-                className={cn(isImage && "absolute top-1 right-1")}
-              >
-                <AttachmentAction
-                  aria-label={`${removeLabel}: ${name}`}
-                  size={isImage ? "icon-sm" : "icon-xs"}
-                  variant={isImage ? "default" : "ghost"}
-                  className={cn(
-                    "opacity-100 motion-reduce:transition-none [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/attachment:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:focus-visible:opacity-100",
-                    isImage && imageRemoveClass
-                  )}
-                  onClick={() => attachments.remove(file.id)}
-                >
-                  <XIcon />
-                </AttachmentAction>
-              </AttachmentActions>
-            </Attachment>
+            <AttachmentTile key={file.id} image={isImage} name={name}
+              removeLabel={`${removeLabel}: ${name}`} onRemove={() => attachments.remove(file.id)}
+              action={{ "aria-label": action?.label ?? `${previewLabel}: ${name}`, title: action?.label,
+                className: action ? "cursor-pointer" : undefined,
+                onClick: () => action ? action.onClick() : setPreviewId(file.id) }}
+              thumbnail={file.url ? <><AttachmentImage file={file} alt={name} className="size-full rounded-[inherit] object-cover" />{action?.badge}</> : undefined} />
           );
         })}
       </AttachmentGroup>

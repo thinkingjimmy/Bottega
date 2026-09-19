@@ -12,11 +12,11 @@ import {
 import {
   validateDocument,
   type SketchDocument,
-} from "../../components/chat/sketch/model/document";
+} from "@ai-chat/chat-ui/sketch/model/document";
 import {
   admitDocument,
   sourceBytes,
-} from "../../components/chat/sketch/model/budget";
+} from "@ai-chat/chat-ui/sketch/model/budget";
 import {
   assertComposerOwner,
   atomicComposerUpdate,

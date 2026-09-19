@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on zod plus shared Project, App grant, and workspace identity contracts
- * [OUTPUT]: Strict ProjectFile v9 with local workspace/grant facts separated from nullable scoped portable association and existing mirror/lifecycle invariants.
+ * [OUTPUT]: Strict ProjectFile v9 with local authority separated from scoped confirmed metadata, causal intents and immutable receipts.
  * [POS]: Project persistence schema boundary; ProjectStore owns mutations while this module owns validation, and any other schemaVersion is corruption
  */
 
-import { projectSyncAssociationSchema } from "./portable/contract";
+import { assertPortableProjectIdentity, projectSyncAssociationSchema } from "./portable/contract";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import {
@@ -57,6 +57,7 @@ const appDisabledGrantSchema = z
 const capabilityIdSchema = z.string().regex(/^[A-Za-z0-9_-]{10,64}$/);
 const workspaceBindingSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("none") }).strict(),
+  z.object({ kind: z.literal("unbound") }).strict(),
   z
     .object({ kind: z.literal("external"), capabilityId: capabilityIdSchema })
     .strict(),
@@ -202,7 +203,9 @@ export const storedProjectSchema = z
   .object({
     ...projectIdentityFields,
     sync: projectSyncAssociationSchema.optional(),
+    localRecoveryId: z.string().min(1).max(128).optional(),
     appearance: projectAppearanceSchema.optional(),
+    gitRemote: z.string().min(1).max(2048).optional(),
     workspaceBinding: workspaceBindingSchema,
     role: z.enum(["workspace", "base-custody"]).default("workspace"),
     nameSource: z.enum(["app", "user"]).default("user"),
@@ -216,7 +219,7 @@ export const storedProjectSchema = z
     archivedAt: z.number().int().nonnegative().optional(),
   })
   .strict()
-  .superRefine(assertStoredProject);
+  .superRefine(assertStoredProject).superRefine(assertPortableProjectIdentity);
 
 export const projectFileSchema = z
   .object({
@@ -370,11 +373,15 @@ function assertWorkspaceProjection(
   project: { workspaceBinding: { kind: string }; dir: string },
   context: z.RefinementCtx
 ) {
-  if (project.workspaceBinding.kind === "none" && project.dir !== "") {
+  if (
+    (project.workspaceBinding.kind === "none" ||
+      project.workspaceBinding.kind === "unbound") &&
+    project.dir !== ""
+  ) {
     context.addIssue({
       code: "custom",
       path: ["dir"],
-      message: "none binding 不保存目录",
+      message: `${project.workspaceBinding.kind} binding 不保存目录`,
     });
   }
   if (

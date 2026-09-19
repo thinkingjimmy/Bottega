@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the typed SQLite client, immutable import normalization, AbortSignal, and array or AsyncIterable external source batches
+ * [INPUT]: Depends on a receipt-serialized SQLite command port, immutable normalization and cancellable source batches
  * [OUTPUT]: Provides the shared requireCommitted outcome gate; replays, resumes, reports durable progress, cancels the run between receipts on abort or failure, and finalizes one deterministic external-history generation carrying the parser's own incompleteTail verdict, with one byte/count-bounded batch policy and backpressure
  * [POS]: Main-process import pump between parser and DB workers; it never buffers the complete normalized source
  */
@@ -41,7 +41,7 @@ export function requireCommitted<T>(outcome: MutationOutcome<T>) {
 }
 
 export async function syncExternalHistory(input: {
-  database: ChatDatabaseClient;
+  database: Pick<ChatDatabaseClient, "execute">;
   deviceId: string;
   source: HistoryImportSource;
   blocks:
@@ -106,7 +106,7 @@ export async function syncExternalHistory(input: {
 }
 
 async function cancelRun(
-  database: ChatDatabaseClient,
+  database: Pick<ChatDatabaseClient, "execute">,
   runId: string,
   cause: unknown
 ) {

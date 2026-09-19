@@ -31,6 +31,7 @@ export function createTurnSnapshot(entry: TurnEntry | undefined, blocked: boolea
         abandon: false,
       },
       draft: serializeDraft(entry.draft),
+      interactionResults: structuredClone(entry.interactionResults ?? []),
       approvals: [...entry.approvals.values()].map((value) => structuredClone(value)),
       userInputs: [...entry.userInputs.values()]
         .sort((left, right) => (right.expiresAt ?? Infinity) - (left.expiresAt ?? Infinity))

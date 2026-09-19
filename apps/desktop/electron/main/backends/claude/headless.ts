@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { foreignSensitive } from "../sandbox/fences";
+import { within } from "../sandbox/sbpl";
 import type {
   HeadlessExecutionSpec,
   HeadlessJob,
@@ -202,6 +203,13 @@ export function claudeInteractiveSettings(
   }
   const writeProtected = [access.controlRoot, ...access.readOnlyRoots];
   settings.sandbox.filesystem.denyWrite = writeProtected;
+  /* Permission rules are absolute: deny beats allow with no notion of specificity. A folder
+     protects `chats/` as a whole, so an ancestor of the workspace must not reach this layer
+     or the Agent loses write access to its own Home; the sandbox layer above keeps it, and
+     the Chat's own portable files are denied by name. */
+  const ruleProtected = writeProtected.filter(
+    (path) => path === access.workspace || !within(access.workspace, path)
+  );
   settings.sandbox.filesystem.allowRead = [
     access.workspace,
     ...access.readOnlyRoots,
@@ -228,8 +236,8 @@ export function claudeInteractiveSettings(
   const online = new Set(["WebFetch", "WebSearch"]);
   settings.permissions.deny = [
     ...settings.permissions.deny.filter((rule) => !online.has(rule)),
-    ...permissionRules("Edit", writeProtected),
-    ...permissionRules("Write", writeProtected),
+    ...permissionRules("Edit", ruleProtected),
+    ...permissionRules("Write", ruleProtected),
     ...permissionRules("Read", foreignCredentialPaths(userHome)),
   ];
   const bytes = Buffer.byteLength(JSON.stringify(settings), "utf8");

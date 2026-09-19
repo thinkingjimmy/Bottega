@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the durable state of the ledger-schema, terminal time and the constants of the unified retained window
- * [OUTPUT]: Terminal mark/sweep that preserves pending handoff commands, full manual payload and result evidence until SQLite custody is confirmed.
+ * [OUTPUT]: Compacts terminal custody and aged control receipts while retaining original remote envelopes and unconfirmed SQLite results.
  * [POS]: Pure compaction unit of coordinator/state; performs no file IO, and retention decisions rely only on terminalAt already committed to state, never inferred side-effect completion
  */
 
@@ -155,6 +155,9 @@ export function compactLedgerState(state: LedgerState, now: number) {
   for (const intent of Object.values(state.manualIntents)) {
     if (
       intent.cloudHandoff?.state === "pending" ||
+      (intent.cloudSyncRequired && (intent.cloudHandoff?.state !== "confirmed" ||
+        intent.cloudHandoff.command.action.type === "handoff-turn" && intent.cloudHandoff.command.action.evidence.resultKind === "pending" &&
+        ["stored", "empty"].includes(state.manualResultOutbox[intent.id]?.outcome ?? ""))) ||
       !manualTerminal(intent) ||
       intent.ackedAt === undefined ||
       intent.submissionHash === undefined
@@ -228,6 +231,7 @@ export function compactLedgerState(state: LedgerState, now: number) {
     if (markedManuals.has(id)) continue;
     state.intentTombstones[id] = {
       hash: intent.submissionHash!,
+      ...(intent.remoteSubmission ? { remoteSubmission: structuredClone(intent.remoteSubmission) } : {}),
       outcome: intent.phase,
       custody: state.submissionOutcomes[id]?.custody === "chat-persisted" || intent.phase === "settled" ? "chat-persisted" : "main-journal",
       deletedAt: now,
@@ -262,6 +266,13 @@ export function compactLedgerState(state: LedgerState, now: number) {
     if (tombstone.deletedAt < now - TOMBSTONE_RETENTION_MS) {
       delete state.intentTombstones[id];
     }
+  }
+  for (const [id, value] of Object.entries(state.remoteCiphertexts)) {
+    if (!state.manualIntents[id] && !state.intentTombstones[id] && !state.submissionReservations[id] && !state.controlReceipts[id] &&
+      value.updatedAt < now - TOMBSTONE_RETENTION_MS) delete state.remoteCiphertexts[id];
+  }
+  for (const [id, receipt] of Object.entries(state.controlReceipts)) {
+    if (receipt.updatedAt < now - TOMBSTONE_RETENTION_MS) delete state.controlReceipts[id];
   }
   for (const [id, capsule] of Object.entries(state.retryCapsules)) {
     if (now < capsule.expiresAt) continue;

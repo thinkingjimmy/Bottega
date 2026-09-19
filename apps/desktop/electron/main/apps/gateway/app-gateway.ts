@@ -4,6 +4,7 @@
  * [POS]: The apps module network boundary; one route authority owns containment, CSP composition, lifecycle storage reset, proxying, and request admission
  */
 
+import type { ArtifactGateway } from "../../artifacts/render/gateway-route";
 import { realpath } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
@@ -73,6 +74,8 @@ export class AppGateway {
   private readonly proxy = httpProxy.createProxyServer({ ws: true });
   private readonly transport: GatewayHttpServer;
   private readonly assets = new GatewayFrozenAssets();
+  private artifacts: ArtifactGateway | null = null;
+  configureArtifacts(artifacts: ArtifactGateway) { this.artifacts = artifacts; artifacts.configure(id => this.getOrigin(id)); }
   private baseGuiApi: BaseGuiApiHandler | null = null;
   private workspacePreview: WorkspacePreviewHandler | null = null;
   readonly requestLeases = new GatewayRequestLeaseRegistry();
@@ -365,6 +368,7 @@ export class AppGateway {
     request: IncomingMessage,
     response: ServerResponse
   ) {
+    if (await this.artifacts?.handle(request, response)) return;
     const identity = this.identityFromRequest(request);
     const appId = identity?.appId;
     const route = identity ? this.routeFor(identity) : undefined;

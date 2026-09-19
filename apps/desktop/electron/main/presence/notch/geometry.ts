@@ -1,18 +1,21 @@
 /**
  * [INPUT]: Depends on AppKit screen bounds, visible frames, notch safe sides, and fullscreen/inactive-session facts.
- * [OUTPUT]: Provides real-notch-only geometry with flush wings and a separate list below the safe area.
+ * [OUTPUT]: Provides real-notch-only geometry with independently sized flush wings and a separate list below the safe area.
  * [POS]: Pure geometry policy between the native helper and panel controller.
  */
+
+const LEFT_WING_WIDTH = 144;
+const RIGHT_WING_WIDTH = 100;
 
 export type Rect = { x: number; y: number; width: number; height: number };
 export type NativeScreen = { id: number; builtin: boolean; primary: boolean; bounds: Rect; visible: Rect;
   topInset: number; left: Rect; right: Rect; fullscreen: boolean; inactive?: boolean };
 export function panelGeometry(screens: readonly NativeScreen[]) {
-  const screen = screens.find((screen) => screen.builtin && screen.topInset > 0 && screen.left.width >= 144 && screen.right.width >= 144);
+  const screen = screens.find((screen) => screen.builtin && screen.topInset > 0 && screen.left.width >= LEFT_WING_WIDTH && screen.right.width >= RIGHT_WING_WIDTH);
   if (!screen || screen.bounds.width < 360 || screen.bounds.height < 240) return null;
   const collapsed = [
-    { x: screen.left.x + screen.left.width - 144, y: screen.left.y, width: 144, height: screen.topInset },
-    { x: screen.right.x, y: screen.right.y, width: 144, height: screen.topInset },
+    { x: screen.left.x + screen.left.width - LEFT_WING_WIDTH, y: screen.left.y, width: LEFT_WING_WIDTH, height: screen.topInset },
+    { x: screen.right.x, y: screen.right.y, width: RIGHT_WING_WIDTH, height: screen.topInset },
   ];
   const width = Math.min(520, screen.bounds.width - 32);
   // The list stays below both the menu bar and the compact strip, including auto-hidden menu bars.

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on validated adoption input, Chat Home ownership/evidence, attachment commit custody, ChatStore SQLite saga APIs, and publication callbacks
- * [OUTPUT]: Provides readonly-to-managed continuation finalization and startup replay/fail/isolate reconciliation from committed-Home evidence
+ * [OUTPUT]: Seals native-resume or saved-history replay input before Home commit, then atomically finalizes and reconciles the readonly-to-managed continuation
  * [POS]: Adoption lifecycle and recovery transaction beneath ChatsService; committed Home ownership is never compensated here
  */
 
@@ -29,7 +29,8 @@ type Dependencies = Readonly<{
   withProject<T>(projectId: string, task: () => Promise<T>): Promise<T>;
   commitWithAttachments<T>(
     payloads: AdoptChatInput["attachmentPayloads"],
-    commit: (metas: ChatAttachmentMeta[]) => Promise<T>
+    commit: (metas: ChatAttachmentMeta[]) => Promise<T>,
+    chatId: string
   ): Promise<T>;
   publish(mutation: ChatMessageMutation): void;
   onSessionBound?(session: SessionRef, chatId: string): void;
@@ -57,11 +58,11 @@ export async function createAdoptedChat(
     throw new Error("App Project 不接受外源历史收养");
   }
   await dependencies.assertAgentReady?.(value.agent);
-  const create = () => finalizeSqlite(dependencies, value, home, sequence?.userSeq ?? 1);
+  const create = () => finalizeSqlite(dependencies, value, home, sequence?.userSeq ?? (value.replay ? 2 : 1));
   const record = projectLifecycle === "held"
     ? await create()
     : await dependencies.withProject(value.projectId, create);
-  dependencies.onSessionBound?.(value.session, value.id);
+  if (value.session) dependencies.onSessionBound?.(value.session, value.id);
   return record;
 }
 
@@ -76,6 +77,10 @@ export async function beginAdoptedContinuation(
   });
   if (!page?.activeGenerationId) {
     throw new Error("Readonly continuation has no active imported generation");
+  }
+  if (submission.persistence.input.replay &&
+    page.activeGenerationId !== submission.persistence.input.replay.generationId) {
+    throw new Error("Saved-history continuation generation changed");
   }
   const saga = await store.beginExternalContinuation({
     chatId: submission.persistence.input.id,
@@ -103,6 +108,11 @@ async function finalizeSqlite(
     (candidate) => candidate.chatId === value.id && candidate.homeIntentId === home.intentId
   );
   if (!saga) throw new Error("Readonly continuation saga is missing");
+  if (value.replay) {
+    await dependencies.store.markContinuationHomePreparing(
+      saga.sagaId, `${home.intentId}_prepared_replay`, value.firstMessage.createdAt, value
+    );
+  }
   await dependencies.homes!.commitCreation(value.id);
   const evidence = await dependencies.homes!.committedCreationEvidence(
     value.id,
@@ -135,8 +145,9 @@ async function completeSqliteContinuation(
       session: value.session,
       options: value.options,
       firstMessage,
-      adoptionSnapshotId: value.importOrigin.adoptionSnapshotId!,
+      adoptionSnapshotId: value.importOrigin.adoptionSnapshotId ?? null,
       snapshotDigest: value.snapshotDigest,
+      ...(value.replay?.notice ? { notice: value.replay.notice } : {}),
       startState: {
         kind: "started-exact",
         firstUserMessageAt: firstMessage.createdAt,
@@ -153,11 +164,11 @@ async function completeSqliteContinuation(
     dependencies.publish({
       record,
       revision: result.nativeMessageRevision,
-      appended: [firstMessage],
+      appended: [...(value.replay?.notice ? [value.replay.notice] : []), firstMessage],
       storedMessage: firstMessage,
     });
     return record;
-  });
+  }, value.id);
 }
 
 export async function reconcileAdoptedContinuations(
@@ -237,9 +248,9 @@ export async function reconcileAdoptedContinuations(
         value,
         evidence.receipt,
         saga,
-        1
+        value.replay ? 2 : 1
       );
-      dependencies.onSessionBound?.(value.session, value.id);
+      if (value.session) dependencies.onSessionBound?.(value.session, value.id);
     } catch (cause) {
       if ((cause as { status?: unknown })?.status === "outcome_unknown") continue;
       const reason = cause instanceof Error ? cause.message : String(cause);

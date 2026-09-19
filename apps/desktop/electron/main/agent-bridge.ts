@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on the backend registry, TurnRegistry, payload validation, Project Tools receipts, Chat commit, Gallery, Memory, MCP leases, frozen session configuration, retry guards, turn activity policy and credential reservations
- * [OUTPUT]: Provides canonical turn execution with scoped availability, Agent-switch activity gates, Project policy narrowing, MCP/session guards, Speed convergence, ProductFailure finalization, leases, interaction/retry IPC, and shutdown
+ * [INPUT]: Depends on the backend registry, TurnRegistry, synchronous Steer policy, payload validation, Project Tools receipts, Chat commit, Gallery, Memory, MCP leases, artifact capture sessions, frozen sessions, retry guards and credential reservations
+ * [OUTPUT]: Provides canonical execution, main-only session prompt evidence, scoped availability, Project policy narrowing, MCP/session guards, typed finalization, interaction/retry IPC with authorized saved-history session replacement carrying the original user identity, and shutdown.
  * [POS]: Main-process multi-backend turn executor; the conversation coordinator supplies already-admitted manual intent
  */
 
+import { artifactRuntime } from "./artifacts/runtime";
 import { type BrowserWindow } from "electron";
 import {
   AGENT_BACKEND_ORDER,
@@ -25,7 +26,7 @@ import {
 } from "./agent-process-supervisor";
 import { backendById, backendRuntimeRegistry } from "./backends";
 import { resolvedInputBlocks } from "./backends/acp/acp-turn";
-import type { AgentTurn, ResolvedRuntime, ResolvedAgentInput } from "./backends/types";
+import type { AgentTurn, ResolvedRuntime, ResolvedAgentInput, TrustedTurnAuthority } from "./backends/types";
 import {
   assertBackendCapabilities,
   assertModelCapabilities,
@@ -39,6 +40,8 @@ import {
 } from "../../shared/product-failure";
 import { acpStartupBackstopMs } from "./backends/acp/startup/budget";
 import { createAgentBridgeIpcHandlers, registerAgentBridgeIpc } from "./agent/bridge-ipc";
+import { steerCarriesStagedSnapshot, validateSteerTurnCapabilities } from "./agent/controls/steering";
+export { assertSteerTurnCapabilities, steerCarriesStagedSnapshot } from "./agent/controls/steering";
 import type {
   AgentBridgeOptions,
   AgentContext,
@@ -48,6 +51,7 @@ import type {
 } from "./agent/bridge-types";
 import { executableIdentity } from "./custody/identity";
 import { createTurnCallbacks } from "./agent/turn-callbacks";
+import { resolveTurnConnection } from "./agent/connection-wiring";
 import { ensurePersistedForDrain } from "./agent/drain-guard";
 import { assertAgentAvailable, assertInstalledRuntime } from "./agent/runtime-gate";
 import { switchActivityReason } from "./agent/turn-actions";
@@ -85,6 +89,7 @@ async function drainRequestReservations() {
   while (requestReservations.size) await Promise.all([...requestReservations.values()].map(({ settled }) => settled));
 }
 const threadScopes = new ThreadScopeRegistry();
+const turnAuthorities = new WeakMap<BridgeEntry, TrustedTurnAuthority>();
 export const activity = new AgentActivityPublisher(turns);
 let shuttingDown = false;
 const { publish, publishState, observe } = createBridgeEventPublisher({
@@ -133,27 +138,6 @@ export function registerAgentSteerOperation(requestId: string) {
   };
 }
 
-// Staged snapshots created after spawn are outside the frozen filesystem grants,
-// so they must travel with a new turn that can actually read them.
-export const steerCarriesStagedSnapshot = (
-  input: ResolvedAgentInput["input"]
-) => input.some((item) => item.type === "mention" || item.type === "skill");
-
-// Steer uses the existing turn's admitted capabilities despite later probe errors.
-// Unknown image support still fails closed.
-export async function assertSteerTurnCapabilities(
-  backendId: AgentBackendId,
-  input: ResolvedAgentInput["input"],
-  capabilities?: import("../../shared/agent-ipc").BackendCapabilities
-) {
-  const backend = backendById(backendId);
-  if (!capabilities) {
-    if (input.some((item) => item.type === "image")) throw new Error("Active turn capabilities are unknown");
-    return;
-  }
-  assertResolvedInputCapabilities(backend, input, capabilities);
-}
-
 export async function steerAgentTurn(
   requestId: string,
   input: ResolvedAgentInput["input"]
@@ -167,7 +151,7 @@ export async function steerAgentTurn(
   if (steerCarriesStagedSnapshot(input)) {
     return { outcome: "unconsumed", reason: "staged-resource" } as const;
   }
-  await assertSteerTurnCapabilities(entry.backend, input, (entry as BridgeEntry).context?.activeCapabilities);
+  validateSteerTurnCapabilities(entry.backend, input, (entry as BridgeEntry).context?.activeCapabilities);
   return entry.turn.steer(resolvedInputBlocks(input));
 }
 
@@ -176,7 +160,8 @@ async function spawnAgent(
   payload: AgentSendPayload,
   context: AgentContext,
   options: AgentBridgeOptions,
-  reuseInput?: ResolvedAgentInput
+  reuseInput?: ResolvedAgentInput,
+  trustedAuthority?: TrustedTurnAuthority
 ) {
   const backend = backendById(payload.turnOptions.backend);
   const generation = entry.generation;
@@ -257,12 +242,6 @@ async function spawnAgent(
             }
           }
         }
-        entry.builtinMcp = options.issueBuiltinMcp?.(
-          payload,
-          generation,
-          entry.origin,
-          context
-        );
         context.activeCapabilities = { ...snapshot.capabilities };
         const target = await backendRuntimeRegistry.executionTarget(backend.id, snapshot, { cwd: context.workspace, model: payload.turnOptions.model ?? undefined });
         context.availabilityStart = backendRuntimeRegistry.evidence.beginTurn(entry.conversationId, entry.requestId, target);
@@ -276,7 +255,6 @@ async function spawnAgent(
     if (!runtime || runtimeGeneration === undefined || !resolvedInput) {
       throw new Error(`${backend.displayName} CLI 文件身份持续变化，已拒绝启动`);
     }
-    const builtinMcp = entry.builtinMcp;
     entry.thirdPartyMcpPlan ??= options.resolveThirdPartyMcpPlan?.({
       backendId: backend.id,
       backendRuntimeIdentity: `${backend.id}@${runtime.version}`,
@@ -305,18 +283,26 @@ async function spawnAgent(
         }
       }
     }
-    // Persist custody before spawn. Each attempt needs its own process identity,
-    // even when resume retries reuse the request ID, to prevent stale cleanup.
-    entry.custody = await options.beginTurnCustody?.({
-      turnRequestId: payload.requestId,
-      owner: context.custodyOwner ?? {
-        kind: "chat-turn",
-        ownerId: entry.conversationId,
-        ownerRevision: generation,
-      },
-      backendRuntimeIdentity: `${backend.id}@${runtime.version}`,
-      dependencies: context.custodyDependencies ?? [],
-    });
+    /* 产物目录进围栏的 stateWriteRoots，必须先于认领解析：借来的连接与本轮自己起的进程，围栏输入要逐格相同。 */
+    const artifactDirectory = await artifactRuntime()?.directory(entry.conversationId);
+    const builtinMcp = await resolveTurnConnection(options, entry, {
+      payload, context, generation, runtime, runtimeGeneration,
+      ...(artifactDirectory ? { artifactDirectory } : {}) });
+    /* Persist custody before spawn: each attempt needs its own process identity,
+       even when resume retries reuse the request ID. 借来的连接的进程早已在
+       `connection` owner 名下入账，再开一笔就是一个 PID 记两个主人。 */
+    entry.custody = entry.connection
+      ? undefined
+      : await options.beginTurnCustody?.({
+          turnRequestId: payload.requestId,
+          owner: context.custodyOwner ?? {
+            kind: "chat-turn",
+            ownerId: entry.conversationId,
+            ownerRevision: generation,
+          },
+          backendRuntimeIdentity: `${backend.id}@${runtime.version}`,
+          dependencies: context.custodyDependencies ?? [],
+        });
     const memoryContribution =
       context.memory && entry.memoryRecall
         ? options.prepareMemoryContribution?.(
@@ -329,14 +315,19 @@ async function spawnAgent(
       : undefined;
     entry.backendSessionConfig ??=
       await options.freezeBackendSessionConfig?.(backend.id);
+    const artifactContext = artifactDirectory
+      ? `When the user asks to see a chart, page or other visualization, write it as a standalone HTML or SVG file under ${artifactDirectory} and reply with one standalone line visualize{"path":"absolute file path","title":"Short title"}; the HTML may use relative local resources and must not be inlined in the reply. Deliverable documents (pdf, docx, xlsx, pptx) that are not part of the project source also belong in that directory. Project files stay in the project.`
+      : "";
     const turn = backend.createTurn({
+      sessionRecovery: context.sessionRecovery,
+      onSessionPrompt: context.onSessionPrompt,
+      ...(artifactDirectory ? { artifactDirectory } : {}),
+      ...(trustedAuthority ? { trustedAuthority } : {}),
       /* entry.payload keeps persisted intent. The derived wire snapshot alone
          honors a same-session fallback until an explicit model/Speed action. */
       payload: threadScopes.payloadForTurn(payload),
       input: resolvedInput,
-      ...(context.finalTurnProjection?.productContext
-        ? { productContext: context.finalTurnProjection.productContext }
-        : {}),
+      productContext: [context.finalTurnProjection?.productContext, artifactContext].filter(Boolean).join("\n\n"),
       ...(memoryContribution
         ? {
             sensitiveContribution: memoryContribution,
@@ -348,9 +339,10 @@ async function spawnAgent(
           }
         : {}),
       ...(entry.custody ? { processHost: entry.custody.host } : {}),
+      ...(entry.connection ? { connection: entry.connection.connection } : {}),
       callbacks: createTurnCallbacks(
         { turns, threadScopes, publish, observe, finalizeEntry },
-        { entry, generation, backend, runtimeGeneration, options, context }
+        { entry, generation, backend, runtimeGeneration, options, context, trustedAuthority }
       ),
       runtime,
       serverFactBinding: {
@@ -406,6 +398,7 @@ async function spawnAgent(
     const startupController = new AbortController();
     // AcpTurn reports individual startup steps; this deadline catches only a
     // start operation that never settles and is therefore an internal failure.
+    await trustedAuthority?.validate(); trustedAuthority?.current();
     const outcome = await withDeadline(
       turn.start(startupController.signal),
       acpStartupBackstopMs(),
@@ -475,7 +468,8 @@ export async function startAgentPayload(
   reuseInput?: ResolvedAgentInput,
   reservedAssistantSeq?: number,
   admissionHeld = false,
-  preparedProjectTools?: HydratedProjectTools
+  preparedProjectTools?: HydratedProjectTools,
+  trustedAuthority?: TrustedTurnAuthority
 ) {
   if (!options) throw new Error("Agent bridge 尚未初始化");
   if (options.platformSupport) {
@@ -500,7 +494,8 @@ export async function startAgentPayload(
     backend.id
   );
   taskStartFence.assertOpen();
-  await options.assertTurnAdmission?.(payload);
+  trustedAuthority?.current();
+  await options.assertTurnAdmission?.(payload, trustedAuthority);
   taskStartFence.assertOpen();
   const safetyLockReason = agentProcessSafetyLock(backend.id);
   if (safetyLockReason) {
@@ -576,6 +571,7 @@ export async function startAgentPayload(
           entry.incarnationId = options.conversationIncarnation?.(entry.conversationId);
           contextRetained = true;
           entry.payload = payload;
+          if (trustedAuthority) turnAuthorities.set(entry, trustedAuthority);
           entry.context = context;
           if (acpTraceEnabled() && options.traceDirectory) {
             try {
@@ -590,7 +586,7 @@ export async function startAgentPayload(
             }
           }
           publishState(entry);
-          const startup = spawnAgent(entry, payload, context, options, reuseInput);
+          const startup = spawnAgent(entry, payload, context, options, reuseInput, trustedAuthority);
           turns.setStartup(entry, startup);
           observe(startup, `startup requestId=${payload.requestId}`);
         } finally {
@@ -634,14 +630,18 @@ export function registerAgentBridge(
   const retry = (
     mode: typeof retryAgentSameSession,
     requestId: string,
-    retryToken: string
+    retryToken: string,
+    authority?: TrustedTurnAuthority
   ) => mode({
     turns,
     requestId,
     retryToken,
     prepareFreshInput: async (entry) => {
-      await options.assertTurnAdmission?.(entry.payload!);
-      return options.prepareFreshRetry?.(entry.payload!);
+      const currentAuthority = authority ?? turnAuthorities.get(entry as BridgeEntry);
+      await currentAuthority?.validate(); currentAuthority?.current();
+      await options.assertTurnAdmission?.(entry.payload!, currentAuthority);
+      return options.prepareFreshRetry?.(entry.payload!,
+        entry.origin?.kind === "manual" ? entry.origin.userMessageId : undefined);
     },
     replaceSession: (entry, oldSession) =>
       Promise.resolve(
@@ -654,12 +654,15 @@ export function registerAgentBridge(
       (entry as BridgeEntry).trace?.recordGenerationStart(generation),
     restart: (entry, input) => {
       const bridgeEntry = entry as BridgeEntry;
+      // The remote authority governs this attempt only; persisting it would expire
+      // the entry's own authority and break later local recovery actions.
       const startup = spawnAgent(
         bridgeEntry,
         bridgeEntry.payload!,
         bridgeEntry.context!,
         options,
-        input
+        input,
+        authority ?? turnAuthorities.get(bridgeEntry)
       );
       turns.setStartup(bridgeEntry, startup);
       observe(startup, `resume retry requestId=${entry.requestId}`);
@@ -680,13 +683,10 @@ export function registerAgentBridge(
     listActivity: () => activity.list(),
     publishState: (entry) => publishState(entry as BridgeEntry),
     clearSafetyLock: clearAgentSafetyLockWhenIdle,
-    retryWithoutSession: (requestId, retryToken) => {
-      const entry = turns.byRequest(requestId);
-      if (entry) options.assertRetryWithoutSession?.(entry.conversationId);
-      return retry(retryAgentWithoutSession, requestId, retryToken);
-    },
-    retrySameSession: (requestId, retryToken) =>
-      retry(retryAgentSameSession, requestId, retryToken),
+    retryWithoutSession: (requestId, retryToken, trusted) =>
+      retry(retryAgentWithoutSession, requestId, retryToken, trusted?.authority),
+    retrySameSession: (requestId, retryToken, trusted) =>
+      retry(retryAgentSameSession, requestId, retryToken, trusted?.authority),
     cancel: (requestId) => cancelAgentTurn(requestId, options),
     steer: (input) => {
       if (!options.steer) throw new Error("steering 服务未配置");

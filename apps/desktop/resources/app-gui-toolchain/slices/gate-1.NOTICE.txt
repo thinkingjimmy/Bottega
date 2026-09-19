@@ -2108,7 +2108,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-zod@4.4.3 — MIT — sha256:aaa6b4591098284c78903214c7bd9127b1b1187712371dd9f2d7021a212284bc
+zod@4.6.4 — MIT — sha256:097b0c8301374a90f0f483027acc210d85f3ad3e337dc778875ed6eab9505f8f
 --- LICENSE ---
 MIT License
 

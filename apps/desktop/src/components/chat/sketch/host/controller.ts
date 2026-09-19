@@ -18,7 +18,7 @@ import {
   createDocument,
   validateDocument,
   type SketchDocument,
-} from "../model/document";
+} from "@ai-chat/chat-ui/sketch/model/document";
 export type SketchSession = Readonly<{
   id: string;
   owner: ComposerOwner;

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on crypto, Project/History shared Contract with Injected directory selection, scan counting, Project commit port
- * [OUTPUT]: Provides ProjectImportCoordinator: immediate preparation tokens, asynchronous preflight counts, TTL validation, and the sole commit input for created determination
+ * [INPUT]: Depends on crypto, Project/History shared Contract with Injected directory selection, optional index warm-up, scan counting, Project commit port
+ * [OUTPUT]: Provides ProjectImportCoordinator: warm-up fired alongside the folder picker, immediate preparation tokens, asynchronous preflight counts, TTL validation, and the sole commit input for created determination
  * [POS]: History-import's Project-onboarding state machine; HistoryImportService owns indexing after commit, and the coordinator discards the token once it is used
  */
 
@@ -25,10 +25,15 @@ export class ProjectImportCoordinator {
     select(): Promise<{ canonicalRoot: string; name: string } | null>;
     count(canonicalRoot: string): Promise<HistorySourceCount[]>;
     commit(input: { canonicalRoot: string; name: string }): Promise<{ project: Project; created: boolean }>;
+    /** 与目录无关的预热；失败只是少了一次加速，不能影响选择。 */
+    warm?(): Promise<void>;
   }) {}
 
-  /** 目录选定即返回令牌；侦测计数在后台跑，renderer 独立领取预检结果。 */
+  /* 目录选定即返回令牌；侦测计数在后台跑，renderer 独立领取预检结果。
+     预热与选择器同时开始：用户在系统对话框里的那几秒，正好把每个来源的
+     身份索引备好，选定后的计数多数时候直接从内存作答。 */
   async prepare() {
+    this.ports.warm?.().catch(() => {});
     const selected = await this.ports.select();
     if (!selected) return null;
     this.evictExpired();

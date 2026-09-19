@@ -5,7 +5,7 @@
  */
 
 import type { Dialog, FileFilter } from "electron";
-import type { AppLocale } from "../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { translate } from "../../../shared/i18n/runtime";
 
 const EXPORT_FILTER_KEYS = {

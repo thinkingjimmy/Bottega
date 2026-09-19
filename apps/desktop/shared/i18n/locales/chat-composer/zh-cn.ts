@@ -1,31 +1,20 @@
 /**
- * [INPUT]: Depends on the chatComposerEn structural type
+ * [INPUT]: Shared native/Web Project selector and Plan catalogs and the English Chat composer structural type.
  * [OUTPUT]: Provides the Simplified Chinese Chat composer catalog with the exact English structure
  * [POS]: Simplified Chinese Chat composer locale leaf; assembled inside the top-level chat.composer namespace
  */
 
 import type { chatComposerEn } from "./en";
 
+import { copy as sharedComposer } from "@ai-chat/chat-ui/composer-control-copy/zh-cn";
+import { projectSelectorZhCn } from "@ai-chat/chat-ui/project-copy";
+
 export const chatComposerZhCN: typeof chatComposerEn = {
   modelFallback: {
     defaultEffort: "默认",
     standardSpeed: "标准",
   },
-  approval: {
-    requestChanges: "要求修改",
-    decline: "拒绝",
-    allowSession: "本会话允许",
-    approvePlan: "批准 Plan",
-    allowOnce: "允许一次",
-    planTitle: "按这份 Plan 继续吗？",
-    commandTitle: "允许运行这条命令吗？",
-    fileChangeTitle: "允许这些文件修改吗？",
-    permissionTitle: "允许额外访问权限吗？",
-    location: "位置",
-    network: "网络",
-    plan: "Plan",
-    details: "详情",
-  },
+  approval: sharedComposer.approval,
   branch: {
     uncommitted_one: "{{count}} 个未提交文件",
     uncommitted_other: "{{count}} 个未提交文件",
@@ -56,53 +45,8 @@ export const chatComposerZhCN: typeof chatComposerEn = {
     previewWorkspaceFile: "预览 Workspace 文件",
     queueSubmit: "加入队列",
   },
-  plan: {
-    closeChip: "关闭 Plan",
-    decisionTitle: "要执行这份 Plan 吗？",
-    closeDecision: "关闭 Plan 决策",
-    implement: "是，执行这份 Plan",
-    reviseLabel: "告诉 Agent 如何调整 Plan",
-    revisePlaceholder: "不执行，并告诉 Agent 应如何调整",
-    send: "发送",
-    skip: "跳过",
-  },
-  project: {
-    selector: "Project 选择器",
-    search: "搜索 Project",
-    empty: "没有找到 Project",
-    create: "新建 Project",
-    workInChat: "在 Chat 中工作",
-    current: "当前 Chat Project：{{project}}",
-    chat: "Chat",
-  },
-  userInput: {
-    countdown: "{{count}} 秒",
-    skip: "跳过",
-    progress: "第 {{current}} 个，共 {{total}} 个",
-    skipQuestion: "跳过问题",
-    pendingList: "等待中的并发提问",
-    pending: "等待中",
-    pendingCount: "{{count}} 个待回答",
-    mainAgent: "主 Agent",
-    waiting: "等待输入",
-    other: "都不合适，告诉 Agent 其它做法",
-    confirm: "确认选择",
-    decisionPlaceholder: "告诉 Agent 你的决定…",
-    send: "发送",
-  },
-  queue: {
-    pickedUp: "已拾起排队消息；使用上下方向键调整位置。",
-    reorderCancelled: "已取消重排",
-    moved: "已移动到第 {{position}} 条",
-    unchanged: "位置未改变",
-    paused: "队列已暂停",
-    resume: "继续发送",
-    dismissError: "关闭队列错误",
-    drag: "拖动第 {{position}} 条，共 {{count}} 条",
-    resend: "重发这条消息",
-    deleteAmbiguous: "删除这条歧义消息",
-    steer: "立即插入当前运行任务",
-    delete: "删除这条排队消息",
-    edit: "编辑这条排队消息",
-  },
+  plan: sharedComposer.chat.composer.plan,
+  project: projectSelectorZhCn,
+  userInput: sharedComposer.userInput,
+  queue: sharedComposer.chat.composer.queue,
 };

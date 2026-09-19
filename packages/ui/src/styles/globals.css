@@ -1,12 +1,10 @@
 /**
- * [INPUT]: Depends on Tailwind/shadcn, Streamdown portal, tagging, ZeoSeven Maple Mono fonts and consumer coverage -- app-font-sans
- * [OUTPUT]: Provides @ai-chat/ui a full-scale theme, fonts, round corners, cross-pack scanning inputs, scrollbar-slim self-drawing scroll bar utility, touch-target-44 invisible 44px hit-area utility, and a Markdown full-screen Electron no-drag interaction border
+ * [INPUT]: Depends on Tailwind/shadcn, Streamdown portal, tagging, locally served OFL Maple Mono fonts and consumer coverage -- app-font-sans
+ * [OUTPUT]: Provides @ai-chat/ui a full-scale theme, fonts, round corners, cross-pack scanning inputs, scrollbar-slim self-drawing scroll bar utility, touch-target-44 invisible 44px hit-area utility, the no-hover variant that reveals hover-hidden controls on touch, and a Markdown full-screen Electron no-drag interaction border
  * [POS]: Shared UI packages are universal-style root, desktop/web consumption; Browser ignored Electron exclusive app-region
  */
 
-@import url("https://fontsapi.zeoseven.com/442/main/result.css");
-@font-face{font-family:"ZSFT-443";src:url("https://fontsapi.zeoseven.com/443/italic.woff2") format("woff2");font-style:italic;font-weight:100 900;font-display:swap;}
-@font-face{font-family:"ZSFT-443";src:url("https://fontsapi.zeoseven.com/443/main.woff2") format("woff2");font-style:normal;font-weight:100 900;font-display:swap;}
+@import "./fonts/maple.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -17,11 +15,32 @@
  * 消费方（desktop/web）自身源码由构建 cwd 自动检测。
  * ============================================================ */
 @source "../../src";
+/* Shared Base views are outside each consumer's automatic source scan. */
+@source "../../../base-ui/src";
+@source "../../../chat-ui/src";
 /* streamdown 的元素类名只存在于其 dist chunk，必须显式纳入扫描，
  * 否则列表编号/缩进等工具类不会被编译（@streamdown/* 插件 dist 无类名，免扫）。 */
 @source "../../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+ * Touch has three separate lines; keep them apart from the
+ * container-query layout line:
+ * - layout follows container width: @container + @[...] (desktop side
+ *   panels and phones benefit alike)
+ * - no-hover: reveals controls hidden behind group-hover:, because
+ *   Tailwind v4 wraps hover variants in @media (hover: hover) and an
+ *   opacity-0 + group-hover:opacity-100 control never appears on touch
+ * - pointer-coarse: (built in) grows density on coarse pointers
+ * - touch-target-44 keeps the invisible hit area when the visual size
+ *   must stay small
+ * ============================================================ */
+@custom-variant no-hover {
+  @media (hover: none) {
+    @slot;
+  }
+}
 
 /* ============================================================
  * scrollbar-slim —— 自绘细滚动条

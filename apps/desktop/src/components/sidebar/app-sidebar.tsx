@@ -1,32 +1,34 @@
 "use client";
 /**
- * [INPUT]: Depends on React, i18n, Sidebar UI, product stores/providers, shared active App target/origin, navigation, the footer update affordance, and router
- * [OUTPUT]: Provides persistent navigation with asChild-stable row typography, pending-residence-safe generation-fenced Apps/global-pin/Project-alias targets, recovery, actionable store warnings with a GitHub report fallback, and a footer whose Settings/Memory buttons share hover geometry alongside SidebarUpdateButton
+ * [INPUT]: Depends on React, i18n, Sidebar UI, product providers, shared WorkspaceNavigation/SettingsNavigation, active App targets, footer affordances, cloud projections and the Sidebar notice dialog.
+ * [OUTPUT]: Adapts native data and actions to the shared complete sidebar, preserving generation-fenced targets, feedback and Settings navigation.
  * [POS]: Sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  */
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import {
-  ArrowLeft,
   Archive,
-  Bell,
   ChartNoAxesColumnIncreasing,
   Database,
+  FlaskConical,
   Info,
+  RefreshCw,
   Keyboard,
-  LayoutGrid,
   Loader2,
   PackagePlus,
-  PanelLeft,
   Plus,
   Settings,
-  Search,
   Server,
   SlidersHorizontal,
   BrainCircuit,
   Globe,
-  SquarePen,
   TriangleAlert,
   UserPen,
   Wrench,
@@ -34,36 +36,29 @@ import {
 import type { ChatSummary } from "../../../shared/chats-ipc";
 import type { ChatStorageFailure } from "../../../shared/product-failure";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
   SidebarGroupAction,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuBadge,
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
   useSidebar,
 } from "@ai-chat/ui/components/ui/sidebar";
+import {
+  SettingsNavigation,
+  type SettingsNavigationGroup,
+} from "@ai-chat/ui/components/settings/navigation";
+import { WorkspaceNavigation } from "@ai-chat/ui/components/workspace/navigation/frame";
+import type { NavigationSectionModel } from "@ai-chat/ui/components/workspace/navigation/section";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
-import { ChatThreadItem } from "./chat/chat-thread-item";
-import { ProjectSection } from "./project/section/project-section";
+import { useProjectSection } from "./project/section/project-section";
+import { CloudSidebarProvider, useCloudSidebar } from "./cloud/context";
+import { SidebarNotices } from "./feedback/sidebar-notices";
+import { ChatNavigationRows } from "./cloud/list";
+import { mergeChatRows } from "./cloud/order";
+import { ChatReorderList } from "./reorder/chat-reorder-list";
 import { SidebarActivity } from "./sidebar-activity";
-import {
-  SidebarActivePathContext,
-  useSidebarActivePath,
-} from "./active/active-path";
-import { SidebarCollapsibleGroup } from "./sidebar-collapsible-group";
-import {
-  PRODUCT_LOGO_SIZE,
-  PRODUCT_LOGO_URLS,
-  PRODUCT_NAME,
-} from "@/lib/brand";
+import { SidebarActivePathContext } from "./active/active-path";
 import { resolvedThemeStore } from "@/lib/theme";
 import { isApplePlatform } from "@/lib/platform";
 import { memoryStore } from "@/lib/memory-store";
@@ -76,26 +71,20 @@ import { useChats } from "@/components/providers/chats-provider";
 import { useBasesNavigation } from "@/components/providers/bases-provider";
 import { useProjects } from "@/components/providers/projects-provider";
 import { ownerRoute } from "@/components/bases/chrome/base-header-actions";
-import { SaveAsAppDialog } from "@/components/apps/dialogs/save-as-app-dialog";
+import { SaveAsAppDialog } from "@/components/apps/dialogs/save-as-app";
 import { CommandPalette } from "./search/command-palette";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
-import { ownerFromKey } from "../../../shared/bases-ipc";
-import {
-  SIDEBAR_MAX_WIDTH,
-  SIDEBAR_MIN_WIDTH,
-  type SidebarGroups,
-  type SidebarView,
-} from "@/lib/sidebar-layout";
+
+import { ownerFromKey } from "@ai-chat/base-ui/model/owner-key";
+import { type SidebarGroups, type SidebarView } from "@/lib/sidebar-layout";
 import {
   MEMORY_SETTINGS_PATH,
   type SettingsDestination,
   type SettingsOverlaySection,
 } from "@/lib/settings-navigation";
-import { ReportIssueButton } from "@/components/report-issue-button";
 import { PinnedApps } from "./apps/pinned-apps";
 import { SidebarUpdateButton } from "./sidebar-update-button";
 import { appearsInRootChats } from "../../../shared/placement/sidebar";
-import { ChatStorageFailureNotice } from "../chat-storage-failure-notice";
 import {
   activeAppId,
   resolveSidebarAppTarget,
@@ -122,14 +111,15 @@ type AppSidebarProps = {
   onOpenMemorySettings: () => void;
   onCloseSettings: () => void;
 };
-const sidebarTypographyClass =
-  "[&_[data-slot=sidebar-group-label]]:text-sm [&_[data-sidebar=menu-button]]:h-8 [&_[data-sidebar=menu-button]]:font-normal! [&_[data-sidebar=menu-button]]:text-sm [&_[data-sidebar=menu-button]]:leading-5 [&_[data-sidebar=menu-sub-button]]:h-8 [&_[data-sidebar=menu-sub-button]]:font-normal! [&_[data-sidebar=menu-sub-button]]:text-sm [&_[data-sidebar=menu-sub-button]]:leading-5 [&_[data-sidebar=menu-button]_svg]:[stroke-width:1.5]";
 function AppsStatusIndicator({ status }: { status: AppsSidebarStatus }) {
   const { t } = useAppTranslation();
   if (!status) return null;
   const resultDots = {
     error: { className: "bg-destructive", label: t("common.appInstallFailed") },
-    success: { className: "bg-blue-500", label: t("common.appInstallSucceeded") },
+    success: {
+      className: "bg-blue-500",
+      label: t("common.appInstallSucceeded"),
+    },
   } as const;
   return (
     <SidebarMenuBadge className="px-0" aria-live="polite">
@@ -150,125 +140,124 @@ function AppsStatusIndicator({ status }: { status: AppsSidebarStatus }) {
     </SidebarMenuBadge>
   );
 }
-function ChatsSection({
+function useChatsSection({
   chats,
-  warning,
+  chatsLoading,
   storageFailures,
   open,
   onOpenChange,
 }: {
   chats: ChatSummary[];
-  warning: string;
+  chatsLoading: boolean;
   storageFailures: ChatStorageFailure[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useAppTranslation();
+  const { mirrors, facts, loading, error } = useCloudSidebar();
+  const [cloudLimit, setCloudLimit] = useState(50);
   const navigate = useNavigate();
-  /* 排序口径唯一归 ChatsProvider（createdAt 倒序）：这里只过滤不重排——
-     再排一遍只会与它悄悄漂移，Project 子列表已经吃过这个亏。 */
-  const rootChats = chats.filter(
-    (chat) => appearsInRootChats(chat)
+  const rows = mergeChatRows(
+    chats.filter(appearsInRootChats),
+    mirrors.filter(
+      (head) =>
+        head.chat.classification.projectId === null &&
+        head.chat.classification.conversationKind === "ordinary",
+    ),
+    facts,
   );
-  return (
-    <SidebarCollapsibleGroup
-      label={t("common.chats")}
-      groupName="chats-header"
-      open={open}
-      onOpenChange={onOpenChange}
-      actions={(actionClassName) => (
-        <SidebarGroupAction
-          className={actionClassName}
-          aria-label={t("common.createChat")}
-          onClick={() => navigate("/")}
-        >
-          <Plus />
-        </SidebarGroupAction>
-      )}
-    >
+  const pending = (chatsLoading || loading) && rows.length === 0 && !error;
+  return {
+    label: t("common.chats"),
+    open,
+    onOpenChange,
+    actions: (actionClassName) => (
+      <SidebarGroupAction
+        className={actionClassName}
+        aria-label={t("common.createChat")}
+        onClick={() => navigate("/")}
+      >
+        <Plus />
+      </SidebarGroupAction>
+    ),
+    pending,
+    loadingLabel: t("common.loadingView"),
+    empty:
+      rows.length === 0 && !loading && !error && storageFailures.length === 0,
+    emptyLabel: t("common.chatsEmpty"),
+    content: (
       <SidebarMenu>
-        {rootChats.map((chat) => (
-          <ChatThreadItem key={chat.id} chat={chat} />
-        ))}
+        <ChatReorderList rows={rows}>
+          <ChatNavigationRows rows={rows.slice(0, cloudLimit)} />
+        </ChatReorderList>
+        {rows.length > cloudLimit && (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={() => setCloudLimit((value) => value + 50)}
+            >
+              {t("projects.showMore")}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
       </SidebarMenu>
-      {/* 空态与 Projects 同构：一行灰字告诉人这里怎么起头，别让空分组像坏了。
-          + 建的是新 chat，故文案对齐「点击 + 开始聊天」。 */}
-      {rootChats.length === 0 && storageFailures.length === 0 && (
-        <p className="px-2 py-1.5 text-muted-foreground text-xs">
-          {t("common.chatsEmpty")}
-        </p>
-      )}
-      {storageFailures.map((failure, index) => (
-        <ChatStorageFailureNotice
-          key={`${failure.code}:${index}`}
-          failure={failure}
-        />
-      ))}
-      {/* 主进程的告警是一句事实，不是一句指令：这里补上「怎么办」，再给
-          一个去 GitHub 的兜底——灰字不能只是灰字。 */}
-      {warning && (
-        <div role="alert" className="space-y-1.5 px-2 py-1.5 text-muted-foreground text-xs">
-          <p>{warning}</p>
-          <p>{t("chatStorage.warningResolution")}</p>
-          <ReportIssueButton body={warning} title={warning.split("\n")[0] ?? warning} />
-        </div>
-      )}
-    </SidebarCollapsibleGroup>
-  );
+    ),
+  } satisfies NavigationSectionModel;
 }
-function BasesSection({
+function useBasesSection({
   bases,
   open,
   onOpenChange,
+  activePath,
 }: {
   bases: ReturnType<typeof useBasesNavigation>["rootBases"];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  activePath: string;
 }) {
   const { t } = useAppTranslation();
-  const activePath = useSidebarActivePath();
   const [saveOwnerKey, setSaveOwnerKey] = useState("");
   const selected = bases.find((base) => base.ownerKey === saveOwnerKey);
   const selectedOwner = selected ? ownerFromKey(selected.ownerKey) : null;
-  if (!bases.length) return null;
-  return (
-    <>
-    <SidebarCollapsibleGroup
-      label={t("common.bases")}
-      groupName="bases-header"
-      open={open}
-      onOpenChange={onOpenChange}
-    >
-      <SidebarMenu>
-        {bases.map((base) => {
-          const owner = ownerFromKey(base.ownerKey);
-          return (
-            <SidebarMenuItem key={`${base.ownerKey}:${base.ownerInstanceId}`}>
-              <SidebarMenuButton
-                asChild
-                isActive={activePath === ownerRoute(base.ownerKey)}
-              >
-                <Link to={ownerRoute(base.ownerKey)}>
-                  <Database />
-                  <span>{base.name}</span>
-                </Link>
-              </SidebarMenuButton>
-              {owner.kind === "chat" && (
-                <SidebarMenuAction
-                  aria-label={t("common.promoteBaseToApp", { name: base.name })}
-                  onClick={() => setSaveOwnerKey(base.ownerKey)}
-                  showOnHover
-                  title={t("common.promoteBaseToApp", { name: base.name })}
+  return {
+    section: {
+      label: t("common.bases"),
+      open,
+      onOpenChange,
+      empty: bases.length === 0,
+      content: (
+        <SidebarMenu>
+          {bases.map((base) => {
+            const owner = ownerFromKey(base.ownerKey);
+            return (
+              <SidebarMenuItem key={`${base.ownerKey}:${base.ownerInstanceId}`}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={activePath === ownerRoute(base.ownerKey)}
                 >
-                  <PackagePlus />
-                </SidebarMenuAction>
-              )}
-            </SidebarMenuItem>
-          );
-        })}
-      </SidebarMenu>
-    </SidebarCollapsibleGroup>
-    {selected && selectedOwner?.kind === "chat" && (
+                  <Link to={ownerRoute(base.ownerKey)}>
+                    <Database />
+                    <span>{base.name}</span>
+                  </Link>
+                </SidebarMenuButton>
+                {owner.kind === "chat" && (
+                  <SidebarMenuAction
+                    aria-label={t("common.promoteBaseToApp", {
+                      name: base.name,
+                    })}
+                    onClick={() => setSaveOwnerKey(base.ownerKey)}
+                    showOnHover
+                    title={t("common.promoteBaseToApp", { name: base.name })}
+                  >
+                    <PackagePlus />
+                  </SidebarMenuAction>
+                )}
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      ),
+    } satisfies NavigationSectionModel,
+    dialogs: selected && selectedOwner?.kind === "chat" && (
       <SaveAsAppDialog
         chatId={selectedOwner.chatId}
         defaultName={selected.name}
@@ -277,11 +266,17 @@ function BasesSection({
         }}
         open
       />
-    )}
-    </>
+    ),
+  };
+}
+export function AppSidebar(props: AppSidebarProps) {
+  return (
+    <CloudSidebarProvider>
+      <AppSidebarContent {...props} />
+    </CloudSidebarProvider>
   );
 }
-export function AppSidebar({
+function AppSidebarContent({
   activeSettings,
   sidebarWidth,
   onSidebarWidthChange,
@@ -311,14 +306,25 @@ export function AppSidebar({
   const resolvedTheme = useSyncExternalStore(
     resolvedThemeStore.subscribe,
     resolvedThemeStore.getSnapshot,
-    resolvedThemeStore.getSnapshot
+    resolvedThemeStore.getSnapshot,
   );
-  const { chats, warning, storageFailures } = useChats();
+  const { chats, loading: chatsLoading, storageFailures } = useChats();
   const { rootBases } = useBasesNavigation();
+  const projectSection = useProjectSection({
+    open: groups.projects,
+    onOpenChange: (open) => onGroupOpenChange("projects", open),
+  });
+  const chatsSection = useChatsSection({
+    chats,
+    chatsLoading,
+    storageFailures,
+    open: groups.chats,
+    onOpenChange: (open) => onGroupOpenChange("chats", open),
+  });
   /* 记忆告警常驻订阅：main 推送已按内容去重，静默时零重渲染。 */
   const memorySnapshot = useSyncExternalStore(
     memoryStore.subscribe,
-    memoryStore.getSnapshot
+    memoryStore.getSnapshot,
   );
   const memoryStatus = memorySnapshot.status;
   useEffect(() => {
@@ -326,7 +332,7 @@ export function AppSidebar({
   }, []);
   const memoryAttention = memoryNeedsAttention(memoryStatus);
   const memoryBusy = Object.values(memorySnapshot.runtimes).some(
-    (runtime) => runtime.phase === "running"
+    (runtime) => runtime.phase === "running",
   );
   const openNewChat = useCallback(() => {
     setSearchOpen(false);
@@ -355,7 +361,7 @@ export function AppSidebar({
   const origin = useSidebarAppOrigin();
   const routedAppId = activeAppId(activePath);
   const routedResidence = useSurfaceResidence(
-    routedAppId ? appStudioSurface(routedAppId) : null
+    routedAppId ? appStudioSurface(routedAppId) : null,
   );
   const appTarget = resolveSidebarAppTarget({
     activePath,
@@ -374,377 +380,192 @@ export function AppSidebar({
   });
   const draftProjectId =
     activePath === "/" ? searchParams.get("projectId") : null;
+  const basesSection = useBasesSection({
+    bases: rootBases,
+    open: groups.bases,
+    onOpenChange: (open) => onGroupOpenChange("bases", open),
+    activePath,
+  });
   /* 显隐与高亮读同一个值：有档位亮着就是在设置里。Settings 导航按需挂载，
      应用面板则始终保留，只在设置期间 hidden。ProjectItem 等局部交互态因此
      不需要一份按实体无限增长的持久化字典，也不会因一次导航被销毁。 */
+  const settingItem = (
+    id: SettingsOverlaySection,
+    label: string,
+    icon: ReactNode,
+  ) => ({
+    id,
+    label,
+    icon,
+    onSelect: () => onSelectSettings(id),
+  });
+  const settingsGroups: SettingsNavigationGroup[] = [
+    {
+      label: t("common.settings"),
+      items: [
+        settingItem("general", t("common.general"), <Settings />),
+        ...(window.cloud
+          ? [settingItem("account", t("cloud.syncSettings"), <RefreshCw />)]
+          : []),
+        settingItem("shortcuts", t("common.keyboardShortcuts"), <Keyboard />),
+        settingItem("lab", t("common.lab"), <FlaskConical />),
+        settingItem("about", t("settings.about.title"), <Info />),
+      ],
+    },
+    {
+      label: t("common.agents"),
+      items: [
+        settingItem("backends", t("common.backends"), <Server />),
+        settingItem(
+          "personalization",
+          t("common.personalization"),
+          <UserPen />,
+        ),
+        settingItem(
+          "usage",
+          t("common.usage"),
+          <ChartNoAxesColumnIncreasing />,
+        ),
+      ],
+    },
+    {
+      label: t("common.integrations"),
+      items: [
+        settingItem("tools", t("common.tools"), <Wrench />),
+        {
+          id: "skills",
+          label: t("common.skills"),
+          icon: <SlidersHorizontal />,
+          onSelect: onOpenSkillsSettings,
+        },
+        {
+          id: "memory",
+          label: t("common.memory"),
+          icon: <BrainCircuit />,
+          onSelect: onOpenMemorySettings,
+          badge: memoryAttention ? (
+            <TriangleAlert
+              aria-label={t("common.memoryAttention")}
+              className="ml-auto size-4 text-amber-600 dark:text-amber-400"
+            />
+          ) : memoryBusy ? (
+            <Loader2
+              aria-label={t("memory.runtime.running")}
+              className="ml-auto size-4 text-muted-foreground motion-safe:animate-spin"
+            />
+          ) : undefined,
+        },
+        settingItem("browser", t("common.browser"), <Globe />),
+      ],
+    },
+    {
+      label: t("common.archived"),
+      items: [settingItem("archive", t("common.archivedItems"), <Archive />)],
+    },
+  ];
   const settingsNavigation = activeSettings ? (
-    <>
-      {/* ====== 设置导航：返回 + General / Agents / Integrations / Archived ====== */}
-      <SidebarHeader className="p-0.5">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              autoFocus
-              className="cursor-pointer"
-              onClick={onCloseSettings}
-            >
-              <ArrowLeft />
-              <span>{t("common.backToApp")}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      {/* 分组间距归容器：`gap` 在 SidebarContent 上只写一次，三组自然等距。
-          若改由各组自己加 margin，等距就成了三处巧合——加第四组时必然破。 */}
-      <SidebarContent className="gap-4">
-        {/* General 收全局偏好（外观 / 存储位置 / Chat）：不属于某个 agent、也不是
-            接进来的外部东西，自成一节；节标题复用 common.settings，与其余三组同构。 */}
-        <SidebarGroup className="px-0.5 py-0.25">
-          <SidebarGroupLabel className="font-normal">
-            {t("common.settings")}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "general"}
-                  onClick={() => onSelectSettings("general")}
-                >
-                  <Settings />
-                  <span>{t("common.general")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "shortcuts"}
-                  onClick={() => onSelectSettings("shortcuts")}
-                >
-                  <Keyboard />
-                  <span>{t("common.keyboardShortcuts")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "about"}
-                  onClick={() => onSelectSettings("about")}
-                >
-                  <Info />
-                  <span>{t("settings.about.title")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        {/* Agents 收「关于 agent 的一切」：Backends 是引擎（装 / 登录 / 更新 /
-            版本漂移），Personalization 是每个 agent 各自的指令文件，Usage 是按
-            agent 分的用量——三者都是 agent 维度，聚成一组比散在 Personal 里更好找。
-            Backends 置顶：它是引擎，是「先有它才谈得上其余」的那一档。 */}
-        <SidebarGroup className="px-0.5 py-0.25">
-          <SidebarGroupLabel className="font-normal">
-            {t("common.agents")}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "backends"}
-                  onClick={() => onSelectSettings("backends")}
-                >
-                  <Server />
-                  <span>{t("common.backends")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "personalization"}
-                  onClick={() => onSelectSettings("personalization")}
-                >
-                  <UserPen />
-                  <span>{t("common.personalization")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "usage"}
-                  onClick={() => onSelectSettings("usage")}
-                >
-                  <ChartNoAxesColumnIncreasing />
-                  <span>{t("common.usage")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        {/* Personal 是「这台机器上的我」，Integrations 是「接进来的外部东西」。
-            Browser 接的是 Chrome 与外部站点的登录态，Memory 接的是一个
-            独立进程的本机记忆服务（自建或托管，都不是产品本身）——两者
-            都曾站在 Personal 里假装是「我的偏好」，而它们其实是外部依赖：
-            会连不上、会版本漂移、会需要重新检测，General 与 Usage 永远不会。
-            Memory 排在 Browser 之前：它是唯一带告警角标的一档，需要处置的
-            事实不该藏在第二行。 */}
-        <SidebarGroup className="px-0.5 py-0.25">
-          <SidebarGroupLabel className="font-normal">
-            {t("common.integrations")}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "tools"}
-                  onClick={() => onSelectSettings("tools")}
-                >
-                  <Wrench />
-                  <span>{t("common.tools")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "skills"}
-                  onClick={onOpenSkillsSettings}
-                >
-                  <SlidersHorizontal />
-                  <span>{t("common.skills")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "memory"}
-                  onClick={onOpenMemorySettings}
-                >
-                  <BrainCircuit />
-                  <span>{t("common.memory")}</span>
-                  {(memoryAttention || memoryBusy) && (
-                    memoryAttention ? <TriangleAlert
-                      aria-label={t("common.memoryAttention")}
-                      className="ml-auto size-4 text-amber-600 dark:text-amber-400"
-                    /> : <Loader2
-                      aria-label={t("memory.runtime.running")}
-                      className="ml-auto size-4 text-muted-foreground motion-safe:animate-spin"
-                    />
-                  )}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "browser"}
-                  onClick={() => onSelectSettings("browser")}
-                >
-                  <Globe />
-                  <span>{t("common.browser")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        {/* 归档自成一档：它不是「一项设置」，是一个存放处。
-            与其挤在 Personal 里假装同类，不如让它沉到最底下自己占一档。
-            叫 items 而不是 chats：这一页同时收 Chat 与 Project，
-            标签一旦说小，用户在列表里看到 Project 就会觉得它在骗人。 */}
-        <SidebarGroup className="px-0.5 py-0.25">
-          <SidebarGroupLabel className="font-normal">
-            {t("common.archived")}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="cursor-pointer"
-                  isActive={activeSettings === "archive"}
-                  onClick={() => onSelectSettings("archive")}
-                >
-                  <Archive />
-                  <span>{t("common.archivedItems")}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-    </>
+    <SettingsNavigation
+      backLabel={t("common.backToApp")}
+      onBack={onCloseSettings}
+      active={activeSettings}
+      groups={settingsGroups}
+    />
   ) : null;
   return (
     <SidebarActivePathContext value={activePath}>
       <SidebarAppTargetContext value={appTarget}>
-      <Sidebar variant="inset" className={sidebarTypographyClass}>
-        {/* macOS 顶部这 40px 拖拽区专为红绿灯预留；Windows 走系统原生标题栏，
-            没有红绿灯，这条留白就是凭空的空白，故按平台只在 mac 出现。 */}
-        {isApplePlatform() && (
-          <div className="h-10 shrink-0 [-webkit-app-region:drag]" />
-        )}
-        {settingsNavigation}
-        <div
-          data-sidebar-app-panel
-          aria-hidden={activeSettings ? true : undefined}
-          className={activeSettings ? "hidden" : "contents"}
-        >
-          {/* ====== 顶部：产品身份 + 视图切换 + New chat + Apps 入口 ====== */}
-          <SidebarHeader className="p-0.5">
-            <div className="flex h-12 items-center pr-2 pl-2">
-              <img
-                data-sidebar-brand-logo
-                alt={PRODUCT_NAME}
-                className="pointer-events-none h-8 w-auto shrink-0 select-none object-contain object-left"
-                decoding="sync"
-                draggable={false}
-                height={PRODUCT_LOGO_SIZE.height}
-                src={PRODUCT_LOGO_URLS[resolvedTheme]}
-                width={PRODUCT_LOGO_SIZE.width}
-              />
-              <button
-                type="button"
-                aria-label={t("history.search")}
-                className="ml-auto flex size-7 cursor-pointer items-center justify-center rounded-md text-sidebar-foreground/55 outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-                onClick={() => setSearchOpen(true)}
-              >
-                <Search aria-hidden className="size-4" />
-              </button>
-              <button
-                type="button"
-                aria-label={t("common.toggleActivity")}
-                aria-pressed={view === "activity"}
-                className={`ml-1 flex size-7 cursor-pointer items-center justify-center rounded-md outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring ${
-                  view === "activity"
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/55"
-                }`}
-                onClick={() =>
-                  onViewChange(view === "activity" ? "library" : "activity")
-                }
-              >
-                <Bell aria-hidden className="size-4" />
-              </button>
-              {/* Windows：折叠钮回到 logo 右侧，与 Search / Activity 并列成三连按钮。
-                  mac 的折叠钮浮在红绿灯旁（见 main.tsx），故这颗只在 Windows 出现。 */}
-              {!isApplePlatform() && (
-                <button
-                  type="button"
-                  aria-label={t("common.toggleSidebar")}
-                  className="ml-1 flex size-7 cursor-pointer items-center justify-center rounded-md text-sidebar-foreground/55 outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-                  onClick={toggleSidebar}
-                >
-                  <PanelLeft aria-hidden className="size-4" />
-                </button>
-              )}
-            </div>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={activePath === "/" && draftProjectId === null}
-                >
-                  <Link to="/">
-                    <SquarePen />
-                    <span>{t("common.newChat")}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={
-                    activePath === "/apps" || appTarget.kind === "apps"
-                  }
-                >
-                  <Link to="/apps">
-                    <LayoutGrid />
-                    <span>{t("common.apps")}</span>
-                  </Link>
-                </SidebarMenuButton>
-                <AppsStatusIndicator status={sidebarStatus} />
-                <PinnedApps />
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarHeader>
-          {/* ====== 聊天列表 ====== */}
-          <SidebarContent>
-            <div
-              data-sidebar-library-panel
-              aria-hidden={view === "activity" ? true : undefined}
-              className={view === "activity" ? "hidden" : "contents"}
-            >
-              <ProjectSection
-                open={groups.projects}
-                onOpenChange={(open) => onGroupOpenChange("projects", open)}
-              />
-              <BasesSection
-                bases={rootBases}
-                open={groups.bases}
-                onOpenChange={(open) => onGroupOpenChange("bases", open)}
-              />
-              <ChatsSection
-                chats={chats}
-                warning={warning}
-                storageFailures={storageFailures}
-                open={groups.chats}
-                onOpenChange={(open) => onGroupOpenChange("chats", open)}
-              />
-            </div>
-            {view === "activity" && <SidebarActivity />}
-          </SidebarContent>
-          {/* ====== 底部：Settings 入口（记忆异常时紧随文本挂告警，直达 Memory）。
-                  告警是独立兄弟按钮而非 SidebarMenuAction：后者绝对定位在行尾，
-                  且自带 hover:text-accent 会把 amber 压成前景黑。
-                  告警复用 Settings 的菜单按钮；颜色归图标，触控高度由伪元素补足。
-                  更新按钮同理是兄弟按钮，其相位判断整条住在
-                  lib/sidebar-update-view，这一层只留一个挂载点。 ====== */}
-          <SidebarFooter className="p-0.5">
-            <SidebarMenu>
-              <SidebarMenuItem className="flex items-center">
-                <SidebarMenuButton
-                  className="w-auto flex-none cursor-pointer"
-                  onClick={onOpenSettings}
-                >
-                  <Settings />
-                  <span>{t("common.settings")}</span>
-                </SidebarMenuButton>
-                {(memoryAttention || memoryBusy) && (
-                  <SidebarMenuButton
-                    type="button"
-                    aria-label={memoryAttention
-                      ? t("common.memoryAttentionOpen")
-                      : t("memory.runtime.openRunning")}
-                    title={memoryAttention
-                      ? t("common.memoryAttentionOpen")
-                      : t("memory.runtime.openRunning")}
-                    className="relative w-8 flex-none touch-manipulation touch-target-44 cursor-pointer justify-center overflow-visible"
-                    onClick={() => void navigate(MEMORY_SETTINGS_PATH)}
-                  >
-                    {memoryAttention
-                      ? <TriangleAlert className="size-4 text-amber-600 dark:text-amber-400" />
-                      : <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />}
-                  </SidebarMenuButton>
-                )}
-                <SidebarUpdateButton
-                  onOpenAbout={() => onSelectSettings("about")}
-                />
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
-        </div>
-        <SidebarRail
-          resizable
+        <WorkspaceNavigation
           width={sidebarWidth}
-          minWidth={SIDEBAR_MIN_WIDTH}
-          maxWidth={SIDEBAR_MAX_WIDTH}
           onWidthChange={onSidebarWidthChange}
-        />
-        <CommandPalette
-          open={searchOpen}
-          onOpenChange={setSearchOpen}
-          onNewChat={openNewChat}
-          onOpenSettings={openSettings}
-        />
-      </Sidebar>
+          theme={resolvedTheme}
+          chrome={
+            isApplePlatform() && (
+              <div className="h-10 shrink-0 [-webkit-app-region:drag]" />
+            )
+          }
+          replacement={settingsNavigation}
+          showToggle={!isApplePlatform()}
+          toggleLabel={t("common.toggleSidebar")}
+          search={{
+            label: t("history.search"),
+            onClick: () => setSearchOpen(true),
+          }}
+          activity={{
+            label: t("common.toggleActivity"),
+            active: view === "activity",
+            onClick: () =>
+              onViewChange(view === "activity" ? "library" : "activity"),
+            content: <SidebarActivity />,
+          }}
+          newChat={{
+            label: t("common.newChat"),
+            active: activePath === "/" && draftProjectId === null,
+            render: (children) => <Link to="/">{children}</Link>,
+          }}
+          apps={{
+            label: t("common.apps"),
+            active: activePath === "/apps" || appTarget.kind === "apps",
+            render: (children) => <Link to="/apps">{children}</Link>,
+          }}
+          appsExtras={
+            <>
+              <AppsStatusIndicator status={sidebarStatus} />
+              <PinnedApps />
+            </>
+          }
+          settings={{
+            label: t("common.settings"),
+            render: (children) => (
+              <button type="button" onClick={onOpenSettings}>
+                {children}
+              </button>
+            ),
+          }}
+          sections={{
+            projects: projectSection,
+            bases: basesSection.section,
+            chats: chatsSection,
+          }}
+          footerActions={
+            <>
+              {(memoryAttention || memoryBusy) && (
+                <SidebarMenuButton
+                  type="button"
+                  aria-label={
+                    memoryAttention
+                      ? t("common.memoryAttentionOpen")
+                      : t("memory.runtime.openRunning")
+                  }
+                  title={
+                    memoryAttention
+                      ? t("common.memoryAttentionOpen")
+                      : t("memory.runtime.openRunning")
+                  }
+                  className="relative w-8 flex-none touch-manipulation touch-target-44 cursor-pointer justify-center overflow-visible"
+                  onClick={() => void navigate(MEMORY_SETTINGS_PATH)}
+                >
+                  {memoryAttention ? (
+                    <TriangleAlert className="size-4 text-amber-600 dark:text-amber-400" />
+                  ) : (
+                    <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />
+                  )}
+                </SidebarMenuButton>
+              )}
+              <SidebarUpdateButton
+                onOpenAbout={() => onSelectSettings("about")}
+              />
+            </>
+          }
+        >
+          {basesSection.dialogs}
+          <CommandPalette
+            open={searchOpen}
+            onOpenChange={setSearchOpen}
+            onNewChat={openNewChat}
+            onOpenSettings={openSettings}
+          />
+        </WorkspaceNavigation>
+        <SidebarNotices />
       </SidebarAppTargetContext>
     </SidebarActivePathContext>
   );

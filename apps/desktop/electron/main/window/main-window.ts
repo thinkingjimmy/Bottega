@@ -1,24 +1,22 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, history/quota services, Apps, Update, MCP, and window security
- * [OUTPUT]: Provides createMainWindow, exact-Project Tools/MCP and Extension IPC, managed-worktree admission/seatbelt roots, canonical turn validation, and App-window creation
+ * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, history/quota services, Apps, Update, MCP, and window security, and the build-gated cloud account lifecycle.
+ * [OUTPUT]: Creates the main window, derives canonical turn authority, records actual session prompt hashes, admits saved-history fresh-session recovery before the original user boundary and registers Project/Extension/App IPC.
  * [POS]: Interactive main-window authority boundary; renderer identities are routing hints and main re-derives every Project lifecycle fact
  */
-
+import { prepareSessionRecovery } from "../library/sessions/runtime";
+import { libraryReadOnlyRoots } from "../library/sandbox";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, nativeTheme } from "electron";
-import {
-  INITIAL_DARK_ARGUMENT,
-  INITIAL_LANGUAGE_ARGUMENT,
-} from "../../../shared/settings-ipc";
-import { resolveAppLocale } from "../../../shared/i18n/locale";
+import { INITIAL_DARK_ARGUMENT, INITIAL_LANGUAGE_ARGUMENT } from "../../../shared/settings-ipc";
+import { resolveAppLocale } from "@ai-chat/ui/lib/locale";
+import { registerArtifactIpc } from "../artifacts/ipc";
+import { artifactRuntime } from "../artifacts/runtime";
+import { startupTrace } from "../startup/startup-trace";
 import { registerAgentBridge, resetThreadServiceTierEffective } from "../agent-bridge";
 import type { AgentContext, BuiltinTurnToolPolicy } from "../agent/bridge-types";
 import { projectTurnAllowedActions } from "../agent/turn-actions";
-import {
-  mergeMaterializedExtensionSkills,
-  resolveAgentInput,
-} from "../agent-input";
+import { mergeMaterializedExtensionSkills, resolveAgentInput } from "../agent-input";
 import type { AppsService } from "../apps/apps-service";
 import { registerUnifiedSkills } from "../skills-management/registrar";
 import type { UnifiedSkillsService } from "../skills-management/service";
@@ -54,6 +52,11 @@ import type { TurnEventsBroker } from "../gallery/turn-events-broker";
 import { resolveConversationContext } from "../workspace-resolver";
 import { lockNavigation } from "./security";
 import type { AgentTurnCustodyRuntime } from "../backends/agent-turn-custody-runtime";
+import type { AgentConnectionRuntime } from "../agent/connection-runtime";
+import { chatConnectionClaimPort } from "../agent/connection-wiring";
+import { agentConnectionWarmSink } from "../agent/connection-warm";
+import { registerAgentConnections } from "../agent-connections-registrar";
+import type { AgentBridgeOptions } from "../agent/bridge-types";
 import { bindWindowTheme, windowBackgroundColor } from "./native-theme";
 import type { BrowserRuntime } from "../browser/bootstrap";
 import type { ManualMcpServersStore } from "../tools/mcp/store";
@@ -79,10 +82,10 @@ import {
 } from "./project-tools-runtime";
 import { historyLookupAvailability } from "../agent/history/availability";
 import { buildHandoff } from "../agent/history/builder";
-import { isOriginalAdoptedBinding } from "../../../shared/chat-agent/contracts";
 import { createExtensionSessionHandoff } from "./extension-session-handoff";
 import {
   acquireTurnAppsForPolicy,
+  chatBuiltinMcpIssuer,
   freezeBuiltinPolicy,
   turnProjectionInput,
 } from "./turn-policy";
@@ -91,7 +94,6 @@ import {
   resolveManagedWorktreeAccess,
 } from "./managed-worktree-access";
 import { registerUsage } from "./usage-registration";
-
 type MainWindowDependencies = {
   mainDirectory: string;
   apps: AppsService;
@@ -114,6 +116,8 @@ type MainWindowDependencies = {
   resolveWorkspace: WorkspaceResolver;
   builtinLeases: BuiltinMcpLeaseStore;
   turnCustody: AgentTurnCustodyRuntime;
+  /** Lab 开关关闭时它恒返回 undefined，chat 走今天的冷路径。 */
+  connections: AgentConnectionRuntime;
   coordinator: ConversationCoordinator;
   usage: UsageService;
   usageLimits: AgentUsageLimitsService;
@@ -128,8 +132,10 @@ type MainWindowDependencies = {
   historyImport: HistoryImportService;
   globalSearch: GlobalSearchService;
   update: UpdateService;
+  cloud?: { register(window: BrowserWindow, rendererUrl: string): void };
+  /** Built by the composition root at creation time; empty when the payload does not fit. */
+  startupSnapshotArguments?: () => readonly string[];
 };
-
 export function createMainWindow({
   mainDirectory,
   apps,
@@ -152,6 +158,7 @@ export function createMainWindow({
   resolveWorkspace,
   builtinLeases,
   turnCustody,
+  connections,
   coordinator,
   usage,
   usageLimits,
@@ -166,6 +173,8 @@ export function createMainWindow({
   historyImport,
   globalSearch,
   update,
+  cloud,
+  startupSnapshotArguments,
 }: MainWindowDependencies) {
   const preload = join(mainDirectory, "../preload/index.js");
   const productionEntry = join(mainDirectory, "../renderer/index.html");
@@ -201,15 +210,16 @@ export function createMainWindow({
         )}`,
         `${WINDOW_ROLE_ARGUMENT}main`,
         `${WINDOW_ID_ARGUMENT}main`,
+        /* Same reason, second half: settings and the last launch's confirmed
+           Agents arrive synchronously, so the onboarding gate settles on the
+           first render instead of waiting for two IPC round trips. */
+        ...(startupSnapshotArguments?.() ?? []),
+        ...startupTrace.rendererArguments(),
       ],
     },
   });
-
-  // ---------------------------------------------------------------------------
-  // 主窗口领域清理器是固定装配，不是动态订阅；显式预算避免 Node 的 10 项启发式误报。
-  // ---------------------------------------------------------------------------
-  window.setMaxListeners(25);
-
+  // 主窗口领域清理器是固定装配，不是动态订阅；显式预算避免 Node 的 10 项启发式误报（当前 26 个 closed 监听器）。
+  window.setMaxListeners(32);
   configureWindowSurfaces({
     window,
     rendererUrl,
@@ -221,14 +231,14 @@ export function createMainWindow({
     files,
     resolveWorkspace,
   });
-
   bindWindowTheme(window);
-
   const currentLocale = () =>
     resolveAppLocale(
       settings.get().language,
       app.getPreferredSystemLanguages()
     );
+  const artifacts = artifactRuntime();
+  if (artifacts) { apps.configureArtifacts(artifacts.gateway); registerArtifactIpc(window, rendererUrl, artifacts, bases); }
   lockNavigation(window, rendererUrl, apps, currentLocale);
   browser.register(window, rendererUrl);
   registerAppBridge(
@@ -257,18 +267,10 @@ export function createMainWindow({
   historyImport.register(window, rendererUrl);
   globalSearch.register(rendererUrl);
   update.register(window, rendererUrl);
+  cloud?.register(window, rendererUrl);
   galleryMedia.register(window, rendererUrl);
-  registerSettings(
-    window,
-    rendererUrl,
-    settings,
-    resolveWorkspace,
-    memorySettingsOwner,
-    chatHomes,
-    platformSupport,
-    resetThreadServiceTierEffective,
-    chats
-  );
+  registerSettings(window, rendererUrl, settings, resolveWorkspace, memorySettingsOwner,
+    chatHomes, platformSupport, resetThreadServiceTierEffective, chats);
   registerPersonalization(rendererUrl);
   registerProjectPersonalization(rendererUrl, projects);
   const publishMcpServers = registerManualMcpServers(
@@ -321,8 +323,9 @@ export function createMainWindow({
   );
   registerCoordinatorIpc(window, rendererUrl, coordinator);
   const claudePluginProjection = new ClaudePluginProjection(app.getPath("userData"));
-
-  registerAgentBridge(window, rendererUrl, {
+  const incarnationOf = (id: string) => chats.store.getIncarnationId(id);
+  const agentBridgeOptions: AgentBridgeOptions = {
+    ...chatConnectionClaimPort({ connections, incarnationOf }),
     platformSupport,
     traceDirectory,
     freezeBackendSessionConfig: async (backend) => {
@@ -445,9 +448,10 @@ export function createMainWindow({
               workspace: context.workspace,
             })
           : null;
-      const chatReadOnlyRoots = settings.get().allowCrossChatRead
-        ? chatHomes.readOnlyRoots(context.workspace)
-        : [];
+      const chatReadOnlyRoots = [
+        ...libraryReadOnlyRoots(chatHomes.libraryRoot, context.workspace),
+        ...(settings.get().allowCrossChatRead ? chatHomes.readOnlyRoots(context.workspace) : []),
+      ];
       /* 没有 origin 的 turn 不是「manual 的默认值」，而是 headless：turnClass 只能
          按已知证据收窄，不能按方便放宽。 */
       const acquisition = projectionInput;
@@ -471,9 +475,7 @@ export function createMainWindow({
           };
       return {
         ...context,
-        ...(managedWorktree.active
-          ? { managedWorktree: true }
-          : {}),
+        ...(managedWorktree.active ? { managedWorktree: true } : {}),
         ...(preparedSkillSelection ? { preparedSkillSelection } : {}),
         ...(builtinToolPolicy ? { builtinToolPolicy } : {}),
         ...(preparedProjectTools ? { preparedProjectTools } : {}),
@@ -482,6 +484,13 @@ export function createMainWindow({
         packageMcpEntries: attached.mcpServers,
         extensionDiscoveryBindings: attached.extensionDiscoveryBindings,
         ...(memoryAdmission ? { memory: memoryAdmission } : {}),
+        onSessionPrompt: payload && canonicalChat && origin?.kind === "manual" ? (sessionId, texts) => chats.store.library.sessions.recordPrompt({
+          chatId: conversationId, incarnationId: canonicalChat.incarnationId, userMessageId: origin.userMessageId,
+          backend: payload.turnOptions.backend, sessionId, texts }) : undefined,
+        sessionRecovery: payload && canonicalChat && origin?.kind === "manual" ? await prepareSessionRecovery(chats, {
+          chatId: conversationId, incarnationId: canonicalChat.incarnationId, userMessageId: origin.userMessageId,
+          workspace: context.workspace, backend: payload.turnOptions.backend, coverage: payload.handoff?.coverage,
+        }) : undefined,
         baseReadOnlyRoots: chatReadOnlyRoots,
         ...(attached.referenceEntryIds.length
           ? {
@@ -594,24 +603,27 @@ export function createMainWindow({
     assertChatBackend: (conversationId, backend) =>
       chats.store.assertBackend(conversationId, backend),
     conversationIncarnation: (conversationId) => chats.store.getIncarnationId(conversationId),
-    assertTurnAdmission: (payload) => {
+    assertTurnAdmission: (payload, authority) => {
       const chat = chats.store.getMetadata(payload.scope.conversationId);
       assertManagedWorktreePermission(chat, payload.turnOptions.permissionMode);
       if (!chat || (payload.agentRevision !== undefined && chat.agentRevision !== payload.agentRevision) || chat.agent !== payload.turnOptions.backend) throw new Error("AGENT_REVISION_STALE");
       if (
         payload.turnOptions.permissionMode === "full-access" &&
-        settings.get().fullAccessAcknowledgedAt === null
+        (authority ? !authority.fullAccessFor?.(chat.id, chat.incarnationId) : settings.get().fullAccessAcknowledgedAt === null)
       ) {
         throw new Error("FULL_ACCESS_ACK_REQUIRED: 请先确认 Full Access 风险");
       }
     },
-    prepareFreshRetry: async (payload) => {
+    prepareFreshRetry: async (payload, userMessageId) => {
       const chat = chats.store.getMetadata(payload.scope.conversationId);
       if (!chat || (payload.agentRevision !== undefined && chat.agentRevision !== payload.agentRevision)) throw new Error("AGENT_REVISION_STALE");
       if (payload.handoff) return { ...payload.handoff, binding: { ...payload.handoff.binding,
         view: { ...payload.handoff.binding.view, nativeMessageRevision: chat.chatMessageRevision } } };
-      const history = await chats.store.prepareHistory(chat.id, chat.nextSeq);
-      return history ? buildHandoff(history, payload.input, historyLookupAvailability(payload.turnOptions.backend, settings.get().disabledBuiltinTools)) : undefined;
+      const user = userMessageId ? await chats.store.getNativeMessage(chat.id, { kind: "id", messageId: userMessageId }) : null;
+      if (userMessageId && user?.role !== "user") throw new Error("CHAT_HISTORY_UNAVAILABLE");
+      const history = await chats.store.prepareHistory(chat.id, user?.seq ?? chat.nextSeq);
+      if (!history) throw new Error("CHAT_HISTORY_UNAVAILABLE");
+      return buildHandoff(history, payload.input, historyLookupAvailability(payload.turnOptions.backend, settings.get().disabledBuiltinTools));
     },
     reserveAssistantSequence: async (conversationId) =>
       (await chats.store.reserveSequences(conversationId, 1))[0]!,
@@ -624,17 +636,7 @@ export function createMainWindow({
     conversationForOutboxRef: (outboxRef) =>
       coordinator.residenceIndex().steerOutbox(outboxRef),
     ...createExtensionSessionHandoff({ apps, extensions, chats }),
-    assertRetryWithoutSession: (conversationId) => {
-      const record = chats.store.getMetadata(conversationId);
-      if (record && isOriginalAdoptedBinding(record)) {
-        throw new Error("IMPORTED_RESUME_REQUIRED: 收养会话不能丢弃原生 Session 后重试；请修复来源 CLI 登录或恢复能力后再试");
-      }
-    },
-    projectTurnSnapshot: (conversationId, snapshot) =>
-      projectTurnAllowedActions(
-        chats.store.getMetadata(conversationId),
-        snapshot
-      ),
+    projectTurnSnapshot: (_conversationId, snapshot) => projectTurnAllowedActions(snapshot),
     resolveInput: (payload, workspace, capabilities, context) =>
       resolveAgentInput(
         payload.input,
@@ -672,29 +674,7 @@ export function createMainWindow({
       chats.appendTurnResult(conversationId, input),
     loadSubagents: async (conversationId) =>
       (await chats.store.getNativeSubagents(conversationId)) ?? {},
-    issueBuiltinMcp: (payload, generation, _origin, context) => {
-      const allowedTools = context.finalTurnProjection?.allowedTools ?? [];
-      if (!allowedTools.length) return undefined;
-      const incarnationId = chats.store.getIncarnationId(
-        payload.scope.conversationId
-      );
-      if (!incarnationId) {
-        throw new Error("聊天不存在，无法签发内置工具 lease");
-      }
-      return builtinLeases.issue({
-        chatId: payload.scope.conversationId,
-        incarnationId,
-        requestId: payload.requestId,
-        generation,
-        allowedTools: [...allowedTools],
-        initiatorBackend: payload.turnOptions.backend,
-        resultByteBudget: initiatorResultByteBudget(
-          payload.turnOptions.backend
-        ),
-        skillsCustodyId: context.skillsCustodyId,
-        historyBinding: payload.handoff?.binding,
-      });
-    },
+    issueBuiltinMcp: chatBuiltinMcpIssuer({ builtinLeases, incarnationOf }),
     resolveThirdPartyMcpPlan: ({
       backendId,
       backendRuntimeIdentity,
@@ -790,8 +770,13 @@ export function createMainWindow({
         itemOrdinal: event.itemOrdinal,
       });
     },
-  });
-
+  };
+  registerAgentBridge(window, rendererUrl, agentBridgeOptions);
+  registerAgentConnections(window, rendererUrl, agentConnectionWarmSink(agentBridgeOptions, {
+    connections, incarnationOf, disabledTools: () => settings.get().disabledBuiltinTools,
+    turnOptionsFor: (id, backend) => chats.store.getMetadata(id)?.options ?? settings.getBackendDefaults(backend),
+    artifactDirectoryFor: async (id) => artifactRuntime()?.directory(id),
+  }));
   if (process.env.ELECTRON_RENDERER_URL) {
     void window.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {

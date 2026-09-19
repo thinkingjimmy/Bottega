@@ -28,7 +28,7 @@ import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useApps } from "@/components/providers/apps-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import type {
   AppConfigValue,
   AppRecord,

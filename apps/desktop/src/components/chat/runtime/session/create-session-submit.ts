@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Chat/Project/Setup ports, Conversation Coordinator, session-submission-payload, renderer locale/catalog runtime, errors, attachment sequencing, and Abort tools
- * [OUTPUT]: Provides workspace-fenced manual submission/revision with canonical Agent revision checks, availability, and explicit authentication retry
+ * [INPUT]: Depends on Chat/Project/Setup ports, the native CommandSink, coordinator outcome clients, frozen submission payloads and view/abort fences.
+ * [OUTPUT]: Provides workspace-fenced manual submission and native-only tail revision with canonical Agent checks, availability and explicit authentication retry, keeping ambiguous switches in their original composer.
  * [POS]: The limit of the submission of chat/runtime/session transactions; The main custody is not cancelled due to view switching, and the delayed return can only be written back to the still matched renderer generation
  */
 import { submissionDecision } from "../../../../../shared/agent-availability/projection";
@@ -39,8 +39,6 @@ import type { useChats } from "@/components/providers/chats-provider";
 import type { useProjects } from "@/components/providers/projects-provider";
 import type { useSetup } from "@/components/providers/setup-provider";
 import {
-  respondAgentApproval,
-  respondAgentUserInput,
   ackAgentSteerIntents,
   type AgentRequest,
 } from "@/lib/agent-client";
@@ -55,17 +53,16 @@ import {
   adoptAmbiguousSubmission,
   queuedPrompt,
 } from "@/lib/message-queue-model";
-import { errorMessage, reportedFailure } from "@/lib/errors";
+import { errorMessage, reportedFailure } from "@ai-chat/ui/lib/errors";
 import { effectiveLocale } from "@/lib/i18n-locale";
 import { admissionReasonText } from "@/lib/skill-failure-text";
 import { translate } from "../../../../../shared/i18n/runtime";
 import {
   ackManualIntents,
   ackSubmissionOutcome,
-  cancelManualTurn,
   getSubmissionOutcome,
-  submitManualTurn,
 } from "@/lib/sections-client";
+import { nativeChatCommands } from "@/lib/cloud/chat/platform/commands";
 import { splitChatAttachments } from "../chat-attachments";
 import {
   messageId,
@@ -183,15 +180,15 @@ function manualTurnRequest(requestId: string): AgentRequest {
   return {
     requestId,
     cancel: () => {
-      if (active) void cancelManualTurn(requestId);
+      if (active) void nativeChatCommands.cancel("manual", requestId);
     },
     dispose: () => {
       active = false;
     },
     respondApproval: (approvalId, decision) =>
-      active ? respondAgentApproval(requestId, approvalId, decision) : ended(),
+      active ? nativeChatCommands.respond({ kind: "approval", requestId, interactionId: approvalId, decision }) : ended(),
     respondUserInput: (userInputId, answers) =>
-      active ? respondAgentUserInput(requestId, userInputId, answers) : ended(),
+      active ? nativeChatCommands.respond({ kind: "input", requestId, interactionId: userInputId, answers }) : ended(),
   };
 }
 
@@ -418,7 +415,7 @@ export function createSessionSubmissionPorts(
       }
       try {
         bindAgentSubmission(envelope);
-        const result = await submitManualTurn(envelope);
+        const result = await nativeChatCommands.start(envelope);
         if (result.kind === "rejectedBeforeAdmission") rejectAgentSubmission(chatId, envelope.intentId);
         // absent→create 被 main 录取即原子晋升 existing(P)：direct 与
         // queue drain 共用本 port，同一挂载内后续提交不再重复 create。
@@ -502,6 +499,7 @@ export function createSessionSubmissionPorts(
     const throughSeqEnd = messages.at(-1)?.seq;
     if (
       target?.role !== "user" ||
+      target.segment === "imported" ||
       lastUser?.id !== target.id ||
       throughSeqEnd === undefined
     ) {

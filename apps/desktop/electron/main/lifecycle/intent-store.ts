@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on persistence/durable-json durableReplaceFile for fsync-backed publication, node:fs/promises reads and the seed marker, node:crypto identity, persistence/serial-queue, and intent-types schemas, claims, and hashes
- * [OUTPUT]: Provides LifecycleIntentStore with CRUD/recovery/compaction operations and LifecycleJournalCorruptError
+ * [OUTPUT]: Provides LifecycleIntentStore with CRUD, identity-only recovery reads, compaction and LifecycleJournalCorruptError
  * [POS]: Owns userData/lifecycle/intents.json; any journal that is not schema v2, is damaged, or is missing after history existed stays fail-closed
  */
 
@@ -124,6 +124,17 @@ export class LifecycleIntentStore {
     return this.queue.enqueue(async () =>
       this.lookupLocked(kind, requestId, inputHash)
     );
+  }
+
+  // Recovery discovers the original immutable request, including its compacted receipt.
+  // Mutation admission still requires the caller's exact input hash.
+  async readByRequest(kind: LifecycleKind, requestId: string): Promise<{ inputHash: string; result: IntentLookup } | null> {
+    return this.queue.enqueue(async () => {
+      const state = this.require();
+      const entry = state.intents.find(item => item.kind === kind && item.requestId === requestId) ??
+        state.tombstones.find(item => item.kind === kind && item.requestId === requestId);
+      return entry ? structuredClone({ inputHash: entry.inputHash, result: this.lookupLocked(kind, requestId, entry.inputHash) }) : null;
+    });
   }
 
   /**

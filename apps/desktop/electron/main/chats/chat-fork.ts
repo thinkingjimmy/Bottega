@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat schemas, message normalization, cryptographic ids, main/errors, and transcript Gallery source references
- * [OUTPUT]: Provides native/imported fork eligibility, deterministic title allocation, operation identity, native-envelope prefix materialization, and independent child-record construction through an exact assistant anchor
+ * [OUTPUT]: Provides native/imported fork eligibility, title and operation identity, exact anchored forks and independent recovered Chat records
  * [POS]: Pure fork policy between the renderer/service admission boundary and ChatStore persistence
  */
 
@@ -16,6 +16,8 @@ import {
   CHAT_BYTE_LIMIT,
   CHAT_MESSAGE_LIMIT,
   chatRecordSchema,
+  chatExecutionWindow,
+  referencedSubagents,
   messageBytes,
 } from "./chat-schema";
 import { normalizeMessage } from "./chat-commit";
@@ -144,7 +146,7 @@ function cloneMessage(
       return rest;
     }),
   };
-  /* 可选 provenance 先于任何文本让位；剩下的 32 KiB 收敛由 normalizeMessage 自己完成。 */
+  // Optional provenance yields before text; normalizeMessage enforces the remaining native budget.
   return normalizeMessage(withoutProvenance);
 }
 
@@ -168,7 +170,7 @@ export function materializeForkPrefix(
   return { anchor, messages };
 }
 
-export function createForkedChatRecord(input: Readonly<{
+type ForkRecordInput = Readonly<{
   source: ChatRecord;
   childChatId: string;
   childIncarnationId?: string;
@@ -180,15 +182,34 @@ export function createForkedChatRecord(input: Readonly<{
   anchorSeq: number;
   now: number;
   generateId?: () => string;
-}>) {
+}>;
+export function createForkedChatRecord(input: ForkRecordInput) {
   const generateId = input.generateId ?? randomUUID;
   const { messages } = materializeForkPrefix(input.source, {
     sourceIncarnationId: input.source.incarnationId,
     anchorMessageId: input.anchorMessageId,
     anchorSeq: input.anchorSeq,
   }, generateId);
+  return chatRecordSchema.parse(buildForkRecord(input, messages));
+}
+export function createRecoveredChatRecord(input: Omit<ForkRecordInput, "mode" | "anchorMessageId" | "anchorSeq">): ChatRecord {
+  if (input.source.context.kind !== "ordinary" || !input.source.messages.some(message => message.role === "user")) throw conflict("CHAT_RECOVERY_SOURCE_INELIGIBLE");
+  const messages = input.source.messages.map((message, index) => {
+    const copy = cloneMessage(input.source, message, index + 1, input.generateId ?? randomUUID);
+    if (copy.role !== "assistant") return copy;
+    // A copied result is inherited content, not evidence for the source executor's turn.
+    const { turnId: _turnId, resultHash: _resultHash, ...inherited } = copy;
+    return inherited;
+  });
+  const anchor = input.source.messages.at(-1)!;
+  const subagents = referencedSubagents(messages.flatMap(message => message.role === "assistant" ? message.parts ?? [] : []), input.source.subagents);
+  const record = { ...buildForkRecord({ ...input, mode: "same-workspace", anchorMessageId: anchor.id, anchorSeq: anchor.seq }, messages),
+    subagents: structuredClone(subagents) } as ChatRecord;
+  return { ...chatExecutionWindow(record), messages, subagents: record.subagents };
+}
+function buildForkRecord(input: ForkRecordInput, messages: ChatMessage[]) {
   const firstUser = messages.find((message) => message.role === "user")!;
-  return chatRecordSchema.parse({
+  return {
     id: input.childChatId,
     incarnationId: input.childIncarnationId ?? randomUUID().replaceAll("-", ""),
     title: input.title,
@@ -225,5 +246,5 @@ export function createForkedChatRecord(input: Readonly<{
     nextSeq: messages.length + 1,
     supersededBranches: [],
     messages,
-  });
+  };
 }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: No runtime dependencies; only a type-only import of AppGrantRecord from apps-ipc
- * [OUTPUT]: Provides Project v8 lifecycle-fenced identity, workspace/App binding, positive-grant-gated App placements, hidden Base custody role, grants, archiving, sorting, appearance, native reveal, and Project/conversation-scoped Git contracts
+ * [OUTPUT]: Project IPC contracts, display-only cloud origin and local lifecycle/binding projections.
  * [POS]: Shared Project wire truth; projectLifecycleRevision fences incarnation/deletion, reveal carries only Project ID, and appPlacements express navigation without granting App capability
  */
 
@@ -8,8 +8,13 @@ import type { AppGrantRecord } from "./apps-ipc";
 
 export type ProjectsSortMode = "last-updated" | "manual";
 
+/* `none` and `unbound` both lack a workspace, and the difference is the whole point: `none` is a
+   Project that never wanted a folder (grouping, Base custody) and runs its turns in the Chat Home,
+   while `unbound` is a workspace Project whose folder this computer does not know yet — it must ask
+   for one instead of quietly running somewhere else. */
 export type ProjectWorkspaceBinding =
   | { kind: "none" }
+  | { kind: "unbound" }
   | { kind: "external"; capabilityId: string }
   | { kind: "app"; appId: string };
 
@@ -30,6 +35,7 @@ export type Project = {
   name: string;
   dir: string;
   appearance?: ProjectAppearance;
+  gitRemote?: string;
   workspaceBinding: ProjectWorkspaceBinding;
   /** Canonical v8 records materialize both fields; absence denotes a pre-v6 wire input. */
   role?: "workspace" | "base-custody";
@@ -44,6 +50,8 @@ export type Project = {
   createdAt: number;
   updatedAt: number;
   missing: boolean;
+  /** Display-only origin; never authorizes local execution or App activation. */
+  cloud?: { sourceDeviceId: string | null; remote: boolean };
 };
 
 export function appIdFromBinding(project: Pick<Project, "workspaceBinding">) {
@@ -124,6 +132,7 @@ export const PROJECTS_CHANNEL = {
   setAppearance: "projects:set-appearance",
   setAppPinned: "projects:app-placement:set-pinned",
   detachLocal: "projects:detach-local",
+  chooseFolder: "projects:choose-folder",
   releaseMissing: "projects:release-missing",
   setSortMode: "projects:set-sort-mode",
   listBranches: "projects:branches:list",
@@ -145,6 +154,8 @@ export type ProjectsBridgeApi = {
     input: SetProjectAppPinnedInput
   ) => Promise<SetProjectAppPinnedResult>;
   detachLocal: (projectId: string) => Promise<ProjectLocalDetachResult>;
+  /** Resolves to null when the user dismisses the native directory picker. */
+  chooseFolder: (projectId: string) => Promise<Project | null>;
   releaseMissing: (projectId: string) => Promise<number>;
   setSortMode: (sortMode: ProjectsSortMode) => Promise<ProjectsSortMode>;
   listBranches: (

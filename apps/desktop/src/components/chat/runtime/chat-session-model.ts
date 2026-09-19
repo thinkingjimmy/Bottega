@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared RichInput wire projection, shared Agent/Chat/Project/Submission contracts, and PromptInput
- * [OUTPUT]: Defines independent hydration/edit/send/steer/Stop access and shared Chat/App runtime contracts.
+ * [OUTPUT]: Defines hydration/edit/send/steer/Stop access, revision gates, Subagent-aware image intents and shared Chat/App contracts; transcript segments own immutable-prefix eligibility.
  * [POS]: The canonical type and pure-policy layer for chat/runtime
  */
 
@@ -118,6 +118,7 @@ export function panelEligibility(
 
 export type SidePanelState =
   | { kind: "none" }
+  | { kind: "artifact-preview"; fence: import("../../../../shared/artifact-ipc").ArtifactFence }
   | {
       kind: "tabs";
       context: PanelSessionContext;
@@ -155,6 +156,7 @@ export type ConversationImageSource =
       kind: "generated";
       sourceRef: GallerySourceRef;
       title: string;
+      subagentId?: string;
     }
   | {
       kind: "attachment";
@@ -360,20 +362,18 @@ export type SubmitGate = {
 
 export type RevisionUnavailableReason =
   | "busy"
-  | "queued"
-  | "adopted-history";
+  | "queued";
 
 export function revisionUnavailableReason(input: Readonly<{
   persisted: boolean;
   inputDisabled: boolean;
   status: string;
   queued: boolean;
-  adopted: boolean;
 }>): RevisionUnavailableReason | undefined {
   if (!input.persisted || input.inputDisabled) return undefined;
   if (input.status !== "ready") return "busy";
   if (input.queued) return "queued";
-  return input.adopted ? "adopted-history" : undefined;
+  return undefined;
 }
 
 /** 提交门禁：任一条件不满足即拒绝发送（对应"当前不能发送消息"） */

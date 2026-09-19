@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides ja settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut-only settings hints, and task failures, without transient settings loading copy.
+ * [OUTPUT]: Provides ja settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut conflict guidance, and task failures, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -47,6 +47,7 @@ export const presenceJa = {
   "more": "他 {{tasks}} 件",
   "unavailable": "利用不可",
   "recovered": "問題が発生したためウィンドウを復元しました。保存済みの会話は利用できますが、未保存の下書きは失われた可能性があります。",
+  "backgroundNotice": "Bottega はバックグラウンドで動作します。メニューバーから終了できます。",
   "closeFailed": "下書きを移行できませんでした。もう一度ウィンドウを閉じてください。",
   "retry": "再試行",
   "systemSettings": "システム設定を開く",

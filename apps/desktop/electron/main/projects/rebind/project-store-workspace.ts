@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Project/App capability contracts, project schemas/policy, main/errors, and injected ProjectStore queue/state/commit ports
- * [OUTPUT]: Provides ProjectStoreWorkspace for custody conversion, workspace rebinding, archival, and App grant mutations
+ * [OUTPUT]: Provides ProjectStoreWorkspace for custody conversion, workspace rebinding, discovered Git origin refresh, archival, and App grant mutations
  * [POS]: The ProjectStore workspace/capability subdomain; ProjectStore retains persistence authority and delegates serialized mutations here
  */
 
@@ -17,7 +17,7 @@ import {
   type ProjectFile,
   type StoredProject,
 } from "../store/project-store-schema";
-import { planWorkspaceRebind } from "./project-workspace-policy";
+import { planBaseCustody, planWorkspaceRebind } from "./project-workspace-policy";
 import { statusError } from "../../errors";
 
 type ProjectWorkspacePorts = {
@@ -35,19 +35,7 @@ export class ProjectStoreWorkspace {
     return this.ports.enqueue(async () => {
       const current = this.ports.require(projectId);
       if (current.role === "base-custody") return structuredClone(current);
-      const project = storedProjectSchema.parse({
-        ...current,
-        dir: "",
-        workspaceBinding: { kind: "none" },
-        role: "base-custody",
-        nameSource: "user",
-        appPlacements: [],
-        grants: [],
-        grantRevision: current.grantRevision + 1,
-        resourceAdmissions: [],
-        membershipRevision: current.membershipRevision + 1,
-        updatedAt: this.ports.now(),
-      });
+      const project = planBaseCustody(current, this.ports.now());
       await this.replace(project);
       return structuredClone(project);
     });
@@ -81,6 +69,19 @@ export class ProjectStoreWorkspace {
           item.id === projectId ? project : item
         ),
       });
+      return structuredClone(project);
+    });
+  }
+
+  /** Origin metadata follows the workspace, so a repository re-pointed on disk must not stay stale in
+      the portable record. It is discovered, not authored: it never advances `updatedAt`. */
+  setGitRemote(projectId: string, gitRemote: string | undefined) {
+    return this.ports.enqueue(async () => {
+      const current = this.ports.require(projectId);
+      if (current.gitRemote === gitRemote) return structuredClone(current);
+      const { gitRemote: _previous, ...rest } = current;
+      const project = storedProjectSchema.parse({ ...rest, ...(gitRemote ? { gitRemote } : {}) });
+      await this.replace(project);
       return structuredClone(project);
     });
   }

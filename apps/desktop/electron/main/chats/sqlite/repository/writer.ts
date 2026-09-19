@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on the canonical Chat schema, SQLite connection, and deterministic repository codecs
- * [OUTPUT]: Canonical SQL writer with atomic classification, first-user start state, complete options and revision/search convergence.
+ * [OUTPUT]: Writes canonical facts and device notices while preserving managed lifecycle and frozen original-source identity.
  * [POS]: Write projection layer beneath transactional ChatRepository mutation orchestration
  */
 
 import { assertClassification, writeClassification } from "../cloud/retention";
+import { retainLibrarySubagent } from "../../../library/mirrors/native-source";
 import type { ChatRecord } from "../../../../../shared/chats-ipc";
 import type { ChatFacts } from "../../chat-summary";
 import { normalizeSearchText } from "../../../../../shared/search-text";
@@ -46,7 +47,11 @@ export class ChatRecordWriter {
   ) {
     this.assertAppendContract(command, message.seq);
     this.advanceAppendState(command, message);
-    this.trimPrefix(command.chatId, command.retainedFromSeq);
+    if (command.executorCommit?.notice) {
+      const notice = messageSchema.parse(command.executorCommit.notice);
+      if (notice.role !== "notice" || notice.seq + 1 !== message.seq) throw new Error("CLOUD_EXECUTOR_NOTICE_CONFLICT");
+      this.insertMessage(command.chatId, notice);
+    }
     const rowId = this.insertMessage(command.chatId, message);
     if (message.role !== "notice") {
       this.writeSearchDocument(
@@ -64,7 +69,6 @@ export class ChatRecordWriter {
   ) {
     this.assertTurnContract(command, message?.seq);
     this.advanceAppendState(command, message);
-    this.trimPrefix(command.chatId, command.retainedFromSeq);
     if (message) {
       const rowId = this.insertMessage(command.chatId, message);
       if (message.role !== "notice") {
@@ -153,22 +157,6 @@ export class ChatRecordWriter {
     }
   }
 
-  private trimPrefix(chatId: string, retainedFromSeq: number) {
-    const rows = this.database.prepare(
-      "SELECT row_id FROM chat_messages WHERE chat_id = ? AND seq < ?"
-    ).all(chatId, retainedFromSeq) as Row[];
-    for (const row of rows) {
-      this.database.prepare(
-        "DELETE FROM chat_search_documents WHERE chat_id = ? AND document_kind = 'native' AND source_row_id = ?"
-      ).run(chatId, String(row.row_id));
-    }
-    if (rows.length) {
-      this.database.prepare(
-        "DELETE FROM chat_messages WHERE chat_id = ? AND seq < ?"
-      ).run(chatId, retainedFromSeq);
-    }
-  }
-
   private insertMessage(
     chatId: string,
     message: ReturnType<typeof messageSchema.parse>
@@ -207,14 +195,15 @@ export class ChatRecordWriter {
   }
 
   writeCore(record: ChatFacts, lifecycle: "native" | "external-managed", allowClassificationChange = false) {
+    if (this.database.prepare("SELECT 1 FROM chat_active_import_generations WHERE chat_id=?").get(record.id)) lifecycle = "external-managed";
     assertClassification(this.database, record, allowClassificationChange);
     this.database.prepare(
       `INSERT INTO chats(
          id, lifecycle_kind, agent, title, title_source, created_at, updated_at,
-         archived_at, incarnation_id, next_seq, trimmed_through_seq,
+         archived_at, sort_key, incarnation_id, next_seq, trimmed_through_seq,
          branches_trimmed_through_seq, core_revision, native_message_revision,
          parent_chat_id, parent_incarnation_id, parent_message_id, inherited_through_seq, agent_revision, options_json, fork_agent
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          lifecycle_kind = excluded.lifecycle_kind,
          agent = excluded.agent,
@@ -225,6 +214,7 @@ export class ChatRecordWriter {
          title_source = excluded.title_source,
          updated_at = excluded.updated_at,
          archived_at = excluded.archived_at,
+         sort_key = excluded.sort_key,
          incarnation_id = excluded.incarnation_id,
          next_seq = excluded.next_seq,
          trimmed_through_seq = excluded.trimmed_through_seq,
@@ -243,6 +233,7 @@ export class ChatRecordWriter {
       record.createdAt,
       record.updatedAt,
       record.archivedAt ?? null,
+      record.sortKey ?? null,
       record.incarnationId,
       record.nextSeq,
       record.trimmedThroughSeq ?? 0,
@@ -316,7 +307,7 @@ export class ChatRecordWriter {
         command.chatId,
         normalizeSearchText(command.presentation.title ?? "")
       );
-    } else {
+    } else if (command.presentation.kind === "archive") {
       const membership = this.database.prepare(
         `UPDATE chat_local_memberships
             SET visibility_state = ?, archived_at = ?,
@@ -330,6 +321,15 @@ export class ChatRecordWriter {
         command.deviceId
       );
       if (Number(membership.changes) !== 1) throw new Error("REVISION_STALE");
+    } else {
+      /* A manual position is not activity: updated_at stays put so "last updated"
+         Project sorting never moves for a drag. node:sqlite binds NaN as NULL, hence the explicit guard. */
+      const { sortKey } = command.presentation;
+      if (sortKey !== null && !Number.isFinite(sortKey)) throw new Error("sort key must be finite");
+      const core = this.database.prepare(
+        "UPDATE chats SET sort_key = ?, core_revision = core_revision + 1 WHERE id = ?"
+      ).run(sortKey, command.chatId);
+      if (Number(core.changes) !== 1) throw new Error("REVISION_STALE");
     }
     const core = this.database.prepare(
       "SELECT native_message_revision FROM chats WHERE id = ?"
@@ -429,16 +429,16 @@ export class ChatRecordWriter {
     ).run(record.id, deviceId, record.titleJob.state, json(record.titleJob), record.updatedAt);
   }
 
-  writeMessages(record: ChatRecord) {
+  writeMessages(record: ChatRecord, preservePrefix = true) {
     const retained = new Set(record.messages.map((message) => message.id));
     const existing = this.database.prepare(
-      "SELECT row_id, message_id, payload_json FROM chat_messages WHERE chat_id = ?"
+      "SELECT row_id, message_id, seq, payload_json FROM chat_messages WHERE chat_id = ?"
     ).all(record.id) as Row[];
     const existingByMessageId = new Map(
       existing.map((row) => [String(row.message_id), row])
     );
     for (const row of existing) {
-      if (!retained.has(String(row.message_id))) {
+      if (!retained.has(String(row.message_id)) && !(preservePrefix && Number(row.seq) <= (record.trimmedThroughSeq ?? 0))) {
         this.database.prepare("DELETE FROM chat_messages WHERE row_id = ?").run(row.row_id as SqliteValue);
       }
     }
@@ -480,6 +480,7 @@ export class ChatRecordWriter {
     const retained = new Set(Object.keys(subagents));
     for (const row of this.database.prepare("SELECT agent_thread_id FROM chat_subagents WHERE chat_id = ?").all(chatId) as Row[]) {
       if (!retained.has(String(row.agent_thread_id))) {
+        retainLibrarySubagent(this.database, chatId, String(row.agent_thread_id), this.now());
         this.database.prepare("DELETE FROM chat_subagents WHERE chat_id = ? AND agent_thread_id = ?").run(chatId, row.agent_thread_id as SqliteValue);
       }
     }
@@ -517,7 +518,7 @@ export class ChatRecordWriter {
 
   writeImportOrigin(record: ChatRecord) {
     if (!record.importOrigin) {
-      this.database.prepare("DELETE FROM chat_import_origins WHERE chat_id = ?").run(record.id);
+      this.database.prepare("DELETE FROM chat_import_origins WHERE chat_id = ? AND can_resume!=0").run(record.id);
       return;
     }
     const origin = record.importOrigin;
@@ -594,6 +595,9 @@ export class ChatRecordWriter {
     for (const key of stored.keys()) {
       if (retained.has(key)) continue;
       const separator = key.indexOf(":");
+      if (key.startsWith("native:") && this.database.prepare(
+        "SELECT 1 FROM chat_messages WHERE chat_id=? AND row_id=? AND seq<=?"
+      ).get(record.id, key.slice(separator + 1), record.trimmedThroughSeq ?? 0)) continue;
       this.database.prepare(
         "DELETE FROM chat_search_documents WHERE chat_id = ? AND document_kind = ? AND source_row_id = ?"
       ).run(record.id, key.slice(0, separator), key.slice(separator + 1));

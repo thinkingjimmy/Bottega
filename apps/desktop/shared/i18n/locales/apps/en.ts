@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends only on i18next interpolation syntax
- * [OUTPUT]: Provides the Apps English catalog, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level
+ * [OUTPUT]: Provides the Apps English catalog, first-party preset copy, contextual authorization copy, operation-specific progress copy, and the structural reference for translated Apps catalogs; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
  * [POS]: English copy for Apps discovery, install, lifecycle, authorization, Studio, sharing, and non-cancellable deletion surfaces; assembled by the matching top-level locale
  */
 
@@ -295,7 +295,7 @@ export const appsEn = {
     settings: "Base App settings",
     edit: "Edit App",
     more: "More actions",
-    skillFailed: "App skill generation failed, so the use chat has no stable record-entry protocol.",
+    skillFailed: "App chat setup failed",
     retrySkill: "Retry generation",
     workbench: "App Workbench",
     workbenchDescription: "Reproduce environment, failure, budget, and accessibility conditions without an App-owned dev server.",
@@ -369,6 +369,21 @@ export const appsEn = {
     start: "Start repair",
   },
   saveAs: {
+    cloud: {
+      "pending": "Waiting for confirmation. Your original Chat and Base are protected.",
+      "confirmed": "Confirmed. Finishing the local conversion.",
+      "conflict": "The Chat or Base changed before this conversion was confirmed. Keep the original data, then review it before trying again.",
+      "previous": "Reviewed Chat",
+      "current": "Current cloud Chat",
+      "proposed": "Requested Chat",
+      "ordinary": "Ordinary Chat",
+      "appEdit": "App Edit",
+      "appUse": "App Use",
+      "unavailable": "Unavailable",
+      "keepOriginal": "Keep original Chat and Base",
+      "reviewFailed": "Unable to check this conversion. Try again.",
+      "retry": "Check conversion"
+    },
     generatedDescription: "{{name}} shared Base App",
     uncertain: "The previous submission result is unknown. Retry with the exact original parameters to confirm it.",
     enterName: "Enter an App name",

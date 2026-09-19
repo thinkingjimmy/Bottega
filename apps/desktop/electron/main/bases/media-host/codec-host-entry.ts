@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node stdin/stdout, lock edition sharp and codec framing; Only the parent process receives binary flow
- * [OUTPUT]: Outputs a single decoded frame — JPEG (no alpha, ≤8 MiB) or PNG (with alpha), matching what Electron's nativeImage thumbnail decoder accepts — or exits with code 2 on rejection
+ * [OUTPUT]: Outputs bounded frames for an attachment or a PNG thumbnail, decoding four formats in the isolated Sharp process.
  * [POS]: Entry point of the isolated decode subprocess for bases/media-host; touches no filesystem paths or network, and runs under a seatbelt granting only the temp-directory read/write it needs
  */
 
@@ -30,7 +30,7 @@ async function readInput() {
   return Buffer.concat(decodeCodecFrames(Buffer.concat(chunks)));
 }
 
-async function normalize(input: Buffer) {
+async function normalize(input: Buffer, maxEdge?: number) {
   const metadata = await sharp(input, {
     animated: false,
     failOn: "warning",
@@ -45,6 +45,8 @@ async function normalize(input: Buffer) {
   if (!width || !height || width > Math.floor(PIXEL_LIMIT / height)) {
     throw new Error("pixel budget exceeded");
   }
+  if (maxEdge !== undefined) return sharp(input, { animated: false, failOn: "warning", limitInputPixels: PIXEL_LIMIT, sequentialRead: true })
+    .rotate().resize({ width: maxEdge, height: maxEdge, fit: "inside", withoutEnlargement: true }).png().toBuffer();
   return encodeWithinBudget(input, width, height, Boolean(metadata.hasAlpha));
 }
 
@@ -58,7 +60,7 @@ async function encodeWithinBudget(
   const original = await encode(input, width, height, 1, 82, alpha);
   if (original.length <= BASE_ATTACHMENT_BYTE_LIMIT) return original;
 
-  // 只有原尺寸产物确实超过 8MiB 才允许降采样。
+  // Downsample only when the full-resolution output exceeds the attachment budget.
   let scale = Math.min(
     0.9,
     Math.sqrt(FALLBACK_PIXELS / (width * height))
@@ -101,8 +103,11 @@ function encode(
 }
 
 async function main() {
-  const output = await normalize(await readInput());
-  process.stdout.write(encodeCodecFrames([output]));
+  const args = process.argv.slice(2), maxEdge = args.length ? Number(args[1]) : undefined;
+  if (args.length && (args.length !== 2 || args[0] !== "--thumbnail" || !Number.isSafeInteger(maxEdge) || maxEdge! < 1 || maxEdge! > 4096)) throw new Error("invalid codec mode");
+  const output = await normalize(await readInput(), maxEdge), parts: Buffer[] = [];
+  for (let offset = 0; offset < output.length; offset += 8 * 1024 * 1024) parts.push(output.subarray(offset, offset + 8 * 1024 * 1024));
+  process.stdout.write(encodeCodecFrames(parts));
 }
 
 main().catch((cause) => {

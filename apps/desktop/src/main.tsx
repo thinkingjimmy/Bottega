@@ -1,11 +1,13 @@
 /**
- * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, main/App window context, surface migration runtime, Sidebar, and default/archive notifications
- * [OUTPUT]: Composes persistent providers, task-panel access, App recovery, intent-aware settings navigation, and a route-independent ProductApp SketchHost.
+ * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, startup marks, and the build-gated cloud account lifecycle.
+ * [OUTPUT]: Composes persistent providers, window-level feedback hosts before route effects, task-panel access, App recovery, settings navigation, route-independent ProductApp sketch and archive celebration hosts, and the catalog-loaded/product-loading/gate-open startup milestones.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 import { SettingsNavigationContext } from "@/components/providers/navigation/context";
+import { ArchiveCelebrationHost } from "@/components/sidebar/archive/archive-celebration";
 import { CompatibilityUpdateDialog } from "@/components/apps/compatibility/update-dialog";
 import { onSetupEvent } from "./lib/setup-client";
+import type { AgentBackendId } from "../shared/agent-ipc";
 
 
 import {
@@ -29,7 +31,6 @@ import {
   useNavigate,
 } from "react-router";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import { ArchiveFeedbackToaster } from "@/components/sidebar/archive/archive-feedback";
 import { panelChromeClassName } from "@/components/page-shell";
 import { AppearanceProvider } from "@/components/providers/appearance-provider";
 import { AppI18nProvider, useAppTranslation } from "@/components/providers/i18n-provider";
@@ -44,11 +45,10 @@ import {
   useSetup,
 } from "@/components/providers/setup-provider";
 import {
-  SidebarInset,
-  SidebarProvider,
   SidebarTrigger,
 } from "@ai-chat/ui/components/ui/sidebar";
-import { Toaster, toast } from "@ai-chat/ui/components/ui/sonner";
+import { WorkspaceProvider as SidebarProvider, WorkspaceInset as SidebarInset } from "@ai-chat/ui/components/workspace/shell";
+import { FeedbackToaster, Toaster, toast } from "@ai-chat/ui/components/ui/sonner";
 import { TooltipProvider } from "@ai-chat/ui/components/ui/tooltip";
 import { SketchHost } from "./components/chat/sketch/host/host";
 import { ChatRoute } from "@/views/chat";
@@ -58,7 +58,7 @@ import {
   PRODUCT_MARK_SIZE,
   PRODUCT_MARK_URL,
   PRODUCT_NAME,
-} from "@/lib/brand";
+} from "@ai-chat/ui/components/workspace/brand";
 import { initialAppLanguage } from "@/lib/settings-client";
 import { setEffectiveLocale } from "@/lib/i18n-locale";
 import { loadCatalog } from "../shared/i18n/catalogs";
@@ -72,6 +72,7 @@ import {
   type SettingsOverlaySection,
 } from "@/lib/settings-navigation";
 import { settingsStore } from "@/lib/settings-store";
+import { markStartup } from "@/lib/startup-marks";
 import { presenceStore } from "@/lib/presence-client";
 import { useGlobalShortcuts } from "@/lib/shortcuts";
 import { resolvePanelBinding } from "../shared/shortcuts/bindings";
@@ -85,6 +86,7 @@ import { cn } from "@ai-chat/ui/lib/utils";
 import { MessageRendererProvider } from "@ai-chat/ui/components/ai-elements/message/renderer-context";
 import { CHAT_FENCE_RENDERERS } from "@/components/charts/chart-fence-renderers";
 import "@ai-chat/ui/globals.css";
+import "@ai-chat/chat-ui/model-styles.css";
 import "@/appearance.css";
 // 组件级 css 统一在入口引入：node --test 的 tsx loader 无 css 处理，组件内 import 会炸 DOM 测试
 import "@/components/sidebar/sidebar-row.css";
@@ -115,6 +117,8 @@ const BaseDetailView = lazy(() =>
     default: module.BaseDetailView,
   }))
 );
+declare const __BOTTEGA_CLOUD_CONFIG__: object | null;
+const AccountSettingsView = __BOTTEGA_CLOUD_CONFIG__ ? lazy(() => import("@/views/settings-account").then(module => ({ default: module.AccountSettingsView }))) : null;
 const GeneralSettingsView = lazy(() =>
   import("@/views/settings-general").then((module) => ({
     default: module.GeneralSettingsView,
@@ -165,6 +169,11 @@ const UsageSettingsView = lazy(() =>
     default: module.UsageSettingsView,
   }))
 );
+const LabSettingsView = lazy(() =>
+  import("@/views/settings-lab").then((module) => ({
+    default: module.LabSettingsView,
+  }))
+);
 const ArchiveSettingsView = lazy(() =>
   import("@/views/settings-archive").then((module) => ({
     default: module.ArchiveSettingsView,
@@ -192,6 +201,7 @@ function ViewLoading() {
 
 function ProductLoading() {
   const { t } = useAppTranslation();
+  useEffect(() => markStartup("product-loading"), []);
   return (
     <div
       aria-busy="true"
@@ -226,6 +236,8 @@ function ProductApp() {
   const [settingsSection, setSettingsSection] =
     useState<SettingsOverlaySection | null>(null);
   const settingsReturnFocus = useRef<HTMLElement | null>(null);
+  /* 从某个 Agent 的额度卡进 Usage，就该落在那个 Agent 的 tab 上；其它入口不带偏好。 */
+  const [usageAgent, setUsageAgent] = useState<AgentBackendId | null>(null);
   const settingsOrigin = useRef(location);
   const settingsOverlayReturn = useRef<{ pathname: string; key?: string } | null>(null);
   const [sidebarLayout, setSidebarLayout] = useState(readSidebarLayout);
@@ -257,6 +269,7 @@ function ProductApp() {
       : exit ? { pathname: exit } : null;
     leaveSettingsRoute();
     setSettingsSection(section);
+    setUsageAgent(null);
     settingsStore.ensureLoaded();
   };
 
@@ -343,6 +356,12 @@ function ProductApp() {
     });
   };
 
+  /* The milestone is the product shell itself, so only the "app" phase counts:
+     onboarding is another waiting room, not the thing startup is measured to. */
+  useEffect(() => {
+    if (setup.onboarding.phase === "app") markStartup("gate-open");
+  }, [setup.onboarding.phase]);
+
   /* Router 上移到 onboarding 之上：引导里的「去设置记忆」是一次
      真实导航，不该被一个早退分支挡在路由树之外。
      判据只有 onboarding-gate 一处：事实未齐先停在品牌 Loading，
@@ -358,7 +377,7 @@ function ProductApp() {
   }
 
   return (
-    <SettingsNavigationContext.Provider value={{ openUsage: (trigger) => { settingsReturnFocus.current = trigger; selectSettings("usage"); }, openAgents: () => selectSettings("backends") }}>
+    <SettingsNavigationContext.Provider value={{ openUsage: (trigger, agent) => { settingsReturnFocus.current = trigger; selectSettings("usage"); setUsageAgent(agent ?? null); }, openAgents: () => selectSettings("backends"), openAccount: () => selectSettings("account") }}>
     <AppsProvider>
       <HistoryProvider>
         <ProjectsProvider>
@@ -368,6 +387,7 @@ function ProductApp() {
                 <MessageRendererProvider value={CHAT_FENCE_RENDERERS}>
                   <TooltipProvider>
                     <SketchHost />
+                    <ArchiveCelebrationHost />
                     {/* 覆盖层开着就不挂：Settings 正是补齐缺口的地方，
                         General 那页本来就逐条列着它们并各带动作。站在配置页
                         上还飘一句「去配置」是噪音；更实际的是它 fixed 在右下
@@ -384,7 +404,7 @@ function ProductApp() {
                           "--sidebar-width": `${sidebarLayout.width}px`,
                         } as CSSProperties
                       }
-                      className="h-svh min-h-0 overflow-hidden bg-sidebar"
+
                     >
                       <AppSidebar
                         activeSettings={activeSettings}
@@ -413,7 +433,7 @@ function ProductApp() {
                           panelChromeClassName
                         )}
                       />
-                      <SidebarInset className="relative h-[calc(100svh-0.5rem)] min-h-0 overflow-hidden border border-border/80 shadow-sm md:peer-data-[variant=inset]:m-1 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-1">
+                      <SidebarInset>
                         <Suspense fallback={<ViewLoading />}>
                           <div
                             aria-hidden={settingsSection ? true : undefined}
@@ -459,6 +479,7 @@ function ProductApp() {
                             </Routes>
                           </div>
                           <CompatibilityUpdateDialog />
+                          {settingsSection === "account" && AccountSettingsView && <AccountSettingsView />}
                           {settingsSection === "general" && <GeneralSettingsView />}
                           {settingsSection === "about" && <AboutSettingsView />}
                           {settingsSection === "shortcuts" && <ShortcutsSettingsView />}
@@ -466,7 +487,8 @@ function ProductApp() {
                           {settingsSection === "personalization" && <PersonalizationSettingsView />}
                           {settingsSection === "browser" && <BrowserSettingsView />}
                           {settingsSection === "tools" && <ToolsSettingsView />}
-                          {settingsSection === "usage" && <UsageSettingsView />}
+                          {settingsSection === "usage" && <UsageSettingsView focusAgent={usageAgent} />}
+                          {settingsSection === "lab" && <LabSettingsView />}
                           {settingsSection === "archive" && <ArchiveSettingsView />}
                         </Suspense>
                       </SidebarInset>
@@ -483,8 +505,7 @@ function ProductApp() {
   );
 }
 
-/* 一次性操作失败走 toast，主进程推送的持久告警仍走侧栏横幅；
-   theme 跟随 main 广播的有效主题，不走 sonner 的 system 档。 */
+// Both window roles share feedback hosts and the effective theme supplied by main.
 function AppToaster() {
   const theme = useSyncExternalStore(
     resolvedThemeStore.subscribe,
@@ -493,7 +514,7 @@ function AppToaster() {
   return (
     <>
       <Toaster theme={theme} position="bottom-right" />
-      <ArchiveFeedbackToaster theme={theme} />
+      <FeedbackToaster theme={theme} />
     </>
   );
 }
@@ -545,11 +566,11 @@ function App() {
       syncSettings={context.role === "main"}
     >
       <AppearanceProvider initialAppearance={initialAppearance}>
+        <AppToaster />
         <HashRouter>
           <WindowProductRoot />
         </HashRouter>
         <SurfaceRuntimeEvents />
-        <AppToaster />
       </AppearanceProvider>
     </AppI18nProvider>
   );
@@ -574,6 +595,7 @@ installWindowSurfaceRuntime();
    的损失远大于删掉的字节。异步 IIFE 拿到同样的时序，却不动 chunk 形状。 */
 void (async () => {
   await loadCatalog(initialLanguage);
+  markStartup("catalog-loaded");
   createRoot(root).render(
     <StrictMode>
       <App />

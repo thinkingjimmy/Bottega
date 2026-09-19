@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on Node fs/path, snapshot tree test and journal/AppRecord type
- * [OUTPUT]: Provides the RepairSite interface, repairSiteFor selecting the staging or copy policy, and exists
+ * [INPUT]: Depends on Node filesystem paths, recoverable cross-volume publication, snapshot digests and journal/AppRecord contracts.
+ * [OUTPUT]: Provides RepairSite staging/copy policies, explicit swap recovery and directory presence checks.
  * [POS]: The whole staging-vs-copy difference of install/repair lives here, so the runner never branches on site kind
  */
 
-import { cp, mkdir, rename, rm, stat } from "node:fs/promises";
+import { publishDirectory, type DirectoryPublisher } from "../../store/folder/publication";
+import { cp, mkdir, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AppRecord } from "../../../../../shared/apps-ipc";
 import type { RepairJournal } from "./journal";
@@ -13,7 +14,7 @@ import { assertSameTree, snapshotTree } from "./snapshot";
 type SwapDisposition = "rollback" | "forward" | "locked";
 export type SwapPresence = { dir: boolean; workspace: boolean; trash: boolean };
 
-type SiteRoots = { userData: string; appsRoot: string };
+type SiteRoots = { userData: string; appsRoot: string; stagingRoot?: string };
 export type SiteHooks = {
   stopRuntime: () => Promise<void>;
   clone: () => Promise<void>;
@@ -31,8 +32,9 @@ export interface RepairSite {
   trashPath(roots: SiteRoots, appId: string, runId: string): string | undefined;
   /** 重建修复现场：staging=清空后 clone；copy=停运行时 + 复制后记录 S1 基线。 */
   prepare(hooks: SiteHooks, context: SiteContext): Promise<void>;
-  /** 原子交换：staging=单 rename；copy=S2 校验 + trash 两段 rename，内层失败自动复位。 */
+  /** Publish verified workspaces; the runner retains interrupted swaps for startup reconciliation. */
   swap(context: SiteContext): Promise<void>;
+  recoverSwap(context: SiteContext): Promise<void>;
   /** swapping 阶段崩溃现场完全矩阵；未知组合恒 locked，fail-closed。 */
   classifySwap(presence: SwapPresence): SwapDisposition;
   /** rollback 处置：copy=必要时 trash→dir 复位后清 workspace；staging=清 workspace。 */
@@ -47,10 +49,10 @@ export interface RepairSite {
 // staging：安装失败后的干净重装，正式目录本就无效，无需备份
 // ============================================================
 
-const stagingSite: RepairSite = {
+const stagingSite = (publication: DirectoryPublisher): RepairSite => ({
   kind: "staging",
   workingState: "installing",
-  workspacePath: (roots, appId) => join(roots.appsRoot, ".staging", appId),
+  workspacePath: (roots, appId) => join(roots.stagingRoot ?? join(roots.appsRoot, ".staging"), appId),
   trashPath: () => undefined,
   async prepare(hooks, { journal }) {
     await rm(journal.workspace, { recursive: true, force: true });
@@ -58,7 +60,10 @@ const stagingSite: RepairSite = {
     await hooks.clone();
   },
   async swap({ record, journal }) {
-    await rename(journal.workspace, record.dir);
+    await publication(journal.workspace, record.dir);
+  },
+  async recoverSwap({ record, journal }) {
+    await publication.recover(journal.workspace, record.dir);
   },
   classifySwap(presence) {
     if (!presence.dir && presence.workspace) return "rollback";
@@ -82,13 +87,13 @@ const stagingSite: RepairSite = {
       manifest: null,
     };
   },
-};
+});
 
 // ============================================================
 // copy：就绪 App 的原地更新，S1/S2 两次快照守护正式目录
 // ============================================================
 
-const copySite: RepairSite = {
+const copySite = (publication: DirectoryPublisher): RepairSite => ({
   kind: "copy",
   workingState: "updating",
   workspacePath: (roots, appId, runId) =>
@@ -113,13 +118,13 @@ const copySite: RepairSite = {
     assertSameTree(journal.s1TreeSha256!, s2, "提交前正式目录发生变化");
     await mkdir(dirname(journal.trash!), { recursive: true, mode: 0o700 });
     await rm(journal.trash!, { recursive: true, force: true });
-    await rename(record.dir, journal.trash!);
-    try {
-      await rename(journal.workspace, record.dir);
-    } catch (cause) {
-      await rename(journal.trash!, record.dir);
-      throw cause;
-    }
+    await publication(record.dir, journal.trash!);
+    await publication(journal.workspace, record.dir);
+  },
+  async recoverSwap({ record, journal }) {
+    await publication.recover(record.dir, journal.trash!);
+    await publication.recover(journal.workspace, record.dir);
+    await publication.recover(journal.trash!, record.dir);
   },
   classifySwap(presence) {
     if (presence.dir && presence.workspace && !presence.trash) return "rollback";
@@ -129,7 +134,7 @@ const copySite: RepairSite = {
   },
   async rollback({ record, journal }) {
     if (journal.trash && !(await exists(record.dir)) && (await exists(journal.trash))) {
-      await rename(journal.trash, record.dir);
+      await publication(journal.trash, record.dir);
     }
     await rm(journal.workspace, { recursive: true, force: true });
   },
@@ -146,7 +151,7 @@ const copySite: RepairSite = {
       },
     };
   },
-};
+});
 
-export const repairSiteFor = (kind: RepairJournal["site"]): RepairSite =>
-  kind === "staging" ? stagingSite : copySite;
+export const repairSiteFor = (kind: RepairJournal["site"], publication = publishDirectory): RepairSite =>
+  kind === "staging" ? stagingSite(publication) : copySite(publication);

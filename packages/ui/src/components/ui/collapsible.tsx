@@ -1,3 +1,8 @@
+/**
+ * [INPUT]: Depends on React and the radix-ui Collapsible primitive; it carries no classes of its own.
+ * [OUTPUT]: Provides Collapsible, CollapsibleTrigger and CollapsibleContent as data-slot tagged pass-throughs.
+ * [POS]: components/ui's single disclosure primitive; workspace groups and settings sections compose it rather than re-implementing open state.
+ */
 import * as React from "react"
 import { Collapsible as CollapsiblePrimitive } from "radix-ui"
 

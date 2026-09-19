@@ -5,6 +5,7 @@
  */
 import {
   Component,
+  Suspense,
   useEffect,
   useSyncExternalStore,
   type ReactNode,
@@ -22,7 +23,7 @@ import {
   readSketchSession,
   subscribeSketchSession,
 } from "./controller";
-import SketchDialog from "../dialog";
+import { SketchDialog } from "./dialog-loader";
 class EditorBoundary extends Component<
   { children: ReactNode; fallback: ReactNode },
   { failed: boolean }
@@ -79,7 +80,11 @@ export function SketchHost() {
   );
   return (
     <EditorBoundary key={session.id} fallback={fallback}>
-      <SketchDialog session={session} />
+      <Suspense fallback={<Dialog open onOpenChange={open => { if (!open) dismiss(); }}><AppDialogContent
+        style={{ width: "min(720px, calc(100vw - 48px), calc(100dvh - 48px))", height: "min(720px, calc(100vw - 48px), calc(100dvh - 48px))", maxWidth: "none" }}
+        onPointerDownOutside={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()}>
+        <DialogTitle className="sr-only">{t("sketch.title")}</DialogTitle><div role="status" className="grid place-items-center">{t("common.loading")}</div>
+      </AppDialogContent></Dialog>}><SketchDialog session={session} /></Suspense>
     </EditorBoundary>
   );
 }

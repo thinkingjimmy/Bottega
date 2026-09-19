@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, locale catalogs, chat/storage-failure contracts, clients, renderer stores, ordered activity hydration, and toast.
- * [OUTPUT]: Provides ChatsProvider/useChats with buffered chat events, structured storage failures, consumption-safe activity hydration, and mutation feedback.
+ * [INPUT]: Depends on React Context, locale catalogs, chat/storage-failure contracts, clients, renderer stores, ordered activity hydration, startup marks, and toast.
+ * [OUTPUT]: Provides ChatsProvider/useChats with buffered chat events, structured storage failures, consumption-safe activity hydration, the chats-loaded startup mark, optimistic sidebar reordering, and mutation feedback.
  * [POS]: Single source of truth for chat summaries in providers; owns one-time subscriptions and draft-resource cleanup at the provider level.
  */
 
+import { compareChats } from "@ai-chat/cloud-protocol/chats/order";
 import {
   createContext,
   useCallback,
@@ -19,6 +20,7 @@ import type {
   ChatSummary,
   ChatsEvent,
   RenameChatInput,
+  SetChatSortKeyInput,
 } from "../../../shared/chats-ipc";
 import type { ChatStorageFailure } from "../../../shared/product-failure";
 import { receiveChatMessagesEvent } from "@/lib/chat-messages-store";
@@ -34,9 +36,11 @@ import {
   listChats,
   onChatsEvent,
   renameChat as renameChatViaClient,
+  setChatSortKey as setChatSortKeyViaClient,
 } from "@/lib/chats-client";
 import { archiveTargets } from "@/lib/archive-client";
-import { errorMessage } from "@/lib/errors";
+import { markStartup } from "@/lib/startup-marks";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { toast } from "@ai-chat/ui/components/ui/sonner";
 import { useAppTranslation } from "./i18n-provider";
 
@@ -47,6 +51,8 @@ type ChatsContextValue = {
   loading: boolean;
   getChat: (chatId: string) => Promise<ChatRuntimeContext | null>;
   renameChat: (input: RenameChatInput) => Promise<ChatSummary>;
+  /** Sidebar drag: applies the new position locally first so the dropped row never snaps back for a frame. */
+  setChatSortKey: (input: SetChatSortKeyInput) => Promise<ChatSummary>;
   archiveChat: (chatId: string) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
 };
@@ -57,10 +63,7 @@ const ChatsContext = createContext<ChatsContextValue | null>(null);
  * 位置在 chat 诞生那一刻定死，跑一轮 turn 不会把它顶上来，肌肉记忆不失效。
  * 「最近聊过什么」是另一个问题，由 Activity 视图按活动时间独立回答。 */
 const sortChats = (chats: ChatSummary[]) =>
-  [...chats].sort(
-    (left, right) =>
-      right.createdAt - left.createdAt || left.id.localeCompare(right.id)
-  );
+  [...chats].sort(compareChats);
 
 function applyEvents(base: ChatSummary[], events: ChatsEvent[]) {
   const summaries = new Map(base.map((chat) => [chat.id, chat]));
@@ -152,7 +155,9 @@ export function ChatsProvider({
         live = true;
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (!active) return;
+        setLoading(false);
+        markStartup("chats-loaded");
       });
 
     return () => {
@@ -176,6 +181,27 @@ export function ChatsProvider({
       throw cause;
     }
   }, [t]);
+
+  /* Optimistic: the dropped row moves before the IPC answers, so it never snaps back for a frame. Updaters stay
+     pure (React may run them twice or late), so the value to restore is read from the rendered list, and only the
+     position is put back: a title or preview that arrived meanwhile is not undone with it. */
+  const setChatSortKey = useCallback(async (input: SetChatSortKeyInput) => {
+    const previous = chats.find((chat) => chat.id === input.chatId)?.sortKey;
+    const place = (sortKey: number | null | undefined) => setChats((current) => {
+      const chat = current.find((candidate) => candidate.id === input.chatId);
+      if (!chat) return current;
+      const { sortKey: _sortKey, ...rest } = chat;
+      return applyEvents(current, [{ type: "upserted", summary: sortKey == null ? rest : { ...rest, sortKey } }]);
+    });
+    place(input.sortKey);
+    try {
+      return await setChatSortKeyViaClient(input);
+    } catch (cause) {
+      place(previous);
+      toast.error(t("chat.provider.sortFailed", { message: errorMessage(cause) }));
+      throw cause;
+    }
+  }, [chats, t]);
 
   const archiveChat = useCallback(async (chatId: string) => {
     try {
@@ -203,10 +229,11 @@ export function ChatsProvider({
       loading,
       getChat: getChatViaClient,
       renameChat,
+      setChatSortKey,
       archiveChat,
       deleteChat,
     }),
-    [archiveChat, chats, deleteChat, loading, renameChat, storageFailures, warning]
+    [archiveChat, chats, deleteChat, loading, renameChat, setChatSortKey, storageFailures, warning]
   );
 
   return <ChatsContext.Provider value={value}>{children}</ChatsContext.Provider>;

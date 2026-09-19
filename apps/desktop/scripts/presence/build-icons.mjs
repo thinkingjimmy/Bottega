@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the canonical transparent Bottega product mark and sharp rasterization.
+ * [INPUT]: Depends on the canonical @ai-chat/ui product mark and sharp rasterization.
  * [OUTPUT]: Provides 18px and 36px monochrome macOS templates and full-color system tray icons.
  * [POS]: Deterministic brand asset build step; runtime consumes committed small-size resources.
  */
@@ -7,7 +7,7 @@
 import sharp from "sharp";
 import { Buffer } from "node:buffer";
 import { fileURLToPath, URL } from "node:url";
-const source = fileURLToPath(new URL("../../src/assets/bottega-mark.png", import.meta.url));
+const source = fileURLToPath(new URL("../../../../packages/ui/src/assets/brand/bottega-mark.png", import.meta.url));
 const { data, info } = await sharp(source).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 const template = Buffer.from(data);
 for (let offset = 0; offset < template.length; offset += 4) {

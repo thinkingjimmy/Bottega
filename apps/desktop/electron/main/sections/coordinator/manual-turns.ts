@@ -1,14 +1,15 @@
 /**
  * [INPUT]: Depends on hash-verified prepared Project/Tools/Skill receipts, durable ManualTurnIntent, ChatsService, SettingsStore, session-plan rebuild, and Agent start ports
- * [OUTPUT]: Provides atomic switch replay, durable append-before-cleanup receipts, workspace-fenced persistence, fresh handoff, active Skill custody projection, typed authentication retries, and exact frozen Tools/Skill dispatch
+ * [OUTPUT]: Pins queued preparation before sequence reservation, freezes current history and boundaries, then persists trusted users before exact dispatch and session recovery.
  * [POS]: The durable manual-intent executor of sections/coordinator
  */
 
 import { allocateTurnSequences, turnSequencesSchema } from "../../../../shared/chat-agent/sequences";
 import { canonicalHash } from "./coordinator-values";
+import { freezeManualContext } from "./agent-switch/context";
+import { freezeSwitch } from "./agent-switch/prepare";
 import { taskStartFence, StartDeferredError } from "../../presence/lifecycle/start-fence";
 import { buildHandoff, handoffInput } from "../../agent/history/builder";
-import { isOriginalAdoptedBinding } from "../../../../shared/chat-agent/contracts";
 import { switchEligibility, switchReservationInput } from "./agent-switch/eligibility";
 import {
   dataUrlByteSize,
@@ -88,6 +89,7 @@ export function bindAdoptedSessionPlan(
 ): ManualTurnSubmission {
   if (
     submission.persistence.kind !== "adopt" ||
+    !submission.persistence.input.session ||
     submission.persistence.input.session.toolPlan
   ) {
     return submission;
@@ -183,7 +185,7 @@ export async function allocateManualSequences(
     submission.persistence.kind === "adopt" &&
     record?.readOnlyReason === "external-readonly"
   ) {
-    return allocateTurnSequences(1);
+    return allocateTurnSequences(1, { agent: Boolean(submission.persistence.input.replay) });
   }
   if (!record) {
     if (submission.persistence.kind === "append") {
@@ -195,7 +197,8 @@ export async function allocateManualSequences(
     return chats.store.reserveAgentSwitchSequences(switchReservationInput(submission));
   }
   return chats.store.reserveTurnSequences({ chatId: conversationId, incarnationId: record.incarnationId,
-    intentId: submission.intentId, submissionHash: canonicalHash(submission.content) });
+    intentId: submission.intentId, submissionHash: canonicalHash(submission.content),
+    ...(!record.session && await chats.store.library.sessions.pending(conversationId, record.incarnationId) ? { contextNotice: true } : {}) });
 }
 
 export async function ensureManualSequences(
@@ -222,7 +225,9 @@ async function persistManual(
   userSeq: number,
   assistantSeq: number,
   projectLifecycleHeld: boolean,
-  turn: Omit<AgentSendPayload, "input">
+  turn: Omit<AgentSendPayload, "input">,
+  executorCommit?: import("../../chats/sqlite/cloud/execution/commit").ExecutorCommit,
+  remote?: import("./remote/model").RemoteContext
 ) {
   const chatId = manualConversationId(persistence);
   const expected = manualUserMessage(persistence);
@@ -265,9 +270,9 @@ async function persistManual(
       turn
     );
     await chats.commitCreationById(persistence.input.id);
-    return record.messages[0] as UserChatMessage;
+    return record.messages.find(message => message.id === persistence.input.firstMessage.id) as UserChatMessage;
   }
-  return chats.appendUserMessage(persistence.input, userSeq);
+  return chats.appendUserMessage(persistence.input, userSeq, executorCommit, remote?.origin);
 }
 
 function sameManualUser(
@@ -278,6 +283,7 @@ function sameManualUser(
   return (
     stored.content === expected.content &&
     stored.createdAt === expected.createdAt &&
+    stored.remoteCommandId === expected.remoteCommandId && JSON.stringify(stored.remoteSource) === JSON.stringify(expected.remoteSource) &&
     manualAttachmentsMatch(expected, stored, persistence)
   );
 }
@@ -403,13 +409,17 @@ export async function runManualTurn(
   dependencies: ManualTurnDependencies,
   projectLifecycleHeld = false
 ) {
+  const original = intent.payload as PreparedManualTurn;
+  const remoteContext = intent.remoteSubmission?.context ?? original.remoteContext;
+  const trustedAuthority = remoteContext ? dependencies.ledger.remote.authority(remoteContext) : undefined;
+  await trustedAuthority?.validate(); trustedAuthority?.current();
   const hydrated = await manualSubmission(intent, dependencies.resolveProjectToolsRuntimeIdentity);
-  const submission = bindAdoptedSessionPlan(hydrated.submission, {
+  let submission = bindAdoptedSessionPlan(hydrated.submission, {
     planDigest: hydrated.projectTools.sessionPlanDigest,
     projectId: hydrated.projectTools.receipt.projectContext.projectId,
   });
   const expected = manualUserMessage(submission.persistence);
-  const prepared = intent.payload as PreparedManualTurn;
+  let prepared = intent.payload as PreparedManualTurn;
   const currentProjectId = await manualLifecycleProjectId(
     submission,
     dependencies.chats
@@ -427,6 +437,17 @@ export async function runManualTurn(
   dependencies.assertProjectToolsContext?.(
     hydrated.projectTools.receipt.projectContext
   );
+  if (intent.userSeq === undefined && intent.phase === "queued") {
+    await assertManualPrecondition(submission, dependencies.ledger, dependencies.chats);
+    // Pin before SQLite reservation: a crash cannot make this partly committed row reorderable.
+    await dependencies.ledger.pinManualPreparation(intent.id);
+    const sequence = await allocateManualSequences(dependencies.chats, submission);
+    prepared = freezeSwitch(await freezeManualContext(original, dependencies, sequence), dependencies, intent.submissionHash!, sequence);
+    const bound = await dependencies.ledger.bindManualSequences(intent.id, sequence.userSeq, sequence.assistantSeq, sequence, prepared);
+    if (!bound) return;
+    intent = bound;
+    submission = { ...submission, turn: { ...submission.turn, handoff: prepared.turn.handoff } };
+  }
   if (intent.userSeq === undefined || intent.assistantSeq === undefined) {
     throw new Error("ManualTurnIntent 缺少持久消息序号");
   }
@@ -436,6 +457,7 @@ export async function runManualTurn(
       dependencies.ledger,
       dependencies.chats
     );
+    await trustedAuthority?.validate(); trustedAuthority?.current();
     if (prepared.switchCommand) {
       const own = switchEligibility(dependencies as CoordinatorDependencies, intent.conversationId, { ownIntentId: intent.id });
       // Receipt replay must precede current-state policy after a successful commit.
@@ -454,7 +476,8 @@ export async function runManualTurn(
       intent.userSeq,
       intent.assistantSeq,
       projectLifecycleHeld,
-      submission.turn
+      submission.turn,
+      prepared.executorCommit, intent.remoteSubmission?.context ?? prepared.remoteContext
     );
     }
     const appended = await dependencies.ledger.transitionManual(
@@ -496,6 +519,9 @@ export async function runManualTurn(
   notifyManualPersisted(dependencies, submission, record, stored);
   const turnOptions = submission.agentSwitch || submission.persistence.kind !== "append"
     ? submission.turn.turnOptions : record.options;
+  const history = submission.turn.handoff ? null : await dependencies.chats.store.prepareHistory(record.id, intent.userSeq);
+  const frozen = submission.turn.handoff ?? (history ? buildHandoff(history, submission.turn.input,
+    hydrated.projectTools.receipt.allowedTools.includes("read_chat_history") ? "available" : "unavailable") : undefined);
   let session = record.session;
   if (
     session &&
@@ -504,11 +530,7 @@ export async function runManualTurn(
       session.toolPlan.projectId !==
         hydrated.projectTools.receipt.projectContext.projectId)
   ) {
-    if (isOriginalAdoptedBinding(record)) {
-      throw new Error(
-        "SESSION_TOOL_PLAN_REBUILD_FAILED: adopted session cannot be replaced safely"
-      );
-    }
+    if (!frozen) throw new Error("CHAT_HISTORY_UNAVAILABLE");
     if (dependencies.rebuildSessionForTools) {
       await dependencies.rebuildSessionForTools(record.id, session);
     } else {
@@ -520,9 +542,6 @@ export async function runManualTurn(
     }
     session = null;
   }
-  const history = submission.turn.handoff ? null : await dependencies.chats.store.prepareHistory(record.id, intent.userSeq);
-  const frozen = submission.turn.handoff ?? (history ? buildHandoff(history, submission.turn.input,
-    hydrated.projectTools.receipt.allowedTools.includes("read_chat_history") ? "available" : "unavailable") : undefined);
   const handoff = frozen ? { ...frozen, binding: { ...frozen.binding, view: {
     ...frozen.binding.view, nativeMessageRevision: record.chatMessageRevision,
   } } } : undefined;
@@ -558,7 +577,8 @@ export async function runManualTurn(
       resolvedInput,
       intent.assistantSeq,
       projectLifecycleHeld,
-      hydrated.projectTools
+      hydrated.projectTools,
+      trustedAuthority
     );
     await dependencies.ledger.markManualDispatched(intent.id);
   } catch (cause) {

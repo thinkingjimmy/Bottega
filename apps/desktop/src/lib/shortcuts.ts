@@ -1,18 +1,33 @@
 /**
- * [INPUT]: Depends on shared shortcut defaults, settings, platform keys, React hooks, and the shared modal keyboard scope.
+ * [INPUT]: Depends on shared UI shortcut mechanics, native defaults, settings, platform keys, React hooks, and the shared modal keyboard scope.
  * [OUTPUT]: Provides ShortcutId/SHORTCUT_IDS/SHORTCUT_DEFAULTS, resolveShortcut/matchesBinding/matchShortcut, bindingGlyphs/shortcutKeys, useShortcutBindings/useShortcutKeys, conflictingShortcutIds, captureBinding and useGlobalShortcuts
  * [POS]: Renderer shortcut matching and controls: defaults live in shared/shortcuts/bindings, user overrides live in settings.json (absent=default, null=disabled), resolution happens at event/render time so there is no stale closure; matching is exact on shift because rebinding lets any combo gain a second owner
  */
 
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import {
+  captureShortcut,
+  createShortcutDispatcher,
+  matchesShortcut,
+  shortcutGlyphs,
+  shortcutConflicts,
+  type CaptureResult,
+} from "@ai-chat/ui/lib/shortcuts/model";
 import type { ShortcutBinding } from "../../shared/settings-ipc";
+export type { CaptureResult };
 import { isApplePlatform } from "./platform";
 import { settingsStore } from "./settings-store";
 import { hasModalKeyboardScope } from "./modal-keyboard/scope";
 
 export type { ShortcutBinding };
 
-import { SHORTCUT_DEFAULTS, SHORTCUT_IDS, resolveShortcut, type ShortcutId, type ShortcutOverrides } from "../../shared/shortcuts/bindings";
+import {
+  SHORTCUT_DEFAULTS,
+  SHORTCUT_IDS,
+  resolveShortcut,
+  type ShortcutId,
+  type ShortcutOverrides,
+} from "../../shared/shortcuts/bindings";
 export { SHORTCUT_DEFAULTS, SHORTCUT_IDS, resolveShortcut };
 export type { ShortcutId, ShortcutOverrides };
 
@@ -29,55 +44,39 @@ function liveOverrides(): ShortcutOverrides {
    shift 精确匹配:可改绑之后 ⌘⇧K 随时可能有第二个主人,宽容即歧义。 */
 export function matchesBinding(
   event: KeyboardEvent,
-  binding: ShortcutBinding | null
+  binding: ShortcutBinding | null,
 ): boolean {
-  if (!binding) return false;
-  if (!event.metaKey && !event.ctrlKey) return false;
-  if (event.altKey) return false;
-  if (event.shiftKey !== binding.shift) return false;
-  return event.key.toLowerCase() === binding.key;
+  return matchesShortcut(event, binding);
 }
 
 export function matchShortcut(
   event: KeyboardEvent,
   id: ShortcutId,
-  overrides: ShortcutOverrides = liveOverrides()
+  overrides: ShortcutOverrides = liveOverrides(),
 ): boolean {
   return matchesBinding(event, resolveShortcut(id, overrides));
 }
 
 /* ── 键帽渲染 ──────────────────────────────────────────────────── */
 
-function displayKey(key: string): string {
-  if (/^[a-z]$/.test(key)) return key.toUpperCase();
-  if (/^f([1-9]|1[0-2])$/.test(key)) return key.toUpperCase();
-  return key;
-}
-
-/** 拆成独立键帽,由调用方套 <Kbd>。mac 用 ⌘/⇧,其余用 Ctrl/Shift。 */
 export function bindingGlyphs(binding: ShortcutBinding): string[] {
-  const apple = isApplePlatform();
-  return [
-    apple ? "⌘" : "Ctrl",
-    ...(binding.shift ? [apple ? "⇧" : "Shift"] : []),
-    displayKey(binding.key),
-  ];
+  return shortcutGlyphs(binding, isApplePlatform());
 }
 
 /** null = 已停用,调用方据此隐藏键帽提示。 */
 export function shortcutKeys(
   id: ShortcutId,
-  overrides: ShortcutOverrides = liveOverrides()
+  overrides: ShortcutOverrides = liveOverrides(),
 ): string[] | null {
   const binding = resolveShortcut(id, overrides);
   return binding ? bindingGlyphs(binding) : null;
 }
 
 function resolveAll(
-  overrides: ShortcutOverrides
+  overrides: ShortcutOverrides,
 ): Readonly<Record<ShortcutId, ShortcutBinding | null>> {
   return Object.fromEntries(
-    SHORTCUT_IDS.map((id) => [id, resolveShortcut(id, overrides)])
+    SHORTCUT_IDS.map((id) => [id, resolveShortcut(id, overrides)]),
   ) as Record<ShortcutId, ShortcutBinding | null>;
 }
 
@@ -87,7 +86,7 @@ export function useShortcutBindings(): Readonly<
 > {
   const snapshot = useSyncExternalStore(
     settingsStore.subscribe,
-    settingsStore.getSnapshot
+    settingsStore.getSnapshot,
   );
   useEffect(() => settingsStore.ensureLoaded(), []);
   const overrides = snapshot.settings?.keyboardShortcuts;
@@ -103,23 +102,9 @@ export function useShortcutKeys(id: ShortcutId): string[] | null {
 
 /** 启用中的绑定按 key+shift 分组,≥2 者互列对方;停用行不参战。 */
 export function conflictingShortcutIds(
-  bindings: Readonly<Record<ShortcutId, ShortcutBinding | null>>
+  bindings: Readonly<Record<ShortcutId, ShortcutBinding | null>>,
 ): ReadonlyMap<ShortcutId, ShortcutId[]> {
-  const groups = new Map<string, ShortcutId[]>();
-  for (const id of SHORTCUT_IDS) {
-    const binding = bindings[id];
-    if (!binding) continue;
-    const combo = `${binding.key} ${binding.shift}`;
-    groups.set(combo, [...(groups.get(combo) ?? []), id]);
-  }
-  const conflicts = new Map<ShortcutId, ShortcutId[]>();
-  for (const members of groups.values()) {
-    if (members.length < 2) continue;
-    for (const id of members) {
-      conflicts.set(id, members.filter((other) => other !== id));
-    }
-  }
-  return conflicts;
+  return shortcutConflicts(SHORTCUT_IDS, bindings);
 }
 
 /* ── 录制校验 ──────────────────────────────────────────────────────
@@ -140,39 +125,10 @@ const RESERVED_SHORTCUT_KEYS: ReadonlySet<string> = new Set([
   "0",
 ]);
 
-export type CaptureResult =
-  | { kind: "capture"; binding: ShortcutBinding }
-  | { kind: "pending" }
-  | {
-      kind: "reject";
-      reason:
-        | "needsModifier"
-        | "altReserved"
-        | "reservedCombo"
-        | "unsupportedKey";
-    };
-
-/** 录制器逐 keydown 喂进来;Escape/Tab 的取消语义由录制器自己先行处理。 */
 export function captureBinding(event: KeyboardEvent): CaptureResult {
-  if (event.isComposing || event.keyCode === 229) return { kind: "pending" };
-  if (["Meta", "Control", "Shift", "Alt"].includes(event.key)) {
-    return { kind: "pending" };
-  }
-  if (!event.metaKey && !event.ctrlKey) {
-    return { kind: "reject", reason: "needsModifier" };
-  }
-  if (event.altKey) return { kind: "reject", reason: "altReserved" };
-  const raw = event.key;
-  const key = /^F([1-9]|1[0-2])$/.test(raw)
-    ? raw.toLowerCase()
-    : raw.length === 1 && raw !== " "
-      ? raw.toLowerCase()
-      : null;
-  if (!key) return { kind: "reject", reason: "unsupportedKey" };
-  if (RESERVED_SHORTCUT_KEYS.has(key)) {
-    return { kind: "reject", reason: "reservedCombo" };
-  }
-  return { kind: "capture", binding: { key, shift: event.shiftKey } };
+  return captureShortcut(event, {
+    reserved: (binding) => RESERVED_SHORTCUT_KEYS.has(binding.key),
+  });
 }
 
 /**
@@ -181,7 +137,7 @@ export function captureBinding(event: KeyboardEvent): CaptureResult {
  * 不许吞掉后到者;全都没人处理才落回系统,不 preventDefault。
  */
 export function useGlobalShortcuts(
-  handlers: Partial<Record<ShortcutId, () => void>>
+  handlers: Partial<Record<ShortcutId, () => void>>,
 ): void {
   const latest = useRef(handlers);
   useEffect(() => {
@@ -189,19 +145,8 @@ export function useGlobalShortcuts(
   });
   useEffect(() => {
     settingsStore.ensureLoaded();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (hasModalKeyboardScope()) return;
-      if (event.repeat) return;
-      const overrides = liveOverrides();
-      for (const id of SHORTCUT_IDS) {
-        if (!matchShortcut(event, id, overrides)) continue;
-        const run = latest.current[id];
-        if (!run) continue;
-        event.preventDefault();
-        run();
-        return;
-      }
-    };
+    const onKeyDown = createShortcutDispatcher({ ids: SHORTCUT_IDS,
+      binding: id => resolveShortcut(id, liveOverrides()), handler: id => latest.current[id], modalScope: hasModalKeyboardScope });
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);

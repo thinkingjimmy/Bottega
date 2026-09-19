@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends only on shared Agent, ProductFailure, project, and submission contracts
- * [OUTPUT]: Canonical Chat message/part/subagent completion fields, fork provenance, bounded runtime/timeline projections and desktop IPC.
+ * [INPUT]: Depends on public content budgets/terminal evidence/notices and desktop Agent, authority and submission contracts
+ * [OUTPUT]: Defines canonical Chat content, native-resume or saved-generation adoption, paired remote provenance, and bounded runtime/timeline/IPC projections.
  * [POS]: Backend-independent durable Chat wire authority shared by main, preload, and renderer
  */
 
@@ -24,13 +24,13 @@ import type {
 } from "./placement/facts";
 import type { TranscriptGallerySourceRef } from "./gallery-media-ipc";
 
-export const MESSAGE_BYTE_LIMIT = 32 * 1024;
+export { MESSAGE_BYTE_LIMIT } from "@ai-chat/cloud-protocol/chats/content/budgets";
 /** 单条消息过程条目上限：reducer 产出、IPC 校验与存储 schema 共用同一真相 */
-export const MESSAGE_PART_LIMIT = 200;
+export { MESSAGE_PART_LIMIT } from "@ai-chat/cloud-protocol/chats/content/budgets";
 /** 只限制运行期重型 draft；meta 与落盘记录不按数量裁剪。 */
-export const SUBAGENT_DRAFT_LIMIT = 128;
-export const SUBAGENT_BYTE_LIMIT = 2 * 1024 * 1024;
-export const SUPERSEDED_BRANCH_LIMIT = 8;
+export { SUBAGENT_DRAFT_LIMIT } from "@ai-chat/cloud-protocol/chats/content/budgets";
+export { SUBAGENT_BYTE_LIMIT } from "@ai-chat/cloud-protocol/chats/content/budgets";
+export { SUPERSEDED_BRANCH_LIMIT } from "@ai-chat/cloud-protocol/chats/content/budgets";
 export const REVISION_STALE = "REVISION_STALE";
 export const REVISION_NOT_IDLE = "REVISION_NOT_IDLE";
 export type AppChatRole = "edit" | "use";
@@ -133,34 +133,7 @@ type ChatRelayMeta = {
   chainId: string;
 };
 
-export type ChatNotice =
-  | import("./chat-agent/contracts").AgentSwitchedNotice
-  | {
-      kind: "app-chat-ready";
-      appId: string;
-      appRole: AppChatRole;
-    }
-  | {
-      kind: "chain-paused" | "startup-recovered";
-      rootChainId: string;
-      pauseEpoch: number;
-      actionId: string;
-      pendingCount: number;
-    }
-  | {
-      kind: "relay-failed";
-      rootChainId: string;
-      relayId: string;
-    }
-  | {
-      kind: "manual-recovered";
-      intentId: string;
-    }
-  | {
-      kind: "skill-descriptions-truncated";
-      turnId: string;
-    }
-  ;
+export type ChatNotice = import("@ai-chat/cloud-protocol/chats/content/notices").ChatNotice;
 
 /**
  * 「带 action 的暂停通知」的唯一判据。以前各调用点靠**排除**其它 kind 来收窄，
@@ -177,27 +150,12 @@ export const isActionableNotice = (
 ): notice is ActionableChatNotice =>
   notice?.kind === "chain-paused" || notice?.kind === "startup-recovered";
 
-export function noticeMessageContent(notice: ChatNotice) {
-  if (notice.kind === "agent-switched") return `Agent switched · Replies from here are by ${notice.to}`;
-  if (notice.kind === "app-chat-ready") return "App Studio session is ready.";
-  if (notice.kind === "manual-recovered") {
-    return "应用重启，这条消息的回复已中断，请重新发送。";
-  }
-  if (notice.kind === "skill-descriptions-truncated") {
-    return "Codex 提示：为适配上下文预算，本轮部分 Skill 描述被截短。Codex 仍可使用全部 Skill，本轮回复不受影响。这条提示来自 Codex 自身，不是 Bottega 的问题。";
-  }
-  if (notice.kind === "relay-failed") {
-    return `Section 接力失败（relay ${notice.relayId}）。`;
-  }
-  const label =
-    notice.kind === "chain-paused"
-      ? "自动接力已暂停"
-      : "重启后发现未完成的 Section 接力";
-  return `${label}，当前有 ${notice.pendingCount} 条待处理消息。`;
-}
+export { noticeMessageContent } from "@ai-chat/cloud-protocol/chats/content/notices";
 
 export type UserChatMessage = ChatMessageBase & {
   role: "user";
+  remoteCommandId?: string;
+  remoteSource?: { deviceId: string; name: string };
   attachments?: ChatAttachmentMeta[];
   relay?: ChatRelayMeta;
   kind?: never;
@@ -267,6 +225,8 @@ export type ChatSummary = {
   updatedAt: number;
   /** 诞生即定死、永不改写；侧栏 Project 子列表按它排，位置才稳定。 */
   createdAt: number;
+  /** 手动排序位 = 虚拟 createdAt（有效排序键 `sortKey ?? createdAt`，倒序）；拖动只改这一行，随事实同步到云端。 */
+  sortKey?: number;
   projectId: string | null;
   /** App Project 成员必须有角色，普通聊天恒为 null。 */
   appRole: AppChatRole | null;
@@ -585,9 +545,16 @@ export type AdoptChatInput = {
   firstMessage: UnsequencedUserMessage;
   projectId: string;
   incarnationId: string;
-  session: SessionRef;
+  /** Null continues the saved imported generation in a new target-Agent session. */
+  session: SessionRef | null;
   importOrigin: ChatImportOrigin;
-  snapshotDigest: string;
+  snapshotDigest: string | null;
+  replay?: {
+    generationId: string;
+    expectedChatRecordRevision: number;
+    noticeId: string;
+    notice?: NoticeChatMessage;
+  };
   attachmentPayloads?: ChatAttachmentPayload[];
 };
 
@@ -634,6 +601,12 @@ export type RenameChatInput = {
   title: string;
 };
 
+export type SetChatSortKeyInput = {
+  chatId: string;
+  /** null clears the manual position, restoring creation order for this row. */
+  sortKey: number | null;
+};
+
 export const CHATS_CHANNEL = {
   list: "chats:list",
   runtimeContext: "chats:runtime-context",
@@ -645,6 +618,7 @@ export const CHATS_CHANNEL = {
   fork: "chats:fork",
   commitManagedWorktree: "chats:commit-managed-worktree",
   rename: "chats:rename",
+  setSortKey: "chats:set-sort-key",
   remove: "chats:remove",
   readAttachment: "chats:read-attachment",
   event: "chats:event",
@@ -663,7 +637,8 @@ export type ChatsBridgeApi = {
     input: CommitManagedWorktreeInput
   ) => Promise<CommitManagedWorktreeResult>;
   rename: (input: RenameChatInput) => Promise<ChatSummary>;
+  setSortKey: (input: SetChatSortKeyInput) => Promise<ChatSummary>;
   remove: (chatId: string) => Promise<void>;
-  readAttachment: (attachmentId: string) => Promise<string>;
+  readAttachment: (chatId: string, attachmentId: string) => Promise<string>;
   onEvent: (callback: (event: ChatsEvent) => void) => () => void;
 };

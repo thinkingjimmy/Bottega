@@ -8,7 +8,7 @@ import type {
   DraftPart,
   TurnDraft,
 } from "../../../shared/chat-turn-reducer";
-import type { GalleryItem } from "./model";
+import type { GalleryItem } from "@ai-chat/base-ui/ui/media/model";
 
 export function projectRunningGalleryItems(input: {
   chatId: string;

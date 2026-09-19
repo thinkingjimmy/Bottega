@@ -1,12 +1,10 @@
 /**
- * [INPUT]: Depends on canonical ChatRecord ownership, TurnSnapshot phase/token, and TurnEntry lifecycle facts
- * [OUTPUT]: Provides resume recovery allowedActions and the blocking activity reason for Agent switching
+ * [INPUT]: Depends on TurnSnapshot phase/token, and TurnEntry lifecycle facts
+ * [OUTPUT]: Provides token-gated native or fresh-session recovery allowedActions and the blocking activity reason for Agent switching
  * [POS]: agent recovery policy boundary shared by live publication and renderer re-attach
  */
 
-import { isOriginalAdoptedBinding } from "../../../shared/chat-agent/contracts";
 import type { TurnSnapshot } from "../../../shared/agent-ipc";
-import type { ChatRecord } from "../../../shared/chats-ipc";
 import { blocksNewTurn, type TurnEntry } from "../turn-registry";
 
 export function switchActivityReason(entry: TurnEntry | undefined) {
@@ -18,7 +16,6 @@ export function switchActivityReason(entry: TurnEntry | undefined) {
 }
 
 export function projectTurnAllowedActions(
-  record: Pick<ChatRecord, "importOrigin" | "agentRevision" | "session"> | null,
   snapshot: Omit<TurnSnapshot, "allowedActions"> | TurnSnapshot
 ): TurnSnapshot {
   const recoverable =
@@ -27,7 +24,7 @@ export function projectTurnAllowedActions(
     ...snapshot,
     allowedActions: {
       sameSession: recoverable,
-      freshSession: recoverable && !(record && isOriginalAdoptedBinding(record)),
+      freshSession: recoverable,
       abandon: recoverable,
     },
   } as TurnSnapshot;

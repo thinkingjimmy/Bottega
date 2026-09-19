@@ -8,7 +8,7 @@
 
 import { AppWindowIcon } from "lucide-react";
 import { Button } from "@ai-chat/ui/components/ui/button";
-import { errorMessage, failureCode } from "@/lib/errors";
+import { errorMessage, failureCode } from "@ai-chat/ui/lib/errors";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 // A retained binding can accompany any refresh failure. Only the migration

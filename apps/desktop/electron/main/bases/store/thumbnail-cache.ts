@@ -1,10 +1,12 @@
 /**
- * [INPUT]: Depends on Electron nativeImage; Receive bytes of an image that is already owned, content address key and fixed bucket
- * [OUTPUT]: Provides AttachmentThumbnailCache: single-flight per-key decoding with 4-way concurrency, decoding via Electron nativeImage on the main thread, and a 64MiB/128-entry LRU of thumbnail data URLs
- * [POS]: bases/store's in-memory thumbnail cache; purely derived, so it is safely rebuilt on ownership change, deletion, or restart
+ * [INPUT]: Depends on the isolated Sharp codec host, verified image bytes and a bounded target size.
+ * [OUTPUT]: Provides cancellable four-format thumbnails, per-key singleflight and a 64 MiB/128-entry LRU.
+ * [POS]: Derived Base image cache; decoding stays outside main and source bytes are never rewritten.
  */
 
-import { nativeImage } from "electron";
+import { ImageCodecHost } from "../media-host/codec-host";
+import { parseAttachmentImageHeader } from "../../gallery/image-header";
+import { BASE_ATTACHMENT_JOB_LIMIT, BASE_ATTACHMENT_QUEUE_BYTES } from "../../../../shared/bases/gallery-attachments";
 
 const ENTRY_LIMIT = 128;
 const BYTE_LIMIT = 64 * 1024 * 1024;
@@ -24,8 +26,11 @@ export class AttachmentThumbnailCache {
   private readonly waiters: Array<() => void> = [];
   private active = 0;
   private bytes = 0;
+  private pendingBytes = 0;
+  constructor(private readonly codec = new ImageCodecHost()) {}
 
-  get(key: string, input: Buffer, bucket: number) {
+  get(key: string, input: Buffer, bucket: number, signal?: AbortSignal) {
+    signal?.throwIfAborted();
     const cached = this.entries.get(key);
     if (cached) {
       this.entries.delete(key);
@@ -34,9 +39,13 @@ export class AttachmentThumbnailCache {
     }
     const flight = this.flights.get(key);
     if (flight) return flight;
-    const created = this.create(key, input, bucket);
+    if (this.flights.size >= BASE_ATTACHMENT_JOB_LIMIT || this.pendingBytes + input.length > BASE_ATTACHMENT_QUEUE_BYTES) {
+      return Promise.reject(Object.assign(new Error("QUEUE_FULL"), { code: "QUEUE_FULL" }));
+    }
+    this.pendingBytes += input.length;
+    const created = this.create(key, input, bucket, signal);
     this.flights.set(key, created);
-    return created.finally(() => this.flights.delete(key));
+    return created.finally(() => { this.flights.delete(key); this.pendingBytes -= input.length; });
   }
 
   clearFamily(prefix: string) {
@@ -48,13 +57,13 @@ export class AttachmentThumbnailCache {
     }
   }
 
-  private async create(key: string, input: Buffer, bucket: number) {
+  private async create(key: string, input: Buffer, bucket: number, signal?: AbortSignal) {
     await this.acquire();
     try {
-      // nativeImage 解码是 main 线程同步操作；每张缩略图前让渡一次
-      // 事件循环，避免批量请求把 IPC/渲染事件饿死。
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      const value = makeThumbnail(input, bucket);
+      const output = await this.codec.thumbnail(input, bucket, signal);
+      signal?.throwIfAborted();
+      const { width, height } = parseAttachmentImageHeader(output);
+      const value = { dataUrl: `data:image/png;base64,${output.toString("base64")}`, width, height };
       this.insert(key, value);
       return value;
     } finally {
@@ -93,26 +102,10 @@ export class AttachmentThumbnailCache {
   }
 }
 
-function makeThumbnail(input: Buffer, bucket: number): CachedThumbnail {
-  const image = nativeImage.createFromBuffer(input);
-  if (image.isEmpty()) throw codedError("DECODE_FAILED", "图片解码失败");
-  const size = image.getSize();
-  const scale = Math.min(1, bucket / Math.max(size.width, size.height));
-  const width = Math.max(1, Math.round(size.width * scale));
-  const height = Math.max(1, Math.round(size.height * scale));
-  const thumbnail =
-    scale < 1 ? image.resize({ width, height, quality: "good" }) : image;
-  return { dataUrl: thumbnail.toDataURL(), width, height };
-}
-
 function stripSize(entry: Entry): CachedThumbnail {
   return {
     dataUrl: entry.dataUrl,
     width: entry.width,
     height: entry.height,
   };
-}
-
-function codedError(code: string, message: string) {
-  return Object.assign(new Error(message), { code });
 }

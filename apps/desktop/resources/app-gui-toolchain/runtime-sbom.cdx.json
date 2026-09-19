@@ -11,7 +11,7 @@
     "properties": [
       {
         "name": "bottega:pnpm-lockfile-sha256",
-        "value": "sha256:f94d14fa9b5cb686ed8f4da3abaff23dc140672f3f6b16045fe62b0d24e13317"
+        "value": "sha256:185ee3493b253f202cf9e264e4143582da97fc33c64f9c51fb6a4f95d3f5078e"
       }
     ]
   },
@@ -1457,13 +1457,13 @@
     {
       "type": "library",
       "name": "zod",
-      "version": "4.4.3",
-      "bom-ref": "pkg:npm/zod@4.4.3",
-      "purl": "pkg:npm/zod@4.4.3",
+      "version": "4.6.4",
+      "bom-ref": "pkg:npm/zod@4.6.4",
+      "purl": "pkg:npm/zod@4.6.4",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "aaa6b4591098284c78903214c7bd9127b1b1187712371dd9f2d7021a212284bc"
+          "content": "097b0c8301374a90f0f483027acc210d85f3ad3e337dc778875ed6eab9505f8f"
         }
       ],
       "licenses": [
@@ -1534,7 +1534,7 @@
         "pkg:npm/tailwind-merge@3.6.0",
         "pkg:npm/tailwindcss@4.3.2",
         "pkg:npm/typescript@5.9.3",
-        "pkg:npm/zod@4.4.3"
+        "pkg:npm/zod@4.6.4"
       ]
     },
     {
@@ -1859,7 +1859,7 @@
       ]
     },
     {
-      "ref": "pkg:npm/zod@4.4.3",
+      "ref": "pkg:npm/zod@4.6.4",
       "dependsOn": []
     },
     {

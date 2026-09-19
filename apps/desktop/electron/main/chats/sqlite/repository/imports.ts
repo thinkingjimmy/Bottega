@@ -1,10 +1,11 @@
 /**
- * [INPUT]: Depends on crypto, closed history-import commands, SQLite rows, deterministic codecs, the content-addressed ImportBlobStore, the retired-generation reclamation sweep, and ChatRecordWriter search projection
- * [OUTPUT]: Resumable immutable import generations, complete options at readonly creation, structured completion, active-run fencing and refusal to rescan a source frozen for synchronization.
+ * [INPUT]: Depends on crypto, closed history-import commands, SQLite rows, deterministic codecs, path-free artifact previews, the content-addressed ImportBlobStore, the retired-generation reclamation sweep, and ChatRecordWriter search projection
+ * [OUTPUT]: Resumes immutable imports, fences active runs and rejects rescans after local or confirmed cloud managed takeover.
  * [POS]: External-history write model beneath ChatRepository; it never reads source files, stores nothing but whole source messages, and commits exactly one bounded batch at a time
  */
 
 import { writeHistoryParts } from "../history/parts";
+import { projectUnavailableArtifacts } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { backendDefaults } from "../../../../../shared/chat-agent/options";
 import type { DefaultChatOptionsByBackend } from "../../../../../shared/settings-ipc";
 import { randomUUID } from "node:crypto";
@@ -129,7 +130,8 @@ export class HistoryImportRepository {
         WHERE state = 'running'`
     ).run(this.now());
     const generations = this.database.prepare(
-      "UPDATE chat_import_generations SET state = 'abandoned' WHERE state = 'building'"
+      `UPDATE chat_import_generations SET state = 'abandoned' WHERE state = 'building'
+        AND generation_id NOT IN (SELECT json_extract(payload_json,'$.localGenerationId') FROM chat_retained_sources WHERE kind='import-download')`
     ).run();
     const chats = this.database.prepare(
       `DELETE FROM chats
@@ -235,7 +237,7 @@ export class HistoryImportRepository {
       chatId,
       generationId,
       command.source.sourceKind,
-      command.source.projectId,
+      command.source.projectId ?? "",
       command.source.historyRevision,
       command.source.sourceIncarnation,
       command.source.sourceSize,
@@ -507,7 +509,7 @@ export class HistoryImportRepository {
      append 的 CAS 都失败。这里直接拒绝，不建代、不改任何一行。 */
   private assertReadonlySource(source: HistoryImportSource) {
     const row = prepared(this.database,
-      `SELECT c.lifecycle_kind,c.cloud_state FROM chat_import_origins o
+      `SELECT c.lifecycle_kind,o.managed_at FROM chat_import_origins o
          JOIN chats c ON c.id = o.chat_id
         WHERE o.source_kind = ? AND o.storage_fingerprint = ? AND o.canonical_native_id = ?`
     ).get(
@@ -515,7 +517,7 @@ export class HistoryImportRepository {
       source.storageFingerprint,
       source.canonicalNativeId
     ) as Row | undefined;
-    if (row && row.cloud_state !== "local-only") throw new Error("HISTORY_SOURCE_FROZEN_FOR_SYNC");
+    if (row && row.managed_at !== null) throw new Error("HISTORY_SOURCE_MANAGED");
     if (row && row.lifecycle_kind !== "external-readonly") {
       throw new Error("HISTORY_SOURCE_MANAGED");
     }
@@ -538,6 +540,7 @@ export class HistoryImportRepository {
     ).get(source.sourceKind, source.storageFingerprint, source.canonicalNativeId) as Row | undefined;
     if (existing) {
       const chatId = String(existing.chat_id);
+      if (source.restoredIdentity && source.restoredIdentity.chatId !== chatId) throw new Error("LIBRARY_IMPORT_IDENTITY_CHANGED");
       this.database.prepare("UPDATE chats SET portable_project_id=? WHERE id=?").run(source.projectId, chatId);
       this.database.prepare(
         `UPDATE chats
@@ -586,8 +589,9 @@ export class HistoryImportRepository {
     /* 只读 Chat 一诞生就拿到真身份：续聊沿用它，不换代——读侧因此不需要
        第二种「时间线身份」，AppGrant/深链的 incarnation 也不会在收养那一刻
        突然变脸。来源唯一性由 chat_import_origins 的三元组唯一索引把守。 */
-    const chatId = `chat_${randomUUID().replaceAll("-", "")}`;
-    const incarnationId = randomUUID().replaceAll("-", "");
+    const chatId = source.restoredIdentity?.chatId ?? `chat_${randomUUID().replaceAll("-", "")}`;
+    const incarnationId = source.restoredIdentity?.incarnationId ?? randomUUID().replaceAll("-", "");
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(chatId) || !/^[a-f0-9]{32}$/.test(incarnationId)) throw new Error("LIBRARY_IMPORT_IDENTITY_INVALID");
     this.database.prepare(
       `INSERT INTO chats(
          id, lifecycle_kind, agent, title, title_source, created_at, updated_at,
@@ -677,12 +681,13 @@ export class HistoryImportRepository {
       };
     }
     const entryVersionId = `entry_${randomUUID()}`;
+    const preview = entry.role === "user" ? entry.content : projectUnavailableArtifacts(entry.content);
     const payload = {
       ...(entry.payload && typeof entry.payload === "object" ? entry.payload : {}),
       sourceEntryId: entry.sourceEntryId,
       sourceMessageId: entry.sourceMessageId ?? null,
       searchText: entry.projection?.normalizedSearchText ?? normalizeSearchText(entry.searchText),
-      preview: Array.from(entry.content.replace(/\s+/g, " ").trim()).slice(0, 500).join(""),
+      preview: Array.from((preview === entry.content ? preview.replace(/\s+/g, " ") : preview).trim()).slice(0, 500).join(""),
     };
     const byteSize = Buffer.byteLength(entry.content, "utf8");
     prepared(this.database,
@@ -766,6 +771,8 @@ export class HistoryImportRepository {
       "SELECT * FROM history_import_runs WHERE run_id = ? AND state = 'running'"
     ).get(runId) as Row | undefined;
     if (!row) throw new Error("History import run is not active");
+    const source = this.database.prepare("SELECT c.lifecycle_kind,o.managed_at FROM chats c JOIN chat_import_origins o ON o.chat_id=c.id WHERE c.id=?").get(String(row.chat_id)) as Row | undefined;
+    if (!source || source.lifecycle_kind !== "external-readonly" || source.managed_at !== null) throw new Error("HISTORY_SOURCE_MANAGED");
     return row;
   }
 

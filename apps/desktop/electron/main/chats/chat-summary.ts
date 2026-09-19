@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared ChatRecord/ChatSummary contracts and the message preview projection
- * [OUTPUT]: Provides ChatFacts, ChatMetadata, and the one summary projection carrying canonical context, fork lineage, execution capability, import origin, and durable revisions
+ * [OUTPUT]: Provides ChatFacts, ChatMetadata, and the one summary projection carrying canonical context, fork lineage, execution capability, import origin, manual sortKey, and durable revisions
  * [POS]: The read-only projection sheet of the chats module; ChatStore metadata, ChatsService events, and renderer lists all derive from this one field list, so no second projection can grow
  */
 
@@ -65,6 +65,7 @@ export function summaryOfChat({
   grants,
   grantRevision,
   archivedAt,
+  sortKey,
   importOrigin,
   parentChatId,
   parentIncarnationId,
@@ -101,6 +102,7 @@ export function summaryOfChat({
     executionKind: executionKind ?? null,
     preview,
     ...(archivedAt ? { archivedAt, effectiveArchived: true } : {}),
+    ...(sortKey === undefined ? {} : { sortKey }),
   };
 }
 

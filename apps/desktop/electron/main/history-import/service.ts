@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, Project/Chat queries, strict turn options, four history adapters, the dedicated import worker, Project/Memory coordinators, index/snapshot stores, and shared contracts
- * [OUTPUT]: Validates same-source history adoption and forwards only the closed typed authentication retry intent to canonical admission.
+ * [OUTPUT]: Separates source visibility from saved-Chat continuation, validates requests, and forwards native resume or saved-generation replay with durable intent receipts.
  * [POS]: Canonical federated history and renderer-safe authority boundary; production SQLite ingestion parses outside main
  */
 
@@ -102,7 +102,10 @@ export type HistoryImportServiceOptions = {
     /* 同步早已把这条外源落成只读 canonical Chat：收养只续写它，
        绝不第二次开同一个 import 代际。 */
     route: StoredCanonicalRoute | null;
-  }): Promise<{ chatId: string; incarnationId: string; phase: "started" | "queued" | "settled" }>;
+  }): Promise<{ intentId: string; chatId: string; incarnationId: string; phase: "started" | "queued" | "settled" | "failed" }>;
+  replay?(request: PrepareHistoryAdoptionInput, route: StoredCanonicalRoute): Promise<{
+    intentId: string; chatId: string; incarnationId: string; phase: "started" | "queued" | "settled" | "failed";
+  } | null>;
   commitMemory?(input: {
     grantId: string;
     snapshots: MemorySourceSnapshot[];
@@ -146,6 +149,7 @@ export class HistoryImportService {
     this.importWorker = adapters ? null : new HistoryImportWorkerClient();
     this.projectImports = new ProjectImportCoordinator({
       select: options.prepareProject,
+      warm: async () => { await Promise.all(this.adapters.map((adapter) => adapter.warm?.())); },
       count: async (root) => (await this.scan(root, "identity")).map(sourceCount),
       commit: options.commitProject,
     });
@@ -225,7 +229,7 @@ export class HistoryImportService {
     const claimed = this.claimedAliases();
     const projection = canonicalHistoryProjection({
       state,
-      projectVisible: (project) => project.enabled && this.validBinding(project),
+      projectBound: (project) => this.validBinding(project),
       entryVisible: (entry) => !aliasesClaimed(entry, claimed),
       routeLive: (route) => this.options.chatLifecycle(route.chatId) !== "missing",
       present: (entry) => this.presentEntry(entry),
@@ -428,7 +432,15 @@ export class HistoryImportService {
       submission: validateHistoryAdoptionSubmission(request.submission),
       turnOptions: validateAgentTurnOptions(request.turnOptions),
     };
-    const entry = this.requireVisibleEntry(request.opaqueId);
+    const route = this.index.canonicalRoute(request.opaqueId);
+    if (route && this.options.replay) {
+      const replayed = await this.options.replay(request, route);
+      if (replayed) { this.publish(); return replayed; }
+    }
+    if (route && this.options.chatLifecycle(route.chatId) !== "external-readonly") {
+      throw new Error("Imported Chat is unavailable for continuation");
+    }
+    const entry = route ? this.requireBoundEntry(request.opaqueId) : this.requireVisibleEntry(request.opaqueId);
     if (entry.historyRevision !== request.expectedHistoryRevision) throw Object.assign(new Error("历史会话已变化，请刷新后重试"), { code: "HISTORY_REVISION_CHANGED" });
     if (!entry.canResume || !this.options.adopt) throw new Error("该来源尚未通过产品内续聊实测");
     const project = this.requireExternalProject(entry.projectId);
@@ -529,10 +541,15 @@ export class HistoryImportService {
     return Boolean(project && !project.archivedAt && project.workspaceBinding.kind === "external" && project.membershipRevision === stored.membershipRevision && project.dir === stored.canonicalRoot);
   }
   private findEntry(opaqueId: string) { return Object.values(this.index.snapshot().projects).flatMap((project) => project.entries).find((entry) => entry.opaqueId === opaqueId); }
-  private requireVisibleEntry(opaqueId: string) {
+  private requireBoundEntry(opaqueId: string) {
     const entry = this.findEntry(opaqueId);
     const project = entry ? this.index.project(entry.projectId) : undefined;
-    if (!entry || !project?.enabled || !this.validBinding(project) || aliasesClaimed(entry, this.claimedAliases())) throw new Error("历史会话不存在或已由产品 Chat 收养");
+    if (!entry || !project || !this.validBinding(project) || aliasesClaimed(entry, this.claimedAliases())) throw new Error("历史会话不存在或已由产品 Chat 收养");
+    return entry;
+  }
+  private requireVisibleEntry(opaqueId: string) {
+    const entry = this.requireBoundEntry(opaqueId);
+    if (!this.index.project(entry.projectId)?.enabled) throw new Error("History source is hidden");
     return entry;
   }
   private visibleSourceEntries() {

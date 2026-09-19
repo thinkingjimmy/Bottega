@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node net/fs/crypto, custody line protocol and socket path asserted by shared/builtin-tools
- * [OUTPUT]: Provides GuardianControlChannel: a 0600 Unix socket server with per-custody tokens, constant-time authentication, hello/activated/failed message routing, and activate/stand-down commands
+ * [OUTPUT]: Provides GuardianControlChannel: a 0600 Unix socket server with per-custody tokens, constant-time authentication, hello/activated/failed message routing, and activate/stand-down commands; every accepted socket is tracked, so close() converges even when a connection never completed hello
  * [POS]: Custody's main-process control channel; only carries the wire protocol — it knows nothing of journal phase and decides nothing about which process to kill
  */
 
@@ -34,6 +34,9 @@ export type GuardianLink = {
   dispose(): void;
 };
 
+/** Re-sweep cadence while `server.close` is pending; bounded, and cleared with it. */
+const CLOSE_SWEEP_MS = 250;
+
 type Registration = {
   token: Buffer;
   nonce: string;
@@ -47,6 +50,11 @@ type Registration = {
 export class GuardianControlChannel {
   private server: Server | null = null;
   private readonly registrations = new Set<Registration>();
+  /* Every accepted connection, not just the ones that completed `hello`:
+     `server.close` calls back only after the last accepted socket ends, and a
+     peer that connects and then says nothing is invisible to `registrations`. */
+  private readonly sockets = new Set<Socket>();
+  private closing = false;
 
   constructor(readonly socketPath: string) {
     /* 超长路径的 listen() 报的是 EINVAL 之类跟「太长」毫无字面关系的错，
@@ -56,6 +64,7 @@ export class GuardianControlChannel {
 
   async listen() {
     if (this.server) return;
+    this.closing = false;
     await mkdir(dirname(this.socketPath), { recursive: true, mode: 0o700 });
     await unlink(this.socketPath).catch((cause: NodeJS.ErrnoException) => {
       if (cause.code !== "ENOENT") throw cause;
@@ -100,6 +109,10 @@ export class GuardianControlChannel {
   }
 
   async close() {
+    /* Raise the flag before sweeping: every connection accepted after it is
+       destroyed on arrival, which is the only thing that reaches the one that
+       slips in between the sweep and `server.close`. */
+    this.closing = true;
     for (const registration of [...this.registrations]) {
       registration.disposed = true;
       registration.socket?.destroy();
@@ -108,9 +121,19 @@ export class GuardianControlChannel {
     const server = this.server;
     this.server = null;
     if (server) {
-      await new Promise<void>((resolve, reject) =>
-        server.close((cause) => (cause ? reject(cause) : resolve()))
-      );
+      this.sweepSockets();
+      let sweep: NodeJS.Timeout | undefined;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          server.close((cause) => (cause ? reject(cause) : resolve()));
+          /* The callback lands as soon as the last connection ends, so this
+             only has to outlive the sockets — never the close() call itself. */
+          sweep = setInterval(() => this.sweepSockets(), CLOSE_SWEEP_MS);
+          sweep.unref();
+        });
+      } finally {
+        if (sweep) clearInterval(sweep);
+      }
     }
     await unlink(this.socketPath).catch((cause: NodeJS.ErrnoException) => {
       if (cause.code !== "ENOENT") throw cause;
@@ -130,12 +153,22 @@ export class GuardianControlChannel {
     registration.queued.push(line);
   }
 
+  private sweepSockets() {
+    for (const socket of [...this.sockets]) socket.destroy();
+  }
+
   private accept(socket: Socket) {
+    if (this.closing) {
+      socket.destroy();
+      return;
+    }
+    this.sockets.add(socket);
     socket.setEncoding("utf8");
     let bound: Registration | undefined;
     let pending = "";
     socket.on("error", () => socket.destroy());
     socket.once("close", () => {
+      this.sockets.delete(socket);
       if (bound?.socket === socket) {
         bound.socket = undefined;
         if (!bound.disposed) bound.handlers.onDisconnected();

@@ -13,7 +13,7 @@ import type {
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useOptionalHistory } from "@/components/providers/history/history-provider";
 import { SettingsButton } from "@/components/settings/settings-layout";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import {
   commitHistoryMemory,
   historyMemoryEligibility,

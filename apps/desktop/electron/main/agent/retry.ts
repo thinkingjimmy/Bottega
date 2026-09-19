@@ -1,8 +1,10 @@
 /**
  * [INPUT]: Depends on retry claims, Agent context projections, frozen handoff, and session replacement/restart callbacks
- * [OUTPUT]: Retries same or fresh sessions while keeping projection inputs and final receiver context consistent
+ * [OUTPUT]: Retries same or fresh sessions while preserving user input, re-arming the retry token on failure and keeping projection inputs and final receiver context consistent
  * [POS]: agent/ resume-failure recovery unit; the actual transport restart is injected by the caller, not owned here
  */
+
+import { randomUUID } from "node:crypto";
 
 import { handoffInput } from "./history/builder";
 import { createFinalTurnProjection } from "./product-context";
@@ -62,16 +64,19 @@ async function retryAgent(
       if (handoff) entry.payload = { ...entry.payload, handoff };
       await input.replaceSession(entry, oldSession);
     } catch (cause) {
-      input.turns.restoreRetry(retryClaim);
+      /* The control receipt for this attempt is already settled `unknown`; restoring the
+         same token would poison every later `recovery:<token>` control, Stop included. */
+      input.turns.restoreRetry(retryClaim, randomUUID());
+      input.publishState(entry);
       throw cause;
     }
   }
   let resolved = entry.resolvedInput as ResolvedAgentInput;
   if (mode === "fresh-session" && entry.payload.handoff?.text) {
     const text = entry.payload.handoff.text;
-    const previous = resolved.input.filter(item => item.type !== "text" || !item.text.startsWith('{"historical_handoff":'));
-    resolved = { ...resolved, input: [{ type: "text", text }, ...previous] };
-    entry.payload = { ...entry.payload, input: handoffInput(entry.payload.input.filter(item => item.type !== "text" || !item.text.startsWith('{"historical_handoff":')), entry.payload.handoff) };
+    // Resumed-session inputs have no injected handoff; clearing session below prevents a second prepend.
+    resolved = { ...resolved, input: [{ type: "text", text }, ...resolved.input] };
+    entry.payload = { ...entry.payload, input: handoffInput(entry.payload.input, entry.payload.handoff) };
   }
   const generation = input.turns.beginRetry(retryClaim);
   input.onGenerationStart?.(entry, generation);

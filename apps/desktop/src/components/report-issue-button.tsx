@@ -5,8 +5,7 @@
  */
 
 import { useEffect, useSyncExternalStore } from "react";
-import { ExternalLinkIcon } from "lucide-react";
-import { Button } from "@ai-chat/ui/components/ui/button";
+import { ReportIssueAction } from "@ai-chat/ui/components/feedback/failure-notice";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { openExternal } from "@/lib/agent-client";
 import { reportIssueUrl } from "@/lib/report-issue";
@@ -20,16 +19,5 @@ export function ReportIssueButton({ title, body }: { title: string; body: string
   useEffect(() => {
     appInfoStore.ensureLoaded();
   }, []);
-  return (
-    <Button
-      className="touch-manipulation"
-      onClick={() => void openExternal(reportIssueUrl({ title, body, appInfo }))}
-      size="sm"
-      type="button"
-      variant="outline"
-    >
-      {t("chatStorage.reportIssue")}
-      <ExternalLinkIcon aria-hidden="true" data-icon="inline-end" />
-    </Button>
-  );
+  return <ReportIssueAction label={t("chatStorage.reportIssue")} run={() => void openExternal(reportIssueUrl({ title, body, appInfo }))} />;
 }

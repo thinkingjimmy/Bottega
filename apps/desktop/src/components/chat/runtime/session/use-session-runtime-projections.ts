@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Setup/chat providers, trusted window role, chat projection stores, workspace identity, Skills/files hooks, and canonical turn snapshots
- * [OUTPUT]: Provides composer runtime catalogs, suppresses global Skills/workspace discovery in scoped App windows, and synchronizes main-owned chat message projections generation-safely
+ * [OUTPUT]: Starts model catalogs as soon as canonical Agent options resolve, keeps Skills/files session-gated, and synchronizes main-owned chat message projections generation-safely
  * [POS]: Session submodule projection adapter; keeps external catalog/message subscriptions out of the ChatSession composition root
  */
 
@@ -10,7 +10,7 @@ import type { ChatMessage } from "../../../../../shared/chats-ipc";
 import { useSetup } from "@/components/providers/setup-provider";
 import { backendAvailability } from "@/lib/chat-hydration";
 import { mergeChatMessages, type ChatTurnProjection } from "@/lib/chat-turn-attach";
-import { useChatMessages } from "@/lib/chat-messages-store";
+import type { LocalPlatform } from "@/lib/cloud/chat/platform/local";
 import { primeComposer } from "@/lib/chat-composer-store";
 import { useChatSettings } from "../use-chat-settings";
 import { useChatSkills } from "../use-chat-skills";
@@ -33,10 +33,11 @@ export function useSessionRuntimeCatalogs({
   const setup = useSetup();
   const settings = useChatSettings(
     scope,
-    sessionReady ? workspaceScope : null,
+    workspaceScope,
     setup.status?.backends ?? [],
     setup.recheck,
-    draftAgent
+    draftAgent,
+    workspaceScopeKey
   );
   const selectedBackend = settings.backends.find(
     (backend) => backend.id === settings.turnOptions.backend
@@ -67,14 +68,16 @@ export function useSessionMessageProjection({
   projectionRef,
   messagesRef,
   setMessages,
+  platform,
 }: {
+  platform: LocalPlatform;
   chatId: string;
   hydratedChatId: string | null;
   projectionRef: MutableRefObject<ChatTurnProjection>;
   messagesRef: MutableRefObject<ChatMessage[]>;
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
 }) {
-  const snapshot = useChatMessages(chatId);
+  const snapshot = platform.transcript.useSnapshot(chatId);
   useEffect(() => {
     const incarnationId = snapshot?.incarnationId;
     if (incarnationId) primeComposer(chatId, incarnationId);

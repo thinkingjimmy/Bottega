@@ -1,12 +1,18 @@
 /**
  * [INPUT]: Depends on shared Project/App grant contracts and the stored Project schema
- * [OUTPUT]: Provides pure Project workspace-rebind planning with App-grant exclusion and capability-map rotation
+ * [OUTPUT]: Provides pure Project workspace and retained Base custody planning with App-grant exclusion and capability-map rotation.
  * [POS]: Project workspace policy kernel; ProjectStore serializes and persists the state transition it computes
  */
 
 import { workspaceCapabilityId, type ProjectWorkspaceBinding } from "../../../../shared/projects-ipc";
 import { isPositiveAppGrant } from "../../../../shared/apps-ipc";
 import { storedProjectSchema, type ProjectFile, type StoredProject } from "../store/project-store-schema";
+export function planBaseCustody(current: StoredProject, now: number): StoredProject {
+  if (current.role === "base-custody") return structuredClone(current);
+  return storedProjectSchema.parse({ ...current, dir: "", workspaceBinding: { kind: "none" }, role: "base-custody", nameSource: "user",
+    appPlacements: [], grants: [], grantRevision: current.grantRevision + 1, resourceAdmissions: [],
+    membershipRevision: current.membershipRevision + 1, updatedAt: now });
+}
 
 export function planWorkspaceRebind(input: {
   project: StoredProject;

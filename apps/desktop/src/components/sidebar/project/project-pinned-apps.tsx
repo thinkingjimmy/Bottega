@@ -15,8 +15,8 @@ import {
 } from "@ai-chat/ui/components/ui/sidebar";
 import type { Project } from "../../../../shared/projects-ipc";
 import { useApps } from "@/components/providers/apps-provider";
-import { errorMessage } from "@/lib/errors";
-import { sidebarSubRowClass, SidebarRowMark } from "../sidebar-row";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
+import { sidebarSubRowClass, SidebarRowMark } from "@ai-chat/ui/components/workspace/row";
 import { activateSidebarApp } from "../apps/activate-app-surface";
 import { useSidebarAppTarget } from "../active/app-target";
 

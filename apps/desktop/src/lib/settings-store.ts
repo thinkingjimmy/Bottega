@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on settings-client revision get/set/mutateMemory/onChanged/Chat Home chooser/listModels, shared i18n runtime, and the renderer effective locale
- * [OUTPUT]: Provides settingsStore with revision-rebased mutations, Memory commands, a Chat Home chooser returning readiness after selection, per-backend Models with structured Agent failures, independent epochs and useSyncExternalStore
+ * [INPUT]: Depends on settings-client revision get/set/mutateMemory/onChanged/Chat Home chooser/folder retry/listModels, the main-provided startup snapshot, shared i18n runtime, and the renderer effective locale
+ * [OUTPUT]: Provides settingsStore seeded from the startup snapshot (no read on first use) with revision-rebased boolean mutation results and local/global error ownership, Memory commands, folder selection and dialog-free retry sharing one open path, change-only folder progress, and per-backend model snapshots
  * [POS]: General/Memory/Onboarding is set to the renderer as the sole owner; Domain and back end isolation to avoid slow requests, old responses and error contamination
  */
 
@@ -16,15 +16,18 @@ import type {
   SettingsEnvelope,
 } from "../../shared/settings-ipc";
 import { backendLabel } from "./agent-backends";
-import { errorMessage } from "./errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { effectiveLocale } from "./i18n-locale";
 import { translate } from "../../shared/i18n/runtime";
 import {
   rendererAgentSurfaceFailure,
   type AgentSurfaceFailure,
 } from "./agent-failure";
+import { readStartupSnapshot } from "../../shared/startup-snapshot";
 import {
   chooseChatHomesRoot,
+  retryLibrary,
+  subscribeChatHomeStatus,
   getSettings,
   listModels,
   mutateMemorySettings,
@@ -41,9 +44,11 @@ export type SettingsStoreSnapshot = {
   modelsErrorByBackend: Partial<Record<AgentBackendId, AgentSurfaceFailure | null>>;
   chatHomesRootBusy: boolean;
   chatHomesRootError: string;
+  folderProgress?: import("../../shared/settings-ipc").ChatHomeStatus["progress"];
 };
 
 export type SettingsMutation = RendererSettingsMutation;
+export type SettingsUpdateOptions = { errorScope?: "global" | "local" };
 
 /* ============================================================
  * 队列曾经缓存 canonical 且首写后再也不 read：外部写入永远到不了
@@ -85,6 +90,8 @@ export function createSettingsMutationQueue(
 }
 
 type SettingsStoreDependencies = {
+  /** Main's envelope as of window creation; it makes the first render authoritative. */
+  initial?: SettingsEnvelope | null;
   read: () => Promise<SettingsEnvelope>;
   write: (patch: RendererSettingsPatch) => Promise<SettingsEnvelope>;
   mutateMemory: (
@@ -95,14 +102,29 @@ type SettingsStoreDependencies = {
     backend: AgentBackendId
   ) => Promise<BackendModelInfo[]>;
   chooseRoot: () => Promise<unknown | null>;
+  /** Reopens the configured folder; absent only in tests that never exercise the retry. */
+  retryRoot?: () => Promise<unknown | null>;
+  subscribeHome?: typeof subscribeChatHomeStatus;
+};
+
+type FolderProgress = SettingsStoreSnapshot["folderProgress"];
+/* chatHomeChanged fires on every progress callback, and null -> null is the most
+   common one: publishing a new snapshot without comparing would make all 15
+   useSyncExternalStore consumers (including i18n and the setup provider)
+   re-render the whole screen on every debounced write. */
+const sameProgress = (left: FolderProgress, right: FolderProgress) => {
+  const [a, b] = [left ?? null, right ?? null];
+  if (!a || !b) return a === b;
+  return a.phase === b.phase && a.completed === b.completed && a.total === b.total && a.failed === b.failed;
 };
 
 export function createSettingsStoreOwner(
   dependencies: SettingsStoreDependencies
 ) {
   const listeners = new Set<() => void>();
+  const seeded = dependencies.initial ?? null;
   let snapshot: SettingsStoreSnapshot = {
-    settings: null,
+    settings: seeded?.settings ?? null,
     modelsByBackend: {},
     modelsReadyByBackend: {},
     error: "",
@@ -110,7 +132,10 @@ export function createSettingsStoreOwner(
     chatHomesRootBusy: false,
     chatHomesRootError: "",
   };
-  let settingsLoaded = false;
+  /* The startup snapshot is the same envelope `settings:get` would answer with, so
+     it counts as loaded: the gate opens on the first render and no read is issued.
+     Broadcasts still rebase it, and retrySettings still forces a real read. */
+  let settingsLoaded = Boolean(seeded);
   let settingsLoading = false;
   let settingsEpoch = 0;
   const modelsLoaded = new Set<AgentBackendId>();
@@ -120,6 +145,7 @@ export function createSettingsStoreOwner(
     () => dependencies.read(),
     dependencies.write
   );
+  if (seeded) enqueueSettingsMutation.rebase(seeded);
   const publish = (next: SettingsStoreSnapshot) => {
     if (next === snapshot) return;
     snapshot = next;
@@ -134,9 +160,14 @@ export function createSettingsStoreOwner(
     if (started) return;
     started = true;
     dependencies.subscribe((envelope) => {
-      enqueueSettingsMutation.rebase(envelope);
+      const canonical = enqueueSettingsMutation.rebase(envelope);
       settingsLoaded = true;
-      publish({ ...snapshot, settings: envelope.settings });
+      publish({ ...snapshot, settings: canonical.settings });
+    });
+    dependencies.subscribeHome?.(status => {
+      const progress = status.progress ?? null;
+      if (sameProgress(snapshot.folderProgress, progress)) return;
+      publish({ ...snapshot, folderProgress: progress });
     });
   };
 
@@ -151,8 +182,8 @@ export function createSettingsStoreOwner(
         if (epoch !== settingsEpoch) return;
         settingsLoaded = true;
         settingsLoading = false;
-        enqueueSettingsMutation.rebase(envelope);
-        publish({ ...snapshot, settings: envelope.settings, error: "" });
+        const canonical = enqueueSettingsMutation.rebase(envelope);
+        publish({ ...snapshot, settings: canonical.settings, error: "" });
       },
       (cause) => {
         if (epoch !== settingsEpoch) return;
@@ -236,6 +267,31 @@ export function createSettingsStoreOwner(
     );
   };
 
+  const openFolder = async (open: () => Promise<unknown | null>): Promise<boolean> => {
+    if (snapshot.chatHomesRootBusy) return false;
+    publish({ ...snapshot, chatHomesRootBusy: true, chatHomesRootError: "" });
+    try {
+      const selected = await open();
+      if (!selected) return false;
+      const envelope = await dependencies.read();
+      settingsLoaded = true;
+      enqueueSettingsMutation.rebase(envelope);
+      publish({ ...snapshot, settings: envelope.settings });
+      return envelope.settings.chatHomeState === "ready";
+    } catch (cause) {
+      publish({
+        ...snapshot,
+        chatHomesRootError: errorMessage(
+          cause,
+          translate(effectiveLocale(), "settings.general.chatHomeChangeFailed")
+        ),
+      });
+      return false;
+    } finally {
+      publish({ ...snapshot, chatHomesRootBusy: false });
+    }
+  };
+
   return {
     subscribe: (listener: () => void) => {
       start();
@@ -249,14 +305,21 @@ export function createSettingsStoreOwner(
     retrySettings: () => loadSettings(true),
     ensureModels: (backend: AgentBackendId) => loadModels(backend, false),
     retryModels: (backend: AgentBackendId) => loadModels(backend, true),
-    update: async (mutation: SettingsMutation, failure: string) => {
-      publish({ ...snapshot, error: "" });
+    update: async (
+      mutation: SettingsMutation,
+      failure: string,
+      options: SettingsUpdateOptions = {}
+    ): Promise<boolean> => {
+      const globalError = options.errorScope !== "local";
+      if (globalError) publish({ ...snapshot, error: "" });
       try {
         const envelope = await enqueueSettingsMutation(mutation);
         settingsLoaded = true;
-        publish({ ...snapshot, settings: envelope.settings, error: "" });
+        publish({ ...snapshot, settings: envelope.settings, ...(globalError ? { error: "" } : {}) });
+        return true;
       } catch (cause) {
-        publish({ ...snapshot, error: errorMessage(cause, failure) });
+        if (globalError) publish({ ...snapshot, error: errorMessage(cause, failure) });
+        return false;
       }
     },
     /* Memory 走专用命令而非通用 patch：三处 settingsStore.update({memory})
@@ -277,47 +340,23 @@ export function createSettingsStoreOwner(
         return false;
       }
     },
-    chooseChatHomesRoot: async (): Promise<boolean> => {
-      if (snapshot.chatHomesRootBusy) return false;
-      publish({
-        ...snapshot,
-        chatHomesRootBusy: true,
-        chatHomesRootError: "",
-      });
-      try {
-        const selected = await dependencies.chooseRoot();
-        if (selected) {
-          const envelope = await dependencies.read();
-          settingsLoaded = true;
-          enqueueSettingsMutation.rebase(envelope);
-          publish({ ...snapshot, settings: envelope.settings });
-          return envelope.settings.chatHomeState === "ready";
-        }
-        return false;
-      } catch (cause) {
-        publish({
-          ...snapshot,
-          chatHomesRootError: errorMessage(
-            cause,
-            translate(
-              effectiveLocale(),
-              "settings.general.chatHomeChangeFailed"
-            )
-          ),
-        });
-        return false;
-      } finally {
-        publish({ ...snapshot, chatHomesRootBusy: false });
-      }
-    },
+    chooseChatHomesRoot: () => openFolder(dependencies.chooseRoot),
+    /* Two entry points into the same open flow: choosing a folder and reopening
+       a configured one must share one busy/error/ready path, or retry grows a
+       second state machine of its own. */
+    retryLibrary: () =>
+      openFolder(() => dependencies.retryRoot?.() ?? Promise.resolve(null)),
   };
 }
 
 export const settingsStore = createSettingsStoreOwner({
+  initial: readStartupSnapshot()?.settings,
   read: getSettings,
   write: setSettings,
   mutateMemory: mutateMemorySettings,
   subscribe: subscribeSettings,
   list: (backend) => listModels(backend, { kind: "default" }),
   chooseRoot: chooseChatHomesRoot,
+  retryRoot: retryLibrary,
+  subscribeHome: subscribeChatHomeStatus,
 });

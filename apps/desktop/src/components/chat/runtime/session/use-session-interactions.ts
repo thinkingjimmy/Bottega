@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on React, the app translation provider, Agent Approval/Question IPC, shared Plan-review decisions, Plan follow-up intent, Section relay, stop commands, and current request refs
+ * [INPUT]: Depends on React, locale, native CommandSink, Plan decisions, Section relay and current request refs.
  * [OUTPUT]: Provides stable approval, question, Plan, stop, retry, and explicit authentication-retry actions through canonical submission.
  * [POS]: The owner of the chat/runtime/session interaction status; Keep Plan Failed re-roll, relay Second confirmation and request-local cancel timing
  */
@@ -23,15 +23,13 @@ import type {
   UserChatMessage,
 } from "../../../../../shared/chats-ipc";
 import {
-  cancelAgentRequest,
-  respondAgentApproval,
-  respondAgentUserInput,
   type AgentRequest,
 } from "@/lib/agent-client";
+import { nativeChatCommands } from "@/lib/cloud/chat/platform/commands";
 import { clearAnsweredUserInput } from "@/lib/chat-user-input-state";
 import { planModeAfterPlanReview } from "../../../../../shared/chat-plan-kind";
 import { planDecisionInput, type PlanDecision } from "@/lib/chat-plan";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { stopRelayChain } from "@/lib/sections-client";
 import {
   advanceUserInput,
@@ -87,10 +85,11 @@ export function lastRelayUserMessage(
 export async function respondApprovalWithPlanMode(
   approval: AgentApprovalRequest,
   decision: AgentApprovalDecision,
-  respond: () => Promise<void>,
+  respond: () => Promise<void | import("../../../../../shared/agent-ipc").ControlResult>,
   setPlanMode: (enabled: boolean) => void
 ) {
-  await respond();
+  const result = await respond();
+  if (result === "already-resolved") return result;
   const nextPlanMode = planModeAfterPlanReview(approval, decision);
   if (nextPlanMode !== undefined) setPlanMode(nextPlanMode);
 }
@@ -141,11 +140,7 @@ export function useSessionInteractions({
           approval,
           decision,
           () =>
-            respondAgentApproval(
-              activeRequestId,
-              approval.approvalId,
-              decision
-            ),
+            nativeChatCommands.respond({ kind: "approval", requestId: activeRequestId, interactionId: approval.approvalId, decision }),
           setPlanMode
         );
         setApprovals((current) =>
@@ -168,11 +163,7 @@ export function useSessionInteractions({
       setPendingUserInput(advance.state);
       if (advance.kind !== "submit") return;
       try {
-        await respondAgentUserInput(
-          activeRequestId,
-          pending.request.userInputId,
-          advance.answers
-        );
+        await nativeChatCommands.respond({ kind: "input", requestId: activeRequestId, interactionId: pending.request.userInputId, answers: advance.answers });
         setPendingUserInput((current) =>
           clearAnsweredUserInput(current, pending.request.userInputId)
         );
@@ -243,7 +234,7 @@ export function useSessionInteractions({
           if (requestRef.current?.requestId === activeRequestId) {
             requestRef.current.cancel();
           } else {
-            cancelAgentRequest(activeRequestId);
+            nativeChatCommands.cancel("agent", activeRequestId);
           }
         },
       });

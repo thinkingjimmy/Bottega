@@ -14,7 +14,7 @@ import { useAppTranslation } from "@/components/providers/i18n-provider";
 import {
   ChartViewport,
   type ChartComponent,
-} from "./chart-viewport";
+} from "@ai-chat/base-ui/charts/render/chart-viewport";
 
 export function ChartCodeBlock({
   code,

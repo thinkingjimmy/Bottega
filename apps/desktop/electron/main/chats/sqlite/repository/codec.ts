@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Node crypto, shared Chat schemas/search projection, SQLite statement types, and mutation receipt contracts
+ * [INPUT]: Depends on Node crypto, shared Chat schemas, cloud-protocol Unicode/gram codecs, SQLite statement types and mutation receipt contracts.
  * [OUTPUT]: Provides deterministic SQLite JSON/digest/search codecs, the projection-free persisted message payload, connection-scoped prepared-statement reuse, and row-to-message/receipt decoders
  * [POS]: Shared value-codec layer for repository readers, writers, and mutation orchestration
  */
@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import type { ChatMessage } from "../../../../../shared/chats-ipc";
 import { normalizeSearchText } from "../../../../../shared/search-text";
+export { gramTokens, queryGramTokens } from "@ai-chat/cloud-protocol/search/grams";
 import { messageLines } from "../../../sections/export-transcript";
 import { messageSchema } from "../../chat-schema";
 import type { MutationReceipt } from "../database-protocol";
@@ -51,35 +52,6 @@ export function parseJson(value: unknown, label: string): unknown {
   } catch {
     throw new Error(`${label} contains invalid JSON`);
   }
-}
-
-export function gramTokens(value: string) {
-  const result = new Set<string>();
-  for (const token of normalizeSearchText(value).split(" ")) {
-    const points = Array.from(token);
-    for (const width of [1, 2, 3]) {
-      for (let index = 0; index + width <= points.length; index += 1) {
-        const bytes = Buffer.from(points.slice(index, index + width).join(""), "utf8");
-        result.add(`g${width}${bytes.toString("hex")}`);
-      }
-    }
-  }
-  return [...result].sort();
-}
-
-export function queryGramTokens(tokens: readonly string[]) {
-  const grams = new Set<string>();
-  for (const token of tokens) {
-    const points = Array.from(normalizeSearchText(token));
-    const width = Math.min(3, points.length);
-    if (!width) continue;
-    for (let index = 0; index + width <= points.length; index += 1) {
-      grams.add(
-        `g${width}${Buffer.from(points.slice(index, index + width).join(""), "utf8").toString("hex")}`
-      );
-    }
-  }
-  return [...grams].sort();
 }
 
 export function messageSearchText(message: ChatMessage) {

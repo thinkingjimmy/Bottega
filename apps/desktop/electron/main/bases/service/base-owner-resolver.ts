@@ -1,14 +1,11 @@
 /**
  * [INPUT]: Depends on shared ownerKey/BaseMeta, canonical chat records, BaseStore presence lookups, and Project records, plus the shared statusError constructor from main/errors
- * [OUTPUT]: Provides MutationPrincipal, BaseChatRef and BaseOwnerResolver; Project identity carries creation-time Base navigation while ordinary generic-Base resolution stays separate from authorized App attachment resolution
+ * [OUTPUT]: Provides MutationPrincipal, BaseChatRef and BaseOwnerResolver; verified cached Base identities allow mirror data access without fabricating a native Chat or App authority.
  * [POS]: The single owner rule of bases/service; IPC/toolset/sections/search not to copy the "self-prioritize, project backtrack" section
  */
 
-import {
-  ownerFromKey,
-  ownerKeyOf,
-  type BaseMeta,
-} from "../../../../shared/bases-ipc";
+import { type BaseMeta } from "../../../../shared/bases-ipc";
+import { ownerFromKey, ownerKeyOf } from "@ai-chat/base-ui/model/owner-key";
 import type { ChatRecord } from "../../../../shared/chats-ipc";
 import type { EffectiveAppGrant } from "../../../../shared/apps-ipc";
 import type { Project } from "../../../../shared/projects-ipc";
@@ -77,6 +74,11 @@ export class BaseOwnerResolver {
   async identityForOwnerKey(ownerKey: string): Promise<BaseOwnerIdentity> {
     const ref = ownerFromKey(ownerKey);
     if (ref.kind === "chat") {
+      if (await this.options.getChat(ref.chatId)) return chatOwnerIdentity(await this.chatIdentity(ref.chatId));
+      const cached = this.store.peek(ownerKey);
+      if (cached && this.store.sync.read(ownerKey, cached.meta.ownerInstanceId).scope) {
+        return { owner: cached.meta.owner, ownerInstanceId: cached.meta.ownerInstanceId, title: cached.meta.name };
+      }
       return chatOwnerIdentity(await this.chatIdentity(ref.chatId));
     }
     const project = this.options.getProject(ref.projectId);

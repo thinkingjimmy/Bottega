@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React subscriptions, canonical Chat reads, backend defaults, the Agent draft store, and live submission watching
- * [OUTPUT]: Provides per-Chat selection, one-time draft defaults, navigation-safe refresh, and continuing reconciliation of the original pending submission
+ * [OUTPUT]: Provides per-Chat selection, local cancellation by reselecting the canonical Agent, one-time defaults and navigation-safe submission reconciliation
  * [POS]: Agent draft lifecycle hook used by Chat settings; selection never persists Chat or global options
  */
 
@@ -36,14 +36,18 @@ export function usePendingAgent(chatId: string, draftBackend?: AgentBackendId) {
     return () => { disposed = true; unwatch(); };
   }, [chatId, draftBackend, refresh]);
   useEffect(() => {
-    const intentId = state.pending?.submitting;
-    if (!intentId) return;
+    const intentId = state.adoption?.intentId ?? state.pending?.submitting;
+    if (!intentId || state.adoption && !state.adoption.intentId) return;
     return watchAgentSubmission(chatId, intentId, setError);
-  }, [chatId, state.pending?.submitting]);
+  }, [chatId, state.adoption, state.pending?.submitting]);
   const select = useCallback(async (backend: AgentBackendId) => {
     const request = ++requests.current;
     const generationBefore = readAgentDraft(chatId).generation;
     const current = readAgentDraft(chatId);
+    if (current.pending && !current.pending.submitting && !current.adoption && current.canonical?.agent === backend) {
+      undoAgentSelection(chatId);
+      return;
+    }
     if (current.canonical) {
       const queue = readComposer(chatId).queue;
       if (queue.paused || queue.items.length > 0) throw new Error("AGENT_SWITCH_BLOCKED:queue");

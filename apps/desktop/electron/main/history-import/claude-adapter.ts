@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node fs/path, user home, the history-import adapter kernel and the shared turn-folding seam
- * [OUTPUT]: Provides ClaudeHistoryAdapter with constant-memory identity/full scans and turn-bounded JSONL streaming that preserves assistant fragment and tool-result merging, folds a turn into one assistant block, strips the product-context envelope from content blocks and titles, and skips every non-conversation record
+ * [INPUT]: Depends on Node fs/path, user home, the history-import adapter kernel (bounded fan-out, head reads, stable streams) and the shared turn-folding seam
+ * [OUTPUT]: Provides ClaudeHistoryAdapter with constant-memory identity/full scans (prefix-filtered directories, SCAN_FANOUT-bounded file reads) and turn-bounded JSONL streaming that preserves assistant fragment and tool-result merging, folds a turn into one assistant block, strips the product-context envelope from content blocks and titles, and skips every non-conversation record
  * [POS]: The Claude Code format adapter for history-import; slug is only rough, true attribution is only recognized by the record cwd
  */
 
@@ -13,6 +13,7 @@ import type {
 import {
   HISTORY_FILE_BYTES,
   HISTORY_PARSER_VERSION,
+  SCAN_FANOUT,
   batchHistoryTurns,
   collectHistoryBatches,
   digest,
@@ -21,6 +22,7 @@ import {
   storageFingerprint,
   initialSourceIncarnation,
   isWithin,
+  mapWithLimit,
   normalizedAliases,
   opaqueSessionId,
   readHeadLines,
@@ -50,52 +52,52 @@ export class ClaudeHistoryAdapter implements HistoryAdapter {
   async scanProject(canonicalRoot: string, depth: ScanDepth = "full"): Promise<AdapterScan> {
     const storage = await storageFingerprint(this.sourceRoot);
     if (!storage) return emptyScan(this.sourceKind);
-    const entries: AdapterEntry[] = [];
+    /* 目录名就是编码过的 cwd：前缀不匹配的 Project 一个文件都不用碰。 */
     const prefix = encodeClaudePath(canonicalRoot);
-    for (const directory of await safeDirectories(this.sourceRoot)) {
-      if (!directory.name.startsWith(prefix)) continue;
+    const directories = (await safeDirectories(this.sourceRoot)).filter((directory) => directory.name.startsWith(prefix));
+    const paths = (await Promise.all(directories.map(async (directory) => {
       const root = join(this.sourceRoot, directory.name);
-      for (const file of await safeFiles(root)) {
-        if (!file.name.endsWith(".jsonl")) continue;
-        const path = join(root, file.name);
-        try {
-          const meta = await sessionMeta(path, canonicalRoot, depth);
-          if (!meta) continue;
-          const value = await fingerprint(path, this.parserVersion);
-          const canonicalNativeId = meta.sessionId || basename(file.name, ".jsonl");
-          const aliases = normalizedAliases([
-            canonicalNativeId,
-            basename(file.name, ".jsonl"),
-          ]);
-          const key = {
-            sourceKind: this.sourceKind,
-            storageFingerprint: storage,
-            canonicalNativeId,
-            aliases,
-            resumeAlias: canonicalNativeId,
-          } as const;
-          entries.push({
-            opaqueId: opaqueSessionId(key),
-            projectId: "",
-            sourceKind: this.sourceKind,
-            key,
-            title: meta.title,
-            cwd: meta.cwd,
-            createdAt: meta.createdAt,
-            updatedAt: meta.updatedAt,
-            historyRevision: fingerprintRevision(value),
-            canResume: true,
-            archived: false,
-            incompleteTail: meta.incompleteTail,
-            sourceIncarnation: initialSourceIncarnation(key, value),
-            sourcePath: path,
-            fingerprint: value,
-          });
-        } catch {
-          /* 逐文件 fail-soft：EACCES、活跃写入与损坏文件一律跳过整条来源不受累 */
-        }
+      return (await safeFiles(root)).filter((file) => file.name.endsWith(".jsonl")).map((file) => join(root, file.name));
+    }))).flat();
+    const entries = (await mapWithLimit(paths, SCAN_FANOUT, async (path): Promise<AdapterEntry | null> => {
+      try {
+        const meta = await sessionMeta(path, canonicalRoot, depth);
+        if (!meta) return null;
+        const value = await fingerprint(path, this.parserVersion);
+        const canonicalNativeId = meta.sessionId || basename(path, ".jsonl");
+        const aliases = normalizedAliases([
+          canonicalNativeId,
+          basename(path, ".jsonl"),
+        ]);
+        const key = {
+          sourceKind: this.sourceKind,
+          storageFingerprint: storage,
+          canonicalNativeId,
+          aliases,
+          resumeAlias: canonicalNativeId,
+        } as const;
+        return {
+          opaqueId: opaqueSessionId(key),
+          projectId: "",
+          sourceKind: this.sourceKind,
+          key,
+          title: meta.title,
+          cwd: meta.cwd,
+          createdAt: meta.createdAt,
+          updatedAt: meta.updatedAt,
+          historyRevision: fingerprintRevision(value),
+          canResume: true,
+          archived: false,
+          incompleteTail: meta.incompleteTail,
+          sourceIncarnation: initialSourceIncarnation(key, value),
+          sourcePath: path,
+          fingerprint: value,
+        };
+      } catch {
+        /* 逐文件 fail-soft：EACCES、活跃写入与损坏文件一律跳过整条来源不受累 */
+        return null;
       }
-    }
+    })).filter((entry): entry is AdapterEntry => entry !== null);
     entries.sort(byCreatedAt);
     return {
       sourceKind: this.sourceKind,

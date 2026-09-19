@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on one shared author-source analysis, frozen manifest capabilities, and the gate-3 author allowlist exported by metadata.ts (derived from runtime-dependencies.json)
+ * [INPUT]: Depends on one shared author-source analysis (loaded on demand so the TypeScript compiler stays off the startup graph), frozen manifest capabilities, and the gate-3 author allowlist exported by metadata.ts (derived from runtime-dependencies.json)
  * [OUTPUT]: Provides independent Gate 1/2/3 new-generation admission without removing any installed runtime contract
  * [POS]: gui-build pre-sandbox admission boundary; compatibility serving remains outside this policy
  */
@@ -7,7 +7,7 @@
 import type { BaseAppManifest } from "../../../../shared/apps-ipc";
 import type { SourceFreezeReceipt } from "./contracts";
 import { GATE_3_AUTHOR_SPECIFIERS } from "./metadata";
-import { analyzeAuthorSource, type AuthorSourceAnalysis } from "./source-analysis";
+import type { AuthorSourceAnalysis } from "./source-analysis";
 
 const APP_GUI_ADMISSION_GATES = ["gate-1", "gate-2", "gate-3"] as const;
 export type AppGuiAdmissionGate = (typeof APP_GUI_ADMISSION_GATES)[number];
@@ -47,6 +47,9 @@ export class AppGuiAdmissionPolicy {
   }
 
   async assert(receipt: SourceFreezeReceipt, manifest: BaseAppManifest) {
+    /* source-analysis pulls in the 9 MB TypeScript compiler. Admission is the only
+       startup-reachable caller, so the import waits here for an actual build. */
+    const { analyzeAuthorSource } = await import("./source-analysis");
     const required = requiredGates(await analyzeAuthorSource(receipt), manifest);
     const closed = required.find((gate) => !this.open.has(gate));
     if (!closed) return required;

@@ -112,6 +112,10 @@ export function registerBasesRendererIpc(
     .roles("main", "app-window")
     .handleWithContext(BASES_CHANNEL.get, (context, input) =>
       service.get(ownerKey(context, readOwnerKey(input))))
+    .handleWithContext(BASES_CHANNEL.recovery, (context, input) => {
+      const value = service.store.incomplete(ownerKey(context, readOwnerKey(input)));
+      return value ? { files: value.files, reason: value.reason } : null;
+    })
     .handleWithContext(BASES_CHANNEL.ensure, (context, input) =>
       service.ensure(ownerKey(context, readOwnerKey(input))))
     .handleWithContext(BASES_CHANNEL.listRoot, (context) => ({

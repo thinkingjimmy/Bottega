@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron WebContentsView/session, BrowserPanelService/CdpHarness, Chrome import, trusted IPC and main window
- * [OUTPUT]: Provides installing BrowserPanel Returns BrowserRuntime: view Factory, tool kernel, window registration and security shutdown
+ * [OUTPUT]: Provides installing BrowserPanel Returns BrowserRuntime: view Factory, tool kernel, window registration, the E2E-only background-sleep threshold override, and security shutdown
  * [POS]: The main/browser platform combination root; index only has one runtime, no Browser IPC, CDP or Chrome path details
  */
 
@@ -42,6 +42,7 @@ export type BrowserRuntime = ReturnType<typeof installBrowserPanel>;
 export function installBrowserPanel(chromeRoot: string) {
   const browserSession = session.fromPartition(BROWSER_PARTITION);
   const service = new BrowserPanelService({
+    ...(e2eSleepAfterMs() ?? {}),
     createView: () =>
       new WebContentsView({
         webPreferences: {
@@ -63,6 +64,17 @@ export function installBrowserPanel(chromeRoot: string) {
     },
     shutdown: () => service.shutdown(),
   };
+}
+
+/**
+ * Only the E2E assembly may shorten the sleep threshold: waiting 30 real minutes
+ * is not a test. Production ignores the variable because the gate is the same
+ * AI_CHAT_BROWSER_E2E flag that installs the test-only tool driver.
+ */
+function e2eSleepAfterMs(): { sleepAfterMs: number } | null {
+  if (process.env.AI_CHAT_BROWSER_E2E !== "1") return null;
+  const value = Number(process.env.AI_CHAT_BROWSER_SLEEP_AFTER_MS);
+  return Number.isFinite(value) && value > 0 ? { sleepAfterMs: value } : null;
 }
 
 function registerChromeImport(

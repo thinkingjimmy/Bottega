@@ -12,7 +12,7 @@ import { agentFailureCopy } from "@/lib/agent-failure";
 import {
   ProductFailureNotice,
   type ProductFailureNoticeLabels,
-} from "./product-failure-notice";
+} from "@ai-chat/ui/components/feedback/failure-notice";
 
 export function agentFailureNoticeLabels(
   t: (key: string) => string

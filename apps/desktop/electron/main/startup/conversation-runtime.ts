@@ -1,13 +1,14 @@
 /**
  * [INPUT]: Depends on Chat/Project/App/Memory/Gallery/Browser services, the History Import handle, canonical Project Tools resolver, scoped Extension inventory, Skills selection authority, manual staging, RelayLedger, and backend bridge
- * [OUTPUT]: Composes runtime-only admission, scoped retries, queue pausing and title generation/recovery qualified against the same configured model and workspace.
+ * [OUTPUT]: Composes runtime-only admission, scoped retries, queue pausing and single-backend title generation/recovery — headless job or one-shot Agent turn — qualified against the same configured model and workspace.
  * [POS]: The conversation-domain startup composition module; the external-history half lives in history-import-runtime.ts and assembles dependencies without holding global lifecycle state
  */
 
 import { join } from "node:path";
-import type { AgentBackendId, AgentWorkspaceScope } from "../../../shared/agent-ipc";
+import type { AgentBackendId, AgentWorkspaceScope, BackendCapabilities } from "../../../shared/agent-ipc";
 import type { TurnProjectContext } from "../../../shared/product-resource-scope";
-import { ownerFromKey } from "../../../shared/bases-ipc";
+
+import { ownerFromKey } from "@ai-chat/base-ui/model/owner-key";
 import { PROJECT_UNAVAILABLE } from "../../../shared/projects-ipc";
 import type { TrustedManualTurnSubmission as ManualTurnSubmission } from "../../../shared/sections-ipc";
 import {
@@ -26,7 +27,7 @@ import type { AppsService } from "../apps/apps-service";
 import { ArchiveService } from "../archive/archive-service";
 import { TitleEligibilityDeferred } from "../chats/chat-title-jobs";
 import { assertAgentAvailable, assertInstalledRuntime } from "../agent/runtime-gate";
-import { backendById, backendRuntimeRegistry, orderedBackends } from "../backends";
+import { backendById, backendRuntimeRegistry } from "../backends";
 import type { BaseStore } from "../bases/base-store";
 import type { BasesService } from "../bases/bases-service";
 import type { BrowserRuntime } from "../browser/bootstrap";
@@ -35,7 +36,7 @@ import { PurgeJournal } from "../chat-home/purge-journal";
 import type { ChatStore } from "../chats/chat-store";
 import { ChatsService } from "../chats/chats-service";
 import { reconcileAdoptedContinuations } from "../chats/lifecycle/adopted-chat";
-import { generateTitle } from "../chats/title-generator";
+import { generateTitle, generateTitleWithTurn } from "../chats/title-generator";
 import type { ConversationDeletionCoordinator } from "../deletion/conversation-deletion-coordinator";
 import type { FileAuthorizationStore } from "../file-authorizations";
 import type { GalleryRuntime } from "../gallery/bootstrap";
@@ -59,6 +60,14 @@ import type { SettingsStore } from "../settings-store";
 import type { SkillsCatalog, WorkspaceResolver } from "../skills-catalog";
 import { resolveConversationContext } from "../workspace-resolver";
 import type { WorkspaceFileCatalog } from "../workspace-files";
+
+/**
+ * Kimi and OpenCode run chat turns fine but declare no headless purpose at all
+ * (print mode dies under the fence), so their titles come from one ordinary
+ * Agent turn instead of a headless job.
+ */
+const usesOneShotTitles = (snapshot: { capabilities: BackendCapabilities }) =>
+  !snapshot.capabilities.headless.includes("title");
 
 type ChatsRuntimeDependencies = {
   userData: string;
@@ -109,7 +118,7 @@ export function createChatsService({
       getCoordinator()?.isTransitioning(chatId) ?? Promise.resolve(false),
     isProjectArchived: (projectId) =>
       Boolean(projectStore.get(projectId)?.archivedAt),
-    attachmentsRoot: join(userData, "chat-attachments"),
+    libraryRoot: () => settings.get().libraryRoot ?? null,
     exportsRoot: join(userData, "exports"),
     resolveAppAgent: (appId, projectId) =>
       projects.isAppBinding(projectId, appId)
@@ -139,11 +148,15 @@ export function createChatsService({
       let revision = 0;
       let closed = false;
       const releaseRuntime = backendRuntimeRegistry.subscribe((backend, snapshot) => {
+        if (backend !== settings.get().titleAgent) return;
         const request = ++revision;
         pending.set(backend, request);
         void backendRuntimeRegistry.operationEligibility(backend, "title", titlePlan(backend), snapshot).then((eligibility) => {
           if (closed || pending.get(backend) !== request) return;
-          const signature = JSON.stringify([snapshot.runtimeStatus, snapshot.generation, eligibility]);
+          /* A backend without a headless title purpose is never eligible by that
+             measure, so authentication is the only fact that can wake its jobs. */
+          const signature = JSON.stringify([snapshot.runtimeStatus, snapshot.generation, eligibility,
+            ...(usesOneShotTitles(snapshot) ? [snapshot.authStatus] : [])]);
           if (seen.get(backend) === signature) return;
           seen.set(backend, signature);
           wake();
@@ -160,41 +173,35 @@ export function createChatsService({
       });
       return () => { closed = true; releaseRuntime(); releaseSettings(); };
     },
+    /* One configured backend, no fallback chain: a backend that cannot answer
+       fails outright and the Chat keeps the user's own first message. */
     generateTitle: async (firstMessage, context) => {
       const preferences = settings.get();
-      const explicit = preferences.titleAgent;
-      const candidates =
-        explicit === "auto" ? orderedBackends() : [backendById(explicit)];
-      let selected;
-      let deferred = false;
-      for (const descriptor of candidates) {
-        const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
-        const eligibility = await backendRuntimeRegistry.operationEligibility(descriptor.id, "title", titlePlan(descriptor.id, preferences), snapshot);
-        deferred ||= eligibility.decision === "wait";
-        if (
-          snapshot.runtimeStatus === "installed" &&
-          eligibility.decision === "allow" &&
-          snapshot.capabilities.headless.includes("title") &&
-          descriptor.headless
-        ) {
-          selected = descriptor;
-          break;
+      const descriptor = backendById(preferences.titleAgent);
+      const model = preferences.titleModelByBackend[descriptor.id] ?? null;
+      const snapshot = await backendRuntimeRegistry.resolve(descriptor.id);
+      if (snapshot.runtimeStatus !== "installed") {
+        throw new Error(`${descriptor.displayName} 未安装，无法生成标题`);
+      }
+      if (!usesOneShotTitles(snapshot) && descriptor.headless) {
+        const eligibility = await backendRuntimeRegistry.operationEligibility(
+          descriptor.id, "title", titlePlan(descriptor.id, preferences), snapshot);
+        if (eligibility.decision === "wait") throw new TitleEligibilityDeferred();
+        if (eligibility.decision !== "allow") {
+          throw new Error(`${descriptor.displayName} 当前不可用于标题生成`);
         }
+        return generateTitle(descriptor, titleWorkspace, firstMessage, model, context);
       }
-      if (!selected) {
-        if (deferred) throw new TitleEligibilityDeferred();
-        throw new Error(
-          explicit === "auto"
-            ? "没有可用于标题生成的 Agent"
-            : `${backendById(explicit).displayName} 当前不可用于标题生成`
-        );
+      /* The one-shot route has no purpose eligibility to consult, so it reads the
+         authentication conclusion directly: a confirmed "no" is a hard failure, a
+         check still in flight is worth waiting for, and an answer the probe can
+         never give (OpenCode proves only the handshake) must not block forever. */
+      if (snapshot.authStatus === "unauthenticated") {
+        throw new Error(`${descriptor.displayName} 未登录，无法生成标题`);
       }
-      return generateTitle(
-        selected,
-        titleWorkspace,
-        firstMessage,
-        preferences.titleModelByBackend[selected.id] ?? null, context
-      );
+      if (snapshot.authStatus === "checking") throw new TitleEligibilityDeferred();
+      return generateTitleWithTurn(
+        descriptor, snapshot.runtime, titleWorkspace, firstMessage, model, context);
     },
     withProject: (projectId, task) =>
       projects.runExclusive(async () => {
@@ -297,8 +304,8 @@ export function reconcileAdoptedContinuationRuntime(
     store,
     homes,
     withProject: (_projectId, task) => task(),
-    commitWithAttachments: (payloads, commit) =>
-      chats.commitWithAttachments(payloads, commit),
+    commitWithAttachments: (payloads, commit, chatId) =>
+      chats.commitWithAttachments(payloads, commit, chatId),
     publish: () => undefined,
     onSessionBound: (session, chatId) => seedThreadScope(session, chatId),
   }, new Set(liveManualIntentIds));
@@ -509,7 +516,8 @@ export function createConversationCoordinator({
       resolvedInput,
       assistantSeq,
       admissionHeld,
-      projectTools
+      projectTools,
+      trustedAuthority
     ) =>
       startAgentPayload(
         payload,
@@ -519,7 +527,8 @@ export function createConversationCoordinator({
         resolvedInput,
         assistantSeq,
         admissionHeld,
-        projectTools
+        projectTools,
+        trustedAuthority
       ),
     onAgentSwitchCommitted: (conversationId) => { releaseThreadScopeForConversation(conversationId); },
     rebuildSessionForTools: async (conversationId, expected) => {

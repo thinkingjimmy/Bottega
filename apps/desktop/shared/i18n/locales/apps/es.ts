@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Spanish catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level
+ * [OUTPUT]: Provides the Apps Spanish catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
  * [POS]: Spanish copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
 
@@ -295,7 +295,7 @@ export const appsEs: typeof appsEn = {
     settings: "Ajustes de Base App",
     edit: "Editar App",
     more: "Más acciones",
-    skillFailed: "La generación de la skill de App falló, por lo que el chat de uso no tiene un protocolo estable de entrada.",
+    skillFailed: "No se pudo preparar el chat de la App",
     retrySkill: "Reintentar generación",
     workbench: "Banco de trabajo de App",
     workbenchDescription: "Reproduce entornos, fallos, presupuestos y accesibilidad sin un servidor de desarrollo de la App.",
@@ -369,6 +369,21 @@ export const appsEs: typeof appsEn = {
     start: "Iniciar reparación",
   },
   saveAs: {
+    cloud: {
+      "pending": "Esperando confirmación. El Chat y la Base originales están protegidos.",
+      "confirmed": "Confirmado. Finalizando la conversión local.",
+      "conflict": "El Chat o la Base cambió antes de confirmar la conversión. Conserva los datos originales y revísalos antes de volver a intentarlo.",
+      "previous": "Chat revisado",
+      "current": "Chat actual en la nube",
+      "proposed": "Chat solicitado",
+      "ordinary": "Chat normal",
+      "appEdit": "Edición de App",
+      "appUse": "Uso de App",
+      "unavailable": "No disponible",
+      "keepOriginal": "Conservar el Chat y la Base originales",
+      "reviewFailed": "No se pudo comprobar esta conversión. Inténtalo de nuevo.",
+      "retry": "Comprobar conversión"
+    },
     generatedDescription: "Base App compartida de {{name}}",
     uncertain: "Se desconoce el resultado del envío anterior. Reintenta con exactamente los mismos parámetros para confirmarlo.",
     enterName: "Introduce un nombre de App",

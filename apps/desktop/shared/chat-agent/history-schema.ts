@@ -14,6 +14,6 @@ export const handoffSchema = z.object({
   promptVersion: z.literal(3), promptHash: z.string().regex(/^[a-f0-9]{64}$/),
   text: z.string().refine(value => new TextEncoder().encode(value).length <= 32768),
   refs: z.array(historyRefSchema).max(1000),
-  coverage: z.object({ mode: z.enum(["excerpts", "none"]), historyIncluded: z.boolean(), notInjected: z.boolean(), storageTrimmed: z.boolean(),
+  coverage: z.object({ mode: z.enum(["full", "excerpts", "none"]), includedMessages: z.number().int().nonnegative().optional(), totalMessages: z.number().int().nonnegative().optional(), historyIncluded: z.boolean(), notInjected: z.boolean(), storageTrimmed: z.boolean(),
     lookup: z.enum(["available", "disabled", "unsupported", "unavailable"]) }).strict(),
 }).strict();

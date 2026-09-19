@@ -29,12 +29,16 @@ import type {
 } from "../../shared/chats-ipc";
 import { displaySubagentName } from "../../shared/subagent-name";
 
+import { resolvedInteractions } from "@ai-chat/cloud-protocol/turns/interactions/reducer";
+import { type InteractionResult } from "@ai-chat/cloud-protocol/turns/live";
+
 export type ChatTurnProjection = {
   messages: ChatMessage[];
   session?: SessionRef;
   serviceTierEffective?: SessionServiceTierEffective;
   requestId?: string;
   draft: TurnDraft | null;
+  interactionResults?: InteractionResult[];
   approvals: AgentApprovalRequest[];
   userInputs: AgentUserInputRequest[];
   subagents: Record<string, ProjectedSubagent>;
@@ -70,6 +74,7 @@ export type ProjectedSubagent = {
 export type ChatProjectionStatus = Partial<
   Pick<
     ChatTurnProjection,
+    | "interactionResults"
     | "cleanup"
     | "persist"
     | "phase"
@@ -86,6 +91,7 @@ export type ChatProjectionStatus = Partial<
 export const projectionStatusOf = (
   projection: ChatTurnProjection
 ): ChatProjectionStatus => ({
+  interactionResults: projection.interactionResults,
   cleanup: projection.cleanup,
   persist: projection.persist,
   phase: projection.phase,
@@ -102,6 +108,7 @@ export const sameProjectionStatus = (
   left: ChatProjectionStatus,
   right: ChatProjectionStatus
 ) =>
+  JSON.stringify(left.interactionResults) === JSON.stringify(right.interactionResults) &&
   left.cleanup === right.cleanup &&
   left.persist === right.persist &&
   left.phase === right.phase &&
@@ -270,6 +277,7 @@ export function projectionFromSnapshot(
     serviceTierEffective: turn.serviceTierEffective,
     requestId: turn.requestId,
     draft: turn.blocksNewTurn ? hydrateDraft(turn.draft) : null,
+    interactionResults: turn.interactionResults,
     approvals: turn.approvals,
     userInputs: turn.userInputs,
     subagents: mergeLiveSubagents(
@@ -302,6 +310,7 @@ export function applyTurnEvent(
       draft: event.turn.blocksNewTurn
         ? hydrateDraft(event.turn.draft)
         : null,
+      interactionResults: event.turn.interactionResults,
       approvals: event.turn.approvals,
       userInputs: event.turn.userInputs,
       subagents: mergeLiveSubagents(
@@ -351,6 +360,7 @@ export function applyTurnEvent(
   if (event.type === "approval-closed") {
     return {
       ...projection,
+      interactionResults: resolvedInteractions(projection.interactionResults, event.resolvedBy ? { kind: "approval", interactionId: event.approvalId, resolvedBy: event.resolvedBy } : undefined),
       approvals: projection.approvals.filter(
         (approval) => approval.approvalId !== event.approvalId
       ),
@@ -365,6 +375,7 @@ export function applyTurnEvent(
   if (event.type === "user-input-closed") {
     return {
       ...projection,
+      interactionResults: resolvedInteractions(projection.interactionResults, event.resolvedBy ? { kind: "input", interactionId: event.userInputId, resolvedBy: event.resolvedBy } : undefined),
       userInputs: projection.userInputs.filter(
         (request) => request.userInputId !== event.userInputId
       ),

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the lifecycle gate/intent store, the App/Project/Chat/Base stores, the current app locale, the save-as-app-support rules, service-inputs for the input contract, durable child promotion, the sharing-skill policy, conversation availability, and the Project-gated transition-turn ports
- * [OUTPUT]: Provides SaveAsAppService.saveAsApp/recover with structured business rejection and v15 App records that start with an explicit empty Studio grant
+ * [OUTPUT]: Provides local and cloud Save as App recovery, original-request replay, lock-external receipt delivery and reviewed keep-original compensation.
  * [POS]: The Save as App orchestration layer of the apps module; the attachment fence encloses the whole Store queue, recovery trusts the journal rather than the disk, and rollback runs four durable phases so a vanished source chat or a failed compensation still converges
  */
 
@@ -12,7 +12,7 @@ import {
   type AppRecord,
   type SaveAsAppInput,
 } from "../../../../shared/apps-ipc";
-import type { AppLocale } from "../../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import type { BasePromotionService } from "../../bases/base-promotion-service";
 import type { BaseStore } from "../../bases/base-store";
 import type { ChatStore } from "../../chats/chat-store";
@@ -29,13 +29,18 @@ import type { AppStore } from "../store/app-store";
 import type { AppAttachmentFence } from "../attachments/attachment-fence";
 import { hasGeneratedSkill } from "../source/app-skill-status";
 import { assertSaveAsAppInput } from "../service-inputs";
+import { type SaveCloudPromotion } from "./cloud-promotion";
+import { CloudPromotionDelivery } from "../../bases/store/promotion/port";
+import { rollbackSaveAsApp } from "./save-as-app-rollback";
+import { settleSaveForCleanup } from "./save-as-app-cleanup";
+import type { ConversionScopeCleanup } from "../../lifecycle/scope-cleanup/conversion";
+import { confirmedBasePromotionSchema } from "../../bases/store/promotion/cloud";
 import {
   allocatedIdentity,
   appSlug,
   errorText,
   isRollbackPhase,
   needsRollback,
-  recoverySession,
   recoveryStringOrNull,
   rejected,
   rollbackError,
@@ -99,9 +104,40 @@ type SaveAsAppIntentInput = {
 
 export class SaveAsAppService {
   private readonly now: () => number;
+  private cloud: SaveCloudPromotion | null = null;
 
   constructor(private readonly dependencies: SaveAsAppDependencies) {
     this.now = dependencies.now ?? Date.now;
+  }
+  attachCloud(cloud: SaveCloudPromotion) {
+    if (this.cloud) throw new Error("CLOUD_PROMOTION_ALREADY_ATTACHED");
+    this.cloud = cloud;
+  }
+  async recoverPending() {
+    const errors: unknown[] = [];
+    for (const intent of await this.dependencies.intents.listPending()) {
+      if (intent.kind !== "save-as-app" || intent.parentIntentId) continue;
+      try { await this.dependencies.gate.runRecovery(intent.intentId, next => this.recover(next)); } catch (error) { errors.push(error); }
+    }
+    if (errors.length) throw new AggregateError(errors, "Some App conversions still require recovery");
+  }
+  async keepOriginal(intentId: string, candidateHash: string) {
+    await this.dependencies.gate.runRecovery(intentId, async intent => {
+      if (intent.kind !== "save-as-app" || !intent.recoveryState.cloudPromotionScope) throw new Error("APP_PROMOTION_REVIEW_CHANGED");
+      await this.discardCandidate(intent, candidateHash);
+      return this.runLocked((await this.dependencies.intents.getById(intentId))!);
+    });
+  }
+  settleScopeCleanup(intentId: string, cleanup: ConversionScopeCleanup) {
+    return this.dependencies.gate.runRecovery(intentId, intent => this.dependencies.fence.runConversion(
+      { kind: "chat", chatId: String(intent.input.chatId) }, () => this.dependencies.projects.runExclusive(() =>
+        this.dependencies.coordinator.runConversationExclusive(String(intent.input.chatId), () => settleSaveForCleanup(this.dependencies, intent, cleanup)))));
+  }
+  private async discardCandidate(intent: LifecycleIntent, candidateHash: string) {
+    if (!this.cloud) throw new Error("CLOUD_PROMOTION_RUNTIME_PENDING");
+    await this.cloud.discard(intent, candidateHash, async () => {
+      await this.dependencies.intents.advance(intent.intentId, intent.phase, { cloudKeepOriginal: candidateHash });
+    });
   }
 
   async saveAsApp(input: SaveAsAppInput): Promise<AppRecord> {
@@ -267,6 +303,7 @@ export class SaveAsAppService {
   }
 
   private async runLocked(intent: LifecycleIntent): Promise<SagaResult> {
+    if (intent.recoveryState.scopeCleanup) throw new Error("CONVERSION_SCOPE_CLEANUP_REQUIRED");
     const input = intent.input as SaveAsAppIntentInput;
     const identity = allocatedIdentity(intent);
     const run = async (): Promise<SagaResult> => {
@@ -290,7 +327,7 @@ export class SaveAsAppService {
     /* D26：attachment gate 必须包住整条 Store queue（gate 只能在 queue 之外取）。
        grant 侧取同一把 key，于是「先 grant 再转换」与「先转换再 grant」只可能有
        一个赢家。 */
-    return this.dependencies.fence.runConversion(
+    const locked = () => this.dependencies.fence.runConversion(
       { kind: "chat", chatId: input.chatId },
       () =>
         this.dependencies.projects.runExclusive(() =>
@@ -300,6 +337,15 @@ export class SaveAsAppService {
           )
         )
     );
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { return await locked(); }
+      catch (error) {
+        if (!(error instanceof CloudPromotionDelivery)) throw error;
+        await error.deliver();
+        intent = (await this.dependencies.intents.getById(intent.intentId))!;
+      }
+    }
+    throw new Error("CLOUD_PROMOTION_CONFIRMATION_PENDING");
   }
 
   private async execute(
@@ -308,6 +354,10 @@ export class SaveAsAppService {
     identity: SaveIdentity
   ): Promise<SagaResult> {
     let intent = initial;
+    if (typeof intent.recoveryState.cloudKeepOriginal === "string") {
+      await this.discardCandidate(intent, intent.recoveryState.cloudKeepOriginal);
+      return this.rollback(intent, input, identity, { code: "APP_PROMOTION_DISCARDED", message: "The original Chat and Base were kept." });
+    }
     if (isRollbackPhase(intent.phase)) {
       return this.rollback(
         intent,
@@ -321,7 +371,7 @@ export class SaveAsAppService {
       input.icon,
       input.locale ?? "en"
     );
-    const dir = join(this.dependencies.store.appsRoot, identity.appId);
+    const dir = this.dependencies.store.sourceDirectory(identity.appId);
     intent = await this.reconcilePromotionLink(intent, input, identity);
 
     /* promotion 是不可回头的分水岭：child done 即源 Base 已消费，此后只前进。
@@ -386,6 +436,10 @@ export class SaveAsAppService {
       );
     }
 
+    if (intent.recoveryState.cloudPromotion) {
+      if (!this.cloud) throw new Error("CLOUD_PROMOTION_RUNTIME_PENDING");
+      await this.cloud.adopt(confirmedBasePromotionSchema.parse(intent.recoveryState.cloudPromotion));
+    }
     if (!reached("save-as-app", intent, "skill-turn-enqueued")) {
       const chat = this.dependencies.chats.getMetadata(input.chatId);
       // 分水岭后源 chat 消失：fail-forward——跳过 skill turn 仍推进到 ready，
@@ -527,8 +581,16 @@ export class SaveAsAppService {
     }
 
     if (!reached("save-as-app", intent, "chat-migrated")) {
+      const source = this.dependencies.bases.get(`chat:${input.chatId}`, chat.incarnationId);
+      if (!this.cloud && (intent.recoveryState.cloudPromotionScope || source &&
+        this.dependencies.bases.sync.read(`chat:${input.chatId}`, source.meta.ownerInstanceId).scope)) throw new Error("CLOUD_PROMOTION_RUNTIME_PENDING");
+      const proof = await this.cloud?.prepare({ intent, identity, chat, name: input.name });
+      if (proof) {
+        intent = await this.dependencies.intents.advance(intent.intentId, intent.phase, { cloudPromotion: proof });
+        await this.cloud!.commit(proof);
+      }
       if (chat.projectId !== identity.projectId) {
-        await this.dependencies.projects.moveChatProjectHeld(
+        if (!proof) await this.dependencies.projects.moveChatProjectHeld(
           input.chatId,
           originalProjectId,
           identity.projectId,
@@ -548,6 +610,7 @@ export class SaveAsAppService {
       chatId: input.chatId,
       projectId: identity.projectId,
       requestId: identity.promotionRequestId,
+      ...(intent.recoveryState.cloudPromotion ? { cloud: confirmedBasePromotionSchema.parse(intent.recoveryState.cloudPromotion) } : {}),
     });
     return this.dependencies.intents.advance(intent.intentId, "promoted");
   }
@@ -605,84 +668,15 @@ export class SaveAsAppService {
   ) {
     if (result.status !== "business-rejected") return result;
     const current = await this.dependencies.intents.getById(intent.intentId);
+    if (current?.recoveryState.cloudPromotionScope && !current.recoveryState.cloudKeepOriginal) throw new Error("CLOUD_PROMOTION_REQUIRES_RECONCILIATION");
     if (!current || current.terminal || !needsRollback(current.phase)) {
       return result;
     }
     return this.rollback(current, input, identity, result.error);
   }
 
-  private async rollback(
-    initial: LifecycleIntent,
-    input: { chatId: string },
-    identity: SaveIdentity,
-    error: { code: string; message: string }
-  ): Promise<SagaResult> {
-    let intent = initial;
-    if (!isRollbackPhase(intent.phase)) {
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "rollback-started",
-        { rollbackError: error }
-      );
-    }
-    const terminalError = rollbackError(intent, error);
-    /* 源 chat 已被删除时无可恢复对象:跳过 chat 补偿但继续清理
-     * Project/壳,补偿必须收敛而不是永久滞留 pending(fail-forward)。 */
-    const chat = this.dependencies.chats.getMetadata(input.chatId);
-
-    if (!reached("save-as-app", intent, "rollback-chat-restored")) {
-      if (chat) {
-        const originalProjectId = recoveryStringOrNull(
-          intent,
-          "originalProjectId",
-          chat.projectId
-        );
-        if (chat.projectId === identity.projectId) {
-          await this.dependencies.projects.moveChatProjectHeld(
-            chat.id,
-            identity.projectId,
-            originalProjectId,
-            null
-          );
-        } else if (chat.projectId !== originalProjectId) {
-          throw new Error("回滚 Save as App 时聊天 Project 归属已变化");
-        }
-        const restoredChat = this.dependencies.chats.getMetadata(chat.id);
-        if (!restoredChat) throw new Error("回滚后聊天不存在");
-        const originalSession = recoverySession(intent);
-        if (originalSession.recorded) {
-          await this.dependencies.restoreSession(
-            restoredChat,
-            originalSession.value
-          );
-        }
-      }
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "rollback-chat-restored"
-      );
-    }
-
-    if (!reached("save-as-app", intent, "rollback-project-removed")) {
-      await this.dependencies.projects.rollbackAppProjectHeld(
-        identity.projectId,
-        identity.appId
-      );
-      intent = await this.dependencies.intents.advance(
-        intent.intentId,
-        "rollback-project-removed"
-      );
-    }
-
-    if (!reached("save-as-app", intent, "rollback-shell-removed")) {
-      const record = this.dependencies.store.get(identity.appId);
-      if (record) await this.dependencies.removeShell(record);
-      await this.dependencies.intents.advance(
-        intent.intentId,
-        "rollback-shell-removed"
-      );
-    }
-    return rejected(terminalError.code, terminalError.message);
+  private rollback(initial: LifecycleIntent, input: { chatId: string }, identity: SaveIdentity, error: { code: string; message: string }): Promise<SagaResult> {
+    return rollbackSaveAsApp(this.dependencies, initial, input, identity, error);
   }
 
   private freshAppId() {

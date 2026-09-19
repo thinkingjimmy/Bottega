@@ -1,14 +1,20 @@
 /**
- * [INPUT]: Depends on durable App records, main-owned host-version admission, generation builder/consent and existing grant, cutover and serialization authorities.
- * [OUTPUT]: AppStore v16 single writer for installed records, independent portable descriptors, fixed admission identities, durable package candidates and installation receipts.
- * [POS]: Canonical App record and broadcast authority; its authority sibling exclusively classifies and replaces startup catalog bytes while this facade loads established v15 state, serializes mutations, and prevents stale renderer projections
+ * [INPUT]: Depends on durable App records, the required folder root, verified source export, host-version admission, the host locale, generation builder/consent and existing grant, cutover and serialization authorities.
+ * [OUTPUT]: AppStore v16 single writer for records, portable identity/source baselines, retained custody, known App IDs and scope-aware status broadcasts.
+ * [POS]: Canonical App record and broadcast authority; the folder catalog holds every record, and this facade serializes mutations and prevents stale projections.
  */
 
 import { AppPortableApi } from "./portable/api";
+import { AppFolderCatalog } from "./folder/catalog";
+import { retainDeletedFolderApp } from "./folder/recovery";
+import { appSourceDirectory, assertAppResidence, assertResidenceFenceStable } from "./folder/paths";
+import { assertCapturedAppSourceRetained, exportPublishedAppSource } from "../share/package/cloud-source";
+import { AppSourceCustody } from "../share/package/custody/source";
 import { appPortableCatalogSchema, emptyAppPortableCatalog } from "./portable/model";
 import { readCompatibility, recordCandidate, runningBottegaVersion } from "../compatibility/read";
-import { mkdir, readFile } from "node:fs/promises";
-import { isAbsolute, join, normalize, relative } from "node:path";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type {
   AppRecord,
@@ -16,15 +22,14 @@ import type {
   BaseGuiCapabilityScopes,
   BaseGuiHostActionCapability,
 } from "../../../../shared/apps-ipc";
-import { errorMessage, statusError } from "../../errors";
+import { errorMessage } from "../../errors";
 import { SerialQueue } from "../../persistence/serial-queue";
-import { durableReplaceFile } from "../../persistence/durable-json";
 import type { AppGenerationBuildLedger } from "../generation/app-generation-build-ledger";
 import type {
   AppServerCutoverPort,
 } from "../server/app-server-cutover";
 import type { AppExtensionGenerationPort } from "../generation/app-extension-generation";
-import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/app-generation-build-participants";
+import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/generation/build-participants";
 import type { BaseGuiGrantStore } from "../base-gui/grant-store";
 import { BaseGuiBuildParticipant } from "../base-gui/build-participant";
 import { AppGenerationBuilder } from "../generation/app-generation-builder";
@@ -38,10 +43,6 @@ import {
 import { grantStudioAccess } from "./studio-grant";
 import { appRoutingFacts } from "../support";
 import type { AppGuiBuildService } from "../gui-build/service";
-import {
-  AppStoreAuthorityEvidence,
-  type AppStoreAuthorityInspection,
-} from "./app-store-authority";
 import {
   APP_ID_PATTERN,
   SCHEMA_VERSION,
@@ -57,15 +58,18 @@ export type AppStoreAuthorityState =
 
 export class AppStore {
   readonly portable: AppPortableApi;
+  readonly sourceCustody: AppSourceCustody;
   private portableCatalog = emptyAppPortableCatalog();
-  readonly appsRoot: string;
+  private readonly folder: AppFolderCatalog;
+  /** Apps live in the folder and nowhere else; nothing may be read or written before one is selected. */
+  get appsRoot() { const root = this.libraryRoot(); if (!root) throw new Error("LIBRARY_NOT_CONFIGURED"); return join(root, "apps"); }
+  sourceDirectory(id: string) { return appSourceDirectory(this.appsRoot, id, true); }
+  /** Staging is this computer's build scratch, not App content, so it stays beside the profile. */
+  get stagingRoot() { return join(this.userData, "apps-staging"); }
   readonly artifactsRoot: string;
   readonly filePath: string;
-  readonly authorityMarkerPath: string;
   private records = new Map<string, AppRecord>();
   private authority: AppStoreAuthorityState = "degraded-corrupt";
-  private authorityInspection: AppStoreAuthorityInspection | null = null;
-  private freshInstallPendingLoad = false;
   private retiredIds = new Set<string>();
   /* appId → 上次广播出去的序列化记录；`persist()` 用它做差分，谁也不必记得
      「我这次改完要不要发一条」。 */
@@ -87,21 +91,23 @@ export class AppStore {
   private readonly generationBuilder: AppGenerationBuilder;
   private readonly generationConsent: AppGenerationConsentController;
   private readonly recovery: AppStoreRecovery;
-  private readonly authorityEvidence: AppStoreAuthorityEvidence;
+  /** English until the host publishes the reader's language; restored-source copy is the only string it reaches. */
+  private locale: () => AppLocale = () => "en";
 
-  constructor(userData: string, readonly hostVersion = runningBottegaVersion, storageMode: import("../../../../shared/local-storage/contracts").StorageMode = { kind: "local-only" }) {
+  constructor(private readonly userData: string, readonly hostVersion = runningBottegaVersion, storageMode: import("../../../../shared/local-storage/contracts").StorageMode = { kind: "local-only" }, private readonly libraryRoot: () => string | null) {
+    this.folder = new AppFolderCatalog(userData, libraryRoot, undefined, () => this.locale());
+    this.sourceCustody = new AppSourceCustody(userData);
     this.portable = new AppPortableApi({ enqueue: run => this.queue.enqueue(run), state: () => this.portableCatalog, installed: id => this.records.get(id),
+      verifyInstalled: id => exportPublishedAppSource(this, id, join(userData, "app-source-verification")),
+      retired: id => this.retiredIds.has(id),
       commit: async next => {
         const previous = this.portableCatalog;
         this.portableCatalog = appPortableCatalogSchema.parse(next);
         try { await this.persist(); } catch (cause) { this.portableCatalog = previous; throw cause; }
       },
     }, storageMode);
-    this.appsRoot = join(userData, "apps");
     this.artifactsRoot = join(userData, "app-generation-artifacts");
-    this.filePath = join(userData, "apps.json");
-    this.authorityEvidence = new AppStoreAuthorityEvidence(userData);
-    this.authorityMarkerPath = this.authorityEvidence.markerPath;
+    this.filePath = this.folder.path;
     this.generationBuilder = new AppGenerationBuilder({
       hostVersion: () => this.hostVersion(),
       artifactsRoot: this.artifactsRoot,
@@ -223,29 +229,15 @@ export class AppStore {
     await this.normalizeStartupStates();
   }
 
+  /* The folder is the catalog: a build that cannot read an object quarantines it there and carries
+     the saved authority forward, so opening never has to classify a whole canonical file as corrupt. */
   async inspectAuthority() {
+    const root = this.libraryRoot();
     await Promise.all([
-      mkdir(this.appsRoot, { recursive: true }),
+      root ? mkdir(join(root, "apps"), { recursive: true }) : Promise.resolve(),
       mkdir(this.artifactsRoot, { recursive: true, mode: 0o700 }),
     ]);
-    const emptyContent = `${JSON.stringify({
-      schemaVersion: SCHEMA_VERSION,
-      apps: [],
-      retiredIds: [],
-    }, null, 2)}\n`;
-    const inspection = await this.authorityEvidence.inspectCanonical({
-      filePath: this.filePath,
-      emptyContent,
-      schemaVersion: SCHEMA_VERSION,
-      validate: (raw) => {
-        const parsed = parseStore(raw);
-        this.assertDerivedPaths(parsed.apps);
-        return parsed.apps.length;
-      },
-    });
-    this.authorityInspection = inspection;
-    this.authority = inspection.state;
-    this.freshInstallPendingLoad ||= inspection.initializedNow;
+    this.authority = "established";
     return this.authority;
   }
 
@@ -254,12 +246,12 @@ export class AppStore {
   }
 
   async load() {
-    if ((await this.inspectAuthority()) === "degraded-corrupt") return;
-    const freshInstall = this.freshInstallPendingLoad;
-    const parsed = parseStore(JSON.parse(await readFile(this.filePath, "utf8")));
+    await this.inspectAuthority();
+    const parsed = await this.folder.read();
     this.assertDerivedPaths(parsed.apps);
     this.authority = parsed.apps.length ? "established" : "established-empty";
 
+    this.records.clear(); this.published.clear();
     for (const record of parsed.apps) {
       this.records.set(record.id, structuredClone(record));
       /* 读盘是「采纳既有真相」而非变更：先记入快照，启动期的归一化才只广播
@@ -271,8 +263,7 @@ export class AppStore {
       ...parsed.retiredIds,
       ...parsed.apps.map((record) => record.id),
     ]);
-    if (!freshInstall) await this.recovery.reconcileArtifacts();
-    this.freshInstallPendingLoad = false;
+    await this.recovery.reconcileArtifacts();
   }
 
   /**
@@ -308,24 +299,6 @@ export class AppStore {
     return this.authority;
   }
 
-  /** Repair 只提交磁盘证据；当前实例保持写屏障，必须由新进程重新验权。 */
-  async repairAuthority() {
-    await this.queue.enqueue(async () => {
-      if (this.authority !== "degraded-corrupt") return;
-      if (!this.authorityInspection) throw new Error("App authority 尚未完成检查");
-      const content = JSON.stringify(
-        { schemaVersion: SCHEMA_VERSION, apps: [], retiredIds: [] },
-        null,
-        2
-      );
-      await this.authorityEvidence.repairCanonical({
-        filePath: this.filePath,
-        emptyContent: `${content}\n`,
-        inspection: this.authorityInspection,
-      });
-    });
-  }
-
   get(appId: string) {
     const record = this.records.get(appId);
     return record ? structuredClone(record) : undefined;
@@ -339,8 +312,22 @@ export class AppStore {
     return record ? appRoutingFacts(record) : undefined;
   }
 
+  configureLocale(locale: () => AppLocale) { this.locale = locale; }
+
   hasRetiredId(appId: string) {
     return this.retiredIds.has(appId);
+  }
+
+  retainDeletedFolderApp(scope: import("../../../../shared/local-storage/contracts").SyncScope,
+    deletion: import("@ai-chat/cloud-protocol/apps/model").CloudAppDeletion) {
+    return this.queue.enqueue(async () => {
+      this.assertWritableAuthority();
+      return retainDeletedFolderApp({ catalog: this.portableCatalog, records: this.records, retired: this.retiredIds,
+        sourceDirectory: id => this.sourceDirectory(id), locale: () => this.locale(), commit: async next => {
+          const previous = this.portableCatalog; this.portableCatalog = next;
+          try { await this.persist(); } catch (error) { this.portableCatalog = previous; throw error; }
+        } }, scope, deletion);
+    });
   }
 
   async reserveId(appId: string) {
@@ -355,6 +342,16 @@ export class AppStore {
         this.retiredIds.delete(appId);
         throw cause;
       }
+    });
+  }
+
+  async reservePortableId(scope: import("../../../../shared/local-storage/contracts").SyncScope,
+    descriptor: import("./portable/model").PublishedAppDescriptor) {
+    await this.queue.enqueue(async () => {
+      this.portable.assertInstallable(scope, descriptor);
+      if (this.retiredIds.has(descriptor.appId)) return;
+      this.retiredIds.add(descriptor.appId);
+      try { await this.persist(); } catch (cause) { this.retiredIds.delete(descriptor.appId); throw cause; }
     });
   }
 
@@ -608,10 +605,11 @@ export class AppStore {
     await this.queue.enqueue(async () => {
       const current = this.records.get(appId);
       if (!current) return;
+      await assertCapturedAppSourceRetained(this, appId);
       this.records.delete(appId);
       const previousCatalog = this.portableCatalog;
       this.portableCatalog = { ...previousCatalog, entries: previousCatalog.entries.map(entry => entry.descriptor.appId === appId
-        ? { ...entry, installation: "not-installed" as const, installedGenerationId: null } : entry) };
+        ? { ...entry, installation: "not-installed" as const, installedGenerationId: null, installedPackageRevision: null, installedPublication: null } : entry) };
       try {
         await this.persist();
       } catch (cause) {
@@ -623,6 +621,10 @@ export class AppStore {
         await this.generationBuilder.discardArtifact(appId, generation.generationId).catch(() => {});
       }
     });
+  }
+
+  knownAppIds() {
+    return new Set([...this.records.keys(), ...this.portable.list().filter(entry => entry.scope && !entry.tombstoned).map(entry => entry.descriptor.appId)]);
   }
 
   async retireDrainingGeneration(appId: string, generationId: string) {
@@ -654,6 +656,7 @@ export class AppStore {
       return { appId: key.slice(0, separator), generationId: key.slice(separator + 1) };
     });
     for (const provider of this.artifactRootProviders) roots.push(...provider());
+    roots.push(...this.portable.publication.roots());
     return roots;
   }
 
@@ -681,17 +684,9 @@ export class AppStore {
     return this.get(appId)!;
   }
 
+  /* Before the first folder selection there are no records, and no folder to resolve them against. */
   private assertDerivedPaths(records: AppRecord[]) {
-    for (const record of records) {
-      const expected = normalize(join(this.appsRoot, record.id));
-      if (
-        !isAbsolute(record.dir) ||
-        normalize(record.dir) !== expected ||
-        relative(this.appsRoot, expected).startsWith("..")
-      ) {
-        throw new Error(`App ${record.id} 的目录不受 userData/apps 管理`);
-      }
-    }
+    if (records.length) assertAppResidence(records, this.appsRoot, true);
   }
 
   /** 落盘与广播共用的排序视图：两者都只读不改，克隆留给公开的 `list()`。 */
@@ -714,7 +709,7 @@ export class AppStore {
       null,
       2
     );
-    try { await durableReplaceFile(this.filePath, `${content}\n`); } catch (cause) { this.authority = "degraded-corrupt"; throw cause; }
+    try { await this.folder.write(parseStore(JSON.parse(content))); } catch (cause) { this.authority = "degraded-corrupt"; throw cause; }
     this.announce(apps);
   }
 
@@ -739,7 +734,7 @@ export class AppStore {
       if (!alive.has(id)) this.published.delete(id);
     }
     for (const record of apps) {
-      const serialized = JSON.stringify(record);
+      const serialized = JSON.stringify({ record, cloudManaged: this.portable.isCloudManaged(record.id) });
       if (this.published.get(record.id) === serialized) continue;
       this.published.set(record.id, serialized);
       for (const watcher of this.watchers) {
@@ -751,24 +746,5 @@ export class AppStore {
         }
       }
     }
-  }
-}
-
-function assertResidenceFenceStable(
-  previous: AppRecord | undefined,
-  next: AppRecord
-) {
-  if (!previous?.activeUseSwitch) return;
-  const bindingChanged =
-    previous.generationBinding.bindingRevision !==
-      next.generationBinding.bindingRevision ||
-    (previous.generationBinding.active?.generationId ?? null) !==
-      (next.generationBinding.active?.generationId ?? null);
-  if (
-    previous.state !== next.state ||
-    previous.lifecycleRevision !== next.lifecycleRevision ||
-    bindingChanged
-  ) {
-    throw statusError(409, "APP_USE_RESIDENCE_MUTATION_BUSY");
   }
 }

@@ -240,10 +240,12 @@ export class ChatReadModel {
   searchTimelineDocuments(
     tokens: readonly string[],
     cursor: SearchDocumentCursor | null,
-    limit: number
+    limit: number,
+    includeMirrors = false
   ) {
     return this.state.requireDatabase().execute({
       kind: "search-documents",
+      includeMirrors,
       grams: queryGramTokens(tokens),
       cursor,
       limit: Math.max(1, Math.min(500, limit)),

@@ -1,11 +1,13 @@
 /**
  * [INPUT]: Depends on crypto, continuation commands, canonical Chat schemas, SQLite rows, and search projection writer
- * [OUTPUT]: Provides durable continuation input, Home evidence, identity-fenced atomic finalization that upserts every per-device row a renamed readonly Chat already owns, precommit failure, reconciliation reads, and committed-orphan isolation
+ * [OUTPUT]: Provides durable native/replay input sealing, Home evidence, generation/revision-fenced atomic Agent/options/notice/user finalization, per-device upserts, and failure/orphan reconciliation
  * [POS]: Cross-store continuation saga state machine beneath ChatRepository; committed Home evidence is never compensated by this layer
  */
 
 import { turnOptionsSchema } from "../../../../../shared/chat-agent/options";
+import { noticeMessageContent } from "../../../../../shared/chats-ipc";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { messageSchema } from "../../chat-schema";
 import { adoptInputSchema } from "../../chat-input";
 import type {
@@ -23,6 +25,10 @@ import {
 } from "./codec";
 import { ChatRecordWriter } from "./writer";
 
+// Compare durable JSON values: hydration may materialize absent optional fields as undefined.
+const sameJsonValue = (left: unknown, right: unknown) =>
+  isDeepStrictEqual(JSON.parse(json(left ?? null)), JSON.parse(json(right ?? null)));
+
 export class ContinuationSagaRepository {
   private readonly writer: ChatRecordWriter;
 
@@ -34,6 +40,7 @@ export class ContinuationSagaRepository {
   }
 
   begin(command: Extract<DatabaseCommand, { kind: "begin-continuation-saga" }>) {
+    const continuationInput = adoptInputSchema.parse(command.continuationInput);
     const active = this.database.prepare(
       `SELECT * FROM chat_continuation_sagas
         WHERE chat_id = ? AND state NOT IN ('completed', 'committed-orphan', 'failed')
@@ -41,7 +48,9 @@ export class ContinuationSagaRepository {
     ).get(command.chatId) as Row | undefined;
     if (active) throw new Error("A continuation saga is already active for this Chat");
     const source = this.database.prepare(
-      `SELECT c.lifecycle_kind, o.can_resume, a.generation_id
+      `SELECT c.lifecycle_kind, c.agent, c.agent_revision, c.core_revision, c.incarnation_id,
+              o.can_resume, o.source_kind, o.storage_fingerprint, o.canonical_native_id,
+              o.history_revision, a.generation_id
          FROM chats c
          JOIN chat_import_origins o ON o.chat_id = c.id
          JOIN chat_active_import_generations a ON a.chat_id = c.id
@@ -50,16 +59,25 @@ export class ContinuationSagaRepository {
     if (
       !source ||
       source.lifecycle_kind !== "external-readonly" ||
-      Number(source.can_resume) !== 1 ||
+      (continuationInput.session !== null && Number(source.can_resume) !== 1) ||
       source.generation_id !== command.generationId
     ) {
       throw new Error("Continuation source is not a resumable readonly generation");
     }
     const sagaId = `continuation_${randomUUID().replaceAll("-", "")}`;
-    const continuationInput = adoptInputSchema.parse(command.continuationInput);
     if (continuationInput.id !== command.chatId) {
       throw new Error("Continuation input does not match its readonly Chat");
     }
+    if (continuationInput.replay && (
+      continuationInput.replay.generationId !== command.generationId ||
+      continuationInput.replay.expectedChatRecordRevision !== Number(source.core_revision) ||
+      continuationInput.incarnationId !== source.incarnation_id || Number(source.agent_revision) !== 0 ||
+      continuationInput.importOrigin.sourceKind !== source.agent ||
+      continuationInput.importOrigin.sourceKind !== source.source_kind ||
+      continuationInput.importOrigin.storageFingerprint !== source.storage_fingerprint ||
+      continuationInput.importOrigin.canonicalNativeId !== source.canonical_native_id ||
+      continuationInput.importOrigin.historyRevision !== source.history_revision
+    )) throw new Error("Saved-history continuation source changed");
     this.database.prepare(
       `INSERT INTO chat_continuation_sagas(
          saga_id, chat_id, generation_id, device_id,
@@ -83,6 +101,25 @@ export class ContinuationSagaRepository {
   markHomePreparing(
     command: Extract<DatabaseCommand, { kind: "mark-continuation-home-preparing" }>
   ) {
+    if (command.continuationInput) {
+      const current = this.require(command.sagaId);
+      const before = adoptInputSchema.parse(current.continuationInput);
+      const next = adoptInputSchema.parse(command.continuationInput);
+      const notice = next.replay?.notice;
+      const withoutNotice = (value: typeof next) => ({ ...value,
+        replay: value.replay ? { ...value.replay, notice: undefined } : undefined });
+      if (current.state !== "home-preparing" || !before.replay || !notice ||
+        !sameJsonValue(withoutNotice(before), withoutNotice(next)) ||
+        notice.notice.kind !== "agent-switched" || notice.id !== next.replay!.noticeId || notice.seq !== 1 ||
+        notice.notice.from !== next.importOrigin.sourceKind || notice.notice.to !== next.agent ||
+        notice.notice.agentRevision !== 1 || notice.notice.at !== next.firstMessage.createdAt ||
+        notice.createdAt !== next.firstMessage.createdAt || notice.content !== noticeMessageContent(notice.notice)) {
+        throw new Error("Prepared continuation does not match its original intent");
+      }
+      this.database.prepare("UPDATE chat_continuation_sagas SET continuation_input_json = ?, updated_at = ? WHERE saga_id = ?")
+        .run(json(next), command.now, command.sagaId);
+      return this.require(command.sagaId);
+    }
     const updated = this.database.prepare(
       `UPDATE chat_continuation_sagas SET state = 'home-preparing', updated_at = ?
         WHERE saga_id = ? AND state = 'intent-written'`
@@ -155,20 +192,22 @@ export class ContinuationSagaRepository {
       intent.incarnationId !== command.incarnationId ||
       /* 只比会话身份：toolPlan 是派发时冻结的，intent 写下时它还不存在，
          比整个 session 会把每一次正常收养都判成证据不符。 */
-      intent.session.backend !== command.session.backend ||
-      intent.session.id !== command.session.id ||
+      intent.session?.backend !== command.session?.backend ||
+      intent.session?.id !== command.session?.id ||
       intent.snapshotDigest !== command.snapshotDigest ||
-      intent.importOrigin.adoptionSnapshotId !== command.adoptionSnapshotId ||
+      (intent.importOrigin.adoptionSnapshotId ?? null) !== command.adoptionSnapshotId ||
       intent.firstMessage.id !== command.firstMessage.id ||
       intent.firstMessage.content !== command.firstMessage.content ||
       intent.firstMessage.createdAt !== command.firstMessage.createdAt ||
-      !/^adopt_[a-f0-9]{64}$/.test(command.adoptionSnapshotId) ||
-      !/^[a-f0-9]{64}$/.test(command.snapshotDigest)
+      (intent.session !== null && (!/^adopt_[a-f0-9]{64}$/.test(command.adoptionSnapshotId ?? "") ||
+        !/^[a-f0-9]{64}$/.test(command.snapshotDigest ?? ""))) ||
+      !sameJsonValue(intent.replay?.notice, command.notice) ||
+      (intent.replay !== undefined && (!intent.replay.notice || !sameJsonValue(intent.options, command.options)))
     ) {
       throw new Error("Continuation finalization does not match committed Home evidence");
     }
     const chat = this.database.prepare(
-      `SELECT c.lifecycle_kind, c.incarnation_id, c.core_revision, c.options_json,
+      `SELECT c.lifecycle_kind, c.incarnation_id, c.core_revision, c.options_json, c.agent, c.agent_revision,
               c.native_message_revision,
               a.aggregate_revision, a.timeline_revision,
               g.generation_id active_generation_id
@@ -190,9 +229,13 @@ export class ContinuationSagaRepository {
     if (chat.incarnation_id !== command.incarnationId) {
       throw new Error("Continuation must keep the readonly Chat incarnation");
     }
+    if (intent.replay && (Number(chat.core_revision) !== intent.replay.expectedChatRecordRevision ||
+      chat.agent !== intent.importOrigin.sourceKind || Number(chat.agent_revision) !== 0)) {
+      throw new Error("Saved-history continuation Agent revision changed");
+    }
     const message = messageSchema.parse(command.firstMessage);
-    if (message.role !== "user" || message.seq !== 1) {
-      throw new Error("Continuation must begin its native segment with user seq=1");
+    if (message.role !== "user" || message.seq !== (intent.replay ? 2 : 1)) {
+      throw new Error("Continuation user sequence does not match its frozen boundary");
     }
     this.database.prepare(
       "UPDATE chat_continuation_sagas SET state = 'finalizing', updated_at = ? WHERE saga_id = ?"
@@ -209,14 +252,17 @@ export class ContinuationSagaRepository {
     ) + 1;
     const aggregateRevision = Number(chat.aggregate_revision) + 1;
     const timelineRevision = messageRevision;
-    if (command.options && command.options.backend !== command.session.backend) throw new Error("CHAT_OPTIONS_BACKEND_CONFLICT");
+    if (command.options && command.options.backend !== intent.agent) throw new Error("CHAT_OPTIONS_BACKEND_CONFLICT");
     this.database.prepare(
       `UPDATE chats
-          SET lifecycle_kind = 'external-managed', next_seq = 2, options_json = ?,
+          SET lifecycle_kind = 'external-managed', next_seq = ?, options_json = ?, agent = ?, agent_revision = ?,
               updated_at = ?, core_revision = ?, native_message_revision = ?
         WHERE id = ? AND lifecycle_kind = 'external-readonly'`
     ).run(
+      message.seq + 1,
       command.options ? json(turnOptionsSchema.parse(command.options)) : String(chat.options_json),
+      intent.agent,
+      intent.replay ? 1 : Number(chat.agent_revision),
       command.now,
       coreRevision,
       messageRevision,
@@ -253,9 +299,9 @@ export class ContinuationSagaRepository {
       saga.chatId,
       command.deviceId,
       command.homeDir,
-      command.session.backend,
-      command.session.id,
-      command.session.toolPlan ? json(command.session.toolPlan) : null,
+      command.session?.backend ?? null,
+      command.session?.id ?? null,
+      command.session?.toolPlan ? json(command.session.toolPlan) : null,
       json(command.startState),
       command.now,
       command.now
@@ -286,6 +332,11 @@ export class ContinuationSagaRepository {
          state = excluded.state, job_json = excluded.job_json,
          updated_at = excluded.updated_at`
     ).run(saga.chatId, command.deviceId, command.now);
+    if (command.notice) {
+      const notice = messageSchema.parse(command.notice);
+      const noticeRowId = this.insertFirstMessage(saga.chatId, notice);
+      this.writer.writeSearchDocument(saga.chatId, "native", String(noticeRowId), messageSearchText(notice));
+    }
     const rowId = this.insertFirstMessage(saga.chatId, message);
     this.writer.writeSearchDocument(
       saga.chatId,

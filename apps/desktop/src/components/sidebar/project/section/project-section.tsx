@@ -1,29 +1,30 @@
 "use client";
 
 /**
- * [INPUT]: Depends on i18n, Projects/Chats/History providers' global-add actions, ProjectItem, project-sort, controlled collapse state, SidebarCollapsibleGroup, and dropdown-menu/sidebar primitives
- * [OUTPUT]: Provides ProjectSection: the global Project import entry, the sort menu, and one shared collapsible group holding the project list and its warnings; every sub-row decision belongs to ProjectItem
+ * [INPUT]: Depends on i18n, Projects/Chats/History providers' global-add actions and pending flight, ProjectItem, ProjectPendingRow, project-sort, the shared useDelayed gate, controlled collapse state, WorkspaceNavigationSection, ProjectSortMenu and sidebar primitives
+ * [OUTPUT]: Provides the native Project section model and a shared presentation wrapper, with ordered Chat metadata, host-owned actions, and the pending Project placeholder that stands in its future slot once an add has outlasted 300ms.
  * [POS]: Projects category for components/sidebar/project, placed by AppSidebar above the root Chats category
  */
 
-import { Check, MoreHorizontal, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { useCloudSidebar } from "../../cloud/context";
 import { ProjectItem } from "../project-item";
-import { SidebarCollapsibleGroup } from "../../sidebar-collapsible-group";
+import { ProjectPendingRow } from "./project-pending-row";
+import {
+  WorkspaceNavigationSection,
+  type NavigationSectionModel,
+} from "@ai-chat/ui/components/workspace/navigation/section";
+import { workspaceProjectVisible } from "@ai-chat/ui/components/workspace/navigation/project";
 import { useChats } from "../../../providers/chats-provider";
 import { useProjects } from "../../../providers/projects-provider";
 import { sortProjects } from "@/lib/project-sort";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@ai-chat/ui/components/ui/dropdown-menu";
+import { ProjectSortMenu } from "@ai-chat/ui/components/workspace/actions/sort";
 import {
   SidebarGroupAction,
   SidebarMenu,
 } from "@ai-chat/ui/components/ui/sidebar";
-import { usePointerOpenedMenu } from "@ai-chat/ui/hooks/use-pointer-opened-menu";
+import { useDelayed } from "@ai-chat/ui/hooks/use-delayed";
 import { useHistory } from "../../../providers/history/history-provider";
 import { useApps } from "../../../providers/apps-provider";
 import {
@@ -31,12 +32,7 @@ import {
   appearsInAppProject,
 } from "../../../../../shared/placement/sidebar";
 
-const PROJECT_SORT_OPTIONS = [
-  { mode: "last-updated", labelKey: "projects.sortLastUpdated" },
-  { mode: "manual", labelKey: "projects.sortManual" },
-] as const;
-
-export function ProjectSection({
+export function useProjectSection({
   open,
   onOpenChange,
 }: {
@@ -44,9 +40,9 @@ export function ProjectSection({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useAppTranslation();
-  const menu = usePointerOpenedMenu();
   const { chats } = useChats();
-  const { projects, sortMode, warning, setSortMode } = useProjects();
+  const cloud = useCloudSidebar();
+  const { projects, sortMode, loading, setSortMode } = useProjects();
   const { records: apps } = useApps();
   const history = useHistory();
   const chatsOf = (projectId: string) => {
@@ -56,93 +52,106 @@ export function ProjectSection({
         ? chat.context?.kind === "app-edit" &&
           appearsInAppProject(chat) &&
           chat.context.projectId === projectId
-        : chat.projectId === projectId && !chat.effectiveArchived
+        : chat.projectId === projectId && !chat.effectiveArchived,
     );
   };
   /* App Project 的显形由内容推导：安装只是拥有，编辑/使用发出首条消息
      （canonical chat 落地）它才成为一个工作场所。目录 Project 是用户亲手
      创建的，空着也必须在场。 */
-  const visibleProjects = projects.filter(
-    (project) =>
-      !project.archivedAt &&
-      (project.workspaceBinding.kind !== "app" ||
+  const visibleProjects = projects.filter((project) =>
+    workspaceProjectVisible(
+      {
+        ...project,
+        appId:
+          project.workspaceBinding.kind === "app"
+            ? project.workspaceBinding.appId
+            : null,
+      },
+      cloud.mirrors.some(
+        (head) => head.chat.classification.projectId === project.id,
+      ) ||
         appearsAsAppProject(
           apps.find(
             (app) =>
               project.workspaceBinding.kind === "app" &&
-              app.id === project.workspaceBinding.appId
+              app.id === project.workspaceBinding.appId,
           )?.editor ?? {
             editorActivatedAt: null,
             editorHiddenAt: null,
             editorRevision: 0,
-          }
-        ))
+          },
+        ),
+    ),
   );
-  const sorted = sortProjects(visibleProjects, chats, sortMode);
+  /* Skeletons only stand in for an empty list: a later refresh must never
+     pull rows the user is already looking at. */
+  const pending = loading && visibleProjects.length === 0;
+  /* 选定文件夹后的那次添加先站进列表：绝大多数扫描几十毫秒就结束，行以转正态
+     直接出现；只有等待真的超过门槛，占位行才显形，且显形后空态句子让位。 */
+  const showPending = useDelayed(300, Boolean(history.pendingProject));
+  const sorted = sortProjects(
+    visibleProjects,
+    [
+      ...chats,
+      ...cloud.heads.map((head) => ({
+        projectId: head.chat.classification.projectId,
+        updatedAt: head.chat.updatedAt,
+      })),
+    ],
+    sortMode,
+  );
 
-  return (
-    <SidebarCollapsibleGroup
-      label={t("common.projects")}
-      groupName="projects-header"
-      open={open}
-      onOpenChange={onOpenChange}
-      actions={(actionClassName) => (
-        <>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <SidebarGroupAction
-                {...menu.triggerProps}
-                className={`${actionClassName} right-7`}
-                aria-label={t("projects.sortAria")}
-              >
-                <MoreHorizontal />
-              </SidebarGroupAction>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              side="right"
-              align="start"
-              className="w-40"
-              onCloseAutoFocus={menu.onCloseAutoFocus}
-            >
-              {PROJECT_SORT_OPTIONS.map(({ mode, labelKey }) => (
-                <DropdownMenuItem key={mode} onSelect={() => void setSortMode(mode)}>
-                  <Check className={sortMode === mode ? "opacity-100" : "opacity-0"} />
-                  {t(labelKey)}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <SidebarGroupAction
-            className={actionClassName}
-            aria-label={t("projects.add")}
-            onClick={() => void history.addProject()}
-          >
-            <Plus />
-          </SidebarGroupAction>
-        </>
-      )}
-    >
+  return {
+    label: t("common.projects"),
+    open,
+    onOpenChange,
+    actions: (actionClassName) => (
+      <>
+        <ProjectSortMenu value={sortMode} onValueChange={mode => void setSortMode(mode).catch(() => {})}
+          copy={{ label: t("projects.sortAria"), recent: t("projects.sortLastUpdated"), manual: t("projects.sortManual") }}
+          className={`${actionClassName} right-7`} />
+        <SidebarGroupAction
+          data-project-section-action="new"
+          className={actionClassName}
+          aria-label={t("projects.add")}
+          onClick={() => void history.addProject()}
+        >
+          <Plus />
+        </SidebarGroupAction>
+      </>
+    ),
+    pending,
+    loadingLabel: t("common.loadingView"),
+    empty: sorted.length === 0 && !showPending,
+    emptyLabel: t("projects.empty"),
+    content: (
       <SidebarMenu>
+        {showPending && history.pendingProject && (
+          <ProjectPendingRow pending={history.pendingProject} />
+        )}
         {sorted.map((project) => (
           // 子列表排序归 sortProjectChats 独有：这里再排一遍只会与它悄悄漂移
           <ProjectItem
             key={project.id}
             project={project}
             chats={chatsOf(project.id)}
-            historyState={history.snapshot.projects.find((state) => state.projectId === project.id)}
+            historyState={history.snapshot.projects.find(
+              (state) => state.projectId === project.id,
+            )}
           />
         ))}
       </SidebarMenu>
-      {sorted.length === 0 && (
-        <p className="px-2 py-1.5 text-muted-foreground text-xs">
-          {t("projects.empty")}
-        </p>
-      )}
-      {[warning, history.warning].filter(Boolean).map((message) => (
-        <p key={message} role="alert" className="px-2 py-1.5 text-muted-foreground text-xs">
-          {message}
-        </p>
-      ))}
-    </SidebarCollapsibleGroup>
+    ),
+  } satisfies NavigationSectionModel;
+}
+export function ProjectSection(props: {
+  open: boolean;
+  onOpenChange(open: boolean): void;
+}) {
+  return (
+    <WorkspaceNavigationSection
+      groupName="projects-header"
+      {...useProjectSection(props)}
+    />
   );
 }

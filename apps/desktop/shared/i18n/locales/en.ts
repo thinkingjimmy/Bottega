@@ -1,8 +1,12 @@
 /**
- * [INPUT]: Depends on every feature catalog, including Agent and Chat-storage failures, Apps, Chat surfaces, and Settings leaves, and defines the translated-locale benchmark
- * [OUTPUT]: Provides the complete English catalog and its Catalog type, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
+ * [INPUT]: Depends on every feature catalog, including Agent and Chat-storage failures, Apps, Chat surfaces, and Settings leaves, and defines the translated-locale benchmark, with shared cloud account/approval and isolated composer copy.
+ * [OUTPUT]: Provides the complete English catalog and its Catalog type, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery
  * [POS]: Reference and fallback locale for desktop i18n
  */
+import { workspaceCopy } from "@ai-chat/ui/workspace-copy/en";
+
+import { uiTextEn } from "@ai-chat/ui/lib/ui-text-copy/en";
+import { cloudCopy } from "@ai-chat/ui/lib/cloud-copy/en";
 import { sketchEn } from "./sketch/en";
 import { appHostEn } from "./app-host/en";
 import { agentAvailabilityEn } from "./agent-availability/en";
@@ -10,25 +14,24 @@ import { agentAvailabilityEn } from "./agent-availability/en";
 
 import { chatAgentSwitchEn } from "./chat-agent-switch/en";
 import { basesEn } from "./bases/en";
-import { archiveEn } from "./archive";
-import { memoryEn } from "./memory";
-import { onboardingEn } from "./onboarding";
-import { permissionEn } from "./permission";
-import { projectsEn } from "./projects";
-import { setupEn } from "./setup";
-import { settingsBrowserEn } from "./settings/browser";
-import { settingsSkillsEn } from "./settings/skills";
-import { settingsExtensionsEn } from "./settings/extensions";
-import { settingsToolsEn } from "./settings/tools";
-import { settingsUsageEn } from "./settings/usage";
-import { settingsPersonalizationEn } from "./settings/personalization";
-import { settingsShortcutsEn } from "./settings/shortcuts";
+import { archiveEn } from "./archive/en";
+import { memoryEn } from "./memory/en";
+import { onboardingEn } from "./onboarding/en";
+import { copy as composerCopy } from "@ai-chat/chat-ui/composer-control-copy/en";
+import { projectsEn } from "./projects/en";
+import { setupEn } from "./setup/en";
+import { settingsBrowserEn } from "./settings/browser/en";
+import { settingsSkillsEn } from "./settings/skills/en";
+import { settingsExtensionsEn } from "./settings/extensions/en";
+import { settingsToolsEn } from "./settings/tools/en";
+import { settingsUsageEn } from "./settings/usage/en";
+import { settingsPersonalizationEn } from "./settings/personalization/en";
 import { presenceEn } from "./presence/en";
-import { settingsAboutEn } from "./settings/about";
-import { historyEn } from "./history";
-import { chatRevisionEn } from "./chat-revision";
-import { projectSettingsEn } from "./project-settings";
-import { chatEn } from "./chat";
+import { settingsAboutEn } from "./settings/about/en";
+import { historyEn } from "./history/en";
+import { chatRevisionEn } from "./chat-revision/en";
+import { projectSettingsEn } from "./project-settings/en";
+import { chatEn } from "./chat/en";
 import { chatComposerEn } from "./chat-composer/en";
 import { chatRuntimeEn } from "./chat-runtime/en";
 import { chatSurfacesEn } from "./chat-surfaces/en";
@@ -37,63 +40,65 @@ import { agentFailureEn } from "./agent-failure/en";
 import { chatStorageEn } from "./chat-storage/en";
 
 export const en = {
+  cloud: cloudCopy,
   sketch: sketchEn,
   appHost: appHostEn,
   agentAvailability: agentAvailabilityEn,
   common: {
-    auto: "Auto",
-    light: "Light",
-    dark: "Dark",
-    loading: "Loading",
-    loadingView: "Loading view",
-    close: "Close",
-    retry: "Retry",
-    continue: "Continue",
-    discard: "Discard",
-    cancel: "Cancel",
-    save: "Save",
-    reveal: {
+...workspaceCopy.chatCommon,
+auto: "Auto",
+light: "Light",
+dark: "Dark",
+loading: "Loading",
+loadingView: "Loading view",
+close: "Close",
+retry: "Retry",
+continue: "Continue",
+discard: "Discard",
+cancel: "Cancel",
+save: "Save",
+reveal: {
       finder: "Show in Finder",
       fileExplorer: "Show in File Explorer",
       fileManager: "Show in file manager",
     },
-    settings: "Settings",
-    backToApp: "Back to app",
-    back: "Back",
-    toggleSidebar: "Expand or collapse sidebar",
-    newChat: "New chat",
-    apps: "Apps",
-    projects: "Projects",
-    general: "General",
-    keyboardShortcuts: "Keyboard shortcuts",
-    backends: "Backends",
-    personalization: "Personalization",
-    browser: "Browser",
-    agentPlugins: "Agent Plugins",
-    tools: "Tools",
-    skills: "Skills",
-    extensions: "Extensions",
-    usage: "Usage",
-    archivedItems: "Archived items",
-    memory: "Memory",
-    agents: "Agents",
-    integrations: "Integrations",
-    archived: "Archived",
-    chats: "Chats",
-    bases: "Bases",
-    toggleActivity: "Toggle Activity view",
-    createChat: "Create chat",
-    chatsEmpty: "Click + to start a chat",
-    rename: "Rename",
-    renameChatTitle: "Rename chat",
-    renameChatDescription: "Enter a new name for this chat.",
-    memoryAttention: "Memory service needs attention",
-    memoryAttentionOpen: "Memory service needs attention; open details",
-    appInstalling: "Installing App",
-    appInstallFailed: "App installation failed",
-    appInstallSucceeded: "App installed",
-    promoteBaseToApp: "Promote {{name}} to App",
-  },
+settings: "Settings",
+backToApp: "Back to app",
+back: "Back",
+toggleSidebar: "Expand or collapse sidebar",
+newChat: "New chat",
+apps: "Apps",
+projects: "Projects",
+general: "General",
+keyboardShortcuts: "Keyboard shortcuts",
+lab: "Lab",
+stepOf: "Step {{current}} of {{total}}",
+backends: "Backends",
+personalization: "Personalization",
+browser: "Browser",
+agentPlugins: "Agent Plugins",
+tools: "Tools",
+skills: "Skills",
+
+usage: "Usage",
+archivedItems: "Archived items",
+memory: "Memory",
+agents: "Agents",
+integrations: "Integrations",
+archived: "Archived",
+chats: "Chats",
+bases: "Bases",
+toggleActivity: "Toggle Activity view",
+createChat: "Create chat",
+chatsEmpty: "Click + to start a chat",
+rename: "Rename",
+memoryAttention: "Memory service needs attention",
+memoryAttentionOpen: "Memory service needs attention; open details",
+appInstalling: "Installing App",
+appInstallFailed: "App installation failed",
+appInstallSucceeded: "App installed",
+promoteBaseToApp: "Promote {{name}} to App"
+},
   windowSurface: {
     missingIdentity: "App window launch identity is missing",
     checkingResidence: "Checking window residence…",
@@ -114,7 +119,7 @@ export const en = {
   agentFailure: agentFailureEn,
   chatStorage: chatStorageEn,
   projects: projectsEn,
-  permission: permissionEn,
+  permission: composerCopy.permission,
   history: historyEn,
   chatRevision: chatRevisionEn,
   projectSettings: projectSettingsEn,
@@ -122,78 +127,94 @@ export const en = {
     about: settingsAboutEn,
     presence: presenceEn,
     personalization: settingsPersonalizationEn,
-    shortcuts: settingsShortcutsEn,
     skills: settingsSkillsEn,
     browser: settingsBrowserEn,
     extensions: settingsExtensionsEn,
     backends: {
+      defaultExecutionSaveFailed: "Could not save the default computer. Try again.",
+      defaultExecutionDevice: "Default execution computer",
+      localExecutionDevice: "This computer",
+      defaultExecutionDescription: "Used for new chats. Availability is checked before sending.",
       title: "Agent backends",
       description:
         "Authentication and usage are managed by each official CLI; the product only checks local status.",
       recheck: "Check again",
     },
-    general: {
-      appearance: "Appearance",
-      theme: "Theme",
-      themeDescription: "Auto follows the system appearance.",
-      language: "Language",
-      languageDescription:
-        "Auto detect follows your preferred system language and falls back to English.",
-      autoDetect: "Auto detect",
-      font: "Font",
-      fontDescription: "Font used throughout the application.",
-      systemFont: "System",
-      chatHomeLocation: "Chat Home location",
-      chatHomeDescription:
-        "Each chat's working files are stored here; main will refuse to create a chat until setup is complete.",
-      folder: "Folder",
-      notSelected: "Not selected",
-      change: "Change…",
-      changeChatHomeFolder: "Change Chat Home folder",
-      crossChatRead: "Cross-chat read access",
-      crossChatReadDescription:
-        "When off, tools can only read the current Chat Home. When on, they can read other Chat Homes without writing to them.",
-      chat: "Chat",
-      chatDescription: "New chat titles are generated in the background.",
-      titleGeneration: "Title generation",
-      titleGenerationDescription:
-        "Auto prefers Codex; title models are saved separately for each backend.",
-      titleAgent: "Title agent",
-      titleModel: "Title model",
-      reading: "Loading…",
-      autoRelayLimit: "Auto relay limit",
-      autoRelayRisk: "Unlimited relays increase loop and token-usage risk.",
-      autoRelayDescription:
-        "Pause each cross-Section relay chain at the limit and wait for you to continue.",
-      rounds_one: "{{count}} round",
-      rounds_other: "{{count}} rounds",
-      unlimitedNotRecommended: "Unlimited (not recommended)",
-      saveLanguageFailed: "Failed to save language setting",
-      saveThemeFailed: "Failed to save theme setting",
-      saveTitleModelFailed: "Failed to save title model setting",
-      saveTitleAgentFailed: "Failed to save title agent setting",
-      saveRelayLimitFailed: "Failed to save relay limit",
-      saveCrossChatReadFailed: "Failed to save cross-chat read setting",
-      settingsLoadFailed: "Failed to load settings",
-      settingsRetry: "Retry settings",
-      modelDirectoryRetry: "Retry model catalog",
-      chatHomeChangeFailed: "Failed to change the Chat Home location",
-      defaultModelUnavailable: "Default (model name unavailable)",
-      currentModelUnavailable: "{{model}} (currently unavailable)",
+    lab: {
+      title: "Lab",
+      preamble:
+        "Experimental features, off by default. They can change or disappear in any release.",
+      agentConnections: "Keep Agent connections",
+      agentConnectionsDescription:
+        "Warms the Agent process when a conversation opens and reuses it for that conversation's turns. First messages are faster; it uses some more memory.",
+      saveAgentConnectionsFailed:
+        "Could not save the Agent connections setting. Please try again.",
     },
+    general: {
+...workspaceCopy.chatSettings,
+appearance: "Appearance",
+theme: "Theme",
+themeDescription: "Auto follows the system appearance.",
+language: "Language",
+languageDescription:
+        "Auto detect follows your preferred system language and falls back to English.",
+autoDetect: "Auto detect",
+font: "Font",
+fontDescription: "Font used throughout the application.",
+saveArchiveConfettiFailed: "Could not save your confetti preference. Please try again.",
+systemFont: "System",
+chatHomeLocation: "Bottega folder",
+chatHomeDescription: "Conversation copies and working files are kept here. Account settings, keys and device permissions stay on this computer.",
+folder: "Folder",
+notSelected: "Not selected",
+crossChatRead: "Cross-chat read access",
+crossChatReadDescription:
+        "When off, tools can only read the current Chat Home. When on, they can read other Chat Homes without writing to them.",
+chat: "Chat",
+chatDescription: "New chat titles are generated in the background.",
+titleGeneration: "Title generation",
+titleGenerationDescription:
+        "Title models are saved separately for each backend.",
+titleAgent: "Title agent",
+titleModel: "Title model",
+reading: "Loading…",
+autoRelayLimit: "Auto relay limit",
+autoRelayRisk: "Unlimited relays increase loop and token-usage risk.",
+autoRelayDescription:
+        "Pause each cross-Section relay chain at the limit and wait for you to continue.",
+rounds_one: "{{count}} round",
+rounds_other: "{{count}} rounds",
+unlimitedNotRecommended: "Unlimited (not recommended)",
+saveLanguageFailed: "Failed to save language setting",
+saveThemeFailed: "Failed to save theme setting",
+saveTitleModelFailed: "Failed to save title model setting",
+saveTitleAgentFailed: "Failed to save title agent setting",
+saveRelayLimitFailed: "Failed to save relay limit",
+saveCrossChatReadFailed: "Failed to save cross-chat read setting",
+settingsLoadFailed: "Failed to load settings",
+settingsRetry: "Retry settings",
+modelDirectoryRetry: "Retry model catalog",
+chatHomeChangeFailed: "Failed to change the Chat Home location",
+defaultModelUnavailable: "Default (model name unavailable)",
+currentModelUnavailable: "{{model}} (currently unavailable)"
+},
     native: {
+      /* 库失败到达 renderer 前由 settings-registrar 按 code 取用；文案只说
+         用户能做什么，不复述内部代码。 */
+      library: {
+        missing: "Your Bottega folder was not found. Reopen Bottega to locate it or start with a new one.",
+        locked: "This folder is open in another Bottega on this computer. Close it there, then try again.",
+        "identity-changed": "That folder holds different Bottega data. Choose the folder this installation has been using.",
+        "control-invalid": "Bottega could not read this folder's settings. Choose another folder.",
+        "already-configured": "Bottega has already opened a folder. Restart Bottega to open a different one.",
+        "root-changed": "Bottega keeps using the folder you chose. Restart Bottega to open a different one.",
+      },
       chooseChatHome: "Choose Chat Home location",
       chooseProject: "Choose Project folder",
       externalLinkTitle: "Open external link",
       externalLinkMessage: "This domain is not in the trusted allowlist.",
       terminalTitle: "Confirm terminal action",
       terminalMessage: "This command will modify the local CLI installation.",
-      startupFailureTitle: "Bottega could not start",
-      startupFailureMessage: "The main process could not initialize. The app will exit safely.\n\n{{detail}}",
-      appAuthorityRepairTitle: "App catalog needs repair",
-      appAuthorityRepairMessage: "Bottega could not establish authority over the App catalog. Project App pins have not been changed. Repair preserves every valid catalog record. If the catalog is damaged, repair continues only after storing an exact-byte quarantine copy; only a missing or quarantined catalog is rebuilt empty. Bottega then restarts and removes only Project pins for unavailable Apps.",
-      appAuthorityRepairAction: "Repair and restart",
-      appAuthorityRepairQuit: "Quit",
       quitFailureTitle: "Could not quit safely",
       quitRecovered: "An error occurred while preparing to quit. The app recovered and chat remains available. Try again later.",
       quitUnrecovered: "Quit preparation could not recover. The app remains open, but chat and title generation are disabled. Resolve any remaining Agent processes, then try again.",
@@ -206,6 +227,16 @@ export const en = {
         "When enabled, the App maintenance chat will load these skills, MCP servers, and hooks. Continue only if you trust this repository.",
       disableExtensions: "Keep disabled",
       enableExtensions: "Enable extensions",
+      libraryChatsUnreadable_one:
+        "{{count}} conversation in your Bottega folder could not be opened. It was left unchanged.",
+      libraryChatsUnreadable_other:
+        "{{count}} conversations in your Bottega folder could not be opened. They were left unchanged.",
+      libraryFilesMissing_one:
+        "{{count}} file a copied conversation refers to is missing from your Bottega folder.",
+      libraryFilesMissing_other:
+        "{{count}} files copied conversations refer to are missing from your Bottega folder.",
+      libraryOpeningTitle: "Opening your Bottega folder",
+      libraryOpeningProgress: "Opening your files… {{completed}} of {{total}}",
     },
     usage: {
       ...settingsUsageEn,
@@ -235,44 +266,11 @@ export const en = {
     changeProject: "Change Project: {{name}}",
     openSidePanel: "Open side panel",
     importedReadOnlyReason: "Imported history is read-only.",
-    fork: {
-      action: "Fork from here",
-      title: "Fork chat from here",
-      description: "Create an independent continuation of {{title}} from this response.",
-      sameWorkspace: "Fork in this workspace",
-      sameWorkspaceDetail: "Fork from this message in the current workspace",
-      newWorktree: "Fork in a new worktree",
-      newWorktreeDetail: "Fork from this message in a new worktree",
-      dirtyWarning: "Staged, unstaged, untracked, and ignored source changes are not copied.",
-      unsupported: "Managed worktrees are available only for eligible Git projects on macOS.",
-      unavailable: "This response cannot be forked",
-      continuedFrom: "⑂ Continued from chat",
-      openSource: "Open source chat {{title}}",
-      originalUnavailable: "Original chat unavailable",
-      inheritedReadOnly: "Inherited messages cannot be edited",
-      recoveryTruncated: "The Agent received the newest part of the inherited history because the full prefix exceeded the context budget.",
-      worktreePermission: "Full Access is unavailable in managed worktrees",
-      errors: {
-        pointInvalid: "This response can no longer be forked. Refresh the chat and try again.",
-        sourceStale: "The chat changed after this view loaded. Refresh and try again.",
-        sourceUnsupported: "This chat cannot be forked.",
-        prefixTooLarge: "The history up to this response is too large to fork. Choose an earlier response.",
-        projectUnavailable: "The Project is unavailable, being rebound, or being deleted.",
-        requestConflict: "Another fork request already used this identity. Close the dialog and try again.",
-        recoveryRequired: "This fork needs recovery before it can continue.",
-        notRepository: "The Project folder is not a Git repository.",
-        notGitRoot: "The Project folder is not the root of its Git repository.",
-        noHead: "The repository has no commit yet. Create a commit first.",
-        bareRepository: "Bare repositories cannot host a managed worktree.",
-        operationInProgress: "Finish or abort the in-progress Git operation (merge, rebase, cherry-pick, revert, or bisect) first.",
-        submodule: "Repositories with submodules are not supported yet.",
-        treeTooLarge: "The repository tree is too large to verify for a managed worktree.",
-        configUnsafe: "The repository's Git config runs external programs (filters, fsmonitor, or alternate refs). Disable them first.",
-        branchConflict: "The fork branch already exists. Recovery is required.",
-        pathConflict: "The worktree path or registration already exists. Recovery is required.",
-        identityDrift: "The repository identity changed while forking. Try again.",
-      },
+    cloud: {
+      unavailable: "This conversation is not available on this device.",
+      deleted: "This conversation was deleted on another device.",
     },
+    fork: composerCopy.fork,
     sidePanel: {
       ...chatSurfacesEn.sidePanel,
       addPanel: "Add panel",
@@ -291,6 +289,7 @@ export const en = {
       closeNamedTab: "Close {{name}} tab",
       newTab: "New tab",
       webPage: "Web page",
+      sleepingTab: "Sleeping · click to reload",
       baseOwnerResolveFailed: "Could not resolve the Base owner",
       appSlotUnavailable: "App access was revoked or the App is unavailable. The slot is preserved until access returns.",
       catalog: {
@@ -319,58 +318,11 @@ export const en = {
       galleryComments_other: "{{count}} comments",
       clearGalleryComments: "Clear all image comments",
       focusGallery: "Focus gallery",
-      modelSelector: {
-        currentModel: "Current model {{model}}, effort {{effort}}",
-        selector: "Chat model selector",
-        advanced: "Advanced",
-        model: "Model",
-        effort: "Effort",
-        speed: "Speed",
-        disableFast: "Disable Fast speed",
-        enableFast: "Enable Fast speed",
-        quickTier: "Quick model tier",
-        loadingModels: "Loading model catalog…",
-        retryModels: "Retry model catalog",
-        resetDefault: "Reset to default",
-        onlyOneModel: "Only one model is available",
-        effortUnavailable: "The current model does not support changing Effort",
-        noModels: "No available models found",
-        backendDefaultModel: "Backend default model",
-        speedDescription:
-          "About 2.5× faster on supported Opus 5/4.8 models. Costs more usage credits but does not consume the subscription rate-limit pool.",
-        /* 运行态判据的产品说法。后端自己的解释（免费计划、模型不支持…）
-           由 adapter 的 turned-off 消息原样进转录，这里不复述。 */
-        speedReason: {
-          modelUnsupported: "The current model does not offer Fast",
-          backendOff: "The backend turned Fast off for this session",
-          backendOn: "The backend enabled Fast for this session",
-        },
-      },
+      modelSelector: { ...composerCopy.chat.composer.modelSelector },
     },
-    resumeFailure: {
-      title: "{{backend}} can't open this chat's saved session",
-      description: "Your message and attachments are saved, and still unsent.",
-      retriedTitle: "Retrying the original session failed",
-      retriedDescription: "That session is most likely gone from {{backend}}. Your message and attachments are still saved, and still unsent.",
-      recommended: "Recommended",
-      sameSession: "Retry the original session",
-      sameSessionDetail: "Reconnect to the original session. If it works, the agent keeps everything it knows about this chat.",
-      sameSessionRetry: "Try the original session again",
-      sameSessionRetryDetail: "Attempt the same reconnection once more. It already failed once.",
-      freshSession: "Start a fresh session",
-      freshSessionDetail: "Drop the original session and let the agent start over from a summary of the recent conversation. Anything earlier is no longer in front of it.",
-      freshSessionBlocked: "This chat was imported from outside and stays bound to the session it came with, so it can't move to a new one.",
-      abandon: "Abandon this turn",
-      abandonDetail: "Nothing is sent; this turn ends here. Your message stays in this chat.",
-      actionFailed: "That didn't work: {{message}}",
-    },
-    readOnly: "This chat is currently read-only",
-    backendUnavailable: "{{backend}} is currently unavailable.",
-    backendRetryHint: "Check installation and sign-in status before continuing.",
-    installOrSignIn: "Install or sign in",
+    resumeFailure: composerCopy.resumeFailure,
     checkAgain: "Check again",
     workedFor: "Worked for {{duration}}",
-    worked: "Worked",
     sectionImagesDisclosure:
       "Up to {{count}} images per Section ({{megabytes}} MB total across this turn) will be sent to {{backend}}.",
     sectionImagesUnsupported:
@@ -378,6 +330,7 @@ export const en = {
   },
   apps: {
     ...appsEn,
+    state: { ...appsEn.state, restoredSourceNeedsSetup: "Set up this App on this computer to use its restored source." },
     menu: "App menu",
     pin: "Pin to Sidebar",
     unpin: "Unpin from Sidebar",
@@ -562,8 +515,11 @@ export const en = {
     projectRevokeConfirm:
       "Revoke {{app}} access to Project “{{target}}”? This affects every member Chat in the Project.",
   },
-  bases: basesEn,
+  bases: { ...basesEn, folderRecoveryRetry: "Check again",
+    folderRecoveryProjectMissing: "This Base belongs to a Project this computer no longer has. Its files are kept unchanged in your Bottega folder and come back with the Project.",
+    folderRecoveryOwnerChanged: "The conversation that owns this Base was replaced. Its files are kept unchanged in your Bottega folder." },
   notice: {
+    executorSwitched: "Continued on {{device}}",
     manualRecovered:
       "The app restarted and interrupted the reply to this message. Please send it again.",
     skillDescriptionsTruncated:
@@ -576,37 +532,7 @@ export const en = {
     discarded: "Pending relay discarded",
     stale: "This action is no longer available",
   },
-  ui: {
-    cancel: "Cancel",
-    uploadFiles: "Upload files",
-    loadingRichContent: "Loading rich content",
-    loading: "Loading",
-    close: "Close",
-    sidebar: "Sidebar",
-    sidebarDescription: "Displays the mobile sidebar.",
-    toggleSidebar: "Toggle Sidebar",
-    resizeSidebar: "Resize sidebar",
-    resizeSidebarHint: "Drag to resize sidebar",
-    attachment: "Attachment",
-    previewAttachment: "Preview attachment",
-    removeAttachment: "Remove attachment",
-    stop: "Stop",
-    submit: "Submit",
-    message: "Message",
-    askAnything: "Ask anything",
-    submissionFailed: "Submission failed. Please try again.",
-    skillSuggestionsEmpty: "No Skills available",
-    skillSuggestionsNoMatch: "No matching Skills",
-    mentionSuggestionsEmpty: "No references available",
-    mentionSuggestionsNoMatch: "No matching references",
-    suggestionChats: "Chats",
-    suggestionFiles: "Files",
-    suggestionSkills: "Skills",
-    fileTypeError: "No files match the accepted types.",
-    fileSizeError: "All files exceed the maximum size.",
-    fileCountError: "Too many files. Some were not added.",
-    terminal: "Terminal",
-  },
+  ui: { ...uiTextEn },
 };
 
 export type Catalog = typeof en;

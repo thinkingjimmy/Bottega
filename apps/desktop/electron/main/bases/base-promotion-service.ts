@@ -1,23 +1,26 @@
 /**
  * [INPUT]: Depends on lifecycle AdmissionGate/IntentStore, BaseStore/owner resolver, the shared ownerKeyOf projection, conversation exclusivity, and main/errors
- * [OUTPUT]: Provides promote/promoteChild/recover, support top-level upgrades and Save as App gate-held subsidiaries
- * [POS]: bases/ promotion service; AdmissionGate owns intent, BaseStore only executes the local leaf steps
+ * [OUTPUT]: Provides local or confirmed cloud promotion, remote ownership adoption and roll-forward recovery.
+ * [POS]: Base promotion saga; the existing intent journal and Store envelope preserve original IDs and transfer evidence.
  */
 
-import {
-  ownerKeyOf,
-  type BaseMeta,
-  type BasePromotionReceipt,
-  type BasesEvent,
-} from "../../../shared/bases-ipc";
+import { type BaseMeta, type BasePromotionReceipt, type BasesEvent } from "../../../shared/bases-ipc";
+import { ownerKeyOf } from "@ai-chat/base-ui/model/owner-key";
 import type { AdmissionGate, SagaResult } from "../lifecycle/admission-gate";
 import type { LifecycleIntentStore } from "../lifecycle/intent-store";
 import type { LifecycleIntent } from "../lifecycle/intent-types";
 import type { BaseStore } from "./base-store";
 import type { BaseOwnerResolver } from "./service/base-owner-resolver";
 import { errorMessage, statusError } from "../errors";
+import { confirmedBasePromotionSchema, type ConfirmedBasePromotion } from "./store/promotion/cloud";
+import { preservedConversion, type ConversionScopeCleanup } from "../lifecycle/scope-cleanup/conversion";
+import { remoteBaseTransferIdentitySchema, type RemoteBasePromotion } from "./store/promotion/remote";
+import { createHash } from "node:crypto";
+import { CloudPromotionDelivery, type ProjectBasePromotion } from "./store/promotion/port";
+import { canonicalJson } from "../../../shared/local-storage/contracts";
 
 type PromotionOptions = {
+  runProjectExclusive?<T>(task: () => Promise<T>): Promise<T>;
   runConversationExclusive<T>(
     chatId: string,
     task: () => Promise<T>
@@ -27,6 +30,7 @@ type PromotionOptions = {
 };
 
 export class BasePromotionService {
+  private cloud: ProjectBasePromotion | null = null;
   constructor(
     private readonly store: BaseStore,
     private readonly resolver: BaseOwnerResolver,
@@ -34,6 +38,95 @@ export class BasePromotionService {
     private readonly gate: AdmissionGate,
     private readonly options: PromotionOptions
   ) {}
+
+  attachCloud(cloud: ProjectBasePromotion) {
+    if (this.cloud) throw new Error("CLOUD_PROMOTION_ALREADY_ATTACHED");
+    this.cloud = cloud;
+  }
+  settleScopeCleanup(intentId: string, cleanup: ConversionScopeCleanup) {
+    return this.gate.runRecovery(intentId, async original => {
+      if (original.kind !== "base-promotion" || original.parentIntentId) throw new Error("CONVERSION_CLEANUP_INTENT_CHANGED");
+      const decision = await cleanup.prepare(original);
+      if (original.recoveryState.remoteBaseTransfer) {
+        if (decision.disposition === "preserve") { await cleanup.release(original); return preservedConversion(); }
+        const result = await this.runRemote(original);
+        if (result.status !== "done") return result;
+        return { ...result, receipt: { ...result.receipt, ...decision.receipt } };
+      }
+      const chatId = stringField(original.input, "chatId"), projectId = stringField(original.input, "projectId");
+      const execute = () => this.options.runConversationExclusive(chatId, async (): Promise<SagaResult> => {
+        if (this.options.hasActiveTurn(chatId)) throw new Error("CONVERSION_CLEANUP_ACTIVE_TURN");
+        if (decision.disposition === "preserve") { await cleanup.release(original); return preservedConversion(); }
+        else {
+          if (!decision.proof) throw new Error("CONVERSION_CLEANUP_PROOF_REQUIRED");
+          await cleanup.commit(original);
+          await this.store.preparePromotion(chatId, projectId, original.intentId, decision.proof);
+          const snapshot = await this.store.finalizePromotion(chatId, projectId, original.intentId);
+          return { status: "done", receipt: { ...decision.receipt, ...promotionReceipt(snapshot) } };
+        }
+      });
+      return this.options.runProjectExclusive ? this.options.runProjectExclusive(execute) : execute();
+    });
+  }
+  async recoverPending() {
+    const errors: unknown[] = [];
+    for (const intent of await this.intents.listPending()) {
+      if (intent.kind !== "base-promotion" || intent.parentIntentId || !intent.recoveryState.cloudPromotionScope) continue;
+      try { await this.gate.runRecovery(intent.intentId, next => this.recover(next)); } catch (error) { errors.push(error); }
+    }
+    if (errors.length) throw new AggregateError(errors, "Some Base promotions still require recovery");
+  }
+  async keepOriginal(intentId: string, candidateHash: string) {
+    await this.gate.runRecovery(intentId, async intent => {
+      if (intent.kind !== "base-promotion" || intent.parentIntentId || !intent.recoveryState.cloudPromotionScope || !this.cloud) throw new Error("BASE_PROMOTION_REVIEW_CHANGED");
+      await this.cloud.discard(intent, candidateHash, async () => { await this.intents.advance(intent.intentId, intent.phase, { cloudKeepOriginal: candidateHash }); });
+      return rejected("BASE_PROMOTION_DISCARDED", "The original Chat Base was kept.");
+    });
+  }
+  private async run(intent: LifecycleIntent): Promise<SagaResult<{ receipt: BasePromotionReceipt; fromInstanceId: string }>> {
+    if (intent.recoveryState.scopeCleanup) throw new Error("CONVERSION_SCOPE_CLEANUP_REQUIRED");
+    const chatId = stringField(intent.input, "chatId"), projectId = stringField(intent.input, "projectId");
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const execute = () => this.options.runConversationExclusive(chatId, async () => {
+          if (intent.recoveryState.cloudKeepOriginal) {
+            if (!this.cloud) throw new Error("CLOUD_PROMOTION_RUNTIME_PENDING");
+            await this.cloud.discard(intent, stringField(intent.recoveryState, "cloudKeepOriginal"), async () => {});
+            return rejected("BASE_PROMOTION_DISCARDED", "The original Chat Base was kept.");
+          }
+          if (this.options.hasActiveTurn(chatId)) {
+            if (intent.recoveryState.cloudPromotionScope) throw statusError(409, "The Chat still has an active turn.");
+            return rejected("ACTIVE_TURN", "The Chat still has an active turn.");
+          }
+          const source = this.store.get(`chat:${chatId}`);
+          if (!this.cloud && (intent.recoveryState.cloudPromotionScope || source && this.store.sync.read(`chat:${chatId}`, source.meta.ownerInstanceId).scope)) throw new Error("CLOUD_PROMOTION_RUNTIME_PENDING");
+          let proof = cloudProof(intent);
+          if (!proof) {
+            proof = await this.cloud?.prepare({ intent, chatId, projectId }) ?? undefined;
+            if (proof) intent = await this.intents.advance(intent.intentId, intent.phase, { cloudPromotion: proof });
+          }
+          if (proof) {
+            if (!this.cloud) throw new Error("CLOUD_PROMOTION_RUNTIME_PENDING");
+            await this.cloud.commit(proof);
+          }
+          const promoted = this.store.promotedSnapshot(projectId, intent.intentId);
+          if (promoted) {
+            const completed = await this.store.finalizePromotion(chatId, projectId, intent.intentId), receipt = promotionReceipt(completed);
+            return { status: "done" as const, receipt, value: { receipt, fromInstanceId: proof?.operation.incarnationId ?? promoted.meta.ownerInstanceId } };
+          }
+          return this.execute(intent);
+        });
+        return await (this.options.runProjectExclusive ? this.options.runProjectExclusive(execute) : execute());
+      } catch (error) {
+        if (!(error instanceof CloudPromotionDelivery) || attempt > 0) throw error;
+        await error.deliver();
+        const next = await this.intents.getById(intent.intentId);
+        if (!next || next.terminal) throw new Error("BASE_PROMOTION_INTENT_CHANGED");
+        intent = next;
+      }
+    }
+    throw new Error("BASE_PROMOTION_DELIVERY_PENDING");
+  }
 
   async promote(input: {
     chatId: string;
@@ -51,10 +144,7 @@ export class BasePromotionService {
         input: { chatId: input.chatId, projectId },
       },
       async (intent) => {
-        const result = await this.options.runConversationExclusive(
-          input.chatId,
-          () => this.execute(intent)
-        );
+        const result = await this.run(intent);
         if (result.status === "done" && result.value) {
           fromInstanceId = result.value.fromInstanceId;
         }
@@ -68,12 +158,49 @@ export class BasePromotionService {
     return receipt;
   }
 
+  async acceptRemote(input: { chatId: string; projectId: string; baseId: string; snapshot: RemoteBasePromotion }) {
+    const identity = remoteBaseTransferIdentitySchema.parse({ scope: input.snapshot.scope, baseId: input.baseId });
+    const existing = this.store.get(`chat:${input.chatId}`) ?? this.store.get(`project:${input.projectId}`);
+    if (!existing || existing.meta.ownerInstanceId !== identity.baseId || input.snapshot.confirmed.meta.ownerInstanceId !== identity.baseId ||
+        canonicalJson(this.store.sync.read(ownerKeyOf(existing.meta.owner), identity.baseId).scope) !== canonicalJson(identity.scope)) throw new Error("REMOTE_BASE_TRANSFER_SCOPE_CHANGED");
+    const requestId = createHash("sha256").update(canonicalJson(["remote-base-transfer", identity, input.chatId, input.projectId])).digest("hex");
+    const outcome = await this.gate.admitAndRun({ kind: "base-promotion", requestId, input: { chatId: input.chatId, projectId: input.projectId } }, async intent => {
+      if (intent.recoveryState.remoteBaseTransfer && canonicalJson(intent.recoveryState.remoteBaseTransfer) !== canonicalJson(identity)) throw new Error("REMOTE_BASE_TRANSFER_CHANGED");
+      if (!intent.recoveryState.remoteBaseTransfer) intent = await this.intents.advance(intent.intentId, intent.phase, { remoteBaseTransfer: identity });
+      return this.runRemote(intent, input.snapshot);
+    });
+    return receiptFromOutcome(outcome);
+  }
+  private async runRemote(intent: LifecycleIntent, snapshot?: RemoteBasePromotion): Promise<SagaResult> {
+    const identity = remoteBaseTransferIdentitySchema.parse(intent.recoveryState.remoteBaseTransfer);
+    const chatId = stringField(intent.input, "chatId"), projectId = stringField(intent.input, "projectId");
+    const execute = () => this.options.runConversationExclusive(chatId, async () => {
+      const target = this.store.promotedSnapshot(projectId, intent.intentId), source = this.store.get(`chat:${chatId}`);
+      const current = target ?? source;
+      if (!current || current.meta.ownerInstanceId !== identity.baseId) throw new Error("REMOTE_BASE_TRANSFER_CHANGED");
+      const ownerKey = ownerKeyOf(current.meta.owner), scope = this.store.sync.read(ownerKey, identity.baseId).scope;
+      if (canonicalJson(scope) !== canonicalJson(identity.scope) || snapshot && canonicalJson(snapshot.scope) !== canonicalJson(identity.scope)) throw new Error("REMOTE_BASE_TRANSFER_SCOPE_CHANGED");
+      if (!target) await this.store.prepareRemotePromotion(chatId, projectId, intent.intentId, snapshot);
+      await this.intents.advance(intent.intentId, "project-written");
+      const completed = await this.store.finalizePromotion(chatId, projectId, intent.intentId), receipt = promotionReceipt(completed);
+      this.emitMoved(chatId, identity.baseId, receipt);
+      return { status: "done" as const, receipt };
+    });
+    return this.options.runProjectExclusive ? this.options.runProjectExclusive(execute) : execute();
+  }
   async recover(intent: LifecycleIntent): Promise<SagaResult> {
+    if (intent.recoveryState.scopeCleanup) throw new Error("CONVERSION_SCOPE_CLEANUP_REQUIRED");
+    if (intent.recoveryState.remoteBaseTransfer) return this.runRemote(intent);
+    if (!intent.parentIntentId && intent.recoveryState.cloudPromotionScope) {
+      const result = await this.run(intent);
+      if (result.status === "done" && result.value) this.emitMoved(stringField(intent.input, "chatId"), result.value.fromInstanceId, result.value.receipt);
+      return result;
+    }
     const chatId = stringField(intent.input, "chatId");
     const projectId = stringField(intent.input, "projectId");
-    const targetKey = `project:${projectId}`;
-    const current = this.store.peek(targetKey);
-    if (current?.meta.ownerInstanceId !== intent.intentId) {
+    const cloud = cloudProof(intent);
+    if (cloud && !this.store.promotedSnapshot(projectId, intent.intentId)) await this.store.preparePromotion(chatId, projectId, intent.intentId, cloud);
+    if (!this.store.promotedSnapshot(projectId, intent.intentId)) {
       await this.store.rollbackPromotion(projectId, intent.intentId);
       return {
         status: "business-rejected",
@@ -103,6 +230,7 @@ export class BasePromotionService {
     chatId: string;
     projectId: string;
     requestId: string;
+    cloud?: ConfirmedBasePromotion;
   }): Promise<BasePromotionReceipt> {
     let child = await this.intents.createChild({
       parentIntentId: input.parent.intentId,
@@ -111,6 +239,11 @@ export class BasePromotionService {
       requestId: input.requestId,
       input: { chatId: input.chatId, projectId: input.projectId },
     });
+    if (input.cloud) {
+      const proof = confirmedBasePromotionSchema.parse(input.cloud), previous = cloudProof(child);
+      if (previous && canonicalJson(previous) !== canonicalJson(proof)) throw new Error("Base promotion proof changed");
+      if (!previous) child = await this.intents.advance(child.intentId, child.phase, { cloudPromotion: proof });
+    }
     if (input.parent.phase === "chat-migrated") {
       await this.intents.advance(
         input.parent.intentId,
@@ -186,14 +319,16 @@ export class BasePromotionService {
       return rejected("BASE_NOT_OWNED", "当前 chat 没有自有 Base 可升级");
     }
     const target = this.store.get(`project:${projectId}`);
-    if (target && target.meta.ownerInstanceId !== intent.intentId) {
+    const cloud = cloudProof(intent);
+    if (target && !this.store.promotedSnapshot(projectId, intent.intentId)) {
       return rejected("PROJECT_BASE_EXISTS", "Project 已有 Base");
     }
     try {
       await this.store.preparePromotion(
         chatId,
         projectId,
-        intent.intentId
+        intent.intentId,
+        cloud
       );
       await this.intents.advance(intent.intentId, "project-written");
       const completed = await this.store.finalizePromotion(
@@ -208,12 +343,17 @@ export class BasePromotionService {
         value: { receipt, fromInstanceId: source.meta.ownerInstanceId },
       };
     } catch (cause) {
-      if ((cause as { status?: number }).status === 409) {
+      if (!cloud && (cause as { status?: number }).status === 409) {
         return rejected("PROMOTION_CONFLICT", errorMessage(cause));
       }
       throw cause;
     }
   }
+}
+
+function cloudProof(intent: LifecycleIntent) {
+  const proof = intent.recoveryState.cloudPromotion;
+  return proof === undefined ? undefined : confirmedBasePromotionSchema.parse(proof);
 }
 
 function promotionReceipt(snapshot: {

@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on service/composition for the assembled collaborator graph, plus the shared lifecycle mutation lane, Design/extension/navigation integrations, and the service IPC registrar, and statusError from main/errors
- * [OUTPUT]: Owns App service lifecycle and exposes explicit tool inspection separately from passive capability reads.
+ * [INPUT]: Depends on service/composition for the assembled collaborator graph and explicit runtime storage mode, plus the shared lifecycle mutation lane, Design/extension/navigation integrations, and the service IPC registrar, and statusError from main/errors
+ * [OUTPUT]: Owns App lifecycle, explicit installation Agent checks, cloud-management projections and committed removal notifications.
  * [POS]: The composition root of the apps module; it owns lifecycle, authority, and the late-bound collaborators while service/composition.ts assembles the object graph
  */
 
+import { recoverOrDefer } from "../persistence/recovery-policy";
 import { APPS_CHANNEL } from "../../../shared/apps-ipc";
 import { join } from "node:path";
 import type { BrowserWindow } from "electron";
@@ -22,11 +23,11 @@ import type {
 import type { BaseToolsAvailability } from "../../../shared/builtin-tools";
 import type { ExtensionTurnIdentity } from "../../../shared/extensions-ipc";
 import type { TurnProjectContext } from "../../../shared/product-resource-scope";
-import type { AppLocale } from "../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { statusError } from "../errors";
 import type { TrustedRendererContext } from "../window/surfaces/trusted-renderer-context";
 import type { AppExtensionIntegration } from "../extensions/integration/app-extension-composition";
-import type { AppGenerationBuildParticipantRegistry } from "../lifecycle/app-generation-build-participants";
+import type { AppGenerationBuildParticipantRegistry } from "../lifecycle/generation/build-participants";
 import type { AppNavigationService } from "./turn/app-navigation";
 import type { AppChatSlots } from "./turn/app-chat-slots";
 import type { AppDataMigrationPort } from "./maintenance/app-data-migrations";
@@ -122,15 +123,26 @@ export class AppsService {
   get configs() {
     return this.parts.packages.configs;
   }
+  publishRemoval(appId: string) {
+    if (!this.store.get(appId)) this.emit({ appId, type: "removed" });
+  }
+  async validateInstallAgent(agent: AgentBackendId) {
+    await this.parts.agentOperations.resolveMaintenanceBackend(agent);
+  }
   constructor(
     readonly userData: string,
     guardianArgs: readonly string[] = defaultGuardianArgs(),
-    inspectCapabilityInventory?: (
+    inspectCapabilityInventory: ((
       appId: string
-    ) => Promise<AgentToolInventory | null>
+    ) => Promise<AgentToolInventory | null>) | undefined,
+    storageMode: import("../../../shared/local-storage/contracts").RuntimeStorageMode | undefined,
+    /** The selected folder. Null only before the first selection, where the catalog reads as empty. */
+    libraryRoot: () => string | null
   ) {
     this.parts = composeAppsRuntime({
       userData,
+      storageMode,
+      libraryRoot,
       guardianArgs,
       inspectCapabilityInventory,
       host: {
@@ -170,7 +182,7 @@ export class AppsService {
 
   configureLocale(locale: () => AppLocale) { this.locale = locale; }
   async initialize() {
-    if ((await this.store.inspectAuthority()) === "degraded-corrupt") return "degraded-corrupt";
+    await this.store.inspectAuthority();
     await Promise.all([
       this.buildLedger.initialize(),
       this.referenceJournal.initialize(),
@@ -184,12 +196,13 @@ export class AppsService {
     ]);
     await this.serverCustody.initialize();
     await this.store.load();
-    if (this.store.authorityState() === "degraded-corrupt") return "degraded-corrupt";
-    await this.parts.guiRuntime.recoverCutovers();
-    await this.parts.serverLifecycle.reconcile();
+    await recoverOrDefer(async () => {
+      await this.parts.guiRuntime.recoverCutovers(); await this.parts.serverLifecycle.reconcile();
+    });
     await this.parts.gateway.start();
-    await this.parts.installer.initialize();
-    await this.store.normalizeStartupStates();
+    await recoverOrDefer(async () => {
+      await this.parts.installer.initialize(); await this.store.normalizeStartupStates();
+    });
     return this.store.authorityState();
   }
   register(window: BrowserWindow, rendererUrl: string) {
@@ -427,6 +440,7 @@ export class AppsService {
   async onAppTurnFailed(appId: string, conversationId: string, requestId = "") {
     return this.parts.editTurnLifecycle.failed(appId, conversationId, requestId);
   }
+  configureArtifacts(artifacts: import("../artifacts/render/gateway-route").ArtifactGateway) { this.parts.gateway.configureArtifacts(artifacts); }
   isAllowedOrigin(origin: string) { return this.parts.gateway.isRegisteredOrigin(origin); }
   isBaseGuiOrigin(origin: string) { return this.parts.gateway.isBaseGuiOrigin(origin); }
   isAllowedBaseGuiDocumentUrl(value: string) { return this.parts.gateway.isAllowedBaseGuiDocumentUrl(value); }
@@ -511,6 +525,7 @@ export class AppsService {
   private projectRecord(record: AppRecord): AppRecordProjection {
     return {
       ...record,
+      ...(this.store.portable.isCloudManaged(record.id) ? { cloudManaged: true as const } : {}),
       studioSurfaceReady: studioSurfaceReady(
         record,
         record.generationBinding.active && this.baseGuiGrants

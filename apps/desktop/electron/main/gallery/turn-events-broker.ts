@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fsync journal/realpath/stat, BrowserWindow, canonical image source resolver and durable cache source resolver
- * [OUTPUT]: Provides TurnEventsBroker: a durable completion journal with stable completedAt, generation-checked (CAS) subscriber ACK/reference tracking, multi-subscriber fan-out, canonical/durable source resolution across restarts, and path-free event projections sent to renderer windows
+ * [OUTPUT]: Provides durable completed-image journal/lease custody within the 64 MiB decoder cap, immutable completion identities, CAS ACKs and path-free renderer events.
  * [POS]: Gallery's completed-event arbiter; always persists to the durable journal before projecting to renderer windows, and the raw lease/savedPath never leave the main process
  */
 
@@ -26,6 +26,7 @@ import {
   type TranscriptGallerySourceRef,
 } from "../../../shared/gallery-media-ipc";
 import { syncDirectory } from "../persistence/durable-json";
+import { BASE_LOCAL_IMAGE_BYTE_LIMIT } from "../../../shared/bases/gallery-attachments";
 
 export type WorkspaceReadLease = {
   sourcePath: string;
@@ -53,7 +54,7 @@ type TurnEventsBrokerOptions = {
     sourceRef: TranscriptGallerySourceRef
   ): Promise<DurableLeaseSource | null>;
   resolveCanonicalSource?(
-    sourceRef: TranscriptGallerySourceRef
+    sourceRef: TranscriptGallerySourceRef, subagentId?: string | null
   ): Promise<DurableLeaseSource | null>;
 };
 
@@ -222,11 +223,11 @@ export class TurnEventsBroker {
     return "unknown" as const;
   }
 
-  async reissueLease(sourceRef: TranscriptGallerySourceRef) {
+  async reissueLease(sourceRef: TranscriptGallerySourceRef, subagentId: string | null = null) {
     // 重签只信当前 canonical 定位；resolver 未接线一律拒发。
     // journal 中的旧 workspace 路径在任何分支下都不重新授权。
     if (!this.options.resolveCanonicalSource) return null;
-    const canonical = await this.options.resolveCanonicalSource(sourceRef);
+    const canonical = await this.options.resolveCanonicalSource(sourceRef, subagentId);
     if (!canonical) {
       await this.acknowledge(sourceRef);
       return null;
@@ -236,6 +237,8 @@ export class TurnEventsBroker {
     } catch {
       // 当前 canonical 路径不可读时，才允许回退 app-owned cache。
     }
+    // Legacy occurrence caches have no Subagent dimension and cannot prove this source.
+    if (subagentId) return null;
     const durable = await this.options.resolveDurableSource?.(sourceRef);
     return durable
       ? issueLease(durable.sourcePath, durable.readRoot)
@@ -313,7 +316,7 @@ const workspaceReadLeaseSchema = z
   .object({
     sourcePath: z.string().min(1),
     workspaceRoot: z.string().min(1),
-    size: z.number().int().positive().max(25 * 1024 * 1024),
+    size: z.number().int().positive().max(BASE_LOCAL_IMAGE_BYTE_LIMIT),
     mtimeMs: z.number().finite().nonnegative(),
     ctimeMs: z.number().finite().nonnegative(),
     issuedAt: z.number().finite().nonnegative(),
@@ -366,7 +369,7 @@ async function issueLease(
     });
   }
   const snapshot = await stat(source);
-  if (!snapshot.isFile() || snapshot.size > 25 * 1024 * 1024) {
+  if (!snapshot.isFile() || snapshot.size > BASE_LOCAL_IMAGE_BYTE_LIMIT) {
     throw Object.assign(new Error("BUDGET_EXCEEDED"), {
       code: "BUDGET_EXCEEDED",
     });
@@ -421,4 +424,3 @@ async function durableJson(path: string, value: unknown) {
     throw cause;
   }
 }
-

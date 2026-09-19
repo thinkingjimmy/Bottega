@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Browser IPC, injectable native windows/views, browser security, and shared status errors.
- * [OUTPUT]: Provides BrowserPanelService with a shared tab pool, replaceable host visibility tracking, renderer IPC, and Agent batch cancellation.
+ * [OUTPUT]: Provides BrowserPanelService with a shared tab pool, replaceable host visibility tracking, renderer IPC, Agent batch cancellation, and background-tab sleep/wake with history restore.
  * [POS]: Main/browser lifecycle truth source shared by renderer and tool callers
  */
 
@@ -9,6 +9,7 @@ import {
   BROWSER_CHANNEL,
   BROWSER_DEFAULT_URL,
   BROWSER_TAB_LIMIT,
+  BROWSER_TAB_SLEEP_AFTER_MS,
   browserCreateTabSchema,
   browserNavigateSchema,
   browserTabRequestSchema,
@@ -50,11 +51,24 @@ export type BrowserDebuggerPort = {
   removeListener(event: "detach" | "message", listener: EventListener): unknown;
 };
 
+/** Mirrors Electron's NavigationEntry; `pageState` carries scroll offsets and form values. */
+export type BrowserNavigationEntry = {
+  url: string;
+  title: string;
+  pageState?: string;
+};
+
 export type BrowserNavigationHistoryPort = {
   canGoBack(): boolean;
   canGoForward(): boolean;
   goBack(): void;
   goForward(): void;
+  getAllEntries(): BrowserNavigationEntry[];
+  getActiveIndex(): number;
+  restore(options: {
+    entries: BrowserNavigationEntry[];
+    index?: number;
+  }): Promise<void>;
 };
 
 export type BrowserWebContentsPort = {
@@ -117,9 +131,13 @@ export type BrowserWindowPort = {
   once(event: "closed", listener: () => void): unknown;
 };
 
-type TabRecord = {
+/** Everything a sleeping tab keeps so waking it lands on the same entry, not just the same URL. */
+type TabHistory = { entries: BrowserNavigationEntry[]; index: number };
+
+export type TabRecord = {
   tabId: string;
-  view: BrowserViewPort;
+  /** `null` while asleep: the page process is gone and only the record below survives. */
+  view: BrowserViewPort | null;
   ownerChatId: string | null;
   url: string;
   title: string;
@@ -127,7 +145,23 @@ type TabRecord = {
   loading: boolean;
   agentActive: boolean;
   agentAction?: string;
+  /** When the tab stopped being the visible selected tab; `null` while it is. */
+  hiddenSince: number | null;
+  history: TabHistory | null;
+  /** Resolves when the wake load settles; awaited by ensureAwake, cleared on settle. */
+  waking: Promise<void> | null;
 };
+
+/** A wake that never reports back must not pin an Agent tool call forever. */
+const WAKE_LOAD_TIMEOUT_MS = 30_000;
+const SWEEP_INTERVAL_MS = 60_000;
+
+/** Unref'd so an idle sweep never keeps the main process alive on its own. */
+function defaultSweepScheduler(run: () => void, intervalMs: number) {
+  const timer = setInterval(run, intervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
+}
 
 export class UserStoppedBrowserBatchError extends Error {
   readonly code = "stopped_by_user";
@@ -141,6 +175,10 @@ export class UserStoppedBrowserBatchError extends Error {
 export type BrowserPanelServiceDependencies = {
   createView(): BrowserViewPort;
   tabLimit?: number;
+  /** Injected clock and scheduler so sleep tests run on a fake clock instead of wall time. */
+  now?(): number;
+  sleepAfterMs?: number;
+  scheduleSweep?(run: () => void, intervalMs: number): () => void;
 };
 
 export class BrowserPanelService {
@@ -155,9 +193,20 @@ export class BrowserPanelService {
   private hostVisible = false;
   private rendererGone = false;
   private releaseHost: (() => void) | null = null;
+  private readonly now: () => number;
+  private readonly sleepAfterMs: number;
+  private readonly cancelSweep: () => void;
 
   constructor(private readonly dependencies: BrowserPanelServiceDependencies) {
     this.tabLimit = dependencies.tabLimit ?? BROWSER_TAB_LIMIT;
+    this.now = dependencies.now ?? Date.now;
+    this.sleepAfterMs = dependencies.sleepAfterMs ?? BROWSER_TAB_SLEEP_AFTER_MS;
+    // Sweeping less often than the threshold itself would stretch the promise
+    // by up to one whole interval; at 30 minutes the minute cadence wins anyway.
+    this.cancelSweep = (dependencies.scheduleSweep ?? defaultSweepScheduler)(
+      () => this.sweep(),
+      Math.max(1_000, Math.min(SWEEP_INTERVAL_MS, this.sleepAfterMs))
+    );
   }
 
   attachHost(window: BrowserWindowPort) {
@@ -246,6 +295,9 @@ export class BrowserPanelService {
     url?: string;
     ownerChatId: string | null;
   }): Promise<BrowserTabProjection> {
+    const artifactUrl = input.url && /^https:\/\/(?:claude\.ai|preview\.claude\.ai)\/code\/artifact\/[A-Za-z0-9-]+\/?$/.test(input.url) ? input.url : null;
+    const existingArtifact = artifactUrl ? [...this.tabs.values()].find(tab => tab.url === artifactUrl) : undefined;
+    if (existingArtifact) { this.activateTab(existingArtifact.tabId); return this.snapshot().tabs.find(tab => tab.tabId === existingArtifact.tabId)!; }
     if (this.tabs.size >= this.tabLimit) {
       throw statusError(
         409,
@@ -263,6 +315,9 @@ export class BrowserPanelService {
       title: "New tab",
       loading: true,
       agentActive: false,
+      hiddenSince: this.now(),
+      history: null,
+      waking: null,
     };
     this.tabs.set(tabId, record);
     this.bindTab(record);
@@ -308,22 +363,39 @@ export class BrowserPanelService {
     const url = this.assertUrl(rawUrl);
     record.url = url;
     record.loading = true;
+    const view = record.view;
+    if (!view) {
+      // A sleeping tab is about to leave its saved entry anyway: waking with no
+      // history makes the wake load the requested URL instead of loading twice.
+      record.history = null;
+      this.wake(record);
+      this.renderSelection();
+      this.emit();
+      await record.waking;
+      return;
+    }
     this.emit();
-    await record.view.webContents.loadURL(url);
+    await view.webContents.loadURL(url);
   }
 
   goBack(tabId: string) {
-    const navigation = this.requireTab(tabId).view.webContents.navigationHistory;
+    const record = this.requireTab(tabId);
+    if (!record.view) return this.wakeAtOffset(record, -1);
+    const navigation = record.view.webContents.navigationHistory;
     if (navigation.canGoBack()) navigation.goBack();
   }
 
   goForward(tabId: string) {
-    const navigation = this.requireTab(tabId).view.webContents.navigationHistory;
+    const record = this.requireTab(tabId);
+    if (!record.view) return this.wakeAtOffset(record, 1);
+    const navigation = record.view.webContents.navigationHistory;
     if (navigation.canGoForward()) navigation.goForward();
   }
 
   reload(tabId: string) {
-    this.requireTab(tabId).view.webContents.reload();
+    const record = this.requireTab(tabId);
+    if (!record.view) return this.wakeAtOffset(record, 0);
+    record.view.webContents.reload();
   }
 
   setViewport(viewport: BrowserViewport) {
@@ -360,11 +432,25 @@ export class BrowserPanelService {
   /** CDP 铁律：只有本注册表创建的 webContents 才可被 harness attach。 */
   assertRegisteredWebContents(contents: BrowserWebContentsPort) {
     const registered = [...this.tabs.values()].some(
-      (record) => record.view.webContents === contents
+      (record) => record.view?.webContents === contents
     );
     if (!registered) {
       throw statusError(403, "拒绝调试非 Agent Browser 的 webContents");
     }
+  }
+
+  /**
+   * Agent entry point into a possibly sleeping tab: wakes it and waits for the
+   * reload to settle, so callers always meet a live webContents.
+   */
+  async ensureAwake(tabId: string): Promise<TabRecord> {
+    const record = this.requireTab(tabId);
+    if (record.view) return record;
+    this.wake(record);
+    this.renderSelection();
+    this.emit();
+    await record.waking;
+    return record;
   }
 
   releaseChat(chatId: string) {
@@ -398,6 +484,9 @@ export class BrowserPanelService {
         this.batchControllers.delete(tabId);
         record.agentActive = false;
         delete record.agentAction;
+        // A tab an Agent was driving until just now has not been idle for 30
+        // minutes, whatever its hidden stamp said; the clock restarts here.
+        record.hiddenSince = this.now();
         this.emit();
       },
     };
@@ -427,6 +516,7 @@ export class BrowserPanelService {
   }
 
   shutdown() {
+    this.cancelSweep();
     this.visible = false;
     this.removeAttachedView();
     for (const controller of this.batchControllers.values()) {
@@ -441,15 +531,133 @@ export class BrowserPanelService {
     for (const record of records) this.detachAndClose(record);
   }
 
+  /** The clock runs for every tab that is not the one the user is looking at. */
+  private markVisibility() {
+    const active = this.activeTabId;
+    const stamp = this.now();
+    for (const record of this.tabs.values()) {
+      if (record.tabId === active) record.hiddenSince = null;
+      else record.hiddenSince ??= stamp;
+    }
+  }
+
+  private sweep() {
+    this.markVisibility();
+    const deadline = this.now() - this.sleepAfterMs;
+    let slept = false;
+    for (const record of this.tabs.values()) {
+      if (!record.view) continue;
+      // An Agent batch owns the page until it settles; its CDP session and the
+      // refs it handed out would die with the process.
+      if (record.agentActive || this.batchControllers.has(record.tabId)) continue;
+      if (record.hiddenSince === null || record.hiddenSince > deadline) continue;
+      this.sleep(record);
+      slept = true;
+    }
+    if (slept) this.emit();
+  }
+
+  private sleep(record: TabRecord) {
+    const contents = record.view?.webContents;
+    if (contents && !contents.isDestroyed()) {
+      record.url = contents.getURL() || record.url;
+      record.title = contents.getTitle() || record.title;
+      try {
+        record.history = {
+          entries: contents.navigationHistory.getAllEntries(),
+          index: contents.navigationHistory.getActiveIndex(),
+        };
+      } catch (cause) {
+        console.warn("[browser] history snapshot failed", cause);
+        record.history = null;
+      }
+    }
+    if (this.attachedTabId === record.tabId) this.removeAttachedView();
+    this.detachAndClose(record);
+    record.view = null;
+    record.loading = false;
+    record.waking = null;
+  }
+
+  /** Builds the replacement view synchronously; the load it starts is awaited through `record.waking`. */
+  private wake(record: TabRecord, index?: number): BrowserViewPort {
+    const view = this.dependencies.createView();
+    record.view = view;
+    record.loading = true;
+    record.hiddenSince = this.now();
+    this.bindTab(record);
+    const contents = view.webContents;
+    const history = record.history;
+    record.history = null;
+    const waiting = this.trackWakeLoad(record, contents, () =>
+      history && history.entries.length > 0
+        ? contents.navigationHistory
+            .restore({ entries: history.entries, index: index ?? history.index })
+            .catch((cause) => {
+              // Losing back/forward beats losing the page itself.
+              console.warn("[browser] navigation history restore failed", cause);
+              return contents.loadURL(record.url).then(() => undefined);
+            })
+        : contents.loadURL(record.url).then(() => undefined)
+    );
+    record.waking = waiting;
+    void waiting.then(() => {
+      if (record.waking === waiting) record.waking = null;
+    });
+    return view;
+  }
+
+  private wakeAtOffset(record: TabRecord, offset: number) {
+    const history = record.history;
+    const index = history
+      ? Math.min(Math.max(history.index + offset, 0), history.entries.length - 1)
+      : undefined;
+    this.wake(record, index);
+    this.renderSelection();
+    this.emit();
+  }
+
+  /** Settles on did-stop-loading / did-fail-load, with a cap so a dead load cannot pin a tool call. */
+  private trackWakeLoad(
+    record: TabRecord,
+    contents: BrowserWebContentsPort,
+    start: () => Promise<void>
+  ): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        contents.removeListener("did-stop-loading", finish);
+        contents.removeListener("did-fail-load", finish);
+        resolve();
+      };
+      const timer = setTimeout(finish, WAKE_LOAD_TIMEOUT_MS);
+      timer.unref();
+      contents.on("did-stop-loading", finish);
+      contents.on("did-fail-load", finish);
+      void start()
+        .catch((cause) => {
+          console.warn("[browser] wake load failed", cause);
+          record.loading = false;
+          this.emit();
+        })
+        .finally(finish);
+    });
+  }
+
   private bindTab(record: TabRecord) {
-    secureBrowserContents(record.view.webContents, {
+    const bound = record.view;
+    if (!bound) return;
+    secureBrowserContents(bound.webContents, {
       openTab: (url) =>
         void this.createTab({ url, ownerChatId: record.ownerChatId }).catch(
           (cause) => console.warn("[browser] window.open rejected", cause)
         ),
     });
     const refresh = () => {
-      const contents = record.view.webContents;
+      const contents = bound.webContents;
       if (contents.isDestroyed()) return;
       record.url = contents.getURL() || record.url;
       record.title = contents.getTitle() || record.title;
@@ -463,18 +671,18 @@ export class BrowserPanelService {
       record.loading = false;
       refresh();
     };
-    record.view.webContents.on("did-navigate", refresh);
-    record.view.webContents.on("did-navigate-in-page", refresh);
-    record.view.webContents.on("did-start-loading", start);
-    record.view.webContents.on("did-stop-loading", stop);
-    record.view.webContents.on(
+    bound.webContents.on("did-navigate", refresh);
+    bound.webContents.on("did-navigate-in-page", refresh);
+    bound.webContents.on("did-start-loading", start);
+    bound.webContents.on("did-stop-loading", stop);
+    bound.webContents.on(
       "page-title-updated",
       (_event: unknown, title: string) => {
         record.title = title;
         this.emit();
       }
     );
-    record.view.webContents.on(
+    bound.webContents.on(
       "page-favicon-updated",
       (_event: unknown, favicons: string[]) => {
         record.faviconUrl = favicons.find((url) => /^https?:|^data:/.test(url));
@@ -484,19 +692,25 @@ export class BrowserPanelService {
   }
 
   private project(record: TabRecord): BrowserTabProjection {
-    const contents = record.view.webContents;
-    const navigation = contents.navigationHistory;
+    const contents = record.view?.webContents;
+    const live = contents && !contents.isDestroyed() ? contents : null;
+    // A sleeping tab keeps answering back/forward from its saved index, so the
+    // address bar arrows read the same before and after the page process dies.
+    const history = record.history;
     return {
       tabId: record.tabId,
       ownerChatId: record.ownerChatId,
-      url: contents.isDestroyed() ? record.url : contents.getURL() || record.url,
-      title: contents.isDestroyed()
-        ? record.title
-        : contents.getTitle() || record.title,
+      url: live ? live.getURL() || record.url : record.url,
+      title: live ? live.getTitle() || record.title : record.title,
       ...(record.faviconUrl ? { faviconUrl: record.faviconUrl } : {}),
       loading: record.loading,
-      canGoBack: !contents.isDestroyed() && navigation.canGoBack(),
-      canGoForward: !contents.isDestroyed() && navigation.canGoForward(),
+      canGoBack: live
+        ? live.navigationHistory.canGoBack()
+        : (history?.index ?? 0) > 0,
+      canGoForward: live
+        ? live.navigationHistory.canGoForward()
+        : history !== null && history.index < history.entries.length - 1,
+      sleeping: record.view === null,
       agentActive: record.agentActive,
       ...(record.agentAction ? { agentAction: record.agentAction } : {}),
     };
@@ -517,16 +731,23 @@ export class BrowserPanelService {
       return;
     }
     const record = this.tabs.get(this.selectedTabId);
-    if (!record || record.view.webContents.isDestroyed()) {
+    if (!record) {
+      this.removeAttachedView();
+      return;
+    }
+    // Becoming the visible selected tab is the wake trigger: the view is created
+    // synchronously so the panel has pixels to show, the load runs after.
+    const view = record.view ?? this.wake(record);
+    if (view.webContents.isDestroyed()) {
       this.removeAttachedView();
       return;
     }
     if (this.attachedTabId !== record.tabId) {
       this.removeAttachedView();
-      window.contentView.addChildView(record.view);
+      window.contentView.addChildView(view);
       this.attachedTabId = record.tabId;
     }
-    record.view.setBounds(this.viewport);
+    view.setBounds(this.viewport);
   }
 
   private removeAttachedView() {
@@ -535,7 +756,7 @@ export class BrowserPanelService {
     this.attachedTabId = null;
     if (!window || window.isDestroyed() || !tabId) return;
     const record = this.tabs.get(tabId);
-    if (!record) return;
+    if (!record?.view) return;
     try {
       window.contentView.removeChildView(record.view);
     } catch {
@@ -544,8 +765,8 @@ export class BrowserPanelService {
   }
 
   private detachAndClose(record: TabRecord) {
-    const contents = record.view.webContents;
-    if (contents.isDestroyed()) return;
+    const contents = record.view?.webContents;
+    if (!contents || contents.isDestroyed()) return;
     if (contents.debugger.isAttached()) {
       try {
         contents.debugger.detach();
@@ -557,6 +778,7 @@ export class BrowserPanelService {
   }
 
   private emit(createdTabId: string | null = null) {
+    this.markVisibility();
     const window = this.window;
     if (!window || window.isDestroyed()) return;
     try {

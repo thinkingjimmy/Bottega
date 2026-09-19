@@ -6,7 +6,7 @@
 
 import { APP_COMPATIBILITY_SCHEMA, APP_HOST_BASELINE } from "../../../../shared/app-host/contract";
 import type { BaseAppManifest } from "../../../../shared/apps-ipc";
-import type { AppLocale } from "../../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { translate } from "../../../../shared/i18n/runtime";
 
 export const APP_SKILL_PLACEHOLDER = "<!-- create-app-skill:pending -->";

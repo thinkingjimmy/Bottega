@@ -50,7 +50,6 @@ export async function planImportIntent(
     const existing = library.snapshot().entries.find(
       (entry) =>
         entry.tombstoneAt === null &&
-        entry.provenance.sourceIdentity === candidate.sourceIdentity &&
         entry.name === skill.name
     );
     output.push(

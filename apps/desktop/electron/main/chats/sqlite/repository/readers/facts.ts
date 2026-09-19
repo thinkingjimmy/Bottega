@@ -35,12 +35,12 @@ export class ChatFactReader {
   }
 
   getMessages(command: Extract<DatabaseCommand, { kind: "get-native-messages" }>) {
-    this.assertMembership(command.chatId, command.deviceId);
+    const core = this.assertMembership(command.chatId, command.deviceId);
     const usage = this.database.prepare(
       `SELECT COUNT(*) rows,
               COALESCE(SUM(LENGTH(CAST(payload_json AS BLOB))), 0) bytes
-         FROM chat_messages WHERE chat_id = ?`
-    ).get(command.chatId) as Row;
+         FROM chat_messages WHERE chat_id = ? AND seq > ?`
+    ).get(command.chatId, Number(core.trimmed_through_seq ?? 0)) as Row;
     if (
       Number(usage.rows) > CHAT_MESSAGE_LIMIT * 2 ||
       Number(usage.bytes) > CHAT_BYTE_LIMIT * 4
@@ -48,8 +48,8 @@ export class ChatFactReader {
       throw new Error(`CHAT_NATIVE_CONTEXT_BUDGET_EXCEEDED:${command.chatId}`);
     }
     return (this.database.prepare(
-      "SELECT * FROM chat_messages WHERE chat_id = ? ORDER BY seq"
-    ).all(command.chatId) as Row[]).map(messageFromRow);
+      "SELECT * FROM chat_messages WHERE chat_id = ? AND seq > ? ORDER BY seq"
+    ).all(command.chatId, Number(core.trimmed_through_seq ?? 0)) as Row[]).map(messageFromRow);
   }
 
   getSubagents(command: Extract<DatabaseCommand, { kind: "get-native-subagents" }>) {

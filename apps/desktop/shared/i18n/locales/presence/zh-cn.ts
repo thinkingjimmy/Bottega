@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides zh-cn settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut-only settings hints, and task failures, without transient settings loading copy.
+ * [OUTPUT]: Provides zh-cn settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut conflict guidance, and task failures, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -47,6 +47,7 @@ export const presenceZhCN = {
   "more": "还有 {{tasks}} 项",
   "unavailable": "不可用",
   "recovered": "窗口已在异常后恢复。已保存的会话仍可访问，未保存的草稿可能丢失。",
+  "backgroundNotice": "Bottega 会在后台继续运行，可在菜单栏退出。",
   "closeFailed": "未能移交窗口草稿，请重试关闭窗口。",
   "retry": "重试",
   "systemSettings": "打开系统设置",

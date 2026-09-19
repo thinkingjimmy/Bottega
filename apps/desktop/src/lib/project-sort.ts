@@ -1,18 +1,19 @@
 /**
- * [INPUT]: Depends on shared Project/ChatSummary/ProjectsSortMode contract
- * [OUTPUT]: Provides sortProjects; both sort modes sink archived/invalid projects to the bottom, and Manual mode falls back to updatedAt DESC then id when there is no explicit order
+ * [INPUT]: Shared sortWorkspaceProjects and native Project/ChatSummary contracts
+ * [OUTPUT]: Project sorting with readable remote origin and shared native/cloud activity inputs.
  * [POS]: Project sorting rules in lib, consumed by the Sidebar ProjectSection and locked by the single-section
  */
 
+import { sortWorkspaceProjects } from "@ai-chat/ui/components/workspace/actions/sort";
 import type { ChatSummary } from "../../shared/chats-ipc";
 import type {
   Project,
   ProjectsSortMode,
 } from "../../shared/projects-ipc";
 
-export function sortProjects(
+export function sortProjects<T extends Pick<ChatSummary, "projectId" | "updatedAt">>(
   projects: Project[],
-  chats: ChatSummary[],
+  chats: T[],
   sortMode: ProjectsSortMode
 ) {
   const latest = new Map<string, number>();
@@ -23,19 +24,5 @@ export function sortProjects(
       Math.max(latest.get(chat.projectId) ?? 0, chat.updatedAt)
     );
   }
-  return [...projects].sort((left, right) => {
-    if (left.missing !== right.missing) return left.missing ? 1 : -1;
-    if (sortMode === "manual") {
-      const bothPlaceholders =
-        left.sortIndex === Number.MAX_SAFE_INTEGER &&
-        right.sortIndex === Number.MAX_SAFE_INTEGER;
-      if (bothPlaceholders) {
-        return right.updatedAt - left.updatedAt || left.id.localeCompare(right.id);
-      }
-      return left.sortIndex - right.sortIndex || left.id.localeCompare(right.id);
-    }
-    const leftTime = latest.get(left.id) ?? left.updatedAt;
-    const rightTime = latest.get(right.id) ?? right.updatedAt;
-    return rightTime - leftTime || left.id.localeCompare(right.id);
-  });
+  return sortWorkspaceProjects(projects, latest, sortMode, project => Boolean(project.missing && !project.cloud?.remote));
 }

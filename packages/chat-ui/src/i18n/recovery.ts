@@ -1,0 +1,18 @@
+/**
+ * [INPUT]: Depends on the selected interface language.
+ * [OUTPUT]: Provides typed five-language retained-content labels and paging feedback.
+ * [POS]: Shared retained-content vocabulary; retained branches never imply synchronized or executable App state.
+ */
+const en = { homeUnavailable: "Retained Home files are unavailable. The messages remain readable.", homePending: "Home files are still being retained.", homePartial: "{count} Home files were excluded; the original branch remains here.", edited: "Earlier edited version", unsent: "Unconfirmed saved result", count: "{count} messages retained", older: "Earlier messages", newer: "Later messages", loading: "Loading retained content…", error: "Could not load retained content. Try again.",
+  retry: "Retry",
+  turn: "Unconfirmed reply", execution: "Before switching computers", imported: "Retained imported history", home: "Retained Home files",
+  local: "Saved on this computer" };
+export type RecoveryCopy = { [K in keyof typeof en]: string };
+const copies: Record<string, RecoveryCopy> = {
+  en,
+  zh: { homeUnavailable: "暂时无法读取保留的 Home 文件。消息仍可阅读。", homePending: "Home 文件仍在保留中。", homePartial: "{count} 个 Home 文件未纳入快照，原分支仍保留在此。", edited: "\u66f4\u65e9\u7684\u7f16\u8f91\u7248\u672c", unsent: "\u672a\u786e\u8ba4\u7684\u4fdd\u5b58\u7ed3\u679c", count: "已保留 {count} 条消息", older: "更早的消息", newer: "较新的消息", loading: "正在读取保留内容…", error: "暂时无法读取保留内容，请重试。", retry: "重试", turn: "未确认的回复", execution: "切换电脑前的内容", imported: "保留的导入历史", home: "保留的 Home 文件", local: "保存在此电脑" },
+  ja: { homeUnavailable: "保存した Home ファイルを読み込めません。メッセージは閲覧できます。", homePending: "Home ファイルを保存中です。", homePartial: "{count} 個の Home ファイルは対象外です。元の分岐は保持しています。", edited: "\u4ee5\u524d\u306e\u7de8\u96c6\u7248", unsent: "\u672a\u78ba\u8a8d\u306e\u4fdd\u5b58\u7d50\u679c", count: "{count} 件のメッセージを保存", older: "前のメッセージ", newer: "次のメッセージ", loading: "保存内容を読み込み中…", error: "保存内容を読み込めませんでした。再試行してください。", retry: "再試行", turn: "未確認の応答", execution: "パソコン切り替え前", imported: "保存されたインポート履歴", home: "保存された Home ファイル", local: "このパソコンに保存済み" },
+  fr: { homeUnavailable: "Les fichiers Home conservés sont indisponibles. Les messages restent lisibles.", homePending: "Les fichiers Home sont encore en cours de conservation.", homePartial: "{count} fichiers Home ont été exclus ; la branche d’origine reste ici.", edited: "Version modifiée précédente", unsent: "Résultat enregistré non confirmé", count: "{count} messages conservés", older: "Messages précédents", newer: "Messages suivants", loading: "Chargement du contenu conservé…", error: "Impossible de charger le contenu conservé. Réessayez.", retry: "Réessayer", turn: "Réponse non confirmée", execution: "Avant le changement d’ordinateur", imported: "Historique importé conservé", home: "Fichiers Home conservés", local: "Enregistré sur cet ordinateur" },
+  es: { homeUnavailable: "Los archivos Home conservados no están disponibles. Puedes leer los mensajes.", homePending: "Los archivos Home se están conservando.", homePartial: "Se excluyeron {count} archivos Home; la rama original se conserva.", edited: "Versi\u00f3n editada anterior", unsent: "Resultado guardado sin confirmar", count: "{count} mensajes conservados", older: "Mensajes anteriores", newer: "Mensajes siguientes", loading: "Cargando contenido conservado…", error: "No se pudo cargar el contenido. Inténtalo de nuevo.", retry: "Reintentar", turn: "Respuesta sin confirmar", execution: "Antes de cambiar de ordenador", imported: "Historial importado conservado", home: "Archivos Home conservados", local: "Guardado en este ordenador" },
+};
+export function recoveryCopy(locale: string): RecoveryCopy { return copies[locale.toLowerCase().split("-")[0]!] ?? en; }

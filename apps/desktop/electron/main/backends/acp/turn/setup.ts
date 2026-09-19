@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on ACP ContentBlock/McpServer, Node spawn, BackendTurnOptions, session config and steering input and conversion
+ * [INPUT]: Depends on ACP ContentBlock/McpServer, Node spawn, BackendTurnOptions, exact session absence matching, session config and steering input conversion
  * [OUTPUT]: Provides AcpSpawnConfig, processHostOf (default process host), isResumeMissing, promptBlocks, and acpMcpServers
  * [POS]: Startup configuration and pure projection layer for backends/acp/turn; AcpTurn retains only the protocol state machine and single-turn lifecycle
  */
@@ -7,6 +7,8 @@
 import type { ContentBlock, McpServer } from "@agentclientprotocol/sdk";
 import { spawn } from "node:child_process";
 import { asError } from "../../../errors";
+import type { SessionRef } from "../../../../../shared/agent-ipc";
+import { isAcpSessionMissing } from "../probe";
 import type {
   AgentProcessHost,
   AgentProcessLauncher,
@@ -50,16 +52,18 @@ export function processHostOf(
 
 export function isResumeMissing(
   cause: unknown,
-  policy: AcpSpawnConfig["resumeMissingPolicy"]
+  policy: AcpSpawnConfig["resumeMissingPolicy"],
+  session: SessionRef
 ) {
   if (policy === "never") return false;
   if (policy) return policy(cause);
+  if (isAcpSessionMissing(session.backend, session.id, cause)) return true;
   return /(?:session|conversation).*(?:not found|unknown|does not exist|expired|invalid)/i.test(
     asError(cause).message
   );
 }
 
-export function promptBlocks(options: BackendTurnOptions): ContentBlock[] {
+export function promptBlocks(options: BackendTurnOptions, restoredSessionResumed = false): ContentBlock[] {
   const blocks: ContentBlock[] = [];
   if (options.productContext) {
     blocks.push({ type: "text", text: options.productContext });
@@ -74,7 +78,7 @@ export function promptBlocks(options: BackendTurnOptions): ContentBlock[] {
       });
     }
   }
-  blocks.push(...resolvedInputBlocks(options.input.input));
+  blocks.push(...resolvedInputBlocks(restoredSessionResumed ? options.input.input.filter(item => item.type !== "text" || item.text !== options.payload.handoff?.text) : options.input.input));
   return blocks;
 }
 

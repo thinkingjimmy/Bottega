@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React state, an optional stable toolbar action host, i18n, scope-aware Extension client commands, package cards/dialog, and Settings primitives
- * [OUTPUT]: Provides one flat owned-package lifecycle surface reusable by global and Project Settings, with a portal-mounted global acquisition action or section-level fallback
+ * [OUTPUT]: Provides one flat owned-package lifecycle surface reusable by global and Project Settings, with a portal-mounted acquisition action in either scope or a section-level fallback
  * [POS]: Canonical Extension UI; CLI Agent-plugin diagnostics stay main-only and invalidations trigger qualified refetches
  */
 
@@ -47,7 +47,7 @@ import {
   purgeExtensionInstallData,
   resolveUninstallExtension,
 } from "@/lib/extensions-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { Button } from "@ai-chat/ui/components/ui/button";
 
 export function ExtensionsContent({

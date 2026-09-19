@@ -12,7 +12,7 @@ import {
   AgentFailureNotice,
   agentFailureNoticeLabels,
 } from "@/components/agent-failure-notice";
-import { ProductFailureNotice } from "@/components/product-failure-notice";
+import { ProductFailureNotice } from "@ai-chat/ui/components/feedback/failure-notice";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import type { ProductFailure } from "../../../../shared/product-failure";
 

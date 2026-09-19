@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the standard Intl.DateTimeFormat and the ability to build UTC calendar
- * [OUTPUT]: Provides time zone to dayKey, calendar to addDays, 53 weeks heatmap matrix to start on Sunday with monthSpans
+ * [OUTPUT]: Provides timezone-local day keys with an allocation-light ISO formatting path, calendar arithmetic, and Sunday-start heatmap cells with month spans.
  * [POS]: Pure calendar core shared across processes; main's aggregation and the renderer's heatmap both derive day boundaries from the same logic
  */
 
@@ -64,16 +64,7 @@ function fromUtcDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-/* ============================================================
- * Intl.DateTimeFormat 的构造是 V8 上最贵的操作之一（实测 36µs），
- * 而 dayKey 在合并阶段每个 usage 事件调用一次——30 万事件就是
- * 11 秒同步独占主进程，Electron 主进程在这期间完全不处理事件
- * 循环，系统于是给出忙碌光标。
- *
- * 格式化器只与时区有关，按时区记忆即可：实测 36µs → 1.5µs。
- * 非法时区仍在首次构造时抛出，行为不变。
- * ============================================================ */
-
+// Aggregation calls this for every event; reuse the formatter across scans.
 const dayKeyFormatters = new Map<string, Intl.DateTimeFormat>();
 
 function dayKeyFormatter(timeZone: string) {
@@ -91,7 +82,12 @@ function dayKeyFormatter(timeZone: string) {
 
 export function dayKey(epochMs: number, timeZone: string) {
   if (!Number.isFinite(epochMs)) throw new Error("时间戳无效");
-  const parts = dayKeyFormatter(timeZone).formatToParts(new Date(epochMs));
+  const formatter = dayKeyFormatter(timeZone);
+  const formatted = formatter.format(epochMs);
+  if (DAY_KEY_PATTERN.test(formatted)) return formatted;
+  // Locale data can vary across runtimes. Keep the parts-based fallback rather
+  // than assuming every ICU version formats en-CA as an ISO calendar date.
+  const parts = formatter.formatToParts(epochMs);
   const read = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value;
   const year = read("year");

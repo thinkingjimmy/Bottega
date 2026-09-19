@@ -1,3 +1,8 @@
+/**
+ * [INPUT]: Depends on React, the radix-ui Tooltip primitive and cn of lib/utils.
+ * [OUTPUT]: Provides TooltipProvider (zero default delay), Tooltip, TooltipTrigger and a portalled TooltipContent with an arrow.
+ * [POS]: components/ui's single hover/focus hint primitive; it never carries content a disabled trigger would have to announce.
+ */
 import * as React from "react"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 

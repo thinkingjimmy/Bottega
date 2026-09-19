@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the lock version of Claude ACP adapter, Registry first-valid flight, user CLI, the managed-policy pre-reader in policy.ts, buildtinTools, oracle, ACP models/turn, authorized processEnv, Native Installer, headless/maintenance and system Skill
- * [OUTPUT]: Provides Claude backend: Unified ACP chat, authorization environment, model, Effort, Plan, image, version control Section, runtime/auth, policy-aware detectRuntime/confirmRuntime (createClaudeRuntimeDetection) and backend extension
+ * [OUTPUT]: Provides the Claude backend, minimum supported version, ACP chat, authorization environment, model options with optional probe admission, runtime/auth checks, managed-policy validation and extensions.
  * [POS]: The only installation point for the Claude descriptor; No pre-checking, no reading, no isolating of the copy of user credentials; managed-policy validation is best-effort because the adapter re-reads the policy in its own process
  */
 
@@ -194,6 +194,7 @@ const CLAUDE_SERVICE_TIER = {
 export const claudeBackend: BackendDescriptor = {
   id: "claude",
   displayName: "Claude",
+  minimumVersion: MINIMUM_VERSION,
   workspaceDirName: "claude-workspace",
   sessionCapabilityPolicy: SESSION_CAPABILITY_POLICY.claude,
   serviceTier: CLAUDE_SERVICE_TIER,
@@ -217,8 +218,8 @@ export const claudeBackend: BackendDescriptor = {
   validateTurnOptions: validate,
   validateSessionId: validateClaudeSessionId,
   models: {
-    list: (runtime, workspace, signal) =>
-      listClaudeModels(runtime, workspace, signal),
+    list: (runtime, workspace, signal, runProbe) =>
+      listClaudeModels(runtime, workspace, signal, runProbe),
     invalidate: () => listClaudeModels.invalidate(),
   },
   createTurn: (options) => {

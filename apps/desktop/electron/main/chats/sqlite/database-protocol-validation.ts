@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on the database protocol's command, request, response, and failure types
- * [OUTPUT]: Strict command and per-action result decoding, including scoped sync actions, current portable mirrors and receipt/source projections.
+ * [OUTPUT]: Validates closed worker envelopes, prepared replay sealing, nullable-session continuation notices, executor commits, and optional App retention identity.
  * [POS]: Runtime codec for the main/worker trust boundary; protocol types remain declarative in database-protocol.ts
  */
 
 import { cloudMutationSchema, cloudReadSchema, cloudResultSchema } from "./cloud/protocol";
-import { storageModeSchema } from "../../../../shared/local-storage/contracts";
+import { runtimeStorageModeSchema, storageModeSchema } from "../../../../shared/local-storage/contracts";
 import type {
   ChatDatabaseFailure,
   DatabaseCommand,
@@ -67,6 +67,7 @@ const nativeMessageSelector: Rule = (value) =>
   shape({ kind: literal("seq"), seq: number }, {}, true)(value);
 
 const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
+  "configure-storage-mode": command({ storageMode: value => runtimeStorageModeSchema.safeParse(value).success }),
   "cloud-mutate": value => cloudMutationSchema.safeParse(value).success,
   "cloud-read": value => cloudReadSchema.safeParse(value).success,
   initialize: command({
@@ -76,6 +77,9 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
   }, { backendDefaults: object, storageMode: value => storageModeSchema.safeParse(value).success }),
   "list-metadata": command({ deviceId: string }, { chatId: string }),
   "get-record": command(chatDevice),
+  "read-library-import": command({ ...chatDevice, generationId: nullable(string), afterSeq: number }),
+  "read-library-native": command({ ...chatDevice, afterSeq: number }, { limit: number }),
+  "list-library-mirrors": command({ afterId: nullable(string) }, { known: object }),
   "prepare-chat-history": command({ ...chatDevice, nativeBeforeSeq: number }),
   "read-chat-history": command({ deviceId: string, input: object }),
   "get-native-message": command({ ...chatDevice, selector: nativeMessageSelector }),
@@ -92,10 +96,11 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
   }, { cursor: object }),
   "switch-agent": command({ ...op, ...chatDevice, incarnationId: string, intentId: string,
     submissionHash: string, intent: object, expectedAggregateRevision: number, targetOptions: object,
-    notice: object, userMessage: object, assistantMessageId: string, assistantSeq: number }),
-  "reserve-turn-sequences": command({ ...op, ...chatDevice, incarnationId: string, intentId: string, submissionHash: string }, { executorNotice: boolean }),
+    notice: object, userMessage: object, assistantMessageId: string, assistantSeq: number }, { executorCommit: object }),
+  "reserve-turn-sequences": command({ ...op, ...chatDevice, incarnationId: string, intentId: string, submissionHash: string }, { executorNotice: boolean, contextNotice: boolean }),
   "reserve-switch-sequences": command({ ...op, ...chatDevice, incarnationId: string, intentId: string, submissionHash: string, intent: object }, { executorNotice: boolean }),
   "upsert-record": command({ ...op, record: object, deviceId: string }, {
+    executorCommit: object,
     lifecycleKind: literal("native", "external-managed"),
     expectedAggregateRevision: nullable(number),
   }),
@@ -105,7 +110,7 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
     expectedAggregateRevision: number,
     facts: object,
   }),
-  "append-message": command({ ...op, ...chatDevice, message: object, ...messageRevisions }),
+  "append-message": command({ ...op, ...chatDevice, message: object, ...messageRevisions }, { executorCommit: object }),
   "commit-turn": command({
     ...op,
     ...chatDevice,
@@ -120,7 +125,7 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
     updatedAt: number,
     presentation: object,
   }),
-  "remove-record": command({ ...op, ...chatDevice }, { expectedIncarnationId: string }),
+  "remove-record": command({ ...op, ...chatDevice }, { expectedIncarnationId: string, retainedAppId: string }),
   "get-operation-receipt": command({ operationId: string }),
   "list-attachment-ids": command(),
   "has-attachment-reference": command({ ...chatDevice, attachmentId: string }),
@@ -132,7 +137,7 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
     cursor: nullable(searchDocumentCursor),
     limit: number,
     deviceId: string,
-  }),
+  }, { includeMirrors: boolean }),
   "begin-history-import": command({ ...op, deviceId: string, source: object }),
   "append-history-import-batch": command({
     ...op,
@@ -167,7 +172,7 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
     finalizeOperationId: string,
     now: number,
   }),
-  "mark-continuation-home-preparing": command(sagaMutation),
+  "mark-continuation-home-preparing": command(sagaMutation, { continuationInput: object }),
   "record-continuation-home-committed": command({
     ...sagaMutation,
     homeReceipt: object,
@@ -179,16 +184,16 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
     expectedGenerationId: string,
     incarnationId: string,
     homeDir: string,
-    session: object,
+    session: nullable(object),
     firstMessage: object,
-    adoptionSnapshotId: string,
-    snapshotDigest: string,
+    adoptionSnapshotId: nullable(string),
+    snapshotDigest: nullable(string),
     startState: object,
     context: object,
     appRole: nullable(string),
     grants: array,
     grantRevision: number,
-  }, { options: object }),
+  }, { options: object, notice: object }),
   "fail-continuation-precommit": command({ ...sagaMutation, reason: string }),
   "isolate-continuation-orphan": command({ ...sagaMutation, reason: string }),
   "list-reconcilable-continuations": command(),
@@ -226,6 +231,7 @@ const mutation = (kind: DatabaseCommand["kind"], result: Rule): Rule => (value) 
 const nullableObject = nullable(object);
 
 const RESULT_RULES: Record<DatabaseCommand["kind"], Rule> = {
+  "configure-storage-mode": value => runtimeStorageModeSchema.safeParse(value).success,
   "cloud-mutate": mutation("cloud-mutate", value => cloudResultSchema.safeParse(value).success),
   "cloud-read": value => cloudResultSchema.safeParse(value).success,
   initialize: shape({ sqliteVersion: string, compileOptions: arrayOf(string), startupMs: number }),
@@ -239,8 +245,11 @@ const RESULT_RULES: Record<DatabaseCommand["kind"], Rule> = {
   "get-outline-page": nullableObject,
   "find-messages": nullable(shape({ items: array, total: number, nextCursor: nullableObject })),
   "switch-agent": mutation("switch-agent", object),
-  "reserve-switch-sequences": mutation("reserve-switch-sequences", shape({ chatId: string, chatRecordRevision: number, userSeq: number, assistantSeq: number }, { noticeSeq: number, executorNoticeSeq: number }, true)),
-  "reserve-turn-sequences": mutation("reserve-turn-sequences", shape({ chatId: string, chatRecordRevision: number, userSeq: number, assistantSeq: number }, { noticeSeq: number, executorNoticeSeq: number }, true)),
+  "reserve-switch-sequences": mutation("reserve-switch-sequences", shape({ chatId: string, chatRecordRevision: number, userSeq: number, assistantSeq: number }, { noticeSeq: number, executorNoticeSeq: number, execution: object }, true)),
+  "reserve-turn-sequences": mutation("reserve-turn-sequences", shape({ chatId: string, chatRecordRevision: number, userSeq: number, assistantSeq: number }, { noticeSeq: number, executorNoticeSeq: number, execution: object }, true)),
+  "read-library-import": object,
+  "read-library-native": object,
+  "list-library-mirrors": array,
   "prepare-chat-history": nullableObject,
   "read-chat-history": object,
   "upsert-record": mutation("upsert-record", upsertResult),

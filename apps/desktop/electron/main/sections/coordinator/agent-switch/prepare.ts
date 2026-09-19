@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on prepared input custody, stable IDs, and the Chat store command freezer
- * [OUTPUT]: Freezes notice/user/assistant IDs, target options, and caller revisions into the original prepared intent
+ * [OUTPUT]: Freezes device/Agent notices, original executor identity and two/three/four-slot sequences into prepared custody.
  * [POS]: Switch preparation; bytes stay in existing staging and only bounded commands enter the ledger
  */
 
@@ -8,12 +8,31 @@ import type { PreparedManualTurn } from "../admission/prepared-manual-turn";
 import type { CoordinatorDependencies } from "../coordinator-runtime";
 import { canonicalHash, stableId } from "../coordinator-values";
 import { noticeMessageContent } from "../../../../../shared/chats-ipc";
+import { turnSequencesSchema } from "../../../../../shared/chat-agent/sequences";
 import { switchOperationId } from "../../../chats/sqlite/agent-switch/command";
 
-export function freezeSwitch(prepared: PreparedManualTurn, dependencies: CoordinatorDependencies,
-  submissionHash: string, sequence: { executorNoticeSeq?: number; noticeSeq?: number; userSeq: number; assistantSeq: number }): PreparedManualTurn {
+export function freezeSwitch(prepared: PreparedManualTurn, dependencies: Pick<CoordinatorDependencies, "chats">,
+  submissionHash: string, sequence: { executorNoticeSeq?: number; noticeSeq?: number; userSeq: number; assistantSeq: number;
+    execution?: import("../../../chats/sqlite/cloud/execution/commit").ExecutionReservation }): PreparedManualTurn {
   const { contentHash: _previousHash, ...initial } = prepared;
-  const withSequences = { ...initial, sequences: sequence };
+  const { execution } = sequence;
+  const sequences = turnSequencesSchema.parse({ executorNoticeSeq: sequence.executorNoticeSeq, noticeSeq: sequence.noticeSeq, userSeq: sequence.userSeq, assistantSeq: sequence.assistantSeq });
+  if (sequences.executorNoticeSeq && !execution) throw new Error("CLOUD_EXECUTION_IDENTITY_REQUIRED");
+  let executorCommit: import("../../../chats/sqlite/cloud/execution/commit").ExecutorCommit | undefined;
+  if (execution) {
+    if (prepared.persistence.kind !== "append") throw new Error("CLOUD_EXECUTOR_IDENTITY_CHANGED");
+    executorCommit = { ...execution };
+    if (sequences.executorNoticeSeq) {
+      if (!execution.lastCommittedDeviceId) throw new Error("CLOUD_EXECUTOR_NOTICE_CONFLICT");
+      const notice = { kind: "executor-switched" as const, ...(execution.staleSnapshot ? { staleSnapshot: true } : {}), fromDeviceId: execution.lastCommittedDeviceId,
+        toDeviceId: execution.deviceId, fromName: dependencies.chats.store.sync.deviceName(execution.lastCommittedDeviceId),
+        toName: dependencies.chats.store.sync.deviceName(execution.deviceId), executionEpoch: execution.executionEpoch,
+        at: prepared.persistence.input.message.createdAt };
+      executorCommit.notice = { id: stableId("executor-switch", prepared.intentId), role: "notice", notice,
+        content: noticeMessageContent(notice), createdAt: notice.at, seq: sequences.executorNoticeSeq };
+    }
+  }
+  const withSequences = { ...initial, sequences, ...(executorCommit ? { executorCommit } : {}) };
   prepared = { ...withSequences, contentHash: canonicalHash(withSequences) };
   const intent = prepared.agentSwitch;
   if (!intent) return prepared;
@@ -25,12 +44,13 @@ export function freezeSwitch(prepared: PreparedManualTurn, dependencies: Coordin
     context: prepared.turn.handoff?.coverage ?? { mode: "none", historyIncluded: false, notInjected: true,
       storageTrimmed: Boolean(current.trimmedThroughSeq), lookup: "unavailable" } } as const;
   const attachments = (prepared.persistence.input.attachmentPayloads ?? []).map(blob => ({
-    id: blob.blobId.replaceAll("-", ""), filename: blob.filename, mediaType: blob.mediaType, byteSize: blob.byteSize,
+    id: blob.remote?.attachmentId ?? blob.blobId.replaceAll("-", ""), filename: blob.filename, mediaType: blob.mediaType, byteSize: blob.byteSize,
   }));
   const switchCommand = dependencies.chats.store.prepareAgentSwitch({
     kind: "switch-agent", operationId: switchOperationId(prepared.intentId), intentId: prepared.intentId,
     submissionHash, chatId: current.id, incarnationId: current.incarnationId, intent,
     targetOptions: prepared.turn.turnOptions,
+    ...(prepared.executorCommit ? { executorCommit: prepared.executorCommit } : {}),
     notice: { id: stableId("agent-switch", prepared.intentId), role: "notice", notice,
       content: noticeMessageContent(notice), createdAt: notice.at, seq: sequence.noticeSeq },
     userMessage: { ...source, seq: sequence.userSeq, ...(attachments.length ? { attachments } : {}) },

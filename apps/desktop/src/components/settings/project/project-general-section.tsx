@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Project/Chat projections, Projects/History/Bases providers, Memory/settings stores, shared appearance/grants/lifecycle surfaces, routing, and i18n
+ * [INPUT]: Depends on Project/Chat projections, providers/stores, shared identity/appearance/grants/lifecycle and archive-success feedback, restore client, routing, and i18n
  * [OUTPUT]: Provides ProjectGeneralSection with basics, unified contextual App authorization/placement management, Base entry, and lifecycle controls
  * [POS]: Project Settings General tab; composes existing owners without creating a second Project state model
  */
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Link, useNavigate } from "react-router";
-import { Archive, Database, FolderX, PanelsTopLeft, Pencil } from "lucide-react";
+import { Archive, Database, FolderX, PanelsTopLeft } from "lucide-react";
 import type { Project } from "../../../../shared/projects-ipc";
 import type { ChatSummary } from "../../../../shared/chats-ipc";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
@@ -16,6 +16,8 @@ import { useProjects } from "@/components/providers/projects-provider";
 import { useBasesNavigation } from "@/components/providers/bases-provider";
 import { useOptionalHistory } from "@/components/providers/history/history-provider";
 import { SidebarRenameDialog } from "@/components/sidebar/rename/sidebar-rename-dialog";
+import { useSidebarArchiveFeedback } from "@/components/sidebar/archive/archive-feedback";
+import { restoreArchiveTargets } from "@/lib/archive-client";
 import { ProjectAppPlacements } from "./apps/project-app-placements";
 import {
   ProjectAppearancePanel,
@@ -40,7 +42,8 @@ import { projectMemoryConclusion } from "@/lib/memory-view";
 import {
   resolveProjectColor,
   resolveProjectGlyph,
-} from "@/lib/project-appearance";
+} from "@ai-chat/ui/components/workspace/navigation/appearance";
+import { ProjectIdentityRow as SharedProjectIdentityRow } from "@ai-chat/ui/components/settings/project/identity";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import {
   Popover,
@@ -57,6 +60,7 @@ export function ProjectGeneralSection({
 }) {
   const { t } = useAppTranslation();
   const navigate = useNavigate();
+  const showArchiveFeedback = useSidebarArchiveFeedback();
   const { renameProject, setProjectAppearance } = useProjects();
   const history = useOptionalHistory();
   const {
@@ -99,6 +103,11 @@ export function ProjectGeneralSection({
     hasProjectBase: Boolean(projectBase),
     groupMemory: settings?.memory.sharingMode === "group",
     onLeave: () => {},
+    onArchived: () => showArchiveFeedback({
+      kind: "project",
+      id: project.id,
+      undo: () => restoreArchiveTargets([{ kind: "project", id: project.id }]),
+    }),
   });
   const openBase = async () => {
     setBaseBusy(true);
@@ -279,8 +288,8 @@ function ProjectIdentityRow({
   const { t } = useAppTranslation();
   const glyph = resolveProjectGlyph(project.appearance?.icon, true);
   return (
-    <div className="flex items-center justify-between gap-6 px-4 py-3">
-      <div className="flex min-w-0 items-center gap-3">
+    <SharedProjectIdentityRow name={project.name} label={t("projectSettings.general.name")} renameLabel={t("projectSettings.general.renameAction")} onRename={onRename}
+      appearance={
         <Popover open={appearanceOpen} onOpenChange={onAppearanceOpenChange}>
           <PopoverTrigger asChild>
             <Button aria-label={t("projectSettings.general.appearanceAria")} size="icon-lg" type="button" variant="outline">
@@ -291,14 +300,6 @@ function ProjectIdentityRow({
             <ProjectAppearancePanel appearance={project.appearance} onCommit={onAppearance} onDone={() => onAppearanceOpenChange(false)} />
           </PopoverContent>
         </Popover>
-        <div className="min-w-0">
-          <p className="font-medium text-sm">{project.name}</p>
-          <p className="mt-1 text-muted-foreground text-xs">{t("projectSettings.general.name")}</p>
-        </div>
-      </div>
-      <SettingsButton onClick={onRename} variant="outline">
-        <Pencil className="size-4" />{t("projectSettings.general.renameAction")}
-      </SettingsButton>
-    </div>
+      } />
   );
 }

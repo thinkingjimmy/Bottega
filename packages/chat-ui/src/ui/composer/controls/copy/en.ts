@@ -1,0 +1,275 @@
+/**
+ * [INPUT]: Shared composer and Sketch presentation keys.
+ * [OUTPUT]: En locale catalog for common input controls.
+ * [POS]: Browser-safe presentation authority shared with native controls.
+ */
+export const copy = {
+  chatRevision: {
+  notIdle: "The chat is busy or has queued messages. Wait for it to settle, then send the revision again.",
+  stale: "The conversation moved on and this message is no longer the last one. Refresh and edit the newest message instead.",
+  edit: "Edit message",
+  cancel: "Cancel",
+  send: "Send revision",
+  editing: "Edit last message",
+  unavailable: {
+    busy: "Wait for the active turn to finish before editing.",
+    queued: "Clear or finish queued messages before editing.",
+    "imported-prefix": "Imported messages cannot be edited.",
+  },
+},
+    newTask: "New Task",
+    fork: {
+      action: "Fork from here",
+      title: "Fork chat from here",
+      description: "Create an independent continuation of {{title}} from this response.",
+      sameWorkspace: "Fork in this workspace",
+      sameWorkspaceDetail: "Fork from this message in the current workspace",
+      newWorktree: "Fork in a new worktree",
+      newWorktreeDetail: "Fork from this message in a new worktree",
+      dirtyWarning: "Staged, unstaged, untracked, and ignored source changes are not copied.",
+      unsupported: "Managed worktrees are available only for eligible Git projects on macOS.",
+      unavailable: "This response cannot be forked",
+      continuedFrom: "⑂ Continued from chat",
+      openSource: "Open source chat {{title}}",
+      originalUnavailable: "Original chat unavailable",
+      inheritedReadOnly: "Inherited messages cannot be edited",
+      recoveryTruncated: "The Agent received the newest part of the inherited history because the full prefix exceeded the context budget.",
+      worktreePermission: "Full Access is unavailable in managed worktrees",
+      errors: {
+        pointInvalid: "This response can no longer be forked. Refresh the chat and try again.",
+        sourceStale: "The chat changed after this view loaded. Refresh and try again.",
+        sourceUnsupported: "This chat cannot be forked.",
+        prefixTooLarge: "The history up to this response is too large to fork. Choose an earlier response.",
+        projectUnavailable: "The Project is unavailable, being rebound, or being deleted.",
+        requestConflict: "Another fork request already used this identity. Close the dialog and try again.",
+        recoveryRequired: "This fork needs recovery before it can continue.",
+        notRepository: "The Project folder is not a Git repository.",
+        notGitRoot: "The Project folder is not the root of its Git repository.",
+        noHead: "The repository has no commit yet. Create a commit first.",
+        bareRepository: "Bare repositories cannot host a managed worktree.",
+        operationInProgress: "Finish or abort the in-progress Git operation (merge, rebase, cherry-pick, revert, or bisect) first.",
+        submodule: "Repositories with submodules are not supported yet.",
+        treeTooLarge: "The repository tree is too large to verify for a managed worktree.",
+        configUnsafe: "The repository's Git config runs external programs (filters, fsmonitor, or alternate refs). Disable them first.",
+        branchConflict: "The fork branch already exists. Recovery is required.",
+        pathConflict: "The worktree path or registration already exists. Recovery is required.",
+        identityDrift: "The repository identity changed while forking. Try again.",
+      },
+    } ,
+  resumeFailure: {
+      title: "{{backend}} can't open this chat's saved session",
+      description: "Your message and attachments are saved, and still unsent.",
+      retriedTitle: "Retrying the original session failed",
+      retriedDescription: "{{backend}} still can't open the saved session. Your message and attachments remain saved and have not been sent.",
+      recommended: "Recommended",
+      sameSession: "Retry the original session",
+      sameSessionDetail: "Reconnect to the original session. If it works, the agent keeps everything it knows about this chat.",
+      sameSessionRetry: "Try the original session again",
+      sameSessionRetryDetail: "Attempt the same reconnection once more. It already failed once.",
+      freshSession: "Start a fresh session",
+      freshSessionDetail: "Start a new session with the same Agent, using the conversation saved in this Chat. Recent history is included; the Agent can look up earlier messages when Chat history access is enabled.",
+      freshSessionBlocked: "Starting a new session is not available right now.",
+      abandon: "Abandon this turn",
+      abandonDetail: "Nothing is sent; this turn ends here. Your message stays in this chat.",
+      actionFailed: "That didn't work: {{message}}",
+      pendingTitle: "This turn needs recovery",
+      pendingDetail: "Resolve or abandon this turn before sending another message. You can keep browsing.",
+      review: "Review recovery",
+      later: "Handle later",
+    },
+  userInput: {
+    countdown: "{{count}}s",
+    skip: "Skip",
+    progress: "{{current}} of {{total}}",
+    skipQuestion: "Skip question",
+    pendingList: "Pending concurrent questions",
+    pending: "Pending",
+    pendingCount: "{{count}} pending",
+    mainAgent: "Main Agent",
+    waiting: "Waiting for input",
+    other: "None of these; tell the Agent another approach",
+    confirm: "Confirm selection",
+    decisionPlaceholder: "Tell the Agent your decision…",
+    send: "Send",
+  },
+  approval: {
+    requestChanges: "Request changes",
+    decline: "Decline",
+    allowSession: "Allow for this session",
+    approvePlan: "Approve Plan",
+    allowOnce: "Allow once",
+    planTitle: "Continue with this Plan?",
+    commandTitle: "Allow this command?",
+    fileChangeTitle: "Allow these file changes?",
+    permissionTitle: "Allow additional access?",
+    location: "Location",
+    network: "Network",
+    plan: "Plan",
+    details: "Details",
+  },
+  "permission": {
+    "trigger": "Current action permission: {{mode}}",
+    "heading": "How should {{backend}} actions be approved?",
+    "learnMore": "Learn more",
+    "selected": "Selected",
+    "mode": {
+      "ask-for-approval": {
+        "label": "Ask for approval",
+        "description": "Ask before actions that require your approval"
+      },
+      "approve-for-me": {
+        "label": "Approve for me",
+        "description": "Approve safe actions; sensitive requests still ask"
+      },
+      "full-access": {
+        "label": "Full access",
+        "description": "Unrestricted access to the internet and any file on your computer"
+      }
+    },
+    "fullAccess": {
+      "title": "Turn on Full Access?",
+      "description": "The Agent will be able to run commands, use the internet, and create and edit files outside this chat without your permission. AI Chat's control data remains protected, but your other files do not. This includes but is not limited to:",
+      "files": {
+        "title": "Files and folders",
+        "description": "Read, create, modify, upload, or delete files anywhere on this computer"
+      },
+      "terminal": {
+        "title": "Terminal commands",
+        "description": "Run commands, install software, and change system settings"
+      },
+      "internet": {
+        "title": "Internet and connected apps",
+        "description": "Access websites, send data, and use enabled plugins"
+      },
+      "risk": "This comes with risks like loss or exposure of sensitive data and prompt injection. You can turn this off.",
+      "confirm": "Confirm",
+      "confirming": "Confirming…",
+      "failed": "Full Access could not be enabled: {{reason}}"
+    }
+  },
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close"
+  },
+  "sketch": {
+    "title": "Sketch",
+    "description": "Draw an image for your message.",
+    "done": "Done",
+    "processing": "Processing sketch",
+    "discardTitle": "Discard changes?",
+    "discardDescription": "Your changes will not be saved.",
+    "continueEditing": "Keep editing",
+    "discardChanges": "Discard changes",
+    "edit": "Click to edit sketch",
+    "select": "Select",
+    "pen": "Pen",
+    "text": "Text",
+    "shapeTool": "Shapes",
+    "eraser": "Eraser",
+    "undo": "Undo",
+    "redo": "Redo",
+    "canvas": "Sketch canvas",
+    "canvasHelp": "Draw or select. Arrow keys move, Delete removes, Command or Control Z undoes.",
+    "penWidth": "Pen width",
+    "eraserWidth": "Eraser diameter",
+    "color": "Color {{value}}",
+    "customColor": "Custom color",
+    "sampleColor": "Pick from canvas",
+    "red": "Red",
+    "green": "Green",
+    "blue": "Blue",
+    "textInput": "Sketch text",
+    "busyErasing": "Finishing erasure…",
+    "historyTrimmed": "Earlier undo steps were cleared.",
+    "error": "Could not complete this action. Please try again.",
+    "empty": "Add something to the sketch first.",
+    "sourceMissing": "The editable source is unavailable. This sketch has been kept unchanged.",
+    "ownerExpired": "This chat is no longer available.",
+    "readOnly": "This chat cannot be edited right now.",
+    "versionChanged": "This attachment changed. Close the editor and open its latest version.",
+    "migrationActive": "Wait for the window move to finish, then try again.",
+    "editorActive": "Finish or close the sketch first.",
+    "attachmentLimit": "A message can have up to 8 direct attachments.",
+    "imageTooLarge": "The PNG exceeds 8 MiB. Reduce the sketch content and try again.",
+    "budget": "This action exceeds the editing budget. Your work has been kept.",
+    "resizeBudget": "This enlargement exceeds the editing budget. Try a smaller size.",
+    "eraseBudget": "This erasure exceeds the processing limit. The previous content has been kept. Reduce the shape size or canvas content and retry.",
+    "exportFailed": "Could not create the PNG. Your sketch is still here; please try again.",
+    "workerFailed": "Could not process erasure. Your sketch is unchanged; please try again.",
+    "textOverflow": "The text extends beyond the canvas. Shorten it, or cancel this edit and move or resize it.",
+    "handle": "Resize {{direction}}",
+    "shape": {
+      "line": "Line",
+      "arrow": "Arrow",
+      "rectangle": "Rectangle",
+      "circle": "Circle",
+      "triangle": "Triangle",
+      "diamond": "Diamond",
+      "star": "Star",
+      "heart": "Heart"
+    }
+  },
+  "chat": {
+    "composer": {
+  queue: {
+    pickedUp: "Picked up queued message. Use the Up and Down Arrow keys to move it.",
+    reorderCancelled: "Reordering cancelled",
+    moved: "Moved to position {{position}}",
+    unchanged: "Position unchanged",
+    paused: "Queue paused",
+    resume: "Resume sending",
+    dismissError: "Dismiss queue error",
+    drag: "Move item {{position}} of {{count}}",
+    resend: "Resend this message",
+    deleteAmbiguous: "Delete this ambiguous message",
+    steer: "Send this next in the running task",
+    delete: "Delete this queued message",
+    edit: "Edit this queued message",
+  },
+
+      "surface": {
+        "plan": "Plan"
+      },
+      "plan": {
+        "closeChip": "Turn off Plan",
+        "decisionTitle": "Implement this Plan?",
+        "closeDecision": "Close Plan decision",
+        "implement": "Yes, implement this Plan",
+        "reviseLabel": "Tell the Agent how to revise the Plan",
+        "revisePlaceholder": "No. Tell the Agent what to do differently",
+        "send": "Send",
+        "skip": "Skip"
+      },
+      "add": "Add",
+      "files": "Files",
+      "disablePlan": "Turn off Plan",
+      "modelSelector": {
+        currentModel: "Current model {{model}}, effort {{effort}}",
+        selector: "Chat model selector",
+        advanced: "Advanced",
+        model: "Model",
+        effort: "Effort",
+        speed: "Speed",
+        disableFast: "Disable Fast speed",
+        enableFast: "Enable Fast speed",
+        quickTier: "Quick model tier",
+        loadingModels: "Loading model catalog…",
+        retryModels: "Retry model catalog",
+        resetDefault: "Reset to default",
+        onlyOneModel: "Only one model is available",
+        effortUnavailable: "The current model does not support changing Effort",
+        noModels: "No available models found",
+        backendDefaultModel: "Backend default model",
+        speedDescription:
+          "About 2.5× faster on supported Opus 5/4.8 models. Costs more usage credits but does not consume the subscription rate-limit pool.",
+        /* 运行态判据的产品说法。后端自己的解释（免费计划、模型不支持…）
+           由 adapter 的 turned-off 消息原样进转录，这里不复述。 */
+        speedReason: {
+          modelUnsupported: "The current model does not offer Fast",
+          backendOff: "The backend turned Fast off for this session",
+          backendOn: "The backend enabled Fast for this session",
+        },
+      }
+    }
+  }
+};

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the controlled ACP session configuration of the Codex-acp lock, the unified model directory kernel, shared model vocabulary and Codex runtime/workspace
- * [OUTPUT]: Provides codexModelCatalog/createCodexModelCatalog, and reads the model from standard configuration options, Effort and Speed; Cancelled or invalidated
+ * [OUTPUT]: Provides codexModelCatalog/createCodexModelCatalog with discovery-only handshake budgets and a runtime family key for cross-workspace reuse, and reads the model from standard configuration options, Effort and Speed; description-less placeholder options this CLI cannot run are excluded and the first runnable model becomes the default; Cancelled or invalidated
  * [POS]: The model directory boundary of the backends/codex; Cache/singleflight/generation is a synonym for model-catalog core
  */
 
@@ -91,6 +91,12 @@ async function discover(
       env: codexAcpEnvironment(runtime),
       cwd: workspace,
       signal,
+      /* Cold discovery shares CODEX_HOME with the auth check, the quota reader
+         and sibling probes, and every session/new refetches the remote model
+         cache, so a queued handshake legitimately needs more patience than a
+         readiness probe. */
+      timeoutMs: 20_000,
+      totalTimeoutMs: 40_000,
       validateSessionId: validateCodexSessionId,
     },
     async ({ created, sessionId, request }) => {
@@ -109,9 +115,26 @@ async function discover(
       ) {
         throw new Error("Codex ACP 模型目录无效");
       }
-      const defaultModel = models.currentValue;
+      /* codex-acp inserts a description-less placeholder for a configured model
+         this CLI cannot run (`~/.codex/config.toml` ahead of `availableModels`);
+         the service rejects every prompt on it with "requires a newer version of
+         Codex". Described options are the ones the CLI actually knows, so the
+         placeholder never reaches the composer. */
+      const runnable = choices.filter((choice) => choice.description?.trim());
+      if (runnable.length === 0) throw new Error("Codex ACP 模型目录无效");
+      const configured = models.currentValue;
+      const defaultModel = runnable.some((choice) => choice.value === configured)
+        ? configured
+        : runnable[0]!.value;
+      if (defaultModel !== configured) {
+        /* The composer must always open on a model that can answer; slugs are
+           adapter metadata, not account data, so naming both is safe. */
+        console.warn(
+          `[models:codex] configured model ${configured} is not runnable by this CLI; offering ${defaultModel} instead`
+        );
+      }
       const result: BackendModelInfo[] = [];
-      for (const choice of choices) {
+      for (const choice of runnable) {
         if (select(current, "model")?.currentValue !== choice.value) {
           current = state(
             await request("session/set_config_option", {
@@ -144,9 +167,13 @@ export function createCodexModelCatalog(
 ): ModelCatalog<ResolvedRuntime> {
   const inspect = dependencies.inspectSession ?? inspectAcpSession;
   return createModelCatalog<ResolvedRuntime>({
+    backend: "codex",
     label: "Codex 模型目录",
     key: (runtime, workspace) =>
       `${runtime.executable}\0${runtime.version}\0${workspace}`,
+    /* Same binary, same account: the list a sibling workspace already proved is
+       the same list, so a new project never pays for a cold handshake. */
+    family: (runtime) => `${runtime.executable}\0${runtime.version}\0`,
     read: (runtime, workspace, signal) =>
       discover(runtime, workspace, inspect, signal),
     ...(dependencies.now ? { now: dependencies.now } : {}),

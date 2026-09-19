@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on ACP schema session update/permission/stop reason and shared Agent DTO
- * [OUTPUT]: Provides ACP→Agent item mapping, native Plan update/removal mapping (finalization is imported from plan-events by AcpTurn directly), permission/question mapping, and Codex/Claude subagent attribution metadata
+ * [INPUT]: Depends on private artifact metadata and ACP schema session update/permission/stop reason and shared Agent DTO
+ * [OUTPUT]: Provides ACP→Agent item mapping, native Plan update/removal mapping (finalization is imported from plan-events by AcpTurn directly), and permission/question mapping (subagent attribution lives in map-subagent-meta.ts)
  * [POS]: Pure translation layer of ACP transport, shared by all four AcpTurn backends; holds no session state of its own
  */
 
+import { artifactMetadata } from "../../artifacts/discovery/acp-metadata";
 import type {
   PermissionOption,
   RequestPermissionRequest,
@@ -30,7 +31,7 @@ import {
 
 export type AcpMappedEvent =
   | { type: "delta"; itemId: string; text: string }
-  | { type: "item"; item: AgentTurnItem }
+  | { type: "item"; item: AgentTurnItem; metadata?: { locations?: string[]; title?: string } }
   | { type: "item-removed"; itemId: string };
 
 export type AcpEventState = {
@@ -332,7 +333,7 @@ export function mapAcpUpdate(
     state.tools.set(item.itemId, item);
     return [
       ...completed,
-      { type: "item", item },
+      { type: "item", item, metadata: artifactMetadata(state, update) },
     ];
   }
   if (update.sessionUpdate === "tool_call_update") {
@@ -357,7 +358,7 @@ export function mapAcpUpdate(
     state.tools.set(item.itemId, item);
     return [
       ...completed,
-      { type: "item", item },
+      { type: "item", item, metadata: artifactMetadata(state, update) },
     ];
   }
   if (update.sessionUpdate === "plan") {
@@ -652,7 +653,9 @@ export function mapPermissionRequest(
      reason 仅在拿不到计划正文时兜底（如 Kimi 多方案无 content 的请求）。 */
   const plan = planReview ? planReviewPlanText(request) : undefined;
   const planItemId = planReview ? codexPlanItemId(request) : undefined;
-  const reason = plan
+  const diff = !planReview && Array.isArray(request.toolCall.content)
+    ? request.toolCall.content.filter(block => block.type === "diff").map(block => diffText(block as unknown as Record<string, unknown>)).join("\n\n") : "";
+  const reason = plan || diff
     ? undefined
     : toolDetailText(
         request.toolCall.content,
@@ -679,6 +682,7 @@ export function mapPermissionRequest(
               request.toolCall.title ?? request.toolCall.name ?? undefined,
           }),
       ...(reason ? { reason } : {}),
+      ...(diff ? { diff: utf8Truncate(diff, 32 * 1024) } : {}),
       canAcceptForSession: Boolean(allowAlways) && !planReview,
     },
     options,
@@ -712,87 +716,4 @@ export function mapStopReason(stopReason: StopReason): {
   if (stopReason === "end_turn") return { type: "done" };
   if (stopReason === "cancelled") return { type: "cancelled" };
   return { type: "error", message: `ACP turn 已停止：${stopReason}` };
-}
-
-export type AcpSubagentMeta = {
-  threadId: string;
-  /** path 末段；缺席时由调用方回退到 threadId 前缀命名 */
-  name?: string;
-  status: "running" | "interrupted";
-};
-
-type CodexSubagentMeta = Readonly<{
-  threadId?: unknown;
-  path?: unknown;
-  activity?: unknown;
-}>;
-
-/**
- * Codex emits a real child thread identity; Claude exposes only the parent
- * Task tool-use id. The latter is deliberately tool-attribution only: Claude
- * child text/thinking is filtered by the adapter and must not be implied here.
- */
-export function mapAcpSubagentMeta(
-  update: unknown,
-  validateSessionId: (id: string) => boolean
-): AcpSubagentMeta | undefined {
-  const root = (
-    update as {
-      _meta?: {
-        codex?: { subagent?: CodexSubagentMeta };
-        claudeCode?: { parentToolUseId?: unknown };
-      };
-    } | null
-  )?._meta;
-  /* 两源互不耦合：codex 先问只因它的语义更全（真子线程），而不是 claude
-     那支挂在它的失败分支上。摘掉任一支，另一支必须原样成立。 */
-  return (
-    codexSubagentMeta(root?.codex?.subagent, validateSessionId) ??
-    claudeSubagentMeta(root?.claudeCode?.parentToolUseId)
-  );
-}
-
-/** Codex 下发真实子线程身份：名字、活动态都由它自己说了算。 */
-function codexSubagentMeta(
-  meta: CodexSubagentMeta | undefined,
-  validateSessionId: (id: string) => boolean
-): AcpSubagentMeta | undefined {
-  if (typeof meta?.threadId !== "string" || !validateSessionId(meta.threadId)) {
-    return undefined;
-  }
-  const path =
-    typeof meta.path === "string"
-      ? meta.path.split("/").filter(Boolean)
-      : Array.isArray(meta.path)
-        ? meta.path.filter(
-            (entry): entry is string => typeof entry === "string"
-          )
-        : [];
-  return {
-    threadId: meta.threadId,
-    ...(path.at(-1) ? { name: path.at(-1) } : {}),
-    status: meta.activity === "interrupted" ? "interrupted" : "running",
-  };
-}
-
-/**
- * Claude 只给父 Task 的 tool-use id——那是**归属**，不是子线程。子 agent 的
- * text/thinking 被 adapter 过滤后压根不上 wire，所以这里能诚实说的只有
- * 「这些工具调用同属一次 Task」；UI 不得据此暗示与 Codex 同级。
- */
-function claudeSubagentMeta(
-  parentToolUseId: unknown
-): AcpSubagentMeta | undefined {
-  if (
-    typeof parentToolUseId !== "string" ||
-    Buffer.byteLength(parentToolUseId, "utf8") > 128 ||
-    !/^[^\p{Cc}\p{Cf}]+$/u.test(parentToolUseId)
-  ) {
-    return undefined;
-  }
-  return {
-    threadId: parentToolUseId,
-    name: "Claude subagent tools",
-    status: "running",
-  };
 }

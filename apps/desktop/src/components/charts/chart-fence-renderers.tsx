@@ -4,6 +4,7 @@
  * [POS]: Lazy registry boundary for components/charts; validation and viewport code load only when a chart fence is encountered
  */
 
+import { ARTIFACT_FENCE_RENDERER } from "@ai-chat/chat-ui/artifact-renderer";
 import { lazy, Suspense } from "react";
 import type {
   CustomRenderer,
@@ -39,6 +40,7 @@ function ChartOverflowNotice() {
 }
 
 export const CHAT_FENCE_RENDERERS: CustomRenderer[] = [
+  ARTIFACT_FENCE_RENDERER,
   { language: "chart", component: ChartFence },
   { language: "chart-overflow", component: ChartOverflowNotice },
 ];

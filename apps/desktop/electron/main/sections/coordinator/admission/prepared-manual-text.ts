@@ -50,7 +50,7 @@ export function prepareTextOnlyManualTurn(
   lifecycleProjectId = inferredLifecycleProjectId(submission)
 ): PreparedManualTurn {
   const { input: raw, ...turn } = submission.turn;
-  if (raw.some((item) => item.type !== "text")) {
+  if (submission.remoteInput?.length || raw.some((item) => item.type !== "text")) {
     throw new Error("测试/降级 preparation 只接受文本输入");
   }
   const projectContext: TurnProjectContext = lifecycleProjectId

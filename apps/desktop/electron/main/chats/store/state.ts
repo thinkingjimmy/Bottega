@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SerialQueue, ChatStoreProjection, the typed SQLite client, Chat metadata/record types, and ChatNotFoundError
- * [OUTPUT]: Provides ChatStoreState — the single mutable cell shared by ChatStore and its read/saga collaborators (metadata map, message revisions, serial queue, projection, warnings, storage failures, published aggregate slot, database client, device id, store revision) plus the primitive accessors they all need
+ * [OUTPUT]: Provides ChatStoreState, shared metadata/revision/queue ownership, and canonical refresh that invalidates the matching aggregate cache after durable saga mutations
  * [POS]: The composition root of chats/store; collaborators receive this object instead of inheriting from one another
  */
 
@@ -22,6 +22,7 @@ type PublishedRecord = Readonly<{
    对方的字段——十三个 protected abstract 只是把耦合写成了类型。 */
 export class ChatStoreState {
   readonly queue = new SerialQueue();
+  readonly listeners = new Set<() => void>();
   readonly metadata = new Map<string, ChatMetadata>();
   readonly messageRevisions = new Map<string, number>();
   readonly warnings: string[] = [];
@@ -57,6 +58,7 @@ export class ChatStoreState {
 
   touch() {
     this.storeRevision += 1;
+    for (const listener of this.listeners) listener();
   }
 
   remember(record: ChatRecord, revision: number) {
@@ -81,9 +83,11 @@ export class ChatStoreState {
       chatId,
     });
     if (!record) throw new Error(`Chat ${chatId} is missing from SQLite metadata`);
+    if (this.activeRecord?.record.id === chatId) this.activeRecord = undefined;
     this.metadata.set(record.id, record);
     this.messageRevisions.set(record.id, record.chatMessageRevision);
     this.storeRevision += 1;
+    for (const listener of this.listeners) listener();
     return structuredClone(record);
   }
 }

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on canonical static/Base GUI roots, Node fs/path/streams, gateway MIME/CSP policy, and pre-escaped ReactGrab injection halves
+ * [INPUT]: Depends on canonical static/Base GUI roots, Node fs/path/streams, gateway MIME/CSP policy, and an on-demand ReactGrab injection renderer
  * [OUTPUT]: Provides contained no-follow static artifact delivery, Base GUI CSP delivery, HEAD handling, and nonce-bound non-Base HTML instrumentation
  * [POS]: Base GUI gateway file-serving leaf; AppGateway owns route/admission while this module owns byte projection
  */
@@ -20,12 +20,11 @@ export type GatewayStaticFileRoute = Readonly<{
   rootReal: string;
 }>;
 
-/* 注入片段在资产加载时就转义拼好，逐请求只剩把 nonce 插进 `<script` 与 `>`
-   之间的那道中缝。 */
+/* 注入片段只在真的要注入时才拼：685 KB 的 script/CSS 常驻方是 Buffer，
+   转义与 nonce 拼接都发生在这一次调用里，静态资源请求碰不到它。 */
 export type ReactGrabInjection = Readonly<{
   enabled: boolean;
-  head: string;
-  tail: string;
+  render(nonce: string | undefined): string;
 }>;
 
 export type GatewayBaseGuiFileRoute = Readonly<{
@@ -100,7 +99,7 @@ function injectReactGrab(
   assets: ReactGrabInjection
 ) {
   if (!assets.enabled) return html;
-  const injection = `${assets.head}${nonce ? ` nonce="${nonce}"` : ""}${assets.tail}`;
+  const injection = assets.render(nonce);
   return html.includes("</head>")
     ? html.replace("</head>", `${injection}</head>`)
     : `${injection}${html}`;

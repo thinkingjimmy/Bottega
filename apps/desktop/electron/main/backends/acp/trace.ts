@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/crypto/stream primitives, ACP mapped events, shared TurnDraft/ChatMessage/ChatPart types, and the caller-supplied literal-secret set
- * [OUTPUT]: Provides AcpTraceWriter with idempotent shutdown, AcpTraceTee for wire-line capture, key/value secret redaction, the structured trace-record schema, and trace-file rotation/cleanup
+ * [OUTPUT]: Provides AcpTraceWriter with idempotent shutdown, AcpTraceTee for wire-line capture, key/value secret redaction, the structured trace-record schema, and synchronous plus off-loop trace-file rotation/cleanup
  * [POS]: local diagnostic recorder of ACP transport; BridgeEntry owns writer, AcpTurn only uses narrow trace sink
  */
 
@@ -17,6 +17,7 @@ import {
   unlinkSync,
   writeSync,
 } from "node:fs";
+import { chmod, readdir, stat, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -261,6 +262,30 @@ function safeTraceName(chatId: string, turnSeq: number, attemptId: string) {
   return `${safeChatId}-${turnSeq}-${attemptId}.jsonl`;
 }
 
+type TraceFile = Readonly<{ path: string; mtimeMs: number }>;
+
+function notADirectory(directory: string) {
+  return new Error(`ACP trace 路径不是目录：${directory}`);
+}
+
+const missingDirectory = (cause: unknown) =>
+  (cause as NodeJS.ErrnoException).code === "ENOENT";
+
+/** Newest first, then everything past the budget or older than the age limit. */
+function expiredTraces(
+  files: readonly TraceFile[],
+  now: number,
+  maxFiles: number,
+  maxAgeMs: number
+) {
+  return [...files]
+    .sort((left, right) => right.mtimeMs - left.mtimeMs)
+    .filter(
+      (file, index) => index >= maxFiles || now - file.mtimeMs > maxAgeMs
+    )
+    .map((file) => file.path);
+}
+
 export function rotateAcpTraces(
   directory: string,
   now = Date.now(),
@@ -268,11 +293,9 @@ export function rotateAcpTraces(
   maxAgeMs = ACP_TRACE_MAX_AGE_MS
 ) {
   try {
-    if (!statSync(directory).isDirectory()) {
-      throw new Error(`ACP trace 路径不是目录：${directory}`);
-    }
+    if (!statSync(directory).isDirectory()) throw notADirectory(directory);
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return;
+    if (missingDirectory(cause)) return;
     throw cause;
   }
   chmodSync(directory, 0o700);
@@ -286,16 +309,50 @@ export function rotateAcpTraces(
       } catch {
         return [];
       }
-    })
-    .sort((left, right) => right.mtimeMs - left.mtimeMs);
-  for (const [index, file] of files.entries()) {
-    if (index >= maxFiles || now - file.mtimeMs > maxAgeMs) {
-      try {
-        unlinkSync(file.path);
-      } catch {
-        // Debug 清理失败不允许影响聊天。
-      }
+    });
+  for (const path of expiredTraces(files, now, maxFiles, maxAgeMs)) {
+    try {
+      unlinkSync(path);
+    } catch {
+      // Debug 清理失败不允许影响聊天。
     }
+  }
+}
+
+/* The writer rotates synchronously because it has to make room before opening its own
+   file; startup has no such constraint and must not block the loop for a debug sweep. */
+export async function rotateAcpTracesAsync(
+  directory: string,
+  now = Date.now(),
+  maxFiles = ACP_TRACE_MAX_FILES,
+  maxAgeMs = ACP_TRACE_MAX_AGE_MS
+) {
+  try {
+    if (!(await stat(directory)).isDirectory()) throw notADirectory(directory);
+  } catch (cause) {
+    if (missingDirectory(cause)) return;
+    throw cause;
+  }
+  await chmod(directory, 0o700);
+  const names = (await readdir(directory)).filter((name) =>
+    name.endsWith(".jsonl")
+  );
+  const files = (
+    await Promise.all(
+      names.map(async (name) => {
+        const path = join(directory, name);
+        try {
+          const entry = await stat(path);
+          return entry.isFile() ? [{ path, mtimeMs: entry.mtimeMs }] : [];
+        } catch {
+          return [];
+        }
+      })
+    )
+  ).flat();
+  for (const path of expiredTraces(files, now, maxFiles, maxAgeMs)) {
+    // Debug 清理失败不允许影响聊天。
+    await unlink(path).catch(() => undefined);
   }
 }
 

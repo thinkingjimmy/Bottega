@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat records, the typed SQLite client, and mutation outcome errors
- * [OUTPUT]: Provides aggregate, narrow fact, narrow message, and narrow message-plus-subagent persistence operations
+ * [OUTPUT]: Persists aggregate and narrow writes with internal frozen executor evidence in the existing receipt transaction.
  * [POS]: Durable write adapter beneath ChatStore; queueing, metadata publication, and domain transitions remain in the coordinator
  */
 
@@ -35,6 +35,7 @@ function committed(outcome: MutationOutcome<unknown>) {
 }
 
 export async function persistRecordToStorage(input: {
+  executorCommit?: import("../sqlite/cloud/execution/commit").ExecutorCommit;
   record: ChatRecord;
   database: ChatDatabaseClient | null;
   deviceId: string | null;
@@ -45,9 +46,11 @@ export async function persistRecordToStorage(input: {
   const operationId = randomUUID();
   committed(await database.execute({
     kind: "upsert-record",
+    ...(input.executorCommit ? { executorCommit: input.executorCommit } : {}),
     operationId,
     requestHash: hash({
       operationId,
+      ...(input.executorCommit ? { executorCommit: input.executorCommit } : {}),
       record: input.record,
       deviceId,
       expectedAggregateRevision: input.expectedAggregateRevision,
@@ -84,6 +87,7 @@ export async function persistFactsToStorage(input: {
 }
 
 export async function persistAppendedMessageToStorage(input: {
+  executorCommit?: import("../sqlite/cloud/execution/commit").ExecutorCommit;
   current: ChatRecord;
   record: ChatRecord;
   message: ChatMessage;
@@ -95,6 +99,7 @@ export async function persistAppendedMessageToStorage(input: {
   const operationId = randomUUID();
   const command = {
     kind: "append-message" as const,
+    ...(input.executorCommit ? { executorCommit: input.executorCommit } : {}),
     operationId,
     chatId: input.record.id,
     deviceId,

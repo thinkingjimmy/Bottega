@@ -1,14 +1,15 @@
 /**
- * [INPUT]: Depends on Electron app/dialog/power events, localized copy, restart intent, and the shared safe-quit coordinator.
- * [OUTPUT]: Provides application activation, login source, update visibility restoration, and bounded system shutdown.
+ * [INPUT]: Depends on Electron app/dialog/power events, localized copy, restart intent, and the shared safe-quit coordinator, and the build-gated cloud account lifecycle.
+ * [OUTPUT]: Provides application activation, login source, update visibility restoration, a one-time background notice and bounded system shutdown.
  * [POS]: Desktop presence lifecycle wiring extracted from the root composition.
  */
 
 import { join } from "node:path";
 import { RestartPresentation } from "./restart-presentation";
+import { backgroundNotice } from "./background-notice";
 import { app, dialog, powerMonitor } from "electron";
 import { translate } from "../../../../shared/i18n/runtime";
-import type { AppLocale } from "../../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import type { SafeQuitCoordinator } from "../../startup/safe-quit";
 import type { StopOperation } from "./start-fence";
 import { windowRegistry } from "../../window/surfaces/window-registry";
@@ -17,7 +18,7 @@ import { WindowRetention } from "./window-retention";
 import { QuitRequests } from "./quit-requests";
 
 export function createApplicationPresence(ports: { safeQuit(): SafeQuitCoordinator; locale(): AppLocale;
-  enabled(): boolean; snapshot(): readonly StopOperation[]; refresh(): void; changed(): void }) {
+  enabled(): boolean; snapshot(): readonly StopOperation[]; refresh(): void; changed(): void; onProtocolArgs?(argv: string[]): void }) {
   const presentation = new RestartPresentation(join(app.getPath("userData"), "presence-restart.json"));
   let systemEnding = false;
   const loginItem = createLoginItem();
@@ -26,6 +27,7 @@ export function createApplicationPresence(ports: { safeQuit(): SafeQuitCoordinat
   const retention = new WindowRetention({ windows: windowRegistry, enabled: ports.enabled,
     quitting: () => ports.safeQuit().requested || ports.safeQuit().finished || systemEnding,
     finished: () => ports.safeQuit().finished,
+    retained: () => { void backgroundNotice(app.getPath("userData"), ports.locale()).catch(() => {}); },
     recovered: () => { void dialog.showMessageBox({ type: "info", title: translate(ports.locale(), "settings.presence.open"), message: translate(ports.locale(), "settings.presence.recovered") }); },
     requestQuit: () => { void requestQuit(); } });
   const requests = new QuitRequests({ safeQuit: { prepare: (reason, permit) => ports.safeQuit().prepare(reason, permit) },
@@ -42,6 +44,7 @@ export function createApplicationPresence(ports: { safeQuit(): SafeQuitCoordinat
   });
   const activate = () => { retention.open(); ports.refresh(); };
   const secondInstance = (_event: unknown, _argv: string[], _cwd: string, data: unknown) => {
+    ports.onProtocolArgs?.(_argv);
     if ((data as { launchSource?: string })?.launchSource !== "login") retention.open();
   };
   const allClosed = () => {

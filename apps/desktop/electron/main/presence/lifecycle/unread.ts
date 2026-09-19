@@ -23,6 +23,7 @@ export class UnreadConsumption {
     const value = raw as PresentedChat;
     if (![value.chatId, value.incarnationId, value.requestId].every((field) => typeof field === "string" && field.length > 0 && field.length <= 128) ||
       !Number.isSafeInteger(value.generation) || value.generation < 1 || !Number.isSafeInteger(value.terminalSeq) || value.terminalSeq < 1) throw new Error("PRESENTED_CHAT_INVALID");
+    if (value.sourceId !== undefined && (typeof value.sourceId !== "string" || value.sourceId.length > 512)) throw new Error("PRESENTED_CHAT_INVALID");
     this.ports.assertScope(context, value.chatId);
     const record = this.ports.windows.fromWebContents(context.webContentsId);
     if (!record || rendererIdentity(context.webContentsId).rendererSessionId !== context.rendererIncarnation) return;

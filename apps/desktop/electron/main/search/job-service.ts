@@ -6,7 +6,8 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { ownerFromKey } from "../../../shared/bases-ipc";
+
+import { ownerFromKey } from "@ai-chat/base-ui/model/owner-key";
 import {
   SEARCH_JOB_CHANNEL,
   type GlobalSearchHit,
@@ -231,7 +232,7 @@ export class GlobalSearchService {
        Chat 的改名把正在读的搜索结果整个作废。围栏留在命中一侧（逐条比对
        所属 Chat 的 record/message revision），过期的那一条跳过就是了。 */
     const loadChatHits = async (cursor: SearchDocumentCursor | null) => {
-      const page = await this.chats.searchTimelineDocuments(tokens, cursor, 500);
+      const page = await this.chats.searchTimelineDocuments(tokens, cursor, 500, true);
       return {
         hits: page.hits.map((hit) => structuredClone(hit)),
         nextCursor: page.nextCursor,
@@ -325,13 +326,14 @@ async function* scanFrozen(
       if (counter.scanned % 500 === 0) yield { kind: "checkpoint", scanned: counter.scanned };
       if (matchTokens(hit.searchText, tokens) === null) continue;
       const chat = summaries.get(hit.chatId);
-      if (!chat ||
+      if (!hit.mirror && (!chat ||
         chat.chatRecordRevision !== hit.coreRevision ||
-        chat.chatMessageRevision !== hit.nativeMessageRevision) {
+        chat.chatMessageRevision !== hit.nativeMessageRevision)) {
         counter.skipped += 1;
         continue;
       }
-      const destination = searchDestination(chat);
+      const destination: ProductDestination | null = hit.mirror
+        ? { kind: "chat", chatId: hit.chatId } : chat ? searchDestination(chat) : null;
       if (!destination) continue;
       const normalizedText = normalize(hit.searchText);
       const offset = Math.min(...tokens.map((token) => normalizedText.indexOf(normalize(token))).filter((value) => value >= 0));

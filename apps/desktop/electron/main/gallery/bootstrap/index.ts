@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on ChatStore metadata plus exact assistant-message facts, Gallery broker/cache/media, and Base attachment ingestion/target authorization
- * [OUTPUT]: Provides GalleryRuntime initialization and exact transcript-image source resolution without aggregate Chat reads
+ * [INPUT]: ChatStore metadata, canonical assistant/Subagent proof, Gallery broker/cache/media and Base attachment authorization.
+ * [OUTPUT]: Provides GalleryRuntime with synchronous Base wiring plus deferred cache GC/ingestion reconciliation, and source-device-bound image ingestion from exact canonical transcript facts without aggregate Chat reads.
  * [POS]: Gallery/bootstrap composition root; isolates main/index.ts from restore, cache, and attachment port details
  */
 
@@ -9,10 +9,11 @@ import {
   galleryOccurrenceKey,
   type GallerySourceRef,
 } from "../../../../shared/gallery-media-ipc";
-import type { ChatToolPart } from "../../../../shared/chats-ipc";
+import { canonicalImage } from "../source";
 import type { BasesService } from "../../bases/bases-service";
 import { GalleryIngestion } from "../../bases/media-host/gallery-ingestion";
 import type { ChatStore } from "../../chats/chat-store";
+import { DeviceIdentityStore } from "../../chats/device-identity/device-identity";
 import { GalleryMediaCache } from "../media-cache";
 import { GalleryMediaService } from "../media-service";
 import { TurnEventsBroker } from "../turn-events-broker";
@@ -21,7 +22,11 @@ export type GalleryRuntime = {
   cache: GalleryMediaCache;
   events: TurnEventsBroker;
   media: GalleryMediaService;
-  connectBases(bases: BasesService): Promise<void>;
+  connectBases(bases: BasesService): void;
+  /* Cache GC and ingestion catch-up touch nothing the first frame reads; startup
+     runs both after the window is up. */
+  collectGarbage(): Promise<void>;
+  reconcileIngestion(): Promise<void>;
 };
 
 export async function initializeGalleryRuntime(
@@ -29,13 +34,14 @@ export async function initializeGalleryRuntime(
   store: ChatStore,
   isActiveSource: (sourceRef: GallerySourceRef) => boolean
 ): Promise<GalleryRuntime> {
+  const sourceDeviceId = await new DeviceIdentityStore(userData).loadOrCreate();
   const cache = new GalleryMediaCache(join(userData, "gallery-media"));
   await cache.initialize();
   const events = new TurnEventsBroker(
     join(userData, "gallery-completions"),
     {
-      resolveCanonicalSource: (sourceRef) =>
-        resolveCanonicalImageSource(store, sourceRef),
+      resolveCanonicalSource: (sourceRef, subagentId) =>
+        resolveCanonicalImageSource(store, sourceRef, subagentId),
       resolveDurableSource: async (sourceRef) => {
         const record = await cache.lookup(sourceRef);
         if (!record) return null;
@@ -45,19 +51,11 @@ export async function initializeGalleryRuntime(
     }
   );
   await events.initialize();
-  await cache.collectGarbage(
-    new Set(
-      events.completedEvents().map((event) =>
-        galleryOccurrenceKey(event.sourceRef)
-      )
-    ),
-    (sourceRef) => events.hasCompletion(sourceRef)
-  );
 
   let ingestion: GalleryIngestion | undefined;
-  // Base 接线前的窗口期只落 app-owned cache、不 ACK；这些事件由
-  // connectBases 里的 reconcileAll 统一补收，双投递被 fingerprint
-  // 幂等吸收（idempotent 仍是 ok，不产生假警告）。
+  // Before Bases are wired, events only land in the app-owned cache and are never
+  // ACKed; reconcileIngestion collects them afterwards and the fingerprint absorbs the
+  // double delivery idempotently (still ok, so no false warning).
   events.subscribe(async (event) => {
     if (ingestion) await ingestion.ingest(event);
     else await cache.ingest(event);
@@ -73,17 +71,30 @@ export async function initializeGalleryRuntime(
     cache,
     events,
     media,
-    async connectBases(bases) {
-      ingestion = new GalleryIngestion(cache, bases, events);
-      await ingestion.reconcileAll();
+    connectBases(bases) {
+      ingestion = new GalleryIngestion(cache, bases, events, undefined, sourceDeviceId);
       connectAttachmentMedia(media, bases);
+    },
+    collectGarbage() {
+      return cache.collectGarbage(
+        new Set(
+          events.completedEvents().map((event) =>
+            galleryOccurrenceKey(event.sourceRef)
+          )
+        ),
+        (sourceRef) => events.hasCompletion(sourceRef)
+      );
+    },
+    reconcileIngestion() {
+      return ingestion?.reconcileAll() ?? Promise.resolve();
     },
   };
 }
 
 export async function resolveCanonicalImageSource(
   store: ChatStore,
-  sourceRef: Extract<GallerySourceRef, { kind: "transcript" }>
+  sourceRef: Extract<GallerySourceRef, { kind: "transcript" }>,
+  subagentId: string | null = null
 ) {
   const record = store.getMetadata(sourceRef.chatId);
   if (
@@ -93,18 +104,7 @@ export async function resolveCanonicalImageSource(
   ) {
     return null;
   }
-  const candidate = await store.getNativeMessage(sourceRef.chatId, {
-    kind: "seq",
-    seq: sourceRef.assistantSeq,
-  });
-  const message = candidate?.role === "assistant" ? candidate : null;
-  const image = message?.parts?.find(
-    (part): part is ChatToolPart =>
-      part.type === "tool" &&
-      part.tool === "image" &&
-      part.status === "completed" &&
-      part.itemId === sourceRef.itemId
-  );
+  const { image } = await canonicalImage(store, sourceRef, subagentId);
   return image?.detail
     ? { sourcePath: image.detail, readRoot: record.homeDir }
     : null;

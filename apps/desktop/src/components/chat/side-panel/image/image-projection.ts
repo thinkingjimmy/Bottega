@@ -1,15 +1,17 @@
 /**
- * [INPUT]: Depends on shared ChatMessage and TurnDraft; Receiving canonical transcript replacement and only active draft
- * [OUTPUT]: Provides ConversationImageProjection with a narrow draft DTO/key with only itemId/status/title/startedAt, for the image tab to parse the running/completed transcript image
+ * [INPUT]: Shared ChatMessage, TurnDraft and current native Subagent projections.
+ * [OUTPUT]: ConversationImageProjection and a narrow main-draft image key; retained Subagent tabs reuse the current projection after port changes.
  * [POS]: The contract for the transcription of images from chat/side-panel/image; Do not enter the Base Gallery, durable Gallery only read Base rows
  */
 
 import type { TurnDraft } from "../../../../../shared/chat-turn-reducer";
 import type { ChatMessage } from "../../../../../shared/chats-ipc";
+import type { ProjectedSubagent } from "@/lib/chat-turn-attach";
 
 export type ConversationImageProjection = {
   chatId: string;
   canonicalMessages: ChatMessage[];
+  subagents?: Record<string, ProjectedSubagent>;
   draft: ConversationImageDraft | null;
   assistantSeq?: number;
   incarnationId: string | null;

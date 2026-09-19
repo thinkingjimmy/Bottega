@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on renderer IPC, Electron shell reveal, strict Project/Chat identity command schemas, and the ProjectsService authority port
- * [OUTPUT]: Registers Project list/mutation/branch/reveal renderer commands for the main window; branch reads may target one main-validated conversation while mutations remain Project-scoped
+ * [OUTPUT]: Registers Project list/mutation/folder-binding/branch/reveal renderer commands for the main window; branch reads may target one main-validated conversation while mutations remain Project-scoped
  * [POS]: Renderer command adapter for projects-service.ts; store serialization, lifecycle fences, and cleanup remain owned by ProjectsService
  */
 
@@ -78,6 +78,9 @@ export function registerProjectsServiceIpc(
     )
     .handle(PROJECTS_CHANNEL.detachLocal, (rawProjectId) =>
       service.detachLocalProject(projectIdSchema.parse(rawProjectId))
+    )
+    .handle(PROJECTS_CHANNEL.chooseFolder, (rawProjectId) =>
+      service.chooseWorkspaceFolder(projectIdSchema.parse(rawProjectId))
     )
     .handle(PROJECTS_CHANNEL.releaseMissing, (rawProjectId) =>
       service.releaseMissing(projectIdSchema.parse(rawProjectId))

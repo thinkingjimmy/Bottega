@@ -4,6 +4,7 @@
  * [POS]: Main/window browsing-context security boundary; product entry points cannot widen navigation, RTC, or permission authority
  */
 
+import { artifactRuntime } from "../artifacts/runtime";
 import {
   dialog,
   session,
@@ -14,10 +15,10 @@ import {
 } from "electron";
 import type { AppsService } from "../apps/apps-service";
 import { urlMatchesRenderer } from "../frame-guard";
-import type { AppLocale } from "../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { translate } from "../../../shared/i18n/runtime";
 
-const TRUSTED_EXTERNAL_HOSTS = new Set(["github.com", "learn.chatgpt.com"]);
+const TRUSTED_EXTERNAL_HOSTS = new Set(["github.com", "learn.chatgpt.com", "claude.ai", "preview.claude.ai"]);
 const iframeDocuments = new WeakMap<WebFrameMain, string>();
 function isAllowedAppOrigin(apps: AppsService, value: string) {
   try {
@@ -82,6 +83,12 @@ export function lockNavigation(
     if (event.isMainFrame) {
       if (!urlMatchesRenderer(event.url, rendererUrl)) event.preventDefault();
       return;
+    }
+    const artifacts = artifactRuntime()?.gateway;
+    const fixedArtifact = event.frame && iframeDocuments.get(event.frame);
+    if (fixedArtifact && artifacts?.ownsOrigin(fixedArtifact)) { event.preventDefault(); return; }
+    if (artifacts?.allowsDocument(event.url, window.webContents.id) && event.frame && event.frame.parent === event.frame.top) {
+      iframeDocuments.set(event.frame, new URL(event.url).origin); return;
     }
     const nextOrigin = (() => {
       try {
@@ -151,7 +158,7 @@ export function lockNavigation(
     }
   );
   window.webContents.setWindowOpenHandler(({ url, referrer }) => {
-    if (referrer?.url && isAllowedAppOrigin(apps, referrer.url)) {
+    if (referrer?.url && (isAllowedAppOrigin(apps, referrer.url) || artifactRuntime()?.gateway.ownsOrigin(referrer.url))) {
       return { action: "deny" };
     }
     void openExternalSafely(window, url, locale()).catch((error) =>

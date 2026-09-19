@@ -1,16 +1,6 @@
 /**
- * [INPUT]: Depends on zod and the AGENT_BACKEND_ORDER group of agent-ipc
- * [OUTPUT]: Provides agentBackendIdSchema, the zod schema validating an AgentBackendId
- * [POS]: Shared runtime validator generated from AGENT_BACKEND_ORDER; used to check untrusted values from durable files and cross-process payloads
+ * [INPUT]: Depends on the canonical public backend identity schema.
+ * [OUTPUT]: Provides agentBackendIdSchema at the existing desktop import boundary.
+ * [POS]: Desktop validator facade; tool assignment policy remains independently restricted.
  */
-
-import { z } from "zod";
-import { AGENT_BACKEND_ORDER } from "./agent-ipc";
-
-/**
- * 与元组同源，故不存在「加了后端忘了改 schema」这类沉默失败。
- * 注意：内置工具的 `agent` **入参**不用它——那是产品面「哪些后端可被
- * 工具指派」的策略问题，与「系统认识哪些后端」不是同一个问题，
- * 硬编码在各自 spec 里才不会随注册表自动放宽。
- */
-export const agentBackendIdSchema = z.enum(AGENT_BACKEND_ORDER);
+export { agentBackendIdSchema } from "@ai-chat/cloud-protocol/chats/options";

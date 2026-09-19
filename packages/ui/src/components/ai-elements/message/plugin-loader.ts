@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on streamdown Plugin type with dynamic input from @streamdown/code/math/mermaid
- * [OUTPUT]: Provides detectOptionalPlugins (Markdown feature detection), selectOptionalPlugins, and createOptionalPluginLoader — a single-flight, process-wide-shared loader for the code/math/mermaid plugins
+ * [OUTPUT]: Provides detectOptionalPlugins (Markdown feature detection), selectOptionalPlugins, createOptionalPluginLoader — a single-flight, process-wide-shared loader for the code/math/mermaid plugins — and preloadMessagePlugins for idle warmup
  * [POS]: Runtime plugin-selection layer for ai-elements/message's rich-text rendering; manages plugin load state only and never touches React rendering itself
  */
 
@@ -114,3 +114,8 @@ export const messagePluginLoader = createOptionalPluginLoader(
     console.error(`[MessageResponse] Failed to load ${key} plugin`, cause);
   }
 );
+
+/** Warms a plugin chunk before any message needs it; the loader already reports and remembers its own failures. */
+export function preloadMessagePlugins(keys: readonly OptionalPluginKey[]) {
+  void messagePluginLoader.load(keys).catch(() => undefined);
+}

@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on the ExcelJS document Workbook leaf, Node module loader/zlib, streamlined decompression, limited file reading, Base JSON business import, shared cellValue/value/XLSX issue, plus the shared statusError constructor from main/errors
+ * [INPUT]: Depends on the ExcelJS Workbook loaded on first use (never at module evaluation), Node zlib, streamlined decompression, limited file reading, Base JSON business import, shared cellValue/value/XLSX issue, plus the shared statusError constructor from main/errors
  * [OUTPUT]: Provides BaseXlsxService, buildBaseXlsx, parseBaseXlsx/hasExcelTimeToken; Execute the atom report Pre-check, stabilize the issue code/0 Base data line, +2 on the renderer side is the worksheet line, UTC date-only/ISO datetime/cached formula, two-way mapping, type inference and actual decompression bytes/ZIP/dimensional budget
  * [POS]: The main-only XLSX format of bases/io; The renderer does not load ExcelJS, complete success reports first through the wire schema, then repeats the CAS in the BaseJsonService transaction
  */
 
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { createInflateRaw } from "node:zlib";
 import type {
   Cell,
@@ -43,9 +42,16 @@ import type { BaseJsonService } from "./base-json";
 import { readBoundedFile } from "./base-json";
 import { statusError } from "../../errors";
 
-const Workbook = createRequire(import.meta.url)(
-  "exceljs/lib/doc/workbook"
-) as typeof ExcelWorkbook;
+/* ExcelJS costs ~100 ms to evaluate and pulls jszip with it, yet no startup path
+   touches a workbook: the whole package waits for the first import/export. */
+let workbookClass: Promise<typeof ExcelWorkbook> | undefined;
+
+function loadWorkbook() {
+  /* Node ESM exposes this CJS package as `default` only; the bundled CJS output
+     carries both. Reading through `default` is the shape both agree on. */
+  workbookClass ??= import("exceljs").then((loaded) => (loaded.default ?? loaded).Workbook);
+  return workbookClass;
+}
 
 const XLSX_FILE_BYTE_LIMIT = 32 * 1024 * 1024;
 const XLSX_DIMENSION_CELL_LIMIT = 2_000_000;
@@ -119,6 +125,7 @@ export class BaseXlsxService {
 }
 
 export async function buildBaseXlsx(snapshot: BaseSnapshot): Promise<Buffer> {
+  const Workbook = await loadWorkbook();
   const workbook = new Workbook();
   workbook.creator = "Bottega";
   workbook.created = new Date(0);
@@ -155,15 +162,30 @@ export async function buildBaseXlsx(snapshot: BaseSnapshot): Promise<Buffer> {
   return Buffer.from(buffer);
 }
 
-export async function parseBaseXlsx(buffer: Buffer, current: BaseSnapshot) {
+export async function inspectArtifactWorkbook(buffer: Buffer) {
   await inspectZipBudget(buffer);
+  const Workbook = await loadWorkbook();
+  const workbook = new Workbook();
+  await workbook.xlsx.load(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer);
+  if (!workbook.worksheets.length) throw new Error("artifact-empty-workbook");
+  return workbook.worksheets.map(sheet => {
+    inspectSheetBudget(sheet);
+    return { name: sheet.name, hasId: readHeaders(sheet).some(header => header.toLowerCase() === "id") };
+  });
+}
+
+export async function parseBaseXlsx(buffer: Buffer,
+  current: { meta: Pick<BaseSnapshot["meta"], "columns">; rows: BaseSnapshot["rows"] },
+  options?: { sheet: string; rowId: (index: number) => string }) {
+  await inspectZipBudget(buffer);
+  const Workbook = await loadWorkbook();
   const workbook = new Workbook();
   const workbookBuffer = buffer.buffer.slice(
     buffer.byteOffset,
     buffer.byteOffset + buffer.byteLength
   ) as ArrayBuffer;
   await workbook.xlsx.load(workbookBuffer);
-  const sheet = workbook.worksheets[0];
+  const sheet = options ? workbook.worksheets.find(sheet => sheet.name === options.sheet) : workbook.worksheets[0];
   if (!sheet) throw statusError(400, "XLSX 至少需要一个工作表");
   inspectSheetBudget(sheet);
   const headers = readHeaders(sheet);
@@ -191,7 +213,7 @@ export async function parseBaseXlsx(buffer: Buffer, current: BaseSnapshot) {
     const explicitId = idIndex >= 0 ? scalarCellValue(sheetRow.getCell(idIndex + 1)) : undefined;
     const id = typeof explicitId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(explicitId)
       ? explicitId
-      : randomUUID();
+      : options?.rowId(rowOffset) ?? randomUUID();
     const values: BaseRow["values"] = {};
     mapped.forEach((column, columnIndex) => {
       if (!column) return;

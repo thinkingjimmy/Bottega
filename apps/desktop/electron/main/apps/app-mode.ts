@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on Apps/Projects/Chats/Bases services, lifecycle, current locale, SkillsCatalog, settings/archive, package import/share, and Agent turn control
- * [OUTPUT]: Provides configureAppMode with canonical use-chat slots, ordinary and Studio-only grants, promotion, convergent save/delete with post-finalization removal publication, Base import, sharing, Skills turns, Extensions, and recovery
+ * [INPUT]: Depends on Apps/Projects/Chats/Bases services, profile-local share staging, lifecycle, current locale, SkillsCatalog, settings/archive, package import/share, and Agent turn control
+ * [OUTPUT]: Provides shared lifecycle admission, conversion and install recovery, and separate local App removal using the existing drain, Chat, grant and data participants.
  * [POS]: Apps-domain composition root; wires Project grant commits to durable Project publication
  */
 
 import type { SessionRef } from "../../../shared/agent-ipc";
-import type { AppLocale } from "../../../shared/i18n/locale";
-import { dirname } from "node:path";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { BasePromotionService } from "../bases/base-promotion-service";
 import type { BaseStore } from "../bases/base-store";
 import type { BasesService } from "../bases/bases-service";
@@ -18,13 +17,15 @@ import type { LifecycleIntentStore } from "../lifecycle/intent-store";
 import { LifecycleReconciliation } from "../lifecycle/reconciliation";
 import type { ProjectStore } from "../projects/store/project-store";
 import type { ProjectsService } from "../projects/projects-service";
+import { ProjectRescueService } from "../projects/rescue/service";
 import type { ConversationCoordinator } from "../sections/coordinator/conversation-coordinator";
 import type { SettingsStore } from "../settings-store";
 import type { SkillsCatalog } from "../skills-catalog";
 import type { SkillsTurnCustodyStore } from "../skills-management/turn-custody";
 import type { ExtensionRuntimeHolder } from "../extensions/lifecycle/disable-convergence";
 import type { ExtensionProjectionLedger } from "../extensions/lifecycle/projection-ledger";
-import { AppDeleteService } from "./conversion/app-delete";
+import { AppDeleteService, type AppDeleteDependencies } from "./conversion/app-delete";
+import { AppLocalRemovalService } from "./conversion/removal/service";
 import { AppChatSlots } from "./turn/app-chat-slots";
 import { AppNavigationService } from "./turn/app-navigation";
 import { windowRegistry } from "../window/surfaces/window-registry";
@@ -41,12 +42,13 @@ import type { AppsService } from "./apps-service";
 import { SaveAsAppService } from "./conversion/save-as-app";
 import { BaseAppImporter } from "./install/import-base-app";
 import { ShareFlow } from "./share/share-flow";
-import { AppGenerationDrainProviderRegistry } from "../lifecycle/app-generation-drain-providers";
-import { AppGenerationBuildParticipantRegistry } from "../lifecycle/app-generation-build-participants";
-import { AppGenerationRetirementCoordinator } from "../lifecycle/app-generation-retirement";
+import { AppGenerationDrainProviderRegistry } from "../lifecycle/generation/drain-providers";
+import { AppGenerationBuildParticipantRegistry } from "../lifecycle/generation/build-participants";
+import { AppGenerationRetirementCoordinator } from "../lifecycle/generation/retirement";
 import { createAppExtensionIntegration } from "../extensions/integration/app-extension-composition";
 
 type AppModeDependencies = {
+  cloudEnabled?: boolean;
   apps: AppsService;
   projects: ProjectsService;
   projectStore: ProjectStore;
@@ -174,8 +176,17 @@ export function configureAppMode(dependencies: AppModeDependencies) {
   const drainProviders = new AppGenerationDrainProviderRegistry();
   const extensions = configureExtensionIntegration(dependencies, drainProviders);
   configurePackageFlows(dependencies, gate, reconciliation, extensions);
-  configureDelete(dependencies, gate, reconciliation, drainProviders);
-  return { reconciliation, saveAsApp, extensions };
+  const localRemoval = configureDelete(dependencies, gate, reconciliation, drainProviders);
+  const rescue = new ProjectRescueService({ chats: dependencies.chatStore, projects: dependencies.projectStore,
+    journal: dependencies.intents, gate, cloudEnabled: dependencies.cloudEnabled,
+    projectExclusive: work => dependencies.projects.runExclusive(work),
+    conversationExclusive: (chatId, work) => dependencies.coordinator.runConversationExclusive(chatId, work),
+    active: chatId => dependencies.hasConversationActivity([chatId]),
+    releaseLocal: chatId => dependencies.projects.options.releaseChatProject(chatId),
+    releaseSession: dependencies.releaseThreadScope, changed: chat => dependencies.chats.publishRecord(chat) });
+  dependencies.projects.configureMissingRescue(projectId => rescue.release(projectId));
+  reconciliation.registerRecovery("project-chat-rescue", intent => rescue.recover(intent));
+  return { gate, reconciliation, saveAsApp, promotion, rescue, extensions, localRemoval };
 }
 
 function configureExtensionIntegration(
@@ -376,7 +387,7 @@ function configurePackageFlows(
   );
   importer.configureExtensions(extensions.installer);
   const share = new ShareFlow(
-    dirname(dependencies.apps.store.appsRoot),
+    () => dependencies.apps.userData,
     dependencies.apps.store,
     dependencies.projectStore,
     dependencies.baseStore,
@@ -407,6 +418,7 @@ function configurePromotion(
     dependencies.intents,
     gate,
     {
+      runProjectExclusive: task => dependencies.projects.runExclusive(task),
       runConversationExclusive: (chatId, task) =>
         dependencies.coordinator.runConversationExclusive(chatId, task),
       hasActiveTurn: (chatId) =>
@@ -477,7 +489,7 @@ function configureDelete(
     drainProviders
   );
   dependencies.apps.configureGenerationRetirement((input) => retirement.proof(input));
-  const appDelete = new AppDeleteService({
+  const deletionPorts: AppDeleteDependencies = {
     store: dependencies.apps.store,
     projects: dependencies.projects,
     intents: dependencies.intents,
@@ -524,7 +536,11 @@ function configureDelete(
       dependencies.apps.finalizeDelete(appId).then(() => undefined),
     publishRemoval: (appId) => dependencies.apps.emitRemoval(appId),
     reportProgress: (appId) => dependencies.apps.emitDeleteProgress(appId),
-  });
+  };
+  const appDelete = new AppDeleteService(deletionPorts);
+  const localRemoval = new AppLocalRemovalService({ ...deletionPorts, userData: dependencies.apps.userData, configs: dependencies.apps.configs });
+  reconciliation.registerRecovery("app-local-remove", intent => localRemoval.recover(intent));
+  reconciliation.registerRecovery("app-cloud-retire", intent => localRemoval.recover(intent));
   dependencies.apps.configureAppDelete(appDelete);
   /* 恢复失败从前只进 RecoveryReport 与 console，record 一根汗毛不动——界面上
      那个 App 照样「已就绪」，而点删除必撞 409。失败当场落到 record 上，
@@ -542,6 +558,7 @@ function configureDelete(
       throw cause;
     }
   });
+  return localRemoval;
 }
 
 async function rotateSession(

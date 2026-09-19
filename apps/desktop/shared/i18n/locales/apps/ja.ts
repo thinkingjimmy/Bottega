@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Japanese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level
+ * [OUTPUT]: Provides the Apps Japanese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
  * [POS]: Japanese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
 
@@ -295,7 +295,7 @@ export const appsJa: typeof appsEn = {
     settings: "Base App 設定",
     edit: "App を編集",
     more: "その他の操作",
-    skillFailed: "App skill の生成に失敗したため、使用 chat に安定した記録プロトコルがありません。",
+    skillFailed: "App チャットの準備に失敗しました",
     retrySkill: "生成を再試行",
     workbench: "App ワークベンチ",
     workbenchDescription: "App 独自の開発サーバーなしで、環境・障害・予算・アクセシビリティ条件を再現します。",
@@ -369,6 +369,21 @@ export const appsJa: typeof appsEn = {
     start: "修復を開始",
   },
   saveAs: {
+    cloud: {
+      "pending": "確認を待っています。元の Chat と Base は保護されています。",
+      "confirmed": "確認済みです。この端末での変換を完了しています。",
+      "conflict": "変換の確認前に Chat または Base が変更されました。元のデータを保持し、確認してから再試行してください。",
+      "previous": "確認時の Chat",
+      "current": "現在のクラウド Chat",
+      "proposed": "変換先",
+      "ordinary": "通常の Chat",
+      "appEdit": "App 編集",
+      "appUse": "App 利用",
+      "unavailable": "利用できません",
+      "keepOriginal": "元の Chat と Base を保持",
+      "reviewFailed": "変換状態を確認できません。再試行してください。",
+      "retry": "変換状態を確認"
+    },
     generatedDescription: "{{name}} の共有 Base App",
     uncertain: "前回の送信結果が不明です。元と同じパラメータで再試行して確認してください。",
     enterName: "App 名を入力してください",

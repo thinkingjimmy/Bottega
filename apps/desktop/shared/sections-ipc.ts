@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AgentSendPayload from agent-ipc, ProductFailure, chat create/append/adopt input DTOs from chats-ipc, and the durable submission precondition/ACK/outcome contracts
- * [OUTPUT]: Defines canonical manual submissions with an optional one-operation authentication retry intent and existing custody/recovery receipts.
+ * [OUTPUT]: Defines canonical submissions and custody/recovery receipts, including unsequenced queued admission and one-operation authentication retries.
  * [POS]: Shared conversation-coordinator boundary; the renderer-facing type can never express adopting a SessionRef, appending a chat message, or claiming an Agent turn directly
  */
 
@@ -75,15 +75,18 @@ export type ManualTurnSubmission = {
 
 export type TrustedManualTurnSubmission = Omit<ManualTurnSubmission, "persistence"> & {
   persistence: TrustedManualTurnPersistence;
+  /** Main-only verified remote file sources; renderer submissions cannot express this field. */
+  remoteInput?: Array<{ attachment: import("@ai-chat/cloud-protocol/remote/input/model").RemoteAttachment; path: string }>;
 };
 
 export type ManualTurnReceipt =
   | {
-      phase: "started" | "queued";
+      phase: "started";
       requestId: string;
       blockedBy?: "relay-queue" | "chain-paused" | "app-transition";
       userMessage: ChatMessage;
     }
+  | { phase: "queued"; requestId: string; blockedBy?: "relay-queue" | "chain-paused" | "app-transition"; userMessage?: ChatMessage }
   | { phase: "settled"; requestId: string }
   | { phase: "failed"; requestId: string; userPersisted: boolean };
 

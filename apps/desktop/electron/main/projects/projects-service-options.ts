@@ -5,8 +5,9 @@
  */
 
 import type { AppChatRole, ChatSummary } from "../../../shared/chats-ipc";
-import type { AppLocale } from "../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import type { ProjectLocalDetachReason } from "../../../shared/projects-ipc";
+import type { ProjectRemoteRefresh } from "./git/remote-refresh";
 import type { ProjectResourceCleanupCoordinator } from "./resource-cleanup/coordinator";
 import type {
   ProjectRebindCapsule,
@@ -16,6 +17,8 @@ import type {
 
 export type ProjectsServiceOptions = {
   locale?: () => AppLocale;
+  /** Injected only by tests; production builds the default throttled refresher over the store. */
+  remoteRefresh?: ProjectRemoteRefresh;
   resolveApp: (appId: string) => { dir: string; name: string } | undefined;
   resolveAppForBinding?: (appId: string) =>
     { dir: string; name: string } | undefined;

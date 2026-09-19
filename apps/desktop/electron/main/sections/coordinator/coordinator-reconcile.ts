@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on RelayLedger, ChatsService, shared raw-submission recovery, create/relay recovery, and the dependency-aware notice outbox
- * [OUTPUT]: Recovers producers in order while retaining unknown raw submissions and flushing dependent result notices
+ * [OUTPUT]: Recovers producers in order, captures stopped Home files and preserves unknown submissions and dependent notices
  * [POS]: Coordinator startup recovery unit; every durable producer phase is followed by the projection needed to make its facts visible in the same boot
  */
 
@@ -60,6 +60,9 @@ async function reconcileManual(
       // 重启后结果通道已死：dispatched 的 receipt 不等于 result，
       // 与 dispatching 一样归 unknown 对账，禁止原地卡死。
       await ledger.markManualDispatchUnknown(intent.id);
+      await chats.store.sync.captureTurnHome(intent.conversationId, intent).catch(() => {
+        chats.store.pushWarning(`Home capture for ${intent.id} is pending recovery.`);
+      });
       continue;
     }
     if (attempt.phase !== "result-prepared") continue;
@@ -78,6 +81,7 @@ async function reconcileManual(
         skillTruncationNoticeId(intent.conversationId, intent.requestId),
         Boolean(message)
       );
+      await chats.store.sync.captureTurnHome(intent.conversationId, intent);
       await ledger.persistManualResult(intent.id, true);
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : String(cause);
@@ -127,6 +131,7 @@ async function reconcileClaimed(
   const message = assistantMessage(outbox?.message);
   if (outbox?.terminal === "done" && message) {
     await input.chats.appendCanonical(relay.target.chatId, message);
+    await input.chats.store.sync.captureTurnHome(relay.target.chatId, relay);
     await input.notices.settleDependent(
       skillTruncationNoticeId(relay.target.chatId, relay.requestId),
       true
@@ -144,6 +149,7 @@ async function reconcileClaimed(
     return;
   }
   if (outbox) {
+    await input.chats.store.sync.captureTurnHome(relay.target.chatId, relay);
     await input.notices.settleDependent(
       skillTruncationNoticeId(relay.target.chatId, relay.requestId),
       false

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on filesystem handles, the apps/support canonicalJson/syncDirectory primitives, content-addressed package digests, declared script source admission, shared manifests, and bounded Base/compiled source envelopes
+ * [INPUT]: Depends on the shared package policy, filesystem handles, the apps/support canonicalJson/syncDirectory primitives, content-addressed package digests, declared script source admission, shared manifests, and bounded Base/compiled source envelopes
  * [OUTPUT]: Provides the single package allowlist, the kind-aware source and runtime projections, the three-domain digest set, and immutable artifact seal/verify/collect; ignored subtrees are stripped rather than inspected, and runtime symlinks and the execute bit survive intact
  * [POS]: The two-way package boundary of apps/share/package and the generation-artifact machine; publish, preflight, preset import and AppStore all borrow this allowlist, copy and digest rather than growing their own
  */
@@ -38,20 +38,8 @@ import {
   framedValueDigest,
 } from "./package-digest";
 
-export const PACKAGE_ALLOWLIST = [
-  "app.json",
-  "app.compat.json",
-  "README.md",
-  "README.zh-CN.md",
-  "LICENSE",
-  "AGENTS.md",
-  "CLAUDE.md",
-  ".agents/skills/**",
-  "data/base.json",
-  "migrations/**",
-  "gui/**",
-  ".bottega/compiled-source-v1/**",
-] as const;
+import { PACKAGE_ALLOWLIST, PACKAGE_BUDGET, PORTABLE_SOURCE_BUDGET } from "@ai-chat/cloud-protocol/apps/schemas/package-policy";
+export { PACKAGE_ALLOWLIST, PACKAGE_BUDGET };
 
 // 谓词从常量推导，白名单只此一份——手抄第二份的那天就是静默漂移的那天
 const ALLOWED_EXACT = new Set<string>(
@@ -61,28 +49,11 @@ const ALLOWED_PREFIXES = PACKAGE_ALLOWLIST.filter((entry) =>
   entry.endsWith("/**")
 ).map((entry) => entry.slice(0, -2));
 
-export const PACKAGE_BUDGET = {
-  fileBytes: 512 * 1024,
-  // base.json 豁免单文件 512KB，但天花板就是包总预算——写更大的数字
-  // 只是一个永远打不到的假上限
-  baseFileBytes: 16 * 1024 * 1024,
-  totalBytes: 16 * 1024 * 1024,
-  files: 512,
-  depth: 6,
-} as const;
-
 const RUNTIME_BUDGET = {
   fileBytes: 64 * 1024 * 1024,
   totalBytes: 512 * 1024 * 1024,
   files: 20_000,
   depth: 16,
-} as const;
-
-const PORTABLE_SOURCE_BUDGET = {
-  fileBytes: 16 * 1024 * 1024,
-  totalBytes: 16 * 1024 * 1024,
-  files: 512,
-  depth: 10,
 } as const;
 
 const IGNORED_REPORT_LIMIT = 200;

@@ -1,8 +1,12 @@
 /**
- * [INPUT]: Depends on the English Catalog shape and Simplified Chinese feature catalogs, including Agent and Chat-storage failures, Apps, Chat, and Settings
- * [OUTPUT]: Provides the complete Simplified Chinese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
+ * [INPUT]: Depends on the English Catalog shape and Simplified Chinese feature catalogs, including Agent and Chat-storage failures, Apps, Chat, and Settings, with shared cloud account/approval and isolated composer copy.
+ * [OUTPUT]: Provides the complete Simplified Chinese catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery
  * [POS]: zh-CN desktop locale; compile-time structure must match English exactly
  */
+import { workspaceCopy } from "@ai-chat/ui/workspace-copy/zh-cn";
+
+import { uiTextZhCn } from "@ai-chat/ui/lib/ui-text-copy/zh-cn";
+import { cloudCopy } from "@ai-chat/ui/lib/cloud-copy/zh-cn";
 import { sketchZhCN } from "./sketch/zh-cn";
 import { appHostZhCN } from "./app-host/zh-cn";
 import { agentAvailabilityZhCN } from "./agent-availability/zh-cn";
@@ -11,25 +15,24 @@ import { agentAvailabilityZhCN } from "./agent-availability/zh-cn";
 import { chatAgentSwitchZhCN } from "./chat-agent-switch/zh-cn";
 import type { Catalog } from "./en";
 import { basesZhCN } from "./bases/zh-cn";
-import { archiveZhCN } from "./archive";
-import { memoryZhCN } from "./memory";
-import { onboardingZhCN } from "./onboarding";
-import { permissionZhCN } from "./permission";
-import { projectsZhCN } from "./projects";
-import { setupZhCN } from "./setup";
-import { settingsBrowserZhCN } from "./settings/browser";
-import { settingsSkillsZhCN } from "./settings/skills";
-import { settingsExtensionsZhCN } from "./settings/extensions";
-import { settingsToolsZhCN } from "./settings/tools";
-import { settingsUsageZhCN } from "./settings/usage";
-import { settingsPersonalizationZhCN } from "./settings/personalization";
-import { settingsShortcutsZhCN } from "./settings/shortcuts";
+import { archiveZhCN } from "./archive/zh-cn";
+import { memoryZhCN } from "./memory/zh-cn";
+import { onboardingZhCN } from "./onboarding/zh-cn";
+import { copy as composerCopy } from "@ai-chat/chat-ui/composer-control-copy/zh-cn";
+import { projectsZhCN } from "./projects/zh-cn";
+import { setupZhCN } from "./setup/zh-cn";
+import { settingsBrowserZhCN } from "./settings/browser/zh-cn";
+import { settingsSkillsZhCN } from "./settings/skills/zh-cn";
+import { settingsExtensionsZhCN } from "./settings/extensions/zh-cn";
+import { settingsToolsZhCN } from "./settings/tools/zh-cn";
+import { settingsUsageZhCN } from "./settings/usage/zh-cn";
+import { settingsPersonalizationZhCN } from "./settings/personalization/zh-cn";
 import { presenceZhCN } from "./presence/zh-cn";
-import { settingsAboutZhCN } from "./settings/about";
-import { historyZhCN } from "./history";
-import { chatRevisionZhCN } from "./chat-revision";
-import { projectSettingsZhCN } from "./project-settings";
-import { chatZhCN } from "./chat";
+import { settingsAboutZhCN } from "./settings/about/zh-cn";
+import { historyZhCN } from "./history/zh-cn";
+import { chatRevisionZhCN } from "./chat-revision/zh-cn";
+import { projectSettingsZhCN } from "./project-settings/zh-cn";
+import { chatZhCN } from "./chat/zh-cn";
 import { chatComposerZhCN } from "./chat-composer/zh-cn";
 import { chatRuntimeZhCN } from "./chat-runtime/zh-cn";
 import { chatSurfacesZhCN } from "./chat-surfaces/zh-cn";
@@ -38,63 +41,65 @@ import { agentFailureZhCN } from "./agent-failure/zh-cn";
 import { chatStorageZhCN } from "./chat-storage/zh-cn";
 
 export const zhCN: Catalog = {
+  cloud: cloudCopy,
   sketch: sketchZhCN,
   appHost: appHostZhCN,
   agentAvailability: agentAvailabilityZhCN,
   common: {
-    auto: "自动",
-    light: "浅色",
-    dark: "深色",
-    loading: "加载中",
-    loadingView: "正在加载页面",
-    close: "关闭",
-    retry: "重试",
-    continue: "继续",
-    discard: "弃置",
-    cancel: "取消",
-    save: "保存",
-    reveal: {
+...workspaceCopy.chatCommon,
+auto: "自动",
+light: "浅色",
+dark: "深色",
+loading: "加载中",
+loadingView: "正在加载页面",
+close: "关闭",
+retry: "重试",
+continue: "继续",
+discard: "弃置",
+cancel: "取消",
+save: "保存",
+reveal: {
       finder: "在 Finder 中显示",
       fileExplorer: "在文件资源管理器中显示",
       fileManager: "在文件管理器中显示",
     },
-    settings: "设置",
-    backToApp: "返回应用",
-    back: "返回",
-    toggleSidebar: "展开或收起侧栏",
-    newChat: "新建聊天",
-    apps: "应用",
-    projects: "项目",
-    general: "通用",
-    keyboardShortcuts: "键盘快捷键",
-    backends: "后端",
-    personalization: "个性化",
-    browser: "浏览器",
-    agentPlugins: "Agent 插件",
-    tools: "工具",
-    skills: "Skills",
-    extensions: "扩展",
-    usage: "用量",
-    archivedItems: "已归档项目",
-    memory: "记忆",
-    agents: "Agents",
-    integrations: "集成",
-    archived: "归档",
-    chats: "聊天",
-    bases: "数据表",
-    toggleActivity: "切换活动视图",
-    createChat: "新建聊天",
-    chatsEmpty: "点击 + 开始聊天",
-    rename: "重命名",
-    renameChatTitle: "重命名聊天",
-    renameChatDescription: "输入聊天的新名称。",
-    memoryAttention: "记忆服务需要关注",
-    memoryAttentionOpen: "记忆服务需要关注，点击查看",
-    appInstalling: "正在安装应用",
-    appInstallFailed: "应用安装失败",
-    appInstallSucceeded: "应用安装成功",
-    promoteBaseToApp: "将 {{name}} 升级为应用",
-  },
+settings: "设置",
+backToApp: "返回应用",
+back: "返回",
+toggleSidebar: "展开或收起侧栏",
+newChat: "新建聊天",
+apps: "应用",
+projects: "项目",
+general: "通用",
+keyboardShortcuts: "键盘快捷键",
+lab: "实验室",
+stepOf: "第 {{current}} 步，共 {{total}} 步",
+backends: "后端",
+personalization: "个性化",
+browser: "浏览器",
+agentPlugins: "Agent 插件",
+tools: "工具",
+skills: "Skills",
+
+usage: "用量",
+archivedItems: "已归档项目",
+memory: "记忆",
+agents: "Agents",
+integrations: "集成",
+archived: "归档",
+chats: "聊天",
+bases: "数据表",
+toggleActivity: "切换活动视图",
+createChat: "新建聊天",
+chatsEmpty: "点击 + 开始聊天",
+rename: "重命名",
+memoryAttention: "记忆服务需要关注",
+memoryAttentionOpen: "记忆服务需要关注，点击查看",
+appInstalling: "正在安装应用",
+appInstallFailed: "应用安装失败",
+appInstallSucceeded: "应用安装成功",
+promoteBaseToApp: "将 {{name}} 升级为应用"
+},
   windowSurface: {
     missingIdentity: "App 窗口缺少启动身份",
     checkingResidence: "正在确认窗口驻留…",
@@ -115,7 +120,7 @@ export const zhCN: Catalog = {
   agentFailure: agentFailureZhCN,
   chatStorage: chatStorageZhCN,
   projects: projectsZhCN,
-  permission: permissionZhCN,
+  permission: composerCopy.permission,
   history: historyZhCN,
   chatRevision: chatRevisionZhCN,
   projectSettings: projectSettingsZhCN,
@@ -123,72 +128,85 @@ export const zhCN: Catalog = {
     about: settingsAboutZhCN,
     presence: presenceZhCN,
     personalization: settingsPersonalizationZhCN,
-    shortcuts: settingsShortcutsZhCN,
     skills: settingsSkillsZhCN,
     browser: settingsBrowserZhCN,
     extensions: settingsExtensionsZhCN,
     backends: {
+      defaultExecutionSaveFailed: "未能保存默认电脑，请重试。",
+      defaultExecutionDevice: "默认执行电脑",
+      localExecutionDevice: "此电脑",
+      defaultExecutionDescription: "用于新建对话，发送前会检查电脑是否可用。",
       title: "Agent 后端",
       description: "认证与用量由各官方 CLI 管理；产品只检测本机状态。",
       recheck: "重新检测",
     },
-    general: {
-      appearance: "外观",
-      theme: "主题",
-      themeDescription: "自动会跟随系统外观。",
-      language: "语言",
-      languageDescription: "自动检测会跟随系统首选语言；未命中时使用英语。",
-      autoDetect: "自动检测",
-      font: "字体",
-      fontDescription: "应用全局使用的字体。",
-      systemFont: "系统",
-      chatHomeLocation: "Chat Home 存放位置",
-      chatHomeDescription: "每个聊天的工作文件保存在此目录；设置完成前不会创建新聊天。",
-      folder: "文件夹",
-      notSelected: "尚未选择",
-      change: "更改…",
-      changeChatHomeFolder: "更改 Chat Home 文件夹",
-      crossChatRead: "跨聊天只读访问",
-      crossChatReadDescription: "关闭时工具只能读取当前 Chat Home；开启后可只读访问其他 Chat Home。",
-      chat: "聊天",
-      chatDescription: "新聊天的标题由后台任务自动生成。",
-      titleGeneration: "标题生成",
-      titleGenerationDescription: "自动优先使用 Codex；标题模型按后端分别保存。",
-      titleAgent: "标题 Agent",
-      titleModel: "标题模型",
-      reading: "读取中…",
-      autoRelayLimit: "自动接力上限",
-      autoRelayRisk: "无限制会增加失控循环与 token 消耗风险。",
-      autoRelayDescription: "每条跨 Section 接力链达到上限后暂停，等待你继续。",
-      rounds_one: "{{count}} 轮",
-      rounds_other: "{{count}} 轮",
-      unlimitedNotRecommended: "无限（不推荐）",
-      saveLanguageFailed: "语言设置保存失败",
-      saveThemeFailed: "主题设置保存失败",
-      saveTitleModelFailed: "标题模型设置保存失败",
-      saveTitleAgentFailed: "标题 Agent 设置保存失败",
-      saveRelayLimitFailed: "接力预算保存失败",
-      saveCrossChatReadFailed: "跨聊天只读设置保存失败",
-      settingsLoadFailed: "设置读取失败",
-      settingsRetry: "重试设置",
-      modelDirectoryRetry: "重试模型目录",
-      chatHomeChangeFailed: "Chat Home 存放位置修改失败",
-      defaultModelUnavailable: "默认（模型名不可用）",
-      currentModelUnavailable: "{{model}}（当前不可用）",
+    lab: {
+      title: "实验室",
+      preamble: "实验性功能，默认关闭。它们可能在任何一个版本里改变或消失。",
+      agentConnections: "保持 Agent 连接",
+      agentConnectionsDescription:
+        "打开会话时预热 Agent 进程，并在该会话的各轮之间复用。首条消息更快，但会多占用一些内存。",
+      saveAgentConnectionsFailed: "未能保存 Agent 连接设置，请重试。",
     },
+    general: {
+...workspaceCopy.chatSettings,
+appearance: "外观",
+theme: "主题",
+themeDescription: "自动会跟随系统外观。",
+language: "语言",
+languageDescription: "自动检测会跟随系统首选语言；未命中时使用英语。",
+autoDetect: "自动检测",
+font: "字体",
+fontDescription: "应用全局使用的字体。",
+saveArchiveConfettiFailed: "未能保存撒花设置，请重试。",
+systemFont: "系统",
+chatHomeLocation: "Bottega 文件夹",
+chatHomeDescription: "对话副本与工作文件保存在此处。账号设置、密钥和设备授权留在这台电脑上。",
+folder: "文件夹",
+notSelected: "尚未选择",
+crossChatRead: "跨聊天只读访问",
+crossChatReadDescription: "关闭时工具只能读取当前 Chat Home；开启后可只读访问其他 Chat Home。",
+chat: "聊天",
+chatDescription: "新聊天的标题由后台任务自动生成。",
+titleGeneration: "标题生成",
+titleGenerationDescription: "标题模型按后端分别保存。",
+titleAgent: "标题 Agent",
+titleModel: "标题模型",
+reading: "读取中…",
+autoRelayLimit: "自动接力上限",
+autoRelayRisk: "无限制会增加失控循环与 token 消耗风险。",
+autoRelayDescription: "每条跨 Section 接力链达到上限后暂停，等待你继续。",
+rounds_one: "{{count}} 轮",
+rounds_other: "{{count}} 轮",
+unlimitedNotRecommended: "无限（不推荐）",
+saveLanguageFailed: "语言设置保存失败",
+saveThemeFailed: "主题设置保存失败",
+saveTitleModelFailed: "标题模型设置保存失败",
+saveTitleAgentFailed: "标题 Agent 设置保存失败",
+saveRelayLimitFailed: "接力预算保存失败",
+saveCrossChatReadFailed: "跨聊天只读设置保存失败",
+settingsLoadFailed: "设置读取失败",
+settingsRetry: "重试设置",
+modelDirectoryRetry: "重试模型目录",
+chatHomeChangeFailed: "Chat Home 存放位置修改失败",
+defaultModelUnavailable: "默认（模型名不可用）",
+currentModelUnavailable: "{{model}}（当前不可用）"
+},
     native: {
+      library: {
+        missing: "没有找到你的 Bottega 文件夹。请重新打开 Bottega 来定位它，或改用新文件夹。",
+        locked: "本机另一个 Bottega 正在使用这个文件夹。请先关闭它，然后重试。",
+        "identity-changed": "这个文件夹里是另一份 Bottega 数据。请选择本机一直在用的那一个。",
+        "control-invalid": "无法读取这个文件夹的设置。请另选一个文件夹。",
+        "already-configured": "Bottega 已经打开了一个文件夹。要换一个请重启 Bottega。",
+        "root-changed": "Bottega 只使用你最初选择的文件夹。要换一个请重启 Bottega。",
+      },
       chooseChatHome: "选择 Chat Home 存放位置",
       chooseProject: "选择 Project 文件夹",
       externalLinkTitle: "打开外部链接",
       externalLinkMessage: "这个域名不在可信白名单中",
       terminalTitle: "确认在终端执行",
       terminalMessage: "此命令会修改本机 CLI 安装。",
-      startupFailureTitle: "Bottega 启动失败",
-      startupFailureMessage: "主进程初始化失败，应用将安全退出。\n\n{{detail}}",
-      appAuthorityRepairTitle: "App 目录需要修复",
-      appAuthorityRepairMessage: "Bottega 无法建立 App 目录权威。Project App Pin 尚未被修改。修复会保留所有有效目录记录；如果目录已损坏，只有先保存逐字节一致的隔离副本后才会继续，只有缺失或已隔离的目录才会被重建为空。随后 Bottega 会重启，并只移除指向不可用 App 的 Project Pin。",
-      appAuthorityRepairAction: "修复并重启",
-      appAuthorityRepairQuit: "退出",
       quitFailureTitle: "无法安全退出",
       quitRecovered: "退出准备发生错误，应用已恢复运行，聊天功能仍可使用。请稍后重试。",
       quitUnrecovered: "退出准备未能恢复。应用保持运行，但聊天与标题生成已禁用；请处理残留 Agent 进程后重试。",
@@ -201,6 +219,12 @@ export const zhCN: Catalog = {
         "启用后，App 专用维护会话会加载这些 skills、MCP 与 hooks。仅在你信任该仓库时继续。",
       disableExtensions: "不启用",
       enableExtensions: "启用扩展",
+      libraryChatsUnreadable_one: "Bottega 文件夹里有 {{count}} 个对话无法打开，已原样保留。",
+      libraryChatsUnreadable_other: "Bottega 文件夹里有 {{count}} 个对话无法打开，已原样保留。",
+      libraryFilesMissing_one: "复制来的对话引用的 {{count}} 个文件不在 Bottega 文件夹里。",
+      libraryFilesMissing_other: "复制来的对话引用的 {{count}} 个文件不在 Bottega 文件夹里。",
+      libraryOpeningTitle: "正在打开 Bottega 文件夹",
+      libraryOpeningProgress: "正在打开你的文件…… {{completed}} / {{total}}",
     },
     usage: {
       ...settingsUsageZhCN,
@@ -229,44 +253,11 @@ export const zhCN: Catalog = {
     changeProject: "更换 Project：{{name}}",
     openSidePanel: "打开第三栏",
     importedReadOnlyReason: "导入历史为只读。",
-    fork: {
-      action: "从这里 Fork",
-      title: "从这里 Fork Chat",
-      description: "从这条回复开始，为《{{title}}》创建独立续篇。",
-      sameWorkspace: "在当前工作区 Fork",
-      sameWorkspaceDetail: "从这条消息开始，在当前工作区 Fork。",
-      newWorktree: "在新 worktree 中 Fork",
-      newWorktreeDetail: "从这条消息开始，在新 worktree 中 Fork。",
-      dirtyWarning: "源工作区的 staged、unstaged、untracked 与 ignored 改动不会被复制。",
-      unsupported: "受管 worktree 仅支持 macOS 上符合条件的 Git Project。",
-      unavailable: "无法从这条回复 Fork",
-      continuedFrom: "⑂ 续自上游 Chat",
-      openSource: "打开来源 Chat {{title}}",
-      originalUnavailable: "原 Chat 不可用",
-      inheritedReadOnly: "继承消息不可编辑",
-      recoveryTruncated: "继承历史超过上下文预算，Agent 本轮只收到最新的一段。",
-      worktreePermission: "受管 worktree 不提供 Full Access",
-      errors: {
-        pointInvalid: "这条回复已不能作为 Fork 点。请刷新 Chat 后重试。",
-        sourceStale: "Chat 在本视图加载后发生了变化。请刷新后重试。",
-        sourceUnsupported: "这条 Chat 不支持 Fork。",
-        prefixTooLarge: "截至这条回复的历史过大，无法 Fork。请选择更早的回复。",
-        projectUnavailable: "Project 不可用、正在改绑或正在删除。",
-        requestConflict: "另一个 Fork 请求已占用此身份。请关闭弹窗后重试。",
-        recoveryRequired: "此 Fork 需要先完成恢复才能继续。",
-        notRepository: "Project 文件夹不是 Git 仓库。",
-        notGitRoot: "Project 文件夹不是其 Git 仓库的根目录。",
-        noHead: "仓库尚无任何 commit。请先创建一个 commit。",
-        bareRepository: "bare 仓库无法承载受管 worktree。",
-        operationInProgress: "请先完成或终止进行中的 Git 操作（merge、rebase、cherry-pick、revert 或 bisect）。",
-        submodule: "暂不支持含 submodule 的仓库。",
-        treeTooLarge: "仓库文件树过大，无法为受管 worktree 完成校验。",
-        configUnsafe: "仓库的 Git 配置会执行外部程序（filter、fsmonitor 或 alternate refs）。请先停用它们。",
-        branchConflict: "Fork 分支已存在，需要先恢复。",
-        pathConflict: "worktree 路径或注册已存在，需要先恢复。",
-        identityDrift: "Fork 过程中仓库身份发生了变化。请重试。",
-      },
+    cloud: {
+      unavailable: "这台设备上没有这条对话。",
+      deleted: "这条对话已在另一台设备上删除。",
     },
+    fork: composerCopy.fork,
     sidePanel: {
       ...chatSurfacesZhCN.sidePanel,
       addPanel: "添加面板",
@@ -285,6 +276,7 @@ export const zhCN: Catalog = {
       closeNamedTab: "关闭 {{name}} 标签页",
       newTab: "新标签页",
       webPage: "网页",
+      sleepingTab: "已休眠 · 点击重新加载",
       baseOwnerResolveFailed: "无法解析 Base 所有者",
       appSlotUnavailable: "App 授权已撤销或 App 已失效；槽位会保留，等待重新授权。",
       catalog: {
@@ -313,56 +305,11 @@ export const zhCN: Catalog = {
       galleryComments_other: "{{count}} 条评论",
       clearGalleryComments: "清除所有图片评论",
       focusGallery: "聚焦画廊",
-      modelSelector: {
-        currentModel: "当前模型 {{model}}，Effort {{effort}}",
-        selector: "聊天模型选择器",
-        advanced: "高级",
-        model: "模型",
-        effort: "Effort",
-        speed: "速度",
-        disableFast: "关闭 Fast 速度",
-        enableFast: "开启 Fast 速度",
-        quickTier: "快速模型档位",
-        loadingModels: "正在读取模型目录…",
-        retryModels: "重试模型目录",
-        resetDefault: "恢复默认设置",
-        onlyOneModel: "当前只有一个可用模型",
-        effortUnavailable: "当前模型不支持调整 Effort",
-        noModels: "未发现可用模型",
-        backendDefaultModel: "后端默认模型",
-        speedDescription:
-          "在支持的 Opus 5/4.8 模型上约快 2.5 倍。会消耗更多 usage credits，但不计入订阅速率限制池。",
-        speedReason: {
-          modelUnsupported: "当前模型不提供 Fast",
-          backendOff: "后端在本会话中关闭了 Fast",
-          backendOn: "后端在本会话中开启了 Fast",
-        },
-      },
+      modelSelector: { ...composerCopy.chat.composer.modelSelector },
     },
-    resumeFailure: {
-      title: "{{backend}} 打不开这个 Chat 保存的会话",
-      description: "你的消息和附件都已保存，也还没有发送出去。",
-      retriedTitle: "重试原来的会话失败了",
-      retriedDescription: "这个会话大概率已经不在 {{backend}} 那边了。你的消息和附件都还保存着，也还没有发送出去。",
-      recommended: "推荐",
-      sameSession: "重试原来的会话",
-      sameSessionDetail: "再连一次原来的会话。成功后 Agent 保留这个 Chat 的全部上下文。",
-      sameSessionRetry: "再重试一次",
-      sameSessionRetryDetail: "再试着连一次原来的会话。刚才已经失败过一次。",
-      freshSession: "开启新会话",
-      freshSessionDetail: "放弃原来的会话，让 Agent 从最近对话的摘要重新开始。更早的内容它不再直接看得到。",
-      freshSessionBlocked: "这个 Chat 是从外部导入的，绑定的是导入时的原始会话，不能换新会话。",
-      abandon: "放弃这一轮",
-      abandonDetail: "这次不发送，本轮到此结束。消息仍留在这个 Chat 里。",
-      actionFailed: "操作没有成功：{{message}}",
-    },
-    readOnly: "此聊天当前为只读",
-    backendUnavailable: "{{backend}} 当前不可用。",
-    backendRetryHint: "请重新检测安装与登录状态后再继续。",
-    installOrSignIn: "安装或登录",
+    resumeFailure: composerCopy.resumeFailure,
     checkAgain: "重新检测",
     workedFor: "处理了 {{duration}}",
-    worked: "已处理",
     sectionImagesDisclosure:
       "将向 {{backend}} 发送每个 Section 至多 {{count}} 张图片（本轮合计不超过 {{megabytes}} MB）。",
     sectionImagesUnsupported:
@@ -370,6 +317,7 @@ export const zhCN: Catalog = {
   },
   apps: {
     ...appsZhCN,
+    state: { ...appsZhCN.state, restoredSourceNeedsSetup: "在这台电脑上设置这个 App，才能使用恢复的源码。" },
     menu: "App 菜单",
     pin: "Pin 到 Sidebar",
     unpin: "从 Sidebar 取消 Pin",
@@ -551,8 +499,11 @@ export const zhCN: Catalog = {
     projectRevokeConfirm:
       "撤销 {{app}} 对 Project「{{target}}」的授权？这会影响该 Project 的全部成员 Chat。",
   },
-  bases: basesZhCN,
+  bases: { ...basesZhCN, folderRecoveryRetry: "重新检查",
+    folderRecoveryProjectMissing: "此 Base 属于本机已不存在的 Project。文件原样保留在 Bottega 文件夹中，Project 回来后它也会回来。",
+    folderRecoveryOwnerChanged: "拥有此 Base 的对话已被替换。文件原样保留在 Bottega 文件夹中。" },
   notice: {
+    executorSwitched: "已在 {{device}} 继续",
     manualRecovered: "应用重启，这条消息的回复已中断，请重新发送。",
     skillDescriptionsTruncated:
       "Codex 提示：为适配上下文预算，本轮部分 Skill 描述被截短。Codex 仍可使用全部 Skill，本轮回复不受影响。这条提示来自 Codex 自身，不是 Bottega 的问题。",
@@ -563,35 +514,5 @@ export const zhCN: Catalog = {
     discarded: "待处理接力已弃置",
     stale: "该操作已失效",
   },
-  ui: {
-    cancel: "取消",
-    uploadFiles: "上传文件",
-    loadingRichContent: "正在加载富内容",
-    loading: "加载中",
-    close: "关闭",
-    sidebar: "侧栏",
-    sidebarDescription: "显示移动端侧栏。",
-    toggleSidebar: "切换侧栏",
-    resizeSidebar: "调整侧栏宽度",
-    resizeSidebarHint: "拖动调整侧栏宽度",
-    attachment: "附件",
-    previewAttachment: "预览附件",
-    removeAttachment: "移除附件",
-    stop: "停止",
-    submit: "发送",
-    message: "消息",
-    askAnything: "有问题，尽管问",
-    submissionFailed: "提交失败，请重试。",
-    skillSuggestionsEmpty: "没有可用 Skill",
-    skillSuggestionsNoMatch: "没有匹配的 Skill",
-    mentionSuggestionsEmpty: "没有可用引用",
-    mentionSuggestionsNoMatch: "没有匹配的引用",
-    suggestionChats: "聊天",
-    suggestionFiles: "文件",
-    suggestionSkills: "Skills",
-    fileTypeError: "没有符合接受类型的文件。",
-    fileSizeError: "所有文件都超过大小上限。",
-    fileCountError: "文件过多，部分文件未添加。",
-    terminal: "终端",
-  },
+  ui: { ...uiTextZhCn },
 };

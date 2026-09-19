@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node execFile and the shared ACP diagnostic-redaction helper, with per-caller feedback/environment injection
- * [OUTPUT]: Provides createCLIAuthCheck, a shared CLI auth probe that treats exit code 1 (non-killed, non-timeout) as the sole confirmed-logged-out signal
- * [POS]: Shared CLI-auth probing mechanism for backends; Claude/Codex only declare their subcommand, environment, and logged-out-detection predicate, so neither backend re-implements its own probe
+ * [INPUT]: Depends on execFile under a cold-start-sized deadline, exact process-failure classification and diagnostic redaction.
+ * [OUTPUT]: Provides CLI authentication checks with independent startup evidence and typed timeout/connection issues.
+ * [POS]: Shared Codex/Claude auth mechanism; only explicit logged-out output confirms unauthenticated status.
  */
 
 import { execFile } from "node:child_process";
@@ -10,10 +10,16 @@ import {
   redactAcpDiagnostic,
   type AcpDiagnosticRedactionOptions,
 } from "./acp/trace";
+import { isProcessStartupFailure } from "./runtime-probe";
 import type { AuthCheckResult, ResolvedRuntime } from "./types";
 
 const execFileAsync = promisify(execFile);
-const AUTH_TIMEOUT_MS = 8_000;
+/* Sized for the slowest binary, not the fastest: `codex login status` answers
+   in 0.14s, but `claude auth status` is a 199 MB bun-compiled executable whose
+   cold start under launch contention passes 8s. A timed-out check is reported
+   as `error`, which buries a real `unauthenticated` conclusion — Settings and
+   the quota reader then say "could not fetch limits" instead of "needs login". */
+const AUTH_TIMEOUT_MS = 15_000;
 const DIAGNOSTIC_LIMIT = 2_048;
 
 const text = (value: unknown) =>
@@ -102,9 +108,13 @@ export function createCliAuthCheck(spec: CliAuthProbeSpec) {
     return output && confirmsLoggedOut(cause, output, spec.reportsLoggedOut)
       ? {
           status: "unauthenticated",
+          startup: "ready",
           reason: spec.loggedOutReason(safeText(output, env)),
         }
-      : { status: "error", reason: exitDiagnostic(cause, env) };
+      : { status: "error", reason: exitDiagnostic(cause, env),
+          checkIssue: (cause as { killed?: boolean }).killed ? "timeout"
+            : ["ECONNREFUSED", "ECONNRESET", "ENETUNREACH", "ETIMEDOUT"].includes(String((cause as { code?: unknown })?.code)) ? "connection" : "failed",
+          ...(isProcessStartupFailure(cause) ? { startup: "cannot-start" as const } : {}) };
   };
 
   const check = async (
@@ -122,9 +132,10 @@ export function createCliAuthCheck(spec: CliAuthProbeSpec) {
       return output && spec.reportsLoggedOut(output)
         ? {
             status: "unauthenticated",
+            startup: "ready",
             reason: spec.loggedOutReason(safeText(output, env)),
           }
-        : { status: "authenticated" };
+        : { status: "authenticated", startup: "ready" };
     } catch (cause) {
       signal?.throwIfAborted();
       return classifyFailure(cause, env);

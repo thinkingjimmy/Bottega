@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the ledger v6 manual/steer schema and mutable LedgerState draft
- * [OUTPUT]: Provides sequence binding and ACK bookkeeping for manual/relay/steer records, steer-intent phase transitions and steer→manual transfer, and staging-owner resolution (stagingOwner, liveStagingOwners) over the LedgerState draft
+ * [INPUT]: Depends on the ledger v7 manual/steer schema and mutable LedgerState draft
+ * [OUTPUT]: Provides durable preparation pins, atomic prepared-payload/sequence binding, ACK bookkeeping, Steer transitions and staging-owner resolution
  * [POS]: Manual/steer mutation unit of coordinator/state; RelayLedger wraps these calls with persistence and indexing
  */
 
@@ -13,6 +13,8 @@ import {
 } from "../ledger-schema";
 import type { DeepReadonly } from "../readonly-ledger";
 import { installSubmissionCustody } from "../../submission-outcome";
+import type { PreparedManualTurn } from "../../admission/prepared-manual-turn";
+import { assertPreparedContentHash } from "../../admission/prepared/staging";
 
 export function stagingOwner(payload: unknown, fallback: string) {
   const directory =
@@ -23,14 +25,26 @@ export function stagingOwner(payload: unknown, fallback: string) {
   return directory.split(/[\\/]/).filter(Boolean).at(-1) ?? fallback;
 }
 
+export function pinManualPreparation(state: LedgerState, intentId: string) {
+  const intent = state.manualIntents[intentId];
+  if (!intent || intent.phase !== "queued" || intent.attempts.length) throw new Error("already-dispatched");
+  intent.preparing = true;
+  return intent;
+}
+
 export function bindManualSequences(
   state: LedgerState,
   intentId: string,
   userSeq: number,
-  assistantSeq: number, notices: { noticeSeq?: number; executorNoticeSeq?: number } = {}
+  assistantSeq: number, notices: { noticeSeq?: number; executorNoticeSeq?: number } = {}, prepared?: PreparedManualTurn
 ) {
   const intent = state.manualIntents[intentId];
   if (!intent) return null;
+  if (prepared) {
+    if (intent.phase !== "queued" || intent.attempts.length || intent.userSeq !== undefined) throw new Error("Manual preparation already committed");
+    assertPreparedContentHash(prepared);
+    intent.payload = prepared;
+  }
   if (
     intent.userSeq !== undefined &&
     (intent.userSeq !== userSeq || intent.assistantSeq !== assistantSeq)

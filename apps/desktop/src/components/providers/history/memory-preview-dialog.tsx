@@ -10,7 +10,7 @@ import { useState } from "react";
 import type { HistoryMemoryPreview } from "../../../../shared/history-import-ipc";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 
 /** 挂载方按 preview 有无条件渲染；本组件只呈现非空 delta。 */
 export function HistoryMemoryPreviewDialog({

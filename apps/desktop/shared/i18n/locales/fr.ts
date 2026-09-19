@@ -1,8 +1,12 @@
 /**
- * [INPUT]: Depends on the English Catalog shape and French feature catalogs, including Agent and Chat-storage failures, Apps, Chat, and Settings
- * [OUTPUT]: Provides the complete French catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, and restricted repair copy
+ * [INPUT]: Depends on the English Catalog shape and French feature catalogs, including Agent and Chat-storage failures, Apps, Chat, and Settings, with shared cloud account/approval and isolated composer copy.
+ * [OUTPUT]: Provides the complete French catalog, including shared system-file-manager Reveal copy, contextual App authorization, global-default audit, restricted repair copy, and factual dismissible session recovery
  * [POS]: French desktop locale; compile-time structure must match English exactly
  */
+import { workspaceCopy } from "@ai-chat/ui/workspace-copy/fr";
+
+import { uiTextFr } from "@ai-chat/ui/lib/ui-text-copy/fr";
+import { cloudCopy } from "@ai-chat/ui/lib/cloud-copy/fr";
 import { sketchFr } from "./sketch/fr";
 import { appHostFr } from "./app-host/fr";
 import { agentAvailabilityFr } from "./agent-availability/fr";
@@ -11,25 +15,24 @@ import { agentAvailabilityFr } from "./agent-availability/fr";
 import { chatAgentSwitchFr } from "./chat-agent-switch/fr";
 import type { Catalog } from "./en";
 import { basesFr } from "./bases/fr";
-import { archiveFr } from "./archive";
-import { memoryFr } from "./memory";
-import { onboardingFr } from "./onboarding";
-import { permissionFr } from "./permission";
-import { projectsFr } from "./projects";
-import { setupFr } from "./setup";
-import { settingsBrowserFr } from "./settings/browser";
-import { settingsSkillsFr } from "./settings/skills";
-import { settingsExtensionsFr } from "./settings/extensions";
-import { settingsToolsFr } from "./settings/tools";
-import { settingsUsageFr } from "./settings/usage";
-import { settingsPersonalizationFr } from "./settings/personalization";
-import { settingsShortcutsFr } from "./settings/shortcuts";
+import { archiveFr } from "./archive/fr";
+import { memoryFr } from "./memory/fr";
+import { onboardingFr } from "./onboarding/fr";
+import { copy as composerCopy } from "@ai-chat/chat-ui/composer-control-copy/fr";
+import { projectsFr } from "./projects/fr";
+import { setupFr } from "./setup/fr";
+import { settingsBrowserFr } from "./settings/browser/fr";
+import { settingsSkillsFr } from "./settings/skills/fr";
+import { settingsExtensionsFr } from "./settings/extensions/fr";
+import { settingsToolsFr } from "./settings/tools/fr";
+import { settingsUsageFr } from "./settings/usage/fr";
+import { settingsPersonalizationFr } from "./settings/personalization/fr";
 import { presenceFr } from "./presence/fr";
-import { settingsAboutFr } from "./settings/about";
-import { historyFr } from "./history";
-import { chatRevisionFr } from "./chat-revision";
-import { projectSettingsFr } from "./project-settings";
-import { chatFr } from "./chat";
+import { settingsAboutFr } from "./settings/about/fr";
+import { historyFr } from "./history/fr";
+import { chatRevisionFr } from "./chat-revision/fr";
+import { projectSettingsFr } from "./project-settings/fr";
+import { chatFr } from "./chat/fr";
 import { chatComposerFr } from "./chat-composer/fr";
 import { chatRuntimeFr } from "./chat-runtime/fr";
 import { chatSurfacesFr } from "./chat-surfaces/fr";
@@ -38,63 +41,65 @@ import { agentFailureFr } from "./agent-failure/fr";
 import { chatStorageFr } from "./chat-storage/fr";
 
 export const fr: Catalog = {
+  cloud: cloudCopy,
   sketch: sketchFr,
   appHost: appHostFr,
   agentAvailability: agentAvailabilityFr,
   common: {
-    auto: "Auto",
-    light: "Clair",
-    dark: "Sombre",
-    loading: "Chargement",
-    loadingView: "Chargement de la vue",
-    close: "Fermer",
-    retry: "Réessayer",
-    continue: "Continuer",
-    discard: "Abandonner",
-    cancel: "Annuler",
-    save: "Enregistrer",
-    reveal: {
+...workspaceCopy.chatCommon,
+auto: "Auto",
+light: "Clair",
+dark: "Sombre",
+loading: "Chargement",
+loadingView: "Chargement de la vue",
+close: "Fermer",
+retry: "Réessayer",
+continue: "Continuer",
+discard: "Abandonner",
+cancel: "Annuler",
+save: "Enregistrer",
+reveal: {
       finder: "Afficher dans le Finder",
       fileExplorer: "Afficher dans l’Explorateur de fichiers",
       fileManager: "Afficher dans le gestionnaire de fichiers",
     },
-    settings: "Réglages",
-    backToApp: "Retour à l’application",
-    back: "Retour",
-    toggleSidebar: "Développer ou réduire la barre latérale",
-    newChat: "Nouveau chat",
-    apps: "Apps",
-    projects: "Projets",
-    general: "Général",
-    keyboardShortcuts: "Raccourcis clavier",
-    backends: "Backends",
-    personalization: "Personnalisation",
-    browser: "Navigateur",
-    agentPlugins: "Plugins Agent",
-    tools: "Outils",
-    skills: "Skills",
-    extensions: "Extensions",
-    usage: "Utilisation",
-    archivedItems: "Éléments archivés",
-    memory: "Mémoire",
-    agents: "Agents",
-    integrations: "Intégrations",
-    archived: "Archives",
-    chats: "Chats",
-    bases: "Bases",
-    toggleActivity: "Afficher ou masquer l’activité",
-    createChat: "Créer un chat",
-    chatsEmpty: "Cliquez sur + pour démarrer un chat",
-    rename: "Renommer",
-    renameChatTitle: "Renommer le chat",
-    renameChatDescription: "Saisissez un nouveau nom pour ce chat.",
-    memoryAttention: "Le service de mémoire nécessite votre attention",
-    memoryAttentionOpen: "Le service de mémoire nécessite votre attention ; ouvrir les détails",
-    appInstalling: "Installation de l’App",
-    appInstallFailed: "Échec de l’installation de l’App",
-    appInstallSucceeded: "App installée",
-    promoteBaseToApp: "Promouvoir {{name}} en App",
-  },
+settings: "Réglages",
+backToApp: "Retour à l’application",
+back: "Retour",
+toggleSidebar: "Développer ou réduire la barre latérale",
+newChat: "Nouveau chat",
+apps: "Apps",
+projects: "Projets",
+general: "Général",
+keyboardShortcuts: "Raccourcis clavier",
+lab: "Labo",
+stepOf: "Étape {{current}} sur {{total}}",
+backends: "Backends",
+personalization: "Personnalisation",
+browser: "Navigateur",
+agentPlugins: "Plugins Agent",
+tools: "Outils",
+skills: "Skills",
+
+usage: "Utilisation",
+archivedItems: "Éléments archivés",
+memory: "Mémoire",
+agents: "Agents",
+integrations: "Intégrations",
+archived: "Archives",
+chats: "Chats",
+bases: "Bases",
+toggleActivity: "Afficher ou masquer l’activité",
+createChat: "Créer un chat",
+chatsEmpty: "Cliquez sur + pour démarrer un chat",
+rename: "Renommer",
+memoryAttention: "Le service de mémoire nécessite votre attention",
+memoryAttentionOpen: "Le service de mémoire nécessite votre attention ; ouvrir les détails",
+appInstalling: "Installation de l’App",
+appInstallFailed: "Échec de l’installation de l’App",
+appInstallSucceeded: "App installée",
+promoteBaseToApp: "Promouvoir {{name}} en App"
+},
   windowSurface: {
     missingIdentity: "L’identité de lancement de la fenêtre App est absente",
     checkingResidence: "Vérification de la fenêtre active…",
@@ -115,7 +120,7 @@ export const fr: Catalog = {
   agentFailure: agentFailureFr,
   chatStorage: chatStorageFr,
   projects: projectsFr,
-  permission: permissionFr,
+  permission: composerCopy.permission,
   history: historyFr,
   chatRevision: chatRevisionFr,
   projectSettings: projectSettingsFr,
@@ -123,72 +128,87 @@ export const fr: Catalog = {
     about: settingsAboutFr,
     presence: presenceFr,
     personalization: settingsPersonalizationFr,
-    shortcuts: settingsShortcutsFr,
     skills: settingsSkillsFr,
     browser: settingsBrowserFr,
     extensions: settingsExtensionsFr,
     backends: {
+      defaultExecutionSaveFailed: "Impossible d’enregistrer l’ordinateur par défaut. Réessayez.",
+      defaultExecutionDevice: "Ordinateur d’exécution par défaut",
+      localExecutionDevice: "Cet ordinateur",
+      defaultExecutionDescription: "Utilisé pour les nouvelles conversations. Sa disponibilité est vérifiée avant l’envoi.",
       title: "Backends Agent",
       description: "L’authentification et l’utilisation sont gérées par chaque CLI officiel ; le produit vérifie seulement l’état local.",
       recheck: "Vérifier à nouveau",
     },
-    general: {
-      appearance: "Apparence",
-      theme: "Thème",
-      themeDescription: "Auto suit l’apparence du système.",
-      language: "Langue",
-      languageDescription: "La détection automatique suit les langues préférées du système et revient à l’anglais si nécessaire.",
-      autoDetect: "Détection automatique",
-      font: "Police",
-      fontDescription: "Police utilisée dans toute l’application.",
-      systemFont: "Système",
-      chatHomeLocation: "Emplacement de Chat Home",
-      chatHomeDescription: "Les fichiers de travail de chaque chat sont enregistrés ici ; aucun chat n’est créé avant la fin de la configuration.",
-      folder: "Dossier",
-      notSelected: "Non sélectionné",
-      change: "Modifier…",
-      changeChatHomeFolder: "Modifier le dossier Chat Home",
-      crossChatRead: "Lecture entre chats",
-      crossChatReadDescription: "Désactivé, les outils ne lisent que le Chat Home courant ; activé, ils peuvent lire les autres sans les modifier.",
-      chat: "Chat",
-      chatDescription: "Les titres des nouveaux chats sont générés en arrière-plan.",
-      titleGeneration: "Génération du titre",
-      titleGenerationDescription: "Auto privilégie Codex ; les modèles sont enregistrés séparément pour chaque backend.",
-      titleAgent: "Agent de titre",
-      titleModel: "Modèle de titre",
-      reading: "Chargement…",
-      autoRelayLimit: "Limite de relais automatique",
-      autoRelayRisk: "Les relais illimités augmentent les risques de boucle et la consommation de tokens.",
-      autoRelayDescription: "Met en pause chaque chaîne de relais entre Sections à la limite et attend votre décision.",
-      rounds_one: "{{count}} tour",
-      rounds_other: "{{count}} tours",
-      unlimitedNotRecommended: "Illimité (déconseillé)",
-      saveLanguageFailed: "Échec de l’enregistrement de la langue",
-      saveThemeFailed: "Échec de l’enregistrement du thème",
-      saveTitleModelFailed: "Échec de l’enregistrement du modèle de titre",
-      saveTitleAgentFailed: "Échec de l’enregistrement de l’Agent de titre",
-      saveRelayLimitFailed: "Échec de l’enregistrement de la limite de relais",
-      saveCrossChatReadFailed: "Échec de l’enregistrement de la lecture entre chats",
-      settingsLoadFailed: "Échec du chargement des réglages",
-      settingsRetry: "Réessayer les réglages",
-      modelDirectoryRetry: "Réessayer le catalogue de modèles",
-      chatHomeChangeFailed: "Échec de la modification de l’emplacement Chat Home",
-      defaultModelUnavailable: "Par défaut (nom indisponible)",
-      currentModelUnavailable: "{{model}} (indisponible)",
+    lab: {
+      title: "Labo",
+      preamble:
+        "Fonctionnalités expérimentales, désactivées par défaut. Elles peuvent changer ou disparaître à toute version.",
+      agentConnections: "Garder les connexions Agent",
+      agentConnectionsDescription:
+        "Préchauffe le processus Agent à l'ouverture d'une conversation et le réutilise pour les tours de celle-ci. Les premiers messages sont plus rapides, mais la mémoire utilisée augmente un peu.",
+      saveAgentConnectionsFailed:
+        "Impossible d'enregistrer le réglage des connexions Agent. Réessayez.",
     },
+    general: {
+...workspaceCopy.chatSettings,
+appearance: "Apparence",
+theme: "Thème",
+themeDescription: "Auto suit l’apparence du système.",
+language: "Langue",
+languageDescription: "La détection automatique suit les langues préférées du système et revient à l’anglais si nécessaire.",
+autoDetect: "Détection automatique",
+font: "Police",
+fontDescription: "Police utilisée dans toute l’application.",
+saveArchiveConfettiFailed: "Impossible d’enregistrer votre préférence de confettis. Réessayez.",
+systemFont: "Système",
+chatHomeLocation: "Dossier Bottega",
+chatHomeDescription: "Les copies des conversations et les fichiers de travail sont conservés ici. Les réglages du compte, les clés et les autorisations restent sur cet ordinateur.",
+folder: "Dossier",
+notSelected: "Non sélectionné",
+crossChatRead: "Lecture entre chats",
+crossChatReadDescription: "Désactivé, les outils ne lisent que le Chat Home courant ; activé, ils peuvent lire les autres sans les modifier.",
+chat: "Chat",
+chatDescription: "Les titres des nouveaux chats sont générés en arrière-plan.",
+titleGeneration: "Génération du titre",
+titleGenerationDescription: "Les modèles de titre sont enregistrés séparément pour chaque backend.",
+titleAgent: "Agent de titre",
+titleModel: "Modèle de titre",
+reading: "Chargement…",
+autoRelayLimit: "Limite de relais automatique",
+autoRelayRisk: "Les relais illimités augmentent les risques de boucle et la consommation de tokens.",
+autoRelayDescription: "Met en pause chaque chaîne de relais entre Sections à la limite et attend votre décision.",
+rounds_one: "{{count}} tour",
+rounds_other: "{{count}} tours",
+unlimitedNotRecommended: "Illimité (déconseillé)",
+saveLanguageFailed: "Échec de l’enregistrement de la langue",
+saveThemeFailed: "Échec de l’enregistrement du thème",
+saveTitleModelFailed: "Échec de l’enregistrement du modèle de titre",
+saveTitleAgentFailed: "Échec de l’enregistrement de l’Agent de titre",
+saveRelayLimitFailed: "Échec de l’enregistrement de la limite de relais",
+saveCrossChatReadFailed: "Échec de l’enregistrement de la lecture entre chats",
+settingsLoadFailed: "Échec du chargement des réglages",
+settingsRetry: "Réessayer les réglages",
+modelDirectoryRetry: "Réessayer le catalogue de modèles",
+chatHomeChangeFailed: "Échec de la modification de l’emplacement Chat Home",
+defaultModelUnavailable: "Par défaut (nom indisponible)",
+currentModelUnavailable: "{{model}} (indisponible)"
+},
     native: {
+      library: {
+        missing: "Votre dossier Bottega est introuvable. Rouvrez Bottega pour le localiser ou commencez avec un nouveau dossier.",
+        locked: "Un autre Bottega de cet ordinateur utilise ce dossier. Fermez-le, puis réessayez.",
+        "identity-changed": "Ce dossier contient d’autres données Bottega. Choisissez celui que cette installation utilisait.",
+        "control-invalid": "Bottega n’a pas pu lire les réglages de ce dossier. Choisissez un autre dossier.",
+        "already-configured": "Bottega a déjà ouvert un dossier. Redémarrez Bottega pour en ouvrir un autre.",
+        "root-changed": "Bottega continue d’utiliser le dossier que vous avez choisi. Redémarrez Bottega pour en ouvrir un autre.",
+      },
       chooseChatHome: "Choisir l’emplacement de Chat Home",
       chooseProject: "Choisir le dossier Project",
       externalLinkTitle: "Ouvrir un lien externe",
       externalLinkMessage: "Ce domaine ne figure pas dans la liste de confiance.",
       terminalTitle: "Confirmer l’action dans le terminal",
       terminalMessage: "Cette commande modifiera l’installation locale du CLI.",
-      startupFailureTitle: "Impossible de démarrer Bottega",
-      startupFailureMessage: "Le processus principal n’a pas pu s’initialiser. L’application va se fermer en toute sécurité.\n\n{{detail}}",
-      appAuthorityRepairTitle: "Le catalogue d’Apps doit être réparé",
-      appAuthorityRepairMessage: "Bottega n’a pas pu établir l’autorité du catalogue d’Apps. Les Apps épinglées aux Projects n’ont pas été modifiées. La réparation conserve tous les enregistrements valides. Si le catalogue est endommagé, elle ne continue qu’après avoir stocké une copie de quarantaine identique octet par octet ; seul un catalogue absent ou mis en quarantaine est recréé vide. Bottega redémarre ensuite et supprime uniquement les épingles de Project qui pointent vers des Apps indisponibles.",
-      appAuthorityRepairAction: "Réparer et redémarrer",
-      appAuthorityRepairQuit: "Quitter",
       quitFailureTitle: "Impossible de quitter en toute sécurité",
       quitRecovered: "Une erreur est survenue pendant la préparation de la fermeture. L’application a récupéré et le chat reste disponible. Réessayez plus tard.",
       quitUnrecovered: "La préparation de la fermeture n’a pas pu récupérer. L’application reste ouverte, mais le chat et la génération de titres sont désactivés. Résolvez les processus Agent restants, puis réessayez.",
@@ -201,6 +221,17 @@ export const fr: Catalog = {
         "Une fois activées, le chat de maintenance de l’App chargera ces skills, serveurs MCP et hooks. Continuez uniquement si vous faites confiance à ce dépôt.",
       disableExtensions: "Garder désactivées",
       enableExtensions: "Activer les extensions",
+      libraryChatsUnreadable_one:
+        "{{count}} conversation de votre dossier Bottega n’a pas pu être ouverte. Elle reste inchangée.",
+      libraryChatsUnreadable_other:
+        "{{count}} conversations de votre dossier Bottega n’ont pas pu être ouvertes. Elles restent inchangées.",
+      libraryFilesMissing_one:
+        "{{count}} fichier référencé par une conversation copiée est absent de votre dossier Bottega.",
+      libraryFilesMissing_other:
+        "{{count}} fichiers référencés par des conversations copiées sont absents de votre dossier Bottega.",
+      libraryOpeningTitle: "Ouverture de votre dossier Bottega",
+      libraryOpeningProgress:
+        "Ouverture de vos fichiers… {{completed}} sur {{total}}",
     },
     usage: {
       ...settingsUsageFr,
@@ -229,44 +260,11 @@ export const fr: Catalog = {
     changeProject: "Changer de Project : {{name}}",
     openSidePanel: "Ouvrir le panneau latéral",
     importedReadOnlyReason: "L’historique importé est en lecture seule.",
-    fork: {
-      action: "Créer une branche ici",
-      title: "Créer une branche du chat ici",
-      description: "Créez une continuation indépendante de {{title}} à partir de cette réponse.",
-      sameWorkspace: "Dans cet espace de travail",
-      sameWorkspaceDetail: "Reprenez depuis ce message dans l’espace de travail actuel.",
-      newWorktree: "Dans un nouveau worktree",
-      newWorktreeDetail: "Reprenez depuis ce message dans un nouveau worktree.",
-      dirtyWarning: "Les modifications locales de la source ne sont pas copiées.",
-      unsupported: "Les worktrees gérés sont réservés aux projets Git compatibles sous macOS.",
-      unavailable: "Cette réponse ne peut pas être bifurquée",
-      continuedFrom: "⑂ Suite du chat",
-      openSource: "Ouvrir le chat source {{title}}",
-      originalUnavailable: "Le chat d’origine est indisponible",
-      inheritedReadOnly: "Les messages hérités ne peuvent pas être modifiés",
-      recoveryTruncated: "L’Agent a reçu la partie la plus récente de l’historique hérité, le préfixe complet dépassant le budget de contexte.",
-      worktreePermission: "Full Access est indisponible dans un worktree géré",
-      errors: {
-        pointInvalid: "Cette réponse ne peut plus servir de point de branche. Actualisez le chat et réessayez.",
-        sourceStale: "Le chat a changé après le chargement de cette vue. Actualisez et réessayez.",
-        sourceUnsupported: "Ce chat ne peut pas être bifurqué.",
-        prefixTooLarge: "L’historique jusqu’à cette réponse est trop volumineux pour une branche. Choisissez une réponse antérieure.",
-        projectUnavailable: "Le Project est indisponible, en cours de réassociation ou de suppression.",
-        requestConflict: "Une autre demande de branche a déjà utilisé cette identité. Fermez la fenêtre et réessayez.",
-        recoveryRequired: "Cette branche nécessite une récupération avant de continuer.",
-        notRepository: "Le dossier du Project n’est pas un dépôt Git.",
-        notGitRoot: "Le dossier du Project n’est pas la racine de son dépôt Git.",
-        noHead: "Le dépôt n’a encore aucun commit. Créez d’abord un commit.",
-        bareRepository: "Les dépôts bare ne peuvent pas héberger de worktree géré.",
-        operationInProgress: "Terminez ou annulez d’abord l’opération Git en cours (merge, rebase, cherry-pick, revert ou bisect).",
-        submodule: "Les dépôts avec sous-modules ne sont pas encore pris en charge.",
-        treeTooLarge: "L’arborescence du dépôt est trop volumineuse pour être vérifiée pour un worktree géré.",
-        configUnsafe: "La configuration Git du dépôt exécute des programmes externes (filters, fsmonitor ou alternate refs). Désactivez-les d’abord.",
-        branchConflict: "La branche de la bifurcation existe déjà. Une récupération est nécessaire.",
-        pathConflict: "Le chemin ou l’enregistrement du worktree existe déjà. Une récupération est nécessaire.",
-        identityDrift: "L’identité du dépôt a changé pendant la bifurcation. Réessayez.",
-      },
+    cloud: {
+      unavailable: "Cette conversation n’est pas disponible sur cet appareil.",
+      deleted: "Cette conversation a été supprimée sur un autre appareil.",
     },
+    fork: composerCopy.fork,
     sidePanel: {
       ...chatSurfacesFr.sidePanel,
       addPanel: "Ajouter un panneau",
@@ -285,6 +283,7 @@ export const fr: Catalog = {
       closeNamedTab: "Fermer l’onglet {{name}}",
       newTab: "Nouvel onglet",
       webPage: "Page web",
+      sleepingTab: "En veille · cliquez pour recharger",
       baseOwnerResolveFailed: "Impossible de déterminer le propriétaire de Base",
       appSlotUnavailable: "L’autorisation de l’App a été révoquée ou l’App est indisponible. L’emplacement est conservé jusqu’à sa réautorisation.",
       catalog: {
@@ -313,57 +312,11 @@ export const fr: Catalog = {
       galleryComments_other: "{{count}} commentaires",
       clearGalleryComments: "Effacer tous les commentaires d’image",
       focusGallery: "Centrer la galerie",
-      modelSelector: {
-        currentModel: "Modèle actuel {{model}}, effort {{effort}}",
-        selector: "Sélecteur de modèle de chat",
-        advanced: "Avancé",
-        model: "Modèle",
-        effort: "Effort",
-        speed: "Vitesse",
-        disableFast: "Désactiver la vitesse Fast",
-        enableFast: "Activer la vitesse Fast",
-        quickTier: "Niveau rapide du modèle",
-        loadingModels: "Chargement du catalogue de modèles…",
-        retryModels: "Réessayer le catalogue de modèles",
-        resetDefault: "Rétablir les valeurs par défaut",
-        onlyOneModel: "Un seul modèle est disponible",
-        effortUnavailable: "Le modèle actuel ne permet pas de modifier l’effort",
-        noModels: "Aucun modèle disponible",
-        backendDefaultModel: "Modèle par défaut du backend",
-        speedDescription:
-          "Environ 2,5 fois plus rapide sur les modèles Opus 5/4.8 compatibles. Utilise davantage de crédits d’usage, mais pas le quota de limitation de débit de l’abonnement.",
-        speedReason: {
-          modelUnsupported: "Le modèle actuel ne propose pas Fast",
-          backendOff: "Le backend a désactivé Fast pour cette session",
-          backendOn: "Le backend a activé Fast pour cette session",
-        },
-      },
+      modelSelector: { ...composerCopy.chat.composer.modelSelector },
     },
-    resumeFailure: {
-      title: "{{backend}} ne parvient pas à ouvrir la session enregistrée de ce chat",
-      description: "Votre message et ses pièces jointes sont enregistrés et n'ont pas encore été envoyés.",
-      retriedTitle: "La reprise de la session d'origine a échoué",
-      retriedDescription: "Cette session n'existe très probablement plus du côté de {{backend}}. Votre message et ses pièces jointes restent enregistrés et non envoyés.",
-      recommended: "Recommandé",
-      sameSession: "Réessayer la session d'origine",
-      sameSessionDetail: "Se reconnecter à la session d'origine. Si cela fonctionne, l'agent conserve tout ce qu'il sait de ce chat.",
-      sameSessionRetry: "Réessayer la session d'origine",
-      sameSessionRetryDetail: "Tenter la même reconnexion une fois de plus. Elle a déjà échoué une fois.",
-      freshSession: "Démarrer une nouvelle session",
-      freshSessionDetail: "Abandonner la session d'origine et laisser l'agent repartir d'un résumé de la conversation récente. Ce qui précède ne sera plus sous ses yeux.",
-      freshSessionBlocked: "Ce chat a été importé de l'extérieur et reste lié à la session d'origine ; il ne peut pas passer à une nouvelle.",
-      abandon: "Abandonner ce tour",
-      abandonDetail: "Rien n'est envoyé, ce tour s'arrête ici. Votre message reste dans ce chat.",
-      actionFailed: "Échec de l'opération : {{message}}",
-    },
-    readOnly: "Ce chat est actuellement en lecture seule",
-    backendUnavailable: "{{backend}} est actuellement indisponible.",
-    backendRetryHint:
-      "Vérifiez l’installation et la connexion avant de continuer.",
-    installOrSignIn: "Installer ou se connecter",
+    resumeFailure: composerCopy.resumeFailure,
     checkAgain: "Vérifier à nouveau",
     workedFor: "A travaillé pendant {{duration}}",
-    worked: "A travaillé",
     sectionImagesDisclosure:
       "Jusqu’à {{count}} images par Section ({{megabytes}} Mo au total pour ce tour) seront envoyées à {{backend}}.",
     sectionImagesUnsupported:
@@ -371,6 +324,7 @@ export const fr: Catalog = {
   },
   apps: {
     ...appsFr,
+    state: { ...appsFr.state, restoredSourceNeedsSetup: "Configurez cette App sur cet ordinateur pour utiliser sa source restaurée." },
     menu: "Menu de l’App",
     pin: "Épingler dans la barre latérale",
     unpin: "Désépingler de la barre latérale",
@@ -555,8 +509,11 @@ export const fr: Catalog = {
     projectRevokeConfirm:
       "Révoquer l’accès de {{app}} au Project « {{target}} » ? Tous les Chats membres seront affectés.",
   },
-  bases: basesFr,
+  bases: { ...basesFr, folderRecoveryRetry: "Vérifier à nouveau",
+    folderRecoveryProjectMissing: "Cette Base appartient à un Project que cet ordinateur ne possède plus. Ses fichiers restent intacts dans votre dossier Bottega et reviennent avec le Project.",
+    folderRecoveryOwnerChanged: "La conversation propriétaire de cette Base a été remplacée. Ses fichiers restent intacts dans votre dossier Bottega." },
   notice: {
+    executorSwitched: "Suite sur {{device}}",
     manualRecovered: "Le redémarrage de l’application a interrompu la réponse. Renvoyez le message.",
     skillDescriptionsTruncated:
       "Avis de Codex : certaines descriptions de Skills ont été raccourcies pour ce tour afin de respecter le budget de contexte. Codex peut toujours utiliser tous les Skills et cette réponse n’est pas affectée. Cet avis provient de Codex lui-même, pas de Bottega.",
@@ -567,35 +524,5 @@ export const fr: Catalog = {
     discarded: "Relais en attente abandonné",
     stale: "Cette action n’est plus disponible",
   },
-  ui: {
-    cancel: "Annuler",
-    uploadFiles: "Téléverser des fichiers",
-    loadingRichContent: "Chargement du contenu enrichi",
-    loading: "Chargement",
-    close: "Fermer",
-    sidebar: "Barre latérale",
-    sidebarDescription: "Affiche la barre latérale mobile.",
-    toggleSidebar: "Afficher ou masquer la barre latérale",
-    resizeSidebar: "Redimensionner la barre latérale",
-    resizeSidebarHint: "Faites glisser pour redimensionner la barre latérale",
-    attachment: "Pièce jointe",
-    previewAttachment: "Prévisualiser la pièce jointe",
-    removeAttachment: "Supprimer la pièce jointe",
-    stop: "Arrêter",
-    submit: "Envoyer",
-    message: "Message",
-    askAnything: "Posez toutes vos questions",
-    submissionFailed: "Échec de l’envoi. Réessayez.",
-    skillSuggestionsEmpty: "Aucun Skill disponible",
-    skillSuggestionsNoMatch: "Aucun Skill correspondant",
-    mentionSuggestionsEmpty: "Aucune référence disponible",
-    mentionSuggestionsNoMatch: "Aucune référence correspondante",
-    suggestionChats: "Chats",
-    suggestionFiles: "Fichiers",
-    suggestionSkills: "Skills",
-    fileTypeError: "Aucun fichier ne correspond aux types acceptés.",
-    fileSizeError: "Tous les fichiers dépassent la taille maximale.",
-    fileCountError: "Trop de fichiers. Certains n’ont pas été ajoutés.",
-    terminal: "Terminal",
-  },
+  ui: { ...uiTextFr },
 };

@@ -14,7 +14,7 @@ import {
   SidebarMenu,
 } from "@ai-chat/ui/components/ui/sidebar";
 import { ChatThreadItem } from "./chat/chat-thread-item";
-import { SIDEBAR_GROUP_LABEL_CLASS_NAME } from "./sidebar-collapsible-group";
+import { SIDEBAR_GROUP_LABEL_CLASS_NAME } from "@ai-chat/ui/components/workspace/group";
 import { useChats } from "../providers/chats-provider";
 import { useAppTranslation } from "../providers/i18n-provider";
 import { groupChatsByActivity } from "@/lib/activity-groups";

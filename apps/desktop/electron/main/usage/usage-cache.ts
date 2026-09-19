@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, persistence's SerialQueue, and usage-merge's FileEvents
- * [OUTPUT]: Provides UsageCache: strict v2 schema validation on load, per-event model/four-bucket parsing, atomic replace, per-source commitBatch, and release for dropping the resident copy between scans
+ * [OUTPUT]: Provides UsageCache with strict v2 validation, atomic per-source commits, unchanged-snapshot write elision, damaged-cache repair, and release between scans.
  * [POS]: The usage-domain read cache; stores only raw events/meta/file snapshots, never timezone, root scope, price, or aggregated results
  */
 
@@ -199,6 +199,7 @@ export class UsageCache implements UsageCacheLike {
   private entries = new Map<string, UsageCacheEntry>();
   private loaded = false;
   private writeId = 0;
+  private needsRepair = false;
 
   constructor(userData: string) {
     this.path = join(userData, "usage-cache.json");
@@ -207,6 +208,7 @@ export class UsageCache implements UsageCacheLike {
   async load(): Promise<UsageCacheLoad> {
     if (this.loaded) return { entries: new Map(this.entries), damaged: false };
     this.loaded = true;
+    this.needsRepair = false;
     try {
       const parsed = JSON.parse(await readFile(this.path, "utf8")) as {
         version?: unknown;
@@ -218,12 +220,16 @@ export class UsageCache implements UsageCacheLike {
         typeof parsed.files !== "object" ||
         Array.isArray(parsed.files)
       ) {
+        this.needsRepair = true;
         return { entries: new Map(), damaged: true };
       }
       const next = new Map<string, UsageCacheEntry>();
       for (const [path, value] of Object.entries(parsed.files)) {
         const entry = parseEntry(value);
-        if (!entry) return { entries: new Map(), damaged: true };
+        if (!entry) {
+          this.needsRepair = true;
+          return { entries: new Map(), damaged: true };
+        }
         next.set(path, entry);
       }
       this.entries = next;
@@ -233,6 +239,7 @@ export class UsageCache implements UsageCacheLike {
         return { entries: new Map(), damaged: false };
       }
       this.entries.clear();
+      this.needsRepair = true;
       return { entries: new Map(), damaged: true };
     }
   }
@@ -242,6 +249,11 @@ export class UsageCache implements UsageCacheLike {
     entries: Map<string, UsageCacheEntry>
   ) {
     return this.queue.enqueue(async () => {
+      const previous = [...this.entries].filter(([, entry]) => entry.source === source);
+      // Snapshot hits reuse the loaded entries. Avoid serializing every event just to
+      // rewrite identical bytes, but still repair an invalid cache after an empty scan.
+      if (!this.needsRepair && previous.length === entries.size &&
+        previous.every(([path, entry]) => entries.get(path) === entry)) return;
       const next = new Map(
         [...this.entries].filter(([, entry]) => entry.source !== source)
       );
@@ -261,6 +273,7 @@ export class UsageCache implements UsageCacheLike {
         );
         await rename(temporary, this.path);
         this.entries = next;
+        this.needsRepair = false;
       } catch (cause) {
         await unlink(temporary).catch(() => undefined);
         throw cause;

@@ -7,13 +7,12 @@ import type { BaseSnapshot, BaseCellValue, BaseRow } from "../../../../../shared
 import type { BaseStoreMutation, StoredBase } from "../../base-store-model";
 import { canonicalJson } from "../../../../../shared/local-storage/contracts";
 import { fieldKey, type BasePatch, type BaseSyncEnvelope, type ConfirmedBase } from "./model";
+import { diffBaseMetadata, isMetadataField, metadataTargets, readMetadataField, removeMetadataColumn, writeMetadataField } from "@ai-chat/cloud-protocol";
 const equal = (a: unknown, b: unknown) => canonicalJson(a ?? null) === canonicalJson(b ?? null);
 
-export function diffBase(before: StoredBase, after: BaseStoreMutation): BasePatch[] {
-  const patches: BasePatch[] = [];
-  for (const column of after.meta.columns) {
-    if (!equal(column, before.meta.columns.find(item => item.id === column.id))) patches.push({ kind: "put-column", column });
-  }
+export function diffBase(before: Pick<StoredBase, "meta" | "rowsById">, after: BaseStoreMutation): BasePatch[] {
+  const metadata = diffBaseMetadata(before.meta, after.meta);
+  const patches: BasePatch[] = metadata.filter(patch => patch.kind === "put-column" || patch.kind === "set-column-field");
   const nextRows = new Map(after.rows.map(row => [row.id, row]));
   const ids = after.changedRowIds === "all" ? new Set([...before.rowsById.keys(), ...nextRows.keys()]) :
     new Set([...after.changedRowIds, ...(after.removedRowIds ?? [])]);
@@ -29,26 +28,11 @@ export function diffBase(before: StoredBase, after: BaseStoreMutation): BasePatc
         { kind: "set", target: { rowId, columnId }, value });
     }
   }
-  for (const column of before.meta.columns) {
-    if (!after.meta.columns.some(item => item.id === column.id)) patches.push({ kind: "delete-column", columnId: column.id });
-  }
-  for (const view of after.meta.views) {
-    if (!equal(view, before.meta.views.find(item => item.id === view.id))) patches.push({ kind: "put-view", view });
-  }
-  for (const view of before.meta.views) {
-    if (!after.meta.views.some(item => item.id === view.id)) patches.push({ kind: "delete-view", viewId: view.id });
-  }
-  for (const field of ["columns", "views"] as const) {
-    const oldIds = before.meta[field].map(item => item.id), ids = after.meta[field].map(item => item.id);
-    const projected = [...oldIds.filter(id => ids.includes(id)), ...ids.filter(id => !oldIds.includes(id))];
-    if (!equal(projected, ids)) patches.push({ kind: "set-order", field, ids });
-  }
-  for (const field of ["name", "activeViewId"] as const) {
-    if (before.meta[field] !== after.meta[field]) patches.push({ kind: "set-meta", field, value: after.meta[field] });
-  }
+  patches.push(...metadata.filter(patch => patch.kind !== "put-column" && patch.kind !== "set-column-field"));
   return patches;
 }
 export function readPatchValue(confirmed: ConfirmedBase, patch: BasePatch): unknown {
+  if (isMetadataField(patch)) return readMetadataField(confirmed.meta, patch);
   if (patch.kind === "set-order") return confirmed.meta[patch.field].map(item => item.id);
   if ("target" in patch) return confirmed.rows.find(row => row.id === patch.target.rowId)?.values[patch.target.columnId] ?? null;
   if (patch.kind === "create-row" || patch.kind === "delete-row") return confirmed.rows.find(row => row.id === (patch.kind === "create-row" ? patch.row.id : patch.rowId)) ?? null;
@@ -61,6 +45,7 @@ export function applyPatches(snapshot: BaseSnapshot, patches: readonly BasePatch
   const rows = new Map<string, BaseRow>(snapshot.rows.map(row => [row.id, structuredClone(row)]));
   for (const patch of patches) {
     if (tombstones.includes(fieldKey(patch))) continue;
+    if (isMetadataField(patch) && metadataTargets(patch).some(key => tombstones.includes(key))) continue;
     if ("target" in patch) {
       const { rowId, columnId } = patch.target;
       if (tombstones.includes(`row:${rowId}`) || tombstones.includes(`column:${columnId}`)) continue;
@@ -77,6 +62,7 @@ export function applyPatches(snapshot: BaseSnapshot, patches: readonly BasePatch
         row.values[columnId] = next;
       }
     } else switch (patch.kind) {
+      case "set-column-field": case "set-view-field": writeMetadataField(meta, patch); break;
       case "create-row": if (!rows.has(patch.row.id)) rows.set(patch.row.id, structuredClone(patch.row)); break;
       case "delete-row": rows.delete(patch.rowId); break;
       case "put-column": {
@@ -84,7 +70,7 @@ export function applyPatches(snapshot: BaseSnapshot, patches: readonly BasePatch
         if (index < 0) meta.columns.push(structuredClone(patch.column)); else meta.columns[index] = structuredClone(patch.column);
         break;
       }
-      case "delete-column": meta.columns = meta.columns.filter(column => column.id !== patch.columnId); for (const row of rows.values()) delete row.values[patch.columnId]; break;
+      case "delete-column": removeMetadataColumn(meta, patch.columnId); for (const row of rows.values()) delete row.values[patch.columnId]; break;
       case "put-view": {
         const index = meta.views.findIndex(view => view.id === patch.view.id);
         if (index < 0) meta.views.push(structuredClone(patch.view)); else meta.views[index] = structuredClone(patch.view);

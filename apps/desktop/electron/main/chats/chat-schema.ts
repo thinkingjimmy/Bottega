@@ -1,71 +1,33 @@
 /**
- * [INPUT]: Depends on the zod, shared/agent-ipc and the limiting constant for chats-ipc, shared/projects-ipc PROJECT_ID_PATTERN
- * [OUTPUT]: Strict Chat facts and records with complete options from creation, structured terminal evidence, independent empty mirror compatibility and context-derived classification invariants.
+ * [INPUT]: Depends on shared content schema factories, local Gallery part extensions and desktop context/authority contracts.
+ * [OUTPUT]: Strict Chat facts, replaceable current sessions independent of imported provenance, bounded execution windows, and lineage/classification invariants.
  * [POS]: Durable Chat record authority; SQLite is the only backend and no legacy file envelope precedes it
  */
 
 import { z } from "zod";
-import { completionFields } from "../../../shared/local-storage/contracts";
 import { turnOptionsSchema } from "../../../shared/chat-agent/options";
-import { agentSwitchedNoticeSchema } from "../../../shared/chat-agent/schema";
 import { agentBackendIdSchema } from "../../../shared/agent-schema";
 import { isAbsolute } from "node:path";
 import {
-  ATTACHMENT_FILENAME_BYTE_LIMIT,
-  ATTACHMENT_LIMIT,
   SESSION_ID_BYTE_LIMIT,
 } from "../../../shared/agent-ipc";
 import {
-  MESSAGE_BYTE_LIMIT,
-  MESSAGE_PART_LIMIT,
   SUPERSEDED_BRANCH_LIMIT,
   SUBAGENT_BYTE_LIMIT,
   type PersistedSubagent,
-  noticeMessageContent,
+  type ChatRecord,
 } from "../../../shared/chats-ipc";
 import {
   chatPartSchema,
   importedPartSchema,
   messageBytes,
-  overNativeDetail,
   utf8Length,
 } from "./chat-part-schema";
 import { PROJECT_ID_PATTERN } from "../../../shared/projects-ipc";
 import { HISTORY_SOURCE_KINDS } from "../../../shared/history-import-ipc";
-import { productFailureSchema } from "../../../shared/product-failure";
+import { createMessageSchemas } from "@ai-chat/cloud-protocol/chats/content/messages";
 
 const MESSAGE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
-
-const memoryFailureKindSchema = z.enum([
-  "initialization",
-  "scope-resolution",
-  "policy-store",
-  "runtime-configuration",
-  "identity",
-  "provider",
-  "ownership",
-  "deadline",
-  "render-budget",
-  "stale-capability",
-]);
-
-const memoryOutcomeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("used"), count: z.number().int().positive() }).strict(),
-  z.object({ kind: z.literal("none") }).strict(),
-  z.object({ kind: z.literal("unavailable"), failureKind: memoryFailureKindSchema }).strict(),
-  z.object({
-    kind: z.literal("skipped"),
-    reason: z.enum(["disabled", "paused", "plan-mode", "prompt-not-issued"]),
-  }).strict(),
-]);
-
-const contextReceiptSchema = z
-  .object({
-    version: z.literal(1),
-    requestId: z.string().regex(MESSAGE_ID_PATTERN),
-    memory: memoryOutcomeSchema,
-  })
-  .strict();
 
 export const CHAT_MESSAGE_LIMIT = 1_000;
 export const CHAT_BYTE_LIMIT = 2 * 1024 * 1024;
@@ -73,9 +35,35 @@ export const CHAT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const INCARNATION_ID_PATTERN = /^[a-f0-9]{32}$/;
 export const ATTACHMENT_ID_PATTERN = /^[A-Za-z0-9_-]{10,64}$/;
 
-/* 过程条目的形状与限额住在 chat-part-schema.ts：这份文件讲的是「一条记录长
-   什么样」，那份讲的是「一条过程条目长什么样」。旧调用点从这里取用即可，
-   接缝不外泄。 */
+export function referencedSubagents(parts: readonly { type: string; agentThreadId?: string }[], available: ChatRecord["subagents"]) {
+  const result: Record<string, PersistedSubagent> = {}, pending = [...parts];
+  for (let index = 0; index < pending.length; index++) {
+    const part = pending[index]!;
+    if (part.type !== "subagent" || !part.agentThreadId || result[part.agentThreadId]) continue;
+    const value = available?.[part.agentThreadId];
+    if (value) { result[part.agentThreadId] = value; pending.push(...value.parts); }
+  }
+  return result;
+}
+
+/** Select execution context without discarding the caller's saved history. */
+export function chatExecutionWindow(record: ChatRecord): ChatRecord {
+  let from = record.messages.length, bytes = 0, agentBytes = 2;
+  const agents: Record<string, PersistedSubagent> = {};
+  while (from > 0 && record.messages.length - from < CHAT_MESSAGE_LIMIT) {
+    const message = record.messages[from - 1]!, size = messageBytes(message);
+    const additions = message.role === "assistant" ? Object.keys(referencedSubagents(message.parts ?? [], record.subagents)).filter(id => !agents[id]) : [];
+    const addedBytes = additions.reduce((sum, id) => sum + utf8Length(JSON.stringify(id)) + 2 + utf8Length(JSON.stringify(record.subagents![id])), 0);
+    if (bytes + size > CHAT_BYTE_LIMIT || agentBytes + addedBytes > SUBAGENT_BYTE_LIMIT) break;
+    for (const id of additions) agents[id] = record.subagents![id]!;
+    bytes += size; agentBytes += addedBytes; from--;
+  }
+  if (from === record.messages.length && from > 0) throw new Error("CHAT_MESSAGE_CONTEXT_TOO_LARGE");
+  return chatRecordSchema.parse({ ...record, messages: record.messages.slice(from), subagents: agents,
+    trimmedThroughSeq: from ? record.messages[from - 1]!.seq : record.trimmedThroughSeq });
+}
+
+// Local part provenance extends the shared content grammar at the storage boundary.
 export {
   PART_TITLE_CHAR_LIMIT,
   chatPartInputSchema,
@@ -84,7 +72,7 @@ export {
   utf8Length,
 } from "./chat-part-schema";
 
-/** load 与 commit 重建共用的唯一 subagent 总预算不变量。 */
+/** One aggregate Subagent budget for load and commit reconstruction. */
 export function assertSubagentBudget(
   subagents: Record<string, PersistedSubagent> | undefined
 ) {
@@ -96,221 +84,7 @@ export function assertSubagentBudget(
   }
 }
 
-const attachmentMetaSchema = z
-  .object({
-    id: z.string().regex(ATTACHMENT_ID_PATTERN),
-    filename: z
-      .string()
-      .min(1)
-      .refine((value) => utf8Length(value) <= ATTACHMENT_FILENAME_BYTE_LIMIT, {
-        message: "附件文件名过长",
-      }),
-    mediaType: z.string().min(1).max(100),
-    byteSize: z.number().int().nonnegative(),
-  })
-  .strict();
-
-const persistedSubagentSchema = z
-  .object({
-    meta: z
-      .object({
-        agentThreadId: z.string().min(1).max(256),
-        name: z.string().min(1).max(256),
-        model: z.string().min(1).max(200).optional(),
-        origin: z.enum(["native", "spawn"]).optional(),
-        agent: agentBackendIdSchema.optional(),
-        ...completionFields,
-        status: z.enum(["completed", "errored", "shutdown", "interrupted"]),
-        spawnedAt: z.number().int().nonnegative(),
-        lastActivityAt: z.number().int().nonnegative(),
-        resultBytes: z.number().int().nonnegative().optional(),
-        resultTruncated: z.boolean().optional(),
-      })
-      .strict(),
-    parts: z.array(chatPartSchema).max(MESSAGE_PART_LIMIT),
-  })
-  .strict();
-
-export const subagentsSchema = z
-  .record(z.string().min(1).max(256), persistedSubagentSchema)
-  .superRefine((subagents, context) => {
-    for (const [key, agent] of Object.entries(subagents)) {
-      if (key !== agent.meta.agentThreadId) {
-        context.addIssue({
-          code: "custom",
-          path: [key, "meta", "agentThreadId"],
-          message: "subagent key 必须等于 meta.agentThreadId",
-        });
-      }
-    }
-  });
-
-// 限流窗口只收词表内的值；resetsAt 必须是正整数毫秒，越界即整体拒收，
-// 宁可退回"无恢复时间"的诚实卡片，也不让脏时间戳渲染成假倒计时。
-const usageLimitSchema = z
-  .object({
-    window: z.enum(["five-hour", "weekly", "provider", "unknown"]),
-    resetsAt: z.number().int().positive().optional(),
-  })
-  .strict();
-
-const boundedMessageContentSchema = z.string().refine(
-  (value) => utf8Length(value) <= MESSAGE_BYTE_LIMIT,
-  { message: "消息不能超过 32 KB" }
-);
-
-const nonEmptyMessageContentSchema = z
-  .string()
-  .min(1)
-  .refine((value) => utf8Length(value) <= MESSAGE_BYTE_LIMIT, {
-    message: "消息不能超过 32 KB",
-  });
-
-const messageBaseFields = {
-  id: z.string().regex(MESSAGE_ID_PATTERN),
-  content: boundedMessageContentSchema,
-  createdAt: z.number().int().nonnegative(),
-  seq: z.number().int().positive(),
-  // 只读导入段的投影位；只有 SQLite 读侧会写它，原生落盘从不带。
-  segment: z.literal("imported").optional(),
-};
-
-const nonEmptyMessageBaseFields = {
-  ...messageBaseFields,
-  content: nonEmptyMessageContentSchema,
-};
-
-const userMessageSchema = z
-  .object({
-    ...messageBaseFields,
-    role: z.literal("user"),
-    attachments: z.array(attachmentMetaSchema).min(1).max(ATTACHMENT_LIMIT).optional(),
-    relay: z
-      .object({
-        sourceSectionId: z.string().regex(CHAT_ID_PATTERN),
-        chainId: z.string().min(1).max(256),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict()
-  .superRefine((message, context) => {
-    if (message.content.trim() || message.attachments?.length) return;
-    context.addIssue({
-      code: "custom",
-      path: ["content"],
-      message: "用户消息必须包含正文或附件",
-    });
-  });
-
-const assistantMessageSchema = z
-  .object({
-    ...messageBaseFields,
-    role: z.literal("assistant"),
-    ...completionFields,
-    backend: agentBackendIdSchema,
-    kind: z.literal("plan").optional(),
-    /* 形状按导入段的宽口径收，原生那 4 KiB 由 overNativeDetail 按段补回。 */
-    parts: z.array(importedPartSchema).min(1).max(MESSAGE_PART_LIMIT).optional(),
-    durationMs: z.number().int().nonnegative().optional(),
-    isError: z.boolean().optional(),
-    failureKind: z
-      .enum(["auth-required", "usage-limit", "unknown"])
-      .optional(),
-    failure: productFailureSchema.optional(),
-    usageLimit: usageLimitSchema.optional(),
-    contextReceipt: contextReceiptSchema.optional(),
-  })
-  .strict()
-  .superRefine((message, context) => {
-    if (!message.content.trim() && !message.parts?.length && !message.failure) {
-      context.addIssue({
-        code: "custom",
-        path: ["content"],
-        message: "Assistant message requires content, parts, or ProductFailure",
-      });
-    }
-    if (messageBytes(message) > MESSAGE_BYTE_LIMIT) {
-      context.addIssue({
-        code: "custom",
-        path: ["parts"],
-        message: "消息（含过程条目）不能超过 32 KB",
-      });
-    }
-    if (overNativeDetail(message)) {
-      context.addIssue({ code: "custom", path: ["parts"], message: "工具输出超出限制" });
-    }
-  });
-
-const actionableNoticeSchema = z
-  .object({
-    kind: z.enum(["chain-paused", "startup-recovered"]),
-    rootChainId: z.string().min(1).max(256),
-    pauseEpoch: z.number().int().nonnegative(),
-    actionId: z.string().min(1).max(128),
-    pendingCount: z.number().int().positive(),
-  })
-  .strict();
-
-const failedNoticeSchema = z
-  .object({
-    kind: z.literal("relay-failed"),
-    rootChainId: z.string().min(1).max(256),
-    relayId: z.string().min(1).max(128),
-  })
-  .strict();
-
-const manualRecoveredNoticeSchema = z
-  .object({
-    kind: z.literal("manual-recovered"),
-    intentId: z.string().min(1).max(128),
-  })
-  .strict();
-
-const skillDescriptionsTruncatedNoticeSchema = z
-  .object({
-    kind: z.literal("skill-descriptions-truncated"),
-    turnId: z.string().min(1).max(128),
-  })
-  .strict();
-
-const appChatReadyNoticeSchema = z
-  .object({
-    kind: z.literal("app-chat-ready"),
-    appId: z.string().regex(/^[a-z0-9]{10}$/),
-    appRole: z.enum(["edit", "use"]),
-  })
-  .strict();
-
-const noticeMessageSchema = z
-  .object({
-    ...nonEmptyMessageBaseFields,
-    role: z.literal("notice"),
-    notice: z.discriminatedUnion("kind", [
-      agentSwitchedNoticeSchema,
-      actionableNoticeSchema,
-      failedNoticeSchema,
-      manualRecoveredNoticeSchema,
-      skillDescriptionsTruncatedNoticeSchema,
-      appChatReadyNoticeSchema,
-    ]),
-  })
-  .strict()
-  .superRefine((message, context) => {
-    if (message.content !== noticeMessageContent(message.notice)) {
-      context.addIssue({
-        code: "custom",
-        path: ["content"],
-        message: "notice content 必须由 notice 载荷确定性派生",
-      });
-    }
-  });
-
-export const messageSchema = z.discriminatedUnion("role", [
-  userMessageSchema,
-  assistantMessageSchema,
-  noticeMessageSchema,
-]);
+export const { messageSchema, subagentsSchema } = createMessageSchemas(chatPartSchema, importedPartSchema);
 
 const supersededBranchSchema = z
   .object({
@@ -372,6 +146,8 @@ const canonicalRecordFields = {
     .nullable()
     .optional(),
   archivedAt: z.number().int().nonnegative().optional(),
+  /* Manual sidebar position as a virtual createdAt (finite double, creation-ms space); absent = never moved. */
+  sortKey: z.number().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
 };
 
 const appCapabilityGrantSchema = z
@@ -659,19 +435,6 @@ function validateFacts(
       code: "custom",
       path: ["importOrigin"],
       message: "adoptionSnapshotId 与 snapshotDigest 必须同生同灭",
-      input: record,
-    });
-  }
-  if (
-    record.importOrigin &&
-    !record.session &&
-    record.agentRevision === 0 &&
-    record.readOnlyReason !== "external-readonly"
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["session"],
-      message: "收养会话必须保留原生 SessionRef",
       input: record,
     });
   }

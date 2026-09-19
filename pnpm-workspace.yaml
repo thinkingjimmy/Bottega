@@ -9,10 +9,23 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
+overrides:
+  # Mermaid only consumes marked's paragraph/inline lexer; list-renderer changes in 17 do not affect it.
+  'mermaid>marked': 17.0.6
+  # Sankey consumes max/min/sum and linkHorizontal; verified against the shared D3 7 geometry runtime.
+  'd3-sankey>d3-array': 3.2.4
+  'd3-sankey>d3-shape': 3.2.0
+  # zod 在两家 ACP 适配器里是硬依赖（codex-acp ^4.0.0、claude-agent-acp ^3.25||^4），
+  # 不钉死就会随上游发版分叉出第二份 4.x：每多一份，主进程与四个 worker isolate
+  # 就各多背一整套 schema 实例。其余消费者（peer 解析、vercel 的精确锁）不受影响。
+  '@agentclientprotocol/codex-acp>zod': 4.6.4
+  '@agentclientprotocol/claude-agent-acp>zod': 4.6.4
+
 minimumReleaseAgeExclude:
   - react-hook-form@7.87.0
   - konva@10.5.0
   - react-konva@19.2.7
+  - zod@4.6.4
 
 patchedDependencies:
   '@streamdown/cjk@1.0.3': patches/@streamdown__cjk@1.0.3.patch

@@ -119,6 +119,10 @@ const gateFiles = {
     "shared/app-gui/file-export.ts",
   ],
 };
+// Runtime receipts must pin the implementation behind desktop re-export files.
+const sharedBaseSources = (await walk(resolve(desktopRoot, "../../packages/base-ui/src")))
+  .filter(path => /\.(?:ts|tsx)$/.test(path) && !/\.(?:test|spec)\.|\/(?:tests|test-support)\//.test(path));
+for (const paths of Object.values(gateFiles)) paths.push(...sharedBaseSources);
 const authoringFiles = await walk(join(desktopRoot, "resources/app-gui-starters"));
 authoringFiles.push(...await walk(join(desktopRoot, "resources/app-gui-components")));
 authoringFiles.push("electron/main/apps/gui-build/product-modules/blocks.ts");

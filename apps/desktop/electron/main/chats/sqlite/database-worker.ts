@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on worker_threads/path, the closed database protocol, ChatSqliteConnection, ChatRepository, and typed schema errors
- * [OUTPUT]: Sole SQLite worker dispatcher, receipt-first publication and interrupted-import recovery; local-only by default and fixture activation restricted to verification outside Electron.
+ * [OUTPUT]: Sole SQLite worker dispatcher, receipt-first publication and interrupted-import recovery; explicit runtime scopes and fixture activation restricted to verification outside Electron.
  * [POS]: Process isolation boundary between Electron main and synchronous SQLite; it never accepts SQL text
  */
 
+import { readLibraryImport } from "../../library/mirrors/imported-source";
 import { HistorySource } from "./history/source";
 import { ChatHistoryReader } from "./history/reader";
 import { initializeHistoryParts } from "./history/parts";
@@ -66,7 +67,7 @@ class DatabaseWorkerRuntime {
   async execute(command: DatabaseCommand): Promise<unknown> {
     if (command.kind === "initialize") {
       if (this.connection) throw new Error("database worker is already initialized");
-      if (command.storageMode && command.storageMode.kind !== "local-only" && (command.mode !== "verification" || Boolean(process.versions.electron))) {
+      if (command.storageMode && ["fixture", "snapshot-initialization"].includes(command.storageMode.kind) && (command.mode !== "verification" || Boolean(process.versions.electron))) {
         throw new Error("Fixture synchronization is unavailable in production");
       }
       const startedAt = performance.now();
@@ -100,8 +101,12 @@ class DatabaseWorkerRuntime {
     }
     const repository = this.repository;
     switch (command.kind) {
+      case "configure-storage-mode": return repository.configureStorageMode(command.storageMode);
       case "cloud-read": return repository.cloudRead(command);
       case "cloud-mutate": return this.mutated(repository.cloudMutate(command));
+      case "read-library-import": return readLibraryImport(this.connection.database, chatImportBlobsRoot(dirname(this.connection.path)), command, repository.libraryScope);
+      case "read-library-native": return repository.readLibraryNative(command);
+      case "list-library-mirrors": return repository.listLibraryMirrors(command.afterId, command.known);
       case "prepare-chat-history": return this.history!.prepare(command.chatId, command.deviceId, command.nativeBeforeSeq);
       case "read-chat-history": return this.history!.read(command.input, command.deviceId);
       case "list-metadata": return repository.listMetadata(command.deviceId, command.chatId);

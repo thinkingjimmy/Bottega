@@ -1,9 +1,10 @@
 /**
- * [INPUT]: Depends on canonical Chat records/facts, metadata ownership projections, lifecycle helpers, app capability facts, and main/errors
- * [OUTPUT]: Provides pure Chat fact transitions, the aggregate tail revision, and the external-readonly presentation-only mutation guard for sessions, titles, grants, and project placement
+ * [INPUT]: Depends on Node structural equality, canonical Chat records/facts, metadata ownership projections, lifecycle helpers, app capability facts, and main/errors
+ * [OUTPUT]: Provides pure Chat fact transitions, native-tail revision with immutable imported/inherited prefixes, and the external-readonly presentation-only mutation guard
  * [POS]: Mutation policy layer beneath ChatStore queue/persistence orchestration; contains no durable I/O
  */
 
+import { isDeepStrictEqual } from "node:util";
 import type { SessionRef } from "../../../../shared/agent-ipc";
 import type { AppCapabilityGrant, AppGrantRecord } from "../../../../shared/apps-ipc";
 import {
@@ -52,7 +53,9 @@ export function reviseTailRecord(
   input: ReviseTailInput,
   now: number
 ) {
-  if (current.importOrigin) throw new Error("收养的外源会话不能修订");
+  if (current.readOnlyReason === "external-readonly") {
+    throw statusError(409, "CHAT_IMPORTED_HISTORY_IMMUTABLE");
+  }
   const replay = current.messages.find((message) => message.id === input.message.id);
   if (replay) {
     if (
@@ -169,6 +172,13 @@ export function setUserTitleRecord<T extends ChatFacts>(current: T, title: strin
   };
 }
 
+/* A manual position is a virtual createdAt; equality returns `current` so the caller skips persistence. */
+export function setSortKeyRecord<T extends ChatFacts>(current: T, sortKey: number | null): T {
+  if ((current.sortKey ?? null) === sortKey) return current;
+  const { sortKey: _previous, ...rest } = current;
+  return (sortKey === null ? rest : { ...rest, sortKey }) as T;
+}
+
 export function assertReadonlyPresentationMutation(
   current: ChatFacts,
   candidate: ChatFacts
@@ -177,13 +187,13 @@ export function assertReadonlyPresentationMutation(
   const invariant = (record: ChatFacts) => {
     const {
       title: _title, titleSource: _titleSource, titleJob: _titleJob,
-      archivedAt: _archivedAt, updatedAt: _updatedAt,
+      archivedAt: _archivedAt, updatedAt: _updatedAt, sortKey: _sortKey,
       chatRecordRevision: _chatRecordRevision, ...rest
     } = record;
-    return JSON.stringify(rest);
+    return rest;
   };
-  if (invariant(current) !== invariant(candidate)) {
-    throw new Error("readonly Chat only accepts title/archive presentation changes");
+  if (!isDeepStrictEqual(invariant(current), invariant(candidate))) {
+    throw new Error("readonly Chat only accepts title/archive/sort presentation changes");
   }
 }
 

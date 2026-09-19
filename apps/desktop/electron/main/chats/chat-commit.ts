@@ -4,35 +4,28 @@
  * [POS]: Pure commit kernel of the chats module; ChatStore calls it inside the serial queue, so it stays testable without a file system
  */
 
-import { TOOL_DETAIL_BYTE_LIMIT } from "../../../shared/agent-ipc";
 import {
-  MESSAGE_BYTE_LIMIT,
-  MESSAGE_PART_LIMIT,
   type ChatMessage,
-  type ChatPart,
   type ChatRecord,
-  type ChatToolPart,
   type PersistedSubagent,
   type TurnCommitInput,
   type TurnCommitResult,
 } from "../../../shared/chats-ipc";
 import { slicePartsProtected } from "../../../shared/chat-turn-reducer";
 import { prunePersistedSubagents } from "../../../shared/subagent-registry";
-import { scanFences } from "../../../shared/markdown-fences";
-import { truncateUtf8 as truncateUtf8Result } from "../../../shared/truncate-utf8";
 import {
   CHAT_BYTE_LIMIT,
   CHAT_MESSAGE_LIMIT,
-  PART_TITLE_CHAR_LIMIT,
   assertSubagentBudget,
   chatRecordSchema,
   messageBytes,
   messageSchema,
   subagentsSchema,
-  utf8Length,
 } from "./chat-schema";
 
-const TRUNCATED_SUFFIX = "…[已截断]";
+import { normalizePart, normalizeMessageContent } from "@ai-chat/cloud-protocol/turns/text/normalize";
+import { MESSAGE_PART_LIMIT } from "@ai-chat/cloud-protocol/chats/content/budgets";
+export { truncateUtf8, truncateMarkdownSafe } from "@ai-chat/cloud-protocol/turns/text/normalize";
 
 export class ChatNotFoundError extends Error {
   override name = "ChatNotFoundError";
@@ -53,87 +46,8 @@ export function fallbackTitle(firstMessage: string) {
   return Array.from(firstMessage.trim()).slice(0, 30).join("") || "新聊天";
 }
 
-export function truncateUtf8(value: string, limit = MESSAGE_BYTE_LIMIT) {
-  return truncateUtf8Result(value, limit, TRUNCATED_SUFFIX).value;
-}
-
-export function truncateMarkdownSafe(
-  value: string,
-  limit = MESSAGE_BYTE_LIMIT
-) {
-  if (utf8Length(value) <= limit) return value;
-  const suffixBytes = utf8Length(TRUNCATED_SUFFIX);
-  const contentLimit = Math.max(0, limit - suffixBytes);
-  let low = 0;
-  let high = value.length;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    const candidate = value.slice(0, middle);
-    if (utf8Length(candidate) <= contentLimit) low = middle;
-    else high = middle - 1;
-  }
-  let end = low;
-  const code = value.charCodeAt(end - 1);
-  if (code >= 0xd800 && code <= 0xdbff) end -= 1;
-  const crossing = scanFences(value).find(
-    (fence) => fence.start < end && fence.end > end
-  );
-  if (crossing) end = crossing.start;
-  while (
-    end > 0 &&
-    utf8Length(`${value.slice(0, end)}${TRUNCATED_SUFFIX}`) > limit
-  ) {
-    end -= 1;
-  }
-  return `${value.slice(0, end)}${TRUNCATED_SUFFIX}`;
-}
-
-function normalizePart(part: ChatPart): ChatPart {
-  if (part.type === "subagent") return { ...part };
-  if (part.type === "text") {
-    // 决策 7 只限工具 detail；文本 part 仅受 32KB 消息预算约束
-    return {
-      ...part,
-      text: truncateMarkdownSafe(part.text, MESSAGE_BYTE_LIMIT),
-    };
-  }
-  const title =
-    part.title.length > PART_TITLE_CHAR_LIMIT
-      ? `${part.title.slice(0, PART_TITLE_CHAR_LIMIT - 1)}…`
-      : part.title;
-  return {
-    ...part,
-    title,
-    ...(part.detail
-      ? { detail: truncateUtf8(part.detail, TOOL_DETAIL_BYTE_LIMIT) }
-      : {}),
-  };
-}
-
 export function normalizeMessage(message: ChatMessage) {
-  if (message.role !== "assistant") return messageSchema.parse(message);
-  const { parts: rawParts, ...rest } = message;
-  const content = truncateMarkdownSafe(message.content);
-  // 超量条目保最新（收敛而非拒绝，Review 修复）
-  let parts = slicePartsProtected(
-    (rawParts ?? []).map(normalizePart),
-    MESSAGE_PART_LIMIT
-  );
-  const assemble = (): ChatMessage =>
-    parts.length ? { ...rest, content, parts } : { ...rest, content };
-  // 决策 7：超预算先剥最旧 detail，再丢最旧 part；content 已 ≤32KB，循环必然收敛
-  while (messageBytes(assemble()) > MESSAGE_BYTE_LIMIT && parts.length > 0) {
-    const index = parts.findIndex((part) => part.type === "tool" && part.detail);
-    if (index >= 0) {
-      const { detail: _detail, ...tool } = parts[index] as ChatToolPart;
-      parts = [...parts.slice(0, index), tool, ...parts.slice(index + 1)];
-    } else {
-      const nonChip = parts.findIndex((part) => part.type !== "subagent");
-      const victim = nonChip >= 0 ? nonChip : 0;
-      parts = [...parts.slice(0, victim), ...parts.slice(victim + 1)];
-    }
-  }
-  return messageSchema.parse(assemble());
+  return messageSchema.parse(normalizeMessageContent(message));
 }
 
 /* 裁剪必须现场记账：被丢掉的那截 seq 事后无处可查，

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BrowserPanelService/CdpHarness, the shared BrowserAction and builtin-tool domain specs, the BuiltinToolset contract, and the main error vocabulary (statusError)
- * [OUTPUT]: Provides canAccess and createBrowserToolset; read/write tab authorization is decided once per call from the lease chat
+ * [OUTPUT]: Provides canAccess and createBrowserToolset; read/write tab authorization is decided once per call from the lease chat, and browser_tabs reports which tabs are sleeping
  * [POS]: The only adapter between the browser domain and the builtin-tool platform; handlers never trust renderer identity or an Agent-claimed owner
  */
 
@@ -109,6 +109,7 @@ export function createBrowserToolset(
           url: wireUrl(tab.url),
           title: wireTitle(tab.title),
           owned: tab.ownerChatId === context.lease.chatId,
+          sleeping: tab.sleeping,
         }));
     },
     browser_close: (args, context) => {

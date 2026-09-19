@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared ACP readiness kernel, Kimi Acp Launcher and declaration source read-only disposable readiness home
- * [OUTPUT]: Provides kimiReadinessSpec and createKimiAuthCheck
+ * [OUTPUT]: Provides kimiReadinessSpec (credential-safe: disposable state root, network-less Seatbelt) and createKimiAuthCheck
  * [POS]: Declares only what a successful handshake proves for Kimi; the entire check mechanism is delegated to acp/startup readiness
  */
 
@@ -24,6 +24,10 @@ export const kimiReadinessSpec: AcpReadinessSpec = {
   validateSessionId: validateKimiSessionId,
   proves: "auth",
   timeoutMs: 12_000,
+  /* 探针只在 createDisposableKimiHome 的一次性根里跑，真实状态根以只读 symlink 暴露，
+     外层 Seatbelt 还关掉了网络：它既刷新不了 token 也写不回配置，因此可以与额度读取
+     并行，不必独占凭据。 */
+  credentialSafe: true,
   async prepareProcessEnvironment() {
     const home = await createDisposableKimiHome();
     return {

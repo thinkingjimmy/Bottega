@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/projects-ipc and preload exposed window.projects
- * [OUTPUT]: Provides Project list/rename/reveal/placement Pin/non-destructive detach/recovery/sort, Git branch commands, events, and a lifecycle-revisioned browser fallback
+ * [OUTPUT]: Provides Project list/rename/reveal/folder binding/placement Pin/non-destructive detach/recovery/sort, Git branch commands, events, and a lifecycle-revisioned browser fallback
  * [POS]: Sole renderer Projects IPC adapter; providers and components remain unaware of the Electron bridge
  */
 
@@ -123,6 +123,14 @@ export const detachLocalProject = (projectId: string) => {
     return Promise.reject(new Error("桌面环境不可用，Project 未移除"));
   }
   return window.projects.detachLocal(projectId);
+};
+
+/** Resolves to null when the user dismisses the native picker; desktop-only by construction. */
+export const chooseProjectFolder = (projectId: string) => {
+  if (!window.projects) {
+    return Promise.reject(new Error("桌面环境不可用，无法选择文件夹"));
+  }
+  return window.projects.chooseFolder(projectId);
 };
 
 export const revealProject = (projectId: string) => {

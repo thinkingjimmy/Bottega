@@ -1,27 +1,30 @@
 /**
- * [INPUT]: Depends on node fs/crypto, strict frontmatter parsing, and the shared SkillSlug admission gate, and statusError from main/errors
- * [OUTPUT]: Provides strict Skill directory inspection with admitted slug/requires metadata, deterministic filtered digesting/copying, candidate discovery, and stable digest observation
+ * [INPUT]: Depends on node fs (streaming reads and copyFile)/crypto/timers, strict frontmatter parsing, the optional discovery digest cache, and the shared SkillSlug admission gate, and statusError from main/errors
+ * [OUTPUT]: Provides strict Skill directory inspection with admitted slug/requires metadata, per-file hashes from the same walk, deterministic filtered digesting/copying that never buffers a whole file in main, cooperative candidate discovery, and stable digest observation
  * [POS]: skills-management's untrusted-directory read boundary; size is reported, never a verdict — hard failure is reserved for symlinks, path escapes, and invalid names
  */
 
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import {
   chmod,
+  copyFile,
   lstat,
   mkdir,
   opendir,
   readFile,
   realpath,
   rm,
-  writeFile,
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import type {
   ManagedSkillReason,
   ManagedSkillReasonCode,
 } from "../../../shared/unified-skills-ipc";
 import { statusError } from "../errors";
 import { parseStrictSkillFrontmatter } from "../extensions/manifest-adapter";
+import type { SkillDigestCache, SkillFileStat } from "./orchestration/digest-cache";
 import { admitSkillSlug } from "./skill-slug";
 
 /* ── 体积是信息，不是裁决 ────────────────────────────────────────
@@ -52,7 +55,9 @@ export type InspectedSkillFolder = Readonly<{
   revision: string;
   preview: string;
   bytes: number;
-  files: readonly Readonly<{ path: string; bytes: number }>[];
+  /* `sha256` is present exactly when this walk hashed the bytes: publication
+     reuses it instead of reading every file a second time. */
+  files: readonly Readonly<{ path: string; bytes: number; sha256?: string }>[];
 }>;
 
 export type SkillFolderInspection =
@@ -69,14 +74,29 @@ export type SkillFolderDigestObservation =
  * `hashAll` 关掉体积分界。广扫四家 HOME 时不该开（那正是预算存在的理由），
  * 但对我们自己装进来的包目录要开：它们的 digest 是投影授权的凭据，
  * 缺了就没法与投影副本逐字节对账。
+ *
+ * `digestCache` belongs only to discovery scans: it answers "is this directory
+ * still what it was last time". Once `hashAll` is true, this cell is the
+ * byte-for-byte reconciliation itself, and the cache gets no say — unless the
+ * caller explicitly declares this a periodic re-check (`trustCachedSignature`),
+ * whose conclusion never authorizes any write. A cache hit carries no per-file
+ * sha256.
  */
+export type SkillInspectionOptions = Readonly<{
+  hashAll?: boolean;
+  digestCache?: SkillDigestCache;
+  /** Only a periodic re-check of a directory this product itself wrote may set this. */
+  trustCachedSignature?: boolean;
+}>;
+
 export async function inspectSkillFolder(
   path: string,
-  options: Readonly<{ hashAll?: boolean }> = {}
+  options: SkillInspectionOptions = {}
 ): Promise<SkillFolderInspection> {
   const fallbackName = candidateLabel(path);
   try {
-    return { importable: true, skill: await inspectSkillFolderStrict(path, options.hashAll === true) };
+    return { importable: true, skill: await inspectSkillFolderStrict(path, options.hashAll === true,
+      options.hashAll === true && options.trustCachedSignature !== true ? undefined : options.digestCache) };
   } catch (cause) {
     return {
       importable: false,
@@ -137,7 +157,7 @@ export async function inspectPackageFolder(path: string) {
   }
 }
 
-export async function scanAgentSkillsRoot(root: string, options: Readonly<{ hashAll?: boolean }> = {}) {
+export async function scanAgentSkillsRoot(root: string, options: SkillInspectionOptions = {}) {
   const metadata = await lstat(root).catch((cause: NodeJS.ErrnoException) => {
     if (cause.code === "ENOENT") return null;
     throw cause;
@@ -156,6 +176,9 @@ export async function scanAgentSkillsRoot(root: string, options: Readonly<{ hash
       break;
     }
     results.push(await inspectSkillFolder(join(root, entry.name), options));
+    /* One folder can be thousands of files; discovery runs on the main thread and
+       must never hold it for the whole root. */
+    await yieldToEventLoop();
   }
   return results.sort((left, right) => inspectionName(left).localeCompare(inspectionName(right)));
 }
@@ -205,7 +228,9 @@ export async function copySkillDirectory(
       const location = relative(target, destination);
       if (location.startsWith("..") || isAbsolute(location)) throw invalid("unsafe-path");
       await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
-      await writeFile(destination, await readFile(join(source, file.path)), { mode: 0o400 });
+      /* copyFile hands the bytes to the kernel: a 16 MiB Skill file used to become a
+         16 MiB Buffer on the main-process heap before a single byte reached disk. */
+      await copyFile(join(source, file.path), destination);
       await chmod(destination, 0o400);
     }
     const copied = await inspectSkillFolder(target, { hashAll: true });
@@ -219,12 +244,20 @@ export async function copySkillDirectory(
   }
 }
 
-export async function digestSkillFolder(path: string) {
-  const inspected = await inspectSkillFolder(path, { hashAll: true });
+/**
+ * `digestCache` turns a periodic "is this still the generation we published"
+ * check into a stat comparison; omit it whenever the answer authorizes a write.
+ */
+export async function digestSkillFolder(path: string, digestCache?: SkillDigestCache) {
+  const inspected = await inspectSkillFolder(path, { hashAll: true, digestCache, trustCachedSignature: Boolean(digestCache) });
   return inspected.importable ? inspected.skill.digest : null;
 }
 
-async function inspectSkillFolderStrict(path: string, hashAll = false): Promise<InspectedSkillFolder> {
+async function inspectSkillFolderStrict(
+  path: string,
+  hashAll = false,
+  digestCache?: SkillDigestCache
+): Promise<InspectedSkillFolder> {
   const rootStat = await lstat(path);
   if (rootStat.isSymbolicLink()) throw invalid("symlink");
   if (!rootStat.isDirectory()) throw invalid("not-a-directory");
@@ -240,7 +273,10 @@ async function inspectSkillFolderStrict(path: string, hashAll = false): Promise<
   if (!admitSkillSlug(parsed.name).ok) {
     throw invalid("invalid-name");
   }
-  const digest = hashAll || total <= MAX_DIGEST_BYTES ? await digestWalk(canonicalPath, walked) : null;
+  const hashed = hashAll || total <= MAX_DIGEST_BYTES
+    ? await digestOf(canonicalPath, walked, digestCache)
+    : null;
+  const digest = hashed?.digest ?? null;
   return {
     canonicalPath,
     name: parsed.name,
@@ -251,7 +287,11 @@ async function inspectSkillFolderStrict(path: string, hashAll = false): Promise<
     revision: revisionOf(rootStat, walked, total, digest),
     preview: content,
     bytes: total,
-    files: walked.map(({ path: filePath, bytes }) => ({ path: filePath, bytes })),
+    files: walked.map(({ path: filePath, bytes }, index) => ({
+      path: filePath,
+      bytes,
+      ...(hashed?.files ? { sha256: hashed.files[index]! } : {}),
+    })),
   };
 }
 
@@ -283,7 +323,9 @@ const EXCLUDED_ENTRIES = new Set([
 ]);
 
 async function walkSafe(root: string) {
-  const files: Array<{ path: string; bytes: number }> = [];
+  /* mtimeMs rides along for the digest cache only; the inspection still publishes
+     nothing but path and bytes. */
+  const files: SkillFileStat[] = [];
   let total = 0;
   let directories = 0;
   const visit = async (directory: string, depth: number): Promise<void> => {
@@ -306,22 +348,50 @@ async function walkSafe(root: string) {
       }
       if (!metadata.isFile()) throw invalid("unsafe-path", location);
       total += metadata.size;
-      files.push({ path: location, bytes: metadata.size });
+      files.push({ path: location, bytes: metadata.size, mtimeMs: metadata.mtimeMs });
     }
   };
   await visit(root, 0);
   return { files: files.sort((left, right) => left.path.localeCompare(right.path)), total };
 }
 
+async function digestOf(
+  root: string,
+  files: readonly SkillFileStat[],
+  cache: SkillDigestCache | undefined
+) {
+  const cached = cache?.lookup(root, files);
+  if (cached) return { digest: cached, files: null };
+  const walked = await digestWalkDetailed(root, files);
+  cache?.remember(root, files, walked.digest);
+  return walked;
+}
+
+/* 同样的字节序：路径 · \0 · 内容 · \0。内容改为按块喂给 hash——整份读进来
+   只是为了立刻喂给同一个 hash，却让主进程为一个 MAX_DIGEST_BYTES 大小的
+   文件凭空多背一份 16 MiB 的 Buffer。digest 逐字节不变。 */
 async function digestWalk(root: string, files: readonly { path: string }[]) {
+  return (await digestWalkDetailed(root, files)).digest;
+}
+
+/* Each file feeds two hashes at once: the directory identity and its own sha256.
+   Publication would otherwise have to read the same bytes again to compute
+   sha256; this pass finishes it along the way for free. */
+async function digestWalkDetailed(root: string, files: readonly { path: string }[]) {
   const hash = createHash("sha256");
+  const perFile: string[] = [];
   for (const file of files) {
     hash.update(file.path, "utf8");
     hash.update("\0");
-    hash.update(await readFile(join(root, file.path)));
+    const fileHash = createHash("sha256");
+    for await (const chunk of createReadStream(join(root, file.path))) {
+      hash.update(chunk as Buffer);
+      fileHash.update(chunk as Buffer);
+    }
     hash.update("\0");
+    perFile.push(fileHash.digest("hex"));
   }
-  return `sha256:${hash.digest("hex")}` as const;
+  return { digest: `sha256:${hash.digest("hex")}` as const, files: perFile as readonly string[] };
 }
 
 /* digest 缺席时，「变没变」由文件数 + 总字节 + 根 mtime 承担。它比内容哈希弱，

@@ -14,7 +14,7 @@ import {
   SettingsAlert,
   SettingsButton,
 } from "@/components/settings/settings-layout";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import {
   Dialog,

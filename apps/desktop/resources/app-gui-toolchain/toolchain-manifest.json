@@ -27,9 +27,9 @@
     "tailwind-merge": "3.6.0",
     "tailwindcss": "4.3.2",
     "typescript": "5.9.3",
-    "zod": "4.4.3"
+    "zod": "4.6.4"
   },
-  "lockfileDigest": "sha256:f94d14fa9b5cb686ed8f4da3abaff23dc140672f3f6b16045fe62b0d24e13317",
+  "lockfileDigest": "sha256:185ee3493b253f202cf9e264e4143582da97fc33c64f9c51fb6a4f95d3f5078e",
   "formalReleaseTrust": {
     "schema": "bottega.formal-release-trust/v1",
     "status": "unprovisioned",
@@ -66,15 +66,15 @@
     "gate-3"
   ],
   "sliceDigests": {
-    "gate-1": "sha256:fe273ccef76c782fff2e9775d8a1cdab04e565ca245958210d997cf19c26b9d9",
-    "gate-2": "sha256:3de936bd4bd5641c60afad89d4b68753f8b6406a5cb3833bb51c6fffa2b349ae",
-    "gate-3": "sha256:d5023eda0dc1afa88deee4bc7df677190d8a41c555d4fa9687b29426b37ef0bf"
+    "gate-1": "sha256:9173969fd37d24d1d27b1f91009ae3f901074385369ff1b6a9399a3908dcf99a",
+    "gate-2": "sha256:0ce4f84eeeddf47e4561e83d4c90c1bb70c809785ab72842d894baefcc3b970d",
+    "gate-3": "sha256:89ce37acf8b3511600733296cf8a11c615bb9da6b3173cab6910e7e2b61540c6"
   },
-  "authoringCatalogDigest": "sha256:b16d45733d06dbf6bdbebb2d45b5798b8947a437af53afdc72c499843d000f62",
+  "authoringCatalogDigest": "sha256:993663131780f3569a48a58f80bbcdfd39591b07721e4f669872c77a5d40a599",
   "compatibilitySupportDigest": "sha256:5a876d99d1fef6e30040d49ea6283feabaecd97a871ee4955b98610a9cbbdba7",
   "performanceBaselineDigest": "sha256:73285c2d1c9ae2efd75ec1e2cfff400348361a2e6499a5db54479450e8818460",
-  "runtimeSbomDigest": "sha256:f45aefd26f46f93d6b31b8dcabce9f1e4efa3228e09c3adbdb9535f243e0adc2",
-  "noticesDigest": "sha256:c3ae6d4ea814e71fc29b7e69f93435d1d90fac52875b4835c8fa4d65843acab8",
+  "runtimeSbomDigest": "sha256:d6b67f75db654b2e85646504034db77df0eb30b6f6917935021cf36c54553dc4",
+  "noticesDigest": "sha256:6df76f9d823ebe833f5a30bf73a99b41d6dd18815983e3b892796dfbc2b55923",
   "artifactPaths": {
     "slices": "slices/",
     "authoringCatalog": "authoring-catalog.json",

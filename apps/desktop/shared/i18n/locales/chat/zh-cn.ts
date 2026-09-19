@@ -1,0 +1,122 @@
+/**
+ * [INPUT]: Depends on the chatEn structural type
+ * [OUTPUT]: Provides chatZhCN, the Simplified Chinese Chat catalog
+ * [POS]: Simplified Chinese leaf of shared/i18n/locales/chat; loaded on demand by the matching top-level locale
+ */
+
+import type { chatEn } from "./en";
+
+export const chatZhCN: typeof chatEn = {
+  provider: {
+    listFailed: "聊天列表加载失败：{{message}}",
+    renameFailed: "聊天重命名失败：{{message}}",
+    sortFailed: "聊天移动失败：{{message}}",
+    archiveFailed: "聊天归档失败：{{message}}",
+    deleteFailed: "聊天删除失败：{{message}}",
+  },
+  sidebar: {
+    priority: "优先",
+    nothingNeedsAttention: "暂无需要处理的事项",
+    waiting: "等待你的回复",
+    running: "正在生成",
+    done: "已完成，有新回复",
+    failed: "运行未成功",
+    archiveChat: "归档聊天",
+    moreActions: "更多操作",
+    archive: "归档",
+    reorder: {
+      pickedUp: "已拿起 {{title}}",
+      moved: "已将 {{title}} 移到第 {{position}} 位（共 {{count}} 项）",
+      unchanged: "{{title}} 位置未变",
+      cancelled: "已取消排序",
+    },
+  },
+  workspaceFiles: {
+    bridgeUnavailable: "当前环境无法使用 Workspace 文件桥。",
+    searchFailed: "Workspace 文件搜索失败。",
+  },
+  interrupted: "回复已中断，已保留部分结果。",
+  noText: "本轮没有返回文本。",
+  relayStopConfirm: "这会停止当前请求并断开整条 Section 接力链，继续吗？",
+  workspaceImage: {
+    unsupported: "所选路径不是受支持的图片。",
+    admissionFailed: "图片附件准入失败。",
+    readFailed: "无法读取 Workspace 图片。",
+  },
+  queue: {
+    limit: "最多只能排队 {{count}} 条消息。",
+    chatBudget: "当前 Chat 的排队附件超过 256 MiB。",
+    enqueueFailed: "无法将消息加入队列。",
+    globalBudget: "所有 Chat 的排队附件超过 1 GiB。",
+    frozenBudget: "冻结后的消息附件超过队列内存预算。",
+    workspaceChanged: "Workspace 已变化；已移除 {{removed}} 条本地排队消息，另有 {{retained}} 条已提交或对账中的消息保留待核对，不能在新 Workspace 重发。",
+  },
+  userInput: {
+    expired: "这个问题已失效，请等待 Agent 继续。",
+    answerRequired: "请先填写答案。",
+  },
+  browser: {
+    invalidAddress: "请输入 http(s) 地址或域名。",
+    desktopOnly: "Browser 仅在桌面应用中可用。",
+    back: "后退",
+    forward: "前进",
+    reload: "刷新",
+    addressLabel: "浏览器地址",
+    addressPlaceholder: "输入网址",
+    opening: "正在打开网页…",
+    agentControlling: "Agent 正在控制浏览器",
+    stopAgentAction: "停止 Agent 浏览器动作",
+    stop: "停止",
+    operationFailed: "浏览器操作失败。",
+  },
+  dock: {
+    latestTurn: "最新一轮",
+    collapseLatest: "收起最新一轮",
+    expandLatest: "展开最新一轮",
+    newReply: "有新回复",
+  },
+  subagent: {
+    detailUnavailable: "实时详情不可用。",
+    starting: "正在启动…",
+    noTranscript: "未记录转录内容。",
+    active: "进行中",
+    done: "已完成",
+    empty: "当前对话还没有 Subagent。",
+    back: "返回 Subagent 列表",
+    detailLimit: "实时详情已达上限；该 Subagent 仍保留名称与状态。",
+    avatarLabel: "{{agent}} Subagent",
+  },
+  skillControl: {
+    capabilityChecking: "正在检查 Plan 能力，请稍候重试。",
+    workspaceChanged: "Workspace 已切换，请重试。",
+    planUnavailable: "当前 Agent 不支持 Plan 模式。",
+    invalidated: "这个 Skill 已变更或被移除，请删除标签后重新选择。",
+  },
+  skillFailure: {
+    "ref-invalid": "这个 Skill 已失效，请移除标签后重新选择。",
+    "requirement-blocked": "当前 Agent 或 Plan 模式不能使用这个 Skill。",
+    "file-too-large": "这个 Skill 体积过大，无法安全加载。",
+    "changed-during-read": "Skill 在加载时发生变化，请重试。",
+    "plan-unsupported": "当前 Agent 不支持 Plan 模式。",
+    "invalid-request": "Skill 请求无效。",
+    "staging-rejected": "无法安全暂存这个 Skill。",
+    "package-invalid": "Skill 包无效。",
+    unavailable: "Skills 暂时不可用。",
+    conflict: "Skills 状态已变化，请刷新后重试。",
+    "read-only": "Skills 管理当前为只读。",
+    failed: "Skill 操作失败，请重试。",
+  },
+  suggestions: {
+    chats: "聊天",
+    files: "文件",
+    skills: "Skills",
+    loadingChats: "正在加载聊天…",
+    loadingSkills: "正在加载 Skills…",
+    noChats: "没有可用聊天",
+    noSkills: "没有可用 Skill",
+    sectionDescription: "由 {{agent}} 处理",
+    historyDescription: "{{agent}} 导入会话",
+    hiddenSkills: "另有 {{count}} 个匹配 Skill 未显示，请缩小搜索范围。",
+    filesTruncated: "部分仓库文件未进入索引，请输入更精确的关键词。",
+  },
+};

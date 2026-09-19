@@ -27,8 +27,11 @@ export class PresenceService {
     login: LoginItemPort; tray: SurfacePort; panel: SurfacePort;
     restoreMain(): void; quitting?(): boolean;
   }) {
-    let capability = JSON.stringify(ports.screens.capability());
-    this.stopWatching = [ports.settings.onChanged(() => this.publish()), ports.screens.onChanged(() => {
+    let capability = JSON.stringify(ports.screens.capability()), background = ports.settings.get().keepRunningInBackground;
+    this.stopWatching = [ports.settings.onChanged(() => {
+      const next = ports.settings.get().keepRunningInBackground;
+      this.publish(); if (next !== background) { background = next; void this.refresh(); }
+    }), ports.screens.onChanged(() => {
       const next = JSON.stringify(ports.screens.capability());
       if (next === capability) return;
       capability = next;

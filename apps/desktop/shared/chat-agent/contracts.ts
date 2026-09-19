@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent options and Chat notice types
- * [OUTPUT]: Provides explicit Agent CAS, switch receipts, history fences, and eligibility reasons
+ * [OUTPUT]: Provides explicit Agent CAS, switch receipts, history fences, and eligibility reasons without treating imported provenance as a session lock
  * [POS]: Shared switch protocol for canonical storage, admission, and the composer
  */
 
@@ -27,7 +27,9 @@ export type HistoryViewFence = Readonly<{
   activeGenerationId: string | null;
 }>;
 export type HandoffCoverage = Readonly<{
-  mode: "excerpts" | "none";
+  mode: "full" | "excerpts" | "none";
+  includedMessages?: number;
+  totalMessages?: number;
   historyIncluded: boolean;
   notInjected: boolean;
   storageTrimmed: boolean;
@@ -69,11 +71,3 @@ export type AgentSwitchEligibility = Readonly<{
   agentRevision: number;
   chatRecordRevision: number;
 }>;
-
-export function isOriginalAdoptedBinding(chat: {
-  importOrigin?: unknown;
-  agentRevision: number;
-  session: unknown;
-}) {
-  return Boolean(chat.importOrigin && chat.session && chat.agentRevision === 0);
-}

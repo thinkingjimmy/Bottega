@@ -1,0 +1,84 @@
+/**
+ * [INPUT]: Depends on shared theme variables, semantic remote composer/selector/receipt markup and the host-chosen data-layout mode.
+ * [OUTPUT]: Provides the desktop editor geometry with the InputGroup focus frame, glyph chips with dim/working/attention tones and the anchored outcome callout, glyph + name menu rows, the byte budget, the read-only card, tile upload overlays, touch-sized targets, the two-group toolbar and the viewport-filling transcript/composer layout.
+ * [POS]: Shared desktop mirror and browser remote UI; native composer keeps its host layout.
+ */
+.chat-remote { min-width: 0; }
+/* The desktop editor's geometry; the InputGroup frame stays the single focus frame around the contenteditable too. */
+.chat-remote-editor { min-width: 0; }
+.chat-remote-text { border-radius: 16px 16px 0 0; }
+.chat-remote-form [data-slot=input-group]:has([role="textbox"]:focus-visible) { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in oklab, var(--ring) 30%, transparent); }
+.chat-remote-selector { position: relative; min-width: 0; }
+/* Glyph-only chips: the name lives in the tooltip; tone changes the glyph, never the size. */
+.chat-remote-chip { color: var(--muted-foreground); }
+.chat-remote-selector[data-tone="dim"] .chat-remote-chip > svg:first-child, .chat-remote-selector[data-tone="dim"] .chat-remote-working { opacity: .45; }
+.chat-remote-selector[data-tone="attention"] .chat-remote-chip { color: var(--foreground); }
+.chat-remote-working { position: relative; display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; }
+.chat-remote-working::after { content: ""; position: absolute; inset: 0; border-radius: 9999px; border: 1.5px solid var(--border); border-top-color: var(--muted-foreground); animation: chat-remote-spin 1s linear infinite; }
+@keyframes chat-remote-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .chat-remote-working::after { animation: none; } }
+.chat-remote-agent-empty { display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 1.5px dashed var(--muted-foreground); opacity: .6; }
+/* One computer outcome, anchored above the chip it belongs to. */
+.chat-remote-callout { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; display: flex; align-items: center; gap: 10px; width: max-content; max-width: min(360px, calc(100vw - 32px)); padding: 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 4px 6px -1px rgb(0 0 0 / .1), 0 2px 4px -2px rgb(0 0 0 / .1); font-size: 13px; line-height: 1.5; }
+.chat-remote-callout p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.chat-remote-budget { display: inline-flex; align-items: center; height: 32px; padding: 0 6px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--destructive); white-space: nowrap; }
+/* The read-only card where the composer would be when this chat cannot send at all: icon · title · reason and step · outcome · up to two actions (the desktop's Agent-unavailable card). */
+.chat-remote-unavailable { display: flex; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: color-mix(in oklab, var(--muted) 40%, transparent); }
+.chat-remote-unavailable-body { min-width: 0; flex: 1 1 auto; }
+.chat-remote-unavailable-title { margin: 0; font-size: 14px; font-weight: 500; line-height: 1.5; }
+.chat-remote-unavailable-description { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.chat-remote-unavailable-error { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--destructive); overflow-wrap: anywhere; }
+.chat-remote-unavailable-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chat-remote-tile-progress { position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; color: var(--foreground); pointer-events: none; }
+.chat-remote-tile-bar { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 3px; border-radius: 2px; background: color-mix(in oklab, var(--background) 70%, transparent); overflow: hidden; }
+.chat-remote-tile-bar i { display: block; height: 100%; background: var(--primary); }
+.chat-remote-menu { width: min(304px, calc(100vw - 32px)); max-height: min(420px, var(--radix-dropdown-menu-content-available-height, 65dvh)); overflow-y: auto; }
+.chat-remote-option { min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; white-space: normal; overflow-wrap: anywhere; }
+.chat-remote-option-glyph { width: 16px; height: 16px; flex: none; color: var(--muted-foreground); }
+.chat-remote-option-body { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; flex: 1 1 auto; }
+.chat-remote-option small { color: var(--muted-foreground); font-size: 12px; }
+.chat-remote-hint { color: var(--muted-foreground); font-size: 13px; overflow-wrap: anywhere; margin-block: 8px; }
+/* InputGroup owns the complete editor's focus frame, including its toolbar. */
+.chat-remote :is(button, textarea, input, select):not([data-slot="input-group-control"]):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.chat-remote :is(button, input, textarea):disabled { opacity: .55; cursor: not-allowed; }
+.chat-remote-receipts { display: grid; gap: 8px; list-style: none; padding: 0; }
+.chat-remote-receipt, .chat-remote-interaction { border: 1px solid var(--border); border-radius: 14px; padding: 12px; overflow-wrap: anywhere; }
+.chat-remote-receipt p, .chat-remote-interaction p { margin-block: 6px; }
+.chat-remote-receipt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-remote-interaction { margin-block: 12px; }
+.chat-remote-interaction pre { overflow: auto; max-height: 200px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.chat-remote-interaction fieldset { display: grid; gap: 8px; padding-block: 12px; }
+/* Only choice rows sit inline with their control; the free-text answer keeps the stacked label grid. */
+.chat-remote-interaction fieldset label:has(input[type="radio"], input[type="checkbox"]) { display: flex; min-height: 44px; flex-direction: row; align-items: center; gap: 10px; }
+.chat-remote-interaction legend { font-weight: 500; }
+.chat-remote-optimistic { border-style: dashed; }
+/* Fill mode: the host gives the conversation a fixed height; the transcript is the only scroller and the composer stays visible. */
+.chat-remote-conversation[data-layout="fill"] { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.chat-remote-conversation[data-layout="fill"] > .cloud-transcript { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; padding-block: 0; }
+.chat-remote-conversation[data-layout="fill"] > .cloud-transcript .chat-transcript-scroll { flex: 1 1 auto; height: auto; min-height: 0; overscroll-behavior: contain; }
+.chat-remote-conversation[data-layout="fill"] > .chat-remote { flex: 0 0 auto; max-height: 55dvh; overflow-y: auto; overscroll-behavior: contain; padding-top: 8px; }
+@media (pointer: coarse), (max-width: 767px) {
+  .chat-remote-text { font-size: 16px; }
+  /* Attachment actions keep the desktop's 24px body; their 44px hit area is the ::after ring. */
+  .chat-remote [data-slot=button]:not([data-slot=attachment-action]), .chat-remote button:not([data-slot=attachment-action]) { min-width: 44px; min-height: 44px; }
+  .chat-remote-form button[data-permission-mode] { justify-content: center; flex-shrink: 0; }
+  .chat-remote-callout { right: auto; left: 0; }
+}
+
+.chat-remote-form [data-slot=input-group] { flex-direction: column; align-items: stretch; }
+.chat-remote-form [data-slot=input-group] > [data-slot=input-group-addon] { width: 100%; }
+/* Tools (Add, permission, Plan) on the left; computer, Agent and Send on the right — the desktop composer's two groups. */
+.chat-remote-form [data-slot=input-group-addon] > div:first-child { min-width: 0; flex: 0 1 auto; }
+.chat-remote-form [data-slot=permission-label] { max-width: 12rem; }
+.chat-remote-sketch-mark { position: absolute; width: 14px; height: 14px; right: 4px; bottom: 4px; padding: 2px; background: var(--background); color: var(--foreground); border-radius: 2px; }
+@container composer (max-width: 36rem) {
+  .chat-remote-form [data-slot=permission-label] { display: none; }
+  .chat-remote-form .chat-remote-selector { max-width: 10rem; }
+}
+@media (max-width: 520px) {
+  .chat-remote-form [data-slot=permission-label] { display: none; }
+  .chat-remote-form [data-model-selector] { max-width: 8rem; }
+  .chat-remote-form [data-model-selector] [data-effort-label] { display: none; }
+  /* The two groups stay intact; when both cannot share a row the actions drop to their own, still right-aligned. */
+  .chat-remote-form [data-slot=input-group-addon] { flex-wrap: wrap; }
+}

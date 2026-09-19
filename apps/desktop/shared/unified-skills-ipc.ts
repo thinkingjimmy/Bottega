@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Agent identities and the shared ProductResult envelope
- * [OUTPUT]: Provides the pathless Library-first Skills contract for sources, enablement, allowed actions, deletion consent, durable jobs, onboarding facts, and renderer IPC
+ * [OUTPUT]: Provides the pathless Library-first Skills contract for sources, enablement, allowed actions, content presence, cross-device conversion notices, deletion consent, durable jobs, onboarding facts, and renderer IPC
  * [POS]: Single Skills management wire truth; no native target, projection, filesystem path, or terminal-facing action can cross this boundary
  */
 
@@ -30,9 +30,6 @@ export type ManagedSkillReasonCode =
   | "missing"
   | "changed"
   | "timeout"
-  | "name-taken"
-  | "name-taken-same"
-  | "name-taken-differs"
   | "source-gone"
   | "postcondition-changed"
   | "acquisition-failed"
@@ -43,6 +40,16 @@ export type ManagedSkillReason = Readonly<{
   code: ManagedSkillReasonCode;
   detail?: string;
 }>;
+
+/* Whether this device actually holds the active generation's bytes. A head can
+   reach a device long before its content does, and an interrupted pass can
+   leave a known entry with nothing on disk. */
+export const MANAGED_SKILL_CONTENT_STATES = ["ready", "downloading", "missing"] as const;
+export type ManagedSkillContentState = (typeof MANAGED_SKILL_CONTENT_STATES)[number];
+
+/* Another device renamed this Skill into an identity that already owned the
+   slug, so the local entry was converted rather than duplicated. */
+export type ManagedSkillNotice = "slug-conflict";
 
 export type ManagedSkillLibraryItem = Readonly<{
   ref: string;
@@ -60,6 +67,8 @@ export type ManagedSkillLibraryItem = Readonly<{
     active: boolean;
   }>;
   enabled: boolean;
+  contentState: ManagedSkillContentState;
+  notice?: ManagedSkillNotice;
   allowedActions: readonly ManagedSkillAllowedAction[];
 }>;
 

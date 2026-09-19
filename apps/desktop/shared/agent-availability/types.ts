@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared backend and usage-limit identities.
- * [OUTPUT]: Provides availability facts, execution targets, scoped evidence and decisions.
+ * [OUTPUT]: Provides independent startup/authentication facts, check issues, asymmetric lifetimes and scoped execution decisions.
  * [POS]: Serializable availability contract shared by registry and renderer projections.
  */
 import type { AgentBackendId, HeadlessPurpose, UsageLimitInfo } from "../agent-ipc";
@@ -10,6 +10,12 @@ export const AUTH_TTL_MS = 5 * 60_000;
 export const TURN_EVIDENCE_TTL_MS = AUTH_TTL_MS;
 
 export type RuntimeIssue = "probe-failed" | "queue-timeout" | "identity-changed" | "cannot-start" | "unsupported";
+export type CheckIssue = "timeout" | "connection" | "busy" | "failed";
+export type StartupEvidence = {
+  status: "ready" | "cannot-start";
+  environmentGeneration: number;
+  checkedAt: number;
+};
 export type CheckProgress = {
   phase: "queued" | "discovery" | "authentication" | "complete" | "error" | "cancelled";
   startedAt: number;
@@ -59,6 +65,10 @@ export type AvailabilityFacts = {
   runtimeIssue?: RuntimeIssue;
   runtimeCheck?: CheckProgress;
   authCheck?: CheckProgress;
+  lastCheckedAt?: number;
+  checkIssue?: CheckIssue;
+  startup?: StartupEvidence;
+  authUnknownReason?: "provider-scoped" | "not-supported";
   lastConfirmedAuth?: ConfirmedAuth;
   purposeEligibility?: PurposeEligibility;
 };

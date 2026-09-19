@@ -16,7 +16,7 @@ import type { AgentWorkspaceScope } from "../../../../shared/agent-ipc";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import type { SkillInfo } from "../../../../shared/skills-ipc";
 import type { SkillsListResult } from "../../../../shared/skills-ipc";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { listSkills, loadSkillCapabilities } from "@/lib/skills-client";
 import { ProductFailureError } from "../../../../shared/product-failure";
 import { skillFailureText } from "@/lib/skill-failure-text";

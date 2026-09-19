@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Library-first Skills discovery/import, settingsStore, i18n, and Button
+ * [INPUT]: Depends on the cached Skills onboarding snapshot, Library-first import, settingsStore, i18n, and Button
  * [OUTPUT]: Provides the one-time main-ready Skills import notice with separate title, description, and wrapping actions
- * [POS]: Chat-shell onboarding affordance; it never reads Agent paths and retires itself durably as done or skipped
+ * [POS]: Chat-shell onboarding affordance; it never reads Agent paths, performs no IPC of its own on mount, and retires itself durably as done or skipped
  */
 
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -10,12 +10,8 @@ import { Button } from "@ai-chat/ui/components/ui/button";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { settingsStore } from "@/lib/settings-store";
-import {
-  importAllDiscoveredSkills,
-  listUnifiedSkillCandidates,
-  listUnifiedSkills,
-  onUnifiedSkillsChanged,
-} from "@/lib/unified-skills-client";
+import { skillsOnboardingStore } from "@/lib/skills-onboarding-store";
+import { importAllDiscoveredSkills } from "@/lib/unified-skills-client";
 
 export function SkillsOnboardingCard() {
   const { t } = useAppTranslation();
@@ -23,37 +19,26 @@ export function SkillsOnboardingCard() {
     settingsStore.subscribe,
     settingsStore.getSnapshot
   );
-  const [count, setCount] = useState(0);
-  const [personalLibraryEmpty, setPersonalLibraryEmpty] = useState(false);
-  const [busy, setBusy] = useState(true);
+  /* The answer belongs to the Skills domain and changes only when Skills do, so
+     it is read once and kept; this card remounts on every chat navigation and
+     used to pay two IPC round trips for the same unchanged answer each time. */
+  const discovery = useSyncExternalStore(
+    skillsOnboardingStore.subscribe,
+    skillsOnboardingStore.getSnapshot
+  );
+  const count = discovery.importableCount;
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     settingsStore.ensureLoaded();
-    let live = true;
-    void Promise.all([listUnifiedSkills(), listUnifiedSkillCandidates("all", false)])
-      .then(([snapshot, preview]) => {
-        if (!live) return;
-        setPersonalLibraryEmpty(snapshot.personalLibraryEmpty);
-        setCount(preview.candidates.filter(
-          (candidate) => candidate.importable && candidate.status !== "current"
-        ).length);
-      })
-      .catch((cause) => live && setError(cause instanceof Error ? cause.message : String(cause)))
-      .finally(() => live && setBusy(false));
-    const off = onUnifiedSkillsChanged((snapshot) => {
-      if (live) setPersonalLibraryEmpty(snapshot.personalLibraryEmpty);
-    });
-    return () => {
-      live = false;
-      off();
-    };
+    skillsOnboardingStore.ensureLoaded();
   }, []);
 
   if (
-    busy ||
+    !discovery.ready ||
     settings?.skillsOnboarding !== "pending" ||
-    !personalLibraryEmpty ||
+    !discovery.personalLibraryEmpty ||
     count === 0
   ) return null;
 

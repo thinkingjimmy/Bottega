@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the appsEn structural type
- * [OUTPUT]: Provides the Apps Simplified Chinese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level
+ * [OUTPUT]: Provides the Apps Simplified Chinese catalog with exact English preset/authorization/progress structure; native Reveal copy is shared at the top level; includes receipt-backed Save as App progress and reviewed conflict decisions
  * [POS]: Simplified Chinese copy for Apps discovery, authorization, and lifecycle surfaces, including non-cancellable deletion progress; assembled by the matching top-level locale
  */
 
@@ -295,7 +295,7 @@ export const appsZhCN: typeof appsEn = {
     settings: "Base App 设置",
     edit: "编辑 App",
     more: "更多操作",
-    skillFailed: "App skill 生成失败，使用 chat 暂无稳定录入协议。",
+    skillFailed: "App 对话准备失败",
     retrySkill: "重试生成",
     workbench: "App 工作台",
     workbenchDescription: "无需 App 自建开发服务器，即可复现环境、故障、预算与无障碍条件。",
@@ -369,6 +369,21 @@ export const appsZhCN: typeof appsEn = {
     start: "开始修复",
   },
   saveAs: {
+    cloud: {
+      "pending": "正在等待确认。原 Chat 与 Base 已受保护。",
+      "confirmed": "已确认，正在完成本机转换。",
+      "conflict": "转换确认前，Chat 或 Base 已发生变化。请先保留原数据，核对后再尝试。",
+      "previous": "确认时的 Chat",
+      "current": "云端当前 Chat",
+      "proposed": "申请转换为",
+      "ordinary": "普通 Chat",
+      "appEdit": "App 编辑会话",
+      "appUse": "App 使用会话",
+      "unavailable": "暂不可用",
+      "keepOriginal": "保留原 Chat 与 Base",
+      "reviewFailed": "暂时无法核对转换状态，请重试。",
+      "retry": "核对转换状态"
+    },
     generatedDescription: "{{name}} 的共享 Base App",
     uncertain: "上次提交结果未知，只能用原参数重试确认。",
     enterName: "请输入 App 名称",

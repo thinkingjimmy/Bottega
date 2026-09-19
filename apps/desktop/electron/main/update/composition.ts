@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on Electron app packaging facts, build-time formal release trust, the adapter selection matrix, a durable App compatibility preflight, a safe-quit port and the E2E receipt environment
+ * [INPUT]: Depends on Electron app packaging facts, build-time cloud update isolation, formal release trust, the adapter selection matrix, a durable App compatibility preflight, a safe-quit port and the E2E receipt environment
  * [OUTPUT]: Provides createDesktopUpdateService: the one UpdateService this product ships, gating candidate compatibility on provisioned trust and owning platform install policy
  * [POS]: main/update assembly; the composition root owns lifecycle order while this file owns what "the updater for this app" means
  */
@@ -17,6 +17,8 @@ import {
   createGitHubCompatibilityLoader,
   readFormalReleaseTrust,
 } from "./compatibility";
+
+declare const __BOTTEGA_CLOUD_UPDATES_ENABLED__: boolean;
 
 const E2E_FALLBACK_VERSION = "0.1.1";
 
@@ -45,13 +47,13 @@ export function createDesktopUpdateService(
   return new UpdateService({
     adapter:
       options.adapter ??
-      createSelectedUpdateAdapter({
+      (typeof __BOTTEGA_CLOUD_UPDATES_ENABLED__ !== "undefined" && !__BOTTEGA_CLOUD_UPDATES_ENABLED__ ? null : createSelectedUpdateAdapter({
         isPackaged: app.isPackaged,
         /* 打包产物永远走真 updater：注入开关只在未打包时被看一眼。 */
         e2eEnabled: !app.isPackaged && env.BOTTEGA_UPDATE_E2E === "1",
         fakeVersion: env.BOTTEGA_UPDATE_E2E_VERSION,
         onFakeInstall: (version) => publishE2eInstallReceipt(env, version),
-      }),
+      })),
     currentVersion: app.getVersion(),
     resolveAppRequirement: options.resolveAppRequirement,
     electronVersion: process.versions.electron,

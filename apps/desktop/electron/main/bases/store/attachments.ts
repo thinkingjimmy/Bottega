@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto/fs/path, the commit-kernel durable write and errno guard, shared attachment budgets, and the Gallery image header parser; receives the owner file stem + lifecycle id and final bytes
- * [OUTPUT]: Content-addressed owner-specific attachment bytes and logical sidecars, integrity checks, budget reservations, copy identity and reference-driven collection.
+ * [OUTPUT]: Provides verified owner-local attachment custody, source-only oversized originals, budgets and collection; missing local-only images never invoke a cloud reader.
  * [POS]: The source of the truth of the blob of bases/store; Final bytes hashed by magic/header after a second test, the directory physical name with owner lifecycle
  */
 
@@ -11,7 +11,6 @@ import {
   cp,
   readFile,
   readdir,
-  rename,
   rm,
   stat,
 } from "node:fs/promises";
@@ -31,19 +30,42 @@ type Reservation = {
   bytes: number;
   committed: boolean;
 };
+export type MissingBaseAttachment = { ownerStem: string; ownerInstanceId: string; value: BaseAttachmentValue };
 
 export class AttachmentBudgetError extends Error {
   readonly status = 413;
   readonly code = "BUDGET_EXCEEDED";
 }
 
+/** The caller must have verified the complete stream before describing it. */
+export function describeVerifiedImage(input: { filename: string; sourceRevision: string; header: Buffer; byteLength: number; sha256: string;
+  localAvailability?: BaseAttachmentValue["localAvailability"] }): BaseAttachmentValue {
+  if (!Number.isSafeInteger(input.byteLength) || input.byteLength < 1 || input.byteLength > BASE_ATTACHMENT_BYTE_LIMIT && !input.localAvailability) {
+    throw new AttachmentBudgetError("Attachments must be between 1 byte and 50 MB");
+  }
+  if (!/^[a-f0-9]{64}$/.test(input.sha256)) throw new Error("Invalid image digest");
+  const header = parseAttachmentImageHeader(input.header.subarray(0, 512 * 1024));
+  return baseAttachmentValueSchema.parse({ kind: "attachment", attachmentId: `attachment_${input.sha256.slice(0, 24)}`,
+    blobId: `att_${input.sha256}.${header.extension}`, filename: input.filename, mediaType: mediaTypeFor(header.extension),
+    byteLength: input.byteLength, width: header.width, height: header.height, revision: input.sourceRevision,
+    ...(input.localAvailability ? { localAvailability: input.localAvailability } : {}) });
+}
+
 export class BaseAttachmentStore {
+  private missingReader: ((input: MissingBaseAttachment) => Promise<void>) | null = null;
   private committedGlobal = 0;
   private reservedGlobal = 0;
   private readonly committedChats = new Map<string, number>();
   private readonly reservedChats = new Map<string, number>();
 
-  constructor(readonly root: string) {}
+  constructor(private readonly location: string | (() => string)) {}
+  get root() { return typeof this.location === "string" ? this.location : this.location(); }
+
+  setMissingReader(reader: (input: MissingBaseAttachment) => Promise<void>) {
+    if (this.missingReader) throw new Error("BASE_ATTACHMENT_READER_ALREADY_ATTACHED");
+    this.missingReader = reader;
+    return () => { if (this.missingReader === reader) this.missingReader = null; };
+  }
 
   /**
    * 全量重扫只属于启动：它 stat 每个家族的每个 blob，代价与磁盘上的
@@ -71,6 +93,7 @@ export class BaseAttachmentStore {
     filename: string;
     bytes: Buffer;
     sourceRevision: string;
+    localAvailability?: BaseAttachmentValue["localAvailability"];
   }): Promise<{ value: BaseAttachmentValue; created: boolean }> {
     const value = this.describe(input);
     const blobId = value.blobId;
@@ -105,31 +128,11 @@ export class BaseAttachmentStore {
     filename: string;
     bytes: Buffer;
     sourceRevision: string;
+    localAvailability?: BaseAttachmentValue["localAvailability"];
   }): BaseAttachmentValue {
-    if (
-      input.bytes.length === 0 ||
-      input.bytes.length > BASE_ATTACHMENT_BYTE_LIMIT
-    ) {
-      throw new AttachmentBudgetError("单附件不能超过 8 MiB");
-    }
-    const header = parseAttachmentImageHeader(
-      input.bytes.subarray(0, 512 * 1024)
-    );
-    const mediaType = mediaTypeFor(header.extension);
-    const hash = createHash("sha256").update(input.bytes).digest("hex");
-    const blobId = `att_${hash}.${header.extension}`;
-    const attachmentId = `attachment_${hash.slice(0, 24)}`;
-    return baseAttachmentValueSchema.parse({
-      kind: "attachment",
-      attachmentId,
-      blobId,
-      filename: input.filename,
-      mediaType,
-      byteLength: input.bytes.length,
-      width: header.width,
-      height: header.height,
-      revision: input.sourceRevision,
-    });
+    return describeVerifiedImage({ filename: input.filename, sourceRevision: input.sourceRevision,
+      header: input.bytes.subarray(0, 512 * 1024), byteLength: input.bytes.length,
+      sha256: createHash("sha256").update(input.bytes).digest("hex"), localAvailability: input.localAvailability });
   }
 
   async read(
@@ -138,9 +141,13 @@ export class BaseAttachmentStore {
     value: BaseAttachmentValue
   ) {
     baseAttachmentValueSchema.parse(value);
-    const bytes = await readFile(
-      join(this.familyPath(chatId, incarnationId), value.blobId)
-    );
+    const path = join(this.familyPath(chatId, incarnationId), value.blobId);
+    const bytes = await readFile(path).catch(async error => {
+      if (isErrnoCode(error, "ENOENT") && value.localAvailability) throw Object.assign(new Error("Image is only available on its source computer"), { code: "SOURCE_LOCAL_ONLY" });
+      if (!isErrnoCode(error, "ENOENT") || !this.missingReader) throw error;
+      await this.missingReader({ ownerStem: chatId, ownerInstanceId: incarnationId, value });
+      return readFile(path);
+    });
     const hash = createHash("sha256").update(bytes).digest("hex");
     if (!value.blobId.startsWith(`att_${hash}.`)) {
       throw new Error("Attachment blob 内容哈希不匹配");
@@ -240,21 +247,6 @@ export class BaseAttachmentStore {
     const key = this.familyKey(toStem, toInstanceId);
     this.forget(key);
     this.account(key, await this.measureFamily(destination, false));
-  }
-
-  async isolateFamily(
-    ownerStem: string,
-    ownerInstanceId: string,
-    timestamp: number
-  ) {
-    const source = this.familyPath(ownerStem, ownerInstanceId);
-    try {
-      await rename(source, `${source}.orphan-${timestamp}`);
-    } catch (cause) {
-      if (!isErrnoCode(cause, "ENOENT")) throw cause;
-    }
-    // `.orphan-<ts>` 已不叫 `.attachments`：initialize 不再认它，账目也该忘记它。
-    this.forget(this.familyKey(ownerStem, ownerInstanceId));
   }
 
   private familyKey(ownerStem: string, ownerInstanceId: string) {
@@ -358,7 +350,7 @@ export function parseAttachmentDataUrl(value: string) {
   if (!match) throw new Error("附件 dataURL 格式无效");
   const bytes = Buffer.from(match[2]!, "base64");
   if (bytes.length === 0 || bytes.length > BASE_ATTACHMENT_BYTE_LIMIT) {
-    throw new AttachmentBudgetError("单附件不能超过 8 MiB");
+    throw new AttachmentBudgetError("Attachments must be between 1 byte and 50 MB");
   }
   return { mediaType: match[1]!, bytes };
 }

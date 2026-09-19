@@ -1,43 +1,27 @@
 /**
  * [INPUT]: Depends on relay/state ledgers, Chat and Settings services, exact-submission recovery, SQLite unknown-outcome classification, Agent main bridge, memory/bootstrap ports, manual-turn helpers, and the canonical residence index
- * [OUTPUT]: Provides durable FIFO with availability/start deferrals, per-conversation scheduling, live outcome recovery, transition probes, and quiescent shutdown draining dispatch and raw preparation
+ * [OUTPUT]: Provides sole FIFO admission, trusted remote entry, terminal Home capture, exact recovery and quiescent shutdown.
  * [POS]: Sections coordinator arbiter; renderer and MCP callers submit intents while this module alone advances Chat commits and Agent claims
  */
 
 import { dispatchManual } from "./scheduler/manual-dispatch";
-import type {
-  SteerAdmission,
-  SteerDecision,
-  SteerIpcReceipt,
-  SteerOutboxProjection,
-  TurnPersistOutcome,
-} from "../../../../shared/agent-ipc";
+import type { SteerAdmission, SteerDecision, SteerIpcReceipt, SteerOutboxProjection, TurnPersistOutcome } from "../../../../shared/agent-ipc";
 import type { ChatMessage } from "../../../../shared/chats-ipc";
 import type { ManualTurnReceipt, TrustedManualTurnSubmission as ManualTurnSubmission, RelayActionsSnapshot } from "../../../../shared/sections-ipc";
 import { ConversationQueue } from "./scheduler/conversation-queue";
 import { taskStartFence, StartDeferredError, requestOperation, type StopOperation } from "../../presence/lifecycle/start-fence";
 import { DispatchTracker } from "./scheduler/dispatch-tracker";
-import {
-  blockedReceiptFor,
-  isRunnableDeliverable,
-  nextDeliverable,
-} from "./scheduler/deliverable";
+import { blockedReceiptFor, isRunnableDeliverable, nextDeliverable } from "./scheduler/deliverable";
 import type { BuiltinToolContext } from "../../tools/registry";
 import { coordinatorResidenceIndex, relayExpectation } from "./coordinator-values";
-import {
-  preparedSkillSelections,
-  runManualTurn,
-} from "./manual-turns";
+import { preparedSkillSelections, runManualTurn } from "./manual-turns";
 import { submitManualAdmission } from "./manual-admission";
 import { reconcileCoordinator } from "./coordinator-reconcile";
 import { SectionNoticeOutbox } from "./notice-outbox";
 import { type RelayRecord } from "./relay-ledger";
 import { deliverRelaySaga } from "./sagas/relay-delivery";
 import { SteerOutbox } from "./admission/steer-outbox";
-import {
-  SectionToolAdmission,
-  type RelayToolStatus,
-} from "./admission/section-tool-admission";
+import { SectionToolAdmission, type RelayToolStatus } from "./admission/section-tool-admission";
 import {
   cleanupManualCreation,
   conversationAvailability,
@@ -55,9 +39,13 @@ import {
 } from "./turn-preparation";
 import { switchEligibility } from "./agent-switch/eligibility";
 import { SubmissionRecovery } from "./submission/recovery";
+import { RemoteAdmission } from "./remote/submission";
 export type { RelayToolStatus } from "./admission/section-tool-admission";
 
 export class ConversationCoordinator {
+  readonly remote = new RemoteAdmission({ dependencies: () => this.dependencies,
+    runConversation: (id, task) => this.conversations.run(id, task),
+    admit: (submission, context, current) => this.admitManual(submission, () => this.accepting, false, false, true, true, context, current) });
   private readonly running = new Set<string>();
   /* kick 投递即忘，而派发在 startTurn 返回之后还要继续写 ledger。 */
   private readonly dispatches = new DispatchTracker();
@@ -81,6 +69,20 @@ export class ConversationCoordinator {
 
   drainDispatches() { return this.dispatches.drain(); }
   onPendingChanged(listener: () => void) { return this.dispatches.onChanged(listener); }
+  async editRemoteQueue(command: import("@ai-chat/cloud-protocol/remote/model").RemoteCommand,
+    context: import("./remote/model").RemoteContext, current: () => void) {
+    const result = await this.dependencies.withWorkspaceLifecycle(() => this.conversations.run(context.chatId, async () => {
+      current(); const authority = this.dependencies.ledger.remote.authority(context);
+      await authority.validate(); current();
+      return this.dependencies.ledger.remote.editQueue(command, context, authority.current);
+    }));
+    this.kick(context.chatId); return result;
+  }
+
+  withdrawUnpersistedRemote(context: import("./remote/model").RemoteContext, current: () => void) {
+    return this.dependencies.withWorkspaceLifecycle(() => this.conversations.run(context.chatId,
+      () => this.dependencies.ledger.remote.withdrawUnpersisted(context, current)));
+  }
 
   constructor(private readonly dependencies: CoordinatorDependencies) {
     this.submissionRecovery = new SubmissionRecovery({
@@ -155,6 +157,7 @@ export class ConversationCoordinator {
 
   submitManualTurn(submission: ManualTurnSubmission): Promise<ManualTurnReceipt> {
     return this.dispatches.track(async () => {
+    if (this.dependencies.ledger.read(state => state.manualIntents[submission.intentId]?.origin.kind === "remote" || state.submissionReservations[submission.intentId]?.remoteSubmission || state.intentTombstones[submission.intentId]?.remoteSubmission)) throw new Error("REMOTE_SUBMISSION_REQUIRES_TRUSTED_REPLAY");
     /* Chat 生命周期守卫由 ChatsService 单点判定。 */
     this.dependencies.chats.assertOrdinaryTurnAllowed(
       submission.turn.scope.conversationId
@@ -231,7 +234,7 @@ export class ConversationCoordinator {
     recovering = false,
     deferKick = false,
     conversationHeld = false,
-    projectLifecycleHeld = false
+    projectLifecycleHeld = false, remote?: import("./remote/model").RemoteContext, remoteCurrent?: () => void
   ): Promise<ManualTurnReceipt> {
     return this.dispatches.track(() => submitManualAdmission(submission, {
       dependencies: this.dependencies,
@@ -254,6 +257,7 @@ export class ConversationCoordinator {
       recovering,
       deferKick,
       projectLifecycleHeld,
+      remote, remoteCurrent,
     }), requestOperation(submission.turn.scope.conversationId, submission.turn.requestId,
       submission.precondition.kind === "existing" ? submission.precondition.incarnationId : submission.precondition.proposedIncarnationId));
   }
@@ -270,6 +274,7 @@ export class ConversationCoordinator {
         (state) => state.manualIntents[intent.id]
       );
       if (!current || ["settled", "failed"].includes(current.phase)) return;
+      if (current.phase === "queued" && current.preparing) throw new Error("already-dispatched");
       if (current.phase === "claimed") {
         if (this.running.has(current.conversationId)) {
           this.dependencies.cancelTurn(current.requestId);
@@ -429,6 +434,7 @@ export class ConversationCoordinator {
           const persisted = ["stored", "empty", "missing"].includes(
             event.outcome
           );
+          if (persisted) await this.dependencies.chats.store.sync.captureTurnHome(event.conversationId, manual);
           await this.dependencies.ledger.persistManualResult(
             manual.id,
             persisted
@@ -446,6 +452,7 @@ export class ConversationCoordinator {
             : undefined;
         });
         if (!relay) return false;
+        if (["stored", "empty", "missing"].includes(event.outcome)) await this.dependencies.chats.store.sync.captureTurnHome(event.conversationId, relay);
         if (
           event.terminal === "done" &&
           event.outcome === "stored" &&

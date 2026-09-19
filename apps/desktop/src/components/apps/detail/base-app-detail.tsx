@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on localized surface migration failure projection; Depends on Base App lifecycle/generation, the main-owned AppRecordProjection, declaresBaseGui, BaseWorkbench/AppGuiSurface, trusted file-export IPC, the shared useAppEditor command, use-chat, routing, and window surface capsule checkpoints
- * [OUTPUT]: Provides BaseAppDetail with a main-derived studioSurfaceReady gate that discloses every requested capability and offers allow/decline, a re-authorize exit from surface failures, uniformly styled tri-zone header actions, explicit App-window handoff, generation-bound native file export, Use panel/dock, Editor navigation, settings, and normal-close checkpoints
+ * [INPUT]: Depends on localized surface migration failure projection; Depends on Base App lifecycle/generation, the main-owned AppRecordProjection, declaresBaseGui, BaseWorkbench/AppGuiSurface, trusted file-export IPC, shared editor and skill-feedback hooks, use-chat, routing, and window surface capsule checkpoints
+ * [OUTPUT]: Provides BaseAppDetail with a main-derived studioSurfaceReady gate that discloses every requested capability and offers allow/decline, a re-authorize exit from surface failures, uniformly styled tri-zone header actions, shared skill-failure feedback with persistent menu recovery, explicit App-window handoff, generation-bound native file export, Use panel/dock, Editor navigation, settings, and normal-close checkpoints
  * [POS]: Resident Base App Studio; the App-window shell removes global chrome while this component keeps the same main and third-panel product structure
  */
 
@@ -15,6 +15,7 @@ import {
   MessageSquareIcon,
   PanelsTopLeftIcon,
   PencilLineIcon,
+  RefreshCwIcon,
   Settings2Icon,
   Share2Icon,
   TestTube2Icon,
@@ -29,7 +30,6 @@ import {
 } from "@ai-chat/ui/components/ui/dropdown-menu";
 import { BaseWorkbench } from "@/components/bases/base-workbench";
 import { PageShell, panelChromeClassName } from "@/components/page-shell";
-import { useApps } from "@/components/providers/apps-provider";
 import type {
   AppAttachmentSurface,
   AppRecordProjection,
@@ -77,11 +77,12 @@ import {
   DesignCanvasMenuItems,
   DesignHistoryDialog,
 } from "../design/design-history-dialog";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { surfaceErrorMessage } from "@/lib/chat-composer/errors";
 import { declaresBaseGui } from "../app-state";
 import { useAppEditor } from "../use-app-editor";
 import { AppWorkbench } from "./app-workbench";
+import { useAppSkillFeedback } from "./use-app-skill-feedback";
 
 const AppUseDock = lazy(() =>
   import("../use/app-use-dock").then((module) => ({ default: module.AppUseDock }))
@@ -172,7 +173,7 @@ function StudioAccessGate({ record }: { record: AppRecordProjection }) {
 
 function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
   const { t } = useAppTranslation();
-  const { retrySkill } = useApps();
+  const skillFeedback = useAppSkillFeedback(record);
   const { loading, ownerKey, error } = useAppBase(record);
   const navigate = useNavigate();
   const openEditor = useAppEditor(record.id);
@@ -548,6 +549,18 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-48">
+            {skillFeedback.failed && (
+              <>
+                <DropdownMenuItem
+                  disabled={skillFeedback.retrying}
+                  onSelect={() => void skillFeedback.retry()}
+                >
+                  <RefreshCwIcon />
+                  {t("apps.baseDetail.retrySkill")}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {record.editableSource === true && (
               <DropdownMenuItem onSelect={() => void openEditor()}>
                 <PencilLineIcon />
@@ -602,18 +615,6 @@ function AuthorizedBaseAppDetail({ record }: { record: AppRecordProjection }) {
                 variant="outline"
               >
                 {t("apps.designReopen")}
-              </Button>
-            </div>
-          )}
-          {record.skillStatus?.state === "failed" && (
-            <div className="absolute top-[calc(var(--page-shell-header-height)+1rem)] left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-amber-500/30 bg-background/95 px-4 py-2 text-sm shadow-lg">
-              <span>{t("apps.baseDetail.skillFailed")}</span>
-              <Button
-                onClick={() => void retrySkill(record.id)}
-                size="sm"
-                variant="outline"
-              >
-                {t("apps.baseDetail.retrySkill")}
               </Button>
             </div>
           )}

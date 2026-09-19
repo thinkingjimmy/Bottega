@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on zod, canonical Hash, shared Agent backend vocabulary, manual-only durable turn origin and PauseSaga action schema
- * [OUTPUT]: Strict ledger v7 records with contiguous two/three/four-slot sequences and frozen pending/confirmed cloud handoff proof.
+ * [INPUT]: Depends on zod, canonical hashes, bounded remote provenance/control receipts and original Agent/relay vocabulary.
+ * [OUTPUT]: Defines ledger v7 unsequenced manual/steer custody, legacy injected sequence recovery, preparation pins and frozen handoff proofs.
  * [POS]: Source of truth for the coordinator/state durable wire format; RelayLedger is responsible only for sequencing atomic mutations and file IO
  */
 
@@ -10,6 +10,7 @@ import { turnSequencesSchema } from "../../../../../shared/chat-agent/sequences"
 import { handoffSchema } from "../../../../../shared/chat-agent/history-schema";
 import { agentBackendIdSchema } from "../../../../../shared/agent-schema";
 import { canonicalHash } from "../coordinator-values";
+import { remoteOriginSchema, remoteSubmissionSchema, controlReceiptSchema, remoteCiphertextSchema } from "../remote/model";
 import { relayActionSchema } from "./pause-saga";
 import { submissionContentV1Schema } from "../../../../../shared/submission";
 
@@ -202,17 +203,16 @@ export const manualIntentSchema = z
   .object({
     id: z.string().min(1).max(128),
     conversationId: z.string().min(1).max(128),
-    /** Durable turn intents only allow manual origins; any other kind fails the ledger parse. */
-    origin: z
-      .object({ kind: z.literal("manual") })
-      .strict()
-      .default({ kind: "manual" }),
+    origin: z.union([z.object({ kind: z.literal("manual") }).strict(), remoteOriginSchema]).default({ kind: "manual" }),
+    remoteSubmission: remoteSubmissionSchema.optional(),
     payload: z.unknown().optional(),
     submissionHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     requestId: z.string().min(1).max(128).optional(),
     createdAt: z.number().int().nonnegative(),
     terminalAt: z.number().int().nonnegative().optional(),
     ackedAt: z.number().int().nonnegative().optional(),
+    cloudSyncRequired: z.literal(true).optional(),
+    preparing: z.literal(true).optional(),
     cloudHandoff: z.object({ command: cloudMutationSchema, state: z.enum(["pending", "confirmed"]),
       proof: z.object({ operationId: z.string().min(1), requestHash: z.string().regex(/^[a-f0-9]{64}$/), sourceId: z.string().min(1), digest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().nullable(),
     }).strict().refine(value => (value.state === "confirmed") === Boolean(value.proof)).optional(),
@@ -249,6 +249,9 @@ export const manualIntentSchema = z
   })
   .strict()
   .superRefine((intent, context) => {
+    if ((intent.origin.kind === "remote") !== Boolean(intent.remoteSubmission) || intent.remoteSubmission &&
+      (canonicalHash(intent.origin) !== canonicalHash(intent.remoteSubmission.context.origin) || intent.id !== intent.remoteSubmission.context.origin.commandId ||
+        intent.submissionHash !== intent.remoteSubmission.submissionHash)) context.addIssue({ code: "custom", message: "Invalid remote submission custody" });
     if (intent.userSeq !== undefined || intent.assistantSeq !== undefined || intent.noticeSeq !== undefined || intent.executorNoticeSeq !== undefined) {
       const parsed = turnSequencesSchema.safeParse({ executorNoticeSeq: intent.executorNoticeSeq, noticeSeq: intent.noticeSeq, userSeq: intent.userSeq, assistantSeq: intent.assistantSeq });
       if (!parsed.success) context.addIssue({ code: "custom", message: "Invalid frozen manual turn sequences" });
@@ -307,7 +310,7 @@ export const steerIntentSchema = z
     envelope: z.unknown(),
     stagedSnapshot: z.unknown(),
     envelopeHash: z.string().regex(/^[a-f0-9]{64}$/),
-    seq: z.number().int().positive(),
+    seq: z.number().int().positive().optional(),
     assistantSeq: z.number().int().positive().optional(),
     phase: z.enum([
       "journaled",
@@ -329,6 +332,7 @@ export const steerIntentSchema = z
 const intentTombstoneSchema = z
   .object({
     hash: z.string().regex(/^[a-f0-9]{64}$/),
+    remoteSubmission: remoteSubmissionSchema.optional(),
     outcome: z.string().min(1).max(64),
     custody: z.enum(["main-journal", "chat-persisted"]).optional(),
     deletedAt: z.number().int().nonnegative(),
@@ -340,6 +344,7 @@ const submissionReservationSchema = z
     intentId: z.string().min(1).max(128),
     conversationId: z.string().min(1).max(128),
     submissionHash: z.string().regex(/^[a-f0-9]{64}$/),
+    remoteSubmission: remoteSubmissionSchema.optional(),
     /**
      * v3.1 之后 reservation 必须携带完整 binary-free payload：
      * submission 在所有 await 前取得原始内容 custody，intent 在准备
@@ -360,6 +365,7 @@ const manualResultOutboxSchema = z
     terminal: z.enum(["done", "cancelled", "error"]),
     outcome: z.enum(["stored", "empty", "missing", "failed"]),
     assistantMessage: z.unknown().optional(),
+    subagents: z.unknown().optional(),
     state: z.enum(["prepared", "persisted"]),
     createdAt: z.number().int().nonnegative(),
     updatedAt: z.number().int().nonnegative(),
@@ -417,6 +423,8 @@ export const ledgerSchema = z
     relays: z.record(z.string(), relaySchema),
     createIntents: z.record(z.string(), createIntentSchema),
     manualIntents: z.record(z.string(), manualIntentSchema),
+    remoteCiphertexts: z.record(z.string(), remoteCiphertextSchema).default({}),
+    controlReceipts: z.record(z.string(), controlReceiptSchema).default({}),
     steerIntents: z.record(z.string(), steerIntentSchema).default({}),
     noticeOutbox: z.record(z.string(), noticeOutboxSchema).default({}),
     actions: z.record(z.string(), relayActionSchema).default({}),
@@ -444,8 +452,9 @@ export type ManualTurnIntentInput = Omit<
   ManualTurnIntent,
   "sequence" | "userSeq" | "assistantSeq" | "attempts" | "origin"
 > & {
-  userSeq: number;
-  assistantSeq: number;
+  origin?: ManualTurnIntent["origin"];
+  userSeq?: number;
+  assistantSeq?: number;
   attempts?: ManualTurnIntent["attempts"];
 };
 export type NoticeOutboxRecord = z.infer<typeof noticeOutboxSchema>;
@@ -482,6 +491,8 @@ export const emptyLedgerState = (): LedgerState => ({
   relays: {},
   createIntents: {},
   manualIntents: {},
+  remoteCiphertexts: {},
+  controlReceipts: {},
   steerIntents: {},
   noticeOutbox: {},
   actions: {},

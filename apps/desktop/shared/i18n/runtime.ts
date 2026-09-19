@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on i18next; keeps English resident as the static baseline catalog, every other locale is registered by the caller
  * [OUTPUT]: Provides registerCatalog/catalogOf, the synchronous createAppI18n instance factory, and translate
- * [POS]: The sole catalog registry and instance factory for desktop i18n; English is always resident so any catalog miss falls back to it, while main registers every locale eagerly via resources.ts and the renderer registers each on demand via catalogs.ts
+ * [POS]: The sole catalog registry and instance factory for desktop i18n; English is always resident so any catalog miss falls back to it, and both processes register the locales they actually need on demand via catalogs.ts
  */
 
 import i18next, { type i18n, type TOptions } from "i18next";
-import { APP_LOCALES, type AppLocale } from "./locale";
+import { APP_LOCALES, type AppLocale } from "@ai-chat/ui/lib/locale";
 import { en, type Catalog } from "./locales/en";
 
 /* 英文在此静态常驻，不只是因为它是 fallbackLng——它让「目录尚未注册」

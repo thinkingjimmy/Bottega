@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on a single versioned, 1 MiB length-prefixed stdin compiler/probe request, a supervisor-owned live loopback control port, Node crypto/process primitives, the trusted GUI transform kernel, and OS sandbox authority supplied by the parent supervisor
- * [OUTPUT]: Emits one bounded compiler outcome or authority/resource probe report, including readable executable denial, observed Linux AppArmor profile and detached-session escape attempts
- * [POS]: Explicit Electron main utility entry for compiled App GUI work; it never runs App-authored code or chooses filesystem/network authority
+ * [OUTPUT]: Emits one bounded compiler outcome or authority/resource probe report, including readable executable denial, observed Linux AppArmor profile and detached-session escape attempts, whose detached children it owns and reaps on every exit path
+ * [POS]: Explicit Electron main utility entry for compiled App GUI work; it never runs App-authored code, chooses filesystem/network authority, or outlives the processes its custody probe spawns
  */
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { lookup } from "node:dns/promises";
@@ -64,11 +64,46 @@ async function runResourceProbe(kind: "rss" | "cpu" | "timeout") {
   await new Promise(() => undefined);
 }
 
+/* The custody probe spawns detached children on purpose: escaping the session is
+   the very authority the supervisor has to contain. Nothing in the OS ties their
+   lifetime to this process, so two independent reapers do it instead - each child
+   watches its own parent pid, and the probe kills what it spawned on every exit
+   path it can observe. */
+const CUSTODY_CHILD_SCRIPT = [
+  "setInterval(() => {}, 1000);",
+  "const parent = process.ppid;",
+  "setInterval(() => { if (process.ppid !== parent) process.exit(0); }, 200);",
+].join("");
+
+/* A safety net, not a budget: the parent supervises this probe with a 2 s wall
+   clock and a process limit, so a supervised probe is always killed long before
+   this fires. It matters only when the entry runs unsupervised, where an
+   unbounded park would leave an immortal process-spawning process behind. */
+const CUSTODY_PROBE_PARK_MS = 10_000;
+
 async function runCustodyProbe(processCount: number) {
-  const children = [];
+  const children: ChildProcess[] = [];
+  const reap = () => {
+    for (const child of children) {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* Already gone (ESRCH): reaping is best effort by construction. */
+      }
+    }
+  };
+  /* Registered before the first spawn so a signal landing mid-loop still reaps
+     whatever already exists. */
+  process.on("exit", reap);
+  for (const [signal, code] of [["SIGTERM", 143], ["SIGINT", 130], ["SIGHUP", 129]] as const) {
+    process.on(signal, () => {
+      reap();
+      process.exit(code);
+    });
+  }
   for (let index = 0; index < processCount + 2; index += 1) {
     try {
-      const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      const child = spawn(process.execPath, ["-e", CUSTODY_CHILD_SCRIPT], {
         detached: true,
         stdio: "ignore",
         windowsHide: true,
@@ -86,7 +121,16 @@ async function runCustodyProbe(processCount: number) {
     process.stdout.write(JSON.stringify({ contained: true }));
     return;
   }
-  await new Promise(() => undefined);
+  /* Parking is the measurement, not a bug: an uncontained probe must keep its
+     children alive and stay silent so the supervisor can count the tree and
+     enforce its process limit. The cap bounds only the unsupervised case. */
+  await new Promise((resolveWait) => setTimeout(resolveWait, CUSTODY_PROBE_PARK_MS));
+  process.stderr.write(`custody probe parked past ${CUSTODY_PROBE_PARK_MS} ms without a supervisor\n`);
+  reap();
+  /* Leave through the event loop so the reason survives a piped stderr, and keep
+     an unref'd hard exit behind it so a stuck child handle cannot park us again. */
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 250).unref();
 }
 
 /* 沙箱形状的拒绝码。macOS Seatbelt 对 read/write/connect/exec 一律给 EPERM，

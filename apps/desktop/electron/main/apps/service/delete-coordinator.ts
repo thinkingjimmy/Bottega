@@ -11,7 +11,7 @@ import type {
   AppGenerationBuildOperation,
 } from "../../../../shared/app-lifecycle";
 import type { AppExtensionIntegration } from "../../extensions/integration/app-extension-composition";
-import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/app-generation-build-participants";
+import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/generation/build-participants";
 import type {
   AppLifecycleAdmissionGate,
   AppUsageRegistry,
@@ -246,6 +246,7 @@ export class AppDeleteCoordinator {
       {
         userData: this.deps.userData,
         appsRoot: this.deps.store.appsRoot,
+        stagingRoot: this.deps.store.stagingRoot,
       },
       record,
       this.deps.runtime.getOrigin(record.id)

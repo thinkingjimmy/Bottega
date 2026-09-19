@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on Node fs/path, zod, shared Agent/Settings IPC, Memory registry, durable persistence, and SerialQueue
- * [OUTPUT]: Provides SettingsStore v11 with backend defaults, presence preferences, locale/theme/tools/shortcuts, Skills onboarding, Memory control, and fail-closed recovery; Chat options belong to SQLite
+ * [OUTPUT]: Provides SettingsStore v11 with additive execution-device, archive-confetti and Agent-connections defaults, the single-backend title Agent that reads a retired or invalid value as the first backend, backend/presence/appearance preferences, Memory control, and fail-closed recovery; Chat options belong to SQLite
  * [POS]: The canonical multi-backend settings owner in Electron main
  */
 
+import { recoverDurableCorruption } from "./persistence/recovery-policy";
 import {
   copyFile,
   mkdir,
@@ -18,6 +19,7 @@ import type {
   AgentBackendId,
   AgentTurnOptions,
 } from "../../shared/agent-ipc";
+import { AGENT_BACKEND_ORDER } from "../../shared/agent-ipc";
 import { agentBackendIdSchema } from "../../shared/agent-schema";
 import {
   MEMORY_SHARING_MODES,
@@ -26,7 +28,7 @@ import {
   type SettingsEnvelope,
 } from "../../shared/settings-ipc";
 import { THEME_PREFERENCES } from "../../shared/settings-ipc";
-import { LANGUAGE_PREFERENCES } from "../../shared/i18n/locale";
+import { LANGUAGE_PREFERENCES } from "@ai-chat/ui/lib/locale";
 import {
   DEFAULT_MEMORY_PROVIDER_ID,
   MEMORY_PROVIDER_IDS,
@@ -36,9 +38,12 @@ import { backendDefaults, DEFAULT_CHAT_OPTIONS_BY_BACKEND, defaultsSchema, turnO
 export { DEFAULT_CHAT_OPTIONS, DEFAULT_CHAT_OPTIONS_BY_BACKEND } from "../../shared/chat-agent/options";
 const optionValue = z.string().trim().min(1).max(200);
 const backendSchema = agentBackendIdSchema;
+const DEFAULT_TITLE_AGENT: AgentBackendId = AGENT_BACKEND_ORDER[0];
 
 const SCHEMA_VERSION = 11;
 const DEFAULT_SETTINGS: AppSettings = {
+  libraryRoot: null,
+  libraryId: null,
   chatHomesRoot: null,
   chatHomeState: "unconfigured",
   allowCrossChatRead: false,
@@ -48,11 +53,14 @@ const DEFAULT_SETTINGS: AppSettings = {
   keepRunningInBackground: false,
   showTaskStatusAtTop: false,
   theme: "auto",
+  archiveConfettiEnabled: true,
+  agentConnectionsEnabled: false,
   language: "auto",
-  titleAgent: "auto",
+  titleAgent: DEFAULT_TITLE_AGENT,
   titleModelByBackend: { codex: null },
   defaultChatOptionsByBackend: DEFAULT_CHAT_OPTIONS_BY_BACKEND,
   lastSelectedBackend: "codex",
+  defaultExecutionDeviceId: null,
   autoRelayLimit: 25,
   usagePricingAutoRefresh: true,
   skillsOnboarding: "pending",
@@ -103,6 +111,8 @@ const shortcutBindingSchema = z
 
 const settingsSchema = z
   .object({
+    libraryRoot: z.string().min(1).max(4096).refine(isAbsolute).nullable().default(null),
+    libraryId: z.string().uuid().nullable().default(null),
     chatHomesRoot: z
       .string()
       .min(1)
@@ -125,9 +135,14 @@ const settingsSchema = z
     keepRunningInBackground: z.boolean().default(false),
     showTaskStatusAtTop: z.boolean().default(false),
     theme: z.enum(THEME_PREFERENCES).default("auto"),
+    archiveConfettiEnabled: z.boolean().default(true),
+    /* Lab switch; additive default keeps existing strict settings files readable. */
+    agentConnectionsEnabled: z.boolean().default(false),
     /* 与 theme 同为 additive default：旧档缺键时仍可直接读。 */
     language: z.enum(LANGUAGE_PREFERENCES).default("auto"),
-    titleAgent: z.union([backendSchema, z.literal("auto")]),
+    /* A retired value (the former "auto") or any other invalid id reads as the
+       default instead of failing the whole settings file. */
+    titleAgent: backendSchema.catch(DEFAULT_TITLE_AGENT),
     titleModelByBackend: z
       .object({
         codex: optionValue.nullable().optional(),
@@ -138,6 +153,7 @@ const settingsSchema = z
       .strict(),
     defaultChatOptionsByBackend: defaultsSchema,
     lastSelectedBackend: backendSchema,
+    defaultExecutionDeviceId: z.string().trim().min(1).max(256).nullable().default(null),
     autoRelayLimit: z.number().int().min(0).max(1_000),
     usagePricingAutoRefresh: z.boolean(),
     /* Additive default keeps existing strict settings files readable. */
@@ -214,6 +230,7 @@ export class SettingsStore {
           await this.persist(this.state);
           return;
         }
+        if (cause instanceof SyntaxError && await recoverDurableCorruption(this.filePath, await readFile(this.filePath, "utf8"))) { await this.persist(this.state); return; }
         await this.backupInvalid().catch(() => {});
         throw new Error("settings.json 损坏，已保留备份并停止加载", {
           cause,
@@ -224,6 +241,7 @@ export class SettingsStore {
         /* v11 是唯一可读版本，旧版本与未来版本同罪 fail-closed。 */
         next = parseFile(raw);
       } catch (cause) {
+        if (await recoverDurableCorruption(this.filePath, await readFile(this.filePath, "utf8"))) { await this.persist(this.state); return; }
         await this.backupInvalid();
         throw new Error("settings.json schema 无效，已保留备份并停止加载", {
           cause,

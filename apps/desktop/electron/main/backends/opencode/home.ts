@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Node crypto/fs/os/path, runtime-probe minimum environment, external-override existence metadata, main-frozen third-party MCP plans, and turn-leased built-in MCP specs
- * [OUTPUT]: Provides external OpenCode override fail-close detection, isolated app-owned config environment, fence roots, session validation, random server credentials, locked ACP launch and combined MCP overlay
+ * [INPUT]: Depends on Node crypto/fs/os/path, runtime-probe minimum environment, external-override existence metadata, shared product-failure constructors, main-frozen third-party MCP plans, and turn-leased built-in MCP specs
+ * [OUTPUT]: Provides launch-environment-scoped external override detection as a typed failure, isolated config, shared native data directory, fence roots, session validation, server credentials, locked ACP launch and MCP overlay
  * [POS]: The environment and state-root authority of backends/opencode; product processes never read or forward user/agent override configuration bytes
  */
 
@@ -15,6 +15,11 @@ import {
   assertUniqueMcpBackendAliases,
   type ThirdPartyMcpPlan,
 } from "../../../../shared/mcp-servers-ipc";
+import {
+  agentRuntimeFailure,
+  diagnosticFailureDetails,
+  ProductFailureError,
+} from "../../../../shared/product-failure";
 
 /* 真机 1.18.14：`ses_` + 恰 26 位（12 位时间戳 + 14 位 base62）。 */
 const SESSION_PATTERN = /^ses_[0-9A-Za-z]{26}$/;
@@ -27,13 +32,14 @@ export const validateOpencodeSessionId = (id: string) =>
  *
  * pass   —— 用户对自己 CLI 的配置选择，app 原样带上（含收紧开关）；
  * drop   —— 白名单之外一律不透传，provider key 尤其不经本进程之手；
- * override —— 三条安全不变量，用户设了也压过去：
+ * override —— 安全不变量，用户设了也压过去：
  *   OPENCODE_PURE 清空 plugin_origins（否则全局 config 声明的第三方
  *   插件会被安装并执行——`OPENCODE_DISABLE_PROJECT_CONFIG` 只挡从工
  *   作目录向上扫的那一段，全局 config 恒扫，挡不住）；
  *   DISABLE_PROJECT_CONFIG 断掉项目携带 allow-all 权限的旁路；
  *   DISABLE_LSP_DOWNLOAD / DISABLE_EXTERNAL_SKILLS 让探针与 turn
- *   不在用户不知情时下载和执行外部代码。
+ *   不在用户不知情时下载和执行外部代码；
+ *   DISABLE_CLAUDE_CODE 关掉 `~/.claude` 那条跨家读取（见 OVERRIDES）。
  *
  * 布尔值一律写 "1"：上游两套 flag 解析器中较严的那套只认
  * "true"/"1"（小写化后），yes/on 会被静默当成 false。
@@ -51,37 +57,89 @@ const APP_OWNED_CONFIG_HOME = mkdtempSync(
   join(tmpdir(), "bottega-opencode-config-")
 );
 
+/* ============================================================
+ * 一个 override 根里会被读走的全部条目（1.18.23 真身实证，锚点见下）。
+ * 逐根用同一张表是有意的**超集**：`Path.config` 读 `config.json`/`config`
+ * 与 `AGENTS.md`，`.opencode` 后缀根只读 `opencode.json(c)`，但两类根都会
+ * 被扫定义目录与 skill 目录，多 lstat 几个不存在的路径零成本，漏一个却是
+ * 一条静默生效的外部规则。
+ *
+ * 本机二进制取证（`~/.opencode/bin/opencode` 1.18.23）：
+ *   `ConfigPaths.directories` = `[Path.config, …(!DISABLE_PROJECT_CONFIG ?
+ *   工作区向上的 .opencode : []), …home 下的 .opencode（**无条件**）,
+ *   …(OPENCODE_CONFIG_DIR ?? [])]`；
+ *   `Config.loadInstanceState` 对每个目录扫 `{agent,agents}/**\/*.md`、
+ *   `{command,commands}/**\/*.md`、`{mode,modes}/*.md` 与插件，另对
+ *   `.opencode` 后缀根与 `OPENCODE_CONFIG_DIR` 读 `opencode.json(c)`；
+ *   全局配置另读 `Path.config/{config.json,opencode.json,opencode.jsonc,config}`；
+ *   skill 面为 `{skill,skills}/<name>/SKILL.md`。
+ * ============================================================ */
 const OVERRIDE_ROOT_ENTRIES = [
+  "config.json",
+  "config",
   "opencode.json",
   "opencode.jsonc",
   "AGENTS.md",
   "agent",
   "agents",
+  "command",
   "commands",
+  "mode",
+  "modes",
+  "skill",
+  "skills",
 ] as const;
 
 type Lstat = (path: string) => unknown;
 
-export function assertNoExternalOpencodeOverrides(
-  source: NodeJS.ProcessEnv = process.env,
-  userHome = homedir(),
-  lstat: Lstat = lstatSync
-) {
-  const roots = new Set([
-    join(
-      resolve(source.XDG_CONFIG_HOME?.trim() || join(userHome, ".config")),
-      "opencode"
-    ),
+/**
+ * 子进程**真的会读到**的 override 根，按启动环境求解而非按宿主环境。
+ *
+ * 两者早已不是同一张表：启动环境把 `XDG_CONFIG_HOME` 钉在 app-owned 空根上，
+ * 于是用户的 `~/.config/opencode/*` 对子进程根本不可达——按宿主环境判，一份
+ * 读不到的文件却能否决全部 turn（2026-09-18 探针在本机实测到这一幕）。
+ *
+ * app-owned 根自己被排除，且排除判据是"它就是我们那一个"而不是"它在 tmp 里"：
+ * CLI 在配置根缺省时会**自己写**一份 `opencode.jsonc`（`Config.loadGlobal`），
+ * 第二个 turn 起该根必然非空，按存在性判会把产品自己的默认配置当成外部覆盖。
+ *
+ * 钉在启动环境上还有一个结构性好处：谁要是哪天撤掉了那个 pin，本闸门自动
+ * 重新覆盖用户的 `~/.config/opencode`，不需要任何人记得回来改这里。
+ */
+const externalOverrideRoots = (env: NodeJS.ProcessEnv, userHome: string) => {
+  const configHome = resolve(
+    env.XDG_CONFIG_HOME?.trim() || join(userHome, ".config")
+  );
+  return new Set([
+    ...(configHome === APP_OWNED_CONFIG_HOME
+      ? []
+      : [join(configHome, "opencode")]),
+    /* `Path.home` 下的 `.opencode` 恒扫，且**不受** `OPENCODE_DISABLE_PROJECT_CONFIG`
+       约束——隔离穿不过它，故它是本闸门今天唯一真正拦得住的东西。 */
     join(userHome, ".opencode"),
-    ...(source.OPENCODE_CONFIG_DIR?.trim()
-      ? [resolve(source.OPENCODE_CONFIG_DIR.trim())]
+    ...(env.OPENCODE_CONFIG_DIR?.trim()
+      ? [resolve(env.OPENCODE_CONFIG_DIR.trim())]
       : []),
   ]);
+};
+
+/**
+ * `env` 必须是 `opencodeAcpLaunch` 交给子进程的那一份，没有默认值：闸门与
+ * 启动共用一张环境表，是"检查的对象就是要跑的东西"这条不变量的唯一表达。
+ *
+ * 拦下来的是隔离覆盖不到的那一段：agent 级 `permission:` 在上游合并于
+ * `config.permission`（= 我们注入的 `OPENCODE_PERMISSION`）**之后**，`findLast`
+ * 恒取它；再加上未来新增的权限键与外部指令/技能文件。内容一个字节都不读——
+ * 同一份 JSON 里还住着 MCP `headers`/`environment` 凭据（C-02 的 R9 裁决）。
+ */
+export function assertNoExternalOpencodeOverrides(
+  env: NodeJS.ProcessEnv,
+  userHome = env.HOME?.trim() || homedir(),
+  lstat: Lstat = lstatSync
+) {
   const candidates = new Set([
-    ...(source.OPENCODE_CONFIG?.trim()
-      ? [resolve(source.OPENCODE_CONFIG.trim())]
-      : []),
-    ...[...roots].flatMap((root) =>
+    ...(env.OPENCODE_CONFIG?.trim() ? [resolve(env.OPENCODE_CONFIG.trim())] : []),
+    ...[...externalOverrideRoots(env, userHome)].flatMap((root) =>
       OVERRIDE_ROOT_ENTRIES.map((entry) => join(root, entry))
     ),
   ]);
@@ -90,16 +148,29 @@ export function assertNoExternalOpencodeOverrides(
       lstat(path);
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code === "ENOENT") continue;
-      throw new Error(
+      throw externalOverrideFailure(
         `OPENCODE_EXTERNAL_OVERRIDE_UNINSPECTABLE: cannot verify ${path}`,
-        { cause }
+        cause
       );
     }
-    throw new Error(
+    throw externalOverrideFailure(
       `OPENCODE_EXTERNAL_OVERRIDE_PRESENT: remove or disable ${path} before starting an OpenCode turn`
     );
   }
 }
+
+/**
+ * 诊断串保持逐字稳定（C-02 验收判据），但包成 typed failure：裸 Error 在
+ * agent-bridge 里会落成 `runtime-unavailable`，也就是"去安装或更新 OpenCode"
+ * ——而 CLI 好好的，被拒的是一份用户配置。`request-rejected` 的产品文案是
+ * "检查 Agent 设置"，配上诊断串里的具体路径才说得清该做什么。
+ */
+const externalOverrideFailure = (message: string, cause?: unknown) => {
+  const failure = new ProductFailureError(
+    agentRuntimeFailure("request-rejected", diagnosticFailureDetails(message))
+  );
+  return cause === undefined ? failure : Object.assign(failure, { cause });
+};
 
 export const opencodeAppOwnedConfigHome = () => APP_OWNED_CONFIG_HOME;
 
@@ -108,6 +179,13 @@ const OVERRIDES = {
   OPENCODE_DISABLE_PROJECT_CONFIG: "1",
   OPENCODE_DISABLE_LSP_DOWNLOAD: "1",
   OPENCODE_DISABLE_EXTERNAL_SKILLS: "1",
+  /* 钉住配置根的**副作用**，不是加固：全局指令表是
+     `[Path.config/AGENTS.md, ~/.claude/CLAUDE.md]` 首中即断（1.18.23 真身），
+     而 app-owned 配置根里 `AGENTS.md` 恒不存在 ⇒ 第二项**恒**命中，用户的
+     Claude Code 全局指令会无声进入每一轮 OpenCode。这条 broad flag 同时关掉
+     prompt 与 skills 两路 `~/.claude` 读取（`OPENCODE_DISABLE_EXTERNAL_SKILLS`
+     已覆盖后者，两条同向不冲突）。 */
+  OPENCODE_DISABLE_CLAUDE_CODE: "1",
 } as const;
 
 export function opencodeEnvironment(
@@ -134,6 +212,11 @@ const xdgRoot = (
   userHome: string,
   fallback: string
 ) => resolve(env[name]?.trim() || join(userHome, fallback));
+
+export const opencodeDataDirectory = (
+  env: NodeJS.ProcessEnv = process.env,
+  userHome = homedir()
+) => join(xdgRoot(env, "XDG_DATA_HOME", userHome, ".local/share"), "opencode");
 
 /**
  * 全局 AGENTS.md 归属是替换语义：OPENCODE_CONFIG_DIR 一旦给出就直接
@@ -164,7 +247,7 @@ export function opencodeRoots(
 ): string[] {
   return [
     join(xdgRoot(env, "XDG_CONFIG_HOME", userHome, ".config"), "opencode"),
-    join(xdgRoot(env, "XDG_DATA_HOME", userHome, ".local/share"), "opencode"),
+    opencodeDataDirectory(env, userHome),
     join(xdgRoot(env, "XDG_CACHE_HOME", userHome, ".cache"), "opencode"),
     join(xdgRoot(env, "XDG_STATE_HOME", userHome, ".local/state"), "opencode"),
     join(env.TMPDIR?.trim() || tmpdir(), "opencode"),
@@ -362,13 +445,20 @@ const permissionBaseline = (session: {
     ...(session.planMode ? PLAN_OVERLAY : {}),
   });
 
+/* `OPENCODE_CONFIG_CONTENT` 与另外三条同族：它是上游明写的第四条配置入口
+   （inline JSON，按 local scope 最后合并）。overlay 今天只带 `APP_CONFIG_`
+   前缀的变量，但那是另一个模块的纪律；本地剥掉它，这里就不依赖它。 */
+const EXTERNAL_CONFIG_POINTERS = new Set([
+  "OPENCODE_CONFIG",
+  "OPENCODE_CONFIG_DIR",
+  "OPENCODE_CONFIG_CONTENT",
+  "XDG_CONFIG_HOME",
+]);
+
 const withoutExternalConfigPointers = (env?: NodeJS.ProcessEnv) =>
   Object.fromEntries(
     Object.entries(env ?? {}).filter(
-      ([name]) =>
-        name !== "OPENCODE_CONFIG" &&
-        name !== "OPENCODE_CONFIG_DIR" &&
-        name !== "XDG_CONFIG_HOME"
+      ([name]) => !EXTERNAL_CONFIG_POINTERS.has(name)
     )
   );
 

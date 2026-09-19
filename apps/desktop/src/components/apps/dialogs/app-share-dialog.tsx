@@ -32,7 +32,7 @@ import {
   readGhStatus,
   discardAppShare,
 } from "@/lib/apps-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import type {
   AppRecord,
   GhStatus,

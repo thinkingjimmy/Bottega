@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on durable raw submission custody, canonical hashes, workspace/conversation gates, and synchronous lifecycle operation tracking
- * [OUTPUT]: Provides coalesced live switch recovery and shared startup/live failure reconciliation for original submissions
+ * [OUTPUT]: Recovers original local raw submissions; unaccepted remote custody waits for its server claim and trusted intake.
  * [POS]: Resumes preparation under the original intent/hash; prepared or dispatched Agent turns never enter this recovery path
  */
 import type { TrustedManualTurnSubmission } from "../../../../../shared/sections-ipc";
@@ -63,7 +63,7 @@ export class SubmissionRecovery {
 function rawReservation(ledger: RelayLedger, intentId: string) {
   return ledger.read(state => {
     const reservation = state.submissionReservations[intentId];
-    return reservation?.state === "reserved" && !state.manualIntents[intentId] &&
+    return reservation?.state === "reserved" && !reservation.remoteSubmission && !state.manualIntents[intentId] &&
       (isReservationKind(reservation.payload, "submission") || isReservationKind(reservation.payload, "submission-ref"))
       ? reservation : null;
   });
@@ -73,6 +73,8 @@ export async function resumeRawSubmission(
   input: Pick<CoordinatorDependencies, "ledger" | "chats"> & { resumeSubmission: ResumeSubmission },
   submission: TrustedManualTurnSubmission
 ): Promise<boolean> {
+  // Unaccepted remote custody requires a fresh server claim before the original envelope can advance.
+  if (input.ledger.read(state => Boolean(state.submissionReservations[submission.intentId]?.remoteSubmission))) return false;
   try {
     await input.resumeSubmission(submission);
     return true;

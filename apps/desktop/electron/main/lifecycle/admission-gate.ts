@@ -4,6 +4,7 @@
  * [POS]: The lifecycle domain's sole top-level saga entry point; a concurrent claim on a busy resource fails fast with a constant 409 (AdmissionBusyError), the handler runs inside the claim lock and returns a discriminated SagaResult, and the Gate atomically settles it per the v3+R8 contract
  */
 
+import { assertRecoveredAuthority } from "../persistence/recovery-policy";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { IntentConflictError, LifecycleIntentStore } from "./intent-store";
 import {
@@ -266,6 +267,7 @@ export class AdmissionGate {
   }
 
   private assertNotBlocked(): void {
+    assertRecoveredAuthority();
     const blocked = this.store.isBlocked();
     if (blocked) throw blocked;
   }

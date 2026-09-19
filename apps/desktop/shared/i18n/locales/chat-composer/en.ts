@@ -1,29 +1,18 @@
 /**
- * [INPUT]: Depends on no runtime modules; defines the structural baseline for Chat composer copy
+ * [INPUT]: Shared native/Web Project selector and Plan catalogs; defines the Chat composer structural baseline.
  * [OUTPUT]: Provides chatComposerEn for approval, branch, Project, Plan, user-input, attachment, and queue surfaces
  * [POS]: English Chat composer locale leaf; assembled inside the top-level chat.composer namespace
  */
+
+import { copy as sharedComposer } from "@ai-chat/chat-ui/composer-control-copy/en";
+import { projectSelectorEn } from "@ai-chat/chat-ui/project-copy";
 
 export const chatComposerEn = {
   modelFallback: {
     defaultEffort: "Default",
     standardSpeed: "Standard",
   },
-  approval: {
-    requestChanges: "Request changes",
-    decline: "Decline",
-    allowSession: "Allow for this session",
-    approvePlan: "Approve Plan",
-    allowOnce: "Allow once",
-    planTitle: "Continue with this Plan?",
-    commandTitle: "Allow this command?",
-    fileChangeTitle: "Allow these file changes?",
-    permissionTitle: "Allow additional access?",
-    location: "Location",
-    network: "Network",
-    plan: "Plan",
-    details: "Details",
-  },
+  approval: sharedComposer.approval,
   branch: {
     uncommitted_one: "{{count}} uncommitted file",
     uncommitted_other: "{{count}} uncommitted files",
@@ -54,53 +43,8 @@ export const chatComposerEn = {
     previewWorkspaceFile: "Preview Workspace file",
     queueSubmit: "Add to queue",
   },
-  plan: {
-    closeChip: "Turn off Plan",
-    decisionTitle: "Implement this Plan?",
-    closeDecision: "Close Plan decision",
-    implement: "Yes, implement this Plan",
-    reviseLabel: "Tell the Agent how to revise the Plan",
-    revisePlaceholder: "No. Tell the Agent what to do differently",
-    send: "Send",
-    skip: "Skip",
-  },
-  project: {
-    selector: "Project selector",
-    search: "Search Projects",
-    empty: "No Projects found",
-    create: "New Project",
-    workInChat: "Work in Chat",
-    current: "Current Chat Project: {{project}}",
-    chat: "Chat",
-  },
-  userInput: {
-    countdown: "{{count}}s",
-    skip: "Skip",
-    progress: "{{current}} of {{total}}",
-    skipQuestion: "Skip question",
-    pendingList: "Pending concurrent questions",
-    pending: "Pending",
-    pendingCount: "{{count}} pending",
-    mainAgent: "Main Agent",
-    waiting: "Waiting for input",
-    other: "None of these; tell the Agent another approach",
-    confirm: "Confirm selection",
-    decisionPlaceholder: "Tell the Agent your decision…",
-    send: "Send",
-  },
-  queue: {
-    pickedUp: "Picked up queued message. Use the Up and Down Arrow keys to move it.",
-    reorderCancelled: "Reordering cancelled",
-    moved: "Moved to position {{position}}",
-    unchanged: "Position unchanged",
-    paused: "Queue paused",
-    resume: "Resume sending",
-    dismissError: "Dismiss queue error",
-    drag: "Move item {{position}} of {{count}}",
-    resend: "Resend this message",
-    deleteAmbiguous: "Delete this ambiguous message",
-    steer: "Send this next in the running task",
-    delete: "Delete this queued message",
-    edit: "Edit this queued message",
-  },
+  plan: sharedComposer.chat.composer.plan,
+  project: projectSelectorEn,
+  userInput: sharedComposer.userInput,
+  queue: sharedComposer.chat.composer.queue,
 };

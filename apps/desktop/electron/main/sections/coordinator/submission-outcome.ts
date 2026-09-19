@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared SubmissionContent/Outcome/ACK/lifecycle constants, coordinator-values coded errors, opaque raw payload references, and ledger v7 state/manual-intent schema
- * [OUTPUT]: Reservation/attempt outcome state machine and retry custody; a pending cloud handoff retains full source payload and result through terminal settlement and resource release.
+ * [OUTPUT]: Reservation/attempt outcomes and retry custody; enabled synchronization retains terminal payload and result until durable handoff.
  * [POS]: The durable submission state machine of sections/coordinator; RelayLedger is only responsible for the sequencing clone→persist→publish
  */
 
@@ -395,6 +395,7 @@ export function prepareManualResult(
     terminal: "done" | "cancelled" | "error";
     outcome: "stored" | "empty" | "missing" | "failed";
     assistantMessage?: unknown;
+    subagents?: unknown;
   },
   now: number
 ) {
@@ -404,9 +405,8 @@ export function prepareManualResult(
     conversationId: intent.conversationId,
     terminal: input.terminal,
     outcome: input.outcome,
-    ...(input.assistantMessage === undefined
-      ? {}
-      : { assistantMessage: input.assistantMessage }),
+    ...(input.assistantMessage === undefined ? {} : { assistantMessage: input.assistantMessage }),
+    ...(input.subagents === undefined ? {} : { subagents: input.subagents }),
     state: "prepared",
     createdAt: state.manualResultOutbox[intentId]?.createdAt ?? now,
     updatedAt: now,
@@ -435,7 +435,7 @@ export function persistManualResult(
     transitionAttempt(state, intentId, "result-prepared", "persisted", now);
     intent.phase = "settled";
     intent.terminalAt = now;
-    if (intent.cloudHandoff?.state !== "pending") delete intent.payload;
+    if (!intent.cloudSyncRequired && intent.cloudHandoff?.state !== "pending") delete intent.payload;
     updateOutcome(state, intent, "persisted", "chat-persisted", "none", now);
     // 恢复路径必须假设世界是脏的：历史数据里可能存在无 reservation 的
     // intent，terminal 转换不允许因此失败。
@@ -474,7 +474,7 @@ export function failManualWithCapsule(
   }
   intent.phase = "failed";
   intent.terminalAt = now;
-  if (intent.cloudHandoff?.state !== "pending") delete intent.payload;
+  if (!intent.cloudSyncRequired && intent.cloudHandoff?.state !== "pending") delete intent.payload;
   const reservation = state.submissionReservations[intentId];
   if (reservation) {
     reservation.state = "released";

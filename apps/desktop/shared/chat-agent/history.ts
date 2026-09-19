@@ -57,6 +57,7 @@ export type HistoryReadResult = {
   searchScope: string;
 };
 export type PreparedHistory = {
+  totalMessages?: number;
   binding: HistoryBinding;
   records: HistoryRecord[];
   scannedMessages: number;

@@ -1,9 +1,8 @@
 /**
  * [INPUT]: Depends on Node crypto, ProductFailure, chat lifecycle/projection collaborators, device identity, the typed SQLite worker client, and the shared ChatStoreState cell with read, history, fork, transition, and persistence collaborators
- * [OUTPUT]: Receipt-gated canonical Chat facade with bounded reads, explicit local synchronization API, lifecycle-controlled classification changes and deletion custody.
+ * [OUTPUT]: Provides receipt-gated Chat APIs with frozen execution admission, readonly-safe Project detachment, atomic device-boundary publication and App transcript retention, opened through the two-phase open()/adopt() startup split that initialize() composes.
  * [POS]: Main-process Chat domain queue and metadata owner; durable writes, fork construction, pure transitions, read projections, and import/continuation sagas live in focused composed siblings
  */
-
 import { patchChatOptions, prepareSwitchCommand, switchChatAgent } from "./store/agent-switch/store";
 import { readSwitchReservation, reserveAgentSwitchSequences, reserveTurnSequences } from "./store/agent-switch/reservation";
 import type { ChatOptionsPatch } from "../../../shared/chat-agent/contracts";
@@ -42,6 +41,7 @@ import {
 import { DeviceIdentityStore } from "./device-identity/device-identity";
 import { ChatDatabaseClient } from "./sqlite/database-client";
 import type { SearchDocumentCursor } from "./sqlite/database-protocol";
+import { LibraryChatStore } from "../library/mirrors/store";
 import { ChatStoreState } from "./store/state";
 import { ChatReadModel } from "./store/read-api";
 import { ChatHistorySagaApi } from "./store/sqlite-api";
@@ -61,9 +61,10 @@ import {
   setGeneratedTitleRecord,
   setGrantRecord,
   setProjectRecord,
+  setSortKeyRecord,
   setUserTitleRecord,
 } from "./store/transitions";
-import { ChatSyncApi, persistLocalClassification } from "./store/sync/api";
+import { ChatSyncApi, metadataEdited, persistLocalClassification } from "./store/sync/api";
 import { chatDatabasePath } from "./sqlite/paths";
 import {
   persistAppendedMessageToStorage,
@@ -72,14 +73,13 @@ import {
   persistTurnCommitToStorage,
 } from "./store/persistence";
 import type { ChatStorageFailure } from "../../../shared/product-failure";
-
 export {
   ChatMutationOutcomeUnknownError,
   isChatMutationOutcomeUnknown,
   type ChatMessageMutation,
 } from "./store/mutation-outcome";
-
 export type ChatStoreDependencies = {
+  storageMode?: import("../../../shared/local-storage/contracts").RuntimeStorageMode;
   now?: () => number;
   isAppProject?: (projectId: string) => boolean;
   appForProject?: (projectId: string) =>
@@ -87,19 +87,17 @@ export type ChatStoreDependencies = {
     | null;
   databaseClient?: () => ChatDatabaseClient;
 };
-
 type ChatSqliteRuntimeFacts = Readonly<{
   sqliteVersion: string;
   compileOptions: readonly string[];
   startupMs: number;
 }>;
-
 const sessionKey = (session: SessionRef) =>
   `${session.backend}:${session.id}`;
 const requestHash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
-
 export class ChatStore {
+  readonly library: LibraryChatStore;
   readonly sync: ChatSyncApi;
   /* 组合而非继承：一个可变格子 + 两个只拿到它的协作者。ChatStore 仍是
      唯一的公开门面，读投影与 import/continuation saga 只是它显式转交的两半。 */
@@ -109,21 +107,31 @@ export class ChatStore {
   private readonly forks: ChatForkStoreApi;
   private readonly databasePath: string;
   private sqliteRuntimeFacts: ChatSqliteRuntimeFacts | null = null;
-
   constructor(
     userData: string,
     private readonly dependencies: ChatStoreDependencies = {}
   ) {
     this.state = new ChatStoreState(userData, dependencies.now ?? Date.now);
     this.sync = new ChatSyncApi(this.state);
+    this.library = new LibraryChatStore(this.state);
     this.reads = new ChatReadModel(this.state);
-    this.history = new ChatHistorySagaApi(this.state, this.reads);
+    this.history = new ChatHistorySagaApi(this.state, this.reads, this.sync);
     this.forks = new ChatForkStoreApi(this.state);
     this.databasePath = chatDatabasePath(userData);
   }
-
+  /** The one-shot form every caller outside startup keeps using. */
   async initialize(defaults: import("../../../shared/settings-ipc").DefaultChatOptionsByBackend = {}) {
-    await this.state.queue.enqueue(async () => {
+    await this.open(defaults);
+    await this.adopt();
+  }
+  /**
+   * Phase 1: reset the generation, load the device identity and spawn the SQLite
+   * worker — the longest pre-window step, which startup therefore starts before
+   * its other I/O. The metadata projection stays empty until adopt(), so has()
+   * and every read still answer exactly as they do for an unopened store.
+   */
+  async open(defaults: import("../../../shared/settings-ipc").DefaultChatOptionsByBackend = {}) {
+    const opened = this.state.queue.enqueue(async () => {
       const state = this.state;
       state.metadata.clear();
       state.messageRevisions.clear();
@@ -131,7 +139,6 @@ export class ChatStore {
       state.warnings.length = 0;
       state.storageFailures.length = 0;
       this.sqliteRuntimeFacts = null;
-
       state.deviceId = await new DeviceIdentityStore(state.userData).loadOrCreate();
       const initialization = await this.openDatabase(defaults);
       this.sqliteRuntimeFacts = Object.freeze({
@@ -140,8 +147,32 @@ export class ChatStore {
         startupMs: initialization.startupMs,
       });
       if (process.versions.electron) {
-        console.info("[chats] SQLite runtime", this.sqliteRuntimeFacts);
+        /* The compile-options array is ~40 strings printed at every start; it is
+           diagnostic detail, not a startup fact. The version alone answers the
+           question this line exists for. */
+        console.info(
+          process.env.BOTTEGA_SQLITE_DEBUG
+            ? `[chats] SQLite runtime ${JSON.stringify(this.sqliteRuntimeFacts)}`
+            : `[chats] SQLite ${this.sqliteRuntimeFacts.sqliteVersion}`
+        );
       }
+    });
+    /* Closing in the same tick as the enqueue seals the gap between the phases:
+       the database is open there while the projection is still empty, so a
+       mutation slipping in would read a store with no chats — create() would
+       accept an id that already exists on disk. Such a call failed loudly on the
+       missing database before the split; a refusing queue keeps it loud. */
+    this.state.queue.close();
+    await opened;
+  }
+
+  /** Phase 2: publish the durable metadata into the in-memory projection. */
+  async adopt() {
+    if (!this.state.database)
+      throw new Error("ChatStore.adopt() requires a completed open()");
+    this.state.queue.reopen();
+    await this.state.queue.enqueue(async () => {
+      const state = this.state;
       const metadata = await state.requireDatabase().execute({
         kind: "list-metadata",
         deviceId: state.requireDeviceId(),
@@ -208,7 +239,8 @@ export class ChatStore {
   appendMessage(
     chatId: string,
     input: ChatMessage | UnsequencedChatMessage,
-    reservedSeq?: number
+    reservedSeq?: number,
+    executorCommit?: import("./sqlite/cloud/execution/commit").ExecutorCommit
   ) {
     return this.state.queue.enqueue(async () => {
       assertChatId(chatId);
@@ -221,9 +253,11 @@ export class ChatStore {
           ? input.seq
           : (reservedSeq ?? existing?.seq ?? current.nextSeq);
       const message = { ...input, seq } as ChatMessage;
+      const notice = !existing ? executorCommit?.notice : undefined;
+      const prefix = notice ? applyTurnCommit(current, { message: notice }).record : current;
       const result = applyTurnCommit(
         {
-          ...current,
+          ...prefix,
           nextSeq: Math.max(current.nextSeq, seq + 1),
         },
         { message }
@@ -235,13 +269,14 @@ export class ChatStore {
         await this.persistAppendedMessage(
           current,
           record,
-          result.storedMessage!
+          result.storedMessage!,
+          executorCommit
         );
         this.state.metadata.set(chatId, metadataOf(record));
       }
       const appended =
         result.appended && result.storedMessage
-          ? [result.storedMessage]
+          ? [...(notice ? [notice] : []), result.storedMessage]
           : [];
       const revision = appended.length
         ? record.chatMessageRevision
@@ -269,6 +304,7 @@ export class ChatStore {
     };
     message: UnsequencedUserMessage;
     reservedSeq?: number;
+    executorCommit?: import("./sqlite/cloud/execution/commit").ExecutorCommit;
     intentId?: string;
   }) {
     return this.state.queue.enqueue(async () => {
@@ -284,7 +320,7 @@ export class ChatStore {
         } satisfies ChatMessageMutation;
       }
       const { record, message } = transition;
-      await this.persistRecord(record);
+      await this.persistRecord(record, input.executorCommit);
       this.state.metadata.set(input.chatId, metadataOf(record));
       const revision = record.chatMessageRevision;
       this.state.messageRevisions.set(input.chatId, revision);
@@ -308,11 +344,17 @@ export class ChatStore {
       deviceId: this.state.requireDeviceId() });
   }
 
-  patchOptions(input: ChatOptionsPatch) {
-    return this.updateFacts(input.chatId, current => patchChatOptions(current, input));
+  async patchOptions(input: ChatOptionsPatch) {
+    const result = await this.updateFacts(input.chatId, current => patchChatOptions(current, input));
+    this.sync.notifyAppended("chat", input.chatId);
+    return result;
   }
   prepareAgentSwitch(input: Parameters<typeof prepareSwitchCommand>[1]) { return prepareSwitchCommand(this.state, input); }
-  switchAgent(command: Parameters<typeof switchChatAgent>[1]) { return switchChatAgent(this.state, command); }
+  async switchAgent(command: Parameters<typeof switchChatAgent>[1]) {
+    const result = await switchChatAgent(this.state, command);
+    this.sync.notifyAppended("chat", command.chatId);
+    return result;
+  }
   reserveAgentSwitchSequences(input: Parameters<typeof reserveAgentSwitchSequences>[1]) { return reserveAgentSwitchSequences(this.state, input); }
   agentSwitchReservation(input: Parameters<typeof readSwitchReservation>[1]) { return readSwitchReservation(this.state, input); }
 
@@ -414,6 +456,14 @@ export class ChatStore {
     );
   }
 
+  /* Sidebar drag: one row's virtual createdAt. Never touches updatedAt (updateFacts bumps only chatRecordRevision). */
+  setSortKey(chatId: string, sortKey: number | null) {
+    if (this.state.metadata.get(chatId)?.readOnlyReason === "external-readonly") {
+      return this.history.updateReadonlyPresentation(chatId, { kind: "sort", sortKey });
+    }
+    return this.updateFacts(chatId, (current) => setSortKeyRecord(current, sortKey));
+  }
+
   setAppGrantRecord(chatId: string, grant: AppGrantRecord) {
     return this.updateFacts(chatId, (current) =>
       setGrantRecord(current, grant, this.dependencies.isAppProject)
@@ -427,7 +477,7 @@ export class ChatStore {
   /** 只允许根级 chat 单向升级为一个 Project；不改变消息 revision。 */
   setProjectId(chatId: string, projectId: string) {
     return this.updateFacts(chatId, (current) =>
-      setProjectRecord(current, projectId, this.dependencies.isAppProject), true
+      setProjectRecord(current, projectId, this.dependencies.isAppProject), "classification"
     );
   }
 
@@ -441,13 +491,13 @@ export class ChatStore {
     }
   ) {
     return this.updateFacts(chatId, (current) =>
-      moveProjectRecord(current, input, this.dependencies), true
+      moveProjectRecord(current, input, this.dependencies), "classification"
     );
   }
 
-  /** 只供记录丢失的 Project 抢救；null 输入态幂等，不改变消息 revision。 */
+  /** Local removal and missing-Project rescue preserve transcript ownership and revisions. */
   clearProjectId(chatId: string) {
-    return this.updateFacts(chatId, clearProjectRecord, true);
+    return this.updateFacts(chatId, clearProjectRecord, "project-detach");
   }
 
   /** 仅在标题仍为 null 时写入生成标题：用户改名永远不会被后到的生成结果覆盖 */
@@ -481,7 +531,8 @@ export class ChatStore {
   /** 删除聊天并返回其附件元数据；附件文件清理由持有 AttachmentStore 的调用方负责 */
   remove(
     chatId: string,
-    expectedIncarnationId?: string
+    expectedIncarnationId?: string,
+    retainedAppId?: string
   ): Promise<ChatAttachmentMeta[]> {
     return this.state.queue.enqueue(async () => {
       assertChatId(chatId);
@@ -499,10 +550,11 @@ export class ChatStore {
       const command = {
         kind: "remove-record" as const,
         operationId,
-        requestHash: requestHash({ operationId, chatId, deviceId, expectedIncarnationId }),
+        requestHash: requestHash({ operationId, chatId, deviceId, expectedIncarnationId, retainedAppId }),
         chatId,
         deviceId,
         ...(expectedIncarnationId ? { expectedIncarnationId } : {}),
+        ...(retainedAppId ? { retainedAppId } : {}),
       };
       const outcome = await database.execute(command);
       if (outcome.status !== "committed") {
@@ -596,8 +648,8 @@ export class ChatStore {
   searchTimelineDocuments(
     tokens: readonly string[],
     cursor: SearchDocumentCursor | null,
-    limit: number
-  ) { return this.reads.searchTimelineDocuments(tokens, cursor, limit); }
+    limit: number, includeMirrors = false
+  ) { return this.reads.searchTimelineDocuments(tokens, cursor, limit, includeMirrors); }
 
   /* ---------------------------------------------------------------- *
    *  外部历史与收养 saga：全部转交 ChatHistorySagaApi（同一条串行队列）。
@@ -647,7 +699,7 @@ export class ChatStore {
   private updateFacts(
     chatId: string,
     update: (current: ChatFacts) => unknown,
-    lifecycleConversion = false
+    mutation: "facts" | "classification" | "project-detach" = "facts"
   ) {
     return this.state.queue.enqueue(async () => {
       assertChatId(chatId);
@@ -659,8 +711,9 @@ export class ChatStore {
       const facts = chatFactsSchema.parse(
         withFactRevision(current, candidate as ChatFacts)
       ) as ChatFacts;
-      assertReadonlyPresentationMutation(current, facts);
-      if (lifecycleConversion) {
+      // Only the explicit detach path may clear a readonly Chat's Project placement.
+      assertReadonlyPresentationMutation(mutation === "project-detach" ? clearProjectRecord(current) : current, facts);
+      if (mutation !== "facts") {
         await persistLocalClassification({ database: this.state.requireDatabase(), deviceId: this.state.requireDeviceId(), current, facts });
         this.state.touch();
       } else await persistFactsToStorage({
@@ -675,33 +728,38 @@ export class ChatStore {
       if (this.state.activeRecord?.record.id === chatId) {
         this.state.activeRecord = undefined;
       }
+      // Only changes that append publication work wake the scheduler; local sequence reservations do not.
+      if (mutation !== "facts" || metadataEdited(current, facts)) this.sync.notifyAppended("chat", chatId);
       return structuredClone(next);
     });
   }
 
-  private async persistRecord(record: ChatRecord) {
+  private async persistRecord(record: ChatRecord, executorCommit?: import("./sqlite/cloud/execution/commit").ExecutorCommit) {
     return persistRecordToStorage({
+      executorCommit,
       record,
       database: this.state.database,
       deviceId: this.state.deviceId,
       expectedAggregateRevision:
         this.state.metadata.get(record.id)?.chatRecordRevision ?? null,
-      onCommit: () => this.state.touch(),
+      onCommit: () => { this.state.touch(); this.sync.notifyAppended("chat", record.id); },
     });
   }
 
   private async persistAppendedMessage(
     current: ChatRecord,
     record: ChatRecord,
-    message: ChatMessage
+    message: ChatMessage,
+    executorCommit?: import("./sqlite/cloud/execution/commit").ExecutorCommit
   ) {
     return persistAppendedMessageToStorage({
+      executorCommit,
       current,
       record,
       message,
       database: this.state.database,
       deviceId: this.state.deviceId,
-      onCommit: () => this.state.touch(),
+      onCommit: () => { this.state.touch(); this.sync.notifyAppended("chat", record.id); },
     });
   }
 
@@ -716,7 +774,7 @@ export class ChatStore {
       message,
       database: this.state.database,
       deviceId: this.state.deviceId,
-      onCommit: () => this.state.touch(),
+      onCommit: () => { this.state.touch(); this.sync.notifyAppended("chat", record.id); },
     });
   }
 
@@ -732,6 +790,7 @@ export class ChatStore {
       databasePath: this.databasePath,
       deviceId: this.state.deviceId,
       mode: "canonical",
+      storageMode: this.dependencies.storageMode ?? { kind: "local-only" },
       backendDefaults: defaults,
     });
     this.state.database = database;

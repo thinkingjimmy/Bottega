@@ -18,12 +18,13 @@ export class HistorySource {
   constructor(readonly db: SqliteDatabase, private readonly blobsRoot: string) {}
   fence(chatId: string, deviceId: string) {
     const row = this.db.prepare(`SELECT c.incarnation_id, c.native_message_revision, c.trimmed_through_seq,
-      g.generation_id FROM chats c JOIN chat_local_memberships m ON m.chat_id=c.id AND m.device_id=?
+      g.generation_id, (SELECT MIN(seq) FROM chat_messages WHERE chat_id=c.id AND role='user') first_user_seq
+      FROM chats c JOIN chat_local_memberships m ON m.chat_id=c.id AND m.device_id=?
       LEFT JOIN chat_active_import_generations g ON g.chat_id=c.id WHERE c.id=?`).get(deviceId, chatId) as Row | undefined;
     if (!row) return null;
     return { view: { incarnationId: String(row.incarnation_id), nativeMessageRevision: Number(row.native_message_revision),
       activeGenerationId: row.generation_id == null ? null : String(row.generation_id) } satisfies HistoryViewFence,
-      storageTrimmed: Number(row.trimmed_through_seq) > 0 };
+      storageTrimmed: Number(row.trimmed_through_seq) > 0 && (row.first_user_seq == null || Number(row.first_user_seq) > Number(row.trimmed_through_seq)) };
   }
   binding(chatId: string, deviceId: string, nativeBeforeSeq: number): HistoryBinding | null {
     const fence = this.fence(chatId, deviceId);
@@ -32,6 +33,14 @@ export class HistorySource {
       WHERE chat_id=? AND generation_id=?`).get(chatId, fence.view.activeGenerationId) as Row;
     return { chatId, view: fence.view, cut: { nativeThroughSeq: Math.max(0, nativeBeforeSeq - 1),
       importedThroughSeq: Number(row.seq ?? 0) } };
+  }
+  count(binding: HistoryBinding) {
+    const row = this.db.prepare(`SELECT
+      (SELECT COUNT(*) FROM chat_messages WHERE chat_id=? AND seq<=? AND role IN ('user','assistant')) +
+      (SELECT COUNT(*) FROM chat_import_generation_entries e JOIN chat_import_entry_versions v ON v.entry_version_id=e.entry_version_id
+        WHERE e.chat_id=? AND e.generation_id=? AND e.delivery_seq<=? AND v.role IN ('user','assistant')) total`)
+      .get(binding.chatId, binding.cut.nativeThroughSeq, binding.chatId, binding.view.activeGenerationId, binding.cut.importedThroughSeq) as Row;
+    return Number(row.total);
   }
   list(binding: HistoryBinding, offset: number, limit: number, oldest = false, userOnly = false): Source[] {
     const order = oldest ? "ASC" : "DESC";
@@ -98,8 +107,8 @@ export class HistorySource {
       if (includeParts && !partId && fromByte === 0) parts = savedParts.map((part, index) => ({ partId: part.itemId ?? part.id ?? `part-${index}`, value: part }));
       notSaved = Boolean(message.partsTruncated || message.truncated);
     } else {
-      const row = this.db.prepare(`SELECT v.content_digest, o.source_kind
-        FROM chat_import_entry_versions v JOIN chat_import_origins o ON o.chat_id=v.chat_id WHERE v.entry_version_id=? AND v.chat_id=?`)
+      const row = this.db.prepare(`SELECT v.content_digest, COALESCE(json_extract(v.payload_json,'$.cloudSourceKind'),o.source_kind) source_kind
+        FROM chat_import_entry_versions v LEFT JOIN chat_import_origins o ON o.chat_id=v.chat_id WHERE v.entry_version_id=? AND v.chat_id=?`)
         .get(source.id, binding.chatId) as Row | undefined;
       if (!row) return null;
       digest = String(row.content_digest);
@@ -174,9 +183,8 @@ export function utf8Slice(value: string, fromByte: number, limit: number) {
 }
 
 export function importedBackend(database: SqliteDatabase, entryId: string): AgentBackendId {
-    const row = database.prepare(`SELECT o.source_kind FROM chat_import_generation_entries ge
-      JOIN chat_import_origins o ON o.chat_id = ge.chat_id
-      WHERE ge.entry_version_id = ? LIMIT 1`).get(entryId) as Row | undefined;
-    if (!row) throw new Error("Imported author is unavailable");
+    const row = database.prepare(`SELECT COALESCE(json_extract(v.payload_json,'$.cloudSourceKind'),o.source_kind) source_kind FROM chat_import_entry_versions v
+      LEFT JOIN chat_import_origins o ON o.chat_id = v.chat_id WHERE v.entry_version_id = ?`).get(entryId) as Row | undefined;
+    if (!row?.source_kind) throw new Error("Imported author is unavailable");
     return row.source_kind as AgentBackendId;
   }

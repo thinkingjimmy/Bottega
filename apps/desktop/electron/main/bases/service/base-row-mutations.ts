@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on BaseStore single-owner queues, base-store-model sameJson, shared Base row/meta types, view scrubbing, and mutation validation, plus the shared statusError constructor from main/errors
- * [OUTPUT]: Provides CAS row/meta mutations, mutation-time App migration guards after no-op detection, attachment rules and event projection
+ * [OUTPUT]: Provides CAS row/meta mutations, stable Agent batches with receipt truth, mutation-time App migration guards, attachment rules and event projection.
  * [POS]: Base mutation core; BasesService owns authority and event order while this module owns canonical state transitions
  */
 
@@ -15,7 +15,7 @@ import {
   type BaseRowPatch,
   type BaseSnapshot,
 } from "../../../../shared/bases-ipc";
-import { applyAppBaseDataMigration } from "./app-data-migration";
+import { applyAppBaseDataMigration } from "./migration/app-data-migration";
 import type { BaseCommitAuthority } from "./base-commit-authority";
 import type { BaseMutationOperation } from "./base-commit-authority";
 import {
@@ -37,6 +37,10 @@ import {
   validateBaseModel,
 } from "../validation/base-mutation-validation";
 import { statusError } from "../../errors";
+import { mutateToolRows, type ToolRowsInput } from "./tool/rows";
+import type { BaseToolIdentity } from "../store/tool/model";
+import { projectToolItem, toolBatchResult } from "./tool/result";
+import { sameScope } from "../../../../shared/local-storage/contracts";
 
 const canonicalRow = (row: BaseRow) => ({
   id: row.id,
@@ -76,6 +80,19 @@ export class BaseRowMutations {
     private readonly store: BaseStore,
     private readonly options: BaseRowMutationsOptions
   ) {}
+
+  async toolRows(input: Omit<ToolRowsInput, "ownerInstanceId"> & { authority: BaseCommitAuthority }) {
+    this.options.assertAdmission();
+    const operation = input.request.kind === "insert" ? "row-insert" : input.request.kind === "patch" ? "row-patch" : "row-delete";
+    const identity = await this.options.mutationIdentity(input.ownerKey, input.authority, operation);
+    return mutateToolRows(this.store, { ...input, ownerInstanceId: identity.ownerInstanceId }, {
+      assertAdmission: () => this.options.assertAdmission(),
+      changed: snapshot => this.options.emitChange(snapshot, { meta: snapshot.meta,
+        ...(input.request.kind === "delete" ? { removedRowIds: input.request.rowIds } : {
+          upserts: snapshot.rows.filter(row => input.request.kind !== "delete" && input.request.rows.some(item => ("rowId" in item ? item.rowId : item.id) === row.id)),
+        }) }),
+    });
+  }
 
   /** App 包声明、平台执行；一个 owner queue、一个 revision、一次事件。 */
   async applyAppDataMigration(
@@ -123,11 +140,30 @@ export class BaseRowMutations {
     return snapshot;
   }
 
-  async updateMeta(input: {
+  updateMeta(input: { ownerKey: string; expectedRevision: number; patch: BaseMetaPatch; authority: BaseCommitAuthority }) {
+    return this.commitMeta(input);
+  }
+
+  async toolMeta(input: { ownerKey: string; expectedRevision: number; patch: (base: BaseSnapshot) => BaseMetaPatch;
+    authority: BaseCommitAuthority; toolIdentity: BaseToolIdentity; includeColumns?: boolean; signal?: AbortSignal }) {
+    input.signal?.throwIfAborted();
+    const snapshot = await this.commitMeta(input);
+    input.signal?.throwIfAborted();
+    const sync = this.store.sync.read(input.ownerKey, snapshot.meta.ownerInstanceId);
+    const receipt = sync.toolBatches.find(item => item.operationId === input.toolIdentity.operationId)!;
+    if (receipt.scope && (!sync.scope || !sameScope(receipt.scope, sync.scope))) throw new Error("BASE_TOOL_SCOPE_CHANGED");
+    return { ...toolBatchResult(input.toolIdentity.batchId, [projectToolItem(receipt, sync)], snapshot.meta.revision, snapshot.rows.length),
+      ...(input.includeColumns ? { columns: snapshot.meta.columns } : {}), column_count: snapshot.meta.columns.length,
+      view_count: snapshot.meta.views.length, active_view_id: snapshot.meta.activeViewId };
+  }
+
+  private async commitMeta(input: {
     ownerKey: string;
     expectedRevision: number;
-    patch: BaseMetaPatch;
+    patch: BaseMetaPatch | ((base: BaseSnapshot) => BaseMetaPatch);
     authority: BaseCommitAuthority;
+    toolIdentity?: BaseToolIdentity;
+    signal?: AbortSignal;
   }) {
     this.options.assertAdmission();
     const identity = await this.options.mutationIdentity(
@@ -137,10 +173,12 @@ export class BaseRowMutations {
     );
     let changed = false;
     let rowsChanged = false;
-    const snapshot = await this.store.transact(
-      input.ownerKey,
-      identity.ownerInstanceId,
+    const transact = (callback: (current: BaseSnapshot) => import("../base-store-model").BaseStoreMutation | null) => input.toolIdentity ?
+      this.store.transactTool(input.ownerKey, identity.ownerInstanceId, input.toolIdentity, callback).then(result => result.snapshot) :
+      this.store.transact(input.ownerKey, identity.ownerInstanceId, callback);
+    const snapshot = await transact(
       (current) => {
+        input.signal?.throwIfAborted();
         this.options.assertAdmission();
         if (current.meta.revision !== input.expectedRevision) {
           throw mutationConflict(
@@ -151,7 +189,7 @@ export class BaseRowMutations {
             current.meta.revision
           );
         }
-        const rawMeta = { ...current.meta, ...structuredClone(input.patch) };
+        const rawMeta = { ...current.meta, ...structuredClone(typeof input.patch === "function" ? input.patch(current) : input.patch) };
         assertStableColumnTypes(current.meta.columns, rawMeta.columns);
         const removed = new Set(
           current.meta.columns
@@ -207,6 +245,8 @@ export class BaseRowMutations {
           changedRowIds: rowsChanged ? ALL_ROWS_CHANGED : NO_ROWS_CHANGED,
           actor: input.authority.actor,
           operation: "meta",
+          ...(input.toolIdentity ? { syncIntent: { operationId: input.toolIdentity.operationId,
+            batchId: input.toolIdentity.batchId, atomicGroup: input.toolIdentity.operationId } } : {}),
         };
       }
     );

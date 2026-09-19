@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on AppStore, HEAD-and-byte candidate identities, compatibility receipts, source custody, joined process execution, maintenance admission and generation publication.
+ * [INPUT]: Depends on AppStore, no-link manifest reads, source/compatibility receipts, joined commands, cross-volume publication and generation consent.
  * [OUTPUT]: Executes authorized App install/update/repair work with target-specific maintenance eligibility and the existing source, publication and permission fences.
  * [POS]: Apps supply-chain coordinator; it turns mutable source trees into validated runtime generations while AppSourceMonitor owns observation inside the same mutation lane
  */
@@ -12,9 +12,7 @@ import { executeInstallProcess } from "./install-process";
 import {
   access,
   mkdir,
-  readFile,
   realpath,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -37,6 +35,8 @@ import { AppRuntime } from "../server/app-runtime";
 import { AppStore } from "../store/app-store";
 import { createInstallAnalysisPrompt } from "../install/install-prompt";
 import { APP_MANIFEST_JSON_SCHEMA, appManifestSchema } from "../install/manifest-schema";
+import { publishDirectory } from "../store/folder/publication";
+import { readCommandSource } from "../execution/source-file";
 import { finalizeInstall } from "../install/finalize";
 import {
   declineExtension,
@@ -289,7 +289,7 @@ export class AppInstaller {
   private async rebuildAfterEditLocked(appId: string, force = false, expectedDigest?: string) {
     if (this.maintenanceGate.isLocked(appId)) throw new Error("App 修复中");
     const record = this.store.get(appId);
-    if (!record?.manifest || !["ready", "update-failed"].includes(record.state)) {
+    if (!record || !["ready", "update-failed"].includes(record.state)) {
       throw new Error("App 尚未就绪");
     }
     const task = this.localTask();
@@ -306,10 +306,10 @@ export class AppInstaller {
       if (previousFingerprint && !force && previousFingerprint === changes.fingerprint) {
         return;
       }
-      const editedManifest = appManifestSchema.parse(
-        JSON.parse(await readFile(join(record.dir, "app.json"), "utf8"))
+      let editedManifest: AppManifest = appManifestSchema.parse(
+        JSON.parse((await readCommandSource(record.dir, "app.json", 1024 * 1024)).bytes.toString("utf8"))
       );
-      if (editedManifest.kind !== record.manifest.kind) {
+      if (record.manifest && editedManifest.kind !== record.manifest.kind) {
         throw new Error("编辑不能改变 App kind");
       }
 
@@ -326,7 +326,15 @@ export class AppInstaller {
         await this.runtime.stop(appId);
       }
 
-      if (servesWebRuntime(editedManifest) && editedManifest.buildCmd) {
+      if (!record.manifest && servesWebRuntime(editedManifest)) {
+        editedManifest = await finalizeInstall(record.dir, editedManifest, {
+          onManifest: manifest => this.store.update(appId, current => ({ ...current, pendingInstallRequirements: manifest.requirements ?? undefined })),
+          runInstall: async command => { await this.runShell(appId, command, record.dir, task, "Installing dependencies", "update"); },
+          runBuild: async command => { await this.runShell(appId, command, record.dir, task, "Building App", "update"); },
+          validateStatic: manifest => this.validateStaticArtifact(record.dir, manifest),
+        });
+        await writeInstallManifest(record.dir, editedManifest);
+      } else if (servesWebRuntime(editedManifest) && editedManifest.buildCmd) {
         await this.runShell(
           appId,
           editedManifest.buildCmd,
@@ -337,7 +345,7 @@ export class AppInstaller {
         );
       }
       if (
-        changedPaths.some((path) =>
+        !record.manifest || changedPaths.some((path) =>
           /(^|\/)(\.agent-plugin|\.agent|skills|mcp)(\/|$)/.test(path)
         )
       ) {
@@ -360,6 +368,7 @@ export class AppInstaller {
         return {
           ...current,
           manifest: editedManifest,
+          pendingInstallRequirements: undefined,
           state: "ready",
           lastError: null,
         };
@@ -445,7 +454,7 @@ export class AppInstaller {
   private async installOne(appId: string, task: InstallTask) {
     const record = this.store.get(appId);
     if (!record) return;
-    const staging = join(this.store.appsRoot, ".staging", appId);
+    const staging = join(this.store.stagingRoot, appId);
     const finalDir = record.dir;
     let phase: AppFailurePhase = "clone";
     const timeout = setTimeout(
@@ -512,8 +521,12 @@ export class AppInstaller {
         decision === "declined" ? declineExtension(manifest) : manifest;
       if (decision === "declined") await writeInstallManifest(staging, deliveredManifest);
       await revalidateCompatibility(staging, candidateIdentity, compatibility, this.store.hostVersion());
-      await rm(finalDir, { recursive: true, force: true });
-      await rename(staging, finalDir);
+      /* A cross-volume publication (library on another volume) leaves a durable marker when it is
+         interrupted; removing the destination before resuming it would strand the App forever. */
+      if (!await publishDirectory.recover(staging, finalDir)) {
+        await rm(finalDir, { recursive: true, force: true });
+        await publishDirectory(staging, finalDir);
+      }
       // marketplace source 会被 Codex 固化为绝对路径，扩展必须在交付目录上注册。
       if (plan && decision === "approved") {
         await this.applyExtension(record, finalDir, task, plan);

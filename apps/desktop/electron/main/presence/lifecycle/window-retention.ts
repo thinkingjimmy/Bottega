@@ -15,14 +15,14 @@ export class WindowRetention {
   private readonly unsubscribe: () => void;
   constructor(private readonly ports: {
     windows: WindowRegistry; enabled(): boolean; quitting(): boolean;
-    requestQuit(): void; finished?(): boolean; recovered?(): void;
+    requestQuit(): void; finished?(): boolean; recovered?(): void; retained?(): void;
   }) {
     this.unsubscribe = ports.windows.subscribe((event) => {
       if (event.type === "registered" && event.record.role === "main") {
         event.record.window.on("close", (...args) => {
           if (ports.quitting()) { if (!ports.finished?.()) (args[0] as { preventDefault(): void }).preventDefault(); return; }
           (args[0] as { preventDefault(): void }).preventDefault();
-          if (ports.enabled() || ports.windows.list("app-window").length) event.record.window.hide?.();
+          if (ports.enabled() || ports.windows.list("app-window").length) { event.record.window.hide?.(); if (ports.enabled()) ports.retained?.(); }
           else ports.requestQuit();
         });
       }

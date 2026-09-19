@@ -4,6 +4,42 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-09-19 — v0.1.5
+
+**Before upgrading:** 0.1.5 uses a new local storage layout built around the Bottega folder, and it does not import Chats, Projects, Apps, Bases, attachments, or settings from 0.1.4 or any earlier release. Quit Bottega completely, back up the entire application data folder, and keep your external Chat Homes and Project folders. Move the old application data folder to a backup location, then launch 0.1.5 with a fresh data folder and choose a new Bottega folder during setup. Previous Bottega chats, settings, and installed App records are not imported automatically; nothing in the old folder is changed. See the [backup and setup instructions](../getting-started/README.md#upgrading-to-015).
+
+### What's new
+
+- **Sync your work across computers, end to end encrypted.** Cloud Sync is optional and stays off until you turn it on; local use still needs no account. The first computer sets a separate sync password of at least 8 characters including an English letter and a number. The key that encrypts your content is derived from it on your own device with Argon2id, content is sealed with XChaCha20-Poly1305 before it is uploaded, and the server stores only ciphertext. There is no recovery key and no password reset, and Bottega says so before you turn sync on. One account holds one encrypted workspace; a second computer joins it with the same account and the same password.
+- **Open your workspace in a browser.** Signed in at [app.getbottega.app](https://app.getbottega.app) you can read Chats with their tool activity and attachments, search chat titles and the last seven days of message bodies, work with Bases in all six views, read and edit synced App records, restore or delete archived items, and manage devices and preferences. Phone browsers are supported. Custom App interfaces, the in-app Browser, and local tools stay on your computer.
+- **Continue a conversation from another device.** When remote control is enabled for the service, a signed-in desktop that is online and unlocked can be driven from Cloud Web or a phone browser: choose the computer and Agent, send a message, watch the reply stream, Stop, approve or reject permission requests, answer questions, steer, and follow up. Remote control is a server-side switch rather than an app setting. While it is off, Chats open in the browser as read only, and reading a transcript or watching a running turn still works.
+- **Keep everything in a folder you own.** The Bottega folder chosen during setup holds Chat transcripts, original attachments, saved artifacts, Chat Home files, Project details, Base records, App source, and Skills. Account settings, keys, and device permissions stay on each computer. Quit Bottega before copying the folder for a complete backup, then choose that copy on another computer or in a fresh profile. File-synchronization folders such as iCloud Drive and Dropbox are unsupported. If the local Chat database cannot be opened, startup can rebuild conversations from the folder while preserving the previous database.
+- **Start with the setup you want.** Onboarding first asks whether to work on this computer only or to connect an existing account, then walks through the Bottega folder, Agents, Skills, and long-term memory. Memory is set up inside the wizard instead of sending you to Settings.
+- **See what your Agent produced.** Visualizations render inline and open in the side panel, file artifacts gain preview, save, reveal, and Quick Look actions, worksheets can be imported into a Base, and Claude artifacts open in the built-in browser. Previews stay sandboxed with no network or storage access.
+- **More control over the four Agents.** OpenCode Go quota joins Codex, Claude Code, and Kimi in Settings and the Agent selector, with rolling, weekly, and monthly windows. Title generation now names one explicit Agent and model, and all four Agents can be chosen. A new **Settings › Lab** holds **Keep Agent connections**, off by default, which warms an Agent process when a conversation opens and reuses it for that conversation's turns in exchange for some memory.
+- **Everyday sidebar work.** Drag Chats into the order you want, and that order is part of what syncs. Projects can be renamed without disturbing their contents and sorted by last update or by hand. Archiving a Chat or Project shows confetti, which can be turned off in Settings › General and pauses under the system reduced-motion setting.
+
+### Download and install
+
+The assets below include macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage installers. These builds are **unsigned and not notarized**. macOS remains the primary platform; native App isolation and full feature parity on Windows/Linux are still in progress.
+
+**macOS (Apple silicon):** open the DMG and drag Bottega into Applications. For the unsigned download, remove its quarantine flag once in Terminal, then open Bottega:
+
+```bash
+xattr -rd com.apple.quarantine /Applications/Bottega.app
+```
+
+**Windows (x64):** run the installer. If SmartScreen blocks the unrecognized publisher, choose **More info → Run anyway**.
+
+**Linux (x64):** make the AppImage executable and launch it:
+
+```bash
+chmod +x Bottega-0.1.5-linux-x86_64.AppImage
+./Bottega-0.1.5-linux-x86_64.AppImage
+```
+
+Install and authenticate at least one supported local CLI before starting a conversation. Users on 0.1.0 or 0.1.1 must install 0.1.5 manually because those versions contain the earlier updater bug. The storage preparation above applies to every earlier version.
+
 ## 2026-09-10 — v0.1.4
 
 **Before upgrading:** 0.1.4 uses a new local storage format and cannot open or automatically migrate data from 0.1.3 or earlier. Quit Bottega completely, back up the entire application data folder, and keep your external Chat Homes and Project folders. Move the old application data folder to a backup location before launching 0.1.4 with a fresh folder. Previous Bottega chats, settings, and installed App records are not imported automatically. See the [backup and setup instructions](../getting-started/README.md#upgrading-to-014).

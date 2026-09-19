@@ -8,7 +8,7 @@ import { app, BrowserWindow, globalShortcut, ipcMain, powerMonitor } from "elect
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { PANEL_CHANNEL, type TaskActivitySnapshot, type TaskPanelIntent, type TaskPanelSnapshot, type EffectivePresence } from "../../../../shared/presence-ipc";
-import type { AppLocale } from "../../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import { rendererMatches } from "../../frame-guard";
 import type { PresenceScreenSource } from "./screen-monitor";
 import { panelGeometry, type NativeScreen } from "./geometry";

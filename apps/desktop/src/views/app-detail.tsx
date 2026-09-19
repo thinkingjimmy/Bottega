@@ -48,7 +48,7 @@ import {
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { toast } from "@ai-chat/ui/components/ui/sonner";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { surfaceErrorMessage } from "@/lib/chat-composer/errors";
 import {
   appStudioSurface,

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on OpenCode CLI `models --verbose`, the locked ACP session inspector, ResolvedRuntime, opencodeEnvironment, and the app-owned probe cwd
- * [OUTPUT]: Provides model/Effort parsing, concrete ACP-default projection, AbortSignal cancellation, and generation-fenced TTL single-flight caching
+ * [INPUT]: Depends on OpenCode CLI models, the locked ACP session inspector, optional model-probe admission, ResolvedRuntime, opencodeEnvironment and the app-owned probe cwd
+ * [OUTPUT]: Provides model/Effort parsing, concrete ACP-default projection, probe-only admission, AbortSignal cancellation and generation-fenced TTL single-flight caching
  * [POS]: The OpenCode model-directory boundary; CLI metadata owns candidates/variants while session/new owns the one truthful default identity
  */
 
@@ -12,7 +12,7 @@ import type { BackendModelInfo } from "../../../../shared/agent-ipc";
 import { inspectAcpSession } from "../acp/probe";
 import type { ResolvedRuntime } from "../types";
 import { OPAQUE_CONFIG_VALUE_PATTERN } from "../capability-validation";
-import { createModelCatalog } from "../model-catalog";
+import { createModelCatalog, type ModelCatalogProbeRunner } from "../model-catalog";
 import { runSupervisedCommand } from "../supervised-command";
 import {
   opencodeAcpLaunch,
@@ -36,7 +36,8 @@ type SelectConfig = Extract<SessionConfigOption, { type: "select" }>;
 export type OpencodeModelCatalog = {
   (
     runtime: ResolvedRuntime,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    runProbe?: ModelCatalogProbeRunner
   ): Promise<BackendModelInfo[]>;
   invalidate(): void;
 };
@@ -263,6 +264,7 @@ export function createOpencodeModelCatalog(
   const inspectDefaultModel =
     overrides.inspectDefaultModel ?? readDefaultModel;
   const catalog = createModelCatalog<ResolvedRuntime>({
+    backend: "opencode",
     label: "OpenCode 模型目录",
     /* 目录是账号级事实，workspace 不进 key（探针 cwd 恒为 app-owned 空目录）。 */
     key: (runtime) => `${runtime.executable}\0${runtime.version}`,
@@ -278,8 +280,8 @@ export function createOpencodeModelCatalog(
     ...(overrides.now ? { now: overrides.now } : {}),
     ...(overrides.ttlMs !== undefined ? { ttlMs: overrides.ttlMs } : {}),
   });
-  const list = ((runtime, signal) =>
-    catalog.list(runtime, "", signal)) as OpencodeModelCatalog;
+  const list = ((runtime, signal, runProbe) =>
+    catalog.list(runtime, "", signal, runProbe)) as OpencodeModelCatalog;
   list.invalidate = catalog.invalidate;
   return list;
 }

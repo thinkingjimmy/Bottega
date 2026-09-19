@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on frozen EffectiveSkillSnapshot identities, Library v3, Extension Registry strong refs, Node filesystem clone primitives, and skills-runtime failure envelopes
- * [OUTPUT]: Provides SkillsTurnCustodyStore with per-turn identity/ref/runtime-root ownership, exact Extension-holder queries, current-enabled double checks, COW materialization, bounded SKILL.md reads, and custody-aware GC probes
+ * [OUTPUT]: Provides SkillsTurnCustodyStore with per-turn identity/ref/runtime-root ownership, exact Extension-holder queries, tombstone-tolerant enablement double checks, COW materialization, bounded SKILL.md reads, and custody-aware GC probes
  * [POS]: Resource owner between snapshot composition and use_skill; builtin tool leases only reference a custody id and never own generation or filesystem resources
  */
 
+import { assertRecoveredAuthority, recoverOrDefer, recoveryBlocked } from "../persistence/recovery-policy";
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import {
@@ -58,11 +59,14 @@ export class SkillsTurnCustodyStore {
   }
 
   async initialize() {
-    await rm(this.root, { recursive: true, force: true });
-    await mkdir(this.root, { recursive: true, mode: 0o700 });
+    await recoverOrDefer(async () => {
+      await rm(this.root, { recursive: true, force: true });
+      await mkdir(this.root, { recursive: true, mode: 0o700 });
+    });
   }
 
   async reserveRuntimeRoot(requestId: string) {
+    assertRecoveredAuthority();
     const root = join(this.root, requestKey(requestId));
     await mkdir(root, { recursive: false, mode: 0o700 });
     return root;
@@ -218,6 +222,7 @@ export class SkillsTurnCustodyStore {
   }
 
   async shutdown() {
+    if (recoveryBlocked()) return;
     for (const custodyId of [...this.custodies.keys()]) {
       await this.release(custodyId);
     }
@@ -226,10 +231,11 @@ export class SkillsTurnCustodyStore {
 
   private currentlyEnabled(entry: EffectiveSkillEntry) {
     if (entry.generationRef.kind === "library") {
-      const stored = this.library.entry(entry.generationRef.libraryId);
-      return Boolean(
-        stored?.enabled
-      );
+      /* A tombstone that lands mid-turn is another device's news, not this turn's.
+         Custody already pins the generation until release, so the lease keeps
+         reading the Skill the turn began with; a local disable still revokes it. */
+      const stored = this.library.entryIncludingTombstone(entry.generationRef.libraryId);
+      return Boolean(stored && (stored.tombstoneAt !== null || stored.enabled));
     }
     if (entry.generationRef.kind === "extension") {
       return this.registry.lifecycle.isComponentEnabled(
@@ -259,6 +265,8 @@ export class SkillsTurnCustodyStore {
       }
       return target;
     }
+    /* Every producer publishes the SKILL.md file path; the generation directory
+       is its parent (composeEffectiveSkillSnapshot admits nothing else). */
     const source = dirname(entry.path);
     if ((await observedDigest(entry, source)) !== entry.digest) {
       throw runtimeFailure("changed-during-read");

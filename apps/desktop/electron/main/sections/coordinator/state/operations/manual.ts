@@ -100,7 +100,7 @@ export function transitionManual(
   }
   const candidate: Record<string, unknown> = { ...current, phase };
   if (phase === "settled") {
-    if (current.cloudHandoff?.state !== "pending") delete candidate.payload;
+    if (!current.cloudSyncRequired && current.cloudHandoff?.state !== "pending") delete candidate.payload;
     candidate.terminalAt = now;
   }
   const next = manualIntentSchema.parse(candidate);

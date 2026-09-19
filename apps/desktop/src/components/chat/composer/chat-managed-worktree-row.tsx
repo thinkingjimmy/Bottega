@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { GitBranch, LoaderCircle } from "lucide-react";
 import type { GitBranchSnapshot } from "../../../../shared/projects-ipc";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type { ChatSessionController } from "../runtime/use-chat-session";
 import { composerContextButtonClass } from "./chat-project-selector";

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on ChatStore/ChatsService, ProjectStore/ProjectsService, SettingsStore, MemoryService, the ConversationCoordinator handle, and HistoryImportService with its adapters
- * [OUTPUT]: Connects same-source history adoption to canonical manual admission while preserving the typed explicit retry intent.
+ * [OUTPUT]: Connects display-independent saved-Chat continuation to native resume or cross-Agent replay with canonical admission and durable receipts; snapshot GC runs after window creation.
  * [POS]: The external-history half of the conversation-domain startup composition; conversation-runtime.ts owns the Chat/manual/Coordinator/Archive half
  */
 
@@ -125,6 +125,47 @@ export async function initializeHistoryImportService({
       memory.commitExistingProductHistory(grantId, intent),
     productMemoryCommitted: (grantId) =>
       memory.existingProductHistoryCommitted(grantId),
+    replay: async (request, route) => {
+      const metadata = chats.getMetadata(route.chatId);
+      const origin = metadata?.importOrigin;
+      if (!origin || request.turnOptions.backend === origin.sourceKind) return null;
+      const coordinator = getCoordinator();
+      const project = metadata.projectId ? projectStore.get(metadata.projectId) : undefined;
+      const indexed = project ? service.index.project(project.id) : undefined;
+      if (!coordinator || !project || !indexed || project.archivedAt ||
+        project.workspaceBinding.kind !== "external" || project.membershipRevision !== indexed.membershipRevision ||
+        project.dir !== indexed.canonicalRoot || metadata.readOnlyReason !== "external-readonly" || metadata.archivedAt ||
+        metadata.context.kind !== "ordinary") throw new Error("Imported Chat is unavailable for continuation");
+      if (origin.historyRevision !== request.expectedHistoryRevision) throw Object.assign(
+        new Error("历史会话已变化，请刷新后重试"), { code: "HISTORY_REVISION_CHANGED" });
+      const page = await chats.timelinePage({ chatId: metadata.id, limit: 1 });
+      if (!page?.activeGenerationId || page.activeGenerationId !== route.generationId) {
+        throw new Error("Saved-history continuation generation changed");
+      }
+      const intentId = `adopt_${randomUUID().replaceAll("-", "")}`;
+      const { submission } = request;
+      const firstMessage = { id: `user_${randomUUID().replaceAll("-", "")}`, role: "user" as const,
+        content: submission.displayText.trim(), createdAt: Date.now() };
+      const receipt = await coordinator.submitManualTurn({
+        ...(request.authenticationRetry ? { authenticationRetry: request.authenticationRetry } : {}),
+        intentId,
+        persistence: { kind: "adopt", input: {
+          id: metadata.id, title: metadata.title || "Imported conversation", agent: request.turnOptions.backend,
+          options: request.turnOptions, projectId: project.id, incarnationId: metadata.incarnationId,
+          session: null, importOrigin: origin, snapshotDigest: null, firstMessage,
+          replay: { generationId: page.activeGenerationId, expectedChatRecordRevision: metadata.chatRecordRevision,
+            noticeId: `notice_${randomUUID().replaceAll("-", "")}` },
+          ...(submission.attachmentPayloads?.length ? { attachmentPayloads: submission.attachmentPayloads } : {}),
+        } },
+        turn: { requestId: `request_${randomUUID().replaceAll("-", "")}`,
+          scope: { conversationId: metadata.id }, turnOptions: request.turnOptions,
+          ...(submission.planMode ? { planMode: true } : {}), input: submission.input },
+        content: submission.content,
+        precondition: { kind: "absent", proposedIncarnationId: metadata.incarnationId },
+        workspacePrecondition: { kind: "project", projectId: project.id, membershipRevision: project.membershipRevision },
+      });
+      return { intentId, chatId: metadata.id, incarnationId: metadata.incarnationId, phase: receipt.phase };
+    },
     adopt: async ({ request, entry, snapshot, route }) => {
       const coordinator = getCoordinator();
       const project = projectStore.get(entry.projectId);
@@ -149,6 +190,7 @@ export async function initializeHistoryImportService({
         ?? randomUUID().replaceAll("-", "");
       const messageId = `user_${randomUUID().replaceAll("-", "")}`;
       const requestId = `request_${randomUUID().replaceAll("-", "")}`;
+      const intentId = `adopt_${randomUUID().replaceAll("-", "")}`;
       const { submission } = request;
       const turnOptions = request.turnOptions;
       const content = submission.displayText.trim();
@@ -158,7 +200,7 @@ export async function initializeHistoryImportService({
       } as const;
       const receipt = await coordinator.submitManualTurn({
         ...(request.authenticationRetry ? { authenticationRetry: request.authenticationRetry } : {}),
-        intentId: `adopt_${randomUUID().replaceAll("-", "")}`,
+        intentId,
         persistence: {
           kind: "adopt",
           input: {
@@ -211,13 +253,9 @@ export async function initializeHistoryImportService({
           membershipRevision: project.membershipRevision,
         },
       });
-      if (receipt.phase === "failed") {
-        throw new Error("续聊启动失败，未静默创建空会话");
-      }
-      return { chatId, incarnationId, phase: receipt.phase };
+      return { intentId, chatId, incarnationId, phase: receipt.phase };
     },
   });
   await service.initialize();
-  await service.snapshots.gcMemoryOrphans();
   return service;
 }

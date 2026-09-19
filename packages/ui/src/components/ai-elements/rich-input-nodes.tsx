@@ -2,11 +2,11 @@
 
 /**
  * [INPUT]: Depends on PromptInput RichValue, host activation feedback, candidate icons, invalid-state metadata, and PathLabel
- * [OUTPUT]: Provides RichInputNodes with atomic chip activation, Enter/Space handling, focus rings, invalid state, and 44px coarse-pointer targets
+ * [OUTPUT]: Provides RichInputNodes with atomic chip activation, Enter/Space handling, focus rings, invalid state, host-owned file chip states (busy spinner, bad tone), and 44px coarse-pointer targets
  * [POS]: RichInput node view layer; editing history and candidate ownership remain in rich-input.tsx
  */
 
-import { PackageIcon } from "lucide-react";
+import { LoaderCircle, PackageIcon } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 import type { RichNode, RichValue } from "./prompt-input";
 import {
@@ -27,6 +27,8 @@ function activateWithKeyboard(
   activate();
 }
 
+export type RichFileState = { kind: "busy" | "bad"; title?: string };
+
 export function RichInputNodes({
   value,
   onFileClick,
@@ -36,6 +38,7 @@ export function RichInputNodes({
   renderSectionIcon,
   invalidSkillRefs,
   invalidSkillTitle,
+  fileStates,
 }: {
   value: RichValue;
   onFileClick?: (node: NodeOf<"file">) => void;
@@ -45,6 +48,8 @@ export function RichInputNodes({
   renderSectionIcon?: (agent: string) => ReactNode;
   invalidSkillRefs?: readonly string[];
   invalidSkillTitle?: string;
+  /** Host-owned state of a file chip by ref: busy shows a spinner, bad turns the chip destructive; the title explains either. */
+  fileStates?: Readonly<Record<string, RichFileState>>;
 }) {
   return value.map((node) => {
     if (node.type === "text") {
@@ -131,20 +136,27 @@ export function RichInputNodes({
         </button>
       );
     }
-    const Icon = fileIcon(node.name);
+    const state = fileStates?.[node.ref];
+    const Icon = state?.kind === "busy" ? LoaderCircle : fileIcon(node.name);
     const content = (
       <>
-        <Icon className="size-4 shrink-0" />
+        <Icon className={state?.kind === "busy" ? "size-4 shrink-0 animate-spin motion-reduce:animate-none" : "size-4 shrink-0"} />
         <span className="truncate">{node.name}</span>
       </>
     );
+    const tone = state?.kind === "bad"
+      ? "text-destructive hover:text-destructive"
+      : "text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300";
     if (!onFileClick) {
       return (
         <span
-          className="mx-0.5 inline-flex max-w-64 select-none items-center gap-1 rounded-md px-1 py-0.5 align-baseline text-blue-500 dark:text-blue-400"
+          aria-invalid={state?.kind === "bad" || undefined}
+          className={`mx-0.5 inline-flex max-w-64 select-none items-center gap-1 rounded-md px-1 py-0.5 align-baseline ${tone}`}
           contentEditable={false}
           data-rich-node-id={node.id}
+          data-file-state={state?.kind}
           key={node.id}
+          title={state?.title}
         >
           {content}
         </span>
@@ -153,14 +165,16 @@ export function RichInputNodes({
     const activate = () => onFileClick(node);
     return (
       <button
-        className="mx-0.5 inline-flex max-w-64 cursor-pointer select-none items-center gap-1 rounded-md px-1 py-0.5 align-baseline text-blue-500 hover:bg-muted hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 dark:text-blue-400 dark:hover:text-blue-300 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
+        aria-invalid={state?.kind === "bad" || undefined}
+        className={`mx-0.5 inline-flex max-w-64 cursor-pointer select-none items-center gap-1 rounded-md px-1 py-0.5 align-baseline hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 ${tone}`}
         contentEditable={false}
         data-rich-node-id={node.id}
+        data-file-state={state?.kind}
         key={node.id}
         onClick={activate}
         onKeyDown={(event) => activateWithKeyboard(event, activate)}
         onMouseDown={(event) => event.preventDefault()}
-        title={fileClickTitle}
+        title={state?.title ?? fileClickTitle}
         type="button"
       >
         {content}

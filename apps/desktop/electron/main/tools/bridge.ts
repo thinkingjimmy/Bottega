@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node Unix socket, shared tool name, BuiltinMcpLeaseStore and BuiltinToolRegistry, and statusError from main/errors
- * [OUTPUT]: Provides restartable 0600 native bridge, execute token/allowedTools, domain frequency control, socket-close/lease-revoke, cancel, ready, reverse, strict distribution and audit
+ * [OUTPUT]: Provides restartable 0600 native bridge, execute token/allowedTools, domain frequency control, in-flight invocation accounting for lease unbinding, socket-close/lease-revoke, cancel, ready, reverse, strict distribution and audit
  * [POS]: The tools process boundary; the stdio subprocess never touches app storage and can only invoke statically registered builtin tools through this bridge
  */
 
@@ -147,15 +147,21 @@ export class BuiltinMcpBridge {
         console.info(
           `[builtin-mcp] request=${lease.requestId} generation=${lease.generation} tool=${request.tool} argsBytes=${Buffer.byteLength(JSON.stringify(request.args ?? {}), "utf8")}`
         );
-        response = {
-          id: request.id,
-          ok: true,
-          result: await this.registry.call(request.tool, request.args, {
-            lease,
-            invocationId: request.invocationId,
-            signal: AbortSignal.any([callSignal, lease.signal]),
-          }),
-        };
+        /* 计数包住整个调用：解绑要等的正是这一段，不是 socket 的生死。 */
+        this.leases.beginInvocation(lease);
+        try {
+          response = {
+            id: request.id,
+            ok: true,
+            result: await this.registry.call(request.tool, request.args, {
+              lease,
+              invocationId: request.invocationId,
+              signal: AbortSignal.any([callSignal, lease.signal]),
+            }),
+          };
+        } finally {
+          this.leases.endInvocation(lease);
+        }
       }
     } catch (cause) {
       const value = cause as { status?: unknown; message?: unknown };

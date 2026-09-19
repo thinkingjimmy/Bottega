@@ -6,7 +6,8 @@
 
 import { createHash } from "node:crypto";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
-import { ownerFromKey } from "../../../shared/bases-ipc";
+
+import { ownerFromKey } from "@ai-chat/base-ui/model/owner-key";
 import {
   appearsInSearchBase,
   searchDestination,

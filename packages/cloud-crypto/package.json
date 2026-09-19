@@ -1,0 +1,29 @@
+{
+  "name": "@ai-chat/cloud-crypto",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker": "./src/worker/index.ts",
+    "./worker/node": "./src/worker/entries/node.ts",
+    "./worker/browser": "./src/worker/entries/browser.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "build": "node scripts/check-distribution.mjs && pnpm run typecheck"
+  },
+  "dependencies": {
+    "@ai-chat/cloud-protocol": "workspace:*",
+    "libsodium-sumo": "0.8.4",
+    "libsodium-wrappers-sumo": "0.8.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.6",
+    "typescript": "5.9.3"
+  },
+  "sideEffects": [
+    "./src/worker/entries/browser.ts",
+    "./src/worker/entries/node.ts"
+  ]
+}

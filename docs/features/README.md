@@ -9,7 +9,9 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Connect Codex, Claude Code, Kimi Code, and OpenCode through one backend-neutral ACP transport.
 - Switch the next Agent in an idle chat while preserving its transcript, per-reply authors, and bounded history handoff. Each provider keeps its own authentication and quota model.
 - See runtime and authentication availability in the composer, with scoped installation, sign-in, and retry actions.
-- Read available Codex, Claude Code, and Kimi quota windows, remaining amounts, and reset times in Settings and the Agent selector. OpenCode explicitly reports that unified quota information is unavailable.
+- Read available Codex, Claude Code, Kimi, and OpenCode Go quota windows, remaining amounts, and reset times in Settings and the Agent selector, including rolling, weekly, and monthly periods.
+- Name one explicit Agent and model for background title generation; all four Agents can be chosen, and unavailable ones state why instead of disappearing.
+- Turn on **Settings › Lab → Keep Agent connections** to warm an Agent process when a conversation opens and reuse it for that conversation's turns. It is off by default and trades memory for a faster first message.
 - Use Plan mode, live steering, queued messages, and visible tool activity without hiding backend differences.
 - Create Sections and Subagents for parallel work, inspect their progress, pass bounded context between them, and promote useful results into durable Sections.
 - Search and adopt supported local CLI histories without silently rewriting their original records.
@@ -19,6 +21,14 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Open **+ → Sketch** in the composer to draw, add text or eight kinds of shapes, and erase selected parts of strokes or shapes.
 - Use undo/redo, color, and stroke-width controls on a responsive square canvas with floating tools.
 - Reopen sketches from drafts and restored queues to keep editing; send the final white-background PNG through the normal image attachment flow.
+
+## Artifacts
+
+- Render Agent visualizations inline in the transcript, expand them, or open them in the Chat side panel.
+- Preview, save, reveal, or Quick Look the files a turn produced, and import a worksheet into a Base with an explicit row-merge confirmation.
+- Open Claude artifacts in the built-in browser, which reuses the existing persistent browser partition.
+- Keep every preview sandboxed: an artifact frame gets no network or storage access, and oversized, interrupted, or invalid artifacts state the reason instead of rendering.
+- Read artifacts produced on another computer once that computer has synced them, with an explicit waiting state until then.
 
 ## Base
 
@@ -64,11 +74,33 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Follow running tasks and pending requests in the notch panel, navigate with the keyboard, and return to the related chat.
 - Reopen or quit Bottega through the available background entry.
 
-## Local storage
+## Cloud Sync
+
+- Keep synchronization optional: Bottega works without an account, and signing in uploads nothing until you confirm the first sync.
+- Sign in through your system browser with Google, approve the request there, and let the desktop app pick the session up. Bottega never asks for that password.
+- Unlock synced content with a separate sync password of at least 8 characters including an English letter and a number. The content key is derived on your own device with Argon2id, and content is sealed with XChaCha20-Poly1305 before upload.
+- Accept that there is no recovery: no recovery key, no approval from another device, no password reset, and no sync reset. The risk is stated and confirmed before the encrypted workspace is created.
+- Keep one encrypted workspace per account. Another computer chooses its own Bottega folder, signs in with the same account, and enters the same password to join.
+- Synchronize Chats with their tool activity, Subagents and attachments, Bases and their App records, Project metadata, and Skills. Conflicting edits keep both candidates with an explicit decision instead of silently overwriting.
+- Keep working while offline or paused: local content stays readable, queued work resumes under the same identity, and a wrong password or a lost connection never deletes local data or cloud keys.
+
+## Cloud Web and remote control
+
+- Read Chats in a browser at [app.getbottega.app](https://app.getbottega.app), with the same transcript, tool activity, Subagents, and attachments as the desktop.
+- Search chat titles and the last seven days of message bodies. Search runs in the browser against decrypted content; queries and plain-text indexes are never uploaded.
+- Work with Bases through the same six views, read and edit synced App records, restore or delete archived items, and manage devices, sessions, and preferences.
+- Stay unlocked on a browser you trust, or lock it again at any time. Custom App interfaces, the in-app Browser, and local tools remain on the computer that owns them.
+- Use a phone browser: layout, touch targets, sheets, and drag interactions adapt below 768px. Chrome is the tested browser.
+- Drive a signed-in desktop from the Web when remote control is enabled for the service: choose the computer and Agent, send a message, watch live output, Stop, approve or reject permission requests, answer questions, steer, and follow up. The target must be online, unlocked, on a matching protocol version, and ready to execute.
+- Remote control is a server-side switch rather than an app setting or a hidden button. While it is off, browser Chats are read only; reading a transcript and watching a running turn still work.
+
+## Local storage and your Bottega folder
 
 - Keep Chat, Base, Project, App, and attachment data under durable local ownership, with interrupted-operation recovery and explicit retention rules.
-- Use Bottega without a cloud account; ordinary local work does not queue uploads. Cloud synchronization is not included in 0.1.4.
-- Back up the complete application data folder before changing versions. 0.1.4 requires a fresh folder when upgrading from 0.1.3 or earlier; see the [upgrade guide](../getting-started/README.md#upgrading-to-014).
+- Keep readable content in one Bottega folder chosen during setup: Chat transcripts, original attachments, saved artifacts, Chat Home files, Project details, Base records, App source, and Skills. Account settings, encryption keys, device permissions, and execution records stay in each computer's application data directory.
+- Back up by quitting Bottega and copying the whole folder; a copy made while it is running is a best-effort recovery source that reports its gaps. File-synchronization folders such as iCloud Drive and Dropbox are unsupported.
+- Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
+- Back up the complete application data folder before changing versions. 0.1.5 uses a new local storage layout and needs a fresh application data folder when you come from 0.1.4 or earlier; see the [upgrade guide](../getting-started/README.md#upgrading-to-015).
 
 ## Product foundations
 

@@ -1,12 +1,24 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2023"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "noEmit": true
   },
-  "include": ["electron", "shared", "scripts/**/*.ts", "electron.vite.config.ts"],
-  "exclude": ["electron/main/__tests__/fixtures/app-gui-compiled/**"]
+  "include": [
+    "electron",
+    "shared",
+    "scripts/**/*.ts",
+    "electron.vite.config.ts",
+    "config/**/*.ts"
+  ],
+  "exclude": [
+    "electron/main/__tests__/fixtures/app-gui-compiled/**"
+  ]
 }

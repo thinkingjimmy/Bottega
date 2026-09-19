@@ -31,6 +31,7 @@ export function codexAcpArgs() {
 export function codexAcpEnvironment(
   runtime: ResolvedRuntime,
   options: {
+    artifactDirectory?: string;
     approveForMe?: boolean;
     builtinMcp?: BuiltinMcpServerSpec;
     thirdPartyMcpPlan?: ThirdPartyMcpPlan;
@@ -41,6 +42,7 @@ export function codexAcpEnvironment(
     ELECTRON_RUN_AS_NODE: "1",
     CODEX_PATH: runtime.executable,
     CODEX_CONFIG: codexConfig({
+      artifactDirectory: options.artifactDirectory,
       approveForMe: options.approveForMe,
       builtinMcp: options.builtinMcp,
       thirdPartyMcpPlan: options.thirdPartyMcpPlan,
@@ -49,6 +51,7 @@ export function codexAcpEnvironment(
 }
 
 function codexConfig(options: {
+  artifactDirectory?: string;
   approveForMe?: boolean;
   builtinMcp?: BuiltinMcpServerSpec;
   thirdPartyMcpPlan?: ThirdPartyMcpPlan;
@@ -73,6 +76,7 @@ function codexConfig(options: {
     ])
   );
   const serialized = JSON.stringify({
+    ...(options.artifactDirectory ? { sandbox_workspace_write: { writable_roots: [options.artifactDirectory] } } : {}),
     approvals_reviewer: options.approveForMe ? "auto_review" : "user",
     ...(options.builtinMcp || Object.keys(thirdParty).length
       ? {
@@ -109,6 +113,7 @@ export const codexAcpLaunch: AcpLauncher = (runtime, overlay) => ({
     ...overlay?.processEnv,
     /* 产品冻结的 MCP 配置必须最后写入；App env 不能覆盖能力判决。 */
     CODEX_CONFIG: codexConfig({
+      artifactDirectory: overlay?.session?.artifactDirectory,
       approveForMe: overlay?.session?.approveForMe,
       builtinMcp: overlay?.session?.builtinMcp,
       thirdPartyMcpPlan: overlay?.session?.thirdPartyMcpPlan,

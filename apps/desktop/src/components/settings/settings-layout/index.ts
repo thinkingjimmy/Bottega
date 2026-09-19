@@ -9,7 +9,7 @@
    SettingsRow 和 SettingsSwitch 恰好不在同一个文件——那是作者的排版
    问题，不是使用者的知识。哪天再拆一层，调用方仍然一个字都不必改。 */
 
-export { SettingsAlert, SettingsCanvas, SettingsSection } from "./page-frame";
+export { SettingsAlert, SettingsCanvas, SettingsSection } from "@ai-chat/ui/components/settings/page-frame";
 export {
   SettingsBadge,
   SettingsEmpty,
@@ -18,7 +18,7 @@ export {
   SettingsNoteList,
   SettingsRow,
   SettingsSurface,
-} from "./content";
+} from "@ai-chat/ui/components/settings/content";
 export {
   SettingsButton,
   SettingsChoiceRow,
@@ -26,4 +26,4 @@ export {
   SettingsIconButton,
   SettingsLabelAction,
   SettingsSwitch,
-} from "./controls";
+} from "@ai-chat/ui/components/settings/controls";

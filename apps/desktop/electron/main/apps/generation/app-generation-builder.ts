@@ -13,7 +13,7 @@ import type { AppGenerationBuildOperation } from "../../../../shared/app-lifecyc
 import type { AppGenerationBuildLedger } from "./app-generation-build-ledger";
 import type { AppServerCutoverPort, PreparedServerCutover } from "../server/app-server-cutover";
 import type { AppExtensionGenerationPort } from "./app-extension-generation";
-import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/app-generation-build-participants";
+import type { AppGenerationBuildParticipantRegistry } from "../../lifecycle/generation/build-participants";
 import type { BaseGuiGrantStore } from "../base-gui/grant-store";
 import type { BaseGuiBuildParticipant } from "../base-gui/build-participant";
 import type { AppGuiBuildService } from "../gui-build/service";

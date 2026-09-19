@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the preload Project Tools bridge, shared exact-Project DTOs, and lib/snapshot-controller
- * [OUTPUT]: Provides createProjectToolsController — a lifecycle-fenced, revision-monotonic, CAS-serialized controller for one Project Tool Policy
+ * [OUTPUT]: Provides createProjectToolsController — a subscription-scoped, revision-monotonic, CAS-serialized controller for one Project Tool Policy
  * [POS]: Sole renderer authority for one Project Tool Policy; it supplies the Project guard, the CAS fence and override commands on top of the shared snapshot-controller core, and views can never enumerate other policies
  */
 
@@ -95,6 +95,5 @@ export function createProjectToolsController(projectId: string) {
       ),
     resetAll: () =>
       core.mutate("reset-all", (current) => bridge().resetAll(fence(current))),
-    dispose: core.dispose,
   };
 }

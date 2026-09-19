@@ -12,20 +12,7 @@ export const agentSwitchIntentSchema = z.object({
   expectedChatRecordRevision: z.number().int().positive(),
   targetAgent: agentBackendIdSchema,
 }).strict().refine(value => value.expectedAgent !== value.targetAgent);
-export const agentSwitchedNoticeSchema = z.object({
-  kind: z.literal("agent-switched"),
-  from: agentBackendIdSchema,
-  to: agentBackendIdSchema,
-  at: z.number().int().nonnegative(),
-  agentRevision: z.number().int().positive(),
-  context: z.object({
-    mode: z.enum(["excerpts", "none"]),
-    historyIncluded: z.boolean(),
-    notInjected: z.boolean(),
-    storageTrimmed: z.boolean(),
-    lookup: z.enum(["available", "disabled", "unsupported", "unavailable"]),
-  }).strict(),
-}).strict();
+export { agentSwitchedNoticeSchema } from "@ai-chat/cloud-protocol/chats/content/notices";
 
 export const chatOptionsPatchSchema = z.object({
   chatId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),

@@ -1,14 +1,20 @@
 /**
- * [INPUT]: Depends on React, Appearance/I18n/Setup providers, AgentFailureNotice, PresenceSettings, settings controls/store, PageShell, and UI primitives.
- * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle with appearance, presence, Chat Home, and title generation settings using consistent trigger/menu typography.
+ * [INPUT]: Depends on React, Appearance/I18n/Setup providers, AgentFailureNotice, PresenceSettings, ArchiveConfettiRow, shared SettingsPreferenceSelect, settings controls/store, PageShell, and UI primitives.
+ * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle/TitleAgentLabel with appearance, presence, Chat Home, and single-backend title generation settings using consistent trigger/menu typography.
  * [POS]: Settings layer's default view; holds no settings snapshot of its own — subscribes to settingsStore and pulls the per-backend model catalog on demand
  */
 
+import { SettingsPreferenceSelect } from "@ai-chat/ui/components/settings/preference-select";
 import { PresenceSettings } from "@/components/settings/presence/section";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { ArchiveConfettiRow } from "@/components/settings/general/archive-confetti-row";
+import { FolderProgress } from "@/components/settings/general/folder-progress";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useAppearance } from "@/components/providers/appearance-provider";
 import { useSetup } from "@/components/providers/setup-provider";
-import { useAppTranslation } from "@/components/providers/i18n-provider";
+import {
+  useAppTranslation,
+  useSystemFileManagerRevealLabel,
+} from "@/components/providers/i18n-provider";
 import {
   SettingsCanvas,
   SettingsButton,
@@ -19,14 +25,13 @@ import {
 } from "@/components/settings/settings-layout";
 import { PageShell } from "@/components/page-shell";
 import { AgentFailureNotice } from "@/components/agent-failure-notice";
-import { FolderOpen, RefreshCw, Settings, Sparkles } from "lucide-react";
+import { FolderOpen, RefreshCw, Settings } from "lucide-react";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
-import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import type { FontFamily } from "@/lib/appearance";
 import {
   AgentBackendIcon,
   backendLabel,
-  effectiveTitleAgent,
+  titleAgentNotice,
   titleAgentOptions,
 } from "@/lib/agent-backends";
 import {
@@ -36,10 +41,12 @@ import {
 } from "@/lib/settings-client";
 import { settingsStore } from "@/lib/settings-store";
 import type { AppSettings, ThemePreference } from "../../shared/settings-ipc";
-import type { LanguagePreference } from "../../shared/i18n/locale";
-import type {
-  AgentBackendId,
-  BackendModelInfo,
+import type { LanguagePreference } from "@ai-chat/ui/lib/locale";
+import {
+  AGENT_BACKEND_ORDER,
+  type AgentBackendId,
+  type BackendInfo,
+  type BackendModelInfo,
 } from "../../shared/agent-ipc";
 import {
   Select,
@@ -69,18 +76,6 @@ export const LANGUAGE_OPTIONS: Array<{
   { emoji: "🇪🇸", label: "Español", value: "es" },
 ];
 
-function LanguageLabel({ option }: { option: (typeof LANGUAGE_OPTIONS)[number] }) {
-  const { t } = useAppTranslation();
-  return (
-    <span className="flex items-center gap-2">
-      <span aria-hidden="true" className="w-5 text-center text-base leading-none">
-        {option.emoji}
-      </span>
-      <span>{option.labelKey ? t(option.labelKey) : option.label}</span>
-    </span>
-  );
-}
-
 const FONT_OPTIONS: Array<{
   label?: string;
   labelKey?: "settings.general.systemFont";
@@ -94,26 +89,25 @@ const FONT_OPTIONS: Array<{
 /* 稳定空目录引用：目录未就绪时避免逐 render 新建数组击穿 useMemo */
 const NO_MODELS: BackendModelInfo[] = [];
 
-/** 标题模型槽位归属：Auto（含失效回落）编辑 Codex 槽位，显式选择编辑自己的。 */
-const titleSlot = (titleAgent: AppSettings["titleAgent"]): AgentBackendId =>
-  titleAgent === "auto" ? "codex" : titleAgent;
-
-/** 标题 Agent 的显示身份：Auto 用 Sparkles，其余复用后端品牌 logo。 */
-function TitleAgentLabel({ value }: { value: AppSettings["titleAgent"] }) {
+/* 四个后端恒在列且恒可选：标题失败会回落到用户自己的第一句话，所以
+ * 「装没装、登没登」是一条提示，不是一道把选项藏起来的门。 */
+export function TitleAgentLabel({
+  value,
+  notice,
+}: {
+  value: AgentBackendId;
+  notice?: ReturnType<typeof titleAgentNotice>;
+}) {
   const { t } = useAppTranslation();
   return (
     <span className="flex items-center gap-1.5">
-      {value === "auto" ? (
-        <>
-          <Sparkles className="size-3.5" />
-          {t("common.auto")}
-        </>
-      ) : (
-        <>
-          <AgentBackendIcon backend={value} className="size-3.5" />
-          {backendLabel(value)}
-        </>
-      )}
+      <AgentBackendIcon backend={value} className="size-3.5" />
+      {backendLabel(value)}
+      {notice ? (
+        <span className="text-muted-foreground">
+          {t(`agentAvailability.state.${notice}`)}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -125,29 +119,32 @@ function TitleAgentLabel({ value }: { value: AppSettings["titleAgent"] }) {
 
 function ChatRows({
   settings,
-  titleAgent,
-  titleAgentOptions,
+  backends,
+  now,
   modelsByBackend,
   modelsReadyByBackend,
 }: {
   settings: AppSettings;
-  titleAgent: AppSettings["titleAgent"];
-  titleAgentOptions: Array<AppSettings["titleAgent"]>;
+  backends: BackendInfo[] | undefined;
+  now: number;
   modelsByBackend: Partial<Record<AgentBackendId, BackendModelInfo[]>>;
   modelsReadyByBackend: Partial<Record<AgentBackendId, boolean>>;
 }) {
   const { t } = useAppTranslation();
-  /* Auto 生成期优先 Codex，故选择器编辑 Codex 槽位；生成期若降级
-   * 到其他后端，会使用该后端自己记忆的槽位（默认 CLI 默认模型）。 */
-  const effectiveTitleBackend = titleSlot(titleAgent);
+  /* 模型槽位按后端各存一份，选择器编辑的始终是当前标题 Agent 自己的那一格。 */
+  const titleAgent = settings.titleAgent;
+  const agentOptions = useMemo(
+    () => titleAgentOptions(backends, now),
+    [backends, now],
+  );
   useEffect(() => {
-    settingsStore.ensureModels(effectiveTitleBackend);
-  }, [effectiveTitleBackend]);
+    settingsStore.ensureModels(titleAgent);
+  }, [titleAgent]);
 
-  const models = modelsByBackend[effectiveTitleBackend] ?? NO_MODELS;
-  const modelsReady = modelsReadyByBackend[effectiveTitleBackend] ?? false;
+  const models = modelsByBackend[titleAgent] ?? NO_MODELS;
+  const modelsReady = modelsReadyByBackend[titleAgent] ?? false;
   const titleModel =
-    settings.titleModelByBackend[effectiveTitleBackend] ?? null;
+    settings.titleModelByBackend[titleAgent] ?? null;
   const modelOptions = useMemo(
     () =>
       buildTitleModelOptions(models, titleModel, {
@@ -155,7 +152,7 @@ function ChatRows({
         currentModelUnavailable: (model) =>
           t("settings.general.currentModelUnavailable", { model }),
       }),
-    [models, titleModel, t]
+    [models, titleModel, t],
   );
   const selectedModelValue = selectedTitleModelValue(titleModel, models);
   const selectedModelLabel =
@@ -167,16 +164,16 @@ function ChatRows({
       {
         titleModelByBackend: {
           ...settings.titleModelByBackend,
-          [effectiveTitleBackend]: persistedTitleModelValue(value, models),
+          [titleAgent]: persistedTitleModelValue(value, models),
         },
       },
-      t("settings.general.saveTitleModelFailed")
+      t("settings.general.saveTitleModelFailed"),
     );
 
   const selectTitleAgent = (value: string) =>
     settingsStore.update(
-      { titleAgent: value === "auto" ? "auto" : (value as AgentBackendId) },
-      t("settings.general.saveTitleAgentFailed")
+      { titleAgent: value as AgentBackendId },
+      t("settings.general.saveTitleAgentFailed"),
     );
 
   const selectAutoRelayLimit = (value: string) => {
@@ -184,7 +181,7 @@ function ChatRows({
     if (!Number.isSafeInteger(autoRelayLimit)) return;
     void settingsStore.update(
       { autoRelayLimit },
-      t("settings.general.saveRelayLimitFailed")
+      t("settings.general.saveRelayLimitFailed"),
     );
   };
 
@@ -212,11 +209,7 @@ function ChatRows({
             </SelectTrigger>
             <SelectContent align="end" className="text-sm">
               {[5, 10, 25, 50, 100, 0].map((value) => (
-                <SelectItem
-                  key={value}
-                  value={String(value)}
-                 
-                >
+                <SelectItem key={value} value={String(value)}>
                   {value === 0
                     ? t("settings.general.unlimitedNotRecommended")
                     : t("settings.general.rounds", { count: value })}
@@ -244,17 +237,22 @@ function ChatRows({
                 size="lg"
               >
                 <SelectValue>
-                  <TitleAgentLabel value={titleAgent} />
+                  <TitleAgentLabel
+                    value={titleAgent}
+                    notice={
+                      agentOptions.find((option) => option.id === titleAgent)
+                        ?.notice
+                    }
+                  />
                 </SelectValue>
               </SelectTrigger>
               <SelectContent align="end" className="text-sm">
-                {titleAgentOptions.map((option) => (
-                  <SelectItem
-                    key={option}
-                    value={option}
-                   
-                  >
-                    <TitleAgentLabel value={option} />
+                {agentOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    <TitleAgentLabel
+                      value={option.id}
+                      notice={option.notice}
+                    />
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -270,16 +268,14 @@ function ChatRows({
                 size="lg"
               >
                 <SelectValue>
-                  {modelsReady ? selectedModelLabel : t("settings.general.reading")}
+                  {modelsReady
+                    ? selectedModelLabel
+                    : t("settings.general.reading")}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent align="end" className="text-sm">
                 {modelOptions.map((model) => (
-                  <SelectItem
-                    key={model.value}
-                    value={model.value}
-                   
-                  >
+                  <SelectItem key={model.value} value={model.value}>
                     {model.label}
                   </SelectItem>
                 ))}
@@ -296,7 +292,10 @@ function ChatRowsSkeleton() {
   return (
     <SettingsList data-testid="settings-chat-skeleton">
       {[0, 1].map((row) => (
-        <div key={row} className="flex items-center justify-between gap-6 px-4 py-3">
+        <div
+          key={row}
+          className="flex items-center justify-between gap-6 px-4 py-3"
+        >
           <div className="min-w-0 space-y-2">
             <Skeleton className="h-4 w-28" />
             <Skeleton className="h-3 w-56" />
@@ -318,7 +317,7 @@ export function CrossChatReadToggle({ enabled }: { enabled: boolean }) {
       onToggle={(allowCrossChatRead) =>
         void settingsStore.update(
           { allowCrossChatRead },
-          t("settings.general.saveCrossChatReadFailed")
+          t("settings.general.saveCrossChatReadFailed"),
         )
       }
     />
@@ -335,31 +334,21 @@ export function ThemeSelect({ theme }: { theme: ThemePreference | null }) {
     if (option) {
       void settingsStore.update(
         { theme: option.value },
-        t("settings.general.saveThemeFailed")
+        t("settings.general.saveThemeFailed"),
       );
     }
   };
   return (
-    <Select value={theme} onValueChange={selectTheme}>
-      <SelectTrigger
-        id="theme-preference"
-        aria-label={t("settings.general.theme")}
-        size="lg"
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent align="end" className="text-sm">
-        {THEME_OPTIONS.map((option) => (
-          <SelectItem
-            key={option.value}
-            value={option.value}
-           
-          >
-            {t(option.labelKey)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <SettingsPreferenceSelect
+      id="theme-preference"
+      label={t("settings.general.theme")}
+      value={theme}
+      onValueChange={selectTheme}
+      options={THEME_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.labelKey),
+      }))}
+    />
   );
 }
 
@@ -370,48 +359,32 @@ export function LanguageSelect({
 }) {
   const { t } = useAppTranslation();
   if (!language) return <Skeleton className="h-8 w-48 shrink-0" />;
-  const selected =
-    LANGUAGE_OPTIONS.find((option) => option.value === language) ??
-    LANGUAGE_OPTIONS[0];
   return (
-    <Select
+    <SettingsPreferenceSelect
+      id="language-preference"
+      label={t("settings.general.language")}
       value={language}
+      options={LANGUAGE_OPTIONS.map((option) => ({
+        value: option.value,
+        emoji: option.emoji,
+        label: option.labelKey ? t(option.labelKey) : option.label!,
+      }))}
       onValueChange={(value) => {
         const option = LANGUAGE_OPTIONS.find((entry) => entry.value === value);
-        if (option) {
+        if (option)
           void settingsStore.update(
             { language: option.value },
-            t("settings.general.saveLanguageFailed")
+            t("settings.general.saveLanguageFailed"),
           );
-        }
       }}
-    >
-      <SelectTrigger
-        id="language-preference"
-        aria-label={t("settings.general.language")}
-        size="lg"
-      >
-        <SelectValue>
-          <LanguageLabel option={selected} />
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent align="end" className="min-w-48 text-sm">
-        {LANGUAGE_OPTIONS.map((option) => (
-          <SelectItem
-            key={option.value}
-            value={option.value}
-            className="min-h-9 pr-9"
-          >
-            <LanguageLabel option={option} />
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    />
   );
 }
 
 export function GeneralSettingsView() {
   const { t } = useAppTranslation();
+  const revealLabel = useSystemFileManagerRevealLabel();
+  const [revealError, setRevealError] = useState("");
   const { appearance, updateAppearance } = useAppearance();
   const setup = useSetup();
   const {
@@ -420,16 +393,12 @@ export function GeneralSettingsView() {
     modelsReadyByBackend,
     error,
     modelsErrorByBackend,
-    chatHomesRootBusy,
     chatHomesRootError,
+    folderProgress,
   } = useSyncExternalStore(settingsStore.subscribe, settingsStore.getSnapshot);
-  /* 候选不是常量，是能力的函数；失效的持久值只在呈现上回落，
-     判据与回落规则同住 lib/agent-backends 以便单测。 */
   const backends = setup.status?.backends;
-  const options = useMemo(() => titleAgentOptions(backends, setup.now), [backends, setup.now]);
-  const titleAgent = effectiveTitleAgent(settings?.titleAgent, backends, setup.now);
-  const effectiveTitleBackend = titleSlot(titleAgent);
-  const modelsError = modelsErrorByBackend[effectiveTitleBackend] ?? null;
+  const titleAgent = settings?.titleAgent ?? AGENT_BACKEND_ORDER[0];
+  const modelsError = modelsErrorByBackend[titleAgent] ?? null;
 
   useEffect(() => {
     settingsStore.ensureLoaded();
@@ -444,7 +413,6 @@ export function GeneralSettingsView() {
     <PageShell title={t("common.general")} icon={<Settings />}>
       <SettingsCanvas>
         <div className="space-y-8">
-
           <SettingsSection title={t("settings.general.appearance")}>
             <SettingsList>
               <SettingsRow
@@ -457,7 +425,9 @@ export function GeneralSettingsView() {
                 label={t("settings.general.language")}
                 htmlFor="language-preference"
                 description={t("settings.general.languageDescription")}
-                control={<LanguageSelect language={settings?.language ?? null} />}
+                control={
+                  <LanguageSelect language={settings?.language ?? null} />
+                }
               />
               <SettingsRow
                 label={t("settings.general.font")}
@@ -477,11 +447,7 @@ export function GeneralSettingsView() {
                     </SelectTrigger>
                     <SelectContent align="end" className="text-sm">
                       {FONT_OPTIONS.map((font) => (
-                        <SelectItem
-                          key={font.value}
-                          value={font.value}
-                         
-                        >
+                        <SelectItem key={font.value} value={font.value}>
                           {font.labelKey ? t(font.labelKey) : font.label}
                         </SelectItem>
                       ))}
@@ -489,6 +455,7 @@ export function GeneralSettingsView() {
                   </Select>
                 }
               />
+              <ArchiveConfettiRow />
             </SettingsList>
           </SettingsSection>
 
@@ -497,7 +464,7 @@ export function GeneralSettingsView() {
           <SettingsSection
             title={t("settings.general.chatHomeLocation")}
             description={t("settings.general.chatHomeDescription")}
-            alert={chatHomesRootError || error}
+            alert={revealError || chatHomesRootError || error}
             action={
               error ? (
                 <SettingsButton
@@ -510,6 +477,7 @@ export function GeneralSettingsView() {
               ) : undefined
             }
           >
+            <FolderProgress progress={folderProgress} />
             <SettingsList>
               <SettingsRow
                 label={t("settings.general.folder")}
@@ -517,7 +485,8 @@ export function GeneralSettingsView() {
                 description={
                   settings ? (
                     <span className="font-mono text-xs break-all">
-                      {settings.chatHomesRoot ?? t("settings.general.notSelected")}
+                      {settings.chatHomesRoot ??
+                        t("settings.general.notSelected")}
                     </span>
                   ) : (
                     <Skeleton className="h-3 w-72" />
@@ -525,22 +494,19 @@ export function GeneralSettingsView() {
                 }
                 control={
                   <SettingsButton
-                    /* SettingsRow 的 `<label for>` 优先级高于按钮自身文本，
-                     * 于是它对外自称「文件夹」而屏幕上写着「更改…」——可见名不在
-                     * 可访问名之内（WCAG 2.5.3），语音控制念屏幕上那三个字反而点不动它。
-                     * aria-label 盖过 label 元素，把可见文案接回名字，行标题降为上下文。 */
-                    aria-label={t("settings.general.changeChatHomeFolder")}
+                    aria-label={revealLabel}
                     id="choose-chat-homes-root"
                     variant="outline"
-                    disabled={chatHomesRootBusy || !settings}
-                    onClick={() => void settingsStore.chooseChatHomesRoot()}
+                    disabled={!settings?.chatHomesRoot}
+                    onClick={() => {
+                      setRevealError("");
+                      void window.settings
+                        ?.revealLibrary?.()
+                        .catch((cause) => setRevealError(String(cause)));
+                    }}
                   >
-                    {chatHomesRootBusy ? (
-                      <Spinner className="size-3.5" />
-                    ) : (
-                      <FolderOpen className="size-3.5" />
-                    )}
-                    {t("settings.general.change")}
+                    <FolderOpen className="size-3.5" />
+                    {revealLabel}
                   </SettingsButton>
                 }
               />
@@ -550,7 +516,9 @@ export function GeneralSettingsView() {
                 description={t("settings.general.crossChatReadDescription")}
                 control={
                   settings ? (
-                    <CrossChatReadToggle enabled={settings.allowCrossChatRead} />
+                    <CrossChatReadToggle
+                      enabled={settings.allowCrossChatRead}
+                    />
                   ) : (
                     <Skeleton className="h-6 w-11 rounded-full" />
                   )
@@ -566,7 +534,9 @@ export function GeneralSettingsView() {
               modelsError && settings ? (
                 <SettingsButton
                   variant="outline"
-                  onClick={() => settingsStore.retryModels(effectiveTitleBackend)}
+                  onClick={() =>
+                    settingsStore.retryModels(titleAgent)
+                  }
                 >
                   {t("settings.general.modelDirectoryRetry")}
                 </SettingsButton>
@@ -578,8 +548,8 @@ export function GeneralSettingsView() {
               {settings ? (
                 <ChatRows
                   settings={settings}
-                  titleAgent={titleAgent}
-                  titleAgentOptions={options}
+                  backends={backends}
+                  now={setup.now}
                   modelsByBackend={modelsByBackend}
                   modelsReadyByBackend={modelsReadyByBackend}
                 />

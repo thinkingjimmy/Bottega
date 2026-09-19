@@ -4,40 +4,22 @@
  * [POS]: The tab identity and add-menu truth source for chat/side-panel
  */
 
-import { useState, type ReactNode } from "react";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { SidePanelAddMenu,SidePanelCatalog } from "@ai-chat/ui/components/workspace/side-panel/catalog";
 import {
-  BotIcon,
-  DatabaseIcon,
-  DownloadIcon,
-  ExternalLinkIcon,
-  GlobeIcon,
-  ImageIcon,
-  LoaderCircleIcon,
-  MoreHorizontal,
-  PanelsTopLeftIcon,
-  PackagePlusIcon,
-  PlusIcon,
-  type LucideIcon,
+GlobeIcon,
+ImageIcon,
+LoaderCircleIcon,
+type LucideIcon
 } from "lucide-react";
-import { Link } from "react-router";
-import { Button } from "@ai-chat/ui/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@ai-chat/ui/components/ui/dropdown-menu";
-import {
-  BaseHeaderActions,
-  useBaseAppActions,
-} from "@/components/bases/chrome/base-header-actions";
-import { cn } from "@ai-chat/ui/lib/utils";
-import { baseTabActionButtonClass } from "@/components/bases/chrome/base-tab-chrome";
-import { panelChromeClassName } from "@/components/page-shell";
-import { SaveAsAppDialog } from "@/components/apps/dialogs/save-as-app-dialog";
+import { lazy,Suspense,useState,type ReactNode } from "react";
 import type { BrowserTabProjection } from "../../../../shared/browser-ipc";
 import type { ConversationImageSource } from "../runtime/chat-session-model";
-import { useAppTranslation } from "@/components/providers/i18n-provider";
+
+import { encodeImageIdentity, decodeImageIdentity } from "@ai-chat/chat-ui/image/identity";
+import { PANEL_CATALOG } from "@ai-chat/chat-ui/side-panel/catalog";
+const BaseTabMenu = lazy(() => import("./catalog/base-actions"));
+const BaseHeaderActions = lazy(() => import("@/components/bases/chrome/base-header-actions").then(module => ({ default: module.BaseHeaderActions })));
 
 /* ── 区域与身份：为何 browser 不在 PanelTabId 里 ────────────────────
  * base/subagents 是面板——一个 id 对应一个实例，开与关归本组件。
@@ -58,43 +40,13 @@ export const isAppRegion = (region: string): region is AppRegionId =>
   region.startsWith("app:") && region.length > 4;
 export const appIdOf = (region: AppRegionId) => region.slice(4);
 
-export type ImageRegionIdentity =
-  | { kind: "generated"; assistantSeq: number; itemId: string }
-  | { kind: "attachment"; attachmentId: string };
-
-const ATTACHMENT_ID = /^[A-Za-z0-9_-]{10,64}$/;
-
 export function imageRegionFor(source: ConversationImageSource): ImageRegionId {
-  return source.kind === "generated"
-    ? `image:generated:${source.sourceRef.assistantSeq}:${encodeURIComponent(source.sourceRef.itemId)}`
-    : `image:attachment:${source.attachment.id}`;
+  return encodeImageIdentity(source.kind === "generated"
+    ? { kind: "generated", messageId: `seq:${source.sourceRef.assistantSeq}`, subagentId: source.subagentId ?? null, itemId: source.sourceRef.itemId }
+    : { kind: "attachment", attachmentId: source.attachment.id });
 }
-
-export function imageIdentityOf(region: string): ImageRegionIdentity | null {
-  if (region.startsWith("image:attachment:")) {
-    const attachmentId = region.slice("image:attachment:".length);
-    return ATTACHMENT_ID.test(attachmentId)
-      ? { kind: "attachment", attachmentId }
-      : null;
-  }
-  if (!region.startsWith("image:generated:")) return null;
-  const encoded = region.slice("image:generated:".length);
-  const separator = encoded.indexOf(":");
-  if (separator <= 0 || separator === encoded.length - 1) return null;
-  const assistantSeq = Number(encoded.slice(0, separator));
-  if (!Number.isSafeInteger(assistantSeq) || assistantSeq < 0) return null;
-  try {
-    const itemId = decodeURIComponent(encoded.slice(separator + 1));
-    return itemId && itemId.length <= 256
-      ? { kind: "generated", assistantSeq, itemId }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 export const isImageRegion = (region: string): region is ImageRegionId =>
-  imageIdentityOf(region) !== null;
+  decodeImageIdentity(region) !== null;
 
 /* ── 面板目录：可开清单的唯一真相源 ────────────────────────────────
  * tab 条、add 菜单、空白页曾各自知道「有哪些面板、长什么图标」，
@@ -118,43 +70,12 @@ type PanelTabSpec<Id extends string = PanelCatalogId> = {
   ) => ReactNode;
 };
 
-export const PANEL_TAB_SPECS: readonly PanelTabSpec[] = [
-  {
-    id: "base",
-    labelKey: "chat.sidePanel.catalog.base.label",
-    icon: DatabaseIcon,
-    hintKey: "chat.sidePanel.catalog.base.hint",
-    renderTabActions: (ownerKey, chatId) => (
-      <BaseTabMenu chatId={chatId} ownerKey={ownerKey} />
-    ),
-    renderHeaderActions: (ownerKey, chatId, onClose) => (
-      <BaseHeaderActions
-        chatId={chatId}
-        ownerKey={ownerKey}
-        mode="panel"
-        onClose={onClose}
-      />
-    ),
-  },
-  {
-    id: "subagents",
-    labelKey: "chat.sidePanel.catalog.subagents.label",
-    icon: BotIcon,
-    hintKey: "chat.sidePanel.catalog.subagents.hint",
-  },
-  {
-    id: "browser",
-    labelKey: "chat.sidePanel.catalog.browser.label",
-    icon: GlobeIcon,
-    hintKey: "chat.sidePanel.catalog.browser.hint",
-  },
-  {
-    id: "app",
-    labelKey: "chat.sidePanel.catalog.app.label",
-    icon: PanelsTopLeftIcon,
-    hintKey: "chat.sidePanel.catalog.app.hint",
-  },
-];
+export const PANEL_TAB_SPECS: readonly PanelTabSpec[] = PANEL_CATALOG.map(spec => ({ ...spec,
+  ...(spec.id === "base" ? {
+    renderTabActions: (ownerKey: string, chatId: string) => <Suspense fallback={null}><BaseTabMenu chatId={chatId} ownerKey={ownerKey} /></Suspense>,
+    renderHeaderActions: (ownerKey: string, chatId: string, onClose: () => void) => <Suspense fallback={null}><BaseHeaderActions chatId={chatId} ownerKey={ownerKey} mode="panel" onClose={onClose} /></Suspense>,
+  } : {}),
+}));
 
 export const PANEL_TAB_SPEC = Object.fromEntries(
   PANEL_TAB_SPECS.map((spec) => [spec.id, spec])
@@ -189,80 +110,14 @@ export type TabItem = {
   panelId: string;
   widthClass: string;
   closeLabel: string;
+  /** Native tooltip; the accessible name still comes from the visible label. */
+  hint?: string;
+  /** Dimmed chrome for a tab whose page process has been released. */
+  dim?: boolean;
   actions?: ReactNode;
   select: () => void;
   close: () => void;
 };
-
-/** Base tab 的 App/CSV 菜单：随 Base tab 生灭，不存在时不订阅 Base 状态 */
-function BaseTabMenu({
-  ownerKey,
-  chatId,
-}: {
-  ownerKey: string;
-  chatId: string;
-}) {
-  const { t } = useAppTranslation();
-  const {
-    app,
-    busy,
-    defaultName,
-    ready,
-    saveChatId,
-    exportCsv,
-  } = useBaseAppActions(ownerKey, chatId);
-  const [saveOpen, setSaveOpen] = useState(false);
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            aria-label={t("chat.sidePanel.moreBaseActions")}
-            className={baseTabActionButtonClass}
-            onClick={(event) => event.stopPropagation()}
-            title={t("chat.sidePanel.more")}
-            type="button"
-          >
-            <MoreHorizontal className="size-3" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-36">
-          {app ? (
-            <DropdownMenuItem asChild>
-              <Link to={`/apps/${app.id}`}>
-                <ExternalLinkIcon />
-                {t("chat.sidePanel.openApp")}
-              </Link>
-            </DropdownMenuItem>
-          ) : saveChatId ? (
-            <DropdownMenuItem
-              disabled={busy || !ready}
-              onSelect={() => setSaveOpen(true)}
-            >
-              <PackagePlusIcon />
-              {t("chat.sidePanel.saveAsApp")}
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem
-            disabled={busy || !ready}
-            onSelect={() => void exportCsv()}
-          >
-            <DownloadIcon />
-            {t("chat.sidePanel.downloadCsv")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {saveChatId && (
-        <SaveAsAppDialog
-          chatId={saveChatId}
-          defaultName={defaultName}
-          onOpenChange={setSaveOpen}
-          open={saveOpen}
-        />
-      )}
-    </>
-  );
-}
 
 /**
  * 网页 tab 的图标位：加载中 → 站点图标 → 兜底地球，三态互斥。
@@ -293,197 +148,24 @@ export function WebTabIcon({ tab }: { tab: BrowserTabProjection }) {
   return <GlobeIcon className="size-3.5 shrink-0" />;
 }
 
-/** tab 条右端的 add：清单全部不可开则整枚置灰，否则逐项判定 */
-export function AddPanelMenu({
-  disabledFor,
-  disabledReasonFor,
-  onOpen,
-  onOpenApp,
-  appsDisabled = false,
-}: {
-  disabledFor: (id: PanelRegion) => boolean;
-  disabledReasonFor?: (id: PanelRegion) => string | undefined;
-  onOpen: (id: PanelRegion) => void;
-  onOpenApp: () => void;
-  appsDisabled?: boolean;
-}) {
+/** Desktop adapters preserve the canonical directory identities and localized names. */
+function useCatalog() {
   const { t } = useAppTranslation();
-  const full = PANEL_TAB_SPECS.every((spec) =>
-    spec.id === "app"
-      ? appsDisabled || disabledFor("app:catalog")
-      : disabledFor(spec.id)
-  );
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          aria-label={t("chat.sidePanel.addPanel")}
-          className={cn(
-            "shrink-0 cursor-pointer text-muted-foreground",
-            panelChromeClassName
-          )}
-          disabled={full}
-          size="icon-lg"
-          title={full ? t("chat.sidePanel.allPanelsOpen") : t("chat.sidePanel.addPanel")}
-          type="button"
-          variant="ghost"
-        >
-          <PlusIcon />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-40">
-        {PANEL_TAB_SPECS.map((spec) => {
-          const Icon = spec.icon;
-          const label = t(spec.labelKey);
-          if (spec.id === "app") {
-            const region = "app:catalog" as AppRegionId;
-            const disabled = appsDisabled || disabledFor(region);
-            const reason = disabledReasonFor?.(region);
-            return (
-              <DropdownMenuItem
-                aria-disabled={disabled || undefined}
-                className={disabled ? "cursor-not-allowed opacity-55" : undefined}
-                key="app"
-                onSelect={(event) => {
-                  if (disabled) {
-                    event.preventDefault();
-                    return;
-                  }
-                  onOpenApp();
-                }}
-              >
-                <Icon />
-                <span className="min-w-0">
-                  <span className="block">{label}</span>
-                  <span className="block text-muted-foreground text-xs">
-                    {reason ?? t("chat.sidePanel.catalog.app.hint")}
-                  </span>
-                </span>
-              </DropdownMenuItem>
-            );
-          }
-          const region = spec.id as PanelRegion;
-          const disabled = disabledFor(region);
-          const reason = disabledReasonFor?.(region);
-          return (
-            <DropdownMenuItem
-              aria-disabled={disabled || undefined}
-              className={disabled ? "cursor-not-allowed opacity-55" : undefined}
-              key={region}
-              onSelect={(event) => {
-                if (disabled) {
-                  event.preventDefault();
-                  return;
-                }
-                onOpen(region);
-              }}
-            >
-              <Icon />
-              <span className="min-w-0">
-                <span className="block">{label}</span>
-                {reason && (
-                  <span className="block text-muted-foreground text-xs">
-                    {reason}
-                  </span>
-                )}
-              </span>
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  return { t, items: PANEL_TAB_SPECS.map(spec => ({ id: spec.id === "app" ? "app:catalog" : spec.id, label: t(spec.labelKey), hint: t(spec.hintKey), icon: spec.icon, menuHint: spec.id === "app" })) };
 }
-
-/** 空白页：目录的卡片式投影，条目增长只是多一行，无需改版式 */
-export function PanelTabsEmpty({
-  onOpen,
-  onOpenApp,
-  disabledFor = () => false,
-  disabledReasonFor,
-}: {
-  onOpen: (id: PanelRegion) => void;
-  onOpenApp: () => void;
-  disabledFor?: (id: PanelRegion) => boolean;
-  disabledReasonFor?: (id: PanelRegion) => string | undefined;
+export function AddPanelMenu({ disabledFor, disabledReasonFor, onOpen, onOpenApp, appsDisabled = false }: {
+  disabledFor(id: PanelRegion): boolean; disabledReasonFor?(id: PanelRegion): string | undefined; onOpen(id: PanelRegion): void; onOpenApp(): void; appsDisabled?: boolean;
 }) {
-  const { t } = useAppTranslation();
-  return (
-    <div className="grid min-h-0 flex-1 place-items-center px-5 py-6">
-      <div className="flex w-full max-w-72 flex-col gap-1.5">
-        {PANEL_TAB_SPECS.map((spec) => {
-          const Icon = spec.icon;
-          const label = t(spec.labelKey);
-          const hint = t(spec.hintKey);
-          if (spec.id === "app") {
-            const genericApp = "app:catalog" as AppRegionId;
-            const reason = disabledReasonFor?.(genericApp);
-            const disabled = disabledFor(genericApp);
-            return (
-              <button
-                aria-disabled={disabled || undefined}
-                aria-label={disabled && reason
-                  ? t("chat.sidePanel.unavailableNamedPanel", { name: label, reason })
-                  : t("chat.sidePanel.openNamedPanel", { name: label })}
-                className={cn(
-                  "group/panel-card flex w-full cursor-pointer items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-foreground/15 hover:bg-accent",
-                  disabled && "cursor-not-allowed opacity-55"
-                )}
-                key="app"
-                onClick={() => {
-                  if (!disabled) onOpenApp();
-                }}
-                type="button"
-              >
-                <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-                  <Icon className="size-3.5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium text-sm">{label}</span>
-                  <span className="block text-muted-foreground text-xs">{reason ?? hint}</span>
-                </span>
-                <PlusIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              </button>
-            );
-          }
-          const region = spec.id as PanelRegion;
-          const reason = disabledReasonFor?.(region);
-          const disabled = disabledFor(region);
-          return (
-            <button
-              aria-disabled={disabled || undefined}
-              aria-label={disabled && reason
-                ? t("chat.sidePanel.unavailableNamedPanel", {
-                    name: label,
-                    reason,
-                  })
-                : t("chat.sidePanel.openNamedPanel", { name: label })}
-              className={cn(
-                "group/panel-card flex w-full cursor-pointer items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-foreground/15 hover:bg-accent",
-                disabled && "cursor-not-allowed opacity-55"
-              )}
-              key={region}
-              onClick={() => {
-                if (!disabled) onOpen(region);
-              }}
-              type="button"
-            >
-              <span className="grid size-7 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground transition-colors group-hover/panel-card:text-foreground">
-                <Icon className="size-3.5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-sm">
-                  {label}
-                </span>
-                <span className="block truncate text-muted-foreground text-xs">
-                  {reason ?? hint}
-                </span>
-              </span>
-              <PlusIcon className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/panel-card:opacity-100" />
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
+  const { t, items } = useCatalog();
+  return <SidePanelAddMenu items={items} disabledFor={id => id === "app:catalog" && appsDisabled || disabledFor(id as PanelRegion)} disabledReasonFor={id => disabledReasonFor?.(id as PanelRegion)}
+    onOpen={id => id === "app:catalog" ? onOpenApp() : onOpen(id as PanelRegion)} label={t("chat.sidePanel.addPanel")} fullLabel={t("chat.sidePanel.allPanelsOpen")}
+    accessibleLabel={(item, reason) => reason ? t("chat.sidePanel.unavailableNamedPanel", { name: item.label, reason }) : t("chat.sidePanel.openNamedPanel", { name: item.label })} />;
+}
+export function PanelTabsEmpty({ onOpen, onOpenApp, disabledFor = () => false, disabledReasonFor }: {
+  onOpen(id: PanelRegion): void; onOpenApp(): void; disabledFor?(id: PanelRegion): boolean; disabledReasonFor?(id: PanelRegion): string | undefined;
+}) {
+  const { t, items } = useCatalog();
+  return <SidePanelCatalog items={items} disabledFor={id => disabledFor(id as PanelRegion)} disabledReasonFor={id => disabledReasonFor?.(id as PanelRegion)}
+    onOpen={id => id === "app:catalog" ? onOpenApp() : onOpen(id as PanelRegion)}
+    accessibleLabel={(item, reason) => reason ? t("chat.sidePanel.unavailableNamedPanel", { name: item.label, reason }) : t("chat.sidePanel.openNamedPanel", { name: item.label })} />;
 }

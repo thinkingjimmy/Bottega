@@ -1,11 +1,12 @@
 /**
  * [INPUT]: Depends on Electron, shared chat contracts, typed service options, outcome-aware ChatStore/AttachmentStore, the focused fork service, ChatTitleJobs, renderer IPC/event adapters, pure guards, main/errors, and deletion/removal controllers, lifecycle/attachment-commit.
- * [OUTPUT]: Owns Chat admission, persistence, adopted authentication retries, pending title recovery, and isolated main-process event subscriptions before renderer publication.
+ * [OUTPUT]: Provides Chat admission, canonical trusted remote user provenance, events and existing execution/removal APIs.
  * [POS]: Main-process Chat service boundary; every new or adopted executable Chat is owned by a Chat Home creation saga
  */
 
+import { assertRecoveredAuthority } from "../persistence/recovery-policy";
+import { artifactRuntime } from "../artifacts/runtime";
 import { commitSwitchWithAttachments } from "./store/agent-switch/service";
-import { dirname, join } from "node:path";
 import { commitAttachments } from "./lifecycle/attachment-commit";
 import { type BrowserWindow } from "electron";
 import type { AgentScope, SessionRef } from "../../../shared/agent-ipc";
@@ -48,9 +49,11 @@ import { summaryOfChatLike, type ChatMetadata } from "./chat-summary";
 import { ChatTitleJobs } from "./chat-title-jobs";
 import {
   appendInputSchema,
+  remoteAppendInputSchema,
   createAppInputSchema,
   createInputSchema,
   renameInputSchema,
+  setSortKeyInputSchema,
   type ParsedAttachmentPayload,
 } from "./chat-input";
 import { ChatForkService } from "./chat-fork-service";
@@ -79,13 +82,8 @@ export class ChatsService {
     readonly store: ChatStore,
     private readonly options: ChatsServiceOptions
   ) {
-    this.attachments = new AttachmentStore(options.attachmentsRoot);
-    this.deletion = new ChatDeletionDriver(
-      store,
-      this.attachments,
-      options,
-      (event) => this.emit(event)
-    );
+    this.attachments = new AttachmentStore(options.libraryRoot);
+    this.deletion = new ChatDeletionDriver(store, options, (event) => this.emit(event));
     this.removal = new ChatRemovalController({
       store,
       deletion: this.deletion,
@@ -95,8 +93,7 @@ export class ChatsService {
       cancelConversations: options.cancelConversations,
       releaseConversations: options.releaseConversations,
     });
-    this.exportsRoot =
-      options.exportsRoot ?? join(dirname(options.attachmentsRoot), "exports");
+    this.exportsRoot = options.exportsRoot;
     this.titles = new ChatTitleJobs(store, options, (event) => this.emit(event));
     this.titleRecovery = options.recoverTitleJobs
       ? this.titles.recover().catch((cause) => {
@@ -106,6 +103,12 @@ export class ChatsService {
     this.forks = new ChatForkService({
       store,
       homes: options.chatHomes,
+      retainAttachments: async (sourceId, child) => {
+        const root = options.libraryRoot?.(); if (!root) return;
+        const { copyLibraryAssets } = await import("../library/assets/copy");
+        const missing = await copyLibraryAssets(root, sourceId, child);
+        if (missing.length) this.store.pushWarning(`Files missing: ${missing.join(", ")}`);
+      },
       resolveProjectWorkspace: options.resolveProjectWorkspace,
       withProject: options.withProject,
       assertAdmission: () => this.assertAdmission(),
@@ -125,18 +128,27 @@ export class ChatsService {
         this.titles.sync(record);
         return summaryOfChatLike(record);
       },
+      setSortKey: async (input) => {
+        const { chatId, sortKey } = setSortKeyInputSchema.parse(input);
+        const record = await this.store.setSortKey(chatId, sortKey);
+        this.emit({ type: "upserted", summary: summaryOfChatLike(record) });
+        return summaryOfChatLike(record);
+      },
       remove: (chatId) => this.remove(chatId),
       forkPreflight: (input) => this.forks.preflight(input),
       fork: (input) => this.forks.fork(input),
       commitManagedWorktree: (input) => this.forks.commit(input),
-      readAttachment: (attachmentId) => this.attachments.read(attachmentId),
+      readAttachment: (chatId, attachmentId) => this.attachments.read(attachmentId, chatId),
     });
     window.once("closed", () => {
       if (this.window === window) this.window = null;
     });
   }
-  forkChat(input: Parameters<ChatForkService["fork"]>[0]) {
-    return this.forks.fork(input);
+  preflightChatFork(input: Parameters<ChatForkService["preflight"]>[0]) {
+    return this.forks.preflight(input);
+  }
+  forkChat(input: Parameters<ChatForkService["fork"]>[0], authority?: Parameters<ChatForkService["fork"]>[1]) {
+    return this.forks.fork(input, authority);
   }
   commitManagedWorktree(input: Parameters<ChatForkService["commit"]>[0]) {
     return this.forks.commit(input);
@@ -176,7 +188,7 @@ export class ChatsService {
                 incarnationId: home.incarnationId,
                 homeDir: home.homeDir,
               }
-        )
+        ), value.id
       );
     const mutation = projectId && projectLifecycle !== "held"
       ? await this.withProject(projectId, create)
@@ -228,7 +240,7 @@ export class ChatsService {
                 appRole: value.appRole,
                 appId: value.appId,
               }
-        )
+        ), value.id
       );
     const mutation = projectLifecycle === "held"
       ? await create()
@@ -275,8 +287,8 @@ export class ChatsService {
         model: turn.turnOptions.model ?? undefined,
       } : undefined),
       withProject: (projectId, task) => this.withProject(projectId, task),
-      commitWithAttachments: (payloads, commit) =>
-        this.commitWithAttachments(payloads, commit),
+      commitWithAttachments: (payloads, commit, chatId) =>
+        this.commitWithAttachments(payloads, commit, chatId),
       publish: (mutation) => this.emitMutation(mutation),
       onSessionBound: this.options.onAdoptedSessionBound,
     }, input, sequence, projectLifecycle);
@@ -288,9 +300,14 @@ export class ChatsService {
       metadata => this.publishRecord(metadata), event => this.emit(event));
   }
 
-  async appendUserMessage(input: AppendChatMessageInput, reservedSeq?: number) {
+  async appendUserMessage(input: AppendChatMessageInput, reservedSeq?: number,
+    executorCommit?: import("./sqlite/cloud/execution/commit").ExecutorCommit,
+    remote?: { commandId: string; sourceDeviceId: string; sourceDeviceName: string }) {
     this.assertAdmission();
-    const value = appendInputSchema.parse(input);
+    const { remoteCommandId, remoteSource, ...message } = input.message;
+    if (remote && (remoteCommandId !== remote.commandId || remoteSource?.deviceId !== remote.sourceDeviceId || remoteSource.name !== remote.sourceDeviceName)) throw new Error("REMOTE_USER_ORIGIN_CHANGED");
+    const value = remote ? remoteAppendInputSchema.parse({ ...input, message }) : appendInputSchema.parse(input);
+    if (remote) Object.assign(value.message, { remoteCommandId, remoteSource });
     if (value.precondition) {
       const current = this.store.getMetadata(value.chatId);
       if (
@@ -301,6 +318,7 @@ export class ChatsService {
         throw new Error("INCARNATION_MISMATCH");
       }
     }
+    if (value.revise && executorCommit?.notice) throw new Error("CLOUD_EXECUTOR_REVISION_REQUIRES_NEW_MESSAGE");
     const titleWasNone = this.store.getMetadata(value.chatId)?.titleJob.state === "none";
     const mutation = value.revise
       ? await this.store.reviseTail({
@@ -308,6 +326,7 @@ export class ChatsService {
           supersedes: value.revise,
           message: value.message,
           reservedSeq,
+          executorCommit,
         })
       : await this.commitWithAttachments(
           value.attachmentPayloads,
@@ -315,10 +334,12 @@ export class ChatsService {
             this.store.appendMessage(
               value.chatId,
               this.attachMetas(value.message, metas),
-              reservedSeq
-            )
+              reservedSeq,
+              executorCommit
+            ), value.chatId
         );
     this.emitMutation(mutation);
+    if (value.revise) await artifactRuntime()?.reconcileChat(value.chatId);
     if (titleWasNone && mutation.record.titleJob.state === "pending") this.scheduleTitle(mutation.record, value.message.content);
     const stored = mutation.record.messages.find(
       (message) => message.id === value.message.id
@@ -337,7 +358,7 @@ export class ChatsService {
     if (message?.role !== "user") throw new Error("REVISION_STALE");
     return Promise.all(
       (message.attachments ?? []).map(async (meta) => {
-        const dataUrl = await this.attachments.read(meta.id);
+        const dataUrl = await this.attachments.read(meta.id, chatId);
         const declared = /^data:([^;,]+);base64,/i.exec(dataUrl)?.[1];
         if (
           declared?.toLowerCase() !== meta.mediaType.toLowerCase() ||
@@ -663,9 +684,11 @@ export class ChatsService {
       : create();
   }
   assertOrdinaryTurnAllowed(chatId: string) {
+    assertRecoveredAuthority();
     this.removal.assertOrdinaryTurnAllowed(chatId);
   }
   async remove(chatId: string) { return this.removal.remove(chatId); }
+  configureCloudRemoval(handler: (chatId: string) => Promise<void>) { this.removal.configureCloudRemoval(handler); }
   configureAppChatDeactivation(
     handler: (chat: Omit<ChatMetadata, "preview">, action: "archive" | "delete") => Promise<void>
   ) {
@@ -691,7 +714,7 @@ export class ChatsService {
   async readSectionAttachment(sectionId: string, attachmentId: string) {
     const owned = await this.store.hasAttachmentReference(sectionId, attachmentId);
     if (!owned) throw statusError(404, "附件不属于该 Section");
-    return this.attachments.read(attachmentId);
+    return this.attachments.read(attachmentId, sectionId);
   }
   recoverDeletions(waitForCompletion = true) { return this.deletion.recover(waitForCompletion); }
   async exportAttachment(sectionId: string, attachmentId: string) {
@@ -701,7 +724,7 @@ export class ChatsService {
     const meta = await this.store.getAttachmentReference(sectionId, attachmentId);
     if (!meta) throw statusError(404, "附件不属于该 Section");
     return exportAttachmentFile({
-      sourcePath: join(this.attachments.root, attachmentId),
+      dataUrl: await this.attachments.read(attachmentId, sectionId),
       exportsRoot: this.exportsRoot,
       attachmentId,
       meta,
@@ -730,9 +753,10 @@ export class ChatsService {
   /** 附件先落盘、消息提交失败即回滚附件（无半持久化）；导出供回归测试直接驱动 */
   async commitWithAttachments<T>(
     payloads: ParsedAttachmentPayload[] | undefined,
-    commit: (metas: ChatAttachmentMeta[]) => Promise<T>
+    commit: (metas: ChatAttachmentMeta[]) => Promise<T>,
+    chatId: string,
   ): Promise<T> {
-    return commitAttachments(this.attachments, payloads, commit);
+    return commitAttachments(this.attachments, payloads, commit, chatId);
   }
   private withProject<T>(projectId: string, task: () => Promise<T>) {
     if (!this.options.withProject) {

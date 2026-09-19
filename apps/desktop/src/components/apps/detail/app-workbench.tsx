@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@ai-chat/ui/components/ui/dialog";
 import type { AppRecord } from "../../../../shared/apps-ipc";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import type { AppGuiBinding } from "../surface/app-gui-surface";
 

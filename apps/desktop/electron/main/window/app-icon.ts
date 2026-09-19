@@ -1,16 +1,17 @@
 /**
- * [INPUT]: Depends on Electron app packaging mode, app path/resourcesPath, and the packaged resources/icon.png
- * [OUTPUT]: Provides resolveAppIconPath for packaged/dev icon resolution, and applyDevelopmentDockIcon which sets the dev-mode macOS Dock icon as pure decoration — a missing icon only warns, never blocks initialization
+ * [INPUT]: Depends on Electron packaging mode, the shared development root and resources/icon.png.
+ * [OUTPUT]: Provides resolveAppIconPath for packaged/dev icon resolution, and applyDevelopmentDockIcon which schedules the dev-mode macOS Dock icon off the ready tick as pure decoration — a missing icon only warns, never blocks initialization
  * [POS]: Window module's branded-asset boundary; packaged and development builds resolve the same Bottega app icon
  */
 
 import { join } from "node:path";
 import { app } from "electron";
+import { desktopDevelopmentRoot } from "../system-skills";
 
 export function resolveAppIconPath() {
   return app.isPackaged
     ? join(process.resourcesPath, "icon.png")
-    : join(app.getAppPath(), "resources", "icon.png");
+    : join(desktopDevelopmentRoot(), "resources", "icon.png");
 }
 
 /* ============================================================
@@ -29,9 +30,14 @@ export function resolveAppIconPath() {
  * ============================================================ */
 export function applyDevelopmentDockIcon() {
   if (process.platform !== "darwin" || app.isPackaged) return;
-  try {
-    app.dock?.setIcon(resolveAppIconPath());
-  } catch (cause) {
-    console.warn("[app-icon] dev dock icon unavailable", cause);
-  }
+  /* setIcon decodes the PNG synchronously — 63 ms measured as the first statement
+     after whenReady. A decoration has no claim on the path to the first window,
+     so it runs once the ready tick is done; the contract above is unchanged. */
+  setImmediate(() => {
+    try {
+      app.dock?.setIcon(resolveAppIconPath());
+    } catch (cause) {
+      console.warn("[app-icon] dev dock icon unavailable", cause);
+    }
+  });
 }

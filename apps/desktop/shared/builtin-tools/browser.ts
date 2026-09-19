@@ -111,7 +111,7 @@ export const BROWSER_TOOL_SPECS = [
     access: "read",
     planExcluded: true,
     description:
-      "列出本 Section 拥有的 tab 与用户当前可见 tab，并标明 owned。",
+      "列出本 Section 拥有的 tab 与用户当前可见 tab，并标明 owned 与 sleeping。sleeping 的 tab 已释放页面进程，第一次读取快照或执行动作时会自动重新加载它，页面内未提交的状态可能与休眠前不同。",
     crossReferences: [
       {
         mentions: ["browser_close"],

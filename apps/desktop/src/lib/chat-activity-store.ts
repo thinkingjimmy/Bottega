@@ -31,15 +31,16 @@ const entries = new Map<string, ChatActivity>();
 const seen = new Set<string>();
 const terminalIdentities = new Map<string, PresentedChat>();
 const consumedThrough = new Map<string, PresentedChat>();
+const consumptionKey = (chatId: string, sourceId?: string) => JSON.stringify([chatId, sourceId ?? "local"]);
 let stopConsumption: (() => void) | null = null;
 
 function ensureConsumption() {
   if (stopConsumption || typeof window === "undefined" || !window.presence) return;
   const stop = window.presence.onConsumed((receipt) => {
-    const previous = consumedThrough.get(receipt.chatId);
-    if (!previous || receipt.terminalSeq > previous.terminalSeq) consumedThrough.set(receipt.chatId, { ...receipt });
+    const previous = consumedThrough.get(consumptionKey(receipt.chatId, receipt.sourceId));
+    if (!previous || receipt.terminalSeq > previous.terminalSeq) consumedThrough.set(consumptionKey(receipt.chatId, receipt.sourceId), { ...receipt });
     const current = terminalIdentities.get(receipt.chatId);
-    if (current?.incarnationId === receipt.incarnationId && current.requestId === receipt.requestId &&
+    if (current?.sourceId === receipt.sourceId && current?.incarnationId === receipt.incarnationId && current.requestId === receipt.requestId &&
         current.generation === receipt.generation && current.terminalSeq === receipt.terminalSeq) {
       terminalIdentities.delete(receipt.chatId); write(receipt.chatId, null);
     }
@@ -87,7 +88,7 @@ const settled = (event: ChatActivityEvent): ChatActivity =>
     : "done";
 
 function wasConsumed(event: ChatActivityEvent) {
-  const receipt = consumedThrough.get(event.conversationId);
+  const receipt = consumedThrough.get(consumptionKey(event.conversationId, event.sourceId));
   if (!receipt || event.incarnationId !== receipt.incarnationId) return false;
   if (event.requestId === receipt.requestId && event.generation !== undefined) {
     if (event.generation !== receipt.generation) return event.generation < receipt.generation;
@@ -101,7 +102,7 @@ export function receiveChatActivity(event: ChatActivityEvent) {
   if (wasConsumed(event)) return;
   seen.add(event.conversationId);
   const previous = terminalIdentities.get(event.conversationId);
-  if (previous && event.requestId === previous.requestId && event.generation !== undefined && event.generation < previous.generation) return;
+  if (previous && previous.sourceId === event.sourceId && event.requestId === previous.requestId && event.generation !== undefined && event.generation < previous.generation) return;
   if (event.running) {
     // 待你回话是活态而非未读标记，停留在该会话也照常显示——
     // 蓝点才是"你没看过的结果"，问号是"它正等着你"。
@@ -109,9 +110,10 @@ export function receiveChatActivity(event: ChatActivityEvent) {
     write(event.conversationId, event.waiting ? "waiting" : "running");
     return;
   }
+  if (!event.terminal) { clearChatActivity(event.conversationId); return; }
   if (event.incarnationId && event.requestId && event.generation && event.terminalSeq) {
     terminalIdentities.set(event.conversationId, { chatId: event.conversationId, incarnationId: event.incarnationId,
-      requestId: event.requestId, generation: event.generation, terminalSeq: event.terminalSeq });
+      requestId: event.requestId, generation: event.generation, terminalSeq: event.terminalSeq, ...(event.sourceId ? { sourceId: event.sourceId } : {}) });
   }
   write(event.conversationId, settled(event));
   if (event.conversationId === activeChatId()) consumeSettled(event.conversationId);

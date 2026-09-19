@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, Radix Slot, class-variance-authority, lucide-react, host-injected UI text, the mobile/horizontal-resize hooks, and the button/sheet/tooltip primitives
- * [OUTPUT]: Provides SidebarProvider (built-in Cmd/Ctrl+B listener, opt-out via keyboardShortcut={false} for hosts with a central dispatcher), containers, groupings, menus, submenus, Rail and the corresponding action/badge
+ * [INPUT]: Depends on React, Radix Slot, class-variance-authority, lucide-react, host-injected UI text, the mobile/horizontal-resize hooks, and the button/sheet/skeleton/tooltip primitives
+ * [OUTPUT]: Provides SidebarProvider (built-in Cmd/Ctrl+B listener, opt-out via keyboardShortcut={false} for hosts with a central dispatcher), containers, groupings, menus, submenus, Rail and the corresponding action/badge/skeleton row
  * [POS]: The basic layer of shared side-by-side packages/ui provides only structure, status and default vision, with business layout and navigation terminology covered by consumers
  */
 
@@ -13,6 +13,7 @@ import { useHorizontalResize } from "@ai-chat/ui/hooks/use-horizontal-resize"
 import { cn } from "@ai-chat/ui/lib/utils"
 import { useUiText } from "@ai-chat/ui/lib/ui-text"
 import { Button } from "@ai-chat/ui/components/ui/button"
+import { Skeleton } from "@ai-chat/ui/components/ui/skeleton"
 import {
   Sheet,
   SheetContent,
@@ -159,11 +160,13 @@ function Sidebar({
   className,
   children,
   dir,
+  onMobileCloseAutoFocus,
   ...props
 }: React.ComponentProps<"div"> & {
   side?: "left" | "right"
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
+  onMobileCloseAutoFocus?: React.ComponentProps<typeof SheetContent>["onCloseAutoFocus"]
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
   const sidebarLabel = useUiText("sidebar", "Sidebar")
@@ -191,11 +194,12 @@ function Sidebar({
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
         <SheetContent
+          onCloseAutoFocus={onMobileCloseAutoFocus}
           dir={dir}
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className={cn("w-(--sidebar-width) max-w-[calc(100vw-2rem)] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden", className)}
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -641,6 +645,42 @@ function SidebarMenuBadge({
   )
 }
 
+/* Row-shaped placeholder for menus whose data is still in flight. The text bar
+   width is caller-supplied rather than random (shadcn's default): a width that
+   changes on every render makes the wait look like activity, and leaves DOM
+   tests nothing stable to assert. The height matches SidebarMenuButton so rows
+   swap in without moving anything below them. */
+function SidebarMenuSkeleton({
+  className,
+  showIcon = false,
+  width = "70%",
+  ...props
+}: React.ComponentProps<"div"> & {
+  showIcon?: boolean
+  width?: string
+}) {
+  return (
+    <div
+      data-slot="sidebar-menu-skeleton"
+      data-sidebar="menu-skeleton"
+      className={cn("flex h-8 items-center gap-2 rounded-md px-2", className)}
+      {...props}
+    >
+      {showIcon && (
+        <Skeleton
+          className="size-4 shrink-0 rounded-md motion-reduce:animate-none"
+          data-sidebar="menu-skeleton-icon"
+        />
+      )}
+      <Skeleton
+        className="h-4 flex-1 motion-reduce:animate-none"
+        data-sidebar="menu-skeleton-text"
+        style={{ maxWidth: width }}
+      />
+    </div>
+  )
+}
+
 function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
@@ -712,6 +752,7 @@ export {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSkeleton,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,

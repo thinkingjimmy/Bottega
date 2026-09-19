@@ -1,48 +1,43 @@
 "use client";
 
 /**
- * [INPUT]: Depends on Sidebar/dropdown/skeleton/spinner primitives, shared row geometry/action tone, rename/archive feedback, the Sidebar active path, Chats/Projects/Apps/Setup providers, archive restore client, typed product navigation, i18n, chat activity, and routing
- * [OUTPUT]: Renders canonical Chat rows with brand identity, shared availability tooltips and existing activity/archive/navigation contracts.
- * [POS]: Shared chat row unit of components/sidebar/chat, consumed by the Chats, Activity, and Project sublists; unifies both hover/focus feedback levels and leaves list-item semantics to its caller
+ * [INPUT]: Depends on shared Chat row actions/rename, Sidebar primitives, effective confetti preference, immediate archive feedback, data providers, archive restore client, product navigation, reorder row-props, and i18n
+ * [OUTPUT]: Renders canonical Chat rows with a focus-preserving archive action, single-flight success, executor badges, post-archive recovery that yields to toast View, and the optional drag ghost / drop indicator; exports ChatDropIndicator and chatRowDropAttributes for sibling row kinds
+ * [POS]: Shared chat row unit of components/sidebar/chat, consumed by the Chats, Activity, and Project sublists; unifies both hover/focus feedback levels, leaves list-item semantics to its caller and drag state to reorder/
  */
 
 import { projectAvailability } from "../../../../shared/agent-availability/projection";
-import { useState } from "react";
+import { ChatExecutorBadge } from "../cloud/rows";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
-  Archive,
   CircleQuestionMark,
-  MoreHorizontal,
-  Pencil,
   TriangleAlert,
 } from "lucide-react";
+import { ChatRowActions } from "@ai-chat/ui/components/workspace/actions/chat";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@ai-chat/ui/components/ui/dropdown-menu";
-import {
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@ai-chat/ui/components/ui/sidebar";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
+import { cn } from "@ai-chat/ui/lib/utils";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import {
+  SIDEBAR_ROOT_ROW_INSET,
+  SIDEBAR_SUB_ROW_INSET,
   SidebarRowMark,
   SidebarRowTag,
   SidebarRowTitle,
-  sidebarRootMenuActionClass,
   sidebarSubRowClass,
-} from "../sidebar-row";
+} from "@ai-chat/ui/components/workspace/row";
 import {
   SidebarRenameDialog,
   useSidebarRenameMenu,
 } from "../rename/sidebar-rename-dialog";
 import { useSidebarArchiveFeedback } from "../archive/archive-feedback";
+import { useArchiveConfettiPreference } from "../archive/archive-preference";
 import { useSidebarActivePath } from "../active/active-path";
 import type { ChatSummary } from "../../../../shared/chats-ipc";
 import { useChats } from "@/components/providers/chats-provider";
@@ -62,6 +57,7 @@ import {
 } from "@/lib/chat-activity-store";
 import { openProductDestination, productDestinationRoute } from "@/lib/product-navigation";
 import { openAppEditor } from "@/lib/apps-client";
+import type { ChatRowDropProps, ChatRowReorderProps, DropEdge } from "../reorder/row-props";
 
 type ChatThreadItemProps = {
   chat: ChatSummary;
@@ -69,7 +65,41 @@ type ChatThreadItemProps = {
   badge?: string;
   /** 最后一条发言的提炼；给了就长出零缩进的两行预览（Activity 独有）。 */
   preview?: string;
+  /** 在 ChatReorderList 里才有：拖动源/落点槽的节点引用与视觉态，由 reorder/ 计算。 */
+  reorder?: ChatRowReorderProps;
 };
+
+/* ── 落点线与拖动幽灵：语义属性在行上，几何在这里，颜色只有一个 ──────
+ * 线是 2px 的 sidebar-foreground（浅色下近黑、深色下近白），起点一枚 8px 空心圆——
+ * 圆是「插入点」的读法，线是「插到这一整行的宽度」；容器 8px 高，居中压在相邻两行
+ * 之间那 1px 的 gap 上（-top-1 / -bottom-1）。起点与本行内容起点对齐：Project 子行
+ * 的线跟标题一样缩进，根级行贴 SidebarMenuButton 的内边距。用 data 属性而不是类名
+ * 表达状态，是为了让 DOM 测试读语义而非当日的 Tailwind 皮肤；幽灵的样式写在
+ * sidebar-row.css。拖动期间整列 pointer-events-none：hover 底色、标题滑动、行尾
+ * 动作一并静默，不必逐条与它们的 hover 规则打特异度战争。
+ * ────────────────────────────────────────────────────────── */
+export function ChatDropIndicator({ edge, variant = "root" }: { edge: DropEdge | null; variant?: "root" | "sub" }) {
+  if (!edge) return null;
+  return (
+    <span
+      aria-hidden
+      data-drop-indicator={edge}
+      className={`pointer-events-none absolute right-2 z-10 flex h-2 items-center ${variant === "sub" ? SIDEBAR_SUB_ROW_INSET : SIDEBAR_ROOT_ROW_INSET} ${edge === "before" ? "-top-1" : "-bottom-1"}`}
+    >
+      <span className="size-2 shrink-0 rounded-full border-2 border-sidebar-foreground bg-sidebar" />
+      <span className="h-0.5 min-w-0 flex-1 rounded-full bg-sidebar-foreground" />
+    </span>
+  );
+}
+
+export function chatRowDropAttributes(reorder: ChatRowDropProps | undefined, dragging = false) {
+  if (!reorder) return {};
+  return {
+    "data-chat-dragging": dragging ? "" : undefined,
+    "data-drop-edge": reorder.dropEdge ?? undefined,
+    className: reorder.suppressed ? "pointer-events-none" : undefined,
+  };
+}
 
 /* ── 行「正在被交涉」的判定 ────────────────────────────────────────
  * 用 :has(:focus-visible) 而非 focus-within：鼠标点过行内链接或按钮后 focus 就留在那儿，
@@ -80,12 +110,6 @@ type ChatThreadItemProps = {
 
 const rootMenuButtonClass =
   "font-normal! group-has-data-[sidebar=menu-action]/menu-item:pr-2 group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-accent-foreground group-has-[:focus-visible]/menu-item:bg-sidebar-accent group-has-[:focus-visible]/menu-item:text-sidebar-accent-foreground";
-
-const menuActionToneClass =
-  "cursor-pointer text-sidebar-foreground/35 hover:bg-transparent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground aria-expanded:text-sidebar-foreground";
-
-const subMenuActionClass =
-  `pointer-events-none opacity-0 ${menuActionToneClass} group-has-[:focus-visible]/menu-sub-item:pointer-events-auto group-has-[:focus-visible]/menu-sub-item:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 aria-expanded:pointer-events-auto aria-expanded:opacity-100`;
 
 /* ── 行首那一格只说一件事：这个会话此刻要你知道什么 ────────────────
  * 四种活动态各自占满行首等宽槽，缺省才落回 Agent logo——
@@ -167,6 +191,7 @@ export function ChatThreadItem({
   variant = "root",
   badge,
   preview,
+  reorder,
 }: ChatThreadItemProps) {
   const { t } = useAppTranslation();
   const activePath = useSidebarActivePath();
@@ -176,6 +201,8 @@ export function ChatThreadItem({
   const setup = useSetup();
   const navigate = useNavigate();
   const showArchiveFeedback = useSidebarArchiveFeedback();
+  const { enabled: confettiEnabled } = useArchiveConfettiPreference();
+  const archivePending = useRef(false);
   const activity = useChatActivity(chat.id);
   const context = chat.context;
   const [renameOpen, setRenameOpen] = useState(false);
@@ -198,9 +225,25 @@ export function ChatThreadItem({
   );
   const availabilityState = projectAvailability(backend, setup.now).state;
   const handleArchive = async () => {
+    if (archivePending.current) return;
+    archivePending.current = true;
     setBusy(true);
     try {
       await archiveChat(chat.id);
+    } catch {
+      // ChatsProvider owns archive failures; no success feedback is emitted.
+      archivePending.current = false;
+      setBusy(false);
+      return;
+    }
+    let recoveryNavigationAllowed = true;
+    showArchiveFeedback({
+      kind: "chat",
+      id: chat.id,
+      undo: () => restoreArchiveTargets([{ kind: "chat", id: chat.id }]),
+      onViewStart: () => { recoveryNavigationAllowed = false; },
+    });
+    try {
       if (active && context?.kind === "app-use") return;
       if (active && context?.kind === "app-edit") {
         const destination = await openAppEditor({
@@ -208,21 +251,17 @@ export function ChatThreadItem({
           requestId: crypto.randomUUID(),
           mode: "resume",
         });
-        navigate(productDestinationRoute(destination));
+        if (recoveryNavigationAllowed) navigate(productDestinationRoute(destination));
         return;
       }
       /* 归档的是这条 chat 而不是它所在的 Project：把用户留在原 Project 的
          空白页上，下一句话仍在同一个上下文里说。路由守卫是同一判据的另一
          半，两处必须给出同一个落点，否则谁先落地就成了行为的定义者。 */
       if (active) navigate(projectDraftRoute(chat.projectId, projects));
-      showArchiveFeedback({
-        kind: "chat",
-        id: chat.id,
-        undo: () => restoreArchiveTargets([{ kind: "chat", id: chat.id }]),
-      });
     } catch {
-      // 失败文案由 ChatsProvider 弹 toast，此处只收敛状态
+      // The archive already succeeded. Navigation recovery must not resubmit it.
     } finally {
+      archivePending.current = false;
       setBusy(false);
     }
   };
@@ -263,9 +302,19 @@ export function ChatThreadItem({
     );
   };
 
+  const drop = chatRowDropAttributes(reorder, reorder?.dragging);
+  const hostProps = { ref: reorder?.hostRef, ...reorder?.listeners };
+
   // ─── 普通态：导航 + hover 更多菜单 + 删除二次确认 ───
   return (
-    <Item className={variant === "sub" ? "w-full" : undefined}>
+    <Item
+      ref={reorder?.itemRef}
+      {...drop}
+      /* Present once the reorder runtime has bound this row: the observable "you can drag me now" for drivers and tests. */
+      data-chat-draggable={reorder?.listeners ? "" : undefined}
+      className={cn(variant === "sub" && "w-full", drop.className)}
+    >
+      <ChatDropIndicator edge={reorder?.dropEdge ?? null} variant={variant} />
       {/* ── 两种壳子，一种骨架 ──────────────────────────────────
           有预览时链接转成竖列：标题行照旧（图标 + 标题 + 可选 tag），
           预览另起一行**顶格**——不跟着标题缩进那 24px。缩进本是为了让
@@ -282,7 +331,7 @@ export function ChatThreadItem({
         isActive={active}
       >
         {context && context.kind !== "ordinary" && chat.incarnationId ? (
-          <button type="button" onClick={openChat}>
+          <button type="button" onClick={openChat} {...hostProps}>
           <span className="flex w-full min-w-0 items-center gap-2">
             <SidebarRowMark>
               <ChatThreadIcon
@@ -297,6 +346,7 @@ export function ChatThreadItem({
             </SidebarRowMark>
             {titleNode}
             {badge && <SidebarRowTag>{badge}</SidebarRowTag>}
+            <ChatExecutorBadge chatId={chat.id} />
           </span>
           {/* `whitespace-normal!` 是必需的：宿主基类写了
               `[&>span:last-child]:truncate`（特指度 0,1,1），它的 nowrap 会
@@ -311,7 +361,7 @@ export function ChatThreadItem({
           ) : null}
           </button>
         ) : (
-          <Link to={`/chat/${chat.id}`}>
+          <Link to={`/chat/${chat.id}`} {...hostProps}>
             <span className="flex w-full min-w-0 items-center gap-2">
               <SidebarRowMark>
                 <ChatThreadIcon
@@ -322,6 +372,7 @@ export function ChatThreadItem({
               </SidebarRowMark>
               {titleNode}
               {badge && <SidebarRowTag>{badge}</SidebarRowTag>}
+              <ChatExecutorBadge chatId={chat.id} />
             </span>
             {preview ? (
               <span data-chat-preview className="line-clamp-2 whitespace-normal! text-[11px] text-sidebar-foreground/60 leading-snug">
@@ -332,58 +383,15 @@ export function ChatThreadItem({
         )}
       </MenuButton>
 
-      <SidebarMenuAction
-        showOnHover={variant === "root"}
-        className={
-          variant === "sub"
-            ? subMenuActionClass
-            : sidebarRootMenuActionClass
-        }
-        aria-label={t("chat.sidebar.archiveChat")}
+      <ChatRowActions
+        nested={variant === "sub"}
+        confetti={confettiEnabled}
         disabled={busy}
-        onClick={requestArchive}
-      >
-        <Archive />
-      </SidebarMenuAction>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <SidebarMenuAction
-            {...renameMenu.triggerProps}
-            showOnHover={variant === "root"}
-            className={`right-7 ${
-              variant === "sub"
-                ? subMenuActionClass
-                : sidebarRootMenuActionClass
-            }`}
-            aria-label={t("chat.sidebar.moreActions")}
-          >
-            <MoreHorizontal />
-          </SidebarMenuAction>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          side="bottom"
-          align="start"
-          className="w-max min-w-0"
-          onCloseAutoFocus={renameMenu.onMenuCloseAutoFocus}
-        >
-          <DropdownMenuItem
-            className="whitespace-nowrap"
-            onSelect={renameMenu.requestOpen}
-          >
-            <Pencil />
-            {t("common.rename")}
-          </DropdownMenuItem>
-          {/* 归档可回收，故用常规色：红留给不可撤销的动作。 */}
-          <DropdownMenuItem
-            className="whitespace-nowrap"
-            onSelect={requestArchive}
-          >
-            <Archive />
-            {t("chat.sidebar.archive")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        renameMenu={renameMenu}
+        onArchive={requestArchive}
+        copy={{ more: t("chat.sidebar.moreActions"), rename: t("common.rename"), archive: t("chat.sidebar.archive"),
+          archiveChat: t("chat.sidebar.archiveChat"), archiveHint: t("settings.general.archiveConfettiTooltip") }}
+      />
 
       <SidebarRenameDialog
         open={renameOpen}

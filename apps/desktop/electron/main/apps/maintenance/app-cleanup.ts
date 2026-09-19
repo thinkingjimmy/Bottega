@@ -16,7 +16,7 @@ export function installLogPath(userData: string, appId: string) {
 }
 
 export async function cleanupAppFiles(
-  paths: { userData: string; appsRoot: string },
+  paths: { userData: string; appsRoot: string; stagingRoot?: string },
   record: AppRecord,
   origin: string
 ) {
@@ -33,7 +33,7 @@ export async function cleanupAppFiles(
     },
     {
       label: "staging 目录",
-      promise: rm(join(appsRoot, ".staging", appId), {
+      promise: rm(join(paths.stagingRoot ?? join(appsRoot, ".staging"), appId), {
         recursive: true,
         force: true,
       }),

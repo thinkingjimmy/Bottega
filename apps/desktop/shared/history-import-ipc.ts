@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The sequencing type of shared Agent/Settings only
- * [OUTPUT]: Foreign-history contracts retaining structured completion through source tools, messages and folded process steps.
+ * [OUTPUT]: Foreign-history contracts retaining structured completion and continuation receipts with durable manual intent identity, including failed outcomes.
  * [POS]: The single source of truth for the shared history-import wire; the renderer never receives a source file path and cannot forge a SessionRef
  */
 
@@ -180,9 +180,10 @@ export type PrepareHistoryAdoptionInput = Readonly<{
 }>;
 
 type HistoryAdoptionReceipt = Readonly<{
+  intentId: string;
   chatId: string;
   incarnationId: string;
-  phase: "started" | "queued" | "settled";
+  phase: "started" | "queued" | "settled" | "failed";
 }>;
 
 export type HistoryMemoryPreview = Readonly<{

@@ -42,7 +42,7 @@ import {
   SettingsSwitch,
 } from "@/components/settings/settings-layout";
 import { BackendSupportNote } from "@/components/settings/builtin-tools-section";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { createMcpServersController } from "@/lib/mcp-servers-client";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useSetup } from "@/components/providers/setup-provider";
@@ -83,13 +83,13 @@ export type McpServersPortBase = Omit<
  * server against the live Setup backends, translate the bridge-missing code,
  * and turn `save`'s boolean into the dialog's `{ ok, error }`. The scope-
  * specific half — policy overrides and inherited controls — stays with each
- * view. `scope` must be referentially stable; it keys the controller's life.
+ * view. `scope` must be referentially stable; it keys the controller identity,
+ * and the controller's bridge watch lives exactly as long as its subscribers.
  * ============================================================ */
 export function useMcpServersPort(scope: ProductResourceScope) {
   const { t } = useAppTranslation();
   const setup = useSetup();
   const controller = useMemo(() => createMcpServersController(scope), [scope]);
-  useEffect(() => () => controller.dispose(), [controller]);
   const mcp = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const backendFacts = useMemo(
     () => (setup.status?.backends ?? []).map(toolBackendFacts),

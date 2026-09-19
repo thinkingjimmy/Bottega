@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides en settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut-only settings hints, and task failures, without transient settings loading copy.
+ * [OUTPUT]: Provides en settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut conflict guidance, and task failures, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -47,6 +47,7 @@ export const presenceEn = {
   "more": "{{tasks}} more",
   "unavailable": "Unavailable",
   "recovered": "The window was restored after a problem. Saved chats are available; unsaved drafts may have been lost.",
+  "backgroundNotice": "Bottega will keep running in the background. Quit from the menu bar.",
   "closeFailed": "The window could not transfer its draft. Try closing it again.",
   "retry": "Retry",
   "systemSettings": "Open System Settings",

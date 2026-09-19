@@ -1,9 +1,14 @@
 /**
- * [INPUT]: Depends on freeze packages directory/plugin preflight, strict manifest/base snapshot, source-only compiled portability verification, App/Project/Base store, Extension installer, AppConfigStore and lifecycle gate
- * [OUTPUT]: Provides BaseAppImporter import/recover/retryPending/cancelPending with durable Studio-only authorization, internal Base navigation at creation, mandatory local compiled rebuild, full requested-capability approval, grant-before-promotion ordering, and idempotent fulfillment recovery
+ * [INPUT]: Depends on frozen package preflight, shared authorization/extensions, manifest/Base contracts, cross-volume publication, App/Project/Base Stores and lifecycle custody.
+ * [OUTPUT]: Provides BaseAppImporter import/recover/retryPending/cancelPending, rejected-package receipt reads, durable Studio-only authorization, internal Base navigation, compiled rebuild, grant-before-promotion ordering and idempotent fulfillment recovery
  * [POS]: apps/install's unified Base App delivery pipeline; GitHub import and preset install differ only in where the package comes from, so import/recover/retryPending/cancelPending share one code path with no source-specific branching
  */
 
+import { publishDirectory } from "../store/folder/publication";
+import { authorizeAndPromote, assertStudioAuthorization } from "./delivery/authorization";
+import { fulfillExtensions, fulfillmentInput, fulfillmentFromIntent } from "./delivery/extensions";
+import { installationRecord } from "./delivery/record";
+import { assertRequirements } from "./delivery/requirements";
 import { AppCompatibilityError, recordCandidate, readCompatibility, runningBottegaVersion, revalidateCompatibility } from "../compatibility/read";
 import type { AppCandidateIdentity } from "../../../../shared/app-host/contract";
 import { randomUUID } from "node:crypto";
@@ -12,7 +17,6 @@ import {
   chmod,
   readFile,
   readdir,
-  rename,
   rm,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -21,7 +25,6 @@ import type {
   AppExtensionInstallPreflight,
   AppInstallAuthorization,
   AppRecord,
-  AppRequirement,
 } from "../../../../shared/apps-ipc";
 import { baseSnapshotFileSchema } from "../../../../shared/base-snapshot";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
@@ -40,7 +43,6 @@ import {
 import { detectCliRequirements } from "../share/cli-detectors";
 import { inspectPackage, packageDigest } from "../share/package/package-contract";
 import { appManifestSchema } from "./manifest-schema";
-import { digestCanonical } from "../../extensions/registry-canonical";
 import type { ExtensionInstaller } from "../../extensions/install/installer";
 import {
   discardPortableCompiledSource,
@@ -178,6 +180,12 @@ export class BaseAppImporter {
     return this.execute(intent, null);
   }
 
+  async hasRejectedPackage(origin: ImportSource["origin"], requestId: string) {
+    const receipt = await this.intents.readByRequest(INTENT_KIND[origin], requestId);
+    const result = receipt?.result;
+    return result?.state === "settled" && result.status === "rolled-back" && result.error?.code === "INVALID_PACKAGE";
+  }
+
   async hasPending(appId: string) {
     return Boolean(await this.pendingImport(appId));
   }
@@ -239,7 +247,7 @@ export class BaseAppImporter {
   ): Promise<SagaResult<AppRecord>> {
     const appId = String(intent.allocated.appId);
     const projectId = String(intent.allocated.projectId);
-    const finalDir = join(this.apps.appsRoot, appId);
+    const finalDir = this.apps.sourceDirectory(appId);
     let record = this.apps.get(appId);
 
     if (intent.recoveryState.cancelRequested === true) {
@@ -351,49 +359,13 @@ export class BaseAppImporter {
     if (!record) {
       await this.apps.reserveId(appId);
       /* shell 只投影「这笔安装存在」，不携带 manifest，因而绝不提前成代。 */
-      record = await this.apps.set({
-        id: appId,
-        sourceRepoUrl: origin === "github" ? ref : null,
-        publishedRepoUrl: null,
-        origin,
-        ...(activeRequest.source.preset
-          ? {
-              presetId: activeRequest.source.preset.presetId,
-              installedPresetPin: activeRequest.source.preset.resolvedPin,
-            }
-          : {}),
-        displayName: manifest.name,
-        dir: finalDir,
-        state: "creating",
-        lastError: null,
-        agentWarning: null,
-        agent: activeRequest.agent,
-        maintenanceAgent: activeRequest.agent,
-        headlessConsent: null,
-        bindingRevision: 0,
-        lifecycleRevision: 0,
-        defaultGrant: null,
-        defaultGrantRevision: 0,
-        studioGrant: null,
-        studioGrantRevision: 0,
-        pinnedAt: null,
-        domainIdentity: null,
-        generations: [],
-        generationBinding: {
-          bindingRevision: 0,
-          active: null,
-          drainingGenerationIds: [],
-        },
-        manifest: null,
-        editChatSlot: null,
-        activeUseChatSlot: null,
-        editableSource: true,
-        skillStatus: null,
-        addedAt: Date.now(),
-      });
+      record = await this.apps.set(installationRecord({ id: appId, dir: finalDir, displayName: manifest.name,
+        origin, sourceRepoUrl: origin === "github" ? ref : null, agent: activeRequest.agent,
+        ...(activeRequest.source.preset ? { presetId: activeRequest.source.preset.presetId,
+          installedPresetPin: activeRequest.source.preset.resolvedPin } : {}) }));
     }
-    const fulfillment = await this.fulfillExtensions(
-      intent,
+    const fulfillment = await fulfillExtensions(
+      { extensions: this.extensions, journal: this.intents }, intent,
       activeRequest.source.extensionPreflights ?? []
     );
     if (!fulfillment.complete) {
@@ -441,8 +413,8 @@ export class BaseAppImporter {
       throw new Error("插件声明与已确认的安装来源不一致");
     }
     await revalidateCompatibility(packageRoot, candidate, compatibility, this.hostVersion());
-    record = await this.approveRequestedAndPromote(
-      appId,
+    record = await authorizeAndPromote(
+      this.apps, appId,
       activeRequest.authorization,
       canApproveExtensions
     );
@@ -454,7 +426,7 @@ export class BaseAppImporter {
     await discardPortableCompiledSource(packageRoot);
     await rm(finalDir, { recursive: true, force: true });
     /* rename 即交付的原子证据；此后崩溃，恢复以 finalDir 存在为准跳过重交付。 */
-    await rename(packageRoot, finalDir);
+    await publishDirectory(packageRoot, finalDir);
     await makeWritable(finalDir);
     await rm(dirname(packageRoot), { recursive: true, force: true });
     return null;
@@ -513,152 +485,6 @@ export class BaseAppImporter {
     return { activeRequest, manifest, compatibility, candidate };
   }
 
-  private async approveRequestedAndPromote(
-    appId: string,
-    authorization: AppInstallAuthorization,
-    canApproveExtensions: boolean
-  ) {
-    assertStudioAuthorization(authorization);
-    let record = this.apps.get(appId);
-    let pending = record?.generationBinding.pending;
-    if (!record || !pending) return record!;
-    const generation = record.generations.find(
-      (item) => item.generationId === pending?.generationId
-    );
-    if (!generation) throw new Error("待授权 App generation 不存在");
-    if (generation.extensionRequirementResolution.kind === "frozen") {
-      if (!canApproveExtensions) throw new Error("Extension 兑现尚未完成");
-      record = await this.apps.resolvePendingConsent(appId, true);
-      pending = record.generationBinding.pending;
-    }
-    if (pending?.baseGuiDecision?.state === "consent-required") {
-      record = await this.apps.resolvePendingBaseGuiConsent(
-        appId,
-        pending.baseGuiDecision.requestedCapabilities,
-        pending.baseGuiDecision.requestedHostActions,
-        pending.baseGuiDecision.requestedCapabilityScopes
-      );
-      pending = record.generationBinding.pending;
-    }
-    if (generation.manifest.kind === "base" && generation.manifest.gui) {
-      record = await this.apps.grantStudioAccess(appId, generation.generationId);
-      pending = record.generationBinding.pending;
-    }
-    if (!pending) return record;
-    return this.apps.promotePendingGeneration(
-      appId,
-      pending.expectedConsentRevision
-    );
-  }
-
-  private async fulfillExtensions(
-    intent: LifecycleIntent,
-    initial: readonly AppExtensionInstallPreflight[]
-  ) {
-    const expected = fulfillmentFromIntent(intent);
-    if (!expected.length) return { complete: true, error: "" };
-    if (!this.extensions) {
-      return this.fulfillmentFailed(intent, "插件安装服务未初始化");
-    }
-    const extensions = this.extensions;
-    const completed = new Set(
-      Array.isArray(intent.recoveryState.fulfilledExtensions)
-        ? intent.recoveryState.fulfilledExtensions.filter(
-            (value): value is string => typeof value === "string"
-          )
-        : []
-    );
-    try {
-      for (const item of expected) {
-        if (completed.has(item.declaredComponentIdentity)) continue;
-        const held = initial.find(
-          (candidate) =>
-            candidate.declaredComponentIdentity ===
-              item.declaredComponentIdentity &&
-            candidate.preflightId
-        );
-        if (extensions.isInstalled(item)) {
-          if (held?.preflightId) await extensions.discard(held.preflightId);
-          completed.add(item.declaredComponentIdentity);
-          intent = await this.intents.advance(intent.intentId, intent.phase, {
-            fulfilledExtensions: [...completed].sort(),
-          });
-          continue;
-        }
-        let preflight = held;
-        if (!preflight) {
-          const value = await extensions.preflight({
-            repoUrl: item.repoUrl,
-            requestedRef: item.resolvedCommit,
-            scope: item.scope,
-            expectedProjectLifecycleRevision:
-              item.projectLifecycleRevision,
-            expectedScopeRevision: extensions.scopeRevision(item.scope),
-          });
-          preflight = {
-            declaredComponentIdentity: item.declaredComponentIdentity,
-            scope: value.scope,
-            projectLifecycleRevision: value.projectLifecycleRevision,
-            scopeRevision: value.scopeRevision,
-            repoUrl: value.source.normalizedUrl,
-            requestedRef: value.source.requestedRef,
-            resolvedCommit: value.source.resolvedCommit,
-            contentDigest: value.contentDigest,
-            capabilityDigest: digestCanonical(value.disclosure),
-            capabilities: value.disclosure,
-            preflightId: value.preflightId,
-            state: "ready",
-          };
-        }
-        if (!preflight?.preflightId) {
-          throw new Error("Extension preflight receipt 不存在");
-        }
-        if (
-          preflight.contentDigest !== item.contentDigest ||
-          preflight.capabilityDigest !== item.capabilityDigest ||
-          preflight.resolvedCommit !== item.resolvedCommit
-        ) {
-          throw new Error(
-            `插件冻结身份漂移：${item.declaredComponentIdentity}`
-          );
-        }
-        await extensions.confirm({
-          preflightId: preflight.preflightId,
-          expectedContentDigest: item.contentDigest,
-          expectedResolvedCommit: item.resolvedCommit,
-        });
-        completed.add(item.declaredComponentIdentity);
-        intent = await this.intents.advance(intent.intentId, intent.phase, {
-          fulfilledExtensions: [...completed].sort(),
-        });
-      }
-      await this.intents.advance(intent.intentId, intent.phase, {
-        extensionFulfillmentError: null,
-      });
-      return { complete: true, error: "" };
-    } catch (cause) {
-      await Promise.allSettled(
-        initial.flatMap((item) =>
-          item.preflightId &&
-          !completed.has(item.declaredComponentIdentity)
-            ? [extensions.discard(item.preflightId)]
-            : []
-        )
-      );
-      return this.fulfillmentFailed(
-        intent,
-        cause instanceof Error ? cause.message : String(cause)
-      );
-    }
-  }
-
-  private async fulfillmentFailed(intent: LifecycleIntent, error: string) {
-    await this.intents.advance(intent.intentId, intent.phase, {
-      extensionFulfillmentError: error.slice(0, 3_500),
-    });
-    return { complete: false as const, error };
-  }
-
   private async checkSource(source: ImportSource) {
     const inspection = await inspectPackage(source.packageRoot);
     if (await packageDigest(source.packageRoot, inspection.files) !== source.digest) throw new Error("APP_CANDIDATE_DIGEST_CHANGED");
@@ -690,63 +516,12 @@ export class BaseAppImporter {
     }
     await this.configs.removePending(intent.requestId);
     await rm(dirname(packageRoot), { recursive: true, force: true });
-    await rm(join(this.apps.appsRoot, appId), { recursive: true, force: true });
+    await rm(this.apps.sourceDirectory(appId), { recursive: true, force: true });
     await this.apps.remove(appId);
     return {
       status: "business-rejected",
       error: { code: "USER_CANCELLED", message: "用户取消安装" },
     };
-  }
-}
-
-function assertStudioAuthorization(value: unknown): AppInstallAuthorization {
-  const authorization = value as Partial<AppInstallAuthorization> | null;
-  if (
-    authorization?.scope !== "studio-only" ||
-    authorization.decision !== "approve-requested"
-  ) {
-    throw new Error("Base App 安装缺少 Studio-only 完整授权意图");
-  }
-  return { scope: "studio-only", decision: "approve-requested" };
-}
-
-function fulfillmentInput(
-  preflights: readonly AppExtensionInstallPreflight[] | undefined
-) {
-  return (preflights ?? []).map(({ capabilities: _capabilities, preflightId: _id, state: _state, ...item }) => item);
-}
-
-function fulfillmentFromIntent(
-  intent: LifecycleIntent
-): AppExtensionInstallPreflight[] {
-  const rows = Array.isArray(intent.input.extensionFulfillment)
-    ? intent.input.extensionFulfillment
-    : [];
-  return rows.map((value) => ({
-    ...(value as Omit<AppExtensionInstallPreflight, "capabilities" | "preflightId" | "state">),
-    capabilities: {
-      executableScripts: [],
-      skills: [],
-      mcpServers: [],
-      requiresPluginDataWriteRoot: false,
-    },
-    preflightId: null,
-    state: "ready",
-  }));
-}
-
-function assertRequirements(
-  requirements: readonly AppRequirement[],
-  config: AppConfigValue
-) {
-  for (const requirement of requirements) {
-    if (
-      requirement.kind === "config" &&
-      requirement.required &&
-      (!requirement.configKey || !config.values[requirement.configKey]?.trim())
-    ) {
-      throw new Error(`必填配置未填写：${requirement.label}`);
-    }
   }
 }
 

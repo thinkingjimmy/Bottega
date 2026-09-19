@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on React, PageShell, Settings/Usage primitives, UsageLimitsSection, quota/history/settings stores, backendLabel and existing controls.
- * [OUTPUT]: Provides account quotas/reset details above independent history and a combined refresh action in UsageSettingsView: one page hosting Today / year-long activity / lifetime archive views on the same surface, skeleton loading states, an issue banner for the active source, and the pricing auto-refresh switch
+ * [OUTPUT]: Provides account quotas/reset details above independent history and a combined refresh action in UsageSettingsView, with source issues inside the persistent history panel so source switches preserve the reading position.
  * [POS]: Settings layer's Usage view; holds no snapshot of its own — subscribes to usageStore and dispatches intents
  */
 
 import { UsageLimitsSection } from "@/components/settings/usage/limits/section";
+import type { AgentBackendId } from "../../shared/agent-ipc";
 import { usageLimitsStore } from "@/lib/usage-limits/store";
 import { useUsageLimits } from "@/lib/usage-limits/hooks";
 import { useEffect, useRef, useSyncExternalStore } from "react";
@@ -183,7 +184,7 @@ function PricingRefreshRow() {
   );
 }
 
-export function UsageSettingsView() {
+export function UsageSettingsView({ focusAgent = null }: { focusAgent?: AgentBackendId | null }) {
   const { t } = useAppTranslation();
   const activation = useRef<object>({});
   const { target, view, progress, error } = useSyncExternalStore(
@@ -222,7 +223,7 @@ export function UsageSettingsView() {
       }
     >
       <SettingsCanvas>
-        <UsageLimitsSection />
+        <UsageLimitsSection focusAgent={focusAgent} />
         <h2 className="mb-3 font-heading text-sm font-semibold">{t("settings.usage.limits.history")}</h2>
         <div
           data-testid="usage-view"
@@ -232,20 +233,6 @@ export function UsageSettingsView() {
         >
           {error && <SettingsAlert>{error}</SettingsAlert>}
 
-          {summaryIssues.length > 0 && (
-            <div
-              role="alert"
-              className="space-y-1 rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs ring-1 ring-amber-500/20 dark:text-amber-400"
-            >
-              {summaryIssues.map((issue, index) => (
-                <p key={`${issue.source}:${issue.kind}:${index}`}>
-                  <AlertTriangle className="mr-1 inline size-3.5" />
-                  {backendLabel(issue.source)} · {issue.message}
-                </p>
-              ))}
-            </div>
-          )}
-
           {/* 页签与面板同属一张表面：选中的那一页把分界线接管过去，
               于是「这块面板归哪个源」不再需要猜。 */}
           <UsageSourceRail
@@ -254,6 +241,19 @@ export function UsageSettingsView() {
             notes={usageCacheNotes(view.summaries)}
             onChange={usageStore.setTarget}
           >
+            {summaryIssues.length > 0 && (
+              <div
+                role="alert"
+                className="m-4 space-y-1 rounded-md bg-amber-500/10 px-3 py-2 text-amber-700 text-xs ring-1 ring-amber-500/20 dark:text-amber-400"
+              >
+                {summaryIssues.map((issue, index) => (
+                  <p key={`${issue.source}:${issue.kind}:${index}`}>
+                    <AlertTriangle className="mr-1 inline size-3.5" />
+                    {backendLabel(issue.source)} · {issue.message}
+                  </p>
+                ))}
+              </div>
+            )}
             <UsageContent
               summaries={view.summaries}
               target={target}

@@ -23,7 +23,7 @@ import type {
 } from "../../shared/memory-ipc";
 import type { MemorySharingMode } from "../../shared/settings-ipc";
 import { acceptMemoryRuntimeSnapshot } from "../../shared/memory-ipc";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import { effectiveLocale } from "@/lib/i18n-locale";
 import { translate } from "../../shared/i18n/runtime";
 import {

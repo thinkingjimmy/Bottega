@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shared submissions, canonical Chat Agent fences, lifecycle locks, durable reservations, and prepared staging
- * [OUTPUT]: Admits exact replay or lock-validated manual turns, checks scoped availability before and after preparation, and resolves switch receipts before one-shot staging while preserving unknown custody
+ * [INPUT]: Depends on original lifecycle gates, canonical Chat fences, reservations, prepared staging and trusted remote connection checks.
+ * [OUTPUT]: Promotes exact input custody, deferring ordinary append sequences/context to dispatch while retaining imported-replay and authorization fences.
  * [POS]: Manual-turn admission entry point for sections/coordinator; ConversationCoordinator supplies only the conversation/project gate and scheduling callbacks
  */
 
@@ -30,6 +30,7 @@ import {
   type CoordinatorDependencies,
 } from "./coordinator-runtime";
 import { canonicalHash } from "./coordinator-values";
+import { remoteUserMessage, tagRemotePrepared } from "./remote/submission";
 import { nextDeliverable } from "./scheduler/deliverable";
 import {
   assertManualWorkspacePrecondition,
@@ -37,6 +38,8 @@ import {
 } from "./admission/workspace-precondition";
 
 type ManualAdmissionRuntime = {
+  remote?: import("./remote/model").RemoteContext;
+  remoteCurrent?: () => void;
   dependencies: CoordinatorDependencies;
   accepting(): boolean;
   runConversation<T>(
@@ -77,7 +80,8 @@ export async function submitManualAdmission(
   ) {
     throw new Error("人工 turn intent 格式无效");
   }
-  const userMessage = manualUserMessage(submission.persistence);
+  const remote = runtime.remote ?? dependencies.ledger.read(state => state.submissionReservations[submission.intentId]?.remoteSubmission?.context);
+  const userMessage = remoteUserMessage(manualUserMessage(submission.persistence), remote);
   const conversationId = submission.turn.scope.conversationId;
   const submissionHash = canonicalHash(submission);
   /* 精确重放是 ledger 事实，不再重新准入。先于 backend/Workspace 当前态短路，
@@ -88,7 +92,9 @@ export async function submitManualAdmission(
     runtime
   );
   if (accepted) return accepted;
-  await assertSwitchSource(submission, dependencies);
+  if (remote && !runtime.remoteCurrent) throw new Error("REMOTE_SUBMISSION_REQUIRES_TRUSTED_REPLAY");
+  if (remote) runtime.remoteCurrent!();
+  await assertSwitchSource(submission, dependencies, remote);
   await assertManualBackend(submission, dependencies.chats);
   const projectId = await manualLifecycleProjectId(
     submission,
@@ -127,9 +133,9 @@ export async function submitManualAdmission(
         getProjectWorkspaceSnapshot:
           dependencies.getProjectWorkspaceSnapshot,
       });
-      await assertSwitchSource(submission, dependencies);
+      await assertSwitchSource(submission, dependencies, remote);
       await assertManualBackend(submission, dependencies.chats);
-      if (submission.agentSwitch) {
+      if (submission.agentSwitch || (submission.persistence.kind === "adopt" && submission.persistence.input.replay)) {
         const eligibility = switchEligibility(dependencies, conversationId, {
           ownIntentId: submission.intentId, recovering: runtime.deferKick && !runtime.recovering,
           running: runtime.isRunning(conversationId),
@@ -155,10 +161,12 @@ export async function submitManualAdmission(
         throw new Error("Authentication retry requires an idle conversation");
       }
       await dependencies.assertManualAvailability?.(submission);
-      await dependencies.ledger.reserveSubmission({
+      runtime.remoteCurrent?.();
+      if (remote) runtime.remoteCurrent!();
+      await (remote ? dependencies.ledger.remote.reserve(submission, remote) : dependencies.ledger.reserveSubmission({
         submission,
         submissionHash,
-      });
+      }));
       await dependencies.assertGallery?.(submission.content, {
         conversationId,
         backend: submission.turn.turnOptions.backend,
@@ -178,7 +186,7 @@ export async function submitManualAdmission(
         await dependencies.chats.beginCreation(submission);
       }
       let lease;
-      let sequence: { executorNoticeSeq?: number; noticeSeq?: number; userSeq: number; assistantSeq: number };
+      let sequence: Awaited<ReturnType<typeof allocateManualSequences>> | undefined;
       let intent;
       let preparedCustody = false;
       try {
@@ -197,24 +205,32 @@ export async function submitManualAdmission(
         if (createsConversation) {
           await dependencies.chats.markCreationPrepared(submission);
         }
-        sequence = switchSequence ?? await allocateManualSequences(
+        const deferred = submission.persistence.kind === "append" && !submission.agentSwitch &&
+          !submission.persistence.input.revise && !submission.authenticationRetry;
+        sequence = deferred ? undefined : switchSequence ?? await allocateManualSequences(
           dependencies.chats,
           submission
         );
         const candidate = {
           id: submission.intentId,
           conversationId,
-          payload: freezeSwitch(await freezeManualContext(lease.prepared, dependencies, sequence), dependencies, submissionHash, sequence),
+          origin: remote?.origin,
+          remoteSubmission: dependencies.ledger.read(state => state.submissionReservations[submission.intentId]?.remoteSubmission),
+          payload: sequence
+            ? freezeSwitch(tagRemotePrepared(await freezeManualContext(lease.prepared, dependencies, sequence), remote), dependencies, submissionHash, sequence)
+            : tagRemotePrepared(lease.prepared, remote),
           submissionHash,
           requestId: submission.turn.requestId,
           userMessage,
-          executorNoticeSeq: sequence.executorNoticeSeq,
-          noticeSeq: sequence.noticeSeq,
-          userSeq: sequence.userSeq,
-          assistantSeq: sequence.assistantSeq,
+          executorNoticeSeq: sequence?.executorNoticeSeq,
+          noticeSeq: sequence?.noticeSeq,
+          userSeq: sequence?.userSeq,
+          assistantSeq: sequence?.assistantSeq,
           createdAt: userMessage.createdAt,
           phase: "queued",
         } as const;
+        runtime.remoteCurrent?.();
+        if (remote) runtime.remoteCurrent!();
         await dependencies.ledger.prepareSubmissionReservation(candidate);
         preparedCustody = true;
         lease.commit();
@@ -261,7 +277,7 @@ export async function submitManualAdmission(
       }
       return admittedReceipt(
         submission,
-        sequence.userSeq,
+        sequence?.userSeq,
         queued,
         runtime
       );
@@ -368,6 +384,9 @@ async function replayManualSubmission(
       ),
     };
   }
+  if (existing.phase === "queued" && existing.userSeq === undefined) {
+    return { requestId: existing.requestId, phase: "queued", ...runtime.blockedReceipt(existing.conversationId) };
+  }
   const sequence = await ensureManualSequences(
     dependencies.chats,
     dependencies.ledger,
@@ -388,7 +407,7 @@ async function replayManualSubmission(
 
 async function admittedReceipt(
   submission: ManualTurnSubmission,
-  userSeq: number,
+  userSeq: number | undefined,
   queued: boolean,
   runtime: ManualAdmissionRuntime
 ): Promise<ManualTurnReceipt> {
@@ -409,12 +428,16 @@ async function admittedReceipt(
   if (admitted?.phase === "settled") {
     return { requestId: admitted.requestId, phase: "settled" };
   }
+  const committedSeq = admitted?.userSeq ?? userSeq;
+  if (committedSeq === undefined) {
+    return { requestId: submission.turn.requestId, phase: "queued", ...runtime.blockedReceipt(submission.turn.scope.conversationId) };
+  }
   return {
     requestId: submission.turn.requestId,
     phase: queued ? "queued" : "started",
     userMessage: {
-      ...manualUserMessage(submission.persistence),
-      seq: userSeq,
+      ...((admitted?.userMessage as Omit<UserChatMessage, "seq"> | undefined) ?? manualUserMessage(submission.persistence)),
+      seq: committedSeq,
     },
     ...(queued
       ? runtime.blockedReceipt(submission.turn.scope.conversationId)

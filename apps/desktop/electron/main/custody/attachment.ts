@@ -4,6 +4,7 @@
  * [POS]: Custody's journal-agnostic runtime leaf; Agent turn and the App server each keep their own ledger but share this single "when to deliver, when to release" state machine
  */
 
+import { assertRecoveredAuthority } from "../persistence/recovery-policy";
 import {
   spawn,
   type ChildProcessWithoutNullStreams,
@@ -159,6 +160,7 @@ export class CustodyAttachment<E extends CustodyRecord> {
    * 它们要等 durable `activation-authorized` 之后才经控制通道出门。
    */
   launch(request: CustodyLaunchRequest) {
+    assertRecoveredAuthority();
     if (this.guardian) throw new Error("同一 custody 不能启动两次 guardian");
     this.launchRequest = request;
     const spawnGuardian = this.options.spawnGuardian ?? spawn;

@@ -35,6 +35,7 @@ export const archiveSettingsTargetPath = (
 
 /** 覆盖层能承载的档位：盖在当前路由之上，关掉即回到原地。 */
 export type SettingsOverlaySection =
+  | "account"
   | "about"
   | "general"
   | "shortcuts"
@@ -43,6 +44,7 @@ export type SettingsOverlaySection =
   | "browser"
   | "tools"
   | "usage"
+  | "lab"
   | "archive";
 
 /** 设置的全部目的地：覆盖层七档 + 走真实路由的 Memory。 */

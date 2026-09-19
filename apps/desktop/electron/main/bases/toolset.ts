@@ -1,18 +1,12 @@
 /**
- * [INPUT]: Depends on BasesService, base-read only projection kernel, shared ownerKey/Base mutation and incarnation-bound tools context, plus the shared statusError constructor from main/errors
- * [OUTPUT]: Provides nine Base handlers over the current chat's writable Base, plus the single owner-aware `read_base` path that never creates a Base
- * [POS]: The base area is the combination and mutation layer of the common built-in tool platform; Owner Parsing/Authorization only in service
+ * [INPUT]: Depends on BasesService, immutable Base reads, incarnation-bound tool context and stable batch/result helpers.
+ * [OUTPUT]: Provides owner-authorized Base reads and durable Agent row/metadata batches with bounded truthful results.
+ * [POS]: Base built-in tool composition; service owns authorization and Store owns original replay facts.
  */
 
 import { renumberViews } from "../../../shared/base-views";
-import {
-  BASE_VIEW_LIMIT,
-  ownerKeyOf,
-  type BaseColumn,
-  type BaseRow,
-  type BaseSnapshot,
-  type BaseView,
-} from "../../../shared/bases-ipc";
+import { BASE_VIEW_LIMIT, type BaseColumn, type BaseRow, type BaseSnapshot, type BaseView } from "../../../shared/bases-ipc";
+import { ownerKeyOf } from "@ai-chat/base-ui/model/owner-key";
 import type { BuiltinToolContext, BuiltinToolset } from "../tools/registry";
 import {
   BASE_QUERY_RESULT_BYTE_LIMIT,
@@ -21,6 +15,8 @@ import {
 } from "./base-read";
 import type { BasesService } from "./bases-service";
 import { statusError } from "../errors";
+import { baseToolBatch, baseToolItem, baseToolKey } from "./service/tool/identity";
+import { boundedToolBatch } from "./service/tool/result";
 
 export function createBaseToolset(
   service: BasesService,
@@ -92,30 +88,20 @@ export function createBaseToolset(
     base_set_view: async (args, context) => {
       const base = await snapshot(args, context);
       const view = args.view as BaseView;
-      const exists = base.meta.views.some((item) => item.id === view.id);
-      if (!exists && base.meta.views.length >= BASE_VIEW_LIMIT) {
-        throw statusError(400, `Base 视图不能超过 ${BASE_VIEW_LIMIT} 个`);
-      }
-      const views = renumberViews(
-        exists
-          ? base.meta.views.map((item) => (item.id === view.id ? view : item))
-          : [...base.meta.views, view]
-      );
-      const next = await service.updateMeta({
+      const result = await service.toolMeta({
+        signal: context.signal,
         ownerKey: ownerKeyOf(base.meta.owner),
         expectedRevision: args.expected_revision as number,
-        patch: {
-          views,
-          ...(args.set_active ? { activeViewId: view.id } : {}),
+        toolIdentity: baseToolItem(baseToolBatch(context, base.meta.ownerInstanceId, "set-view"), "meta", args),
+        patch: current => {
+          const exists = current.meta.views.some(item => item.id === view.id);
+          if (!exists && current.meta.views.length >= BASE_VIEW_LIMIT) throw statusError(400, "Base view capacity exceeded", { code: "view_capacity" });
+          const views = renumberViews(exists ? current.meta.views.map(item => item.id === view.id ? view : item) : [...current.meta.views, view]);
+          return { views, ...(args.set_active ? { activeViewId: view.id } : {}) };
         },
         authority: await authority(args, context, base, "meta"),
       });
-      return {
-        revision: next.meta.revision,
-        view_id: view.id,
-        view_count: next.meta.views.length,
-        active_view_id: next.meta.activeViewId,
-      };
+      return { ...result, view_id: view.id };
     },
     base_update_columns: async (args, context) => {
       const base = await snapshot(args, context);
@@ -126,50 +112,46 @@ export function createBaseToolset(
       const removed = new Set(
         (args.remove_column_ids as string[] | undefined) ?? []
       );
-      const known = new Set(base.meta.columns.map((column) => column.id));
-      for (const id of [...renames.keys(), ...removed]) {
-        if (!known.has(id)) throw statusError(400, `未知列 ${id}`);
-      }
-      const columns = base.meta.columns
-        .filter((column) => !removed.has(column.id))
-        .map((column) =>
-          renames.has(column.id)
-            ? { ...column, name: renames.get(column.id)! }
-            : column
-        );
-      const next = await service.updateMeta({
+      const result = await service.toolMeta({
+        signal: context.signal,
         ownerKey: ownerKeyOf(base.meta.owner),
         expectedRevision: args.expected_revision as number,
-        patch: { columns },
+        toolIdentity: baseToolItem(baseToolBatch(context, base.meta.ownerInstanceId, "update-columns"), "meta", args),
+        patch: current => {
+          const known = new Set(current.meta.columns.map(column => column.id));
+          for (const id of [...renames.keys(), ...removed]) if (!known.has(id)) throw statusError(400, "Unknown Base column", { code: "unknown_column" });
+          return { columns: current.meta.columns.filter(column => !removed.has(column.id)).map(column =>
+            renames.has(column.id) ? { ...column, name: renames.get(column.id)! } : column) };
+        },
         authority: await authority(args, context, base, "meta"),
       });
-      return {
-        revision: next.meta.revision,
-        column_count: next.meta.columns.length,
-        renamed: renames.size,
-        removed: removed.size,
-      };
+      return { ...result, renamed: renames.size, removed: removed.size };
     },
     base_add_columns: async (args, context) => {
       const base = await snapshot(args, context);
       const columns = args.columns as BaseSnapshot["meta"]["columns"];
-      assertNewColumns(base, columns);
-      const next = await service.updateMeta({
+      return service.toolMeta({
+        signal: context.signal,
         ownerKey: ownerKeyOf(base.meta.owner),
+        includeColumns: true,
         expectedRevision: args.expected_revision as number,
-        patch: { columns: [...base.meta.columns, ...columns] },
+        toolIdentity: baseToolItem(baseToolBatch(context, base.meta.ownerInstanceId, "add-columns"), "meta", args),
+        patch: current => { assertNewColumns(current, columns); return { columns: [...current.meta.columns, ...columns] }; },
         authority: await authority(args, context, base, "meta"),
       });
-      return describe(next);
     },
     base_insert_rows: async (args, context) => {
       const base = await snapshot(args, context);
-      const next = await service.insertRows({
+      const result = await service.toolRows({
+        signal: context.signal,
+        readOnly: (args.result_offset as number ?? 0) > 0,
         ownerKey: ownerKeyOf(base.meta.owner),
-        rows: args.rows as BaseRow[],
+        batchId: baseToolBatch(context, base.meta.ownerInstanceId, "insert", args.batch_id as string | undefined),
+        atomic: args.atomic === true,
+        request: { kind: "insert", rows: args.rows as BaseRow[] },
         authority: await authority(args, context, base, "row-insert"),
       });
-      return rowMutationResult(next);
+      return boundedToolBatch(result, baseToolKey(context, args.batch_id as string | undefined), args.result_offset as number ?? 0, context.lease.resultByteBudget - 512);
     },
     base_patch_rows: async (args, context) => {
       const base = await snapshot(args, context);
@@ -180,21 +162,29 @@ export function createBaseToolset(
           import("../../../shared/bases-ipc").BaseCellValue | null
         >;
       }>;
-      const next = await service.patchRows(
-        ownerKeyOf(base.meta.owner),
-        rows.map((row) => ({ rowId: row.row_id, patch: row.patch })),
-        await authority(args, context, base, "row-patch")
-      );
-      return rowMutationResult(next);
+      const result = await service.toolRows({
+        signal: context.signal,
+        readOnly: (args.result_offset as number ?? 0) > 0,
+        ownerKey: ownerKeyOf(base.meta.owner),
+        batchId: baseToolBatch(context, base.meta.ownerInstanceId, "patch", args.batch_id as string | undefined),
+        atomic: args.atomic === true,
+        request: { kind: "patch", rows: rows.map(row => ({ rowId: row.row_id, patch: row.patch })) },
+        authority: await authority(args, context, base, "row-patch"),
+      });
+      return boundedToolBatch(result, baseToolKey(context, args.batch_id as string | undefined), args.result_offset as number ?? 0, context.lease.resultByteBudget - 512);
     },
     base_delete_rows: async (args, context) => {
       const base = await snapshot(args, context);
-      const next = await service.deleteRows({
+      const result = await service.toolRows({
+        signal: context.signal,
+        readOnly: (args.result_offset as number ?? 0) > 0,
         ownerKey: ownerKeyOf(base.meta.owner),
-        rowIds: args.row_ids as string[],
+        batchId: baseToolBatch(context, base.meta.ownerInstanceId, "delete", args.batch_id as string | undefined),
+        atomic: args.atomic === true,
+        request: { kind: "delete", rowIds: args.row_ids as string[] },
         authority: await authority(args, context, base, "row-delete"),
       });
-      return rowMutationResult(next);
+      return boundedToolBatch(result, baseToolKey(context, args.batch_id as string | undefined), args.result_offset as number ?? 0, context.lease.resultByteBudget - 512);
     },
   };
 }
@@ -219,8 +209,4 @@ function assertNewColumns(base: BaseSnapshot, columns: BaseColumn[]) {
     if (ids.has(column.id)) throw statusError(409, `列 ${column.id} 已存在`);
     ids.add(column.id);
   }
-}
-
-function rowMutationResult(base: BaseSnapshot) {
-  return { revision: base.meta.revision, rowCount: base.rows.length };
 }

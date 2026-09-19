@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends only on type-only Apps manifest, record, domain, grant, and availability primitives
  * [OUTPUT]: Provides enumerable Base GUI capabilities, compatibility-bound capability decisions, derived Studio data grants, content-layout-aware surface leases, staged GUI readiness/bindings, actions, and trusted Design history commands
- * [POS]: Shared Apps wire leaf for renderer surfaces; apps-ipc re-exports it while lifecycle/install contracts remain separate
+ * [POS]: Shared Apps wire leaf for renderer surfaces; Base query validation is consumed directly from app-gui/query, keeping its runtime out of navigation; apps-ipc re-exports it while lifecycle/install contracts remain separate
  */
 
 import type {
@@ -21,7 +21,7 @@ import type {
 } from "./app-gui/file-export";
 export * from "./app-gui/contracts";
 export * from "./app-gui/cutover";
-export * from "./app-gui/query";
+export type * from "./app-gui/query";
 export * from "./app-gui/file-export";
 
 export const BASE_GUI_CAPABILITIES = [

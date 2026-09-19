@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on DurableJson, node:crypto, and shared AgentTurnCustodyEntry/owner/dependency (app-reference or extension-plan)/process-identity/abort/quarantine-reason types
+ * [INPUT]: Depends on DurableJson, node:crypto, and shared AgentTurnCustodyEntry/owner (chat-turn, relay-attempt, app-internal-turn or resident connection)/dependency (app-reference or extension-plan)/process-identity/abort/quarantine-reason types
  * [OUTPUT]: Provides AgentTurnCustodyJournal; intent-before-spawn, owned→activation-authorized→activated→release-pending→released
  * [POS]: backends' neutral source of truth for turn process custody; App/Extension may only contribute a dependency, never own the process
  */
@@ -21,6 +21,7 @@ const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const ownerSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.enum(["chat-turn", "relay-attempt"]), ownerId: z.string().min(1), ownerRevision: z.number().int().nonnegative() }).strict(),
   z.object({ kind: z.literal("app-internal-turn"), ownerId: z.string().min(1), ownerRevision: z.number().int().nonnegative(), activationId: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal("connection"), ownerId: z.string().min(1), ownerRevision: z.number().int().nonnegative() }).strict(),
 ]);
 const dependencySchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("app-reference"), journalEntryId: z.string().min(1) }).strict(),

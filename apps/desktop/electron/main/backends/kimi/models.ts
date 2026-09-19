@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on Kimi CLI `provider list`Supervised short-command hosts, Unified Model Directory kernels, shared model/effort vocabulary and KIMI_CODE_HOME environment
- * [OUTPUT]: Provides parseKimiModels/listKimiModels/invalidateKimiModels, and returns the data in CLI JSON to Thinking Effort
+ * [INPUT]: Depends on the paired Kimi CLI provider-list commands under one contention-sized timeout budget, model-catalog caching and optional probe admission, shared model/effort vocabulary and KIMI_CODE_HOME
+ * [OUTPUT]: Provides parseKimiModels/listKimiModels/invalidateKimiModels with probe-only admission and CLI-derived Thinking Effort
  * [POS]: The limits of the model/thinking capability of the Kimi descriptor; Only extract the public data, probe into the supervisor, cache/defeat the semantics into the model-catalog core
  */
 
@@ -10,11 +10,15 @@ import {
   MODEL_ID_PATTERN,
   OPAQUE_CONFIG_VALUE_PATTERN,
 } from "../capability-validation";
-import { createModelCatalog } from "../model-catalog";
+import { createModelCatalog, type ModelCatalogProbeRunner } from "../model-catalog";
 import { runSupervisedCommand } from "../supervised-command";
 import { kimiEnvironment, resolveKimiCodeHome } from "./home";
 
-const CATALOG_TIMEOUT_MS = 8_000;
+/* The catalog costs two native processes (`--json` for the records, plain
+   for `Default model:`), each about a second when idle. At launch they
+   contend with discovery, auth checks and quota reads, so the budget has to
+   cover contention rather than the idle measurement. */
+const CATALOG_TIMEOUT_MS = 20_000;
 const CATALOG_BYTE_LIMIT = 512 * 1024;
 const MODEL_LIMIT = 256;
 const EFFORT_LIMIT = 16;
@@ -146,6 +150,7 @@ async function readProviderOutput(
 }
 
 const catalog = createModelCatalog<ResolvedRuntime>({
+  backend: "kimi",
   label: "Kimi 模型目录",
   /* 目录内容随二进制版本与状态根（KIMI_CODE_HOME 里的 provider 配置）漂移，
      两者都进 key；workspace 与 Kimi 目录无关，不进。 */
@@ -173,7 +178,8 @@ const catalog = createModelCatalog<ResolvedRuntime>({
 
 export const listKimiModels = (
   runtime: ResolvedRuntime,
-  signal?: AbortSignal
-) => catalog.list(runtime, "", signal);
+  signal?: AbortSignal,
+  runProbe?: ModelCatalogProbeRunner
+) => catalog.list(runtime, "", signal, runProbe);
 
 export const invalidateKimiModels = catalog.invalidate;

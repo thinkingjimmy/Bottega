@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AgentBackendId, ChildProcess and process-group
- * [OUTPUT]: Provides atomic quota exclusion, credential reservations, chat-priority cancellation and per-backend admission with a 4-slot semaphore (2 reserved for interactive), bounded FIFO background queueing, safety-lock hold/release, auxiliary-process tracking, and coordinated shutdown
+ * [OUTPUT]: Provides atomic quota exclusion that neither a queued background refresh nor a credential-safe probe can starve, credential reservations, chat-priority cancellation, parked quota channels that block nothing but are closed before a turn is admitted, quota-preserving background admission and per-backend admission with a 4-slot semaphore (2 reserved for interactive), bounded FIFO background queueing, safety-lock hold/release, auxiliary-process tracking, and coordinated shutdown
  * [POS]: The sole owner of Agent child-process admission in Electron main; callers acquire a lease before spawning and report a CleanupResult after teardown
  */
 
@@ -28,8 +28,14 @@ type BackendDomain = {
   background: number;
   interactiveQueue: QueueEntry[];
   backgroundQueue: QueueEntry[];
+  /** Background leases that provably cannot reach credentials; counted, but never quota-blocking. */
+  credentialSafe: number;
+  /** Idle resident connections: they hold a process but no turn, so they never block a quota read. */
+  resident: number;
   credentialUsers: Set<symbol>;
   quota?: { cancel(): void; settled: Promise<void> };
+  /** A warm quota channel parked between reads: a live process with no read in flight. */
+  channel?: { cancel(): void; settled: Promise<void> };
 };
 
 type ProcessClass = "interactive" | "background";
@@ -60,6 +66,8 @@ export function isAgentProcessAdmissionError(
 
 type QueueEntry = {
   kind: ProcessClass;
+  credentialSafe?: boolean;
+  resident?: boolean;
   resolve: (lease: AgentProcessLease) => void;
   reject: (cause: Error) => void;
   signal?: AbortSignal;
@@ -94,6 +102,8 @@ function domain(backend: AgentBackendId) {
       background: 0,
       interactiveQueue: [],
       backgroundQueue: [],
+      credentialSafe: 0,
+      resident: 0,
       credentialUsers: new Set(),
     };
     domains.set(backend, value);
@@ -105,8 +115,14 @@ function total(state: BackendDomain) {
   return state.interactive + state.background;
 }
 
-function canAcquire(state: BackendDomain, kind: ProcessClass) {
-  if (state.quota || total(state) >= AGENT_PROCESS_BUDGET.capacity) return false;
+/* A credential-safe probe runs in a disposable state root that cannot read or rewrite the
+   account, so a held quota read is not its concern: it waits for slots, never for credentials. */
+function canAcquire(state: BackendDomain, kind: ProcessClass, credentialSafe = false) {
+  if ((state.quota && !credentialSafe) || total(state) >= AGENT_PROCESS_BUDGET.capacity) return false;
+  /* A parked channel holds credentials but no work, so it is contention for a turn only --
+     the same barrier a held quota lease gets, and for the same reason: the turn reaches the
+     native CLI after the channel's process group is gone, never beside it. */
+  if (state.channel && kind === "interactive") return false;
   return (
     kind === "interactive" ||
     state.background < AGENT_PROCESS_BUDGET.backgroundCapacity
@@ -116,10 +132,14 @@ function canAcquire(state: BackendDomain, kind: ProcessClass) {
 function createLease(
   backend: AgentBackendId,
   state: BackendDomain,
-  kind: ProcessClass
+  kind: ProcessClass,
+  credentialSafe = false,
+  resident = false
 ): AgentProcessLease {
   if (kind === "interactive") state.interactive += 1;
   else state.background += 1;
+  if (credentialSafe) state.credentialSafe += 1;
+  if (resident) state.resident += 1;
   let released = false;
   return {
     backend,
@@ -129,6 +149,8 @@ function createLease(
       released = true;
       if (kind === "interactive") state.interactive -= 1;
       else state.background -= 1;
+      if (credentialSafe) state.credentialSafe -= 1;
+      if (resident) state.resident -= 1;
       drain(backend, state);
       notifyQuotaAdmission(backend);
     },
@@ -155,21 +177,31 @@ function drain(backend: AgentBackendId, state: BackendDomain) {
     removeQueued(state, entry);
     entry.resolve(createLease(backend, state, "interactive"));
   }
-  while (
-    state.interactiveQueue.length === 0 &&
-    canAcquire(state, "background") &&
-    state.backgroundQueue.length
-  ) {
-    const entry = state.backgroundQueue.shift()!;
+  /* FIFO among equals, but a credential-safe probe is not queued behind work that is only
+     waiting for the quota read to let go -- it can run beside it. */
+  for (;;) {
+    if (state.interactiveQueue.length) break;
+    const entry = state.backgroundQueue.find((candidate) =>
+      canAcquire(state, "background", candidate.credentialSafe)
+    );
+    if (!entry) break;
     removeQueued(state, entry);
-    entry.resolve(createLease(backend, state, "background"));
+    entry.resolve(
+      createLease(backend, state, "background", entry.credentialSafe, entry.resident)
+    );
   }
 }
 
 export function acquireAgentProcessLease(
   backend: AgentBackendId,
   kind: ProcessClass,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: {
+    quota?: "wait" | "preempt";
+    credentialSafe?: boolean;
+    /** 常驻连接的空闲占位：占 background 槽，但不冒充「有 turn 在途」。 */
+    resident?: boolean;
+  } = {}
 ): Promise<AgentProcessLease> {
   assertAgentProcessAdmission(backend);
   if (signal?.aborted) {
@@ -179,7 +211,14 @@ export function acquireAgentProcessLease(
     );
   }
   const state = domain(backend);
-  state.quota?.cancel();
+  /** The flag is a property of background probes only; nothing else can claim it. */
+  const credentialSafe = kind === "background" && options.credentialSafe === true;
+  const resident = kind === "background" && options.resident === true;
+  // Background refreshes can keep an existing quota read; user work still preempts it.
+  if (kind === "interactive" || (!credentialSafe && options.quota !== "wait")) state.quota?.cancel();
+  /* An idle but live channel is not an in-flight read (usage PRD §6.5), so only a turn takes
+     it away: background work still runs beside it, interactive work waits it out in canAcquire. */
+  if (kind === "interactive") state.channel?.cancel();
   if (
     kind === "interactive" &&
     state.interactiveQueue.length === 0 &&
@@ -190,10 +229,10 @@ export function acquireAgentProcessLease(
   if (
     kind === "background" &&
     state.interactiveQueue.length === 0 &&
-    state.backgroundQueue.length === 0 &&
-    canAcquire(state, kind)
+    (credentialSafe || state.backgroundQueue.length === 0) &&
+    canAcquire(state, kind, credentialSafe)
   ) {
-    return Promise.resolve(createLease(backend, state, kind));
+    return Promise.resolve(createLease(backend, state, kind, credentialSafe, resident));
   }
   if (
     kind === "background" &&
@@ -205,10 +244,15 @@ export function acquireAgentProcessLease(
     );
   }
   return new Promise<AgentProcessLease>((resolve, reject) => {
-    const entry: QueueEntry = { kind, resolve, reject, signal };
-    entry.onAbort = () => {
+    const entry: QueueEntry = { kind, credentialSafe, resident, resolve, reject, signal };
+    const withdraw = (cause: AgentProcessAdmissionError) => {
       removeQueued(state, entry);
-      reject(
+      reject(cause);
+      drain(backend, state);
+      notifyQuotaAdmission(backend);
+    };
+    entry.onAbort = () => {
+      withdraw(
         new AgentProcessAdmissionError(
           "cancelled",
           `${backend} ${kind} 等待已取消`
@@ -218,8 +262,7 @@ export function acquireAgentProcessLease(
     signal?.addEventListener("abort", entry.onAbort, { once: true });
     if (kind === "background") {
       entry.timeout = setTimeout(() => {
-        removeQueued(state, entry);
-        reject(
+        withdraw(
           new AgentProcessAdmissionError(
             "queue-timeout",
             `${backend} background 等待超过 ${AGENT_PROCESS_BUDGET.backgroundWaitMs}ms`
@@ -298,6 +341,7 @@ function stopAgentProcessAdmission(backend: AgentBackendId) {
   const state = domain(backend);
   state.admissionOpen = false;
   state.quota?.cancel();
+  state.channel?.cancel();
   for (const entry of [
     ...state.interactiveQueue,
     ...state.backgroundQueue,
@@ -408,10 +452,18 @@ export function subscribeQuotaAdmission(listener: (backend: AgentBackendId) => v
   quotaListeners.add(listener);
   return () => { quotaListeners.delete(listener); };
 }
+/* backgroundQueue is deliberately absent: queued background work waits for the quota
+   lease by contract, and canAcquire keeps it queued for as long as the lease is held,
+   so a queued refresh can never overlap a read -- counting it here would only let it
+   starve the read it is waiting for. Credential-safe leases are subtracted for the same
+   reason from the other side: they run in a disposable state root and can start, run and
+   finish beside a quota read without ever reaching the account. */
 export function agentQuotaBlocked(backend: AgentBackendId) {
   const state = domain(backend);
   return !state.admissionOpen || state.safetyLocks.size > 0 || state.credentialUsers.size > 0 ||
-    total(state) > 0 || state.interactiveQueue.length > 0 || state.backgroundQueue.length > 0 || Boolean(state.quota);
+    total(state) - state.credentialSafe - state.resident > 0 ||
+    state.interactiveQueue.length > 0 ||
+    Boolean(state.quota);
 }
 /** The reservation is synchronous; callers await ready before accessing native credentials. */
 export function reserveAgentCredentialUse(backend: AgentBackendId) {
@@ -419,8 +471,9 @@ export function reserveAgentCredentialUse(backend: AgentBackendId) {
   const state = domain(backend);
   const owner = Symbol("credential-use");
   state.credentialUsers.add(owner);
-  const ready = state.quota?.settled ?? Promise.resolve();
+  const ready = Promise.all([state.quota?.settled, state.channel?.settled]).then(() => undefined);
   state.quota?.cancel();
+  state.channel?.cancel();
   return { ready, release() {
     if (!state.credentialUsers.delete(owner)) return;
     notifyQuotaAdmission(backend);
@@ -442,4 +495,85 @@ export function tryAcquireAgentQuotaLease(backend: AgentBackendId, cancel: () =>
     drain(backend, state);
     notifyQuotaAdmission(backend);
   } };
+}
+
+/* A parked quota channel is not a lease: it has no read in flight, so it neither blocks a
+   quota read (it *is* the reader) nor spends a budget slot -- every read through it still
+   takes the quota lease, so concurrent account work stays bounded exactly as before. What it
+   does need is the cleanup barrier: interactive admission and credential reservations close
+   it and wait for its process group before they touch the account (usage PRD §6.5). */
+export function registerAgentQuotaChannel(backend: AgentBackendId, close: () => Promise<void>) {
+  const state = domain(backend);
+  state.channel?.cancel();
+  let finish!: () => void;
+  let closing: Promise<void> | undefined;
+  const owner = { cancel() { closing ??= close().catch(() => undefined).then(clear); },
+    settled: new Promise<void>((resolve) => { finish = resolve; }) };
+  const clear = () => {
+    if (state.channel !== owner) return;
+    state.channel = undefined;
+    finish();
+    drain(backend, state);
+    notifyQuotaAdmission(backend);
+  };
+  state.channel = owner;
+  return { release: clear };
+}
+
+/* ============================================================
+ * 常驻连接的槽位账。
+ *
+ * 一个进程恒等于一个槽，不多不少：空闲时是 background（且不计入
+ * `agentQuotaBlocked`——它活着不等于有 turn 在途，PRD §6.2），turn 在途时由
+ * turn 自己的 interactive lease 承担，常驻位让开。让开而不是叠加，是因为
+ * bridge 的 interactive lease 早于连接认领取得，两份都留着就是双记账。
+ * ============================================================ */
+export type AgentResidentLease = {
+  readonly backend: AgentBackendId;
+  /** true 表示此刻正占着 background 槽（连接空闲）。 */
+  readonly idleHeld: boolean;
+  /** turn 接手：交还 background 槽，配额抢占交给 turn 的 interactive lease。 */
+  suspend(): void;
+  /** turn 结束：重新占位。false 表示预算已满，调用方应关闭该连接。 */
+  resume(): Promise<boolean>;
+  release(): void;
+};
+
+async function residentSlot(backend: AgentBackendId) {
+  /* `quota: "wait"` —— 预热不该打断正在读的额度；它自己等得起。 */
+  return acquireAgentProcessLease(backend, "background", undefined, {
+    quota: "wait",
+    resident: true,
+  });
+}
+
+export async function acquireAgentResidentLease(
+  backend: AgentBackendId
+): Promise<AgentResidentLease> {
+  let slot: AgentProcessLease | undefined = await residentSlot(backend);
+  let released = false;
+  return {
+    backend,
+    get idleHeld() {
+      return Boolean(slot);
+    },
+    suspend() {
+      slot?.release();
+      slot = undefined;
+    },
+    async resume() {
+      if (released || slot) return !released;
+      try {
+        slot = await residentSlot(backend);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    release() {
+      released = true;
+      slot?.release();
+      slot = undefined;
+    },
+  };
 }

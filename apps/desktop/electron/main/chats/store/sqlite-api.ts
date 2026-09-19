@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared ChatStoreState cell, the ChatReadModel projection, the typed SQLite client, the abortable immutable history pump with its requireCommitted gate, and continuation commands
- * [OUTPUT]: Provides ChatHistorySagaApi: readonly presentation mutations, no-op-on-equal imported source_status marking that returns fresh metadata only when it actually moved, cancellable receipt-boundary external-history synchronization, and serialized receipt-gated continuation begin/finalize/precommit-fail/orphan-isolation operations
+ * [OUTPUT]: Serializes import receipts, readonly presentation that wakes publication on a real metadata edit, prepared replay sealing, and nullable-session continuation mutations while parsing stays outside the Chat queue.
  * [POS]: SQLite import/continuation collaborator of ChatStore; durable SQL stays isolated in the database worker and every mutation here rides the shared serial queue
  */
 
@@ -24,6 +24,7 @@ import { assertChatId } from "../chat-guards";
 import { requireCommitted, syncExternalHistory as runHistorySync } from "./history-sync";
 import type { ChatReadModel } from "./read-api";
 import type { ChatStoreState } from "./state";
+import { metadataEdited, type ChatSyncApi } from "./sync/api";
 
 const hash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -31,7 +32,8 @@ const hash = (value: unknown) =>
 export class ChatHistorySagaApi {
   constructor(
     private readonly state: ChatStoreState,
-    private readonly reads: ChatReadModel
+    private readonly reads: ChatReadModel,
+    private readonly sync: ChatSyncApi
   ) {}
 
   updateReadonlyPresentation(
@@ -39,6 +41,7 @@ export class ChatHistorySagaApi {
     presentation:
       | { kind: "title"; title: string }
       | { kind: "archive"; archivedAt: number | null }
+      | { kind: "sort"; sortKey: number | null }
   ) {
     return this.state.queue.enqueue(async () => {
       assertChatId(chatId);
@@ -82,6 +85,8 @@ export class ChatHistorySagaApi {
       await this.state.refreshMetadata(chatId);
       const record = this.reads.getMetadata(chatId);
       if (!record) throw new ChatNotFoundError("聊天账本不存在");
+      // Same presentation values, same queued patch: an imported row must not wait for the periodic pass either.
+      if (metadataEdited(current, record)) this.sync.notifyAppended("chat", chatId);
       return record;
     });
   }
@@ -113,15 +118,13 @@ export class ChatHistorySagaApi {
       | AsyncIterable<readonly ForeignHistoryMessage[] | PreparedHistoryImportBatch>,
     signal?: AbortSignal
   ) {
+    const result = await runHistorySync({
+      database: { execute: command => this.state.queue.enqueue(() => this.state.requireDatabase().execute(command)) },
+      deviceId: this.state.requireDeviceId(), source, blocks, signal,
+    });
     return this.state.queue.enqueue(async () => {
-      const result = await runHistorySync({
-        database: this.state.requireDatabase(),
-        deviceId: this.state.requireDeviceId(),
-        source,
-        blocks,
-        signal,
-      });
       const metadata = await this.state.refreshMetadata(result.chatId);
+      this.sync.notifyAppended("chat", result.chatId);
       return { ...structuredClone(result), metadata };
     });
   }
@@ -151,13 +154,15 @@ export class ChatHistorySagaApi {
     });
   }
 
-  markContinuationHomePreparing(sagaId: string, operationId: string, now: number) {
+  markContinuationHomePreparing(sagaId: string, operationId: string, now: number,
+    continuationInput?: import("../../../../shared/chats-ipc").AdoptChatInput) {
     return this.state.queue.enqueue(async () => {
       const command = {
         kind: "mark-continuation-home-preparing" as const,
         sagaId,
         operationId,
         now,
+        ...(continuationInput ? { continuationInput } : {}),
       };
       return requireCommitted(await this.state.requireDatabase().execute({
         ...command,
@@ -194,11 +199,12 @@ export class ChatHistorySagaApi {
     expectedGenerationId: string;
     incarnationId: string;
     homeDir: string;
-    session: SessionRef;
+    session: SessionRef | null;
     options?: import("../../../../shared/agent-ipc").AgentTurnOptions;
     firstMessage: ChatMessage;
-    adoptionSnapshotId: string;
-    snapshotDigest: string;
+    adoptionSnapshotId: string | null;
+    snapshotDigest: string | null;
+    notice?: import("../../../../shared/chats-ipc").NoticeChatMessage;
     startState: ChatStartState;
     context: ConversationContext;
     appRole: ChatRecord["appRole"];
@@ -217,6 +223,7 @@ export class ChatHistorySagaApi {
         requestHash: hash(command),
       }));
       await this.state.refreshMetadata(result.chatId);
+      this.sync.notifyAppended("chat", result.chatId);
       return result;
     });
   }

@@ -20,8 +20,8 @@ export type ChatsServiceOptions = ChatDeletionOptions & {
   recoverTitleJobs?: boolean;
   generateTitle: (firstMessage: string, context?: { chatId: string }) => Promise<string>;
   subscribeTitleEligibility?(wake: () => void): () => void;
-  attachmentsRoot: string;
-  exportsRoot?: string;
+  libraryRoot: () => string | null;
+  exportsRoot: string;
   attachmentExportFs?: AttachmentExportDependencies;
   withProject?: <T>(projectId: string, task: () => Promise<T>) => Promise<T>;
   withConversationLifecycle: <T>(task: () => Promise<T>) => Promise<T>;

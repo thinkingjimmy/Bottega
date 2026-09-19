@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on descriptor contracts, filesystem identities and bounded diagnostics.
- * [OUTPUT]: Provides registry snapshot types, identity comparison and cancellation helpers.
+ * [OUTPUT]: Provides registry snapshot/candidate types including confirmed process launch failures, identity helpers and cancellation utilities.
  * [POS]: Internal runtime discovery primitives shared by the availability registry.
  */
 import { realpath, stat } from "node:fs/promises";
@@ -72,7 +72,7 @@ export type CandidateRuntime = {
 };
 
 export type InspectedCandidate =
-  | { kind: "unusable"; diagnostic: string }
+  | { kind: "unusable"; diagnostic: string; cannotStart?: boolean }
   | ({ kind: "installed" } & CandidateRuntime)
   | ({
       kind: "unsupported";

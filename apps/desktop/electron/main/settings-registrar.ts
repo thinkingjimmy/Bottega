@@ -1,13 +1,13 @@
 /**
- * [INPUT]: Depends on Electron dialog/BrowserWindow, Node fs/path, shared Settings, platform capabilities, ChatHomeService, backend runtime registry, memory service, workspace resolver, trusted renderer IPC, and surface residence
- * [OUTPUT]: Registers settings and model APIs while excluding presence-owned mode writes; backend catalog reads return four snapshots immediately and model discovery uses runtime-only resolution.
+ * [INPUT]: Depends on Electron dialog/BrowserWindow/app, Node fs/path, shared Settings, platform capabilities, ChatHomeService, backend runtime registry and model-catalog persistence, memory service, workspace resolver, trusted renderer IPC, and surface residence
+ * [OUTPUT]: Registers settings and model APIs while excluding presence-owned mode writes; cached model catalogs avoid process admission, refreshes wait for quota, cold probes retain interactive priority, and the durable model cache is installed here.
  * [POS]: Main Settings admission boundary; App windows receive no global settings envelope and only the backend/session projections required by their resident use chat
  */
 
 import { chatOptionsPatchSchema } from "../../shared/chat-agent/schema";
 import { mkdtemp, realpath, rmdir } from "node:fs/promises";
 import { join } from "node:path";
-import { app, dialog, type BrowserWindow } from "electron";
+import { app, dialog, shell, type BrowserWindow } from "electron";
 import type {
   AgentBackendId,
   AgentTurnOptions,
@@ -19,6 +19,8 @@ import {
   backendById,
   backendRuntimeRegistry,
 } from "./backends";
+import { configureModelCatalogPersistence } from "./backends/model-catalog";
+import { ModelCatalogStore } from "./backends/model-catalog-store";
 import { rendererIpc } from "./ipc-registrar";
 import {
   assertMemoryMutation,
@@ -28,7 +30,8 @@ import { isUsableDirectory } from "./projects/fs-utils";
 import type { SettingsStore } from "./settings-store";
 import type { WorkspaceResolver } from "./skills-catalog";
 import type { ChatHomeService } from "./chat-home/chat-home-service";
-import { resolveAppLocale } from "../../shared/i18n/locale";
+import { libraryErrorCode } from "./library/errors";
+import { resolveAppLocale } from "@ai-chat/ui/lib/locale";
 import { translate } from "../../shared/i18n/runtime";
 import {
   assertPlatformCapability,
@@ -44,12 +47,15 @@ const RENDERER_SETTINGS_KEYS = new Set([
   "titleModelByBackend",
   "defaultChatOptionsByBackend",
   "lastSelectedBackend",
+  "defaultExecutionDeviceId",
   "autoRelayLimit",
   "allowCrossChatRead",
   "disabledBuiltinTools",
   "usagePricingAutoRefresh",
   "skillsOnboarding",
   "theme",
+  "archiveConfettiEnabled",
+  "agentConnectionsEnabled",
   "language",
   "keyboardShortcuts",
 ]);
@@ -68,17 +74,32 @@ export function assertRendererSettingsPatch(
   return value as RendererSettingsPatch;
 }
 
+const settingsLocale = (store: SettingsStore) =>
+  resolveAppLocale(store.get().language, app.getPreferredSystemLanguages());
+
+/* A library failure's raw text is a code meant for logs (LIBRARY_IN_USE,
+   LIBRARY_IDENTITY_CHANGED, ...). The renderer would paste it verbatim into the
+   onboarding alert, so it's swapped here for the code-keyed, five-locale copy
+   before leaving; non-library errors are rethrown as-is rather than pretending
+   to recognize them. */
+async function withLibraryCopy<T>(store: SettingsStore, run: () => Promise<T>) {
+  try {
+    return await run();
+  } catch (cause) {
+    const code = libraryErrorCode(cause);
+    if (!code) throw cause;
+    throw new Error(translate(settingsLocale(store), `settings.native.library.${code}`));
+  }
+}
+
 async function chooseChatHomesRoot(
   window: BrowserWindow,
   chatHomes: ChatHomeService,
   store: SettingsStore
 ) {
-  const locale = resolveAppLocale(
-    store.get().language,
-    app.getPreferredSystemLanguages()
-  );
   const result = await dialog.showOpenDialog(window, {
-    title: translate(locale, "settings.native.chooseChatHome"),
+    title: translate(settingsLocale(store), "settings.native.chooseChatHome"),
+    defaultPath: join(app.getPath("home"), "Bottega"),
     properties: ["openDirectory", "createDirectory"],
   });
   const selected = result.filePaths[0];
@@ -91,8 +112,32 @@ async function chooseChatHomesRoot(
   } finally {
     if (probe) await rmdir(probe);
   }
-  await chatHomes.chooseRoot(canonical);
+  await withLibraryCopy(store, () => chatHomes.openLibrary(canonical));
   return chatHomes.status();
+}
+
+/* Retry never shows the folder picker again: the first pass already chose one,
+   so reopening can only target that same folder — picking a different one would
+   just run into "changing location isn't supported," trading one failure for
+   another. */
+async function retryLibrary(chatHomes: ChatHomeService, store: SettingsStore) {
+  const configured = store.get().libraryRoot ?? store.get().chatHomesRoot;
+  if (!configured) throw new Error("LIBRARY_NOT_CONFIGURED");
+  await withLibraryCopy(store, () => chatHomes.openLibrary(configured));
+  return chatHomes.status();
+}
+
+/* The catalogs are module singletons built at import time, so the durable
+   layer is attached here — the first place that both owns `settings:list-models`
+   and may ask Electron where userData lives. One store for all four backends. */
+let modelCatalogCache: ModelCatalogStore | null = null;
+
+function installModelCatalogCache() {
+  if (modelCatalogCache) return;
+  modelCatalogCache = new ModelCatalogStore(
+    join(app.getPath("userData"), "model-catalog-cache.json")
+  );
+  configureModelCatalogPersistence(modelCatalogCache);
 }
 
 export function registerSettings(
@@ -106,6 +151,7 @@ export function registerSettings(
   resetSessionEffective?: (conversationId: string) => void,
   chats?: import("./chats/chats-service").ChatsService
 ) {
+  installModelCatalogCache();
   const assertBackend = (value: unknown): AgentBackendId =>
     backendById(value as AgentBackendId).id;
   const ipc = rendererIpc(rendererUrl, "拒绝非驻留窗口的设置请求");
@@ -126,9 +172,16 @@ export function registerSettings(
       return memoryOwner.mutate(assertMemoryMutation(raw));
     })
     .handle(SETTINGS_CHANNEL.getChatHomeStatus, () => chatHomes.status())
+    .handle(SETTINGS_CHANNEL.revealLibrary, async () => {
+      const root = store.get().libraryRoot ?? store.get().chatHomesRoot;
+      if (!root) throw new Error("LIBRARY_NOT_CONFIGURED");
+      const error = await shell.openPath(root);
+      if (error) throw new Error(error);
+    })
     .handle(SETTINGS_CHANNEL.chooseChatHomesRoot, () =>
       chooseChatHomesRoot(window, chatHomes, store)
     )
+    .handle(SETTINGS_CHANNEL.retryLibrary, () => retryLibrary(chatHomes, store))
     .handle(SETTINGS_CHANNEL.acknowledgeFullAccess, () =>
       store.acknowledgeFullAccess()
     )
@@ -169,15 +222,19 @@ export function registerSettings(
       ) {
         return [];
       }
-      const lease = await acquireAgentProcessLease(
-        descriptor.id,
-        "interactive"
-      );
-      try {
-        return await descriptor.models.list(snapshot.runtime, workspace);
-      } finally {
-        lease.release();
-      }
+      return descriptor.models.list(snapshot.runtime, workspace, undefined, async (read, signal, { background }) => {
+        const lease = await acquireAgentProcessLease(
+          descriptor.id,
+          background ? "background" : "interactive",
+          signal,
+          { quota: background ? "wait" : "preempt" }
+        );
+        try {
+          return await read();
+        } finally {
+          lease.release();
+        }
+      });
     })
     .handleWithContext(SETTINGS_CHANNEL.getBackendDefaults, (context, rawBackend) => {
       assertStudioRead(context);
@@ -203,7 +260,11 @@ export function registerSettings(
       window.webContents.send(SETTINGS_CHANNEL.changed, envelope);
     }
   });
+  const unwatchHome = chatHomes.onStatus(status => {
+    if (!window.isDestroyed()) window.webContents.send(SETTINGS_CHANNEL.chatHomeChanged, status);
+  });
   window.once("closed", () => {
     unwatch();
+    unwatchHome();
   });
 }

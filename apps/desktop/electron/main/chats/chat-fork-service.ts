@@ -4,6 +4,7 @@
  * [POS]: Focused fork orchestration boundary composed by ChatsService; ordinary Chat creation, attachments, titles, and removal remain outside it
  */
 
+import { artifactRuntime } from "../artifacts/runtime";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type {
@@ -44,6 +45,7 @@ export type ChatForkHomePort = Pick<ChatHomeService,
 type ChatForkServiceDependencies = Readonly<{
   store: ChatStore;
   homes?: ChatForkHomePort;
+  retainAttachments?(sourceId: string, child: ChatRecord): Promise<void>;
   resolveProjectWorkspace?: (projectId: string) => string | null | Promise<string | null>;
   withProject?: <T>(projectId: string, task: () => Promise<T>) => Promise<T>;
   assertAdmission: () => void;
@@ -73,7 +75,7 @@ export class ChatForkService {
     return { worktree: { supported: worktree.supported, dirty: worktree.dirty } };
   }
 
-  fork(input: ForkChatRequest) {
+  fork(input: ForkChatRequest, authority?: { validate(): Promise<void>; current(): void }) {
     this.dependencies.assertAdmission();
     const value = forkChatInputSchema.parse(input);
     const operationId = forkOperationId(value.requestId);
@@ -83,7 +85,7 @@ export class ChatForkService {
       if (active.fingerprint !== fingerprint) throw statusError(409, "CHAT_FORK_REQUEST_CONFLICT");
       return active.promise;
     }
-    const promise = this.perform(value);
+    const promise = this.perform(value, authority);
     const entry = { fingerprint, promise };
     this.running.set(operationId, entry);
     void promise.finally(() => {
@@ -116,13 +118,13 @@ export class ChatForkService {
     });
   }
 
-  private async perform(value: ForkChatRequest) {
+  private async perform(value: ForkChatRequest, authority?: { validate(): Promise<void>; current(): void }) {
     const replay = await this.dependencies.store.forkReplay(value);
     if (replay) return this.finishReplay(value, replay);
     this.dependencies.homes?.assertCanCreateChat();
     const routed = this.dependencies.store.getMetadata(value.sourceChatId);
     if (!routed?.projectId) throw statusError(404, "CHAT_FORK_SOURCE_MISSING");
-    return this.withProject(routed.projectId, () => this.create(value, routed.projectId!));
+    return this.withProject(routed.projectId, () => this.create(value, routed.projectId!, authority));
   }
 
   private async finishReplay(value: ForkChatRequest, replay: ChatRecord) {
@@ -135,11 +137,13 @@ export class ChatForkService {
       await this.dependencies.homes!.markPrepared(value.childChatId);
       await this.dependencies.homes!.commitCreation(value.childChatId);
     }
+    await this.dependencies.retainAttachments?.(value.sourceChatId, replay);
+    await artifactRuntime()?.fork(value.sourceChatId, replay);
     this.publish(replay);
     return replay;
   }
 
-  private async create(value: ForkChatRequest, projectId: string) {
+  private async create(value: ForkChatRequest, projectId: string, authority?: { validate(): Promise<void>; current(): void }) {
     const source = await this.dependencies.store.forkSource(value);
     if (!source || source.projectId !== projectId) {
       throw statusError(409, "CHAT_FORK_SOURCE_PROJECT_CHANGED");
@@ -163,6 +167,7 @@ export class ChatForkService {
     if ((value.mode === "new-worktree") !== Boolean(descriptor)) {
       throw statusError(409, "CHAT_FORK_REQUEST_CONFLICT");
     }
+    await authority?.validate(); authority?.current();
     const home = await this.dependencies.homes?.beginCreation({
       intentId: forkOperationId(value.requestId),
       chatId: value.childChatId,
@@ -172,9 +177,11 @@ export class ChatForkService {
       ...(descriptor ? { worktree: descriptor } : {}),
     });
     if (!home) throw new Error("Chat Home service unavailable");
+    let childCommitted = false;
     try {
       const executionDir = descriptor ? join(home.homeDir, descriptor.relativePath) : null;
       if (descriptor) {
+        await authority?.validate(); authority?.current();
         await createManagedWorktree({
           sourceWorkspace: workspace,
           worktreeDir: executionDir!,
@@ -184,17 +191,21 @@ export class ChatForkService {
         });
       }
       await this.dependencies.homes!.markPrepared(value.childChatId);
+      await authority?.validate(); authority?.current();
       const child = await this.dependencies.store.forkFromRecord({
         ...value,
         childIncarnationId: home.incarnationId,
         homeDir: home.homeDir,
         executionDir,
       });
+      childCommitted = true;
       await this.dependencies.homes!.commitCreation(value.childChatId);
+      await this.dependencies.retainAttachments?.(value.sourceChatId, child);
+      await artifactRuntime()?.fork(value.sourceChatId, child);
       this.publish(child);
       return child;
     } catch (cause) {
-      if (!isChatMutationOutcomeUnknown(cause)) {
+      if (!childCommitted && !isChatMutationOutcomeUnknown(cause)) {
         await this.dependencies.homes!.rollbackCreation(value.childChatId);
       }
       throw cause;

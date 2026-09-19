@@ -86,6 +86,8 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
       disabled = false,
       placeholder,
       className,
+      queries = true,
+      fileStates,
     },
     ref
   ) {
@@ -161,10 +163,12 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
       []
     );
 
+    /* A host with nothing to suggest turns queries off: "@" and "$" then stay ordinary text instead of opening an empty menu. */
     const updateQuery = useCallback((next: RichQuery | null) => {
-      queryRef.current = next;
-      setQuery(next);
-    }, []);
+      const accepted = queries ? next : null;
+      queryRef.current = accepted;
+      setQuery(accepted);
+    }, [queries]);
 
     useLayoutEffect(() => {
       if (!disabled) return;
@@ -174,7 +178,7 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
       updateQuery(null);
     }, [disabled, updateQuery]);
 
-    const effectiveQuery = disabled
+    const effectiveQuery = disabled || !queries
       ? null
       : preview.active
         ? preview.query
@@ -668,7 +672,8 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
         event.preventDefault();
         return;
       }
-      if (event.key === "Enter" && !event.shiftKey) {
+      if (event.key === "Enter" && !event.shiftKey &&
+        (event.metaKey || event.ctrlKey || !window.matchMedia?.("(pointer: coarse)").matches)) {
         event.preventDefault();
         const form = event.currentTarget.closest("form");
         const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
@@ -758,6 +763,7 @@ export const RichInput = forwardRef<RichInputHandle, RichInputProps>(
               onWorkspaceFileClick={onWorkspaceFileClick}
               invalidSkillRefs={invalidSkillRefs}
               invalidSkillTitle={invalidSkillTitle}
+              fileStates={fileStates}
               renderSectionIcon={renderSectionIcon}
               value={value}
               workspaceFileClickTitle={workspaceFileClickTitle}

@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on the App/Base/Project store, base sample, compiled source-only exporter/verifier, package-contract, templates, README positioning, fixed git/gh subprocesses (runner can be injected) and lifecycle gate
- * [OUTPUT]: Provides ShareFlow preview/publish/discard/recover with ShareCommandRunner; compiled shares prove their outer source matches the sealed export before publication and never carry foreign runtime/receipt bytes
+ * [INPUT]: Depends on a lazily resolved profile staging root, the App/Base/Project store, base sample, compiled source-only exporter/verifier, package-contract, templates, README positioning, fixed git/gh subprocesses (runner can be injected) and lifecycle gate
+ * [OUTPUT]: Provides folder-independent ShareFlow construction and preview/publish/discard/recover with ShareCommandRunner; compiled shares prove their outer source matches the sealed export before publication and never carry foreign runtime/receipt bytes
  * [POS]: The GitHub side-effect saga of apps/share; no Agent is involved, an unfinished publish's staging directory is recovery evidence and is never swept, a business rejection drops both the staging directory and its preview, and a crash resumes from the share-publish intent
  */
 
@@ -68,22 +68,20 @@ export type ShareCommandRunner = (
 ) => Promise<string>;
 
 export class ShareFlow {
-  private readonly root: string;
   private readonly previews = new Map<string, StoredPreview>();
 
   constructor(
-    userData: string,
+    private readonly stagingRoot: () => string,
     private readonly apps: AppStore,
     private readonly projects: ProjectStore,
     private readonly bases: BaseStore,
     private readonly intents: LifecycleIntentStore,
     private readonly gate: AdmissionGate,
     private readonly run: ShareCommandRunner = command
-  ) {
-    this.root = join(userData, "app-share");
-  }
+  ) {}
 
   async preview(input: SharePreviewInput): Promise<SharePreview> {
+    const root = this.stagingRoot();
     const record = requireShareable(this.apps.get(input.appId));
     const compatibility = await readCompatibility(record.dir, recordCandidate(record), this.apps.hostVersion?.());
     const project = this.projects.findByAppId(record.id);
@@ -115,7 +113,7 @@ export class ShareFlow {
     }
 
     const previewId = randomUUID();
-    const staging = join(this.root, previewId);
+    const staging = join(root, "app-share", previewId);
     const worktree = join(staging, "worktree");
     try {
       await mkdir(worktree, { recursive: true, mode: 0o700 });

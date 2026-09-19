@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node fs/path, nanoid, shared Project/App contracts, project-store-schema, main/errors, and persistence/serial-queue
- * [OUTPUT]: ProjectStore v9 single writer for mirrored local authority and portable identity associations; workspace and App placement mutations retain their existing lifecycle fences.
- * [POS]: Canonical Project persistence and lifecycle authority; focused collaborators share its queue/state/commit port and never create secondary ledgers
+ * [INPUT]: Depends on Project/App contracts, the required folder root, portable folder publication and the canonical persistence queue.
+ * [OUTPUT]: ProjectStore v9 single writer for local authority and same-commit portable intents; workspace and App placement mutations retain their lifecycle fences.
+ * [POS]: Canonical Project persistence and lifecycle authority; the selected folder is its only generation, and focused collaborators share its queue/state/commit port
  */
 import { ProjectPortableApi } from "./portable/api";
 import { basename } from "node:path";
@@ -14,7 +14,7 @@ import {
 } from "../../../../shared/projects-ipc";
 import type { TurnProjectContext } from "../../../../shared/resource-scope";
 import type { AppGrantRecord } from "../../../../shared/apps-ipc";
-import { errorMessage, statusError } from "../../errors";
+import { statusError } from "../../errors";
 import { SerialQueue } from "../../persistence/serial-queue";
 import {
   projectFileSchema,
@@ -35,9 +35,10 @@ export { projectAppearanceSchema, type ProjectDeletionCheckpoint,
   type StoredProject } from "./project-store-schema";
 
 export type ProjectStoreDependencies = {
+  /** The selected folder. Null only before the first selection, where the folder reads as empty. */
+  libraryRoot: () => string | null;
   storageMode?: import("../../../../shared/local-storage/contracts").StorageMode;
-  atomicWrite?: (filePath: string, content: string) => Promise<void>;
-  readText?: (filePath: string) => Promise<string>;
+  folderCheckpoint?: (phase: "intent" | "content" | "commit") => Promise<void>;
   now?: () => number;
   createId?: () => string;
 };
@@ -45,25 +46,19 @@ export type ProjectStoreDependencies = {
 export class ProjectStore {
   readonly portable: ProjectPortableApi;
   readonly filePath: string;
-  readonly backupPath: string;
-  readonly failurePath: string;
   private readonly queue = new SerialQueue();
   private state: ProjectFile = emptyProjectFile();
   private ready = false;
-  private warning: string | undefined;
   private readonly now: () => number;
   private readonly createId: () => string;
   private readonly persistence: ProjectStorePersistence;
   private readonly workspace: ProjectStoreWorkspace;
   readonly appPlacements: ProjectAppPlacements;
-
-  constructor(userData: string, private readonly dependencies: ProjectStoreDependencies = {}) {
+  constructor(userData: string, private readonly dependencies: ProjectStoreDependencies) {
     this.portable = new ProjectPortableApi({ enqueue: operation => this.queue.enqueue(operation),
-      state: () => { this.assertReady(); return this.state; }, commit: next => this.commit(next) }, dependencies.storageMode);
+      state: () => { this.assertReady(); return this.state; }, commit: next => this.commit(next, false) }, dependencies.storageMode);
     this.persistence = new ProjectStorePersistence(userData, dependencies);
     this.filePath = this.persistence.filePath;
-    this.backupPath = this.persistence.backupPath;
-    this.failurePath = this.persistence.failurePath;
     this.now = dependencies.now ?? Date.now;
     this.createId = dependencies.createId ?? nanoid;
     this.workspace = new ProjectStoreWorkspace({
@@ -85,37 +80,8 @@ export class ProjectStore {
   async initialize() {
     await this.queue.enqueue(async () => {
       this.ready = false;
-      this.warning = undefined;
-      await this.persistence.assertNoFailureSentinel();
-      const { main, backup } = await this.persistence.candidates();
-      let selected;
-      try {
-        selected = this.persistence.select(main, backup);
-      } catch (cause) {
-        await this.persistence.writeFailureSentinel(cause);
-        throw cause;
-      }
-      if (!selected) {
-        if (!main.missing || !backup.missing) {
-          await this.persistence.writeFailureSentinel(main.cause ?? backup.cause);
-          await this.persistence.isolateInvalid(main, backup);
-          throw new Error(
-            `Projects 主档与镜像均无法验证，已隔离并 fail closed。主档：${errorMessage(main.cause)}；镜像：${errorMessage(backup.cause)}`
-          );
-        }
-        const next = emptyProjectFile();
-        await this.persistence.publishMirror(next);
-        this.state = next;
-        this.ready = true;
-        return;
-      }
-      await this.persistence.isolateInvalid(main, backup);
-      await this.persistence.publishMirror(selected.file);
-      this.state = selected.file;
+      this.state = await this.persistence.read();
       this.ready = true;
-      if (selected.source === "backup" || !main.file) {
-        this.warning = "Projects 已从同代持久镜像恢复。";
-      }
     });
   }
 
@@ -288,13 +254,11 @@ export class ProjectStore {
       await this.replace(project);
     });
   }
-
   findByDir(dir: string) {
     this.assertReady();
     const project = this.state.projects.find((item) => item.dir === dir);
     return project ? structuredClone(project) : undefined;
   }
-
   findByAppId(appId: string) {
     this.assertReady();
     const project = this.state.projects.find(
@@ -304,7 +268,6 @@ export class ProjectStore {
     );
     return project ? structuredClone(project) : undefined;
   }
-
   listDirs() {
     this.assertReady();
     return new Set(
@@ -679,10 +642,6 @@ export class ProjectStore {
     });
   }
 
-  getWarning() {
-    return this.warning;
-  }
-
   async closeAndFlush() {
     this.queue.close();
     await this.queue.flush();
@@ -752,14 +711,14 @@ export class ProjectStore {
     });
   }
 
-  private async commit(next: ProjectFile) {
+  private async commit(next: ProjectFile, capture = true) {
     if (!this.ready) throw new Error("ProjectStore 尚未通过持久化 authority 初始化");
     const validated = projectFileSchema.parse({
-      ...next,
+      ...(capture ? this.portable.captureMutations(this.state, next) : next),
       commitGeneration: this.state.commitGeneration + 1,
     });
     try {
-      await this.persistence.publishMirror(validated);
+      await this.persistence.publish(validated);
     } catch (cause) {
       /* A rejected fsync does not prove the preceding rename was absent. Keep
          this instance poisoned until initialize rereads both generations. */
@@ -772,13 +731,8 @@ export class ProjectStore {
   resolveWorkspace(binding: ProjectWorkspaceBinding) {
     this.assertReady(); return this.workspace.resolve(binding);
   }
-  setWorkspaceBinding(
-    projectId: string,
-    binding: ProjectWorkspaceBinding,
-    externalDir?: string
-  ) {
-    return this.workspace.setBinding(projectId, binding, externalDir);
-  }
+  setWorkspaceBinding(projectId: string, binding: ProjectWorkspaceBinding, externalDir?: string) { return this.workspace.setBinding(projectId, binding, externalDir); }
+  setGitRemote(projectId: string, gitRemote: string | undefined) { return this.workspace.setGitRemote(projectId, gitRemote); }
   setArchivedAt(projectId: string, archivedAt: number | undefined) { return this.workspace.setArchivedAt(projectId, archivedAt); }
 
   setAppGrantRecord(projectId: string, grant: AppGrantRecord) { return this.workspace.setAppGrant(projectId, grant); }

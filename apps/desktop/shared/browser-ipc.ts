@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on zod; validates renderer requests for browser tabs, navigation, viewport, visibility, and agent-batch cancellation
- * [OUTPUT]: Provides the BROWSER_CHANNEL IPC channel names, URL/tab/viewport zod schemas, tab projection/snapshot types, and BrowserBridgeApi
+ * [OUTPUT]: Provides the BROWSER_CHANNEL IPC channel names, the background-tab sleep threshold, URL/tab/viewport zod schemas, tab projection/snapshot types, and BrowserBridgeApi
  * [POS]: Shared Browser wire truth; main owns tab state and agent batch execution, the renderer only consumes projections
  */
 
@@ -9,6 +9,8 @@ import { z } from "zod";
 export const BROWSER_PARTITION = "persist:agent-browser";
 export const BROWSER_DEFAULT_URL = "https://www.google.com/";
 export const BROWSER_TAB_LIMIT = 10;
+/** A tab that stops being the visible selected tab for this long releases its page process. */
+export const BROWSER_TAB_SLEEP_AFTER_MS = 30 * 60_000;
 
 export const browserTabIdSchema = z.string().regex(/^browser-[A-Za-z0-9_-]{8,80}$/);
 
@@ -52,6 +54,8 @@ export type BrowserTabProjection = {
   loading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
+  /** 休眠页已释放页面进程，只留身份与历史快照；再次可见或被 Agent 触碰时重新加载。 */
+  sleeping: boolean;
   agentActive: boolean;
   agentAction?: string;
 };

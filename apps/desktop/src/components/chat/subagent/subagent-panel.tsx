@@ -4,7 +4,7 @@
  * [POS]: The tabs for chat/subagent are detailed; Panel Tabs, transcript renderer, is used to close the panel
  */
 
-import { ArrowLeftIcon } from "lucide-react";
+import { SubagentDetailHeader } from "@ai-chat/chat-ui/subagents/detail";
 import {
   Conversation,
   ConversationContent,
@@ -12,7 +12,6 @@ import {
 } from "@ai-chat/ui/components/ai-elements/conversation";
 import { MessageContent, MessageResponse } from "@ai-chat/ui/components/ai-elements/message";
 import { ThinkingShimmer } from "@ai-chat/ui/components/ai-elements/thinking-shimmer";
-import { Button } from "@ai-chat/ui/components/ui/button";
 import type {
   ProjectedSubagent,
 } from "@/lib/chat-turn-attach";
@@ -57,26 +56,8 @@ export function SubagentPanel({
     : null;
   return (
     <>
-      <header className="flex h-[var(--page-shell-header-height)] shrink-0 items-center gap-3 border-b px-4 [-webkit-app-region:drag]">
-        <Button
-          aria-label={t("chat.subagent.back")}
-          className="cursor-pointer [-webkit-app-region:no-drag]"
-          onClick={onBack}
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-        >
-          <ArrowLeftIcon />
-        </Button>
-        <SubagentAvatar
-          agent={agent.meta.agent}
-          agentThreadId={agent.meta.agentThreadId}
-          size={20}
-        />
-        <h2 className="min-w-0 flex-1 truncate font-medium text-sm">
-          {agent.meta.name}
-        </h2>
-      </header>
+      <SubagentDetailHeader meta={agent.meta} onBack={onBack} backLabel={t("chat.subagent.back")}
+        avatar={<SubagentAvatar agent={agent.meta.agent} agentThreadId={agent.meta.agentThreadId} size={20} />} />
       <Conversation className="min-h-0 flex-1" initial="instant">
         <ChartConversationBoundary>
           <ConversationContent className="w-full max-w-none gap-4 px-4 py-7">

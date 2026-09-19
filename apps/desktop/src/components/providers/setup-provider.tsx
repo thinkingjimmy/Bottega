@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * [INPUT]: Depends on React Context, the locale catalog, setup-client, the Settings store, the narrow backend projection, onboarding-gate judgments, and shared SetupStatus
- * [OUTPUT]: Maintains revision-ordered backend facts, Chat-local evidence, one expiry clock and visible full-check progress; preserves residence-scoped actions.
+ * [INPUT]: Depends on React, Setup clients, the main-provided startup snapshot, revision-safe snapshots, the shared evidence clock and onboarding gate.
+ * [OUTPUT]: Provides a first-render verdict seeded from the startup snapshot (a passive unknown never unseats a provisional Agent), installation-or-persisted-device onboarding checks, explicit destinations and session locks, full workbench checks, per-Agent feedback and scope-aware coalesced actions.
  * [POS]: Renderer Agent-environment context; the main window owns setup lifecycle while App windows consume only backend runtime projections for their resident chat
  */
 
@@ -12,6 +12,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -19,24 +20,26 @@ import { useEvidenceClock } from "./availability/use-evidence-clock";
 import { availabilityDeadlines, mergeBackendSnapshots } from "../../../shared/agent-availability/snapshots";
 import { projectAvailability } from "../../../shared/agent-availability/projection";
 import type { TurnAvailabilityEvidence } from "../../../shared/agent-availability/types";
-import { AGENT_BACKEND_ORDER, type AgentBackendId } from "../../../shared/agent-ipc";
+import { AGENT_BACKEND_ORDER, type AgentBackendId, type BackendInfo } from "../../../shared/agent-ipc";
 import type {
   SetupStatus,
   SetupTerminalAction,
+  SetupFeedback,
+  SetupOperation,
+  SetupCheckScope,
 } from "../../../shared/setup-ipc";
 import {
   checkSetup,
+  refreshSetupIfNeeded,
   openBackendTerminalAction,
   onSetupEvent,
   openAgentSettings,
   recheckBackend,
   refreshBackendLatest,
+  startupSetupStatus,
 } from "@/lib/setup-client";
-import { backendLabel, canEnterAgentBackend } from "@/lib/agent-backends";
-import {
-  rendererAgentSurfaceFailure,
-  type AgentSurfaceFailure,
-} from "@/lib/agent-failure";
+import { canEnterAgentBackend } from "@/lib/agent-backends";
+import { diagnosticFailureDetails } from "../../../shared/product-failure";
 import {
   agentRequirement,
   chatHomeRequirement,
@@ -62,6 +65,23 @@ import { useAppTranslation } from "./i18n-provider";
 const isReady = (status: SetupStatus | null) =>
   Boolean(status?.backends.some(canEnterAgentBackend));
 
+/* A passive read answers "unknown" for every backend it has not probed yet, and
+   that silence is no evidence against the snapshot this window was handed. A
+   provisional entry therefore survives it and falls only to a real verdict
+   (installed/missing/unsupported/error) or to a status event from main. */
+const mergeReadBackends = (
+  current: readonly BackendInfo[],
+  incoming: readonly BackendInfo[]
+) =>
+  mergeBackendSnapshots(
+    current,
+    incoming.filter(
+      (entry) =>
+        entry.runtimeStatus !== "unknown" ||
+        !current.find((prior) => prior.id === entry.id)?.provisional
+    )
+  );
+
 type SetupContextValue = {
   status: SetupStatus | null;
   now: number;
@@ -70,11 +90,15 @@ type SetupContextValue = {
   checking: boolean;
   busy: Partial<Record<AgentBackendId, SetupTerminalAction | "recheck">>;
   latestChecking: Partial<Record<AgentBackendId, boolean>>;
-  error: AgentSurfaceFailure | null;
-  notice: string;
+  error: SetupFeedback | null;
+  feedback: Partial<Record<AgentBackendId, SetupFeedback>>;
+  refreshIfNeeded: () => Promise<void>;
+  reload: () => Promise<void>;
   ready: boolean;
   onboarding: OnboardingVerdict;
-  openOnboarding: () => void;
+  onboardingTarget?: "agent" | null;
+  holdOnboarding: () => void;
+  openOnboarding: (target?: "agent") => void;
   leaveOnboarding: () => void;
   terminalAction: (
     backend: AgentBackendId,
@@ -83,6 +107,11 @@ type SetupContextValue = {
   recheckBackend: (backend: AgentBackendId) => Promise<void>;
   refreshLatest: (backend: AgentBackendId) => Promise<void>;
   recheck: () => Promise<void>;
+};
+
+const setupFailure = (operation: SetupOperation, cause: unknown): SetupFeedback => {
+  const details = diagnosticFailureDetails(cause);
+  return { operation, kind: "failed", diagnostic: details.kind === "diagnostic" ? details.message : undefined };
 };
 
 const SetupContext = createContext<SetupContextValue | null>(null);
@@ -101,16 +130,15 @@ export function AppRuntimeSetupProvider({ children }: { children: React.ReactNod
   const [recentTurns, setRecentTurns] = useState<ReadonlyMap<string, TurnAvailabilityEvidence>>(new Map());
   const now = useEvidenceClock(availabilityDeadlines(status?.backends ?? [], [...recentTurns.values()]));
   const [checking, setChecking] = useState(true);
-  const [error, setError] = useState<AgentSurfaceFailure | null>(null);
-  const [notice, setNotice] = useState("");
+  const [error, setError] = useState<SetupFeedback | null>(null);
+  const [feedback] = useState<Partial<Record<AgentBackendId, SetupFeedback>>>({});
   const recheck = useCallback(async () => {
     try {
       const backends = await listBackends();
       setStatus((current) => ({ backends: mergeBackendSnapshots(current?.backends ?? [], backends) }));
       setError(null);
-      setNotice("");
     } catch (cause) {
-      setError(rendererAgentSurfaceFailure("runtime-unavailable", "Agent", cause));
+      setError(setupFailure("load", cause));
     } finally {
       setChecking(false);
     }
@@ -133,22 +161,25 @@ export function AppRuntimeSetupProvider({ children }: { children: React.ReactNod
     busy: {},
     latestChecking: {},
     error,
-    notice,
+    feedback,
     ready: isReady(status),
+    refreshIfNeeded: recheck, reload: recheck,
     onboarding: APP_RUNTIME_ONBOARDING,
+    holdOnboarding: () => undefined,
     openOnboarding: () => undefined,
     leaveOnboarding: () => undefined,
     terminalAction: unavailable,
     recheckBackend: async (backend) => { await recheckBackend(backend); await recheck(); },
     refreshLatest: unavailable,
-    recheck: async () => { await Promise.all(AGENT_BACKEND_ORDER.map(recheckBackend)); await recheck(); },
-  }), [checking, error, notice, recheck, status, unavailable, now, recentTurns]);
+    recheck: async () => { await Promise.all(AGENT_BACKEND_ORDER.map((backend) => recheckBackend(backend))); await recheck(); },
+  }), [checking, error, feedback, recheck, status, unavailable, now, recentTurns]);
   return <SetupContext.Provider value={value}>{children}</SetupContext.Provider>;
 }
 
 export function SetupProvider({ children }: { children: React.ReactNode }) {
-  const { t } = useAppTranslation();
-  const [status, setStatus] = useState<SetupStatus | null>(null);
+  /* Provisional facts from the last launch: they let the gate settle on the first
+     render, before `setup:check` and `settings:get` have answered. */
+  const [status, setStatus] = useState<SetupStatus | null>(startupSetupStatus);
   const [recentTurns, setRecentTurns] = useState<ReadonlyMap<string, TurnAvailabilityEvidence>>(new Map());
   const now = useEvidenceClock(availabilityDeadlines(status?.backends ?? [], [...recentTurns.values()]));
   const [checking, setChecking] = useState(true);
@@ -156,9 +187,10 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
     useState<SetupContextValue["busy"]>({});
   const [latestChecking, setLatestChecking] =
     useState<SetupContextValue["latestChecking"]>({});
-  const [error, setError] = useState<AgentSurfaceFailure | null>(null);
-  const [notice, setNotice] = useState("");
+  const [error, setError] = useState<SetupFeedback | null>(null);
+  const [feedback, setFeedback] = useState<Partial<Record<AgentBackendId, SetupFeedback>>>({});
   const [forced, setForced] = useState(false);
+  const [onboardingTarget, setOnboardingTarget] = useState<"agent" | null>(null);
 
   /* Chat Home 是引导的另一半门槛，故 Provider 自己保证它被读取——
      此前只有引导页在 mount 后才 ensureLoaded，判据便永远等不到它。 */
@@ -173,12 +205,11 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
   const recheck = useCallback(async () => {
     setChecking(true);
     setError(null);
-    setNotice("");
     try {
       const next = await checkSetup();
-      setStatus((current) => ({ backends: mergeBackendSnapshots(current?.backends ?? [], next.backends) }));
+      setStatus((current) => ({ backends: mergeReadBackends(current?.backends ?? [], next.backends) }));
     } catch (cause) {
-      setError(rendererAgentSurfaceFailure("runtime-unavailable", "Agent", cause));
+      setError(setupFailure("load", cause));
     } finally {
       setChecking(false);
     }
@@ -219,7 +250,7 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
     settings?.chatHomeState ?? null,
     settingsError
   );
-  const agentStatus = agentRequirement(status?.backends ?? null, checking);
+  const agentStatus = agentRequirement(status?.backends ?? null, checking, settings?.defaultExecutionDeviceId);
   /* 守档：事实被瞬态打回未落定时，gate 沿用最近一次由已落定事实亲自
      选出的档位。forced 的强制引导不写档——离场要回到被强制前的界面。
      渲染期就地调整而非 effect 回写，settled 与 held 没有错帧窗口；
@@ -240,62 +271,58 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
 
   /* 离场只有一种含义了：门槛已补齐，关掉页面。缺口还在时根本走不到这里
      ——主按钮是禁用的，页面也没有别的出口。 */
-  const leaveOnboarding = useCallback(() => setForced(false), []);
+  const leaveOnboarding = useCallback(() => { setForced(false); setOnboardingTarget(null); }, []);
 
-  const runTerminal = useCallback(
-    async (backend: AgentBackendId, operation: SetupTerminalAction) => {
-      setBusy((current) => ({ ...current, [backend]: operation }));
+  const operations = useRef(new Map<AgentBackendId, Promise<void>>());
+  const checkScope: SetupCheckScope = onboarding.phase === "app" ? "full" : "installation";
+  const automatic = useRef<{ scope: SetupCheckScope; promise: Promise<void> } | null>(null);
+  const refreshIfNeeded = useCallback(() => {
+    if (automatic.current && (automatic.current.scope === "full" || automatic.current.scope === checkScope)) return automatic.current.promise;
+    const task = (automatic.current?.promise ?? Promise.resolve()).then(() => refreshSetupIfNeeded(checkScope)).then((next) => {
+      setStatus((current) => ({ backends: mergeReadBackends(current?.backends ?? [], next.backends) }));
       setError(null);
-      setNotice("");
+    }).catch((cause) => setError(setupFailure("load", cause))).finally(() => {
+      if (automatic.current?.promise === task) automatic.current = null;
+    });
+    automatic.current = { scope: checkScope, promise: task };
+    return task;
+  }, [checkScope]);
+
+  useEffect(() => {
+    if (onboarding.phase === "app") void refreshIfNeeded();
+  }, [onboarding.phase, refreshIfNeeded]);
+
+  const runOperation = useCallback((backend: AgentBackendId, operation: SetupTerminalAction | "recheck") => {
+    const existing = operations.current.get(backend);
+    if (existing) return existing;
+    setBusy((current) => ({ ...current, [backend]: operation }));
+    setFeedback((current) => { const next = { ...current }; delete next[backend]; return next; });
+    const task = (async () => {
       try {
-        const result = await openBackendTerminalAction(backend, operation);
-        if (result.delivery === "clipboard") {
-          setNotice(t("setup.provider.terminalClipboard"));
+        if (operation === "recheck") {
+          const next = await recheckBackend(backend, checkScope);
+          setStatus((current) => ({ backends: mergeReadBackends(current?.backends ?? [], next.backends) }));
+          setError(null);
+        } else {
+          const result = await openBackendTerminalAction(backend, operation, checkScope);
+          if (result.delivery === "clipboard" || result.delivery === "clipboard-failed") {
+            const kind = result.delivery;
+            setFeedback((current) => ({ ...current, [backend]: { operation, kind, diagnostic: result.diagnostic } }));
+          }
         }
       } catch (cause) {
-        setError(
-          rendererAgentSurfaceFailure(
-            "runtime-unavailable",
-            backendLabel(backend),
-            cause,
-            backend
-          )
-        );
-      } finally {
-        setBusy((current) => {
-          const next = { ...current };
-          delete next[backend];
-          return next;
-        });
+        setFeedback((current) => ({ ...current, [backend]: setupFailure(operation === "recheck" ? "check" : operation, cause) }));
       }
-    },
-    [t]
-  );
-
-  const recheckOne = useCallback(async (backend: AgentBackendId) => {
-    setBusy((current) => ({ ...current, [backend]: "recheck" }));
-    setError(null);
-    setNotice("");
-    try {
-      const next = await recheckBackend(backend);
-      setStatus((current) => ({ backends: mergeBackendSnapshots(current?.backends ?? [], next.backends) }));
-    } catch (cause) {
-      setError(
-        rendererAgentSurfaceFailure(
-          "runtime-unavailable",
-          backendLabel(backend),
-          cause,
-          backend
-        )
-      );
-    } finally {
-      setBusy((current) => {
-        const next = { ...current };
-        delete next[backend];
-        return next;
-      });
-    }
-  }, []);
+    })().finally(() => {
+      if (operations.current.get(backend) !== task) return;
+      operations.current.delete(backend);
+      setBusy((current) => { const next = { ...current }; delete next[backend]; return next; });
+    });
+    operations.current.set(backend, task);
+    return task;
+  }, [checkScope]);
+  const runTerminal = useCallback((backend: AgentBackendId, operation: SetupTerminalAction) => runOperation(backend, operation), [runOperation]);
+  const recheckOne = useCallback((backend: AgentBackendId) => runOperation(backend, "recheck"), [runOperation]);
 
   const value = useMemo<SetupContextValue>(
     () => ({
@@ -305,10 +332,13 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
       busy,
       latestChecking,
       error,
-      notice,
+      feedback,
       ready: isReady(status),
+      refreshIfNeeded, reload: recheck,
       onboarding,
-      openOnboarding: () => setForced(true),
+      onboardingTarget,
+      holdOnboarding: () => setForced(true),
+      openOnboarding: (target = "agent") => { setOnboardingTarget(target); setForced(true); },
       leaveOnboarding,
       terminalAction: runTerminal,
       recheckBackend: recheckOne,
@@ -321,11 +351,12 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
       busy,
       latestChecking,
       error,
-      notice,
+      feedback,
       onboarding,
+      onboardingTarget,
       leaveOnboarding,
       runTerminal,
-      recheckOne,
+      recheckOne, refreshIfNeeded, recheck,
     ]
   );
 

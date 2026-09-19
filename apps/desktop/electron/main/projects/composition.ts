@@ -20,7 +20,7 @@ import type { ChatHomeService } from "../chat-home/chat-home-service";
 import type { ProjectStore } from "./store/project-store";
 import { ProjectsService } from "./projects-service";
 import { ProjectRebindJournal } from "./rebind/rebind-journal";
-import type { AppLocale } from "../../../shared/i18n/locale";
+import type { AppLocale } from "@ai-chat/ui/lib/locale";
 import type { ProjectLocalDetachReason } from "../../../shared/projects-ipc";
 import type { ProjectResourceCleanupCoordinator } from "./resource-cleanup/coordinator";
 

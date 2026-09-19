@@ -29,7 +29,7 @@ import {
   discardExtensionPreflight,
   preflightExtension,
 } from "@/lib/extensions-client";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage } from "@ai-chat/ui/lib/errors";
 import type {
   ExtensionPreflightView,
   ExtensionsSnapshot,

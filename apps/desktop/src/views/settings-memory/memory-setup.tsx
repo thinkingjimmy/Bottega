@@ -1,18 +1,11 @@
 /**
- * [INPUT]: Depends on React review state, lucide Check/ChevronRight/Download/ExternalLink/Loader2/Shield icons, shared descriptor/runtime/config-panel contracts, settings-layout primitives including SettingsLabelAction, MemoryConfigFields/MemoryOperationProgress, external-open IPC, and i18n
- * [OUTPUT]: Provides MemorySetup — a runtime-derived choose → install → connect flow whose reached steps support non-destructive navigation and whose config drafts remain provider-bound
- * [POS]: First-run Settings › Memory surface; MemorySettingsView selects it until one managed engine passes the configuration gate
+ * [INPUT]: Depends on React review state, lucide Check/Download/ExternalLink/Loader2/ShieldCheck icons, shared descriptor/runtime/config-panel contracts, the shared SetupStep column, settings-layout alerts, MemoryConfigFields/MemoryOperationProgress, external-open IPC, and i18n
+ * [OUTPUT]: Provides useMemorySetupFlow — the runtime-derived choose → install → connect flow as a surface-agnostic view (steps, caption, heading, body, Back and primary action descriptors) whose review never rewrites runtime facts or provider-bound drafts — and MemorySetup, that flow drawn as the shared setup column
+ * [POS]: First-run Settings › Memory surface and the flow behind the onboarding memory dialog; MemorySettingsView selects the column until one managed engine passes the configuration gate
  */
 
-import { useState } from "react";
-import {
-  Check,
-  ChevronRight,
-  Download,
-  ExternalLink,
-  Loader2,
-  ShieldCheck,
-} from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
+import { Check, Download, ExternalLink, Loader2, ShieldCheck } from "lucide-react";
 import type {
   MemoryConfigPanel,
   MemoryProviderDescriptor,
@@ -21,16 +14,10 @@ import type {
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { MemoryConfigFields } from "@/components/settings/memory/memory-runtime-dialogs";
 import { MemoryOperationProgress } from "@/components/settings/memory/memory-runtime-panel";
-import {
-  SettingsAlert,
-  SettingsChoiceRow,
-  SettingsLabelAction,
-  SettingsList,
-  SettingsSection,
-  SettingsSurface,
-} from "@/components/settings/settings-layout";
+import { SettingsAlert } from "@/components/settings/settings-layout";
 import { openExternal } from "@/lib/agent-client";
 import { Button } from "@ai-chat/ui/components/ui/button";
+import { SetupStep as SetupColumn } from "@ai-chat/ui/components/ui/setup-step";
 import { cn } from "@ai-chat/ui/lib/utils";
 
 /* ============================================================
@@ -44,42 +31,15 @@ import { cn } from "@ai-chat/ui/lib/utils";
  * 运行时快照自己派生，而不是靠向导自持一个 step 游标：装到一半关掉
  * App 再回来，快照说到哪就还在哪；游标则会从头开始，或者更糟——停在
  * 一个与磁盘事实不符的步骤上。
+ *
+ * 画面是 onboarding 与 Sync 设置共用的那条开放列：分段进度只说进度，
+ * 回看走动作行左侧的 Back，前进走右侧的 Continue——从前那排可点的
+ * 步骤段落说的是同一件事，却是这个 App 里独一份的语法。
  * ============================================================ */
 
 type SetupStep = 1 | 2 | 3;
 
-const SETUP_ACTION_ROW = "flex min-h-11 items-center gap-4";
-
-/* 段落几何照抄 TabsList 的触发器：25px 高、rounded-md、text-xs。
-   border-transparent 不是占位——深色下当前段要显 --input 边框，基线先留出
-   这 1px，切换才不会把整条轨顶高一格。 */
-const STEP_SEGMENT =
-  "relative inline-flex h-[25px] items-center gap-1.5 whitespace-nowrap rounded-md border border-transparent pr-2.5 pl-[7px] font-medium text-xs leading-none";
-
-function runtimeSetupStep(runtime: MemoryRuntimeSnapshot | null): SetupStep {
-  if (runtime?.installed && !runtime.configured) return 3;
-  if (
-    runtime?.phase === "running" ||
-    (runtime && !runtime.installed && Boolean(runtime.error || runtime.instanceId))
-  ) {
-    return 2;
-  }
-  return 1;
-}
-
-export function MemorySetup({
-  descriptors,
-  runtimes,
-  panels,
-  selectedId,
-  onSelectEngine,
-  onInstall,
-  getConfigValues,
-  configBusy,
-  configError,
-  onConfigChange,
-  onConfigSubmit,
-}: {
+export type MemorySetupProps = {
   descriptors: MemoryProviderDescriptor[];
   runtimes: Record<string, MemoryRuntimeSnapshot | undefined>;
   panels: MemoryConfigPanel[];
@@ -92,7 +52,54 @@ export function MemorySetup({
   configError: string;
   onConfigChange(providerId: string, values: Record<string, string>): void;
   onConfigSubmit(providerId: string): void;
-}) {
+};
+/** One action of the flow; the surface decides the button it becomes (a 32px button in the column, a pill in a dialog). */
+export type MemorySetupAction = {
+  label: string;
+  onClick?: () => void;
+  /** Submits the connect form instead of clicking. */
+  submit?: boolean;
+  disabled?: boolean;
+  busy?: boolean;
+  icon?: "download";
+};
+export type MemorySetupFlow = {
+  steps: string[];
+  /** Zero-based, for progress rails. */
+  step: number;
+  caption: string;
+  title: string;
+  description: string;
+  body: ReactNode;
+  formId: string;
+  back: (() => void) | null;
+  primary: MemorySetupAction | null;
+};
+
+function runtimeSetupStep(runtime: MemoryRuntimeSnapshot | null): SetupStep {
+  if (runtime?.installed && !runtime.configured) return 3;
+  if (
+    runtime?.phase === "running" ||
+    (runtime && !runtime.installed && Boolean(runtime.error || runtime.instanceId))
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
+export function useMemorySetupFlow({
+  descriptors,
+  runtimes,
+  panels,
+  selectedId,
+  onSelectEngine,
+  onInstall,
+  getConfigValues,
+  configBusy,
+  configError,
+  onConfigChange,
+  onConfigSubmit,
+}: MemorySetupProps): MemorySetupFlow {
   const { t } = useAppTranslation();
   const runtimeOf = (id: string) => runtimes[id] ?? null;
 
@@ -137,338 +144,311 @@ export function MemorySetup({
     );
   };
 
-  return (
-    <SettingsSection
-      title={t("memory.setup.title")}
-      description={
-        viewStep === 1
-          ? t("memory.setup.description")
-          : viewStep === 2
-            ? activeRuntime?.installed
-              ? t("memory.runtime.managedNeedsConfig", {
-                  provider: active.displayName,
-                  version:
-                    activeRuntime.installedVersion ?? active.lockedVersion,
-                })
-              : t("memory.setup.installingTitle", {
-                  provider: active.displayName,
-                })
-            : t("memory.setup.connectDescription")
-      }
-    >
-      <Stepper
-        viewStep={viewStep}
-        progressStep={progressStep}
-        onSelectStep={showStep}
-      />
+  const formId = useId();
+  const steps = [
+    t("memory.setup.stepChoose"),
+    t("memory.setup.stepInstall"),
+    t("memory.setup.stepConnect"),
+  ];
+  const caption = `${t("common.stepOf", { current: viewStep, total: steps.length })} · ${steps[viewStep - 1]}`;
+  const description =
+    viewStep === 1
+      ? t("memory.setup.description")
+      : viewStep === 2
+        ? activeRuntime?.installed
+          ? t("memory.runtime.managedNeedsConfig", {
+              provider: active.displayName,
+              version: activeRuntime.installedVersion ?? active.lockedVersion,
+            })
+          : t("memory.setup.installingTitle", { provider: active.displayName })
+        : t("memory.setup.connectDescription");
+  const proceed: MemorySetupAction = { label: t("common.continue"), onClick: () => setReview(null) };
+  /* An engine that is already past step one (installed, installing, or a failed attempt) continues to its own
+     progress instead of offering a second install. */
+  const selectedProgress = runtimeSetupStep(selectedRuntime);
+  const selectedName =
+    descriptors.find((item) => item.id === selectedEngineId)?.displayName ??
+    active.displayName;
 
-      {viewStep === 1 && (
-        <div className="space-y-3">
-          <SettingsList role="radiogroup" aria-label={t("memory.engines.aria")}>
-            {descriptors.map((descriptor) => (
-              <SettingsChoiceRow
-                key={descriptor.id}
-                label={descriptor.displayName}
-                labelMeta={
-                  descriptor.lockedVersion ? (
-                    <span
-                      data-memory-provider-version=""
-                      className="font-mono text-muted-foreground/80 text-xs tabular-nums"
-                    >
-                      {descriptor.lockedVersion}
-                    </span>
-                  ) : undefined
-                }
-                labelAction={
-                  descriptor.homepage ? (
-                    <SettingsLabelAction
-                      label={t("memory.backend.homepage")}
-                      onClick={() => void openExternal(descriptor.homepage!)}
-                    >
-                      <ExternalLink />
-                    </SettingsLabelAction>
-                  ) : undefined
-                }
-                description={t(`memory.provider.${descriptor.id}.summary`, {
-                  defaultValue: descriptor.summary,
-                })}
-                checked={descriptor.id === selectedEngineId}
-                onSelect={() => onSelectEngine(descriptor.id)}
-                trailing={
-                  /* 推荐只给第一档：两档都戴徽标等于没有推荐。它不是
-                     排名，只是「不知道选哪个就选它」。 */
-                  descriptor.id === descriptors[0]?.id ? (
-                    <span className="rounded-full bg-emerald-600/10 px-2 py-0.5 font-medium text-emerald-700 text-xs dark:text-emerald-400">
-                      {t("memory.setup.recommended")}
-                    </span>
-                  ) : undefined
-                }
-              />
-            ))}
-          </SettingsList>
-
-          {selectedRuntime && !selectedRuntime.supported && (
-            <SettingsAlert tone="warn">
-              {t("memory.runtime.unsupported")}
-            </SettingsAlert>
-          )}
-
-          <div
-            data-setup-action-row=""
-            className={cn(SETUP_ACTION_ROW, "justify-between")}
-          >
-            <p className="flex min-w-0 items-start gap-2 text-muted-foreground text-xs leading-relaxed">
-              <ShieldCheck className="mt-px size-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
-              {t("memory.setup.privacy")}
-            </p>
-            {selectedRuntime?.installed ? (
-              <Button
-                className="shrink-0 touch-manipulation"
-                size="pill"
-                onClick={() => setReview(null)}
-              >
-                {t("common.continue")}
-              </Button>
-            ) : (
-              <Button
-                className="shrink-0 touch-manipulation"
-                size="pill"
-                disabled={installBusy || !selectedRuntime?.supported}
-                onClick={() => {
-                  setReview(null);
-                  onInstall(selectedEngineId);
-                }}
-              >
-                <Download />
-                {t("memory.engines.installAction", {
-                  provider:
-                    descriptors.find((item) => item.id === selectedEngineId)
-                      ?.displayName ?? active.displayName,
-                })}
-              </Button>
+  let body: ReactNode = null;
+  let back: (() => void) | null = null;
+  let primary: MemorySetupAction | null = null;
+  if (viewStep === 1) {
+    body = (
+      <>
+        <fieldset
+          role="radiogroup"
+          aria-label={t("memory.engines.aria")}
+          className="space-y-3"
+        >
+          <legend className="sr-only">{t("memory.setup.stepChoose")}</legend>
+          {descriptors.map((descriptor) => (
+            <EngineRow
+              key={descriptor.id}
+              descriptor={descriptor}
+              checked={descriptor.id === selectedEngineId}
+              recommended={descriptor.id === descriptors[0]?.id}
+              onSelect={() => onSelectEngine(descriptor.id)}
+            />
+          ))}
+        </fieldset>
+        {selectedRuntime && !selectedRuntime.supported && (
+          <SettingsAlert tone="warn">{t("memory.runtime.unsupported")}</SettingsAlert>
+        )}
+        <ShieldNote>{t("memory.setup.privacy")}</ShieldNote>
+      </>
+    );
+    primary = selectedProgress > 1 ? proceed : {
+      label: t("memory.engines.installAction", { provider: selectedName }),
+      icon: "download",
+      disabled: installBusy || !selectedRuntime?.supported,
+      onClick: () => {
+        setReview(null);
+        onInstall(selectedEngineId);
+      },
+    };
+  } else if (viewStep === 2 && activeRuntime) {
+    const running = activeRuntime.phase === "running";
+    const awaiting = activeRuntime.installed && !activeRuntime.configured;
+    body = (
+      <>
+        <div
+          data-memory-install-panel=""
+          className="space-y-3 rounded-md p-4 ring-1 ring-inset ring-foreground/15"
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-sm">{active.displayName}</span>
+            {active.lockedVersion && (
+              <span className="font-mono text-muted-foreground text-xs tabular-nums">
+                {active.lockedVersion}
+              </span>
             )}
-          </div>
-        </div>
-      )}
-
-      {viewStep === 2 && activeRuntime && (
-        <div className="space-y-3">
-          <SettingsSurface className="space-y-3 p-4">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-sm">{active.displayName}</span>
-              {active.lockedVersion && (
-                <span className="font-mono text-muted-foreground text-xs tabular-nums">
-                  {active.lockedVersion}
-                </span>
-              )}
-              {activeRuntime.phase === "running" && (
-                <span className="ml-auto flex items-center gap-2 text-muted-foreground text-xs">
-                  <Loader2 className="size-3.5 motion-safe:animate-spin" />
-                  {t("memory.runtime.running")}
-                </span>
-              )}
-            </div>
-            {activeRuntime.phase === "running" ? (
-              <MemoryOperationProgress
-                runtime={activeRuntime}
-                stepText={
-                  activeRuntime.step
-                    ? t(`memory.runtime.step.${activeRuntime.step.kind}`, {
-                        context: activeRuntime.step.context,
-                        version: activeRuntime.step.version ?? "",
-                      })
-                    : null
-                }
-              />
-            ) : activeRuntime.installed ? (
-              <p className="text-muted-foreground text-xs leading-relaxed">
+            {running && (
+              <span className="ml-auto flex items-center gap-2 text-muted-foreground text-xs">
+                <Loader2 className="size-3.5 motion-safe:animate-spin" />
+                {t("memory.runtime.running")}
+              </span>
+            )}
+            {!running && awaiting && (
+              <span className="ml-auto flex items-center gap-2 text-muted-foreground text-xs">
+                <Check className="size-3.5" aria-hidden="true" />
                 {activeRuntime.installedVersion
                   ? t("memory.backend.installedNeedsConfigVersion", {
                       version: activeRuntime.installedVersion,
                     })
                   : t("memory.backend.installedNeedsConfig")}
-              </p>
-            ) : null}
-            {activeRuntime.phase === "running" && (
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                {t("memory.setup.leaveSafe")}
-              </p>
+              </span>
             )}
-            {activeRuntime.error && (
-              <SettingsAlert>{activeRuntime.error}</SettingsAlert>
-            )}
-          </SettingsSurface>
-          {(activeRuntime.error ||
-            (activeRuntime.installed && !activeRuntime.configured)) && (
-            <div
-              data-setup-action-row=""
-              className={cn(SETUP_ACTION_ROW, "justify-end")}
-            >
-              {activeRuntime.error ? (
-                <Button
-                  className="touch-manipulation"
-                  size="pill"
-                  disabled={installBusy}
-                  onClick={() => {
-                    setReview(null);
-                    onInstall(active.id);
-                  }}
-                >
-                  <Download />
-                  {t("memory.runtime.retryInstall")}
-                </Button>
-              ) : (
-                <Button
-                  className="touch-manipulation"
-                  size="pill"
-                  onClick={() => setReview(null)}
-                >
-                  {t("common.continue")}
-                </Button>
-              )}
-            </div>
+          </div>
+          {running && (
+            <MemoryOperationProgress
+              runtime={activeRuntime}
+              stepText={
+                activeRuntime.step
+                  ? t(`memory.runtime.step.${activeRuntime.step.kind}`, {
+                      context: activeRuntime.step.context,
+                      version: activeRuntime.step.version ?? "",
+                    })
+                  : null
+              }
+            />
+          )}
+          {/* The panel is the one surface here: a failure is red text inside it, not a tinted box inside a box. */}
+          {activeRuntime.error && (
+            <p role="alert" className="text-destructive text-xs leading-relaxed">
+              {activeRuntime.error}
+            </p>
           )}
         </div>
-      )}
+        {running && (
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            {t("memory.setup.leaveSafe")}
+          </p>
+        )}
+      </>
+    );
+    back = () => showStep(1);
+    primary = activeRuntime.error ? {
+      label: t("memory.runtime.retryInstall"),
+      icon: "download",
+      disabled: installBusy,
+      onClick: () => {
+        setReview(null);
+        onInstall(active.id);
+      },
+    } : awaiting ? proceed : null;
+  } else if (viewStep === 3 && panel) {
+    body = (
+      <form
+        id={formId}
+        className="flex flex-col gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onConfigSubmit(active.id);
+        }}
+      >
+        <MemoryConfigFields
+          panel={panel}
+          values={getConfigValues(active.id)}
+          busy={configBusy}
+          requireMissingValues
+          autoFocusFirst={typeof window === "undefined" || !("ontouchstart" in window)}
+          onChange={(values) => onConfigChange(active.id, values)}
+        />
+        {configError && <SettingsAlert>{configError}</SettingsAlert>}
+        <ShieldNote>{t("memory.setup.changeLater")}</ShieldNote>
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          {t("memory.setup.draftKept")}
+        </p>
+      </form>
+    );
+    back = () => showStep(2);
+    primary = {
+      label: configBusy ? t("memory.runtime.savingConfig") : t("memory.setup.connectSubmit"),
+      submit: true,
+      disabled: configBusy,
+      busy: configBusy,
+    };
+  }
 
-      {viewStep === 3 && panel && (
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onConfigSubmit(active.id);
-          }}
-        >
-          <SettingsSurface className="space-y-4 p-5">
-            <MemoryConfigFields
-              panel={panel}
-              values={getConfigValues(active.id)}
-              busy={configBusy}
-              requireMissingValues
-              autoFocusFirst={
-                typeof window === "undefined" || !("ontouchstart" in window)
-              }
-              onChange={(values) => onConfigChange(active.id, values)}
-            />
-            {configError && <SettingsAlert>{configError}</SettingsAlert>}
-            <p className="flex items-start gap-2 border-border border-t pt-3 text-muted-foreground text-xs leading-relaxed">
-              <ShieldCheck className="mt-px size-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
-              {t("memory.setup.changeLater")}
-            </p>
-          </SettingsSurface>
-          <div
-            data-setup-action-row=""
-            className={cn(SETUP_ACTION_ROW, "justify-between")}
-          >
-            <p className="text-muted-foreground text-xs">
-              {t("memory.setup.draftKept")}
-            </p>
-            <Button type="submit" size="pill" disabled={configBusy}>
-              {configBusy && <Loader2 className="motion-safe:animate-spin" />}
-              {configBusy
-                ? t("memory.runtime.savingConfig")
-                : t("memory.setup.connectSubmit")}
+  return { steps, step: viewStep - 1, caption, title: t("memory.setup.title"), description, body, formId, back, primary };
+}
+
+/* The column surface: the product's 32px buttons, Back flush with the column edge. */
+export function MemorySetup(props: MemorySetupProps) {
+  const { t } = useAppTranslation();
+  const flow = useMemorySetupFlow(props);
+  return (
+    <SetupColumn
+      steps={flow.steps}
+      step={flow.step}
+      caption={flow.caption}
+      title={flow.title}
+      description={flow.description}
+      footer={
+        <>
+          {flow.back ? (
+            <Button size="lg" variant="ghost" onClick={flow.back}>
+              {t("common.back")}
             </Button>
-          </div>
-        </form>
-      )}
-    </SettingsSection>
+          ) : (
+            <span />
+          )}
+          {flow.primary ? <MemorySetupButton action={flow.primary} formId={flow.formId} size="lg" /> : <span />}
+        </>
+      }
+    >
+      {flow.body}
+    </SetupColumn>
   );
 }
 
-/* 三步走完之前，进度条本身就是「还差什么」的唯一答案。走过的那几步
-   收成一个勾——数字留给还没到的，勾留给已经过去的。
-
-   形状不是新造的：这排东西就是 TabsList——同一条 32px 轨、3px 内边距、
-   25px 圆角段落。从前它自造了一套方言：44px 的盒子里装 22px 内容（一半
-   是死高，正是 button.tsx 点名的那个反面教材），外加白底 + 1px 描边 +
-   投影——而那恰好是 SettingsSurface 的形状。在这个 App 里，那道边框说的
-   是「我是装内容的容器」，于是走过的步读起来像卡片，不像按钮。它不像能
-   点，不是因为不够亮，是因为穿错了衣服。
-
-   三态各自成立，都不依赖 hover：当前段是唯一填充的那一格，可跳转段是
-   完整墨色且是唯一有按下、聚焦与命中区的，未达段退成 muted 且根本不进
-   tab 序。 */
-function Stepper({
-  viewStep,
-  progressStep,
-  onSelectStep,
+/** One action descriptor as a Button; the dialog asks for the pill, the column for lg. */
+export function MemorySetupButton({
+  action,
+  formId,
+  size,
+  variant = "default",
 }: {
-  viewStep: SetupStep;
-  progressStep: SetupStep;
-  onSelectStep(step: SetupStep): void;
+  action: MemorySetupAction;
+  formId: string;
+  size: "lg" | "pill";
+  variant?: "default" | "outline" | "ghost";
+}) {
+  return (
+    <Button
+      size={size}
+      variant={variant}
+      type={action.submit ? "submit" : "button"}
+      form={action.submit ? formId : undefined}
+      disabled={action.disabled}
+      onClick={action.onClick}
+    >
+      {action.busy ? <Loader2 className="motion-safe:animate-spin" /> : action.icon === "download" ? <Download /> : null}
+      {action.label}
+    </Button>
+  );
+}
+
+/* 引擎行就是「使用方式」那张描边可选行：原生 radio、名称 · 锁定版本 · 主页
+   图标一行、摘要一行；推荐只给第一档——两档都戴徽标等于没有推荐。主页
+   按钮在 label 里，故 preventDefault 拦下 label 的激活行为：打开项目页不等于
+   选中这一行。 */
+function EngineRow({
+  descriptor,
+  checked,
+  recommended,
+  onSelect,
+}: {
+  descriptor: MemoryProviderDescriptor;
+  checked: boolean;
+  recommended: boolean;
+  onSelect(): void;
 }) {
   const { t } = useAppTranslation();
-  const labels = [
-    t("memory.setup.stepChoose"),
-    t("memory.setup.stepInstall"),
-    t("memory.setup.stepConnect"),
-  ];
   return (
-    <ol className="inline-flex h-8 w-fit items-center gap-px rounded-lg bg-muted p-[3px]">
-      {labels.map((label, index) => {
-        const position = (index + 1) as SetupStep;
-        const done = position < progressStep;
-        const reached = position <= progressStep;
-        const active = position === viewStep;
-        const content = (
-          <>
+    <label
+      className={cn(
+        "flex cursor-pointer items-start gap-3 rounded-md p-4 ring-1 ring-inset",
+        checked ? "ring-foreground" : "ring-foreground/15"
+      )}
+    >
+      <input
+        type="radio"
+        name="memory-engine"
+        value={descriptor.id}
+        checked={checked}
+        onChange={onSelect}
+        className="mt-0.5 size-4 shrink-0 accent-foreground"
+      />
+      <span className="min-w-0 flex-1">
+        <span
+          data-memory-engine-heading=""
+          className="flex min-h-5 items-center gap-2"
+        >
+          <span className="font-medium text-sm">{descriptor.displayName}</span>
+          {descriptor.lockedVersion && (
             <span
-              aria-hidden="true"
-              className={cn(
-                "grid size-4 shrink-0 place-items-center rounded-full font-semibold text-[10px] tabular-nums",
-                active && "bg-foreground text-background"
-              )}
+              data-memory-provider-version=""
+              className="font-mono text-muted-foreground/80 text-xs tabular-nums"
             >
-              {done ? <Check className="size-[11px]" strokeWidth={3} /> : position}
+              {descriptor.lockedVersion}
             </span>
-            <span>{label}</span>
-          </>
-        );
-        return (
-          <li key={label} className="flex items-center">
-            {/* 分隔符只说顺序，不说进度——进度已经由勾与填充说完了。 */}
-            {index > 0 && (
-              <ChevronRight
-                aria-hidden="true"
-                className="mx-px size-3 shrink-0 text-foreground/20"
-              />
-            )}
-            {active ? (
-              <span
-                aria-current="step"
-                className={cn(
-                  STEP_SEGMENT,
-                  "bg-background text-foreground dark:border-input dark:bg-input/30"
-                )}
-              >
-                {content}
-              </span>
-            ) : reached ? (
-              <button
-                type="button"
-                onClick={() => onSelectStep(position)}
-                className={cn(
-                  STEP_SEGMENT,
-                  /* 段落留在 25px，命中高度由 touch-target-44 撑到 44px；
-                     STEP_SEGMENT 已带 relative，这里不必再写。 */
-                  "touch-target-44",
-                  "cursor-pointer touch-manipulation text-foreground outline-none transition-colors duration-150 ease-out",
-                  "active:translate-y-px focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                  "motion-reduce:transform-none motion-reduce:transition-none",
-                  "[@media(hover:hover)_and_(pointer:fine)]:hover:bg-background/60"
-                )}
-              >
-                {content}
-              </button>
-            ) : (
-              <span className={cn(STEP_SEGMENT, "text-muted-foreground")}>
-                {content}
-              </span>
-            )}
-          </li>
-        );
-      })}
-    </ol>
+          )}
+          {descriptor.homepage && (
+            <button
+              type="button"
+              aria-label={t("memory.backend.homepage")}
+              className="inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              onClick={(event) => {
+                event.preventDefault();
+                void openExternal(descriptor.homepage!);
+              }}
+            >
+              <ExternalLink className="size-3.5" />
+            </button>
+          )}
+          {recommended && (
+            <span className="ml-auto rounded-full bg-emerald-600/10 px-2 py-0.5 font-medium text-emerald-700 text-xs dark:text-emerald-400">
+              {t("memory.setup.recommended")}
+            </span>
+          )}
+        </span>
+        <span className="mt-1 block text-muted-foreground text-sm">
+          {t(`memory.provider.${descriptor.id}.summary`, {
+            defaultValue: descriptor.summary,
+          })}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+function ShieldNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="flex items-start gap-2 text-muted-foreground text-xs leading-relaxed">
+      <ShieldCheck className="mt-px size-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
+      {children}
+    </p>
   );
 }

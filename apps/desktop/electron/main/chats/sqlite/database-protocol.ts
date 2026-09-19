@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Chat/adoption contracts, Chat metadata, Chat facts, and connection modes
- * [OUTPUT]: Closed worker command/result vocabulary for canonical Chat operations, generic turn sequence reservations and bounded synchronization mutations/queries.
+ * [OUTPUT]: Defines closed SQLite commands/results with nullable-session replay sealing, atomic continuation notices, executor commits, and App transcript retention.
  * [POS]: Trust boundary between Electron main and the sole SQLite owner; arbitrary SQL can never cross this port
  */
 
@@ -72,6 +72,7 @@ export type MemoryNativeSegmentPage = Readonly<{
 }>;
 
 export type SearchDocumentHit = Readonly<{
+  mirror?: boolean;
   chatId: string;
   documentKind: "title" | "native" | "imported-version";
   sourceRowId: string;
@@ -101,7 +102,8 @@ export type SearchDocumentCursor = Readonly<{
 }>;
 
 export type HistoryImportSource = Readonly<{
-  projectId: string;
+  restoredIdentity?: { chatId: string; incarnationId: string };
+  projectId: string | null;
   sourceKind: import("../../../../shared/history-import-ipc").HistorySourceKind;
   storageFingerprint: string;
   canonicalNativeId: string;
@@ -184,8 +186,12 @@ export type ContinuationHomeEvidence = Readonly<{
 }>;
 
 export type DatabaseCommand =
+  | { kind: "configure-storage-mode"; storageMode: import("../../../../shared/local-storage/contracts").RuntimeStorageMode }
   | import("./cloud/protocol").CloudMutation
   | import("./cloud/protocol").CloudRead
+  | { kind: "read-library-import"; chatId: string; deviceId: string; generationId: string | null; afterSeq: number }
+  | { kind: "read-library-native"; chatId: string; deviceId: string; afterSeq: number; limit?: number }
+  | { kind: "list-library-mirrors"; afterId: string | null; known?: Readonly<Record<string, string>> }
   | { kind: "prepare-chat-history"; chatId: string; deviceId: string; nativeBeforeSeq: number }
   | { kind: "read-chat-history"; deviceId: string; input: import("../../../../shared/chat-agent/history").HistoryReadCommand }
   | import("./agent-switch/command").SwitchAgentCommand
@@ -226,6 +232,7 @@ export type DatabaseCommand =
     }
   | {
       kind: "upsert-record";
+      executorCommit?: import("./cloud/execution/commit").ExecutorCommit;
       operationId: string;
       requestHash: string;
       record: ChatRecord;
@@ -246,6 +253,7 @@ export type DatabaseCommand =
     }
   | {
       kind: "append-message";
+      executorCommit?: import("./cloud/execution/commit").ExecutorCommit;
       operationId: string;
       requestHash: string;
       chatId: string;
@@ -293,7 +301,8 @@ export type DatabaseCommand =
             titleSource: ChatRecord["titleSource"];
             titleJob: ChatRecord["titleJob"];
           }
-        | { kind: "archive"; archivedAt: number | null };
+        | { kind: "archive"; archivedAt: number | null }
+        | { kind: "sort"; sortKey: number | null };
     }
   | {
       kind: "remove-record";
@@ -302,6 +311,7 @@ export type DatabaseCommand =
       chatId: string;
       deviceId: string;
       expectedIncarnationId?: string;
+      retainedAppId?: string;
     }
   | { kind: "get-operation-receipt"; operationId: string }
   | { kind: "list-attachment-ids" }
@@ -317,6 +327,7 @@ export type DatabaseCommand =
     }
   | {
       kind: "search-documents";
+      includeMirrors?: boolean;
       grams: string[];
       cursor: SearchDocumentCursor | null;
       limit: number;
@@ -385,6 +396,7 @@ export type DatabaseCommand =
       requestHash: string;
       sagaId: string;
       now: number;
+      continuationInput?: import("../../../../shared/chats-ipc").AdoptChatInput;
     }
   | {
       kind: "record-continuation-home-committed";
@@ -404,11 +416,12 @@ export type DatabaseCommand =
       expectedGenerationId: string;
       incarnationId: string;
       homeDir: string;
-      session: import("../../../../shared/agent-ipc").SessionRef;
+      session: import("../../../../shared/agent-ipc").SessionRef | null;
       options?: import("../../../../shared/agent-ipc").AgentTurnOptions;
       firstMessage: ChatMessage;
-      adoptionSnapshotId: string;
-      snapshotDigest: string;
+      adoptionSnapshotId: string | null;
+      snapshotDigest: string | null;
+      notice?: import("../../../../shared/chats-ipc").NoticeChatMessage;
       startState: import("../../../../shared/placement/facts").ChatStartState;
       context: import("../../../../shared/placement/facts").ConversationContext;
       appRole: import("../../../../shared/chats-ipc").AppChatRole | null;
@@ -477,6 +490,7 @@ export type RemoveResult = Readonly<{
 }>;
 
 export type DatabaseResults = {
+  "configure-storage-mode": import("../../../../shared/local-storage/contracts").RuntimeStorageMode;
   "cloud-mutate": MutationOutcome<import("./cloud/protocol").CloudResult>;
   "cloud-read": import("./cloud/protocol").CloudResult;
   "switch-agent": MutationOutcome<import("../../../../shared/chat-agent/contracts").AgentSwitchReceipt>;
@@ -496,6 +510,9 @@ export type DatabaseResults = {
   "get-timeline-around": ChatTimelinePage | null;
   "get-outline-page": ChatOutlinePage | null;
   "find-messages": ChatFindPage | null;
+  "read-library-import": { generationId: string | null; message: import("../../../../shared/history-import-ipc").ForeignHistoryMessage | null };
+  "read-library-native": import("../../library/mirrors/native-source").NativeLibraryPage;
+  "list-library-mirrors": ReturnType<typeof import("../../library/mirrors/native-source").listLibraryMirrors>;
   "prepare-chat-history": import("../../../../shared/chat-agent/history").PreparedHistory | null;
   "read-chat-history": import("../../../../shared/chat-agent/history").HistoryReadResult;
   "upsert-record": MutationOutcome<UpsertResult>;

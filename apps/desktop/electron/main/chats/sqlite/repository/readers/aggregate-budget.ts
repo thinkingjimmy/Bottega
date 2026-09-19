@@ -26,17 +26,17 @@ export function assertFullAggregateBudget(
     : {
         ...(database.prepare(
           `SELECT
-             (SELECT COUNT(*) FROM chat_messages WHERE chat_id = ?) +
+             (SELECT COUNT(*) FROM chat_messages WHERE chat_id = ? AND seq > ?) +
              (SELECT COUNT(*) FROM chat_branch_messages WHERE chat_id = ?) +
              (SELECT COUNT(*) FROM chat_subagents WHERE chat_id = ?) rows,
              (SELECT COALESCE(SUM(LENGTH(CAST(payload_json AS BLOB))), 0)
-                FROM chat_messages WHERE chat_id = ?) +
+                FROM chat_messages WHERE chat_id = ? AND seq > ?) +
              (SELECT COALESCE(SUM(LENGTH(CAST(message_json AS BLOB))), 0)
                 FROM chat_branch_messages WHERE chat_id = ?) +
              (SELECT COALESCE(SUM(LENGTH(CAST(meta_json AS BLOB))) +
                               SUM(LENGTH(CAST(parts_json AS BLOB))), 0)
                 FROM chat_subagents WHERE chat_id = ?) bytes`
-        ).get(chatId, chatId, chatId, chatId, chatId, chatId) as Row),
+        ).get(chatId, Number(core.trimmed_through_seq ?? 0), chatId, chatId, chatId, Number(core.trimmed_through_seq ?? 0), chatId, chatId) as Row),
         rowLimit: NATIVE_ROW_LIMIT,
         byteLimit: NATIVE_STORED_BYTE_LIMIT,
       };

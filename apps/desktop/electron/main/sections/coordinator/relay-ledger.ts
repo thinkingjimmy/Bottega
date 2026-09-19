@@ -1,10 +1,11 @@
 /**
  * [INPUT]: Depends on atomic file IO, zod, SerialQueue, submission custody, ledger operations, and Section/chat identities
- * [OUTPUT]: Ledger v7 single writer for manual/relay attempts, optional notice sequences and complete SQLite handoff custody; incompatible startup bytes fail closed.
+ * [OUTPUT]: Ledger v7 writer for input custody, crash-safe preparation pins, atomic sequence/context binding and retained SQLite handoff evidence.
  * [POS]: The durable side-effect journal of sections/coordinator
  */
 
-import { freezeCloudHandoff, confirmCloudHandoff } from "./state/operations/cloud";
+import { freezeCloudHandoff, confirmCloudHandoff, retainCloudEvidence } from "./state/operations/cloud";
+import { RemoteLedger } from "./remote/ledger";
 import { deferManualDispatch, deferRelayDispatch } from "./scheduler/defer-dispatch";
 import { readFile, readdir, } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -51,7 +52,7 @@ import {
 import {
   ackManualIntents,
   ackSteerIntents,
-  bindManualSequences,
+  bindManualSequences, pinManualPreparation,
   bindRelaySequences,
   liveStagingOwners,
   markSteerTurnTerminal,
@@ -75,6 +76,7 @@ export type {
 } from "./state/ledger-schema";
 export type { DeepReadonly } from "./state/readonly-ledger";
 export class RelayLedger {
+  readonly remote = new RemoteLedger({ read: select => this.read(select), mutate: action => this.mutate(action) });
   readonly filePath: string;
   readonly submissionPayloadRoot: string;
   private readonly queue = new SerialQueue();
@@ -89,7 +91,7 @@ export class RelayLedger {
   private frozen: Error | null = null;
   private readonly submissionPayloads: SubmissionPayloadStore;
   private submissionReservationTail = Promise.resolve();
-  constructor(userData: string, now: () => number = Date.now) {
+  constructor(userData: string, now: () => number = Date.now, private readonly cloudEnabled: () => boolean = () => false) {
     this.filePath = join(userData, "section-relay-ledger.json");
     this.submissionPayloadRoot = join(userData, "section-submission-payloads");
     this.submissionPayloads = new SubmissionPayloadStore(this.submissionPayloadRoot);
@@ -401,12 +403,12 @@ export class RelayLedger {
     );
   }
 
-  bindManualSequences(intentId: string, userSeq: number, assistantSeq: number, notices: { noticeSeq?: number; executorNoticeSeq?: number } = {}) {
+  bindManualSequences(intentId: string, userSeq: number, assistantSeq: number, notices: { noticeSeq?: number; executorNoticeSeq?: number } = {}, prepared?: import("./admission/prepared-manual-turn").PreparedManualTurn) {
     return this.mutate((state) =>
-      bindManualSequences(state, intentId, userSeq, assistantSeq, notices)
+      bindManualSequences(state, intentId, userSeq, assistantSeq, notices, prepared)
     );
   }
-
+  pinManualPreparation(intentId: string) { return this.mutate(state => pinManualPreparation(state, intentId)); }
   freezeRelayHandoff(relayId: string, handoff: import("../../../../shared/chat-agent/history").FrozenHandoff) {
     return this.mutate(state => freezeRelayHandoff(state, relayId, handoff));
   }
@@ -545,6 +547,7 @@ export class RelayLedger {
       terminal: "done" | "cancelled" | "error";
       outcome: "stored" | "empty" | "missing" | "failed";
       assistantMessage?: unknown;
+      subagents?: unknown;
     },
     notice?: NoticeOutboxRecord
   ) {
@@ -720,6 +723,7 @@ export class RelayLedger {
     return this.queue.enqueue(async () => {
       if (this.frozen) throw this.frozen;
       const draft = structuredClone(this.state);
+      retainCloudEvidence(draft, this.cloudEnabled());
       const now = this.now();
       const outcomeRevisions = new Map(
         Object.values(this.state.submissionOutcomes).map((outcome) => [
@@ -728,6 +732,7 @@ export class RelayLedger {
         ])
       );
       const result = change(draft, now);
+      retainCloudEvidence(draft, this.cloudEnabled());
       const finishPayloads =
         await this.submissionPayloads.prepareExpiredReleases(draft, now);
       compactLedgerState(draft, now);
@@ -775,6 +780,7 @@ export class RelayLedger {
   }
   private async persist(state: LedgerState) { await persistLedgerState(this.filePath, state); }
   private async commitInitializedState(now: number) {
+    retainCloudEvidence(this.state, this.cloudEnabled());
     const finalize =
       await this.submissionPayloads.recoverLedgerState(this.state, now);
     const finishExpired =

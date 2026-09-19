@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared presence copy key set.
- * [OUTPUT]: Provides es settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut-only settings hints, and task failures, without transient settings loading copy.
+ * [OUTPUT]: Provides es settings, tray, quit, and task-panel translations, including background display choices, notch availability, shortcut conflict guidance, and task failures, without transient settings loading copy.
  * [POS]: Presence locale slice imported by the corresponding product catalog.
  */
 
@@ -47,6 +47,7 @@ export const presenceEs = {
   "more": "{{tasks}} más",
   "unavailable": "No disponible",
   "recovered": "La ventana se ha restaurado tras un problema. Los chats guardados están disponibles; los borradores sin guardar pueden haberse perdido.",
+  "backgroundNotice": "Bottega sigue en segundo plano. Sal desde la barra de menús.",
   "closeFailed": "No se pudo transferir el borrador. Intenta cerrar la ventana de nuevo.",
   "retry": "Reintentar",
   "systemSettings": "Abrir Ajustes del Sistema",
