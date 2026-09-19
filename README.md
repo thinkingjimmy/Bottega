@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./apps/desktop/src/assets/bottega-mark.png" alt="Bottega logo" width="112">
+  <img src="./packages/ui/src/assets/brand/bottega-mark.png" alt="Bottega logo" width="112">
 </p>
 
 <h1 align="center">Bottega</h1>
@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://bottega.app">Website</a> ·
+  <a href="https://www.getbottega.app">Website</a> ·
   <a href="./docs/README.md">Docs</a> ·
   <a href="./docs/getting-started/README.md">Quickstart</a> ·
   <a href="https://github.com/thinkingjimmy/Bottega/releases/latest">Download</a> ·
@@ -45,7 +45,7 @@
 - **Sync it, or keep it local.** Cloud Sync is optional and off until you turn it on. When you do, content is end-to-end encrypted with a sync password that only you hold, and the server never sees your plain text.
 - **Open your workspace in a browser.** Sign in at [app.getbottega.app](https://app.getbottega.app) to read and edit your Chats, Bases, and Apps from another computer or a phone.
 
-[Explore the complete feature guide →](https://bottega.app/features/agents/)
+[Explore the complete feature guide →](https://www.getbottega.app/features/agents/)
 
 # Get started
 
@@ -54,10 +54,6 @@ Choose a prebuilt desktop release or run Bottega directly from source. Before la
 ## Download
 
 [Download the latest release →](https://github.com/thinkingjimmy/Bottega/releases/latest)
-
-**Upgrading to 0.1.5?** Back up the complete application data folder first. 0.1.5 uses a new local storage layout and does not import data from 0.1.4 or earlier; it starts with a fresh data folder and a Bottega folder you choose. Read the [upgrade instructions](./docs/getting-started/README.md#upgrading-to-015).
-
-**Upgrading from 0.1.0 or 0.1.1?** Install [0.1.5](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.1.5) manually once to receive the updater fix.
 
 | Platform | Download |
 | --- | --- |
@@ -78,7 +74,7 @@ xattr -rd com.apple.quarantine /Applications/Bottega.app
 **Linux (x64).** Make the AppImage executable and run it:
 
 ```bash
-chmod +x Bottega-0.1.5-linux-x86_64.AppImage && ./Bottega-0.1.5-linux-x86_64.AppImage
+chmod +x Bottega-*-linux-x86_64.AppImage && ./Bottega-*-linux-x86_64.AppImage
 ```
 
 Bottega drives the Codex, Claude Code, Kimi Code, and OpenCode CLIs already installed and logged in on your machine. On first launch, choose whether to work on this computer only or sign in to an existing account, pick your Bottega folder, let Bottega detect the CLIs, then create a task and choose its Agent before sending the first message. The [getting-started guide](./docs/getting-started/README.md) lists the supported CLI versions.
