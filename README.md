@@ -42,7 +42,8 @@
 - **Build AI-native Apps.** Describe the workflow you need and turn it into a durable App with its own interface, data, and permissions—not another result trapped in a transcript.
 - **Customize by chatting.** Open an editable App's source Chat, describe the change, and let your Agent update its features, data, and interface directly.
 - **Every Chat, one data space.** Give a Chat or Project a structured Base, then work with the same rows as a table, list, Kanban board, map, chart, or gallery.
-- **Sync it, or keep it local.** Cloud Sync is optional and off until you turn it on. When you do, content is end-to-end encrypted with a sync password that only you hold, and the server never sees your plain text.
+- **Sync it, or keep it local.** Everyone starts on this computer. Sign in when you want your work on more than one device: content is end-to-end encrypted with a sync password that only you hold, and the server never sees your plain text.
+- **Reach the computer that holds the work.** Signing in publishes that computer's sidebar to your account. Switch computers in the sidebar from a browser, a phone, or another desktop, and drive the one you need.
 - **Open your workspace in a browser.** Sign in at [app.getbottega.app](https://app.getbottega.app) to read and edit your Chats, Bases, and Apps from another computer or a phone.
 
 [Explore the complete feature guide →](https://www.getbottega.app/features/agents/)
@@ -77,7 +78,7 @@ xattr -rd com.apple.quarantine /Applications/Bottega.app
 chmod +x Bottega-*-linux-x86_64.AppImage && ./Bottega-*-linux-x86_64.AppImage
 ```
 
-Bottega drives the Codex, Claude Code, Kimi Code, and OpenCode CLIs already installed and logged in on your machine. On first launch, choose whether to work on this computer only or sign in to an existing account, pick your Bottega folder, let Bottega detect the CLIs, then create a task and choose its Agent before sending the first message. The [getting-started guide](./docs/getting-started/README.md) lists the supported CLI versions.
+Bottega drives the Codex, Claude Code, Kimi Code, and OpenCode CLIs already installed and logged in on your machine. On first launch, pick your Bottega folder, let Bottega detect the CLIs, then create a task and choose its Agent before sending the first message. Setup never asks about an account: signing in is a later step, from Settings. The [getting-started guide](./docs/getting-started/README.md) lists the supported CLI versions.
 
 ## Build from source
 

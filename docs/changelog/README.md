@@ -4,6 +4,43 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-09-22 — v0.1.6
+
+**Before upgrading:** 0.1.6 does not open a 0.1.5 chat database. On first launch the previous `bottega.sqlite3` and its sidecars are moved aside into `recovery/sqlite/` inside the application data folder, byte for byte, and the conversation index is rebuilt from your Bottega folder. Replies that never finished may be missing, and search indexes and synchronization state are recreated. Cloud data from 0.1.5 is not carried over either: the synchronization protocol changed and the service is reset before this release, so sign in again and let the first computer set the sync password again. Quit Bottega completely and back up both your Bottega folder and the application data folder first. See the [upgrade instructions](../getting-started/README.md#upgrading-to-016).
+
+### What's new
+
+- **A conversation belongs to the computer that created it.** Bottega no longer moves a running conversation between computers. Local is local, remote is remote: you open the computer that holds the work and drive it from wherever you are. Executor selection, hand-over, and the cross-computer queue are gone, along with the questions they used to ask you.
+- **Signing in is remote control.** A computer that is signed in publishes its sidebar — its Projects and its Chats — and accepts commands for them. There is no second switch anywhere in the product: Settings' sync area is your sign-in state, this computer's name, and Sign out. Setup no longer asks whether to work on this computer or connect an account; everyone starts local, and signing in is a later step. The sync password is still part of signing in: the first computer sets it, and every later computer, browser, and phone enters it.
+- **Switch computers in the sidebar.** Cloud Web, a phone browser, and the desktop share one strip at the top of the sidebar, one tab per computer, with a dot while it is awake and `Offline · 5 minutes ago` when it is not. It appears once your account holds a second computer, and a desktop always lists itself first. Rename a computer in Settings; a new computer arriving with a name already taken is registered as `… (2)`. A browser signed in to an account with no computer yet is told to sign in on a computer first, and is never asked for a password it cannot set.
+- **Work with another computer's Projects.** A remote Project carries a globe mark and its computer's name and offers no folder, path, or "Choose folder" — it has none here. A Chat you create under it is created, run, and stored over there. On the desktop, the sidebar's Projects `+` now offers **Local Project** or **Pin a remote Project…**: pinning places another computer's Project in this computer's sidebar and copies nothing, unpinning changes nothing for the owner, and a Project the owner deletes or archives leaves a marked row with Unpin as its only action.
+- **An offline computer no longer blocks your edits.** Renaming, archiving, reordering, editing a Base row, and writing an App record keep working while the computer that owns them is asleep, and it reconciles them when it wakes. Only execution needs it awake — send, Stop, approve, answer, steer, delete a Chat — and those controls grey in place with the reason instead of taking your draft away, then recover by themselves. When two devices answer the same permission request, the second one reads "Handled on *computer*" as a single line rather than an error.
+- **A Bottega folder belongs to its computer.** The first synchronization records the owner, in your account and in the folder. The same computer takes the folder back after a reinstall, a cleared data folder, or a new profile, with nothing to confirm; another computer is refused by name, with one sentence explaining what to do instead. A folder that has never synchronized opens anywhere. Everything a computer published stays readable in a browser and on your other computers whether or not it is awake.
+- **Continue an imported conversation anywhere.** An imported Codex, Claude Code, or Kimi history is no longer read-only in a fresh profile, in a workspace rebuilt from the folder, or under a Project with no folder chosen. It opens with the ordinary composer, and one divider marks where the imported history ends.
+- **The first upload tells the truth, and is shorter.** Settings › Sync now counts real uploaded bytes instead of standing at `0 B`, and finishes exactly on its own total. Small conversations upload first, so the count starts moving in seconds. Each message now takes about half as many round trips as before.
+- **Protocol 8.** The synchronization protocol and the local chat database both moved forward without a compatibility layer, which is what the upgrade note above is about.
+
+### Download and install
+
+The assets below include macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage installers. These builds are **unsigned and not notarized**. macOS remains the primary platform; native App isolation and full feature parity on Windows/Linux are still in progress.
+
+**macOS (Apple silicon):** open the DMG and drag Bottega into Applications. For the unsigned download, remove its quarantine flag once in Terminal, then open Bottega:
+
+```bash
+xattr -rd com.apple.quarantine /Applications/Bottega.app
+```
+
+**Windows (x64):** run the installer. If SmartScreen blocks the unrecognized publisher, choose **More info → Run anyway**.
+
+**Linux (x64):** make the AppImage executable and launch it:
+
+```bash
+chmod +x Bottega-0.1.6-linux-x86_64.AppImage
+./Bottega-0.1.6-linux-x86_64.AppImage
+```
+
+Install and authenticate at least one supported local CLI before starting a conversation. Users on 0.1.0 or 0.1.1 must install 0.1.6 manually because those versions contain the earlier updater bug. The storage preparation above applies to every earlier version.
+
 ## 2026-09-19 — v0.1.5
 
 **Before upgrading:** 0.1.5 uses a new local storage layout built around the Bottega folder, and it does not import Chats, Projects, Apps, Bases, attachments, or settings from 0.1.4 or any earlier release. Quit Bottega completely, back up the entire application data folder, and keep your external Chat Homes and Project folders. Move the old application data folder to a backup location, then launch 0.1.5 with a fresh data folder and choose a new Bottega folder during setup. Previous Bottega chats, settings, and installed App records are not imported automatically; nothing in the old folder is changed. See the [backup and setup instructions](../getting-started/README.md#upgrading-to-015).

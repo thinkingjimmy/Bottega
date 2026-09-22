@@ -15,6 +15,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Use Plan mode, live steering, queued messages, and visible tool activity without hiding backend differences.
 - Create Sections and Subagents for parallel work, inspect their progress, pass bounded context between them, and promote useful results into durable Sections.
 - Search and adopt supported local CLI histories without silently rewriting their original records.
+- Continue an imported conversation with the ordinary composer, whatever the profile it is opened in and whether or not its Project has a folder. One divider marks where the imported history ends.
 
 ## Sketch
 
@@ -76,11 +77,13 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 
 ## Cloud Sync
 
-- Keep synchronization optional: Bottega works without an account, and signing in uploads nothing until you confirm the first sync.
+- Keep synchronization optional: Bottega works without an account, setup never asks about one, and signing in uploads nothing until you confirm the first sync.
 - Sign in through your system browser with Google, approve the request there, and let the desktop app pick the session up. Bottega never asks for that password.
 - Unlock synced content with a separate sync password of at least 8 characters including an English letter and a number. The content key is derived on your own device with Argon2id, and content is sealed with XChaCha20-Poly1305 before upload.
 - Accept that there is no recovery: no recovery key, no approval from another device, no password reset, and no sync reset. The risk is stated and confirmed before the encrypted workspace is created.
-- Keep one encrypted workspace per account. Another computer chooses its own Bottega folder, signs in with the same account, and enters the same password to join.
+- Keep one encrypted workspace per account. The first computer sets the sync password; every later computer, browser, and phone enters it. Only a desktop can set it.
+- Keep the sync area to three things: sign-in state, this computer's name, and Sign out. Signing out stops publishing and stops accepting commands without deleting anything; removing this computer's cloud copies is a separate action, and deleting the account is separate again.
+- Watch the first upload honestly: the Sync row counts real uploaded bytes, and the smallest conversations go first so the count starts moving in seconds instead of minutes.
 - Synchronize Chats with their tool activity, Subagents and attachments, Bases and their App records, Project metadata, and Skills. Conflicting edits keep both candidates with an explicit decision instead of silently overwriting.
 - Keep working while offline or paused: local content stays readable, queued work resumes under the same identity, and a wrong password or a lost connection never deletes local data or cloud keys.
 
@@ -91,8 +94,14 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Work with Bases through the same six views, read and edit synced App records, restore or delete archived items, and manage devices, sessions, and preferences.
 - Stay unlocked on a browser you trust, or lock it again at any time. Custom App interfaces, the in-app Browser, and local tools remain on the computer that owns them.
 - Use a phone browser: layout, touch targets, sheets, and drag interactions adapt below 768px. Chrome is the tested browser.
-- Drive a signed-in desktop from the Web when remote control is enabled for the service: choose the computer and Agent, send a message, watch live output, Stop, approve or reject permission requests, answer questions, steer, and follow up. The target must be online, unlocked, on a matching protocol version, and ready to execute.
-- Remote control is a server-side switch rather than an app setting or a hidden button. While it is off, browser Chats are read only; reading a transcript and watching a running turn still work.
+- Treat signing in as remote control: a signed-in computer publishes its Projects and Chats to the account and accepts commands for them. There is no second switch in the product.
+- Switch computers from one strip at the top of the sidebar, shared by Cloud Web, phones, and the desktop. It appears once the account holds more than one computer, shows each computer's presence, and puts this computer first on a desktop. The sidebar below it is that computer's.
+- Rename a computer in Settings; a name another computer already holds is refused, and a new computer that arrives with a taken name is registered with a numeric suffix.
+- Drive the selected computer while it is awake: send a message, watch live output, Stop, approve or reject permission requests, answer questions, steer, and follow up. The target must be online, unlocked, and on a matching protocol version.
+- Let several devices hold one conversation: messages queue in arrival order, a repeated Stop counts once, and the second answer to the same permission request reads "Handled on *computer*" as one line rather than an error.
+- Work with another computer's Project: it carries a globe mark and the owning computer's name, offers no folder or path, and a Chat created under it is created, run, and stored over there. On the desktop, pin one into this computer's sidebar; pinning copies nothing, unpinning changes nothing for the owner, and a Project the owner deletes or archives leaves a marked row you can unpin.
+- Keep record writes working while a computer is away: renaming, archiving, reordering, editing a Base row, and writing an App record all succeed and reconcile when it wakes. Execution — send, Stop, approve, answer, steer, delete a Chat — is greyed in place with the reason, keeps your draft, and recovers on its own when the computer returns.
+- Bottega keeps a service-level switch that can turn remote control off for everyone. While it is off, browser Chats are read only; reading a transcript and watching a running turn still work.
 
 ## Local storage and your Bottega folder
 
@@ -100,7 +109,8 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Keep readable content in one Bottega folder chosen during setup: Chat transcripts, original attachments, saved artifacts, Chat Home files, Project details, Base records, App source, and Skills. Account settings, encryption keys, device permissions, and execution records stay in each computer's application data directory.
 - Back up by quitting Bottega and copying the whole folder; a copy made while it is running is a best-effort recovery source that reports its gaps. File-synchronization folders such as iCloud Drive and Dropbox are unsupported.
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
-- Back up the complete application data folder before changing versions. 0.1.5 uses a new local storage layout and needs a fresh application data folder when you come from 0.1.4 or earlier; see the [upgrade guide](../getting-started/README.md#upgrading-to-015).
+- Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
+- Back up the complete application data folder before changing versions. 0.1.6 does not open a 0.1.5 chat database: it is preserved and the conversation index is rebuilt from the Bottega folder, and cloud content from 0.1.5 is not carried over; see the [upgrade guide](../getting-started/README.md#upgrading-to-016).
 
 ## Product foundations
 
