@@ -33,9 +33,16 @@ export function SidebarRowTitle({
     </span>
   );
 }
+/**
+ * A tag never squeezes the title: it keeps `shrink-0` so the title cannot push it out of the row, and caps its own
+ * width so a long value — a computer name — ends in an ellipsis instead. 10ch at 10px is about a quarter of a
+ * 16rem sidebar row, which leaves the title the clear majority of the remaining space.
+ */
 export function SidebarRowTag({ children }: { children: React.ReactNode }) {
   return (
-    <span className="shrink-0 rounded border border-sidebar-border bg-sidebar-foreground/6 px-1 py-0.5 text-[10px] text-sidebar-foreground/55 leading-none">
+    <span
+      className="max-w-[10ch] shrink-0 truncate rounded border border-sidebar-border bg-sidebar-foreground/6 px-1 py-0.5 text-[10px] text-sidebar-foreground/55 leading-none"
+    >
       {children}
     </span>
   );

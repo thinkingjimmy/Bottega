@@ -101,15 +101,15 @@ export async function openRemoteCreationReceipt(raw: EncryptedRemoteCreationRece
   assertExpectedScope(receipt.encryptedSpace.scope, crypto.scope);
   assertCrypto(receipt.encryptedSpace.keyPackageFingerprint === crypto.keyPackageFingerprint);
   const identity = remoteCreationIdentity(crypto.scope, receipt.createOperationId);
-  assertCrypto(receipt.chatId === identity.chatId && receipt.incarnationId === identity.incarnationId && receipt.executionEpoch === 1);
+  assertCrypto(receipt.chatId === identity.chatId && receipt.incarnationId === identity.incarnationId);
   if (receipt.deleted) return remoteCreationReceiptSchema.parse({ createOperationId: receipt.createOperationId, payloadHash: null, ...identity,
-    executorDeviceId: receipt.executorDeviceId, executionEpoch: 1, createdAt: receipt.createdAt, deleted: true });
+    ownerDeviceId: receipt.ownerDeviceId, createdAt: receipt.createdAt, deleted: true });
   const creation = receipt.creation; assertCrypto(creation !== null);
   await openRemoteCreation(creation, crypto, signal);
   assertCrypto(receipt.createOperationId === creation.createOperationId && receipt.ciphertextHash === creation.ciphertextHash &&
-    receipt.chatId === identity.chatId && receipt.incarnationId === identity.incarnationId && receipt.executorDeviceId === creation.binding.targetDeviceId &&
-    receipt.executionEpoch === 1 && receipt.createdAt === creation.createdAt);
-  const input = { createOperationId: receipt.createOperationId, targetDeviceId: receipt.executorDeviceId, backend: creation.binding.agent, projectId: creation.binding.projectId };
+    receipt.chatId === identity.chatId && receipt.incarnationId === identity.incarnationId && receipt.ownerDeviceId === creation.binding.targetDeviceId &&
+    receipt.createdAt === creation.createdAt);
+  const input = { createOperationId: receipt.createOperationId, targetDeviceId: receipt.ownerDeviceId, backend: creation.binding.agent, projectId: creation.binding.projectId };
   return remoteCreationReceiptSchema.parse({ createOperationId: receipt.createOperationId, payloadHash: remoteHash(input), ...identity,
-    executorDeviceId: receipt.executorDeviceId, executionEpoch: 1, createdAt: receipt.createdAt, deleted: receipt.deleted });
+    ownerDeviceId: receipt.ownerDeviceId, createdAt: receipt.createdAt, deleted: receipt.deleted });
 }

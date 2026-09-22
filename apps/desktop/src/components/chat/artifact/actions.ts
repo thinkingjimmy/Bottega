@@ -9,7 +9,7 @@ import { artifactFollowUpBlock } from "@ai-chat/cloud-protocol/artifacts/frame-s
 import type { ChatSessionController } from "../runtime/use-chat-session";
 import { appendComposerText, readComposer } from "@/lib/chat-composer-store";
 import { richInputDisplayText } from "../../../../shared/rich-input-projection";
-import { openArtifactBrowser } from "./browser";
+import { openInBrowser } from "./browser";
 export function desktopArtifactActions(chatId: string, incarnationId: string, locale: string,
   current: () => ChatSessionController, root: RefObject<HTMLDivElement | null>, enableSidePanel: boolean): ArtifactHost {
     const ref = (artifactId: string) => ({ chatId, incarnationId, artifactId });
@@ -20,7 +20,7 @@ export function desktopArtifactActions(chatId: string, incarnationId: string, lo
       action: (fence, action) => fence.kind === "claude-artifact" && fence.url ? (window.app?.openExternal(fence.url) ?? Promise.reject(new Error("artifact-unavailable"))) : bridge().action(ref(fence.id), action),
       open: async fence => {
         if (fence.kind === "claude-artifact" && fence.url) {
-          await openArtifactBrowser(fence.url, enableSidePanel ? () => current().sidePanel.openTabs({ target: "browser" }) : undefined);
+          await openInBrowser(fence.url, enableSidePanel ? () => current().sidePanel.openTabs({ target: "browser" }) : undefined);
         } else current().sidePanel.openArtifact(fence);
       },
       followUp: value => {

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the cloud schema and SQLite DDL supported by the packaged Electron runtime.
- * [OUTPUT]: Complete Chat schema v8, including NOT NULL options, portable classification, the manual sort_key, scoped outbox/receipts, mirrors, candidates and retained-source roots.
- * [POS]: Canonical fresh-database schema; supported v6/v7 identities enter through explicit upgrades before repository access.
+ * [OUTPUT]: Complete Chat schema v9, including NOT NULL options, portable classification, the manual sort_key, scoped outbox/receipts, mirrors, candidates and retained-source roots.
+ * [POS]: Canonical fresh-database schema; there is no upgrade path, so any earlier identity is refused before repository access.
  */
 
 import { CHAT_CLOUD_SCHEMA } from "../cloud/schema";
@@ -23,8 +23,8 @@ CREATE TABLE chats (
   portable_app_id TEXT, portable_project_id TEXT,
   cloud_state TEXT NOT NULL DEFAULT 'local-only' CHECK(cloud_state IN ('local-only','synced','mirror')),
   cloud_environment TEXT, cloud_user_id TEXT,
-  cloud_executor_device_id TEXT, cloud_execution_epoch INTEGER,
-  cloud_last_committed_executor_device_id TEXT, cloud_native_session_device_id TEXT,
+  cloud_owner_device_id TEXT,
+  cloud_native_session_device_id TEXT,
   cloud_revision INTEGER, cloud_home_snapshot_id TEXT,
   fork_agent TEXT,
   title TEXT,
@@ -55,8 +55,8 @@ CREATE TABLE chats (
     (conversation_kind IN ('app-use','app-edit') AND portable_app_id IS NOT NULL)),
   CHECK (conversation_kind <> 'app-edit' OR portable_project_id IS NOT NULL),
   CHECK ((cloud_state = 'local-only' AND cloud_environment IS NULL AND cloud_user_id IS NULL
-    AND cloud_executor_device_id IS NULL AND cloud_execution_epoch IS NULL
-    AND cloud_last_committed_executor_device_id IS NULL AND cloud_native_session_device_id IS NULL
+    AND cloud_owner_device_id IS NULL
+    AND cloud_native_session_device_id IS NULL
     AND cloud_revision IS NULL AND cloud_home_snapshot_id IS NULL) OR
     (cloud_state <> 'local-only' AND cloud_environment IS NOT NULL AND cloud_user_id IS NOT NULL AND cloud_revision IS NOT NULL)),
   -- fork lineage facts must be atomic

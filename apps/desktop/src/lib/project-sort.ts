@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Shared sortWorkspaceProjects and native Project/ChatSummary contracts
- * [OUTPUT]: Project sorting with readable remote origin and shared native/cloud activity inputs.
+ * [OUTPUT]: Project sorting that keeps a Project this computer owes a folder out of the unavailable tail, with shared native/cloud activity inputs.
  * [POS]: Project sorting rules in lib, consumed by the Sidebar ProjectSection and locked by the single-section
  */
 
@@ -24,5 +24,5 @@ export function sortProjects<T extends Pick<ChatSummary, "projectId" | "updatedA
       Math.max(latest.get(chat.projectId) ?? 0, chat.updatedAt)
     );
   }
-  return sortWorkspaceProjects(projects, latest, sortMode, project => Boolean(project.missing && !project.cloud?.remote));
+  return sortWorkspaceProjects(projects, latest, sortMode, project => Boolean(project.missing && !project.cloud?.needsLocalFolder));
 }

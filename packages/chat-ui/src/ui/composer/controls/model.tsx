@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Executor model catalog, host choice and shared native selector views.
+ * [INPUT]: Owner model catalog, host choice and shared native selector views.
  * [OUTPUT]: Remote model/effort/speed adapters using the same quick and list UI as native Chat.
  * [POS]: Capability projection only; the host stores choices and owns submission.
  */

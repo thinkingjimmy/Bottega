@@ -22,7 +22,7 @@ export class BaseFilePublisher {
   private readonly active = new Set<Promise<unknown>>();
   private readonly staged = new Map<string, Map<string, EncryptedFileDescriptor>>();
   constructor(private readonly input: { store: BaseStore; files: Pick<EncryptedBlobTransfer, "uploadFile" | "crypto">; config: CloudBuildConfig; userId: string;
-    progress?(value: FileProgress): void }) {}
+    progress?(): (value: FileProgress) => void }) {}
   private get scope() { return { environment: this.input.config.environmentId, userId: this.input.userId }; }
   private check() {
     this.controller.signal.throwIfAborted(); const crypto = this.input.files.crypto;
@@ -94,7 +94,7 @@ export class BaseFilePublisher {
       // Reusing a file must not reuse an expired or previous-login upload session.
       await custody.using(target, this.scope, descriptor.encryption.operationId, () =>
         this.input.files.uploadFile(header, randomUUID(), "gallery", descriptor,
-          custody.journal(target, this.scope, descriptor.encryption.operationId), key, this.input.progress, signal));
+          custody.journal(target, this.scope, descriptor.encryption.operationId), key, this.input.progress?.(), signal));
     }
     this.check(); return { value: bound, references: baseAttachmentReferences(mapping.descriptor) };
   }

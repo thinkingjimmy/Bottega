@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on portable Chat codecs, SQLite row writers and committed Home preparation evidence.
- * [OUTPUT]: Provides bounded mirrors and atomic settlement preserving verified same-executor successors after explicit replacement.
+ * [OUTPUT]: Provides bounded mirrors and atomic settlement preserving verified same-owner successors after explicit replacement.
  * [POS]: Mirror read model never creates local authority; explicit materialization only admits ordinary Chats.
  */
 import { portableForkLineage } from "@ai-chat/cloud-protocol/chats/model";
@@ -109,7 +109,7 @@ export class MirrorTransactions {
   materialize(action: Extract<CloudAction, { type: "materialize" }>, scope: SyncScope, deviceId: string) {
     const record = chatRecordSchema.parse(action.record);
     const confirmed = readMetadataState(this.db, scope, record.id).head;
-    if (confirmed && (confirmed.executorDeviceId !== deviceId || confirmed.archivedAt !== null || confirmed.openTurnId ||
+    if (confirmed && (confirmed.ownerDeviceId !== deviceId || confirmed.archivedAt !== null || confirmed.openTurnId ||
       confirmed.chat.incarnationId !== record.incarnationId)) throw new Error("EXECUTION_IDENTITY_CHANGED");
     const mirror = this.read(record.id, scope, 0, 1);
     if (!mirror || !mirror.bodyReady || !mirror.preparation || mirror.chat.cloudRevision !== action.expectedCloudRevision ||
@@ -149,8 +149,7 @@ export class MirrorTransactions {
       .get(scope.environment, scope.userId, receipt.turnId) as Row | undefined;
     if (previous) {
       const old = turnReceiptSchema.parse(JSON.parse(String(previous.receipt_json)));
-      if (old.identityHash !== receipt.identityHash || old.chatId !== receipt.chatId || old.executionEpoch !== receipt.executionEpoch ||
-          old.executorDeviceId !== receipt.executorDeviceId || old.userSeq !== receipt.userSeq || old.assistantSeq !== receipt.assistantSeq ||
+      if (old.identityHash !== receipt.identityHash || old.chatId !== receipt.chatId ||           old.ownerDeviceId !== receipt.ownerDeviceId || old.userSeq !== receipt.userSeq || old.assistantSeq !== receipt.assistantSeq ||
           old.userMessageId !== receipt.userMessageId || old.assistantMessageId !== receipt.assistantMessageId) throw new Error("TURN_IDENTITY_CONFLICT");
       if (old.settlementState === "settled") {
         if (canonicalJson(old) !== canonicalJson(receipt)) throw new Error("TURN_ALREADY_SETTLED");
@@ -198,9 +197,9 @@ export class MirrorTransactions {
           .run(receipt.assistantSeq + 1, receipt.chatId);
       }
     }
-    this.db.prepare(`INSERT INTO cloud_turn_receipts(environment,user_id,chat_id,turn_id,execution_epoch,settlement_state,receipt_json,updated_at)
-      VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(environment,user_id,turn_id) DO UPDATE SET settlement_state=excluded.settlement_state,receipt_json=excluded.receipt_json,updated_at=excluded.updated_at`)
-      .run(scope.environment, scope.userId, receipt.chatId, receipt.turnId, receipt.executionEpoch, receipt.settlementState, json(receipt), this.now());
+    this.db.prepare(`INSERT INTO cloud_turn_receipts(environment,user_id,chat_id,turn_id,settlement_state,receipt_json,updated_at)
+      VALUES(?,?,?,?,?,?,?) ON CONFLICT(environment,user_id,turn_id) DO UPDATE SET settlement_state=excluded.settlement_state,receipt_json=excluded.receipt_json,updated_at=excluded.updated_at`)
+      .run(scope.environment, scope.userId, receipt.chatId, receipt.turnId, receipt.settlementState, json(receipt), this.now());
     this.advanceCursor(scope, action.cursor);
     if (action.files) writeMirrorFiles(this.db, scope, receipt.chatId, receipt.assistantMessageId, action.files, this.now());
     if (action.expectedOutboxDigest !== undefined) acknowledgeTurnOutbox(this.db, scope, receipt, action.message, action.subagents, this.now());

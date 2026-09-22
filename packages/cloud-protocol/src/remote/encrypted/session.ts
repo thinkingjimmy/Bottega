@@ -19,7 +19,7 @@ import { openRemoteReceipt, prepareRemoteCommand, type RemoteCipherPort } from "
 import { openRemoteCreationReceipt, openRemoteTargets, prepareRemoteCreation } from "./creation";
 import { remoteHash, validateRemoteCommand, validateRemoteCreation } from "./wire";
 type Query = "remote/workspace:get" | "chats/metadata:head" | "remote/commands:get" | "remote/commands:page" | "remote/capabilities:targets" | "remote/chats:created";
-type Mutation = "remote/workspace:submit" | "remote/commands:submit" | "remote/chats:create" | "remote/chats:retryPreparation" | "turns/executor:claim";
+type Mutation = "remote/workspace:submit" | "remote/commands:submit" | "remote/chats:create" | "remote/chats:retryPreparation";
 interface RemoteCodecTransport {
   query<N extends Query>(name: N, args: CloudFunctionArgs<N>): Promise<CloudFunctionResult<N>>;
   mutate<N extends Mutation>(name: N, args: CloudFunctionArgs<N>): Promise<CloudFunctionResult<N>>;

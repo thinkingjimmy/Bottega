@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on host-injected UI text, shared DropdownMenu/InputGroup/Spinner/Tooltip primitives, and the AI SDK ChatStatus type
- * [OUTPUT]: Provides PromptInput header/footer/tools layout, tooltip-aware buttons, the action menu family, and the localized `preferSubmit`-aware submit/stop control
+ * [OUTPUT]: Provides PromptInput header/footer/tools layout, tooltip-aware buttons, the action menu family, and the localized `preferSubmit`-aware submit/stop control that can carry a hint while disabled
  * [POS]: ai-elements is a non-business visual control layer of PromptInput; Form transactions and provider status held by sibling files
  */
 
@@ -20,6 +20,7 @@ import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@ai-chat/ui/components/ui/tooltip";
 import { cn } from "@ai-chat/ui/lib/utils";
@@ -165,6 +166,11 @@ export type PromptInputSubmitProps = ComponentProps<typeof InputGroupButton> & {
    * 字总要有个去处（队列），而「停止」在那一刻不再是唯一能做的事。
    */
   preferSubmit?: boolean;
+  /**
+   * Why this submit cannot run right now. It is a convenience for the pointer, never the only place the reason
+   * appears: a disabled button announces nothing, so its surface states the same reason in its own text.
+   */
+  tooltip?: string;
 };
 
 export const PromptInputSubmit = ({
@@ -175,6 +181,7 @@ export const PromptInputSubmit = ({
   onClick,
   children,
   preferSubmit = false,
+  tooltip,
   ...props
 }: PromptInputSubmitProps) => {
   const stopLabel = useUiText("stop", "Stop");
@@ -203,7 +210,7 @@ export const PromptInputSubmit = ({
     },
     [stopping, onClick, onStop]
   );
-  return (
+  const button = (
     <InputGroupButton
       aria-label={stopping ? stopLabel : submitLabel}
       onClick={handleClick}
@@ -214,5 +221,17 @@ export const PromptInputSubmit = ({
     >
       {children ?? Icon}
     </InputGroupButton>
+  );
+  if (!tooltip) return button;
+  /* A disabled button takes no pointer events, so the box around it is what the hint hangs on. */
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex shrink-0">{button}</span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 };

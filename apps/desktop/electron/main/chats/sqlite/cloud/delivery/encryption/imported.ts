@@ -22,14 +22,14 @@ export function validateImportedEncryptionCheckpoint(value: ChatDeliveryCheckpoi
     const intent = prior("encrypted-import-intent"), original = prior("import-manifest"), wire = value.transport;
     if (intent.kind !== "encrypted-import-intent" || original.kind !== "import-manifest" || intent.userId !== userId ||
       wire.chatId !== chatId || wire.incarnationId !== intent.incarnationId || wire.generationId !== intent.generationId ||
-      wire.executionEpoch !== intent.executionEpoch || wire.expectedRevision !== intent.expectedRevision ||
+      wire.expectedRevision !== intent.expectedRevision ||
       value.plaintextHash !== hashChatContent(original.manifest) || wire.entryCount !== original.manifest.entryCount) throw new Error("IMPORT_CIPHER_MANIFEST_MISMATCH");
     validateImportManifest(value.encryptedSpace.scope, wire);
   }
   if (value.kind === "encrypted-import-page") {
     const manifest = prior("encrypted-import-manifest"), wire = value.transport;
     if (manifest.kind !== "encrypted-import-manifest" || wire.chatId !== chatId || wire.generationId !== manifest.transport.generationId ||
-      wire.incarnationId !== manifest.transport.incarnationId || wire.executionEpoch !== manifest.transport.executionEpoch ||
+      wire.incarnationId !== manifest.transport.incarnationId ||
       hashEncryptedImportPage(wire) !== wire.ciphertextHash) throw new Error("IMPORT_CIPHER_PAGE_MISMATCH");
     const entries = wire.entries.map(message => {
       const entry = prior(`import-entry:${message.membership.seq}`), complete = prior(`import-message:${message.membership.seq}:complete`);

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Current executor identity, retained encrypted command session, native dialog and exact-head reader.
+ * [INPUT]: Current owner identity, retained encrypted command session, native dialog and exact-head reader.
  * [OUTPUT]: Remote fork choices with private preflight and navigation only after the child head arrives.
  * [POS]: Shared fork host adapter; immutable per-choice attempts survive lost acknowledgements.
  */
@@ -26,7 +26,7 @@ export function RemoteForkDialog({ head, anchor, session, chats, navigate, onClo
     const run = async (input: ForkDialogInput, checkOnly: boolean, signal = lifetime.signal) => {
       const key = `${head.chat.id}/${head.chat.incarnationId}/${input.anchorMessageId}/${input.mode}/${checkOnly}`, prior = attempts.current.get(key);
       const command: RemoteCommandInput = prior ?? { commandId: crypto.randomUUID(), chatId: head.chat.id, incarnationId: head.chat.incarnationId,
-        targetDeviceId: head.executorDeviceId!, executionEpoch: head.executionEpoch, payload: { kind: "fork-chat", fromMessageId: input.anchorMessageId,
+        targetDeviceId: head.ownerDeviceId!, payload: { kind: "fork-chat", fromMessageId: input.anchorMessageId,
           execution: input.mode === "new-worktree" ? "managed-worktree" : "same-workspace", ...(checkOnly ? { checkOnly: true } : {}) } };
       attempts.current.set(key, command);
       const result = await awaitRemoteResult(session, command, signal);
@@ -47,7 +47,7 @@ export function RemoteForkDialog({ head, anchor, session, chats, navigate, onClo
         return { id: result.chatId };
       },
     };
-  }, [attempts, head.chat.id, head.chat.incarnationId, head.executorDeviceId, head.executionEpoch, chats, session, lifetime, copy]);
+  }, [attempts, head.chat.id, head.chat.incarnationId, head.ownerDeviceId, chats, session, lifetime, copy]);
   return <ForkChatDialog anchor={anchor} context={{ summary: head.chat, navigateToChat: navigate }} ports={ports} onClose={onClose}
     t={t} />;
 }

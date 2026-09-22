@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Private recovery token, immutable receipt entries and current-executor submit authority.
+ * [INPUT]: Private recovery token, immutable receipt entries and current-owner submit authority.
  * [OUTPUT]: Native-equivalent recovery dialog whose action remains pending until durable evidence arrives.
  * [POS]: Remote adapter for the shared recovery view; dismissing never resolves the turn.
  */

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on authenticated account state, sync consent, closed CloudTransport methods and shared selection rejection proof.
+ * [INPUT]: Depends on authenticated account state, sync consent, closed CloudTransport methods and shared preparation rejection proof.
  * [OUTPUT]: Provides account-scoped remote commands and cancellable encrypted file staging with bounded IPC progress.
  * [POS]: Main-only remote client; source authority and all protocol headers are injected here.
  */
@@ -8,7 +8,7 @@ import { RemoteClientCodec } from "@ai-chat/cloud-protocol/remote/encrypted/sess
 import type { RemoteCipherPort } from "@ai-chat/cloud-protocol/remote/encrypted/client";
 import type { ServerClock } from "@ai-chat/cloud-protocol/continuity/clock";
 import { ConvexError } from "convex/values";
-import { executorSelectionRejection, type ExecutorSelectionRejection } from "@ai-chat/cloud-protocol/remote/selection";
+import { preparationRejection, type PreparationRejection } from "@ai-chat/cloud-protocol/remote/selection";
 import type { CloudTransport } from "../../runtime/transport";
 import type { CloudAccountService } from "../../runtime/service";
 import type { SyncBindingStore } from "../../sync/account/binding";
@@ -23,15 +23,19 @@ export class RemoteCommandClient {
   private uploadOwner: { identity: string; port: RemoteAttachmentPort; close(): Promise<void> } | null = null;
   private uploads = new Map<string, AbortController>();
   constructor(private readonly ports: RemoteClientPorts) {}
-  private async execution<T>(run: () => Promise<T>): Promise<T | { rejected: ExecutorSelectionRejection }> {
+  private async execution<T>(run: () => Promise<T>): Promise<T | { rejected: PreparationRejection }> {
     try { return await run(); }
     catch (error) {
       // Generic IPC errors would lose the server's proof that this original operation did not commit.
-      const rejected = error instanceof ConvexError ? executorSelectionRejection(error) : null;
+      const rejected = error instanceof ConvexError ? preparationRejection(error) : null;
       if (rejected) return { rejected };
       throw error;
     }
   }
+  /* The same sentence `identity` enforces, asked instead of thrown, so a subscription that cannot exist
+     yet is answered rather than logged. Asking by trying keeps the rule in one place and also covers a
+     crypto port that refuses to hand out a session while the account is locked. */
+  available() { try { this.identity(); return true; } catch { return false; } }
   private identity() {
     const { account, binding, config, deviceId } = this.ports, user = account.snapshot(), local = binding.snapshot();
     if (user.status !== "ready" || !user.profile || user.deviceId !== deviceId || !local || local.phase !== "active" || local.paused ||
@@ -82,8 +86,6 @@ export class RemoteCommandClient {
       case "created": { const raw = await transport.query("remote/chats:created", { ...header, ...value as RemoteInput<"created"> }); result = raw ? await codec.creationReceipt(raw) : null; break; }
       case "prepareCommand": result = await codec.prepare(value as RemoteInput<"prepareCommand">); break;
       case "submit": { const input = value as RemoteInput<"submit">; result = await codec.submit(input.command, input.frozen); break; }
-      case "selectExecutor": { const input = value as RemoteInput<"selectExecutor">;
-        result = await this.execution(async () => codec.head(await transport.mutate("turns/executor:claim", { ...header, ...input }), input)); break; }
       case "prepareCreate": result = await codec.prepareCreate(value as RemoteInput<"prepareCreate">); break;
       case "create": { const input = value as RemoteInput<"create">; result = await codec.create(input.input, input.frozen); break; }
       case "retryPreparation": { const input = value as RemoteInput<"retryPreparation">;

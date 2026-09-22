@@ -1,18 +1,14 @@
 /**
  * [INPUT]: Depends on ChatStore/ChatsService, ProjectStore/ProjectsService, SettingsStore, MemoryService, the ConversationCoordinator handle, and HistoryImportService with its adapters
- * [OUTPUT]: Connects display-independent saved-Chat continuation to native resume or cross-Agent replay with canonical admission and durable receipts; snapshot GC runs after window creation.
+ * [OUTPUT]: Connects chat-scoped saved-Chat continuation to native resume or cross-Agent replay with canonical admission and durable receipts; snapshot GC runs after window creation.
  * [POS]: The external-history half of the conversation-domain startup composition; conversation-runtime.ts owns the Chat/manual/Coordinator/Archive half
  */
 
 import { randomUUID } from "node:crypto";
-import type {
-  ForeignHistoryMessage,
-  ForeignHistorySummary,
-} from "../../../shared/history-import-ipc";
+import type { ForeignHistorySummary } from "../../../shared/history-import-ipc";
 import type { ChatStore } from "../chats/chat-store";
 import type { ChatsService } from "../chats/chats-service";
 import type { AdapterEntry } from "../history-import/adapter";
-import { publicEntry as publicHistoryEntry } from "../history-import/routing/history-policy";
 import { HistoryImportService } from "../history-import/service";
 import type { MemoryService } from "../memory/service/memory-service";
 import type { ProjectStore } from "../projects/store/project-store";
@@ -90,6 +86,7 @@ export async function initializeHistoryImportService({
         ? "external-readonly"
         : "managed";
     },
+    chatImportOrigin: (chatId) => chats.getMetadata(chatId)?.importOrigin ?? null,
     markImportSourceStatus: async (chatId, sourceStatus) => {
       const record = await chats.markImportSourceStatus(chatId, sourceStatus);
       if (record) getChats()?.publishRecord(record);
@@ -125,23 +122,20 @@ export async function initializeHistoryImportService({
       memory.commitExistingProductHistory(grantId, intent),
     productMemoryCommitted: (grantId) =>
       memory.existingProductHistoryCommitted(grantId),
-    replay: async (request, route) => {
-      const metadata = chats.getMetadata(route.chatId);
+    /* 重放只需要 Chat 自己：已存代际就是续聊的起点。这里曾另外要求 Project
+       仍绑着同一个目录、membershipRevision 与 history 索引一致——那道门把
+       「文件夹恢复出来的 Project」整类挡在续聊之外，而它与「这条 Chat 存着
+       什么」毫无关系。 */
+    replay: async (request) => {
+      const metadata = chats.getMetadata(request.chatId);
       const origin = metadata?.importOrigin;
-      if (!origin || request.turnOptions.backend === origin.sourceKind) return null;
       const coordinator = getCoordinator();
-      const project = metadata.projectId ? projectStore.get(metadata.projectId) : undefined;
-      const indexed = project ? service.index.project(project.id) : undefined;
-      if (!coordinator || !project || !indexed || project.archivedAt ||
-        project.workspaceBinding.kind !== "external" || project.membershipRevision !== indexed.membershipRevision ||
-        project.dir !== indexed.canonicalRoot || metadata.readOnlyReason !== "external-readonly" || metadata.archivedAt ||
+      const project = metadata?.projectId ? projectStore.get(metadata.projectId) : undefined;
+      if (!coordinator || !metadata || !origin || !project || project.archivedAt ||
+        metadata.readOnlyReason !== "external-readonly" || metadata.archivedAt ||
         metadata.context.kind !== "ordinary") throw new Error("Imported Chat is unavailable for continuation");
-      if (origin.historyRevision !== request.expectedHistoryRevision) throw Object.assign(
-        new Error("历史会话已变化，请刷新后重试"), { code: "HISTORY_REVISION_CHANGED" });
       const page = await chats.timelinePage({ chatId: metadata.id, limit: 1 });
-      if (!page?.activeGenerationId || page.activeGenerationId !== route.generationId) {
-        throw new Error("Saved-history continuation generation changed");
-      }
+      if (!page?.activeGenerationId) throw new Error("Saved-history continuation generation is missing");
       const intentId = `adopt_${randomUUID().replaceAll("-", "")}`;
       const { submission } = request;
       const firstMessage = { id: `user_${randomUUID().replaceAll("-", "")}`, role: "user" as const,
@@ -166,28 +160,18 @@ export async function initializeHistoryImportService({
       });
       return { intentId, chatId: metadata.id, incarnationId: metadata.incarnationId, phase: receipt.phase };
     },
-    adopt: async ({ request, entry, snapshot, route }) => {
+    /* 收养续写的永远是那条已经存在的只读 Chat：身份由 `chat_import_origins`
+       的 sourceKind + storageFingerprint + canonicalNativeId 决定，这里既不
+       新建 Chat，也不重开一个 begin-history-import（同 operationId 携不同
+       requestHash 会被账本硬拒）。 */
+    adopt: async ({ chatId, request, entry, snapshot }) => {
       const coordinator = getCoordinator();
       const project = projectStore.get(entry.projectId);
-      if (!coordinator || !project) throw new Error("收养运行时尚未就绪");
-      if (request.turnOptions.backend !== entry.sourceKind) {
-        throw new Error("续聊 Agent 必须与外源会话同源");
-      }
-      /* 已有 canonical 路由就直接续写它：重开同一个 begin-history-import
-         会以同 operationId 携不同 requestHash 被账本硬拒。 */
-      const imported = route ?? await chats.syncExternalHistory(
-        historyImportSource(
-          entry,
-          publicHistoryEntry(entry),
-          snapshot.incompleteTail
-        ),
-        snapshot.blocks as ForeignHistoryMessage[]
-      );
-      const chatId = imported?.chatId ?? `chat_${randomUUID().replaceAll("-", "")}`;
+      const metadata = chats.getMetadata(chatId);
+      if (!coordinator || !project || !metadata) throw new Error("收养运行时尚未就绪");
       /* 只读 Chat 已经有身份；收养沿用它，绝不换代——换代会让刚刚还在看的
          那条会话的深链、AppGrant 上下文与时间线游标在同一瞬间全部作废。 */
-      const incarnationId = chats.getMetadata(chatId)?.incarnationId
-        ?? randomUUID().replaceAll("-", "");
+      const incarnationId = metadata.incarnationId;
       const messageId = `user_${randomUUID().replaceAll("-", "")}`;
       const requestId = `request_${randomUUID().replaceAll("-", "")}`;
       const intentId = `adopt_${randomUUID().replaceAll("-", "")}`;

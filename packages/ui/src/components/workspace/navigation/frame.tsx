@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Navigation destinations, metadata section models, host actions and optional native window chrome.
- * [OUTPUT]: WorkspaceNavigation owns the complete brand/header, primary routes, ordered groups, settings footer and resize rail, live or inert.
+ * [OUTPUT]: WorkspaceNavigation owns the complete brand/header, the computer strip above the groups, primary routes, ordered groups or the sentence that replaces them, settings footer and resize rail, live or inert.
  * [POS]: The single product sidebar view; Electron IPC, browser queries and routing stay in host adapters.
  */
 import type { ComponentProps, ReactElement, ReactNode } from "react";
@@ -32,6 +32,7 @@ import {
   WorkspaceNavigationSection,
   type NavigationSectionModel,
 } from "./section";
+import { COMPUTER_PANEL_ID } from "../../account/computer-switcher";
 
 type NavigationDestination = {
   label: string;
@@ -56,6 +57,10 @@ export type WorkspaceNavigationProps = {
     bases?: NavigationSectionModel | null;
     chats: NavigationSectionModel;
   };
+  /** The account's computer strip, pinned under the primary routes so the viewed computer never scrolls away. */
+  computers?: ReactNode;
+  /** Replaces the groups while the account has no computer: there is no sidebar to show until one signs in. */
+  noComputers?: ReactNode;
   appsExtras?: ReactNode;
   footerActions?: ReactNode;
   chrome?: ReactNode;
@@ -81,6 +86,8 @@ export function WorkspaceNavigation({
   toggleLabel,
   activity,
   sections,
+  computers,
+  noComputers,
   appsExtras,
   footerActions,
   chrome,
@@ -173,28 +180,34 @@ export function WorkspaceNavigation({
               {appsExtras}
             </SidebarMenuItem>
           </SidebarMenu>
+          {computers}
         </SidebarHeader>
         <SidebarContent>
           <div
             data-sidebar-library-panel
+            id={COMPUTER_PANEL_ID}
             aria-hidden={activity?.active ? true : undefined}
             className={activity?.active ? "hidden" : "contents"}
           >
-            <WorkspaceNavigationSection
-              groupName="projects-header"
-              {...sections.projects}
-            />
-            {sections.bases &&
-              (!sections.bases.empty || sections.bases.pending) && (
+            {noComputers ?? (
+              <>
                 <WorkspaceNavigationSection
-                  groupName="bases-header"
-                  {...sections.bases}
+                  groupName="projects-header"
+                  {...sections.projects}
                 />
-              )}
-            <WorkspaceNavigationSection
-              groupName="chats-header"
-              {...sections.chats}
-            />
+                {sections.bases &&
+                  (!sections.bases.empty || sections.bases.pending) && (
+                    <WorkspaceNavigationSection
+                      groupName="bases-header"
+                      {...sections.bases}
+                    />
+                  )}
+                <WorkspaceNavigationSection
+                  groupName="chats-header"
+                  {...sections.chats}
+                />
+              </>
+            )}
           </div>
           {activity?.active && activity.content}
         </SidebarContent>

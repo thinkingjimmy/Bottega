@@ -38,7 +38,7 @@ export const remoteFunctions = {
   "remote/chats:create": { kind: "mutation", args: z.object({ ...header, creation: encryptedRemoteCreationSchema }).strict(), result: remoteCreationReceiptSchema },
   "remote/chats:created": { kind: "query", args: z.object({ ...header, createOperationId: id }).strict(), result: remoteCreationReceiptSchema.nullable() },
   "remote/chats:initialize": { kind: "mutation", args: z.object({ ...header, initialization: frozenRemoteChatInitializationSchema }).strict(), result: cloudChatHeadSchema },
-  "remote/chats:preparations": { kind: "query", args: z.object({ ...header, connectionEpoch: id, cursor, purpose: z.literal("prewarm").optional() }).strict(),
+  "remote/chats:preparations": { kind: "query", args: z.object({ ...header, connectionEpoch: id, cursor }).strict(),
     result: z.object({ items: z.array(cloudChatHeadSchema).max(REMOTE_LIMITS.pageRows), cursor: z.string().nullable(), complete: z.boolean() }).strict() },
-  "remote/chats:retryPreparation": { kind: "mutation", args: z.object({ ...header, chatId: id, incarnationId: id, executionEpoch: rev, operationId: id }).strict(), result: cloudChatHeadSchema },
+  "remote/chats:retryPreparation": { kind: "mutation", args: z.object({ ...header, chatId: id, incarnationId: id, operationId: id }).strict(), result: cloudChatHeadSchema },
 } as const;

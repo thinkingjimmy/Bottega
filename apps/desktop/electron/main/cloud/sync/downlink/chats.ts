@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on formal bounded native reads, verified private bodies and existing mirror/receipt transactions.
- * [OUTPUT]: Hydrates complete native/imported mirrors across restarts and reconciles executor-independent settled results.
+ * [OUTPUT]: Hydrates complete native/imported mirrors across restarts and reconciles owner-independent settled results.
  * [POS]: Main downlink lifetime; incomplete bodies remain explicitly pending and local authority is never synthesized.
  */
 import { protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";

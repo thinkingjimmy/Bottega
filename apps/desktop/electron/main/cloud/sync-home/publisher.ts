@@ -23,7 +23,7 @@ import { prepareHomeCiphertext, frozenHomePage, uploadHomeFiles } from "./encryp
 export class HomeSnapshotPublisher {
   private readonly metadata;
   constructor(private readonly input: { config: CloudBuildConfig; scope: SyncScope; userData: string; store: ChatSyncStore; homes: ChatHomeService;
-    transport: Pick<AccountTransport, "query" | "mutate">; files: EncryptedBlobTransfer; progress?: (value: FileProgress) => void }) {
+    transport: Pick<AccountTransport, "query" | "mutate">; files: EncryptedBlobTransfer; progress?: () => (value: FileProgress) => void }) {
     this.metadata = new EncryptedChatMetadata({ ...input, userId: input.scope.userId, crypto: () => input.files.crypto });
   }
   async deliver(item: ChatOutboxItem, signal: AbortSignal) {
@@ -35,12 +35,8 @@ export class HomeSnapshotPublisher {
     if (!head || head.chat.incarnationId !== job.incarnationId) throw new Error("HOME_OWNER_UNAVAILABLE");
     const completed = await checkpoints.get("home-complete");
     if (completed?.kind === "home-complete" && !completed.encryptedStatus) throw new Error("HOME_CIPHER_COMPLETION_REQUIRED");
-    if (!completed && head.executionEpoch > job.executionEpoch) {
-      await store.mutate(scope, hashChatContent(["home-head", scope, head]), { type: "accept-chat-head", head });
-      await store.mutate(scope, hashChatContent(["home-archive", item.id, item.payload_digest]), { type: "archive-home-job", id: item.id, payloadDigest: item.payload_digest }); return;
-    }
     if (!completed) {
-      if (head.executionEpoch !== job.executionEpoch || head.executorDeviceId !== job.sourceDeviceId) throw new Error("HOME_EXECUTOR_CHANGED");
+      if (head.ownerDeviceId !== job.sourceDeviceId) throw new Error("HOME_NOT_OWNER");
       if (head.headSeq < job.throughSeq) return;
       await this.publish(item, head, signal);
     }
@@ -63,7 +59,7 @@ export class HomeSnapshotPublisher {
     if (!source) {
       if (item.entity_kind === "home-snapshot") throw new Error("HOME_SNAPSHOT_CAPTURE_PENDING");
       const current = await this.metadata.head(head.chat.id, signal); signal.throwIfAborted();
-      if (!current || current.chat.incarnationId !== head.chat.incarnationId || current.executionEpoch !== head.executionEpoch || current.executorDeviceId !== head.executorDeviceId) throw new Error("HOME_EXECUTOR_CHANGED");
+      if (!current || current.chat.incarnationId !== head.chat.incarnationId || current.ownerDeviceId !== head.ownerDeviceId) throw new Error("HOME_NOT_OWNER");
       source = await custody.capture(this.input.homes, { ...head, headSeq: current.headSeq }, hashChatContent([scope, item.id, "home"]), signal);
       signal.throwIfAborted(); await saveFrozenHome(checkpoints, source);
     }

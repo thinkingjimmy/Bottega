@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The sequencing type of shared Agent/Settings only
- * [OUTPUT]: Foreign-history contracts retaining structured completion and continuation receipts with durable manual intent identity, including failed outcomes.
+ * [OUTPUT]: Foreign-history contracts retaining structured completion and chat-scoped continuation receipts with durable manual intent identity, including failed outcomes.
  * [POS]: The single source of truth for the shared history-import wire; the renderer never receives a source file path and cannot forge a SessionRef
  */
 
@@ -171,10 +171,15 @@ export type HistoryAdoptionSubmission = Readonly<{
   planMode?: boolean;
 }>;
 
+/* ── 续聊只认 Chat 自己 ────────────────────────────────────────
+ * 这里曾收 `opaqueId + expectedHistoryRevision`，也就是 history 索引里的
+ * 一条路由。那份索引住在 userData：换档案、从文件夹恢复，它必然为空，于是
+ * 一条导入 Chat 会在自己还完好无损的时候变成只读。目标由 Chat 的
+ * `importOrigin` 决定，收养还是重放由 main 静默择一。
+ * ────────────────────────────────────────────────────────── */
 export type PrepareHistoryAdoptionInput = Readonly<{
   authenticationRetry?: import("./agent-availability/types").AuthenticationRetryIntent;
-  opaqueId: string;
-  expectedHistoryRevision: string;
+  chatId: string;
   submission: HistoryAdoptionSubmission;
   turnOptions: AgentTurnOptions;
 }>;

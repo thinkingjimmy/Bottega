@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on authenticated account admission, durable binding, actual inventory and a scoped synchronization run.
- * [OUTPUT]: Owns durable consent/status projection, setup-scoped failures and inventory-bound cleanup with identity fences and a retryable cleanup failure.
+ * [OUTPUT]: Owns durable consent/status projection including the scanned byte total a synced pass is held to, setup-scoped failures and inventory-bound cleanup with identity fences and a retryable cleanup failure.
  * [POS]: Main lifecycle coordinator; durable business state remains in the four existing Stores.
  */
 import { randomUUID } from "node:crypto";
@@ -27,7 +27,13 @@ export class InitialSyncController {
   private identity = "";
   private progress = syncProgressSchema.parse({ status: "not-connected" });
   constructor(private readonly ports: Ports) {}
-  private publish(value: Partial<SyncProgress>) { if (!this.closed) { this.progress = syncProgressSchema.parse({ ...this.progress, ...value }); this.ports.changed(this.progress); } }
+  private publish(value: Partial<SyncProgress>) {
+    if (this.closed) return;
+    const next = syncProgressSchema.parse({ ...this.progress, ...value });
+    // A pass that left nothing behind uploaded everything the scan counted; the row never settles below its own total.
+    this.progress = next.status === "synced" ? { ...next, uploadedBytes: next.totalBytes } : next;
+    this.ports.changed(this.progress);
+  }
   private ready() {
     const account = this.ports.account();
     if (this.closed || account.status !== "ready" || !account.profile || !account.deviceId) throw new Error("SYNC_ACCOUNT_UNAVAILABLE");
@@ -62,7 +68,8 @@ export class InitialSyncController {
   }
   /* The binding is written paused on purpose, so this never resumes: the setup operation
      unpauses and resumes once its consent is committed. Resuming here would publish a
-     "Paused" row with a Resume button the system is one await away from leaving. */
+     "Paused" row for a state the system is one await away from leaving — and nothing in the
+     product can put it back, because signing in is the only thing that starts this. */
   async approve(reviewId: string, encryption: EncryptedConsent, current: () => boolean = () => true) {
     const { userId, value } = this.validateReview(reviewId), generation = this.generation;
     if (!current()) throw new Error("cloud-request-superseded");
@@ -79,7 +86,7 @@ export class InitialSyncController {
     if (account.status === "ready") { this.resume(); return; }
     const binding = this.ports.binding.snapshot();
     if (binding) this.publish({ status: binding.phase === "closing" ? "closing" : binding.paused ? "paused" : "offline" });
-    else this.publish({ status: "not-connected", pending: 0, conflicts: 0, appIssues: [], error: null, phase: null });
+    else this.publish({ status: "not-connected", pending: 0, conflicts: 0, appIssues: [], error: null, ownerHost: null, phase: null });
   }
   resume() {
     const account = this.ports.account();
@@ -101,10 +108,6 @@ export class InitialSyncController {
     this.publish({ status: binding.phase === "initializing" ? "initializing" : "syncing", error: null });
     void run.start().catch(() => { if (this.run === run && generation === this.generation) this.publish({ status: "error", error: "upload-failed" }); });
   }
-  async pause(paused: boolean) {
-    this.ready(); await this.ports.scope.pause(paused);
-    if (paused) { this.generation++; this.publish({ status: "paused" }); } else this.resume();
-  }
   /** Reports which tail the caller owes: a finished disconnect still has to clear the native key cache. */
   async retry(): Promise<"disconnected" | "resumed"> {
     this.ready();
@@ -124,7 +127,7 @@ export class InitialSyncController {
   private async readmit() {
     const account = this.ports.account();
     if (account.status === "ready" && account.profile && account.deviceId) await this.ports.scope.admit(account.profile.userId, account.deviceId);
-    this.publish({ status: "not-connected", pending: 0, conflicts: 0, appIssues: [], phase: null, error: null });
+    this.publish({ status: "not-connected", pending: 0, conflicts: 0, appIssues: [], phase: null, error: null, ownerHost: null });
   }
   private async cleanupInventory(userId: string) {
     const plan = await captureScopeCleanup(this.ports.owners, { environment: this.ports.config.environmentId, userId }, "cleanup-review");

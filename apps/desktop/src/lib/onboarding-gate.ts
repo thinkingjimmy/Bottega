@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on shared BackendInfo installation facts, durable execution preference and ChatHomeState.
- * [OUTPUT]: Owns installation-or-remote-preference onboarding admission and held/forced routing; conversation eligibility remains separate.
- * [POS]: Sole determiner of the renderer's startup routing; SetupProvider's entry gate and OnboardingView's step list both read the same verdict, so a missing requirement is always guided into onboarding with no exemption path
+ * [INPUT]: Depends on shared BackendInfo installation facts, the durable Install later mark and ChatHomeState.
+ * [OUTPUT]: Owns installation-or-deferred onboarding admission and held/forced routing; conversation eligibility remains separate.
+ * [POS]: Sole determiner of the renderer's startup routing; SetupProvider's entry gate and OnboardingView's step list both read the same verdict, and the Agent step's only exemption is the recorded Install later mark, which is read as a fact like any other
  */
 
 import type { BackendInfo } from "../../shared/agent-ipc";
@@ -51,13 +51,14 @@ export const chatHomeRequirement = (
 export const isAgentInstalled = (backend: Pick<BackendInfo, "runtimeStatus">) =>
   backend.runtimeStatus === "installed" || backend.runtimeStatus === "unsupported";
 
-/** Positive installation evidence permits continuing before the remaining scan finishes. */
+/** Positive installation evidence permits continuing before the remaining scan finishes;
+    Install later is the deliberate exemption, so a computer with no CLI is asked once and can still operate other computers. */
 export const agentRequirement = (
   backends: readonly BackendInfo[] | null,
   checking: boolean,
-  defaultExecutionDeviceId: string | null = null
+  deferred = false
 ): RequirementStatus => {
-  if (defaultExecutionDeviceId || backends?.some(isAgentInstalled)) return "satisfied";
+  if (deferred || backends?.some(isAgentInstalled)) return "satisfied";
   const pending =
     checking ||
     Boolean(backends?.some((entry) => entry.runtimeStatus === "unknown"));
@@ -89,9 +90,9 @@ export function onboardingGate({
     if (forced) return "onboarding";
     if (held === "app" && facts["chat-home"] === "satisfied") return "app";
     if (!settled) return held;
-    /* 没有豁免这一档：两个门槛没补齐就是进不去。从前这里还问一句
-       「用户按过稍后配置没有」，而那颗按钮连同它背后的记号已经一并撤销
-       ——留着一个只有 devtools 够得着的旁路，等于门没关严。 */
+    /* 这里没有第二套判据：豁免只存在于事实里。Agent 步骤的「稍后再装」
+       写进设置后，agentRequirement 直接判 satisfied——门照常关严，
+       放行的是一条被记录下来的事实，不是一个绕过门的旁路。 */
     return missing.length > 0 ? "onboarding" : "app";
   };
   return { phase: decide(), facts, missing, settled };

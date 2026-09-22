@@ -22,8 +22,8 @@ export async function commandEvidence(context: RemoteContext, ports: { ledger: R
   const canonical = await ports.store.sync.read(context.scope, { type: "turn-receipt", turnId: admission.requestId }); ports.current();
   if (canonical.type === "turn-receipt" && canonical.value?.settlementState === "settled") {
     const receipt = canonical.value;
-    if (receipt.chatId !== context.chatId || receipt.incarnationId !== context.incarnationId || receipt.executionEpoch !== context.executionEpoch ||
-      receipt.executorDeviceId !== context.targetDeviceId || receipt.userMessageId !== admission.userMessageId) throw new Error("REMOTE_RESULT_IDENTITY_CHANGED");
+    if (receipt.chatId !== context.chatId || receipt.incarnationId !== context.incarnationId ||
+      receipt.ownerDeviceId !== context.targetDeviceId || receipt.userMessageId !== admission.userMessageId) throw new Error("REMOTE_RESULT_IDENTITY_CHANGED");
     if (receipt.terminalKind) return terminal(receipt.terminalKind);
     return { state: "outcome-unknown", admission, reason: "outcome-unknown" };
   }

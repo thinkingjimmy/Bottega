@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the database protocol's command, request, response, and failure types
- * [OUTPUT]: Validates closed worker envelopes, prepared replay sealing, nullable-session continuation notices, executor commits, and optional App retention identity.
+ * [OUTPUT]: Validates closed worker envelopes, prepared replay sealing, nullable-session continuation notices, ownership commits, and optional App retention identity.
  * [POS]: Runtime codec for the main/worker trust boundary; protocol types remain declarative in database-protocol.ts
  */
 
@@ -96,11 +96,11 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
   }, { cursor: object }),
   "switch-agent": command({ ...op, ...chatDevice, incarnationId: string, intentId: string,
     submissionHash: string, intent: object, expectedAggregateRevision: number, targetOptions: object,
-    notice: object, userMessage: object, assistantMessageId: string, assistantSeq: number }, { executorCommit: object }),
-  "reserve-turn-sequences": command({ ...op, ...chatDevice, incarnationId: string, intentId: string, submissionHash: string }, { executorNotice: boolean, contextNotice: boolean }),
-  "reserve-switch-sequences": command({ ...op, ...chatDevice, incarnationId: string, intentId: string, submissionHash: string, intent: object }, { executorNotice: boolean }),
+    notice: object, userMessage: object, assistantMessageId: string, assistantSeq: number }, { ownerCommit: object }),
+  "reserve-turn-sequences": command({ ...op, ...chatDevice, incarnationId: string, intentId: string, submissionHash: string }, { contextNotice: boolean }),
+  "reserve-switch-sequences": command({ ...op, ...chatDevice, incarnationId: string, intentId: string, submissionHash: string, intent: object }),
   "upsert-record": command({ ...op, record: object, deviceId: string }, {
-    executorCommit: object,
+    ownerCommit: object,
     lifecycleKind: literal("native", "external-managed"),
     expectedAggregateRevision: nullable(number),
   }),
@@ -110,7 +110,7 @@ const COMMAND_RULES: Record<DatabaseCommand["kind"], Rule> = {
     expectedAggregateRevision: number,
     facts: object,
   }),
-  "append-message": command({ ...op, ...chatDevice, message: object, ...messageRevisions }, { executorCommit: object }),
+  "append-message": command({ ...op, ...chatDevice, message: object, ...messageRevisions }, { ownerCommit: object }),
   "commit-turn": command({
     ...op,
     ...chatDevice,
@@ -245,8 +245,8 @@ const RESULT_RULES: Record<DatabaseCommand["kind"], Rule> = {
   "get-outline-page": nullableObject,
   "find-messages": nullable(shape({ items: array, total: number, nextCursor: nullableObject })),
   "switch-agent": mutation("switch-agent", object),
-  "reserve-switch-sequences": mutation("reserve-switch-sequences", shape({ chatId: string, chatRecordRevision: number, userSeq: number, assistantSeq: number }, { noticeSeq: number, executorNoticeSeq: number, execution: object }, true)),
-  "reserve-turn-sequences": mutation("reserve-turn-sequences", shape({ chatId: string, chatRecordRevision: number, userSeq: number, assistantSeq: number }, { noticeSeq: number, executorNoticeSeq: number, execution: object }, true)),
+  "reserve-switch-sequences": mutation("reserve-switch-sequences", shape({ chatId: string, chatRecordRevision: number, userSeq: number, assistantSeq: number }, { noticeSeq: number, execution: object }, true)),
+  "reserve-turn-sequences": mutation("reserve-turn-sequences", shape({ chatId: string, chatRecordRevision: number, userSeq: number, assistantSeq: number }, { noticeSeq: number, execution: object }, true)),
   "read-library-import": object,
   "read-library-native": object,
   "list-library-mirrors": array,

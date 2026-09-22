@@ -5,7 +5,7 @@
  */
 import { cloudAccountSource } from "../../client";
 import type { AccountFacade } from "@ai-chat/chat-ui/contracts";
-import type { RemoteCommandPort, RemoteExecutorPort, RemoteTargets } from "@ai-chat/chat-ui/remote-contracts";
+import type { RemoteCommandPort, RemoteExecutionPort, RemoteTargets } from "@ai-chat/chat-ui/remote-contracts";
 import type { CloudRemoteBridge } from "../../../../../shared/cloud/remote/contracts";
 declare global { interface Window { cloudRemote?: CloudRemoteBridge } }
 const scopes = new WeakMap<CloudRemoteBridge, Map<string, object>>();
@@ -26,7 +26,7 @@ export function desktopRemotePorts(bridge: CloudRemoteBridge, account: AccountFa
     return value.deviceId;
   };
   const call = async <T,>(run: () => Promise<T>) => { const deviceId = current(); const result = await run(); if (current() !== deviceId) throw new Error("REMOTE_ACCOUNT_CHANGED"); return result; };
-  const execution = async (run: () => ReturnType<CloudRemoteBridge["selectExecutor"]>) => {
+  const preparation = async (run: () => ReturnType<CloudRemoteBridge["retryPreparation"]>) => {
     const result = await call(run);
     if ("rejected" in result) throw Object.assign(new Error(result.rejected), { data: result.rejected });
     return result;
@@ -59,13 +59,13 @@ export function desktopRemotePorts(bridge: CloudRemoteBridge, account: AccountFa
     watch: (commandId, changed, failed) => watch((receive, reject) => bridge.watchCommand({ commandId }, receive, reject), changed, failed),
     watchPage: (chatId, cursor, changed, failed) => watch((receive, reject) => bridge.watchCommands({ chatId, cursor }, receive, reject), changed, failed),
   };
-  const executor: RemoteExecutorPort = {
+  const execution: RemoteExecutionPort = {
     projectFiles: async (input, signal) => { signal.throwIfAborted(); const value = await call(() => bridge.projectFiles(input)); signal.throwIfAborted(); return value; },
     targets: async input => { const page = await call(() => bridge.targets(input)); enabled = page.remoteControlEnabled; return page; },
     watchTargets: (input, changed, failed) => watch<RemoteTargets>((receive, reject) => bridge.watchTargets(input, receive, reject), page => { enabled = page.remoteControlEnabled; changed(page); }, failed),
-    select: input => execution(() => bridge.selectExecutor(input)), prepareCreate: input => call(() => bridge.prepareCreate(input)), create: (input, frozen) => call(() => bridge.create({ input, frozen })),
-    created: createOperationId => call(() => bridge.created({ createOperationId })), retryPreparation: input => execution(() => bridge.retryPreparation(input)),
+    prepareCreate: input => call(() => bridge.prepareCreate(input)), create: (input, frozen) => call(() => bridge.create({ input, frozen })),
+    created: createOperationId => call(() => bridge.created({ createOperationId })), retryPreparation: input => preparation(() => bridge.retryPreparation(input)),
   };
   invalidate();
-  return { commands, executor, available: () => !lifetime.signal.aborted && enabled && account.snapshot().state === "ready" && account.snapshot().profile?.userId === userId && account.snapshot().deviceId === expectedDeviceId };
+  return { commands, execution, available: () => !lifetime.signal.aborted && enabled && account.snapshot().state === "ready" && account.snapshot().profile?.userId === userId && account.snapshot().deviceId === expectedDeviceId };
 }

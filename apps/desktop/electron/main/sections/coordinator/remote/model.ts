@@ -15,7 +15,7 @@ const id = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/), hash = z.string().regex(/
 export const remoteOriginSchema = z.object({ kind: z.literal("remote"), commandId: id, sourceDeviceId: id,
   sourceDeviceName: z.string().min(1).max(120), payloadHash: hash, ciphertextHash: hash }).strict();
 export const remoteContextSchema = z.object({ origin: remoteOriginSchema, scope: syncScopeSchema,
-  chatId: id, incarnationId: id, targetDeviceId: id, executionEpoch: z.number().int().nonnegative(),
+  chatId: id, incarnationId: id, targetDeviceId: id,
   references: remoteReferencesSchema.readonly().optional(), connectionEpoch: id, expiresAt: z.number().int().positive(), fullAccessConsent: remoteFullAccessConsentSchema.optional() }).strict();
 export const remoteSubmissionSchema = z.object({ context: remoteContextSchema, envelope: z.unknown(), submissionHash: hash }).strict();
 export type RemoteContext = z.infer<typeof remoteContextSchema>;

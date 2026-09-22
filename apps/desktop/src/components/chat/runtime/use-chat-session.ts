@@ -161,6 +161,7 @@ export function useChatSession({
     chatId, hydratedChatId, projectionRef, messagesRef, setMessages, platform,
   });
   const {
+    workspaceBinding,
     workspaceIdentityKey,
     workspacePrecondition,
     workspaceScope,
@@ -185,7 +186,7 @@ export function useChatSession({
   }, [workspaceScopeKey]);
   const catalogs = useSessionRuntimeCatalogs({
     scope, sessionReady: !loading && hydratedChatId === chatId,
-    workspaceScope, workspaceScopeKey, draftAgent,
+    workspaceScope, workspaceScopeKey, workspaceBinding, draftAgent,
   });
   const { setup, settings, selectedBackend, backendState, planSupported, workspaceFileSearch } = catalogs;
   const { lockBackend } = settings;

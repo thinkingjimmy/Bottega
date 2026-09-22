@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on exact executor/request identity, original Agent bridge handlers and the existing Steer outbox.
- * [OUTPUT]: Applies closed remote controls with immutable retry evidence and original deadlines after asynchronous validation.
+ * [INPUT]: Depends on exact owner/request identity, original Agent bridge handlers and the existing Steer outbox.
+ * [OUTPUT]: Applies closed remote controls with immutable retry evidence and original deadlines after asynchronous validation; a control this computer already settled for another controller reports the winning device with its already-resolved result.
  * [POS]: Intake control adapter; approvals, user input, cancellation and steering retain their original main handlers.
  */
 import type { RemoteWorkspaceService } from "./input/references";
@@ -34,7 +34,9 @@ type Ports = { references?: RemoteWorkspaceService | null; config: CloudBuildCon
 export function controlReport(receipt: ControlReceipt): RemoteCommandReport {
   if (receipt.state === "not-dispatched") return { state: "claimed", noAdmission: true };
   const admission: RemoteAdmission = { intentId: receipt.id, submissionHash: receipt.payloadHash, requestId: receipt.requestId, userMessageId: null };
-  return receipt.state === "applied" ? { state: receipt.output?.kind === "fork-error" ? "error" : "done", admission, result: receipt.result, ...(receipt.output ? { output: receipt.output } : {}), reason: receipt.output?.kind === "fork-error" ? "fork-failed" : null } : { state: "outcome-unknown", admission, reason: "outcome-unknown" };
+  // A loser carries the winner's device, so the controller that lost the race can name the computer that answered.
+  const resolvedBy = receipt.result === "already-resolved" && receipt.resolvedBy ? { resolvedBy: receipt.resolvedBy } : {};
+  return receipt.state === "applied" ? { state: receipt.output?.kind === "fork-error" ? "error" : "done", admission, result: receipt.result, ...resolvedBy, ...(receipt.output ? { output: receipt.output } : {}), reason: receipt.output?.kind === "fork-error" ? "fork-failed" : null } : { state: "outcome-unknown", admission, reason: "outcome-unknown" };
 }
 export async function applyRemoteControl(command: RemoteCommand, context: RemoteContext, current: () => void, ports: Ports): Promise<RemoteCommandReport> {
   if (isRemoteTurnPayload(command.payload) || command.payload.kind === "fork-chat" || command.payload.kind === "list-workspace-files" || command.payload.kind === "read-workspace-file" || command.payload.kind === "withdraw-queued" || command.payload.kind === "reorder-queue") throw new Error("admission-failed");
@@ -62,11 +64,10 @@ export async function applyRemoteControl(command: RemoteCommand, context: Remote
     current();
     const head = await remoteRequest(() => ports.transport.query("chats/metadata:head", { ...protocolHeader(ports.config), expectedUserId: context.scope.userId, encryptedSpace: { scope: ports.crypto().scope, keyPackageFingerprint: ports.crypto().keyPackageFingerprint }, chatId: context.chatId })); current();
     if (!head || head.chat.id !== context.chatId || head.remoteCreation || head.chat.incarnationId !== context.incarnationId) throw new Error("chat-incarnation-mismatch");
-    if (head.executorDeviceId !== context.targetDeviceId || head.executionEpoch !== context.executionEpoch) throw new Error("executor-changed");
+    if (head.ownerDeviceId !== context.targetDeviceId) throw new Error("not-owner");
     if (head.chat.classification.conversationKind !== "ordinary" || head.archivedAt !== null) throw new Error("chat-not-executable");
     const local = await ports.store.sync.read(context.scope, { type: "remote-admission", chatId: context.chatId }); current();
-    if (local.type !== "remote-admission" || local.value?.execution?.head.executionEpoch !== context.executionEpoch ||
-      local.value.execution.head.executorDeviceId !== context.targetDeviceId) throw new Error("executor-changed");
+    if (local.type !== "remote-admission" || local.value?.execution?.head.ownerDeviceId !== context.targetDeviceId) throw new Error("not-owner");
     if (command.connectionEpoch !== context.connectionEpoch) throw new Error("connection-changed");
     if (ports.turns.byRequest(payload.requestId) !== entry || (!decided() && (entry.generation !== generation || entry.sourceTerminal))) throw new Error("request-not-active");
     await ports.clock().assertBeforeEffect(command.expiresAt); current();

@@ -91,6 +91,6 @@ export class DesktopDownlink {
     this.heads.set(chatId, head);
     if (await this.chats.hydrate(head)) this.checked.set(chatId, this.signature(head));
   }
-  private signature(head: CloudChatHead) { return hashChatContent([head.bodyRevision, head.reservedThroughSeq, head.openTurnId, head.executionEpoch]); }
+  private signature(head: CloudChatHead) { return hashChatContent([head.bodyRevision, head.reservedThroughSeq, head.openTurnId]); }
   async close() { this.unsubscribe?.(); this.unsubscribe = null; await this.chats.close(); }
 }

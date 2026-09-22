@@ -33,7 +33,7 @@ export class DesktopChatConvergence {
     if (head.chat.classification.conversationKind !== "ordinary" || !chats.getMetadata(id) || head.openTurnId) return;
     const local = await chats.sync.read(scope, { type: "local-execution", chatId: id }); this.input.current();
     if (local.type !== "local-execution" || !local.value || local.value.residence === "mirror" || local.value.deleted) return;
-    if (!initial && !force && head.executorDeviceId === this.input.deviceId) return;
+    if (!initial && !force && head.ownerDeviceId === this.input.deviceId) return;
     if (!initial) {
       const queue = await chats.sync.read(scope, { type: "metadata-outbox", chatId: id, limit: 100 });
       if (queue.type === "metadata-outbox" && queue.value.some(item => item.kind === "initialize")) return;

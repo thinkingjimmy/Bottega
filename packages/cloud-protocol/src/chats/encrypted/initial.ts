@@ -25,7 +25,7 @@ export function initialContext(scope: CryptoScope, raw: EncryptedInitialManifest
   const { proof: _proof, ...rest } = value;
   const metadata = "ciphertextHash" in rest ? (({ ciphertextHash: _hash, ...binding }) => binding)(rest) : rest;
   return createChatContext(scope, value.chatId, page ? (raw as EncryptedInitialPage).operationId : value.manifestId,
-    { role: "initial", incarnationId: value.incarnationId, expectedRevision: value.executionEpoch,
+    { role: "initial", incarnationId: value.incarnationId, expectedRevision: 0,
       metadataCommitment: hashChatContent([page ? "native-initial-page-v1" : "native-initial-manifest-v1", metadata]) });
 }
 export function validateInitialPacket(scope: CryptoScope, value: EncryptedInitialManifest | EncryptedInitialPage) {

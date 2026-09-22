@@ -227,6 +227,11 @@ export class BackendRuntimeRegistry {
     return this.snapshot(backend);
   }
 
+  /* Closed means every resolve rejects. A handler that answers a renderer asks this instead of catching
+     the rejection: after a safe quit the renderer keeps refreshing for a while, and each of those
+     refreshes used to print a full stack under "Runtime Registry 正在退出" (N-3 / AC-8). */
+  get closed() { return this.shuttingDown; }
+
   resolve(backend: AgentBackendId, refresh = false): Promise<BackendRuntimeSnapshot> {
     if (this.shuttingDown) {
       return Promise.reject(new Error("Runtime Registry 正在退出"));

@@ -77,9 +77,9 @@ export const cloudCopy = {
     "switchAccount": "确认切换账号",
     "switchTitle": "切换这台电脑的账号",
     "switchBody": "云端数据仍属于原账号。切换后，需为当前账号重新开启同步。",
-    "pause": "暂停",
-    "resume": "继续",
     "disable": "停用",
+    "cloudData": "云端数据",
+    "cloudDataDescription": "断开这台电脑并清除它保存的云端副本。退出登录不做其中任何一件。",
     "disableTitle": "停用这台电脑的同步？",
     "disableBody": "这台电脑上仅作为云端镜像的副本将被清除；本机创建或接管的内容及其文件会保留。再次开启同步需要输入同步密码。",
     "disableRemove": "清除 {{mirrors}} 个 Chat 镜像、{{mirroredBases}} 个 Base 镜像、{{mirroredProjects}} 个 Project 镜像和 {{mirroredApps}} 个 App 镜像。",
@@ -92,7 +92,7 @@ export const cloudCopy = {
   },
   "syncStatus": {
     "partial": "Base 数据已同步，部分 App 版本包需要处理",
-    "not-connected": "尚未开启同步。",
+    "not-connected": "这台电脑尚未开始同步。",
     "scanning": "正在扫描本机内容…",
     "initializing": "正在准备首次同步…",
     "syncing": "正在同步…",
@@ -106,7 +106,8 @@ export const cloudCopy = {
     "scan-failed": "无法完成本机内容扫描。请在当前导入结束后重试。",
     "review-expired": "本次扫描已过期，请重新扫描后确认。",
     "upload-failed": "部分内容尚未同步。本机副本已保留，请重试继续。",
-    "cleanup-failed": "断开此账号未能完成。本机内容已保留，请重试以继续。"
+    "cleanup-failed": "断开此账号未能完成。本机内容已保留，请重试以继续。",
+    "library-owned-elsewhere": "这个 Bottega 文件夹属于电脑 {{host}}，当前版本不支持在另一台电脑上打开；新建一个文件夹，或在那台电脑上使用。"
   },
   "syncAppBlocked": {
     "migration-blocked": "此版本需要尚不支持的数据迁移，已保留云端旧版本。",
@@ -119,14 +120,14 @@ export const cloudCopy = {
   },
   "setup": {
     "signIn": "登录",
-    "enable": "开启同步",
+    "enable": "完成登录",
     "signInTitle": "登录以同步这台电脑",
     "browserApproval": "你将在浏览器中确认登录。",
     "signedInAs": "当前登录账号：{{email}}",
     "checkCode": "允许登录前，请确认它与浏览器中显示的验证码一致。",
     "enterPassword": "输入同步密码",
     "enterPasswordDescription": "这台电脑将加入你在其他设备上创建的加密空间。Bottega 无法找回该密码。",
-    "unlockedDescription": "这台电脑已解锁。开启同步即可开始上传本机内容。"
+    "unlockedDescription": "这台电脑已解锁。完成后开始同步。"
   },
   "syncBadge": {
     "synced": "已是最新",
@@ -144,6 +145,7 @@ export const cloudCopy = {
     "locked": "输入同步密码以恢复这台电脑的同步。"
   },
   "syncPhase": {
+    "preparing": "正在准备 Chat",
     "projects": "正在上传 Project",
     "apps": "正在上传 App",
     "chats": "正在上传 Chat",
@@ -256,6 +258,17 @@ export const cloudCopy = {
   "syncNotConnected": "尚未启用同步。",
 
 
+  "computers": {
+    "label": "电脑",
+    "offlineSince": "离线 · {{when}}",
+    "none": "在一台电脑上登录 Bottega 后，这里会出现它的侧栏。",
+    "thisComputer": "本机",
+    "name": "电脑名称",
+    "nameTaken": "已有同名电脑",
+    "notFound": "这台电脑尚未登录该账号。",
+    "nameInvalid": "请输入名称。",
+    "suffixHint": "已有同名电脑，可在此重命名"
+  },
   "devices": "设备",
   "lastSeen": "上次在线：{{when}}",
   "webSession": "Web 会话",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on router, i18n, Chats/Projects/Setup providers, canonical chat context, the exact App Editor route gate, draft routing/residence, the Agent connection warm-up client, PageShell, idle chunk prefetch, side-panel capability policy, and ChatView
- * [OUTPUT]: One ChatPage with selected local/cloud session ports and imported first turns, the cloud port warmed and kept resolved at idle so an executor change swaps ports in one commit and hands the caret back to the rebuilt composer; missing conversations never open draft composers
+ * [OUTPUT]: One ChatPage with selected local/cloud session ports and imported first turns, the cloud port warmed and kept resolved at idle so a residence change swaps ports in one commit and hands the caret back to the rebuilt composer; missing conversations never open draft composers
  * [POS]: The sole product chat route adapter in views
  */
 
@@ -23,7 +23,6 @@ import { useChats } from "@/components/providers/chats-provider";
 import { useProjects } from "@/components/providers/projects-provider";
 import { projectAvailability, submissionDecision } from "../../shared/agent-availability/projection";
 import { useSetup } from "@/components/providers/setup-provider";
-import { useHistory } from "@/components/providers/history/history-provider";
 import { AgentBackendIcon } from "@/lib/agent-backends";
 import { useConversationWarmup } from "@/lib/agent-connections-client";
 import { claimActiveChat } from "@/lib/chat-activity-store";
@@ -42,7 +41,6 @@ import { submitHistoryAdoption } from "@/lib/chat-agent-draft/submission";
 import { openProductDestination } from "@/lib/product-navigation";
 import { AppEditorRouteGate } from "./app-editor-route-gate";
 import { CHAT_PANEL_CAPABILITIES } from "../../shared/placement/facts";
-import type { ForeignHistorySummary } from "../../shared/history-import-ipc";
 import type { ChatSummary } from "../../shared/chats-ipc";
 import { useChatSession, type ChatProjectMode } from "@/components/chat/runtime/use-chat-session";
 import { assembleFirstTurnPayload } from "@/components/chat/runtime/session/create-session-submit";
@@ -69,18 +67,17 @@ function DesktopChatSession({ surfaceVisible, renderPage }: { surfaceVisible: bo
   const draftChatId = useDraftChatId();
   const continuationDraft = useContinuationDraft(id, cloud.head?.chat.classification.conversationKind === "ordinary" ? cloud.head.chat.incarnationId : undefined, account.profile?.userId);
   const local = !id || chats.some(chat => chat.id === id);
-  /* The executor can move mid-turn, and the route follows it into the cloud port with no
-     warning. Warm both halves of that port while the thread is idle so the flip renders the
-     conversation instead of a "Loading" shell over a turn the user is still steering. */
+  /* The route can follow a Chat into the cloud port with no warning. Warm both halves of that
+     port while the thread is idle so the flip renders the conversation instead of a "Loading"
+     shell over a turn the user is still steering. */
   const cloudCapable = Boolean(cloud.sources);
   useEffect(() => {
     if (!cloudCapable) return;
     const cancels = [prefetchWhenIdle(loadCloudSessionChunk), prefetchWhenIdle(loadCloudPageChunk)];
     return () => { for (const cancel of cancels) cancel(); };
   }, [cloudCapable]);
-  const cloudHead = id && cloud.sources && cloud.head && (cloud.residence === "mirror" || cloud.head.executorDeviceId !== account.deviceId ||
-    cloud.head.pendingExecutor && cloud.head.pendingExecutor.deviceId !== account.deviceId) ? cloud.head : null;
-  /* One conversation, two ports. Choosing another computer is not navigation: the columns, the
+  const cloudHead = id && cloud.sources && cloud.head && (cloud.residence === "mirror" || cloud.head.ownerDeviceId !== account.deviceId) ? cloud.head : null;
+  /* One conversation, two ports. Crossing between them is not navigation: the columns, the
      transcript position and the draft all stay, so the only thing the rebuilt tree owes the
      reader is the caret they were typing with. */
   const [port, setPort] = useState({ id, cloud: cloudHead !== null, swapped: false });
@@ -138,7 +135,6 @@ function LocalChatRoute({ surfaceVisible = true, cloudFacts = false, renderPage 
   const { chats, loading: chatsLoading } = useChats();
   const { projects, loading: projectsLoading } = useProjects();
   const setup = useSetup();
-  const { snapshot: historySnapshot } = useHistory();
   const [sidePanelRequest, setSidePanelRequest] =
     useState<SidePanelRequest | null>(null);
   const [truncatedChatId, setTruncatedChatId] = useState<string | null>(null);
@@ -204,15 +200,14 @@ function LocalChatRoute({ surfaceVisible = true, cloudFacts = false, renderPage 
   /* 草稿路由永远没有 summary。草稿 id 稳定之后若还让它去 chats 里撞名，
      一次「已归档」判定就会让下面的守卫在 "/" 上把自己重定向成死循环。 */
   const summary = id ? chats.find((chat) => chat.id === id) : undefined;
-  const canonicalHistory = id
-    ? Object.entries(historySnapshot.canonicalRoutes).find(([, route]) => route.chatId === id)
-    : undefined;
+  /* 续聊许可来自 Chat 自己的导入身份。这里曾在 history 索引的 canonicalRoutes
+     里反查这条 Chat——那份索引住在 userData，换档案或从文件夹恢复必然为空，
+     于是一条完好的导入 Chat 会莫名其妙地只读。 */
+  const importedContinuation = Boolean(summary?.importOrigin) &&
+    summary?.readOnlyReason === "external-readonly";
   const summaryContext = summary?.context;
   const importSegment = summary?.importOrigin
-    ? {
-        sourceStatus: summary.importOrigin.sourceStatus,
-        incompleteTail: summary.importOrigin.incompleteTail,
-      }
+    ? { sourceStatus: summary.importOrigin.sourceStatus }
     : undefined;
   const panelAllowed = summaryContext
     ? CHAT_PANEL_CAPABILITIES[summaryContext.kind].base
@@ -357,14 +352,13 @@ function LocalChatRoute({ surfaceVisible = true, cloudFacts = false, renderPage 
         )}
   </>;
   const page = (
-          summary?.readOnlyReason === "external-readonly" && canonicalHistory ? (
+          importedContinuation ? (
             <ImportedChatView
               renderPage={renderPage}
               key={chatId}
               header={header}
               notices={notices}
               chatId={chatId}
-              history={canonicalHistory[1].summary}
               importSegment={importSegment}
               forkContext={forkContext}
               project={projectMode}
@@ -391,9 +385,6 @@ function LocalChatRoute({ surfaceVisible = true, cloudFacts = false, renderPage 
               project={projectMode}
               sidePanelRequest={sidePanelRequest}
               importSegment={importSegment}
-              composerLockedReason={summary?.readOnlyReason === "external-readonly"
-                ? t("chat.importedReadOnlyReason")
-                : undefined}
               managedWorktree={summary?.executionKind === "managed-worktree"}
               forkContext={forkContext}
               surfaceVisible={surfaceVisible}
@@ -410,12 +401,14 @@ function LocalChatRoute({ surfaceVisible = true, cloudFacts = false, renderPage 
   ) : page;
 }
 
+/* 一条导入 Chat 看起来就是普通聊天：普通 composer，没有告示，也没有「将从
+   已保存的历史继续」。收养还是重放由 main 静默择一，转录里那条分隔线是唯一
+   可见的痕迹。这里与 ChatView 的唯一差别是首轮走续聊入口而不是新建会话。 */
 function ImportedChatView({
   renderPage,
   header,
   notices,
   chatId,
-  history,
   importSegment,
   forkContext,
   project,
@@ -427,7 +420,6 @@ function ImportedChatView({
   header: React.ReactNode;
   notices: React.ReactNode;
   chatId: string;
-  history: ForeignHistorySummary;
   importSegment?: ImportSegmentFacts;
   forkContext?: ChatForkViewContext;
   project: ChatProjectMode;
@@ -438,9 +430,7 @@ function ImportedChatView({
   const { t } = useAppTranslation();
   const session = useChatSession({ scope: { conversationId: chatId }, project });
   const { turnOptions, selectedBackend, planMode } = session.composer;
-  const canContinue = history.canResume || turnOptions.backend !== history.sourceKind;
   const submit = useCallback(async (message: PromptInputMessage, options?: { authenticationRetry?: import("../../shared/agent-availability/types").AuthenticationRetryIntent }) => {
-    if (!canContinue) throw new Error(t("history.resumeUnavailable"));
     const decision = submissionDecision(selectedBackend, Date.now());
     if (decision.decision !== "allow" && !(options?.authenticationRetry && decision.reason === "auth-required")) throw new Error(t("agentAvailability.blocked", { backend: selectedBackend?.displayName ?? turnOptions.backend }));
     const submission = assembleFirstTurnPayload({
@@ -453,19 +443,16 @@ function ImportedChatView({
     if (!submission.displayText && !submission.attachmentPayloads?.length) return;
     await submitHistoryAdoption(chatId, {
       ...(options?.authenticationRetry ? { authenticationRetry: options.authenticationRetry } : {}),
-      opaqueId: history.opaqueId,
-      expectedHistoryRevision: history.historyRevision,
+      chatId,
       submission,
       turnOptions,
     });
-  }, [canContinue, chatId, history.historyRevision, history.opaqueId, planMode, selectedBackend, t, turnOptions]);
+  }, [chatId, planMode, selectedBackend, t, turnOptions]);
   const composer = useMemo(() => ({
     ...session.composer,
     persisted: true,
-    inputDisabled: session.composer.inputDisabled || !canContinue,
-    attachmentNotice: canContinue ? session.composer.attachmentNotice : t("history.resumeUnavailable"),
     handleSubmit: submit,
-  }), [canContinue, session.composer, submit, t]);
+  }), [session.composer, submit]);
   const controller = useMemo(() => ({ ...session, composer }), [composer, session]);
   return (
     <ChatViewFrame

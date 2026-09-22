@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on admitted crypto, ciphertext Home reads, the confirmed Chat head with its executor transition, this device identity and native path validators.
- * [OUTPUT]: Authenticates complete ciphertext and native digest chains before returning any restorable path; an accepted stale-snapshot handoff resolves to an empty Home.
+ * [INPUT]: Depends on admitted crypto, ciphertext Home reads, the confirmed Chat head, this device identity and native path validators.
+ * [OUTPUT]: Authenticates complete ciphertext and native digest chains before returning any restorable path.
  * [POS]: Read-only Home preparation phase; it does not touch the destination filesystem.
  */
 import { protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -10,15 +10,11 @@ import { openHomeManifest, openHomeEntry } from "@ai-chat/cloud-protocol/chats/h
 import type { EncryptedFileDescriptor, FileCipherPort } from "@ai-chat/cloud-protocol/blobs/encrypted/model";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { AccountTransport } from "../../runtime/transport";
-export async function readHomeManifest(input: { config: CloudBuildConfig; userId: string; deviceId: string; crypto(): FileCipherPort; transport: Pick<AccountTransport, "query"> },
+export async function readHomeManifest(input: { config: CloudBuildConfig; userId: string; crypto(): FileCipherPort; transport: Pick<AccountTransport, "query"> },
   head: CloudChatHead, signal: AbortSignal) {
   signal.throwIfAborted();
   if (!head.homeSnapshotId) {
-    /* An explicit "use the last synced files" handoff to this device, taken on the current epoch before any
-       snapshot was ever published, means an empty Home: there is nothing left to wait for. */
-    const transition = head.lastExecutorTransition;
-    const stale = transition?.staleSnapshot && transition.executionEpoch === head.executionEpoch && transition.deviceId === input.deviceId;
-    if (head.homeState !== "none" && !stale) throw new Error("HOME_SNAPSHOT_PENDING");
+    if (head.homeState !== "none") throw new Error("HOME_SNAPSHOT_PENDING");
     return null;
   }
   const crypto = input.crypto(); if (crypto.session.userId !== input.userId) throw new Error("HOME_SCOPE_CHANGED");
@@ -29,7 +25,7 @@ export async function readHomeManifest(input: { config: CloudBuildConfig; userId
   const status = encryptedHomeStatusSchema.parse(result), encryptedManifest = status.manifest;
   const manifest = await openHomeManifest(crypto, encryptedManifest, signal); signal.throwIfAborted();
   if (status.state !== "ready" || manifest.chatId !== head.chat.id || manifest.incarnationId !== head.chat.incarnationId ||
-    manifest.snapshotId !== head.homeSnapshotId || manifest.executionEpoch > head.executionEpoch ||
+    manifest.snapshotId !== head.homeSnapshotId ||
     status.receivedCount !== manifest.entryCount || status.receivedDigest !== encryptedManifest.digest ||
     status.bytes !== encryptedManifest.bytes || status.omittedCount !== manifest.omittedCount) throw new Error("HOME_SNAPSHOT_INCOMPLETE");
   const entries: HomeEntry[] = [], paths = new Set<string>(), files = new Set<string>(), directories = new Set<string>();

@@ -16,9 +16,8 @@ import type { desktopChatSources } from "@/lib/cloud/chat/sources";
 import { ContinuationBanner, useContinuation, type ContinuationDraft } from "./continuation";
 import { DesktopFactsEntry } from "./facts";
 import { SourceApp } from "./source-app";
-import { settingsStore } from "@/lib/settings-store";
 import { restoreArchiveTargets } from "@/lib/archive-client";
-import { useEffect, useSyncExternalStore, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDesktopPanelServices } from "./panel/platform";
 import { useSidebar } from "@ai-chat/ui/components/ui/sidebar";
 import { isApplePlatform } from "@/lib/platform";
@@ -35,10 +34,9 @@ const loadCloudPageChunk = () => import("@ai-chat/chat-ui/page/cloud").then(modu
 void loadCloudPageChunk().catch(() => {});
 export function DesktopCloudSession({ head, sources, draft, renderPage, focusComposer = false }: { renderPage: ChatPageRenderer; head: CloudChatHead; sources: ReturnType<typeof desktopChatSources>; draft: ContinuationDraft; focusComposer?: boolean }) {
   useEffect(() => claimActiveChat(head.chat.id), [head.chat.id]);
-  const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.getSnapshot);
   const navigate = useNavigate(), { i18n, t } = useAppTranslation(), [search] = useSearchParams(), { devices } = useChatDevices();
-  const copy = executionCopy(i18n.language), device = devices.find(value => value.deviceId === head.executorDeviceId);
-  const execution = useContinuation(head.chat.id, sources.executor), ordinary = head.chat.classification.conversationKind === "ordinary";
+  const copy = executionCopy(i18n.language), device = devices.find(value => value.deviceId === head.ownerDeviceId);
+  const execution = useContinuation(head.chat.id, sources.execution), ordinary = head.chat.classification.conversationKind === "ordinary";
   const remoteDraft = useRemoteComposerDraft(head.chat.id, draft);
   const panels = useDesktopPanelServices(head), { state } = useSidebar();
   const [menuOpen, setMenuOpen] = useState(false), [menuLocked, setMenuLocked] = useState(false);
@@ -54,9 +52,9 @@ export function DesktopCloudSession({ head, sources, draft, renderPage, focusCom
     headerActions={<Popover open={menuOpen} onOpenChange={open => { if (open || !menuLocked) setMenuOpen(open); }}><PopoverTrigger asChild><Button size="icon-lg" variant="ghost" aria-label={t("chat.sidePanel.more")}><Ellipsis /></Button></PopoverTrigger>
       <PopoverContent align="end" className="max-h-[80dvh] w-80 overflow-y-auto"><DesktopFactsEntry chatId={head.chat.id} onBlockingChange={setMenuLocked} /></PopoverContent></Popover>}
     notices={head.chat.classification.appId && <SourceApp appId={head.chat.classification.appId} />}
-    keepComposerVisible={Boolean(settings?.defaultExecutionDeviceId)} bindProject={sources.bindProject} targetMessageId={search.get("messageId")}
+    bindProject={sources.bindProject} targetMessageId={search.get("messageId")}
     restore={head.archivedAt !== null ? async () => { await restoreArchiveTargets([{ kind: "chat", id: head.chat.id }]); } : undefined}
-    readOnlyFooter={<ContinuationBanner chatId={head.chat.id} executor={sources.executor} view={execution.view} copy={copy} draft={draft}
+    readOnlyFooter={<ContinuationBanner chatId={head.chat.id} execution={sources.execution} view={execution.view} copy={copy} draft={draft}
       ordinary={ordinary} deviceName={device?.name ?? copy.computer} deviceState={device?.state === "revoked" ? copy.revoked : device?.presenceState === "online" ? copy.online : copy.offline} />}
     navigateToChat={(id, messageId) => navigate(`/chat/${encodeURIComponent(id)}?messageId=${encodeURIComponent(messageId)}`)} />;
 }

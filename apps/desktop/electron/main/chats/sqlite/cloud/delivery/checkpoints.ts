@@ -81,9 +81,7 @@ export function saveCheckpoint(db: SqliteDatabase, scope: SyncScope, id: string,
   }
   if (checkpoint.kind === "native-recovery-head") {
     const basis = priorValue("native-recovery");
-    if (basis.kind !== "native-recovery" || basis.head.chat.incarnationId !== checkpoint.head.chat.incarnationId ||
-      checkpoint.expectedEpoch < basis.head.executionEpoch || checkpoint.head.executionEpoch < checkpoint.expectedEpoch ||
-      checkpoint.status === "conflict" && checkpoint.head.executionEpoch === checkpoint.expectedEpoch) throw new Error("NATIVE_RECOVERY_HEAD_CHANGED");
+    if (basis.kind !== "native-recovery" || basis.head.chat.incarnationId !== checkpoint.head.chat.incarnationId) throw new Error("NATIVE_RECOVERY_HEAD_CHANGED");
   }
   if (checkpoint.kind === "metadata-receipt") {
     const predecessor = priorValue("metadata-operation"), receipt = checkpoint.receipt;
@@ -124,12 +122,6 @@ export function saveCheckpoint(db: SqliteDatabase, scope: SyncScope, id: string,
   if (checkpoint.kind === "deletion-receipt") {
     recordDeletionResult(db, scope, item, checkpoint.receipt, now);
     if (checkpoint.receipt.status !== "conflicted") settleDeletedInitialization(db, scope, checkpoint.receipt.tombstone, now);
-  }
-  if (checkpoint.kind === "native-complete" && checkpoint.manifest.lastCommittedUserSeq !== null) {
-    db.prepare(`UPDATE chats SET cloud_last_committed_executor_device_id=cloud_executor_device_id
-      WHERE id=? AND incarnation_id=? AND cloud_environment=? AND cloud_user_id=? AND cloud_execution_epoch=?
-        AND cloud_last_committed_executor_device_id IS NULL`)
-      .run(chatId, checkpoint.manifest.incarnationId, scope.environment, scope.userId, checkpoint.manifest.executionEpoch);
   }
   return source;
 }

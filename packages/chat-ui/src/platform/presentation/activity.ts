@@ -7,7 +7,7 @@ import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 export type ActivityPersistence = { read(): unknown; write(value: string[]): void };
 export function activityIdentity(head: CloudChatHead): string | null {
   const turn = head.activityTurn;
-  return turn?.terminal ? JSON.stringify([head.chat.id, head.chat.incarnationId, turn.turnId, turn.executorDeviceId, turn.executionEpoch, turn.sequence]) : null;
+  return turn?.terminal ? JSON.stringify([head.chat.id, head.chat.incarnationId, turn.turnId, turn.ownerDeviceId, turn.sequence]) : null;
 }
 export class ChatActivityStore {
   private readonly consumed = new Set<string>();

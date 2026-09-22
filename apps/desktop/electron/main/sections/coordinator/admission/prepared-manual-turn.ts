@@ -125,7 +125,7 @@ export type PreparedPersistence =
 export type PreparedManualTurn = {
   remoteContext?: import("../remote/model").RemoteContext;
   sequences?: import("../../../../../shared/chat-agent/sequences").TurnSequences;
-  executorCommit?: import("../../../chats/sqlite/cloud/execution/commit").ExecutorCommit;
+  ownerCommit?: import("../../../chats/sqlite/cloud/execution/commit").OwnerCommit;
   agentSwitch?: ManualTurnSubmission["agentSwitch"];
   expectedAgentRevision?: number;
   switchCommand?: import("../../../chats/sqlite/agent-switch/command").SwitchAgentCommand;

@@ -132,10 +132,6 @@ promoteBaseToApp: "Promouvoir {{name}} en App"
     browser: settingsBrowserFr,
     extensions: settingsExtensionsFr,
     backends: {
-      defaultExecutionSaveFailed: "Impossible d’enregistrer l’ordinateur par défaut. Réessayez.",
-      defaultExecutionDevice: "Ordinateur d’exécution par défaut",
-      localExecutionDevice: "Cet ordinateur",
-      defaultExecutionDescription: "Utilisé pour les nouvelles conversations. Sa disponibilité est vérifiée avant l’envoi.",
       title: "Backends Agent",
       description: "L’authentification et l’utilisation sont gérées par chaque CLI officiel ; le produit vérifie seulement l’état local.",
       recheck: "Vérifier à nouveau",
@@ -202,11 +198,10 @@ currentModelUnavailable: "{{model}} (indisponible)"
         "control-invalid": "Bottega n’a pas pu lire les réglages de ce dossier. Choisissez un autre dossier.",
         "already-configured": "Bottega a déjà ouvert un dossier. Redémarrez Bottega pour en ouvrir un autre.",
         "root-changed": "Bottega continue d’utiliser le dossier que vous avez choisi. Redémarrez Bottega pour en ouvrir un autre.",
+        "owned-elsewhere": "Ce dossier Bottega appartient à {{host}}. Cette version ne peut pas l’ouvrir sur un autre ordinateur : créez un nouveau dossier, ou utilisez-le sur cet ordinateur-là.",
       },
       chooseChatHome: "Choisir l’emplacement de Chat Home",
       chooseProject: "Choisir le dossier Project",
-      externalLinkTitle: "Ouvrir un lien externe",
-      externalLinkMessage: "Ce domaine ne figure pas dans la liste de confiance.",
       terminalTitle: "Confirmer l’action dans le terminal",
       terminalMessage: "Cette commande modifiera l’installation locale du CLI.",
       quitFailureTitle: "Impossible de quitter en toute sécurité",
@@ -259,7 +254,6 @@ currentModelUnavailable: "{{model}} (indisponible)"
     emptyPromptInProject: "Que construisons-nous dans {{name}} ?",
     changeProject: "Changer de Project : {{name}}",
     openSidePanel: "Ouvrir le panneau latéral",
-    importedReadOnlyReason: "L’historique importé est en lecture seule.",
     cloud: {
       unavailable: "Cette conversation n’est pas disponible sur cet appareil.",
       deleted: "Cette conversation a été supprimée sur un autre appareil.",
@@ -513,7 +507,6 @@ currentModelUnavailable: "{{model}} (indisponible)"
     folderRecoveryProjectMissing: "Cette Base appartient à un Project que cet ordinateur ne possède plus. Ses fichiers restent intacts dans votre dossier Bottega et reviennent avec le Project.",
     folderRecoveryOwnerChanged: "La conversation propriétaire de cette Base a été remplacée. Ses fichiers restent intacts dans votre dossier Bottega." },
   notice: {
-    executorSwitched: "Suite sur {{device}}",
     manualRecovered: "Le redémarrage de l’application a interrompu la réponse. Renvoyez le message.",
     skillDescriptionsTruncated:
       "Avis de Codex : certaines descriptions de Skills ont été raccourcies pour ce tour afin de respecter le budget de contexte. Codex peut toujours utiliser tous les Skills et cette réponse n’est pas affectée. Cet avis provient de Codex lui-même, pas de Bottega.",

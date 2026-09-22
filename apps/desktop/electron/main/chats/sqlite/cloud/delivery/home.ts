@@ -68,7 +68,7 @@ export function validateHomeEncryptionCheckpoint(checkpoint: ChatDeliveryCheckpo
     const { operation } = checkpoint, offset = operation.offset, source = prior(`home-entries:${offset}`), frozen = prior(`cipher-home-manifest:${manifest.snapshotId}`);
     if (source.kind !== "home-entries" || frozen.kind !== "encrypted-home-manifest" || canonicalJson(homeCipherIdentity(operation)) !== canonicalJson(identity) ||
       canonicalJson(checkpoint.encryptedSpace) !== canonicalJson(frozen.encryptedSpace) || operation.operationId !== hashChatContent([manifest.snapshotId, offset])) throw new Error("HOME_CIPHER_PAGE_CHANGED");
-    const native = { chatId, incarnationId: manifest.incarnationId, executionEpoch: manifest.executionEpoch, snapshotId: manifest.snapshotId,
+    const native = { chatId, incarnationId: manifest.incarnationId, snapshotId: manifest.snapshotId,
       operationId: operation.operationId, payloadHash: checkpoint.plaintextHash, offset, entries: source.entries };
     if (hashHomePage(native) !== checkpoint.plaintextHash || source.entries.length !== operation.entries.length) throw new Error("HOME_CIPHER_PAGE_CHANGED");
     verifyHomePage(checkpoint.encryptedSpace.scope, operation);

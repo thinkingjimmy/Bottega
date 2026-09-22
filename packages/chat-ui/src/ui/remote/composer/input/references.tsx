@@ -8,21 +8,21 @@ import type { RichInputProps, RichInputSuggestion } from "@ai-chat/ui/components
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { RemoteTarget } from "@ai-chat/cloud-protocol/remote/model";
 import type { RemoteWorkspaceResult } from "@ai-chat/cloud-protocol/remote/input/references";
-import type { ChatPlatform, ExecutorFacade } from "../../../../platform/contracts";
+import type { ChatPlatform, ExecutionFacade } from "../../../../platform/contracts";
 import type { RemoteCommandSession } from "../../../../platform/remote/commands/session";
 import type { RemoteDraftStore } from "../../../../platform/remote/input/draft";
 import { queryRemoteWorkspace } from "../../../../platform/remote/workspace";
 import { remoteCopy } from "../../../../i18n/remote";
 import { remoteInputCopy } from "../copy";
 type Query = Parameters<NonNullable<RichInputProps["onQueryChange"]>>[0];
-export function useRemoteReferences(input: { head: CloudChatHead | null; target?: RemoteTarget; platform: (Partial<Pick<ChatPlatform, "capabilities" | "skills" | "commands" | "transcript">> & { executor?: Pick<ExecutorFacade, "remote"> }) | null; session: RemoteCommandSession | null;
+export function useRemoteReferences(input: { head: CloudChatHead | null; target?: RemoteTarget; platform: (Partial<Pick<ChatPlatform, "capabilities" | "skills" | "commands" | "transcript">> & { execution?: Pick<ExecutionFacade, "remote"> }) | null; session: RemoteCommandSession | null;
   projectId?: string | null; store: RemoteDraftStore; locale: string; disabled: boolean }) {
   const [query, setQuery] = useState<Query>(null), [value, setValue] = useState<{ scope: string; store: RemoteDraftStore; target: string; kind: "skill" | "mention"; query: string;
     suggestions: RichInputSuggestion[]; files?: Extract<RemoteWorkspaceResult, { kind: "workspace-files" }>; failed?: boolean } | null>(null);
   const { target, head, platform, session, store, disabled, projectId } = input, copy = remoteCopy(input.locale), text = remoteInputCopy(input.locale);
   const online = Boolean(target?.online), deviceId = target?.deviceId;
-  const chatId = head?.chat.id, incarnationId = head?.chat.incarnationId, executionEpoch = head?.executionEpoch;
-  const scope = `${chatId ?? ""}/${incarnationId ?? ""}/${executionEpoch ?? ""}/${projectId ?? ""}`;
+  const chatId = head?.chat.id, incarnationId = head?.chat.incarnationId;
+  const scope = `${chatId ?? ""}/${incarnationId ?? ""}/${projectId ?? ""}`;
   useEffect(() => {
     if (!platform || !query || disabled || platform.capabilities?.[query.kind === "mention" ? "files" : "skills"] === false || query.kind === "mention" && (!deviceId || !online)) return;
     const abort = new AbortController(), signal = platform.commands?.remote?.lifetime ? AbortSignal.any([abort.signal, platform.commands?.remote.lifetime]) : abort.signal;
@@ -31,9 +31,9 @@ export function useRemoteReferences(input: { head: CloudChatHead | null; target?
         const items = await platform.skills?.list(query.value, signal) ?? []; signal.throwIfAborted();
         setValue({ scope, store, target: deviceId ?? "", kind: query.kind, query: query.value, suggestions: items.map(item => ({ kind: "skill", ref: `library:${item.libraryId}`, name: item.name, label: item.name, description: item.description })) });
       } else {
-        const files = session && chatId && incarnationId && executionEpoch !== undefined && platform.transcript
-          ? await queryRemoteWorkspace({ session, transcript: platform.transcript }, { chat: { id: chatId, incarnationId }, executionEpoch }, deviceId!, { kind: "list-workspace-files", query: query.value }, signal)
-          : projectId ? await platform.executor?.remote?.projectFiles?.({ targetDeviceId: deviceId!, projectId, query: query.value }, signal) : null;
+        const files = session && chatId && incarnationId && platform.transcript
+          ? await queryRemoteWorkspace({ session, transcript: platform.transcript }, { chat: { id: chatId, incarnationId } }, deviceId!, { kind: "list-workspace-files", query: query.value }, signal)
+          : projectId ? await platform.execution?.remote?.projectFiles?.({ targetDeviceId: deviceId!, projectId, query: query.value }, signal) : null;
         signal.throwIfAborted();
         if (!files && !projectId && !chatId) { setValue({ scope, store, target: deviceId ?? "", kind: query.kind, query: query.value, suggestions: [] }); return; }
         if (!files || files.kind !== "workspace-files") throw new Error("workspace-file-unavailable");
@@ -42,7 +42,7 @@ export function useRemoteReferences(input: { head: CloudChatHead | null; target?
       }
     })().catch(() => { if (!signal.aborted) setValue({ scope, store, target: deviceId ?? "", kind: query.kind, query: query.value, suggestions: [], failed: true }); }); }, 600);
     return () => { clearTimeout(timer); abort.abort(); };
-  }, [query, deviceId, online, disabled, platform, session, chatId, incarnationId, executionEpoch, projectId, scope, store]);
+  }, [query, deviceId, online, disabled, platform, session, chatId, incarnationId, projectId, scope, store]);
   const matched = value && value.scope === scope && value.store === store && value.target === (deviceId ?? "") && value.kind === query?.kind && value.query === query.value ? value : null;
   const select = useCallback((suggestion: RichInputSuggestion) => {
     if (disabled || !matched || suggestion.kind === "workspace-file" && (!online || !deviceId) || store.snapshot().references.length >= 32) return false;

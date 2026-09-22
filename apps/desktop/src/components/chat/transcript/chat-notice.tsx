@@ -4,7 +4,6 @@
  * [POS]: chat/transcript control-message renderer; ordinary user and assistant content stays in the standard message bubble path
  */
 
-import { ExecutorBoundary } from "@ai-chat/chat-ui/executor-boundary";
 import { AgentSwitchNotice } from "../agent-switch/notice";
 import { memo, useEffect, useState } from "react";
 import { Button } from "@ai-chat/ui/components/ui/button";
@@ -32,7 +31,6 @@ function localizedNoticeMessageContent(
   t: ReturnType<typeof useAppTranslation>["t"]
 ) {
   if (notice.kind === "app-chat-ready" || notice.kind === "agent-switched") return "";
-  if (notice.kind === "executor-switched") return t("notice.executorSwitched", { device: notice.toName });
   if (notice.kind === "manual-recovered") return t("notice.manualRecovered");
   if (notice.kind === "skill-descriptions-truncated") {
     return t("notice.skillDescriptionsTruncated");
@@ -149,8 +147,6 @@ export const ChatNotice = memo(function ChatNotice({
 }: {
   message: NoticeChatMessage;
 }) {
-  const { i18n } = useAppTranslation();
-  if (message.notice.kind === "executor-switched") return <ExecutorBoundary notice={message.notice} locale={i18n.language} />;
   if (message.notice.kind === "agent-switched") return <AgentSwitchNotice notice={message.notice} />;
   return message.notice.kind === "app-chat-ready"
     ? null

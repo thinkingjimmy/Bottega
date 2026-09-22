@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Chat/adoption contracts, Chat metadata, Chat facts, and connection modes
- * [OUTPUT]: Defines closed SQLite commands/results with nullable-session replay sealing, atomic continuation notices, executor commits, and App transcript retention.
+ * [OUTPUT]: Defines closed SQLite commands/results with nullable-session replay sealing, atomic continuation notices, owner commits, and App transcript retention.
  * [POS]: Trust boundary between Electron main and the sole SQLite owner; arbitrary SQL can never cross this port
  */
 
@@ -232,7 +232,7 @@ export type DatabaseCommand =
     }
   | {
       kind: "upsert-record";
-      executorCommit?: import("./cloud/execution/commit").ExecutorCommit;
+      ownerCommit?: import("./cloud/execution/commit").OwnerCommit;
       operationId: string;
       requestHash: string;
       record: ChatRecord;
@@ -253,7 +253,7 @@ export type DatabaseCommand =
     }
   | {
       kind: "append-message";
-      executorCommit?: import("./cloud/execution/commit").ExecutorCommit;
+      ownerCommit?: import("./cloud/execution/commit").OwnerCommit;
       operationId: string;
       requestHash: string;
       chatId: string;

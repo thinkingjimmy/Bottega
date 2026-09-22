@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on retained source custody, native content and original scoped outbox rows.
  * [OUTPUT]: Preserves original-head native snapshots, independently readable variants and complete source roots after identity removal.
- * [POS]: Execution handoff archive; its identity records the real head instead of inventing a turn receipt.
+ * [POS]: Superseded-execution archive; its identity records the real head instead of inventing a turn receipt.
  */
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { ChatRecord } from "../../../../../../shared/chats-ipc";
@@ -15,18 +15,18 @@ import { pinRecoveryHome } from "../recovery/home";
 export function archiveExecution(db: SqliteDatabase, scope: SyncScope, head: CloudChatHead, record: ChatRecord, outbox: Row[], now: number) {
   const content = { head, classification: head.chat.classification, messages: record.messages, subagents: record.subagents ?? {},
     branches: record.supersededBranches ?? [], trimmedThroughSeq: record.trimmedThroughSeq ?? 0,
-    outbox: outbox.map(row => ({ id: row.id, kind: row.kind, executionEpoch: row.execution_epoch, payloadDigest: row.payload_digest, source: JSON.parse(String(row.payload_json)) })) };
-  const branchId = digest(json([scope, head.chat.id, head.chat.incarnationId, head.executionEpoch, head.bodyRevision, content]));
+    outbox: outbox.map(row => ({ id: row.id, kind: row.kind, payloadDigest: row.payload_digest, source: JSON.parse(String(row.payload_json)) })) };
+  const branchId = digest(json([scope, head.chat.id, head.chat.incarnationId, head.bodyRevision, content]));
   const rootId = `settlement:${head.chat.id}:execution:${branchId}`;
   const prior = db.prepare(`SELECT s.payload_json FROM chat_retention_roots r JOIN chat_retained_sources s ON s.source_id=r.source_id
     WHERE r.root_id=? AND s.kind='superseded-execution-archive'`).get(rootId) as Row | undefined;
   if (prior) return executionArchiveSchema.parse(JSON.parse(String(prior.payload_json)));
   for (const row of outbox) db.prepare(`INSERT OR IGNORE INTO chat_retention_roots(root_id,source_id)
     SELECT ?,source_id FROM chat_retention_roots WHERE root_id=?`).run(rootId, `outbox:${row.id}`);
-  const body = retainSource(db, { scope, chatId: head.chat.id, rootId, kind: "superseded-execution-content", revision: head.executionEpoch, payload: content, now });
-  const descriptor = executionArchiveSchema.parse({ branchId, chatId: head.chat.id, title: head.chat.title, incarnationId: head.chat.incarnationId, executionEpoch: head.executionEpoch,
+  const body = retainSource(db, { scope, chatId: head.chat.id, rootId, kind: "superseded-execution-content", revision: head.bodyRevision, payload: content, now });
+  const descriptor = executionArchiveSchema.parse({ branchId, chatId: head.chat.id, title: head.chat.title, incarnationId: head.chat.incarnationId,
     bodyRevision: head.bodyRevision, canonicalHeadSeq: head.headSeq, createdAt: now, messageCount: record.messages.length, body });
-  retainSource(db, { scope, chatId: head.chat.id, rootId, kind: "superseded-execution-archive", revision: head.executionEpoch, payload: descriptor, now });
+  retainSource(db, { scope, chatId: head.chat.id, rootId, kind: "superseded-execution-archive", revision: head.bodyRevision, payload: descriptor, now });
   pinRecoveryHome(db, scope, record.id, record.incarnationId, record.messages, rootId, now);
   retainRecoveryVariants(db, scope, head, record, outbox, branchId, now);
   return descriptor;

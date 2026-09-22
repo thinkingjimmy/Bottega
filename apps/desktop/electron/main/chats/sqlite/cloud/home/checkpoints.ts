@@ -16,7 +16,7 @@ export function validateHomeCheckpoint(db: SqliteDatabase, _scope: SyncScope, it
   if (manifest.chatId !== JSON.parse(String(item.payload_json)).chatId) throw new Error("CHECKPOINT_CHAT_MISMATCH");
   if (item.entity_kind === "home-snapshot") {
     const job = homeJobSchema.parse(readRetainedSource(db, JSON.parse(String(item.payload_json)).sources[0]));
-    for (const key of ["chatId", "incarnationId", "executionEpoch", "snapshotId", "expectedSnapshotId", "throughSeq"] as const) {
+    for (const key of ["chatId", "incarnationId", "snapshotId", "expectedSnapshotId", "throughSeq"] as const) {
       if (canonicalJson(manifest[key]) !== canonicalJson(job[key])) throw new Error("HOME_JOB_IDENTITY_CHANGED");
     }
   }

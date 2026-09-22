@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the resolved application locale.
- * [OUTPUT]: Provides five-language recovery actions with a precise data-loss boundary, plus the folder relocate/adopt/locked copy.
+ * [OUTPUT]: Provides five-language recovery actions with a precise data-loss boundary, plus the folder relocate/adopt/locked/owned-elsewhere copy.
  * [POS]: Startup recovery copy, available before any renderer or account session exists.
  */
 const en = { title: "Bottega could not open your data", message: "Your files have been kept. You can inspect the data folder or copy the technical details to get help.",
@@ -33,6 +33,9 @@ export function recoveryNotice(category: "custody" | "settings", locale: string)
 const libraryEn = {
   missingTitle: "Your Bottega folder was not found",
   missingMessage: "Bottega keeps your conversations, Projects, Bases, Apps and Skills in this folder. It is no longer at this location, or it now holds different data.",
+  /* Not a failure: the folder is intact and in use, just not by this computer. */
+  ownedTitle: "This Bottega folder belongs to another computer",
+  ownedMessage: "This Bottega folder belongs to {host}. This version cannot open it on another computer — start a new folder here, or use it on that computer.",
   differentFolder: "That folder is a different Bottega folder. Choose the folder this installation has been using.",
   locate: "Locate folder…", startNew: "Start with a new folder…", startNewConfirm: "Start with a new folder?",
   startNewDisclosure: "Your conversations stay on this computer and will be copied into the new folder. Projects, Bases, Apps and Skills from the old folder are not recovered. Nothing in the old folder is changed.",
@@ -43,18 +46,22 @@ type LibraryCopy = typeof libraryEn;
 const libraries: Record<string, LibraryCopy> = {
   en: libraryEn,
   "zh-CN": { missingTitle: "没有找到你的 Bottega 文件夹", missingMessage: "你的对话、Project、Base、App 与 Skills 都放在这个文件夹里。它已不在这个位置，或者里面换成了另一份数据。",
+    ownedTitle: "这个 Bottega 文件夹属于另一台电脑", ownedMessage: "这个 Bottega 文件夹属于电脑 {host}，当前版本不支持在另一台电脑上打开；新建一个文件夹，或在那台电脑上使用。",
     differentFolder: "这是另一个 Bottega 文件夹。请选择本机一直在用的那一个。", locate: "定位文件夹…", startNew: "改用新文件夹…", startNewConfirm: "改用新文件夹？",
     startNewDisclosure: "对话保存在这台电脑上，会被复制到新文件夹。旧文件夹里的 Project、Base、App 与 Skills 不会恢复。旧文件夹不会被改动。",
     lockedTitle: "这个文件夹已被另一个 Bottega 打开", lockedMessage: "本机另一个 Bottega 正在使用这个文件夹。请先关闭它，然后重试。", retry: "重试", quit: "退出", cancel: "取消" },
   ja: { missingTitle: "Bottega フォルダーが見つかりません", missingMessage: "会話、Project、Base、App、Skills はこのフォルダーに保存されています。この場所から移動したか、別のデータに入れ替わっています。",
+    ownedTitle: "この Bottega フォルダーは別のコンピューターのものです", ownedMessage: "この Bottega フォルダーは {host} のものです。現在のバージョンでは別のコンピューターで開けません。新しいフォルダーを作るか、そのコンピューターで使ってください。",
     differentFolder: "これは別の Bottega フォルダーです。これまで使っていたフォルダーを選んでください。", locate: "フォルダーを指定…", startNew: "新しいフォルダーで始める…", startNewConfirm: "新しいフォルダーで始めますか？",
     startNewDisclosure: "会話はこのコンピューターに残り、新しいフォルダーへコピーされます。以前のフォルダーの Project、Base、App、Skills は復元されません。以前のフォルダーは変更されません。",
     lockedTitle: "このフォルダーは別の Bottega で開かれています", lockedMessage: "このコンピューターの別の Bottega がこのフォルダーを使用しています。終了してから再試行してください。", retry: "再試行", quit: "終了", cancel: "キャンセル" },
   fr: { missingTitle: "Votre dossier Bottega est introuvable", missingMessage: "Bottega conserve vos conversations, Projects, Bases, Apps et Skills dans ce dossier. Il n’est plus à cet emplacement, ou il contient désormais d’autres données.",
+    ownedTitle: "Ce dossier Bottega appartient à un autre ordinateur", ownedMessage: "Ce dossier Bottega appartient à {host}. Cette version ne peut pas l’ouvrir sur un autre ordinateur : créez un nouveau dossier ici, ou utilisez-le sur cet ordinateur-là.",
     differentFolder: "Ce dossier est un autre dossier Bottega. Choisissez celui que cette installation utilisait.", locate: "Localiser le dossier…", startNew: "Commencer avec un nouveau dossier…", startNewConfirm: "Commencer avec un nouveau dossier ?",
     startNewDisclosure: "Vos conversations restent sur cet ordinateur et seront copiées dans le nouveau dossier. Les Projects, Bases, Apps et Skills de l’ancien dossier ne sont pas récupérés. Rien n’est modifié dans l’ancien dossier.",
     lockedTitle: "Ce dossier est ouvert dans un autre Bottega", lockedMessage: "Un autre Bottega de cet ordinateur utilise ce dossier. Fermez-le, puis réessayez.", retry: "Réessayer", quit: "Quitter", cancel: "Annuler" },
   es: { missingTitle: "No se encontró tu carpeta de Bottega", missingMessage: "Bottega guarda tus conversaciones, Projects, Bases, Apps y Skills en esta carpeta. Ya no está en esta ubicación o ahora contiene otros datos.",
+    ownedTitle: "Esta carpeta de Bottega pertenece a otro ordenador", ownedMessage: "Esta carpeta de Bottega pertenece a {host}. Esta versión no puede abrirla en otro ordenador: crea una carpeta nueva aquí o úsala en ese ordenador.",
     differentFolder: "Esa carpeta es otra carpeta de Bottega. Elige la que ha estado usando esta instalación.", locate: "Localizar carpeta…", startNew: "Empezar con una carpeta nueva…", startNewConfirm: "¿Empezar con una carpeta nueva?",
     startNewDisclosure: "Tus conversaciones permanecen en este ordenador y se copiarán en la carpeta nueva. Los Projects, Bases, Apps y Skills de la carpeta anterior no se recuperan. No se modifica nada en la carpeta anterior.",
     lockedTitle: "Esta carpeta está abierta en otro Bottega", lockedMessage: "Otro Bottega de este ordenador está usando esta carpeta. Ciérralo y vuelve a intentarlo.", retry: "Reintentar", quit: "Salir", cancel: "Cancelar" },

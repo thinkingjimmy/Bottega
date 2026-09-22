@@ -38,7 +38,7 @@ const privateCommand = z.object({ schema: z.literal("bottega.remote-command/v1")
 export async function prepareRemoteCommand(raw: RemoteCommandInput, head: CloudChatHead, target: EncryptedRemoteTargets["items"][number],
   header: ProtocolHeader, crypto: RemoteCipherPort, clock: ServerClock, signal?: AbortSignal) {
   const input = remoteCommandInputSchema.parse(raw), payload = input.payload;
-  assertCrypto(input.chatId === head.chat.id && input.incarnationId === head.chat.incarnationId && (isRemoteWorkspaceQuery(payload.kind) || input.intent && payload.kind === "start-turn" || input.targetDeviceId === head.executorDeviceId && input.executionEpoch === head.executionEpoch) && target.deviceId === input.targetDeviceId && target.connectionEpoch !== null && target.encryptedSpace !== null);
+  assertCrypto(input.chatId === head.chat.id && input.incarnationId === head.chat.incarnationId && (isRemoteWorkspaceQuery(payload.kind) || input.intent && payload.kind === "start-turn" || input.targetDeviceId === head.ownerDeviceId) && target.deviceId === input.targetDeviceId && target.connectionEpoch !== null && target.encryptedSpace !== null);
   if ("references" in payload) assertRemoteReferenceTarget(payload.references ?? [], input.targetDeviceId);
   if (payload.kind === "read-workspace-file") assertRemoteReferenceTarget([payload.reference], input.targetDeviceId);
   assertExpectedScope(target.encryptedSpace.scope, crypto.scope);
@@ -51,11 +51,11 @@ export async function prepareRemoteCommand(raw: RemoteCommandInput, head: CloudC
   }
   if (isRemoteTurnPayload(payload) && payload.fullAccessConsent) assertCrypto(remoteConsentMatches(payload.fullAccessConsent, {
     userId: crypto.session.userId, sourceDeviceId: crypto.session.deviceId, chatId: input.chatId, incarnationId: input.incarnationId,
-    targetDeviceId: input.targetDeviceId, executionEpoch: input.executionEpoch, intentId: input.commandId,
+    targetDeviceId: input.targetDeviceId, intentId: input.commandId,
   }));
   const expiresAt = await clock.freezeDeadline(input.intent ? "intent" : payload.kind);
   const command: EncryptedRemoteCommand = { ...header, ...(input.intent ? { intent: { expiresAt } } : {}), commandId: input.commandId, chatId: input.chatId, incarnationId: input.incarnationId,
-    targetDeviceId: input.targetDeviceId, sourceDeviceId: crypto.session.deviceId, executionEpoch: input.executionEpoch,
+    targetDeviceId: input.targetDeviceId, sourceDeviceId: crypto.session.deviceId,
     connectionEpoch: target.connectionEpoch, protocolVersion: header.protocolVersion, kind: payload.kind,
     requestId: "requestId" in payload ? payload.requestId : null,
     interactionId: payload.kind === "respond-approval" ? payload.approvalId : payload.kind === "respond-user-input" ? payload.userInputId : null,
@@ -85,11 +85,11 @@ async function openRemoteCommand(receipt: EncryptedRemoteReceipt, header: Protoc
     (isRemoteTurnPayload(payload) ? payload.expectedAgentRevision === value.expectedAgentRevision &&
       (payload.agentSelection?.backend ?? null) === value.backend && (payload.agentSelection?.expectedFactRevision ?? value.expectedChatVersion) === value.expectedChatVersion : ("requestId" in payload ? payload.requestId : null) === value.requestId) &&
     (payload.kind === "respond-approval" ? payload.approvalId : payload.kind === "respond-user-input" ? payload.userInputId : null) === value.interactionId);
-  if (value.intent && isRemoteTurnPayload(payload) && payload.fullAccessConsent) assertCrypto(payload.fullAccessConsent.version === 2 && remoteConsentMatches(payload.fullAccessConsent, {
+  if (isRemoteTurnPayload(payload) && payload.fullAccessConsent) assertCrypto(remoteConsentMatches(payload.fullAccessConsent, {
     userId: crypto.session.userId, sourceDeviceId: value.sourceDeviceId, chatId: value.chatId, incarnationId: value.incarnationId,
-    targetDeviceId: value.targetDeviceId, executionEpoch: value.executionEpoch, intentId: value.commandId }));
+    targetDeviceId: value.targetDeviceId, intentId: value.commandId }));
   const input = { commandId: value.commandId, chatId: value.chatId, incarnationId: value.incarnationId, targetDeviceId: value.targetDeviceId,
-    executionEpoch: value.executionEpoch, ...(intent ? { intent } : {}), payload, environmentId: value.environmentId, deploymentId: value.deploymentId, protocolVersion: value.protocolVersion, sourceDeviceId: value.sourceDeviceId };
+    ...(intent ? { intent } : {}), payload, environmentId: value.environmentId, deploymentId: value.deploymentId, protocolVersion: value.protocolVersion, sourceDeviceId: value.sourceDeviceId };
   return remoteCommandSchema.parse({ ...input, payloadHash: hashRemoteCommand(input), ciphertextHash: value.ciphertextHash, connectionEpoch: value.connectionEpoch,
     sourceDeviceName: receipt.sourceDeviceName, createdAt: receipt.createdAt, expiresAt: value.expiresAt });
 }
@@ -114,6 +114,7 @@ export async function openRemoteReceipt(raw: EncryptedRemoteReceipt, header: Pro
   return remoteReceiptSchema.parse({ command, state: receipt.state, admission: report && "admission" in report ? report.admission : null,
     blockedBy: receipt.blockedBy, ...(receipt.queueSequence === undefined ? {} : { queueSequence: receipt.queueSequence }), ...(receipt.withdrawalRequested ? { withdrawalRequested: true } : {}), reason: report?.state === receipt.state && "reason" in report ? report.reason : receipt.reason,
     result: report?.state === receipt.state && "result" in report ? report.result : null,
+    ...(report?.state === receipt.state && "resolvedBy" in report && report.resolvedBy ? { resolvedBy: report.resolvedBy } : {}),
     ...(report?.state === receipt.state && "output" in report && report.output ? { output: report.output } : {}),
     claimedAt: receipt.claimedAt, acceptedAt: receipt.acceptedAt, updatedAt: receipt.updatedAt });
 }

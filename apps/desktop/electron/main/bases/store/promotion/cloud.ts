@@ -17,7 +17,7 @@ export const confirmedBasePromotionSchema = z.object({ scope: syncScopeSchema,
       receipt.lifecycleOperationId !== operation.lifecycleOperationId || receipt.chatId !== operation.chatId ||
       receipt.candidateHash !== operation.candidateHash || receipt.expectedRevision !== operation.expectedRevision ||
       receipt.head?.chat.incarnationId !== operation.incarnationId || receipt.head.chat.cloudRevision !== operation.expectedRevision + 1 ||
-      receipt.head.executorDeviceId !== receipt.sourceDeviceId || receipt.head.executionEpoch !== operation.executionEpoch ||
+      receipt.head.ownerDeviceId !== receipt.sourceDeviceId ||
       canonicalJson(receipt.head.chat.classification) !== canonicalJson(operation.next) ||
       !matchesBasePromotionProof(operation.basePromotion, receipt.basePromotion)) ctx.addIssue({ code: "custom", message: "Confirmed Base promotion proof is invalid" });
 });

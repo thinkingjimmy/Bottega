@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, Project/Chat queries, strict turn options, four history adapters, the dedicated import worker, Project/Memory coordinators, index/snapshot stores, and shared contracts
- * [OUTPUT]: Separates source visibility from saved-Chat continuation, validates requests, and forwards native resume or saved-generation replay with durable intent receipts.
+ * [OUTPUT]: Separates source visibility from saved-Chat continuation, resolves the continuation target from the Chat's own import origin, and silently chooses native adoption or saved-generation replay with durable intent receipts.
  * [POS]: Canonical federated history and renderer-safe authority boundary; production SQLite ingestion parses outside main
  */
 
@@ -29,7 +29,8 @@ import { ClaudeHistoryAdapter } from "./claude-adapter";
 import { CodexHistoryAdapter } from "./codex-adapter";
 import { KimiHistoryAdapter } from "./kimi-adapter";
 import { OpencodeHistoryAdapter } from "./opencode-adapter";
-import { HistoryImportIndexStore, type StoredCanonicalRoute, type StoredHistoryProject } from "./index-store";
+import { HistoryImportIndexStore, type StoredHistoryProject } from "./index-store";
+import type { ChatImportOrigin } from "../../../shared/chats-ipc";
 import {
   HistorySnapshotStore,
   type AdoptionSnapshot,
@@ -70,6 +71,16 @@ function abortReason(signal: AbortSignal) {
 
 type ProjectRef = Pick<Project, "id" | "dir" | "membershipRevision" | "workspaceBinding" | "archivedAt">;
 
+type HistoryContinuationReceipt = {
+  intentId: string; chatId: string; incarnationId: string; phase: "started" | "queued" | "settled" | "failed";
+};
+
+/** 外源会话的唯一等价关系；`chat_import_origins` 用的就是这三格。 */
+type SourceIdentity = { sourceKind: string; storageFingerprint: string; canonicalNativeId: string };
+const sameSource = (left: SourceIdentity, right: SourceIdentity) =>
+  left.sourceKind === right.sourceKind && left.storageFingerprint === right.storageFingerprint &&
+  left.canonicalNativeId === right.canonicalNativeId;
+
 export type HistoryImportServiceOptions = {
   home: string;
   listProjects(): ProjectRef[];
@@ -82,6 +93,8 @@ export type HistoryImportServiceOptions = {
   chatLifecycle(chatId: string): "external-readonly" | "managed" | "missing";
   /* 源文件在不在，只有扫描知道；它是 sourceStatus 的唯一事实来源。 */
   markImportSourceStatus(chatId: string, sourceStatus: "match" | "missing"): Promise<void>;
+  /* 这条 Chat 的导入前传身份与已存代际：续聊的目标由它决定，路由只管源可见性。 */
+  chatImportOrigin(chatId: string): ChatImportOrigin | null;
   syncHistory(input: {
     entry: AdapterEntry;
     summary: ForeignHistorySummary;
@@ -95,17 +108,16 @@ export type HistoryImportServiceOptions = {
     signal: AbortSignal;
   }): Promise<{ chatId: string; generationId: string } | null>;
   memoryState(): HistoryMemoryAuthorization;
+  /* 同步早已把这条外源落成只读 canonical Chat：收养只续写它，
+     绝不第二次开同一个 import 代际，也绝不新建第二条 Chat。 */
   adopt?(input: {
+    chatId: string;
     request: PrepareHistoryAdoptionInput;
     entry: AdapterEntry;
     snapshot: AdoptionSnapshot;
-    /* 同步早已把这条外源落成只读 canonical Chat：收养只续写它，
-       绝不第二次开同一个 import 代际。 */
-    route: StoredCanonicalRoute | null;
-  }): Promise<{ intentId: string; chatId: string; incarnationId: string; phase: "started" | "queued" | "settled" | "failed" }>;
-  replay?(request: PrepareHistoryAdoptionInput, route: StoredCanonicalRoute): Promise<{
-    intentId: string; chatId: string; incarnationId: string; phase: "started" | "queued" | "settled" | "failed";
-  } | null>;
+  }): Promise<HistoryContinuationReceipt>;
+  /* 按已存代际在新 Agent 会话里续写：不读源文件，也不需要它还在。 */
+  replay?(request: PrepareHistoryAdoptionInput): Promise<HistoryContinuationReceipt>;
   commitMemory?(input: {
     grantId: string;
     snapshots: MemorySourceSnapshot[];
@@ -212,7 +224,7 @@ export class HistoryImportService {
       .handle(HISTORY_IMPORT_CHANNEL.commitProject, (raw) => this.commitProject(parseCommit(raw)))
       .handle(HISTORY_IMPORT_CHANNEL.setProjectEnabled, (projectId, enabled) => this.setProjectEnabled(idSchema.parse(projectId), z.boolean().parse(enabled)))
       .handle(HISTORY_IMPORT_CHANNEL.refreshProject, (projectId) => this.refreshProjectForUser(idSchema.parse(projectId)))
-      .handle(HISTORY_IMPORT_CHANNEL.adopt, (raw) => this.adopt(parseAdopt(raw)))
+      .handle(HISTORY_IMPORT_CHANNEL.adopt, (raw) => { const input = parseAdopt(raw); return this.replayByChat(input.chatId, input); })
       .handle(HISTORY_IMPORT_CHANNEL.memoryEligibility, (raw) => {
         const input = z.object({ surface: z.enum(["project", "settings"]), projectId: idSchema.optional() }).strict().parse(raw);
         return this.memoryEligibility(input);
@@ -424,43 +436,76 @@ export class HistoryImportService {
     return { title: summary.title, transcript: foreignTranscriptSnapshot(summary.title, parsed.blocks) };
   }
 
-  async adopt(request: PrepareHistoryAdoptionInput) {
+  /* ── 续聊的唯一入口 ──────────────────────────────────────────
+   * 目标从 Chat 自己的 `importOrigin` 与已存代际解析出来：不经 route，也不经
+   * `requireBoundEntry`——两者都以 Project 绑定与本机索引为前提，而一条导入
+   * Chat 在换档案、从文件夹恢复之后仍然完好，凭什么锁死。
+   * 源文件还在且代际没变就收养（原生 resume 更接近用户预期），否则按已存代际
+   * 重放。两条路静默择一，转录上只留一条分隔线。
+   * ────────────────────────────────────────────────────────── */
+  async replayByChat(chatId: string, request: PrepareHistoryAdoptionInput) {
     /* 进程内调用者同样不被信任：这一句与 parseAdopt 重复，是因为两条入口
        的可信度不同，而校验的成本可以忽略。 */
-    request = {
+    const validated: PrepareHistoryAdoptionInput = {
       ...request,
+      chatId,
       submission: validateHistoryAdoptionSubmission(request.submission),
       turnOptions: validateAgentTurnOptions(request.turnOptions),
     };
-    const route = this.index.canonicalRoute(request.opaqueId);
-    if (route && this.options.replay) {
-      const replayed = await this.options.replay(request, route);
-      if (replayed) { this.publish(); return replayed; }
-    }
-    if (route && this.options.chatLifecycle(route.chatId) !== "external-readonly") {
+    const origin = this.options.chatImportOrigin(chatId);
+    if (!origin) throw new Error("Chat has no imported history to continue");
+    if (this.options.chatLifecycle(chatId) !== "external-readonly") {
       throw new Error("Imported Chat is unavailable for continuation");
     }
-    const entry = route ? this.requireBoundEntry(request.opaqueId) : this.requireVisibleEntry(request.opaqueId);
-    if (entry.historyRevision !== request.expectedHistoryRevision) throw Object.assign(new Error("历史会话已变化，请刷新后重试"), { code: "HISTORY_REVISION_CHANGED" });
-    if (!entry.canResume || !this.options.adopt) throw new Error("该来源尚未通过产品内续聊实测");
-    const project = this.requireExternalProject(entry.projectId);
-    const stored = this.index.project(project.id);
-    if (!stored || stored.membershipRevision !== project.membershipRevision) throw new Error("PROJECT_REVISION_CHANGED");
-    const adapter = this.adapters.find((candidate) => candidate.sourceKind === entry.sourceKind)!;
-    const parsed = await this.parseEntry(entry);
-    const snapshot = await this.snapshots.writeAdoption({
-      summary: this.presentEntry(entry), sourcePath: entry.sourcePath, blocks: parsed.blocks, parserVersion: adapter.parserVersion,
-      fingerprint: { size: entry.fingerprint.size, mtimeNs: entry.fingerprint.mtimeNs },
-      incompleteTail: parsed.incompleteTail,
-    });
-    const receipt = await this.options.adopt({
-      request,
-      entry,
-      snapshot,
-      route: this.index.canonicalRoute(request.opaqueId) ?? null,
-    });
+    const adopted = await this.prepareAdoption(origin, validated);
+    if (adopted) {
+      const receipt = await this.options.adopt!({ chatId, request: validated, ...adopted });
+      this.publish();
+      return receipt;
+    }
+    if (!this.options.replay) throw new Error("Imported Chat is unavailable for continuation");
+    const receipt = await this.options.replay(validated);
     this.publish();
     return receipt;
+  }
+
+  /* 收养的三个前提：源条目还在、代际未变、续聊 Agent 与源同家——少一个就没有
+     可 resume 的原生会话。读源文件本身也可能失败（刚被删、权限变了），那同样
+     只是"收养不成立"，不是续聊失败：`HISTORY_REVISION_CHANGED` 在这里是内部
+     信号，静默回落 replay，只有用户显式要求 resume 原生会话时才有话说。 */
+  private async prepareAdoption(origin: ChatImportOrigin, request: PrepareHistoryAdoptionInput) {
+    const entry = this.sourceEntry(origin);
+    if (!entry || !entry.canResume || !this.options.adopt) return null;
+    if (entry.historyRevision !== origin.historyRevision) return null;
+    if (request.turnOptions.backend !== entry.sourceKind) return null;
+    const adapter = this.adapters.find((candidate) => candidate.sourceKind === entry.sourceKind);
+    if (!adapter) return null;
+    try {
+      const parsed = await this.parseEntry(entry);
+      const snapshot = await this.snapshots.writeAdoption({
+        summary: this.presentEntry(entry), sourcePath: entry.sourcePath, blocks: parsed.blocks, parserVersion: adapter.parserVersion,
+        fingerprint: { size: entry.fingerprint.size, mtimeNs: entry.fingerprint.mtimeNs },
+        incompleteTail: parsed.incompleteTail,
+      });
+      return { entry, snapshot };
+    } catch { return null; }
+  }
+
+  /** 按等价关系在索引里找源条目，与 Project 绑定和路由都无关。 */
+  private sourceEntry(origin: ChatImportOrigin) {
+    return Object.values(this.index.snapshot().projects)
+      .flatMap((project) => project.entries)
+      .find((entry) => sameSource(entry.key, origin));
+  }
+
+  /* 「这条源已经被收养了吗」只能问 Chat 自己。曾经问的是路由，于是路由一丢，
+     守卫就在一条已经原生的 Chat 上再开一个 import 代际——按 repository 的话说，
+     那会把两个 revision 撞开，此后每一次 append 的 CAS 都失败。 */
+  private importedChatId(entry: AdapterEntry) {
+    for (const binding of this.options.listSessionBindings()) {
+      if (binding.chatId && binding.importOrigin && sameSource(binding.importOrigin, entry.key)) return binding.chatId;
+    }
+    return null;
   }
 
   /** Chat 删除的即时通知：不等下一轮同步，路由当场作废。 */
@@ -617,8 +662,8 @@ export class HistoryImportService {
     for (const entry of entries) {
       /* 收养之后这条外源已经是一条可写 Chat：再往它身上开一个 import 代际
          会把 revision 撞成永久 stale。跳过不是错误，是这条源的终局。 */
-      const route = this.index.canonicalRoute(entry.opaqueId);
-      if (route && this.options.chatLifecycle(route.chatId) === "managed") continue;
+      const owner = this.importedChatId(entry);
+      if (owner && this.options.chatLifecycle(owner) === "managed") continue;
       const signal = this.lifetime.signal;
       const parsed = this.importWorker ? null : await this.parseEntry(entry, signal);
       const result = await this.options.syncHistory({
@@ -654,7 +699,7 @@ export class HistoryImportService {
 
 function parseCommit(value: unknown) { return z.object({ token: z.string().min(1), importHistory: z.boolean(), previewMemory: z.boolean() }).strict().parse(value); }
 function parseAdopt(value: unknown): PrepareHistoryAdoptionInput {
-  const parsed = z.object({ opaqueId: idSchema, expectedHistoryRevision: z.string().min(1), submission: z.unknown(), turnOptions: z.unknown(), authenticationRetry: z.object({ kind: z.literal("retry-authentication") }).strict().optional() }).strict().parse(value);
+  const parsed = z.object({ chatId: idSchema, submission: z.unknown(), turnOptions: z.unknown(), authenticationRetry: z.object({ kind: z.literal("retry-authentication") }).strict().optional() }).strict().parse(value);
   /* 正文/附件/RichValue 三者的跨字段同构交给 manual route 那一套断言，
      此处不另写一份——两份校验必然有一份先松掉，而松掉的那份就是偏门。 */
   return {

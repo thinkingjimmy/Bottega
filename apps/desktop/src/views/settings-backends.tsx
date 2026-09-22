@@ -1,13 +1,10 @@
 /**
  * [INPUT]: Depends on SetupProvider, visible-page freshness, shared Agent rows/feedback and Settings layout.
- * [OUTPUT]: Provides Agent Settings with global manual refresh, row-local recovery, version details, check timestamps and durable default execution-device selection and explicit Agent onboarding navigation.
+ * [OUTPUT]: Provides Agent Settings with global manual refresh, row-local recovery, version details, check timestamps and explicit Agent onboarding navigation.
  * [POS]: Settings route for Agent configuration; state and actions are shared with Onboarding.
  */
 
 import { RefreshCw, Server } from "lucide-react";
-import { useDefaultExecutionDevice } from "@/components/setup/default-execution-device";
-import { SettingsRow } from "@/components/settings/settings-layout";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ai-chat/ui/components/ui/select";
 import { useSetup } from "@/components/providers/setup-provider";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { SetupBackendRow } from "@/components/setup/backend-row";
@@ -31,23 +28,10 @@ import { useSetupRefresh } from "@/components/providers/availability/use-setup-r
 export function BackendsSettingsView() {
   const { t } = useAppTranslation();
   const setup = useSetup();
-  const preference = useDefaultExecutionDevice();
   useSetupRefresh();
   return (
     <PageShell title={t("common.backends")} icon={<Server />}>
       <SettingsCanvas>
-        {(window.cloud || preference.deviceId) && <SettingsSection title={t("settings.backends.defaultExecutionDevice")}>
-          <SettingsList><SettingsRow label={t("settings.backends.defaultExecutionDevice")} description={t("settings.backends.defaultExecutionDescription")} control={
-            <Select value={preference.deviceId ?? "local"} disabled={preference.saving} onValueChange={value => void preference.select(value === "local" ? null : value)}>
-              <SelectTrigger aria-label={t("settings.backends.defaultExecutionDevice")} className="w-52"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="local">{t("settings.backends.localExecutionDevice")}</SelectItem>
-                {preference.deviceId && !preference.items.some(item => item.deviceId === preference.deviceId) && <SelectItem value={preference.deviceId} disabled>{preference.copy.chooseComputer}</SelectItem>}
-                {preference.items.map(item => <SelectItem key={item.deviceId} value={item.deviceId} disabled={!preference.available}>{item.name}{!item.online ? ` · ${preference.copy.offline}` : ""}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          } /></SettingsList>
-          {preference.error && <p role="alert" className="text-sm text-destructive">{preference.error}</p>}
-        </SettingsSection>}
         <SettingsSection
           title={t("settings.backends.title")}
           description={t("settings.backends.description")}

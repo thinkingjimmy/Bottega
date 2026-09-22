@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on original local Chat outboxes, frozen manual admissions and the existing ledger handoff.
- * [OUTPUT]: Captures original-epoch turns from a turn-scoped outbox scan and transfers result evidence, including prepared results arriving after cloud settlement.
+ * [OUTPUT]: Captures owner-scoped turns from a turn-scoped outbox scan and transfers result evidence, including prepared results arriving after cloud settlement.
  * [POS]: Local-only adapter: every mutation targets the profile's SQLite worker, with no network transport.
  */
 import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
@@ -51,24 +51,23 @@ export async function captureTurnAdmissions(ports: TurnSourcePorts, items: ChatO
     const current = await ports.store.sync.read(ports.scope, { type: "local-execution", chatId: intent.conversationId });
     if (current.type !== "local-execution") throw new Error("EXECUTION_STATE_UNAVAILABLE");
     const confirmed = current.value?.head;
-    if (confirmed && (confirmed.executorDeviceId !== ports.deviceId ||
-      prepared.executorCommit && prepared.executorCommit.executionEpoch !== confirmed.executionEpoch)) continue;
+    if (confirmed && confirmed.ownerDeviceId !== ports.deviceId) continue;
     const user = messageSchema.parse({ ...intent.userMessage as object, seq: intent.userSeq });
     for (const item of await business(intent.conversationId)) {
-      if (item.entity_kind === "turn" || confirmed && (item.execution_epoch ?? 1) !== confirmed.executionEpoch || JSON.parse(item.payload_json).chatId !== intent.conversationId) continue;
+      if (item.entity_kind === "turn" || JSON.parse(item.payload_json).chatId !== intent.conversationId) continue;
       let source = cached.get(item.id);
       if (!source) { source = (await readOutboxSource(ports.store.sync, ports.scope, item)).payload as Source;
         if (!source || !source.chat) continue; cached.set(item.id, source); }
       const messages = [source.message, ...(source.messages ?? []), ...(source.notices ?? [])].filter(Boolean);
       if (!messages.some(message => hashChatContent(message) === hashChatContent(user))) continue;
-      const chat = portableChatSchema.parse(source.chat), sequences = { executorNoticeSeq: intent.executorNoticeSeq, noticeSeq: intent.noticeSeq,
+      const chat = portableChatSchema.parse(source.chat), sequences = { noticeSeq: intent.noticeSeq,
         userSeq: intent.userSeq!, assistantSeq: intent.assistantSeq! };
-      const notices = [sequences.executorNoticeSeq, sequences.noticeSeq].filter(seq => seq !== undefined).map(seq => {
+      const notices = [sequences.noticeSeq].filter(seq => seq !== undefined).map(seq => {
         const found = messages.map(message => messageSchema.parse(message)).find(message => message.seq === seq);
         if (!found || found.role !== "notice") throw new Error("TURN_NOTICE_SOURCE_UNAVAILABLE"); return found;
       });
       const admission = localTurnAdmissionSchema.parse({ ledgerIntentId: intent.id, turnId: intent.requestId, chat, sequences,
-        executorDeviceId: ports.deviceId, executionEpoch: item.execution_epoch ?? 1,
+        ownerDeviceId: ports.deviceId,
         assistantMessageId: stableId("assistant", intent.id), user, notices,
         expectedAgentRevision: prepared.expectedAgentRevision ?? chat.agentRevision - (intent.noticeSeq ? 1 : 0),
         options: prepared.turn.turnOptions, planRequested: prepared.turn.planMode ?? false, createdAt: intent.createdAt });
@@ -79,7 +78,7 @@ export async function captureTurnAdmissions(ports: TurnSourcePorts, items: ChatO
   }
 }
 export type HandoffEvidence = Extract<CloudAction, { type: "handoff-turn" }>["evidence"];
-type HandoffAdmission = Pick<LocalTurnAdmission, "ledgerIntentId" | "turnId" | "executionEpoch" | "sequences" | "user" | "assistantMessageId"> & { chat: { id: string } };
+type HandoffAdmission = Pick<LocalTurnAdmission, "ledgerIntentId" | "turnId" | "sequences" | "user" | "assistantMessageId"> & { chat: { id: string } };
 export async function transferTurnEvidence(ports: TurnSourcePorts, admission: HandoffAdmission, live: boolean) {
   await recoverLedgerHandoffs(ports.ledger, ports.store); ports.current();
   const state = ports.ledger.snapshot(), intent = state.manualIntents[admission.ledgerIntentId];
@@ -92,7 +91,7 @@ export async function transferTurnEvidence(ports: TurnSourcePorts, admission: Ha
   const dispatch = !attempt || attempt.phase === "claimed" ? "not-started" : ["dispatched", "result-prepared", "persisted"].includes(attempt.phase) ? "dispatched" : "outcome-unknown";
   const message = available && result.assistantMessage ? messageSchema.parse(result.assistantMessage) : null;
   const action: Extract<CloudAction, { type: "handoff-turn" }> = { type: "handoff-turn", chatId: admission.chat.id,
-    turnId: admission.turnId, executionEpoch: admission.executionEpoch, evidence: {
+    turnId: admission.turnId, evidence: {
       ledgerIntentId: intent.id, identityHash: "0".repeat(64), dispatch, attempt, ...admission.sequences,
       userMessageId: admission.user.id, userMessage: admission.user, assistantMessageId: admission.assistantMessageId,
       resultKind: available ? message ? "message" : "empty" : "pending", resultHash: available ? hashChatContent(message ? { ...message, resultHash: undefined } : null) : null,
@@ -111,10 +110,10 @@ export async function recoverLateTurnEvidence(ports: TurnSourcePorts) {
     ports.current(); const local = await ports.store.sync.read(ports.scope, { type: "turn-receipt", turnId: intent.requestId });
     if (local.type !== "turn-receipt" || local.value?.settlementState !== "settled") continue;
     const receipt = local.value, user = messageSchema.parse({ ...intent.userMessage as object, seq: intent.userSeq });
-    if (receipt.executorDeviceId !== ports.deviceId || receipt.chatId !== intent.conversationId || receipt.userMessageId !== user.id ||
+    if (receipt.ownerDeviceId !== ports.deviceId || receipt.chatId !== intent.conversationId || receipt.userMessageId !== user.id ||
       receipt.userSeq !== intent.userSeq || receipt.assistantSeq !== intent.assistantSeq || receipt.assistantMessageId !== stableId("assistant", intent.id)) throw new Error("LATE_TURN_IDENTITY_CHANGED");
     await transferTurnEvidence(ports, { ledgerIntentId: intent.id, turnId: receipt.turnId, chat: { id: receipt.chatId }, user,
-      assistantMessageId: receipt.assistantMessageId, executionEpoch: receipt.executionEpoch,
-      sequences: { executorNoticeSeq: intent.executorNoticeSeq, noticeSeq: intent.noticeSeq, userSeq: receipt.userSeq, assistantSeq: receipt.assistantSeq } }, false);
+      assistantMessageId: receipt.assistantMessageId,
+      sequences: { noticeSeq: intent.noticeSeq, userSeq: receipt.userSeq, assistantSeq: receipt.assistantSeq } }, false);
   }
 }

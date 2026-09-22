@@ -24,7 +24,7 @@ export class RecoveryAssets {
     if (!this.userData) throw new Error("RECOVERY_UNAVAILABLE");
     const job = homeJobSchema.parse(value.descriptor.job), custody = new HomeSourceCustody(this.userData, scope, job.id), saved = await custody.read();
     if (job.chatId !== value.archive.chatId || saved.manifest.chatId !== job.chatId || saved.manifest.incarnationId !== job.incarnationId ||
-      saved.manifest.snapshotId !== job.snapshotId || saved.manifest.executionEpoch !== job.executionEpoch) throw new Error("RECOVERY_HOME_CHANGED");
+      saved.manifest.snapshotId !== job.snapshotId) throw new Error("RECOVERY_HOME_CHANGED");
     if (value.descriptor.manifest) {
       const checkpoint = await readChatSource(this.store, scope, retainedSourceRefSchema.parse(value.descriptor.manifest)) as { kind: string; manifest?: unknown };
       const manifest = homeManifestSchema.parse(checkpoint.kind === "home-manifest" ? checkpoint.manifest : null);

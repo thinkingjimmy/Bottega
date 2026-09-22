@@ -132,10 +132,6 @@ promoteBaseToApp: "Convertir {{name}} en App"
     browser: settingsBrowserEs,
     extensions: settingsExtensionsEs,
     backends: {
-      defaultExecutionSaveFailed: "No se pudo guardar el ordenador predeterminado. Vuelve a intentarlo.",
-      defaultExecutionDevice: "Ordenador de ejecución predeterminado",
-      localExecutionDevice: "Este ordenador",
-      defaultExecutionDescription: "Se usa para conversaciones nuevas. Su disponibilidad se comprueba antes de enviar.",
       title: "Backends de Agent",
       description: "La autenticación y el uso los gestiona cada CLI oficial; el producto solo comprueba el estado local.",
       recheck: "Comprobar de nuevo",
@@ -202,11 +198,10 @@ currentModelUnavailable: "{{model}} (no disponible)"
         "control-invalid": "Bottega no pudo leer los ajustes de esta carpeta. Elige otra carpeta.",
         "already-configured": "Bottega ya abrió una carpeta. Reinicia Bottega para abrir otra.",
         "root-changed": "Bottega sigue usando la carpeta que elegiste. Reinicia Bottega para abrir otra.",
+        "owned-elsewhere": "Esta carpeta de Bottega pertenece a {{host}}. Esta versión no puede abrirla en otro ordenador: crea una carpeta nueva o úsala en ese ordenador.",
       },
       chooseChatHome: "Elegir ubicación de Chat Home",
       chooseProject: "Elegir carpeta de Project",
-      externalLinkTitle: "Abrir enlace externo",
-      externalLinkMessage: "Este dominio no está en la lista de confianza.",
       terminalTitle: "Confirmar acción en el terminal",
       terminalMessage: "Este comando modificará la instalación local del CLI.",
       quitFailureTitle: "No se pudo salir de forma segura",
@@ -259,7 +254,6 @@ currentModelUnavailable: "{{model}} (no disponible)"
     emptyPromptInProject: "¿Qué vamos a construir en {{name}}?",
     changeProject: "Cambiar de Project: {{name}}",
     openSidePanel: "Abrir el panel lateral",
-    importedReadOnlyReason: "El historial importado es de solo lectura.",
     cloud: {
       unavailable: "Esta conversación no está disponible en este dispositivo.",
       deleted: "Esta conversación se eliminó en otro dispositivo.",
@@ -513,7 +507,6 @@ currentModelUnavailable: "{{model}} (no disponible)"
     folderRecoveryProjectMissing: "Esta Base pertenece a un Project que este ordenador ya no tiene. Sus archivos siguen intactos en tu carpeta Bottega y vuelven con el Project.",
     folderRecoveryOwnerChanged: "La conversación propietaria de esta Base fue sustituida. Sus archivos siguen intactos en tu carpeta Bottega." },
   notice: {
-    executorSwitched: "Continuación en {{device}}",
     manualRecovered: "El reinicio de la aplicación interrumpió la respuesta. Vuelve a enviar el mensaje.",
     skillDescriptionsTruncated:
       "Aviso de Codex: algunas descripciones de Skills se acortaron en este turno para ajustarse al presupuesto de contexto. Codex sigue pudiendo usar todos los Skills y esta respuesta no se ve afectada. Este aviso procede del propio Codex, no de Bottega.",

@@ -5,7 +5,7 @@
  */
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const MAX_BLOB_BYTES = 50_000_000;
 export const MAX_PART_BYTES = 8_388_608;
 export const MAX_PARTS = 6;

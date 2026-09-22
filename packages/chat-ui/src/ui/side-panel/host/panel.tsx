@@ -89,8 +89,8 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     } catch (error) { if (mounted.current) setCreationError(error instanceof Error ? error.message : "create-failed"); }
     finally { createFlight.current = false; if (mounted.current) setCreating(false); }
   };
-  const executorName = services.deviceName, remote = remoteCopy(locale);
-  const directory = panelCatalog(copy, slots, remote.onComputer.replace("{name}", executorName ?? remote.computer), services.capabilities);
+  const ownerName = services.deviceName, remote = remoteCopy(locale);
+  const directory = panelCatalog(copy, slots, remote.onComputer.replace("{name}", ownerName ?? remote.computer), services.capabilities);
   const catalog = { ...directory, onOpen: (id: string) => void openCatalog(id), disabledFor: (id: string) => directory.disabledFor(id) || id === "base" && (creating || !base.resolved || base.error) };
   const visible = history.open && (narrow ? history.takeover : geometry.maxWidth >= SIDE_PANEL_MIN_WIDTH);
   const items: SidePanelTab[] = slots.tabs.map(id => {
@@ -98,7 +98,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
     const label = id === "base" ? copy.catalog.base.label : id === "subagents" ? copy.catalog.subagents.label : id === "browser" ? copy.catalog.browser.label : id.startsWith("app:") ? copy.catalog.app.label : image?.label ?? copy.catalog.image.label;
     const Icon = id === "base" ? DatabaseIcon : id === "subagents" ? BotIcon : id === "browser" ? GlobeIcon : id.startsWith("app:") ? BlocksIcon : ImageIcon;
     const unavailable = id === "browser" && !services.capabilities.browser || id.startsWith("app:") && !services.capabilities.apps;
-    return { key: id, label, ...(unavailable ? { dim: true, hint: remote.onComputer.replace("{name}", executorName ?? remote.computer) } : {}), icon: <Icon className="size-3.5 shrink-0" />, selected: slots.active === id, panelId: `panel-tab-${id}`,
+    return { key: id, label, ...(unavailable ? { dim: true, hint: remote.onComputer.replace("{name}", ownerName ?? remote.computer) } : {}), icon: <Icon className="size-3.5 shrink-0" />, selected: slots.active === id, panelId: `panel-tab-${id}`,
       closeLabel: copy.closeNamed.replace("{name}", label), select: () => setSlots(previous => ({ ...previous, active: id, touched: true })),
       close: () => setSlots(previous => { const index = previous.tabs.indexOf(id), tabs = previous.tabs.filter(tab => tab !== id); return { tabs, active: previous.active === id ? tabs[Math.min(index, tabs.length - 1)] ?? null : previous.active, touched: true }; }) };
   });
@@ -116,7 +116,7 @@ export function useChatSidePanel(head: CloudChatHead | null, source: TranscriptS
       view: <ImageTab region={id} chatId={chatId} source={source} locale={locale} active={visible && !preview && slots.active === id} /> })),
     ...slots.tabs.filter(id => id === "browser" || id.startsWith("app:")).map(id => ({ id, view:
       <div role="status" className="grid flex-1 place-content-center gap-3 p-4 text-sm text-muted-foreground">
-        <p>{remote.onComputer.replace("{name}", executorName ?? remote.computer)}</p>
+        <p>{remote.onComputer.replace("{name}", ownerName ?? remote.computer)}</p>
         {id.startsWith("app:") && canInstallApps && <Button variant="link" onClick={() => services.navigate("/apps")}>{remote.installApp}</Button>}
       </div> })),
   ];

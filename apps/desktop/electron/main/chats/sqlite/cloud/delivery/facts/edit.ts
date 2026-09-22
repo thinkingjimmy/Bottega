@@ -27,7 +27,7 @@ export function editChatFacts(db: SqliteDatabase, writer: ChatRecordWriter, scop
     basis: state.tail_operation_id ? { kind: "receipt", operationId: state.tail_operation_id } : { kind: "revision", revision: input.expectedRevision } });
   const row = db.prepare("SELECT core_revision FROM chats WHERE id=?").get(input.chatId) as Row;
   enqueueSource(db, { id: input.operationId, scope, chatId: input.chatId, entityKind: "chat", kind: "metadata-edit",
-    revision: Number(row.core_revision) + 1, executionEpoch: null, payload: { chatId: input.chatId, changes: input.changes }, now });
+    revision: Number(row.core_revision) + 1, payload: { chatId: input.chatId, changes: input.changes }, now });
   db.prepare("UPDATE cloud_outbox SET metadata_intent_json=?,metadata_status='queued' WHERE id=?").run(canonicalJson(intent), input.operationId);
   db.prepare("UPDATE cloud_chat_metadata_state SET tail_operation_id=? WHERE chat_id=?").run(intent.operationId, input.chatId);
   // Reuse the actual confirmed head; the visible head may include earlier pending changes.

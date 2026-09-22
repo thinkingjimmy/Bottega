@@ -1,17 +1,18 @@
 /**
  * [INPUT]: Depends on validated Project content, the selected folder and the ProjectStore single-writer queue.
- * [OUTPUT]: Splits forward-tolerant project.json files from profile-local authority and replays revision-bound durable intents.
- * [POS]: Project persistence adapter; opening content never restores directory grants or invents a synchronization baseline.
+ * [OUTPUT]: Splits forward-tolerant project.json files from profile-local authority, replays revision-bound durable intents, and binds a restored Project silently when this machine's validated directory hint still holds.
+ * [POS]: Project persistence adapter; opening content never restores directory grants or invents a synchronization baseline — the hint is content, its validation is the grant.
  */
 import { lstat, readFile, readdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { canonicalJson, portableProjectSchema } from "@ai-chat/cloud-protocol";
 import { durableReplaceFile, isErrnoCode, syncDirectory } from "../../persistence/durable-json";
 import { libraryDirectory, libraryObjectId } from "../../library/paths";
 import { trashLibraryObject } from "../../library/trash";
 import { projectFileSchema, storedProjectSchema, type ProjectFile, type StoredProject } from "./project-store-schema";
+import { folderPublishedElsewhere, readLocalHint, resolveHintedDirectory, writeLocalHint } from "./local-hints";
 import { exportProject } from "./portable/queue";
 
 const { cloudRevision: _cloud, sourceDeviceId: _device, ...portableFields } = portableProjectSchema.shape;
@@ -57,7 +58,9 @@ export class ProjectFolder {
   /** Saved authority of objects this build could not read; write() carries it through instead of rebuilding without it. */
   private readonly unreadable = new Map<string, LocalRow>();
   constructor(private userData: string, private root: () => string | null,
-    private checkpoint?: (phase: "intent" | "content" | "commit") => Promise<void>) {
+    private checkpoint?: (phase: "intent" | "content" | "commit") => Promise<void>,
+    /** This computer's key. Absent means no same-machine hints: every restored workspace Project asks for a folder. */
+    private machine?: () => Promise<string | null>) {
     this.path = join(userData, "projects-local.json"); this.intentPath = `${this.path}.intent`;
   }
   private async local() {
@@ -115,9 +118,14 @@ export class ProjectFolder {
   async read(empty: ProjectFile): Promise<ProjectFile> {
     if (!this.root()) return empty;
     await this.recover();
-    const local = await this.local(), root = await libraryDirectory(this.requireRoot(), "projects");
+    const folder = this.requireRoot();
+    const local = await this.local(), root = await libraryDirectory(folder, "projects");
     this.contents.clear(); this.unreadable.clear();
     const projects: StoredProject[] = [];
+    const machine = await this.machineKey(folder);
+    // One directory serves one Project: rows this profile already owns claim theirs before any hint is read.
+    const taken = new Set((local?.projects ?? []).map(item => item.dir).filter(Boolean));
+    const capabilities: Record<string, string> = {};
     let lifecycleSequence = local?.lifecycleSequence ?? 0;
     for (const entry of await readdir(root, { withFileTypes: true })) {
       if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
@@ -132,9 +140,13 @@ export class ProjectFolder {
         const { contentRevision: localRevision, contentHash: localHash, ...authority } = saved ?? { contentRevision: 0, contentHash: undefined };
         // A restored content file cannot reuse a baseline belonging to a different revision.
         if (localRevision !== content.contentRevision || localHash !== contentHash(content)) { if ("sync" in authority) delete authority.sync; }
-        const project = storedProjectSchema.parse({ dir: "", workspaceBinding: restoredBinding(content),
+        const restored = restoredBinding(content);
+        const hinted = machine && (saved?.workspaceBinding ?? restored).kind === "unbound" && !saved?.dir
+          ? await this.hintedWorkspace(folder, content.id, machine, taken) : null;
+        const project = storedProjectSchema.parse({ dir: "", workspaceBinding: restored,
           nameSource: appId ? "app" : "user", appPlacements: [], grants: [], grantRevision: 0, membershipRevision: 0,
-          projectLifecycleRevision: ++lifecycleSequence, resourceAdmissions: [], ...authority, ...metadata });
+          projectLifecycleRevision: ++lifecycleSequence, resourceAdmissions: [], ...authority, ...metadata, ...hinted });
+        if (hinted) { capabilities[hinted.workspaceBinding.capabilityId] = hinted.dir; taken.add(hinted.dir); }
         projects.push(project); this.contents.set(content.id, content);
       } catch (error) {
         // One EACCES or EMFILE must not rebuild this computer's authority without the object it could not read.
@@ -144,10 +156,34 @@ export class ProjectFolder {
         console.warn("Project folder content unavailable", entry.name, error);
       }
     }
-    const next = { ...empty, ...local, projects, lifecycleSequence };
+    if (machine) await this.rememberOpened(folder, machine, projects);
+    const next = { ...empty, ...local, projects, lifecycleSequence,
+      workspaceCapabilities: { ...local?.workspaceCapabilities, ...capabilities } };
     // A portable record removed outside the app does not authorize a local deletion receipt.
     next.deletionReceipts = next.deletionReceipts.filter(receipt => !projects.some(project => project.id === receipt.projectId));
     return projectFileSchema.parse(next);
+  }
+  /** A published folder belongs to the computer that published it; its hints mean nothing on any other one. */
+  private async machineKey(folder: string) {
+    const machine = await this.machine?.() ?? null;
+    return machine && !await folderPublishedElsewhere(folder, machine) ? machine : null;
+  }
+  private async hintedWorkspace(folder: string, projectId: string, machine: string, taken: ReadonlySet<string>) {
+    const hint = await readLocalHint(folder, projectId, machine);
+    const dir = hint && await resolveHintedDirectory(hint, { root: folder, taken });
+    return dir ? { dir, workspaceBinding: { kind: "external" as const, capabilityId: randomUUID() } } : null;
+  }
+  /** Opening the folder is what keeps a hint true; a hint this profile cannot write is never worth failing a read for. */
+  private async rememberOpened(folder: string, machine: string, projects: StoredProject[]) {
+    for (const project of projects) {
+      if (project.workspaceBinding.kind !== "external" || !project.dir) continue;
+      try { await writeLocalHint(folder, project.id, machine, project.dir); }
+      catch (error) { console.warn("Project directory hint not recorded", project.id, error); }
+    }
+  }
+  async rememberHint(projectId: string, dir: string) {
+    const folder = this.root(), machine = folder && await this.machineKey(folder);
+    if (folder && machine && dir) await writeLocalHint(folder, projectId, machine, dir);
   }
   async write(file: ProjectFile) {
     if (!this.root()) { if (file.projects.length) throw new Error("LIBRARY_NOT_CONFIGURED"); return; }

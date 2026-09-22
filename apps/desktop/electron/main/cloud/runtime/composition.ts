@@ -8,6 +8,7 @@ import { artifactCloudTransport } from "../../artifacts/storage/transport";
 import { app, powerMonitor, shell, type BrowserWindow } from "electron";
 import { SessionClient } from "../account/session-client";
 import { initialDeviceName } from "../account/device-name";
+import { machineIdHash } from "../../machine/machine-id";
 import { AccountAvatarCache } from "../account/avatar";
 import { acceptsCloudCallback, configureLoginReturn } from "../account/protocol-handler";
 import { installCloudCallbackInbox } from "../bootstrap/callback-events";
@@ -28,7 +29,7 @@ import { LocalTurnRecorder, type TurnRuntimePorts } from "../remote/recorder";
 import { RemoteArtifacts } from "../../artifacts/remote";
 import { CloudChatReader } from "../chat/reader";
 import { registerCloudChat } from "../chat/registration";
-import { CloudExecutorService } from "../executor/service";
+import { CloudExecutionService } from "../execution/service";
 import type { ProjectsService } from "../../projects/projects-service";
 import { bindCloudProject } from "../../projects/rebind/cloud-binding";
 import { RecoveryContent } from "../chat/recovery/content";
@@ -71,7 +72,8 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
   const service = new CloudAccountService({ config, vault, http, transport, returnMode,
     deviceId, binding, scope, version: app.getVersion(),
     platform: process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : "linux",
-    name: initialDeviceName, openBrowser: url => shell.openExternal(url),
+    name: initialDeviceName, machineIdHash, libraryId: () => ui.remote.settings.get().libraryId ?? null,
+    openBrowser: url => shell.openExternal(url),
     deviceNames: (userId, devices) => { if (binding.snapshot()?.userId === userId) owners.chats.sync.setDeviceNames(devices); } });
   let closingFlight: Promise<void> | null = null;
   const reportQuit = () => (closingFlight ??= service.reportOffline("quit").catch(() => {}));
@@ -151,6 +153,7 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
       const userId = binding.snapshot()!.userId;
       return new DesktopSyncRun({ config, crypto: contentCrypto, userData, deviceId, owners, binding, transport, changed, dataChanged, recorder, promotion: ui.promotion, recovery: recoverySave, assertIdle,
         retireApp: prepared.appInstall!.settleDeletion,
+        folder: { id: () => ui.remote.settings.get().libraryId ?? null, root: () => owners.homes.libraryRoot, machineIdHash },
         filePorts: desktopFileTransport({ config, userId, transport, crypto: contentCrypto, token: () => http.getToken() }), bytes: chatBytes });
     } });
   chatReader = new CloudChatReader({ crypto: contentCrypto, config, userData, binding, account: service, store: owners.chats.sync, transport, recovery, projectRemoval, factsChanged: dataChanged,
@@ -162,12 +165,12 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
   });
   const baseImages = new BaseImageReader({ config, userData, store: owners.bases, binding, account: service,
     filePorts: userId => desktopFileTransport({ config, userId, transport, crypto: contentCrypto, token: () => http.getToken() }), own: activity => scope.own(activity) });
-  const executor = new CloudExecutorService({ config, userData, deviceId, binding, owners, ...lifecycle, attachments, runtime: ui.turns, projectGate: ui.projectGate,
+  const execution = new CloudExecutionService({ config, userData, deviceId, binding, owners, ...lifecycle, attachments, runtime: ui.turns, projectGate: ui.projectGate,
     account: service, transport, recovery: recoverySave, filePorts: userId => desktopFileTransport({ config, userId, transport, crypto: contentCrypto, token: () => http.getToken() }), own: activity => scope.own(activity), changed: dataChanged,
     bindProject: (id, identity, current) => bindCloudProject(ui.projectGate, id, identity, current) });
   const remote = new RemoteCommandRuntime({ crypto: contentCrypto, clock: () => encryption.owner.clock(), config, deviceId, binding, transport, account: service, store: owners.chats, projects: ui.projectGate,
     files: userId => new DesktopBlobStore(userData, { ...config, userId }, desktopFileTransport({ config, userId, transport, crypto: contentCrypto, token: () => http.getToken() })),
-    ...ui.remote, ...ui.turns, forks: ui.events.chats, executor, own: activity => scope.own(activity) });
+    ...ui.remote, ...ui.turns, forks: ui.events.chats, execution, own: activity => scope.own(activity) });
   const remoteClient = new RemoteCommandClient({ crypto: contentCrypto, clock: () => encryption.owner.clock(), config, deviceId, binding, transport, account: service, own: activity => scope.own(activity),
     files: userId => new DesktopBlobStore(userData, { ...config, userId }, desktopFileTransport({ config, userId, transport, crypto: contentCrypto, token: () => http.getToken() })) });
   let namesUserId: string | null = null;
@@ -196,9 +199,9 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
   void service.initialize().then(() => { inbox.bind(url => onProtocolArgs([url])); onProtocolArgs(process.argv); });
   await service.localIdentityReady;
   return { register: (window: BrowserWindow, rendererUrl: string) => {
-    registerCloudAccount(service, window, rendererUrl); registerCloudChat(chatReader!, executor, window, rendererUrl); registerCloudBaseReview(baseReview!, window, rendererUrl);
+    registerCloudAccount(service, window, rendererUrl); registerCloudChat(chatReader!, execution, window, rendererUrl); registerCloudBaseReview(baseReview!, window, rendererUrl);
     registerCloudConversion(conversionReview, rendererUrl);
     registerCloudApps(cloudApps!, window, rendererUrl);
     registerCloudRemote(remoteClient, window, rendererUrl);
-  }, onProtocolArgs, refresh: () => service.refresh(true), close: async () => { await remoteActivity?.close(); await reportClosing(); powerMonitor.removeListener("suspend", sleep); app.removeListener("before-quit", quit); clearInterval(promotionTimer); inbox.close(); unsubscribeSync(); await encryption.close(); await remote.close(); avatars.close(); await avatars.settled(); await cloudApps?.close(); await executor.close(); await chatReader?.close(); await baseImages.close(); baseReview?.close(); service.close(); await service.login.drain(); await vault.drain(); await sync.close(); await recorder.close(); await prepared.homeCapture?.close(); await scope.close(); await recoveringPromotion; await binding.close(); } };
+  }, onProtocolArgs, refresh: () => service.refresh(true), close: async () => { await remoteActivity?.close(); await reportClosing(); powerMonitor.removeListener("suspend", sleep); app.removeListener("before-quit", quit); clearInterval(promotionTimer); inbox.close(); unsubscribeSync(); await encryption.close(); await remote.close(); avatars.close(); await avatars.settled(); await cloudApps?.close(); await execution.close(); await chatReader?.close(); await baseImages.close(); baseReview?.close(); service.close(); await service.login.drain(); await vault.drain(); await sync.close(); await recorder.close(); await prepared.homeCapture?.close(); await scope.close(); await recoveringPromotion; await binding.close(); } };
 }

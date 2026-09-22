@@ -28,7 +28,7 @@ export class ImportedHistoryPublisher {
     return { ...protocolHeader(this.input.config), expectedUserId: this.input.scope.userId,
       encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint } }; }
   constructor(private readonly input: { config: CloudBuildConfig; scope: SyncScope; store: ChatSyncStore; transport: Pick<AccountTransport, "query" | "mutate">;
-    files: Pick<EncryptedBlobTransfer, "crypto" | "uploadFile">; progress?: (value: FileProgress) => void }) {}
+    files: Pick<EncryptedBlobTransfer, "crypto" | "uploadFile">; progress?: () => (value: FileProgress) => void }) {}
   async deliver(item: ChatOutboxItem, signal: AbortSignal) {
     const { store, scope, transport, files } = this.input, source = await readOutboxSource(store, scope, item), snapshot = nativeSnapshotSchema.parse(source.payload);
     if (item.entity_kind !== "generation" || source.chatId !== snapshot.chat.id || snapshot.lifecycleKind !== "external-readonly") throw new Error("IMPORT_DELIVERY_IDENTITY_INVALID");
@@ -48,16 +48,16 @@ export class ImportedHistoryPublisher {
     if (!snapshot.imported) return null;
     const { store, scope, transport, files } = this.input, frozen = frozenImportSchema.parse(snapshot.imported), checkpoints = new ChatDeliveryCheckpoints(store, scope, item);
     const done = await checkpoints.get("import-complete"); if (done?.kind === "import-complete") return done.status;
-    if (item.entity_kind === "generation" && (item.execution_epoch !== head.executionEpoch || head.kind !== "external-readonly")) throw new Error("IMPORT_SOURCE_FROZEN");
+    if (item.entity_kind === "generation" && head.kind !== "external-readonly") throw new Error("IMPORT_SOURCE_FROZEN");
     let intentRaw = await checkpoints.get("encrypted-import-intent");
     if (!intentRaw) {
       const active = await transport.query("chats/imported/reads:head", { ...this.header, chatId: snapshot.chat.id }); signal.throwIfAborted();
       if (active) await openImportStatus(active, files.crypto, signal);
       intentRaw = await checkpoints.save({ kind: "encrypted-import-intent", userId: scope.userId, chatId: snapshot.chat.id,
-        incarnationId: snapshot.chat.incarnationId, executionEpoch: head.executionEpoch, expectedRevision: active?.revision ?? 0, generationId: globalThis.crypto.randomUUID() });
+        incarnationId: snapshot.chat.incarnationId, expectedRevision: active?.revision ?? 0, generationId: globalThis.crypto.randomUUID() });
     }
     const intent = encryptedImportIntentSchema.parse(intentRaw);
-    if (intent.chatId !== snapshot.chat.id || intent.incarnationId !== snapshot.chat.incarnationId || intent.executionEpoch !== head.executionEpoch || intent.userId !== scope.userId) throw new Error("IMPORT_DELIVERY_IDENTITY_CHANGED");
+    if (intent.chatId !== snapshot.chat.id || intent.incarnationId !== snapshot.chat.incarnationId || intent.userId !== scope.userId) throw new Error("IMPORT_DELIVERY_IDENTITY_CHANGED");
     let manifest = await checkpoints.get("import-manifest"), cipherRaw = await checkpoints.get("encrypted-import-manifest");
     let sequences: number[] | null = null;
     if (!cipherRaw) {
@@ -74,7 +74,7 @@ export class ImportedHistoryPublisher {
         ciphertextBytes += importCipherEntryBytes(message.message); ciphertextDigest = extendImportCipherDigest(ciphertextDigest, message.message);
       }
       if (count !== frozen.generation.entry_count) throw new Error("IMPORT_GENERATION_COUNT_CHANGED");
-      const planned = importManifestSchema.parse({ chatId: intent.chatId, incarnationId: intent.incarnationId, executionEpoch: intent.executionEpoch,
+      const planned = importManifestSchema.parse({ chatId: intent.chatId, incarnationId: intent.incarnationId,
         generationId: intent.generationId, expectedRevision: intent.expectedRevision, sourceKind: frozen.generation.source_kind,
         entryCount: count, bytes, digest, incompleteTail: frozen.generation.incomplete_tail });
       if (manifest && (manifest.kind !== "import-manifest" || canonicalJson(manifest.manifest) !== canonicalJson(planned))) throw new Error("IMPORT_MANIFEST_CHANGED");
@@ -91,7 +91,7 @@ export class ImportedHistoryPublisher {
     let offset = 0, pageBytes = 0, page: Array<{ entry: ImportedEntry; message: EncryptedMessage }> = [];
     const publishPage = async () => {
       signal.throwIfAborted(); const operationId = hashChatContent([planned.generationId, offset]), key = `cipher-import-page:${operationId}`;
-      const identity = { chatId: intent.chatId, incarnationId: intent.incarnationId, executionEpoch: intent.executionEpoch, generationId: intent.generationId, operationId, offset };
+      const identity = { chatId: intent.chatId, incarnationId: intent.incarnationId, generationId: intent.generationId, operationId, offset };
       const plaintextHash = hashImportPage({ ...identity, payloadHash: "0".repeat(64), entries: page.map(value => value.entry) });
       let raw = await checkpoints.get(key);
       // Frozen ciphertext that predates this attempt is the only evidence that the publish may already have been received.
@@ -108,7 +108,7 @@ export class ImportedHistoryPublisher {
       // A page prepared in this attempt has never been sent; a resumed one stays receipt-first.
       let receipt = attempted ? await transport.query("chats/imported/api:receipt", { ...this.header, operationId }) : null; signal.throwIfAborted();
       if (!receipt) {
-        for (const value of page) await stageImportedMessage({ ...value, executionEpoch: intent.executionEpoch, files, checkpoints, header: this.header, signal, transport });
+        for (const value of page) await stageImportedMessage({ ...value, files, checkpoints, header: this.header, signal, transport, progress: this.input.progress });
         receipt = await transport.mutate("chats/imported/api:publish", { ...this.header, operation }); signal.throwIfAborted();
       }
       if (receipt.chatId !== intent.chatId || receipt.operationId !== operationId || receipt.ciphertextHash !== operation.ciphertextHash ||

@@ -1,9 +1,9 @@
 /**
  * [INPUT]: Current surface role, an optional visible Browser panel and role-scoped native bridges.
- * [OUTPUT]: Claude artifact opening through an available built-in panel or the supported external bridge.
- * [POS]: Shared desktop artifact entry policy for main Chats, App Use Chats and mirror dialogs.
+ * [OUTPUT]: URL opening through an available built-in panel or the supported external bridge.
+ * [POS]: Shared desktop link entry policy for main Chats, App Use Chats and mirror dialogs.
  */
-export async function openArtifactBrowser(url: string, openPanel?: () => void): Promise<void> {
+export async function openInBrowser(url: string, openPanel?: () => void): Promise<void> {
   if (openPanel && window.windowSurfaces?.context.role === "main" && window.browser) {
     openPanel();
     await window.browser.createTab({ url });

@@ -9,7 +9,7 @@ import { versionSchema as rev } from "../scalars";
 import { sha256Schema } from "../blobs";
 export const queueItemsSchema = z.array(z.object({ intentId: id, sequence: rev, sourceDeviceId: id.nullable() }).strict()).max(64)
   .refine(items => new Set(items.map(item => item.intentId)).size === items.length);
-export const acceptedQueueSchema = z.object({ deviceId: id, executionEpoch: rev, revision: sha256Schema, items: queueItemsSchema }).strict();
+export const acceptedQueueSchema = z.object({ deviceId: id, revision: sha256Schema, items: queueItemsSchema }).strict();
 export type AcceptedQueue = z.infer<typeof acceptedQueueSchema>;
 export const awaitingQueueSchema = z.object({ accepted: acceptedQueueSchema.optional(), revision: sha256Schema, items: z.array(z.object({ intentId: id, sequence: rev,
   sourceDeviceId: id, targetDeviceId: id }).strict()).max(64) }).strict();

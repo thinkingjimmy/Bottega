@@ -49,15 +49,15 @@ function attachmentIds(payload: unknown): Set<string> {
 }
 export function enqueueSource(db: SqliteDatabase, input: {
   id: string; scope: SyncScope; chatId: string; entityKind: string; entityId?: string;
-  kind: string; revision: number; executionEpoch: number | null; payload: unknown; now: number;
+  kind: string; revision: number; payload: unknown; now: number;
 }) {
   const source = retainSource(db, { chatId: input.chatId, kind: input.kind, revision: input.revision,
     payload: input.payload, scope: input.scope, rootId: `outbox:${input.id}`, now: input.now });
   const manifest = json({ version: 1, chatId: input.chatId, sources: [source] });
   db.prepare(`INSERT INTO cloud_outbox(id,environment,user_id,entity_kind,entity_id,kind,seq_or_revision,
-    execution_epoch,payload_json,payload_digest,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
+    payload_json,payload_digest,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(
     input.id, input.scope.environment, input.scope.userId, input.entityKind, input.entityId ?? input.chatId,
-    input.kind, input.revision, input.executionEpoch, manifest, digest(manifest), input.now);
+    input.kind, input.revision, manifest, digest(manifest), input.now);
   return source;
 }
 export function assertClassification(db: SqliteDatabase, facts: ChatFacts, allowChange = false) {

@@ -1,17 +1,17 @@
 /**
- * [INPUT]: A complete mixed queue snapshot, executor identity and live queue metadata.
+ * [INPUT]: A complete mixed queue snapshot, owner identity and live queue metadata.
  * [OUTPUT]: One coordinator revision after every original row enters the same dispatch authority.
  * [POS]: Queue transfer barrier; no partial server reorder is committed before the atomic coordinator edit.
  */
 import type { AcceptedQueue, AwaitingQueue } from "@ai-chat/cloud-protocol/remote/queue";
 import type { RemoteCommandPort } from "../contracts";
-export function admittedQueue(snapshot: AwaitingQueue, original: AwaitingQueue, authority: { deviceId: string; executionEpoch: number }): AcceptedQueue | null {
+export function admittedQueue(snapshot: AwaitingQueue, original: AwaitingQueue, authority: { deviceId: string }): AcceptedQueue | null {
   const initial = original.accepted;
-  if (!initial || initial.deviceId !== authority.deviceId || initial.executionEpoch !== authority.executionEpoch ||
-    original.items.some(item => item.targetDeviceId !== authority.deviceId)) throw new Error("executor-changed");
+  if (!initial || initial.deviceId !== authority.deviceId ||
+    original.items.some(item => item.targetDeviceId !== authority.deviceId)) throw new Error("not-owner");
   const accepted = snapshot.accepted;
   if (!accepted) return null;
-  if (accepted.deviceId !== authority.deviceId || accepted.executionEpoch !== authority.executionEpoch) throw new Error("executor-changed");
+  if (accepted.deviceId !== authority.deviceId) throw new Error("not-owner");
   const before = initial.items.map(item => item.intentId), ids = new Set([...before, ...original.items.map(item => item.intentId)]);
   const retained = accepted.items.filter(item => before.includes(item.intentId)).map(item => item.intentId);
   if (retained.length !== before.length) throw new Error("already-dispatched");
@@ -23,7 +23,7 @@ export function admittedQueue(snapshot: AwaitingQueue, original: AwaitingQueue, 
   return accepted.items.length === ids.size ? accepted : null;
 }
 export function awaitQueueAdmission(port: RemoteCommandPort, chatId: string, original: AwaitingQueue,
-  authority: { deviceId: string; executionEpoch: number }, signal?: AbortSignal, timeoutMs = 60_000): Promise<AcceptedQueue> {
+  authority: { deviceId: string }, signal?: AbortSignal, timeoutMs = 60_000): Promise<AcceptedQueue> {
   return new Promise((resolve, reject) => {
     let stop: (() => void) | undefined, settled = false;
     const lifetime = AbortSignal.any([...(signal ? [signal] : []), ...(port.lifetime ? [port.lifetime] : [])]);

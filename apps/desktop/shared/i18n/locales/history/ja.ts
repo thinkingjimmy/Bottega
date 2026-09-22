@@ -28,8 +28,6 @@ export const historyJa: typeof historyEn = {
   disableProject: "Agent 履歴を非表示",
   enableProject: "Agent 履歴を表示",
   refreshProject: "Agent 履歴を更新",
-  incompleteTail: "有界再試行後も元ファイルは書き込み中でした。不完全な末尾を除外したため、更新して再試行してください。",
-  resumeUnavailable: "この Agent 履歴は、まだアプリ内で続行できません。",
   search: "検索",
   searchPlaceholder: "チャット、Base、プロジェクトアーカイブを検索…",
   searchEmpty: "一致する結果はありません",
@@ -61,7 +59,4 @@ export const historyJa: typeof historyEn = {
   deliveringMemory: "履歴を Memory に配信中",
   interruptedGrant: "以前に確認した取り込みが中断されました。再プレビューすると同じ一回限りの Grant を再開できます。自動送信はされません。",
   importedHistoryLabel: "取り込まれた Agent 履歴",
-  importedDivider: "取り込み履歴 · ここから製品内の会話",
-  divergedDivider: "元データが変更されました · 不変スナップショットから会話を継続",
-  sourceMissingDivider: "元の記録が保存元にありません · 不変スナップショットから会話を継続",
 };

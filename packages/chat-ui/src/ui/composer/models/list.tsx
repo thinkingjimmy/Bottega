@@ -19,6 +19,8 @@ export type ChatModelListSelectorProps = {
   models: BackendModelInfo[];
   modelsLoading: boolean;
   modelsError: ReactNode;
+  /** What an empty catalog means, when the host knows something better than "no models". */
+  modelsEmpty?: ReactNode;
   settingsError: string;
   disabled?: boolean;
   streaming?: boolean;
@@ -38,6 +40,7 @@ function useSelectorState({
   models,
   modelsLoading,
   modelsError,
+  modelsEmpty,
   settingsError,
   disabled = false,
   streaming = false,
@@ -93,7 +96,7 @@ function useSelectorState({
       .finally(() => setLocalBusy(false));
   };
 
-  return { t, value, models, modelsLoading, modelsError, settingsError, onRetryModels, open, setOpen, current, effort, speed, effortText, speedText, busy, triggerLoading, modelAdjustable, effortAdjustable, speedAdjustable, pending, modelText, triggerText, speedReason, commitAndClose };
+  return { t, value, models, modelsLoading, modelsError, modelsEmpty, settingsError, onRetryModels, open, setOpen, current, effort, speed, effortText, speedText, busy, triggerLoading, modelAdjustable, effortAdjustable, speedAdjustable, pending, modelText, triggerText, speedReason, commitAndClose };
 }
 export type ModelMenuState = ReturnType<typeof useSelectorState>;
 export function ChatModelListSelector(props: ChatModelListSelectorProps) {

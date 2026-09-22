@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat records, the typed SQLite client, and mutation outcome errors
- * [OUTPUT]: Persists aggregate and narrow writes with internal frozen executor evidence in the existing receipt transaction.
+ * [OUTPUT]: Persists aggregate and narrow writes with internal frozen owner evidence in the existing receipt transaction.
  * [POS]: Durable write adapter beneath ChatStore; queueing, metadata publication, and domain transitions remain in the coordinator
  */
 
@@ -35,7 +35,7 @@ function committed(outcome: MutationOutcome<unknown>) {
 }
 
 export async function persistRecordToStorage(input: {
-  executorCommit?: import("../sqlite/cloud/execution/commit").ExecutorCommit;
+  ownerCommit?: import("../sqlite/cloud/execution/commit").OwnerCommit;
   record: ChatRecord;
   database: ChatDatabaseClient | null;
   deviceId: string | null;
@@ -46,11 +46,11 @@ export async function persistRecordToStorage(input: {
   const operationId = randomUUID();
   committed(await database.execute({
     kind: "upsert-record",
-    ...(input.executorCommit ? { executorCommit: input.executorCommit } : {}),
+    ...(input.ownerCommit ? { ownerCommit: input.ownerCommit } : {}),
     operationId,
     requestHash: hash({
       operationId,
-      ...(input.executorCommit ? { executorCommit: input.executorCommit } : {}),
+      ...(input.ownerCommit ? { ownerCommit: input.ownerCommit } : {}),
       record: input.record,
       deviceId,
       expectedAggregateRevision: input.expectedAggregateRevision,
@@ -87,7 +87,7 @@ export async function persistFactsToStorage(input: {
 }
 
 export async function persistAppendedMessageToStorage(input: {
-  executorCommit?: import("../sqlite/cloud/execution/commit").ExecutorCommit;
+  ownerCommit?: import("../sqlite/cloud/execution/commit").OwnerCommit;
   current: ChatRecord;
   record: ChatRecord;
   message: ChatMessage;
@@ -99,7 +99,7 @@ export async function persistAppendedMessageToStorage(input: {
   const operationId = randomUUID();
   const command = {
     kind: "append-message" as const,
-    ...(input.executorCommit ? { executorCommit: input.executorCommit } : {}),
+    ...(input.ownerCommit ? { ownerCommit: input.ownerCommit } : {}),
     operationId,
     chatId: input.record.id,
     deviceId,

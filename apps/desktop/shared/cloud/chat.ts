@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on the public Chat registry, transcript models and closed local continuation contracts.
- * [OUTPUT]: Defines fixed-purpose Chat facts/deletion, Project deletion review, retained catalogs, file reading and continuation IPC.
+ * [OUTPUT]: Defines fixed-purpose Chat facts/deletion, Project deletion review, retained catalogs, file reading, continuation IPC and the signed-out catalog answer.
  * [POS]: Trusted renderer boundary; account scopes and file paths remain main-owned.
  */
 import { z } from "zod";
 import { cloudIdSchema as id, cloudFunctions } from "@ai-chat/cloud-protocol";
 import { encryptedFileDescriptorSchema } from "@ai-chat/cloud-protocol/blobs/encrypted";
-import { transcriptRequestSchema, type ChatCatalogPage, type TranscriptPage, type TranscriptRequest } from "@ai-chat/chat-ui/model";
+import { chatCatalogPageSchema, transcriptRequestSchema, type TranscriptPage, type TranscriptRequest } from "@ai-chat/chat-ui/model";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { ExecutionView } from "@ai-chat/chat-ui/contracts";
 import type { ExecutionDraft } from "./execution";
@@ -24,11 +24,19 @@ export const chatCatalogRequestSchema = z.object({ afterRevision: z.number().int
 export const chatFileOpenSchema = z.object({ chatId: id, descriptor: encryptedFileDescriptorSchema }).strict();
 export const chatFileReadSchema = z.object({ leaseId: z.string().uuid(), offset: z.number().int().nonnegative().safe(), length: z.number().int().positive().max(1024 * 1024) }).strict();
 export const chatIdRequestSchema = z.object({ chatId: id }).strict();
+/* 账号还没落到本机 binding 上时的目录答复。渲染端只想画一页列表，收到的却是
+   `CHAT_ACCOUNT_UNAVAILABLE` 的一整条堆栈——那是主进程日志里唯一的内容，也是
+   一个必然出现的时序窗口。main 从不对只想上色的界面抛错（同 cloudComputersResult）。 */
+export const chatCatalogResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("catalog"), page: chatCatalogPageSchema }).strict(),
+  z.object({ kind: z.literal("signed-out") }).strict(),
+]);
+export type ChatCatalogResult = z.infer<typeof chatCatalogResultSchema>;
 export const CHAT_CHANNEL = { catalog: "cloud-chat:catalog", head: "cloud-chat:head", transcript: "cloud-chat:transcript", query: "cloud-chat:query",
   facts: "cloud-chat:facts", editFacts: "cloud-chat:edit-facts", resolveFacts: "cloud-chat:resolve-facts",
   deletion: "cloud-chat:deletion", requestDeletion: "cloud-chat:request-deletion", keepDeletion: "cloud-chat:keep-deletion",
   watch: "cloud-chat:watch", unwatch: "cloud-chat:unwatch", changed: "cloud-chat:changed", openFile: "cloud-chat:open-file",
-  readFile: "cloud-chat:read-file", closeFile: "cloud-chat:close-file", execution: "cloud-chat:execution", claim: "cloud-chat:claim", prepare: "cloud-chat:prepare",
+  readFile: "cloud-chat:read-file", closeFile: "cloud-chat:close-file", execution: "cloud-chat:execution", prepare: "cloud-chat:prepare",
   draft: "cloud-chat:draft", saveDraft: "cloud-chat:save-draft", bindProject: "cloud-chat:bind-project",
   retainedCatalog: "cloud-chat:retained-catalog", retainedMetadata: "cloud-chat:retained-metadata",
   projectDeletionCatalog: "cloud-chat:project-deletion-catalog", reviewProjectDeletion: "cloud-chat:project-deletion-review", resolveProjectDeletion: "cloud-chat:project-deletion-resolve", retryProjectDeletion: "cloud-chat:project-deletion-retry",
@@ -49,10 +57,9 @@ export interface CloudChatBridge {
   recoveryPage(input: RecoveryIdentity & { before: number | null }): Promise<RecoveryPage>;
   recoveryFile(input: RecoveryIdentity & { messageId: string; descriptor: BlobDescriptor }): Promise<{ leaseId: string }>;
   onLocalChanged(changed: () => void): () => void;
-  catalog(input: z.infer<typeof chatCatalogRequestSchema>): Promise<ChatCatalogPage>;
+  catalog(input: z.infer<typeof chatCatalogRequestSchema>): Promise<ChatCatalogResult>;
   head(input: { chatId: string }): Promise<CloudChatHead | null>;
   execution(input: { chatId: string }): Promise<ExecutionView>;
-  claim(input: { chatId: string }): Promise<void>;
   prepare(input: { chatId: string }): Promise<void>;
   bindProject(input: { chatId: string }): Promise<boolean>;
   draft(input: { chatId: string; incarnationId: string }): Promise<ExecutionDraft>;

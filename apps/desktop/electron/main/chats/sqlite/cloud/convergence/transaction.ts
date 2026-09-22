@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on verified complete mirror bodies, original native custody and the sole SQLite record writer.
- * [OUTPUT]: Retains complete divergent turns before canonical installation; former executors atomically become readable mirrors after custody completes.
- * [POS]: Executor-independent adoption transaction; Home ownership and execution preparation remain local authorities.
+ * [OUTPUT]: Retains complete divergent turns before canonical installation; a Chat owned elsewhere atomically becomes a readable mirror after custody completes.
+ * [POS]: Ownership-independent adoption transaction; Home ownership and execution preparation remain local authorities.
  */
 import type { z } from "zod";
 import type { SyncScope } from "../../../../../../shared/local-storage/contracts";
@@ -36,7 +36,7 @@ export function convergeChat(db: SqliteDatabase, reader: ChatRepositoryReader, w
   assertHomeCaptured(db, chatId);
   const bounded = reader.getRecord(chatId, deviceId), native = bounded && readSavedNative(db, bounded), current = readMetadataState(db, scope, chatId).head;
   if (!native || native.incarnationId !== head.chat.incarnationId || native.context.kind !== "ordinary" || head.chat.classification.conversationKind !== "ordinary" ||
-    !current || current.executionEpoch !== head.executionEpoch || current.bodyRevision !== head.bodyRevision || current.chat.cloudRevision !== head.chat.cloudRevision ||
+    !current || current.bodyRevision !== head.bodyRevision || current.chat.cloudRevision !== head.chat.cloudRevision ||
     head.openTurnId || db.prepare("SELECT 1 FROM cloud_tombstones WHERE environment=? AND user_id=? AND chat_id=?").get(scope.environment, scope.userId, chatId)) throw new Error("CHAT_CONVERGENCE_IDENTITY_CHANGED");
   if (native.chatMessageRevision !== action.expectedMessageRevision || turnOutboxDigest(db, scope, chatId) !== action.expectedOutboxDigest) throw new Error("CHAT_CONVERGENCE_CONTENT_CHANGED");
   const download = readMirrorDownload(db, scope, chatId);
@@ -92,10 +92,9 @@ export function convergeChat(db: SqliteDatabase, reader: ChatRepositoryReader, w
     db.prepare("UPDATE cloud_chat_metadata_state SET conflicted=0,deleted=0,tail_operation_id=NULL WHERE chat_id=?").run(chatId);
   }
   // Initial copied-profile adoption retains its existing recovery semantics.
-  // A former executor changes residence only after canonical installation and custody succeed.
-  const remote = !initial && head.executorDeviceId !== deviceId;
-  db.prepare("UPDATE chats SET cloud_state=?,cloud_last_committed_executor_device_id=? WHERE id=?")
-    .run(remote ? "mirror" : "synced", head.lastCommittedExecutorDeviceId, chatId);
+  // Residence follows ownership only after canonical installation and custody succeed.
+  const remote = !initial && head.ownerDeviceId !== deviceId;
+  db.prepare("UPDATE chats SET cloud_state=? WHERE id=?").run(remote ? "mirror" : "synced", chatId);
   if (remote) db.prepare(`INSERT INTO cloud_chat_mirrors(chat_id,environment,user_id,portable_json) VALUES(?,?,?,?)
     ON CONFLICT(chat_id) DO UPDATE SET portable_json=excluded.portable_json,preparation_json=NULL`)
     .run(chatId, scope.environment, scope.userId, JSON.stringify(head.chat));

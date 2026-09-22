@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on Electron native dialogs, local diagnostics, typed startup failures, folder identity and the closed SQLite recovery owner.
- * [OUTPUT]: Keeps startup failures actionable without an automatic exit, an unrelated database reset or a folder the user cannot reach again; recoverStartupFailure is the composition root's single exit.
+ * [OUTPUT]: Keeps startup failures actionable without an automatic exit, an unrelated database reset or a folder the user cannot reach again, including a folder that belongs to another computer; recoverStartupFailure is the composition root's single exit.
  * [POS]: Pre-renderer recovery surface; rebuilding and adopting a new folder are explicit final user actions after the impact is displayed.
  */
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { app, clipboard, dialog, shell } from "electron";
-import { libraryErrorCode } from "../../library/errors";
+import { libraryErrorCode, libraryErrorHost } from "../../library/errors";
 import { libraryIdentitySchema } from "../../library/identity";
 import { libraryRecoveryCopy, recoveryCopy } from "./copy";
 import { canRebuildFromFolder, preserveClosedDatabase } from "./sqlite";
@@ -25,6 +25,9 @@ export async function showStartupRecovery(input: { error: Error; userData: strin
   const code = libraryErrorCode(input.error);
   if (input.library) {
     if (code === "locked") return showLockedFolder(input.library, input.locale);
+    /* A folder published by another computer is not broken and not lost, so it gets the same two exits as a
+       folder that moved — locate the one this installation was using, or start a new one — under its own sentence. */
+    if (code === "owned-elsewhere") return showMissingFolder(input.library, input.locale, libraryErrorHost(input.error));
     if (code === "missing" || code === "identity-changed" || code === "control-invalid") {
       return showMissingFolder(input.library, input.locale);
     }
@@ -53,12 +56,14 @@ export async function showStartupRecovery(input: { error: Error; userData: strin
 
 /* Reinstalling does not clear userData, so without these two actions a folder that was
    deleted, renamed or left on an unmounted volume has no exit at all. */
-async function showMissingFolder(library: StartupRecoveryLibrary, locale: string) {
+async function showMissingFolder(library: StartupRecoveryLibrary, locale: string, ownedBy?: string) {
   const copy = libraryRecoveryCopy(locale);
+  const title = ownedBy === undefined ? copy.missingTitle : copy.ownedTitle;
+  const message = ownedBy === undefined ? copy.missingMessage : copy.ownedMessage.replace("{host}", ownedBy);
   let detail = library.settings.get().libraryRoot ?? "";
   for (;;) {
     const buttons = [copy.locate, copy.startNew, copy.quit];
-    const result = await dialog.showMessageBox({ type: "error", title: copy.missingTitle, message: copy.missingMessage, detail,
+    const result = await dialog.showMessageBox({ type: "error", title, message, detail,
       buttons, defaultId: 0, cancelId: 2, noLink: true });
     try {
       if (result.response === 0) {

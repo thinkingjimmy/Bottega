@@ -32,7 +32,8 @@ import { UserMessageEditor } from "./user-message-editor";
 import type { AgentBackendId } from "../../../../shared/agent-ipc";
 import { localChatReads } from "@/lib/cloud/chat/platform/local";
 const { earlier: loadOlderChatMessages, materialize: materializeChatMessage, snapshot: readChatMessages } = localChatReads.transcript;
-import { TranscriptDividerRow } from "./transcript-divider";
+import { ImportedBoundary, type ImportedSourceStatus } from "@ai-chat/chat-ui/lineage/imported";
+import { useEffectiveLocale } from "@/lib/i18n-locale";
 import { ChatTranscriptSkeleton } from "./transcript-skeleton";
 import {
   ForkChatDialog,
@@ -47,12 +48,11 @@ import {
 
 export type { ChatForkViewContext } from "./chat-fork-controls";
 
-/* 分隔行：一条细线把话题从中间断开，中间那格由调用者决定说什么——
-   「以上是导入的历史消息」，或者一枚「显示更早消息」。同一种语言，
-   于是这两处永远不会长成两副样子。 */
+/* 导入段的成色，只由读侧投影出来：续聊点那条分隔线说「续自导入的历史」还是
+   「来源已变化/已不在」，全看这一格。导入本身可能有损（折叠丢工具输出、尾部
+   未校验），转录本来就显示省略——那就是全部披露，不再另发警告。 */
 export type ImportSegmentFacts = Readonly<{
-  sourceStatus?: "match" | "changed" | "missing";
-  incompleteTail?: boolean;
+  sourceStatus?: ImportedSourceStatus;
 }>;
 
 export const ChatAssistantRow = memo(function ChatAssistantRow({
@@ -135,6 +135,7 @@ function TranscriptRows({
   surfaceVisible?: boolean;
 }) {
   const { t } = useAppTranslation();
+  const locale = useEffectiveLocale();
   const {
     backendDisplayName,
     backendId,
@@ -190,15 +191,6 @@ function TranscriptRows({
   const lastImportedId = messages.findLast(
     (message) => message.segment === "imported"
   )?.id;
-  /* "match" 与 "missing" 都由扫描说了算（HistoryImportService 一侧的
-     markImportSourceStatus）。"changed" 没有生产者，也不会有：内容一变就是
-     新的一代 import 代际，旧代际连同那句判定一起退休。分支留着是因为它是
-     这格事实的完整词表，删掉等于把「来源变了」从产品语言里抹去。 */
-  const importedDivider = importSegment?.sourceStatus === "missing"
-    ? t("history.sourceMissingDivider")
-    : importSegment?.sourceStatus === "changed"
-      ? t("history.divergedDivider")
-      : t("history.importedDivider");
   const renderMessage = (
     message: (typeof messages)[number]
   ) => {
@@ -295,18 +287,11 @@ function TranscriptRows({
     ) : message.id === lastImportedId ? (
       <Fragment key={`${message.id}:imported-boundary`}>
         {renderMessage(message)}
-        {importSegment?.incompleteTail && (
-          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-            {t("history.incompleteTail")}
-          </p>
-        )}
-        <TranscriptDividerRow role="separator">
-          <span>{importedDivider}</span>
-        </TranscriptDividerRow>
+        <ImportedBoundary sourceStatus={importSegment?.sourceStatus} locale={locale} />
       </Fragment>
     ) : renderMessage(message);
   return <TimelineView context={children => <ChartConversationBoundary>{children}</ChartConversationBoundary>} messages={messages} hasMoreBefore={readChatMessages(chatId)?.hasMoreBefore ?? false}
-    /* The same key the cloud port passes: one conversation keeps one reading position across an executor switch. */
+    /* The same key the cloud port passes: one conversation keeps one reading position across an execution-port switch. */
     memoryKey={incarnationId ? `${chatId}/${incarnationId}` : undefined}
     earlier={earlier} materialize={materialize} routeSearch={routeSearch} row={renderRow}
     copy={{ earlier: t("chat.transcript.loadEarlier"), loading: t("chat.transcript.loadingEarlier"), imported: t("history.importedHistoryLabel"), loaded: count => t("chat.transcript.loadedEarlier", { count }) }}

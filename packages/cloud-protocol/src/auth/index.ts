@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on Zod and the shared environment contract.
- * [OUTPUT]: Provides account/device projections with the current connection epoch, immutable login return modes and metadata, and closed product return paths.
+ * [OUTPUT]: Provides account/device projections with the current connection epoch, the machine key devices register under, the account-level computer projection installations fold into with its client-side presence deadline and installation lookup, immutable login return modes and metadata, and closed product return paths.
  * [POS]: Public authentication contracts; session credentials never enter device or account DTOs.
  */
 import { z } from "zod";
-import { environmentIdSchema } from "../config";
+import { CLOUD_LIMITS, environmentIdSchema } from "../config";
 import { googleAvatarUrl } from "./avatar";
 const hasControl = (value: string) => [...value].some(char => {
   const code = char.charCodeAt(0); return code < 32 || (code >= 127 && code <= 159);
@@ -14,9 +14,14 @@ export const loginStateSchema = z.string().min(32).max(128).regex(/^[A-Za-z0-9_-
 export const devicePlatformSchema = z.enum(["macos", "windows", "linux", "browser"]);
 export const deviceNameSchema = z.string().min(1).max(40).refine(value => !hasControl(value), "Invalid device name");
 export function normalizeDeviceName(value: string) {
-  return deviceNameSchema.parse([...value].filter(char => !hasControl(char)).join("").replace(/\.local\s*$/i, "").trim());
+  // Bounding comes last so a hostname longer than the limit still loses its mDNS `.local` suffix.
+  const stripped = [...value].filter(char => !hasControl(char)).join("").replace(/\.local\s*$/i, "").trim();
+  return deviceNameSchema.parse(stripped.slice(0, 40).trim());
 }
 export const lastSeenReasonSchema = z.enum(["sleep", "quit", "network", "unknown"]);
+/* One physical computer, SHA-256 of a hardware identifier the client never discloses. Installations of the
+   same computer (a second profile, a reinstall) share it; a browser has none. */
+export const machineIdHashSchema = z.string().regex(/^[a-f0-9]{64}$/);
 export const deviceSchema = z.object({
   deviceId: cloudIdSchema, kind: z.enum(["desktop", "web"]), name: deviceNameSchema,
   platform: devicePlatformSchema, appVersion: z.string().max(100), protocolVersion: z.number().int().positive(),
@@ -25,6 +30,28 @@ export const deviceSchema = z.object({
   offlineAt: z.number().nullable().optional(), lastSeenReason: lastSeenReasonSchema.optional(),
 }).strict();
 export type CloudDevice = z.infer<typeof deviceSchema>;
+/* A computer is the unit a Chat belongs to and a remote view switches between; an installation is one
+   profile on it. Presence folds upwards: a computer is online while any of its installations is. */
+export const computerInstallationSchema = z.object({ deviceId: cloudIdSchema, platform: devicePlatformSchema,
+  appVersion: z.string().max(100), protocolVersion: z.number().int().positive(), state: z.enum(["active", "revoked"]) }).strict();
+export const computerSchema = z.object({
+  machineIdHash: machineIdHashSchema, name: deviceNameSchema, online: z.boolean(),
+  lastSeenAt: z.number().nullable(), lastSeenReason: lastSeenReasonSchema,
+  installations: z.array(computerInstallationSchema).min(1).max(100),
+}).strict();
+export type CloudComputer = z.infer<typeof computerSchema>;
+/**
+ * Presence is a deadline, not an event: the projection is only recomputed when a row changes, so a client that
+ * wants a computer to go dark on time reproduces the server's rule from the newest heartbeat it was told about.
+ * A computer already reported offline stays offline; only a stale "online" is retracted.
+ */
+export function computerOnline(computer: Pick<CloudComputer, "online" | "lastSeenAt">, now: number) {
+  return computer.online && (computer.lastSeenAt === null || now < computer.lastSeenAt + CLOUD_LIMITS.offlineAfterMs);
+}
+/** The installation a chat or Project belongs to names exactly one computer of the account. */
+export function computerOf(computers: readonly CloudComputer[], deviceId: string | null | undefined) {
+  return deviceId ? computers.find(computer => computer.installations.some(item => item.deviceId === deviceId)) ?? null : null;
+}
 export const accountProfileSchema = z.object({ userId: cloudIdSchema, name: z.string().max(256), email: z.string().email(),
   avatarUrl: z.string().max(2048).refine(value => googleAvatarUrl(value) === value).nullable().optional() }).strict();
 export const accountAccessSchema = z.discriminatedUnion("state", [

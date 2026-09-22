@@ -1,12 +1,11 @@
 /**
- * [INPUT]: Depends on Electron BrowserWindow/session/frame APIs, shared i18n, Apps origin policy, and renderer URL guards
- * [OUTPUT]: Provides navigation locks, testable fixed preview/srcdoc ancestry, minimum permission policy, controlled ReactGrab injection, and confirmed HTTPS external links
+ * [INPUT]: Depends on Electron BrowserWindow/session/frame APIs, Apps origin policy, and renderer URL guards
+ * [OUTPUT]: Provides navigation locks, testable fixed preview/srcdoc ancestry, minimum permission policy, controlled ReactGrab injection, and HTTPS-only external links
  * [POS]: Main/window browsing-context security boundary; product entry points cannot widen navigation, RTC, or permission authority
  */
 
 import { artifactRuntime } from "../artifacts/runtime";
 import {
-  dialog,
   session,
   shell,
   webFrameMain,
@@ -15,10 +14,7 @@ import {
 } from "electron";
 import type { AppsService } from "../apps/apps-service";
 import { urlMatchesRenderer } from "../frame-guard";
-import type { AppLocale } from "@ai-chat/ui/lib/locale";
-import { translate } from "../../../shared/i18n/runtime";
 
-const TRUSTED_EXTERNAL_HOSTS = new Set(["github.com", "learn.chatgpt.com", "claude.ai", "preview.claude.ai"]);
 const iframeDocuments = new WeakMap<WebFrameMain, string>();
 function isAllowedAppOrigin(apps: AppsService, value: string) {
   try {
@@ -69,8 +65,7 @@ function isPreviewDocument(apps: AppsService, value: string) {
 export function lockNavigation(
   window: BrowserWindow,
   rendererUrl: string,
-  apps: AppsService,
-  locale: () => AppLocale = () => "en"
+  apps: AppsService
 ) {
   // base-gui 是 Agent 写的代码，CSP 的 connect-src 管不到 WebRTC 数据通道
   // （Chromium 150 不认 CSP3 `webrtc 'block'`，实测见 DEV/apps/probes/base-gui-csp.cjs）。
@@ -161,7 +156,7 @@ export function lockNavigation(
     if (referrer?.url && (isAllowedAppOrigin(apps, referrer.url) || artifactRuntime()?.gateway.ownsOrigin(referrer.url))) {
       return { action: "deny" };
     }
-    void openExternalSafely(window, url, locale()).catch((error) =>
+    void openExternalSafely(url).catch((error) =>
       console.warn("[external] window.open 被拒绝", error)
     );
     return { action: "deny" };
@@ -208,27 +203,8 @@ export function configurePermissions(apps: AppsService) {
   );
 }
 
-export async function openExternalSafely(
-  window: BrowserWindow,
-  rawUrl: string,
-  locale: AppLocale = "en"
-) {
+export async function openExternalSafely(rawUrl: string) {
   const url = new URL(rawUrl);
   if (url.protocol !== "https:") throw new Error("只允许打开 HTTPS 外链");
-  if (!TRUSTED_EXTERNAL_HOSTS.has(url.hostname)) {
-    const result = await dialog.showMessageBox(window, {
-      type: "warning",
-      buttons: [
-        translate(locale, "common.cancel"),
-        translate(locale, "common.continue"),
-      ],
-      defaultId: 0,
-      cancelId: 0,
-      title: translate(locale, "settings.native.externalLinkTitle"),
-      message: translate(locale, "settings.native.externalLinkMessage"),
-      detail: url.href,
-    });
-    if (result.response !== 1) return;
-  }
   await shell.openExternal(url.href);
 }

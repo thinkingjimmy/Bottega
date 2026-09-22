@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on the trusted main-frame registrar, closed IPC schemas and account service.
- * [OUTPUT]: Registers trusted account actions, closed review results, front-window handshake re-checks and window-exit cancellation of unfinished password work.
+ * [OUTPUT]: Registers trusted account actions, closed review results, the pushed account computer list, front-window handshake re-checks and window-exit cancellation of unfinished password work.
  * [POS]: Electron IPC boundary; child frames and auxiliary windows receive no account authority.
  */
 import type { BrowserWindow } from "electron";
 import { z } from "zod";
-import { CLOUD_CHANNEL, cloudDevicesQuerySchema, cloudRenameSchema, cloudRevokeSchema, savedLoginDiscardReviewSchema } from "../../../../shared/cloud-ipc";
+import { CLOUD_CHANNEL, cloudComputerRenameSchema, cloudDevicesQuerySchema, cloudRenameSchema, cloudRevokeSchema, savedLoginDiscardReviewSchema } from "../../../../shared/cloud-ipc";
 import { syncSetupInputSchema, syncUnlockInputSchema } from "../../../../shared/cloud/encryption";
-import { syncApprovalSchema, syncPauseSchema } from "../../../../shared/cloud/sync";
+import { syncApprovalSchema } from "../../../../shared/cloud/sync";
 import { rendererIpc } from "../../ipc-registrar";
 import { SavedLoginReviewExpired, type CloudAccountService } from "./service";
 export function registerCloudAccount(service: CloudAccountService, window: BrowserWindow, rendererUrl: string) {
@@ -29,7 +29,6 @@ export function registerCloudAccount(service: CloudAccountService, window: Brows
     try { await service.discardSavedLogin(input.reviewId); return { status: "discarded" }; }
     catch (error) { if (error instanceof SavedLoginReviewExpired) return { status: "review-expired" }; throw error; }
   });
-  ipc.handle(CLOUD_CHANNEL.pauseSync, (...args) => { const [input] = z.tuple([syncPauseSchema]).parse(args); return service.pauseSync(input.paused); });
   ipc.handle(CLOUD_CHANNEL.listDevices, (...args) => {
     const [input] = z.tuple([cloudDevicesQuerySchema]).parse(args);
     return service.listDevices(input.cursor, input.state);
@@ -40,12 +39,21 @@ export function registerCloudAccount(service: CloudAccountService, window: Brows
   ipc.handle(CLOUD_CHANNEL.revokeDevice, (...args) => {
     const [input] = z.tuple([cloudRevokeSchema]).parse(args); return service.revokeDevice(input.deviceId);
   });
+  /* The computer list is main's subscription, not the renderer's: one per account generation, pushed like the
+     account state itself, so a renderer that mounts late reads the current answer instead of opening a second one. */
+  ipc.handle(CLOUD_CHANNEL.getComputers, (...args) => { noArgs.parse(args); return service.computers(); });
+  ipc.handle(CLOUD_CHANNEL.renameComputer, (...args) => {
+    const [input] = z.tuple([cloudComputerRenameSchema]).parse(args); return service.renameComputer(input.name);
+  });
+  const stopComputers = service.subscribeComputers(value => {
+    if (!window.isDestroyed()) window.webContents.send(CLOUD_CHANNEL.computersChanged, value);
+  });
   const unsubscribe = service.subscribe(state => { if (!window.isDestroyed()) window.webContents.send(CLOUD_CHANNEL.accountChanged, state); });
   // A window returning to the front is the user looking at the banner; only a failing handshake is re-checked.
   const focused = () => service.recheckConnection();
   window.on("focus", focused);
   window.webContents.once("destroyed", () => {
-    unsubscribe(); window.off("focus", focused);
+    unsubscribe(); stopComputers(); window.off("focus", focused);
     // Closing a window may bypass React cleanup while the app remains in the background.
     void service.cancelEncryption().catch(() => {});
   });

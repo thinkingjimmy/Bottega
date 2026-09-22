@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on remote ExecutorFacade creation receipts, canonical UTF-8 text budgets, target capabilities and catalogs, the shared first-message readiness flow and host-owned completion/local-navigation callbacks.
- * [OUTPUT]: Frozen first-send intent, visible sent progress, editable next draft, online-only defaults and inline structured recovery with separate custody for unsent original and newer drafts.
+ * [INPUT]: Depends on remote ExecutionFacade creation receipts, canonical UTF-8 text budgets, target capabilities and catalogs, the shared first-message readiness flow and host-owned completion/local-navigation callbacks.
+ * [OUTPUT]: Frozen first-send intent, visible sent progress, editable next draft, creation on the computer the host names — greyed in place with that computer's sentence when it cannot take one — and inline structured recovery with separate custody for unsent original and newer drafts.
  * [POS]: Shared creation form; explicit submit intent owns the automatic first message until preparation, cancellation or route handoff.
  */
 import { useRemoteReferences } from "./composer/input/references";
@@ -11,7 +11,7 @@ import { useRemoteComposerControls } from "./composer/controls";
 import { useRemoteConsent } from "./composer/consent";
 import { useRemoteFeedback } from "./composer/feedback";
 import { RemoteEditor } from "./composer/input/editor";
-import { budgetLabel, computerFace, sendAction } from "./composer/status";
+import { budgetLabel, sendAction, type OwnerBlock } from "./composer/status";
 import { remoteInputCopy } from "./composer/copy";
 import { ComposerModelSelector, type ModelChoice } from "../composer/controls/model";
 import { utf8Length } from "@ai-chat/cloud-protocol/chats/content/parts";
@@ -31,17 +31,20 @@ import { useRemoteTargets } from "../../platform/remote/hooks";
 import { reasonCopy } from "./delivery/receipts";
 import { remoteReasonSchema, type RemoteReason } from "@ai-chat/cloud-protocol/remote/model";
 import { remoteCopy } from "../../i18n/remote";
-import { DeviceSelector, RemoteAgentSelector, targetReason } from "./computer/selectors";
+import { targetReason } from "./computer/selectors";
+import { RemoteAgentSelector } from "./computer/agent";
 import { RemoteUnavailable } from "./computer/unavailable";
 import { PlatformGlyph } from "./computer/glyphs";
-export function RemoteCreateChat({ platform, locale, projectId, onCreated, onDirtyChange, heading: _heading = true, defaultDeviceId, draft, onLocalSelect, context, disabledActions }: {
-  platform: Pick<ChatPlatform, "account"> & Partial<Pick<ChatPlatform, "chats" | "commands" | "skills" | "capabilities" | "transcript">> & { executor: Pick<ChatPlatform["executor"], "remote"> }; locale: string; projectId: string | null;
+export function RemoteCreateChat({ platform, locale, projectId, onCreated, onDirtyChange, heading: _heading = true, computer, draft, context, disabledActions }: {
+  platform: Pick<ChatPlatform, "account"> & Partial<Pick<ChatPlatform, "chats" | "commands" | "skills" | "capabilities" | "transcript">> & { execution: Pick<ChatPlatform["execution"], "remote"> }; locale: string; projectId: string | null;
   disabledActions?: import("./computer/unavailable").UnavailableAction[];
-  defaultDeviceId?: string | null; draft?: { text: string; change(text: string): void; unsupported?: boolean }; onLocalSelect?(): void; context?: ReactNode;
+  /** The computer this Chat is created on — its installations and the one sentence to say when it cannot take one. Nothing is chosen here; `null` is an account with no computer and `undefined` an answer not in yet. */
+  computer?: { installations: readonly string[]; block: OwnerBlock | null } | null;
+  draft?: { text: string; change(text: string): void; unsupported?: boolean }; context?: ReactNode;
   onCreated(receipt: RemoteCreated, text: string): void | Promise<void>; onDirtyChange?(dirty: boolean): void; heading?: boolean;
 }) {
-  const copy = remoteCopy(locale), input = remoteInputCopy(locale), port = platform.executor.remote, account = useChatAccount(platform.account), targets = useRemoteTargets(port, null, projectId);
-  const [selection, setSelection] = useState<string | null>(null), [backend, setBackend] = useState<RemoteCreateInput["backend"] | null>(null);
+  const copy = remoteCopy(locale), input = remoteInputCopy(locale), port = platform.execution.remote, account = useChatAccount(platform.account), targets = useRemoteTargets(port, null, projectId);
+  const [backend, setBackend] = useState<RemoteCreateInput["backend"] | null>(null);
   const draftKey = `new:${projectId ?? "root"}`, store = remoteDraftStore(platform, draftKey, draft?.text);
   const completeDraft = useRemoteDraft(store, platform.commands?.remote);
   const attempt = completeDraft.creation ?? null, setAttempt = (value: typeof attempt) => store.update({ creation: value });
@@ -49,7 +52,9 @@ export function RemoteCreateChat({ platform, locale, projectId, onCreated, onDir
   const text = draft?.text ?? completeDraft.text, setText = (value: string) => { store.text(value); draft?.change(value); };
   const flight = useRef(false), mounted = useRef(true), lifecycle = useRef<AbortController | null>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; lifecycle.current?.abort(); }; }, []);
-  const protocol = targets.value?.sourceProtocolVersion ?? -1, targetId = attempt?.input.targetDeviceId ?? selection ?? (targets.items.some(item => item.deviceId === defaultDeviceId && item.online) ? defaultDeviceId : null) ?? (targets.items.some(item => item.online && item.deviceId === targets.value?.preferredDeviceId) ? targets.value?.preferredDeviceId : null) ?? "";
+  const protocol = targets.value?.sourceProtocolVersion ?? -1;
+  /* The named computer answers as one: whichever of its installations is up takes the Chat, and a retained attempt keeps the one it already named. */
+  const targetId = attempt?.input.targetDeviceId ?? targets.items.find(item => computer?.installations.includes(item.deviceId) && item.online)?.deviceId ?? "";
   const target = targets.items.find(item => item.deviceId === targetId), selected = target?.online && target.protocolVersion === protocol ? targetId : "";
   const agent = attempt?.input.backend ?? backend ?? target?.agents.find(value => value.available)?.backend ?? target?.agents[0]?.backend ?? "";
   const connected = Boolean(port) && account.state === "ready" && !targets.error, allowed = Boolean(connected && targets.value?.remoteControlEnabled);
@@ -83,7 +88,7 @@ export function RemoteCreateChat({ platform, locale, projectId, onCreated, onDir
     try {
       if (!platform.chats || !platform.commands) throw new FirstMessageFailure("remote-disabled");
       const receipt = await createAndSend({ account: platform.account, chats: platform.chats, commands: platform.commands,
-        executor: platform.executor as ChatPlatform["executor"] }, store, retained, abort.signal, consent.confirm);
+        execution: platform.execution as ChatPlatform["execution"] }, store, retained, abort.signal, consent.confirm);
       if (valid()) { handoffRemoteDraft(platform, draftKey, `chat:${receipt.chatId}/${receipt.incarnationId}`); await onCreated(receipt, store.snapshot().text); store.update({ creation: null }); }
     } catch (error) {
       if (mounted.current) {
@@ -94,17 +99,21 @@ export function RemoteCreateChat({ platform, locale, projectId, onCreated, onDir
     }
     finally { stopAccount(); flight.current = false; if (mounted.current) setBusy(false); }
   };
-  // The first target page in flight is "Connecting…", not a blocked remote: only the menu rows need the reason then.
-  const face = computerFace(copy, { blocked: connected && targets.value === null ? null : remoteBlockedReason, loading: targets.value === null, target, selected: Boolean(selected),
-    protocol, revoked: false, attention: false, localDeviceId: targets.value?.localDeviceId ?? null });
   const action = sendAction(copy, { head: null, target, ready: true, busy, retryCreate: Boolean(attempt) && !busy });
-  const unavailable = targets.value !== null && targets.value?.remoteControlEnabled === false && !onLocalSelect;
+  const unavailable = targets.value !== null && targets.value.remoteControlEnabled === false;
+  /* The computer is named by the sidebar, so this composer only speaks when it cannot take the message. */
+  const block = computer?.block ?? null;
+  const notice = remoteBlockedReason
+    ?? (block ? [block.reason, ...(block.hint ? [block.hint] : [])].join(copy.sentenceGap) : null)
+    ?? (target ? targetReason(target, protocol, copy) : null)
+    ?? (computer === null ? copy.noComputers : computer && targets.value !== null && !targetId ? copy.noComputerOnline : null);
   return <section className="flex h-full min-h-0 flex-col" aria-label={copy.newChat}>
     {attempt ? <div className="flex min-h-0 flex-1 flex-col justify-end overflow-auto p-4">
       <p className="whitespace-pre-wrap break-words">{attempt.text}</p>
       {busy && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><span className="chat-remote-working" aria-hidden="true" />{copy.sent}</p>}
     </div> : <ChatEmptyState title={composerCopy(locale).empty} />}
     <ComposerDock className="chat-remote"><fieldset disabled={busy || Boolean(attempt)} className="min-w-0">{context}</fieldset>
+      {notice && !unavailable && <div className="chat-remote-hint" role="status" data-computer-notice><p>{notice}</p></div>}
       {unavailable ? <RemoteUnavailable icon={<PlatformGlyph kind="none" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />} title={copy.disabled} description={copy.disabledDescription} actions={disabledActions} /> : <ComposerForm className="chat-remote-form" onSubmit={event => { event.preventDefault(); void create(); }} aria-busy={busy} {...controls.events}>
         {controls.files}
         <RemoteEditor references={completeDraft.references} suggestions={references}
@@ -113,15 +122,12 @@ export function RemoteCreateChat({ platform, locale, projectId, onCreated, onDir
         <ComposerToolbar><PromptInputTools>{controls.tools}
           {tooLong && <span role="alert" className="chat-remote-budget">{budgetLabel(copy, bytes, REMOTE_LIMITS.textBytes)}</span>}
         </PromptInputTools><ComposerActions>
-          <DeviceSelector items={targets.items} currentDeviceId={targetId || null} selectedDeviceId={selected} localDeviceId={targets.value?.localDeviceId ?? null} protocol={protocol} copy={copy} face={face}
-            disabled={busy || Boolean(attempt) || !allowed && !onLocalSelect} remoteBlockedReason={remoteBlockedReason} onLocalSelect={onLocalSelect}
-            onSelect={id => { if (!allowed) return; setSelection(id); setBackend(null); store.update({ options: null }); }} />
-          <RemoteAgentSelector locale={locale} target={target} head={null} value={agent} copy={copy} disabled={!allowed || busy || Boolean(attempt)} onSelect={value => { setBackend(value); store.update({ options: null }); }} />
+          <RemoteAgentSelector locale={locale} target={target} value={agent} copy={copy} disabled={!allowed || busy || Boolean(attempt)} onSelect={value => { setBackend(value); store.update({ options: null }); }} />
           {capability?.models && <ComposerModelSelector locale={locale} backend={agent || undefined} models={capability.models} disabled={!allowed || busy || Boolean(attempt)}
             value={choice ?? EMPTY_CHOICE} onChange={next => store.update({ options: { backend: agent as RemoteCreateInput["backend"], ...next } })} />}
           {action.kind === "retry-create"
             ? <Button type="submit" size="lg" className="rounded-full px-3 text-sm" aria-label={copy.retry} disabled={!allowed}>{action.label}</Button>
-            : <PromptInputSubmit className="shrink-0 rounded-full max-md:size-11 pointer-coarse:size-11" aria-label={copy.send} status={busy ? "submitted" : undefined} disabled={busy || !allowed || disabled || !hasInput} />}
+            : <PromptInputSubmit className="shrink-0 rounded-full max-md:size-11 pointer-coarse:size-11" aria-label={copy.send} status={busy ? "submitted" : undefined} tooltip={block?.reason} disabled={busy || !allowed || disabled || !hasInput} />}
         </ComposerActions></ComposerToolbar>
       </ComposerForm>}
       {failure && <div role="alert" className="chat-remote-hint"><p>{reasonCopy(failure, copy)}</p>

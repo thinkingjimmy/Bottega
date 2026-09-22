@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on bounded Zod diagnostics, approved binding, the four Store outboxes, artifact publication and formal entity/file publishers.
- * [OUTPUT]: Delivers deletions before uploads, publishes a named Chat's metadata on its own fast lane, completes recovered native body/import/Home publication through convergence and isolates entity failures within bounded lanes.
- * [POS]: Main synchronization composition; an entity remains pending until every required content component is confirmed.
+ * [OUTPUT]: Claims this folder for this computer before offering a byte and stops the run for good when the server says it belongs to another, delivers deletions before uploads, runs the first Chat upload cheapest-first behind the Base-owning identities the Bases phase requires, sums the plaintext this pass delivers and every file transfer it starts into one uploaded figure, publishes a named Chat's metadata on its own fast lane, completes recovered native body/import/Home publication through convergence and isolates entity failures within bounded lanes.
+ * [POS]: Main synchronization composition; an entity remains pending until every required content component is confirmed, and the byte figures belong to the initial upload alone.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ZodError } from "zod";
@@ -44,9 +44,12 @@ import { DesktopAppDeletions, type AppRetirement } from "../deletion/apps";
 import { DesktopAppDeletionPublisher } from "../deletion/app-publisher";
 import { DesktopProjectDeletions } from "../deletion/projects/downlink";
 import { DesktopClassificationPublisher } from "../chats/classification/publisher";
-import { forEachIsolated, RetrySchedule } from "./schedule";
-// A whole chat is one unit of upload work; four lanes keep the latency-bound path busy without exceeding the crypto queue's waiting budget.
-const CHAT_LANES = 4, FLUSH_INTERVAL = 30_000, FLUSH_CEILING = 60_000, TURN_INTERVAL = 30_000, WAKE_DELAY = 250;
+import { forEachIsolated, smallestFirst, transferMeter, RetrySchedule } from "./schedule";
+import { libraryRefusal, protocolHeader } from "@ai-chat/cloud-protocol";
+import { writePublisher } from "../../../library/publisher";
+/* A whole chat is one unit of upload work; four lanes keep the latency-bound path busy without exceeding the crypto
+   queue's waiting budget. Staged bytes arrive per message, so they are coalesced instead of sent one frame each. */
+const CHAT_LANES = 4, FLUSH_INTERVAL = 30_000, FLUSH_CEILING = 60_000, TURN_INTERVAL = 30_000, WAKE_DELAY = 250, UPLOAD_INTERVAL = 200;
 export class DesktopSyncRun {
   private readonly signal = new AbortController();
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -56,7 +59,12 @@ export class DesktopSyncRun {
   private closed = false;
   private readonly retry = new RetrySchedule(FLUSH_INTERVAL, FLUSH_CEILING);
   private failureDigest: string | null = null;
+  /** Set once the server refuses this folder. It is the end of the run: the folder cannot change without a restart. */
+  private refused = false;
+  private published = false;
   private woken = false;
+  private uploaded = 0;
+  private uploadedAt = 0;
   private items: ChatOutboxItem[] | null = null;
   private lateRetained = new Map<string, string>();
   private detachOutbox: (() => void) | null = null;
@@ -90,10 +98,14 @@ export class DesktopSyncRun {
   constructor(private readonly input: { crypto(): FileCipherPort; config: CloudBuildConfig; userData: string; deviceId: string; owners: CleanupOwners;
     binding: SyncBindingStore; transport: Pick<AccountTransport, "query" | "mutate" | "watchSkillsCatalog">; filePorts: BlobTransferPorts; bytes: Omit<ChatBodyBytePorts, "files">;
     recorder?: LocalTurnRecorder; promotion?: BasePromotionService; retireApp?: AppRetirement; recovery?: Pick<RecoverySave, "save">; assertIdle?(chatId: string): void;
+    /** This profile's Bottega folder and this computer's key: without both there is nothing to publish ownership of. */
+    folder?: { id(): string | null; root(): string | null; machineIdHash(): Promise<string | null> };
     changed(value: Partial<SyncProgress>): void; dataChanged(): void }) {
     const binding = input.binding.snapshot(); if (!binding || binding.phase === "closing") throw new Error("SYNC_SCOPE_INACTIVE");
     this.scope = { environment: input.config.environmentId, userId: binding.userId }; this.manifestId = binding.manifestId;
-    const progress = (value: FileProgress) => { if (!this.closed) input.changed({ phase: "files", uploadedBytes: value.bytes, totalBytes: value.total }); };
+    // Byte figures belong to the pass, measured against the consent scan; one transfer must not overwrite them with its own total.
+    const transferred = transferMeter(bytes => this.reportUploaded(bytes));
+    const progress = () => { const meter = transferred(); return (value: FileProgress) => { if (!this.closed) input.changed({ phase: "files" }); meter(value); }; };
     this.files = new EncryptedBlobTransfer(input.filePorts);
     this.cache = new DesktopBlobStore(input.userData, { environmentId: input.config.environmentId, deploymentId: input.config.deploymentId, userId: binding.userId }, input.filePorts);
     this.baseFiles = new BaseFilePublisher({ store: input.owners.bases, config: input.config, userId: binding.userId, files: this.files, progress });
@@ -103,7 +115,8 @@ export class DesktopSyncRun {
     const common = { crypto: input.crypto, config: input.config, scope: this.scope, transport: input.transport, changed: () => input.dataChanged(), failure: (_id: unknown, error: unknown) => { this.fail(error); } };
     this.bases = new DesktopBaseSync({ ...common, store: input.owners.bases, files: this.baseFiles });
     this.projects = new DesktopProjectSync({ ...common, store: input.owners.projects });
-    this.chats = new NativeChatInitialization({ ...common, store: input.owners.chats.sync, deviceId: input.deviceId, bytes: { ...input.bytes, files: this.files } });
+    this.chats = new NativeChatInitialization({ ...common, store: input.owners.chats.sync, deviceId: input.deviceId, bytes: { ...input.bytes, files: this.files, progress: transferred },
+      uploaded: bytes => this.reportUploaded(bytes) });
     this.metadata = new DesktopChatMetadataSync({ ...common, store: input.owners.chats.sync, deviceId: input.deviceId });
     this.incremental = new IncrementalChatPublisher({ ...input, scope: this.scope, store: input.owners.chats.sync, current: () => this.assertCurrent() });
     this.classifications = new DesktopClassificationPublisher({ ...input, scope: this.scope, store: input.owners.chats.sync, current: () => this.assertCurrent(), changed: input.dataChanged });
@@ -132,7 +145,7 @@ export class DesktopSyncRun {
   }
   start() {
     this.downlink.start(); this.schedule();
-    if (!this.turnTimer) { this.turnTimer = setInterval(() => { void this.turns.flush().catch(() => {}); }, TURN_INTERVAL); this.turnTimer.unref(); }
+    if (!this.turnTimer) { this.turnTimer = setInterval(() => { if (!this.refused) void this.turns.flush().catch(() => {}); }, TURN_INTERVAL); this.turnTimer.unref(); }
     // Local commits reach the cloud on the append hook; both timers only cover retries and work this process did not enqueue itself.
     this.detachOutbox ??= this.input.owners.chats.sync.onOutboxAppended((entityKind, chatId) => this.failures.exit(() => {
       if (this.closed) return;
@@ -153,6 +166,7 @@ export class DesktopSyncRun {
      its own async failure context, so a title, archive or drag never waits behind a slow lane. A Chat that still owes
      its initial publication stays with the pass, which alone owns identity adoption and recovery. */
   private async fastMetadata(chatId: string) {
+    if (this.refused) return;
     this.assertCurrent();
     const queue = await this.input.owners.chats.sync.read(this.scope, { type: "metadata-outbox", chatId, limit: 100 });
     if (queue.type !== "metadata-outbox" || queue.value.some(item => item.kind === "initialize") ||
@@ -167,16 +181,23 @@ export class DesktopSyncRun {
     for (const chatId of new Set(queued.map(chatIdOf))) this.wakeMetadata(chatId);
   }
   private schedule(delay = this.retry.delay) {
-    if (this.closed) return;
+    if (this.closed || this.refused) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => { void this.flush().catch(() => {}); }, delay); this.timer.unref();
   }
   // New work that lands mid-pass is not lost: the pass in flight may already have read past it.
-  wake() { this.retry.reset(); if (this.flight) { this.woken = true; return; } this.schedule(WAKE_DELAY); }
+  wake() { if (this.refused) return; this.retry.reset(); if (this.flight) { this.woken = true; return; } this.schedule(WAKE_DELAY); }
   private wakeTurns() {
-    if (this.turnWake || this.closed) return;
+    if (this.turnWake || this.closed || this.refused) return;
     this.turnWake = setTimeout(() => { this.turnWake = null; void this.turns.flush().catch(() => {}); }, 200);
     this.turnWake.unref();
+  }
+  // Per-message bytes move the row within seconds instead of once per whole Chat; the figure retires with the initial upload, never mid-way.
+  private reportUploaded(bytes: number) {
+    if (this.closed) return;
+    this.uploaded += bytes;
+    const now = Date.now(); if (now - this.uploadedAt < UPLOAD_INTERVAL) return;
+    this.uploadedAt = now; this.input.changed({ uploadedBytes: this.uploaded });
   }
   private assertCurrent() {
     this.signal.signal.throwIfAborted(); const binding = this.input.binding.snapshot();
@@ -221,7 +242,7 @@ export class DesktopSyncRun {
     this.lateRetained = signatures; return changed;
   }
   private flush() {
-    if (this.closed) return Promise.resolve(); if (this.flight) return this.flight;
+    if (this.closed || this.refused) return Promise.resolve(); if (this.flight) return this.flight;
     const failures = { all: [] as Error[], required: [] as Error[], participant: true };
     const flight = this.failures.run(failures, () => this.deliver()).then(() => { this.failureDigest = null; this.retry.reset(); }, error => {
       // A pass that keeps failing the same way must not flip the row between syncing and error on every retry.
@@ -235,7 +256,7 @@ export class DesktopSyncRun {
         codes: [...new Set(failures.all.map(failure =>
           /^[A-Za-z0-9_-]{1,80}$/.test(failure.message) ? failure.message : "unclassified"))].slice(0, 16),
       });
-      if (!this.closed && value !== this.failureDigest) this.input.changed({ status: "error", error: "upload-failed" });
+      if (!this.closed && !this.refused && value !== this.failureDigest) this.input.changed({ status: "error", error: "upload-failed" });
       this.failureDigest = value; this.retry.failed(); throw error;
     });
     this.flight = flight; this.woken = false;
@@ -244,8 +265,33 @@ export class DesktopSyncRun {
       this.flight = null; this.schedule(this.woken ? WAKE_DELAY : undefined); this.woken = false;
     }).catch(() => {}); return flight;
   }
+  /**
+   * The first thing a pass says to the server, and the only thing it says before offering content: this computer
+   * holds this folder. A refusal ends the run — the folder cannot change while the process lives, so retrying it
+   * would be a loop — while the record the server returns is what the marker in the folder then states.
+   */
+  private async publishLibrary() {
+    const folder = this.input.folder, libraryId = folder?.id() ?? null, root = folder?.root() ?? null;
+    if (this.published || !folder || !libraryId || !root) return;
+    if (!await folder.machineIdHash()) return;
+    try {
+      const owner = await this.input.transport.mutate("libraries:publish", { ...protocolHeader(this.input.config),
+        expectedUserId: this.scope.userId, libraryId });
+      // The marker is part of publishing, not a side effect of it: a folder that could not record its owner claims again next pass.
+      await writePublisher(root, { machineIdHash: owner.machineIdHash, deviceId: owner.ownerDeviceId, host: owner.host, publishedAt: owner.publishedAt });
+      this.published = true;
+    } catch (error) {
+      const refusal = libraryRefusal(error);
+      if (!refusal) throw error;
+      /* Not a pass failure: nothing is wrong and nothing will become right on its own, so the row states the
+         refusal once and the pass simply stops rather than reporting "some content has not synced". */
+      this.refused = true;
+      this.input.changed({ status: "error", error: "library-owned-elsewhere", ownerHost: refusal.host });
+    }
+  }
   private async deliver() {
     this.assertCurrent(); this.stale(); const { owners, binding } = this.input;
+    await this.publishLibrary(); if (this.refused) return; this.assertCurrent();
     // `lifecycle/api:head` is one global revision for every topic, so the whole pass shares a single query.
     const feed = { revision: null as number | null };
     await this.appDeletions.publish(); this.assertCurrent();
@@ -260,8 +306,11 @@ export class DesktopSyncRun {
     if (removals) { this.stale(); feed.revision = null; }
     this.downlink.forget(await this.deletedChats.pull(feed)); this.assertCurrent();
     const initializing = binding.snapshot()!.phase === "initializing";
-    if (this.failureDigest) this.input.changed({ phase: "projects" });
-    else this.input.changed({ status: initializing ? "initializing" : "syncing", error: null, phase: "projects" });
+    // The scan total measures the initial upload alone; once that is behind us there is nothing left to measure against.
+    if (!initializing) this.uploaded = 0;
+    const measured = initializing ? {} : { uploadedBytes: 0, totalBytes: 0 };
+    if (this.failureDigest) this.input.changed({ phase: "projects", ...measured });
+    else this.input.changed({ status: initializing ? "initializing" : "syncing", error: null, phase: "projects", ...measured });
     for (const project of owners.projects.list()) {
       this.assertCurrent(); if (project.localRecoveryId || project.role !== "workspace" || project.workspaceBinding.kind === "app") continue;
       if (!project.sync) await owners.projects.portable.captureInitial(this.scope, project.id, this.manifestId);
@@ -276,14 +325,24 @@ export class DesktopSyncRun {
     ])].filter(appId => !owners.apps.portable.get(appId)?.tombstoned);
     const isolate = (error: unknown) => { this.assertCurrent(); this.fail(error); };
     await forEachIsolated(appIds, 1, async appId => { this.assertCurrent(); await this.apps.createIdentity(appId); }, isolate);
-    await owners.chats.sync.mutate(this.scope, hashCanonical(["initial-capture", this.manifestId]), { type: "capture-initial", manifestId: this.manifestId });
+    const capture = await owners.chats.sync.mutate(this.scope, hashCanonical(["initial-capture", this.manifestId]), { type: "capture-initial", manifestId: this.manifestId });
     this.stale();
-    const initial = (await this.outbox()).filter(item => item.kind === "initialize");
-    this.input.changed({ phase: "chats", completed: 0, total: initial.length });
-    await forEachIsolated(initial, 1, async item => {
-      // Retiring immediately keeps the decoded snapshot out of memory until the publication phase actually needs it.
-      try { this.assertCurrent(); await this.chats.createIdentity(item); } finally { this.chats.retire([item]); }
-    }, isolate);
+    // A body costs two round trips and nine checkpoint reads per message, so the count the capture recorded orders the queue.
+    const weight = new Map(capture.result.type === "capture-initial" ? capture.result.value.entries.map(entry => [entry.chatId, entry.messages] as const) : []);
+    const initial = smallestFirst((await this.outbox()).filter(item => item.kind === "initialize"),
+      item => [weight.get(chatIdOf(item)) ?? 0, item.id]);
+    /* `bases/api:ensure` refuses a Chat-owned Base whose Chat is not in the cloud yet; every other Chat creates its
+       identity in its own body lane, where the snapshot it decodes is the one the publication uses. */
+    const baseOwned = new Set(owners.bases.listAll().flatMap(({ snapshot }) => snapshot.meta.owner.kind === "chat" ? [snapshot.meta.owner.chatId] : []));
+    const prepared = initial.filter(item => baseOwned.has(chatIdOf(item)));
+    if (prepared.length) {
+      let ready = 0; this.input.changed({ phase: "preparing", completed: 0, total: prepared.length });
+      await forEachIsolated(prepared, CHAT_LANES, async item => {
+        // Retiring at once keeps the decoded snapshot out of memory until the publication phase actually needs it.
+        try { this.assertCurrent(); await this.chats.createIdentity(item); } finally { this.chats.retire([item]); }
+        this.input.changed({ completed: ++ready });
+      }, isolate);
+    }
     await this.peripheral(() => this.downlink.discover().catch(error => this.fail(error))); this.assertCurrent();
     this.input.changed({ phase: "bases" });
     for (const { ownerKey, snapshot } of owners.bases.listAll()) {
@@ -308,6 +367,7 @@ export class DesktopSyncRun {
       } catch (error) { this.assertCurrent(); this.fail(error); }
     }
     let completed = 0;
+    this.input.changed({ phase: "chats", completed: 0, total: initial.length });
     await forEachIsolated(initial, CHAT_LANES, async item => {
       try {
       const identity = await this.chats.createIdentity(item);
@@ -320,7 +380,7 @@ export class DesktopSyncRun {
         try { if (!await download.hydrate(head)) throw new Error("MIRROR_BODY_UNAVAILABLE"); }
         finally { await download.close(); }
         await this.convergence.reconcile(head, item);
-        completed++; this.input.changed({ completed }); return;
+        completed++; this.input.changed({ completed, uploadedBytes: this.uploaded }); return;
       }
       this.assertCurrent(); this.input.changed({ phase: "chats" }); await this.chats.publish(item);
       const { snapshot, head } = await this.chats.createIdentity(item);
@@ -342,7 +402,7 @@ export class DesktopSyncRun {
         type: "complete-initial-chat", id: item.id, payloadDigest: item.payload_digest }); }
       this.wakeMetadata(chatIdOf(item));
       await this.homes.release(item);
-      completed++; this.input.changed({ completed });
+      completed++; this.input.changed({ completed, uploadedBytes: this.uploaded });
       } finally { this.chats.retire([item]); }
     }, isolate);
     if (initial.length) this.stale();
@@ -404,7 +464,7 @@ export class DesktopSyncRun {
     }
     if (failures.all.length) throw failures.all[0];
     this.input.changed({ status: pending || downloading ? binding.snapshot()!.phase === "initializing" ? "initializing" : "syncing" : appIssues.length ? "partial" : "synced", pending: pending + downloading, conflicts, appIssues,
-      phase: null, completed, total: initial.length, uploadedBytes: 0, totalBytes: 0 });
+      phase: null, completed, total: initial.length, ...(initializing ? { uploadedBytes: this.uploaded } : {}) });
     this.input.dataChanged();
   }
   openChat(chatId: string) { return this.downlink.open(chatId); }

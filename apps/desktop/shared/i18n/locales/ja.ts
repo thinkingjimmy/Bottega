@@ -132,10 +132,6 @@ promoteBaseToApp: "{{name}} をアプリに昇格"
     browser: settingsBrowserJa,
     extensions: settingsExtensionsJa,
     backends: {
-      defaultExecutionSaveFailed: "既定のパソコンを保存できませんでした。再試行してください。",
-      defaultExecutionDevice: "既定の実行パソコン",
-      localExecutionDevice: "このパソコン",
-      defaultExecutionDescription: "新しい会話に使用します。送信前に利用状況を確認します。",
       title: "Agent バックエンド",
       description: "認証と使用量は各公式 CLI が管理し、製品はローカル状態のみ確認します。",
       recheck: "再確認",
@@ -201,11 +197,10 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
         "control-invalid": "このフォルダーの設定を読み取れませんでした。別のフォルダーを選んでください。",
         "already-configured": "Bottega はすでにフォルダーを開いています。別のフォルダーを開くには再起動してください。",
         "root-changed": "Bottega は最初に選んだフォルダーを使い続けます。別のフォルダーを開くには再起動してください。",
+        "owned-elsewhere": "この Bottega フォルダーは {{host}} のものです。現在のバージョンでは別のコンピューターで開けません。新しいフォルダーを作るか、そのコンピューターで使ってください。",
       },
       chooseChatHome: "Chat Home の保存先を選択",
       chooseProject: "Project フォルダーを選択",
-      externalLinkTitle: "外部リンクを開く",
-      externalLinkMessage: "このドメインは信頼済みリストにありません。",
       terminalTitle: "ターミナル操作を確認",
       terminalMessage: "このコマンドはローカル CLI のインストールを変更します。",
       quitFailureTitle: "安全に終了できませんでした",
@@ -253,7 +248,6 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
     emptyPromptInProject: "{{name}} で何を作りましょうか？",
     changeProject: "Project を変更：{{name}}",
     openSidePanel: "サイドパネルを開く",
-    importedReadOnlyReason: "インポート履歴は読み取り専用です。",
     cloud: {
       unavailable: "この会話はこのデバイスにはありません。",
       deleted: "この会話は別のデバイスで削除されました。",
@@ -507,7 +501,6 @@ currentModelUnavailable: "{{model}}（現在利用不可）"
     folderRecoveryProjectMissing: "この Base は、このパソコンにはもう存在しない Project のものです。ファイルは Bottega フォルダにそのまま残り、Project が戻れば一緒に戻ります。",
     folderRecoveryOwnerChanged: "この Base を所有する会話は置き換えられました。ファイルは Bottega フォルダにそのまま残っています。" },
   notice: {
-    executorSwitched: "{{device}} で続行",
     manualRecovered: "アプリの再起動で返信が中断されました。もう一度送信してください。",
     skillDescriptionsTruncated:
       "Codex からのお知らせ：コンテキスト予算に収めるため、このターンでは一部の Skill 説明が短縮されました。Codex は引き続きすべての Skill を使用でき、この返信にも影響はありません。これは Codex 自身からの通知で、Bottega の問題ではありません。",

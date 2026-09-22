@@ -27,7 +27,7 @@
 .chat-earlier { display: block; margin-inline: auto; }
 .chat-live { padding-block: 16px; min-width: 0; overflow-wrap: anywhere; }
 .chat-transcript-scroll { position: relative; height: calc(100dvh - 230px); min-height: 240px; overflow: auto; overflow-anchor: none; scrollbar-gutter: stable both-edges; padding-bottom: env(safe-area-inset-bottom); }
-.chat-executor-banner { width: min(100%, 800px); margin-inline: auto; padding: 12px 24px; border-top: 1px solid var(--border); flex-shrink: 0; font-size: 13px; color: var(--muted-foreground); }
+.chat-owner-banner { width: min(100%, 800px); margin-inline: auto; padding: 12px 24px; border-top: 1px solid var(--border); flex-shrink: 0; font-size: 13px; color: var(--muted-foreground); }
 .chat-detail > h1 { width: min(100%, 800px); margin: 24px auto 0; padding-inline: 24px; font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
 .chat-message:focus-visible { outline: 2px solid var(--ring); outline-offset: 8px; border-radius: 8px; }
 .chat-facts { width: min(100%, 800px); margin: 16px auto; padding-inline: 24px; font-size: 14px; overflow-wrap: anywhere; }
@@ -42,7 +42,7 @@
 @media (max-width: 767px) {
   .chat-message:focus-visible { outline-offset: 2px; }
   .chat-disclosure > :not(summary), .chat-disclosure .chat-disclosure { margin-inline: 8px; }
-  .chat-executor-banner, .chat-detail > h1, .chat-facts { padding-inline: 16px; }
+  .chat-owner-banner, .chat-detail > h1, .chat-facts { padding-inline: 16px; }
 }
 
 /* Shared conversation/panel geometry across browser and desktop hosts. */

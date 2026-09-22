@@ -54,7 +54,7 @@ export class LocalHomeCapture {
       if (source.chatId !== job.chatId || job.id !== item.id) throw new Error("HOME_JOB_IDENTITY_CHANGED");
       const custody = new HomeSourceCustody(this.input.userData, scope, item.id);
       const frozen = await custody.capture(this.input.homes, { chat: { id: job.chatId, incarnationId: job.incarnationId },
-        executionEpoch: job.executionEpoch, homeSnapshotId: job.expectedSnapshotId, headSeq: job.throughSeq }, job.snapshotId, abort.signal);
+        homeSnapshotId: job.expectedSnapshotId, headSeq: job.throughSeq }, job.snapshotId, abort.signal);
       current(); await saveFrozenHome(checkpoints, frozen);
     }).catch(async error => {
       if (this.scope()?.userId === scope.userId && !abort.signal.aborted) await this.input.store.mutate(scope, crypto.randomUUID(), {

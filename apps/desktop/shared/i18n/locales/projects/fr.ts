@@ -37,6 +37,18 @@ export const projectsFr: typeof projectsEn = {
   renameDescription:
     workspaceCopy.project.renameDescription,
   moveChatsToRoot: "Remettre les chats à la racine",
+  pin: {
+    local: "Project local",
+    remote: "Épingler un Project distant…",
+    title: "Épingler un Project d’un autre ordinateur",
+    description: "Ses chats restent sur cet ordinateur. L’épinglage place seulement le Project dans la barre latérale de cet ordinateur, et le retirer n’y change rien.",
+    empty: "Aucun autre ordinateur n’a encore de Project à épingler.",
+    unpin: "Ne plus épingler",
+    deleted: "Supprimé",
+    archived: "Archivé",
+    deletedOn: "Supprimé sur {{device}}",
+    archivedOn: "Archivé sur {{device}}",
+  },
   rescue: {
     title: "Déplacer les chats hors de ce Project ?",
     description: "L’enregistrement local de ce Project est introuvable. Les chats confirmés seront déplacés à la racine comme chats ordinaires. Une nouvelle session Agent commencera à la reprise.",

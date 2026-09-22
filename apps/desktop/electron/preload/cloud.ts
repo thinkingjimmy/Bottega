@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on Electron's isolated bridge and closed cloud account IPC contracts.
- * [OUTPUT]: Installs validated credential-free progress and discard/expiry results alongside fixed account/content/remote bridges.
+ * [OUTPUT]: Installs validated credential-free progress, the account computer subscription and discard/expiry results alongside fixed account/content/remote bridges.
  * [POS]: Cloud preload surface; callers cannot choose endpoints, IPC channels or browser URLs.
  */
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import { CLOUD_CHANNEL, cloudAccountStateSchema, cloudDevicesPageSchema, cloudDevicesQuerySchema, cloudRenameSchema, cloudRevokeSchema, savedLoginDiscardReviewSchema, savedLoginDiscardResultSchema, type CloudBridgeApi } from "../../shared/cloud-ipc";
+import { CLOUD_CHANNEL, cloudAccountStateSchema, cloudComputerRenameResultSchema, cloudComputerRenameSchema, cloudComputersResultSchema, cloudDevicesPageSchema, cloudDevicesQuerySchema, cloudRenameSchema, cloudRevokeSchema, savedLoginDiscardReviewSchema, savedLoginDiscardResultSchema, type CloudBridgeApi, type CloudComputersResult } from "../../shared/cloud-ipc";
 import { syncSetupInputSchema, syncUnlockInputSchema, syncEncryptionStateSchema } from "../../shared/cloud/encryption";
-import { syncApprovalSchema, syncCleanupReviewSchema, syncPauseSchema, syncReviewSchema } from "../../shared/cloud/sync";
+import { syncApprovalSchema, syncCleanupReviewSchema, syncReviewSchema } from "../../shared/cloud/sync";
 import { installCloudChatBridge } from "./cloud-chat";
 import { installCloudRemoteBridge } from "./remote";
 import { installCloudBaseBridge } from "./cloud-base";
@@ -38,7 +38,6 @@ export function installCloudBridge() {
     inspectSync: async () => syncReviewSchema.parse(await ipcRenderer.invoke(CLOUD_CHANNEL.inspectSync)),
     cancelSyncReview: () => ipcRenderer.invoke(CLOUD_CHANNEL.cancelSyncReview),
     approveSync: input => ipcRenderer.invoke(CLOUD_CHANNEL.approveSync, syncApprovalSchema.parse(input)),
-    pauseSync: input => ipcRenderer.invoke(CLOUD_CHANNEL.pauseSync, syncPauseSchema.parse(input)),
     retrySync: () => ipcRenderer.invoke(CLOUD_CHANNEL.retrySync),
     inspectCleanup: async () => syncCleanupReviewSchema.nullable().parse(await ipcRenderer.invoke(CLOUD_CHANNEL.inspectCleanup)),
     disableSync: input => ipcRenderer.invoke(CLOUD_CHANNEL.disableSync, syncApprovalSchema.parse(input)),
@@ -47,6 +46,15 @@ export function installCloudBridge() {
     listDevices: async input => cloudDevicesPageSchema.parse(await ipcRenderer.invoke(CLOUD_CHANNEL.listDevices, cloudDevicesQuerySchema.parse(input))),
     renameDevice: input => ipcRenderer.invoke(CLOUD_CHANNEL.renameDevice, cloudRenameSchema.parse(input)),
     revokeDevice: input => ipcRenderer.invoke(CLOUD_CHANNEL.revokeDevice, cloudRevokeSchema.parse(input)),
+    getComputers: async () => cloudComputersResultSchema.parse(await ipcRenderer.invoke(CLOUD_CHANNEL.getComputers)),
+    renameComputer: input => ipcRenderer.invoke(CLOUD_CHANNEL.renameComputer, cloudComputerRenameSchema.parse(input))
+      .then(value => cloudComputerRenameResultSchema.parse(value)),
+    onComputersChanged: (listener: (value: CloudComputersResult) => void) => {
+      const receive = (_event: IpcRendererEvent, value: unknown) => {
+        const parsed = cloudComputersResultSchema.safeParse(value); if (parsed.success) listener(parsed.data);
+      };
+      ipcRenderer.on(CLOUD_CHANNEL.computersChanged, receive); return () => { ipcRenderer.removeListener(CLOUD_CHANNEL.computersChanged, receive); };
+    },
     onAccountChanged: listener => {
       const receive = (_event: IpcRendererEvent, value: unknown) => {
         const parsed = cloudAccountStateSchema.safeParse(value); if (parsed.success) listener(parsed.data);

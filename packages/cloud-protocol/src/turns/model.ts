@@ -10,13 +10,13 @@ import { sha256Schema } from "../blobs";
 import { agentBackendIdSchema, turnOptionsSchema } from "../chats/options";
 import { hashChatContent } from "../chats/transcript/body";
 import { turnReceiptSchema } from "../chats/content/completion";
-export const turnIdentitySchema = z.object({ chatId: id, incarnationId: id, turnId: id, executorDeviceId: id, executionEpoch: rev.positive(), identityHash: sha256Schema }).strict();
+export const turnIdentitySchema = z.object({ chatId: id, incarnationId: id, turnId: id, ownerDeviceId: id, identityHash: sha256Schema }).strict();
 export const turnStartSchema = turnIdentitySchema.extend({ backend: agentBackendIdSchema, options: turnOptionsSchema,
   expectedAgentRevision: rev, planRequested: z.boolean(), createdAt: rev,
   userMessageId: id, userSeq: rev.positive(), assistantMessageId: id, assistantSeq: rev.positive(), userBodyHash: sha256Schema,
-  noticeBodyHashes: z.array(sha256Schema).max(2), executorNoticeSeq: rev.positive().optional(), noticeSeq: rev.positive().optional(),
+  noticeBodyHashes: z.array(sha256Schema).max(1), noticeSeq: rev.positive().optional(),
 }).strict().refine(value => {
-  const slots = [value.executorNoticeSeq, value.noticeSeq, value.userSeq, value.assistantSeq].filter((seq): seq is number => seq !== undefined);
+  const slots = [value.noticeSeq, value.userSeq, value.assistantSeq].filter((seq): seq is number => seq !== undefined);
   return value.backend === value.options.backend && value.userMessageId !== value.assistantMessageId &&
     slots.every((seq, index) => !index || seq === slots[index - 1]! + 1) && value.noticeBodyHashes.length === slots.length - 2;
 }, "Invalid turn sequence or backend");

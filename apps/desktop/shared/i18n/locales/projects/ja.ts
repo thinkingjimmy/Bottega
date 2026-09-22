@@ -37,6 +37,18 @@ export const projectsJa: typeof projectsEn = {
   renameDescription:
     workspaceCopy.project.renameDescription,
   moveChatsToRoot: "チャットをルートへ戻す",
+  pin: {
+    local: "ローカル Project",
+    remote: "リモート Project をピン留め…",
+    title: "別のパソコンの Project をピン留め",
+    description: "チャットはそのパソコンに残ります。ピン留めはこのパソコンのサイドバーに Project を並べるだけで、外してもそのパソコンには何も起きません。",
+    empty: "ピン留めできる Project は他のパソコンにまだありません。",
+    unpin: "ピン留めを外す",
+    deleted: "削除済み",
+    archived: "アーカイブ済み",
+    deletedOn: "{{device}} で削除されました",
+    archivedOn: "{{device}} でアーカイブされました",
+  },
   rescue: {
     title: "この Project からチャットを移動しますか？",
     description: "この Project のローカル記録がありません。確認済みのチャットは通常のチャットとしてルートへ移り、次回の続行時に新しい Agent セッションを開始します。",

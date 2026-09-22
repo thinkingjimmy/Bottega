@@ -28,8 +28,6 @@ export const historyZhCN: typeof historyEn = {
   disableProject: "隐藏 Agent 历史",
   enableProject: "显示 Agent 历史",
   refreshProject: "刷新 Agent 历史",
-  incompleteTail: "来源文件在有界重试后仍在写入，未完成尾部已忽略；刷新后可再次尝试。",
-  resumeUnavailable: "这类 Agent 历史暂时还不能在应用内继续。",
   search: "搜索",
   searchPlaceholder: "搜索聊天、数据表与项目归档…",
   searchEmpty: "没有匹配结果",
@@ -61,7 +59,4 @@ export const historyZhCN: typeof historyEn = {
   deliveringMemory: "正在把历史交付到 Memory",
   interruptedGrant: "上次已确认的导入被中断。请重新预览以续用同一个一次性 Grant；应用不会在重启后自动发送。",
   importedHistoryLabel: "已导入的 Agent 历史",
-  importedDivider: "以上是导入的历史消息 · 新消息从这里开始",
-  divergedDivider: "来源已变化 · 产品对话继续使用不可变快照",
-  sourceMissingDivider: "原始记录已不在原处 · 产品对话继续使用不可变快照",
 };

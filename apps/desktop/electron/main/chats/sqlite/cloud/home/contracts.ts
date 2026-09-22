@@ -9,9 +9,8 @@ export const homeTurnSchema = z.object({ chatId: id, turnId: id, userMessageId: 
   .refine(value => value.assistantSeq === value.userSeq + 1);
 export type HomeTurn = z.infer<typeof homeTurnSchema>;
 export const homeJobSchema = z.object({ id, chatId: id, incarnationId: id, turnId: id, sourceDeviceId: id, userMessageId: id,
-  userSeq: rev.positive(), throughSeq: rev.positive(), executionEpoch: rev.positive(), snapshotId: id, expectedSnapshotId: id.nullable() }).strict();
+  userSeq: rev.positive(), throughSeq: rev.positive(), snapshotId: id, expectedSnapshotId: id.nullable() }).strict();
 export type HomeJob = z.infer<typeof homeJobSchema>;
 export const homeJobActions = [
   z.object({ type: z.literal("capture-home-job"), turn: homeTurnSchema }).strict(),
-  z.object({ type: z.literal("archive-home-job"), id, payloadDigest: z.string().length(64) }).strict(),
 ] as const;

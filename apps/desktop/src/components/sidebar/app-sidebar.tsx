@@ -1,7 +1,7 @@
 "use client";
 /**
- * [INPUT]: Depends on React, i18n, Sidebar UI, product providers, shared WorkspaceNavigation/SettingsNavigation, active App targets, footer affordances, cloud projections and the Sidebar notice dialog.
- * [OUTPUT]: Adapts native data and actions to the shared complete sidebar, preserving generation-fenced targets, feedback and Settings navigation.
+ * [INPUT]: Depends on React, i18n, Sidebar UI, product providers, shared WorkspaceNavigation/SettingsNavigation and ComputerSwitcher, active App targets, footer affordances, cloud projections and the Sidebar notice dialog.
+ * [OUTPUT]: Adapts native data and actions to the shared complete sidebar, mounts the account's computer strip with this computer first, creates a new Chat on the computer being viewed and stands its controls down in place while that computer sleeps, and preserves generation-fenced targets, feedback and Settings navigation.
  * [POS]: Sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  */
 import {
@@ -48,11 +48,14 @@ import {
   SettingsNavigation,
   type SettingsNavigationGroup,
 } from "@ai-chat/ui/components/settings/navigation";
+import { ComputerSwitcher } from "@ai-chat/ui/components/account/computer-switcher";
 import { WorkspaceNavigation } from "@ai-chat/ui/components/workspace/navigation/frame";
 import type { NavigationSectionModel } from "@ai-chat/ui/components/workspace/navigation/section";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useProjectSection } from "./project/section/project-section";
 import { CloudSidebarProvider, useCloudSidebar } from "./cloud/context";
+import { switchableComputers } from "@/lib/cloud/computers/scope";
+import { useViewedComputerBlock } from "@/lib/cloud/computers/creation-block";
 import { SidebarNotices } from "./feedback/sidebar-notices";
 import { ChatNavigationRows } from "./cloud/list";
 import { mergeChatRows } from "./cloud/order";
@@ -153,12 +156,15 @@ function useChatsSection({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { t } = useAppTranslation();
-  const { mirrors, facts, loading, error } = useCloudSidebar();
+  const { t, i18n } = useAppTranslation();
+  const { mirrors, facts, loading, error, scope } = useCloudSidebar();
   const [cloudLimit, setCloudLimit] = useState(50);
   const navigate = useNavigate();
+  /* A new Chat is created on the computer whose sidebar is on screen, so the control stands down in place with
+     that computer's own sentence rather than quietly making the Chat here. */
+  const blocked = useViewedComputerBlock(scope, i18n.language);
   const rows = mergeChatRows(
-    chats.filter(appearsInRootChats),
+    scope.local ? chats.filter(appearsInRootChats) : [],
     mirrors.filter(
       (head) =>
         head.chat.classification.projectId === null &&
@@ -173,9 +179,13 @@ function useChatsSection({
     onOpenChange,
     actions: (actionClassName) => (
       <SidebarGroupAction
-        className={actionClassName}
+        className={`${actionClassName}${blocked ? " opacity-50" : ""}`}
         aria-label={t("common.createChat")}
-        onClick={() => navigate("/")}
+        aria-disabled={blocked ? true : undefined}
+        title={blocked ?? undefined}
+        onClick={() => {
+          if (!blocked) navigate("/");
+        }}
       >
         <Plus />
       </SidebarGroupAction>
@@ -295,7 +305,7 @@ function AppSidebarContent({
     window.addEventListener("bottega:open-activity", open);
     return () => window.removeEventListener("bottega:open-activity", open);
   }, [onViewChange]);
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
   const { toggleSidebar } = useSidebar();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -310,6 +320,8 @@ function AppSidebarContent({
   );
   const { chats, loading: chatsLoading, storageFailures } = useChats();
   const { rootBases } = useBasesNavigation();
+  const { scope } = useCloudSidebar();
+  const createBlocked = useViewedComputerBlock(scope, i18n.language);
   const projectSection = useProjectSection({
     open: groups.projects,
     onOpenChange: (open) => onGroupOpenChange("projects", open),
@@ -334,6 +346,8 @@ function AppSidebarContent({
   const memoryBusy = Object.values(memorySnapshot.runtimes).some(
     (runtime) => runtime.phase === "running",
   );
+  /* The draft answers for itself: it targets the viewed computer and says so, so the palette and the shortcut
+     open it even while that computer sleeps instead of silently coming home to this one. */
   const openNewChat = useCallback(() => {
     setSearchOpen(false);
     void navigate("/");
@@ -500,7 +514,21 @@ function AppSidebarContent({
           newChat={{
             label: t("common.newChat"),
             active: activePath === "/" && draftProjectId === null,
-            render: (children) => <Link to="/">{children}</Link>,
+            render: (children) =>
+              createBlocked ? (
+                /* aria-disabled rather than disabled: the row keeps its pointer events, which is what carries
+                   the sentence to the cursor. */
+                <button
+                  type="button"
+                  aria-disabled="true"
+                  title={createBlocked}
+                  className="cursor-default opacity-50"
+                >
+                  {children}
+                </button>
+              ) : (
+                <Link to="/">{children}</Link>
+              ),
           }}
           apps={{
             label: t("common.apps"),
@@ -526,6 +554,22 @@ function AppSidebarContent({
             bases: basesSection.section,
             chats: chatsSection,
           }}
+          /* This computer is always the first tab; the rest keep the account's own order. Below two computers the
+             strip renders nothing, so a desktop that is the only computer looks exactly as it did. */
+          computers={
+            <ComputerSwitcher
+              computers={switchableComputers(scope)}
+              selected={scope.viewed?.machineIdHash ?? null}
+              onSelect={scope.select}
+              locale={i18n.language}
+              copy={{
+                label: t("cloud.computers.label"),
+                online: t("cloud.online"),
+                offline: t("cloud.offline"),
+                offlineSince: t("cloud.computers.offlineSince"),
+              }}
+            />
+          }
           footerActions={
             <>
               {(memoryAttention || memoryBusy) && (

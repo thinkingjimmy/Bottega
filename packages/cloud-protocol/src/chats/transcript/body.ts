@@ -5,7 +5,6 @@
  */
 import { z } from "zod";
 import { canonicalJson } from "../../encryption/encoding";
-import { versionSchema } from "../../scalars";
 import { hashCanonical } from "../../encryption/encoding";
 import { cloudIdSchema } from "../../auth";
 import { CLOUD_LIMITS } from "../../config";
@@ -49,5 +48,5 @@ export const chatBodyStorageSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("inline"), body: chatBodySchema }).strict(),
   z.object({ kind: z.literal("blob"), blob: blobDescriptorSchema }).strict(),
 ]);
-export const chatBodyStageSchema = z.object({ chatId: cloudIdSchema, incarnationId: cloudIdSchema, executionEpoch: versionSchema,
+export const chatBodyStageSchema = z.object({ chatId: cloudIdSchema, incarnationId: cloudIdSchema,
   bodyHash: sha256Schema, storage: chatBodyStorageSchema }).strict();

@@ -46,13 +46,13 @@ export function requestChatDeletion(db: SqliteDatabase, reader: ChatRepositoryRe
   const view = readChatDeletion(db, scope, input.chatId), facts = readChatFacts(db, scope, input.chatId), head = view.head;
   if (!head || head.chat.incarnationId !== input.incarnationId || head.chat.cloudRevision !== input.expectedRevision || view.reviewHash !== input.expectedReviewHash) throw new Error("CHAT_DELETION_REVIEW_CHANGED");
   if (view.pending || view.result && view.result.status !== "conflicted" || facts.status !== "idle") throw new Error("CHAT_DELETION_NOT_READY");
-  const row = db.prepare("SELECT cloud_state,core_revision,cloud_execution_epoch FROM chats WHERE id=? AND cloud_environment=? AND cloud_user_id=?")
+  const row = db.prepare("SELECT cloud_state,core_revision FROM chats WHERE id=? AND cloud_environment=? AND cloud_user_id=?")
     .get(input.chatId, scope.environment, scope.userId) as Row | undefined;
   if (!row || row.cloud_state === "local-only") throw new Error("CHAT_DELETION_IDENTITY_CHANGED");
   if (row.cloud_state !== "mirror") archiveDeletion(db, reader, input.chatId, input.incarnationId, deviceId, input.operationId, now);
   const payload = { chatId: input.chatId, incarnationId: input.incarnationId, classification: head.chat.classification, expectedRevision: input.expectedRevision };
   enqueueSource(db, { id: input.operationId, scope, chatId: input.chatId, entityKind: "tombstone", kind: "delete-chat", revision: Number(row.core_revision),
-    executionEpoch: row.cloud_execution_epoch as number | null, payload, now });
+    payload, now });
   writeAttempt(db, scope, input.chatId, { outboxId: input.operationId, head, operation: chatDeletionOperation(input.operationId, input.chatId, payload), result: null }, now);
   return readChatDeletion(db, scope, input.chatId);
 }

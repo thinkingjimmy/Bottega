@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on frozen Chat snapshots, logical file transfer and existing attachment/media byte authorities.
- * [OUTPUT]: Projects portable message bodies and retains original remote attachment blobs, with fresh encryption only after confirmed reclamation.
+ * [OUTPUT]: Projects portable message bodies, reports each attachment transfer's bytes through its own sink, and retains original remote attachment blobs, with fresh encryption only after confirmed reclamation.
  * [POS]: Main content adapter; local provenance is removed only after its bytes have been resolved.
  */
 import { ConvexError } from "convex/values";
 import { randomUUID } from "node:crypto";
-import { canonicalJson, hashBlobSource, type BlobDescriptor, type BlobSource, type BeginBlobUpload } from "@ai-chat/cloud-protocol";
+import { canonicalJson, hashBlobSource, type BlobDescriptor, type BlobSource, type BeginBlobUpload, type FileProgress } from "@ai-chat/cloud-protocol";
 import { frozenFileIntentSchema, type FrozenFileJournal } from "@ai-chat/cloud-protocol/blobs/encrypted";
 import { prepareEncryptedFile } from "@ai-chat/cloud-protocol/blobs/encrypted/client";
 import type { EncryptedBlobTransfer } from "@ai-chat/cloud-protocol/blobs/encrypted/transport";
@@ -21,13 +21,15 @@ export type ChatBodyBytePorts = {
   attachments: Pick<AttachmentStore, "read" | "logical"> & Partial<Pick<AttachmentStore, "remoteDescriptor">>;
   media(input: { chatId: string; incarnationId: string; message: LocalMessage; subagentId: string | null;
     part: Extract<LocalPart, { type: "tool" }> }): Promise<{ source: BlobSource; close(): Promise<void> }>;
+  /** One sink per transfer, because file progress is cumulative and names no transfer. */
+  progress?(): (value: FileProgress) => void;
 };
 export const memoryBlobSource = (bytes: Uint8Array<ArrayBuffer>, mime: string): BlobSource => ({ bytes: bytes.length, mime,
   read: async (offset, length) => {
     if (offset < 0 || length < 0 || offset + length > bytes.length) throw new Error("CHAT_SOURCE_RANGE_INVALID");
     return bytes.slice(offset, offset + length);
   } });
-export async function uploadChatBytes(ports: Pick<ChatBodyBytePorts, "files">, header: Omit<BeginBlobUpload, "uploadId" | "owner" | "contentKind" | "descriptor" | "parts">,
+export async function uploadChatBytes(ports: Pick<ChatBodyBytePorts, "files" | "progress">, header: Omit<BeginBlobUpload, "uploadId" | "owner" | "contentKind" | "descriptor" | "parts">,
   source: BlobSource, chatId: string, identity: unknown, contentKind: BeginBlobUpload["contentKind"], signal: AbortSignal,
   journal: FrozenFileJournal, ownerGeneration: string | null = null) {
   const key = hashChatContent(["chat-file", chatId, identity]);
@@ -36,7 +38,7 @@ export async function uploadChatBytes(ports: Pick<ChatBodyBytePorts, "files">, h
   const original = frozen?.source ?? { bytes: source.bytes, mime: source.mime, sha256: (await hashBlobSource(source, signal)).sha256 };
   const descriptor = await prepareEncryptedFile({ key, operationId: key,
     owner: { kind: "chat", id: chatId }, ownerGeneration, source: original }, source, ports.files.crypto, journal, signal);
-  return ports.files.uploadFile(header, randomUUID(), contentKind, descriptor, journal, key, undefined, signal);
+  return ports.files.uploadFile(header, randomUUID(), contentKind, descriptor, journal, key, ports.progress?.(), signal);
 }
 const portablePart = (part: LocalPart) => {
   if (part.type !== "tool") return portablePartSchema.parse(part);

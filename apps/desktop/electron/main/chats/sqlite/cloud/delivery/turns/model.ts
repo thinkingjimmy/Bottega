@@ -12,12 +12,12 @@ import { messageSchema } from "../../../../chat-schema";
 import { turnSequencesSchema } from "../../../../../../../shared/chat-agent/sequences";
 const id = z.string().min(1).max(128), rev = z.number().int().nonnegative();
 export const localTurnAdmissionSchema = z.object({ ledgerIntentId: id, turnId: id, chat: portableChatSchema,
-  executorDeviceId: id, executionEpoch: rev.positive(), assistantMessageId: id, sequences: turnSequencesSchema,
+  ownerDeviceId: id, assistantMessageId: id, sequences: turnSequencesSchema,
   expectedAgentRevision: rev, options: turnStartSchema.shape.options, planRequested: z.boolean(), createdAt: rev,
-  user: messageSchema, notices: z.array(messageSchema).max(2),
+  user: messageSchema, notices: z.array(messageSchema).max(1),
 }).strict().refine(value => value.user.role === "user" && value.user.seq === value.sequences.userSeq &&
   value.options.backend === value.chat.agent && value.notices.every(message => message.role === "notice") &&
-  value.notices.length === [value.sequences.executorNoticeSeq, value.sequences.noticeSeq].filter(seq => seq !== undefined).length,
+  value.notices.length === Number(value.sequences.noticeSeq !== undefined),
 "Invalid frozen local turn");
 export type LocalTurnAdmission = z.infer<typeof localTurnAdmissionSchema>;
 export const turnCheckpoints = [

@@ -197,7 +197,7 @@ export function createRecoveredChatRecord(input: Omit<ForkRecordInput, "mode" | 
   const messages = input.source.messages.map((message, index) => {
     const copy = cloneMessage(input.source, message, index + 1, input.generateId ?? randomUUID);
     if (copy.role !== "assistant") return copy;
-    // A copied result is inherited content, not evidence for the source executor's turn.
+    // A copied result is inherited content, not evidence for the source owner's turn.
     const { turnId: _turnId, resultHash: _resultHash, ...inherited } = copy;
     return inherited;
   });

@@ -37,6 +37,18 @@ export const projectsEs: typeof projectsEn = {
   renameDescription:
     workspaceCopy.project.renameDescription,
   moveChatsToRoot: "Devolver los chats a la raíz",
+  pin: {
+    local: "Project local",
+    remote: "Fijar un Project remoto…",
+    title: "Fijar un Project de otro ordenador",
+    description: "Sus chats siguen en ese ordenador. Fijarlo solo coloca el Project en la barra lateral de este ordenador, y quitarlo no cambia nada allí.",
+    empty: "Ningún otro ordenador tiene todavía un Project que fijar.",
+    unpin: "Quitar de la barra lateral",
+    deleted: "Eliminado",
+    archived: "Archivado",
+    deletedOn: "Eliminado en {{device}}",
+    archivedOn: "Archivado en {{device}}",
+  },
   rescue: {
     title: "¿Mover los chats fuera de este Project?",
     description: "Falta el registro local de este Project. Los chats confirmados se moverán a la raíz como chats normales e iniciarán una nueva sesión del Agent cuando continúes.",

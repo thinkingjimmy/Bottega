@@ -1,12 +1,12 @@
 /**
  * [INPUT]: Depends on public cloud display and device schemas.
- * [OUTPUT]: Provides account and independent sync setup progress, a state-only approval URL, pending sign-out, storage recovery, the closed failed-handshake predicate and closed device/review outcomes.
+ * [OUTPUT]: Provides account and independent sync setup progress, a state-only approval URL, pending sign-out, storage recovery, the closed failed-handshake predicate, this computer's identity, the account computer subscription and closed device/review/rename outcomes.
  * [POS]: Shared main/preload/renderer boundary; exchange codes, proof verifiers and credentials are excluded.
  */
 import { z } from "zod";
 import { syncProgressSchema, type SyncReview, type SyncCleanupReview } from "./cloud/sync";
 import { syncEncryptionStateSchema, initialEncryptionState, syncSetupStateSchema, initialSyncSetupState, type SyncEncryptionState, type SyncSetupInput } from "./cloud/encryption";
-import { accountProfileSchema, cloudIdSchema, deviceNameSchema, environmentIdSchema, loginMetadataSchema, loginStateSchema, cloudFunctions } from "@ai-chat/cloud-protocol";
+import { accountProfileSchema, cloudIdSchema, computerSchema, deviceNameSchema, environmentIdSchema, loginMetadataSchema, loginStateSchema, machineIdHashSchema, cloudFunctions } from "@ai-chat/cloud-protocol";
 const browserLoginUrlSchema = z.string().max(2048).url().refine(value => {
   try {
     const url = new URL(value);
@@ -28,6 +28,9 @@ export const cloudAccountStateSchema = z.object({ available: z.boolean(), enviro
   /* A persisted sign-out that has not reached the server yet: the local session is already unusable,
      so sign-in must stay closed and say why until the background revoke lands. */
   signOutPending: z.boolean().default(false),
+  /* This computer as the desktop knows it: the key the account groups installations by, and the display name this
+     installation registered with. They differ exactly when the server suffixed a name another computer held. */
+  machine: z.object({ idHash: machineIdHashSchema, name: deviceNameSchema }).strict().nullable().default(null),
   error: cloudErrorSchema, sync: syncProgressSchema, encryption: syncEncryptionStateSchema.default(initialEncryptionState),
   syncSetup: syncSetupStateSchema.default(initialSyncSetupState),
 }).strict();
@@ -43,6 +46,23 @@ export const cloudHandshakeFailed = (state: Pick<CloudAccountState, "available" 
 export const savedLoginDiscardReviewSchema = z.object({ reviewId: z.string().uuid() }).strict();
 export const savedLoginDiscardResultSchema = z.object({ status: z.enum(["discarded", "review-expired"]) }).strict();
 export const cloudRenameSchema = z.object({ deviceId: cloudIdSchema, name: deviceNameSchema }).strict();
+/* The account's computers, or the reason there are none to show. A renderer that asks while the account is gone or
+   the runtime is closing gets an answer, not a stack: main never throws at a surface that only wants to paint. */
+export const cloudComputersResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("computers"), computers: z.array(computerSchema).max(100) }).strict(),
+  z.object({ kind: z.literal("signed-out") }).strict(),
+  z.object({ kind: z.literal("shutting-down") }).strict(),
+]);
+export type CloudComputersResult = z.infer<typeof cloudComputersResultSchema>;
+/** This computer's display name, every installation on it at once; the machine key is main's to supply. */
+export const cloudComputerRenameSchema = z.object({ name: deviceNameSchema }).strict();
+export const COMPUTER_RENAME_REASONS = ["computer-name-taken", "computer-not-found", "computer-name-invalid"] as const;
+export const cloudComputerRenameResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("renamed") }).strict(),
+  z.object({ kind: z.literal("rejected"), reason: z.enum(COMPUTER_RENAME_REASONS) }).strict(),
+]);
+export type CloudComputerRenameResult = z.infer<typeof cloudComputerRenameResultSchema>;
+export type CloudComputerRenameReason = (typeof COMPUTER_RENAME_REASONS)[number];
 export const cloudRevokeSchema = z.object({ deviceId: cloudIdSchema }).strict();
 export const cloudDevicesPageSchema = cloudFunctions["devices:list"].result;
 /* The settings list asks for active sessions and only widens to revoked history on request. */
@@ -54,7 +74,8 @@ export const CLOUD_CHANNEL = { getAccountState: "cloud:get-account-state", start
   openCloudAccount: "cloud:open-cloud-account",
   reopenLogin: "cloud:reopen-login", signOut: "cloud:sign-out", listDevices: "cloud:list-devices", renameDevice: "cloud:rename-device",
   revokeDevice: "cloud:revoke-device", accountChanged: "cloud:account-changed",
-  inspectSync: "cloud:inspect-sync", cancelSyncReview: "cloud:cancel-sync-review", approveSync: "cloud:approve-sync", pauseSync: "cloud:pause-sync",
+  getComputers: "cloud:get-computers", computersChanged: "cloud:computers-changed", renameComputer: "cloud:rename-computer",
+  inspectSync: "cloud:inspect-sync", cancelSyncReview: "cloud:cancel-sync-review", approveSync: "cloud:approve-sync",
   retrySync: "cloud:retry-sync", inspectCleanup: "cloud:inspect-cleanup", disableSync: "cloud:disable-sync",
   inspectAccountSwitch: "cloud:inspect-account-switch", switchAccount: "cloud:switch-account", openAccountDeletion: "cloud:open-account-deletion",
   setupEncryption: "cloud:setup-encryption", unlockEncryption: "cloud:unlock-encryption",
@@ -80,7 +101,6 @@ export interface CloudBridgeApi {
   inspectSync(): Promise<SyncReview>;
   cancelSyncReview(): Promise<void>;
   approveSync(input: { reviewId: string }): Promise<void>;
-  pauseSync(input: { paused: boolean }): Promise<void>;
   retrySync(): Promise<void>;
   inspectCleanup(): Promise<SyncCleanupReview | null>;
   disableSync(input: { reviewId: string }): Promise<void>;
@@ -89,5 +109,8 @@ export interface CloudBridgeApi {
   listDevices(input: z.infer<typeof cloudDevicesQuerySchema>): Promise<z.infer<typeof cloudDevicesPageSchema>>;
   renameDevice(input: z.infer<typeof cloudRenameSchema>): Promise<void>;
   revokeDevice(input: z.infer<typeof cloudRevokeSchema>): Promise<void>;
+  getComputers(): Promise<CloudComputersResult>;
+  renameComputer(input: z.infer<typeof cloudComputerRenameSchema>): Promise<CloudComputerRenameResult>;
   onAccountChanged(listener: (state: CloudAccountState) => void): () => void;
+  onComputersChanged(listener: (value: CloudComputersResult) => void): () => void;
 }

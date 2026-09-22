@@ -13,7 +13,7 @@ import { chatOptionsReceiptSchema } from "../../options-sync";
 import { chatPacketSchema, encryptedChatHeadSchema } from "../model";
 import { messagePacketSchema } from "../messages/model";
 export const encryptedOptionsOperationSchema = z.object({ operationId: id, chatId: id, incarnationId: id,
-  executionEpoch: rev.positive(), agentRevision: rev, afterUserSeq: rev, backend: agentBackendIdSchema, sourceDeviceId: id,
+  agentRevision: rev, afterUserSeq: rev, backend: agentBackendIdSchema, sourceDeviceId: id,
   expectedOptionsHash: hash, mode: z.enum(["replace", "keep", "conflict"]), options: chatPacketSchema, proof: messagePacketSchema, ciphertextHash: hash }).strict();
 export const encryptedOptionsReceiptSchema = chatOptionsReceiptSchema.omit({ payloadHash: true }).extend({ ciphertextHash: hash,
   commit: encryptedOptionsOperationSchema, head: encryptedChatHeadSchema.nullable() }).strict();

@@ -36,7 +36,7 @@ export function validateInitialEncryptionCheckpoint(db: SqliteDatabase, outboxId
   if (value.kind === "encrypted-native-page") {
     const manifest = prior("encrypted-native-manifest"), wire = value.transport;
     if (manifest.kind !== "encrypted-native-manifest" || wire.chatId !== chatId || wire.incarnationId !== manifest.transport.incarnationId ||
-      wire.executionEpoch !== manifest.transport.executionEpoch || wire.manifestId !== manifest.transport.manifestId ||
+      wire.manifestId !== manifest.transport.manifestId ||
       wire.offset + wire.bodyHashes.length > manifest.transport.messageCount || hashEncryptedInitialPage(wire) !== wire.ciphertextHash) throw new Error("NATIVE_CIPHER_PAGE_MISMATCH");
     validateInitialPacket(value.encryptedSpace.scope, wire);
     const bodyHashes = wire.bodyHashes.map(hash => {

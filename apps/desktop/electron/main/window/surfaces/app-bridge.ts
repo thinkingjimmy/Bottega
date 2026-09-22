@@ -7,7 +7,6 @@
 import { clipboard, type BrowserWindow } from "electron";
 import { APP_CHANNEL } from "../../../../shared/app-ipc";
 import type { AgentWorkspaceScope } from "../../../../shared/agent-ipc";
-import type { resolveAppLocale } from "@ai-chat/ui/lib/locale";
 import type { FileAuthorizationStore } from "../../file-authorizations";
 import { rendererIpc } from "../../ipc-registrar";
 import type { WorkspaceResolver } from "../../skills-catalog";
@@ -18,14 +17,13 @@ export function registerAppBridge(
   window: BrowserWindow,
   rendererUrl: string,
   files: FileAuthorizationStore,
-  resolveWorkspace: WorkspaceResolver,
-  locale: () => ReturnType<typeof resolveAppLocale>
+  resolveWorkspace: WorkspaceResolver
 ) {
   rendererIpc(rendererUrl, "拒绝非主窗口的应用级请求")
     .roles("main", "app-window")
-    .handleWithContext(APP_CHANNEL.openExternal, async (context, rawUrl) => {
+    .handle(APP_CHANNEL.openExternal, async (rawUrl) => {
       if (typeof rawUrl !== "string") throw new Error("外链格式无效");
-      await openExternalSafely(context.window as BrowserWindow, rawUrl, locale());
+      await openExternalSafely(rawUrl);
     })
     .handle(APP_CHANNEL.writeClipboard, (text) => {
       if (typeof text !== "string") throw new Error("剪贴板内容格式无效");

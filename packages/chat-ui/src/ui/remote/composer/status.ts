@@ -1,64 +1,99 @@
 /**
- * [INPUT]: Depends on confirmed remote targets, the chat head's preparation facts, the host's reason remote control cannot be used and remote copy.
- * [OUTPUT]: Provides computerFace (a blocking reason outranks every other state, with distinct pending and unbound Project states), readOnlyGate (the read-only card's sentence and its filled/outline actions for an imported chat not yet continued, or a native chat whose computer is offline, outdated or revoked), sendAction and the draft budget label.
- * [POS]: Pure presentation rules shared by creation and conversation; nothing here submits or selects. A chat behind the card never reaches sendAction: the card stands where the composer would be.
+ * [INPUT]: Depends on the account's computer list, confirmed remote targets, the chat head's preparation facts, the host's reason remote control cannot be used and remote copy.
+ * [OUTPUT]: Provides ownerPresence, ownerBlock, ownerCommandBlock and handledElsewhereBlock (why the owning computer cannot take the next message or carry out a command, and the answer when another controller got there first — presence from the account subscription, Project facts from the chat's target), readOnlyGate (the read-only card for an imported chat or a revoked computer), sendAction and the draft budget label.
+ * [POS]: Pure presentation rules shared by creation and conversation; both name the computer that owns the chat, and nothing here submits or moves one.
  */
+import { computerOf, computerOnline, type CloudComputer } from "@ai-chat/cloud-protocol";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
-import type { RemoteTarget } from "@ai-chat/cloud-protocol/remote/model";
+import { handledElsewhere, type RemoteCommandReceipt, type RemoteTarget } from "@ai-chat/cloud-protocol/remote/model";
 import { backendName, type RemoteCopy } from "../../../i18n/remote";
-import type { ComputerFace } from "../computer/selectors";
-type Facts = {
-  /** The sentence that explains why remote control cannot be used right now — disconnected or disabled — or null when it can. */
-  blocked: string | null;
-  loading: boolean; target: RemoteTarget | undefined; selected: boolean; protocol: number; revoked: boolean;
-  attention: boolean; localDeviceId: string | null };
-export function computerFace(copy: RemoteCopy, facts: Facts): ComputerFace {
-  const { target } = facts, glyph = target?.platform ?? "none";
-  const name = target ? target.deviceId === facts.localDeviceId ? copy.local.replace("{name}", target.name) : target.name : "";
-  if (facts.blocked) return { glyph, tone: "dim", label: facts.blocked };
-  if (facts.loading && !target) return { glyph: "none", tone: "dim", label: copy.connecting };
-  if (facts.attention && target) return { glyph, tone: "attention", label: name };
-  if (facts.revoked) return { glyph: "none", tone: "dim", label: copy.revoked };
-  if (!target) return { glyph: "none", tone: "dim", label: copy.noComputerOnline };
-  if (!target.online) return { glyph, tone: "dim", label: `${name} · ${copy.offline}` };
-  if (target.protocolVersion !== facts.protocol) return { glyph, tone: "dim", label: `${name} · ${copy.update}` };
-  if (target.reason === "local-facts-pending") return { glyph, tone: "dim", label: `${name} · ${copy.projectPending}` };
-  if (target.projectBound === false) return { glyph, tone: "dim", label: `${name} · ${copy.projectUnbound}` };
-  if (!facts.selected) return { glyph, tone: "dim", label: name };
-  return { glyph, tone: "ready", label: name };
-}
-export type ReadOnlyGate = {
-  description: string;
-  /** The filled action: continue on the executor (held while its Project facts are pending), bind this desktop's folder and continue, or choose another computer when the executor cannot take the chat. */
-  primary: { kind: "continue" | "bind"; disabled: boolean } | { kind: "choose" } | null;
-  /** The outline action: the computer menu beside a live Continue, or a re-read of the computers while the executor cannot take the chat. */
-  secondary: "another" | "check" | null;
-};
-type GateFacts = { imported: boolean; blocked: string | null; loading: boolean; target: RemoteTarget | undefined; protocol: number; revoked: boolean; agent: string;
-  othersOnline: boolean; bindable: boolean; localDeviceId: string | null; switchingTo: string | null };
+/** The owning computer as the account's computer list reports it: presence never comes from a per-chat read. */
+export type OwnerPresence = { name: string; online: boolean; protocolVersion: number; lastSeenReason: CloudComputer["lastSeenReason"] };
 /**
- * What the read-only card says and offers, or null when the composer stays. An imported chat is always behind the card until it is continued somewhere;
- * a native chat only while its computer cannot run anything — offline, needing an update or revoked. The executor's state decides the sentence, and only an action that can succeed is offered.
+ * Which computer owns this chat, and whether it is up. The account's list is the authority and retires a stale
+ * "online" itself; a host that has not subscribed yet reads the chat's own target, which carries the same four facts.
+ * Null means the chat's computer is not one of the account's any more — a revoked installation.
+ */
+export function ownerPresence(input: { computers: CloudComputer[] | null; target: RemoteTarget | undefined; ownerDeviceId: string | null; now: number }): OwnerPresence | null {
+  const { computers, target, ownerDeviceId } = input;
+  if (!computers) return target ? { name: target.name, online: target.online, protocolVersion: target.protocolVersion,
+    lastSeenReason: target.lastSeenReason ?? "unknown" } : null;
+  const computer = computerOf(computers, ownerDeviceId);
+  if (!computer) return null;
+  const installation = computer.installations.find(item => item.deviceId === ownerDeviceId)!;
+  return { name: computer.name, online: computerOnline(computer, input.now),
+    protocolVersion: installation.protocolVersion, lastSeenReason: computer.lastSeenReason };
+}
+export type OwnerBlock = {
+  /** The one sentence naming the state: what the Send button's tooltip says. */
+  reason: string;
+  /** What to do about it on that computer, when there is something to do. */
+  hint: string | null;
+  /** A computer that has left the account will not come back; the chat is read-only for good. */
+  gone: boolean;
+};
+type OwnerFacts = {
+  owner: OwnerPresence | null;
+  /** The chat names an owning installation the account no longer has. */
+  revoked: boolean;
+  ownerDeviceId: string | null; target: RemoteTarget | undefined; protocol: number; loading: boolean; localDeviceId: string | null };
+const named = (copy: RemoteCopy, facts: OwnerFacts, owner: OwnerPresence) =>
+  facts.ownerDeviceId && facts.ownerDeviceId === facts.localDeviceId ? copy.local.replace("{name}", owner.name) : owner.name;
+/**
+ * Why the owning computer cannot take the next message, or null when it can. Presence and version come from the
+ * account's computer list; only the Project facts, which are about this chat, come from its target.
+ */
+export function ownerBlock(copy: RemoteCopy, facts: OwnerFacts): OwnerBlock | null {
+  const { owner } = facts;
+  if (!owner) return facts.revoked ? { reason: copy.computerRevoked, hint: null, gone: true } : null;
+  const name = named(copy, facts, owner);
+  if (!owner.online) return { reason: copy.computerOffline.replace("{name}", name),
+    hint: owner.lastSeenReason === "sleep" ? copy.wakeThere : owner.lastSeenReason === "network" ? copy.networkThere : copy.openThere, gone: false };
+  if (owner.protocolVersion !== facts.protocol) return { reason: copy.computerUpdate.replace("{name}", name), hint: copy.updateThere, gone: false };
+  if (facts.target?.reason === "local-facts-pending") return { reason: copy.projectPending, hint: null, gone: false };
+  if (facts.target?.projectBound === false) return { reason: copy.projectUnbound, hint: null, gone: false };
+  return null;
+}
+/**
+ * Whether the computer that owns this content can be asked to carry out a command — deleting a Chat, say — and the
+ * sentence to say when it cannot. Presence only: a command that erases content on the owning computer needs that
+ * computer awake, while a version gap is not this surface's business. Record writes never ask: renaming, archiving
+ * and reordering are the account's, and the owner reconciles them when it wakes.
+ */
+export function ownerCommandBlock(copy: RemoteCopy, input: { computers: CloudComputer[] | null; ownerDeviceId: string | null; now: number; localDeviceId?: string | null }) {
+  const owner = ownerPresence({ computers: input.computers, target: undefined, ownerDeviceId: input.ownerDeviceId, now: input.now });
+  return ownerBlock(copy, { owner, revoked: Boolean(input.computers && input.ownerDeviceId && !owner),
+    ownerDeviceId: input.ownerDeviceId, target: undefined, protocol: owner?.protocolVersion ?? 0,
+    loading: false, localDeviceId: input.localDeviceId ?? null });
+}
+/**
+ * What a control surface says about a command the owner had already carried out for another controller: one
+ * sentence naming that computer, shaped like every other block so it renders beside the disabled control rather
+ * than as a failure. An answer recovered without its winner falls back to the unnamed sentence.
+ */
+export function handledElsewhereBlock(copy: RemoteCopy, receipt: Pick<RemoteCommandReceipt, "result" | "resolvedBy"> | null | undefined): OwnerBlock | null {
+  const handled = handledElsewhere(receipt);
+  if (!handled) return null;
+  return { reason: handled.deviceName ? copy.handledOn.replace("{name}", handled.deviceName) : copy.alreadyResolved, hint: null, gone: false };
+}
+export type ReadOnlyGate = { description: string };
+type GateFacts = OwnerFacts & { imported: boolean; blocked: string | null; agent: string };
+/**
+ * What the read-only card says, or null when the composer stays. An imported chat is always behind the card until it is
+ * continued on the computer that holds it. A native chat keeps its composer even while its computer is asleep or behind a
+ * version: those states retire themselves on the account subscription, so they belong on the Send button rather than on a
+ * card that would take the draft away. Only a computer that has left the account replaces the composer for good.
  */
 export function readOnlyGate(copy: RemoteCopy, facts: GateFacts): ReadOnlyGate | null {
-  const { target, imported } = facts;
-  const unusable = target ? !target.online || target.protocolVersion !== facts.protocol : facts.revoked;
-  if (!imported && !unusable) return null;
-  const none = { primary: null, secondary: null };
-  if (facts.blocked) return { description: facts.blocked, ...none };
-  if (facts.switchingTo) return { description: imported ? copy.continuingOn.replace("{name}", facts.switchingTo) : copy.switching, ...none };
-  if (facts.loading && !target) return { description: copy.connecting, ...none };
-  const lead = imported ? [copy.importedFrom.replace("{agent}", backendName(facts.agent))] : [];
-  const sentences = (...parts: string[]) => [...lead, ...parts].join(copy.sentenceGap);
-  const choose = facts.othersOnline ? { kind: "choose" as const } : null;
-  if (!target) return { description: sentences(copy.computerRevoked), primary: choose, secondary: "check" };
-  const name = target.deviceId === facts.localDeviceId ? copy.local.replace("{name}", target.name) : target.name;
-  if (!target.online) return { description: sentences(copy.computerOffline.replace("{name}", name), (target.lastSeenReason === "sleep" ? copy.wakeThere : target.lastSeenReason === "network" ? copy.networkThere : copy.openThere)), primary: choose, secondary: "check" };
-  if (target.protocolVersion !== facts.protocol) return { description: sentences(copy.computerUpdate.replace("{name}", name), copy.updateThere), primary: choose, secondary: "check" };
-  // Only an imported chat reaches its Project facts and the live Continue: a usable native computer keeps its composer.
-  if (target.reason === "local-facts-pending") return { description: sentences(copy.projectPending), primary: { kind: "continue", disabled: true }, secondary: null };
-  if (target.projectBound === false) return { description: sentences(copy.projectUnbound), primary: facts.bindable ? { kind: "bind", disabled: false } : choose, secondary: null };
-  return { description: sentences(copy.continueThere.replace("{name}", name)), primary: { kind: "continue", disabled: false }, secondary: facts.othersOnline ? "another" : null };
+  const block = ownerBlock(copy, facts);
+  if (!facts.imported && !block?.gone) return null;
+  if (facts.blocked) return { description: facts.blocked };
+  if (facts.loading && !facts.owner) return { description: copy.connecting };
+  const lead = facts.imported ? [copy.importedFrom.replace("{agent}", backendName(facts.agent))] : [];
+  const parts = !facts.owner ? [copy.computerRevoked]
+    : block ? [block.reason, ...(block.hint ? [block.hint] : [])]
+      : [copy.continueThere.replace("{name}", named(copy, facts, facts.owner))];
+  return { description: [...lead, ...parts].join(copy.sentenceGap) };
 }
 export type SendAction =
   | { kind: "send"; busy: boolean }

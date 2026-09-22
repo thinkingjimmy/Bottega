@@ -23,6 +23,8 @@ export type ChatModelSelectorProps = {
   models: CodexModelInfo[];
   modelsLoading: boolean;
   modelsError: ReactNode;
+  /** What an empty catalog means, when the host knows something better than "no models". */
+  modelsEmpty?: ReactNode;
   settingsError: string;
   disabled?: boolean;
   streaming?: boolean;
@@ -46,6 +48,7 @@ function useSelectorState({
   models,
   modelsLoading,
   modelsError,
+  modelsEmpty,
   settingsError,
   disabled = false,
   streaming = false,
@@ -136,7 +139,7 @@ function useSelectorState({
     currentModel?.displayName ?? value.model
   );
 
-  return { t, value, models, modelsLoading, modelsError, settingsError, onRetryModels, open, setOpen, view, setView, draftIndex, setDraftIndex, busy, triggerLoading, currentModel, sliderEfforts, quickIndex, preferredTier, fast, speedDiverged, speedSummary, speedReason, efforts, speeds, supportsSpeed, commit, changeEffort, toggleFast, returnToQuick, resetToDefault, triggerModel };
+  return { t, value, models, modelsLoading, modelsError, modelsEmpty, settingsError, onRetryModels, open, setOpen, view, setView, draftIndex, setDraftIndex, busy, triggerLoading, currentModel, sliderEfforts, quickIndex, preferredTier, fast, speedDiverged, speedSummary, speedReason, efforts, speeds, supportsSpeed, commit, changeEffort, toggleFast, returnToQuick, resetToDefault, triggerModel };
 }
 export type ModelMenuState = ReturnType<typeof useSelectorState>;
 export function ChatModelSelector(props: ChatModelSelectorProps) {

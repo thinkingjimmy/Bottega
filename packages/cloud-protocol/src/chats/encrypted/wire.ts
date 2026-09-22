@@ -13,7 +13,7 @@ export function chatOperationMetadata(operation: Omit<EncryptedChatMetadataOpera
   return { incarnationId: operation.chat.incarnationId, classification: { kind: operation.chat.classification.conversationKind,
     appId: operation.chat.classification.appId, projectId: operation.chat.classification.projectId }, sourceDeviceId: operation.sourceDeviceId,
     agent: operation.chat.agent, agentRevision: operation.chat.agentRevision, expectedRevision: operation.expectedRevision,
-    executionEpoch: operation.executionEpoch, archivedAt: operation.archivedAt, references: [] };
+    archivedAt: operation.archivedAt, references: [] };
 }
 export function chatPacketContext(scope: CryptoScope, chatId: string, packet: Pick<ChatPacket, "operationId" | "role" | "metadata">) {
   return createChatContext(scope, chatId, packet.operationId, { role: packet.role, incarnationId: packet.metadata.incarnationId,

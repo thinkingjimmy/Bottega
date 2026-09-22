@@ -6,7 +6,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import { z } from "zod";
 import { cloudChatHeadSchema } from "@ai-chat/cloud-protocol/chats/model";
-import { chatCatalogPageSchema, transcriptPageSchema } from "@ai-chat/chat-ui/model";
+import { transcriptPageSchema } from "@ai-chat/chat-ui/model";
 import { parseChatReadResult } from "@ai-chat/chat-ui/read-source";
 import { executionViewSchema } from "@ai-chat/chat-ui/contracts";
 import { executionDraftSchema, executionDraftIdSchema, executionDraftWriteSchema } from "../../shared/cloud/execution";
@@ -15,7 +15,7 @@ import { chatDeletionViewSchema, chatDeletionRequestSchema, chatDeletionKeepSche
 import { recoveryPageRequestSchema, recoveryFileRequestSchema, recoveryPageSchema } from "../../shared/cloud/recovery";
 import { retainedCatalogRequestSchema, retainedCatalogSchema, retainedMetadataSchema } from "../../shared/cloud/recovery";
 import { projectDeletionCatalogRequestSchema, projectDeletionCatalogSchema, projectDeletionIdentitySchema, projectDeletionReviewSchema, projectDeletionDecisionSchema } from "../../shared/cloud/projects/deletion";
-import { CHAT_CHANNEL, chatCatalogRequestSchema, chatFileOpenSchema, chatFileReadSchema, chatIdRequestSchema,
+import { CHAT_CHANNEL, chatCatalogRequestSchema, chatCatalogResultSchema, chatFileOpenSchema, chatFileReadSchema, chatIdRequestSchema,
   transcriptRequestSchema, type CloudChatBridge } from "../../shared/cloud/chat";
 export function installCloudChatBridge() {
   contextBridge.exposeInMainWorld("cloudChat", {
@@ -37,10 +37,9 @@ export function installCloudChatBridge() {
       const receive = (_event: IpcRendererEvent, event: { subscriptionId: string }) => { if (event.subscriptionId === "local") changed(); };
       ipcRenderer.on(CHAT_CHANNEL.changed, receive); return () => ipcRenderer.removeListener(CHAT_CHANNEL.changed, receive);
     },
-    catalog: async input => chatCatalogPageSchema.parse(await ipcRenderer.invoke(CHAT_CHANNEL.catalog, chatCatalogRequestSchema.parse(input))),
+    catalog: async input => chatCatalogResultSchema.parse(await ipcRenderer.invoke(CHAT_CHANNEL.catalog, chatCatalogRequestSchema.parse(input))),
     head: async input => cloudChatHeadSchema.nullable().parse(await ipcRenderer.invoke(CHAT_CHANNEL.head, chatIdRequestSchema.parse(input))),
     execution: async input => executionViewSchema.parse(await ipcRenderer.invoke(CHAT_CHANNEL.execution, chatIdRequestSchema.parse(input))),
-    claim: input => ipcRenderer.invoke(CHAT_CHANNEL.claim, chatIdRequestSchema.parse(input)),
     prepare: input => ipcRenderer.invoke(CHAT_CHANNEL.prepare, chatIdRequestSchema.parse(input)),
     bindProject: async input => z.boolean().parse(await ipcRenderer.invoke(CHAT_CHANNEL.bindProject, chatIdRequestSchema.parse(input))),
     draft: async input => executionDraftSchema.parse(await ipcRenderer.invoke(CHAT_CHANNEL.draft, executionDraftIdSchema.parse(input))),

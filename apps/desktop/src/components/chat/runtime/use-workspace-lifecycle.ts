@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React memo, Chat/Project abstract, chat-hydration scope rules and session project mode
- * [OUTPUT]: Provides useWorkspaceLifecycle, separates wire scope, canonical Workspace precondition, async fence key and durable draft identity
+ * [OUTPUT]: Provides useWorkspaceLifecycle, separates wire scope, canonical Workspace precondition, async fence key, durable draft identity and the Project's workspace binding
  * [POS]: Workspace-lifecycle projector for chat/runtime; use-chat-session only wires side effects and no longer computes these JSON-keyed identities itself
  */
 
@@ -69,6 +69,8 @@ export function useWorkspaceLifecycle({
     };
     return {
       workspaceScope,
+      /** What kind of workspace this Chat has on this computer; `unbound` means none until a folder is chosen. */
+      workspaceBinding: identity.workspaceBinding,
       workspacePrecondition: workspacePreconditionFor(
         workspaceScope,
         lifecycleProject,

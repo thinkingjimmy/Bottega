@@ -4,7 +4,7 @@
  * [POS]: Main-window preload adapter; it cannot invoke a local Agent or supply authentication headers.
  */
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import { REMOTE_CHANNEL, remoteRequests, remoteResults, remoteAttachmentProgressSchema, type CloudRemoteBridge, type RemoteMethod,
+import { REMOTE_CHANNEL, remoteRequests, remoteResults, remoteAttachmentProgressSchema, remoteWatchResultSchema, type CloudRemoteBridge, type RemoteMethod,
   type RemoteInput, type RemoteResult, type RemoteWatch } from "../../../shared/cloud/remote/contracts";
 export function installCloudRemoteBridge() {
   const call = async <N extends RemoteMethod>(method: N, input: RemoteInput<N>): Promise<RemoteResult<N>> =>
@@ -21,7 +21,8 @@ export function installCloudRemoteBridge() {
     };
     const request = remoteRequests[method].parse(input);
     ipcRenderer.on(REMOTE_CHANNEL.changed, receive);
-    void ipcRenderer.invoke(REMOTE_CHANNEL.watch, { method, input: request, subscriptionId }).catch(failure);
+    void ipcRenderer.invoke(REMOTE_CHANNEL.watch, { method, input: request, subscriptionId })
+      .then(result => { if (remoteWatchResultSchema.parse(result).kind !== "watching") failure(); }, failure);
     return release;
   };
   contextBridge.exposeInMainWorld("cloudRemote", {
@@ -36,7 +37,7 @@ export function installCloudRemoteBridge() {
     queue: input => call("queue", input), reorderQueue: input => call("reorderQueue", input),
     watchQueue: (input, changed, failed) => watch("queue", input, changed, failed),
     targets: input => call("targets", input), submit: input => call("submit", input), command: input => call("command", input),
-    commands: input => call("commands", input), selectExecutor: input => call("selectExecutor", input), create: input => call("create", input),
+    commands: input => call("commands", input), create: input => call("create", input),
     created: input => call("created", input), retryPreparation: input => call("retryPreparation", input),
     watchTargets: (input, changed, failed) => watch("targets", input, changed, failed),
     watchCommand: (input, changed, failed) => watch("command", input, changed, failed),

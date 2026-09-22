@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Exact encrypted command custody, native anchored fork service and durable child receipts.
- * [OUTPUT]: Strict anchor-only preflight and executor-owned creation with private results and immutable replay identity.
+ * [OUTPUT]: Strict anchor-only preflight and owner-scoped creation with private results and immutable replay identity.
  * [POS]: Chat-scoped remote command adapter; native fork owns workspace and attachment lifecycle.
  */
 import { remoteOutputSchema, type RemoteCommand, type RemoteOutput } from "@ai-chat/cloud-protocol/remote/model";
@@ -42,7 +42,7 @@ export async function applyRemoteFork(command: RemoteCommand, context: RemoteCon
     const state = await ports.store.sync.read(context.scope, { type: "remote-admission", chatId: context.chatId }); current();
     const head = state.type === "remote-admission" ? state.value?.execution?.head : null;
     if (!head || head.chat.incarnationId !== context.incarnationId) throw new Error("chat-incarnation-mismatch");
-    if (head.executorDeviceId !== context.targetDeviceId || head.executionEpoch !== context.executionEpoch) throw new Error("executor-changed");
+    if (head.ownerDeviceId !== context.targetDeviceId) throw new Error("not-owner");
     authority.current();
   };
   await validate();

@@ -28,8 +28,6 @@ export const historyEs: typeof historyEn = {
   disableProject: "Ocultar historial de Agent",
   enableProject: "Mostrar historial de Agent",
   refreshProject: "Actualizar historial de Agent",
-  incompleteTail: "El archivo seguía escribiéndose tras los reintentos limitados. Se omitió el final incompleto; actualiza para reintentar.",
-  resumeUnavailable: "Este historial de Agent todavía no se puede continuar en la aplicación.",
   search: "Buscar",
   searchPlaceholder: "Buscar chats, Bases y archivos de proyectos…",
   searchEmpty: "No hay resultados coincidentes",
@@ -61,7 +59,4 @@ export const historyEs: typeof historyEn = {
   deliveringMemory: "Entregando el historial a Memory",
   interruptedGrant: "Una importación ya confirmada se interrumpió. Vuelve a previsualizarla para reanudar el mismo Grant de un solo uso; no se envía nada automáticamente.",
   importedHistoryLabel: "Historial de Agent importado",
-  importedDivider: "Historial importado · La conversación del producto empieza aquí",
-  divergedDivider: "La fuente cambió · La conversación continúa desde la instantánea inmutable",
-  sourceMissingDivider: "El registro original ya no está en su origen · La conversación continúa desde la instantánea inmutable",
 };

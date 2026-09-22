@@ -3,7 +3,6 @@
  * [OUTPUT]: Renders canonical messages with concise Agent boundaries, remote source labels, Plan, tool, image and recursive read-only Subagent content; copies terminal bodies with interruption annotations.
  * [POS]: The conversation body's root message surface for desktop and Web; no execution command or local authority is reconstructed.
  */
-import { ExecutorBoundary } from "../lineage/executor";
 import { projectUnavailableArtifacts } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
 import { ArtifactMessageRenderers } from "../../../artifacts/renderer";
 import { memo } from "react";
@@ -96,7 +95,6 @@ export const TranscriptMessage = memo(function TranscriptMessage(props: Props) {
   if (message.role === "notice") {
     const notice = message.notice;
     if (notice.kind === "app-chat-ready") return null;
-    if (notice.kind === "executor-switched") return <div data-message-id={message.id}><ExecutorBoundary notice={notice} locale={locale ?? "en"} /></div>;
     const text =
       notice.kind === "agent-switched"
           ? copy.switchedAgent.replace("{agent}", backendName(notice.to))

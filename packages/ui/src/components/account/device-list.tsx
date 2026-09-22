@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Public device facts, localized labels and host-owned rename/revoke/refresh capabilities.
- * [OUTPUT]: One shared device list with inline kind, presence, version, stable editing and confirmation.
+ * [OUTPUT]: One shared device list with inline kind, presence, version, stable editing and confirmation, and the relative moment every account presence surface reads.
  * [POS]: Pure account presentation; the host owns current-session key cleanup and transport authority.
  */
 import { useId, useState } from "react";
@@ -9,6 +9,8 @@ import { Input } from "../ui/input";
 import { ConfirmationDialog } from "../ui/app-dialog";
 import { SettingsList, SettingsRow, SettingsBadge } from "../settings/content";
 import { SettingsButton } from "../settings/controls";
+import { relativeMoment } from "./moment";
+export { relativeMoment };
 export interface AccountDevice {
   deviceId: string; name: string; current: boolean;
   state: "active" | "revoked" | "expired";
@@ -32,16 +34,6 @@ export function DeviceList(props: DeviceListProps) {
     <SettingsList>{props.devices.map(device => <DeviceRow key={device.deviceId} {...props} device={device} />)}</SettingsList>
   </div>;
 }
-/* Coarse on purpose: a device list needs "3 hours ago", not a timestamp. */
-function relativeMoment(at: number, locale: string) {
-  const minutes = Math.max(0, Math.round((Date.now() - at) / 60_000));
-  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  if (minutes < 60) return formatter.format(-minutes, "minute");
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return formatter.format(-hours, "hour");
-  return formatter.format(-Math.floor(hours / 24), "day");
-}
-
 function DeviceRow({ device, ...props }: DeviceListProps & { device: AccountDevice }) {
   const { copy, locale, disabled, capabilities, onRename, onRevoke } = props;
   const t = (key: string, values?: Record<string, string>) => copy(key.replace(/^cloud\./, ""), values); const inputId = useId();

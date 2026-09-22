@@ -2,12 +2,12 @@
 
 /**
  * [INPUT]: Depends on shared Chat row actions/rename, Sidebar primitives, effective confetti preference, immediate archive feedback, data providers, archive restore client, product navigation, reorder row-props, and i18n
- * [OUTPUT]: Renders canonical Chat rows with a focus-preserving archive action, single-flight success, executor badges, post-archive recovery that yields to toast View, and the optional drag ghost / drop indicator; exports ChatDropIndicator and chatRowDropAttributes for sibling row kinds
+ * [OUTPUT]: Renders canonical Chat rows with a focus-preserving archive action, single-flight success, owner badges, post-archive recovery that yields to toast View, and the optional drag ghost / drop indicator; exports ChatDropIndicator and chatRowDropAttributes for sibling row kinds
  * [POS]: Shared chat row unit of components/sidebar/chat, consumed by the Chats, Activity, and Project sublists; unifies both hover/focus feedback levels, leaves list-item semantics to its caller and drag state to reorder/
  */
 
 import { projectAvailability } from "../../../../shared/agent-availability/projection";
-import { ChatExecutorBadge } from "../cloud/rows";
+import { ChatOwnerBadge } from "../cloud/rows";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
@@ -346,7 +346,7 @@ export function ChatThreadItem({
             </SidebarRowMark>
             {titleNode}
             {badge && <SidebarRowTag>{badge}</SidebarRowTag>}
-            <ChatExecutorBadge chatId={chat.id} />
+            <ChatOwnerBadge chatId={chat.id} />
           </span>
           {/* `whitespace-normal!` 是必需的：宿主基类写了
               `[&>span:last-child]:truncate`（特指度 0,1,1），它的 nowrap 会
@@ -372,7 +372,7 @@ export function ChatThreadItem({
               </SidebarRowMark>
               {titleNode}
               {badge && <SidebarRowTag>{badge}</SidebarRowTag>}
-              <ChatExecutorBadge chatId={chat.id} />
+              <ChatOwnerBadge chatId={chat.id} />
             </span>
             {preview ? (
               <span data-chat-preview className="line-clamp-2 whitespace-normal! text-[11px] text-sidebar-foreground/60 leading-snug">

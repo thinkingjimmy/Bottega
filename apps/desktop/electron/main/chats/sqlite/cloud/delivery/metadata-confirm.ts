@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on immutable outbox intents, original cloud receipts and the sole Chat metadata/search writer.
- * [OUTPUT]: Installs confirmed heads (title/archive/sortKey, the last without touching updated_at), defers visible changes during classification CAS and preserves same-epoch offline commits and freezes imported sources on managed takeover.
+ * [OUTPUT]: Installs confirmed heads (title/archive/sortKey, the last without touching updated_at), defers visible changes during classification CAS and freezes imported sources on managed takeover.
  * [POS]: Receipt reconciliation beneath ChatRepository; it never creates local execution authority or a second queue.
  */
 import { canonicalJson, type SyncScope } from "../../../../../../shared/local-storage/contracts";
@@ -97,13 +97,9 @@ function storeHead(db: SqliteDatabase, scope: SyncScope, head: CloudChatHead, no
       (previous.chat.sortKey ?? null) !== (head.chat.sortKey ?? null)) throw new Error("CHAT_METADATA_REVISION_CHANGED");
     if (head.catalogRevision < previous.catalogRevision) return;
   }
-  if (!previous || previous.executionEpoch !== head.executionEpoch) {
-    db.prepare("UPDATE chats SET cloud_last_committed_executor_device_id=? WHERE id=?")
-      .run(head.lastCommittedExecutorDeviceId, head.chat.id);
-  }
   db.prepare("UPDATE cloud_chat_metadata_state SET confirmed_json=? WHERE chat_id=?").run(canonicalJson(head), head.chat.id);
-  db.prepare("UPDATE chats SET cloud_revision=?,cloud_executor_device_id=?,cloud_execution_epoch=? WHERE id=?")
-    .run(head.chat.cloudRevision, head.executorDeviceId, head.executionEpoch, head.chat.id);
+  db.prepare("UPDATE chats SET cloud_revision=?,cloud_owner_device_id=? WHERE id=?")
+    .run(head.chat.cloudRevision, head.ownerDeviceId, head.chat.id);
   db.prepare("UPDATE chats SET parent_chat_id=?,parent_incarnation_id=?,parent_message_id=?,inherited_through_seq=? WHERE id=?")
     .run(head.chat.parentChatId ?? null, head.chat.parentIncarnationId ?? null, head.chat.parentMessageId ?? null, head.chat.inheritedThroughSeq ?? null, head.chat.id);
   freezeClaimedImport(db, scope, head, now);

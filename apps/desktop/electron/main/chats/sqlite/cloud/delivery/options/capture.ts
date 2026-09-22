@@ -14,7 +14,7 @@ export function observeExecutionOptions(db: SqliteDatabase, scope: SyncScope, ch
   db.prepare("UPDATE cloud_chat_metadata_state SET execution_observed_json=? WHERE chat_id=? AND environment=? AND user_id=?")
     .run(canonicalJson({ options: facts.options, agentRevision: facts.agentRevision }), chatId, scope.environment, scope.userId);
 }
-export function captureOptionsEdit(db: SqliteDatabase, scope: SyncScope, outboxId: string, kind: string, facts: ChatFacts, epoch: number) {
+export function captureOptionsEdit(db: SqliteDatabase, scope: SyncScope, outboxId: string, kind: string, facts: ChatFacts) {
   const state = metadataState(db, scope, facts.id);
   const previous = state.execution_observed_json ? JSON.parse(String(state.execution_observed_json)) :
     state.confirmed_json ? JSON.parse(String(state.confirmed_json)).chat : null;
@@ -22,7 +22,7 @@ export function captureOptionsEdit(db: SqliteDatabase, scope: SyncScope, outboxI
   if (kind !== "update-chat-facts" || !previous || canonicalJson(previous.options) === canonicalJson(facts.options)) return null;
   const latest = db.prepare("SELECT MAX(seq) seq FROM chat_messages WHERE chat_id=? AND role='user' AND COALESCE(json_extract(payload_json,'$.segment'),'native')<>'imported'").get(facts.id) as Row;
   const operation = chatOptionsOperationSchema.parse({ operationId: hashChatContent(["chat-options", outboxId]),
-    chatId: facts.id, incarnationId: facts.incarnationId, executionEpoch: epoch, agentRevision: facts.agentRevision,
+    chatId: facts.id, incarnationId: facts.incarnationId, agentRevision: facts.agentRevision,
     afterUserSeq: Number(latest.seq ?? 0), previous: previous.options, options: facts.options, payloadHash: "0".repeat(64) });
   return { ...operation, payloadHash: hashChatOptionsOperation(operation) };
 }

@@ -95,7 +95,7 @@ export async function createAppWindow({
     window,
   });
   bindWindowTheme(window);
-  lockNavigation(window, rendererUrl, apps, locale);
+  lockNavigation(window, rendererUrl, apps);
 
   const loaded = new Promise<void>((resolve, reject) => {
     window.webContents.once("did-finish-load", () => resolve());

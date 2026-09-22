@@ -26,8 +26,6 @@ export const historyEn = {
   disableProject: "Hide agent history",
   enableProject: "Show agent history",
   refreshProject: "Refresh agent history",
-  incompleteTail: "The source file was still being written after bounded retries. Its incomplete tail was omitted; refresh to retry.",
-  resumeUnavailable: "This Agent history cannot be continued in the app yet.",
   search: "Search",
   searchPlaceholder: "Search chats, Bases and project archives…",
   searchEmpty: "No matching results",
@@ -59,7 +57,4 @@ export const historyEn = {
   deliveringMemory: "Delivering history to Memory",
   interruptedGrant: "A previously confirmed import was interrupted. Preview again to resume the same one-time Grant; nothing is sent automatically.",
   importedHistoryLabel: "Imported Agent history",
-  importedDivider: "Imported history · Product conversation starts here",
-  divergedDivider: "Source changed · Product conversation continues from the immutable snapshot",
-  sourceMissingDivider: "The original record is no longer at its source · Product conversation continues from the immutable snapshot",
 };

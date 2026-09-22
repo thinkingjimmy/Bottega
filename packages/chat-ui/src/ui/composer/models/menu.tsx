@@ -50,7 +50,7 @@ function OptionButton({
 
 
 export default function ModelMenu({ state }: { state: ModelMenuState }) {
-  const { t, value, models, modelsLoading, modelsError, settingsError, onRetryModels, view, setView, draftIndex, setDraftIndex, busy, currentModel, sliderEfforts, quickIndex, preferredTier, fast, speedDiverged, speedSummary, speedReason, efforts, speeds, supportsSpeed, commit, changeEffort, toggleFast, returnToQuick, resetToDefault, triggerModel } = state;
+  const { t, value, models, modelsLoading, modelsError, modelsEmpty, settingsError, onRetryModels, view, setView, draftIndex, setDraftIndex, busy, currentModel, sliderEfforts, quickIndex, preferredTier, fast, speedDiverged, speedSummary, speedReason, efforts, speeds, supportsSpeed, commit, changeEffort, toggleFast, returnToQuick, resetToDefault, triggerModel } = state;
   return (
       <PopoverContent
         side="top"
@@ -256,6 +256,13 @@ export default function ModelMenu({ state }: { state: ModelMenuState }) {
                   <RotateCw className="size-3" />
                 </Button>
               </div>
+            )}
+            {/* An empty catalog is a fact, not a failure: it carries the host's reason and no retry, because
+                retrying cannot produce models the computer does not have. */}
+            {!modelsLoading && !modelsError && models.length === 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {modelsEmpty ?? t("chat.composer.modelSelector.noModels")}
+              </p>
             )}
           </div>
         )}

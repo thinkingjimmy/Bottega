@@ -71,7 +71,7 @@ export async function openHomeManifest(port: FileCipherPort, raw: EncryptedHomeM
 export function prepareHomePage(port: FileCipherPort, manifest: HomeManifest, raw: Parameters<typeof hashHomePage>[0], entries: readonly FrozenHomeEntry[]): FrozenHomePage {
   const operation = homePageSchema.parse(raw), identity = homeCipherIdentity(manifest);
   assertCrypto(hashHomePage(operation) === operation.payloadHash && operation.chatId === manifest.chatId && operation.incarnationId === manifest.incarnationId &&
-    operation.executionEpoch === manifest.executionEpoch && operation.snapshotId === manifest.snapshotId && entries.length === operation.entries.length &&
+    operation.snapshotId === manifest.snapshotId && entries.length === operation.entries.length &&
     entries.every((entry, index) => entry.entry.ordinal === operation.offset + index && entry.entry.operationId === operation.operationId &&
       entry.plaintextHash === hashChatContent(operation.entries[index]) && canonicalJson(entry.identity) === canonicalJson(identity) &&
       canonicalJson(entry.encryptedSpace) === canonicalJson(space(port))));

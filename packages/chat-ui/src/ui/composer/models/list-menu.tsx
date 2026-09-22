@@ -121,7 +121,7 @@ function ChoiceItem({
 
 
 export default function ModelMenu({ state }: { state: ModelMenuState }) {
-  const { t, value, models, modelsLoading, modelsError, settingsError, onRetryModels, current, effort, speed, effortText, speedText, busy, modelAdjustable, effortAdjustable, speedAdjustable, pending, modelText, speedReason, commitAndClose } = state;
+  const { t, value, models, modelsLoading, modelsError, modelsEmpty, settingsError, onRetryModels, current, effort, speed, effortText, speedText, busy, modelAdjustable, effortAdjustable, speedAdjustable, pending, modelText, speedReason, commitAndClose } = state;
   return (
       <DropdownMenuContent
         side="top"
@@ -245,9 +245,10 @@ export default function ModelMenu({ state }: { state: ModelMenuState }) {
             detail={speedReason}
           />
         ))}
+        {/* An empty catalog is a fact, not a failure: it carries the host's reason and no retry. */}
         {!modelsLoading && !modelsError && models.length === 0 && (
           <p className="px-2 py-2 text-xs text-muted-foreground">
-            {t("chat.composer.modelSelector.noModels")}
+            {modelsEmpty ?? t("chat.composer.modelSelector.noModels")}
           </p>
         )}
         {modelsError && (

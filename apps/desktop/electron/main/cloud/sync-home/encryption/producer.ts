@@ -57,7 +57,7 @@ export async function prepareHomeCiphertext(source: FrozenHome, checkpoints: Cha
 }
 export async function frozenHomePage(source: FrozenHome, entries: readonly FrozenHomeEntry[], offset: number,
   checkpoints: ChatDeliveryCheckpoints, files: Pick<EncryptedBlobTransfer, "crypto">) {
-  const manifest = source.manifest, native = { chatId: manifest.chatId, incarnationId: manifest.incarnationId, executionEpoch: manifest.executionEpoch,
+  const manifest = source.manifest, native = { chatId: manifest.chatId, incarnationId: manifest.incarnationId,
     snapshotId: manifest.snapshotId, operationId: hashChatContent([manifest.snapshotId, offset]), payloadHash: "0".repeat(64), offset, entries: source.entries.slice(offset, offset + 50) };
   native.payloadHash = hashHomePage(native);
   const value = frozenHomePageSchema.parse(await freeze(checkpoints, `cipher-home-page:${native.operationId}`,
@@ -65,12 +65,12 @@ export async function frozenHomePage(source: FrozenHome, entries: readonly Froze
   if (value.plaintextHash !== native.payloadHash || value.operation.operationId !== native.operationId) throw new Error("HOME_CIPHER_PAGE_CHANGED"); return value;
 }
 export async function uploadHomeFiles(entries: readonly FrozenHomeEntry[], checkpoints: ChatDeliveryCheckpoints, files: EncryptedBlobTransfer,
-  header: EncryptedBusinessHeader, signal: AbortSignal, progress?: (value: FileProgress) => void) {
+  header: EncryptedBusinessHeader, signal: AbortSignal, progress?: () => (value: FileProgress) => void) {
   const journal = checkpoints.fileJournal();
   for (const entry of entries) if (entry.entry.file) {
     signal.throwIfAborted(); const key = hashChatContent(["home-file", entry.identity.snapshotId, entry.entry.ordinal]), complete = await journal.read(`${key}:complete`);
     if (complete?.kind !== "encrypted-file-complete") throw new Error("HOME_FILE_CIPHERTEXT_REQUIRED");
     // File identity is durable; a transport attempt expires with its original login and upload lease.
-    await files.uploadFile(header, randomUUID(), "home-snapshot", complete.descriptor, journal, key, progress, signal);
+    await files.uploadFile(header, randomUUID(), "home-snapshot", complete.descriptor, journal, key, progress?.(), signal);
   }
 }

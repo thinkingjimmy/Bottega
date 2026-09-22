@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on closed native/imported content, metadata/options/deletion and paged Home inventory contracts.
- * [OUTPUT]: Defines original-outbox evidence, including incomplete initialization and immutable per-epoch content recovery results.
+ * [OUTPUT]: Defines original-outbox evidence, including incomplete initialization and immutable content recovery results.
  * [POS]: Local outbox detail contract; checkpoints never own scheduling or business mutations.
  */
 import { cloudChatHeadSchema } from "@ai-chat/cloud-protocol/chats/model";
@@ -41,7 +41,7 @@ export const chatDeliveryCheckpointSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("metadata-operation"), operation: chatMetadataOperationSchema, basis: chatMetadataReceiptSchema.nullable() }).strict(),
   z.object({ kind: z.literal("metadata-receipt"), receipt: chatMetadataReceiptSchema }).strict(),
   z.object({ kind: z.literal("native-recovery"), head: cloudChatHeadSchema, initialization: z.object({ manifestId: id, ciphertextHash: hash }).strict().nullable() }).strict(),
-  z.object({ kind: z.literal("native-recovery-head"), expectedEpoch: z.number().int().nonnegative(), status: z.enum(["claimed", "conflict", "adopted"]), head: cloudChatHeadSchema, initialization: initialIdentitySchema.nullable() }).strict(),
+  z.object({ kind: z.literal("native-recovery-head"), status: z.enum(["claimed", "adopted"]), head: cloudChatHeadSchema, initialization: initialIdentitySchema.nullable() }).strict(),
   z.object({ kind: z.literal("native-body"), bodyHash: hash, body: chatBodySchema }).strict(),
   z.object({ kind: z.literal("body-storage"), bodyHash: hash, storage: chatBodyStorageSchema }).strict(),
   z.object({ kind: z.literal("native-manifest"), manifest: chatInitialManifestSchema }).strict(),
@@ -51,7 +51,7 @@ export const chatDeliveryCheckpointSchema = z.discriminatedUnion("kind", [
 export type ChatDeliveryCheckpoint = z.infer<typeof chatDeliveryCheckpointSchema>;
 export const checkpointKey = (value: ChatDeliveryCheckpoint) => {
   switch (value.kind) {
-    case "native-recovery-head": return `native-recovery-head:${value.expectedEpoch}`;
+    case "native-recovery-head": return "native-recovery-head";
     case "encrypted-native-page": return `cipher-native-page:${value.transport.operationId}`;
     case "encrypted-chat-options": return `cipher-options:${value.transport.operationId}`;
     case "encrypted-remote-initial": return `cipher-remote-initial:${value.chatId}`;

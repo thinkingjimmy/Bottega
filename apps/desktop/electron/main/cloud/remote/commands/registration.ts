@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on trusted renderer IPC and fixed remote request/subscription schemas.
- * [OUTPUT]: Registers strict remote command and attachment upload IPC from the trusted main frame.
+ * [OUTPUT]: Registers strict remote command and attachment upload IPC from the trusted main frame, answering a signed-out subscription instead of rejecting it.
  * [POS]: Electron remote control guardian; no renderer can claim local intake authority.
  */
 import { z } from "zod";
@@ -21,9 +21,13 @@ export function registerCloudRemote(client: RemoteCommandClient, window: Browser
   ipc.handle(REMOTE_CHANNEL.watch, (...args) => {
     const [request] = z.tuple([remoteWatchSchema]).parse(args), id = request.subscriptionId;
     if (subscriptions.has(id) || subscriptions.size >= 12) throw new Error("REMOTE_SUBSCRIPTION_LIMIT");
+    /* Before sign-in the renderer still asks once; answering "not signed in" keeps that window out of the
+       main log, and the renderer treats it exactly as it treats a dropped subscription (N-1 / AC-8). */
+    if (!client.available()) return { kind: "signed-out" as const };
     let stop = () => {}; subscriptions.set(id, () => stop());
     stop = client.watch(request.method, request.input, value => send(id, value), () => { subscriptions.delete(id); send(id, undefined, true); });
     if (!subscriptions.has(id)) stop();
+    return { kind: "watching" as const };
   });
   ipc.handle(REMOTE_CHANNEL.unwatch, (...args) => {
     const [{ subscriptionId }] = z.tuple([z.object({ subscriptionId: z.string().uuid() }).strict()]).parse(args);

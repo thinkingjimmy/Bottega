@@ -5,10 +5,6 @@
  */
 import { z } from "zod";
 import { agentBackendIdSchema } from "../options";
-import { cloudIdSchema } from "../../auth";
-const executorSwitchedNoticeSchema = z.object({ kind: z.literal("executor-switched"), fromDeviceId: cloudIdSchema,
-  toDeviceId: cloudIdSchema, fromName: z.string().min(1).max(80), toName: z.string().min(1).max(80),
-  staleSnapshot: z.boolean().optional(), executionEpoch: z.number().int().positive(), at: z.number().int().nonnegative() }).strict();
 export const agentSwitchedNoticeSchema = z.object({
   kind: z.literal("agent-switched"),
   from: agentBackendIdSchema,
@@ -64,12 +60,11 @@ const appChatReadyNoticeSchema = z
   })
   .strict();
 
-export const chatNoticeSchema = z.discriminatedUnion("kind", [agentSwitchedNoticeSchema, executorSwitchedNoticeSchema,
+export const chatNoticeSchema = z.discriminatedUnion("kind", [agentSwitchedNoticeSchema,
   actionableNoticeSchema, failedNoticeSchema, manualRecoveredNoticeSchema,
   skillDescriptionsTruncatedNoticeSchema, appChatReadyNoticeSchema]);
 export type ChatNotice = z.infer<typeof chatNoticeSchema>;
 export function noticeMessageContent(notice: ChatNotice) {
-  if (notice.kind === "executor-switched") return `From here, running on ${notice.toName}${notice.staleSnapshot ? ` · ${notice.fromName}’s last reply files have not synced` : ""}`;
   if (notice.kind === "agent-switched") return `Agent switched · Replies from here are by ${notice.to}`;
   if (notice.kind === "app-chat-ready") return "App Studio session is ready.";
   if (notice.kind === "manual-recovered") {

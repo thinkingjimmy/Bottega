@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, Sync settings navigation, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy, the Web gate's verifying/revoked/restricted next steps and its slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, the account computer strip and its no-computer sentence, Sync settings navigation, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy, the Web gate's verifying/revoked/restricted next steps and its slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 export const cloudCopy = {
@@ -76,9 +76,9 @@ export const cloudCopy = {
     "switchAccount": "Confirm account switch",
     "switchTitle": "Switch accounts on this computer",
     "switchBody": "Your cloud data stays with the previous account. After switching, enable sync again for this account.",
-    "pause": "Pause",
-    "resume": "Resume",
     "disable": "Disable",
+    "cloudData": "Cloud data",
+    "cloudDataDescription": "Disconnect this computer and remove the cloud copies kept here. Signing out does neither.",
     "disableTitle": "Disable sync on this computer?",
     "disableBody": "Cloud copies that only exist as mirrors here will be removed. Everything created or continued on this computer stays, with its files. You’ll need your sync password to enable sync again.",
     "disableRemove": "Remove {{mirrors}} chat mirrors, {{mirroredBases}} Base mirrors, {{mirroredProjects}} Project mirrors and {{mirroredApps}} App mirrors.",
@@ -91,7 +91,7 @@ export const cloudCopy = {
   },
   "syncStatus": {
     "partial": "Base data is up to date; some App packages need attention",
-    "not-connected": "Sync has not been enabled.",
+    "not-connected": "This computer is not syncing yet.",
     "scanning": "Scanning local content…",
     "initializing": "Preparing your first sync…",
     "syncing": "Syncing…",
@@ -105,7 +105,8 @@ export const cloudCopy = {
     "scan-failed": "Local content could not be inspected. Retry after any active import finishes.",
     "review-expired": "This review has expired. Scan again before confirming.",
     "upload-failed": "Some content has not synced. Your local copy is kept; retry to continue.",
-    "cleanup-failed": "Disconnecting this account could not finish. Local content is kept; retry to continue."
+    "cleanup-failed": "Disconnecting this account could not finish. Local content is kept; retry to continue.",
+    "library-owned-elsewhere": "This Bottega folder belongs to {{host}}. This version cannot open it on another computer — create a new folder, or use it on that computer."
   },
   "syncAppBlocked": {
     "migration-blocked": "This version needs an unsupported data migration. The previous cloud version is kept.",
@@ -118,14 +119,14 @@ export const cloudCopy = {
   },
   "setup": {
     "signIn": "Sign in",
-    "enable": "Enable sync",
+    "enable": "Finish sign-in",
     "signInTitle": "Sign in to sync this computer",
     "browserApproval": "You’ll approve the sign-in in your browser.",
     "signedInAs": "You are signed in as {{email}}.",
     "checkCode": "Check that it matches the code in your browser before you allow sign-in.",
     "enterPassword": "Enter your sync password",
     "enterPasswordDescription": "This computer joins the encrypted workspace you set up on another device. Bottega cannot recover the password.",
-    "unlockedDescription": "This computer is already unlocked. Enable sync to start uploading its content."
+    "unlockedDescription": "This computer is already unlocked. Finish to start syncing."
   },
   "syncBadge": {
     "synced": "Up to date",
@@ -143,6 +144,7 @@ export const cloudCopy = {
     "locked": "Enter your sync password to resume sync on this computer."
   },
   "syncPhase": {
+    "preparing": "Preparing chats",
     "projects": "Uploading Projects",
     "apps": "Uploading Apps",
     "chats": "Uploading chats",
@@ -255,6 +257,17 @@ export const cloudCopy = {
   "syncNotConnected": "Sync has not been enabled.",
 
 
+  "computers": {
+    "label": "Computers",
+    "offlineSince": "Offline · {{when}}",
+    "none": "Sign in to Bottega on a computer and its sidebar appears here.",
+    "thisComputer": "This computer",
+    "name": "Computer name",
+    "nameTaken": "Another computer already has that name.",
+    "notFound": "This computer is not signed in to the account.",
+    "nameInvalid": "Enter a name.",
+    "suffixHint": "Another computer already had this name. Rename this one here."
+  },
   "devices": "Devices",
   "lastSeen": "Last seen {{when}}",
   "webSession": "Web session",

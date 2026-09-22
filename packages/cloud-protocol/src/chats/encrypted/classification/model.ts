@@ -15,7 +15,7 @@ import { chatPacketSchema, encryptedChatHeadSchema } from "../model";
 const classificationPromotionSchema = z.object({ baseId: id, expectedRevision: version,
   destination: z.discriminatedUnion("kind", [z.object({ kind: z.literal("project"), projectId: id }).strict(),
     z.object({ kind: z.literal("app"), projectId: id, appId: appIdSchema }).strict()]) }).strict();
-export const classificationIntentSchema = z.object({ incarnationId: id, expectedRevision: version.positive(), executionEpoch: version.positive(),
+export const classificationIntentSchema = z.object({ incarnationId: id, expectedRevision: version.positive(),
   previous: classificationSchema, next: classificationSchema, basePromotion: classificationPromotionSchema.nullable(),
   projectRescue: z.object({ projectId: id }).strict().nullable(), sourceDeviceId: id,
   agent: portableChatSchema.shape.agent, agentRevision: version, createdAt: version, archivedAt: version.nullable() }).strict()

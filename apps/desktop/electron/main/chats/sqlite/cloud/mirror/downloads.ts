@@ -65,7 +65,7 @@ function requireMirror(db: SqliteDatabase, scope: SyncScope, chatId: string) {
 }
 export function beginMirrorBody(db: SqliteDatabase, scope: SyncScope, head: CloudChatHead, now: number, writer: ChatRecordWriter) {
   const current = requireMirror(db, scope, head.chat.id);
-  if (current.bodyRevision !== head.bodyRevision || current.executionEpoch !== head.executionEpoch || current.chat.incarnationId !== head.chat.incarnationId) throw new Error("MIRROR_HEAD_CHANGED");
+  if (current.bodyRevision !== head.bodyRevision || current.chat.incarnationId !== head.chat.incarnationId) throw new Error("MIRROR_HEAD_CHANGED");
   const previous = indexedDownload(db, scope, head.chat.id, now);
   if (previous?.bodyRevision === head.bodyRevision && (!previous.complete || previous.sourceCount + previous.emptyCount > 0 || head.headSeq === 0)) {
     const row = db.prepare("SELECT cloud_state FROM chats WHERE id=?").get(head.chat.id) as Row;
@@ -89,8 +89,7 @@ export function stageMirrorEmpty(db: SqliteDatabase, scope: SyncScope, chatId: s
   const head = requireMirror(db, scope, chatId), value = indexedDownload(db, scope, chatId, now);
   if (!value || value.complete || value.bodyRevision !== bodyRevision || head.bodyRevision !== bodyRevision || value.beforeSeq !== beforeSeq) throw new Error("MIRROR_BODY_CURSOR_CHANGED");
   const prefix = validateTurnPrefix(input.encryptedSpace.scope, input), start = prefix.start;
-  if (start.chatId !== chatId || start.incarnationId !== head.chat.incarnationId || start.executionEpoch > head.executionEpoch ||
-      start.assistantSeq >= beforeSeq || start.assistantSeq > value.head.headSeq || hasMirrorMessage(db, scope, chatId, start.assistantMessageId)) throw new Error("MIRROR_EMPTY_PREFIX_INVALID");
+  if (start.chatId !== chatId || start.incarnationId !== head.chat.incarnationId ||       start.assistantSeq >= beforeSeq || start.assistantSeq > value.head.headSeq || hasMirrorMessage(db, scope, chatId, start.assistantMessageId)) throw new Error("MIRROR_EMPTY_PREFIX_INVALID");
   // The admitted client replayed every authenticated frame; retain that exact source without inventing a message.
   retainSource(db, { chatId, scope, kind: "mirror-empty-prefix", revision: bodyRevision, payload: prefix,
     rootId: bodySourceRoot(scope, chatId, start.assistantSeq), now });
@@ -112,7 +111,7 @@ export function completeMirrorBody(db: SqliteDatabase, writer: ChatRecordWriter,
     db.prepare("UPDATE chats SET next_seq=?,trimmed_through_seq=?,core_revision=core_revision+1,native_message_revision=native_message_revision+1 WHERE id=?")
       .run(value.head.reservedThroughSeq + 1, window.trimmedThroughSeq, chatId);
   }
-  // A native executor keeps its offline tail; readers use the independent confirmed body sources.
+  // A native owner keeps its offline tail; readers use the independent confirmed body sources.
   return save(db, scope, chatId, { ...value, complete: true }, now);
 }
 export function confirmedBodyPage(db: SqliteDatabase, scope: SyncScope, chatId: string, revision: number, beforeSeq: number | null, limit: number) {

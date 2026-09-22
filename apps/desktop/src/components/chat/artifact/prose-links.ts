@@ -1,28 +1,43 @@
 /**
- * [INPUT]: Trusted top-renderer window.open calls and visible Chat handlers.
- * [OUTPUT]: Scoped Claude prose-link routing with original browser behavior restored after disposal.
- * [POS]: Deferred native Markdown integration; isolated child frames have their own untouched globals.
+ * [INPUT]: Rendered prose anchors in the trusted renderer and scoped owners able to open a URL themselves.
+ * [OUTPUT]: registerProseLinks, routing plain cross-origin http(s) link clicks inside an owner's subtree while modifier clicks, other schemes, downloads and same-origin in-app navigation stay native, plus the lazily loaded browser opener.
+ * [POS]: Deferred native Markdown integration; one shared capture listener serves every owner and leaves the document untouched once the registry empties.
  */
-import { isClaudeArtifactUrl } from "@ai-chat/cloud-protocol/turns/text/artifact-reference";
-export { openArtifactBrowser } from "./browser";
-type Handler = (url: string) => boolean;
-const handlers = new Set<Handler>();
+export { openInBrowser } from "./browser";
+type Owner = { within: (node: Node) => boolean; open: (url: string) => void };
+const owners = new Set<Owner>();
 let restore: (() => void) | undefined;
-export function registerArtifactProseLinks(open: (url: string) => void, visible: () => boolean = () => true, signal?: AbortSignal) {
-  if (signal?.aborted) return () => {};
-  const handler: Handler = url => { if (!visible()) return false; open(url); return true; };
-  handlers.add(handler);
-  if (!restore) {
-    const original = window.open;
-    const route = (url: string) => isClaudeArtifactUrl(url) && [...handlers].some(accept => accept(url));
-    const intercept: typeof window.open = (url, target, features) => {
-      if (url && route(String(url))) return null;
-      return original.call(window, url, target, features);
-    };
-    window.open = intercept;
-    restore = () => { if (window.open === intercept) window.open = original; };
+/* Non-primary and modifier clicks stay native: they are the escape hatch to the system browser. */
+function route(event: MouseEvent) {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const anchor = (event.target as Element | null)?.closest?.("a[href]");
+  if (!(anchor instanceof HTMLAnchorElement)) return;
+  /* A download is never a navigation, whatever its scheme. */
+  if (anchor.hasAttribute("download")) return;
+  let url: URL;
+  try { url = new URL(anchor.href); } catch { return; }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return;
+  /* The Chat subtree also holds in-app navigation — router links and in-document anchors —
+     and in dev those resolve against the renderer's own http origin. Only a cross-origin
+     destination is prose leaving the app; the app owns everything on its own origin. */
+  if (url.origin === window.location.origin) return;
+  for (const owner of owners) {
+    if (!owner.within(anchor)) continue;
+    event.preventDefault();
+    owner.open(url.href);
+    return;
   }
-  const stop = () => { signal?.removeEventListener("abort", stop); handlers.delete(handler); if (!handlers.size) { restore?.(); restore = undefined; } };
+}
+export function registerProseLinks(within: (node: Node) => boolean, open: (url: string) => void, signal?: AbortSignal) {
+  if (signal?.aborted) return () => {};
+  const owner: Owner = { within, open };
+  owners.add(owner);
+  if (!restore) {
+    const listener = (event: Event) => route(event as MouseEvent);
+    document.addEventListener("click", listener, true);
+    restore = () => document.removeEventListener("click", listener, true);
+  }
+  const stop = () => { signal?.removeEventListener("abort", stop); owners.delete(owner); if (!owners.size) { restore?.(); restore = undefined; } };
   signal?.addEventListener("abort", stop, { once: true });
   return stop;
 }

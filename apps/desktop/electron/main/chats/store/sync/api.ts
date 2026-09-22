@@ -85,7 +85,7 @@ export class ChatSyncApi {
       const appended = APPENDING[action.type];
       if (appended) this.notifyAppended(appended);
       if (action.type === "save-outbox-checkpoint" && action.checkpoint.kind === "turn-chunk") this.notifyAppended("turn");
-      if (["capture-home-job", "archive-home-job", "capture-live-turn", "handoff-turn", "attempt-outbox", "cache-blob", "advance-catalog", "begin-mirror-body", "stage-mirror-body", "stage-mirror-empty"].includes(action.type) ||
+      if (["capture-home-job", "capture-live-turn", "handoff-turn", "attempt-outbox", "cache-blob", "advance-catalog", "begin-mirror-body", "stage-mirror-body", "stage-mirror-empty"].includes(action.type) ||
         action.type === "save-outbox-checkpoint" && action.checkpoint.kind !== "metadata-receipt") return receipt;
       const metadata = await this.state.requireDatabase().execute({ kind: "list-metadata", deviceId: this.state.requireDeviceId() });
       this.state.metadata.clear();

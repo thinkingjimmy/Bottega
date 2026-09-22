@@ -85,7 +85,7 @@ export async function prepareChatMetadataOperation(raw: ChatMetadataOperation, c
     chat: publicChatSchema.parse({ id: chat.id, incarnationId: chat.incarnationId, agent: chat.agent, agentRevision: chat.agentRevision,
       classification: chat.classification, cloudRevision: expectedRevision, createdAt: chat.createdAt, updatedAt: chat.updatedAt, ...sortKeyFacts(sortKey) }),
     archivedAt, lifecycleKind: command.kind === "create" ? command.lifecycleKind : current!.kind,
-    expectedRevision, executionEpoch: command.kind === "create" ? 0 : current!.executionEpoch, sourceDeviceId: crypto.session.deviceId };
+    expectedRevision, sourceDeviceId: crypto.session.deviceId };
   const identity = { operationId: original.operationId, metadata: chatOperationMetadata(base) };
   const facts = await sealChatPacket(crypto, original.chatId, { ...identity, role: "facts" }, privateFacts.parse({ title,
     classification: chat.classification, archivedAt, createdAt: chat.createdAt, ...sortKeyFacts(sortKey), ...portableForkLineage(chat) }), signal);
@@ -113,13 +113,13 @@ export async function openChatMetadataReceipt(raw: EncryptedChatMetadataReceipt,
 }
 
 export async function prepareRemoteChatInitialization(raw: EncryptedChatHead, crypto: ChatCipherPort, signal?: AbortSignal) {
-  const head = encryptedChatHeadSchema.parse(raw); assertCrypto(head.remoteCreation !== null && head.executorDeviceId === crypto.session.deviceId);
+  const head = encryptedChatHeadSchema.parse(raw); assertCrypto(head.remoteCreation !== null && head.ownerDeviceId === crypto.session.deviceId);
   const opened = await openChatHead(head, crypto, signal), operationId = remoteHash(["remote-initial", head.remoteCreation.createOperationId]);
   const metadata = { incarnationId: head.chat.incarnationId, classification: { kind: "ordinary" as const, appId: null, projectId: head.chat.classification.projectId },
-    sourceDeviceId: head.remoteCreation.binding.targetDeviceId, agent: head.chat.agent, agentRevision: 0, expectedRevision: 0, executionEpoch: 1, archivedAt: null, references: [] };
+    sourceDeviceId: head.remoteCreation.binding.targetDeviceId, agent: head.chat.agent, agentRevision: 0, expectedRevision: 0, archivedAt: null, references: [] };
   const facts = await sealChatPacket(crypto, head.chat.id, { operationId, role: "facts", metadata }, privateFacts.parse({ title: opened.chat.title,
     classification: opened.chat.classification, archivedAt: null, createdAt: opened.chat.createdAt, ...sortKeyFacts(opened.chat.sortKey), ...portableForkLineage(opened.chat) }), signal);
   const options = await sealChatPacket(crypto, head.chat.id, { operationId, role: "options", metadata }, { options: opened.chat.options }, signal);
   return { kind: "encrypted-remote-initial" as const, encryptedSpace: head.encryptedSpace, chatId: head.chat.id, incarnationId: head.chat.incarnationId,
-    executionEpoch: head.executionEpoch, creationHash: head.remoteCreation.ciphertextHash, facts, options };
+    creationHash: head.remoteCreation.ciphertextHash, facts, options };
 }

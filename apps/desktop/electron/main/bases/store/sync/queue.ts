@@ -44,7 +44,7 @@ export function enqueueBaseMutation(current: Pick<StoredBase, "meta" | "rows" | 
       canonicalJson({ columns: projected.meta.columns, views: projected.meta.views, name: projected.meta.name, activeViewId: projected.meta.activeViewId }) !==
       canonicalJson({ columns: mutation.meta.columns, views: mutation.meta.views, name: mutation.meta.name, activeViewId: mutation.meta.activeViewId })) throw new Error("Base intent does not describe the committed mutation");
   const envelope = structuredClone(source);
-  // A complete Base snapshot needs no Chat executor; retention joins the first valid edit atomically.
+  // A complete Base snapshot needs no Chat owner; retention joins the first valid edit atomically.
   envelope.cloudState = "synced";
   const confirmed = envelope.confirmed!;
   const dependencies = new Set<string>();

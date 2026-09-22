@@ -108,11 +108,11 @@ export class RemoteCommandIntake {
     // Reject unrelated current heads before touching any command plaintext.
     const rawHead = await this.ports.transport.query("chats/metadata:head", { ...header, chatId: wire.chatId }); current();
     const known = this.ports.ledger.remote.ciphertext(wire.commandId);
-    if (!known && (!rawHead || rawHead.chat.id !== wire.chatId || rawHead.chat.incarnationId !== wire.incarnationId || (!isRemoteWorkspaceQuery(wire.kind) && (rawHead.executorDeviceId !== wire.targetDeviceId || rawHead.executionEpoch !== wire.executionEpoch)) || wire.connectionEpoch !== connection.connectionEpoch || rawHead.remoteCreation)) throw new Error("executor-changed");
+    if (!known && (!rawHead || rawHead.chat.id !== wire.chatId || rawHead.chat.incarnationId !== wire.incarnationId || (!isRemoteWorkspaceQuery(wire.kind) && rawHead.ownerDeviceId !== wire.targetDeviceId) || wire.connectionEpoch !== connection.connectionEpoch || rawHead.remoteCreation)) throw new Error("not-owner");
     let receipt = await openRemoteReceipt(original, header, crypto); current(); const command = receipt.command;
     const context: RemoteContext = { origin: { kind: "remote", commandId: command.commandId, sourceDeviceId: command.sourceDeviceId,
       sourceDeviceName: command.sourceDeviceName, payloadHash: command.payloadHash, ciphertextHash: command.ciphertextHash }, scope: connection.scope,
-      chatId: command.chatId, incarnationId: command.incarnationId, targetDeviceId: command.targetDeviceId, executionEpoch: command.executionEpoch,
+      chatId: command.chatId, incarnationId: command.incarnationId, targetDeviceId: command.targetDeviceId,
       connectionEpoch: command.connectionEpoch, expiresAt: command.expiresAt,
       ...("references" in command.payload && command.payload.references?.length ? { references: command.payload.references } : {}),
       ...(isRemoteTurnPayload(command.payload) && command.payload.fullAccessConsent ? { fullAccessConsent: command.payload.fullAccessConsent } : {}) };

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the pinned Convex SDK/socket factory, Zod validation, public registry and main-only session token provider.
- * [OUTPUT]: Provides bounded socket-first calls, JWT-refreshing HTTP fallback and fenced authenticated subscriptions.
+ * [OUTPUT]: Provides bounded socket-first calls, JWT-refreshing HTTP fallback and fenced authenticated subscriptions, including the account's computer list.
  * [POS]: Main cloud transport; private generated code and credentials never cross IPC.
  */
 import { ConvexClient, ConvexHttpClient } from "convex/browser";
@@ -23,6 +23,8 @@ export interface AccountTransport {
   mutate<N extends Names<"mutation">>(name: N, input: CloudFunctionArgs<N>): Promise<CloudFunctionResult<N>>;
   watch(changed: (access: AccountAccess) => void, connected: (value: boolean) => void, failure: (error: unknown) => void): void;
   watchSkillsCatalog?(input: CloudFunctionArgs<"skills/sync:catalog">, changed: (value: CloudFunctionResult<"skills/sync:catalog">) => void,
+    failure: (error: unknown) => void): () => void;
+  watchComputers?(input: CloudFunctionArgs<"devices:computers">, changed: (value: CloudFunctionResult<"devices:computers">) => void,
     failure: (error: unknown) => void): () => void;
   close(): void;
 }
@@ -117,6 +119,13 @@ export class CloudTransport implements AccountTransport {
     if (!this.socket) throw new Error("cloud-connection-unavailable");
     const generation = this.generation, contract = cloudFunctions["skills/sync:catalog"];
     return this.socket.onUpdate(reference("skills/sync:catalog"), contract.args.parse(input),
+      value => { if (generation === this.generation) { try { changed(contract.result.parse(value)); } catch (error) { failure(error); } } },
+      error => { if (generation === this.generation) failure(error); });
+  }
+  watchComputers(input: CloudFunctionArgs<"devices:computers">, changed: (value: CloudFunctionResult<"devices:computers">) => void, failure: (error: unknown) => void) {
+    if (!this.socket) throw new Error("cloud-connection-unavailable");
+    const generation = this.generation, contract = cloudFunctions["devices:computers"];
+    return this.socket.onUpdate(reference("devices:computers"), contract.args.parse(input),
       value => { if (generation === this.generation) { try { changed(contract.result.parse(value)); } catch (error) { failure(error); } } },
       error => { if (generation === this.generation) failure(error); });
   }

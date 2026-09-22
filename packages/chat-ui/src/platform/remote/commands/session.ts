@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on immutable remote DTOs, scoped command reads/subscriptions and canonical content hashing.
- * [OUTPUT]: Provides exact retries and receipt reconciliation, including uncertain withdrawal recovery, retarget withdrawals that demand a fresh confirmation, and terminal draft release without an execution outbox.
+ * [OUTPUT]: Provides exact retries and receipt reconciliation, including uncertain withdrawal recovery and terminal draft release without an execution outbox.
  * [POS]: Shared CommandSink consumer; confirmed receipts or strict post-lookup rejections resolve transport uncertainty.
  */
 import type { FrozenRemoteCommand } from "@ai-chat/cloud-protocol/remote/encrypted";
@@ -8,14 +8,14 @@ import { remoteIntentIdentity, remoteCommandInputSchema } from "@ai-chat/cloud-p
 import type { RemoteAdmissionRejection } from "@ai-chat/cloud-protocol/remote/selection";
 import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
 import type { RemoteCommand, RemoteCommandInput, RemoteCommandPort } from "../contracts";
-export type RemoteEntry = { canonical?: boolean; replacementId?: string; retargetRequested?: boolean; reconfirmRequired?: boolean; withdrawnByUser?: boolean; frozen?: FrozenRemoteCommand; rejected?: RemoteAdmissionRejection; input: RemoteCommandInput; receipt: RemoteCommand | null; busy: boolean; uncertain: boolean; optimistic: boolean; owned: boolean };
+export type RemoteEntry = { canonical?: boolean; withdrawnByUser?: boolean; frozen?: FrozenRemoteCommand; rejected?: RemoteAdmissionRejection; input: RemoteCommandInput; receipt: RemoteCommand | null; busy: boolean; uncertain: boolean; optimistic: boolean; owned: boolean };
 export const awaitingRemoteAdmission = (entry: RemoteEntry) => entry.owned && !entry.canonical && !entry.rejected && !entry.receipt?.admission &&
   (entry.uncertain || !entry.receipt || !["expired", "rejected"].includes(entry.receipt.state));
 type RemoteCommandView = { entries: RemoteEntry[]; error: boolean; more: boolean; loading: boolean };
 const terminal = new Set(["done", "cancelled", "error", "expired", "rejected"]);
 export const commandInput = (receipt: RemoteCommand): RemoteCommandInput => {
-  const { commandId, chatId, incarnationId, targetDeviceId, executionEpoch, intent, payload } = receipt.command;
-  return remoteCommandInputSchema.parse({ commandId, chatId, incarnationId, targetDeviceId, executionEpoch, ...(intent ? { intent } : {}), payload });
+  const { commandId, chatId, incarnationId, targetDeviceId, intent, payload } = receipt.command;
+  return remoteCommandInputSchema.parse({ commandId, chatId, incarnationId, targetDeviceId, ...(intent ? { intent } : {}), payload });
 };
 export class RemoteCommandSession {
   private state: RemoteCommandView = { entries: [], error: false, more: false, loading: false };
@@ -26,7 +26,6 @@ export class RemoteCommandSession {
   private generation = 0;
   private watchGeneration = 0;
   private openState = false;
-  private retargeting = false;
   constructor(private port: RemoteCommandPort, private chatId: string) {}
   bind(port: RemoteCommandPort) { this.port = port; }
   forget() { this.close(); this.publish({ entries: [], error: false, more: false, loading: false }); }
@@ -43,8 +42,7 @@ export class RemoteCommandSession {
     const input = commandInput(receipt), previous = this.state.entries.find(entry => entry.input.commandId === input.commandId);
     if (hashChatContent(remoteIntentIdentity(input)) !== hashChatContent(remoteIntentIdentity(ownInput ?? previous?.input ?? input))) throw new Error("REMOTE_RECEIPT_IDENTITY");
     if (previous?.receipt && (receipt.updatedAt < previous.receipt.updatedAt || terminal.has(previous.receipt.state) && !terminal.has(receipt.state))) return;
-    const retargetRequested = previous?.retargetRequested && (!terminal.has(receipt.state) || receipt.state === "cancelled" || receipt.state === "rejected" && receipt.reason === "target-changed");
-    const entry: RemoteEntry = { input: previous?.input ?? ownInput ?? input, receipt, canonical: previous?.canonical, frozen: previous?.frozen, replacementId: previous?.replacementId, retargetRequested, reconfirmRequired: previous?.reconfirmRequired, withdrawnByUser: previous?.withdrawnByUser, busy: previous?.busy ?? false, uncertain: false, optimistic: previous?.optimistic ?? false, owned: previous?.owned ?? false };
+    const entry: RemoteEntry = { input: previous?.input ?? ownInput ?? input, receipt, canonical: previous?.canonical, frozen: previous?.frozen, withdrawnByUser: previous?.withdrawnByUser, busy: previous?.busy ?? false, uncertain: false, optimistic: previous?.optimistic ?? false, owned: previous?.owned ?? false };
     this.publish({ entries: previous ? this.state.entries.map(value => value.input.commandId === input.commandId ? entry : value) : [...this.state.entries, entry] });
   }
   private watch(commandId: string) {
@@ -121,33 +119,11 @@ export class RemoteCommandSession {
     const entry = this.state.entries.find(value => value.input.commandId === commandId);
     return entry ? this.submit(entry.input) : Promise.resolve(null);
   }
-  async retarget(targetDeviceId: string, executionEpoch: number) {
-    if (this.retargeting) return;
-    this.retargeting = true; const generation = this.generation;
-    try { for (const entry of this.state.entries) {
-      if (!entry.owned || entry.withdrawnByUser || entry.replacementId || entry.busy || entry.uncertain || entry.reconfirmRequired || !entry.input.intent || entry.input.targetDeviceId === targetDeviceId || entry.input.payload.kind !== "start-turn" || !entry.receipt) continue;
-      // Full Access is scoped to its intended computer, and a file reference to the computer that holds it. Such an intent is withdrawn,
-      // never moved: the consumer returns its text to the draft so the user re-sends with a new explicit confirmation.
-      const reconfirm = entry.input.payload.permissionMode === "full-access" ||
-        Boolean(entry.input.payload.references?.some(reference => reference.kind === "file" && reference.deviceId !== targetDeviceId));
-      let receipt = entry.receipt;
-      if (!receipt.withdrawalRequested && (receipt.state.startsWith("awaiting-") || ["delivered", "claimed", "accepted", "outcome-unknown"].includes(receipt.state))) {
-        this.update(entry.input.commandId, { retargetRequested: true }); receipt = await this.withdraw(entry.input.commandId, true) ?? receipt;
-        if (generation !== this.generation) return;
-      }
-      if (receipt.state === "cancelled" && !this.state.entries.find(value => value.input.commandId === entry.input.commandId)?.retargetRequested) continue;
-      if (receipt.state !== "cancelled" && !(receipt.state === "rejected" && receipt.reason === "target-changed")) continue;
-      if (receipt.admission && receipt.output?.kind !== "queue-withdrawal") continue;
-      if (reconfirm) { this.update(entry.input.commandId, { retargetRequested: false, reconfirmRequired: true }); continue; }
-      const commandId = crypto.randomUUID(); this.update(entry.input.commandId, { replacementId: commandId });
-      await this.submit({ ...entry.input, commandId, targetDeviceId, executionEpoch });
-    } } finally { this.retargeting = false; }
-  }
-  async withdraw(commandId: string, retarget = false) {
+  async withdraw(commandId: string) {
     if (!this.port.withdraw) return null;
     const entry = this.state.entries.find(value => value.input.commandId === commandId);
     if (!entry || entry.busy) return null;
-    this.update(commandId, { busy: true, ...(!retarget ? { withdrawnByUser: true } : {}) });
+    this.update(commandId, { busy: true, withdrawnByUser: true });
     const generation = this.generation;
     try {
       const receipt = await this.port.withdraw(commandId);

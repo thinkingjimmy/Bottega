@@ -1,6 +1,6 @@
 /**
  * [INPUT]: No runtime dependencies
- * [OUTPUT]: Provides projectsEn — Sidebar Projects text: grouping actions, unbound folder binding, reviewed Project rescue, App Edit hiding, Reveal failures, managed-worktree-aware local removal/conditional archiving, 8 colors, 30 icons and appearance controls — and the structural shape its translated leaves derive from
+ * [OUTPUT]: Provides projectsEn — Sidebar Projects text: grouping actions, unbound folder binding, pinning another computer's Project into this sidebar, reviewed Project rescue, App Edit hiding, Reveal failures, managed-worktree-aware local removal/conditional archiving, 8 colors, 30 icons and appearance controls — and the structural shape its translated leaves derive from
  * [POS]: English leaf of shared/i18n/locales/projects; color and icon IDs are defined by lib/project-appearance
  */
 import { workspaceCopy } from "@ai-chat/ui/workspace-copy/en";
@@ -35,6 +35,18 @@ export const projectsEn = {
   renameDescription:
     workspaceCopy.project.renameDescription,
   moveChatsToRoot: "Move chats back to root",
+  pin: {
+    local: "Local Project",
+    remote: "Pin a remote Project…",
+    title: "Pin a Project from another computer",
+    description: "Its Chats stay on that computer. Pinning only places the Project in this computer's sidebar, and unpinning changes nothing there.",
+    empty: "No other computer has a Project to pin yet.",
+    unpin: "Unpin",
+    deleted: "Deleted",
+    archived: "Archived",
+    deletedOn: "Deleted on {{device}}",
+    archivedOn: "Archived on {{device}}",
+  },
   rescue: {
     title: "Move Chats out of this Project?",
     description: "This Project record is missing. Confirmed Chats will move to the root as ordinary Chats and start a new Agent session when you continue.",

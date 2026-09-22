@@ -20,7 +20,7 @@ import { ManagedHomeFiles, retainedManagedPaths } from "./restore/managed";
 import { HomeReuseCache } from "./incremental/cache";
 import { openHomeFile } from "./incremental/identity";
 import { ensureDurableDirectory, ensureGuardedDirectory } from "../../persistence/durable-json";
-type HomeCaptureIdentity = Pick<CloudChatHead, "executionEpoch" | "homeSnapshotId"> & { chat: Pick<CloudChatHead["chat"], "id" | "incarnationId">; headSeq?: number };
+type HomeCaptureIdentity = Pick<CloudChatHead, "homeSnapshotId"> & { chat: Pick<CloudChatHead["chat"], "id" | "incarnationId">; headSeq?: number };
 const directory = (path: string) => ensureGuardedDirectory(path, "HOME_SOURCE_DIRECTORY_CHANGED");
 export class HomeSourceCustody {
   readonly root: string;
@@ -58,7 +58,7 @@ export class HomeSourceCustody {
       }
       await homes.committedCreationEvidence(head.chat.id, record.intentId); signal.throwIfAborted();
       entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-      const source = frozenHomeSchema.parse({ manifest: { chatId: head.chat.id, incarnationId: head.chat.incarnationId, executionEpoch: head.executionEpoch,
+      const source = frozenHomeSchema.parse({ manifest: { chatId: head.chat.id, incarnationId: head.chat.incarnationId,
         snapshotId, expectedSnapshotId: head.homeSnapshotId, throughSeq: head.headSeq ?? 0, entryCount: entries.length,
         digest: entries.reduce(extendHomeDigest, EMPTY_HOME_DIGEST), bytes: entries.reduce((sum, entry) => sum + (entry.kind === "file" ? entry.blob.bytes : 0), 0),
         omittedCount: entries.filter(entry => entry.kind === "omitted").length }, entries });
@@ -73,7 +73,7 @@ export class HomeSourceCustody {
   }
   private original(source: FrozenHome, head: HomeCaptureIdentity, snapshotId: string) {
     const manifest = source.manifest;
-    if (manifest.chatId !== head.chat.id || manifest.incarnationId !== head.chat.incarnationId || manifest.executionEpoch !== head.executionEpoch ||
+    if (manifest.chatId !== head.chat.id || manifest.incarnationId !== head.chat.incarnationId ||
       manifest.snapshotId !== snapshotId || manifest.expectedSnapshotId !== head.homeSnapshotId) throw new Error("HOME_SOURCE_IDENTITY_CHANGED");
     return source;
   }

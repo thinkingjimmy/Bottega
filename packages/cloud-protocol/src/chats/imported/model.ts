@@ -29,12 +29,12 @@ export const importedEntrySchema = z.object({ entryVersionId: hash, deliverySeq:
 });
 export type ImportedEntry = z.infer<typeof importedEntrySchema>;
 export function importedEntryHash(value: ImportedEntry) { const { entryVersionId: _id, deliverySeq: _seq, ...body } = value; return hashChatContent(body); }
-export const importManifestSchema = z.object({ chatId: id, incarnationId: id, executionEpoch: rev, generationId: id,
+export const importManifestSchema = z.object({ chatId: id, incarnationId: id, generationId: id,
   sourceKind: agentBackendIdSchema, expectedRevision: rev, entryCount: rev.max(100000), bytes: rev, digest: hash, incompleteTail: z.boolean(),
 }).strict();
 export const importStatusSchema = z.object({ manifest: importManifestSchema, state: z.enum(["receiving", "ready", "superseded"]),
   receivedCount: rev, receivedDigest: hash, receivedBytes: rev, revision: rev }).strict();
-export const importPageSchema = z.object({ chatId: id, incarnationId: id, executionEpoch: rev, generationId: id,
+export const importPageSchema = z.object({ chatId: id, incarnationId: id, generationId: id,
   operationId: id, payloadHash: hash, offset: rev, entries: z.array(importedEntrySchema).min(1).max(32) }).strict();
 export const importReceiptSchema = z.object({ chatId: id, generationId: id, operationId: id, payloadHash: hash, sourceDeviceId: id,
   receivedCount: rev, state: z.enum(["receiving", "ready"]), revision: rev, createdAt: rev }).strict();

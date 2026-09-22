@@ -23,13 +23,13 @@ export const homeEntrySchema = z.discriminatedUnion("kind", [
     reason: z.enum(["file-too-large", "home-too-large", "unsupported-file", "unreadable"]) }).strict(),
 ]);
 export type HomeEntry = z.infer<typeof homeEntrySchema>;
-export const homeManifestSchema = z.object({ chatId: id, incarnationId: id, executionEpoch: rev, snapshotId: id, throughSeq: rev.default(0),
+export const homeManifestSchema = z.object({ chatId: id, incarnationId: id, snapshotId: id, throughSeq: rev.default(0),
   expectedSnapshotId: id.nullable(), entryCount: rev.max(MAX_HOME_ENTRIES), bytes: rev.max(MAX_HOME_BYTES), omittedCount: rev.max(MAX_HOME_ENTRIES), digest: hash,
 }).strict().refine(value => value.omittedCount <= value.entryCount);
 export type HomeManifest = z.infer<typeof homeManifestSchema>;
 export const homeStatusSchema = z.object({ manifest: homeManifestSchema, state: z.enum(["receiving", "ready", "superseded"]), receivedCount: rev,
   receivedDigest: hash, bytes: rev, omittedCount: rev }).strict();
-export const homePageSchema = z.object({ chatId: id, incarnationId: id, executionEpoch: rev, snapshotId: id,
+export const homePageSchema = z.object({ chatId: id, incarnationId: id, snapshotId: id,
   operationId: id, payloadHash: hash, offset: rev, entries: z.array(homeEntrySchema).min(1).max(50) }).strict();
 export const homeReceiptSchema = z.object({ chatId: id, snapshotId: id, operationId: id, payloadHash: hash, sourceDeviceId: id,
   receivedCount: rev, state: z.enum(["receiving", "ready"]), createdAt: rev }).strict();

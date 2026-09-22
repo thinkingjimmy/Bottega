@@ -36,6 +36,18 @@ export const projectsZhCN: typeof projectsEn = {
   renameTitle: workspaceCopy.project.renameTitle,
   renameDescription: workspaceCopy.project.renameDescription,
   moveChatsToRoot: "把聊天移回根级",
+  pin: {
+    local: "本地 Project",
+    remote: "钉住远端 Project…",
+    title: "钉住另一台电脑上的 Project",
+    description: "它的聊天仍在那台电脑上。钉住只是把这个 Project 放进本机侧栏，取消钉住不会影响那台电脑。",
+    empty: "其他电脑上还没有可钉住的 Project。",
+    unpin: "取消钉住",
+    deleted: "已删除",
+    archived: "已归档",
+    deletedOn: "已在 {{device}} 上删除",
+    archivedOn: "已在 {{device}} 上归档",
+  },
   rescue: {
     title: "将聊天移出这个 Project？",
     description: "这个 Project 的本机记录已丢失。确认后的聊天会以普通聊天移回根级，下次继续时将开启新的 Agent 会话。",

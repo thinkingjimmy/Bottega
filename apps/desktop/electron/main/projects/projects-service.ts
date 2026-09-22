@@ -214,7 +214,7 @@ export class ProjectsService {
     /* external 由 opaque capability→路径；丢失判定只认 capability owner。 */
     const capabilityId = workspaceCapabilityId(binding);
     return {
-      ...wire, ...projectCloudDisplay(project, this.options.isAppProjectAvailable),
+      ...wire, ...projectCloudDisplay(project, this.options.isAppProjectAvailable, this.options.localDeviceId?.() ?? null),
       missing: capabilityId
         ? !isUsableDirectory(this.store.resolveWorkspace(binding) ?? "")
         : binding.kind === "app" &&

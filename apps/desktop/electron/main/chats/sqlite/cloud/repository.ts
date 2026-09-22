@@ -38,7 +38,7 @@ import { beginMirrorBody, stageMirrorBody, stageMirrorEmpty, completeMirrorBody,
 import { turnOutboxDigest } from "./settlement/outbox";
 import { archivedTurnPage } from "./settlement/custody";
 import { readMirrorFiles } from "./mirror/files";
-import { commitExecutor } from "./execution/commit";
+import { commitAsOwner } from "./execution/commit";
 import { installExecutionPrefix } from "./execution/install";
 import { executionArchivePage } from "./execution/archive";
 import { mirrorStartState } from "./mirror/window";
@@ -47,8 +47,7 @@ import { beginImportDownload, completeImportDownload, confirmedImportPage } from
 import { beginImportEntry, writeImportField, commitImportEntry } from "./imported/entries";
 import { localExecutionState } from "./execution/state";
 import { remoteAdmissionState, remoteInitialization } from "./execution/remote";
-import { captureHomeJob, archiveHomeJob } from "./home/jobs";
-import { originalExecutionEpoch } from "./execution/origin";
+import { captureHomeJob } from "./home/jobs";
 import { recoveryArchive, recoveryPage, recoveryRelatedHome } from "./recovery/reads";
 import { retainedCatalog, retainedMetadata } from "./recovery/catalog";
 import { preserveRecoveryHomeJob, recoveryHomeRetained } from "./recovery/home";
@@ -113,7 +112,6 @@ export class ChatCloudRepository {
         value = keepChatDeletion(this.db, scope!, action); break;
       case "retire-covered-commit": value = retireCoveredCommit(this.db, scope!, deviceId, action.id, action.payloadDigest); break;
       case "capture-home-job": value = captureHomeJob(this.db, scope!, deviceId, action.turn, this.now()); break;
-      case "archive-home-job": value = archiveHomeJob(this.db, scope!, action.id, action.payloadDigest, this.now()); break;
       case "put-mirror-head": value = putMirrorHead(this.db, this.writer, this.mirrors, scope!, deviceId, action.head, this.now()); break;
       case "apply-chat-catalog":
         if (action.revision <= action.expectedRevision || action.heads.some(head => head.catalogRevision <= action.expectedRevision || head.catalogRevision > action.revision)) throw new Error("CATALOG_PAGE_INVALID");
@@ -184,7 +182,7 @@ export class ChatCloudRepository {
         const chat = this.scopedChat(action.chatId, scope);
         if (chat.cloud_state !== "synced" || !this.reader.listMetadata(deviceId, action.chatId).length) throw new Error("LOCAL_EXECUTION_AUTHORITY_REQUIRED");
         const evidence = action.evidence;
-        turnSequencesSchema.parse({ executorNoticeSeq: evidence.executorNoticeSeq, noticeSeq: evidence.noticeSeq, userSeq: evidence.userSeq, assistantSeq: evidence.assistantSeq });
+        turnSequencesSchema.parse({ noticeSeq: evidence.noticeSeq, userSeq: evidence.userSeq, assistantSeq: evidence.assistantSeq });
         if (digest(canonicalJson(handoffIdentity(action))) !== evidence.identityHash) throw new Error("TURN_HANDOFF_IDENTITY_MISMATCH");
         if (evidence.userMessage.role !== "user" || evidence.userMessage.id !== evidence.userMessageId || evidence.userMessage.seq !== evidence.userSeq ||
           evidence.assistantSeq !== evidence.userSeq + 1 || (evidence.resultKind === "message") !== Boolean(evidence.resultMessage) ||
@@ -193,7 +191,7 @@ export class ChatCloudRepository {
           (evidence.resultMessage && (evidence.resultMessage.id !== evidence.assistantMessageId || evidence.resultMessage.seq !== evidence.assistantSeq || evidence.resultMessage.role !== "assistant" ||
             digest(canonicalJson({ ...evidence.resultMessage, resultHash: undefined })) !== evidence.resultHash))) throw new Error("TURN_HANDOFF_INCOMPLETE");
         value = enqueueSource(this.db, { id: command.operationId, scope: scope!, chatId: action.chatId, entityKind: "turn", entityId: action.turnId,
-          kind: "ledger-handoff", revision: evidence.assistantSeq, executionEpoch: action.executionEpoch, payload: { turnId: action.turnId, ...evidence }, now: this.now() }); break;
+          kind: "ledger-handoff", revision: evidence.assistantSeq, payload: { turnId: action.turnId, ...evidence }, now: this.now() }); break;
       }
       case "attempt-outbox": case "ack-outbox": {
         const item = this.db.prepare("SELECT * FROM cloud_outbox WHERE id=? AND environment=? AND user_id=?")
@@ -384,22 +382,18 @@ export class ChatCloudRepository {
     if (projected.conversationKind !== row.conversation_kind || projected.appId !== row.portable_app_id || projected.projectId !== row.portable_project_id) throw new Error("CHAT_CLASSIFICATION_DRIFT");
     if (this.db.prepare("SELECT 1 FROM chat_classification_candidates WHERE chat_id=? AND state IN ('pending','confirmed') LIMIT 1").get(chatId)) throw new Error("CHAT_CLASSIFICATION_PENDING");
     const message = "message" in command ? command.message : "userMessage" in command ? command.userMessage : null;
-    if (message?.role === "user") commitExecutor(this.db, chatId, deviceId, message.seq,
-      "executorCommit" in command ? command.executorCommit : undefined);
+    if (message?.role === "user") commitAsOwner(this.db, chatId, deviceId, "ownerCommit" in command ? command.ownerCommit : undefined);
     const record = enrolling && facts.readOnlyReason !== "external-readonly" ? this.reader.getRecord(chatId, deviceId) : "record" in command ? command.record : null;
     const imported = enrolling || importing ?
       retainImportedHistory(this.db, chatId, `outbox:${command.operationId}`, this.now(), scope) : null;
-    const optionsOperation = enrolling ? null : captureOptionsEdit(this.db, scope, command.operationId, command.kind, facts, Number(row.cloud_execution_epoch ?? 1));
+    const optionsOperation = enrolling ? null : captureOptionsEdit(this.db, scope, command.operationId, command.kind, facts);
     enqueueSource(this.db, { id: command.operationId, scope, chatId, entityKind: !enrolling && importing ? "generation" : !enrolling && message ? "message" : "chat",
-      kind: enrolling ? "initialize" : command.kind === "cloud-mutate" && command.action.type === "commit-classification" ? "classification-commit" : command.kind, revision: facts.chatRecordRevision, executionEpoch: importing ? Number(row.cloud_execution_epoch ?? 1) :
-        message?.role === "assistant" ? originalExecutionEpoch(this.db, scope, chatId, message.turnId, message.seq - 1) : row.cloud_execution_epoch as number | null,
+      kind: enrolling ? "initialize" : command.kind === "cloud-mutate" && command.action.type === "commit-classification" ? "classification-commit" : command.kind, revision: facts.chatRecordRevision,
       payload: { ...(enrolling || importing ? frozenChatSource(this.db, facts, record, Number(row.cloud_revision)) :
         { chat: portableFacts(facts, Number(row.cloud_revision)) }), ...(record && !enrolling ? { messages: record.messages,
         subagents: record.subagents ?? {}, branches: record.supersededBranches ?? [] } : {}),
         ...(imported ? { imported } : {}), ...(optionsOperation ? { optionsOperation } : {}),
-        ...(!enrolling && message ? { message } : {}), ...(!enrolling && ("notice" in command || "executorCommit" in command && command.executorCommit?.notice) ?
-          { notices: [...("executorCommit" in command && command.executorCommit?.notice ? [command.executorCommit.notice] : []),
-            ...("notice" in command ? [command.notice] : [])] } : {}),
+        ...(!enrolling && message ? { message } : {}), ...(!enrolling && "notice" in command ? { notices: [command.notice] } : {}),
         ...(!enrolling && "nextSeq" in command ? { throughSeq: command.nextSeq - 1 } : {}),
         ...(!enrolling && "subagents" in command ? { subagents: command.subagents } : {}) }, now: this.now() });
     if (enrolling) captureInitialMetadata(this.db, scope, command.operationId, { chat: portableFacts(facts, 0),
@@ -430,7 +424,6 @@ export class ChatCloudRepository {
       }
       if (confirmed) { rememberDeletion(this.db, scope, confirmed, String(row.incarnation_id), this.now()); return; }
       enqueueSource(this.db, { id: operationId, scope, chatId, entityKind: "tombstone", kind: "delete-chat", revision: Number(row.core_revision),
-        executionEpoch: row.cloud_execution_epoch as number | null,
         payload: { chatId, incarnationId: row.incarnation_id, expectedRevision, classification: { conversationKind: row.conversation_kind,
           appId: row.portable_app_id, projectId: row.portable_project_id } }, now: this.now() });
       this.db.prepare("INSERT OR REPLACE INTO cloud_tombstones(environment,user_id,chat_id,incarnation_id,deleted_at) VALUES(?,?,?,?,?)")
@@ -451,7 +444,7 @@ export class ChatCloudRepository {
       else {
         if (!retained.includes(String(row.id))) throw new Error("Local Chat removal requires lifecycle deletion custody");
         this.db.prepare(`UPDATE chats SET cloud_state='local-only',cloud_environment=NULL,cloud_user_id=NULL,cloud_revision=NULL,
-          cloud_executor_device_id=NULL,cloud_execution_epoch=NULL,cloud_last_committed_executor_device_id=NULL,
+          cloud_owner_device_id=NULL,
           cloud_native_session_device_id=NULL,cloud_home_snapshot_id=NULL WHERE id=?`).run(String(row.id));
       }
     }

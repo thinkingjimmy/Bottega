@@ -27,7 +27,7 @@ export class DesktopAppPublisher {
   private readonly header;
   private readonly crypto: AppCipherPort;
   constructor(private readonly input: { owners: Pick<CleanupOwners, "apps" | "projects" | "bases">; scope: SyncScope; config: CloudBuildConfig; userData: string;
-    manifestId: string; transport: Pick<AccountTransport, "query" | "mutate">; files: Pick<EncryptedBlobTransfer, "uploadFile">; crypto(): AppCipherPort; progress?(value: FileProgress): void }) {
+    manifestId: string; transport: Pick<AccountTransport, "query" | "mutate">; files: Pick<EncryptedBlobTransfer, "uploadFile">; crypto(): AppCipherPort; progress?(): (value: FileProgress) => void }) {
     this.crypto = input.crypto();
     if (this.crypto.session.userId !== input.scope.userId) throw new Error("APP_ACCOUNT_CHANGED");
     this.header = { ...protocolHeader(input.config), expectedUserId: input.scope.userId,
@@ -131,7 +131,7 @@ export class DesktopAppPublisher {
         plan = await outbox.checkpoint(scope, appId, { packageBlob: descriptor });
       }
       const attempt = await outbox.attempt(scope, appId);
-      await this.input.files.uploadFile(this.header, hashCanonical(["app-upload", scope, operationId, attempt]), "app-package", plan.packageBlob!, journal, fileKey, this.input.progress, signal);
+      await this.input.files.uploadFile(this.header, hashCanonical(["app-upload", scope, operationId, attempt]), "app-package", plan.packageBlob!, journal, fileKey, this.input.progress?.(), signal);
       signal.throwIfAborted();
     }
     if (!plan.candidate) {

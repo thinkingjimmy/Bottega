@@ -12,7 +12,7 @@ export type TimelineAnchorMemory = {
   offsetTop: number;
 };
 
-/* Switching the executor re-mounts the transcript from the other port. Without a memory the
+/* Switching the execution port re-mounts the transcript from the other port. Without a memory the
    new mount opens on the newest rows and the reader scrolls to the bottom, which reads as the
    conversation jumping away mid-sentence. The key carries the incarnation, so a forked or
    re-imported conversation never inherits a stale offset; the bound keeps a long session's

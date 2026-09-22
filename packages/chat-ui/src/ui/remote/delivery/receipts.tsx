@@ -5,6 +5,7 @@
  */
 import { Button } from "@ai-chat/ui/components/ui/button";
 import type { RemoteEntry, RemoteCommandSession } from "../../../platform/remote/commands/session";
+import { handledElsewhereBlock } from "../composer/status";
 import type { RemoteCopy } from "../../../i18n/remote";
 export function RemoteReceipts({ entries, session, copy, locale, reexecute, disabled, reexecuteDisabled }: {
   entries: RemoteEntry[]; session: RemoteCommandSession; copy: RemoteCopy; locale: string; disabled?: boolean; reexecuteDisabled?: boolean; reexecute(entry: RemoteEntry): void;
@@ -13,7 +14,7 @@ export function RemoteReceipts({ entries, session, copy, locale, reexecute, disa
     const receipt = entry.receipt, state = receipt?.state, retryable = !receipt || entry.uncertain || state === "pending" || state === "claimed";
     const canReexecute = entry.input.payload.kind === "start-turn" && (Boolean(entry.rejected) || !receipt?.admission && ["expired", "rejected"].includes(state ?? ""));
     return <li className="chat-remote-receipt" key={entry.input.commandId} data-command-id={entry.input.commandId}>
-      <p role="status">{receipt?.result === "already-resolved" ? copy.alreadyResolved : state ? copy[state] : entry.busy ? copy.sending : entry.rejected ? copy.admissionLimited : copy.receiptUnknown}</p>
+      <p role="status">{handledElsewhereBlock(copy, receipt)?.reason ?? (state ? copy[state] : entry.busy ? copy.sending : entry.rejected ? copy.admissionLimited : copy.receiptUnknown)}</p>
       {entry.uncertain && <p>{copy.receiptUnknown}</p>}
       {state === "outcome-unknown" && <p>{copy.unknownDetail}</p>}
       {receipt?.blockedBy && <p>{copy.blockedBy}</p>}
@@ -28,7 +29,8 @@ export function RemoteReceipts({ entries, session, copy, locale, reexecute, disa
   })}</ul>;
 }
 export function reasonCopy(reason: string, copy: RemoteCopy): string {
-  if (["agent-revision-changed", "fact-revision-changed", "executor-changed", "identity-changed", "chat-incarnation-mismatch"].includes(reason)) return copy.sourceChanged;
+  if (reason === "not-owner") return copy.notOwner;
+  if (["agent-revision-changed", "fact-revision-changed", "identity-changed", "chat-incarnation-mismatch"].includes(reason)) return copy.chatChanged;
   if (reason === "remote-disabled") return copy.disabled;
   if (reason === "protocol-mismatch") return copy.update;
   if (reason === "device-offline" || reason === "connection-changed") return copy.chooseOnline;

@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on confirmed account connections, existing executor preparation, runtime availability and coordinator/control ports.
+ * [INPUT]: Depends on confirmed account connections, existing execution preparation, runtime availability and coordinator/control ports.
  * [OUTPUT]: Receives commands with paced independent pagination, verified preparation, Project/Agent publication and scoped authority.
  * [POS]: Remote composition lifetime remains active while product windows are closed; logout and reconnect fence every operation.
  */
@@ -36,7 +36,7 @@ import type { SettingsStore } from "../../../settings-store";
 import type { CloudAccountService } from "../../runtime/service";
 import type { CloudTransport } from "../../runtime/transport";
 import type { SyncBindingStore } from "../../sync/account/binding";
-import type { CloudExecutorService } from "../../executor/service";
+import type { CloudExecutionService } from "../../execution/service";
 import { RemoteCommandIntake, type RemoteConnection } from "./intake";
 import { commandEvidence } from "./evidence";
 import { mapRemoteSubmission } from "./submission";
@@ -68,7 +68,7 @@ type RemoteRuntimePorts = { crypto(): RemoteCipherPort; clock(): ServerClock; co
   quota?(): import("../../../../../shared/usage-limits/types").UsageLimitsSnapshot;
   /** Product-window broadcast for a Chat whose options a remote turn just changed. */
   publishRecord?(record: Awaited<ReturnType<ChatStore["patchOptions"]>>): void;
-  coordinator: ConversationCoordinator; ledger: RelayLedger; turns: TurnRegistry<AgentTurn>; executor: CloudExecutorService;
+  coordinator: ConversationCoordinator; ledger: RelayLedger; turns: TurnRegistry<AgentTurn>; execution: CloudExecutionService;
   account: CloudAccountService; transport: CloudTransport; binding: SyncBindingStore; files(userId: string): DesktopBlobStore;
   own(activity: { close(): Promise<void> }): () => void };
 export class RemoteCommandRuntime {
@@ -93,9 +93,6 @@ export class RemoteCommandRuntime {
   private readonly failures = new Map<string, string>();
   private configValue: CloudFunctionResult<"config:get"> | null = null;
   private inboxPage: CloudFunctionResult<"remote/commands:inbox"> | null = null;
-  private prewarmPage: CloudFunctionResult<"remote/chats:preparations"> | null = null;
-  private prewarmCursor: string | null = null;
-  private morePrewarm = false;
   private preparationPage: CloudFunctionResult<"remote/chats:preparations"> | null = null;
   private capabilityFlight: Promise<void> | null = null;
   private inboxCursor: string | null = null;
@@ -138,7 +135,7 @@ export class RemoteCommandRuntime {
         current();
         return chatId === context.chatId && incarnationId === context.incarnationId && (ledger.remote.inheritsFullAccess(context) || remoteConsentMatches(context.fullAccessConsent, {
           userId: context.scope.userId, sourceDeviceId: context.origin.sourceDeviceId, chatId, incarnationId,
-          targetDeviceId: context.targetDeviceId, executionEpoch: context.executionEpoch, intentId: context.origin.commandId,
+          targetDeviceId: context.targetDeviceId, intentId: context.origin.commandId,
         }));
       } };
     });
@@ -146,7 +143,7 @@ export class RemoteCommandRuntime {
     this.releaseAccount = ports.account.subscribeIdentity(() => this.wake());
     this.releaseConnection = ports.account.subscribeConnection(() => this.wake());
     // Both inbox and preparation changes arrive on their own subscriptions; the timer is only a missed-notification fallback.
-    this.timer = setInterval(() => { this.inboxPage = null; this.preparationPage = null; this.prewarmPage = null; this.wake(); }, 60_000); this.timer.unref(); this.wake();
+    this.timer = setInterval(() => { this.inboxPage = null; this.preparationPage = null; this.wake(); }, 60_000); this.timer.unref(); this.wake();
   }
   private async prepareFiles(command: import("@ai-chat/cloud-protocol/remote/model").RemoteCommand, current: () => void) {
     const values = isRemoteTurnPayload(command.payload) || command.payload.kind === "steer" ? command.payload.attachments ?? [] : [];
@@ -168,9 +165,9 @@ export class RemoteCommandRuntime {
   }
   private stop() {
     this.ports.quotaDemand?.(false);
-    this.lifetimeGeneration++; this.active = false; this.selected = null; this.baseKey = ""; this.configValue = null; this.inboxPage = null; this.preparationPage = null; this.prewarmPage = null;
+    this.lifetimeGeneration++; this.active = false; this.selected = null; this.baseKey = ""; this.configValue = null; this.inboxPage = null; this.preparationPage = null;
     for (const release of this.listeners.splice(0)) release(); this.publication.clear(); this.failures.clear(); this.intake.reset();
-    this.inboxCursor = null; this.preparationCursor = null; this.prewarmCursor = null; this.morePrewarm = false;
+    this.inboxCursor = null; this.preparationCursor = null;
     this.moreInbox = false; this.morePreparations = false;
     if (this.continuation) clearTimeout(this.continuation); this.continuation = null;
   }
@@ -183,7 +180,7 @@ export class RemoteCommandRuntime {
   private scanFailures = 0;
   private next() {
     if (this.closed) return;
-    const continuing = this.moreInbox || this.morePreparations || this.morePrewarm;
+    const continuing = this.moreInbox || this.morePreparations;
     if (!continuing) this.pending = false;
     this.flight = Promise.resolve().then(() => this.scan(continuing)).then(success => {
       if (success === false) { this.scanFailures++; }
@@ -191,16 +188,16 @@ export class RemoteCommandRuntime {
     }, error => {
       this.scanFailures++; this.pending = true;
       this.moreInbox = false; this.morePreparations = false;
-      this.inboxCursor = null; this.preparationCursor = null; this.prewarmCursor = null; this.morePrewarm = false; this.reportFailure("scan", error);
+      this.inboxCursor = null; this.preparationCursor = null; this.reportFailure("scan", error);
     }).finally(() => {
       this.flight = null;
-      if (!this.closed && (this.pending || this.moreInbox || this.morePreparations || this.morePrewarm)) {
+      if (!this.closed && (this.pending || this.moreInbox || this.morePreparations)) {
         this.continuation = setTimeout(() => { this.continuation = null; this.next(); }, Math.min(30_000, 250 * 2 ** Math.min(this.scanFailures, 7)));
         this.continuation.unref();
       }
     });
   }
-  private reportFailure(operation: "scan" | "agents" | "projects" | "prewarm", error: unknown) {
+  private reportFailure(operation: "scan" | "agents" | "projects", error: unknown) {
     if (process.env.BOTTEGA_SYNC_DIAGNOSTICS !== "1") return;
     const message = error instanceof Error ? error.message : "";
     const code = error instanceof Error && error.name === "ZodError" ? "validation-failed" :
@@ -215,7 +212,7 @@ export class RemoteCommandRuntime {
     try { currentAgentControlHandlers(); } catch { return; }
     const key = hashChatContent(base), lifetime = this.lifetimeGeneration;
     const current = () => { if (this.lifetimeGeneration !== lifetime || hashChatContent(this.baseConnection()) !== key) throw new Error("connection-changed"); };
-    const { config, transport, executor } = this.ports, crypto = this.ports.crypto(), header = { ...protocolHeader(config), expectedUserId: base.scope.userId,
+    const { config, transport, execution } = this.ports, crypto = this.ports.crypto(), header = { ...protocolHeader(config), expectedUserId: base.scope.userId,
       encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint } };
     if (!this.active) {
       current(); this.selected = { ...base, enabled: false, lifetimeGeneration: this.lifetimeGeneration }; this.baseKey = key; this.active = true;
@@ -235,9 +232,6 @@ export class RemoteCommandRuntime {
       this.listeners.push(transport.watchRemote("remote/commands:inbox", { ...header, connectionEpoch: base.connectionEpoch, cursor: null }, value => {
         if (this.lifetimeGeneration !== lifetime) return; this.inboxPage = value; this.wake();
       }, failed));
-      this.listeners.push(transport.watchRemote("remote/chats:preparations", { ...header, connectionEpoch: base.connectionEpoch, cursor: null, purpose: "prewarm" }, value => {
-        if (this.lifetimeGeneration !== lifetime) return; this.prewarmPage = value; this.wake();
-      }, failed));
       this.listeners.push(transport.watchRemote("remote/chats:preparations", { ...header, connectionEpoch: base.connectionEpoch, cursor: null }, value => {
         if (this.lifetimeGeneration !== lifetime) return; this.preparationPage = value; this.wake();
       }, failed));
@@ -251,24 +245,15 @@ export class RemoteCommandRuntime {
       const preparations = (!this.preparationCursor && this.preparationPage) || await transport.query("remote/chats:preparations", { ...header, connectionEpoch: base.connectionEpoch, cursor: this.preparationCursor }); current();
       if (!preparations.complete && (!preparations.cursor || preparations.cursor === this.preparationCursor)) throw new Error("remote-preparation-cursor");
       for (const head of preparations.items) {
-        current(); if (head.executorDeviceId === this.ports.deviceId && head.executionPreparation?.state === "pending") await executor.prepare(head.chat.id);
+        current(); if (head.ownerDeviceId === this.ports.deviceId && head.executionPreparation?.state === "pending") await execution.prepare(head.chat.id);
         current();
       }
       this.morePreparations = !preparations.complete;
       this.preparationCursor = preparations.complete ? null : preparations.cursor;
     }
-    if (this.selected?.enabled && (!continuing || this.morePrewarm)) {
-      const page = (!this.prewarmCursor && this.prewarmPage) || await transport.query("remote/chats:preparations", {
-        ...header, connectionEpoch: base.connectionEpoch, cursor: this.prewarmCursor, purpose: "prewarm" }); current();
-      if (!page.complete && (!page.cursor || page.cursor === this.prewarmCursor)) throw new Error("remote-prewarm-cursor");
-      for (const head of page.items) if (head.pendingExecutor?.deviceId === this.ports.deviceId) {
-        void executor.prewarm(head.chat.id).then(worked => { if (worked) this.wake(); }, error => this.reportFailure("prewarm", error));
-      }
-      this.morePrewarm = !page.complete; this.prewarmCursor = page.complete ? null : page.cursor;
-    }
     current();
     // Nothing can be created for this device while remote control is disabled, so the inbox is not worth a query.
-    if (!this.selected?.enabled) { this.inboxCursor = null; this.moreInbox = false; this.morePreparations = false; this.morePrewarm = false; return; }
+    if (!this.selected?.enabled) { this.inboxCursor = null; this.moreInbox = false; this.morePreparations = false; return; }
     if (!continuing && this.ports.workspaceReferences) {
       const queries = await transport.query("remote/workspace:inbox", { ...header, connectionEpoch: base.connectionEpoch }); current();
       const workspace = new RemoteWorkspaceService(this.ports.deviceId, this.ports.workspaceReferences);

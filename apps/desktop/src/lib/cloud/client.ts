@@ -8,7 +8,7 @@ import { cloudHandshakeFailed, type CloudAccountState, type CloudBridgeApi } fro
 import { initialEncryptionState, initialSyncSetupState } from "../../../shared/cloud/encryption";
 import { syncProgressSchema } from "../../../shared/cloud/sync";
 declare global { interface Window { cloud?: CloudBridgeApi } }
-const initial: CloudAccountState = { available: false, environmentId: null, status: "local-only", profile: null,
+const initial: CloudAccountState = { available: false, environmentId: null, status: "local-only", profile: null, machine: null,
   canDiscardSavedLogin: false, canRetryCredentialStorage: false, canRetryLoginSave: false, loginCancelling: false, cancelUnconfirmed: false, signOutPending: false,
   deviceId: null, pendingLogin: null, error: null, sync: syncProgressSchema.parse({ status: "not-connected" }), encryption: initialEncryptionState, syncSetup: initialSyncSetupState };
 let loaded = false;

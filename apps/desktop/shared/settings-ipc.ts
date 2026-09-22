@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared/agent-ipc backend, workspace scope, model and turn-by-turn combined type
- * [OUTPUT]: Provides settings v11 with durable default execution-device, local archive-confetti and Lab Agent-connections preferences, the single-backend title Agent, main-owned presence writes, revision envelopes, Memory/Chat Home APIs including the dialog-free folder retry, and model/session options
+ * [OUTPUT]: Provides settings v11 with the recorded Agent Install later mark, local archive-confetti and Lab Agent-connections preferences, the single-backend title Agent, main-owned presence writes, revision envelopes, Memory/Chat Home APIs including the dialog-free folder retry, and model/session options
  * [POS]: Single source of truth for shared multi-process settings; main, preload, and renderer exchange only what this contract defines
  */
 
@@ -89,8 +89,10 @@ export type AppSettings = {
   titleModelByBackend: Partial<Record<AgentBackendId, string | null>>;
   defaultChatOptionsByBackend: DefaultChatOptionsByBackend;
   lastSelectedBackend: AgentBackendId;
-  /** Durable local preference; availability only gates sending, never onboarding. */
-  defaultExecutionDeviceId?: string | null;
+  /** The Agent step was skipped with Install later: onboarding stops asking, and this computer can still operate others. */
+  agentSetupDeferred?: boolean;
+  /** The account already held this computer's name and the server suffixed it; Sync settings says so once. */
+  computerNameHintSeen?: boolean;
   /** 每条跨 Section 链可自动触发的 turn 数；0 表示无限。 */
   autoRelayLimit: number;
   /** Usage 页是否允许按 24h TTL 从 models.dev 自动刷新价格。 */

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on explicit first-sync consent, current account identity and existing local execution/Home owners.
- * [OUTPUT]: Owns self-claim, exact frozen-initial custody across executor epochs and bounded sanitized execution views.
- * [POS]: Main-only continuation service; lost responses reconcile authority before any preparation or retry.
+ * [OUTPUT]: Owns preparation, exact frozen-initial custody for remotely created Chats and bounded sanitized execution views.
+ * [POS]: Main-only preparation service for Chats this computer owns; lost responses reconcile authority before any retry.
  */
 import { protocolHeader, type BlobTransferPorts, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
 import { openChatHeadForRequest, prepareRemoteChatInitialization } from "@ai-chat/cloud-protocol/chats/encrypted/client";
@@ -21,13 +21,12 @@ import { ledgerActivityReason } from "../../sections/coordinator/agent-switch/ac
 import type { RecoverySave } from "../chat/recovery/save";
 import { DesktopBlobStore } from "../files/store";
 import { CloudChatMaterializer, type ProjectPreparationGate } from "./cloud-chat-materializer";
-import { prewarmExecution } from "./prewarm";
 import { ExecutionDraftStore } from "./drafts";
 import type { SyncScope } from "../../../../shared/local-storage/contracts";
 // One readiness predicate for the whole service, mirroring the SQLite fence (chats/sqlite/cloud/execution/state.ts):
-// a preparation belonging to another device or an older epoch is not this device's readiness.
+// a preparation belonging to another device is not this device's readiness.
 const preparationReady = (head: CloudChatHead, deviceId: string) => head.executionPreparation === null ||
-  head.executionPreparation.deviceId === deviceId && head.executionPreparation.executionEpoch === head.executionEpoch && head.executionPreparation.state === "ready";
+  head.executionPreparation.deviceId === deviceId && head.executionPreparation.state === "ready";
 type Progress = Pick<ExecutionView, "phase" | "reason" | "homeOmitted">;
 type Flight = { userId: string; promise: Promise<void>; abort: AbortController };
 type Ports = { config: CloudBuildConfig; userData: string; deviceId: string; owners: Pick<CleanupOwners, "chats" | "homes" | "projects">; journal: LifecycleIntentStore; gate: AdmissionGate;
@@ -35,9 +34,7 @@ type Ports = { config: CloudBuildConfig; userData: string; deviceId: string; own
   account: Pick<CloudAccountService, "snapshot" | "subscribe">; transport: Pick<AccountTransport, "query" | "mutate">;
   filePorts(userId: string): BlobTransferPorts; own(activity: { close(): Promise<void> }): () => void; changed(): void;
   recovery?: Pick<RecoverySave, "save">; bindProject?(projectId: string, scope: SyncScope, current: () => Promise<void>): Promise<boolean> };
-export class CloudExecutorService {
-  private readonly warming = new Map<string, { abort: AbortController; promise: Promise<boolean> }>();
-  private readonly warmed = new Set<string>();
+export class CloudExecutionService {
   private readonly flights = new Map<string, Flight>();
   private readonly progress = new Map<string, Progress>();
   private closed = false;
@@ -70,7 +67,7 @@ export class CloudExecutorService {
     const state = await this.input.owners.chats.sync.read(scope, { type: "local-execution", chatId });
     if (this.scope().userId !== scope.userId) throw new Error("EXECUTION_ACCOUNT_UNAVAILABLE");
     const head = state.type === "local-execution" ? state.value?.head ?? null : null;
-    const progress = this.progress.get(chatId), owned = head?.executorDeviceId === this.input.deviceId;
+    const progress = this.progress.get(chatId), owned = head?.ownerDeviceId === this.input.deviceId;
     let reason: ExecutionReason | null = state.type === "local-execution" && state.value?.deleted ? "deleted" : !head ? "unavailable" : head.chat.classification.conversationKind !== "ordinary" ? "app" : head.archivedAt !== null ? "archived" :
       this.input.binding.snapshot()?.paused ? "paused" : this.input.account.snapshot().status !== "ready" ? "offline" : null;
     if (!reason && !owned && head?.openTurnId) reason = "running";
@@ -79,37 +76,11 @@ export class CloudExecutorService {
     const busy = this.flights.has(chatId), prepared = owned && !readonly && Boolean(head && preparationReady(head, this.input.deviceId)) &&
       Boolean(metadata && metadata.readOnlyReason !== "external-readonly");
     return { head, localDeviceId: this.input.deviceId, residence: state.type === "local-execution" ? state.value?.residence ?? null : null,
-      canClaim: !reason && !busy && (!owned || readonly), canPrepare: !reason && !busy && Boolean(owned && !readonly && !prepared),
+      canPrepare: !reason && !busy && Boolean(owned && !readonly && !prepared),
       phase: reason === "deleted" ? "blocked" : busy ? progress?.phase ?? "claiming" : prepared ? "ready" : progress?.phase === "blocked" || head?.executionPreparation?.state === "blocked" ? "blocked" : "idle",
       reason: reason ?? (prepared ? null : progress?.reason ?? head?.executionPreparation?.reason ?? null), homeOmitted: progress?.homeOmitted ?? 0, backends: [] };
   }
-  prewarm(chatId: string): Promise<boolean> {
-    if (this.warming.has(chatId) || this.warming.size + this.flights.size >= 4) return Promise.resolve(false);
-    const identity = this.scope(true), abort = new AbortController();
-    const promise = Promise.resolve().then(async () => {
-      const crypto = this.input.filePorts(identity.userId).crypto(), scope = { environment: identity.environment, userId: identity.userId };
-      const current = () => { abort.signal.throwIfAborted(); if (hashChatContent(this.scope(true)) !== hashChatContent(identity) ||
-        this.input.filePorts(identity.userId).crypto().session.sessionId !== crypto.session.sessionId) throw new Error("EXECUTION_ACCOUNT_CHANGED"); };
-      current(); const raw = await this.input.transport.query("chats/metadata:head", { ...protocolHeader(this.input.config), expectedUserId: scope.userId,
-        encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint }, chatId }); current();
-      if (!raw || raw.remoteCreation || raw.pendingExecutor?.deviceId !== this.input.deviceId || raw.archivedAt !== null) return false;
-      const head = await openChatHeadForRequest(raw, chatId, crypto, abort.signal); current();
-      const key = hashChatContent([identity, crypto.scope, chatId, head.chat.incarnationId, head.bodyRevision, head.homeSnapshotId]);
-      if (this.warmed.has(key)) return false;
-      await this.input.owners.chats.sync.mutate(scope, hashChatContent(["prewarm-head", scope, head]), { type: "put-mirror-head", head }); current();
-      const files = new DesktopBlobStore(this.input.userData, { ...this.input.config, userId: scope.userId }, this.input.filePorts(scope.userId));
-      try { await prewarmExecution(head, { config: this.input.config, userId: scope.userId, deviceId: this.input.deviceId, scope, crypto: () => crypto,
-        store: this.input.owners.chats.sync, transport: this.input.transport, files, current, changed: this.input.changed }, abort.signal); }
-      finally { await files.close(); }
-      current(); this.warmed.add(key);
-      if (this.warmed.size > 80) this.warmed.delete(this.warmed.values().next().value!);
-      return true;
-    }).finally(() => { release(); this.warming.delete(chatId); });
-    const release = this.input.own({ close: async () => { abort.abort(); await promise.catch(() => {}); } });
-    this.warming.set(chatId, { abort, promise }); return promise;
-  }
-  claim(chatId: string) { return this.start(chatId, true); }
-  prepare(chatId: string) { return this.start(chatId, false); }
+  prepare(chatId: string) { return this.start(chatId); }
   async bindProject(chatId: string) {
     const identity = this.scope(), initial = await this.read(chatId), projectId = initial.head?.chat.classification.projectId;
     if (!projectId || initial.head?.chat.classification.conversationKind !== "ordinary" || !this.input.bindProject) throw new Error("PROJECT_WORKSPACE_PREPARATION_REQUIRED");
@@ -128,19 +99,19 @@ export class CloudExecutorService {
     const current = () => { if (hashChatContent(this.scope()) !== hashChatContent(identity)) throw new Error("EXECUTION_ACCOUNT_CHANGED"); };
     const result = await this.drafts.access({ ...input, userId: identity.userId }, current, change); current(); return result;
   }
-  private start(chatId: string, allowClaim: boolean) {
+  private start(chatId: string) {
     const identity = this.scope(true), previous = this.flights.get(chatId);
     if (previous) return previous.promise;
     if (this.flights.size >= 4) throw new Error("EXECUTION_PREPARATION_LIMIT");
     const abort = new AbortController();
     // Register cancellation before the first asynchronous read can begin.
     const disown = this.input.own({ close: async () => { abort.abort(); await flight.promise; } });
-    const promise = Promise.resolve().then(() => this.run(chatId, allowClaim, identity, abort.signal)).finally(() => {
+    const promise = Promise.resolve().then(() => this.run(chatId, identity, abort.signal)).finally(() => {
       disown(); this.flights.delete(chatId); this.input.changed();
     });
     const flight: Flight = { userId: identity.userId, promise, abort }; this.flights.set(chatId, flight); return promise;
   }
-  private async run(chatId: string, allowClaim: boolean, identity: ReturnType<CloudExecutorService["scope"]>, signal: AbortSignal) {
+  private async run(chatId: string, identity: ReturnType<CloudExecutionService["scope"]>, signal: AbortSignal) {
     const { config, deviceId, transport, owners } = this.input;
     const crypto = this.input.filePorts(identity.userId).crypto();
     const scope = { environment: identity.environment, userId: identity.userId }, header = { ...protocolHeader(config), expectedUserId: identity.userId,
@@ -155,21 +126,7 @@ export class CloudExecutorService {
     try {
       head = await read(); this.assertIdle(chatId);
       if (head.chat.classification.conversationKind !== "ordinary" || head.archivedAt !== null) throw new Error("chat-not-executable");
-      if (head.executorDeviceId !== deviceId || head.kind === "external-readonly") {
-        if (!allowClaim) throw new Error("EXECUTION_IDENTITY_CHANGED");
-        if (head.openTurnId) throw new Error("executor-running");
-        const expectedEpoch = head.executionEpoch;
-        try {
-          await transport.mutate("turns/executor:claim", { ...header, chatId, incarnationId: head.chat.incarnationId, expectedEpoch, targetDeviceId: deviceId,
-            operationId: hashChatContent(["self-claim", scope, chatId, head.chat.incarnationId, expectedEpoch, deviceId]) });
-        } catch (error) {
-          // A response may be lost after commit. Reading never claims again.
-          const actual = await read();
-          if (actual.executorDeviceId !== deviceId || actual.executionEpoch !== expectedEpoch + 1 || actual.chat.incarnationId !== head.chat.incarnationId) throw error;
-        }
-        head = await read();
-        if (head.executorDeviceId !== deviceId || head.executionEpoch !== expectedEpoch + 1) throw new Error("EXECUTION_IDENTITY_CHANGED");
-      }
+      if (head.ownerDeviceId !== deviceId || head.kind === "external-readonly") throw new Error("EXECUTION_IDENTITY_CHANGED");
       await accept(head);
       const pendingCreation = remoteHead as EncryptedChatHead | null;
       if (pendingCreation?.remoteCreation) {
@@ -177,17 +134,16 @@ export class CloudExecutorService {
         if (existing.type !== "remote-initial") throw new Error("REMOTE_INITIAL_UNAVAILABLE");
         let frozen = existing.value;
         if (frozen && (frozen.creationHash !== pendingCreation.remoteCreation.ciphertextHash || frozen.chatId !== pendingCreation.chat.id ||
-          frozen.incarnationId !== pendingCreation.chat.incarnationId || frozen.executionEpoch > pendingCreation.executionEpoch)) throw new Error("REMOTE_INITIAL_IDENTITY_CONFLICT");
-        if (!frozen || frozen.executionEpoch !== pendingCreation.executionEpoch) {
-          // A fresh claim changes custody, not the original authenticated creation facts.
-          const prepared = frozen ? { ...frozen, executionEpoch: pendingCreation.executionEpoch } : await prepareRemoteChatInitialization(pendingCreation, crypto, signal); current();
+          frozen.incarnationId !== pendingCreation.chat.incarnationId)) throw new Error("REMOTE_INITIAL_IDENTITY_CONFLICT");
+        if (!frozen) {
+          const prepared = await prepareRemoteChatInitialization(pendingCreation, crypto, signal); current();
           if (prepared.creationHash !== pendingCreation.remoteCreation.ciphertextHash) throw new Error("REMOTE_INITIAL_IDENTITY_CONFLICT");
           const saved = await owners.chats.sync.mutate(scope, hashChatContent(["remote-initial", scope, prepared]), { type: "freeze-remote-initial", initialization: prepared }); current();
           if (saved.result.type !== "freeze-remote-initial") throw new Error("REMOTE_INITIAL_UNAVAILABLE"); frozen = saved.result.value;
         }
         frozen = frozenRemoteChatInitializationSchema.parse(frozen);
-        if (frozen.creationHash !== pendingCreation.remoteCreation.ciphertextHash || frozen.chatId !== pendingCreation.chat.id || frozen.incarnationId !== pendingCreation.chat.incarnationId ||
-          frozen.executionEpoch !== pendingCreation.executionEpoch) throw new Error("REMOTE_INITIAL_IDENTITY_CONFLICT");
+        if (frozen.creationHash !== pendingCreation.remoteCreation.ciphertextHash || frozen.chatId !== pendingCreation.chat.id ||
+          frozen.incarnationId !== pendingCreation.chat.incarnationId) throw new Error("REMOTE_INITIAL_IDENTITY_CONFLICT");
         const result = await transport.mutate("remote/chats:initialize", { ...header, initialization: frozen }); current();
         head = await openChatHeadForRequest(result, chatId, crypto, signal); current(); await accept(head);
       }
@@ -203,15 +159,15 @@ export class CloudExecutorService {
       if (!signal.aborted) {
         try {
           current(); const reason = preparationReason(error);
-          if (head?.executorDeviceId === deviceId) {
+          if (head?.ownerDeviceId === deviceId) {
             const actual = await read();
-            if (actual.executorDeviceId === deviceId && actual.executionEpoch === head.executionEpoch && actual.chat.incarnationId === head.chat.incarnationId && actual.archivedAt === null) {
-              await accept(await openChatHeadForRequest(await transport.mutate("turns/executor:prepare", { ...header, chatId, incarnationId: head.chat.incarnationId, executionEpoch: head.executionEpoch,
+            if (actual.ownerDeviceId === deviceId && actual.chat.incarnationId === head.chat.incarnationId && actual.archivedAt === null) {
+              await accept(await openChatHeadForRequest(await transport.mutate("turns/owner:prepare", { ...header, chatId, incarnationId: head.chat.incarnationId,
                 bodyRevision: actual.bodyRevision, homeSnapshotId: actual.homeSnapshotId, state: "blocked", reason: reason === "project-unbound" ? reason : reason === "home-unavailable" ? reason : reason === "body-unavailable" ? reason : "identity-changed" }), chatId, crypto, signal));
             }
           }
           current(); this.update(chatId, { phase: "blocked", reason, homeOmitted: 0 });
-        } catch { /* The current account or executor may already have changed. */ }
+        } catch { /* The current account or owner may already have changed. */ }
       }
     } finally { await files?.close(); }
   }
@@ -219,7 +175,7 @@ export class CloudExecutorService {
     let identity = "";
     try { identity = hashChatContent(this.scope(true)); } catch { /* Offline or revoked scopes cannot prepare. */ }
     if (identity !== this.identity) {
-      this.identity = identity; for (const item of this.warming.values()) item.abort.abort(); this.warmed.clear(); for (const flight of this.flights.values()) flight.abort.abort(); this.progress.clear(); this.input.changed();
+      this.identity = identity; for (const flight of this.flights.values()) flight.abort.abort(); this.progress.clear(); this.input.changed();
       if (identity) this.resumePending();
     }
   }
@@ -236,20 +192,20 @@ export class CloudExecutorService {
       if (hashChatContent(this.scope(true)) !== hashChatContent(identity)) return;
       const page = await this.input.owners.chats.sync.read({ environment: identity.environment, userId: identity.userId }, { type: "confirmed-catalog", afterRevision, throughRevision });
       if (page.type !== "confirmed-catalog") return;
-      for (const head of page.value.items) if (head.executorDeviceId === this.input.deviceId &&
+      for (const head of page.value.items) if (head.ownerDeviceId === this.input.deviceId &&
         (head.executionPreparation?.state === "pending" || head.executionPreparation?.state === "blocked")) await this.prepare(head.chat.id);
       if (page.value.complete) return; afterRevision = page.value.cursor!; throughRevision = page.value.revision;
     }
   }
-  async close() { this.closed = true; for (const item of this.warming.values()) item.abort.abort(); await Promise.allSettled([...this.warming.values()].map(item => item.promise)); this.warmed.clear(); this.unsubscribe(); for (const flight of this.flights.values()) flight.abort.abort(); await Promise.allSettled([...this.flights.values()].map(value => value.promise)); await this.recovering; await this.drafts.close(); this.progress.clear(); }
+  async close() { this.closed = true; this.unsubscribe(); for (const flight of this.flights.values()) flight.abort.abort(); await Promise.allSettled([...this.flights.values()].map(value => value.promise)); await this.recovering; await this.drafts.close(); this.progress.clear(); }
 }
 function preparationReason(error: unknown): ExecutionReason {
   const message = error instanceof Error ? error.message : String(error);
   if (/PROJECT_/.test(message)) return "project-unbound";
   if (/HOME_|home-/.test(message)) return "home-unavailable";
   if (/LOCAL_EXECUTION|ADMISSION_BUSY/.test(message)) return "local-busy";
-  if (/executor-running|SETTLEMENT_PENDING/.test(message)) return "running";
+  if (/execution-running|SETTLEMENT_PENDING/.test(message)) return "running";
   if (/BODY_|MIRROR_|IMPORT_|ATTACHMENT_|file-|blob-|DOWNLOAD_/.test(message)) return "body-unavailable";
-  if (/IDENTITY_|executor-changed|incarnation/.test(message)) return "identity-changed";
+  if (/IDENTITY_|not-owner|incarnation/.test(message)) return "identity-changed";
   return "unavailable";
 }

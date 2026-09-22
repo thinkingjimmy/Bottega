@@ -18,8 +18,8 @@ export const chatMessageProjectionSchema = encryptedMessageProjectionSchema;
 export const initialIdentitySchema = z.object({ manifestId: id, ciphertextHash: sha256Schema }).strict();
 export const chatTranscriptFunctions = {
   ...encryptedMessageFunctions,
-  "chats/body/recovery:claim": { kind: "mutation", args: z.object({ ...chat, incarnationId: id, expectedEpoch: rev, operationId: id }).strict(),
-    result: z.object({ status: z.enum(["claimed", "conflict", "adopted"]), head: encryptedChatHeadSchema, initialization: initialIdentitySchema.nullable() }).strict() },
+  "chats/body/recovery:claim": { kind: "mutation", args: z.object({ ...chat, incarnationId: id, operationId: id }).strict(),
+    result: z.object({ status: z.enum(["claimed", "adopted"]), head: encryptedChatHeadSchema, initialization: initialIdentitySchema.nullable() }).strict() },
   "chats/body/api:status": { kind: "query", args: z.object({ ...chat, bodyHash: sha256Schema }).strict(), result: encryptedBodyStatusSchema.nullable() },
   "chats/body/initial:begin": { kind: "mutation", args: z.object({ ...scope, manifest: chatInitialManifestSchema, replaceIncomplete: z.object({ manifestId: id, ciphertextHash: sha256Schema }).strict().optional() }).strict(), result: chatInitialStatusSchema },
   "chats/body/initial:publish": { kind: "mutation", args: z.object({ ...scope, operation: chatInitialPageSchema }).strict(), result: chatInitialReceiptSchema },

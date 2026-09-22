@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on AgentWorkspaceScope, canonical TurnProjectContext, Project lifecycle/binding authority, role-aware App data custody, and Chats
- * [OUTPUT]: Provides strict scope validation, role-aware effective workspace plus Project incarnation context, and conversation context resolution
+ * [OUTPUT]: Provides strict scope validation, role-aware effective workspace plus Project incarnation context, an unbound Project that degrades as project-unbound rather than as a missing record, and conversation context resolution
  * [POS]: Electron main's workspace and turn-Project authority; filesystem and scoped resource consumers share one canonical decision
  */
 
@@ -237,8 +237,15 @@ function resolveProject(
     };
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
+    /* An `unbound` Project has to reach the reason that knows how to stand down. Labelling it `project-missing`
+       is what carried it past the degradation below into the hard throw — a Project whose folder this computer
+       simply does not know yet is not a broken record, and the surfaces that can say so read the reason. */
     return unavailable(
-      binding?.kind === "app" ? "app-unavailable" : "project-missing",
+      binding?.kind === "app"
+        ? "app-unavailable"
+        : binding?.kind === "unbound"
+          ? "project-unbound"
+          : "project-missing",
       message
     );
   }

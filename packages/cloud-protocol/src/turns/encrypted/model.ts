@@ -15,7 +15,7 @@ const turnPacketSchema = z.object({ envelope: z.string().min(1).max(131_072).reg
   ciphertextHash: hash, ciphertextBytes: rev.positive().max(TURN_CIPHER_LIMITS.packetBytes) }).strict();
 const { options: _options, planRequested: _plan, identityHash: _identity, ...startFields } = turnStartSchema.shape;
 const turnStartRoutingSchema = z.object({ ...startFields, optionsPacket: chatPacketSchema }).strict().refine(value => {
-  const sequence = [value.executorNoticeSeq, value.noticeSeq, value.userSeq, value.assistantSeq].filter((seq): seq is number => seq !== undefined);
+  const sequence = [value.noticeSeq, value.userSeq, value.assistantSeq].filter((seq): seq is number => seq !== undefined);
   return value.userMessageId !== value.assistantMessageId && sequence.every((seq, index) => !index || seq === sequence[index - 1]! + 1) &&
     value.noticeBodyHashes.length === sequence.length - 2;
 });
@@ -50,7 +50,7 @@ export const encryptedTurnReceiptSchema = z.object({ ...receiptFields, start: en
     z.object({ kind: z.literal("prefix"), prefix: encryptedTurnPrefixSchema }).strict(),
   ]).optional() }).strict().refine(value => value.assistantSeq === value.userSeq + 1 &&
     value.chatId === value.start.chatId && value.incarnationId === value.start.incarnationId && value.turnId === value.start.turnId &&
-    value.executionEpoch === value.start.executionEpoch && value.executorDeviceId === value.start.executorDeviceId && value.identityHash === value.start.identityHash &&
+    value.ownerDeviceId === value.start.ownerDeviceId && value.identityHash === value.start.identityHash &&
     value.userMessageId === value.start.userMessageId && value.userSeq === value.start.userSeq && value.assistantMessageId === value.start.assistantMessageId && value.assistantSeq === value.start.assistantSeq &&
     (value.settlementState !== "settled" ? value.result === undefined && value.resultKind === undefined :
       value.settledAt !== undefined && value.result !== undefined && value.resultKind !== undefined &&

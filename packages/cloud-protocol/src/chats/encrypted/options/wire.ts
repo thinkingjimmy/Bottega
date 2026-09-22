@@ -23,7 +23,7 @@ export function validateEncryptedOptions(scope: CryptoScope, raw: EncryptedOptio
   const value = encryptedOptionsOperationSchema.parse(raw), packet = value.options;
   assertCrypto(hashEncryptedOptions(value) === value.ciphertextHash && packet.role === "options" && packet.operationId === value.operationId &&
     packet.metadata.incarnationId === value.incarnationId && packet.metadata.agent === value.backend && packet.metadata.agentRevision === value.agentRevision &&
-    packet.metadata.executionEpoch === value.executionEpoch && packet.metadata.sourceDeviceId === value.sourceDeviceId);
+    packet.metadata.sourceDeviceId === value.sourceDeviceId);
   validateChatPacket(scope, value.chatId, packet);
   const bytes = decodeBase64url(value.proof.envelope, 1, 98_304);
   assertCrypto(bytes.byteLength === value.proof.ciphertextBytes && hashEnvelope(bytes) === value.proof.ciphertextHash);

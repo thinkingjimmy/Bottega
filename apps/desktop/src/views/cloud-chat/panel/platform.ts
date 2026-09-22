@@ -28,7 +28,7 @@ export function useDesktopPanelServices(head: CloudChatHead) {
   // The classification object is rebuilt with every head; its three fields are the identity that matters.
   const memory = useMemo(() => desktopPanelMemory({ conversationKind, appId, projectId }), [conversationKind, appId, projectId]);
   return { memory, widths: desktopPanelWidths, capabilities: CLOUD_CHAT_CAPABILITIES, useBase: usePanelBase, BaseTab: DesktopPanelBase, createBase, useHistory,
-    deviceName: devices.find(device => device.deviceId === head.executorDeviceId)?.name, navigate: (path: string) => void navigate(path) };
+    deviceName: devices.find(device => device.deviceId === head.ownerDeviceId)?.name, navigate: (path: string) => void navigate(path) };
 }
 export function useDesktopChatPanel(head: CloudChatHead, source: TranscriptSource, locale: string) {
   return useChatSidePanel(head, source, locale, useDesktopPanelServices(head));

@@ -63,8 +63,7 @@ export async function mapRemoteSubmission(command: RemoteCommand, head: CloudCha
   if (local.type !== "remote-admission" || !local.value?.execution) throw new Error("execution-not-ready");
   const { facts, execution, pending } = local.value, payload = command.payload, installed = execution.head;
   if (facts.incarnationId !== command.incarnationId || installed.chat.incarnationId !== command.incarnationId) throw new Error("chat-incarnation-mismatch");
-  if (head.executorDeviceId !== command.targetDeviceId || installed.executorDeviceId !== command.targetDeviceId ||
-    head.executionEpoch !== command.executionEpoch || installed.executionEpoch !== command.executionEpoch) throw new Error("executor-changed");
+  if (head.ownerDeviceId !== command.targetDeviceId || installed.ownerDeviceId !== command.targetDeviceId) throw new Error("not-owner");
   if (head.kind === "external-readonly" || facts.readOnlyReason || facts.context.kind !== "ordinary" || head.archivedAt !== null || facts.archivedAt || execution.deleted) throw new Error("chat-not-executable");
   if (head.executionPreparation && head.executionPreparation.state !== "ready") throw new Error("execution-not-ready");
   if (command.intent && head.chat.agent !== command.intent.baselineAgent && head.chat.agent !== payload.agentSelection?.backend) throw new Error("agent-changed");
@@ -78,7 +77,7 @@ export async function mapRemoteSubmission(command: RemoteCommand, head: CloudCha
   let options = switching ? ports.defaults(backend) : structuredClone(facts.options);
   if (payload.permissionMode) options.permissionMode = payload.permissionMode;
   const planMode = payload.planMode ?? (switching ? false : committedPlanMode(ports.ledger, facts));
-  // The choice came from this executor's published catalog, so the backend's own option validation is the only gate it needs.
+  // The choice came from this owner's published catalog, so the backend's own option validation is the only gate it needs.
   const chosen = remoteModelPatch(payload.options, options);
   if (chosen) { options = { ...options, ...chosen } as AgentTurnOptions; backendById(backend).validateTurnOptions(options); }
   if (payload.permissionMode || payload.planMode !== undefined || payload.attachments?.length) {
@@ -97,7 +96,7 @@ export async function mapRemoteSubmission(command: RemoteCommand, head: CloudCha
   }
   if (options.permissionMode === "full-access" && !remoteConsentMatches(payload.fullAccessConsent, {
     userId: scope.userId, sourceDeviceId: command.sourceDeviceId, chatId: command.chatId, incarnationId: command.incarnationId,
-    targetDeviceId: command.targetDeviceId, executionEpoch: command.executionEpoch, intentId: command.commandId,
+    targetDeviceId: command.targetDeviceId, intentId: command.commandId,
   })) throw new Error("permission-required");
   if (canonicalJson((ports.remoteInput ?? []).map(item => item.attachment)) !== canonicalJson(payload.attachments ?? [])) throw new Error("attachment-unavailable");
   const nodes = payload.references?.length ? await (() => {

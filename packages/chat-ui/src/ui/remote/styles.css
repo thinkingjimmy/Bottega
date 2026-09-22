@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on shared theme variables, semantic remote composer/selector/receipt markup and the host-chosen data-layout mode.
- * [OUTPUT]: Provides the desktop editor geometry with the InputGroup focus frame, glyph chips with dim/working/attention tones and the anchored outcome callout, glyph + name menu rows, the byte budget, the read-only card, tile upload overlays, touch-sized targets, the two-group toolbar and the viewport-filling transcript/composer layout.
+ * [INPUT]: Depends on shared theme variables, semantic remote composer/Agent-chip/receipt markup and the host-chosen data-layout mode.
+ * [OUTPUT]: Provides the desktop editor geometry with the InputGroup focus frame, the working spinner, the byte budget, the read-only card, tile upload overlays, touch-sized targets, the two-group toolbar and the viewport-filling transcript/composer layout.
  * [POS]: Shared desktop mirror and browser remote UI; native composer keeps its host layout.
  */
 .chat-remote { min-width: 0; }
@@ -9,10 +9,6 @@
 .chat-remote-text { border-radius: 16px 16px 0 0; }
 .chat-remote-form [data-slot=input-group]:has([role="textbox"]:focus-visible) { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in oklab, var(--ring) 30%, transparent); }
 .chat-remote-selector { position: relative; min-width: 0; }
-/* Glyph-only chips: the name lives in the tooltip; tone changes the glyph, never the size. */
-.chat-remote-chip { color: var(--muted-foreground); }
-.chat-remote-selector[data-tone="dim"] .chat-remote-chip > svg:first-child, .chat-remote-selector[data-tone="dim"] .chat-remote-working { opacity: .45; }
-.chat-remote-selector[data-tone="attention"] .chat-remote-chip { color: var(--foreground); }
 .chat-remote-working { position: relative; display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; }
 .chat-remote-working::after { content: ""; position: absolute; inset: 0; border-radius: 9999px; border: 1.5px solid var(--border); border-top-color: var(--muted-foreground); animation: chat-remote-spin 1s linear infinite; }
 @keyframes chat-remote-spin { to { transform: rotate(360deg); } }
@@ -32,11 +28,6 @@
 .chat-remote-tile-progress { position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; color: var(--foreground); pointer-events: none; }
 .chat-remote-tile-bar { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 3px; border-radius: 2px; background: color-mix(in oklab, var(--background) 70%, transparent); overflow: hidden; }
 .chat-remote-tile-bar i { display: block; height: 100%; background: var(--primary); }
-.chat-remote-menu { width: min(304px, calc(100vw - 32px)); max-height: min(420px, var(--radix-dropdown-menu-content-available-height, 65dvh)); overflow-y: auto; }
-.chat-remote-option { min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 8px 12px; white-space: normal; overflow-wrap: anywhere; }
-.chat-remote-option-glyph { width: 16px; height: 16px; flex: none; color: var(--muted-foreground); }
-.chat-remote-option-body { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; flex: 1 1 auto; }
-.chat-remote-option small { color: var(--muted-foreground); font-size: 12px; }
 .chat-remote-hint { color: var(--muted-foreground); font-size: 13px; overflow-wrap: anywhere; margin-block: 8px; }
 /* InputGroup owns the complete editor's focus frame, including its toolbar. */
 .chat-remote :is(button, textarea, input, select):not([data-slot="input-group-control"]):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
@@ -67,7 +58,7 @@
 
 .chat-remote-form [data-slot=input-group] { flex-direction: column; align-items: stretch; }
 .chat-remote-form [data-slot=input-group] > [data-slot=input-group-addon] { width: 100%; }
-/* Tools (Add, permission, Plan) on the left; computer, Agent and Send on the right — the desktop composer's two groups. */
+/* Tools (Add, permission, Plan) on the left; Agent, model and Send on the right — the desktop composer's two groups. */
 .chat-remote-form [data-slot=input-group-addon] > div:first-child { min-width: 0; flex: 0 1 auto; }
 .chat-remote-form [data-slot=permission-label] { max-width: 12rem; }
 .chat-remote-sketch-mark { position: absolute; width: 14px; height: 14px; right: 4px; bottom: 4px; padding: 2px; background: var(--background); color: var(--foreground); border-radius: 2px; }

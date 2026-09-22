@@ -29,7 +29,7 @@ async function open(crypto: FileCipherPort, packet: TurnPacket, expectedContext:
 }
 function sameIdentity(local: TurnIdentity, wire: TurnIdentity) {
   assertCrypto(local.chatId === wire.chatId && local.incarnationId === wire.incarnationId && local.turnId === wire.turnId &&
-    local.executorDeviceId === wire.executorDeviceId && local.executionEpoch === wire.executionEpoch);
+    local.ownerDeviceId === wire.ownerDeviceId);
 }
 export async function prepareTurnStart(original: TurnStart, mappings: { userBodyHash: string; noticeBodyHashes: string[]; optionsPacket: ChatPacket }, crypto: FileCipherPort, signal: AbortSignal) {
   const local = turnStartSchema.parse(original); assertCrypto(hashTurnIdentity(local) === local.identityHash);

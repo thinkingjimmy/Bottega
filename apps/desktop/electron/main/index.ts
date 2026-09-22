@@ -47,6 +47,7 @@ import { resolveAppLocale } from "@ai-chat/ui/lib/locale";
 import { resolvePlatformCapabilities } from "../../shared/platform-capabilities";
 import { BackendSetupService } from "./setup/backend-setup";
 import { ProjectStore } from "./projects/store/project-store";
+import { machineIdHash } from "./machine/machine-id";
 import { ProjectsService } from "./projects/projects-service";
 import { composeProjectsService } from "./projects/composition";
 import { RelayLedger } from "./sections/coordinator/relay-ledger";
@@ -146,6 +147,8 @@ let appsService: AppsService | null = null;
 let chatStore: ChatStore | null = null;
 let profileRecovery: import("./startup/recovery/guard").ProfileRecoveryGuard | null = null;
 let library: import("./library/service").LibraryService | null = null;
+/** This installation's device id, resolved with the library and read by the Project projection. */
+let localDeviceId: string | null = null;
 let chatMirrors: import("./library/mirrors/service").ChatMirrorService | null = null;
 let chatsService: ChatsService | null = null;
 let baseStore: BaseStore | null = null;
@@ -229,7 +232,8 @@ if (!hasSingleInstanceLock) {
         })(),
       ]);
       const { LibraryService } = await import("./library/service");
-      library = new LibraryService(settingsStore, await new DeviceIdentityStore(userData).loadOrCreate());
+      localDeviceId = await new DeviceIdentityStore(userData).loadOrCreate();
+      library = new LibraryService(settingsStore, localDeviceId, machineIdHash);
       await library.initialize();
       /* Must happen before window creation: the renderer's first synchronous script
          reads matchMedia, which reflects what this sets — themeSource has to be set
@@ -283,7 +287,7 @@ if (!hasSingleInstanceLock) {
         userData,
         () => settingsStore?.get().usagePricingAutoRefresh ?? true
       ));
-      projectStore = new ProjectStore(userData, { storageMode, libraryRoot: () => library?.root ?? null });
+      projectStore = new ProjectStore(userData, { storageMode, libraryRoot: () => library?.root ?? null, machineIdHash });
       lifecycleIntents = new LifecycleIntentStore(userData);
       await (await import("./startup/recovery/sqlite")).resumeDatabasePreservation(userData);
       chatStore = new ChatStore(userData, {
@@ -324,6 +328,7 @@ if (!hasSingleInstanceLock) {
         store: projectStore,
         resourceCleanup: projectToolsRuntime.resourceCleanup,
         userData: canonicalUserData,
+        localDeviceId: () => localDeviceId,
         apps: () => appsService,
         chats: () => chatsService,
         chatStore: () => chatStore,

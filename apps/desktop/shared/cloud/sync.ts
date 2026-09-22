@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod and public cloud identity contracts.
- * [OUTPUT]: Defines first-sync review/progress, the setup boundary and retention counts for reviewed cleanup.
+ * [OUTPUT]: Defines first-sync review/progress including the identity preparation phase, the initial upload's byte figures, the folder-ownership refusal and its owning computer, the setup boundary and retention counts for reviewed cleanup.
  * [POS]: Shared main/preload/renderer display contract; Store snapshots and local locators stay in main.
  */
 import { z } from "zod";
@@ -20,11 +20,13 @@ export const syncProgressSchema = z.object({ status: z.enum(["not-connected", "s
   pending: count.default(0), conflicts: count.default(0), completed: count.default(0), total: count.default(0),
   uploadedBytes: count.default(0), totalBytes: count.default(0),
   appIssues: z.array(appIssue).max(1000).default([]),
-  phase: z.enum(["projects", "apps", "chats", "bases", "files", "homes"]).nullable().default(null),
-  error: z.enum(["scan-failed", "review-expired", "upload-failed", "cleanup-failed"]).nullable().default(null),
+  phase: z.enum(["projects", "apps", "preparing", "chats", "bases", "files", "homes"]).nullable().default(null),
+  error: z.enum(["scan-failed", "review-expired", "upload-failed", "cleanup-failed", "library-owned-elsewhere"]).nullable().default(null),
+  /* Names the computer a refused folder belongs to. Only `library-owned-elsewhere` interpolates it; every other
+     sentence ignores it, so the row never has to branch on the error to translate one. */
+  ownerHost: z.string().max(40).nullable().default(null),
 }).strict();
 export const syncApprovalSchema = z.object({ reviewId: z.string().uuid() }).strict();
-export const syncPauseSchema = z.object({ paused: z.boolean() }).strict();
 export const syncCleanupReviewSchema = z.object({ reviewId: z.string().uuid(), mirrors: count, retainedChats: count,
   retainedHomes: count, retainedBases: count, mirroredBases: count, mirroredProjects: count, retainedProjects: count,
   mirroredApps: count, retainedApps: count, pending: count }).strict();

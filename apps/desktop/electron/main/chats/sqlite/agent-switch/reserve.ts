@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical metadata, the fact writer, and the stable switch reservation command
- * [OUTPUT]: Allocates receipt-backed two/three/four-slot reservations from confirmed executor and committed-device state.
+ * [OUTPUT]: Allocates receipt-backed two/three-slot reservations from confirmed ownership state.
  * [POS]: Worker reservation kernel; the repository records its result in the existing operation receipt table
  */
 import { allocateTurnSequences } from "../../../../../shared/chat-agent/sequences";
@@ -8,7 +8,7 @@ import type { ChatRepositoryReader } from "../repository/reader";
 import type { ChatRecordWriter } from "../repository/writer";
 import { chatFactsSchema } from "../../chat-schema";
 import type { SqliteDatabase } from "../connection";
-import { assertLocalExecutor } from "../cloud/execution/state";
+import { assertLocalOwner } from "../cloud/execution/state";
 import { agentSwitchIntentSchema } from "../../../../../shared/chat-agent/schema";
 import { switchRequestHash, switchSequenceOperationId, turnSequenceOperationId, type ReserveTurnSequencesCommand, type ReserveSwitchSequencesCommand, type SwitchSequenceReservation } from "./command";
 
@@ -22,14 +22,12 @@ export function reserveSwitchSequences(db: SqliteDatabase, reader: ChatRepositor
   if (intent && (current.agent !== intent.expectedAgent || current.agentRevision !== intent.expectedAgentRevision ||
     current.chatRecordRevision !== intent.expectedChatRecordRevision)) throw new Error("AGENT_REVISION_STALE");
   if (current.readOnlyReason || (intent && current.context.kind !== "ordinary") || current.archivedAt) throw new Error("AGENT_SWITCH_NOT_WRITABLE");
-  const execution = assertLocalExecutor(db, command.chatId, command.deviceId);
-  const executorNotice = execution ? execution.lastCommittedDeviceId !== null && execution.lastCommittedDeviceId !== command.deviceId : command.executorNotice;
+  const execution = assertLocalOwner(db, command.chatId, command.deviceId);
   const { preview: _preview, ...facts } = current;
-  const sequences = allocateTurnSequences(current.nextSeq, { agent: Boolean(intent) || command.kind === "reserve-turn-sequences" && Boolean(command.contextNotice), executor: executorNotice });
+  const sequences = allocateTurnSequences(current.nextSeq, { agent: Boolean(intent) || command.kind === "reserve-turn-sequences" && Boolean(command.contextNotice) });
   const reserved = chatFactsSchema.parse({ ...facts, nextSeq: sequences.assistantSeq + 1, chatRecordRevision: facts.chatRecordRevision + 1 });
   writer.writeCore(reserved, current.importOrigin ? "external-managed" : "native");
   writer.writeLocalFacts(reserved, command.deviceId);
   return { chatId: current.id, chatRecordRevision: reserved.chatRecordRevision,
-    ...sequences, ...(execution ? { execution: { deviceId: command.deviceId, executionEpoch: execution.head.executionEpoch,
-      lastCommittedDeviceId: execution.lastCommittedDeviceId, ...(execution.head.lastExecutorTransition?.executionEpoch === execution.head.executionEpoch && execution.head.lastExecutorTransition.staleSnapshot ? { staleSnapshot: true } : {}) } } : {}) };
+    ...sequences, ...(execution ? { execution: { deviceId: command.deviceId } } : {}) };
 }

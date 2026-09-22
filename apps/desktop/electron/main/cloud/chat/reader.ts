@@ -42,11 +42,18 @@ export class CloudChatReader {
       if (key !== this.identity) { this.identity = key; this.generation++; this.clear(); this.changed(); }
     });
   }
-  private scope() {
+  private reachable() {
     const account = this.ports.account.snapshot(), binding = this.ports.binding.snapshot();
     if (this.closed || !binding || binding.phase === "closing" || account.profile?.userId !== binding.userId ||
-      account.deviceId !== binding.deviceId || !["ready", "temporarily-offline"].includes(account.status)) throw new Error("CHAT_ACCOUNT_UNAVAILABLE");
+      account.deviceId !== binding.deviceId || !["ready", "temporarily-offline"].includes(account.status)) return null;
     return { environment: this.ports.config.environmentId, userId: binding.userId };
+  }
+  /** The same sentence `scope` enforces, asked instead of thrown: a surface that only wants to paint gets an answer. */
+  available() { return this.reachable() !== null; }
+  private scope() {
+    const scope = this.reachable();
+    if (!scope) throw new Error("CHAT_ACCOUNT_UNAVAILABLE");
+    return scope;
   }
   private async fenced<T>(run: (scope: ReturnType<CloudChatReader["scope"]>) => Promise<T>) {
     const generation = this.generation, scope = this.scope(), result = await run(scope);

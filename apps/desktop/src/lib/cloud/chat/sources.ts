@@ -6,7 +6,7 @@
 import { listUnifiedSkills } from "../../unified-skills-client";
 import { useEffect, useMemo } from "react";
 import type { CloudChatBridge } from "../../../../shared/cloud/chat";
-import { CLOUD_CHAT_CAPABILITIES, readonlyCommands, type ChatPlatform, type AccountFacade, type ChatListSource, type TranscriptSource, type ExecutorFacade } from "@ai-chat/chat-ui/contracts";
+import { CLOUD_CHAT_CAPABILITIES, readonlyCommands, type ChatPlatform, type AccountFacade, type ChatListSource, type TranscriptSource, type ExecutionFacade } from "@ai-chat/chat-ui/contracts";
 import { encryptedFileDescriptorSchema } from "@ai-chat/cloud-protocol/blobs/encrypted";
 import { liveTurnSource } from "@ai-chat/chat-ui/live-source";
 import { useCloudAccount } from "../client";
@@ -21,7 +21,10 @@ export function desktopChatSources(bridge: CloudChatBridge, userId: string, acco
   let controller = new AbortController(); const urls = new Set<string>();
   const chats: ChatListSource = {
     browse: async (input, signal) => { signal.throwIfAborted(); const page = await bridge.query("chats/catalog:page", input); signal.throwIfAborted(); controller.signal.throwIfAborted(); return page; },
-    page: async (input, signal) => { signal.throwIfAborted(); const page = await bridge.catalog(input); signal.throwIfAborted(); controller.signal.throwIfAborted(); return page; },
+    /* 「还没登录」不是错误，是这一刻的答案：画一页空目录，binding 落下时
+       onLocalChanged 会把这里叫醒。挂错误面只会在登录途中闪一下红。 */
+    page: async (input, signal) => { signal.throwIfAborted(); const result = await bridge.catalog(input); signal.throwIfAborted(); controller.signal.throwIfAborted();
+      return result.kind === "catalog" ? result.page : { items: [], facts: [], cursor: null, revision: 0, complete: true }; },
     head: async (chatId, signal) => { signal.throwIfAborted(); const head = await bridge.head({ chatId }); signal.throwIfAborted(); controller.signal.throwIfAborted(); return head; },
     subscribe: changed => bridge.onLocalChanged(changed),
   };
@@ -45,8 +48,8 @@ export function desktopChatSources(bridge: CloudChatBridge, userId: string, acco
     page: async (chatId, turnId, afterSeq, throughSeq, signal) => { signal.throwIfAborted();
       const page = await bridge.query("turns/reads:page", { chatId, turnId, afterSeq, throughSeq }); signal.throwIfAborted(); controller.signal.throwIfAborted(); return page; },
   });
-  const executor: ExecutorFacade = { read: chatId => bridge.execution({ chatId }), subscribe: (_chatId, changed) => bridge.onLocalChanged(changed),
-    claim: chatId => bridge.claim({ chatId }), prepare: chatId => bridge.prepare({ chatId }) };
+  const execution: ExecutionFacade = { read: chatId => bridge.execution({ chatId }), subscribe: (_chatId, changed) => bridge.onLocalChanged(changed),
+    prepare: chatId => bridge.prepare({ chatId }) };
   const remote = remoteBridge ? desktopRemotePorts(remoteBridge, account, userId) : null;
   const platform: ChatPlatform = { capabilities: CLOUD_CHAT_CAPABILITIES, skills: { list: async (query, signal) => {
     signal.throwIfAborted(); controller.signal.throwIfAborted();
@@ -54,7 +57,7 @@ export function desktopChatSources(bridge: CloudChatBridge, userId: string, acco
     const snapshot = await listUnifiedSkills(); signal.throwIfAborted(); controller.signal.throwIfAborted();
     if (account.snapshot().profile?.userId !== userId) throw new Error("CHAT_ACCOUNT_UNAVAILABLE");
     const needle = query.toLocaleLowerCase();
-    /* `enabled` is this computer's switch, not the executor's, and it is the only Skill evidence a draft
+    /* `enabled` is this computer's switch, not the owner's, and it is the only Skill evidence a draft
        has before a target answers: a Skill turned off here would not be injected from here either. */
     const matched = snapshot.library.filter(item => item.enabled && item.ref.startsWith("library:") &&
       [item.displayName, item.description].filter(Boolean).join(" ").toLocaleLowerCase().includes(needle));
@@ -62,7 +65,7 @@ export function desktopChatSources(bridge: CloudChatBridge, userId: string, acco
     const prefix = (item: (typeof matched)[number]) => Number(item.displayName.toLocaleLowerCase().startsWith(needle));
     return matched.sort((left, right) => prefix(right) - prefix(left)).slice(0, 50)
       .map(item => ({ libraryId: item.ref.slice("library:".length), name: item.displayName, description: item.description }));
-  } }, account, chats, transcript, live, executor: { ...executor, remote: remote?.executor },
+  } }, account, chats, transcript, live, execution: { ...execution, remote: remote?.execution },
     commands: remote ? { ...readonlyCommands, remote: remote.commands, available: remote.available } : readonlyCommands };
   return { ...platform, bindProject: (chatId: string) => bridge.bindProject({ chatId }), open: () => { if (controller.signal.aborted) controller = new AbortController(); },
     close: () => { controller.abort(); for (const url of urls) URL.revokeObjectURL(url); urls.clear(); } };

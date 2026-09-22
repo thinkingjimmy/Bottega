@@ -1,6 +1,6 @@
 /**
  * [INPUT]: No runtime dependencies; only a type-only import of AppGrantRecord from apps-ipc
- * [OUTPUT]: Project IPC contracts, display-only cloud origin and local lifecycle/binding projections.
+ * [OUTPUT]: Project IPC contracts, a display-only cloud origin that answers this computer's folder and another computer's authorship separately, and local lifecycle/binding projections.
  * [POS]: Shared Project wire truth; projectLifecycleRevision fences incarnation/deletion, reveal carries only Project ID, and appPlacements express navigation without granting App capability
  */
 
@@ -50,8 +50,9 @@ export type Project = {
   createdAt: number;
   updatedAt: number;
   missing: boolean;
-  /** Display-only origin; never authorizes local execution or App activation. */
-  cloud?: { sourceDeviceId: string | null; remote: boolean };
+  /** Display-only origin; never authorizes local execution or App activation. `needsLocalFolder` is about this
+      computer, `foreignSource` about another one — never the same question. */
+  cloud?: { sourceDeviceId: string | null; needsLocalFolder: boolean; foreignSource: boolean };
 };
 
 export function appIdFromBinding(project: Pick<Project, "workspaceBinding">) {

@@ -9,9 +9,9 @@ import type { RemoteCommandInput } from "./contracts";
 import type { RemoteCommandSession } from "./commands/session";
 import type { TranscriptSource } from "../contracts";
 import { awaitRemoteResult } from "./commands/result";
-export async function queryRemoteWorkspace(ports: { session: RemoteCommandSession; transcript: TranscriptSource }, head: { chat: Pick<CloudChatHead["chat"], "id" | "incarnationId">; executionEpoch: number },
+export async function queryRemoteWorkspace(ports: { session: RemoteCommandSession; transcript: TranscriptSource }, head: { chat: Pick<CloudChatHead["chat"], "id" | "incarnationId"> },
   targetDeviceId: string, payload: Extract<RemoteCommandInput["payload"], { kind: "list-workspace-files" | "read-workspace-file" }>, signal: AbortSignal) {
-  const input = { commandId: crypto.randomUUID(), chatId: head.chat.id, incarnationId: head.chat.incarnationId, executionEpoch: head.executionEpoch, targetDeviceId, payload };
+  const input = { commandId: crypto.randomUUID(), chatId: head.chat.id, incarnationId: head.chat.incarnationId, targetDeviceId, payload };
   const receipt = await awaitRemoteResult(ports.session, input, signal);
   if (receipt.state !== "done" || receipt.output?.kind !== "workspace-result") throw new Error(receipt.reason ?? "workspace-file-unavailable");
   const descriptor = receipt.output.blob;

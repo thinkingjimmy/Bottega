@@ -14,7 +14,7 @@ import { encryptedTurnStartSchema, encryptedTurnChunkSchema, encryptedTurnFinalS
 export const cipherTurnIdentity = (value: TurnIdentity): TurnIdentity => turnIdentitySchema.parse(Object.fromEntries(Object.keys(turnIdentitySchema.shape).map(key => [key, value[key as keyof TurnIdentity]])));
 export function turnFrameContext(scope: CryptoScope, identity: Omit<TurnIdentity, "identityHash">, kind: "start" | "chunk" | "final", sequence: number, header: unknown) {
   return createTurnContext(scope, identity.chatId, hashChatContent(["turn-cipher-frame-v1", kind, header]), { incarnationId: identity.incarnationId,
-    turnId: identity.turnId, executionEpoch: identity.executionEpoch, frameSequence: sequence, frameKind: kind === "final" ? "final" : "event",
+    turnId: identity.turnId, frameSequence: sequence, frameKind: kind === "final" ? "final" : "event",
     snapshotId: null, replacementIndex: null, replacementCount: null });
 }
 export function startFrameHeader(raw: EncryptedTurnStart) { const { packet: _packet, identityHash: _hash, ...value } = encryptedTurnStartSchema.parse(raw); return value; }
@@ -27,9 +27,9 @@ function validateTurnPacket(packet: TurnPacket, context: ReturnType<typeof turnF
 }
 export function validateTurnStart(scope: CryptoScope, raw: EncryptedTurnStart) {
   const value = encryptedTurnStartSchema.parse(raw), options = value.optionsPacket; validateChatPacket(scope, value.chatId, options);
-  assertCrypto(options.role === "options" && options.metadata.incarnationId === value.incarnationId && options.metadata.sourceDeviceId === value.executorDeviceId &&
+  assertCrypto(options.role === "options" && options.metadata.incarnationId === value.incarnationId && options.metadata.sourceDeviceId === value.ownerDeviceId &&
     options.metadata.agent === value.backend && options.metadata.agentRevision === value.expectedAgentRevision + Number(value.noticeSeq !== undefined) &&
-    options.metadata.executionEpoch === value.executionEpoch && options.metadata.references.length === 0);
+    options.metadata.references.length === 0);
   validateTurnPacket(value.packet, turnFrameContext(scope, value, "start", 0, startFrameHeader(value))); return value;
 }
 export function validateTurnChunk(scope: CryptoScope, identity: TurnIdentity, raw: EncryptedTurnChunk) {

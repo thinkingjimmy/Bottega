@@ -19,7 +19,7 @@ export function freezeCloudHandoff(state: LedgerState, intentId: string, raw: Cl
   if (!intent || !intent.payload || command.action.type !== "handoff-turn" || command.action.evidence.ledgerIntentId !== intentId ||
     command.action.chatId !== intent.conversationId || command.action.evidence.userSeq !== intent.userSeq ||
     command.action.evidence.assistantSeq !== intent.assistantSeq || command.action.turnId !== intent.requestId ||
-    command.action.evidence.executorNoticeSeq !== intent.executorNoticeSeq || command.action.evidence.noticeSeq !== intent.noticeSeq ||
+    command.action.evidence.noticeSeq !== intent.noticeSeq ||
     command.action.evidence.identityHash !== createHash("sha256").update(canonicalJson(handoffIdentity(command.action))).digest("hex")) throw new Error("LEDGER_HANDOFF_IDENTITY_CONFLICT");
   if (intent.cloudHandoff) {
     if (canonicalJson(intent.cloudHandoff.command) === canonicalJson(command)) return intent.cloudHandoff;

@@ -301,7 +301,7 @@ export class ChatsService {
   }
 
   async appendUserMessage(input: AppendChatMessageInput, reservedSeq?: number,
-    executorCommit?: import("./sqlite/cloud/execution/commit").ExecutorCommit,
+    ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit,
     remote?: { commandId: string; sourceDeviceId: string; sourceDeviceName: string }) {
     this.assertAdmission();
     const { remoteCommandId, remoteSource, ...message } = input.message;
@@ -318,7 +318,6 @@ export class ChatsService {
         throw new Error("INCARNATION_MISMATCH");
       }
     }
-    if (value.revise && executorCommit?.notice) throw new Error("CLOUD_EXECUTOR_REVISION_REQUIRES_NEW_MESSAGE");
     const titleWasNone = this.store.getMetadata(value.chatId)?.titleJob.state === "none";
     const mutation = value.revise
       ? await this.store.reviseTail({
@@ -326,7 +325,7 @@ export class ChatsService {
           supersedes: value.revise,
           message: value.message,
           reservedSeq,
-          executorCommit,
+          ownerCommit,
         })
       : await this.commitWithAttachments(
           value.attachmentPayloads,
@@ -335,7 +334,7 @@ export class ChatsService {
               value.chatId,
               this.attachMetas(value.message, metas),
               reservedSeq,
-              executorCommit
+              ownerCommit
             ), value.chatId
         );
     this.emitMutation(mutation);

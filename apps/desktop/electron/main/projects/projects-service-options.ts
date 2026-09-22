@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Project/Chat/i18n contracts, managed-worktree facts, durable Memory rebind expectations, the Project rebind journal, and the Project resource cleanup coordinator
- * [OUTPUT]: Provides the complete dependency-port contract consumed by ProjectsService, including authoritative App-directory reveal, managed-worktree rebind fences and conversation branch roots, App Pin eligibility, Base existence, and cleanup ports
+ * [OUTPUT]: Provides the complete dependency-port contract consumed by ProjectsService, including this installation's device id for the display projection, authoritative App-directory reveal, managed-worktree rebind fences and conversation branch roots, App Pin eligibility, Base existence, and cleanup ports
  * [POS]: Projects module composition boundary; keeps cross-domain ports out of the Project lifecycle implementation
  */
 
@@ -24,6 +24,8 @@ export type ProjectsServiceOptions = {
     { dir: string; name: string } | undefined;
   resolveAppDirectory?: (appId: string) => string | undefined;
   isAppProjectAvailable: (appId: string) => boolean;
+  /** This installation's device id, for telling a Project this computer published from one it only mirrors. */
+  localDeviceId?: () => string | null;
   canPinApp?: (appId: string) => boolean;
   listProjectRefs: () => Map<string, { latestUpdatedAt: number }>;
   removeChatsByProject: (

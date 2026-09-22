@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on closed remote requests, executor claim contracts and strict selection/admission rejection codes.
+ * [INPUT]: Depends on closed remote requests, preparation contracts and strict preparation/admission rejection codes.
  * [OUTPUT]: Defines strict remote IPC including mixed attachment staging, cancellation and progress.
  * [POS]: Shared main/preload boundary; authentication, connection epochs and local execution authority stay in main.
  */
@@ -10,10 +10,10 @@ import { cloudFunctions } from "@ai-chat/cloud-protocol";
 import { cloudChatHeadSchema } from "@ai-chat/cloud-protocol/chats/model";
 import { frozenRemoteCommandSchema, frozenRemoteCreationSchema, remoteCreationInputSchema } from "@ai-chat/cloud-protocol/remote/encrypted";
 import { remoteCommandInputSchema, remoteTargetsSchema, remoteReceiptSchema, remoteCreationReceiptSchema } from "@ai-chat/cloud-protocol/remote/model";
-import { executorSelectionRejectionSchema, remoteAdmissionRejectionSchema } from "@ai-chat/cloud-protocol/remote/selection";
+import { preparationRejectionSchema, remoteAdmissionRejectionSchema } from "@ai-chat/cloud-protocol/remote/selection";
 import { remoteAttachmentSchema, REMOTE_ATTACHMENT_BYTES } from "@ai-chat/cloud-protocol/remote/input/model";
 const omit = { protocolVersion: true, environmentId: true, deploymentId: true, expectedUserId: true, encryptedSpace: true } as const;
-const executorRejection = z.object({ rejected: executorSelectionRejectionSchema }).strict();
+const preparationRejection = z.object({ rejected: preparationRejectionSchema }).strict();
 const admissionRejection = z.object({ rejected: remoteAdmissionRejectionSchema }).strict();
 export const remoteAttachmentProgressSchema = z.object({ uploadId: z.string().uuid(), progress: z.object({
   phase: z.enum(["hashing", "uploading", "verifying", "downloading"]), bytes: z.number().nonnegative(), total: z.number().nonnegative(),
@@ -31,7 +31,6 @@ export const remoteRequests = {
   withdraw: cloudFunctions["remote/commands:withdraw"].args.omit(omit),
   command: cloudFunctions["remote/commands:get"].args.omit(omit),
   commands: cloudFunctions["remote/commands:page"].args.omit(omit),
-  selectExecutor: cloudFunctions["turns/executor:claim"].args.omit(omit),
   prepareCreate: remoteCreationInputSchema,
   create: z.object({ input: remoteCreationInputSchema, frozen: frozenRemoteCreationSchema }).strict(),
   created: cloudFunctions["remote/chats:created"].args.omit(omit),
@@ -49,16 +48,22 @@ export const remoteResults = {
   withdraw: remoteReceiptSchema,
   command: remoteReceiptSchema.nullable(),
   commands: z.object({ items: z.array(remoteReceiptSchema), cursor: z.string().nullable(), complete: z.boolean(), serverTime: z.number() }).strict(),
-  selectExecutor: z.union([cloudChatHeadSchema, executorRejection]),
   prepareCreate: frozenRemoteCreationSchema,
   create: z.union([remoteCreationReceiptSchema, admissionRejection]),
   created: remoteCreationReceiptSchema.nullable(),
-  retryPreparation: z.union([cloudChatHeadSchema, executorRejection]),
+  retryPreparation: z.union([cloudChatHeadSchema, preparationRejection]),
 } as const;
 export type RemoteMethod = keyof typeof remoteRequests;
 export type RemoteInput<N extends RemoteMethod> = z.infer<(typeof remoteRequests)[N]>;
 export type RemoteResult<N extends RemoteMethod> = z.infer<(typeof remoteResults)[N]>;
 export type RemoteWatch = "queue" | "targets" | "command" | "commands";
+/* 订阅的受理答复。未登录时这里曾直接抛 REMOTE_ACCOUNT_UNAVAILABLE，
+   而 Electron 的默认打印器把它变成启动期日志里反复出现的一整条堆栈——
+   渲染端要的只是「这次订阅没建起来」这一件事实（N-1 / AC-8）。 */
+export const remoteWatchResultSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("watching") }).strict(),
+  z.object({ kind: z.literal("signed-out") }).strict(),
+]);
 export const remoteWatchSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal("queue"), input: remoteRequests.queue, subscriptionId: z.string().uuid() }).strict(),
   z.object({ method: z.literal("targets"), input: remoteRequests.targets, subscriptionId: z.string().uuid() }).strict(),
@@ -72,6 +77,6 @@ export type CloudRemoteBridge = { [N in RemoteMethod]: (input: RemoteInput<N>) =
   watchTargets: Watch<"targets">; watchCommand: Watch<"command">; watchCommands: Watch<"commands">;
 };
 export const REMOTE_CHANNEL = { projectFiles: "cloud-remote:project-files", queue: "cloud-remote:queue", reorderQueue: "cloud-remote:reorder-queue", withdraw: "cloud-remote:withdraw", prepareCommand: "cloud-remote:prepare-command", prepareCreate: "cloud-remote:prepare-create", targets: "cloud-remote:targets", submit: "cloud-remote:submit", command: "cloud-remote:command",
-  commands: "cloud-remote:commands", selectExecutor: "cloud-remote:select-executor", create: "cloud-remote:create", created: "cloud-remote:created",
+  commands: "cloud-remote:commands", create: "cloud-remote:create", created: "cloud-remote:created",
   retryPreparation: "cloud-remote:retry-preparation", watch: "cloud-remote:watch", unwatch: "cloud-remote:unwatch", changed: "cloud-remote:changed",
   stageAttachment: "cloud-remote:stage-attachment", cancelAttachment: "cloud-remote:cancel-attachment", attachmentProgress: "cloud-remote:attachment-progress" } as const;

@@ -5,7 +5,7 @@
  */
 import type { RemoteReference } from "@ai-chat/cloud-protocol/remote/input/references";
 import type { FileProgress } from "@ai-chat/cloud-protocol";
-import type { RemoteAttachment, RemoteFullAccessConsent, RemotePermissionMode } from "@ai-chat/cloud-protocol/remote/input/model";
+import type { RemoteAttachment, RemoteConsentScope, RemotePermissionMode } from "@ai-chat/cloud-protocol/remote/input/model";
 import type { RemoteTurnOptions } from "@ai-chat/cloud-protocol/remote/model";
 import type { ChatPlatform } from "../../contracts";
 import { assertRemoteFile, type RemoteAttachmentPort } from "./upload";
@@ -18,7 +18,7 @@ export type DraftFile = { id: string; file: File; preview: string; sketch?: unkn
   state: "queued" | "uploading" | "ready" | "failed"; progress?: FileProgress; attachment?: RemoteAttachment; error?: string };
 export type DraftReference = { id: string; label: string; value: RemoteReference };
 export type ComposerDraft = { references: DraftReference[]; text: string; files: DraftFile[]; permissionMode: RemotePermissionMode | null; planMode: boolean; options: DraftModelChoice | null;
-  consent: RemoteFullAccessConsent | null; revision: number; dismissedPlans: string[]; creation?: DraftCreation | null; retainedText?: string | null;
+  consent: RemoteConsentScope | null; revision: number; dismissedPlans: string[]; creation?: DraftCreation | null; retainedText?: string | null;
   submittedPlan?: { commandId: string; planId: string; planMode: boolean } | null };
 const empty = (): ComposerDraft => ({ references: [], text: "", files: [], permissionMode: null, planMode: false, options: null, consent: null, revision: 0, dismissedPlans: [] });
 export class RemoteDraftStore {
@@ -75,10 +75,6 @@ export class RemoteDraftStore {
     this.submitted.set(commandId, { text, files: this.value.files.filter(file => ids.has(file.id)),
       references: this.value.references.filter(reference => keys.has(JSON.stringify(reference.value))) });
     this.accepted(text, attachments, references, false);
-  }
-  transfer(from: string, to: string) {
-    const original = this.submitted.get(from); if (!original) return;
-    this.submitted.set(to, original); this.submitted.delete(from);
   }
   confirmed(commandId: string) {
     this.submitted.get(commandId)?.files.forEach(file => this.release(file));

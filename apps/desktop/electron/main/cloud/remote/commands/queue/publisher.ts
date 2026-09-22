@@ -50,13 +50,13 @@ export class RemoteQueuePublisher {
       current(); const value = this.ports.ledger.remote.queue(chatId);
       const row = await this.ports.store.sync.read(connection.scope, { type: "remote-admission", chatId }); current();
       const head = row.type === "remote-admission" ? row.value?.execution?.head : null;
-      if (!head || head.executorDeviceId !== this.ports.deviceId) { this.published.delete(chatId); continue; }
-      const stamp = `${head.chat.incarnationId}/${head.executionEpoch}/${value.revision}`;
+      if (!head || head.ownerDeviceId !== this.ports.deviceId) { this.published.delete(chatId); continue; }
+      const stamp = `${head.chat.incarnationId}/${value.revision}`;
       if (this.published.get(chatId) === stamp) continue;
       const crypto = this.ports.crypto();
       await this.ports.transport.mutate("remote/queue:publish", { ...protocolHeader(this.ports.config), expectedUserId: connection.scope.userId,
         encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint }, connectionEpoch: connection.connectionEpoch,
-        chatId, incarnationId: head.chat.incarnationId, queue: { ...value, deviceId: this.ports.deviceId, executionEpoch: head.executionEpoch } }); current();
+        chatId, incarnationId: head.chat.incarnationId, queue: { ...value, deviceId: this.ports.deviceId } }); current();
       this.published.set(chatId, stamp);
     }
     this.observed = signature;

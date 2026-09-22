@@ -15,7 +15,7 @@ export function remoteActivity(head: CloudChatHead): { event: ChatActivityEvent;
   const terminal = turn.terminal === "done" ? "done" : turn.terminal === "cancelled" ? "cancelled" : turn.terminal ? "error" : undefined;
   const phase = terminal === "done" ? "completed" : terminal === "error" ? "failed" : terminal === "cancelled" ? "cancelled" :
     head.activity === "waiting" ? "approval" : head.activity === "saving" ? "finishing" : head.activity === "unknown" ? "recovery" : "running";
-  const identity = { incarnationId: head.chat.incarnationId, requestId: turn.turnId, generation: turn.executionEpoch + 1 };
+  const identity = { incarnationId: head.chat.incarnationId, requestId: turn.turnId, generation: 1 };
   return { event: { ...identity, conversationId: head.chat.id, running: !terminal, waiting: phase === "approval" || phase === "recovery",
     ...(terminal ? { terminal, terminalSeq: turn.sequence } : {}) },
     task: { ...identity, chatId: head.chat.id, backend: head.chat.agent, title: head.chat.title, context: null, startedAt: turn.startedAt, phase, subtaskCount: 0 } };
@@ -53,14 +53,14 @@ export class RemoteActivityObserver {
       const page = await this.ports.store.read(scope, { type: "confirmed-catalog", afterRevision: this.cursor, throughRevision });
       if (!current() || page.type !== "confirmed-catalog") return;
       for (const head of page.value.items) {
-        const id = head.chat.id, value = head.activityTurn?.executorDeviceId !== this.ports.deviceId && this.ports.exists(id) ? remoteActivity(head) : null;
+        const id = head.chat.id, value = head.activityTurn?.ownerDeviceId !== this.ports.deviceId && this.ports.exists(id) ? remoteActivity(head) : null;
         if (!value) { this.ports.activity.forgetRemote(id); this.active.delete(id); continue; }
         const terminalKey = JSON.stringify([head.chat.incarnationId, value.event.requestId, value.event.generation]);
         const initialHistory = !this.seen.has(id) && value.event.terminal && (head.activityTurn?.settledAt ?? 0) < (this.ports.now?.() ?? Date.now()) - 5_000;
         const oldTerminal = value.event.terminal && this.seen.get(id) === terminalKey && !this.active.has(id);
         this.seen.set(id, terminalKey);
         if (initialHistory || oldTerminal) continue;
-        value.event.sourceId = JSON.stringify([scope, head.activityTurn!.executorDeviceId]);
+        value.event.sourceId = JSON.stringify([scope, head.activityTurn!.ownerDeviceId]);
         this.ports.activity.publishRemote(value.event, value.task); this.active.add(id);
       }
       this.cursor = page.value.cursor ?? page.value.revision;

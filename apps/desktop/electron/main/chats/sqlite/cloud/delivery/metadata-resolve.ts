@@ -40,7 +40,7 @@ export function resolveMetadata(db: SqliteDatabase, writer: ChatRecordWriter, sc
       chatId: head.chat.id, incarnationId: head.chat.incarnationId, changes, basis: { kind: "revision", revision: head.chat.cloudRevision } });
     const row = db.prepare("SELECT core_revision FROM chats WHERE id=?").get(head.chat.id) as Row;
     enqueueSource(db, { id: operationId, scope, chatId: head.chat.id, entityKind: "chat", kind: "metadata-recovery",
-      revision: Number(row.core_revision) + 1, executionEpoch: null, payload: { chatId: head.chat.id, changes }, now });
+      revision: Number(row.core_revision) + 1, payload: { chatId: head.chat.id, changes }, now });
     db.prepare("UPDATE cloud_outbox SET metadata_intent_json=?,metadata_status='queued' WHERE id=?").run(canonicalJson(intent), operationId);
     db.prepare("UPDATE cloud_chat_metadata_state SET tail_operation_id=? WHERE chat_id=?").run(intent.operationId, head.chat.id);
     queued = operationId;

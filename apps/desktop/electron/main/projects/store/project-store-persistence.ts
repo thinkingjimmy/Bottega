@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the current v9 Project store schema and the folder Project publication.
- * [OUTPUT]: Provides the empty ProjectFile and the single folder-backed read/publish pair ProjectStore commits through.
+ * [OUTPUT]: Provides the empty ProjectFile, the single folder-backed read/publish pair ProjectStore commits through, and the machine-keyed directory hint write.
  * [POS]: Persistence owner beneath ProjectStore; the selected folder is the only generation, so nothing here chooses between mirrors
  */
 
@@ -14,6 +14,8 @@ export type ProjectStorePersistenceDependencies = {
   /** The selected folder. Null only before the first selection, where the folder reads as empty. */
   libraryRoot: () => string | null;
   folderCheckpoint?: (phase: "intent" | "content" | "commit") => Promise<void>;
+  /** This computer's key; absent disables same-machine directory hints entirely. */
+  machineIdHash?: () => Promise<string | null>;
 };
 
 export const emptyProjectFile = (): ProjectFile => ({
@@ -32,7 +34,7 @@ export class ProjectStorePersistence {
   readonly filePath: string;
 
   constructor(userData: string, dependencies: ProjectStorePersistenceDependencies) {
-    this.folder = new ProjectFolder(userData, dependencies.libraryRoot, dependencies.folderCheckpoint);
+    this.folder = new ProjectFolder(userData, dependencies.libraryRoot, dependencies.folderCheckpoint, dependencies.machineIdHash);
     this.filePath = this.folder.path;
   }
 
@@ -42,5 +44,9 @@ export class ProjectStorePersistence {
 
   publish(state: ProjectFile) {
     return this.folder.write(state);
+  }
+
+  rememberHint(projectId: string, dir: string) {
+    return this.folder.rememberHint(projectId, dir);
   }
 }

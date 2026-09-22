@@ -11,12 +11,12 @@ import { buildHandoff } from "../../../agent/history/builder";
 import { REVISION_STALE } from "../../../../../shared/chats-ipc";
 import { noticeMessageContent } from "../../../../../shared/chats-ipc";
 export async function freezeManualContext(prepared: PreparedManualTurn, dependencies: Pick<CoordinatorDependencies, "chats">,
-  sequence: { executorNoticeSeq?: number; noticeSeq?: number; userSeq: number }): Promise<PreparedManualTurn> {
+  sequence: { noticeSeq?: number; userSeq: number }): Promise<PreparedManualTurn> {
   const replay = prepared.persistence.kind === "adopt" ? prepared.persistence.input.replay : undefined;
   if (prepared.persistence.kind !== "append" && !replay) return prepared;
   const chatId = prepared.persistence.kind === "append" ? prepared.persistence.input.chatId : prepared.persistence.input.id;
   const revision = prepared.persistence.kind === "append" ? prepared.persistence.input.revise : undefined;
-  let nativeBeforeSeq = sequence.executorNoticeSeq ?? sequence.noticeSeq ?? sequence.userSeq;
+  let nativeBeforeSeq = sequence.noticeSeq ?? sequence.userSeq;
   if (revision) {
     const superseded = await dependencies.chats.store.getNativeMessage(chatId, {
       kind: "id", messageId: revision.supersedesUserMessageId,

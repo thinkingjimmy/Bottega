@@ -18,7 +18,7 @@ export function useCloudChatHead(chatId: string | undefined) {
       previous !== null && previous.sources === sources && previous.chatId === chatId && !previous.error &&
       previous.residence === next.residence && previous.deleted === next.deleted && JSON.stringify(previous.head) === JSON.stringify(next.head);
     const refresh = () => { const expected = ++revision;
-      void Promise.all([sources.chats.head(chatId, controller.signal), sources.executor.read(chatId)]).then(([head, execution]) => {
+      void Promise.all([sources.chats.head(chatId, controller.signal), sources.execution.read(chatId)]).then(([head, execution]) => {
         if (controller.signal.aborted || revision !== expected) return;
         const next = { head, residence: execution.residence, deleted: execution.reason === "deleted" };
         setValue(previous => same(previous, next) ? previous : { sources, chatId, ...next, error: false }); })

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on portable classification, confirmed heads and deterministic operation hashes.
- * [OUTPUT]: Defines executor-fenced lifecycle CAS operations, optional atomic Base promotion, explicit Project rescue and immutable receipts.
+ * [OUTPUT]: Defines owner-fenced lifecycle CAS operations, optional atomic Base promotion, explicit Project rescue and immutable receipts.
  * [POS]: Dedicated classification contract; local context, paths and grants never enter its payload.
  */
 import { z } from "zod";
@@ -14,7 +14,7 @@ const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const projectRescueSchema = z.object({ projectId: id }).strict();
 export const chatClassificationOperationSchema = z.object({
   lifecycleOperationId: id, chatId: id, incarnationId: id, candidateHash: hash, payloadHash: hash,
-  expectedRevision: rev.positive(), executionEpoch: rev.positive(),
+  expectedRevision: rev.positive(),
   previous: classificationSchema, next: classificationSchema,
   basePromotion: basePromotionSchema.optional(),
   projectRescue: projectRescueSchema.optional(),

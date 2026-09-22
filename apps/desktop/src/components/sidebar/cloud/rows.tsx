@@ -19,11 +19,12 @@ import { useCloudSidebar } from "./context";
 import type { ChatRowDropProps } from "../reorder/row-props";
 import { ChatDropIndicator, chatRowDropAttributes } from "../chat/chat-thread-item";
 
-export function ChatExecutorBadge({ chatId }: { chatId: string }) {
-  const { heads, devices, deviceId } = useCloudSidebar(), { i18n } = useAppTranslation();
+export function ChatOwnerBadge({ chatId }: { chatId: string }) {
+  const { heads, devices, deviceId, scope } = useCloudSidebar(), { i18n } = useAppTranslation();
   const head = heads.find(value => value.chat.id === chatId);
-  if (!head?.executorDeviceId || head.executorDeviceId === deviceId) return null;
-  return <SidebarRowTag>{devices.find(device => device.deviceId === head.executorDeviceId)?.name ?? executionCopy(i18n.language).computer}</SidebarRowTag>;
+  /* Inside a computer's own tab every row already belongs to it: naming it on each row says nothing. */
+  if (scope.viewed || !head?.ownerDeviceId || head.ownerDeviceId === deviceId) return null;
+  return <SidebarRowTag>{devices.find(device => device.deviceId === head.ownerDeviceId)?.name ?? executionCopy(i18n.language).computer}</SidebarRowTag>;
 }
 export function CloudChatRow({ head, facts, project = false, badge, reorder }: { head: CloudChatHead; facts?: ChatCatalogFacts; project?: boolean; badge?: string;
   /** Mirrors define drop slots but are never dragged: no local record can carry the key. */
@@ -39,7 +40,7 @@ export function CloudChatRow({ head, facts, project = false, badge, reorder }: {
         ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-label={activity === "saving" ? copy.savingReply : copy.running} /> : activity === "unknown"
           ? <Clock3 className="size-4" aria-label={copy.unknown} /> : activity === "done" ? <span className="size-2 rounded-full bg-blue-500" aria-label={copy.completed} /> : activity === "failed" ? <CircleAlert className="size-4 text-yellow-500" aria-label={copy.executionFailed} /> : <AgentBackendIcon backend={head.chat.agent} className="size-4" />}</SidebarRowMark>
       <span className="min-w-0 flex-1 truncate">{(facts ? facts.title : head.chat.title) ?? t("common.chats")}</span>
-      {badge && <SidebarRowTag>{badge}</SidebarRowTag>}<ChatExecutorBadge chatId={head.chat.id} />
+      {badge && <SidebarRowTag>{badge}</SidebarRowTag>}<ChatOwnerBadge chatId={head.chat.id} />
     </Link>
   </Button></Item>;
 }

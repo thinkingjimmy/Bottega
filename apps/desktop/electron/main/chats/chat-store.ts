@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node crypto, ProductFailure, chat lifecycle/projection collaborators, device identity, the typed SQLite worker client, and the shared ChatStoreState cell with read, history, fork, transition, and persistence collaborators
- * [OUTPUT]: Provides receipt-gated Chat APIs with frozen execution admission, readonly-safe Project detachment, atomic device-boundary publication and App transcript retention, opened through the two-phase open()/adopt() startup split that initialize() composes.
+ * [OUTPUT]: Provides receipt-gated Chat APIs with frozen execution admission, readonly-safe Project detachment and App transcript retention, opened through the two-phase open()/adopt() startup split that initialize() composes.
  * [POS]: Main-process Chat domain queue and metadata owner; durable writes, fork construction, pure transitions, read projections, and import/continuation sagas live in focused composed siblings
  */
 import { patchChatOptions, prepareSwitchCommand, switchChatAgent } from "./store/agent-switch/store";
@@ -240,7 +240,7 @@ export class ChatStore {
     chatId: string,
     input: ChatMessage | UnsequencedChatMessage,
     reservedSeq?: number,
-    executorCommit?: import("./sqlite/cloud/execution/commit").ExecutorCommit
+    ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit
   ) {
     return this.state.queue.enqueue(async () => {
       assertChatId(chatId);
@@ -253,11 +253,9 @@ export class ChatStore {
           ? input.seq
           : (reservedSeq ?? existing?.seq ?? current.nextSeq);
       const message = { ...input, seq } as ChatMessage;
-      const notice = !existing ? executorCommit?.notice : undefined;
-      const prefix = notice ? applyTurnCommit(current, { message: notice }).record : current;
       const result = applyTurnCommit(
         {
-          ...prefix,
+          ...current,
           nextSeq: Math.max(current.nextSeq, seq + 1),
         },
         { message }
@@ -270,14 +268,11 @@ export class ChatStore {
           current,
           record,
           result.storedMessage!,
-          executorCommit
+          ownerCommit
         );
         this.state.metadata.set(chatId, metadataOf(record));
       }
-      const appended =
-        result.appended && result.storedMessage
-          ? [...(notice ? [notice] : []), result.storedMessage]
-          : [];
+      const appended = result.appended && result.storedMessage ? [result.storedMessage] : [];
       const revision = appended.length
         ? record.chatMessageRevision
         : this.state.revisionOf(chatId);
@@ -304,7 +299,7 @@ export class ChatStore {
     };
     message: UnsequencedUserMessage;
     reservedSeq?: number;
-    executorCommit?: import("./sqlite/cloud/execution/commit").ExecutorCommit;
+    ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit;
     intentId?: string;
   }) {
     return this.state.queue.enqueue(async () => {
@@ -320,7 +315,7 @@ export class ChatStore {
         } satisfies ChatMessageMutation;
       }
       const { record, message } = transition;
-      await this.persistRecord(record, input.executorCommit);
+      await this.persistRecord(record, input.ownerCommit);
       this.state.metadata.set(input.chatId, metadataOf(record));
       const revision = record.chatMessageRevision;
       this.state.messageRevisions.set(input.chatId, revision);
@@ -734,9 +729,9 @@ export class ChatStore {
     });
   }
 
-  private async persistRecord(record: ChatRecord, executorCommit?: import("./sqlite/cloud/execution/commit").ExecutorCommit) {
+  private async persistRecord(record: ChatRecord, ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit) {
     return persistRecordToStorage({
-      executorCommit,
+      ownerCommit,
       record,
       database: this.state.database,
       deviceId: this.state.deviceId,
@@ -750,10 +745,10 @@ export class ChatStore {
     current: ChatRecord,
     record: ChatRecord,
     message: ChatMessage,
-    executorCommit?: import("./sqlite/cloud/execution/commit").ExecutorCommit
+    ownerCommit?: import("./sqlite/cloud/execution/commit").OwnerCommit
   ) {
     return persistAppendedMessageToStorage({
-      executorCommit,
+      ownerCommit,
       current,
       record,
       message,

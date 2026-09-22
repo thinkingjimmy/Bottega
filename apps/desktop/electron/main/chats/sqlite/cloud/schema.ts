@@ -38,7 +38,7 @@ CREATE TABLE cloud_outbox (
   id TEXT PRIMARY KEY, environment TEXT NOT NULL, user_id TEXT NOT NULL,
   entity_kind TEXT NOT NULL CHECK(entity_kind IN ('chat','message','turn','attachment','generation','home-snapshot','tombstone')),
   entity_id TEXT NOT NULL, kind TEXT NOT NULL, seq_or_revision INTEGER NOT NULL,
-  execution_epoch INTEGER, payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),
+  payload_json TEXT NOT NULL CHECK(json_valid(payload_json)),
   payload_digest TEXT NOT NULL, created_at INTEGER NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0), last_error TEXT,
   metadata_intent_json TEXT CHECK(metadata_intent_json IS NULL OR json_valid(metadata_intent_json)),
@@ -65,7 +65,7 @@ CREATE TABLE cloud_outbox_checkpoints (
 ) STRICT;
 CREATE TABLE cloud_turn_receipts (
   environment TEXT NOT NULL, user_id TEXT NOT NULL, chat_id TEXT NOT NULL, turn_id TEXT NOT NULL,
-  execution_epoch INTEGER NOT NULL, settlement_state TEXT NOT NULL CHECK(settlement_state IN ('open','sealing','settled')),
+  settlement_state TEXT NOT NULL CHECK(settlement_state IN ('open','sealing','settled')),
   receipt_json TEXT NOT NULL CHECK(json_valid(receipt_json)), updated_at INTEGER NOT NULL,
   PRIMARY KEY(environment,user_id,turn_id)
 ) STRICT;

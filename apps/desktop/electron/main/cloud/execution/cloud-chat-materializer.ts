@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on confirmed execution identity, the existing Home/lifecycle/Store owners and private file transport.
  * [OUTPUT]: Prepares explicitly claimed native/imported Chats and acknowledges ready after canonical content and local files are verified.
- * [POS]: Shared local continuation driver; it never chooses an executor, starts an Agent or requires the prior backend to be installed.
+ * [POS]: Shared local continuation driver; it never chooses an owner, starts an Agent or requires the prior backend to be installed.
  */
 import { setTimeout as delay } from "node:timers/promises";
 import { canonicalJson, protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -35,9 +35,9 @@ export class CloudChatMaterializer {
   constructor(private input: Ports) { const crypto = input.crypto(); this.header = { ...protocolHeader(input.config), expectedUserId: input.scope.userId,
     encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint } }; }
   private active() { this.input.signal.throwIfAborted(); this.input.current(); }
-  private sameExecutor(expected: CloudChatHead, current: CloudChatHead) {
-    if (current.chat.id !== expected.chat.id || current.chat.incarnationId !== expected.chat.incarnationId || current.executorDeviceId !== this.input.deviceId ||
-      current.executionEpoch !== expected.executionEpoch || current.archivedAt !== null || current.chat.classification.conversationKind !== "ordinary" || current.kind === "external-readonly") throw new Error("EXECUTION_IDENTITY_CHANGED");
+  private sameOwner(expected: CloudChatHead, current: CloudChatHead) {
+    if (current.chat.id !== expected.chat.id || current.chat.incarnationId !== expected.chat.incarnationId || current.ownerDeviceId !== this.input.deviceId ||
+      current.archivedAt !== null || current.chat.classification.conversationKind !== "ordinary" || current.kind === "external-readonly") throw new Error("EXECUTION_IDENTITY_CHANGED");
   }
   private async accept(head: CloudChatHead) {
     this.active(); await this.input.chats.sync.mutate(this.input.scope, hashChatContent(["execution-head", this.input.scope, head]), { type: "put-mirror-head", head });
@@ -45,13 +45,13 @@ export class CloudChatMaterializer {
   }
   private async fresh(expected: CloudChatHead) {
     this.active(); const wire = await this.input.transport.query("chats/metadata:head", { ...this.header, chatId: expected.chat.id }); this.active();
-    if (!wire || wire.remoteCreation) throw new Error("EXECUTION_IDENTITY_CHANGED"); const head = await openChatHeadForRequest(wire, expected.chat.id, this.input.crypto(), this.input.signal); this.active(); this.sameExecutor(expected, head); await this.accept(head); return head;
+    if (!wire || wire.remoteCreation) throw new Error("EXECUTION_IDENTITY_CHANGED"); const head = await openChatHeadForRequest(wire, expected.chat.id, this.input.crypto(), this.input.signal); this.active(); this.sameOwner(expected, head); await this.accept(head); return head;
   }
   private async current(expected: CloudChatHead) {
     this.active(); this.input.assertIdle(expected.chat.id);
     const result = await this.input.chats.sync.read(this.input.scope, { type: "local-execution", chatId: expected.chat.id }); this.active();
     if (result.type !== "local-execution" || !result.value || result.value.deleted) throw new Error("EXECUTION_IDENTITY_CHANGED");
-    const head = result.value.head; this.sameExecutor(expected, head);
+    const head = result.value.head; this.sameOwner(expected, head);
     if (head.bodyRevision !== expected.bodyRevision || head.homeSnapshotId !== expected.homeSnapshotId || head.openTurnId ||
       head.chat.cloudRevision !== expected.chat.cloudRevision) throw new Error("EXECUTION_CONTENT_CHANGED");
   }
@@ -93,7 +93,7 @@ export class CloudChatMaterializer {
       if (target.type !== "turn-target" || !target.value) throw new Error("EXECUTION_CONTENT_CHANGED");
       const action = { type: "install-execution-prefix" as const, chatId: head.chat.id, incarnationId: head.chat.incarnationId,
         requireConverged: Boolean(this.input.recovery),
-        executionEpoch: head.executionEpoch, bodyRevision: head.bodyRevision, cloudRevision: head.chat.cloudRevision,
+        bodyRevision: head.bodyRevision, cloudRevision: head.chat.cloudRevision,
         expectedMessageRevision: target.value.messageRevision, expectedOutboxDigest: target.value.outboxDigest, home: evidence.receipt };
       await this.current(head); checkProject();
       await chats.sync.mutate(scope, hashChatContent(["execution-prefix", scope, action]), action);
@@ -108,10 +108,10 @@ export class CloudChatMaterializer {
     if (latest.bodyRevision !== head.bodyRevision || latest.homeSnapshotId !== head.homeSnapshotId || latest.chat.cloudRevision !== head.chat.cloudRevision) throw new Error("EXECUTION_CONTENT_CHANGED");
     await this.input.projectGate.runExclusive(async () => { checkProject(); await this.current(head); });
     this.active();
-    const readyWire = await this.input.transport.mutate("turns/executor:prepare", { ...this.header, chatId: head.chat.id, incarnationId: head.chat.incarnationId,
-      executionEpoch: head.executionEpoch, bodyRevision: head.bodyRevision, homeSnapshotId: head.homeSnapshotId, state: "ready", reason: null });
+    const readyWire = await this.input.transport.mutate("turns/owner:prepare", { ...this.header, chatId: head.chat.id, incarnationId: head.chat.incarnationId,
+      bodyRevision: head.bodyRevision, homeSnapshotId: head.homeSnapshotId, state: "ready", reason: null });
     const ready = await openChatHeadForRequest(readyWire, head.chat.id, this.input.crypto(), signal); this.active();
-    await this.input.projectGate.runExclusive(async () => { this.active(); checkProject(); this.sameExecutor(head, ready); await this.accept(ready); });
+    await this.input.projectGate.runExclusive(async () => { this.active(); checkProject(); this.sameOwner(head, ready); await this.accept(ready); });
     this.input.progress("ready"); return { head: ready, home };
   }
 }

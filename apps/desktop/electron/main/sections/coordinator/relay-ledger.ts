@@ -403,7 +403,7 @@ export class RelayLedger {
     );
   }
 
-  bindManualSequences(intentId: string, userSeq: number, assistantSeq: number, notices: { noticeSeq?: number; executorNoticeSeq?: number } = {}, prepared?: import("./admission/prepared-manual-turn").PreparedManualTurn) {
+  bindManualSequences(intentId: string, userSeq: number, assistantSeq: number, notices: { noticeSeq?: number } = {}, prepared?: import("./admission/prepared-manual-turn").PreparedManualTurn) {
     return this.mutate((state) =>
       bindManualSequences(state, intentId, userSeq, assistantSeq, notices, prepared)
     );

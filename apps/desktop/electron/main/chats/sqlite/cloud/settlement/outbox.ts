@@ -25,17 +25,17 @@ export function turnOutboxDigest(db: SqliteDatabase, scope: SyncScope, chatId: s
 }
 export function replacementSuccessorThrough(db: SqliteDatabase, scope: SyncScope, receipt: CloudTurnReceipt, deviceId: string, messages: ChatMessage[]) {
   let through = receipt.assistantSeq;
-  if (receipt.sealReason !== "replaced" || receipt.executorDeviceId !== deviceId) return through;
+  if (receipt.sealReason !== "replaced" || receipt.ownerDeviceId !== deviceId) return through;
   const head = readMetadataState(db, scope, receipt.chatId).head;
-  if (!head || head.executorDeviceId !== deviceId || head.executionEpoch !== receipt.executionEpoch || head.chat.incarnationId !== receipt.incarnationId) return through;
+  if (!head || head.ownerDeviceId !== deviceId || head.chat.incarnationId !== receipt.incarnationId) return through;
   const bySeq = new Map(messages.map(message => [message.seq, message]));
   const rows = readChatOutbox(db, scope, receipt.chatId).filter(row => row.kind === "live-turn").sort((a, b) => Number(a.seq_or_revision) - Number(b.seq_or_revision));
   for (const row of rows) {
     const manifest = JSON.parse(String(row.payload_json)), admission = localTurnAdmissionSchema.parse(readRetainedSource(db, manifest.sources[0]));
     if (admission.sequences.assistantSeq <= through) continue;
-    const first = admission.sequences.executorNoticeSeq ?? admission.sequences.noticeSeq ?? admission.sequences.userSeq;
+    const first = admission.sequences.noticeSeq ?? admission.sequences.userSeq;
     if (first !== through + 1 || admission.chat.id !== receipt.chatId || admission.chat.incarnationId !== receipt.incarnationId ||
-        admission.executorDeviceId !== deviceId || admission.executionEpoch !== receipt.executionEpoch || row.execution_epoch !== receipt.executionEpoch) break;
+        admission.ownerDeviceId !== deviceId) break;
     if ([...admission.notices, admission.user].some(message => canonicalJson(bySeq.get(message.seq) ?? null) !== canonicalJson(message))) break;
     const assistant = bySeq.get(admission.sequences.assistantSeq);
     if (assistant && (assistant.role !== "assistant" || assistant.id !== admission.assistantMessageId || assistant.turnId !== admission.turnId || assistant.backend !== admission.options.backend)) break;

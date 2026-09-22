@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the sole ChatStore outbox, frozen source/checkpoint readers and scoped formal cloud/file ports.
- * [OUTPUT]: Publishes frozen snapshots, recovers incomplete archived/native content with atomic identity claims and explicit-conflict rebasing, and adopts completed cloud content.
+ * [OUTPUT]: Publishes frozen snapshots, reporting the plaintext bytes of each message this attempt delivers, recovers incomplete archived/native content with one atomic identity claim, and adopts completed cloud content.
  * [POS]: Main Chat uploader; it does not acknowledge imports/Home or create another business queue.
  */
 import { canonicalJson, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
@@ -20,9 +20,11 @@ import { readNativeSnapshot, type ChatOutboxItem, type ChatSyncStore } from "./s
 import { projectNativeBody, type ChatBodyBytePorts } from "./bodies";
 import { stageChatBody } from "./body-publisher";
 type Ports = { crypto(): ChatCipherPort; store: ChatSyncStore; scope: SyncScope; config: CloudBuildConfig; deviceId: string;
-  transport: Pick<AccountTransport, "query" | "mutate">; bytes: ChatBodyBytePorts };
+  transport: Pick<AccountTransport, "query" | "mutate">; bytes: ChatBodyBytePorts;
+  /** Plaintext bytes of one staged message, as they are accepted; the caller owns whatever total it measures them against. */
+  uploaded?(bytes: number): void };
 // The page bound in chatInitialPageSchema; partial publication has to stay observable, so the stride is the wire page size.
-const PAGE_HASHES = 16;
+const PAGE_HASHES = 64;
 type ChatIdentity = Awaited<ReturnType<NativeChatInitialization["readIdentity"]>>;
 export class NativeChatInitialization {
   private readonly encrypted: EncryptedChatMetadata;
@@ -89,32 +91,25 @@ export class NativeChatInitialization {
     }
     if (!metadata.receipt.head) throw new Error("CHAT_CREATION_CONFLICT");
     const head = metadata.receipt.head;
-    if (head.executorDeviceId !== this.ports.deviceId || head.chat.incarnationId !== snapshot.chat.incarnationId) throw new Error("CHAT_CREATION_AUTHORITY_CHANGED");
+    if (head.ownerDeviceId !== this.ports.deviceId || head.chat.incarnationId !== snapshot.chat.incarnationId) throw new Error("CHAT_CREATION_AUTHORITY_CHANGED");
     const current = await this.encrypted.head(snapshot.chat.id, signal);
-    if (current && (current.executionEpoch !== head.executionEpoch || current.executorDeviceId !== this.ports.deviceId)) return { snapshot, checkpoints, head: current, adopted: true };
+    if (current && current.ownerDeviceId !== this.ports.deviceId) return { snapshot, checkpoints, head: current, adopted: true };
     return { snapshot, checkpoints, head, adopted: false };
   }
   private async recoverHead(item: ChatOutboxItem, checkpoints: ChatDeliveryCheckpoints, current: CloudChatHead, signal: AbortSignal) {
     const basis = await checkpoints.get("native-recovery");
     if (basis?.kind !== "native-recovery") throw new Error("NATIVE_RECOVERY_REQUIRED");
-    let expectedEpoch = basis.head.executionEpoch;
-    for (let attempt = 0; attempt < 50; attempt++) {
-      let confirmed = await checkpoints.get(`native-recovery-head:${expectedEpoch}`);
-      if (!confirmed) {
-        const wire = await this.ports.transport.mutate("chats/body/recovery:claim", { ...this.header, chatId: basis.head.chat.id,
-          incarnationId: basis.head.chat.incarnationId, expectedEpoch, operationId: hashChatContent(["recover-initial", item.id, expectedEpoch]) });
-        const head = await openChatHead(wire.head, this.ports.crypto(), signal);
-        if (head.chat.id !== basis.head.chat.id || head.chat.incarnationId !== basis.head.chat.incarnationId ||
-          wire.status === "claimed" && head.executorDeviceId !== this.ports.deviceId) throw new Error("NATIVE_RECOVERY_HEAD_CHANGED");
-        confirmed = await checkpoints.save({ kind: "native-recovery-head", expectedEpoch, ...wire, head });
-      }
-      if (confirmed.kind !== "native-recovery-head") throw new Error("NATIVE_RECOVERY_REQUIRED");
-      if (confirmed.status === "conflict") { expectedEpoch = confirmed.head.executionEpoch; continue; }
-      const head = current.executionEpoch > confirmed.head.executionEpoch ? current : confirmed.head;
-      return { head, adopted: confirmed.status === "adopted" || head.executionEpoch !== confirmed.head.executionEpoch,
-        initialization: confirmed.initialization };
+    let confirmed = await checkpoints.get("native-recovery-head");
+    if (!confirmed) {
+      const wire = await this.ports.transport.mutate("chats/body/recovery:claim", { ...this.header, chatId: basis.head.chat.id,
+        incarnationId: basis.head.chat.incarnationId, operationId: hashChatContent(["recover-initial", item.id]) });
+      const head = await openChatHead(wire.head, this.ports.crypto(), signal);
+      if (head.chat.id !== basis.head.chat.id || head.chat.incarnationId !== basis.head.chat.incarnationId ||
+        wire.status === "claimed" && head.ownerDeviceId !== this.ports.deviceId) throw new Error("NATIVE_RECOVERY_HEAD_CHANGED");
+      confirmed = await checkpoints.save({ kind: "native-recovery-head", ...wire, head });
     }
-    throw new Error("NATIVE_RECOVERY_CONTENTION");
+    if (confirmed.kind !== "native-recovery-head") throw new Error("NATIVE_RECOVERY_REQUIRED");
+    return { head: confirmed.head, adopted: confirmed.status === "adopted", initialization: confirmed.initialization };
   }
   async recoveredHead(item: ChatOutboxItem) {
     const identity = await this.createIdentity(item);
@@ -122,10 +117,10 @@ export class NativeChatInitialization {
   }
   private async publishSnapshot(item: ChatOutboxItem) {
     const { transport, bytes } = this.ports, signal = this.controller.signal;
-    const source = await this.createIdentity(item), { snapshot, checkpoints, head, adopted } = source;
+    const source = await this.createIdentity(item), { snapshot, checkpoints, adopted } = source;
     if (adopted) return;
     if (await checkpoints.get("native-complete")) return;
-    const identity = { chatId: snapshot.chat.id, incarnationId: snapshot.chat.incarnationId, executionEpoch: head.executionEpoch };
+    const identity = { chatId: snapshot.chat.id, incarnationId: snapshot.chat.incarnationId };
     const hashes: string[] = [], ciphertextHashes: string[] = [];
     if (Object.keys(snapshot.subagents).length && !snapshot.messages.some(message => message.role === "assistant")) throw new Error("CHAT_SUBAGENT_PARENT_UNAVAILABLE");
     for (const message of snapshot.messages) {
@@ -140,6 +135,7 @@ export class NativeChatInitialization {
       const encrypted = await stageChatBody({ checkpoints, body: checkpoint.body, bodyHash: checkpoint.bodyHash, identity, outboxId: item.id,
         bytes, header: this.header, signal, transport });
       hashes.push(encrypted.plaintextHash); ciphertextHashes.push(encrypted.ciphertextHash);
+      if (!encrypted.reused) this.ports.uploaded?.(encrypted.plaintextBytes);
     }
     const manifest = chatInitialManifestSchema.parse({ ...identity, manifestId: hashChatContent(["chat-native", item.id]), messageCount: hashes.length,
       throughSeq: snapshot.messages.at(-1)?.seq ?? 0, reservedThroughSeq: snapshot.nextSeq - 1, lastCommittedUserSeq: snapshot.lastCommittedUserSeq,
@@ -160,8 +156,7 @@ export class NativeChatInitialization {
           if (!("recovery" in source) || !String(error).includes("chat-initial-identity-conflict")) throw error;
           const current = await this.encrypted.head(identity.chatId, signal);
           const body = await transport.query("chats/body/reads:head", { ...this.header, chatId: identity.chatId });
-          if (!current || current.executorDeviceId !== this.ports.deviceId || current.executionEpoch !== identity.executionEpoch ||
-            body.incarnationId !== identity.incarnationId || body.state === "ready") throw error;
+          if (!current || current.ownerDeviceId !== this.ports.deviceId ||             body.incarnationId !== identity.incarnationId || body.state === "ready") throw error;
           replacement = body.initialization ?? null;
         }
       }

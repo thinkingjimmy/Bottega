@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on closed protocol identities, portable Agent options and canonical content hashing.
- * [OUTPUT]: Provides bounded remote commands (including catalog-backed model, effort and speed choices), execution evidence, target capabilities with each Agent's model catalog, and content-free deleted creation receipts.
+ * [OUTPUT]: Provides bounded remote commands (including catalog-backed model, effort and speed choices), execution evidence carrying the device that produced it, the shared interaction-source identity, `handledElsewhere`, target capabilities with each Agent's model catalog, and content-free deleted creation receipts.
  * [POS]: Shared remote control boundary; local sessions, paths, grants and execution recovery have no command representation.
  */
 import { queueControlSchemas } from "./queue";
@@ -21,7 +21,7 @@ export const REMOTE_LIMITS = Object.freeze({ pageRows: 20, textBytes: MESSAGE_BY
   requestWindowMs: 60_000, workRequestsPerDevice: 60, controlRequestsPerDevice: 120,
   unfinishedWorkPerTarget: 32, unfinishedControlsPerTarget: 16 });
 export const remoteReasonSchema = z.enum(["remote-disabled", "protocol-mismatch", "device-offline", "device-revoked", "source-revoked",
-  "executor-changed", "chat-incarnation-mismatch", "chat-not-executable", "execution-not-ready", "project-path-unbound", "project-unavailable",
+  "not-owner", "chat-incarnation-mismatch", "chat-not-executable", "execution-not-ready", "project-path-unbound", "project-unavailable",
   "chat-home-unavailable", "permission-required", "agent-missing", "agent-outdated", "auth-required", "agent-unavailable", "agent-revision-changed", "fact-revision-changed", "local-facts-pending",
   "request-not-active", "interaction-expired", "command-expired", "connection-changed", "capacity-exceeded", "admission-failed", "execution-failed", "outcome-unknown",
   "target-changed", "agent-changed", "already-dispatched", "body-unavailable", "identity-changed", "attachment-unavailable", "attachment-invalid", "input-unsupported", "fork-failed", "revision-stale", "revision-busy", "reference-target-changed", "workspace-changed", "workspace-file-unavailable", "workspace-text-unavailable", "skill-unavailable", "queue-changed"]);
@@ -44,7 +44,7 @@ export const remotePayloadSchema = z.discriminatedUnion("kind", [
     attachments: remoteAttachmentsSchema.optional(), references: remoteReferencesSchema.optional(), permissionMode: remotePermissionModeSchema.optional(), planMode: z.boolean().optional(),
     fullAccessConsent: remoteFullAccessConsentSchema.optional(),
     agentSelection: z.object({ backend: agentBackendIdSchema, expectedFactRevision: rev }).strict().optional(),
-    // A model chosen from the executor's published catalog; the executor applies and persists it like a native selection.
+    // A model chosen from the owner's published catalog; the owner applies and persists it like a native selection.
     options: remoteTurnOptionsSchema.optional() }).strict(),
   ...queueControlSchemas,
   z.object({ kind: z.literal("list-workspace-files"), query: z.string().max(256) }).strict(),
@@ -62,7 +62,7 @@ export const remotePayloadSchema = z.discriminatedUnion("kind", [
 ]).refine(value => !("revision" in value) && value.kind !== "edit-message" || (value.kind === "edit-message") === Boolean("revision" in value && value.revision), "remote-revision-required")
 .refine(value => !("text" in value) || Boolean(value.text.trim() || value.attachments?.length || value.references?.length), "remote-input-empty");
 export const remoteCommandInputSchema = z.object({ commandId: id, chatId: id, incarnationId: id, targetDeviceId: id,
-  executionEpoch: rev, intent: z.object({ baselineAgent: agentBackendIdSchema }).strict().optional(), payload: remotePayloadSchema }).strict();
+  intent: z.object({ baselineAgent: agentBackendIdSchema }).strict().optional(), payload: remotePayloadSchema }).strict();
 export type RemoteCommandInput = z.infer<typeof remoteCommandInputSchema>;
 export const isRemoteTurnKind = (kind: string) => ["start-turn", "edit-message", "retry-authentication"].includes(kind);
 export function isRemoteTurnPayload(payload: RemoteCommandInput["payload"]): payload is Extract<RemoteCommandInput["payload"], { expectedAgentRevision: number }> {
@@ -77,8 +77,8 @@ export function hashRemoteCommand(value: Omit<RemoteCommand, "payloadHash" | "cr
   return hashChatContent({ ...remoteIntentIdentity(value), environmentId, deploymentId, protocolVersion, sourceDeviceId });
 }
 export function remoteIntentIdentity(value: RemoteCommandInput) {
-  const { commandId, chatId, incarnationId, targetDeviceId, executionEpoch, intent, payload } = value;
-  if (!intent || payload.kind !== "start-turn") return { commandId, chatId, incarnationId, targetDeviceId, executionEpoch, payload };
+  const { commandId, chatId, incarnationId, targetDeviceId, intent, payload } = value;
+  if (!intent || payload.kind !== "start-turn") return { commandId, chatId, incarnationId, targetDeviceId, payload };
   const { expectedAgentRevision: _revision, agentSelection, fullAccessConsent, ...choice } = payload;
   return { commandId, chatId, incarnationId, targetDeviceId, intent, payload: { ...choice,
     ...(agentSelection ? { agentSelection: { backend: agentSelection.backend } } : {}),
@@ -87,7 +87,12 @@ export function remoteIntentIdentity(value: RemoteCommandInput) {
 }
 const remoteAdmissionSchema = z.object({ intentId: id, submissionHash: sha256Schema, requestId: itemId, userMessageId: id.nullable() }).strict();
 export type RemoteAdmission = z.infer<typeof remoteAdmissionSchema>;
-export const remoteStateSchema = z.enum(["awaiting-preparation", "awaiting-executor", "delivered", "pending", "claimed", "accepted", "running", "done", "cancelled", "error", "outcome-unknown", "expired", "rejected"]);
+/* The device that carried out an interaction. One definition: `turns/live` re-exports it for live results, and a
+   command receipt carries it so a second controller's answer can name the computer that got there first. */
+export const interactionSourceSchema = z.object({ sourceDeviceId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+  sourceDeviceName: z.string().min(1).max(120) }).strict();
+export type InteractionSource = z.infer<typeof interactionSourceSchema>;
+export const remoteStateSchema = z.enum(["awaiting-preparation", "delivered", "pending", "claimed", "accepted", "running", "done", "cancelled", "error", "outcome-unknown", "expired", "rejected"]);
 export const remoteBlockedBySchema = z.enum(["relay-queue", "chain-paused", "app-transition"]);
 export const remoteOutputSchema = z.discriminatedUnion("kind", [
   remoteWorkspaceOutputSchema,
@@ -105,18 +110,27 @@ export const remoteOutputSchema = z.discriminatedUnion("kind", [
 export type RemoteOutput = z.infer<typeof remoteOutputSchema>;
 export const remoteReceiptSchema = z.object({ command: remoteCommandSchema, state: remoteStateSchema,
   admission: remoteAdmissionSchema.nullable(), blockedBy: remoteBlockedBySchema.nullable(), withdrawalRequested: z.boolean().optional(), queueSequence: rev.optional(), reason: remoteReasonSchema.nullable(),
-  result: z.enum(["applied", "already-resolved"]).nullable(), output: remoteOutputSchema.optional(), claimedAt: rev.nullable(), acceptedAt: rev.nullable(), updatedAt: rev }).strict();
+  result: z.enum(["applied", "already-resolved"]).nullable(), resolvedBy: interactionSourceSchema.optional(), output: remoteOutputSchema.optional(), claimedAt: rev.nullable(), acceptedAt: rev.nullable(), updatedAt: rev }).strict();
 export type RemoteCommandReceipt = z.infer<typeof remoteReceiptSchema>;
 export const remoteReportSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("claimed"), noAdmission: z.literal(true) }).strict(),
   z.object({ state: z.literal("accepted"), admission: remoteAdmissionSchema, blockedBy: remoteBlockedBySchema.nullable() }).strict(),
   z.object({ state: z.literal("running"), admission: remoteAdmissionSchema }).strict(),
   z.object({ state: z.enum(["done", "cancelled", "error"]), admission: remoteAdmissionSchema,
-    result: z.enum(["applied", "already-resolved"]).nullable(), output: remoteOutputSchema.optional(), reason: remoteReasonSchema.nullable() }).strict(),
+    result: z.enum(["applied", "already-resolved"]).nullable(), resolvedBy: interactionSourceSchema.optional(),
+    output: remoteOutputSchema.optional(), reason: remoteReasonSchema.nullable() }).strict(),
   z.object({ state: z.literal("outcome-unknown"), admission: remoteAdmissionSchema.nullable(), reason: remoteReasonSchema }).strict(),
   z.object({ state: z.enum(["expired", "rejected"]), noAdmission: z.literal(true), reason: remoteReasonSchema }).strict(),
 ]);
 export type RemoteCommandReport = z.infer<typeof remoteReportSchema>;
+export type RemoteHandledElsewhere = { kind: "handled-elsewhere"; deviceName: string | null };
+/**
+ * The typed answer a second controller gets when the owner had already carried this command out for someone else:
+ * an outcome with a name on it, never a failure. The name is absent only for evidence recovered without one.
+ */
+export function handledElsewhere(receipt: Pick<RemoteCommandReceipt, "result" | "resolvedBy"> | null | undefined): RemoteHandledElsewhere | null {
+  return receipt?.result === "already-resolved" ? { kind: "handled-elsewhere", deviceName: receipt.resolvedBy?.sourceDeviceName ?? null } : null;
+}
 const remoteAgentCapabilitySchema = z.object({ backend: agentBackendIdSchema, available: z.boolean(), reason: remoteReasonSchema.nullable(),
   options: turnOptionsSchema.nullable(), capabilities: remoteComposerCapabilitiesSchema.optional(), models: remoteModelsSchema.optional(), quota: agentUsageLimitsSchema.optional() }).strict().refine(value => (!value.available || value.options !== null) &&
   (value.options === null || value.backend === value.options.backend), "remote-agent-options-invalid");
@@ -130,9 +144,9 @@ export const remoteTargetSchema = z.object({ deviceId: id, name: deviceNameSchem
   homeBytes: rev, homeState: cloudChatHeadSchema.shape.homeState }).strict();
 export type RemoteTarget = z.infer<typeof remoteTargetSchema>;
 export const remoteTargetsSchema = z.object({ items: z.array(remoteTargetSchema).max(REMOTE_LIMITS.pageRows), cursor: z.string().nullable(), complete: z.boolean(),
-  sourceDeviceId: id, sourceProtocolVersion: rev, remoteControlEnabled: z.boolean(), preferredDeviceId: id.nullable(), serverTime: rev }).strict();
+  sourceDeviceId: id, sourceProtocolVersion: rev, remoteControlEnabled: z.boolean(), serverTime: rev }).strict();
 export type RemoteTargets = z.infer<typeof remoteTargetsSchema>;
 export const remoteCreationReceiptSchema = z.object({ createOperationId: id, payloadHash: sha256Schema.nullable(), chatId: id, incarnationId: id,
-  executorDeviceId: id, executionEpoch: rev, createdAt: rev, deleted: z.boolean() }).strict()
+  ownerDeviceId: id, createdAt: rev, deleted: z.boolean() }).strict()
   .refine(value => value.deleted === (value.payloadHash === null));
 export type RemoteCreationReceipt = z.infer<typeof remoteCreationReceiptSchema>;

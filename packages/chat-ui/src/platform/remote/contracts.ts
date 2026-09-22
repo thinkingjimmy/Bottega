@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on closed cloud command, target, claim and creation DTOs and the shared unsubscribe type.
- * [OUTPUT]: Defines complete remote command, creation and attachment staging ports across Web and desktop.
+ * [INPUT]: Depends on closed cloud command, target, preparation and creation DTOs and the shared unsubscribe type.
+ * [OUTPUT]: Defines complete remote command, creation, preparation and attachment staging ports across Web and desktop; no port moves a chat between computers.
  * [POS]: Six-facade extension; native admission retains its original strict input and receipt types.
  */
 import type { CloudFunctionArgs } from "@ai-chat/cloud-protocol";
@@ -18,7 +18,6 @@ type RemoteTargetPage = PlainTargets;
 export type RemoteTargets = RemoteTargetPage & { localDeviceId: string | null };
 export type RemoteCreateInput = RemoteCreationInput;
 export type RemoteCreated = RemoteCreationReceipt;
-export type RemoteSelectInput = Omit<CloudFunctionArgs<"turns/executor:claim">, Header>;
 export type RemotePreparationInput = Omit<CloudFunctionArgs<"remote/chats:retryPreparation">, Header>;
 export interface RemoteCommandPort {
   queue?: {
@@ -36,12 +35,11 @@ export interface RemoteCommandPort {
   watch(commandId: string, changed: (value: RemoteCommand | null) => void, failed: (error: unknown) => void): Unsubscribe;
   watchPage(chatId: string, cursor: string | null, changed: (value: RemoteCommandPage) => void, failed: (error: unknown) => void): Unsubscribe;
 }
-export interface RemoteExecutorPort {
+export interface RemoteExecutionPort {
   projectFiles?(input: { targetDeviceId: string; projectId: string; query: string }, signal: AbortSignal): Promise<import("@ai-chat/cloud-protocol/remote/input/references").RemoteWorkspaceResult & { kind: "workspace-files" }>;
 
   targets(input: RemoteTargetInput): Promise<RemoteTargets>;
   watchTargets(input: RemoteTargetInput, changed: (value: RemoteTargets) => void, failed: (error: unknown) => void): Unsubscribe;
-  select(input: RemoteSelectInput): Promise<CloudChatHead>;
   prepareCreate(input: RemoteCreateInput): Promise<FrozenRemoteCreation>;
   create(input: RemoteCreateInput, frozen: FrozenRemoteCreation): Promise<RemoteCreated | RemoteAdmissionRejected>;
   created(createOperationId: string): Promise<RemoteCreated | null>;

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on SQLite canonical facts, immutable source retention and portable allowlists.
- * [OUTPUT]: Provides immutable native snapshots with lifecycle, archive, sequence and local-commit evidence, plus deletion custody.
+ * [OUTPUT]: Provides immutable native snapshots with lifecycle, archive, sequence, local-commit and message-count evidence, plus deletion custody.
  * [POS]: Snapshot boundary runs inside one worker transaction; subsequent edits join the same outbox.
  */
 import type { SqliteDatabase } from "../connection";
@@ -40,7 +40,7 @@ export function captureInitial(db: SqliteDatabase, reader: ChatRepositoryReader,
     return manifest;
   }
   if (db.prepare("SELECT 1 FROM history_import_runs WHERE state='running' LIMIT 1").get()) throw new Error("HISTORY_IMPORT_MUST_SETTLE_BEFORE_SNAPSHOT");
-  const entries: Array<{ chatId: string; revision: number; sourceId: string; digest: string }> = [];
+  const entries: Array<{ chatId: string; revision: number; messages: number; sourceId: string; digest: string }> = [];
   for (const facts of reader.listMetadata(deviceId)) {
     if (db.prepare("SELECT 1 FROM cloud_tombstones WHERE environment=? AND user_id=? AND chat_id=?").get(scope.environment, scope.userId, facts.id)) continue;
     const row = db.prepare("SELECT cloud_state,cloud_environment,cloud_user_id FROM chats WHERE id=?").get(facts.id) as Row;
@@ -50,11 +50,12 @@ export function captureInitial(db: SqliteDatabase, reader: ChatRepositoryReader,
     const payload = { ...frozenChatSource(db, facts, record, 0),
       imported: retainImportedHistory(db, facts.id, `manifest:${manifestId}`, now, scope) };
     const source = enqueueSource(db, { id: digest(`${manifestId}\0${facts.id}`), scope, chatId: facts.id, entityKind: "chat",
-      kind: "initialize", revision: facts.chatRecordRevision, executionEpoch: null, payload, now });
+      kind: "initialize", revision: facts.chatRecordRevision, payload, now });
     captureInitialMetadata(db, scope, digest(`${manifestId}\0${facts.id}`), {
       chat: payload.chat, lifecycleKind: payload.lifecycleKind, archivedAt: payload.archivedAt });
     db.prepare("INSERT OR IGNORE INTO chat_retention_roots(root_id,source_id) VALUES(?,?)").run(`manifest:${manifestId}`, source.sourceId);
-    entries.push({ chatId: facts.id, revision: facts.chatRecordRevision, ...source });
+    // The upload orders itself by this count: a body costs two round trips and nine checkpoint reads per message.
+    entries.push({ chatId: facts.id, revision: facts.chatRecordRevision, messages: payload.messages.length, ...source });
     db.prepare("UPDATE chats SET cloud_state='synced',cloud_environment=?,cloud_user_id=?,cloud_revision=0 WHERE id=?")
       .run(scope.environment, scope.userId, facts.id);
   }

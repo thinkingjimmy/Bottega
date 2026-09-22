@@ -10,6 +10,7 @@ import type { ApprovalDecision } from "../../conversation/interactions/model";
 import { InteractionTranslation } from "../../conversation/interactions/translation";
 import { useComposerTranslation, type ComposerTranslate } from "../../composer/controls/copy/translation";
 import { InteractionResults } from "./interaction-results";
+import { handledElsewhereBlock } from "../composer/status";
 import { useEffect, useState } from "react";
 import type { LiveProjection } from "@ai-chat/cloud-protocol/turns/live";
 import { Button } from "@ai-chat/ui/components/ui/button";
@@ -22,9 +23,14 @@ const finished = new Set(["done", "cancelled", "error", "expired", "rejected"]);
 function actionPending(entries: RemoteEntry[], matches: (payload: RemoteAction) => boolean) {
   return entries.some(entry => matches(entry.input.payload) && (entry.busy || !entry.rejected && (entry.uncertain || !entry.receipt || !finished.has(entry.receipt.state))));
 }
-function resolved(entries: RemoteEntry[], matches: (payload: RemoteAction) => boolean) {
-  return entries.some(entry => matches(entry.input.payload) && (entry.receipt?.result === "already-resolved" || entry.receipt?.state === "done"));
+/** The settled answer to this interaction, whoever produced it: an `already-resolved` one names the winner. */
+function settled(entries: RemoteEntry[], matches: (payload: RemoteAction) => boolean) {
+  return entries.find(entry => matches(entry.input.payload) && (entry.receipt?.result === "already-resolved" || entry.receipt?.state === "done"))?.receipt ?? null;
 }
+const settledNotice = (entries: RemoteEntry[], matches: (payload: RemoteAction) => boolean, copy: RemoteCopy) => {
+  const receipt = settled(entries, matches);
+  return receipt ? handledElsewhereBlock(copy, receipt)?.reason ?? copy.alreadyResolved : null;
+};
 export function RemoteInteractions({ projection, requestId, controls, running, ready }: {
   projection: LiveProjection | null; requestId: string; controls: RemoteInteractionControls; running: boolean; ready: boolean;
 }) {
@@ -37,11 +43,12 @@ export function RemoteInteractions({ projection, requestId, controls, running, r
     <InteractionResults results={projection?.interactionResults} copy={copy} />
     {running && <div className="chat-remote-receipt-actions"><Button type="button" variant="outline" disabled={disabled || cancelPending} onClick={() => void submit({ kind: "cancel", requestId })}>{copy.stop}</Button></div>}
     {controls.recoveryEnabled !== false && projection?.phase === "resume-failed" && projection.recovery && <RemoteRecovery key={projection.recovery.retryToken} recovery={projection.recovery} requestId={requestId} controls={{ ...controls, disabled }} />}
-    {/* Only a request the viewer cannot answer needs the executor: a sealing or settling turn has nothing pending. */}
+    {/* Only a request the viewer cannot answer needs the owner: a sealing or settling turn has nothing pending. */}
     {!active && !projection?.recovery && Boolean(projection?.approvals.length || projection?.userInputs.length) && <p className="chat-remote-hint">{copy.localOnly}</p>}
     {projection?.approvals.map(approval => {
       const matches = (payload: RemoteAction) => payload.kind === "respond-approval" && payload.requestId === requestId && payload.approvalId === approval.approvalId;
-      if (resolved(entries, matches)) return <p role="status" key={approval.approvalId}>{copy.alreadyResolved}</p>;
+      const notice = settledNotice(entries, matches, copy);
+      if (notice) return <p role="status" key={approval.approvalId}>{notice}</p>;
       const choices = approval.choices?.filter(choice => choice.decision !== undefined).map(choice => ({ ...choice, decision: choice.decision as ApprovalDecision }));
       const allowed = approval.remoteAllowed === true && active && (!approval.choices?.length || Boolean(choices?.length));
       return <div key={approval.approvalId}><ChatApprovalCard approval={{ ...approval, choices }} backendDisplayName={controls.backendName ?? "Agent"}
@@ -58,11 +65,11 @@ function RemoteQuestions({ input, queue, requestId, controls, disabled }: {
   const [error, setError] = useState("");
   const [answers, setAnswers] = useState<Record<string, { answers: string[] }>>({}), [index, setIndex] = useState(0), [busy, setBusy] = useState(false), [edited, setEdited] = useState(false);
   const matches = (payload: RemoteAction) => payload.kind === "respond-user-input" && payload.requestId === requestId && payload.userInputId === input.userInputId;
-  const pending = actionPending(entries, matches), done = resolved(entries, matches);
+  const pending = actionPending(entries, matches), done = settledNotice(entries, matches, copy);
   const dirty = !pending && !done && (edited || Object.keys(answers).length > 0);
   useEffect(() => { draftChanged?.(`${requestId}:question:${input.userInputId}`, dirty); }, [draftChanged, requestId, input.userInputId, dirty]);
   useEffect(() => () => draftChanged?.(`${requestId}:question:${input.userInputId}`, false), [draftChanged, requestId, input.userInputId]);
-  if (done) return <p role="status">{copy.alreadyResolved}</p>;
+  if (done) return <p role="status">{done}</p>;
   if (input.questions.some(question => question.isSecret)) return <section className="chat-remote-interaction"><p>{copy.localOnly}</p></section>;
   const answer = (values: string[]) => {
     if (disabled || pending || busy) return;

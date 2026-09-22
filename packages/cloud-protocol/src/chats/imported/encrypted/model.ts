@@ -15,11 +15,11 @@ import { encryptedMessageSchema, messagePacketSchema, type EncryptedMessage } fr
 export const encryptedImportManifestSchema = importManifestSchema.omit({ sourceKind: true, incompleteTail: true }).extend({ proof: messagePacketSchema }).strict();
 export const encryptedImportStatusSchema = z.object({ manifest: encryptedImportManifestSchema, state: z.enum(["receiving", "ready", "superseded"]),
   receivedCount: rev, receivedDigest: hash, receivedBytes: rev, revision: rev }).strict();
-export const encryptedImportPageSchema = z.object({ chatId: id, incarnationId: id, executionEpoch: rev, generationId: id,
+export const encryptedImportPageSchema = z.object({ chatId: id, incarnationId: id, generationId: id,
   operationId: id, ciphertextHash: hash, offset: rev, entries: z.array(encryptedMessageSchema).min(1).max(32) }).strict();
 export const encryptedImportReceiptSchema = importReceiptSchema.omit({ payloadHash: true }).extend({ ciphertextHash: hash }).strict();
 export const encryptedImportIntentSchema = z.object({ kind: z.literal("encrypted-import-intent"), userId: id, chatId: id, incarnationId: id,
-  executionEpoch: rev, expectedRevision: rev, generationId: z.uuid() }).strict();
+  expectedRevision: rev, generationId: z.uuid() }).strict();
 export const frozenImportManifestSchema = z.object({ kind: z.literal("encrypted-import-manifest"), plaintextHash: hash, encryptedSpace: encryptedSpaceSchema,
   transport: encryptedImportManifestSchema }).strict();
 export const frozenImportPageSchema = z.object({ kind: z.literal("encrypted-import-page"), plaintextHash: hash, transport: encryptedImportPageSchema }).strict();

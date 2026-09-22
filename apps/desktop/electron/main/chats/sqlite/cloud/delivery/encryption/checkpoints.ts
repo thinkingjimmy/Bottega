@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Original scoped outbox records, committed checkpoint predecessors and closed crypto contracts.
- * [OUTPUT]: Validates metadata/file custody and original remote fact packets independently of their current execution custody epoch.
+ * [OUTPUT]: Validates metadata/file custody and original remote fact packets independently of the Chat's current execution custody.
  * [POS]: Delivery validation leaf; it owns no scheduler, queue, credentials or key material.
  */
 import { canonicalJson } from "@ai-chat/cloud-protocol";
@@ -14,7 +14,7 @@ export function validateEncryptionCheckpoint(checkpoint: ChatDeliveryCheckpoint,
   if (checkpoint.kind === "encrypted-remote-initial") {
     if (checkpoint.chatId !== chatId || checkpoint.facts.role !== "facts" || checkpoint.options.role !== "options" ||
       checkpoint.facts.operationId !== checkpoint.options.operationId || canonicalJson(checkpoint.facts.metadata) !== canonicalJson(checkpoint.options.metadata) ||
-      checkpoint.facts.metadata.incarnationId !== checkpoint.incarnationId || checkpoint.facts.metadata.executionEpoch !== 1) throw new Error("REMOTE_INITIAL_CIPHER_MISMATCH");
+      checkpoint.facts.metadata.incarnationId !== checkpoint.incarnationId) throw new Error("REMOTE_INITIAL_CIPHER_MISMATCH");
     validateChatPacket(checkpoint.encryptedSpace.scope, chatId, checkpoint.facts);
     validateChatPacket(checkpoint.encryptedSpace.scope, chatId, checkpoint.options);
   }

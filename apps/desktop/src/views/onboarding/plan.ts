@@ -1,41 +1,22 @@
 /**
- * [INPUT]: Onboarding requirement facts and the first confirmed cloud account projection.
- * [OUTPUT]: Pure path plans, protocol-safe usage-mode destinations, account recovery predicates and one-time destination selection.
- * [POS]: Navigation policy library; React renders its decisions without owning another admission gate.
+ * [INPUT]: Onboarding requirement facts.
+ * [OUTPUT]: The single onboarding path and the step a fresh or reopened session starts on.
+ * [POS]: Navigation policy library for OnboardingView; it reads no account state, because signing in is not an onboarding branch.
  */
-import type { CloudAccountState } from "../../../shared/cloud-ipc";
-import { requiresSyncSetup } from "../../../shared/cloud/sync";
 import type { OnboardingFacts } from "@/lib/onboarding-gate";
 
-export type OnboardingMode = "local" | "account";
-export type OnboardingStep = "folder" | "mode" | "account" | "agent" | "extras";
+export type OnboardingStep = "folder" | "agent" | "extras";
 export type OnboardingTarget = "agent";
-export type OnboardingCursor = { mode: OnboardingMode; step: OnboardingStep };
-export const onboardingSteps = (mode: OnboardingMode): readonly OnboardingStep[] =>
-  mode === "account" ? ["folder", "mode", "account", "agent"] : ["folder", "mode", "agent", "extras"];
-export const accountComplete = (state: CloudAccountState) => Boolean(state.profile &&
-  !requiresSyncSetup(state.sync) && ["unlocked", "not-configured"].includes(state.encryption.status));
-export const accountNeedsRecovery = (state: CloudAccountState) => Boolean(state.pendingLogin ||
-  state.status === "signing-in" || state.profile && !accountComplete(state));
-export const accountModeBlocked = (state: CloudAccountState) =>
-  state.status === "client-outdated" || state.status === "environment-mismatch";
+/* One path for everyone: a folder, an Agent (or Install later), then the optional capabilities.
+   Signing in belongs to Settings, where it is also what publishes this computer. */
+export const onboardingSteps: readonly OnboardingStep[] = ["folder", "agent", "extras"];
 
-export function modeDestination(mode: OnboardingMode, state: CloudAccountState): "agent" | "account" | null {
-  const blocked = accountModeBlocked(state);
-  // Existing identities can revisit Agent setup without requesting a blocked account operation.
-  if (mode === "local" || blocked && state.profile) return "agent";
-  return blocked ? null : "account";
-}
-
-export function initialOnboardingCursor({ facts, account, accountLoaded, target }: {
-  facts: OnboardingFacts; account: CloudAccountState; accountLoaded: boolean; target?: OnboardingTarget | null;
-}): OnboardingCursor | null {
-  if (facts["chat-home"] === "missing") return { mode: "local", step: "folder" };
-  if (facts["chat-home"] !== "satisfied" || !accountLoaded) return null;
-  const mode = account.profile || accountNeedsRecovery(account) ? "account" : "local";
-  if (target) return { mode, step: target };
-  if (!account.profile && account.status === "connecting") return null;
-  if (accountNeedsRecovery(account)) return { mode: "account", step: "account" };
-  if (facts.agent === "unknown") return null;
-  return { mode, step: "agent" };
+export function initialOnboardingStep({ facts, target }: {
+  facts: OnboardingFacts; target?: OnboardingTarget | null;
+}): OnboardingStep | null {
+  if (facts["chat-home"] === "missing") return "folder";
+  // An unsettled fact seeds nothing: a cursor placed on a guess would have to move under the reader.
+  if (facts["chat-home"] !== "satisfied") return null;
+  if (target) return target;
+  return facts.agent === "unknown" ? null : "agent";
 }

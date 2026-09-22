@@ -17,13 +17,13 @@ export function homeCipherIdentity(value: HomeCipherIdentity) {
 export function homeManifestContext(scope: CryptoScope, value: Omit<EncryptedHomeManifest, "packet" | "ciphertextHash">) {
   const metadata = homeCipherManifestMetadataSchema.parse(value);
   return createHomeContext(scope, value.chatId, value.snapshotId, { role: "manifest", incarnationId: value.incarnationId,
-    snapshotId: value.snapshotId, executionEpoch: value.executionEpoch, throughSeq: value.throughSeq, expectedSnapshotId: value.expectedSnapshotId,
+    snapshotId: value.snapshotId, throughSeq: value.throughSeq, expectedSnapshotId: value.expectedSnapshotId,
     pageIndex: null, pageCount: Math.max(1, value.entryCount), metadataCommitment: hashHomeCiphertext(metadata) });
 }
 export function homeEntryContext(scope: CryptoScope, identity: HomeCipherIdentity, entry: Pick<EncryptedHomeEntry, "ordinal" | "operationId" | "file">) {
   const metadata = homeCipherEntryMetadataSchema.parse(entry);
   return createHomeContext(scope, identity.chatId, entry.operationId, { role: "page", incarnationId: identity.incarnationId,
-    snapshotId: identity.snapshotId, executionEpoch: identity.executionEpoch, throughSeq: identity.throughSeq, expectedSnapshotId: identity.expectedSnapshotId,
+    snapshotId: identity.snapshotId, throughSeq: identity.throughSeq, expectedSnapshotId: identity.expectedSnapshotId,
     pageIndex: entry.ordinal, pageCount: Math.max(1, identity.entryCount), metadataCommitment: hashHomeCiphertext(metadata) });
 }
 export function verifyHomePacket(packet: EncryptedHomeEntry["packet"], context: CryptoContext) {

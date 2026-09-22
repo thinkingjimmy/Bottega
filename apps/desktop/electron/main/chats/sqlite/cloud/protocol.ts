@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on strict portable storage contracts, canonical Chat codecs and outbox checkpoint identities.
- * [OUTPUT]: Defines scoped synchronization/removal commands, exact remote admission fact reads and bounded recovery queries.
+ * [OUTPUT]: Defines scoped synchronization/removal commands, the initialization manifest with each entry's message count, exact remote admission fact reads and bounded recovery queries.
  * [POS]: Local synchronization seam; fake transports are test-owned and never bundled here.
  */
 import { z } from "zod";
@@ -75,9 +75,9 @@ export const cloudActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("discard-classification"), lifecycleOperationId: id, candidateHash: hash }).strict(),
   z.object({ type: z.literal("repair-classification"), chatId: id, deviceId: id, expectedRevision: rev }).strict(),
   z.object({ type: z.literal("archive-deletion"), chatId: id, expectedIncarnationId: id }).strict(),
-  z.object({ type: z.literal("handoff-turn"), chatId: id, turnId: id, executionEpoch: rev,
+  z.object({ type: z.literal("handoff-turn"), chatId: id, turnId: id,
     evidence: z.object({ ledgerIntentId: id, identityHash: hash, dispatch: z.enum(["dispatched", "not-started", "outcome-unknown"]),
-      attempt: attemptEvidence.nullable(), executorNoticeSeq: rev.positive().optional(), noticeSeq: rev.positive().optional(),
+      attempt: attemptEvidence.nullable(), noticeSeq: rev.positive().optional(),
       userMessageId: id, userSeq: rev.positive(), userMessage: messageSchema, assistantMessageId: id, assistantSeq: rev.positive(),
       resultKind: z.enum(["message", "empty", "pending"]), resultHash: hash.nullable(), resultMessage: messageSchema.nullable(),
       terminal: z.enum(["done", "error", "cancelled"]).optional(), subagents: subagentsSchema.optional(),
@@ -151,7 +151,7 @@ const candidateRow = z.object({ operation_id: id, chat_id: id, environment: id.n
   old_classification_json: jsonText, previous_json: jsonText, candidate_json: jsonText, candidate_hash: hash, operation_json: jsonText.nullable(), receipt_json: jsonText.nullable(), state: classificationState }).strict();
 const outboxRow = z.object({ id: z.string().min(1).max(384), environment: id, user_id: id,
   entity_kind: z.enum(["chat", "message", "turn", "attachment", "generation", "home-snapshot", "tombstone"]), entity_id: id,
-  kind: z.string().min(1).max(128), seq_or_revision: rev, execution_epoch: rev.nullable(), payload_json: jsonText,
+  kind: z.string().min(1).max(128), seq_or_revision: rev, payload_json: jsonText,
   payload_digest: hash, created_at: rev, attempts: rev, last_error: z.string().max(1024).nullable(),
   metadata_intent_json: jsonText.nullable(), metadata_status: chatMetadataStatusSchema.nullable() }).strict();
 const result = <T extends string, V extends z.ZodType>(type: T, value: V) => z.object({ type: z.literal(type), value }).strict();
@@ -189,11 +189,11 @@ export const cloudResultSchema = z.discriminatedUnion("type", [
   result("prepare-chat-convergence", convergenceResultSchema), result("commit-chat-convergence", convergenceResultSchema),
   result("execution-archive-page", z.object({ items: z.array(executionArchiveSchema).max(50), cursor: id.nullable(), complete: z.boolean() }).strict()),
   result("capture-initial", z.object({ version: z.literal(1), manifestId: id, scope: syncScopeSchema, capturedAt: rev, state: z.enum(["captured", "complete"]),
-    entries: z.array(sourceRef.extend({ chatId: id, revision: rev, completionHash: hash.optional() })).max(10000) }).strict()),
+    entries: z.array(sourceRef.extend({ chatId: id, revision: rev, messages: rev.default(0), completionHash: hash.optional() })).max(10000) }).strict()),
   result("complete-initial-chat", z.object({ chatId: id, evidenceHash: hash }).strict()),
   result("put-mirror", z.object({ chatId: id, cloudRevision: rev, count: rev }).strict()),
   result("capture-live-turn", sourceRef),
-  result("capture-home-job", homeJobSchema.nullable()), result("archive-home-job", z.object({ id }).strict()),
+  result("capture-home-job", homeJobSchema.nullable()),
   result("turn-delivery", z.object({ highSeq: rev }).strict()),
   result("turn-target", z.object({ incarnationId: id, messageRevision: rev, outboxDigest: hash }).strict().nullable()),
   result("save-outbox-checkpoint", retainedSourceRefSchema),
@@ -231,9 +231,9 @@ export const cloudResultSchema = z.discriminatedUnion("type", [
 export type CloudResult = z.infer<typeof cloudResultSchema>;
 export function handoffIdentity(action: Extract<CloudAction, { type: "handoff-turn" }>) {
   const evidence = action.evidence;
-  return { chatId: action.chatId, turnId: action.turnId, executionEpoch: action.executionEpoch,
+  return { chatId: action.chatId, turnId: action.turnId,
     userMessageId: evidence.userMessageId, assistantMessageId: evidence.assistantMessageId,
-    executorNoticeSeq: evidence.executorNoticeSeq, noticeSeq: evidence.noticeSeq, userSeq: evidence.userSeq, assistantSeq: evidence.assistantSeq };
+    noticeSeq: evidence.noticeSeq, userSeq: evidence.userSeq, assistantSeq: evidence.assistantSeq };
 }
 export function boundedCloudValue<T>(value: T): T {
   if (Buffer.byteLength(JSON.stringify(value), "utf8") > 8 * 1024 * 1024) {

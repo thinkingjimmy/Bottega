@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Apps plus narrow Chat metadata/managed-worktree stores, Sections pending CreateIntent, shared AppLocale/local detachment causes, Agent conversation lifecycle, Memory rebind fence, Design rebind observer, ProjectStore, ProjectResourceCleanupCoordinator, and ProjectsService
- * [OUTPUT]: Provides composeProjectsService, which wires authoritative App-directory reveal, managed-worktree rebind blockers, Project-held lifecycle callbacks, Base-custody existence/cleanup, unified record cleanup, stale-session release, and main-owned rebind evidence into Memory and Design convergence
+ * [OUTPUT]: Provides composeProjectsService, which wires this installation's device id, authoritative App-directory reveal, managed-worktree rebind blockers, Project-held lifecycle callbacks, Base-custody existence/cleanup, unified record cleanup, stale-session release, and main-owned rebind evidence into Memory and Design convergence
  * [POS]: Projects module's composition root; ProjectsService itself stays a domain-focused index responsible only for lifecycle and instance ordering
  */
 
@@ -38,6 +38,7 @@ export function composeProjectsService(input: {
   isProjectOpen?: (projectId: string) => boolean;
   localDetachReasons?: (projectId: string) => ProjectLocalDetachReason[];
   locale?: () => AppLocale;
+  localDeviceId?: () => string | null;
   resourceCleanup: ProjectResourceCleanupCoordinator;
 }) {
   return new ProjectsService(input.store, {
@@ -54,6 +55,7 @@ export function composeProjectsService(input: {
     },
     isAppProjectAvailable: (appId) =>
       input.apps()?.isProjectAvailable(appId) ?? false,
+    localDeviceId: input.localDeviceId,
     canPinApp: (appId) => {
       const record = input.apps()?.store.get(appId);
       return Boolean(

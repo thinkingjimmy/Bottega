@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on main-owned sync progress and encryption state, five-language copy, the shared encryption error mapper, settings primitives, the unlock button, the handshake retry action, the cleanup button and the router.
- * [OUTPUT]: Provides AccountSync — the settings page's single Sync row (badge, one sentence, the state's action, Disable in the section band) — and AppPackagesSection for blocked App packages.
- * [POS]: Settings sync projection; unlock retains its dialog through key derivation, an unavailable handshake keeps its own retry, and cancelled discovery or an unfinished disconnect retains a retry exit.
+ * [INPUT]: Depends on main-owned sync progress and encryption state, five-language copy, the shared encryption error mapper, settings primitives, the unlock button, the handshake retry action and the router.
+ * [OUTPUT]: Provides AccountSync — the settings page's single Sync row (badge, one sentence, a byte-led progress bar that falls back to whole items, and only the action the state itself needs) — and AppPackagesSection for blocked App packages.
+ * [POS]: Settings sync projection; signing in is what publishes this computer, so the row carries no switch — unlock retains its dialog through key derivation, an unavailable handshake keeps its own retry, and cancelled discovery or an unfinished disconnect retains a retry exit.
  */
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
@@ -14,13 +14,14 @@ import { cloudAccountClient } from "@/lib/cloud/client";
 import { encryptionError } from "./encryption/field-errors";
 import { UnlockEncryptionButton } from "./encryption/status";
 import { RetryConnectionButton } from "./retry-connection";
-import { CloudCleanupButton } from "./sync-cleanup";
 
 const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
 type Tone = "neutral" | "warn" | "danger" | "muted";
 
+// Bytes move with every message; whole items move once per Chat, which is minutes apart for a long one.
 function Track({ sync }: { sync: SyncProgress }) {
-  const percent = sync.total > 0 ? Math.min(100, Math.round((sync.completed / sync.total) * 100)) : null;
+  const ratio = sync.totalBytes > 0 ? sync.uploadedBytes / sync.totalBytes : sync.total > 0 ? sync.completed / sync.total : null;
+  const percent = ratio === null ? null : Math.min(100, Math.round(ratio * 100));
   return <span role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent ?? undefined}
     className="mt-2 block h-1.5 w-full overflow-hidden rounded-full bg-muted">
     <span className={percent === null ? "block h-full w-1/3 animate-pulse rounded-full bg-foreground motion-reduce:animate-none" : "block h-full rounded-full bg-foreground transition-[width] motion-reduce:transition-none"}
@@ -38,15 +39,16 @@ export function AccountSync({ state }: { state: CloudAccountState }) {
     void run().catch(() => setFailed(true)).finally(() => setBusy(false));
   };
   const retrySync = () => <SettingsButton disabled={!ready || busy} onClick={() => action(() => cloudAccountClient().retrySync())}>{t("cloud.retry")}</SettingsButton>;
-  /* Resume is the next step of a paused row, so it is the page's one filled button. */
-  const pause = (paused: boolean) => <SettingsButton variant={paused ? "outline" : "default"} disabled={!ready || busy} onClick={() => action(() => cloudAccountClient().pauseSync({ paused }))}>
-    {t(paused ? "cloud.syncReview.pause" : "cloud.syncReview.resume")}</SettingsButton>;
   const waiting = [sync.pending > 0 && t("cloud.syncReview.pending", { count: sync.pending }), sync.conflicts > 0 && t("cloud.syncReview.conflicts", { count: sync.conflicts })]
     .filter(Boolean).map(text => ` · ${text}`).join("");
-  /* One row, one badge, one sentence, one action. The status sentence is the default
-     description; encryption states come first because a locked or blocked key stops
-     sync whatever the outbox says. */
-  let tone: Tone = "neutral", badge = t("cloud.syncBadge.synced"), control: ReactNode = pause(true);
+  /* One call site for every refusal: the owning computer is always offered and only the ownership sentence uses it. */
+  const syncError = (value: SyncProgress, suffix = waiting) => t(`cloud.syncError.${value.error}`, { host: value.ownerHost ?? "" }) + suffix;
+
+  /* One row, one badge, one sentence, and an action only where the state has one: being
+     signed in is what publishes this computer, so there is nothing here to switch off.
+     The status sentence is the default description; encryption states come first because a
+     locked or blocked key stops sync whatever the outbox says. */
+  let tone: Tone = "neutral", badge = t("cloud.syncBadge.synced"), control: ReactNode = null;
   let description: ReactNode = t(`cloud.syncStatus.${sync.status}`) + waiting;
   if (unavailable) { tone = "warn"; badge = t("cloud.syncBadge.unavailable"); description = t("cloud.syncUnavailable"); control = <RetryConnectionButton />; }
   else if (encryption.status === "checking") { tone = "muted"; badge = t("cloud.syncBadge.checking"); description = copy.checking; control = null; }
@@ -63,20 +65,21 @@ export function AccountSync({ state }: { state: CloudAccountState }) {
       badge = t("cloud.syncBadge.syncing"); description = <>{progress}{counted}{bytes}<Track sync={sync} /></>; break;
     }
     case "partial": tone = "warn"; badge = t("cloud.syncBadge.attention"); break;
-    case "paused": tone = "muted"; badge = t("cloud.syncBadge.paused"); control = pause(false); break;
+    /* Paused is now only the moment between consent and the first pass starting; nothing offers it. */
+    case "paused": tone = "muted"; badge = t("cloud.syncBadge.paused"); break;
     case "offline": tone = "muted"; badge = t("cloud.syncBadge.offline"); break;
-    case "error": tone = "danger"; badge = t("cloud.syncBadge.attention"); if (sync.error) description = t(`cloud.syncError.${sync.error}`) + waiting;
-      control = retrySync(); break;
+    /* A folder that belongs to another computer is the one error a retry cannot clear: it says so and offers nothing. */
+    case "error": tone = "danger"; badge = t("cloud.syncBadge.attention"); if (sync.error) description = syncError(sync);
+      control = sync.error === "library-owned-elsewhere" ? null : retrySync(); break;
     /* A cleanup that failed leaves the account half-disconnected; the row says so and
        re-enters the same idempotent disconnect instead of waiting for a restart. */
     case "closing":
-      if (sync.error) { tone = "danger"; badge = t("cloud.syncBadge.attention"); description = t(`cloud.syncError.${sync.error}`); control = retrySync(); }
+      if (sync.error) { tone = "danger"; badge = t("cloud.syncBadge.attention"); description = syncError(sync, ""); control = retrySync(); }
       else { tone = "muted"; badge = t("cloud.syncBadge.closing"); control = null; }
       break;
     default: break;
   }
-  return <SettingsSection title={t("cloud.sync")} alert={failed ? t("cloud.actionFailed") : undefined}
-    action={<CloudCleanupButton mode="disableSync" variant="ghost" disabled={!ready || busy || sync.status === "closing"} />}>
+  return <SettingsSection title={t("cloud.sync")} alert={failed ? t("cloud.actionFailed") : undefined}>
     <SettingsList><SettingsRow label={t("cloud.sync")} badge={<SettingsBadge tone={tone}>{badge}</SettingsBadge>} description={description} control={control} /></SettingsList>
   </SettingsSection>;
 }

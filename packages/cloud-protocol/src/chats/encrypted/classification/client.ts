@@ -15,7 +15,7 @@ import { encryptedClassificationReceiptSchema, frozenClassificationSchema, type 
 import { classificationContext, classificationFactsMetadata, verifyClassificationOperation } from "./wire";
 function allowed(original: ChatClassificationOperation) {
   const promotion = original.basePromotion;
-  return { incarnationId: original.incarnationId, expectedRevision: original.expectedRevision, executionEpoch: original.executionEpoch,
+  return { incarnationId: original.incarnationId, expectedRevision: original.expectedRevision,
     previous: original.previous, next: original.next, projectRescue: original.projectRescue ?? null,
     basePromotion: promotion ? { baseId: promotion.baseId, expectedRevision: promotion.expectedRevision,
       destination: promotion.destination.kind === "app" ? { kind: "app" as const, projectId: promotion.destination.projectId, appId: promotion.destination.appId } : promotion.destination } : null };

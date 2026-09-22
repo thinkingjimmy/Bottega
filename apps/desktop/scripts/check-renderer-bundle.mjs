@@ -83,7 +83,28 @@ const MAX_RAW_BYTES = 3_520_000;
    stricter reconciliation guard, the quiet write path that keeps an automatic reconciliation from
    surfacing as a failed manual save, and the CHAT_NOT_WRITABLE → read-only/archived copy mapping.
    Raised by the measured delta, sized against the heavier staging assembly, as every entry above is. */
-const MAX_GZIP_BYTES = 619_595;
+/* 2026-09-22 (0.1.6, per-computer sidebar): 619,595 → 626,192. Measured by bisect over 439773d67..a8a52273e,
+   one renderer build per commit; the base rebuilds to 618,606, the figure b0d recorded on 09-20. Staging and
+   production now emit the same two eager files, byte for byte, so one number covers both and the "heavier
+   assembly" clause above has nothing left to choose between.
+   The feature set moved 25,590 bytes, of which 18,004 were given back before this number was set. The two
+   commits that carried 91 % of the growth had each added one eager edge into an always-lazy subtree, and Rollup
+   hoisted the subtree:
+     −13,332  five-language shared remote copy (chat-ui/i18n/remote.ts + i18n/copy.ts + remote/composer/status.ts,
+              35,904 raw) left the first load: app-sidebar.tsx now reads useViewedComputerBlock, which imports
+              creation-target.ts dynamically. The sentence is null while the sidebar is local, and the sidebar is
+              local until the account's computer list arrives — so nothing that could be painted is deferred.
+      −3,925  the account Settings rows (settings/controls.tsx + settings/content.tsx + account/device-list.tsx,
+              19,302 raw) left with them: relativeMoment is its own leaf, so the strip reads a moment instead of
+              a settings page.
+        −747  the pin picker is its own lazy chunk, like every other sidebar dialog.
+   What remains, +7,586 over b0d, is first paint by construction: the per-profile computer preference store,
+   useComputerScope, the pinned rows and the two-item `+`, the computer switcher strip and its shared tablist
+   (1,291 — measured behind a lazy boundary and deliberately left eager: it is the sidebar's top chrome), the
+   remote Project row and its origin badge, the account facade and the machine-key protocol, and +158 of eager
+   English catalogs (zh-cn/ja/fr/es stayed behind the 非 en 语言目录 lane). Raised by the measured residual, after
+   the reclaim, as the rule above requires. */
+const MAX_GZIP_BYTES = 626_192;
 const outputRoot = resolveOutputRoot(process.argv.slice(2), process.env, ["--self-test"]);
 const rendererRoot = resolve(import.meta.dirname, "..", outputRoot, "renderer");
 const indexPath = resolve(rendererRoot, "index.html");

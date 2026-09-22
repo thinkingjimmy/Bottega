@@ -7,9 +7,9 @@ import type { ChatPlatform } from "../../contracts";
 import type { ComposerDraft, RemoteDraftStore } from "../input/draft";
 import { sendFirstMessage, FirstMessageFailure } from "./first-message";
 export type CreationAttempt = NonNullable<ComposerDraft["creation"]>;
-export async function createAndSend(platform: Pick<ChatPlatform, "account" | "chats" | "commands" | "executor">, store: RemoteDraftStore,
+export async function createAndSend(platform: Pick<ChatPlatform, "account" | "chats" | "commands" | "execution">, store: RemoteDraftStore,
   original: CreationAttempt, signal: AbortSignal, confirm: Parameters<typeof sendFirstMessage>[4]) {
-  const port = platform.executor.remote;
+  const port = platform.execution.remote;
   if (!port) throw new FirstMessageFailure("remote-disabled");
   const owner = platform.account.snapshot();
   const current = () => {
@@ -24,7 +24,7 @@ export async function createAndSend(platform: Pick<ChatPlatform, "account" | "ch
   if (!prior && !frozen) { frozen = await port.prepareCreate(input); current(); store.update({ creation: { ...original, frozen } }); }
   const receipt = prior ?? await port.create(input, frozen!); current();
   if ("rejected" in receipt) { store.update({ creation: null }); throw new FirstMessageFailure("capacity-exceeded"); }
-  if (receipt.createOperationId !== input.createOperationId || receipt.executorDeviceId !== input.targetDeviceId || receipt.deleted) throw new Error("REMOTE_CREATE_IDENTITY");
+  if (receipt.createOperationId !== input.createOperationId || receipt.ownerDeviceId !== input.targetDeviceId || receipt.deleted) throw new Error("REMOTE_CREATE_IDENTITY");
   store.update({ creation: { ...original, frozen, receipt } });
   const submitted = await sendFirstMessage(platform, receipt, { creation: input, text: original.text, commandId: original.commandId, draftStore: store,
     permissionMode: original.permissionMode, planMode: original.planMode, references: original.references, options: original.options }, signal, confirm);

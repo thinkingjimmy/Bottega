@@ -28,15 +28,14 @@ export const encryptedChatHeadSchema = z.object({ ...cloudChatHeadSchema.shape, 
     value.chat.agent === value.remoteCreation.binding.agent && value.chat.createdAt === value.remoteCreation.createdAt &&
     value.archivedAt === null && value.kind === "native" && value.chat.classification.conversationKind === "ordinary" && value.chat.classification.appId === null &&
     value.chat.classification.projectId === value.remoteCreation.binding.projectId && value.sourceDeviceId === value.remoteCreation.binding.targetDeviceId &&
-    (value.executorDeviceId !== null && value.executionEpoch >= 1 && (value.executionEpoch > 1 || value.executorDeviceId === value.remoteCreation.binding.targetDeviceId) &&
-      value.executionPreparation !== null && value.executionPreparation.state !== "ready" ||
-      value.executorDeviceId === null && value.executionEpoch > 1 && value.executionPreparation === null) : value.facts?.role === "facts" && value.options?.role === "options") &&
-  (!value.executionPreparation || value.executionPreparation.deviceId === value.executorDeviceId && value.executionPreparation.executionEpoch === value.executionEpoch));
+    value.ownerDeviceId === value.remoteCreation.binding.targetDeviceId &&
+      value.executionPreparation !== null && value.executionPreparation.state !== "ready" : value.facts?.role === "facts" && value.options?.role === "options") &&
+  (!value.executionPreparation || value.executionPreparation.deviceId === value.ownerDeviceId));
 export const frozenRemoteChatInitializationSchema = z.object({ kind: z.literal("encrypted-remote-initial"), encryptedSpace: encryptedSpaceSchema,
-  chatId: id, incarnationId: id, executionEpoch: rev, creationHash: hash, facts: chatPacketSchema, options: chatPacketSchema }).strict();
+  chatId: id, incarnationId: id, creationHash: hash, facts: chatPacketSchema, options: chatPacketSchema }).strict();
 export const encryptedChatMetadataOperationSchema = z.object({ operationId: id, chatId: id,
   kind: z.enum(["create", "patch"]), chat: publicChatSchema, archivedAt: rev.nullable(), lifecycleKind: cloudChatHeadSchema.shape.kind,
-  expectedRevision: rev, executionEpoch: rev, sourceDeviceId: id, facts: chatPacketSchema, options: chatPacketSchema.nullable(),
+  expectedRevision: rev, sourceDeviceId: id, facts: chatPacketSchema, options: chatPacketSchema.nullable(),
   operation: chatPacketSchema, ciphertextHash: hash }).strict().refine(value => value.chatId === value.chat.id &&
     (value.kind === "create") === (value.options !== null) && (value.kind !== "create" || value.expectedRevision === 0));
 export const encryptedChatMetadataReceiptSchema = z.object({ operationId: id, chatId: id, ciphertextHash: hash,

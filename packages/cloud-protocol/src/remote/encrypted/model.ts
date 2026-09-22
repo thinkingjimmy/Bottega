@@ -26,7 +26,7 @@ export const remoteCommandHeaderSchema = z.object({ ...protocolHeaderSchema.shap
 export const encryptedRemoteCommandSchema = z.object({ ...remoteCommandHeaderSchema.shape, packet: remotePacketSchema,
   ciphertextHash: hash }).strict().refine(value => remoteCommandHeaderSchema.safeParse((({ packet: _packet, ciphertextHash: _hash, ...header }) => header)(value)).success);
 const publicRemoteAdmissionSchema = z.object({ intentId: id, requestId: z.string().min(1).max(256), userMessageId: id.nullable() }).strict();
-export const encryptedRemoteReportSchema = z.object({ revision: rev.positive(), state: remoteStateSchema.exclude(["pending", "awaiting-preparation", "awaiting-executor", "delivered"]),
+export const encryptedRemoteReportSchema = z.object({ revision: rev.positive(), state: remoteStateSchema.exclude(["pending", "awaiting-preparation", "delivered"]),
   admission: publicRemoteAdmissionSchema.nullable(), blockedBy: remoteBlockedBySchema.nullable(),
   noAdmission: z.boolean(), packet: remotePacketSchema.extend({ ciphertextBytes: rev.positive().max(4096), envelope: z.string().min(1).max(5462).regex(/^[A-Za-z0-9_-]+$/) }) }).strict().refine(value =>
     (value.state === "claimed" || value.state === "expired" || value.state === "rejected") === value.noAdmission &&
@@ -46,13 +46,13 @@ const encryptedRemoteTargetSchema = remoteTargetSchema.omit({ agents: true }).ex
   connectionEpoch: id.nullable(), encryptedSpace: encryptedSpaceSchema.nullable() }).strict();
 export const encryptedRemoteTargetsSchema = z.object({ items: z.array(encryptedRemoteTargetSchema).max(REMOTE_LIMITS.pageRows),
   cursor: z.string().nullable(), complete: z.boolean(), sourceDeviceId: id, sourceProtocolVersion: rev,
-  remoteControlEnabled: z.boolean(), preferredDeviceId: id.nullable(), serverTime: rev }).strict();
+  remoteControlEnabled: z.boolean(), serverTime: rev }).strict();
 export const remoteCreationInputSchema = z.object({ createOperationId: z.string().uuid(), targetDeviceId: id,
   backend: agentBackendIdSchema, projectId: id.nullable() }).strict();
 export const encryptedRemoteCreationSchema = z.object({ createOperationId: z.string().uuid(), binding: remoteCreationBindingSchema,
   createdAt: rev, packet: remotePacketSchema, ciphertextHash: hash }).strict();
 export const encryptedRemoteCreationReceiptSchema = z.object({ createOperationId: z.string().uuid(), ciphertextHash: hash,
-  chatId: id, incarnationId: id, executorDeviceId: id, executionEpoch: rev, createdAt: rev, deleted: z.boolean(),
+  chatId: id, incarnationId: id, ownerDeviceId: id, createdAt: rev, deleted: z.boolean(),
   encryptedSpace: encryptedSpaceSchema, creation: encryptedRemoteCreationSchema.nullable() }).strict()
   .refine(value => value.deleted === (value.creation === null));
 export const frozenRemoteCommandSchema = z.object({ kind: z.literal("encrypted-remote-command"), encryptedSpace: encryptedSpaceSchema,

@@ -17,7 +17,7 @@ export function validateOptionsCheckpoint(db: SqliteDatabase, item: Row, checkpo
     const wire = validateEncryptedOptions(checkpoint.encryptedSpace.scope, checkpoint.transport);
     if (operation.payloadHash !== checkpoint.plaintextHash || hashChatOptionsOperation(operation) !== checkpoint.plaintextHash ||
       operation.operationId !== wire.operationId || operation.chatId !== wire.chatId || operation.incarnationId !== wire.incarnationId ||
-      operation.executionEpoch !== wire.executionEpoch || operation.agentRevision !== wire.agentRevision || operation.afterUserSeq !== wire.afterUserSeq ||
+      operation.agentRevision !== wire.agentRevision || operation.afterUserSeq !== wire.afterUserSeq ||
       operation.options.backend !== wire.backend) throw new Error("OPTIONS_CIPHER_IDENTITY_MISMATCH");
     return;
   }

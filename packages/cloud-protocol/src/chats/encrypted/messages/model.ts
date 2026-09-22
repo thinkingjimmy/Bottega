@@ -11,7 +11,11 @@ import { ciphertextFileDescriptorSchema } from "../../../blobs/encrypted";
 import { messageMembershipSchema, messageManifestMetadataSchema } from "../../../encryption/domains/messages";
 import { agentBackendIdSchema } from "../../options";
 import { encryptedTurnPrefixSchema } from "../../../turns/encrypted/model";
-export const MESSAGE_CIPHER_LIMITS = { blockBytes: 65_536, packetBytes: 98_304, privateBytes: 4_194_304, blocksPerPage: 64, pageBytes: 262_144, rangeItems: 16 } as const;
+/* stageBatchBytes bounds one batched staging call: 4 MiB of ciphertext encodes to about 5.6 MiB of base64url
+   argument, well inside the 8 MiB request ceiling this deployment already pins as MAX_PART_BYTES. A maximal
+   message (64 blocks) is the only shape that crosses it, so it is the only one that costs a second call. */
+export const MESSAGE_CIPHER_LIMITS = { blockBytes: 65_536, packetBytes: 98_304, privateBytes: 4_194_304, blocksPerPage: 64,
+  pageBytes: 262_144, rangeItems: 16, stageBatchBytes: 4_194_304 } as const;
 export const messagePacketSchema = z.object({ envelope: z.string().min(1).max(131_072).regex(/^[A-Za-z0-9_-]+$/),
   ciphertextHash: hash, ciphertextBytes: rev.positive().max(MESSAGE_CIPHER_LIMITS.packetBytes) }).strict();
 export const encryptedMessageBlockSchema = messagePacketSchema.extend({ operationId: id, membership: messageMembershipSchema,
@@ -23,7 +27,7 @@ export const encryptedMessagePageSchema = messagePacketSchema.extend({ operation
   .refine(value => value.metadata.blockCount <= 64 && value.metadata.blockOffset === 0 && value.metadata.blocks.length === value.metadata.blockCount);
 export const encryptedMessageSchema = z.object({ bodyHash: hash, operationId: id, membership: messageMembershipSchema,
   pages: z.array(encryptedMessagePageSchema).min(1).max(1) }).strict();
-export const encryptedBodyStageSchema = z.object({ chatId: id, incarnationId: id, executionEpoch: rev,
+export const encryptedBodyStageSchema = z.object({ chatId: id, incarnationId: id,
   bodyHash: hash, storage: z.object({ kind: z.literal("encrypted"), message: encryptedMessageSchema }).strict() }).strict()
   .refine(value => value.bodyHash === value.storage.message.bodyHash && value.chatId === value.storage.message.membership.chatId && value.incarnationId === value.storage.message.membership.incarnationId);
 export const encryptedBodySummarySchema = z.object({ messageId: id, seq: rev.positive(), role: z.enum(["user", "assistant", "notice"]),

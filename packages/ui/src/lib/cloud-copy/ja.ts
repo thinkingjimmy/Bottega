@@ -77,9 +77,9 @@ export const cloudCopy = {
     "switchAccount": "アカウントの切り替えを確認",
     "switchTitle": "このコンピューターのアカウントを切り替える",
     "switchBody": "クラウドデータは元のアカウントに残ります。切り替え後、このアカウントで同期を再度有効にしてください。",
-    "pause": "一時停止",
-    "resume": "再開",
     "disable": "無効にする",
+    "cloudData": "クラウドデータ",
+    "cloudDataDescription": "このコンピューターの接続を解除し、ここに保存されたクラウドのコピーを削除します。ログアウトではどちらも行われません。",
     "disableTitle": "このコンピューターの同期を無効にしますか？",
     "disableBody": "このコンピューターにクラウドのミラーとしてのみ存在するコピーは削除されます。ここで作成または引き継いだ内容はファイルと共に残ります。再度同期を有効にするには同期パスワードが必要です。",
     "disableRemove": "Chat ミラー {{mirrors}} 件、Base ミラー {{mirroredBases}} 件、Project ミラー {{mirroredProjects}} 件、App ミラー {{mirroredApps}} 件を削除します。",
@@ -92,7 +92,7 @@ export const cloudCopy = {
   },
   "syncStatus": {
     "partial": "Base データは同期済みです。一部の App パッケージに対応が必要です",
-    "not-connected": "同期は有効になっていません。",
+    "not-connected": "このコンピューターはまだ同期していません。",
     "scanning": "スキャン中…",
     "initializing": "初回同期を準備中…",
     "syncing": "同期中…",
@@ -106,7 +106,8 @@ export const cloudCopy = {
     "scan-failed": "ローカルコンテンツを確認できませんでした。インポート完了後に再試行してください。",
     "review-expired": "確認の有効期限が切れました。再スキャンしてください。",
     "upload-failed": "一部の内容は未同期です。ローカルコピーは保持されています。再試行してください。",
-    "cleanup-failed": "このアカウントの切断を完了できませんでした。ローカルの内容は保持されています。再試行してください。"
+    "cleanup-failed": "このアカウントの切断を完了できませんでした。ローカルの内容は保持されています。再試行してください。",
+    "library-owned-elsewhere": "この Bottega フォルダーは {{host}} のものです。現在のバージョンでは別のコンピューターで開けません。新しいフォルダーを作るか、そのコンピューターで使ってください。"
   },
   "syncAppBlocked": {
     "migration-blocked": "このバージョンには未対応のデータ移行が必要です。クラウドの旧バージョンを保持しています。",
@@ -119,14 +120,14 @@ export const cloudCopy = {
   },
   "setup": {
     "signIn": "ログイン",
-    "enable": "同期を有効にする",
+    "enable": "ログインを完了",
     "signInTitle": "ログインしてこのコンピューターを同期",
     "browserApproval": "ログインはブラウザで承認します。",
     "signedInAs": "{{email}} でログイン中です。",
     "checkCode": "ブラウザに表示された確認コードと一致することを確かめてから許可してください。",
     "enterPassword": "同期パスワードを入力",
     "enterPasswordDescription": "このコンピューターは、別のデバイスで作成した暗号化ワークスペースに参加します。Bottega はパスワードを復元できません。",
-    "unlockedDescription": "このコンピューターはすでにロック解除されています。同期を有効にすると内容のアップロードが始まります。"
+    "unlockedDescription": "このコンピューターはすでにロック解除されています。完了すると同期が始まります。"
   },
   "syncBadge": {
     "synced": "最新",
@@ -144,6 +145,7 @@ export const cloudCopy = {
     "locked": "同期パスワードを入力して、このコンピューターの同期を再開してください。"
   },
   "syncPhase": {
+    "preparing": "Chat を準備中",
     "projects": "Project をアップロード中",
     "apps": "App をアップロード中",
     "chats": "Chat をアップロード中",
@@ -256,6 +258,17 @@ export const cloudCopy = {
   "syncNotConnected": "同期はまだ有効になっていません。",
 
 
+  "computers": {
+    "label": "パソコン",
+    "offlineSince": "オフライン · {{when}}",
+    "none": "パソコンで Bottega にログインすると、そのサイドバーがここに表示されます。",
+    "thisComputer": "このパソコン",
+    "name": "パソコンの名前",
+    "nameTaken": "同じ名前のパソコンがすでにあります。",
+    "notFound": "このパソコンはこのアカウントにログインしていません。",
+    "nameInvalid": "名前を入力してください。",
+    "suffixHint": "同じ名前のパソコンがすでにありました。ここで名前を変更できます。"
+  },
   "devices": "デバイス",
   "lastSeen": "最終確認: {{when}}",
   "webSession": "Web セッション",

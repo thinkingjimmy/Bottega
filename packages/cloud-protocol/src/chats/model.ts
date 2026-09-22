@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod, public IDs and canonical Agent options.
- * [OUTPUT]: Provides portable Chat facts and server-owned metadata/preparation and deferred handoff heads with exact catalog revision baselines.
+ * [OUTPUT]: Provides portable Chat facts and server-owned metadata/preparation heads with exact catalog revision baselines.
  * [POS]: Closed reading contract; local context, paths, sessions and grants have no representation.
  */
 import { acceptedQueueSchema } from "../remote/queue";
@@ -34,23 +34,19 @@ export const portableChatSchema = z.object({ id, incarnationId: id, title: z.str
   }, "Fork lineage must be complete and refer to another Chat");
 export type PortableChat = z.infer<typeof portableChatSchema>;
 export const executionPreparationReasonSchema = z.enum(["body-unavailable", "home-unavailable", "project-unbound", "identity-changed",
-  "project-path-unbound", "project-unavailable", "chat-home-unavailable", "permission-required", "executor-changed", "chat-incarnation-mismatch"]);
+  "project-path-unbound", "project-unavailable", "chat-home-unavailable", "permission-required", "not-owner", "chat-incarnation-mismatch"]);
 export const cloudChatHeadSchema = z.object({ chat: portableChatSchema,
   kind: z.enum(["native", "external-readonly", "external-managed"]), archivedAt: rev.nullable(),
-  executorDeviceId: id.nullable(), executionEpoch: rev, lastCommittedExecutorDeviceId: id.nullable(), nativeSessionDeviceId: id.nullable(),
-  executionPreparation: z.object({ deviceId: id, executionEpoch: rev, state: z.enum(["pending", "ready", "blocked"]),
+  ownerDeviceId: id.nullable(), nativeSessionDeviceId: id.nullable(),
+  executionPreparation: z.object({ deviceId: id, state: z.enum(["pending", "ready", "blocked"]),
     reason: executionPreparationReasonSchema.nullable() }).strict().nullable(),
-  pendingExecutor: z.object({ deviceId: id, sourceDeviceId: id, operationId: id, executionEpoch: rev,
-    protocolVersion: rev, requestedAt: rev, snapshotRequired: z.boolean(), allowStaleSnapshot: z.boolean() }).strict().nullable().optional(),
-  lastExecutorTransition: z.object({ previousDeviceId: id.nullable(), deviceId: id, executionEpoch: rev,
-    throughSeq: rev, staleSnapshot: z.boolean() }).strict().nullable().optional(),
   queue: acceptedQueueSchema.optional(),
   activity: z.enum(["idle", "running", "waiting", "unknown", "saving", "done", "failed"]).optional(),
-  activityTurn: z.object({ turnId: id, executorDeviceId: id, executionEpoch: rev, sequence: rev, startedAt: rev, settledAt: rev.nullable(),
+  activityTurn: z.object({ turnId: id, ownerDeviceId: id, sequence: rev, startedAt: rev, settledAt: rev.nullable(),
     terminal: z.enum(["done", "error", "cancelled", "interrupted"]).nullable() }).strict().optional(),
   headSeq: rev, reservedThroughSeq: rev, openTurnId: id.nullable(),
   homeSnapshotId: id.nullable(), homeBytes: rev, homeState: z.enum(["none", "synced", "pending", "partial"]),
   sourceDeviceId: id, catalogRevision: rev, bodyRevision: rev,
 }).strict().refine(value => value.reservedThroughSeq >= value.headSeq &&
-  (!value.executionPreparation || value.executionPreparation.deviceId === value.executorDeviceId && value.executionPreparation.executionEpoch === value.executionEpoch));
+  (!value.executionPreparation || value.executionPreparation.deviceId === value.ownerDeviceId));
 export type CloudChatHead = z.infer<typeof cloudChatHeadSchema>;

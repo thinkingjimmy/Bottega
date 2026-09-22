@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the existing Project service queue, native folder picker and scoped portable owner.
- * [OUTPUT]: Binds an unbound Project — restored locally or synchronized — to an explicitly selected local directory with capture/recheck fences.
+ * [OUTPUT]: Binds an unbound Project — restored locally or synchronized — to an explicitly selected local directory with capture/recheck fences, and records the directory as this machine's hint.
  * [POS]: Initial local binding adapter; existing workspace replacements keep using the Memory-aware rebind saga.
  */
 import { randomUUID } from "node:crypto";
@@ -31,6 +31,8 @@ async function bindPickedFolder(service: BindingGate, projectId: string, read: (
     if (!isUsableDirectory(directory) || service.store.findByDir(directory)) throw new Error("PROJECT_FOLDER_UNAVAILABLE");
     assertWorkspaceDisjoint(directory, service.managedDirs());
     const project = await service.store.setWorkspaceBinding(projectId, { kind: "external", capabilityId: randomUUID() }, directory);
+    // Remembered for this machine, not this profile: the next profile restores the same directory without asking again.
+    await service.store.rememberLocalHint(projectId, directory);
     const wire = service.withMissing(project);
     service.emit({ type: "upserted", project: wire }); return wire;
   });

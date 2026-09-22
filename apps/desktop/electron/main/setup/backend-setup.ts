@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the runtime registry, version cache, model-catalog change notifications, fixed terminal delivery, credential reservations and trusted Setup IPC.
- * [OUTPUT]: Owns installation-only/full check scopes, per-Agent coordination, scope-preserving terminal return checks, and notifyModelsInvalidated as the single models-invalidated sink.
+ * [OUTPUT]: Owns installation-only/full check scopes, per-Agent coordination, scope-preserving terminal return checks, and notifyModelsInvalidated as the single, 250 ms-merged models-invalidated sink.
  * [POS]: Main setup coordinator; registration stays passive and the workbench requests full checks after onboarding.
  */
 
@@ -35,6 +35,11 @@ import { launchSetupTerminalAction } from "./terminal-action";
 
 type CheckFlight<T> = { scope: SetupCheckScope; promise: Promise<T> };
 
+/* 三个触发源会在同一瞬间对同一个后端各喊一次「目录作废了」（用户复检、登录回来、
+   后台目录刷新对不上缓存），而渲染端每收到一次就重取一份目录。合并窗口把这一串
+   压成一次，并且落在最后——事件本身没有载荷，晚一点说反而说得更准。 */
+const MODELS_INVALIDATED_MERGE_MS = 250;
+
 export class BackendSetupService {
   private window: BrowserWindow | null = null;
   private readonly latest = new LatestVersionCache();
@@ -52,6 +57,7 @@ export class BackendSetupService {
   private readonly automaticFlights = new Map<AgentBackendId, CheckFlight<unknown>>();
   private readonly checkFlights = new Map<AgentBackendId, CheckFlight<SetupStatus>>();
   private readonly credentialActions = new Map<AgentBackendId, ReturnType<typeof reserveAgentCredentialUse>>();
+  private readonly modelInvalidations = new Map<AgentBackendId, ReturnType<typeof setTimeout>>();
 
   constructor(private readonly locale: () => AppLocale = () => "en",
     private readonly launchTerminal: typeof launchSetupTerminalAction = launchSetupTerminalAction) {}
@@ -131,6 +137,7 @@ export class BackendSetupService {
   }
 
   private refreshOne(backend: AgentBackendId, scope: SetupCheckScope): Promise<unknown> {
+    if (backendRuntimeRegistry.closed) return Promise.resolve();
     if (this.terminalFlights.has(backend) || this.awaitingLogin.has(backend)) return Promise.resolve();
     const existing = this.checkFlights.get(backend) ?? this.automaticFlights.get(backend);
     if (existing) return scope === "full" && existing.scope === "installation"
@@ -144,7 +151,11 @@ export class BackendSetupService {
     return task;
   }
 
+  /* 退出期与 dev 主进程重启期渲染端仍在刷新。这里曾把注册表的「正在退出」原样
+     抛回 IPC，于是每一次刷新都在主进程日志里留下一整条堆栈；把最后一份已知快照
+     交回去才是这一刻的全部真相——不会再有新的检查了（N-3 / AC-8）。 */
   recheck(backend: AgentBackendId, intent: "user-recheck" | "login-return" = "user-recheck", scope: SetupCheckScope = "full"): Promise<SetupStatus> {
+    if (backendRuntimeRegistry.closed) return this.check();
     const existing = this.checkFlights.get(backend);
     if (existing) return scope === "full" && existing.scope === "installation"
       ? existing.promise.then(() => this.recheck(backend, intent, scope)) : existing.promise;
@@ -173,7 +184,7 @@ export class BackendSetupService {
     });
     const status = this.info(backend, snapshot);
     this.send({ type: "status", backend, status });
-    if (scope === "full") this.send({ type: "models-invalidated", backend });
+    if (scope === "full") this.notifyModelsInvalidated(backend);
     return this.check();
   }
 
@@ -182,7 +193,13 @@ export class BackendSetupService {
    * already painted. Same contract as a Recheck: re-fetch, do not wait for TTL.
    */
   notifyModelsInvalidated(backend: AgentBackendId) {
-    this.send({ type: "models-invalidated", backend });
+    if (this.modelInvalidations.has(backend)) return;
+    const timer = setTimeout(() => {
+      this.modelInvalidations.delete(backend);
+      this.send({ type: "models-invalidated", backend });
+    }, MODELS_INVALIDATED_MERGE_MS);
+    timer.unref?.();
+    this.modelInvalidations.set(backend, timer);
   }
 
   async refreshLatest(backend: AgentBackendId, force: boolean) {
@@ -210,6 +227,8 @@ export class BackendSetupService {
   }
 
   async shutdown() {
+    for (const timer of this.modelInvalidations.values()) clearTimeout(timer);
+    this.modelInvalidations.clear();
     for (const backend of this.credentialActions.keys()) this.releaseCredentialAction(backend);
     this.unsubscribeRuntime?.();
     this.unsubscribeRuntime = undefined;

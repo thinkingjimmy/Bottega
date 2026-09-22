@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the credential vault, login flow, closed transport, installation identity and account scope lifecycle.
- * [OUTPUT]: Provides recoverable login admission, binding-fenced offline identity, pending-delivery display and localIdentityReady, account-fenced bounded sync setup retries, cleanup-fenced inspection, pending sign-out, subscription-only heartbeats, connection-fenced wake recovery independent of account operations, single-flight handshake re-checks on a bounded backoff and SavedLoginReviewExpired.
+ * [OUTPUT]: Provides recoverable login admission, binding-fenced offline identity, machine-keyed device registration, one account-generation computer subscription and machine-wide rename, pending-delivery display and localIdentityReady, account-fenced bounded sync setup retries, cleanup-fenced inspection, pending sign-out, subscription-only heartbeats, connection-fenced wake recovery independent of account operations, single-flight handshake re-checks on a bounded backoff and SavedLoginReviewExpired.
  * [POS]: Account owner consumed by Electron composition and trusted IPC; local Stores remain authoritative.
  */
 import type { SyncEncryptionController } from "../encryption/controller";
@@ -9,7 +9,7 @@ import type { SyncEncryptionState, SyncSetupInput } from "../../../../shared/clo
 import { randomUUID } from "node:crypto";
 import { ConvexError } from "convex/values";
 import { CLOUD_LIMITS, protocolHeader, type AccountAccess, type CloudBuildConfig, type LoginReturnMode } from "@ai-chat/cloud-protocol";
-import { cloudAccountStateSchema, cloudHandshakeFailed, type CloudAccountState, type CloudError, type PendingLoginProjection } from "../../../../shared/cloud-ipc";
+import { cloudAccountStateSchema, cloudHandshakeFailed, COMPUTER_RENAME_REASONS, type CloudAccountState, type CloudComputerRenameReason, type CloudComputerRenameResult, type CloudComputersResult, type CloudError, type PendingLoginProjection } from "../../../../shared/cloud-ipc";
 import { CredentialStore, type CloudCredentials } from "../account/credential-store";
 import { credentialError, StorageSuperseded } from "../account/storage/access";
 import { LoginFlow } from "../account/login-flow";
@@ -23,6 +23,10 @@ import { rememberOfflineIdentity, restoreOfflineIdentity, restorePendingLogin } 
 import type { SyncBindingStore } from "../sync/account/binding";
 type Ports = { returnMode: LoginReturnMode; config: CloudBuildConfig; vault: CredentialStore; http: SessionClient; transport: AccountTransport;
   binding?: Pick<SyncBindingStore, "snapshot">; deviceId: string; version: string; platform: "macos" | "windows" | "linux";
+  /** This computer's key; the server groups this account's installations by it. Resolved once, with registration. */
+  machineIdHash?(): Promise<string | null>;
+  /** The Bottega folder this installation holds; the server admits its publications against that folder's owner. */
+  libraryId?(): string | null;
   name(): Promise<string>; openBrowser(url: string): Promise<void>;
   deviceNames?(userId: string, devices: import("@ai-chat/cloud-protocol").CloudDevice[]): void;
   scope?: Pick<AccountScopeLifecycle, "initialize" | "admit" | "disconnectAccount" | "pendingCount" | "suspend"> };
@@ -52,6 +56,11 @@ export class CloudAccountService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private connectionEpoch = randomUUID();
   private serverConnectionEpoch: string | null = null;
+  private machineIdHash: string | null = null;
+  private computerKey = "";
+  private computerWatch: (() => void) | null = null;
+  private computerValue: CloudComputersResult = { kind: "signed-out" };
+  private readonly computerListeners = new ChangeNotifier<CloudComputersResult>();
   private confirmedConnectionEpoch: string | null = null;
   private readonly connectionListeners = new ChangeNotifier();
   private signOutFlight: Promise<void> | null = null;
@@ -125,7 +134,7 @@ export class CloudAccountService {
   subscribeConnection = this.connectionListeners.subscribe;
   private confirmConnection(epoch: string | null) {
     if (this.confirmedConnectionEpoch === epoch) return;
-    this.confirmedConnectionEpoch = epoch; this.connectionListeners.notify();
+    this.confirmedConnectionEpoch = epoch; this.watchComputers(); this.connectionListeners.notify();
   }
   private closeTransport() { this.connectionGeneration++; this.subscribed = false; this.ports.transport.close(); }
   // A confirmed epoch on a live subscription already owns access changes, so a heartbeat needs nothing else.
@@ -153,7 +162,6 @@ export class CloudAccountService {
       await encryption.approve(id);
     });
   }
-  async pauseSync(paused: boolean) { if (!this.sync) throw new Error("SYNC_UNAVAILABLE"); await this.sync.pause(paused); }
   async retrySync() {
     if (!this.sync) throw new Error("SYNC_UNAVAILABLE");
     // A Retry that finishes a pending disconnect owes the same tail as Disable: re-enabling must ask for the password again.
@@ -189,8 +197,8 @@ export class CloudAccountService {
     if (change.status && change.status !== "ready") this.confirmConnection(null);
     if ("profile" in change && (change.profile?.userId !== this.value.profile?.userId || change.profile?.avatarUrl !== this.value.profile?.avatarUrl)) change = { ...change, avatarDataUrl: null };
     const next = cloudAccountStateSchema.parse({ ...this.value, signOutPending: this.signOutPending, ...change });
-    if (JSON.stringify(next) === JSON.stringify(this.value)) { this.notifyIdentity(); return; }
-    this.value = next; this.notifyIdentity(); this.setup.accountChanged(); this.armRecheck(); this.listeners.notify(this.snapshot());
+    if (JSON.stringify(next) === JSON.stringify(this.value)) { this.notifyIdentity(); this.watchComputers(); return; }
+    this.value = next; this.notifyIdentity(); this.watchComputers(); this.setup.accountChanged(); this.armRecheck(); this.listeners.notify(this.snapshot());
   }
   private loginChanged(pending: PendingLoginProjection | null, error: CloudError) {
     if (this.discardReview?.confirmed) return;
@@ -433,9 +441,13 @@ export class CloudAccountService {
     const flight = Promise.resolve(this.heartbeatFlight).catch(() => {}).then(async () => {
       if (this.closed || !this.presenceStopped || this.value.status !== "ready" || this.connectionEpoch !== epoch || this.generation !== generation) return;
       await this.ports.transport.mutate("devices:heartbeat", { ...protocolHeader(this.ports.config),
-        connectionEpoch: epoch, previousConnectionEpoch: epoch, outboxPending: 0, lastSeenReason: reason });
+        connectionEpoch: epoch, previousConnectionEpoch: epoch, outboxPending: 0, lastSeenReason: reason, ...this.machineKey() });
     }).finally(() => { if (this.heartbeatFlight === flight) this.heartbeatFlight = null; });
     this.heartbeatFlight = flight; return flight;
+  }
+  private machineKey() {
+    const libraryId = this.ports.libraryId?.() ?? null;
+    return { ...(this.machineIdHash ? { machineIdHash: this.machineIdHash } : {}), ...(libraryId ? { libraryId } : {}) };
   }
   private heartbeat(): Promise<void> {
     if (this.presenceStopped) return Promise.resolve();
@@ -449,7 +461,7 @@ export class CloudAccountService {
     const outboxPending = await this.ports.scope?.pendingCount() ?? 0;
     if (this.closed || generation !== this.generation || epoch !== this.connectionEpoch || this.presenceStopped) return;
     await this.ports.transport.mutate("devices:heartbeat", {
-      ...protocolHeader(this.ports.config), connectionEpoch: epoch, previousConnectionEpoch, outboxPending });
+      ...protocolHeader(this.ports.config), connectionEpoch: epoch, previousConnectionEpoch, outboxPending, ...this.machineKey() });
     if (generation === this.generation && epoch === this.connectionEpoch && this.value.status === "ready") {
       this.serverConnectionEpoch = epoch; this.confirmConnection(epoch);
     }
@@ -469,9 +481,11 @@ export class CloudAccountService {
       let registered = false;
       if (access.state === "needs-device" || access.state === "ready" && this.registeredGeneration !== generation) {
         const name = await this.ports.name();
+        this.machineIdHash = await this.ports.machineIdHash?.() ?? null;
         if (!current()) throw new Error("cloud-request-superseded");
         await this.ports.transport.mutate("devices:register", { ...protocolHeader(this.ports.config), deviceId: this.ports.deviceId,
-          name, platform: this.ports.platform, appVersion: this.ports.version });
+          name, platform: this.ports.platform, appVersion: this.ports.version, ...this.machineKey() });
+        this.set({ machine: this.machineIdHash ? { idHash: this.machineIdHash, name } : null });
         if (!current()) throw new Error("cloud-request-superseded");
         this.registeredGeneration = generation; registered = true;
         access = await this.ports.transport.query("account:getAccessState", protocolHeader(this.ports.config));
@@ -663,6 +677,36 @@ export class CloudAccountService {
     this.set({ status, profile: null, deviceId: null, pendingLogin: null, error: null,
       canRetryLoginSave: false, loginCancelling: false, cancelUnconfirmed: false });
   }
+  /**
+   * The account's computers, live. One socket subscription per account generation feeds every renderer listener:
+   * the switcher, the sidebar's owner grouping and the composer's send gate all read the same list, so they cannot
+   * disagree. A listener that arrives later reads `computers()` first and is pushed every change after that.
+   */
+  subscribeComputers = (listener: (value: CloudComputersResult) => void) => this.computerListeners.subscribe(listener);
+  computers() { return structuredClone(this.computerValue); }
+  private publishComputers(value: CloudComputersResult) {
+    if (JSON.stringify(value) === JSON.stringify(this.computerValue)) return;
+    this.computerValue = value; this.computerListeners.notify(this.computers());
+  }
+  private watchComputers() {
+    // Shutting down is terminal, and it has to be said even when the account had already gone.
+    if (this.closed) { this.computerKey = ""; this.computerWatch?.(); this.computerWatch = null; this.publishComputers({ kind: "shutting-down" }); return; }
+    const account = Boolean(this.value.profile) && !this.signOutPending;
+    const ready = account && this.value.status === "ready" && this.confirmedConnectionEpoch;
+    const key = ready ? JSON.stringify([this.value.profile!.userId, this.value.deviceId, this.confirmedConnectionEpoch]) : "";
+    /* No account is an answer, and it is said whether or not the subscription key moved. A connection that merely
+       dropped is not: the last confirmed list stands, and every client retires presence on its own deadline. */
+    if (!account) this.publishComputers({ kind: "signed-out" });
+    if (key === this.computerKey) return;
+    this.computerKey = key; this.computerWatch?.(); this.computerWatch = null;
+    if (!key) return;
+    try {
+      this.computerWatch = this.ports.transport.watchComputers?.(protocolHeader(this.ports.config),
+        value => { if (key === this.computerKey) this.publishComputers({ kind: "computers", computers: value.computers }); },
+        // The last confirmed list survives a temporary outage; every client retires presence on its own deadline.
+        () => { if (key === this.computerKey) { this.computerWatch = null; this.computerKey = ""; } }) ?? null;
+    } catch { this.computerKey = ""; }
+  }
   async listDevices(cursor: string | null, state?: "active" | "revoked") {
     const userId = this.value.profile?.userId, generation = this.generation;
     const page = await this.ports.transport.query("devices:list", { ...protocolHeader(this.ports.config), cursor, ...(state ? { state } : {}) });
@@ -680,10 +724,28 @@ export class CloudAccountService {
     await this.ports.transport.mutate("devices:rename", { ...protocolHeader(this.ports.config), deviceId, name });
     if (this.ports.deviceNames) void this.refreshDeviceNames().catch(() => {});
   }
+  /**
+   * Renames this computer, every installation on it at once; the server refuses a name another computer holds.
+   * Its three refusals are product answers the Settings row says in a sentence, so they cross IPC as values.
+   */
+  async renameComputer(name: string): Promise<CloudComputerRenameResult> {
+    const machineIdHash = this.machineIdHash ?? await this.ports.machineIdHash?.() ?? null;
+    if (!machineIdHash) throw new Error("MACHINE_KEY_UNAVAILABLE");
+    try { await this.ports.transport.mutate("devices:renameComputer", { ...protocolHeader(this.ports.config), machineIdHash, name }); }
+    catch (error) {
+      const reason = error instanceof ConvexError ? String(error.data) : "";
+      if ((COMPUTER_RENAME_REASONS as readonly string[]).includes(reason)) return { kind: "rejected", reason: reason as CloudComputerRenameReason };
+      throw error;
+    }
+    this.machineIdHash = machineIdHash;
+    this.set({ machine: { idHash: machineIdHash, name } });
+    if (this.ports.deviceNames) void this.refreshDeviceNames().catch(() => {});
+    return { kind: "renamed" };
+  }
   async revokeDevice(deviceId: string) {
     if (deviceId === this.value.deviceId || deviceId === this.ports.deviceId) { await this.signOut(); return; }
     await this.ports.transport.mutate("devices:revoke", { ...protocolHeader(this.ports.config), deviceId });
     if (this.ports.deviceNames) void this.refreshDeviceNames().catch(() => {});
   }
-  close() { this.setup.cancel(); this.storageUnsubscribe(); this.confirmConnection(null); this.closed = true; if (this.recheckTimer) clearTimeout(this.recheckTimer); this.generation++; this.accessRevision++; this.login.stop(); this.closeTransport(); this.ports.http.clear(); if (this.timer) clearInterval(this.timer); this.listeners.clear(); this.identityListeners.clear(); this.connectionListeners.clear(); }
+  close() { this.setup.cancel(); this.storageUnsubscribe(); this.closed = true; this.confirmConnection(null); this.watchComputers(); if (this.recheckTimer) clearTimeout(this.recheckTimer); this.generation++; this.accessRevision++; this.login.stop(); this.closeTransport(); this.ports.http.clear(); if (this.timer) clearInterval(this.timer); this.listeners.clear(); this.identityListeners.clear(); this.connectionListeners.clear(); this.computerListeners.clear(); }
 }

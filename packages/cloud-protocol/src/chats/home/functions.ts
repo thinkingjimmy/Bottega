@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on encrypted-space headers and bounded ciphertext Home publication contracts.
  * [OUTPUT]: Provides typed encrypted Home begin/page/receipt and bounded opaque entry reads.
- * [POS]: Home RPC allowlist; only the current desktop executor can publish snapshots.
+ * [POS]: Home RPC allowlist; only the desktop that owns the Chat can publish snapshots.
  */
 import { z } from "zod";
 import { encryptedBusinessHeaderSchema } from "../../spaces";

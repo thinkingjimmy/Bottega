@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, zod, shared Agent/Settings IPC, Memory registry, durable persistence, and SerialQueue
- * [OUTPUT]: Provides SettingsStore v11 with additive execution-device, archive-confetti and Agent-connections defaults, the single-backend title Agent that reads a retired or invalid value as the first backend, backend/presence/appearance preferences, Memory control, and fail-closed recovery; Chat options belong to SQLite
+ * [OUTPUT]: Provides SettingsStore v11 with additive Agent-setup-deferred, archive-confetti and Agent-connections defaults, the single-backend title Agent that reads a retired or invalid value as the first backend, backend/presence/appearance preferences, Memory control, and fail-closed recovery; Chat options belong to SQLite
  * [POS]: The canonical multi-backend settings owner in Electron main
  */
 
@@ -60,7 +60,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   titleModelByBackend: { codex: null },
   defaultChatOptionsByBackend: DEFAULT_CHAT_OPTIONS_BY_BACKEND,
   lastSelectedBackend: "codex",
-  defaultExecutionDeviceId: null,
+  agentSetupDeferred: false,
+  computerNameHintSeen: false,
   autoRelayLimit: 25,
   usagePricingAutoRefresh: true,
   skillsOnboarding: "pending",
@@ -153,7 +154,10 @@ const settingsSchema = z
       .strict(),
     defaultChatOptionsByBackend: defaultsSchema,
     lastSelectedBackend: backendSchema,
-    defaultExecutionDeviceId: z.string().trim().min(1).max(256).nullable().default(null),
+    /* Additive default keeps existing strict settings files readable. */
+    agentSetupDeferred: z.boolean().default(false),
+    /* Additive default keeps existing strict settings files readable. */
+    computerNameHintSeen: z.boolean().default(false),
     autoRelayLimit: z.number().int().min(0).max(1_000),
     usagePricingAutoRefresh: z.boolean(),
     /* Additive default keeps existing strict settings files readable. */

@@ -1,16 +1,16 @@
 /**
  * [INPUT]: Depends on Zod and structured errors after original remote operation receipt lookup.
- * [OUTPUT]: Provides closed uncommitted selection/preparation and rate/capacity admission rejection proofs.
+ * [OUTPUT]: Provides closed uncommitted preparation and rate/capacity admission rejection proofs, including the not-owner refusal.
  * [POS]: Shared remote recovery boundary for Web UI and the desktop main/preload adapter.
  */
 import { z } from "zod";
 
-// Both mutations check the original receipt before these guards. Auth, protocol and flag errors do not prove that absence.
-export const executorSelectionRejectionSchema = z.enum(["executor-changed", "device-revoked", "device-offline", "executor-running", "remote-rate-limited"]);
-export type ExecutorSelectionRejection = z.infer<typeof executorSelectionRejectionSchema>;
-export function executorSelectionRejection(error: unknown): ExecutorSelectionRejection | null {
+// `remote/chats:retryPreparation` checks its original receipt before these guards. Auth, protocol and flag errors do not prove that absence.
+export const preparationRejectionSchema = z.enum(["not-owner", "device-revoked", "device-offline", "execution-running", "remote-rate-limited"]);
+export type PreparationRejection = z.infer<typeof preparationRejectionSchema>;
+export function preparationRejection(error: unknown): PreparationRejection | null {
   if (!error || typeof error !== "object" || !("data" in error)) return null;
-  const result = executorSelectionRejectionSchema.safeParse(error.data);
+  const result = preparationRejectionSchema.safeParse(error.data);
   return result.success ? result.data : null;
 }
 

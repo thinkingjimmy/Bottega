@@ -7,6 +7,7 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { AgentBackendId, AgentScope, AgentWorkspaceScope } from "../../../../../shared/agent-ipc";
 import type { ChatMessage } from "../../../../../shared/chats-ipc";
+import type { ProjectWorkspaceBinding } from "../../../../../shared/projects-ipc";
 import { useSetup } from "@/components/providers/setup-provider";
 import { backendAvailability } from "@/lib/chat-hydration";
 import { mergeChatMessages, type ChatTurnProjection } from "@/lib/chat-turn-attach";
@@ -22,12 +23,14 @@ export function useSessionRuntimeCatalogs({
   sessionReady,
   workspaceScope,
   workspaceScopeKey,
+  workspaceBinding,
   draftAgent,
 }: {
   scope: AgentScope;
   sessionReady: boolean;
   workspaceScope: AgentWorkspaceScope;
   workspaceScopeKey: string;
+  workspaceBinding?: ProjectWorkspaceBinding | null;
   draftAgent?: AgentBackendId;
 }) {
   const setup = useSetup();
@@ -37,7 +40,8 @@ export function useSessionRuntimeCatalogs({
     setup.status?.backends ?? [],
     setup.recheck,
     draftAgent,
-    workspaceScopeKey
+    workspaceScopeKey,
+    workspaceBinding ?? null
   );
   const selectedBackend = settings.backends.find(
     (backend) => backend.id === settings.turnOptions.backend

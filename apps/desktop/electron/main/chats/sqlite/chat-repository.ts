@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on focused repository reader/writer collaborators, canonical Chat schemas, SQLite transactions, optional import-blob storage, and the closed database protocol
- * [OUTPUT]: Provides receipt-atomic Chat writes, frozen executor checks, scoped outbox publication and original App transcript custody before native removal.
+ * [OUTPUT]: Provides receipt-atomic Chat writes, frozen owner checks, scoped outbox publication and original App transcript custody before native removal.
  * [POS]: Chat domain SQL transaction authority inside the dedicated worker; row projection details live in repository collaborators
  */
 import { guardRecordUsers } from "./cloud/execution/commit";
@@ -181,7 +181,7 @@ export class ChatRepository {
             command.expectedAggregateRevision
           );
         }
-        guardRecordUsers(this.database, this.reader, command.deviceId, record, command.executorCommit);
+        guardRecordUsers(this.database, this.reader, command.deviceId, record, command.ownerCommit);
         const lifecycle = command.lifecycleKind ??
           (record.importOrigin ? "external-managed" : "native");
         this.writer.writeCore(record, lifecycle);

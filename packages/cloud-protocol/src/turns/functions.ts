@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on closed turn commands, Chat heads and scoped protocol headers.
- * [OUTPUT]: Provides typed publication, reviewed successor sealing, catch-up, receipts and selected-desktop ownership functions.
+ * [OUTPUT]: Provides typed publication, reviewed successor sealing, catch-up, receipts and the owning desktop's preparation acknowledgement.
  * [POS]: Public turn registry; remote text delivery uses the separate remote registry.
  */
 import { z } from "zod";
@@ -27,9 +27,7 @@ export const turnFunctions = {
   "turns/reads:state": { kind: "query", args: z.object(lookup).strict(), result: encryptedLiveTurnStateSchema.nullable() },
   "turns/reads:page": { kind: "query", args: z.object({ ...lookup, afterSeq: rev, throughSeq: rev }).strict(),
     result: encryptedTurnPageSchema },
-  "turns/executor:claim": { kind: "mutation", args: z.object({ ...header, chatId: id, incarnationId: id, expectedEpoch: rev,
-    targetDeviceId: id, operationId: id, allowStaleSnapshot: z.boolean().optional() }).strict(), result: encryptedChatHeadSchema },
-  "turns/executor:prepare": { kind: "mutation", args: z.object({ ...header, chatId: id, incarnationId: id, executionEpoch: rev,
+  "turns/owner:prepare": { kind: "mutation", args: z.object({ ...header, chatId: id, incarnationId: id,
     bodyRevision: rev, homeSnapshotId: id.nullable(), state: z.enum(["ready", "blocked"]),
     reason: executionPreparationReasonSchema.nullable() }).strict(), result: encryptedChatHeadSchema },
 } as const;

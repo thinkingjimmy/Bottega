@@ -70,14 +70,14 @@ export class ClassificationTransactions {
     let operation = null;
     if (scope) {
       const state = readMetadataState(this.db, scope, facts.id), head = state.head ? cloudChatHeadSchema.parse(state.head) : null;
-      if (!head || state.deleted || state.conflicted || head.openTurnId || head.executorDeviceId !== deviceId ||
+      if (!head || state.deleted || state.conflicted || head.openTurnId || head.ownerDeviceId !== deviceId ||
           head.chat.incarnationId !== facts.incarnationId || canonicalJson(head.chat.classification) !== canonicalJson(action.previous) ||
           head.executionPreparation && head.executionPreparation.state !== "ready" ||
           this.db.prepare("SELECT 1 FROM cloud_outbox WHERE environment=? AND user_id=? AND json_extract(payload_json,'$.chatId')=? LIMIT 1")
             .get(scope.environment, scope.userId, facts.id)) throw new Error("CHAT_CLASSIFICATION_NOT_READY");
       operation = chatClassificationOperationSchema.parse({ lifecycleOperationId: action.lifecycleOperationId, chatId: facts.id,
         incarnationId: facts.incarnationId, candidateHash, payloadHash: "0".repeat(64), expectedRevision: head.chat.cloudRevision,
-        executionEpoch: head.executionEpoch, previous: action.previous, next: projectChatClassification(facts),
+        previous: action.previous, next: projectChatClassification(facts),
         ...(action.basePromotion ? { basePromotion: action.basePromotion } : {}),
         ...(rescue ? { projectRescue: rescue } : {}) });
       operation.payloadHash = hashChatClassificationOperation(operation);
@@ -87,7 +87,7 @@ export class ClassificationTransactions {
       action.lifecycleOperationId, facts.id, scope?.environment ?? null, scope?.userId ?? null,
       action.expectedRevision, canonicalJson(action.previous), json(currentFacts), candidate, candidateHash, operation ? json(operation) : null, scope ? "pending" : "confirmed");
     if (scope && operation) enqueueSource(this.db, { id: action.lifecycleOperationId, scope, chatId: facts.id, entityKind: "chat",
-      kind: "classification", revision: facts.chatRecordRevision, executionEpoch: operation.executionEpoch, payload: operation, now: this.now() });
+      kind: "classification", revision: facts.chatRecordRevision, payload: operation, now: this.now() });
     return { lifecycleOperationId: action.lifecycleOperationId, candidateHash, state: scope ? "pending" : "confirmed" };
   }
   confirm(action: Extract<CloudAction, { type: "confirm-classification" }>, scope: SyncScope, deviceId: string) {
@@ -135,7 +135,7 @@ export class ClassificationTransactions {
       const latest = readMetadataState(this.db, scope, facts.id);
       if (latest.deleted || receipt.sourceDeviceId !== deviceId || receipt.status !== "applied" || !receipt.head) throw new Error("Classification confirmation is required");
       head = latest.head && latest.head.catalogRevision > receipt.head.catalogRevision ? cloudChatHeadSchema.parse(latest.head) : receipt.head;
-      if (head.executionEpoch !== receipt.head.executionEpoch || head.executorDeviceId !== deviceId ||
+      if (head.ownerDeviceId !== deviceId ||
           canonicalJson(head.chat.classification) !== canonicalJson(projectChatClassification(facts))) throw new Error("CHAT_CLASSIFICATION_REMOTE_CHANGED");
     }
     if (current.readOnlyReason === "external-readonly") {

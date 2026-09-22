@@ -31,7 +31,7 @@ export function RemoteQueue({ head, port, session, entries, locale, disabled }: 
     return () => { active = false; stop(); };
   }, [port, head.chat.id, copy.requestFailed]);
   const published = waiting?.accepted ?? head.queue;
-  const accepted = published?.deviceId === head.executorDeviceId && published.executionEpoch === head.executionEpoch ? published : null;
+  const accepted = published?.deviceId === head.ownerDeviceId ? published : null;
   const known = new Set(accepted?.items.map(item => item.intentId));
   const rows = [...(accepted?.items ?? []).map(item => ({ ...item, kind: "accepted" as const })),
     ...(waiting?.items ?? []).filter(item => !known.has(item.intentId)).map(item => ({ ...item, kind: "awaiting" as const }))];
@@ -45,9 +45,9 @@ export function RemoteQueue({ head, port, session, entries, locale, disabled }: 
       state: busy || disabled ? "submitting" as const : "queued" as const, readOnlyEdit: true };
   });
   const control = async (payload: Extract<RemoteCommandInput["payload"], { kind: "withdraw-queued" | "reorder-queue" }>) => {
-    if (!head.executorDeviceId) throw new Error("executor-changed");
+    if (!head.ownerDeviceId) throw new Error("not-owner");
     const result = await awaitRemoteResult(session, { commandId: crypto.randomUUID(), chatId: head.chat.id, incarnationId: head.chat.incarnationId,
-      executionEpoch: head.executionEpoch, targetDeviceId: head.executorDeviceId, payload }, port.lifetime);
+      targetDeviceId: head.ownerDeviceId, payload }, port.lifetime);
     if (result.state !== "done") throw new Error(result.reason ?? "queue-changed");
   };
   // A refused withdrawal or reorder names its reason — already dispatched, queue changed — instead of one opaque failure.
@@ -71,9 +71,9 @@ export function RemoteQueue({ head, port, session, entries, locale, disabled }: 
   const move = (from: number, to: number) => run(async () => {
     const { kind, intentIds } = queueMove(rows, from, to);
     if (kind === "combined") {
-      if (!waiting || !accepted || !head.executorDeviceId) throw new Error("queue-changed");
+      if (!waiting || !accepted || !head.ownerDeviceId) throw new Error("queue-changed");
       const settled = await awaitQueueAdmission(port, head.chat.id, { ...waiting, accepted },
-        { deviceId: head.executorDeviceId, executionEpoch: head.executionEpoch }, lifecycle.current.signal);
+        { deviceId: head.ownerDeviceId }, lifecycle.current.signal);
       return control({ kind: "reorder-queue", expectedRevision: settled.revision, intentIds });
     }
     if (kind === "accepted" && accepted) return control({ kind: "reorder-queue", expectedRevision: accepted.revision, intentIds });

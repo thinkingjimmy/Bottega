@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React, Setup clients, the main-provided startup snapshot, revision-safe snapshots, the shared evidence clock and onboarding gate.
- * [OUTPUT]: Provides a first-render verdict seeded from the startup snapshot (a passive unknown never unseats a provisional Agent), installation-or-persisted-device onboarding checks, explicit destinations and session locks, full workbench checks, per-Agent feedback and scope-aware coalesced actions.
+ * [OUTPUT]: Provides a first-render verdict seeded from the startup snapshot (a passive unknown never unseats a provisional Agent), installation-or-deferred onboarding checks, explicit destinations and session locks, full workbench checks, per-Agent feedback and scope-aware coalesced actions.
  * [POS]: Renderer Agent-environment context; the main window owns setup lifecycle while App windows consume only backend runtime projections for their resident chat
  */
 
@@ -250,7 +250,7 @@ export function SetupProvider({ children }: { children: React.ReactNode }) {
     settings?.chatHomeState ?? null,
     settingsError
   );
-  const agentStatus = agentRequirement(status?.backends ?? null, checking, settings?.defaultExecutionDeviceId);
+  const agentStatus = agentRequirement(status?.backends ?? null, checking, settings?.agentSetupDeferred);
   /* 守档：事实被瞬态打回未落定时，gate 沿用最近一次由已落定事实亲自
      选出的档位。forced 的强制引导不写档——离场要回到被强制前的界面。
      渲染期就地调整而非 effect 回写，settled 与 held 没有错帧窗口；

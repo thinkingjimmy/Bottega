@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { RemoteTarget } from "@ai-chat/cloud-protocol/remote/model";
 import type { ChatPlatform } from "../contracts";
-import type { RemoteExecutorPort, RemoteTargets } from "./contracts";
+import type { RemoteExecutionPort, RemoteTargets } from "./contracts";
 import { remoteCommandSession } from "./commands/registry";
 export function useRemoteCommands(platform: ChatPlatform, chatId: string, incarnationId: string) {
   const port = platform.commands.remote;
@@ -23,10 +23,10 @@ export function useRemoteCommands(platform: ChatPlatform, chatId: string, incarn
   const value = useSyncExternalStore(session?.subscribe ?? (() => () => {}), session?.snapshot ?? (() => empty));
   return { session, ...value };
 }
-type TargetState = { port: RemoteExecutorPort; chatId: string | null; projectId?: string | null; value: RemoteTargets | null; observedAt: number; serverNow: number; error: boolean };
-export function useRemoteTargets(port: RemoteExecutorPort | undefined, chatId: string | null, projectId?: string | null) {
+type TargetState = { port: RemoteExecutionPort; chatId: string | null; projectId?: string | null; value: RemoteTargets | null; observedAt: number; serverNow: number; error: boolean };
+export function useRemoteTargets(port: RemoteExecutionPort | undefined, chatId: string | null, projectId?: string | null) {
   const [state, setState] = useState<TargetState | null>(null), [version, refresh] = useState(0), [clock, setClock] = useState(Date.now);
-  const epochs = useRef<{ port: RemoteExecutorPort; value: string } | null>(null);
+  const epochs = useRef<{ port: RemoteExecutionPort; value: string } | null>(null);
   useEffect(() => {
     if (!port) return;
     let active = true;

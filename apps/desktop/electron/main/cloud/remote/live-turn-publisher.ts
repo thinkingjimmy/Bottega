@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on approved account scope, original-epoch SQLite outboxes, verified bodies and formal turn RPCs.
+ * [INPUT]: Depends on approved account scope, original SQLite outboxes, verified bodies and formal turn RPCs.
  * [OUTPUT]: Publishes ordered turns from turn-scoped outbox scans with frozen final watermarks, and seals replaced unknown turns against the next durable admission.
  * [POS]: Main synchronization publisher; it never starts or stops Agents and never renews an execution lease.
  */
@@ -100,7 +100,7 @@ export class LiveTurnPublisher {
       }
     }
     this.current(); const cipher = await stageChatBody({ checkpoints, body: saved.body, bodyHash: saved.bodyHash, outboxId: item.id, bytes, header: this.header, transport, signal,
-      identity: { chatId: admission.chat.id, incarnationId: admission.chat.incarnationId, executionEpoch: admission.executionEpoch } });
+      identity: { chatId: admission.chat.id, incarnationId: admission.chat.incarnationId } });
     return { ...saved, ciphertextHash: cipher.ciphertextHash };
   }
   private async evidence(admission: LocalTurnAdmission, items: ChatOutboxItem[]): Promise<ResultEvidence | null> {
@@ -111,7 +111,7 @@ export class LiveTurnPublisher {
       if (item.kind === "ledger-handoff" && item.entity_id === admission.turnId) {
         const { turnId, ...evidence } = (await readOutboxSource(store, scope, item)).payload as HandoffEvidence & { turnId: string };
         if (turnId !== admission.turnId) throw new Error("TURN_HANDOFF_IDENTITY_CONFLICT");
-        const action = cloudActionSchema.parse({ type: "handoff-turn", chatId: admission.chat.id, turnId, executionEpoch: admission.executionEpoch, evidence });
+        const action = cloudActionSchema.parse({ type: "handoff-turn", chatId: admission.chat.id, turnId, evidence });
         if (action.type !== "handoff-turn") throw new Error("TURN_HANDOFF_INVALID");
         if (!fallback || fallback.resultKind === "pending") fallback = action.evidence;
       } else if (item.entity_kind !== "turn") {
@@ -135,7 +135,7 @@ export class LiveTurnPublisher {
     let saved = await checkpoints.get("turn-start");
     if (!saved) {
       const source = { chatId: admission.chat.id, incarnationId: admission.chat.incarnationId, turnId: admission.turnId,
-        executorDeviceId: admission.executorDeviceId, executionEpoch: admission.executionEpoch, backend: admission.options.backend, options: admission.options,
+        ownerDeviceId: admission.ownerDeviceId, backend: admission.options.backend, options: admission.options,
         expectedAgentRevision: admission.expectedAgentRevision, planRequested: admission.planRequested, createdAt: admission.createdAt,
         userMessageId: admission.user.id, assistantMessageId: admission.assistantMessageId, ...admission.sequences,
         userBodyHash: user.bodyHash, noticeBodyHashes: notices.map(value => value.bodyHash) };
@@ -147,8 +147,8 @@ export class LiveTurnPublisher {
       const classification = admission.chat.classification;
       const optionsPacket = await sealChatPacket(this.crypto, admission.chat.id, { operationId: hashChatContent(["turn-options", item.id]), role: "options",
         metadata: { incarnationId: admission.chat.incarnationId, classification: { kind: classification.conversationKind, projectId: classification.projectId, appId: classification.appId },
-          sourceDeviceId: admission.executorDeviceId, agent: saved.start.backend, agentRevision: saved.start.expectedAgentRevision + Number(saved.start.noticeSeq !== undefined),
-          expectedRevision: admission.chat.cloudRevision, executionEpoch: admission.executionEpoch, archivedAt: null, references: [] } }, { options: saved.start.options }, signal);
+          sourceDeviceId: admission.ownerDeviceId, agent: saved.start.backend, agentRevision: saved.start.expectedAgentRevision + Number(saved.start.noticeSeq !== undefined),
+          expectedRevision: admission.chat.cloudRevision, archivedAt: null, references: [] } }, { options: saved.start.options }, signal);
       const start = await prepareTurnStart(saved.start, { userBodyHash: user.ciphertextHash, noticeBodyHashes: notices.map(value => value.ciphertextHash), optionsPacket }, this.crypto, signal);
       this.current(); frozen = await checkpoints.save({ kind: "encrypted-turn-start", encryptedSpace: this.header.encryptedSpace, plaintextHash: saved.start.identityHash, start });
     }
@@ -249,7 +249,7 @@ export class LiveTurnPublisher {
       const saved = await checkpoints.get(`body:${admission.sequences.assistantSeq}`);
       if (!saved || saved.kind !== "native-body" || saved.bodyHash !== final.final.result.bodyHash) throw new Error("TURN_FINAL_BODY_SOURCE_CHANGED");
       await stageChatBody({ checkpoints, body: saved.body, bodyHash: saved.bodyHash, outboxId: item.id, bytes: this.ports.bytes,
-        header: this.header, transport, signal: this.controller.signal, identity: { chatId: admission.chat.id, incarnationId: admission.chat.incarnationId, executionEpoch: admission.executionEpoch } });
+        header: this.header, transport, signal: this.controller.signal, identity: { chatId: admission.chat.id, incarnationId: admission.chat.incarnationId } });
     }
     this.current(); receipt = await transport.mutate("turns/api:finalize", { ...this.header, final: await this.freezeFinal(checkpoints, final.final, start) });
     await this.consumer.consume(receipt);

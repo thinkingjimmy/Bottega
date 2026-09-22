@@ -232,22 +232,11 @@ export function createMainWindow({
     resolveWorkspace,
   });
   bindWindowTheme(window);
-  const currentLocale = () =>
-    resolveAppLocale(
-      settings.get().language,
-      app.getPreferredSystemLanguages()
-    );
   const artifacts = artifactRuntime();
   if (artifacts) { apps.configureArtifacts(artifacts.gateway); registerArtifactIpc(window, rendererUrl, artifacts, bases); }
-  lockNavigation(window, rendererUrl, apps, currentLocale);
+  lockNavigation(window, rendererUrl, apps);
   browser.register(window, rendererUrl);
-  registerAppBridge(
-    window,
-    rendererUrl,
-    files,
-    resolveWorkspace,
-    currentLocale
-  );
+  registerAppBridge(window, rendererUrl, files, resolveWorkspace);
   apps.register(window, rendererUrl);
   setup.register(window, rendererUrl);
   projects.register(window, rendererUrl);

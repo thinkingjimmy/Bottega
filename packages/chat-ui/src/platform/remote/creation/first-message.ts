@@ -9,15 +9,15 @@ import type { ChatPlatform } from "../../contracts";
 import type { RemoteCreated, RemoteCreateInput } from "../contracts";
 import { remoteCommandSession } from "../commands/registry";
 import type { RemoteDraftStore } from "../input/draft";
-import type { RemoteFullAccessConsent, RemotePermissionMode } from "@ai-chat/cloud-protocol/remote/input/model";
+import { remoteConsentFor, type RemoteConsentScope, type RemoteFullAccessConsent, type RemotePermissionMode } from "@ai-chat/cloud-protocol/remote/input/model";
 import { remoteReasonSchema, type RemoteReason, type RemoteTurnOptions } from "@ai-chat/cloud-protocol/remote/model";
 export class FirstMessageFailure extends Error {
   constructor(readonly reason: RemoteReason) { super(reason); }
 }
 function fail(reason: RemoteReason): never { throw new FirstMessageFailure(reason); }
 export type FirstMessageIntent = { text: string; commandId: string; creation: RemoteCreateInput; draftStore?: RemoteDraftStore; permissionMode?: RemotePermissionMode; planMode?: boolean; options?: RemoteTurnOptions; references?: readonly RemoteReference[] };
-export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | "chats" | "commands" | "executor">, receipt: RemoteCreated, intent: FirstMessageIntent, signal: AbortSignal,
-  confirm?: (scope: Omit<Extract<RemoteFullAccessConsent, { version: 1 }>, "version">) => Promise<RemoteFullAccessConsent | null>) {
+export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | "chats" | "commands" | "execution">, receipt: RemoteCreated, intent: FirstMessageIntent, signal: AbortSignal,
+  confirm?: (scope: RemoteConsentScope) => Promise<RemoteConsentScope | null>) {
   const owner = platform.account.snapshot(), abort = new AbortController();
   const cancel = () => abort.abort();
   const valid = () => {
@@ -40,16 +40,16 @@ export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | 
     }
     const head = await awaitChatHead(platform.chats, receipt, abort.signal);
     if (!head || !valid()) fail("identity-changed");
-    if ((head.pendingExecutor?.deviceId ?? head.executorDeviceId) !== receipt.executorDeviceId) fail("executor-changed");
-    const executor = platform.executor.remote;
-    if (!executor) fail("remote-disabled");
-    const target = await firstMessageTarget(executor, receipt, abort.signal);
+    if (head.ownerDeviceId !== receipt.ownerDeviceId) fail("not-owner");
+    const execution = platform.execution.remote;
+    if (!execution) fail("remote-disabled");
+    const target = await firstMessageTarget(execution, receipt, abort.signal);
     if (target.reason) fail(target.reason);
     if (target.projectBound === false) fail("project-path-unbound");
     const agent = target.agents.find(agent => agent.backend === intent.creation.backend);
     if (!agent?.available) fail(agent?.reason ?? "agent-unavailable");
     const references = intent.references ?? intent.draftStore?.snapshot().references.map(reference => reference.value) ?? [];
-    assertRemoteReferenceTarget(references, receipt.executorDeviceId);
+    assertRemoteReferenceTarget(references, receipt.ownerDeviceId);
     const attachments = await intent.draftStore?.prepare(receipt.chatId, platform.commands.remote?.attachments, abort.signal) ?? [];
     if (!valid()) fail("identity-changed");
     const capability = target.agents.find(agent => agent.backend === intent.creation.backend)?.capabilities;
@@ -58,13 +58,14 @@ export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | 
     let fullAccessConsent: RemoteFullAccessConsent | null = null;
     if (intent.permissionMode === "full-access") {
       if (!owner.profile?.userId || !owner.deviceId || !confirm) fail("permission-required");
-      fullAccessConsent = await confirm({ userId: owner.profile.userId, sourceDeviceId: owner.deviceId, chatId: receipt.chatId, incarnationId: receipt.incarnationId,
-        targetDeviceId: receipt.executorDeviceId, executionEpoch: receipt.executionEpoch });
+      const scope = await confirm({ userId: owner.profile.userId, sourceDeviceId: owner.deviceId, chatId: receipt.chatId, incarnationId: receipt.incarnationId,
+        targetDeviceId: receipt.ownerDeviceId });
+      fullAccessConsent = scope && remoteConsentFor(scope, intent.commandId, receipt.ownerDeviceId);
       if (!fullAccessConsent || !valid()) fail("permission-required");
     }
     // The original request survives an unknown result through the same session used by the detail view.
     const submitted = await session.submit({ commandId: intent.commandId, chatId: receipt.chatId, incarnationId: receipt.incarnationId,
-      targetDeviceId: receipt.executorDeviceId, executionEpoch: receipt.executionEpoch, intent: { baselineAgent: head.chat.agent },
+      targetDeviceId: receipt.ownerDeviceId, intent: { baselineAgent: head.chat.agent },
       payload: { kind: "start-turn", text: intent.text, expectedAgentRevision: head.chat.agentRevision,
         ...(attachments.length ? { attachments } : {}), ...(references.length ? { references: [...references] } : {}), ...(intent.permissionMode ? { permissionMode: intent.permissionMode } : {}),
         ...(intent.planMode !== undefined ? { planMode: intent.planMode } : {}), ...(intent.options ? { options: intent.options } : {}), ...(fullAccessConsent ? { fullAccessConsent } : {}) } }, abort.signal);
@@ -86,14 +87,14 @@ export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | 
     abort.abort();
   }
 }
-async function firstMessageTarget(executor: NonNullable<ChatPlatform["executor"]["remote"]>, receipt: RemoteCreated, signal: AbortSignal) {
-  let targets = await executor.targets({ chatId: receipt.chatId, cursor: null });
+async function firstMessageTarget(execution: NonNullable<ChatPlatform["execution"]["remote"]>, receipt: RemoteCreated, signal: AbortSignal) {
+  let targets = await execution.targets({ chatId: receipt.chatId, cursor: null });
   const cursors = new Set<string>();
-  while (!targets.items.some(item => item.deviceId === receipt.executorDeviceId) && !targets.complete && targets.cursor && cursors.size < 20) {
+  while (!targets.items.some(item => item.deviceId === receipt.ownerDeviceId) && !targets.complete && targets.cursor && cursors.size < 20) {
     if (cursors.has(targets.cursor) || signal.aborted) fail("identity-changed");
-    cursors.add(targets.cursor); targets = await executor.targets({ chatId: receipt.chatId, cursor: targets.cursor });
+    cursors.add(targets.cursor); targets = await execution.targets({ chatId: receipt.chatId, cursor: targets.cursor });
   }
-  const target = targets.items.find(item => item.deviceId === receipt.executorDeviceId);
+  const target = targets.items.find(item => item.deviceId === receipt.ownerDeviceId);
   signal.throwIfAborted();
   if (!targets.remoteControlEnabled) fail("remote-disabled");
   if (!target) fail("device-revoked");

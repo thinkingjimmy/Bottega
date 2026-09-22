@@ -1,14 +1,14 @@
 /**
- * [INPUT]: Depends on portable identity, account/device, Chat body, read models and closed remote command/executor contracts.
+ * [INPUT]: Depends on portable identity, account/device/computer, Chat body, read models and closed remote command/execution contracts.
  * [OUTPUT]: Exposes six platform facades, explicit feature capabilities, optional verified-head reuse for page reads, an optional prepared imported-body port and attachment-aware remote control capabilities.
  * [POS]: SDK-free boundary; clients own subscriptions, execution, credentials and binary access.
  */
 import type { z } from "zod";
-import type { accountProfileSchema, CloudFunctionResult, BlobDescriptor } from "@ai-chat/cloud-protocol";
+import type { accountProfileSchema, CloudComputer, CloudFunctionResult, BlobDescriptor } from "@ai-chat/cloud-protocol";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { ChatCatalogPage, ChatLiveView, TranscriptPage, TranscriptRequest } from "./model";
 import type { PreparedImportedField } from "./transcript/fields";
-import type { RemoteCommandPort, RemoteExecutorPort } from "./remote/contracts";
+import type { RemoteCommandPort, RemoteExecutionPort } from "./remote/contracts";
 export type { PreparedImportedField };
 export type Unsubscribe = () => void;
 export type AccountSnapshot = { state: "signed-out" | "ready" | "offline" | "blocked"; profile: z.infer<typeof accountProfileSchema> | null; deviceId: string | null };
@@ -18,6 +18,11 @@ export interface AccountFacade {
   signIn(): Promise<void>;
   signOut(): Promise<void>;
   devices(cursor: string | null): Promise<CloudFunctionResult<"devices:list">>;
+  /**
+   * The account's computers, folded from its installations. One subscription answers presence for every surface that
+   * names a computer; a host that has not wired it yet keeps reading the chat's own target.
+   */
+  computers?(changed: (value: CloudComputer[]) => void, failed: (error: unknown) => void): Unsubscribe;
 }
 export interface ChatListSource {
   browse(input: { projectId: string | null; rootOnly?: boolean; archived: boolean; cursor: string | null; revision: number | null }, signal: AbortSignal): Promise<import("./read-source").ChatQueryResult<"chats/catalog:page">>;
@@ -52,21 +57,20 @@ export const readonlyCommands: CommandSink = Object.freeze({ available: () => fa
 export type { ExecutionView, ExecutionReason } from "./execution";
 export { executionViewSchema } from "./execution";
 import type { ExecutionView } from "./execution";
-export interface ExecutorFacade {
-  remote?: RemoteExecutorPort;
+export interface ExecutionFacade {
+  remote?: RemoteExecutionPort;
   read(chatId: string): Promise<ExecutionView>;
   subscribe(chatId: string, changed: () => void): Unsubscribe;
-  claim(chatId: string): Promise<void>;
   prepare(chatId: string): Promise<void>;
 }
 export type ChatCapabilities = Readonly<Record<"files" | "skills" | "queue" | "browser" | "apps" | "recovery" | "serviceTier" | "quota" | "find" | "outline", boolean>>;
 export const LOCAL_CHAT_CAPABILITIES: ChatCapabilities = Object.freeze({ files: true, skills: true, queue: true, browser: true, apps: true, recovery: true, serviceTier: true, quota: true, find: true, outline: true });
 export const CLOUD_CHAT_CAPABILITIES: ChatCapabilities = Object.freeze({ ...LOCAL_CHAT_CAPABILITIES, browser: false, apps: false });
 /** Facades keep transport-native evidence types; presentation adapters normalize views, never execution authority. */
-export type ChatPlatformFacades<Account, Chats, Transcript, Live, Commands, Executor> = {
-  capabilities: ChatCapabilities; account: Account; chats: Chats; transcript: Transcript; live: Live; commands: Commands; executor: Executor;
+export type ChatPlatformFacades<Account, Chats, Transcript, Live, Commands, Execution> = {
+  capabilities: ChatCapabilities; account: Account; chats: Chats; transcript: Transcript; live: Live; commands: Commands; execution: Execution;
 };
 export type ChatPlatform<Actions extends CommandActions = ChatCommandActions> =
-  ChatPlatformFacades<AccountFacade, ChatListSource, TranscriptSource, LiveTurnSource, CommandSink<Actions>, ExecutorFacade> & {
+  ChatPlatformFacades<AccountFacade, ChatListSource, TranscriptSource, LiveTurnSource, CommandSink<Actions>, ExecutionFacade> & {
     skills?: import("./remote/workspace").SkillSource;
   };

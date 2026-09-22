@@ -21,11 +21,11 @@ export function retainRecoveryVariants(db: SqliteDatabase, scope: SyncScope, hea
     if (!messages.length) return;
     const fingerprint = digest(json({ messages, subagents })); if (seen.has(fingerprint)) return; seen.add(fingerprint);
     const branchId = digest(json([parentBranchId, origin, fingerprint])), rootId = `settlement:${record.id}:execution:${branchId}`;
-    const body = retainSource(db, { scope, chatId: record.id, rootId, kind: "superseded-execution-content", revision: head.executionEpoch,
+    const body = retainSource(db, { scope, chatId: record.id, rootId, kind: "superseded-execution-content", revision: head.bodyRevision,
       payload: { head, classification: head.chat.classification, messages, subagents }, now });
     const descriptor = executionArchiveSchema.parse({ branchId, parentBranchId, origin, chatId: record.id, title: head.chat.title, incarnationId: record.incarnationId,
-      executionEpoch: head.executionEpoch, bodyRevision: head.bodyRevision, canonicalHeadSeq: head.headSeq, createdAt: now, messageCount: messages.length, body });
-    retainSource(db, { scope, chatId: record.id, rootId, kind: "superseded-execution-archive", revision: head.executionEpoch, payload: descriptor, now });
+      bodyRevision: head.bodyRevision, canonicalHeadSeq: head.headSeq, createdAt: now, messageCount: messages.length, body });
+    retainSource(db, { scope, chatId: record.id, rootId, kind: "superseded-execution-archive", revision: head.bodyRevision, payload: descriptor, now });
     pinRecoveryHome(db, scope, record.id, record.incarnationId, messages, rootId, now);
   };
   const branches = (input: unknown, agents: unknown) => {

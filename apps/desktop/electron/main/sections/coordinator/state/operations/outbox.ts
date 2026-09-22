@@ -36,7 +36,7 @@ export function bindManualSequences(
   state: LedgerState,
   intentId: string,
   userSeq: number,
-  assistantSeq: number, notices: { noticeSeq?: number; executorNoticeSeq?: number } = {}, prepared?: PreparedManualTurn
+  assistantSeq: number, notices: { noticeSeq?: number } = {}, prepared?: PreparedManualTurn
 ) {
   const intent = state.manualIntents[intentId];
   if (!intent) return null;
@@ -51,9 +51,9 @@ export function bindManualSequences(
   ) {
     throw new Error("ManualTurnIntent 消息序号与既有绑定冲突");
   }
-  for (const key of ["noticeSeq", "executorNoticeSeq"] as const) {
-    if (notices[key] !== undefined && intent[key] !== undefined && notices[key] !== intent[key]) throw new Error("Manual notice sequence conflict");
-    if (notices[key] !== undefined) intent[key] = notices[key];
+  if (notices.noticeSeq !== undefined) {
+    if (intent.noticeSeq !== undefined && notices.noticeSeq !== intent.noticeSeq) throw new Error("Manual notice sequence conflict");
+    intent.noticeSeq = notices.noticeSeq;
   }
   intent.userSeq = userSeq;
   intent.assistantSeq = assistantSeq;

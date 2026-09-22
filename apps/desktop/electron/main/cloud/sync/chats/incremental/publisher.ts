@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on original business outbox sources, scoped RPCs and verified local body/checkpoint state.
- * [OUTPUT]: Delivers ordered executor options and asks the sole SQLite writer to retire covered commits.
+ * [OUTPUT]: Delivers ordered owner options and asks the sole SQLite writer to retire covered commits.
  * [POS]: Incremental delivery adapter; no second queue or mutable upload baseline is introduced.
  */
 import { type CloudBuildConfig } from "@ai-chat/cloud-protocol";

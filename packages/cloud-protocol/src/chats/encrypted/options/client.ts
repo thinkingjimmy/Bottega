@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Original option operations, authenticated current Chat heads and an admitted crypto worker.
  * [OUTPUT]: Frozen ciphertext CAS and verified receipts with the original plaintext operation hash.
- * [POS]: Client semantic boundary for executor options; original execution ordering remains unchanged.
+ * [POS]: Client semantic boundary for owner options; original execution ordering remains unchanged.
  */
 import { canonicalJson } from "../../../encryption/encoding";
 import { assertCrypto, decodeBase64url, encodeBase64url } from "../../../encryption";
@@ -19,10 +19,10 @@ export async function prepareEncryptedOptions(raw: ChatOptionsOperation, rawHead
   const mode = canonicalJson(opened.chat.options) === canonicalJson(original.options) ? "keep" :
     canonicalJson(opened.chat.options) === canonicalJson(original.previous) ? "replace" : "conflict";
   const metadata = { ...head.options.metadata, sourceDeviceId: crypto.session.deviceId, incarnationId: original.incarnationId,
-    agent: original.options.backend, agentRevision: original.agentRevision, executionEpoch: original.executionEpoch };
+    agent: original.options.backend, agentRevision: original.agentRevision };
   const options = await sealChatPacket(crypto, original.chatId, { operationId: original.operationId, role: "options", metadata }, { options: original.options }, signal);
   const transport: EncryptedOptionsOperation = { operationId: original.operationId, chatId: original.chatId, incarnationId: original.incarnationId,
-    executionEpoch: original.executionEpoch, agentRevision: original.agentRevision, afterUserSeq: original.afterUserSeq,
+    agentRevision: original.agentRevision, afterUserSeq: original.afterUserSeq,
     backend: original.options.backend, sourceDeviceId: crypto.session.deviceId, expectedOptionsHash: head.options.ciphertextHash, mode, options,
     proof: { envelope: "AA", ciphertextHash: "0".repeat(64), ciphertextBytes: 1 }, ciphertextHash: "0".repeat(64) };
   const plaintext = new TextEncoder().encode(canonicalJson(original));
@@ -42,7 +42,7 @@ export async function openEncryptedOptionsReceipt(raw: EncryptedOptionsReceipt, 
   try {
     const text = new TextDecoder("utf-8", { fatal: true }).decode(result.plaintext), original = chatOptionsOperationSchema.parse(JSON.parse(text));
     assertCrypto(canonicalJson(original) === text && hashChatOptionsOperation(original) === original.payloadHash && original.operationId === commit.operationId &&
-      original.chatId === commit.chatId && original.incarnationId === commit.incarnationId && original.executionEpoch === commit.executionEpoch &&
+      original.chatId === commit.chatId && original.incarnationId === commit.incarnationId &&
       original.agentRevision === commit.agentRevision && original.afterUserSeq === commit.afterUserSeq && original.options.backend === commit.backend);
     assertCrypto(canonicalJson(await openChatPacket(crypto, commit.chatId, commit.options, signal)) === canonicalJson({ options: original.options }));
     const head = receipt.head ? await openChatHeadForRequest(receipt.head, original.chatId, crypto, signal) : null;

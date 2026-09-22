@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on encrypted portable lineage and account-scoped parent/message reads.
  * [OUTPUT]: Renders a Fork divider whose source action is enabled only after identity verification.
- * [POS]: conversation/lineage's inherited-transcript boundary beside executor.tsx; no local execution assumptions.
+ * [POS]: conversation/lineage's inherited-transcript boundary; no local execution assumptions.
  */
 import { useEffect, useState } from "react";
 import type { PortableChat } from "@ai-chat/cloud-protocol/chats/model";

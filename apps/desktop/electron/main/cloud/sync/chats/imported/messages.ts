@@ -1,9 +1,9 @@
 /**
  * [INPUT]: Original imported entry checkpoints, admitted crypto, immutable files and message blocks.
- * [OUTPUT]: Prepares and stages exact encrypted import messages without changing original entry hashes.
+ * [OUTPUT]: Prepares and stages exact encrypted import messages in one round trip each, without changing original entry hashes.
  * [POS]: Import publication leaf; the existing outbox retains all identity and byte custody.
  */
-import { canonicalJson } from "@ai-chat/cloud-protocol";
+import { canonicalJson, type FileProgress } from "@ai-chat/cloud-protocol";
 import { encryptedFileDescriptorSchema } from "@ai-chat/cloud-protocol/blobs/encrypted";
 import { ciphertextFileDescriptor, type EncryptedBlobTransfer } from "@ai-chat/cloud-protocol/blobs/encrypted/transport";
 import { frozenMessageBlockSchema, encryptedMessageSummary, type EncryptedMessage } from "@ai-chat/cloud-protocol/chats/encrypted/messages";
@@ -12,6 +12,7 @@ import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
 import type { ImportedEntry } from "@ai-chat/cloud-protocol/chats/imported/model";
 import type { AccountTransport } from "../../../runtime/transport";
 import type { ChatDeliveryCheckpoints } from "../checkpoints";
+import { stageMessageBlocks } from "../body-publisher";
 type Files = Pick<EncryptedBlobTransfer, "crypto" | "uploadFile">;
 export async function prepareImportedMessage(entry: ImportedEntry, identity: { chatId: string; incarnationId: string; generationId: string; outboxId: string },
   files: Files, checkpoints: ChatDeliveryCheckpoints, signal: AbortSignal) {
@@ -29,25 +30,24 @@ export async function prepareImportedMessage(entry: ImportedEntry, identity: { c
       publication: { backend: null, turnId: null, completion: entry.completion ?? null, references: [...references.values()] }, plaintext }, files.crypto, checkpoints.messageJournal(), signal);
   } finally { plaintext.fill(0); }
 }
-export async function stageImportedMessage(input: { entry: ImportedEntry; message: EncryptedMessage; executionEpoch: number; files: Files;
-  checkpoints: ChatDeliveryCheckpoints; header: Parameters<EncryptedBlobTransfer["uploadFile"]>[0]; signal: AbortSignal; transport: Pick<AccountTransport, "query" | "mutate"> }) {
+export async function stageImportedMessage(input: { entry: ImportedEntry; message: EncryptedMessage; files: Files;
+  checkpoints: ChatDeliveryCheckpoints; header: Parameters<EncryptedBlobTransfer["uploadFile"]>[0]; signal: AbortSignal;
+  transport: Pick<AccountTransport, "query" | "mutate">; progress?: () => (value: FileProgress) => void }) {
   const { entry, message, files, checkpoints, header, signal, transport } = input;
-  const identity = { chatId: message.membership.chatId, incarnationId: message.membership.incarnationId, executionEpoch: input.executionEpoch };
+  const identity = { chatId: message.membership.chatId, incarnationId: message.membership.incarnationId };
+  const candidate = { ...identity, bodyHash: message.bodyHash, storage: { kind: "encrypted" as const, message } };
+  const parts = message.pages[0]!.metadata.blocks;
   let status = await transport.query("chats/body/api:status", { ...header, chatId: identity.chatId, bodyHash: message.bodyHash }); signal.throwIfAborted();
   if (!status) {
     for (const field of entry.fields) for (const raw of field.chunks) {
       const file = encryptedFileDescriptorSchema.parse(raw);
-      await files.uploadFile(header, globalThis.crypto.randomUUID(), "history-generation", file, checkpoints.fileJournal(), file.encryption.operationId, undefined, signal);
+      await files.uploadFile(header, globalThis.crypto.randomUUID(), "history-generation", file, checkpoints.fileJournal(), file.encryption.operationId, input.progress?.(), signal);
     }
-    const journal = checkpoints.messageJournal();
-    for (const part of message.pages[0]!.metadata.blocks) {
-      const frozen = frozenMessageBlockSchema.parse(await journal.read(`import-message:${entry.deliverySeq}:block:${part.index}`));
-      const accepted = await transport.mutate("chats/body/api:stageBlock", { ...header, ...identity, block: frozen.block }); signal.throwIfAborted();
-      if (accepted.blockId !== part.blockId || accepted.ciphertextHash !== part.ciphertextHash) throw new Error("IMPORT_BLOCK_RECEIPT_CHANGED");
-    }
-  }
-  if (!status?.published) status = await transport.mutate("chats/body/api:stage", { ...header,
-    candidate: { ...identity, bodyHash: message.bodyHash, storage: { kind: "encrypted", message } } });
+    const journal = checkpoints.messageJournal(), blocks = [];
+    for (const part of parts) blocks.push(frozenMessageBlockSchema.parse(await journal.read(`import-message:${entry.deliverySeq}:block:${part.index}`)).block);
+    signal.throwIfAborted();
+    status = await stageMessageBlocks({ transport, header, blocks, parts, candidate, signal, mismatch: "IMPORT_BLOCK_RECEIPT_CHANGED" });
+  } else if (!status.published) status = await stageMessageBlocks({ transport, header, blocks: [], parts: [], candidate, signal, mismatch: "IMPORT_BLOCK_RECEIPT_CHANGED" });
   signal.throwIfAborted();
   if (status.bodyHash !== message.bodyHash || status.state !== "ready" || canonicalJson(status.summary) !== canonicalJson(encryptedMessageSummary(message))) throw new Error("IMPORT_BODY_NOT_READY");
 }

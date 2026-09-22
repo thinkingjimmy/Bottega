@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React/router, runtime controller, Agent submission custody, cloud account predicates and device selection, idle chunk prefetch, queue capacity, Chat i18n, workspace hooks, Gallery/Sketch custody, the Agent connection warm-up client, startup marks, PromptInputProvider and RichInput.
- * [OUTPUT]: Presents device/Agent selection, explicit local reference reselection, native rich submission, Sketch, lazy recovery UI and queue feedback without discarding drafts; an account-owned draft adapter loads only for an account that can execute remotely, and never disables typing while it loads
+ * [INPUT]: Depends on React/router, runtime controller, Agent submission custody, cloud account predicates, idle chunk prefetch, queue capacity, Chat i18n, workspace hooks, Gallery/Sketch custody, the Agent connection warm-up client, startup marks, PromptInputProvider and RichInput.
+ * [OUTPUT]: Presents Agent selection, explicit local reference reselection, native rich submission, Sketch, lazy recovery UI and queue feedback without discarding drafts; an account-owned draft adapter loads only for an account that can execute remotely, and never disables typing while it loads
  * [POS]: Chat command surface; candidate projection is read-only while drafts, attachments, and Gallery custody remain in the per-Chat store
  */
 import { ComposerDock, ComposerContext, ComposerInput as PromptInput, ComposerToolbar as PromptInputFooter, ComposerActions } from "@ai-chat/chat-ui/composer";
@@ -66,7 +66,6 @@ import { useCloudAccount } from "@/lib/cloud/client";
 import { cloudRemoteAllowed } from "@/lib/cloud/chat/access";
 import { prefetchWhenIdle } from "@/lib/idle-prefetch";
 import "./chat-composer-inline.css";
-const DesktopDeviceSelector = lazy(() => import("../remote/device").then(module => ({ default: module.DesktopDeviceSelector })));
 const ResumeFailureDialog = lazy(() => import("./resume-failure-dialog").then(module => ({ default: module.ResumeFailureDialog })));
 function ChatAddMenu({
   controller,
@@ -98,7 +97,7 @@ const loadDraftExecutionChunk = () => import("../remote/draft/execution");
 const DraftExecutionAdapter = lazy(loadDraftExecutionChunk);
 /* The local half of the composer while the account-owned adapter is still in flight: typing is never
    taken away — only Send waits, until the chunk names the computer this draft would run on. */
-const LOCAL_EXECUTION = { remote: false, device: null, controls: null, dialogs: null, executorLabel: null, referenceProps: undefined } as const;
+const LOCAL_EXECUTION = { remote: false, controls: null, dialogs: null, ownerLabel: null, referenceProps: undefined } as const;
 
 function ChatComposerContent({
   execution,
@@ -137,7 +136,6 @@ function ChatComposerContent({
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [authorizationPending, setAuthorizationPending] = useState(0);
   const [submissionPending, setSubmissionPending] = useState(false);
-  const [remoteSelectionPending, setRemoteSelectionPending] = useState(false);
   const [workspaceSelectionPending, setWorkspaceSelectionPending] =
     useState(false);
   const hasSectionReference = controller.richValue.some(
@@ -153,13 +151,13 @@ function ChatComposerContent({
     !controller.pendingUserInput && !controller.pendingPlanDecision;
   const editingDisabled =
     controller.inputDisabled || Boolean(controller.pendingAgent?.submitting || controller.pendingAgent?.stale) ||
-    branchBusy || remoteSelectionPending ||
+    branchBusy ||
     authorizationPending > 0 ||
     workspaceSelectionPending;
   const turnControlsDisabled =
     controller.turnControlsDisabled ||
     Boolean(controller.pendingAgent?.submitting) ||
-    branchBusy || remoteSelectionPending ||
+    branchBusy ||
     authorizationPending > 0 ||
     workspaceSelectionPending ||
     submissionPending;
@@ -422,7 +420,7 @@ function ChatComposerContent({
             {controller.selectedProjectId && (
               <>
                 {execution.remote ? (
-                  /* The branch lives on the executor, so the control keeps its place, names that computer
+                  /* The branch lives on the owner, so the control keeps its place, names that computer
                      and stays inert. Showing this machine's HEAD instead would be a confident wrong answer. */
                   <Button
                     className={`${composerContextButtonClass} max-w-56 gap-2`}
@@ -432,7 +430,7 @@ function ChatComposerContent({
                     variant="ghost"
                   >
                     <GitBranch className="size-4" />
-                    <span className="truncate">{execution.executorLabel}</span>
+                    <span className="truncate">{execution.ownerLabel}</span>
                   </Button>
                 ) : (
                 <ChatBranchSelector
@@ -654,15 +652,12 @@ function ChatComposerContent({
             )}
           </PromptInputTools>
           <ComposerActions>
-            {execution.device}
-            {window.cloudRemote && controller.persisted && controller.project.kind !== "fixed-app" && <Suspense fallback={null}><DesktopDeviceSelector chatId={controller.chatId} persisted={controller.persisted} projectId={controller.selectedProjectId} backend={controller.turnOptions.backend} onPendingChange={setRemoteSelectionPending} /></Suspense>}
             {execution.controls?.agent ?? <ChatAgentSelector
               value={controller.turnOptions.backend}
               revertTo={controller.pendingAgent ? controller.canonicalAgent ?? undefined : undefined}
               backends={controller.backends}
               locked={controller.switchLocked || isGenerating || submissionPending || controller.queueItems.length > 0 || controller.queuePaused || Boolean(controller.pendingAgent?.submitting)}
               saving={controller.settingsSaving}
-              disabled={remoteSelectionPending}
               reason={controller.switchReason ? t(`chat.agentSwitch.${controller.switchReason}`) : controller.queueItems.length || controller.queuePaused ? t("chat.agentSwitch.queue") : isGenerating ? t("chat.agentSwitch.running") : controller.pendingAgent?.submitting ? t("chat.agentSwitch.submission") : undefined}
               onChange={controller.selectBackend}
               onOpenUsage={settingsNavigation?.openUsage}
@@ -696,6 +691,7 @@ function ChatComposerContent({
                 )}
                 modelsLoading={controller.modelsLoading}
                 modelsError={controller.modelsError}
+                modelsEmpty={controller.modelsEmpty}
                 settingsError={controller.settingsError}
                 saving={controller.settingsSaving}
                 streaming={isGenerating}
@@ -711,6 +707,7 @@ function ChatComposerContent({
                 models={controller.models}
                 modelsLoading={controller.modelsLoading}
                 modelsError={controller.modelsError}
+                modelsEmpty={controller.modelsEmpty}
                 settingsError={controller.settingsError}
                 saving={controller.settingsSaving}
                 streaming={isGenerating}

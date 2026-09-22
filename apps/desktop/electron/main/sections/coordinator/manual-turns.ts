@@ -207,7 +207,7 @@ export async function ensureManualSequences(
   intent: DeepReadonly<ManualTurnIntent>
 ) {
   if (intent.userSeq !== undefined && intent.assistantSeq !== undefined) {
-    return turnSequencesSchema.parse({ executorNoticeSeq: intent.executorNoticeSeq, noticeSeq: intent.noticeSeq, userSeq: intent.userSeq, assistantSeq: intent.assistantSeq });
+    return turnSequencesSchema.parse({ noticeSeq: intent.noticeSeq, userSeq: intent.userSeq, assistantSeq: intent.assistantSeq });
   }
   const hydrated = await manualSubmission(intent);
   const sequence = await allocateManualSequences(chats, hydrated.submission);
@@ -226,7 +226,7 @@ async function persistManual(
   assistantSeq: number,
   projectLifecycleHeld: boolean,
   turn: Omit<AgentSendPayload, "input">,
-  executorCommit?: import("../../chats/sqlite/cloud/execution/commit").ExecutorCommit,
+  ownerCommit?: import("../../chats/sqlite/cloud/execution/commit").OwnerCommit,
   remote?: import("./remote/model").RemoteContext
 ) {
   const chatId = manualConversationId(persistence);
@@ -272,7 +272,7 @@ async function persistManual(
     await chats.commitCreationById(persistence.input.id);
     return record.messages.find(message => message.id === persistence.input.firstMessage.id) as UserChatMessage;
   }
-  return chats.appendUserMessage(persistence.input, userSeq, executorCommit, remote?.origin);
+  return chats.appendUserMessage(persistence.input, userSeq, ownerCommit, remote?.origin);
 }
 
 function sameManualUser(
@@ -477,7 +477,7 @@ export async function runManualTurn(
       intent.assistantSeq,
       projectLifecycleHeld,
       submission.turn,
-      prepared.executorCommit, intent.remoteSubmission?.context ?? prepared.remoteContext
+      prepared.ownerCommit, intent.remoteSubmission?.context ?? prepared.remoteContext
     );
     }
     const appended = await dependencies.ledger.transitionManual(

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the canonical Chat schema, SQLite connection, and deterministic repository codecs
- * [OUTPUT]: Writes canonical facts and device notices while preserving managed lifecycle and frozen original-source identity.
+ * [OUTPUT]: Writes canonical facts while preserving managed lifecycle and frozen original-source identity.
  * [POS]: Write projection layer beneath transactional ChatRepository mutation orchestration
  */
 
@@ -47,11 +47,6 @@ export class ChatRecordWriter {
   ) {
     this.assertAppendContract(command, message.seq);
     this.advanceAppendState(command, message);
-    if (command.executorCommit?.notice) {
-      const notice = messageSchema.parse(command.executorCommit.notice);
-      if (notice.role !== "notice" || notice.seq + 1 !== message.seq) throw new Error("CLOUD_EXECUTOR_NOTICE_CONFLICT");
-      this.insertMessage(command.chatId, notice);
-    }
     const rowId = this.insertMessage(command.chatId, message);
     if (message.role !== "notice") {
       this.writeSearchDocument(

@@ -77,9 +77,9 @@ export const cloudCopy = {
     "switchAccount": "Confirmar cambio de cuenta",
     "switchTitle": "Cambiar de cuenta en este equipo",
     "switchBody": "Los datos de la nube siguen en la cuenta anterior. Tras cambiar, vuelve a activar la sincronización para esta cuenta.",
-    "pause": "Pausar",
-    "resume": "Reanudar",
     "disable": "Desactivar",
+    "cloudData": "Datos en la nube",
+    "cloudDataDescription": "Desconecta este ordenador y elimina las copias de la nube guardadas aquí. Cerrar sesión no hace ninguna de las dos cosas.",
     "disableTitle": "¿Desactivar la sincronización en este ordenador?",
     "disableBody": "Se eliminarán las copias que solo existen aquí como espejos de la nube. Todo lo creado o continuado en este ordenador se conserva, con sus archivos. Necesitarás tu contraseña de sincronización para volver a activar la sincronización.",
     "disableRemove": "Eliminar {{mirrors}} espejos de chats, {{mirroredBases}} espejos de Bases, {{mirroredProjects}} espejos de Projects y {{mirroredApps}} espejos de Apps.",
@@ -92,7 +92,7 @@ export const cloudCopy = {
   },
   "syncStatus": {
     "partial": "Los datos de Base están al día; algunos paquetes de Apps necesitan atención",
-    "not-connected": "La sincronización no está activada.",
+    "not-connected": "Este ordenador aún no se sincroniza.",
     "scanning": "Analizando contenido local…",
     "initializing": "Preparando la primera sincronización…",
     "syncing": "Sincronizando…",
@@ -106,7 +106,8 @@ export const cloudCopy = {
     "scan-failed": "No se pudo analizar el contenido local. Reinténtalo cuando termine la importación.",
     "review-expired": "Esta revisión ha caducado. Vuelve a analizar el contenido.",
     "upload-failed": "Parte del contenido no se ha sincronizado. La copia local se conserva; reinténtalo.",
-    "cleanup-failed": "No se pudo completar la desconexión de esta cuenta. El contenido local se conserva; reinténtalo para continuar."
+    "cleanup-failed": "No se pudo completar la desconexión de esta cuenta. El contenido local se conserva; reinténtalo para continuar.",
+    "library-owned-elsewhere": "Esta carpeta de Bottega pertenece a {{host}}. Esta versión no puede abrirla en otro ordenador: crea una carpeta nueva o úsala en ese ordenador."
   },
   "syncAppBlocked": {
     "migration-blocked": "Esta versión requiere una migración no compatible. Se conserva la versión anterior en la nube.",
@@ -119,14 +120,14 @@ export const cloudCopy = {
   },
   "setup": {
     "signIn": "Iniciar sesión",
-    "enable": "Activar sincronización",
+    "enable": "Finalizar el inicio de sesión",
     "signInTitle": "Inicia sesión para sincronizar este ordenador",
     "browserApproval": "Aprobarás el inicio de sesión en tu navegador.",
     "signedInAs": "Has iniciado sesión como {{email}}.",
     "checkCode": "Comprueba que coincide con el código de tu navegador antes de permitir el acceso.",
     "enterPassword": "Introduce tu contraseña de sincronización",
     "enterPasswordDescription": "Este ordenador se une al espacio cifrado que configuraste en otro dispositivo. Bottega no puede recuperar la contraseña.",
-    "unlockedDescription": "Este ordenador ya está desbloqueado. Activa la sincronización para empezar a subir su contenido."
+    "unlockedDescription": "Este ordenador ya está desbloqueado. Finaliza para empezar a sincronizar."
   },
   "syncBadge": {
     "synced": "Al día",
@@ -144,6 +145,7 @@ export const cloudCopy = {
     "locked": "Introduce tu contraseña de sincronización para reanudar la sincronización en este ordenador."
   },
   "syncPhase": {
+    "preparing": "Preparando chats",
     "projects": "Subiendo Projects",
     "apps": "Subiendo Apps",
     "chats": "Subiendo chats",
@@ -256,6 +258,17 @@ export const cloudCopy = {
   "syncNotConnected": "La sincronización aún no está activada.",
 
 
+  "computers": {
+    "label": "Ordenadores",
+    "offlineSince": "Sin conexión · {{when}}",
+    "none": "Inicia sesión en Bottega en un ordenador y su barra lateral aparecerá aquí.",
+    "thisComputer": "Este ordenador",
+    "name": "Nombre del ordenador",
+    "nameTaken": "Otro ordenador ya tiene ese nombre.",
+    "notFound": "Este ordenador no ha iniciado sesión en la cuenta.",
+    "nameInvalid": "Escribe un nombre.",
+    "suffixHint": "Otro ordenador ya tenía este nombre. Cámbiale el nombre a este aquí."
+  },
   "devices": "Dispositivos",
   "lastSeen": "Visto {{when}}",
   "webSession": "Sesión web",

@@ -1,12 +1,13 @@
 /**
  * [INPUT]: Depends on Electron dialog/BrowserWindow/app, Node fs/path, shared Settings, platform capabilities, ChatHomeService, backend runtime registry and model-catalog persistence, memory service, workspace resolver, trusted renderer IPC, and surface residence
- * [OUTPUT]: Registers settings and model APIs while excluding presence-owned mode writes; cached model catalogs avoid process admission, refreshes wait for quota, cold probes retain interactive priority, and the durable model cache is installed here.
+ * [OUTPUT]: Registers settings and model APIs while excluding presence-owned mode writes; exports listModels, whose empty-list answers cover a Project with no folder on this computer and a closed runtime registry so neither reaches the log as a stack; cached model catalogs avoid process admission, refreshes wait for quota, cold probes retain interactive priority, and the durable model cache is installed here.
  * [POS]: Main Settings admission boundary; App windows receive no global settings envelope and only the backend/session projections required by their resident use chat
  */
 
 import { chatOptionsPatchSchema } from "../../shared/chat-agent/schema";
 import { mkdtemp, realpath, rmdir } from "node:fs/promises";
 import { join } from "node:path";
+import { PROJECT_UNAVAILABLE } from "../../shared/projects-ipc";
 import { app, dialog, shell, type BrowserWindow } from "electron";
 import type {
   AgentBackendId,
@@ -30,7 +31,7 @@ import { isUsableDirectory } from "./projects/fs-utils";
 import type { SettingsStore } from "./settings-store";
 import type { WorkspaceResolver } from "./skills-catalog";
 import type { ChatHomeService } from "./chat-home/chat-home-service";
-import { libraryErrorCode } from "./library/errors";
+import { libraryErrorCode, libraryErrorHost } from "./library/errors";
 import { resolveAppLocale } from "@ai-chat/ui/lib/locale";
 import { translate } from "../../shared/i18n/runtime";
 import {
@@ -47,7 +48,8 @@ const RENDERER_SETTINGS_KEYS = new Set([
   "titleModelByBackend",
   "defaultChatOptionsByBackend",
   "lastSelectedBackend",
-  "defaultExecutionDeviceId",
+  "agentSetupDeferred",
+  "computerNameHintSeen",
   "autoRelayLimit",
   "allowCrossChatRead",
   "disabledBuiltinTools",
@@ -88,7 +90,8 @@ async function withLibraryCopy<T>(store: SettingsStore, run: () => Promise<T>) {
   } catch (cause) {
     const code = libraryErrorCode(cause);
     if (!code) throw cause;
-    throw new Error(translate(settingsLocale(store), `settings.native.library.${code}`));
+    // `owned-elsewhere` is the one code whose sentence names a computer; the others ignore the parameter.
+    throw new Error(translate(settingsLocale(store), `settings.native.library.${code}`, { host: libraryErrorHost(cause) }));
   }
 }
 
@@ -127,6 +130,14 @@ async function retryLibrary(chatHomes: ChatHomeService, store: SettingsStore) {
   return chatHomes.status();
 }
 
+type RendererContext = Parameters<typeof surfaceWindowController.assertAppStudioMutation>[0];
+
+function assertStudioRead(context: RendererContext) {
+  if (context.role === "main") return;
+  if (!context.appId) throw new Error("App window identity is missing");
+  surfaceWindowController.assertAppStudioMutation(context, context.appId);
+}
+
 /* The catalogs are module singletons built at import time, so the durable
    layer is attached here — the first place that both owns `settings:list-models`
    and may ask Electron where userData lives. One store for all four backends. */
@@ -138,6 +149,66 @@ function installModelCatalogCache() {
     join(app.getPath("userData"), "model-catalog-cache.json")
   );
   configureModelCatalogPersistence(modelCatalogCache);
+}
+
+/**
+ * `settings:list-models`, extracted so the answer can be exercised without an Electron window.
+ * Every "there is nothing to list" case answers with the empty list the renderer already handles,
+ * rather than a rejection Electron would expand into a stack in the main log.
+ */
+export async function listModels(
+  context: RendererContext,
+  rawBackend: unknown,
+  rawScope: unknown,
+  resolveWorkspace: WorkspaceResolver
+) {
+  /* 退出期与 dev 主进程重启期渲染端仍在刷新；注册表已经关了，答一句空表而不是抛一条堆栈 (N-3 / AC-8)。 */
+  if (backendRuntimeRegistry.closed) return [];
+  const descriptor = backendById(rawBackend as AgentBackendId);
+  if (!rawScope || typeof rawScope !== "object" || Array.isArray(rawScope)) {
+    throw new Error("模型 workspace scope 格式无效");
+  }
+  if (context.role === "app-window") {
+    const scope = rawScope as Partial<AgentWorkspaceScope>;
+    if (scope.kind === "conversation") {
+      surfaceWindowController.assertConversationMutation(context, scope.conversationId!);
+    } else if (scope.kind === "app" && scope.appId === context.appId) {
+      assertStudioRead(context);
+    } else {
+      throw new Error("App window model scope must match its resident App or conversation");
+    }
+  }
+  /* A Project with no folder on this computer has no catalog to read, and the answer will not change until
+     the person picks one. Saying so with the empty list is the whole truth and ends the retry storm that
+     PROJECT_UNAVAILABLE kept feeding through the composer (N-2 / AC-7). */
+  let workspace: string;
+  try {
+    workspace = resolveWorkspace(rawScope as AgentWorkspaceScope).workspace;
+  } catch (cause) {
+    if (!(cause instanceof Error) || !cause.message.startsWith(PROJECT_UNAVAILABLE)) throw cause;
+    return [];
+  }
+  const snapshot = await backendRuntimeRegistry.resolveForSpawn(descriptor.id);
+  if (
+    snapshot.runtimeStatus !== "installed" ||
+    snapshot.capabilities.modelOptions === "none" ||
+    !descriptor.models
+  ) {
+    return [];
+  }
+  return descriptor.models.list(snapshot.runtime, workspace, undefined, async (read, signal, { background }) => {
+    const lease = await acquireAgentProcessLease(
+      descriptor.id,
+      background ? "background" : "interactive",
+      signal,
+      { quota: background ? "wait" : "preempt" }
+    );
+    try {
+      return await read();
+    } finally {
+      lease.release();
+    }
+  });
 }
 
 export function registerSettings(
@@ -155,11 +226,6 @@ export function registerSettings(
   const assertBackend = (value: unknown): AgentBackendId =>
     backendById(value as AgentBackendId).id;
   const ipc = rendererIpc(rendererUrl, "拒绝非驻留窗口的设置请求");
-  const assertStudioRead = (context: Parameters<typeof surfaceWindowController.assertAppStudioMutation>[0]) => {
-    if (context.role === "main") return;
-    if (!context.appId) throw new Error("App window identity is missing");
-    surfaceWindowController.assertAppStudioMutation(context, context.appId);
-  };
   ipc
     .handle(SETTINGS_CHANNEL.get, () => store.envelope())
     .handle(SETTINGS_CHANNEL.set, (rawPatch) =>
@@ -190,52 +256,9 @@ export function registerSettings(
       assertStudioRead(context);
       return backendRuntimeRegistry.listSnapshots();
     })
-    .handleWithContext(SETTINGS_CHANNEL.listModels, async (context, rawBackend, rawScope) => {
-      const descriptor = backendById(assertBackend(rawBackend));
-      if (
-        !rawScope ||
-        typeof rawScope !== "object" ||
-        Array.isArray(rawScope)
-      ) {
-        throw new Error("模型 workspace scope 格式无效");
-      }
-      if (context.role === "app-window") {
-        const scope = rawScope as Partial<AgentWorkspaceScope>;
-        if (scope.kind === "conversation") {
-          surfaceWindowController.assertConversationMutation(context, scope.conversationId!);
-        } else if (scope.kind === "app" && scope.appId === context.appId) {
-          assertStudioRead(context);
-        } else {
-          throw new Error("App window model scope must match its resident App or conversation");
-        }
-      }
-      const { workspace } = resolveWorkspace(
-        rawScope as AgentWorkspaceScope
-      );
-      const snapshot = await backendRuntimeRegistry.resolveForSpawn(
-        descriptor.id
-      );
-      if (
-        snapshot.runtimeStatus !== "installed" ||
-        snapshot.capabilities.modelOptions === "none" ||
-        !descriptor.models
-      ) {
-        return [];
-      }
-      return descriptor.models.list(snapshot.runtime, workspace, undefined, async (read, signal, { background }) => {
-        const lease = await acquireAgentProcessLease(
-          descriptor.id,
-          background ? "background" : "interactive",
-          signal,
-          { quota: background ? "wait" : "preempt" }
-        );
-        try {
-          return await read();
-        } finally {
-          lease.release();
-        }
-      });
-    })
+    .handleWithContext(SETTINGS_CHANNEL.listModels, (context, rawBackend, rawScope) =>
+      listModels(context, rawBackend, rawScope, resolveWorkspace)
+    )
     .handleWithContext(SETTINGS_CHANNEL.getBackendDefaults, (context, rawBackend) => {
       assertStudioRead(context);
       return store.getBackendDefaults(rawBackend === undefined ? undefined : assertBackend(rawBackend));

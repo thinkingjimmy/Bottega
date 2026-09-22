@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical Chat options, per-Chat Agent drafts, workspace-scoped model catalogs, Setup invalidation events, the narrow defaults command, and the startup-marks sink
- * [OUTPUT]: Provides revision-fenced options and pending Agent controls, parallel catalog/default reads, scope-fenced catalog refreshes, one-shot quiet reconciliation of a persisted model the loaded catalog no longer offers, read-only/archived save copy for bare machine codes, and the models-ready milestone
+ * [OUTPUT]: Provides revision-fenced options and pending Agent controls, parallel catalog/default reads, scope-fenced catalog refreshes that stand down for a Project with no folder on this computer, one-shot quiet reconciliation of a persisted model the loaded catalog no longer offers, read-only/archived save copy for bare machine codes, and the models-ready milestone
  * [POS]: Composer settings owner; canonical commit and default learning are separate operations
  */
 
@@ -9,6 +9,7 @@ import type { AgentBackendId, AgentScope, AgentTurnOptions, AgentWorkspaceScope,
 import { listModels, patchChatOptions, rememberChatDefaults } from "@/lib/settings-client";
 import { readAgentDraft, receiveCanonicalAgent, updateAgentDraft } from "@/lib/chat-agent-draft/state";
 import type { ChatRuntimeContext } from "../../../../shared/chats-ipc";
+import type { ProjectWorkspaceBinding } from "../../../../shared/projects-ipc";
 import { optionsForListModel } from "@ai-chat/chat-ui/models/selection";
 import { turnOptionsSchema } from "../../../../shared/chat-agent/options";
 import { errorMessage, failureCode } from "@ai-chat/ui/lib/errors";
@@ -32,7 +33,8 @@ function saveFailureCopy(locale: AppLocale, cause: unknown, canonical: ChatRunti
 }
 
 export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWorkspaceScope | null,
-  backends: BackendInfo[], retryBackends: () => Promise<void>, draftBackend?: AgentBackendId, workspaceScopeKey = "") {
+  backends: BackendInfo[], retryBackends: () => Promise<void>, draftBackend?: AgentBackendId, workspaceScopeKey = "",
+  workspaceBinding: ProjectWorkspaceBinding | null = null) {
   const chatId = scope.conversationId;
   const locale = useEffectiveLocale();
   const pending = usePendingAgent(chatId, draftBackend);
@@ -133,9 +135,14 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
      discovery. */
   const reconcileRef = useRef(reconcileModel);
   useLayoutEffect(() => { reconcileRef.current = reconcileModel; }, [reconcileModel]);
+  /* A Project whose folder this computer does not know cannot run an Agent, so there is no catalog to ask for and
+     the answer would not change until a folder is chosen. Three sources used to retrigger this read on every
+     revision change, which is what turned one refusal into a storm of them (N-2 / AC-7). `none` is not in here:
+     that Project runs its turns in the Chat Home and has a real catalog. */
+  const folderless = workspaceBinding?.kind === "unbound";
   const loadModels = useCallback(() => {
     const workspace = modelScopeRef.current;
-    if (!workspace) return Promise.resolve();
+    if (!workspace || folderless) return Promise.resolve();
     const request = ++modelGeneration.current;
     const current = () => request === modelGeneration.current && activeModelKey.current === modelKey;
     return listModels(backend, workspace).then(result => {
@@ -149,7 +156,7 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
       if (!current()) return;
       setModelsOwner(modelKey); setModels([]); setModelsError(rendererAgentSurfaceFailure("service-unavailable", backendLabel(backend), cause, backend));
     }).finally(() => { if (current()) setModelsLoading(false); });
-  }, [backend, modelKey]);
+  }, [backend, folderless, modelKey]);
   const retryModels = useCallback(() => { setModelsLoading(true); return loadModels(); }, [loadModels]);
   useEffect(() => {
     if (!state.initialized) return;
@@ -181,8 +188,15 @@ export function useChatSettings(scope: AgentScope, requestedModelScope: AgentWor
     switchReason: state.canonical?.readOnlyReason && state.canonical.readOnlyReason !== "external-readonly" ? "readonly" : state.canonical?.context.kind !== "ordinary" && state.canonical ? "app-bound" : state.canonical?.archivedAt ? "archived" : null,
     switchLocked: Boolean(state.adoption || state.canonical?.readOnlyReason && state.canonical.readOnlyReason !== "external-readonly" || state.canonical && state.canonical.context.kind !== "ordinary" || state.canonical?.archivedAt),
     backends, settingsLoading: !state.initialized || state.loading, settingsSaving: settingsSaving || Boolean(state.adoption), settingsError: settingsError || state.adoptionError || (pendingError ? translate(locale, "chat.runtime.settings.readFailed", { message: errorMessage(pendingError) }) : ""),
-    models: modelsOwner === modelKey ? models : [], modelsLoading: modelsOwner !== modelKey || modelsLoading, modelsError: modelsOwner === modelKey ? modelsError : null, retryBackends, retryModels,
+    /* A Project with no folder here is answered, not awaited: the empty catalog is derived rather than stored,
+       so no state has to be written back when the binding changes. */
+    models: folderless || modelsOwner !== modelKey ? [] : models,
+    modelsLoading: !folderless && (modelsOwner !== modelKey || modelsLoading),
+    modelsError: folderless || modelsOwner !== modelKey ? null : modelsError,
+    /* Why the catalog is empty, said once where the person is looking for models. The row's own
+       "Choose folder…" is where they act; this only answers the question the empty menu raises. */
+    modelsEmpty: folderless ? translate(locale, "projects.unbound.turnRefused") : null, retryBackends, retryModels,
     selectBackend, lockBackend, updateTurnOptions,
-  }), [turnOptions, state, pendingUndo, pendingError, locale, modelKey, modelsOwner, backends, settingsSaving, settingsError, models,
+  }), [turnOptions, state, pendingUndo, pendingError, locale, folderless, modelKey, modelsOwner, backends, settingsSaving, settingsError, models,
     modelsLoading, modelsError, retryBackends, retryModels, selectBackend, lockBackend, updateTurnOptions]);
 }

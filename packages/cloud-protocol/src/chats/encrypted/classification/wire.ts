@@ -12,7 +12,7 @@ export function classificationFactsMetadata(value: Pick<EncryptedClassificationO
   const { intent } = value;
   return { incarnationId: intent.incarnationId, classification: { kind: intent.next.conversationKind, projectId: intent.next.projectId, appId: intent.next.appId },
     sourceDeviceId: intent.sourceDeviceId, agent: intent.agent, agentRevision: intent.agentRevision, expectedRevision: intent.expectedRevision,
-    executionEpoch: intent.executionEpoch, archivedAt: intent.archivedAt, references: [] };
+    archivedAt: intent.archivedAt, references: [] };
 }
 function hashClassificationMetadata(value: Pick<EncryptedClassificationOperation, "lifecycleOperationId" | "chatId" | "intent" | "facts" | "app">) {
   return recordCipherHash({ schema: "bottega.classification-commit/v1", lifecycleOperationId: value.lifecycleOperationId, chatId: value.chatId,

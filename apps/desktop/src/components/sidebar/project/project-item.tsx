@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Shared ProjectRowMenu, React/routing, Memory settings, Projects/Apps/Bases/History providers, active App target, App Editor intents, Project/Chat contracts, shared system-file-manager copy, lifecycle modules and the shared complete Project row
- * [OUTPUT]: Provides ProjectItem with pointer-explicit local expansion, Base, pinned App and native/mirror Chat ordering, sorting, Editor navigation, Settings, native directory reveal, unbound folder binding, uniform row-action states, and archive helpers
+ * [OUTPUT]: Provides ProjectItem with pointer-explicit local expansion, Base, pinned App and native/mirror Chat ordering, sorting, Editor navigation, Settings, native directory reveal, unbound folder binding, the remote row's globe glyph and owning-computer badge with every directory item withheld, a new Chat created on the owning computer while it is awake, unpinning a borrowed row, uniform row-action states, and archive helpers
  * [POS]: Project row coordinator consumed by ProjectSection; reusable state machines live in sibling modules
  */
 
@@ -22,8 +22,10 @@ import {
   FolderOpen,
   FolderPlus,
   FolderX,
+  Globe,
   EyeOff,
   Archive,
+  PinOff,
   Plus,
   RefreshCw,
   TriangleAlert,
@@ -37,7 +39,9 @@ import { mergeChatRows } from "../cloud/order";
 import { ChatReorderList } from "../reorder/chat-reorder-list";
 import { useCloudSidebar } from "../cloud/context";
 import { compareChats } from "@ai-chat/cloud-protocol/chats/order";
-import { ProjectOrigin } from "../cloud/project-origin";
+import { computerOnline } from "@ai-chat/cloud-protocol";
+import { ProjectOrigin, isRemoteProjectRow, remoteRowComputer } from "../cloud/project-origin";
+import { executionCopy } from "@ai-chat/chat-ui/execution-copy";
 import {
   SidebarRenameDialog,
   useSidebarRenameMenu,
@@ -79,7 +83,7 @@ export { localDetachArchiveReasons } from "./project-lifecycle";
 
 export const canReleaseMissingProject = (
   project: Pick<Project, "missing" | "dir" | "cloud">,
-) => project.missing && project.dir === "" && !project.cloud?.remote;
+) => project.missing && project.dir === "" && !project.cloud?.needsLocalFolder;
 
 export const canRevealProject = (project: Pick<Project, "missing" | "dir">) =>
   !project.missing && project.dir !== "";
@@ -169,7 +173,7 @@ export function ProjectItem({
   chats: ChatSummary[];
   historyState?: ProjectHistoryImportState;
 }) {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
   const revealLabel = useSystemFileManagerRevealLabel();
   const {
     renameProject,
@@ -200,14 +204,31 @@ export function ProjectItem({
   const [actionBusy, setActionBusy] = useState(false);
   const memoryUsesProjectScope = settings?.memory.sharingMode === "group";
   const renameMenu = useSidebarRenameMenu(() => setRenameOpen(true));
-  /* 展开事实收成一处：折叠区与行首字形读同一个值，不各算一遍。 */
-  const remote = Boolean(project.cloud?.remote),
-    unavailable = project.missing && !remote;
-  const unbound = isUnboundProject(project),
-    needsFolder = unbound && !unavailable && !remote;
-  const remoteApp = remote && project.workspaceBinding.kind === "app";
-  const expanded = open && !unavailable;
   const cloud = useCloudSidebar();
+  /* 展开事实收成一处：折叠区与行首字形读同一个值，不各算一遍。
+     Two facts, never one: `needsLocalFolder` is about this computer and `remoteRow` about another. A Project
+     whose folder this computer does not know still offers to bind one; a row that belongs to another computer
+     has no folder to talk about at all — no path, no picker, no unavailability. */
+  const needsLocalFolder = Boolean(project.cloud?.needsLocalFolder),
+    remoteRow = isRemoteProjectRow(cloud.scope, project),
+    owningComputer = remoteRow ? remoteRowComputer(cloud.scope, project) : null,
+    unavailable = project.missing && !needsLocalFolder;
+  const unbound = isUnboundProject(project),
+    needsFolder = unbound && !unavailable && !remoteRow;
+  const remoteApp = needsLocalFolder && project.workspaceBinding.kind === "app";
+  /* A pinned row always keeps its menu, even when the row is one the App rules would otherwise leave menuless:
+     the hand that pinned it has to be able to take it back out. */
+  const pinnedRow = cloud.scope.pinnedHere(project.id);
+  /* A Chat created under another computer's Project is created on that computer, so the folder facts of this one
+     have no say — but that computer has to be awake to take it, and an App Project is run by an App that lives
+     over there. The row withholds the `+` rather than greying it: everything else it cannot honour is withheld
+     the same way, and the group's own `+` is the control that stays put and says why. */
+  const ownerAwake = Boolean(owningComputer && computerOnline(owningComputer, cloud.scope.now));
+  const canCreateChat = remoteRow
+    ? ownerAwake && project.workspaceBinding.kind !== "app"
+    : !project.missing && !needsLocalFolder && !unbound;
+  const expanded = open && !unavailable;
+  const ownerCopy = executionCopy(i18n.language);
   const active =
     (activePath === "/" && searchParams.get("projectId") === project.id) ||
     activePath === projectSettingsRoute(project.id) ||
@@ -297,14 +318,27 @@ export function ProjectItem({
         if (!unavailable) disclosure.onOpenChange(next);
       }}
       mark={
-        <ProjectAppearancePicker
-          appearance={project.appearance}
-          dimmed={unavailable}
-          expanded={expanded}
-          onCommit={(next) => void setProjectAppearance(project.id, next)}
-          projectName={project.name}
-          readOnly={remoteApp}
-        />
+        <span className="relative flex size-6 items-center justify-center">
+          {/* Colour and icon are a record write, so a remote row keeps its picker: the owning computer
+              reconciles the change when it wakes, exactly as it does for a rename. */}
+          <ProjectAppearancePicker
+            appearance={project.appearance}
+            dimmed={unavailable}
+            expanded={expanded}
+            onCommit={(next) => void setProjectAppearance(project.id, next)}
+            projectName={project.name}
+            readOnly={remoteApp}
+          />
+          {/* The corner glyph is what tells the two kinds of Project apart at a glance; the badge on the right
+              names the computer. It sits on the icon, so it must not take the picker's clicks. */}
+          {remoteRow && (
+            <Globe
+              role="img"
+              aria-label={ownerCopy.runningOn.replace("{device}", owningComputer?.name ?? ownerCopy.computer)}
+              className="-right-0.5 -bottom-0.5 pointer-events-none absolute size-2.5 rounded-full bg-sidebar text-sidebar-foreground/55"
+            />
+          )}
+        </span>
       }
       details={
         <>
@@ -328,12 +362,12 @@ export function ProjectItem({
       actions={
         <>
           {" "}
-          {!remoteApp && (
+          {(!remoteApp || pinnedRow) && (
             <ProjectRowMenu
               copy={{ more: t("projects.moreActions", { name: project.name }), rename: t("projects.rename"), settings: t("projectSettings.entry") }}
               renameMenu={renameMenu}
-              editable={!unavailable}
-              className={project.missing || remote || unbound ? "" : "right-7"}
+              editable={!unavailable && !remoteApp}
+              className={canCreateChat ? "right-7" : ""}
               onSettings={() => navigate(projectSettingsRoute(project.id))}
             >
                 {canRevealProject(project) && (
@@ -364,7 +398,7 @@ export function ProjectItem({
                       )}
                     </DropdownMenuItem>
                   )}
-                {unbound && (
+                {needsFolder && (
                   <DropdownMenuItem
                     disabled={busy}
                     onSelect={() => {
@@ -384,7 +418,7 @@ export function ProjectItem({
                     {t("projects.unbound.chooseFolder")}
                   </DropdownMenuItem>
                 )}
-                {canReleaseMissingProject(project) && (
+                {canReleaseMissingProject(project) && !remoteRow && (
                   <DropdownMenuItem
                     disabled={busy}
                     onSelect={() => setRescueOpen(true)}
@@ -413,7 +447,7 @@ export function ProjectItem({
                     </DropdownMenuItem>
                   </>
                 )}
-                {appEditorId && !remote && (
+                {appEditorId && !needsLocalFolder && !remoteRow && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -436,7 +470,18 @@ export function ProjectItem({
                     </DropdownMenuItem>
                   </>
                 )}
-                {canDetachLocalProject(project) && (
+                {pinnedRow && (
+                  <>
+                    <DropdownMenuSeparator />
+                    {/* Unpinning is this computer's arrangement and nothing else: the Project, its Chats and its
+                        folder stay exactly as they are on the computer that owns them. */}
+                    <DropdownMenuItem onSelect={() => cloud.scope.unpin(project.id)}>
+                      <PinOff />
+                      {t("projects.pin.unpin")}
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {canDetachLocalProject(project) && !remoteRow && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -451,7 +496,7 @@ export function ProjectItem({
                 )}
             </ProjectRowMenu>
           )}
-          {!project.missing && !remote && !unbound && (
+          {canCreateChat && (
             <SidebarMenuAction
               data-project-row-action="new"
               className={projectRowActionClass}

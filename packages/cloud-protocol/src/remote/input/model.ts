@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on closed identities, encrypted file descriptors and canonical text budgets.
- * [OUTPUT]: Provides portable composer capabilities, bounded attachments and scope-bound Full Access consent.
+ * [OUTPUT]: Provides portable composer capabilities, bounded attachments and intent-bound Full Access consent.
  * [POS]: Remote input contract; no local paths or global computer grants can cross this boundary.
  */
 import { z } from "zod";
@@ -29,21 +29,28 @@ export const remoteAttachmentSchema = z.object({
 export const remoteAttachmentsSchema = z.array(remoteAttachmentSchema).max(ATTACHMENT_LIMIT).refine(values =>
   new Set(values.map(value => value.attachmentId)).size === values.length && new Set(values.map(value => value.blob.blobId)).size === values.length, "remote-attachment-duplicate");
 export type RemoteAttachment = z.infer<typeof remoteAttachmentSchema>;
-export const remoteLegacyConsentSchema = z.object({
-  version: z.literal(1), userId: z.string().min(1).max(256), sourceDeviceId: id,
-  chatId: id, incarnationId: id, targetDeviceId: id, executionEpoch: z.number().int().nonnegative(),
-}).strict();
+/** What the user actually confirms once: this account, from this computer, for this Chat incarnation, aimed at that computer. */
+export const remoteConsentScopeSchema = z.object({ userId: z.string().min(1).max(256), sourceDeviceId: id,
+  chatId: id, incarnationId: id, targetDeviceId: id }).strict();
+export type RemoteConsentScope = z.infer<typeof remoteConsentScopeSchema>;
 export const remoteIntentConsentSchema = z.object({ version: z.literal(2), userId: z.string().min(1).max(256), sourceDeviceId: id,
   chatId: id, incarnationId: id, intentId: id, intendedTargetDeviceId: id }).strict();
-export const remoteFullAccessConsentSchema = z.discriminatedUnion("version", [remoteLegacyConsentSchema, remoteIntentConsentSchema]);
+export const remoteFullAccessConsentSchema = remoteIntentConsentSchema;
 export type RemoteFullAccessConsent = z.infer<typeof remoteFullAccessConsentSchema>;
+/** A confirmed scope becomes consent only for one command; nothing weaker than the intent binding reaches the wire. */
+export function remoteConsentFor(scope: RemoteConsentScope, intentId: string, targetDeviceId: string): RemoteFullAccessConsent | null {
+  return scope.targetDeviceId === targetDeviceId ? { version: 2, userId: scope.userId, sourceDeviceId: scope.sourceDeviceId,
+    chatId: scope.chatId, incarnationId: scope.incarnationId, intentId, intendedTargetDeviceId: targetDeviceId } : null;
+}
+export const remoteConsentScopeMatches = (scope: RemoteConsentScope | undefined | null, expected: RemoteConsentScope) =>
+  Boolean(scope && scope.userId === expected.userId && scope.sourceDeviceId === expected.sourceDeviceId &&
+    scope.chatId === expected.chatId && scope.incarnationId === expected.incarnationId && scope.targetDeviceId === expected.targetDeviceId);
 
 export function remoteAttachmentBlobIds(payload: { kind: string; attachments?: RemoteAttachment[] }): string[] {
   return "attachments" in payload ? (payload.attachments ?? []).map(value => value.blob.blobId) : [];
 }
-export function remoteConsentMatches(consent: RemoteFullAccessConsent | undefined, scope: { userId: string; sourceDeviceId: string; chatId: string; incarnationId: string; targetDeviceId: string; executionEpoch: number; intentId?: string }) {
+export function remoteConsentMatches(consent: RemoteFullAccessConsent | undefined, scope: { userId: string; sourceDeviceId: string; chatId: string; incarnationId: string; targetDeviceId: string; intentId?: string }) {
   return Boolean(consent && consent.userId === scope.userId && consent.sourceDeviceId === scope.sourceDeviceId &&
     consent.chatId === scope.chatId && consent.incarnationId === scope.incarnationId &&
-    (consent.version === 2 ? consent.intentId === scope.intentId && consent.intendedTargetDeviceId === scope.targetDeviceId :
-      consent.targetDeviceId === scope.targetDeviceId && consent.executionEpoch === scope.executionEpoch));
+    consent.intentId === scope.intentId && consent.intendedTargetDeviceId === scope.targetDeviceId);
 }

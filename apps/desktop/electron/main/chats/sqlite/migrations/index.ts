@@ -1,7 +1,7 @@
 /**
- * [INPUT]: Depends on Node crypto, the SQLite transaction owner, the current schema and checksum-pinned v6/v7 upgrades.
- * [OUTPUT]: Installs v8 or atomically upgrades verified v0.1.4 and known v7 data; unknown identities are refused unchanged.
- * [POS]: SQLite schema gate before repository reads; supported historical databases are protected inputs.
+ * [INPUT]: Depends on Node crypto, the SQLite transaction owner and the current schema.
+ * [OUTPUT]: Installs v9 on an empty database; every other identity is refused unchanged so startup recovery can rebuild from the folder.
+ * [POS]: SQLite schema gate before repository reads; there is no upgrade path, because there is no data to migrate.
  */
 
 import { createHash } from "node:crypto";
@@ -9,14 +9,11 @@ import type { SqliteDatabase } from "../connection";
 import { transaction } from "../connection";
 import { ChatSchemaError } from "../failure";
 import { CHAT_STORE_SCHEMA } from "./0001-chat-store";
-import { RELEASED_V6_CHECKSUM, upgradeReleasedV6 } from "./upgrade-v6";
-import { upgradeKnownV7 } from "./upgrade-v7";
 
 export const CHAT_STORE_APPLICATION_ID = 0x424f5454;
-export const CHAT_STORE_SCHEMA_VERSION = 8;
+export const CHAT_STORE_SCHEMA_VERSION = 9;
 const CHAT_STORE_SCHEMA_NAME = "chat-store";
 
-// Historical identities are pinned independently of the evolving fresh schema.
 const CHAT_STORE_SCHEMA_CHECKSUM = createHash("sha256")
   .update(`${CHAT_STORE_SCHEMA_VERSION}\0${CHAT_STORE_SCHEMA_NAME}\0${CHAT_STORE_SCHEMA}`)
   .digest("hex");
@@ -61,41 +58,18 @@ export function ensureChatSchema(database: SqliteDatabase, now = Date.now) {
     });
     return;
   }
-  let rows = database
+  const rows = database
     .prepare("SELECT version, name, checksum FROM schema_migrations ORDER BY version")
     .all() as Array<{ version: number; name: string; checksum: string }>;
 
   if (rows.length === 0) throw new ChatSchemaError("corrupt", "Existing Chat database has no schema identity row");
-  if (rows.length === 1 && rows[0]!.version === 6 && rows[0]!.name === CHAT_STORE_SCHEMA_NAME) {
-    if (applicationId !== CHAT_STORE_APPLICATION_ID || userVersion !== 6 || rows[0]!.checksum !== RELEASED_V6_CHECKSUM) {
-      throw new ChatSchemaError("corrupt", "Released Chat schema checksum or identity mismatch");
-    }
-    upgradeReleasedV6(database, CHAT_STORE_SCHEMA_CHECKSUM, now);
-    rows = database.prepare("SELECT version,name,checksum FROM schema_migrations ORDER BY version").all() as typeof rows;
+  const [row] = rows;
+  if (rows.length !== 1 || row!.version !== CHAT_STORE_SCHEMA_VERSION || row!.name !== CHAT_STORE_SCHEMA_NAME) {
+    const recorded = rows.map((item) => `${item.version}:${item.name}`).join(",");
+    throw new ChatSchemaError("corrupt", `Chat schema ${recorded} is not this version; original data is unchanged`);
   }
-  if (rows.length === 1 && rows[0]!.version === 7 && rows[0]!.name === CHAT_STORE_SCHEMA_NAME) {
-    if (applicationId !== CHAT_STORE_APPLICATION_ID || userVersion !== 7) {
-      throw new ChatSchemaError("corrupt", "Chat v7 schema identity mismatch");
-    }
-    upgradeKnownV7(database, CHAT_STORE_SCHEMA_CHECKSUM, now);
-    rows = database.prepare("SELECT version,name,checksum FROM schema_migrations ORDER BY version").all() as typeof rows;
-  }
-  {
-    const [row] = rows;
-    if (
-      rows.length !== 1 ||
-      row!.version !== CHAT_STORE_SCHEMA_VERSION ||
-      row!.name !== CHAT_STORE_SCHEMA_NAME
-    ) {
-      const recorded = rows.map((item) => `${item.version}:${item.name}`).join(",");
-      throw new ChatSchemaError(
-        "corrupt",
-        `Chat schema ${recorded} has no supported upgrade path; original data is unchanged`
-      );
-    }
-    if (row!.checksum !== CHAT_STORE_SCHEMA_CHECKSUM) {
-      throw new ChatSchemaError("corrupt", "Chat schema checksum mismatch");
-    }
+  if (row!.checksum !== CHAT_STORE_SCHEMA_CHECKSUM) {
+    throw new ChatSchemaError("corrupt", "Chat schema checksum mismatch");
   }
 
   if (integerPragma(database, "user_version") !== CHAT_STORE_SCHEMA_VERSION) {

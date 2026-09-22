@@ -8,7 +8,7 @@ import { agent, commitment, digest, id, nullableId, referencesSchema, version } 
 const classificationMetadataSchema = z.object({ kind: z.enum(["ordinary", "app-use", "app-edit"]), projectId: nullableId, appId: nullableId }).strict()
   .refine(value => (value.kind === "ordinary") === (value.appId === null) && (value.kind !== "app-edit" || value.projectId !== null));
 export const chatMetadataSchema = z.object({ incarnationId: id, classification: classificationMetadataSchema, sourceDeviceId: id,
-  agent, agentRevision: version, expectedRevision: version, executionEpoch: version, archivedAt: version.nullable(), references: referencesSchema }).strict();
+  agent, agentRevision: version, expectedRevision: version, archivedAt: version.nullable(), references: referencesSchema }).strict();
 export const projectMetadataSchema = z.object({ role: z.enum(["workspace", "base-custody"]), appId: nullableId, sourceDeviceId: id,
   expectedRevision: version, archivedAt: version.nullable(), order: version, references: referencesSchema }).strict().refine(value => value.role !== "base-custody" || value.appId === null);
 export const chatBindingSchema = z.object({ role: z.enum(["title", "facts", "metadata", "options", "classification", "initial"]),

@@ -27,7 +27,7 @@ export function validateTurnEncryptionCheckpoint(checkpoint: ChatDeliveryCheckpo
     const { optionsPacket: _packet, packet: _proof, identityHash: _cipher, userBodyHash: _cipherUser, noticeBodyHashes: _cipherNotices, ...header } = value;
     if (canonicalJson(header) !== canonicalJson(localHeader)) throw new Error("TURN_CIPHER_IDENTITY_MISMATCH");
     for (const [index, hash] of [local.userBodyHash, ...local.noticeBodyHashes].entries()) {
-      const expected = [value.userBodyHash, ...value.noticeBodyHashes][index], sequence = index === 0 ? local.userSeq : (local.executorNoticeSeq ?? local.noticeSeq)! + index - 1;
+      const expected = [value.userBodyHash, ...value.noticeBodyHashes][index], sequence = index === 0 ? local.userSeq : local.noticeSeq! + index - 1;
       let body: ChatDeliveryCheckpoint;
       try { body = prior(`cipher-turn-body:${sequence}`); } catch (error) {
         if (!(error instanceof Error) || error.message !== "OUTBOX_CHECKPOINT_PREDECESSOR_REQUIRED") throw error;

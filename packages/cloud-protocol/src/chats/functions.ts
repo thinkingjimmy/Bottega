@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on business authorization headers and closed Chat metadata contracts.
- * [OUTPUT]: Provides initial/metadata/classification/executor-option transactions, immutable receipts and revision-fenced catalogs.
+ * [OUTPUT]: Provides initial/metadata/classification/owner-option transactions, immutable receipts and revision-fenced catalogs.
  * [POS]: Shared RPC partition consumed by both clients and audited against the private backend.
  */
 import { z } from "zod";

@@ -4,7 +4,7 @@
  * [POS]: Shared network boundary excludes backend sessions, local paths, grants and Skill receipts.
  */
 import { z } from "zod";
-import { remoteApprovalDecisionSchema } from "../remote/model";
+import { interactionSourceSchema, remoteApprovalDecisionSchema } from "../remote/model";
 import { versionSchema as rev } from "../scalars";
 import { sha256Schema } from "../blobs";
 import { hashChatContent } from "../chats/transcript/body";
@@ -26,11 +26,9 @@ const liveInputSchema = z.object({ userInputId: itemId, itemId, questions: z.arr
   multiSelect: z.boolean().optional(), required: z.boolean().optional(), isOther: z.boolean().optional(), isSecret: z.boolean().optional() }).strict()).max(20),
   agentName: z.string().max(256).optional(), expiresAt: rev.optional() }).strict();
 const liveSubagentSchema = z.object({ meta: liveSubagentMetaSchema, detailState: z.enum(["available", "unavailable"]), draft: serializedDraftSchema.optional() }).strict();
-export const interactionSourceSchema = z.object({ sourceDeviceId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-  sourceDeviceName: z.string().min(1).max(120) }).strict();
 export const interactionResultSchema = z.object({ kind: z.enum(["approval", "input"]), interactionId: itemId,
   resolvedBy: interactionSourceSchema }).strict();
-export type InteractionSource = z.infer<typeof interactionSourceSchema>;
+export { interactionSourceSchema, type InteractionSource } from "../remote/model";
 export type InteractionResult = z.infer<typeof interactionResultSchema>;
 export const liveProjectionContentSchema = z.object({ draft: serializedDraftSchema, approvals: z.array(liveApprovalSchema).max(20),
   userInputs: z.array(liveInputSchema).max(20), interactionResults: z.array(interactionResultSchema).max(20).optional(), subagents: z.array(liveSubagentSchema).max(SUBAGENT_DRAFT_LIMIT),

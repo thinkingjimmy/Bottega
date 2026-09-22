@@ -132,10 +132,6 @@ promoteBaseToApp: "将 {{name}} 升级为应用"
     browser: settingsBrowserZhCN,
     extensions: settingsExtensionsZhCN,
     backends: {
-      defaultExecutionSaveFailed: "未能保存默认电脑，请重试。",
-      defaultExecutionDevice: "默认执行电脑",
-      localExecutionDevice: "此电脑",
-      defaultExecutionDescription: "用于新建对话，发送前会检查电脑是否可用。",
       title: "Agent 后端",
       description: "认证与用量由各官方 CLI 管理；产品只检测本机状态。",
       recheck: "重新检测",
@@ -200,11 +196,10 @@ currentModelUnavailable: "{{model}}（当前不可用）"
         "control-invalid": "无法读取这个文件夹的设置。请另选一个文件夹。",
         "already-configured": "Bottega 已经打开了一个文件夹。要换一个请重启 Bottega。",
         "root-changed": "Bottega 只使用你最初选择的文件夹。要换一个请重启 Bottega。",
+        "owned-elsewhere": "这个 Bottega 文件夹属于电脑 {{host}}，当前版本不支持在另一台电脑上打开；新建一个文件夹，或在那台电脑上使用。",
       },
       chooseChatHome: "选择 Chat Home 存放位置",
       chooseProject: "选择 Project 文件夹",
-      externalLinkTitle: "打开外部链接",
-      externalLinkMessage: "这个域名不在可信白名单中",
       terminalTitle: "确认在终端执行",
       terminalMessage: "此命令会修改本机 CLI 安装。",
       quitFailureTitle: "无法安全退出",
@@ -252,7 +247,6 @@ currentModelUnavailable: "{{model}}（当前不可用）"
     emptyPromptInProject: "我们在 {{name}} 里做点什么？",
     changeProject: "更换 Project：{{name}}",
     openSidePanel: "打开第三栏",
-    importedReadOnlyReason: "导入历史为只读。",
     cloud: {
       unavailable: "这台设备上没有这条对话。",
       deleted: "这条对话已在另一台设备上删除。",
@@ -503,7 +497,6 @@ currentModelUnavailable: "{{model}}（当前不可用）"
     folderRecoveryProjectMissing: "此 Base 属于本机已不存在的 Project。文件原样保留在 Bottega 文件夹中，Project 回来后它也会回来。",
     folderRecoveryOwnerChanged: "拥有此 Base 的对话已被替换。文件原样保留在 Bottega 文件夹中。" },
   notice: {
-    executorSwitched: "已在 {{device}} 继续",
     manualRecovered: "应用重启，这条消息的回复已中断，请重新发送。",
     skillDescriptionsTruncated:
       "Codex 提示：为适配上下文预算，本轮部分 Skill 描述被截短。Codex 仍可使用全部 Skill，本轮回复不受影响。这条提示来自 Codex 自身，不是 Bottega 的问题。",

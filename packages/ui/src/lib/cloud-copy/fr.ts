@@ -77,9 +77,9 @@ export const cloudCopy = {
     "switchAccount": "Confirmer le changement de compte",
     "switchTitle": "Changer de compte sur cet ordinateur",
     "switchBody": "Les données cloud restent associées au compte précédent. Après le changement, réactivez la synchronisation pour ce compte.",
-    "pause": "Mettre en pause",
-    "resume": "Reprendre",
     "disable": "Désactiver",
+    "cloudData": "Données cloud",
+    "cloudDataDescription": "Déconnecter cet ordinateur et supprimer les copies cloud conservées ici. La déconnexion du compte ne fait ni l’un ni l’autre.",
     "disableTitle": "Désactiver la synchronisation sur cet ordinateur ?",
     "disableBody": "Les copies présentes ici uniquement comme miroirs cloud seront supprimées. Tout ce qui a été créé ou repris sur cet ordinateur reste, avec ses fichiers. Votre mot de passe de synchronisation sera nécessaire pour réactiver la synchronisation.",
     "disableRemove": "Supprimer {{mirrors}} miroirs de chats, {{mirroredBases}} miroirs de Bases, {{mirroredProjects}} miroirs de Projects et {{mirroredApps}} miroirs d’Apps.",
@@ -92,7 +92,7 @@ export const cloudCopy = {
   },
   "syncStatus": {
     "partial": "Les données Base sont à jour ; certains paquets App demandent votre attention",
-    "not-connected": "La synchronisation n’est pas activée.",
+    "not-connected": "Cet ordinateur ne se synchronise pas encore.",
     "scanning": "Analyse du contenu local…",
     "initializing": "Préparation de la première synchronisation…",
     "syncing": "Synchronisation…",
@@ -106,7 +106,8 @@ export const cloudCopy = {
     "scan-failed": "Le contenu local n’a pas pu être analysé. Réessayez après la fin de l’importation.",
     "review-expired": "Cette vérification a expiré. Relancez l’analyse.",
     "upload-failed": "Une partie du contenu n’est pas synchronisée. La copie locale est conservée ; réessayez.",
-    "cleanup-failed": "La déconnexion de ce compte n’a pas pu se terminer. Votre contenu local est conservé ; réessayez pour continuer."
+    "cleanup-failed": "La déconnexion de ce compte n’a pas pu se terminer. Votre contenu local est conservé ; réessayez pour continuer.",
+    "library-owned-elsewhere": "Ce dossier Bottega appartient à {{host}}. Cette version ne peut pas l’ouvrir sur un autre ordinateur : créez un nouveau dossier, ou utilisez-le sur cet ordinateur-là."
   },
   "syncAppBlocked": {
     "migration-blocked": "Cette version nécessite une migration non prise en charge. La version précédente est conservée dans le cloud.",
@@ -119,14 +120,14 @@ export const cloudCopy = {
   },
   "setup": {
     "signIn": "Connexion",
-    "enable": "Activer la synchronisation",
+    "enable": "Terminer la connexion",
     "signInTitle": "Connectez-vous pour synchroniser cet ordinateur",
     "browserApproval": "Vous approuverez la connexion dans votre navigateur.",
     "signedInAs": "Vous êtes connecté avec {{email}}.",
     "checkCode": "Vérifiez qu’il correspond au code affiché dans votre navigateur avant d’autoriser la connexion.",
     "enterPassword": "Saisissez votre mot de passe de synchronisation",
     "enterPasswordDescription": "Cet ordinateur rejoint l’espace chiffré créé sur un autre appareil. Bottega ne peut pas récupérer le mot de passe.",
-    "unlockedDescription": "Cet ordinateur est déjà déverrouillé. Activez la synchronisation pour commencer à envoyer son contenu."
+    "unlockedDescription": "Cet ordinateur est déjà déverrouillé. Terminez pour lancer la synchronisation."
   },
   "syncBadge": {
     "synced": "À jour",
@@ -144,6 +145,7 @@ export const cloudCopy = {
     "locked": "Saisissez votre mot de passe de synchronisation pour reprendre la synchronisation sur cet ordinateur."
   },
   "syncPhase": {
+    "preparing": "Préparation des chats",
     "projects": "Envoi des Projects",
     "apps": "Envoi des Apps",
     "chats": "Envoi des chats",
@@ -256,6 +258,17 @@ export const cloudCopy = {
   "syncNotConnected": "La synchronisation n’est pas encore activée.",
 
 
+  "computers": {
+    "label": "Ordinateurs",
+    "offlineSince": "Hors ligne · {{when}}",
+    "none": "Connectez-vous à Bottega sur un ordinateur et sa barre latérale apparaîtra ici.",
+    "thisComputer": "Cet ordinateur",
+    "name": "Nom de l'ordinateur",
+    "nameTaken": "Un autre ordinateur porte déjà ce nom.",
+    "notFound": "Cet ordinateur n'est pas connecté au compte.",
+    "nameInvalid": "Saisissez un nom.",
+    "suffixHint": "Un autre ordinateur portait déjà ce nom. Renommez celui-ci ici."
+  },
   "devices": "Appareils",
   "lastSeen": "Vu {{when}}",
   "webSession": "Session Web",

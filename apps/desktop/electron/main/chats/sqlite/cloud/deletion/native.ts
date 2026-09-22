@@ -39,7 +39,7 @@ export function prepareDeletedChat(db: SqliteDatabase, reader: ChatRepositoryRea
   const state = db.prepare("SELECT confirmed_json FROM cloud_chat_metadata_state WHERE chat_id=?").get(target.id) as Row | undefined;
   const head: CloudChatHead = state?.confirmed_json ? cloudChatHeadSchema.parse(JSON.parse(String(state.confirmed_json))) : {
     chat: portableFacts(record, 0), kind: "native", archivedAt: record.archivedAt ?? null,
-    executorDeviceId: null, executionEpoch: 0, lastCommittedExecutorDeviceId: null, nativeSessionDeviceId: null, executionPreparation: null,
+    ownerDeviceId: null, nativeSessionDeviceId: null, executionPreparation: null,
     headSeq: record.messages.at(-1)?.seq ?? 0, reservedThroughSeq: record.nextSeq - 1, openTurnId: null,
     homeSnapshotId: null, homeBytes: 0, homeState: "none", sourceDeviceId: deviceId, catalogRevision: 0, bodyRevision: 0 };
   const outbox = deletionOutbox(db, scope, target.id);

@@ -10,6 +10,7 @@ export * from "./blobs/functions";
 export * from "./blobs/transfer";
 export * from "./blobs/http";
 export * from "./auth/functions";
+export * from "./auth/libraries";
 export * from "./auth/bridge";
 export * from "./auth/avatar";
 export { hashCanonical } from "./encryption/encoding";

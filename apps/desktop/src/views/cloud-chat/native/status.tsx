@@ -17,7 +17,7 @@ export function NativeCloudComposer({ chatId, children }: { chatId: string; chil
   return sources ? <Composer chatId={chatId} sources={sources}>{children}</Composer> : children;
 }
 function Composer({ chatId, sources, children }: { chatId: string; sources: NonNullable<ReturnType<typeof useDesktopChatSources>>; children: ReactNode }) {
-  const { view } = useChatExecution(chatId, sources.executor), { i18n } = useAppTranslation();
+  const { view } = useChatExecution(chatId, sources.execution), { i18n } = useAppTranslation();
   const copy = executionCopy(i18n.language);
   if (view?.reason === "deleted") return <div role="status" className="mx-auto w-full max-w-3xl px-4 py-3 text-sm text-muted-foreground">{copy.deleted}</div>;
   return children;
@@ -29,16 +29,16 @@ export function NativeCloudStatus({ chatId }: { chatId: string }) {
 }
 
 function Status({ chatId, sources }: { chatId: string; sources: NonNullable<ReturnType<typeof useDesktopChatSources>> }) {
-  const { view } = useChatExecution(chatId, sources.executor), { i18n } = useAppTranslation();
+  const { view } = useChatExecution(chatId, sources.execution), { i18n } = useAppTranslation();
   const account = useCloudAccount(), copy = executionCopy(i18n.language);
   const draft = useContinuationDraft(chatId, view?.head?.chat.incarnationId, account.profile?.userId);
   // Deletion is stated once at the composer; the status row doesn't repeat it.
   if (view?.reason === "deleted") return null;
-  if (view?.head?.executorDeviceId && view.head.executorDeviceId !== view.localDeviceId) return null;
+  if (view?.head?.ownerDeviceId && view.head.ownerDeviceId !== view.localDeviceId) return null;
   if (!view || view.phase === "ready" || !view.head) return null;
   if (view.phase !== "blocked") return null;
   return <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-4 py-2 text-xs text-muted-foreground" role="status">
     <span className="flex-1">{copy.failed}</span>
-    <ContinueAction chatId={chatId} executor={sources.executor} view={view} copy={copy} draft={draft} />
+    <ContinueAction chatId={chatId} execution={sources.execution} view={view} copy={copy} draft={draft} />
   </div>;
 }

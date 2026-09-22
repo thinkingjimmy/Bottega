@@ -3,7 +3,7 @@
 /**
  * [INPUT]: Depends on UI Button/Tooltip, host-injected UI text, streamdown/CJK, MessageRendererContext, and the message plugin loader
  * [OUTPUT]: Provides Message/MessageContent layout, MessageActions/MessageAction, and MessageResponse; stabilizes locale-key/plugin detection, streams code-only rendering while Math/Mermaid stay available, and applies syntax highlighting once in a single pass after streaming settles
- * [POS]: ai-elements' message-display family; a Message never overflows its parent content list, and MessageResponse only auto-links http/mailto and hides behind a full skeleton until its plugins are chosen. The default Markdown heading scale is re-anchored here to the text-sm body size (h1-h4 keep distinct sizes, h5/h6 collapse onto text-sm); other rendering contexts need their own scale. className is always merged last through cn's tw-merge so a caller's class wins without needing to guess specificity
+ * [POS]: ai-elements' message-display family; a Message never overflows its parent content list, and MessageResponse only auto-links http/mailto and hides behind a full skeleton until its plugins are chosen. Links render as real anchors (target="_blank" rel="noopener noreferrer") with no in-page confirmation, so a host may intercept the click and route the URL into its own surface. The default Markdown heading scale is re-anchored here to the text-sm body size (h1-h4 keep distinct sizes, h5/h6 collapse onto text-sm); other rendering contexts need their own scale. className is always merged last through cn's tw-merge so a caller's class wins without needing to guess specificity
  */
 
 import { Button } from "@ai-chat/ui/components/ui/button";
@@ -266,11 +266,14 @@ export const MessageResponse = memo(
 
     return (
       <Streamdown
+        // streamdown defaults linkSafety on: links become <button> and a click
+        // opens an in-page confirmation modal. Off, they are real anchors, so
+        // cursor, middle-click and modifier-click keep native behaviour and a
+        // host can delegate clicks elsewhere. Before the spread: callers may override.
+        linkSafety={{ enabled: false }}
         {...streamdownProps}
         className={cn(
-          // streamdown 默认 linkSafety.enabled=true，链接渲染成 <button> 而非 <a>，
-          // 故光标锁定两分支共有的 data-streamdown="link"，避免追 tag 名的特殊情况
-          "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_[data-streamdown=link]]:cursor-pointer",
+          "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
           // streamdown 默认 list-inside 无悬挂缩进，覆盖为 outside + 左内边距
           "[&_ol]:list-outside [&_ol]:pl-5 [&_ul]:list-outside [&_ul]:pl-5",
           // streamdown 给 li 套 [&>p]:inline 配合 inside 标记，宽松列表段落会被

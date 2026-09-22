@@ -216,7 +216,6 @@ export const manualIntentSchema = z
     cloudHandoff: z.object({ command: cloudMutationSchema, state: z.enum(["pending", "confirmed"]),
       proof: z.object({ operationId: z.string().min(1), requestHash: z.string().regex(/^[a-f0-9]{64}$/), sourceId: z.string().min(1), digest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().nullable(),
     }).strict().refine(value => (value.state === "confirmed") === Boolean(value.proof)).optional(),
-    executorNoticeSeq: z.number().int().positive().optional(),
     noticeSeq: z.number().int().positive().optional(),
     userSeq: z.number().int().positive().optional(),
     assistantSeq: z.number().int().positive().optional(),
@@ -252,8 +251,8 @@ export const manualIntentSchema = z
     if ((intent.origin.kind === "remote") !== Boolean(intent.remoteSubmission) || intent.remoteSubmission &&
       (canonicalHash(intent.origin) !== canonicalHash(intent.remoteSubmission.context.origin) || intent.id !== intent.remoteSubmission.context.origin.commandId ||
         intent.submissionHash !== intent.remoteSubmission.submissionHash)) context.addIssue({ code: "custom", message: "Invalid remote submission custody" });
-    if (intent.userSeq !== undefined || intent.assistantSeq !== undefined || intent.noticeSeq !== undefined || intent.executorNoticeSeq !== undefined) {
-      const parsed = turnSequencesSchema.safeParse({ executorNoticeSeq: intent.executorNoticeSeq, noticeSeq: intent.noticeSeq, userSeq: intent.userSeq, assistantSeq: intent.assistantSeq });
+    if (intent.userSeq !== undefined || intent.assistantSeq !== undefined || intent.noticeSeq !== undefined) {
+      const parsed = turnSequencesSchema.safeParse({ noticeSeq: intent.noticeSeq, userSeq: intent.userSeq, assistantSeq: intent.assistantSeq });
       if (!parsed.success) context.addIssue({ code: "custom", message: "Invalid frozen manual turn sequences" });
     }
     if (

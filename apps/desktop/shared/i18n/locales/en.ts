@@ -131,10 +131,6 @@ promoteBaseToApp: "Promote {{name}} to App"
     browser: settingsBrowserEn,
     extensions: settingsExtensionsEn,
     backends: {
-      defaultExecutionSaveFailed: "Could not save the default computer. Try again.",
-      defaultExecutionDevice: "Default execution computer",
-      localExecutionDevice: "This computer",
-      defaultExecutionDescription: "Used for new chats. Availability is checked before sending.",
       title: "Agent backends",
       description:
         "Authentication and usage are managed by each official CLI; the product only checks local status.",
@@ -208,11 +204,10 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
         "control-invalid": "Bottega could not read this folder's settings. Choose another folder.",
         "already-configured": "Bottega has already opened a folder. Restart Bottega to open a different one.",
         "root-changed": "Bottega keeps using the folder you chose. Restart Bottega to open a different one.",
+        "owned-elsewhere": "This Bottega folder belongs to {{host}}. This version cannot open it on another computer — create a new folder, or use it on that computer.",
       },
       chooseChatHome: "Choose Chat Home location",
       chooseProject: "Choose Project folder",
-      externalLinkTitle: "Open external link",
-      externalLinkMessage: "This domain is not in the trusted allowlist.",
       terminalTitle: "Confirm terminal action",
       terminalMessage: "This command will modify the local CLI installation.",
       quitFailureTitle: "Could not quit safely",
@@ -265,7 +260,6 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
     emptyPromptInProject: "What should we build in {{name}}?",
     changeProject: "Change Project: {{name}}",
     openSidePanel: "Open side panel",
-    importedReadOnlyReason: "Imported history is read-only.",
     cloud: {
       unavailable: "This conversation is not available on this device.",
       deleted: "This conversation was deleted on another device.",
@@ -519,7 +513,6 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
     folderRecoveryProjectMissing: "This Base belongs to a Project this computer no longer has. Its files are kept unchanged in your Bottega folder and come back with the Project.",
     folderRecoveryOwnerChanged: "The conversation that owns this Base was replaced. Its files are kept unchanged in your Bottega folder." },
   notice: {
-    executorSwitched: "Continued on {{device}}",
     manualRecovered:
       "The app restarted and interrupted the reply to this message. Please send it again.",
     skillDescriptionsTruncated:

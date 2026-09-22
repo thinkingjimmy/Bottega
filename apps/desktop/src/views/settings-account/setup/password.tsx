@@ -115,7 +115,7 @@ export function PasswordStep({ state, Step = SetupStep }: { state: CloudAccountS
   const alert = busy || abandoned ? null : networkFailure ? copy.setupConnectionFailed : validation.errors.form ??
     (finalError === "scan-failed" || scanFailed ? t("cloud.syncError.scan-failed") :
       finalError === "request-failed" || failed && !validation.errors.password && !validation.errors.confirmation ? t("cloud.actionFailed") : unavailable ? t("cloud.syncUnavailable") :
-        sync.error ? t(`cloud.syncError.${sync.error}`) : state.error && !ready ? t(`cloud.error.${state.error}`) : null);
+        sync.error ? t(`cloud.syncError.${sync.error}`, { host: sync.ownerHost ?? "" }) : state.error && !ready ? t(`cloud.error.${state.error}`) : null);
   const title = needsPassword ? creating ? copy.setPassword : t("cloud.setup.enterPassword") : t("cloud.setup.enable");
   const lead = busy ? encryption.status === "setting-up" ? copy.inProgress : copy.setupInProgress :
     needsPassword ? creating ? copy.setupDescription : t("cloud.setup.enterPasswordDescription") :

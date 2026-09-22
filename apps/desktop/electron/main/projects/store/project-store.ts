@@ -39,6 +39,8 @@ export type ProjectStoreDependencies = {
   libraryRoot: () => string | null;
   storageMode?: import("../../../../shared/local-storage/contracts").StorageMode;
   folderCheckpoint?: (phase: "intent" | "content" | "commit") => Promise<void>;
+  /** This computer's key; absent disables same-machine directory hints entirely. */
+  machineIdHash?: () => Promise<string | null>;
   now?: () => number;
   createId?: () => string;
 };
@@ -732,6 +734,10 @@ export class ProjectStore {
     this.assertReady(); return this.workspace.resolve(binding);
   }
   setWorkspaceBinding(projectId: string, binding: ProjectWorkspaceBinding, externalDir?: string) { return this.workspace.setBinding(projectId, binding, externalDir); }
+  /** A directory hint is not ProjectFile authority: it rides outside the commit queue and never fails the binding that produced it. */
+  rememberLocalHint(projectId: string, dir: string) {
+    return this.persistence.rememberHint(projectId, dir).catch(error => { console.warn("Project directory hint not recorded", projectId, error); });
+  }
   setGitRemote(projectId: string, gitRemote: string | undefined) { return this.workspace.setGitRemote(projectId, gitRemote); }
   setArchivedAt(projectId: string, archivedAt: number | undefined) { return this.workspace.setArchivedAt(projectId, archivedAt); }
 

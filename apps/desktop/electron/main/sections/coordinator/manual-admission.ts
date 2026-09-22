@@ -222,7 +222,6 @@ export async function submitManualAdmission(
           submissionHash,
           requestId: submission.turn.requestId,
           userMessage,
-          executorNoticeSeq: sequence?.executorNoticeSeq,
           noticeSeq: sequence?.noticeSeq,
           userSeq: sequence?.userSeq,
           assistantSeq: sequence?.assistantSeq,
