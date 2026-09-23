@@ -43,6 +43,8 @@
     "./artifact-card": "./src/artifacts/card.tsx",
     "./artifact-renderer": "./src/artifacts/renderer.tsx",
     "./artifact-copy": "./src/artifacts/copy.ts",
+    "./links": "./src/links/port.tsx",
+    "./link-router": "./src/links/router.ts",
     "./composer": "./src/ui/composer/layout.tsx",
     "./empty-state": "./src/ui/composer/empty.tsx",
     "./composer-copy": "./src/ui/composer/copy.ts",
@@ -143,7 +145,10 @@
     "./side-panel/layout": "./src/ui/side-panel/layout.ts",
     "./remote-creation": "./src/platform/remote/creation/submit.ts",
     "./remote-consent": "./src/ui/remote/composer/consent.tsx",
-    "./remote-references": "./src/ui/remote/composer/input/references.tsx"
+    "./remote-references": "./src/ui/remote/composer/input/references.tsx",
+    "./image-input": "./src/platform/remote/input/image/pipeline.ts",
+    "./image-codec": "./src/platform/remote/input/image/canvas.ts",
+    "./remote-checkpoint": "./src/platform/remote/input/checkpoint.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -162,7 +167,8 @@
     "react-colorful": "5.6.1",
     "react-dom": "19.2.4",
     "@dnd-kit/core": "6.3.1",
-    "@ai-chat/base-ui": "workspace:*"
+    "@ai-chat/base-ui": "workspace:*",
+    "@ai-chat/shell-bridge": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "19.2.17",

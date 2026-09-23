@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on the shared UpdateSnapshot contract only — no React, no IPC, no i18n runtime
  * [OUTPUT]: Provides SidebarUpdateTone, SidebarUpdateGlyph, SidebarUpdateIntent, SidebarUpdateView and describeSidebarUpdate
- * [POS]: Sidebar's bottom update button's conclusion layer — turns an UpdateSnapshot into whether to show, which glyph, and what the button does, decided once; same family as lib/about-view and lib/memory-view
+ * [POS]: Sidebar's bottom update button's conclusion layer — turns an UpdateSnapshot into whether to show, which glyph, and what the button does, decided once; same family as lib/updates/update-view and lib/memory-view
  */
 
 import type { UpdateSnapshot } from "../../shared/update-ipc";
 
 /* ============================================================
- * 语气三档，与 lib/about-view 的 UpdateTone 同名同义，不另发明第二套：
+ * 语气三档，与 lib/updates/update-view 的 UpdateTone 同名同义，不另发明第二套：
  *   loud   —— 前景色满强度，只给真的等你按的那一相
  *   quiet  —— muted 字色，已在进行中，播报而不邀请
  *   danger —— destructive 配色，坏了但仍可按
@@ -22,17 +22,17 @@ export type SidebarUpdateGlyph = "download" | "external" | "spinner" | "alert";
 
 /* 按下去到底发生什么。三条通路必须分开命名：曾经它们共用一颗下载图标，
    于是 Windows 上那颗「下载」按下去只是开了个网页。 */
-export type SidebarUpdateIntent = "install" | "restart" | "releases" | "about";
+export type SidebarUpdateIntent = "install" | "restart" | "releases" | "updates";
 
 type SidebarUpdateLabelKey =
   | "appHost.waitingDownload" | "appHost.checking" | "appHost.unavailable" | "appHost.installBusy" | "appHost.retryError"
   | "settings.presence.restart"
-  | "settings.about.upgrade"
-  | "settings.about.manualUpgrade"
-  | "settings.about.downloading"
-  | "settings.about.installing"
-  | "settings.about.failedFallback"
-  | "settings.about.backgroundFailedOpen";
+  | "settings.updates.upgrade"
+  | "settings.updates.manualUpgrade"
+  | "settings.updates.downloading"
+  | "settings.updates.installing"
+  | "settings.updates.failedFallback"
+  | "settings.updates.backgroundFailedOpen";
 
 export type SidebarUpdateView = Readonly<{
   tone: SidebarUpdateTone;
@@ -66,7 +66,7 @@ function show(
  *
  * 「已是最新」在任何一帧都不含新信息——它几乎永远为真，于是一颗常亮
  * 按钮只是常驻噪音；checking 那几百毫秒同理，全局 chrome 不该为一次
- * IPC 往返闪一下。这与 about-view 的判据同源：那边是不说话，这边是
+ * IPC 往返闪一下。这与 update-view 的判据同源：那边是不说话，这边是
  * 不占位。
  *
  * 但「失败」不是静息。撤走按钮之后，界面与「一切正常」长得一模一样，
@@ -80,7 +80,7 @@ export function describeSidebarUpdate(
   const requirement = update.appRequirement;
   if (requirement && requirement.status !== "satisfied") {
     const keys = { "waiting-download": "appHost.waitingDownload", checking: "appHost.checking", unavailable: "appHost.unavailable", "install-busy": "appHost.installBusy", error: "appHost.retryError" } as const;
-    return show({ glyph: ["waiting-download", "checking"].includes(requirement.status) ? "spinner" : "alert", labelKey: keys[requirement.status], intent: "about", tone: "quiet" });
+    return show({ glyph: ["waiting-download", "checking"].includes(requirement.status) ? "spinner" : "alert", labelKey: keys[requirement.status], intent: "updates", tone: "quiet" });
   }
   const version = update.availableVersion ?? update.currentVersion;
   switch (update.phase) {
@@ -89,12 +89,12 @@ export function describeSidebarUpdate(
       return update.automaticInstall
         ? show({
             glyph: "download",
-            labelKey: "settings.about.upgrade",
+            labelKey: "settings.updates.upgrade",
             intent: "install",
           })
         : show({
             glyph: "external",
-            labelKey: "settings.about.manualUpgrade",
+            labelKey: "settings.updates.manualUpgrade",
             intent: "releases",
           });
     case "downloading": {
@@ -102,7 +102,7 @@ export function describeSidebarUpdate(
       return show({
         tone: "quiet",
         glyph: "download",
-        labelKey: "settings.about.downloading",
+        labelKey: "settings.updates.downloading",
         labelVars: { version, percent },
         percent,
         intent: null,
@@ -114,14 +114,14 @@ export function describeSidebarUpdate(
       return show({
         tone: "quiet",
         glyph: "spinner",
-        labelKey: "settings.about.installing",
+        labelKey: "settings.updates.installing",
         intent: null,
       });
     case "error":
       return show({
         tone: "danger",
         glyph: "alert",
-        labelKey: "settings.about.failedFallback",
+        labelKey: "settings.updates.failedFallback",
         labelVars: { version },
         intent: "releases",
       });
@@ -129,14 +129,14 @@ export function describeSidebarUpdate(
     case "not-available":
       return null;
     default:
-      /* idle：后台那次自动检查失败过就不再是静息，去 About 看诊断与重试。
+      /* idle：后台那次自动检查失败过就不再是静息，去 Updates 看诊断与重试。
          这里不指向 Releases——检查失败并不意味着存在一个可下载的新版本。 */
       return update.lastError
         ? show({
             tone: "quiet",
             glyph: "alert",
-            labelKey: "settings.about.backgroundFailedOpen",
-            intent: "about",
+            labelKey: "settings.updates.backgroundFailedOpen",
+            intent: "updates",
           })
         : null;
   }

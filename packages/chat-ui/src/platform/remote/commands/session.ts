@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on immutable remote DTOs, scoped command reads/subscriptions and canonical content hashing.
- * [OUTPUT]: Provides exact retries and receipt reconciliation, including uncertain withdrawal recovery and terminal draft release without an execution outbox.
+ * [OUTPUT]: Refuses a command too large to seal before it becomes an entry; provides exact retries and receipt reconciliation, including uncertain withdrawal recovery, checkpoint adoption by original commandId and terminal draft release without an execution outbox.
  * [POS]: Shared CommandSink consumer; confirmed receipts or strict post-lookup rejections resolve transport uncertainty.
  */
 import type { FrozenRemoteCommand } from "@ai-chat/cloud-protocol/remote/encrypted";
+import { assertRemoteCommandBudget } from "@ai-chat/cloud-protocol/remote/encrypted/client";
 import { remoteIntentIdentity, remoteCommandInputSchema } from "@ai-chat/cloud-protocol/remote/model";
 import type { RemoteAdmissionRejection } from "@ai-chat/cloud-protocol/remote/selection";
 import { hashChatContent } from "@ai-chat/cloud-protocol/chats/transcript/body";
@@ -91,6 +92,8 @@ export class RemoteCommandSession {
     if (signal?.aborted) return null;
     const input = remoteCommandInputSchema.parse(structuredClone(raw));
     if (input.chatId !== this.chatId) throw new Error("REMOTE_COMMAND_SCOPE");
+    // Too large to seal is a definite refusal: it must never become an entry whose outcome is unknown.
+    assertRemoteCommandBudget(input);
     const previous = this.state.entries.find(entry => entry.input.commandId === input.commandId);
     if (previous && hashChatContent(previous.input) !== hashChatContent(input)) throw new Error("REMOTE_COMMAND_CHANGED");
     if (previous?.busy) return null;
@@ -114,6 +117,12 @@ export class RemoteCommandSession {
     if (this.state.entries.some(entry => entry.input.commandId === commandId)) return;
     const generation = this.generation, receipt = await this.port.get(commandId);
     if (generation === this.generation && receipt) { this.receive(receipt); this.watch(commandId); }
+  }
+  /** A command recovered from a draft checkpoint re-enters as owned and uncertain, then is looked up by its original id; only an explicit retry may submit it again, with that same id. */
+  adopt(command: { input: RemoteCommandInput; frozen?: FrozenRemoteCommand }) {
+    if (command.input.chatId !== this.chatId || this.state.entries.some(entry => entry.input.commandId === command.input.commandId)) return;
+    this.publish({ entries: [...this.state.entries, { input: command.input, frozen: command.frozen, receipt: null, busy: false, uncertain: true, optimistic: false, owned: true }] });
+    this.watch(command.input.commandId); void this.check(command.input.commandId);
   }
   retry(commandId: string) {
     const entry = this.state.entries.find(value => value.input.commandId === commandId);

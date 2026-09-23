@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on strict account scope and bounded command identities.
- * [OUTPUT]: Defines durable remote custody with exact scoped Full Access consent and control receipts.
+ * [OUTPUT]: Defines durable remote custody with exact scoped Full Access consent and control receipts whose output also carries the Steer outcome.
  * [POS]: Additive ledger contracts; old manual records keep their original interpretation.
  */
 import { z } from "zod";

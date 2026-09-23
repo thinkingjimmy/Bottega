@@ -8,7 +8,7 @@ import { RichInput, type RichInputHandle, type RichInputProps } from "@ai-chat/u
 import type { RichNode, RichValue } from "@ai-chat/ui/components/ai-elements/prompt-input";
 import type { DraftFile, DraftReference } from "../../../../platform/remote/input/draft";
 export type RemoteEditorHandle = { focus(): void };
-export const isImageFile = (file: DraftFile) => file.file.type.startsWith("image/");
+export const isImageFile = (file: DraftFile) => file.image;
 const textOf = (value: RichValue) => value.filter(node => node.type === "text").map(node => node.value).join("");
 const fileNode = (file: DraftFile): RichNode => ({ id: `file:${file.id}`, type: "file", ref: file.id, name: file.file.name, mediaType: file.file.type });
 const withTrailingText = (value: RichValue): RichValue => value.at(-1)?.type === "text" ? value : [...value, { id: crypto.randomUUID(), type: "text", value: "" }];

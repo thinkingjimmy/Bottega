@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on descriptor version loaders, a 24-hour cache clock, retry cooldown and bounded GitHub requests.
- * [OUTPUT]: Provides LatestVersionCache with generation-safe results and non-blocking latest stable release reads.
+ * [INPUT]: Depends on descriptor version loaders, a 24-hour cache clock, retry cooldown and bounded GitHub/npm registry requests.
+ * [OUTPUT]: Provides LatestVersionCache with generation-safe results, plus the GitHub-release and npm-registry latest-version loaders.
  * [POS]: setup's non-blocking version-check boundary; callers read a cached result immediately and never wait on the network
  */
 
@@ -104,4 +104,19 @@ export async function githubLatestVersion(
     throw new Error("GitHub latest release 缺少 tag_name");
   }
   return value.tag_name.replace(/^v/, "");
+}
+
+/* The npm registry has no 60-requests-per-hour anonymous cap, so CLIs that publish there read their latest release from it. */
+export async function npmLatestVersion(
+  packageName: string,
+  fetcher: typeof fetch = fetch
+) {
+  const response = await fetcher(
+    `https://registry.npmjs.org/${packageName.replace("/", "%2F")}/latest`,
+    { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }
+  );
+  if (!response.ok) throw new Error(`npm latest 请求失败：${response.status}`);
+  const value = (await response.json()) as { version?: unknown };
+  if (typeof value.version !== "string" || !value.version.trim()) throw new Error("npm latest 缺少 version");
+  return value.version.trim();
 }

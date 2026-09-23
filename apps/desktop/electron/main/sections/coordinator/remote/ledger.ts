@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the existing RelayLedger transaction ports and canonical submission reservation mutations.
- * [OUTPUT]: Preserves exact remote submissions, trusted file custody, inherited Steer authority and immutable control decisions.
+ * [OUTPUT]: Preserves exact remote submissions, trusted file custody, inherited Steer authority, the local authority of a transferred Steer's next turn (inheriting only the steered turn's Full Access) and immutable control decisions.
  * [POS]: Ledger collaborator; all records commit through the original single writer.
  */
 import type { TrustedTurnAuthority } from "../../../backends/types";
@@ -12,6 +12,7 @@ import { reserveSubmission } from "../submission-outcome";
 import type { LedgerState } from "../state/ledger-schema";
 import type { DeepReadonly } from "../state/readonly-ledger";
 import { assertPreparedContentHash, type PreparedManualTurn } from "../admission/prepared-manual-turn";
+import { steerDerivedIntentId } from "../admission/steer-projection";
 import { controlReceiptSchema, remoteContextSchema, remoteSubmissionSchema, type ControlReceipt, type RemoteContext, remoteCiphertextSchema, type RemoteCiphertext } from "./model";
 type Ports = { read<T>(select: (state: DeepReadonly<LedgerState>) => T): T;
   mutate<T>(action: (state: LedgerState, now: number) => T): Promise<T> };
@@ -42,6 +43,28 @@ export class RemoteLedger {
     if (!saved || canonicalHash(saved.context) !== canonicalHash(context)) throw new Error("REMOTE_COMMAND_CUSTODY_MISSING");
     if (!this.executionAuthority) throw new Error("sync-clock-unavailable");
     return this.executionAuthority(context);
+  }
+  /**
+   * A Steer this computer durably moved to the next turn was authorized when it was transferred. Its derived turn runs as local
+   * custody: by then the Steer command is finished and its turn closed, so the service can never authorize that command again.
+   */
+  transferredSteer(context: RemoteContext, intentId: string) {
+    const id = remoteContextSchema.parse(context).origin.commandId;
+    if (intentId !== steerDerivedIntentId(id)) return false;
+    return this.ports.read(state => {
+      const steer = state.steerIntents[id];
+      if (steer) return steer.phase === "transferred" && canonicalHash((steer.stagedSnapshot as PreparedManualTurn).remoteContext) === canonicalHash(context);
+      return state.intentTombstones[id]?.outcome === "transferred" && state.manualIntents[intentId] !== undefined;
+    });
+  }
+  /**
+   * The local authority of a transferred Steer's next turn: nothing to re-authorize, and Full Access only when the turn it
+   * was steering already ran with it (inheritsFullAccess) — never the computer's global acknowledgement.
+   */
+  transferredAuthority(context: RemoteContext, intentId: string): TrustedTurnAuthority | null {
+    if (!this.transferredSteer(context, intentId)) return null;
+    return { validate: async () => {}, current: () => {},
+      fullAccessFor: (chatId, incarnationId) => chatId === context.chatId && incarnationId === context.incarnationId && this.inheritsFullAccess(context) };
   }
   ciphertext(id: string) { return this.ports.read(state => state.remoteCiphertexts[id] ? structuredClone(state.remoteCiphertexts[id]) as RemoteCiphertext : null); }
   inheritsFullAccess(context: RemoteContext) {

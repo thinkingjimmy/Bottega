@@ -1,13 +1,13 @@
 /**
  * [INPUT]: The shared encrypted-sync copy contract.
- * [OUTPUT]: Simplified Chinese setup, immediate password validation, unlock and recovery messages.
+ * [OUTPUT]: Simplified Chinese setup, creation requirement checklist, immediate password validation, unlock and recovery messages.
  * [POS]: Shared desktop and Web encryption presentation.
  */
 import type { CloudEncryptionCopy } from "./en";
 export const zhCN: CloudEncryptionCopy = {
   setupInProgress: "正在开启同步…", setupConnectionFailed: "网络连接失败，请检查网络后重试。",
   title: "解锁同步工作区", description: "请输入在桌面端设置的同步密码。", password: "同步密码", confirmation: "确认同步密码",
-  setPassword: "设置同步密码", setupDescription: "密码至少需要 8 个字符，包含英文字母和数字。请妥善保管，Bottega 无法找回此密码。",
+  setPassword: "设置同步密码", setupDescription: "请设置只有你知道的密码并妥善保管，Bottega 无法找回此密码。",
   risk: "我了解密码丢失后，云端数据可能无法恢复。", inProgress: "正在保护同步内容…",
   unlock: "解锁", unlocking: "正在解锁…", checking: "正在检查加密同步…", remember: "保持此浏览器解锁",
   rememberDescription: "在此浏览器保存加密的解锁密钥，你随时可以重新锁定。", remembered: "此浏览器将记住解锁密钥。", thisPageOnly: "仅在当前页面保持解锁。",
@@ -22,8 +22,12 @@ export const zhCN: CloudEncryptionCopy = {
   secureSaveFailedDesktop: "未能在此电脑安全保存解锁密钥，同步尚未开启。请先重试保存，再开启同步。",
   legacyUnsupported: "此账号仍有旧版同步格式的数据，处理完成前无法开启加密同步。",
   passwordTooShort: "密码至少需要 8 个字符。",
+  passwordTooLong: "密码不能超过 1,024 个 UTF-8 字节。部分字符会占用多个字节。",
+  passwordRules: "密码要求", ruleMet: "已满足", ruleUnmet: "未满足",
+  ruleLength: "至少 12 个字符", ruleLetter: "至少包含一个字母", ruleDigit: "至少包含一个数字",
+  ruleSimple: "避免重复或连续的字符", ruleEmail: "不要包含邮箱用户名", ruleCommon: "避免常见密码和“Bottega”",
   "sync-password-invalid": "密码至少需要 8 个字符，且不超过 1,024 个 UTF-8 字节。部分字符会占用多个字节。",
-  "sync-password-weak": "密码需要同时包含英文字母和数字。",
+  "sync-password-weak": "密码强度不足，请满足下方全部要求。",
   "sync-unlock-failed": "此同步密码未能解锁工作区，请检查后重试。", "sync-integrity-failed": "无法验证此加密内容，请重新加载最新内容后重试。",
   "sync-encryption-unsupported": "此浏览器或设备无法运行所需的加密功能，请使用最新版 Chrome 或 Bottega 桌面端。",
   "sync-space-changed": "加密工作区或其密钥已发生变化，访问已暂停。请先核对账号和恢复信息。",

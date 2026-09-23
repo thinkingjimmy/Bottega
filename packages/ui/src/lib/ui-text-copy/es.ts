@@ -33,4 +33,5 @@ export const uiTextEs = {
   fileSizeError: "Todos los archivos superan el tamaño máximo.",
   fileCountError: "Hay demasiados archivos. Algunos no se añadieron.",
   terminal: "Terminal",
+  saveFailed: "No se pudo guardar el archivo. Inténtalo de nuevo.",
 };

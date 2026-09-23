@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on exact owner/request identity, original Agent bridge handlers and the existing Steer outbox.
- * [OUTPUT]: Applies closed remote controls with immutable retry evidence and original deadlines after asynchronous validation; a control this computer already settled for another controller reports the winning device with its already-resolved result.
+ * [OUTPUT]: Applies closed remote controls with immutable retry evidence and original deadlines after asynchronous validation; a Steer receipt carries `consumed`, or `transferred` once its next-turn intent is durable, and an image the next turn cannot take fails `input-unsupported`; a control this computer already settled for another controller reports the winning device with its already-resolved result.
  * [POS]: Intake control adapter; approvals, user input, cancellation and steering retain their original main handlers.
  */
 import type { RemoteWorkspaceService } from "./input/references";
@@ -9,7 +9,7 @@ import { isRemoteTurnPayload } from "@ai-chat/cloud-protocol/remote/model";
 import type { RemoteCipherPort } from "@ai-chat/cloud-protocol/remote/encrypted/client";
 import type { ServerClock } from "@ai-chat/cloud-protocol/continuity/clock";
 import { protocolHeader, type CloudBuildConfig } from "@ai-chat/cloud-protocol";
-import type { RemoteCommand, RemoteCommandReport, RemoteAdmission } from "@ai-chat/cloud-protocol/remote/model";
+import type { RemoteCommand, RemoteCommandReport, RemoteAdmission, RemoteOutput } from "@ai-chat/cloud-protocol/remote/model";
 import type { AgentTurn, } from "../../../backends/types";
 import type { AgentBridgeIpcHandlers } from "../../../agent/bridge-ipc";
 import type { RemoteContext, ControlReceipt } from "../../../sections/coordinator/remote/model";
@@ -31,6 +31,11 @@ type Ports = { references?: RemoteWorkspaceService | null; config: CloudBuildCon
   turns: Pick<TurnRegistry<AgentTurn>, "byRequest">; transport: Pick<AccountTransport, "query">;
   crypto(): RemoteCipherPort; clock(): ServerClock; handlers(): AgentBridgeIpcHandlers; projectAvailable(projectId: string): boolean;
   prepareFiles?(command: RemoteCommand, current: () => void): Promise<NonNullable<TrustedManualTurnSubmission["remoteInput"]>> };
+// Only durable Steer custody names the outcome: transferred means the next-turn intent is already committed.
+function steerOutput(ledger: RelayLedger, id: string): RemoteOutput | null {
+  const phase = ledger.read(state => state.steerIntents[id]?.phase ?? state.intentTombstones[id]?.outcome);
+  return phase === "persisted" ? { kind: "steer", outcome: "consumed" } : phase === "transferred" ? { kind: "steer", outcome: "transferred" } : null;
+}
 export function controlReport(receipt: ControlReceipt): RemoteCommandReport {
   if (receipt.state === "not-dispatched") return { state: "claimed", noAdmission: true };
   const admission: RemoteAdmission = { intentId: receipt.id, submissionHash: receipt.payloadHash, requestId: receipt.requestId, userMessageId: null };
@@ -43,10 +48,9 @@ export async function applyRemoteControl(command: RemoteCommand, context: Remote
   const { payload } = command, prior = ports.ledger.remote.control(command.commandId);
   if (prior) {
     if (!prior.remote || canonicalHash(prior.remote) !== canonicalHash(context)) throw new Error("REMOTE_CONTROL_ID_CONFLICT");
-    if (payload.kind === "steer") {
-      const intent = ports.ledger.read(state => state.steerIntents[command.commandId]);
-      if (intent?.phase === "persisted" || intent?.phase === "transferred") return controlReport(await ports.ledger.remote.settleControl(command.commandId, "applied"));
-    }
+    // Redelivery, or recovery after a crash between custody and report, settles from the ledger without dispatching again.
+    const output = payload.kind === "steer" ? steerOutput(ports.ledger, command.commandId) : null;
+    if (output) return controlReport(await ports.ledger.remote.settleControl(command.commandId, "applied", output));
     const unstartedSteer = payload.kind === "steer" && prior.state === "prepared" &&
       !ports.ledger.read(state => state.steerIntents[command.commandId] || state.intentTombstones[command.commandId]);
     if (prior.state !== "not-dispatched" && !unstartedSteer) return controlReport(prior);
@@ -122,7 +126,8 @@ export async function applyRemoteControl(command: RemoteCommand, context: Remote
         throw error;
       }
       if (result.outcome === "failed" && ports.ledger.remote.control(command.commandId)?.state === "not-dispatched") throw new Error(result.reason);
-      if (result.outcome === "injected" && result.persistState === "persisted" || result.outcome === "unconsumed") await ports.ledger.remote.settleControl(command.commandId, "applied");
+      const output = steerOutput(ports.ledger, command.commandId);
+      if (output) await ports.ledger.remote.settleControl(command.commandId, "applied", output);
       break;
     }
   }

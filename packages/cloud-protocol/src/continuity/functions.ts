@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on closed protocol headers, random request IDs and authenticated account/device identifiers.
- * [OUTPUT]: Provides fresh time samples and identity-bound prior-session continuity, including verified desktop login replacement.
+ * [OUTPUT]: Provides fresh time samples and identity-bound prior-session continuity (admitted states carry the current sessionExpiresAt), including verified desktop login replacement.
  * [POS]: Account-scoped prerequisites for remembered Desktop/Web unlock within the same device kind and monotonic client clocks.
  */
 import { z } from "zod";
@@ -19,11 +19,13 @@ export type ContinuityIdentity = z.infer<typeof continuityIdentitySchema>;
 const previousSessionSchema = z.object({
   sessionId: cloudIdSchema, deviceId: cloudIdSchema, restoreGeneration: restoreGenerationSchema,
 }).strict();
-const continuityStateSchema = z.enum(["active", "expired", "replaced", "revoked", "unknown"]);
-export const checkUnlockContinuityResultSchema = z.object({
-  checkId: z.uuid(), previous: previousSessionSchema, current: continuityIdentitySchema,
-  state: continuityStateSchema,
-}).strict();
+const continuityBase = { checkId: z.uuid(), previous: previousSessionSchema, current: continuityIdentitySchema };
+// Admitted states carry the current session deadline: the only trusted source of the offline-read admission snapshot.
+export const checkUnlockContinuityResultSchema = z.union([
+  z.object({ ...continuityBase, state: z.enum(["active", "expired"]),
+    sessionExpiresAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict(),
+  z.object({ ...continuityBase, state: z.enum(["replaced", "revoked", "unknown"]) }).strict(),
+]);
 export type UnlockContinuity = z.infer<typeof checkUnlockContinuityResultSchema>;
 export const sampleTimeResultSchema = z.object({
   sampleId: z.uuid(), current: continuityIdentitySchema, serverTime: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),

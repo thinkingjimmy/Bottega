@@ -1,17 +1,18 @@
 /**
  * [INPUT]: Depends on shared availability facts, an optional previous Agent for draft cancellation, quota projections and bounded prefetch, localized copy, injected management and Usage navigation, and menu/tooltip primitives.
- * [OUTPUT]: Renders an availability-aware Agent picker with in-menu draft cancellation and row-anchored Usage access; refresh never changes the selected Agent.
+ * [OUTPUT]: Renders an availability-aware Agent picker in the user's Settings › Providers order with in-menu draft cancellation and row-anchored Usage access; refresh never changes the selected Agent.
  * [POS]: Composer identity and availability control; the row is the only control and the menu has no footer, so nothing competes with the selected mark.
  */
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState, useSyncExternalStore } from "react";
 
 
 import { DropdownMenuLabel, DropdownMenuSeparator } from "@ai-chat/ui/components/ui/dropdown-menu";
 import { AgentPicker, type AgentPickerRow } from "@ai-chat/chat-ui/agent-picker";
-import { AGENT_BACKEND_ORDER, type AgentBackendId, type BackendInfo } from "../../../../shared/agent-ipc";
+import type { AgentBackendId, BackendInfo } from "../../../../shared/agent-ipc";
 import { projectAvailability } from "../../../../shared/agent-availability/projection";
 import type { AvailabilityState } from "../../../../shared/agent-availability/types";
-import { backendLabel } from "@/lib/agent-backends";
+import { backendLabel, providerOrder } from "@/lib/agent-backends";
+import { settingsStore } from "@/lib/settings-store";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 
 import { useUsageLimits, useUsageLimitsDemand, useUsageLimitsPrefetch } from "@/lib/usage-limits/hooks";
@@ -63,7 +64,8 @@ export function ChatAgentSelector({ value, revertTo, backends, locked, disabled,
   onChange: (backend: AgentBackendId) => Promise<void>;
   onRecheck?: (backend: AgentBackendId) => void;
   onRepair?: (backend: AgentBackendId, action: "login") => void;
-  onManage?: () => void;
+  /** Receives the row's state so missing/signed-out Agents open setup and outdated ones open Updates. */
+  onManage?: (backend: AgentBackendId, state: AvailabilityState) => void;
   appBound?: boolean;
   now: number;
   currentState?: AvailabilityState;
@@ -76,17 +78,19 @@ export function ChatAgentSelector({ value, revertTo, backends, locked, disabled,
   const trigger = useRef<HTMLButtonElement>(null);
   const openingSettings = useRef(false);
   const descriptionId = useId();
-  const handleRecovery = useCallback((backend: AgentBackendId, recovery: Recovery) => {
+  const handleRecovery = useCallback((backend: AgentBackendId, recovery: Recovery, state: AvailabilityState) => {
     if (recovery === "manage") {
       openingSettings.current = true;
       setOpen(false);
-      onManage?.();
+      onManage?.(backend, state);
     } else if (recovery === "login") onRepair?.(backend, "login");
     else onRecheck?.(backend);
   }, [onManage, onRecheck, onRepair]);
   const quota = useUsageLimits();
-  const prefetchQuota = useUsageLimitsPrefetch(Boolean(onOpenUsage), appBound ? [value] : AGENT_BACKEND_ORDER);
-  useUsageLimitsDemand(open && Boolean(onOpenUsage), "selector", appBound ? [value] : AGENT_BACKEND_ORDER);
+  const { settings } = useSyncExternalStore(settingsStore.subscribe, settingsStore.getSnapshot);
+  const order = appBound ? [value] : providerOrder(settings);
+  const prefetchQuota = useUsageLimitsPrefetch(Boolean(onOpenUsage), order);
+  useUsageLimitsDemand(open && Boolean(onOpenUsage), "selector", order);
   const hint = useQuotaMenuHint(open, menu, (backend) => {
     const agent = quota.snapshot.agents.find((entry) => entry.backend === backend) ?? emptyAgentLimits(backend);
     return quotaDetail(agent, quota.now, t, backend === value && customProvider, true);
@@ -104,7 +108,7 @@ export function ChatAgentSelector({ value, revertTo, backends, locked, disabled,
   const text = t(`agentAvailability.state.${state}`);
   const label = `${backendLabel(value)} · ${text} · ${t("agentAvailability.openMenu")}`;
 
-  const rows = (appBound ? [value] : AGENT_BACKEND_ORDER).map((id) => {
+  const rows = order.map((id) => {
     const backend = backends.find((entry) => entry.id === id);
     const base = projectAvailability(backend, now);
     const rowState = id === value && currentState ? currentState : base.state;
@@ -132,7 +136,7 @@ export function ChatAgentSelector({ value, revertTo, backends, locked, disabled,
     return { ...row, name: backendLabel(row.id), choosable: row.canSelect || row.current, inert: !row.current && !row.canSelect && !row.recovery,
       label: [backendLabel(row.id), row.tone === "quiet" ? null : stateText, row.verb].filter(Boolean).join(" · "),
       description: quotaDescription(agent, quota.now, t, isCustom), line, peek: hint.peek === row.id, handlers: hint.handlers(row.id),
-      select: event => { if (row.canSelect && !row.current) { void onChange(row.id); return; } event.preventDefault(); if (row.recovery) handleRecovery(row.id, row.recovery); },
+      select: event => { if (row.canSelect && !row.current) { void onChange(row.id); return; } event.preventDefault(); if (row.recovery) handleRecovery(row.id, row.recovery, row.rowState); },
     };
   });
   return <AgentPicker value={value} open={open} onOpenChange={next => { hint.dismiss(); setOpen(next); }} triggerRef={trigger} menuRef={menu} label={label}

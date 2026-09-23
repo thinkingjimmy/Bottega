@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ClaudeTurnOptions } from "../../../../shared/agent-ipc";
 import { systemSkillsPath } from "../../system-skills";
-import { githubLatestVersion } from "../../setup/latest-version";
+import { npmLatestVersion } from "../../setup/latest-version";
 import { AcpTurn } from "../acp/acp-turn";
 import { classifyAcpFailure } from "../acp/failure";
 import { OPAQUE_CONFIG_VALUE_PATTERN } from "../capability-validation";
@@ -250,16 +250,14 @@ export const claudeBackend: BackendDescriptor = {
     ],
   },
   setup: {
-    latestVersion: () => githubLatestVersion("anthropics/claude-code"),
+    latestVersion: () => npmLatestVersion("@anthropic-ai/claude-code"),
+    selfUpdate: ["update"],
     commands: {
       install: {
         command: INSTALL_COMMAND,
         dangerous: true,
       },
-      update: {
-        command: INSTALL_COMMAND,
-        dangerous: true,
-      },
+      update: { command: "claude update", dangerous: true },
       login: { command: "claude auth login", dangerous: false },
     },
   },

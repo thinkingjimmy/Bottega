@@ -104,7 +104,17 @@ const MAX_RAW_BYTES = 3_520_000;
    remote Project row and its origin badge, the account facade and the machine-key protocol, and +158 of eager
    English catalogs (zh-cn/ja/fr/es stayed behind the 非 en 语言目录 lane). Raised by the measured residual, after
    the reclaim, as the rule above requires. */
-const MAX_GZIP_BYTES = 626_192;
+/* 2026-09-23 (0.1.7, Settings reorg + mobile protocol 9): 626,192 → 627,673. Measured one renderer build per commit
+   from 6a210920c: 1b9fd4503 (Settings › Providers / Updates / Community) +283; eee47d911 (mobile shell bridge, protocol
+   9, W17 chat link port now shared through chat-ui, password checklist, entitlement / offline copy) +1,190, of which
+   +1,058 in the eager index chunk and +132 in the eager English catalogs; 360d3c6e5 (review fixes) +8. The shell
+   bridge client itself is not in the desktop first paint (a lazy-load experiment moved 0 raw bytes and was dropped),
+   so nothing measured here was reclaimable without deferring first-paint surfaces. Raised by the measured residual. */
+/* 2026-09-23 (0.1.7, remote attachment follow-ups RA-09…RA-15): 627,673 → 627,801. Measured per commit: 360d3c6e5
+   627,673; ef26ebaa6 (steer "send as new message", upload-expiry chip, reference budget admission in the shared remote
+   composer) 627,809 (+136, +319 raw); a960b218a 627,801 (−8). dddb4cf76 touched no renderer code. Raised by the
+   measured residual. */
+const MAX_GZIP_BYTES = 627_801;
 const outputRoot = resolveOutputRoot(process.argv.slice(2), process.env, ["--self-test"]);
 const rendererRoot = resolve(import.meta.dirname, "..", outputRoot, "renderer");
 const indexPath = resolve(rendererRoot, "index.html");

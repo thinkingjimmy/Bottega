@@ -1,6 +1,6 @@
 /**
  * [INPUT]: An abortable host image source, localized copy and visibility.
- * [OUTPUT]: ImagePanel, ImagePanelFrame, ImageMedia and ImageUnavailable with five zoom levels, filename-preserving downloads and deterministic media release.
+ * [OUTPUT]: ImagePanel, ImagePanelFrame, ImageMedia and ImageUnavailable with five zoom levels, filename-preserving downloads (native save inside the mobile shell) and deterministic media release.
  * [POS]: The side panel's image view behind host/image-tab.tsx; native and private cloud readers supply media without leaking host authority.
  */
 import { useEffect, useState, type ReactNode } from "react";
@@ -9,6 +9,7 @@ import { ImageShimmer } from "@ai-chat/ui/components/ai-elements/image-shimmer";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { cn } from "@ai-chat/ui/lib/utils";
+import { useSaveLink } from "@ai-chat/ui/lib/save-blob";
 import type { SidePanelCopy } from "../../../i18n/side-panel";
 export type ImageSource = { key: string; read(signal: AbortSignal): Promise<{ url: string; release(): void }> };
 export type GalleryImageSource = { key: string; gallery: Omit<Parameters<typeof useGalleryThumbnail>[0], "retrySignal"> };
@@ -61,11 +62,12 @@ function GalleryMedia({ source, label, zoom, retry, onRetry, copy }: MediaProps 
   return <ImageMedia alt={label ?? copy.preview} copy={copy} zoom={zoom} onRetry={onRetry} previewUrl={current.preview?.dataUrl ?? ""} request={current.request} />;
 }
 function LeasedMedia({ source, label, zoom, retry, onRetry, copy, download }: MediaProps & { source: ImageSource; download: boolean }) {
-  const current = useImageLease(source, retry), name = label ?? copy.preview;
+  const current = useImageLease(source, retry), name = label ?? copy.preview, save = useSaveLink(name);
   const media = <ImageMedia alt={name} copy={copy} zoom={zoom} onRetry={onRetry} previewUrl={current?.url ?? ""} request={current?.failed ? { error: "read-failed", retryable: true } : "loading"} />;
   if (!download) return media;
   return <div className="flex min-w-full flex-col gap-2">
-    {current?.url && <Button asChild variant="ghost" className="min-h-11 self-end"><a href={current.url} download={name}>{copy.download}</a></Button>}{media}
+    {current?.url && <Button asChild variant="ghost" className="min-h-11 self-end"><a href={current.url} download={name} onClick={save.onClick}>{copy.download}</a></Button>}
+    {save.failed && <p role="alert" className="self-end text-destructive text-xs">{save.failed}</p>}{media}
   </div>;
 }
 function useImageLease(source: ImageSource | null, retry: number) {

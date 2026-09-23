@@ -161,7 +161,9 @@ export const cloudCopy = {
     "macos": "macOS",
     "windows": "Windows",
     "linux": "Linux",
-    "browser": "Browser"
+    "browser": "Browser",
+    "ios": "iOS",
+    "android": "Android"
   },
   "apps": {
     "title": "Apps",
@@ -244,6 +246,7 @@ export const cloudCopy = {
   "cancel": "Cancel",
   "retry": "Retry",
   "retrying": "Retrying…",
+  "installAppUpdate": "Install update",
   "save": "Save",
   "saving": "Saving…",
   "rename": "Rename",
@@ -272,6 +275,7 @@ export const cloudCopy = {
   "lastSeen": "Last seen {{when}}",
   "webSession": "Web session",
   "appVersion": "Bottega {{version}}",
+  "mobileApp": "Mobile app · {{version}}",
   "noDevices": "No sessions on this page.",
   "current": "This device",
   "online": "Online",
@@ -354,6 +358,7 @@ export const cloudCopy = {
     "deleting": "Your account is being deleted",
     "environment-mismatch": "The cloud environment does not match this app",
     "client-outdated": "Update Bottega to continue",
+    "app-outdated": "Update the Bottega app to continue",
     "error": "Action needed"
   },
   "error": {
@@ -374,7 +379,9 @@ export const cloudCopy = {
     "server-outdated": "The cloud service needs an update to work with this version of Bottega. Please try again after the service is updated.",
     "request-failed": "The request could not be completed. Please try again.",
     "environment-mismatch": "This build cannot connect to this cloud environment.",
-    "client-outdated": "Install a newer Bottega version to connect."
+    "client-outdated": "Install a newer Bottega version to connect.",
+    "app-outdated": "This version of the Bottega app is too old for the cloud. Install the update to continue.",
+    "app-outdated-store": "This version of the Bottega app is too old for the cloud. Update it from where you installed it, then reopen it."
   },
   "pending": {
     "preparing": "Preparing sign-in…",

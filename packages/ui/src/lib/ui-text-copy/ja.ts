@@ -33,4 +33,5 @@ export const uiTextJa = {
   fileSizeError: "すべてのファイルがサイズ上限を超えています。",
   fileCountError: "ファイルが多すぎるため、一部は追加されませんでした。",
   terminal: "ターミナル",
+  saveFailed: "ファイルを保存できませんでした。もう一度お試しください。",
 };

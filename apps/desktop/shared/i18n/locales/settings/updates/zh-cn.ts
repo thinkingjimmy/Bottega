@@ -1,28 +1,27 @@
 /**
- * [INPUT]: Depends on the settingsAboutEn structural type
- * [OUTPUT]: Provides settingsAboutZhCN, the Simplified Chinese Settings › About catalog
- * [POS]: Simplified Chinese leaf of shared/i18n/locales/settings/about; loaded on demand by the matching top-level locale
+ * [INPUT]: Depends on the settingsUpdatesEn structural type
+ * [OUTPUT]: Provides settingsUpdatesZhCN, the Simplified Chinese Settings › Updates catalog
+ * [POS]: Simplified Chinese leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
-import type { settingsAboutEn } from "./en";
+import type { settingsUpdatesEn } from "./en";
 
-export const settingsAboutZhCN: typeof settingsAboutEn = {
-  title: "关于",
-  tagline: "macOS Agent 工作台",
-  version: "版本 {{version}}",
-  licenseName: "MIT License",
-  readLicense: "查看 MIT License",
-  licenseUnavailable: "安装包内的协议文件不可用，请在线查看唯一正本。",
-  licenseCanonical: "查看在线正本",
-  copy: "复制",
-  copied: "已复制",
-  copyDiagnostics: "复制版本信息",
-  links: "链接",
-  repository: "源代码仓库",
-  feedback: "反馈问题",
-  feedbackDescription: "搜索已知问题或提交新问题",
-  releaseNotes: "发行说明",
-  releaseNotesDescription: "查看每个版本的变更",
+export const settingsUpdatesZhCN: typeof settingsUpdatesEn = {
+  title: "更新",
+  description: "管理 Bottega 与各 Provider CLI 的更新。",
+  updateAll: "全部更新",
+  updateOne: "更新 {{name}}",
+  upToDate: "{{name}} 已是最新",
+  updating: "正在更新 {{name}}…",
+  latestUnknown: "最新版本未知",
+  cliFailed: "更新失败",
+  cliUnchanged: "更新程序已结束，但版本没有变化。可以试试在终端中更新。",
+  cliTimeout: "更新耗时过长，已停止。",
+  cliUnavailable: "这个 CLI 无法在这里更新。",
+  retry: "重试",
+  log: "日志",
+  terminal: "在终端中更新",
+  empty: "还没有安装任何 Provider CLI。",
   checking: "正在检查更新…",
   current: "已是最新{{checkedAt}}",
   available: "发现新版本 {{version}}",
@@ -37,7 +36,6 @@ export const settingsAboutZhCN: typeof settingsAboutEn = {
   check: "检查更新",
   upgrade: "立即升级",
   manualUpgrade: "打开下载页",
-  checkedAt: " · 检查于 {{time}}",
   unavailable: "更新服务仅在安装包中可用",
   platformSupport: "平台支持",
   preview: "{{platform}} 预览版",

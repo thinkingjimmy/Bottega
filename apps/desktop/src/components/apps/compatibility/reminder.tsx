@@ -12,7 +12,7 @@ import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { updateStore } from "@/lib/update-client";
-import { ABOUT_SETTINGS_PATH } from "@/lib/settings-navigation";
+import { UPDATES_SETTINGS_PATH } from "@/lib/settings-navigation";
 import type { AppCompatibilityFailure } from "../../../../shared/app-host/contract";
 
 const REASON_KEYS = {
@@ -82,7 +82,7 @@ export function CompatibilityReminder({ failure, onClose, onRetry, appName, busy
             onClose();
             updateStore.ensureLoaded();
             void updateStore.checkForApp(failure.requestId!);
-            void navigate(ABOUT_SETTINGS_PATH);
+            void navigate(UPDATES_SETTINGS_PATH);
           }}>
             {t("appHost.upgrade")}
           </Button>

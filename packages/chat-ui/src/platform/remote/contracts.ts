@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on closed cloud command, target, preparation and creation DTOs and the shared unsubscribe type.
- * [OUTPUT]: Defines complete remote command, creation, preparation and attachment staging ports across Web and desktop; no port moves a chat between computers.
+ * [OUTPUT]: Defines complete remote command, creation, preparation, attachment staging and draft checkpoint ports across Web and desktop; no port moves a chat between computers.
  * [POS]: Six-facade extension; native admission retains its original strict input and receipt types.
  */
 import type { CloudFunctionArgs } from "@ai-chat/cloud-protocol";
@@ -25,6 +25,8 @@ export interface RemoteCommandPort {
     reorder(input: Omit<CloudFunctionArgs<"remote/queue:reorderAwaiting">, Header>): Promise<null>;
   };
   attachments?: import("./input/upload").RemoteAttachmentPort;
+  /** Encrypted draft recovery for this account and space (W23); absent hosts keep drafts in page memory only. */
+  drafts?: import("./input/checkpoint-model").RemoteDraftCheckpointPort;
   cacheScope?: object;
   lifetime?: AbortSignal;
   prepare(command: RemoteCommandInput): Promise<FrozenRemoteCommand>;

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Desktop setup and browser unlock product language.
- * [OUTPUT]: Reference encrypted-sync copy with immediate eight-character validation, the review-expired and connection sentences, the browser gate's checking/unavailable/unsupported/lock-failed headings, and a closed five-language key type.
+ * [OUTPUT]: Reference encrypted-sync copy with immediate eight-character unlock validation, the twelve-character creation checklist, the review-expired and connection sentences, the browser gate's checking/unavailable/unsupported/lock-failed headings, and a closed five-language key type.
  * [POS]: Shared password, local storage and recovery messages; no platform dependencies.
  */
 export const en = {
@@ -10,7 +10,7 @@ export const en = {
   password: "Sync password",
   confirmation: "Confirm sync password",
   setPassword: "Set a sync password",
-  setupDescription: "Use at least 8 characters, including an English letter and a number. Keep your password safe; Bottega cannot recover it.",
+  setupDescription: "Choose a password only you know. Keep it safe; Bottega cannot recover it.",
   risk: "I understand that losing this password may make cloud data unrecoverable.",
   inProgress: "Securing sync…",
   unlock: "Unlock",
@@ -40,8 +40,12 @@ export const en = {
   secureSaveFailedDesktop: "The unlock key could not be saved securely on this computer. Sync remains off. Retry saving before enabling sync.",
   legacyUnsupported: "This account still contains data from the previous sync format. Encrypted sync cannot start until that data has been handled.",
   passwordTooShort: "Use at least 8 characters.",
+  passwordTooLong: "Use no more than 1,024 UTF-8 bytes. Some characters use more than one byte.",
+  passwordRules: "Password requirements", ruleMet: "met", ruleUnmet: "not met",
+  ruleLength: "At least 12 characters", ruleLetter: "At least one letter", ruleDigit: "At least one number",
+  ruleSimple: "Avoid repeated or sequential characters", ruleEmail: "Don’t include your email name", ruleCommon: "Avoid common passwords and “Bottega”",
   "sync-password-invalid": "Use at least 8 characters and no more than 1,024 UTF-8 bytes. Some characters use more than one byte.",
-  "sync-password-weak": "Include at least one English letter and one number.",
+  "sync-password-weak": "Choose a stronger password that meets every requirement.",
   "sync-unlock-failed": "The sync password could not unlock this workspace. Check it and try again.",
   "sync-integrity-failed": "This encrypted content could not be verified. Reload the latest copy before trying again.",
   "sync-encryption-unsupported": "This browser or device cannot run the required encryption. Use an updated Chrome browser or Bottega desktop.",

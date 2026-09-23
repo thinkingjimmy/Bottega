@@ -1,13 +1,13 @@
 /**
  * [INPUT]: The shared encrypted-sync copy contract.
- * [OUTPUT]: Spanish setup, immediate password validation, unlock and recovery messages.
+ * [OUTPUT]: Spanish setup, creation requirement checklist, immediate password validation, unlock and recovery messages.
  * [POS]: Shared desktop and Web encryption presentation.
  */
 import type { CloudEncryptionCopy } from "./en";
 export const es: CloudEncryptionCopy = {
   setupInProgress: "Activando la sincronización…", setupConnectionFailed: "La conexión ha fallado. Comprueba tu red e inténtalo de nuevo.",
   title: "Desbloquear el espacio sincronizado", description: "Introduce la contraseña de sincronización que configuraste en tu ordenador.", password: "Contraseña de sincronización", confirmation: "Confirmar contraseña",
-  setPassword: "Configurar contraseña de sincronización", setupDescription: "Usa al menos 8 caracteres, con una letra de la A a la Z y un número. Guarda la contraseña en un lugar seguro; Bottega no puede recuperarla.",
+  setPassword: "Configurar contraseña de sincronización", setupDescription: "Elige una contraseña que solo tú conozcas. Guárdala en un lugar seguro; Bottega no puede recuperarla.",
   risk: "Entiendo que perder esta contraseña puede impedir recuperar los datos de la nube.", inProgress: "Protegiendo la sincronización…",
   unlock: "Desbloquear", unlocking: "Desbloqueando…", checking: "Comprobando la sincronización cifrada…", remember: "Mantener este navegador desbloqueado",
   rememberDescription: "Guarda una clave de desbloqueo cifrada en este navegador. Puedes bloquearlo cuando quieras.", remembered: "Este navegador recordará la clave de desbloqueo.", thisPageOnly: "Desbloqueado solo para esta página.",
@@ -22,8 +22,12 @@ export const es: CloudEncryptionCopy = {
   secureSaveFailedDesktop: "No se pudo guardar la clave de forma segura en este ordenador. La sincronización sigue desactivada. Reintenta guardarla antes de activarla.",
   legacyUnsupported: "Esta cuenta aún contiene datos del formato de sincronización anterior. Deben tratarse antes de iniciar la sincronización cifrada.",
   passwordTooShort: "Usa al menos 8 caracteres.",
+  passwordTooLong: "Usa un máximo de 1.024 bytes UTF-8. Algunos caracteres ocupan varios bytes.",
+  passwordRules: "Requisitos de la contraseña", ruleMet: "cumplido", ruleUnmet: "sin cumplir",
+  ruleLength: "Al menos 12 caracteres", ruleLetter: "Al menos una letra", ruleDigit: "Al menos un número",
+  ruleSimple: "Evita caracteres repetidos o consecutivos", ruleEmail: "No incluyas el nombre de tu correo", ruleCommon: "Evita contraseñas comunes y «Bottega»",
   "sync-password-invalid": "Usa al menos 8 caracteres y un máximo de 1.024 bytes UTF-8. Algunos caracteres ocupan varios bytes.",
-  "sync-password-weak": "Incluye al menos una letra de la A a la Z y un número.",
+  "sync-password-weak": "Elige una contraseña más segura que cumpla todos los requisitos.",
   "sync-unlock-failed": "Esta contraseña no pudo desbloquear el espacio. Compruébala y vuelve a intentarlo.", "sync-integrity-failed": "No se pudo verificar este contenido cifrado. Vuelve a cargar la versión más reciente.",
   "sync-encryption-unsupported": "Este navegador o dispositivo no admite el cifrado requerido. Usa Chrome actualizado o Bottega en tu ordenador.",
   "sync-space-changed": "El espacio cifrado o su clave han cambiado. Se ha pausado el acceso; comprueba la cuenta y los datos de restauración.",

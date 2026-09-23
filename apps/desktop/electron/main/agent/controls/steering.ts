@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on frozen active-turn capabilities, backend policy and resolved Agent input.
- * [OUTPUT]: Provides synchronous Steer validation and the original asynchronous assertion API.
+ * [OUTPUT]: Provides the synchronous Steer verdict: consumable now, next turn only, or a thrown format failure.
  * [POS]: Pure control policy; dispatch performs no asynchronous discovery or validation after its final deadline fence.
  */
 import type { AgentBackendId, BackendCapabilities } from "../../../../shared/agent-ipc";
@@ -12,15 +12,12 @@ import { assertResolvedInputCapabilities } from "../../backends/capability-valid
 export const steerCarriesStagedSnapshot = (input: ResolvedAgentInput["input"]) =>
   input.some(item => item.type === "mention" || item.type === "skill");
 
-export function validateSteerTurnCapabilities(backendId: AgentBackendId, input: ResolvedAgentInput["input"], capabilities?: BackendCapabilities) {
-  const backend = backendById(backendId);
-  if (!capabilities) {
-    if (input.some(item => item.type === "image")) throw new Error("Active turn capabilities are unknown");
-    return;
-  }
-  assertResolvedInputCapabilities(backend, input, capabilities);
-}
-
-export async function assertSteerTurnCapabilities(...args: Parameters<typeof validateSteerTurnCapabilities>) {
-  validateSteerTurnCapabilities(...args);
+/**
+ * `false`: the running turn cannot vouch for this input, so it travels as the next turn (whose own gate
+ * re-checks the format). Known capabilities that reject the format throw: the next turn would refuse it too.
+ */
+export function steerTurnCanConsume(backendId: AgentBackendId, input: ResolvedAgentInput["input"], capabilities?: BackendCapabilities) {
+  if (!capabilities) return !input.some(item => item.type === "image");
+  assertResolvedInputCapabilities(backendById(backendId), input, capabilities);
+  return true;
 }

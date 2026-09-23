@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared/setup-ipc, agent-ipc, the main-provided startup snapshot and preload window.setup
- * [OUTPUT]: Provides the provisional startup status, passive snapshots, installation/full checks and terminal actions that retain their requested check scope.
+ * [OUTPUT]: Provides the provisional startup status, passive snapshots, installation/full checks, terminal actions that retain their requested check scope, and headless CLI self-updates.
  * [POS]: Renderer's sole Setup IPC boundary; the UI never touches downloads, checksums, raw commands, or credentials directly
  */
 
@@ -8,6 +8,7 @@ import { toast } from "@ai-chat/ui/components/ui/sonner";
 import { getI18n } from "react-i18next";
 import type { AgentBackendId } from "../../shared/agent-ipc";
 import type {
+  CliUpdateResult,
   SetupBridgeApi,
   SetupCheckScope,
   SetupTerminalResult,
@@ -51,6 +52,9 @@ export const openBackendTerminalAction = (
 ) =>
   window.setup?.terminalAction(backend, action, scope) ??
   Promise.resolve<SetupTerminalResult>({ launched: false, delivery: "clipboard" });
+export const updateBackendCli = (backend: AgentBackendId) =>
+  window.setup?.updateCli(backend) ??
+  Promise.resolve<CliUpdateResult>({ ok: false, reason: "unavailable", log: "" });
 export const onSetupEvent = (callback: (event: SetupEvent) => void) =>
   window.setup?.onEvent(callback) ?? (() => {});
 

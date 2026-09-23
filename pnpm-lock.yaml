@@ -284,6 +284,9 @@ importers:
       '@ai-chat/cloud-protocol':
         specifier: workspace:*
         version: link:../cloud-protocol
+      '@ai-chat/shell-bridge':
+        specifier: workspace:*
+        version: link:../shell-bridge
       '@ai-chat/ui':
         specifier: workspace:*
         version: link:../ui
@@ -363,8 +366,20 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  packages/shell-bridge:
+    devDependencies:
+      '@types/node':
+        specifier: 22.18.6
+        version: 22.18.6
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/ui:
     dependencies:
+      '@ai-chat/shell-bridge':
+        specifier: workspace:*
+        version: link:../shell-bridge
       '@phosphor-icons/react':
         specifier: 2.1.10
         version: 2.1.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4)

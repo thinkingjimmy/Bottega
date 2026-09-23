@@ -51,7 +51,7 @@ export class PresenceTray {
       if (activity.waiting) template.push({ label: t("viewPending"), click: this.ports.pending });
     }
     if (update.phase === "ready" && update.candidateId) template.push({ type: "separator" }, { label: t("restart"), click: () => this.ports.install(update.candidateId!) });
-    if (update.phase === "installing") template.push({ label: translate(this.ports.locale(), "settings.about.installing"), enabled: false });
+    if (update.phase === "installing") template.push({ label: translate(this.ports.locale(), "settings.updates.installing"), enabled: false });
     template.push({ type: "separator" }, { label: t(this.ports.quitting() ? "quitting" : "quit"), enabled: !this.ports.quitting(), click: this.ports.quit });
     return Menu.buildFromTemplate(template);
   }

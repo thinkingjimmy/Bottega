@@ -1,7 +1,7 @@
 /**
  * [INPUT]: React, shared UI primitives, five-language composer copy and capability-filtered permission modes.
  * [OUTPUT]: Permission selection with native acknowledgment or deferred session-scoped confirmation; the chip flags a mode the current Agent does not allow.
- * [POS]: Shared desktop and Web permission control; hosts supply authority and external navigation adapters.
+ * [POS]: Shared desktop and Web permission control; hosts supply authority and may override external navigation, which otherwise uses the injected link port.
  */
 
 import { useState, type ComponentType } from "react";
@@ -17,6 +17,7 @@ import { cn } from "@ai-chat/ui/lib/utils";
 
 import type { RemotePermissionMode as AgentPermissionMode } from "@ai-chat/cloud-protocol/remote/input/model";
 import { FullAccessDialog } from "./full-access";
+import { useLinkPort } from "../../../links/port";
 
 
 const LEARN_MORE = "https://learn.chatgpt.com/docs/sandboxing?surface=app#how-you-control-it";
@@ -58,7 +59,7 @@ export function ChatPermissionSelector({
   /** Shown when the current mode is not among the allowed ones: the chip flags itself and the popover offers the way out. */
   unavailableTitle?: string;
 }) {
-  const t = useComposerTranslation(locale);
+  const t = useComposerTranslation(locale), links = useLinkPort();
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -153,7 +154,7 @@ export function ChatPermissionSelector({
               <button
                 type="button"
                 className="shrink-0 underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                onClick={() => void (openExternal ?? ((url: string) => window.open(url, "_blank", "noopener,noreferrer")))(LEARN_MORE)}
+                onClick={() => void (openExternal ?? ((url: string) => links.open(url, "web-context")))(LEARN_MORE)}
               >
                 {t("permission.learnMore")}
               </button>
@@ -205,7 +206,7 @@ export function ChatPermissionSelector({
         error={confirmError}
         onCancel={cancelFullAccess}
         onConfirm={() => void confirmFullAccess()}
-        onLearnMore={() => void (openExternal ?? ((url: string) => window.open(url, "_blank", "noopener,noreferrer")))(LEARN_MORE)}
+        onLearnMore={() => void (openExternal ?? ((url: string) => links.open(url, "web-context")))(LEARN_MORE)}
       />
     </>
   );

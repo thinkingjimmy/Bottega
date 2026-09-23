@@ -33,4 +33,5 @@ export const uiTextFr = {
   fileSizeError: "Tous les fichiers dépassent la taille maximale.",
   fileCountError: "Trop de fichiers. Certains n’ont pas été ajoutés.",
   terminal: "Terminal",
+  saveFailed: "Impossible d’enregistrer le fichier. Réessayez.",
 };

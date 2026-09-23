@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Zod and structured errors after original remote operation receipt lookup.
- * [OUTPUT]: Provides closed uncommitted preparation and rate/capacity admission rejection proofs, including the not-owner refusal.
+ * [OUTPUT]: Provides closed uncommitted preparation and rate/capacity/entitlement admission rejection proofs, including the not-owner refusal.
  * [POS]: Shared remote recovery boundary for Web UI and the desktop main/preload adapter.
  */
 import { z } from "zod";
@@ -14,7 +14,8 @@ export function preparationRejection(error: unknown): PreparationRejection | nul
   return result.success ? result.data : null;
 }
 
-export const remoteAdmissionRejectionSchema = z.enum(["remote-rate-limited", "remote-command-limit", "attachment-unavailable"]);
+/* Entitlement refusals are admission rejections too: nothing was stored, so the composer keeps the input and explains why. */
+export const remoteAdmissionRejectionSchema = z.enum(["remote-rate-limited", "remote-command-limit", "attachment-unavailable", "entitlement-required", "quota-exceeded"]);
 export type RemoteAdmissionRejection = z.infer<typeof remoteAdmissionRejectionSchema>;
 export type RemoteAdmissionRejected = { rejected: RemoteAdmissionRejection };
 export function remoteAdmissionRejection(error: unknown): RemoteAdmissionRejection | null {

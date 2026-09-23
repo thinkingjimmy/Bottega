@@ -28,7 +28,7 @@ import { settingsToolsJa } from "./settings/tools/ja";
 import { settingsUsageJa } from "./settings/usage/ja";
 import { settingsPersonalizationJa } from "./settings/personalization/ja";
 import { presenceJa } from "./presence/ja";
-import { settingsAboutJa } from "./settings/about/ja";
+import { settingsUpdatesJa } from "./settings/updates/ja";
 import { historyJa } from "./history/ja";
 import { chatRevisionJa } from "./chat-revision/ja";
 import { projectSettingsJa } from "./project-settings/ja";
@@ -74,7 +74,6 @@ general: "一般",
 keyboardShortcuts: "キーボードショートカット",
 lab: "ラボ",
 stepOf: "ステップ {{current}} / {{total}}",
-backends: "バックエンド",
 personalization: "パーソナライズ",
 browser: "ブラウザ",
 agentPlugins: "Agent プラグイン",
@@ -125,16 +124,37 @@ promoteBaseToApp: "{{name}} をアプリに昇格"
   chatRevision: chatRevisionJa,
   projectSettings: projectSettingsJa,
   settings: {
-    about: settingsAboutJa,
+    updates: settingsUpdatesJa,
+    community: {
+      title: "コミュニティ",
+      description: "GitHub で開発を追いかけ、フィードバックを共有できます。",
+      github: "GitHub",
+      githubDescription: "Bottega プロジェクトのソースコード、Issue、リリース。",
+      viewOnGithub: "GitHub で見る",
+      issues: "問題を報告",
+      issuesDescription: "既知の問題を検索するか、新しく報告します。",
+      openIssues: "Issue を開く",
+      releaseNotes: "リリースノート",
+      releaseNotesDescription: "各バージョンの変更点。",
+      viewReleases: "リリースを見る",
+    },
     presence: presenceJa,
     personalization: settingsPersonalizationJa,
     skills: settingsSkillsJa,
     browser: settingsBrowserJa,
     extensions: settingsExtensionsJa,
-    backends: {
-      title: "Agent バックエンド",
-      description: "認証と使用量は各公式 CLI が管理し、製品はローカル状態のみ確認します。",
-      recheck: "再確認",
+    providers: {
+      title: "プロバイダー",
+      description: "デフォルトの Agent と、Agent ピッカーでの並び順を設定します。",
+      default: "デフォルト",
+      makeDefault: "デフォルトにする",
+      reorder: "{{name}} の並び替え",
+      picked: "{{name}} を持ち上げました。",
+      moved: "{{name}} を {{total}} 件中 {{position}} 番目に移動しました。",
+      cancelled: "並び替えをキャンセルしました。",
+      setUp: "設定する",
+      update: "アップデート",
+      saveFailed: "プロバイダー設定を保存できませんでした。",
     },
     lab: {
       title: "ラボ",

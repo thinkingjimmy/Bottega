@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on original ledger controls, Chat persistence, prepared staging and the existing Steer operation gate.
- * [OUTPUT]: Journals unsequenced steering; injected users append idempotently and queued fallbacks allocate sequences/context only at dispatch.
+ * [OUTPUT]: Journals unsequenced steering; injected users append idempotently and queued fallbacks allocate sequences/context only at dispatch; a transferred next turn gets its own request and a Skill selection (with generation-ref custody) owned by that request.
  * [POS]: The Steer outbox of sections/coordinator is the sole owner; Conversation Coordinator is responsible for life cycle assignments only
  */
 
@@ -33,6 +33,8 @@ import {
   type PreparedManualTurn,
 } from "./prepared-manual-turn";
 import { hydratePreparedTurn } from "./prepared/hydration";
+import { skillsTurnOwnerId } from "../../../skills-management/turn-custody";
+import { acquirePreparedSkillReferences, releasePreparedSkillReferences } from "./prepared-skill-reference-custody";
 import { tagRemotePrepared, remoteUserMessage } from "../remote/submission";
 import { prepareTextOnlyManualTurn } from "./prepared-manual-text";
 import {
@@ -588,16 +590,21 @@ export class SteerOutbox {
     const intentId = steerDerivedIntentId(outboxRef);
     const requestId = stableId("request", intentId);
     const { contentHash: _oldContentHash, ...preparedBody } = prepared;
+    /* The next turn has its own request, and Agent admission binds the frozen Skill selection to exactly that request.
+       Its generation refs are held under the new owner; the Steer snapshot keeps (and later releases) the original owner's. */
+    const skillSelection = { ...prepared.skillSelection, refOwnerId: skillsTurnOwnerId(requestId) };
     const body = {
       ...preparedBody,
       intentId,
+      skillSelection,
       turn: { ...prepared.turn, requestId },
     };
     const payload: PreparedManualTurn = {
       ...body,
       contentHash: canonicalHash(body),
     };
-    return this.dependencies.ledger.transferSteerToManual(
+    await acquirePreparedSkillReferences(skillSelection);
+    const transferred = await this.dependencies.ledger.transferSteerToManual(
       outboxRef,
       opEpoch,
       {
@@ -613,7 +620,18 @@ export class SteerOutbox {
         createdAt: userMessage.createdAt,
         phase: "queued",
       }
-    );
+    ).catch(async (error: unknown) => {
+      await this.releaseUnclaimedSelection(intentId, skillSelection);
+      throw error;
+    });
+    if (!transferred) await this.releaseUnclaimedSelection(intentId, skillSelection);
+    return transferred;
+  }
+
+  /* Release deletes the owner's custody outright, so it runs only while no derived intent holds it
+     (a replay of an earlier transfer must not strip the live next turn); a crash is left to startup reconcile. */
+  private async releaseUnclaimedSelection(intentId: string, selection: PreparedManualTurn["skillSelection"]) {
+    if (!this.dependencies.ledger.read((state) => state.manualIntents[intentId])) await releasePreparedSkillReferences(selection);
   }
 
   private schedulePersistence(outboxRef: string) {

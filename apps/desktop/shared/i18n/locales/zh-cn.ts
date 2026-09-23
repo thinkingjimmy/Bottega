@@ -28,7 +28,7 @@ import { settingsToolsZhCN } from "./settings/tools/zh-cn";
 import { settingsUsageZhCN } from "./settings/usage/zh-cn";
 import { settingsPersonalizationZhCN } from "./settings/personalization/zh-cn";
 import { presenceZhCN } from "./presence/zh-cn";
-import { settingsAboutZhCN } from "./settings/about/zh-cn";
+import { settingsUpdatesZhCN } from "./settings/updates/zh-cn";
 import { historyZhCN } from "./history/zh-cn";
 import { chatRevisionZhCN } from "./chat-revision/zh-cn";
 import { projectSettingsZhCN } from "./project-settings/zh-cn";
@@ -74,7 +74,6 @@ general: "通用",
 keyboardShortcuts: "键盘快捷键",
 lab: "实验室",
 stepOf: "第 {{current}} 步，共 {{total}} 步",
-backends: "后端",
 personalization: "个性化",
 browser: "浏览器",
 agentPlugins: "Agent 插件",
@@ -125,16 +124,37 @@ promoteBaseToApp: "将 {{name}} 升级为应用"
   chatRevision: chatRevisionZhCN,
   projectSettings: projectSettingsZhCN,
   settings: {
-    about: settingsAboutZhCN,
+    updates: settingsUpdatesZhCN,
+    community: {
+      title: "社区",
+      description: "在 GitHub 上关注开发进展、反馈问题。",
+      github: "GitHub",
+      githubDescription: "Bottega 项目的源代码、问题与版本发布。",
+      viewOnGithub: "在 GitHub 查看",
+      issues: "反馈问题",
+      issuesDescription: "搜索已知问题或提交新问题。",
+      openIssues: "打开 Issues",
+      releaseNotes: "发行说明",
+      releaseNotesDescription: "查看每个版本的变更。",
+      viewReleases: "查看发行说明",
+    },
     presence: presenceZhCN,
     personalization: settingsPersonalizationZhCN,
     skills: settingsSkillsZhCN,
     browser: settingsBrowserZhCN,
     extensions: settingsExtensionsZhCN,
-    backends: {
-      title: "Agent 后端",
-      description: "认证与用量由各官方 CLI 管理；产品只检测本机状态。",
-      recheck: "重新检测",
+    providers: {
+      title: "Providers",
+      description: "设置默认 Agent，以及它们在 Agent 选择器中的顺序。",
+      default: "默认",
+      makeDefault: "设为默认",
+      reorder: "调整 {{name}} 的顺序",
+      picked: "已拿起 {{name}}。",
+      moved: "{{name}} 已移到第 {{position}} 位，共 {{total}} 位。",
+      cancelled: "已取消调整顺序。",
+      setUp: "去设置",
+      update: "去更新",
+      saveFailed: "Provider 设置保存失败。",
     },
     lab: {
       title: "实验室",

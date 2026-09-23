@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on typed cell editors, complete row context, scoped draft/media ports, accessible dialogs and the shared coarse-pointer hook.
- * [OUTPUT]: Provides record forms, modal session save/retry with optional target-retention actions, staged images and cancellable uploads.
+ * [OUTPUT]: Provides record forms, modal session save/retry with optional target-retention actions, staged images (admitted by the facade's imageSources when it converts them) and cancellable uploads.
  * [POS]: Common record editor for every Base view; bytes and fields have separate completion boundaries.
  */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -27,7 +27,8 @@ const ERROR_KEYS: Record<string, string> = { image_upload_limit: "bases.record.u
   base_scope_changed: "bases.record.unavailable", record_missing: "bases.record.unavailable",
   record_conflict: "bases.record.recordChanged", schema_conflict: "bases.record.recordChanged",
   invalid_record: "bases.cell.invalidValue", record_save_failed: "bases.record.checkSave", "conflict-review-required": "bases.record.checkSave",
-  "file-source-changed": "bases.record.imageVerificationFailed", "file-not-ready": "bases.record.imageVerificationFailed" };
+  "file-source-changed": "bases.record.imageVerificationFailed", "file-not-ready": "bases.record.imageVerificationFailed",
+  "attachment-format": "bases.record.unsupportedImage", "attachment-dimensions": "bases.record.unsupportedImage", "attachment-size": "bases.record.fileLimit" };
 export function BaseRecordEditor(props: Props) { return props.open ? <RecordDialog {...props} /> : null; }
 function RecordDialog({ columns: currentColumns, firstColumnId, record, initialValues, rows = [], ownerKey, ownerInstanceId, surfaceLeaseId, disabled, onOpenChange, onSave }: Props) {
   const { t } = useAppTranslation(), platform = useBasePlatform();
@@ -86,7 +87,8 @@ function RecordDialog({ columns: currentColumns, firstColumnId, record, initialV
   };
   const chooseFile = (columnId: string, file: File | undefined) => {
     if (!file) return;
-    const reason = !IMAGE_TYPES.includes(file.type) ? t("bases.record.unsupportedImage") : file.size > BASE_ATTACHMENT_BYTE_LIMIT || !file.size ? t("bases.record.fileLimit") : "";
+    const admitted = platform.attachments.imageSources?.admits(file) ?? IMAGE_TYPES.includes(file.type);
+    const reason = !admitted ? t("bases.record.unsupportedImage") : file.size > BASE_ATTACHMENT_BYTE_LIMIT || !file.size ? t("bases.record.fileLimit") : "";
     setFieldErrors(previous => ({ ...previous, [columnId]: reason }));
     if (reason) return;
     const previous = files[columnId], previousId = previous && uploadIds.current.get(previous);
@@ -144,7 +146,7 @@ function RecordDialog({ columns: currentColumns, firstColumnId, record, initialV
             <label htmlFor={fieldId} className="font-medium">{column.name}</label>
             {column.type === "attachment" ? <>
               {isBaseAttachmentValue(values[column.id]) && <BaseCellEditor column={column} value={values[column.id]} disabled={busy || disabled || draftPort?.locked} onCommit={value => update(column.id, value)} />}
-              <Input id={fieldId} type="file" accept={IMAGE_TYPES.join(",")} aria-label={column.name} aria-invalid={Boolean(fieldError)} className="pointer-coarse:h-10"
+              <Input id={fieldId} type="file" accept={platform.attachments.imageSources?.accept ?? IMAGE_TYPES.join(",")} aria-label={column.name} aria-invalid={Boolean(fieldError)} className="pointer-coarse:h-10"
                 aria-describedby={fieldError ? fieldId + "-error" : undefined} disabled={busy || disabled || draftPort?.locked}
                 onChange={event => chooseFile(column.id, event.target.files?.[0])} />
               {files[column.id] && <span className="break-all text-xs text-muted-foreground">{files[column.id]!.name}</span>}

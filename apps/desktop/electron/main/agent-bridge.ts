@@ -40,8 +40,8 @@ import {
 } from "../../shared/product-failure";
 import { acpStartupBackstopMs } from "./backends/acp/startup/budget";
 import { createAgentBridgeIpcHandlers, registerAgentBridgeIpc } from "./agent/bridge-ipc";
-import { steerCarriesStagedSnapshot, validateSteerTurnCapabilities } from "./agent/controls/steering";
-export { assertSteerTurnCapabilities, steerCarriesStagedSnapshot } from "./agent/controls/steering";
+import { steerCarriesStagedSnapshot, steerTurnCanConsume } from "./agent/controls/steering";
+export { steerCarriesStagedSnapshot, steerTurnCanConsume } from "./agent/controls/steering";
 import type {
   AgentBridgeOptions,
   AgentContext,
@@ -151,7 +151,9 @@ export async function steerAgentTurn(
   if (steerCarriesStagedSnapshot(input)) {
     return { outcome: "unconsumed", reason: "staged-resource" } as const;
   }
-  validateSteerTurnCapabilities(entry.backend, input, (entry as BridgeEntry).context?.activeCapabilities);
+  if (!steerTurnCanConsume(entry.backend, input, (entry as BridgeEntry).context?.activeCapabilities)) {
+    return { outcome: "unconsumed", reason: "unsupported" } as const;
+  }
   return entry.turn.steer(resolvedInputBlocks(input));
 }
 

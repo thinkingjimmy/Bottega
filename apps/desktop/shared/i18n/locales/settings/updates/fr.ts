@@ -1,28 +1,27 @@
 /**
- * [INPUT]: Depends on the settingsAboutEn structural type
- * [OUTPUT]: Provides settingsAboutFr, the French Settings › About catalog
- * [POS]: French leaf of shared/i18n/locales/settings/about; loaded on demand by the matching top-level locale
+ * [INPUT]: Depends on the settingsUpdatesEn structural type
+ * [OUTPUT]: Provides settingsUpdatesFr, the French Settings › Updates catalog
+ * [POS]: French leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
-import type { settingsAboutEn } from "./en";
+import type { settingsUpdatesEn } from "./en";
 
-export const settingsAboutFr: typeof settingsAboutEn = {
-  title: "À propos",
-  tagline: "L’espace de travail Agent pour macOS",
-  version: "Version {{version}}",
-  licenseName: "Licence MIT",
-  readLicense: "Lire la licence MIT",
-  licenseUnavailable: "La licence incluse est indisponible. Consultez la copie officielle en ligne.",
-  licenseCanonical: "Ouvrir la copie officielle",
-  copy: "Copier",
-  copied: "Copié",
-  copyDiagnostics: "Copier les informations de version",
-  links: "Liens",
-  repository: "Dépôt source",
-  feedback: "Signaler un problème",
-  feedbackDescription: "Rechercher un problème connu ou en signaler un nouveau",
-  releaseNotes: "Notes de version",
-  releaseNotesDescription: "Ce qui a changé dans chaque version",
+export const settingsUpdatesFr: typeof settingsUpdatesEn = {
+  title: "Mises à jour",
+  description: "Gérez les mises à jour de Bottega et des CLI des fournisseurs.",
+  updateAll: "Tout mettre à jour",
+  updateOne: "Mettre à jour {{name}}",
+  upToDate: "{{name}} est à jour",
+  updating: "Mise à jour de {{name}}…",
+  latestUnknown: "Dernière version inconnue",
+  cliFailed: "Échec de la mise à jour",
+  cliUnchanged: "La mise à jour s’est terminée, mais la version n’a pas changé. Essayez dans le Terminal.",
+  cliTimeout: "La mise à jour a pris trop de temps et a été arrêtée.",
+  cliUnavailable: "Ce CLI ne peut pas être mis à jour d’ici.",
+  retry: "Réessayer",
+  log: "Journal",
+  terminal: "Mettre à jour dans le Terminal",
+  empty: "Aucun CLI de fournisseur n’est encore installé.",
   checking: "Recherche de mises à jour…",
   current: "À jour{{checkedAt}}",
   available: "La version {{version}} est disponible",
@@ -35,12 +34,10 @@ export const settingsAboutFr: typeof settingsAboutEn = {
   failedResolution:
     "Téléchargez la nouvelle version depuis la page Releases, ou signalez le problème sur GitHub.",
   backgroundFailed: "La dernière vérification automatique a échoué",
-  backgroundFailedOpen:
-    "Les vérifications automatiques des mises à jour échouent ; ouvrir les détails",
+  backgroundFailedOpen: "Les vérifications automatiques échouent ; ouvrez Mises à jour pour les détails",
   check: "Rechercher les mises à jour",
   upgrade: "Mettre à jour",
   manualUpgrade: "Ouvrir la page de téléchargement",
-  checkedAt: " · vérifié à {{time}}",
   unavailable: "Le service de mise à jour est disponible dans l’application installée",
   platformSupport: "Prise en charge de la plateforme",
   preview: "Aperçu {{platform}}",

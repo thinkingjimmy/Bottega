@@ -1,13 +1,13 @@
 /**
  * [INPUT]: The shared encrypted-sync copy contract.
- * [OUTPUT]: French setup, immediate password validation, unlock and recovery messages.
+ * [OUTPUT]: French setup, creation requirement checklist, immediate password validation, unlock and recovery messages.
  * [POS]: Shared desktop and Web encryption presentation.
  */
 import type { CloudEncryptionCopy } from "./en";
 export const fr: CloudEncryptionCopy = {
   setupInProgress: "Activation de la synchronisation…", setupConnectionFailed: "La connexion a échoué. Vérifiez votre réseau et réessayez.",
   title: "Déverrouiller l’espace synchronisé", description: "Saisissez le mot de passe de synchronisation défini sur votre ordinateur.", password: "Mot de passe de synchronisation", confirmation: "Confirmer le mot de passe",
-  setPassword: "Définir un mot de passe de synchronisation", setupDescription: "Utilisez au moins 8 caractères, dont une lettre de A à Z et un chiffre. Conservez ce mot de passe en lieu sûr ; Bottega ne peut pas le récupérer.",
+  setPassword: "Définir un mot de passe de synchronisation", setupDescription: "Choisissez un mot de passe connu de vous seul. Conservez-le en lieu sûr ; Bottega ne peut pas le récupérer.",
   risk: "Je comprends que la perte de ce mot de passe peut rendre les données cloud irrécupérables.", inProgress: "Protection de la synchronisation…",
   unlock: "Déverrouiller", unlocking: "Déverrouillage…", checking: "Vérification de la synchronisation chiffrée…", remember: "Garder ce navigateur déverrouillé",
   rememberDescription: "Enregistrez une clé de déverrouillage chiffrée dans ce navigateur. Vous pourrez le verrouiller à tout moment.", remembered: "Ce navigateur conservera la clé de déverrouillage.", thisPageOnly: "Déverrouillé pour cette page uniquement.",
@@ -22,8 +22,12 @@ export const fr: CloudEncryptionCopy = {
   secureSaveFailedDesktop: "La clé n’a pas pu être enregistrée de façon sécurisée sur cet ordinateur. La synchronisation reste désactivée. Réessayez l’enregistrement avant de l’activer.",
   legacyUnsupported: "Ce compte contient encore des données de l’ancien format de synchronisation. Elles doivent être traitées avant d’activer la synchronisation chiffrée.",
   passwordTooShort: "Utilisez au moins 8 caractères.",
+  passwordTooLong: "Utilisez au plus 1 024 octets UTF-8. Certains caractères occupent plusieurs octets.",
+  passwordRules: "Exigences du mot de passe", ruleMet: "respectée", ruleUnmet: "non respectée",
+  ruleLength: "Au moins 12 caractères", ruleLetter: "Au moins une lettre", ruleDigit: "Au moins un chiffre",
+  ruleSimple: "Évitez les caractères répétés ou consécutifs", ruleEmail: "N’incluez pas le nom de votre adresse e-mail", ruleCommon: "Évitez les mots de passe courants et « Bottega »",
   "sync-password-invalid": "Utilisez au moins 8 caractères et au plus 1 024 octets UTF-8. Certains caractères occupent plusieurs octets.",
-  "sync-password-weak": "Incluez au moins une lettre de A à Z et un chiffre.",
+  "sync-password-weak": "Choisissez un mot de passe plus robuste qui respecte toutes les exigences.",
   "sync-unlock-failed": "Ce mot de passe n’a pas permis de déverrouiller l’espace. Vérifiez-le et réessayez.", "sync-integrity-failed": "Ce contenu chiffré n’a pas pu être vérifié. Rechargez sa version récente.",
   "sync-encryption-unsupported": "Le chiffrement requis est indisponible sur ce navigateur ou appareil. Utilisez Chrome à jour ou Bottega sur ordinateur.",
   "sync-space-changed": "L’espace chiffré ou sa clé a changé. L’accès est suspendu ; vérifiez le compte et les informations de restauration.",

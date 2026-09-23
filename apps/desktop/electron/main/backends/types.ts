@@ -304,6 +304,8 @@ export type SetupCommand = {
 export type SetupExtension = {
   commands: Partial<Record<SetupTerminalAction, SetupCommand>>;
   latestVersion?(): Promise<string>;
+  /** Arguments to the resolved CLI that update it in place without a prompt; Settings › Updates runs them headless. */
+  selfUpdate?: readonly string[];
 };
 
 /**

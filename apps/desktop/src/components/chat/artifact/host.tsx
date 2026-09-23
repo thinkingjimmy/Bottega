@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Canonical Chat identity, visible panel capability, native surface bridges and the composer append seam.
- * [OUTPUT]: A stable ArtifactHost with previews, subtree-scoped prose-link browser routing and draft-scoped follow-ups.
+ * [OUTPUT]: A stable ArtifactHost with previews, subtree-scoped routing of the shared link port into the Browser and draft-scoped follow-ups.
  * [POS]: Desktop adapter for the shared artifact UI; callbacks use current session state without remounting frames.
  */
 import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
@@ -15,10 +15,9 @@ export function useDesktopArtifactHost(controller: ChatSessionController, root: 
   const chatId = controller.transcript.chatId, incarnationId = controller.transcript.incarnationId ?? "";
   useLayoutEffect(() => {
     const lifetime = new AbortController();
-    void import("./prose-links").then(({ registerProseLinks, openInBrowser }) => {
-      registerProseLinks(node => root.current?.contains(node) ?? false, url => {
-        void openInBrowser(url, enableSidePanel ? () => latest.current.sidePanel.openTabs({ target: "browser" }) : undefined).catch(console.warn);
-      }, lifetime.signal);
+    void Promise.all([import("@ai-chat/chat-ui/link-router"), import("./browser")]).then(([{ registerProseLinks }, { desktopLinkPort }]) => {
+      registerProseLinks(node => root.current?.contains(node) ?? false,
+        desktopLinkPort(enableSidePanel ? () => latest.current.sidePanel.openTabs({ target: "browser" }) : undefined), lifetime.signal);
     });
     return () => lifetime.abort();
   }, [root, enableSidePanel]);

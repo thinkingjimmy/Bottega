@@ -411,7 +411,9 @@ export async function runManualTurn(
 ) {
   const original = intent.payload as PreparedManualTurn;
   const remoteContext = intent.remoteSubmission?.context ?? original.remoteContext;
-  const trustedAuthority = remoteContext ? dependencies.ledger.remote.authority(remoteContext) : undefined;
+  // A transferred Steer's next turn was authorized at transfer (its finished command cannot be authorized again) and keeps the steered turn's Full Access.
+  const trustedAuthority = remoteContext
+    ? dependencies.ledger.remote.transferredAuthority(remoteContext, intent.id) ?? dependencies.ledger.remote.authority(remoteContext) : undefined;
   await trustedAuthority?.validate(); trustedAuthority?.current();
   const hydrated = await manualSubmission(intent, dependencies.resolveProjectToolsRuntimeIdentity);
   let submission = bindAdoptedSessionPlan(hydrated.submission, {

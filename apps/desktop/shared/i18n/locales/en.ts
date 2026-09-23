@@ -27,7 +27,7 @@ import { settingsToolsEn } from "./settings/tools/en";
 import { settingsUsageEn } from "./settings/usage/en";
 import { settingsPersonalizationEn } from "./settings/personalization/en";
 import { presenceEn } from "./presence/en";
-import { settingsAboutEn } from "./settings/about/en";
+import { settingsUpdatesEn } from "./settings/updates/en";
 import { historyEn } from "./history/en";
 import { chatRevisionEn } from "./chat-revision/en";
 import { projectSettingsEn } from "./project-settings/en";
@@ -73,7 +73,6 @@ general: "General",
 keyboardShortcuts: "Keyboard shortcuts",
 lab: "Lab",
 stepOf: "Step {{current}} of {{total}}",
-backends: "Backends",
 personalization: "Personalization",
 browser: "Browser",
 agentPlugins: "Agent Plugins",
@@ -124,17 +123,37 @@ promoteBaseToApp: "Promote {{name}} to App"
   chatRevision: chatRevisionEn,
   projectSettings: projectSettingsEn,
   settings: {
-    about: settingsAboutEn,
+    updates: settingsUpdatesEn,
+    community: {
+      title: "Community",
+      description: "Follow development and share feedback on GitHub.",
+      github: "GitHub",
+      githubDescription: "Source code, issues, and releases for the Bottega project.",
+      viewOnGithub: "View on GitHub",
+      issues: "Report an issue",
+      issuesDescription: "Search known issues or file a new one.",
+      openIssues: "Open issues",
+      releaseNotes: "Release notes",
+      releaseNotesDescription: "What changed in each version.",
+      viewReleases: "View releases",
+    },
     presence: presenceEn,
     personalization: settingsPersonalizationEn,
     skills: settingsSkillsEn,
     browser: settingsBrowserEn,
     extensions: settingsExtensionsEn,
-    backends: {
-      title: "Agent backends",
-      description:
-        "Authentication and usage are managed by each official CLI; the product only checks local status.",
-      recheck: "Check again",
+    providers: {
+      title: "Providers",
+      description: "Set the default Agent and its order in Agent pickers.",
+      default: "Default",
+      makeDefault: "Make default",
+      reorder: "Reorder {{name}}",
+      picked: "Picked up {{name}}.",
+      moved: "{{name}} moved to position {{position}} of {{total}}.",
+      cancelled: "Reorder cancelled.",
+      setUp: "Set up",
+      update: "Update",
+      saveFailed: "Couldn't save the Provider settings.",
     },
     lab: {
       title: "Lab",

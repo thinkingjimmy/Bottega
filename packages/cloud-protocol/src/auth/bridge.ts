@@ -5,7 +5,7 @@
  */
 import { z } from "zod";
 import { protocolHeaderSchema } from "../config";
-import { accountProfileSchema, loginMetadataSchema, loginStateSchema, loginStatusSchema, loginReturnModeSchema } from "./index";
+import { accountProfileSchema, desktopPlatformSchema, loginMetadataSchema, loginStateSchema, loginStatusSchema, loginReturnModeSchema } from "./index";
 export const DESKTOP_AUTH_CONTRACT_HEADER = "X-Bottega-Desktop-Auth";
 export const DESKTOP_AUTH_CONTRACT_VERSION = "return-mode-v1";
 export const verifierSchema = z.string().min(43).max(128).regex(/^[A-Za-z0-9._~-]+$/);
@@ -21,7 +21,7 @@ export const desktopMetadataSchema = z.union([
 export const desktopAuth = {
   start: { method: "POST", path: "/api/auth/desktop/start", args: request.extend({
     returnMode: loginReturnModeSchema, codeChallenge: z.string().length(43).regex(/^[A-Za-z0-9_-]+$/), callback: z.enum(["bottega-dev://auth/callback", "bottega://auth/callback"]),
-    deviceNameSnapshot: z.string().min(1).max(120), platform: z.enum(["macos", "windows", "linux"]),
+    deviceNameSnapshot: z.string().min(1).max(120), platform: desktopPlatformSchema,
     // A resent identical request is the same challenge, so an already approved row answers with its original metadata.
   }), result: loginMetadataSchema.extend({ status: z.enum(["pending", "approved"]) }) },
   metadata: { method: "GET", path: "/api/auth/desktop/metadata", args: request, result: desktopMetadataSchema },

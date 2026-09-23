@@ -1,10 +1,10 @@
 /**
- * [INPUT]: Rendered prose anchors in the trusted renderer and scoped owners able to open a URL themselves.
- * [OUTPUT]: registerProseLinks, routing plain cross-origin http(s) link clicks inside an owner's subtree while modifier clicks, other schemes, downloads and same-origin in-app navigation stay native, plus the lazily loaded browser opener.
- * [POS]: Deferred native Markdown integration; one shared capture listener serves every owner and leaves the document untouched once the registry empties.
+ * [INPUT]: Rendered anchors in the trusted page and scoped owners holding a LinkPort.
+ * [OUTPUT]: registerProseLinks, routing plain cross-origin http(s) link clicks inside an owner's subtree to its port while modifier clicks, other schemes, downloads and same-origin in-app navigation stay native.
+ * [POS]: Shared click interception behind the link port; one capture listener serves every owner and leaves the document untouched once the registry empties.
  */
-export { openInBrowser } from "./browser";
-type Owner = { within: (node: Node) => boolean; open: (url: string) => void };
+import { linkPurposeOf, type LinkPort } from "./port";
+type Owner = { within: (node: Node) => boolean; port: LinkPort };
 const owners = new Set<Owner>();
 let restore: (() => void) | undefined;
 /* Non-primary and modifier clicks stay native: they are the escape hatch to the system browser. */
@@ -17,20 +17,20 @@ function route(event: MouseEvent) {
   let url: URL;
   try { url = new URL(anchor.href); } catch { return; }
   if (url.protocol !== "http:" && url.protocol !== "https:") return;
-  /* The Chat subtree also holds in-app navigation — router links and in-document anchors —
-     and in dev those resolve against the renderer's own http origin. Only a cross-origin
-     destination is prose leaving the app; the app owns everything on its own origin. */
+  /* The page also holds in-app navigation — router links and in-document anchors — and in dev those resolve against the
+     page's own http origin. Only a cross-origin destination is a link leaving the app; the app owns its own origin. */
   if (url.origin === window.location.origin) return;
   for (const owner of owners) {
     if (!owner.within(anchor)) continue;
     event.preventDefault();
-    owner.open(url.href);
+    /* Called inside the click: a browser only lets a user gesture open a new tab synchronously. */
+    try { void Promise.resolve(owner.port.open(url.href, linkPurposeOf(url.href))).catch(console.warn); } catch (error) { console.warn(error); }
     return;
   }
 }
-export function registerProseLinks(within: (node: Node) => boolean, open: (url: string) => void, signal?: AbortSignal) {
+export function registerProseLinks(within: (node: Node) => boolean, port: LinkPort, signal?: AbortSignal) {
   if (signal?.aborted) return () => {};
-  const owner: Owner = { within, open };
+  const owner: Owner = { within, port };
   owners.add(owner);
   if (!restore) {
     const listener = (event: Event) => route(event as MouseEvent);

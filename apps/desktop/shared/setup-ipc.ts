@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on the backend info/AgentBackendId of the agent-ipc
- * [OUTPUT]: Defines installation-only/full Setup reads, operation-specific feedback, scope-bound terminal delivery and status events.
- * [POS]: Shared contract for native Agent backend setup; the renderer can only trigger a terminal action (install/update/login), never submit commands or credentials directly
+ * [OUTPUT]: Defines installation-only/full Setup reads, operation-specific feedback, scope-bound terminal delivery, verified headless CLI updates and status events.
+ * [POS]: Shared contract for native Agent backend setup; the renderer can only trigger a terminal action (install/update/login) or a CLI self-update by Agent id, never submit commands or credentials directly
  */
 
 import type { AgentBackendId, BackendInfo } from "./agent-ipc";
@@ -22,8 +22,14 @@ export type SetupTerminalResult = {
   diagnostic?: string;
 };
 
+/** A headless provider CLI self-update; success is proven by the re-probed version, never by the exit code alone. */
+export type CliUpdateResult =
+  | { ok: true; version?: string }
+  | { ok: false; reason: "failed" | "timeout" | "unchanged" | "unavailable"; log: string };
+
 export type SetupEvent =
-  | { type: "open-backends" }
+  /** Another window asked to repair Agents; the main window opens Agent setup. */
+  | { type: "open-agent-setup" }
   | { type: "turn-evidence"; evidence: import("./agent-availability/types").TurnAvailabilityEvidence }
   | { type: "status"; backend: AgentBackendId; status: BackendInfo }
   | {
@@ -44,6 +50,7 @@ export const SETUP_CHANNEL = {
   recheck: "setup:recheck",
   refreshLatest: "setup:refresh-latest",
   terminalAction: "setup:terminal-action",
+  updateCli: "setup:update-cli",
   event: "setup:event",
 } as const;
 
@@ -59,5 +66,7 @@ export type SetupBridgeApi = {
     action: SetupTerminalAction,
     scope?: SetupCheckScope
   ) => Promise<SetupTerminalResult>;
+  /** Only the Agent id crosses IPC; main owns the command. */
+  updateCli: (backend: AgentBackendId) => Promise<CliUpdateResult>;
   onEvent: (callback: (event: SetupEvent) => void) => () => void;
 };

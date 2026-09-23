@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Public device facts, localized labels and host-owned rename/revoke/refresh capabilities.
- * [OUTPUT]: One shared device list with inline kind, presence, version, stable editing and confirmation, and the relative moment every account presence surface reads.
+ * [OUTPUT]: One shared device list with a kind icon (computer, browser, phone), presence, platform, version (Bottega app, Web session or mobile app), stable editing and confirmation, and the relative moment every account presence surface reads.
  * [POS]: Pure account presentation; the host owns current-session key cleanup and transport authority.
  */
 import { useId, useState } from "react";
+import { GlobeIcon, LaptopIcon, SmartphoneIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { ConfirmationDialog } from "../ui/app-dialog";
@@ -16,8 +17,8 @@ export interface AccountDevice {
   state: "active" | "revoked" | "expired";
   presenceState: "online" | "offline";
   lastHeartbeatAt: number | null;
-  platform: "macos" | "windows" | "linux" | "browser";
-  kind: "desktop" | "web"; appVersion: string;
+  platform: "macos" | "windows" | "linux" | "browser" | "ios" | "android";
+  kind: "desktop" | "web" | "mobile"; appVersion: string;
 }
 export interface DeviceListProps {
   devices: AccountDevice[];
@@ -34,6 +35,8 @@ export function DeviceList(props: DeviceListProps) {
     <SettingsList>{props.devices.map(device => <DeviceRow key={device.deviceId} {...props} device={device} />)}</SettingsList>
   </div>;
 }
+/* The kind is the first thing a reader scans for: which of these rows is the phone. */
+const kindIcons = { desktop: LaptopIcon, web: GlobeIcon, mobile: SmartphoneIcon } as const;
 function DeviceRow({ device, ...props }: DeviceListProps & { device: AccountDevice }) {
   const { copy, locale, disabled, capabilities, onRename, onRevoke } = props;
   const t = (key: string, values?: Record<string, string>) => copy(key.replace(/^cloud\./, ""), values); const inputId = useId();
@@ -48,9 +51,11 @@ function DeviceRow({ device, ...props }: DeviceListProps & { device: AccountDevi
   /* presence · platform · version: every fact the server already knows about the device. */
   const presence = device.state === "revoked" ? t("cloud.revoked") : device.presenceState === "online" ? t("cloud.online") :
     device.lastHeartbeatAt ? t("cloud.lastSeen", { when: relativeMoment(device.lastHeartbeatAt, locale) }) : t("cloud.offline");
-  const description = [presence, t(`cloud.platform.${device.platform}`), device.kind === "web" ? t("cloud.webSession") : t("cloud.appVersion", { version: device.appVersion })].join(" · ");
+  const release = device.kind === "web" ? t("cloud.webSession") : t(device.kind === "mobile" ? "cloud.mobileApp" : "cloud.appVersion", { version: device.appVersion });
+  const description = [presence, t(`cloud.platform.${device.platform}`), release].join(" · ");
+  const KindIcon = kindIcons[device.kind];
   return <div data-slot="device-row">
-    <SettingsRow label={device.name} description={description}
+    <SettingsRow leading={<KindIcon aria-hidden="true" data-kind={device.kind} className="size-4 shrink-0 text-muted-foreground" />} label={device.name} description={description}
       badge={device.current && <SettingsBadge>{t("cloud.current")}</SettingsBadge>}
       control={device.state === "active" && <div className="flex flex-wrap gap-1">
         {capabilities.rename && <SettingsButton variant="ghost" disabled={disabled || busy} onClick={() => { setName(device.name); setFailed(false); setEditing(true); }}>{t("cloud.rename")}</SettingsButton>}

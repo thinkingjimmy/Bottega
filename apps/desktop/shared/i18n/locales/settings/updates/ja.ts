@@ -1,28 +1,27 @@
 /**
- * [INPUT]: Depends on the settingsAboutEn structural type
- * [OUTPUT]: Provides settingsAboutJa, the Japanese Settings › About catalog
- * [POS]: Japanese leaf of shared/i18n/locales/settings/about; loaded on demand by the matching top-level locale
+ * [INPUT]: Depends on the settingsUpdatesEn structural type
+ * [OUTPUT]: Provides settingsUpdatesJa, the Japanese Settings › Updates catalog
+ * [POS]: Japanese leaf of shared/i18n/locales/settings/updates; loaded on demand by the matching top-level locale
  */
 
-import type { settingsAboutEn } from "./en";
+import type { settingsUpdatesEn } from "./en";
 
-export const settingsAboutJa: typeof settingsAboutEn = {
-  title: "Bottega について",
-  tagline: "macOS Agent ワークスペース",
-  version: "バージョン {{version}}",
-  licenseName: "MIT License",
-  readLicense: "MIT License を読む",
-  licenseUnavailable: "パッケージ内のライセンスを読めません。公式コピーをオンラインで確認してください。",
-  licenseCanonical: "公式コピーを開く",
-  copy: "コピー",
-  copied: "コピーしました",
-  copyDiagnostics: "バージョン情報をコピー",
-  links: "リンク",
-  repository: "ソースリポジトリ",
-  feedback: "問題を報告",
-  feedbackDescription: "既知の問題を検索するか、新規に報告します",
-  releaseNotes: "リリースノート",
-  releaseNotesDescription: "各バージョンの変更点",
+export const settingsUpdatesJa: typeof settingsUpdatesEn = {
+  title: "アップデート",
+  description: "Bottega と各プロバイダー CLI のアップデートを管理します。",
+  updateAll: "すべてアップデート",
+  updateOne: "{{name}} をアップデート",
+  upToDate: "{{name}} は最新です",
+  updating: "{{name}} をアップデート中…",
+  latestUnknown: "最新バージョン不明",
+  cliFailed: "アップデートに失敗しました",
+  cliUnchanged: "アップデーターは終了しましたが、バージョンが変わっていません。ターミナルでのアップデートをお試しください。",
+  cliTimeout: "アップデートに時間がかかりすぎたため停止しました。",
+  cliUnavailable: "この CLI はここからアップデートできません。",
+  retry: "再試行",
+  log: "ログ",
+  terminal: "ターミナルでアップデート",
+  empty: "プロバイダー CLI はまだインストールされていません。",
   checking: "更新を確認中…",
   current: "最新です{{checkedAt}}",
   available: "バージョン {{version}} を利用できます",
@@ -35,11 +34,10 @@ export const settingsAboutJa: typeof settingsAboutEn = {
   failedResolution:
     "Releases ページから新しいバージョンをダウンロードするか、GitHub で問題を報告してください。",
   backgroundFailed: "前回の自動確認に失敗しました",
-  backgroundFailedOpen: "更新の自動確認に失敗しています。詳細を開く",
+  backgroundFailedOpen: "自動アップデート確認が失敗しています。詳細はアップデートを開いてください",
   check: "更新を確認",
   upgrade: "今すぐ更新",
   manualUpgrade: "ダウンロードページを開く",
-  checkedAt: " · {{time}} に確認",
   unavailable: "更新サービスはパッケージ版で利用できます",
   platformSupport: "プラットフォームサポート",
   preview: "{{platform}} プレビュー",

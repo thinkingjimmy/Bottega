@@ -162,7 +162,9 @@ export const cloudCopy = {
     "macos": "macOS",
     "windows": "Windows",
     "linux": "Linux",
-    "browser": "Navigateur"
+    "browser": "Navigateur",
+    "ios": "iOS",
+    "android": "Android"
   },
   "apps": {
     "title": "Apps",
@@ -245,6 +247,7 @@ export const cloudCopy = {
   "cancel": "Annuler",
   "retry": "Réessayer",
   "retrying": "Nouvelle tentative…",
+  "installAppUpdate": "Installer la mise à jour",
   "save": "Enregistrer",
   "saving": "Enregistrement…",
   "rename": "Renommer",
@@ -273,6 +276,7 @@ export const cloudCopy = {
   "lastSeen": "Vu {{when}}",
   "webSession": "Session Web",
   "appVersion": "Bottega {{version}}",
+  "mobileApp": "App mobile · {{version}}",
   "noDevices": "Aucune session sur cette page.",
   "current": "Cet appareil",
   "online": "En ligne",
@@ -355,6 +359,7 @@ export const cloudCopy = {
     "deleting": "Votre compte est en cours de suppression",
     "environment-mismatch": "L’environnement cloud ne correspond pas à cette application",
     "client-outdated": "Mettez Bottega à jour pour continuer",
+    "app-outdated": "Mettez à jour l’app Bottega pour continuer",
     "error": "Action requise"
   },
   "error": {
@@ -375,7 +380,9 @@ export const cloudCopy = {
     "server-outdated": "Le service cloud doit être mis à jour pour fonctionner avec cette version de Bottega. Réessayez après sa mise à jour.",
     "request-failed": "La demande n’a pas pu aboutir. Réessayez.",
     "environment-mismatch": "Cette version ne peut pas se connecter à cet environnement cloud.",
-    "client-outdated": "Installez une version plus récente de Bottega pour vous connecter."
+    "client-outdated": "Installez une version plus récente de Bottega pour vous connecter.",
+    "app-outdated": "Cette version de l’app Bottega est trop ancienne pour le cloud. Installez la mise à jour pour continuer.",
+    "app-outdated-store": "Cette version de l’app Bottega est trop ancienne pour le cloud. Mettez-la à jour depuis sa source d’installation, puis rouvrez-la."
   },
   "pending": {
     "preparing": "Préparation de la connexion…",

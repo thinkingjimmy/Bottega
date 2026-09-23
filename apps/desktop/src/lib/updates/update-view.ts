@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on the shared UpdateSnapshot contract only — no React, no IPC, no i18n runtime
- * [OUTPUT]: Provides UpdateTone, UpdateGlyph, UpdateView, describeUpdate and formatAppDiagnostics
- * [POS]: Settings › About's conclusion layer — turns an UpdateSnapshot into whether to speak, what to say, and which button/next step, decided once; same family as lib/memory-view
+ * [OUTPUT]: Provides UpdateTone, UpdateGlyph, UpdateView and describeUpdate
+ * [POS]: The Bottega row of Settings › Updates' conclusion layer — turns an UpdateSnapshot into whether to speak, what to say, and which button/next step, decided once; same family as lib/memory-view
  */
 
-import type { UpdateSnapshot } from "../../shared/update-ipc";
+import type { UpdateSnapshot } from "../../../shared/update-ipc";
 
 /* ============================================================
  * 语气三档，与 SettingsAlert 同一套词汇，不另发明第二种强调色：
@@ -19,20 +19,20 @@ export type UpdateGlyph = "spinner" | "check" | "download" | "alert";
 type UpdateMessageKey =
   | "appHost.waitingDownload" | "appHost.checking" | "appHost.unavailable" | "appHost.installBusy"
   | "settings.presence.ready"
-  | "settings.about.unavailable"
-  | "settings.about.checking"
-  | "settings.about.available"
-  | "settings.about.downloading"
-  | "settings.about.installing"
-  | "settings.about.failed"
-  | "settings.about.failedUnknown"
-  | "settings.about.current"
-  | "settings.about.backgroundFailed";
+  | "settings.updates.unavailable"
+  | "settings.updates.checking"
+  | "settings.updates.available"
+  | "settings.updates.downloading"
+  | "settings.updates.installing"
+  | "settings.updates.failed"
+  | "settings.updates.failedUnknown"
+  | "settings.updates.current"
+  | "settings.updates.backgroundFailed";
 type UpdateActionKey =
   | "settings.presence.restart"
-  | "settings.about.upgrade"
-  | "settings.about.manualUpgrade";
-type UpdateResolutionKey = "settings.about.failedResolution";
+  | "settings.updates.upgrade"
+  | "settings.updates.manualUpgrade";
+type UpdateResolutionKey = "settings.updates.failedResolution";
 
 export type UpdateView = Readonly<{
   /** 完整 i18n 键；null = 静息态，这一行只剩一颗按钮。 */
@@ -91,7 +91,7 @@ export function describeUpdate(
   /* 没有更新服务不是「静息」，是「这台机器上根本没有这条通路」。
      它与 phase 无关，故先于 switch 判掉——否则组件里要再写一遍。 */
   if (!bridgeReady) {
-    return speak({ messageKey: "settings.about.unavailable", glyph: "alert", blocked: true });
+    return speak({ messageKey: "settings.updates.unavailable", glyph: "alert", blocked: true });
   }
   const requirement = update.appRequirement;
   if (requirement && requirement.status !== "satisfied" && requirement.status !== "error") {
@@ -103,22 +103,22 @@ export function describeUpdate(
   const version = update.availableVersion ?? update.currentVersion;
   switch (update.phase) {
     case "checking":
-      return speak({ messageKey: "settings.about.checking", glyph: "spinner", blocked: true });
+      return speak({ messageKey: "settings.updates.checking", glyph: "spinner", blocked: true });
     case "available":
       return speak({
-        messageKey: "settings.about.available",
+        messageKey: "settings.updates.available",
         messageVars: { version },
         glyph: "download",
         tone: "loud",
         /* 自动安装与手动下载是两条通路，标签必须跟着走，
            否则 Windows 上写着「立即升级」按下去只是开了个网页。 */
         upgradeKey: update.automaticInstall
-          ? "settings.about.upgrade"
-          : "settings.about.manualUpgrade",
+          ? "settings.updates.upgrade"
+          : "settings.updates.manualUpgrade",
       });
     case "downloading":
       return speak({
-        messageKey: "settings.about.downloading",
+        messageKey: "settings.updates.downloading",
         messageVars: { version },
         glyph: "download",
         tone: "loud",
@@ -128,12 +128,12 @@ export function describeUpdate(
     case "ready":
       return speak({ messageKey: "settings.presence.ready", glyph: "download", tone: "loud", upgradeKey: "settings.presence.restart" });
     case "installing":
-      return speak({ messageKey: "settings.about.installing", glyph: "check", tone: "loud", blocked: true });
+      return speak({ messageKey: "settings.updates.installing", glyph: "check", tone: "loud", blocked: true });
     case "error":
       return speak({
         messageKey: update.error
-          ? "settings.about.failed"
-          : "settings.about.failedUnknown",
+          ? "settings.updates.failed"
+          : "settings.updates.failedUnknown",
         /* 诊断原文保持原样；缺失诊断则切换到完整 catalog 句子，
            不把英文兜底伪装成外部错误内容。 */
         messageVars: update.error ? { message: update.error } : {},
@@ -142,32 +142,17 @@ export function describeUpdate(
         /* 报错原文只说「坏了」。这次更新装不上时，人还剩两件能做的事：
            去 Releases 页手动下载，或去 GitHub 报告。不写出来，那条
            红字就是一个死胡同。 */
-        resolutionKey: "settings.about.failedResolution",
+        resolutionKey: "settings.updates.failedResolution",
       });
     case "not-available":
       return checkedHere
-        ? speak({ messageKey: "settings.about.current", glyph: "check" })
+        ? speak({ messageKey: "settings.updates.current", glyph: "check" })
         : SILENT;
     default:
       /* 后台那次自动检查失败过，就不再是静息态：自动通道已经断了，
          用户有权在按下按钮之前就知道这件事。 */
       return update.lastError
-        ? speak({ messageKey: "settings.about.backgroundFailed", glyph: "alert", tone: "danger" })
+        ? speak({ messageKey: "settings.updates.backgroundFailed", glyph: "alert", tone: "danger" })
         : SILENT;
   }
-}
-
-/* 复制给 issue 用的那三行：人读得懂，也能原样粘进 bug 报告。
-   页面上只露版本与协议，其余事实不占版面——它们活在这里。 */
-export function formatAppDiagnostics(facts: {
-  productName: string;
-  version: string;
-  electron: string;
-  platform: string;
-}): string {
-  return [
-    `${facts.productName} ${facts.version}`,
-    `Electron ${facts.electron}`,
-    facts.platform,
-  ].join("\n");
 }

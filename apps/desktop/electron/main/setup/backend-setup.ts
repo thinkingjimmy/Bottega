@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the runtime registry, version cache, model-catalog change notifications, fixed terminal delivery, credential reservations and trusted Setup IPC.
- * [OUTPUT]: Owns installation-only/full check scopes, per-Agent coordination, scope-preserving terminal return checks, and notifyModelsInvalidated as the single, 250 ms-merged models-invalidated sink.
+ * [OUTPUT]: Owns installation-only/full check scopes, per-Agent coordination, scope-preserving terminal return checks, verified headless CLI updates, and notifyModelsInvalidated as the single, 250 ms-merged models-invalidated sink.
  * [POS]: Main setup coordinator; registration stays passive and the workbench requests full checks after onboarding.
  */
 
@@ -32,6 +32,7 @@ import { rendererIpc } from "../ipc-registrar";
 import { reserveAgentCredentialUse } from "../agent-process-supervisor";
 import { LatestVersionCache } from "./latest-version";
 import { launchSetupTerminalAction } from "./terminal-action";
+import { CliUpdater } from "./cli-update";
 
 type CheckFlight<T> = { scope: SetupCheckScope; promise: Promise<T> };
 
@@ -58,6 +59,11 @@ export class BackendSetupService {
   private readonly checkFlights = new Map<AgentBackendId, CheckFlight<SetupStatus>>();
   private readonly credentialActions = new Map<AgentBackendId, ReturnType<typeof reserveAgentCredentialUse>>();
   private readonly modelInvalidations = new Map<AgentBackendId, ReturnType<typeof setTimeout>>();
+  private readonly updater = new CliUpdater({
+    runtime: (backend) => backendRuntimeRegistry.current(backend)?.runtime,
+    args: (backend) => backendById(backend).setup?.selfUpdate,
+    recheck: async (backend) => (await this.recheck(backend)).backends.find((entry) => entry.id === backend),
+  });
 
   constructor(private readonly locale: () => AppLocale = () => "en",
     private readonly launchTerminal: typeof launchSetupTerminalAction = launchSetupTerminalAction) {}
@@ -89,6 +95,7 @@ export class BackendSetupService {
       .handle(SETUP_CHANNEL.terminalAction, (value) =>
         this.terminalAction(value)
       )
+      .handle(SETUP_CHANNEL.updateCli, (backend) => this.updater.update(this.assertBackend(backend)))
       .roles("main", "app-window")
       .handleWithContext(SETUP_CHANNEL.watch, (context) => {
         this.assertResidence(context);
@@ -107,7 +114,7 @@ export class BackendSetupService {
         if (args.length) throw new Error("Agent management accepts no route or URL");
         const main = windowRegistry.main();
         if (!main || !windowRegistry.focus(main.windowId)) throw new Error("Open the main window to manage Agents");
-        main.window.webContents.send(SETUP_CHANNEL.event, { type: "open-backends" } satisfies SetupEvent);
+        main.window.webContents.send(SETUP_CHANNEL.event, { type: "open-agent-setup" } satisfies SetupEvent);
       });
     /* 「登录引导完成回到 app」这件事，在主进程里唯一看得见的信号就是窗口
        重新获得焦点。只对 awaitingLogin 里的后端作废，所以普通 alt-tab 不会
@@ -339,7 +346,7 @@ export class BackendSetupService {
       try {
         if (!windowRegistry.get(id) || rendererIdentity(context.webContentsId).rendererSessionId !== context.rendererIncarnation) throw new Error("Expired renderer");
         this.assertResidence(context);
-        if (event.type === "open-backends") continue;
+        if (event.type === "open-agent-setup") continue;
         if (event.type === "turn-evidence") surfaceWindowController.assertAppConversationRead(context, event.evidence.conversationId);
         context.window.webContents.send(SETUP_CHANNEL.event, event);
       } catch {

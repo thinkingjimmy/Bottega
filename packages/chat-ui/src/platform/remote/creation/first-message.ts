@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Exact creation receipt, frozen send intent, account identity and six platform ports.
- * [OUTPUT]: Waits only for local head identity, then durably submits the first intent before target preparation.
+ * [OUTPUT]: Waits only for local head identity, then durably submits the first intent before target preparation; `rejectionReason` names an admission refusal (plan, attachment or capacity); a failure caused by the files, or by a command too large to seal, before anything was stored is flagged `attachments`.
  * [POS]: Shared first-send continuation; cancellation ends automatic submission without erasing the Chat or draft.
  */
 import { assertRemoteReferenceTarget, type RemoteReference } from "@ai-chat/cloud-protocol/remote/input/references";
@@ -10,11 +10,22 @@ import type { RemoteCreated, RemoteCreateInput } from "../contracts";
 import { remoteCommandSession } from "../commands/registry";
 import type { RemoteDraftStore } from "../input/draft";
 import { remoteConsentFor, type RemoteConsentScope, type RemoteFullAccessConsent, type RemotePermissionMode } from "@ai-chat/cloud-protocol/remote/input/model";
-import { remoteReasonSchema, type RemoteReason, type RemoteTurnOptions } from "@ai-chat/cloud-protocol/remote/model";
+import { remoteReasonSchema, type RemoteCommandInput, type RemoteReason, type RemoteTurnOptions } from "@ai-chat/cloud-protocol/remote/model";
+import { assertRemoteCommandBudget } from "@ai-chat/cloud-protocol/remote/encrypted/client";
+/** `attachments`: refused because of its files (or its size) before anything was stored, so the draft's files may change and the retry is a new message. */
 export class FirstMessageFailure extends Error {
-  constructor(readonly reason: RemoteReason) { super(reason); }
+  constructor(readonly reason: RemoteReason, readonly attachments = false) { super(reason); }
 }
-function fail(reason: RemoteReason): never { throw new FirstMessageFailure(reason); }
+function fail(reason: RemoteReason, attachments = false): never { throw new FirstMessageFailure(reason, attachments); }
+/** An admission refusal or an unadmitted rejection naming a lost attachment stored nothing; any other refusal keeps its commandId. */
+function refused(rejected: string | undefined, receipt?: { reason?: string | null; admission?: unknown } | null): never {
+  if (receipt) fail((receipt.reason ?? "outcome-unknown") as RemoteReason, receipt.reason === "attachment-unavailable" && !receipt.admission);
+  fail(rejected ? rejectionReason(rejected) : "outcome-unknown", rejected === "attachment-unavailable");
+}
+/** An admission refusal stored nothing: plan refusals and a lost attachment keep their name, rate and capacity become capacity. */
+export function rejectionReason(rejected: string): RemoteReason {
+  return rejected === "attachment-unavailable" || rejected === "entitlement-required" || rejected === "quota-exceeded" ? rejected : "capacity-exceeded";
+}
 export type FirstMessageIntent = { text: string; commandId: string; creation: RemoteCreateInput; draftStore?: RemoteDraftStore; permissionMode?: RemotePermissionMode; planMode?: boolean; options?: RemoteTurnOptions; references?: readonly RemoteReference[] };
 export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | "chats" | "commands" | "execution">, receipt: RemoteCreated, intent: FirstMessageIntent, signal: AbortSignal,
   confirm?: (scope: RemoteConsentScope) => Promise<RemoteConsentScope | null>) {
@@ -34,8 +45,8 @@ export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | 
     const previous = session.snapshot().entries.find(entry => entry.input.commandId === intent.commandId);
     if (previous) {
       const receipt = previous.receipt ?? await session.retry(intent.commandId);
-      if (!receipt) fail(previous.rejected === "attachment-unavailable" ? "attachment-unavailable" : previous.rejected ? "capacity-exceeded" : "outcome-unknown");
-      if (["expired", "rejected", "outcome-unknown"].includes(receipt.state)) fail(receipt.reason ?? "outcome-unknown");
+      if (!receipt) refused(previous.rejected);
+      if (["expired", "rejected", "outcome-unknown"].includes(receipt.state)) refused(undefined, receipt);
       return receipt;
     }
     const head = await awaitChatHead(platform.chats, receipt, abort.signal);
@@ -50,7 +61,10 @@ export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | 
     if (!agent?.available) fail(agent?.reason ?? "agent-unavailable");
     const references = intent.references ?? intent.draftStore?.snapshot().references.map(reference => reference.value) ?? [];
     assertRemoteReferenceTarget(references, receipt.ownerDeviceId);
-    const attachments = await intent.draftStore?.prepare(receipt.chatId, platform.commands.remote?.attachments, abort.signal) ?? [];
+    const attachments = await intent.draftStore?.prepare(receipt.chatId, platform.commands.remote?.attachments, abort.signal).catch((error: unknown) => {
+      if (!valid()) throw error;
+      fail(error instanceof Error && error.message === "input-unsupported" ? "input-unsupported" : "attachment-unavailable", true);
+    }) ?? [];
     if (!valid()) fail("identity-changed");
     const capability = target.agents.find(agent => agent.backend === intent.creation.backend)?.capabilities;
     if (attachments.some(file => file.kind === "image" ? !capability?.imageInput : !capability?.fileInput) || intent.planMode && !capability?.planMode ||
@@ -64,17 +78,19 @@ export async function sendFirstMessage(platform: Pick<ChatPlatform, "account" | 
       if (!fullAccessConsent || !valid()) fail("permission-required");
     }
     // The original request survives an unknown result through the same session used by the detail view.
-    const submitted = await session.submit({ commandId: intent.commandId, chatId: receipt.chatId, incarnationId: receipt.incarnationId,
+    const command: RemoteCommandInput = { commandId: intent.commandId, chatId: receipt.chatId, incarnationId: receipt.incarnationId,
       targetDeviceId: receipt.ownerDeviceId, intent: { baselineAgent: head.chat.agent },
       payload: { kind: "start-turn", text: intent.text, expectedAgentRevision: head.chat.agentRevision,
         ...(attachments.length ? { attachments } : {}), ...(references.length ? { references: [...references] } : {}), ...(intent.permissionMode ? { permissionMode: intent.permissionMode } : {}),
-        ...(intent.planMode !== undefined ? { planMode: intent.planMode } : {}), ...(intent.options ? { options: intent.options } : {}), ...(fullAccessConsent ? { fullAccessConsent } : {}) } }, abort.signal);
+        ...(intent.planMode !== undefined ? { planMode: intent.planMode } : {}), ...(intent.options ? { options: intent.options } : {}), ...(fullAccessConsent ? { fullAccessConsent } : {}) } };
+    // Too large to seal stores nothing: the draft unlocks so references can be removed, and the retry is a new message.
+    try { assertRemoteCommandBudget(command); } catch { fail("input-unsupported", true); }
+    const submitted = await session.submit(command, abort.signal);
     if (!valid()) fail("identity-changed");
     if (!submitted) {
-      const rejected = session.snapshot().entries.find(entry => entry.input.commandId === intent.commandId)?.rejected;
-      fail(rejected === "attachment-unavailable" ? "attachment-unavailable" : rejected ? "capacity-exceeded" : "outcome-unknown");
+      refused(session.snapshot().entries.find(entry => entry.input.commandId === intent.commandId)?.rejected);
     }
-    if (["expired", "rejected", "outcome-unknown"].includes(submitted.state)) fail(submitted.reason ?? "outcome-unknown");
+    if (["expired", "rejected", "outcome-unknown"].includes(submitted.state)) refused(undefined, submitted);
     return submitted;
   } catch (error) {
     if (error instanceof FirstMessageFailure) throw error;

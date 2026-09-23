@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on closed protocol identities, portable Agent options and canonical content hashing.
- * [OUTPUT]: Provides bounded remote commands (including catalog-backed model, effort and speed choices), execution evidence carrying the device that produced it, the shared interaction-source identity, `handledElsewhere`, target capabilities with each Agent's model catalog, and content-free deleted creation receipts.
+ * [OUTPUT]: Provides the closed remote reasons (plan refusals included), bounded remote commands (including catalog-backed model, effort and speed choices), execution evidence carrying the device that produced it, the steer outcome (consumed / transferred) in the encrypted receipt, the shared interaction-source identity, `handledElsewhere`, target capabilities with each Agent's model catalog, and content-free deleted creation receipts.
  * [POS]: Shared remote control boundary; local sessions, paths, grants and execution recovery have no command representation.
  */
 import { queueControlSchemas } from "./queue";
@@ -24,7 +24,8 @@ export const remoteReasonSchema = z.enum(["remote-disabled", "protocol-mismatch"
   "not-owner", "chat-incarnation-mismatch", "chat-not-executable", "execution-not-ready", "project-path-unbound", "project-unavailable",
   "chat-home-unavailable", "permission-required", "agent-missing", "agent-outdated", "auth-required", "agent-unavailable", "agent-revision-changed", "fact-revision-changed", "local-facts-pending",
   "request-not-active", "interaction-expired", "command-expired", "connection-changed", "capacity-exceeded", "admission-failed", "execution-failed", "outcome-unknown",
-  "target-changed", "agent-changed", "already-dispatched", "body-unavailable", "identity-changed", "attachment-unavailable", "attachment-invalid", "input-unsupported", "fork-failed", "revision-stale", "revision-busy", "reference-target-changed", "workspace-changed", "workspace-file-unavailable", "workspace-text-unavailable", "skill-unavailable", "queue-changed"]);
+  "target-changed", "agent-changed", "already-dispatched", "body-unavailable", "identity-changed", "attachment-unavailable", "attachment-invalid", "input-unsupported", "fork-failed", "revision-stale", "revision-busy", "reference-target-changed", "workspace-changed", "workspace-file-unavailable", "workspace-text-unavailable", "skill-unavailable", "queue-changed",
+  "entitlement-required", "quota-exceeded"]);
 export type RemoteReason = z.infer<typeof remoteReasonSchema>;
 export const remoteApprovalDecisionSchema = z.union([z.enum(["accept", "accept-for-session", "decline"]), z.string().regex(/^choice:(?:0|[1-9][0-9]{0,5})$/)]);
 export const remoteTurnOptionsSchema = z.object({ model: turnOptionValueSchema.optional(), reasoningEffort: turnOptionValueSchema.optional(), serviceTier: turnOptionValueSchema.optional() }).strict()
@@ -97,6 +98,8 @@ export const remoteBlockedBySchema = z.enum(["relay-queue", "chain-paused", "app
 export const remoteOutputSchema = z.discriminatedUnion("kind", [
   remoteWorkspaceOutputSchema,
   z.object({ kind: z.literal("queue-withdrawal"), unpersisted: z.literal(true) }).strict(),
+  // transferred: the running turn could not take the input, which is durably queued as the next turn.
+  z.object({ kind: z.literal("steer"), outcome: z.enum(["consumed", "transferred"]) }).strict(),
   z.object({ kind: z.literal("fork-chat"), chatId: id, incarnationId: id }).strict(),
   z.object({ kind: z.literal("fork-preflight"), worktree: z.object({ supported: z.boolean(), dirty: z.object({
     staged: z.boolean(), unstaged: z.boolean(), untracked: z.boolean(), ignored: z.boolean() }).strict() }).strict().optional() }).strict(),

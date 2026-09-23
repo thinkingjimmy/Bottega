@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the six Chat facades, confirmed heads and project readiness, shared preparation rejection proof, the account-level computer subscription, remote target/receipt hooks, the owning computer's published model catalog and transcript controls.
- * [OUTPUT]: Provides early intent submission and remote messaging where every state lives on its control — icon Agent chip, model choice, a Send button that is the required action (prepare, retry preparation, bind) and greys in place with the owning computer's sentence when that computer goes down, a byte budget on the Send row, outcome toasts, and the read-only card in place of the composer for archived, remote-off and imported-not-yet-continued chats and for native chats whose owning computer has left the account; plus immutable unknown attempts, a page or viewport-filling layout mode and one footer slot beneath the conversation.
+ * [OUTPUT]: Provides early intent submission and remote messaging where every state lives on its control — icon Agent chip, model choice, a Send button that is the required action (prepare, retry preparation, bind) and greys in place with the owning computer's sentence when that computer goes down, a byte budget on the Send row, outcome toasts, and the read-only card in place of the composer for archived, remote-off and imported-not-yet-continued chats and for native chats whose owning computer has left the account; a guidance message refused because its turn had ended can go out once as a new message with the same uploaded files; plus immutable unknown attempts (checkpoint-recovered ones are adopted and looked up by their original commandId, never resent as new messages), a page or viewport-filling layout mode and one footer slot beneath the conversation.
  * [POS]: Shared Web and desktop mirror composition; optional host layout places sibling panels under one draft callback owner, and native drafts keep their original storage owner.
  */
 import { ChatConversation, type ConversationRegions } from "../page/conversation";
@@ -14,20 +14,20 @@ import { Archive, RefreshCw } from "lucide-react";
 import { utf8Length } from "@ai-chat/cloud-protocol/chats/content/parts";
 import { artifactFollowUpBlock } from "@ai-chat/cloud-protocol/artifacts/frame-security";
 import { REMOTE_LIMITS, isRemoteTurnPayload, type RemoteTurnOptions } from "@ai-chat/cloud-protocol/remote/model";
-import { remoteConsentFor, type RemoteConsentScope } from "@ai-chat/cloud-protocol/remote/input/model";
+import { remoteConsentFor, type RemoteAttachment, type RemoteConsentScope } from "@ai-chat/cloud-protocol/remote/input/model";
 import { preparationRejection } from "@ai-chat/cloud-protocol/remote/selection";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
 import type { ChatPlatform } from "../../platform/contracts";
 import type { RemoteCommandInput, RemotePreparationInput } from "../../platform/remote/contracts";
 import { useAccountComputers, useChatAccount } from "../../platform/presentation/hooks";
 import { useRemoteCommands, useRemoteTargets } from "../../platform/remote/hooks";
-import { awaitingRemoteAdmission } from "../../platform/remote/commands/session";
+import { awaitingRemoteAdmission, type RemoteEntry } from "../../platform/remote/commands/session";
 import { remoteCopy } from "../../i18n/remote";
 import { ChatTranscript } from "../conversation/transcript";
 import { ConversationModelProvider } from "../conversation/body/model";
 import type { ImageIdentity } from "../side-panel/image/identity";
 import { RemoteAgentSelector } from "./computer/agent";
-import { assertRemoteReferenceTarget, isRemoteWorkspaceQuery } from "@ai-chat/cloud-protocol/remote/input/references";
+import { assertRemoteReferenceTarget, isRemoteWorkspaceQuery, type RemoteReference } from "@ai-chat/cloud-protocol/remote/input/references";
 import { RemoteQueue } from "./delivery/queue";
 import { queryRemoteWorkspace } from "../../platform/remote/workspace";
 import type { WorkspacePreviewRequest } from "../side-panel/workspace";
@@ -44,7 +44,7 @@ import { useRemoteFeedback } from "./composer/feedback";
 import { RemoteEditor } from "./composer/input/editor";
 import { RemoteUnavailable, type UnavailableAction } from "./computer/unavailable";
 import { PlatformGlyph } from "./computer/glyphs";
-import { budgetLabel, ownerBlock, ownerPresence, readOnlyGate, sendAction } from "./composer/status";
+import { draftBudget, ownerBlock, ownerPresence, readOnlyGate, sendAction } from "./composer/status";
 import { ChatPlanDecision } from "../composer/controls/plan-decision";
 import { planDecisionInput, type PlanDecision } from "../composer/controls/plan";
 import { ComposerModelSelector, type ModelChoice } from "../composer/controls/model";
@@ -80,6 +80,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
   const store = remoteDraftStore(platform, `chat:${head.chat.id}/${head.chat.incarnationId}`, draft?.text ?? initialText);
   const completeDraft = useRemoteDraft(store, platform.commands.remote, head.chat.id);
   const text = draft?.text ?? completeDraft.text, change = useCallback((text: string) => { store.text(text); draft?.change(text); }, [store, draft]);
+  const [sentAsNew, setSentAsNew] = useState<ReadonlySet<string>>(() => new Set());
   const [sendBusy, setSendBusy] = useState(false), [completedPlan, setCompletedPlan] = useState<string | null>(null), [restoring, setRestoring] = useState(false);
   const artifactHost = useArtifactHost(), composerElement = useRef<{ focus(): void }>(null);
   const conversationElement = useRef<HTMLDivElement>(null), focusRequested = useRef(false);
@@ -155,11 +156,11 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
   const referenceSuggestions = useRemoteReferences({ head, target: target, platform, session: commands.session, store, locale, disabled: !authorized || uncertain || sendBusy });
   const referenceMismatch = completeDraft.references.some(reference => reference.value.kind === "file" && reference.value.deviceId !== target?.deviceId);
   const hasInput = Boolean(text.trim() || completeDraft.files.length || completeDraft.references.length);
-  const bytes = utf8Length(text), tooLong = bytes > REMOTE_LIMITS.textBytes;
+  const budget = draftBudget(copy, { text, references: completeDraft.references.map(item => item.value), files: completeDraft.files.length }), tooLong = budget !== null;
   const blocked = referenceMismatch || baseBlocked || controls.unsupported || controls.editing || pendingFiles || sendBusy;
   const runningCapabilities = target?.agents.find(item => item.backend === head.chat.agent)?.capabilities;
   const steerBlocked = !authorized || !usable || controls.editing || pendingFiles || sendBusy ||
-    Boolean(draft && (!draft.ready || draft.unsupported)) || completeDraft.files.some(file => file.file.type.startsWith("image/") ? !runningCapabilities?.imageInput : !runningCapabilities?.fileInput);
+    Boolean(draft && (!draft.ready || draft.unsupported)) || completeDraft.files.some(file => file.image ? !runningCapabilities?.imageInput : !runningCapabilities?.fileInput);
   const planId = !head.openTurnId && completedPlan && !completeDraft.dismissedPlans.includes(completedPlan) ? completedPlan : null;
   // The chat's own options name the model until this device chooses another one for the same Agent.
   const choice = completeDraft.options?.backend === agent ? completeDraft.options : null;
@@ -168,7 +169,13 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
   // Without a choice the selector shows the chat's model, and its catalog default when the chat names none.
   const modelValue: ModelChoice = choice ?? { model: chatModel, reasoningEffort: chatOptions && "reasoningEffort" in chatOptions ? chatOptions.reasoningEffort : undefined,
     serviceTier: chatOptions && "serviceTier" in chatOptions ? chatOptions.serviceTier : undefined };
+  // Commands restored from a checkpoint are looked up by their original id before anything can be sent again.
   useEffect(() => {
+    if (!commands.session || !completeDraft.recovered?.length) return;
+    for (const command of completeDraft.recovered) commands.session.adopt(command);
+  }, [commands.session, completeDraft.recovered]);
+  useEffect(() => {
+    store.track(commands.entries);
     for (const entry of commands.entries) {
       if (entry.canonical || entry.withdrawnByUser || entry.receipt?.admission) store.confirmed(entry.input.commandId);
       else if (entry.rejected || entry.receipt && ["rejected", "expired", "cancelled"].includes(entry.receipt.state)) {
@@ -213,7 +220,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
       targetDeviceId: destination, ...(payload.kind === "start-turn" ? { intent: { baselineAgent: head.chat.agent } } : {}), payload: bound };
     if (decision) store.update({ submittedPlan: { ...decision, commandId: input.commandId } });
     try { return await commands.session.submit(input); }
-    catch { if (mounted.current) feedback.notSent(copy.requestFailed, { label: copy.refresh, run: refresh }); return null; }
+    catch (error) { if (mounted.current) feedback.notSent(error instanceof Error && error.message === "remote-payload-budget" ? copy.referencesTooLarge : copy.requestFailed, { label: copy.refresh, run: refresh }); return null; }
   };
   const revisionAttempt = useRef<RemoteCommandInput | null>(null);
   const editMessage = async (messageId: string, content: string) => {
@@ -250,7 +257,6 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
       const references = completeDraft.references.map(item => item.value);
       assertRemoteReferenceTarget(references, (steer ? target?.deviceId : selected) ?? "");
       await draft?.flush();
-      const observed = pendingAgent?.head ?? head;
       const signal = platform.commands.remote?.lifetime ?? new AbortController().signal;
       const attachments = await store.prepare(head.chat.id, platform.commands.remote?.attachments, signal);
       if (steer) {
@@ -258,21 +264,47 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
         await submit({ kind: "steer", requestId: head.openTurnId, text: outgoing, ...(references.length ? { references } : {}), ...(attachments.length ? { attachments } : {}) });
         return;
       }
-      if (!preparation) await retryPreparation();
-      let consentScope;
-      if (permissionMode === "full-access") {
-        if (!account.profile?.userId || !account.deviceId || !head.ownerDeviceId) return;
-        consentScope = await consent.confirm({ userId: account.profile.userId, sourceDeviceId: account.deviceId,
-          chatId: head.chat.id, incarnationId: head.chat.incarnationId, targetDeviceId: selected }) ?? undefined;
-        if (!consentScope) return;
-      }
-      const options = choice ? turnOptions(choice) : undefined;
-      await submit({ kind: authenticationRetry ? "retry-authentication" : "start-turn", text: outgoing, ...(references.length ? { references } : {}), expectedAgentRevision: observed.chat.agentRevision,
-        agentSelection: { backend: agent, expectedFactRevision: observed.catalogRevision },
-        ...(attachments.length ? { attachments } : {}), permissionMode, planMode: override?.planMode ?? completeDraft.planMode,
-        ...(options ? { options } : {}) }, override && planId ? { planId, planMode: override.planMode } : undefined, consentScope);
+      await startTurn({ text: outgoing, attachments, references }, override?.planMode ?? completeDraft.planMode,
+        override && planId ? { planId, planMode: override.planMode } : undefined, authenticationRetry);
     } catch { if (mounted.current) feedback.notSent(copy.requestFailed, { label: copy.refresh, run: refresh }); }
     finally { sending.current = false; if (mounted.current) setSendBusy(false); }
+  };
+  /** One new message from exact content: the composer's draft, or a refused guidance message resent with its uploaded files. */
+  const startTurn = async (content: { text: string; attachments: readonly RemoteAttachment[]; references: readonly RemoteReference[] }, planMode: boolean,
+    decision?: { planId: string; planMode: boolean }, authenticationRetry = false) => {
+    const { text: outgoing, attachments, references } = content, observed = pendingAgent?.head ?? head;
+    if (!preparation) await retryPreparation();
+    let consentScope;
+    if (permissionMode === "full-access") {
+      if (!account.profile?.userId || !account.deviceId || !head.ownerDeviceId) return null;
+      consentScope = await consent.confirm({ userId: account.profile.userId, sourceDeviceId: account.deviceId,
+        chatId: head.chat.id, incarnationId: head.chat.incarnationId, targetDeviceId: selected }) ?? undefined;
+      if (!consentScope) return null;
+    }
+    const options = choice ? turnOptions(choice) : undefined;
+    return submit({ kind: authenticationRetry ? "retry-authentication" : "start-turn", text: outgoing, ...(references.length ? { references: [...references] } : {}), expectedAgentRevision: observed.chat.agentRevision,
+      agentSelection: { backend: agent, expectedFactRevision: observed.catalogRevision },
+      ...(attachments.length ? { attachments: [...attachments] } : {}), permissionMode, planMode,
+      ...(options ? { options } : {}) }, decision, consentScope);
+  };
+  /* R9: a guidance message that reached an ended turn ran nothing; it goes out once as the next message with the same text, references and
+     every one of its files from this device's draft — never without some of them. */
+  const sendAsNew = (entry: RemoteEntry) => {
+    const payload = entry.input.payload;
+    if (payload.kind !== "steer" || sentAsNew.has(entry.input.commandId) || sending.current || blocked || requestBusy || uncertain) return;
+    sending.current = true; setSendBusy(true); feedback.dismiss();
+    const references = payload.references ?? [], signal = platform.commands.remote?.lifetime ?? new AbortController().signal;
+    void (async () => {
+      assertRemoteReferenceTarget(references, selected);
+      // The refused files were restored into the draft; staging them there picks up any re-upload (an expired one gets a new blob).
+      const attachments = await store.prepare(head.chat.id, platform.commands.remote?.attachments, signal, new Set(payload.attachments?.map(file => file.attachmentId) ?? []));
+      const receipt = await startTurn({ text: payload.text, attachments, references }, completeDraft.planMode);
+      if (receipt && mounted.current) setSentAsNew(previous => new Set(previous).add(entry.input.commandId));
+    })().catch(error => {
+      if (!mounted.current) return;
+      if (error instanceof Error && error.message === "attachment-missing") feedback.notSent(copy.steerFilesMissing);
+      else feedback.notSent(copy.requestFailed, { label: copy.refresh, run: refresh });
+    }).finally(() => { sending.current = false; if (mounted.current) setSendBusy(false); });
   };
   const decidePlan = (decision: PlanDecision) => {
     if (decision.kind === "skip") { if (planId) store.update({ dismissedPlans: [...completeDraft.dismissedPlans, planId] }); return; }
@@ -360,7 +392,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
           disabled={uncertain || sendBusy || requestBusy || (draft ? !draft.ready : false)} previewTitle={input.previewFile} onFileClick={controls.openFile} fileStates={controls.fileStates} />
         <ComposerToolbar><PromptInputTools>{controls.tools}
           {head.openTurnId && <Button type="button" variant="ghost" size="sm" aria-pressed={referenceMode === "current"} disabled={sendBusy || uncertain} onClick={() => setReferenceSelection({ requestId: head.openTurnId, mode: referenceMode === "next" ? "current" : "next" })}>{referenceMode === "current" ? input.currentTurn : input.nextMessage}</Button>}
-          {tooLong && <span role="alert" className="chat-remote-budget">{budgetLabel(copy, bytes, REMOTE_LIMITS.textBytes)}</span>}
+          {budget && <span role="alert" className="chat-remote-budget">{budget}</span>}
         </PromptInputTools><ComposerActions>
           <RemoteAgentSelector quotaEnabled={platform.capabilities.quota} locale={locale} target={target} value={agent} copy={copy} disabled={!authorized || preparing || operationPending || uncertain} onSelect={backend => { setPendingAgent({ backend, head }); store.update({ options: null }); }} />
           {capability?.models && <ComposerModelSelector locale={locale} backend={agent} models={platform.capabilities.serviceTier ? capability.models : capability.models.map(model => ({ ...model, serviceTiers: undefined }))} value={modelValue} disabled={!authorized || preparing || operationPending || uncertain}
@@ -373,6 +405,7 @@ function RemoteConversationContent({ head, platform, locale, connected = true, t
       </ComposerForm>}
       {controls.dialogs}{consent.dialog}
       {commands.session && <RemoteReceipts entries={commands.entries.filter(entry => !isRemoteWorkspaceQuery(entry.input.payload.kind))} session={commands.session} copy={copy} locale={locale} disabled={!authorized} reexecuteDisabled={blocked || uncertain || requestBusy}
+        sendAsNew={sendAsNew} sentAsNew={sentAsNew}
         reexecute={entry => { if (!blocked && !uncertain && !requestBusy && entry.input.payload.kind === "start-turn") {
           const original = entry.input.payload;
           if (entry.input.targetDeviceId !== head.ownerDeviceId ||

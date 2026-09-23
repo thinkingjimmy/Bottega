@@ -24,7 +24,8 @@ export async function composeSyncEncryption(input: { config: CloudBuildConfig; u
     expectedSessionId: identity.sessionId, expectedDeviceId: identity.deviceId });
   const owner: SyncEncryptionController = new SyncEncryptionController({ config, installationId: input.deviceId, store,
     connection: () => service.remoteConnection(), sampleTime: (identity, sampleId) => transport.mutate("account:sampleTime", { ...args(identity), sampleId }),
-    identity: () => service.syncIdentity(), hasBinding: () => Boolean(binding.snapshot()), consent: () => binding.snapshot()?.encryption ?? null,
+    identity: () => service.syncIdentity(), accountEmail: () => service.snapshot().profile?.email ?? null,
+    hasBinding: () => Boolean(binding.snapshot()), consent: () => binding.snapshot()?.encryption ?? null,
     changed(value) {
       service.updateEncryption(value);
       const ready = owner.isUnlocked();

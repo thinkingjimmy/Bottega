@@ -6,11 +6,13 @@
   "exports": {
     "./globals.css": "./src/styles/globals.css",
     "./components/ai-elements/message/plugin-loader": "./src/components/ai-elements/message/plugin-loader.ts",
+    "./components/account/moment": "./src/components/account/moment.ts",
     "./components/*": "./src/components/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
     "./lib/*": "./src/lib/*.ts",
     "./lib/cloud-copy/*": "./src/lib/cloud-copy/*.ts",
     "./lib/cloud-copy/encryption": "./src/lib/cloud-copy/encryption/index.ts",
+    "./lib/cloud-copy/protection": "./src/lib/cloud-copy/protection/index.ts",
     "./lib/account-deletion-copy": "./src/lib/account-deletion-copy/index.ts",
     "./lib/ui-text": "./src/lib/ui-text.tsx",
     "./lib/ui-text-copy": "./src/lib/ui-text-copy/index.ts",
@@ -23,6 +25,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-chat/shell-bridge": "workspace:*",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",

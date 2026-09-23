@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared message action primitives and caller-owned clipboard, edit/fork capabilities, labels, timestamps and optional actions.
- * [OUTPUT]: Provides ConversationActions and ConversationDownload with common edit/fork controls, mirrored alignment, hover/keyboard visibility and single-flight copy feedback.
+ * [OUTPUT]: Provides ConversationActions and ConversationDownload (native save inside the mobile shell) with common edit/fork controls, mirrored alignment, hover/keyboard visibility and single-flight copy feedback.
  * [POS]: Common action row for native, remote and imported messages; platform capabilities stay with the caller.
  */
 import { ArrowsSplitIcon } from "@phosphor-icons/react";
@@ -9,6 +9,7 @@ import { CheckIcon, CopyIcon, DownloadIcon, GitForkIcon, PencilIcon } from "luci
 import { MessageAction, MessageActions } from "../ai-elements/message";
 import { Button } from "../ui/button";
 import { cn } from "../../lib/utils";
+import { useSaveLink } from "../../lib/save-blob";
 
 type ConversationCommand = {
   label: string;
@@ -118,12 +119,16 @@ export function ConversationDownload({
   filename: string;
   label: string;
 }) {
+  const save = useSaveLink(filename);
   return (
-    <Button asChild variant="ghost" size="icon-sm">
-      <a href={href} download={filename} aria-label={label} title={label}>
-        <DownloadIcon />
-      </a>
-    </Button>
+    <>
+      <Button asChild variant="ghost" size="icon-sm">
+        <a href={href} download={filename} aria-label={label} title={label} onClick={save.onClick}>
+          <DownloadIcon />
+        </a>
+      </Button>
+      {save.failed && <span role="alert" className="text-destructive text-xs">{save.failed}</span>}
+    </>
   );
 }
 

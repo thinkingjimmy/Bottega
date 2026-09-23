@@ -124,9 +124,14 @@ const GeneralSettingsView = lazy(() =>
     default: module.GeneralSettingsView,
   }))
 );
-const AboutSettingsView = lazy(() =>
-  import("@/views/settings-about").then((module) => ({
-    default: module.AboutSettingsView,
+const UpdatesSettingsView = lazy(() =>
+  import("@/views/settings-updates").then((module) => ({
+    default: module.UpdatesSettingsView,
+  }))
+);
+const CommunitySettingsView = lazy(() =>
+  import("@/views/settings-community").then((module) => ({
+    default: module.CommunitySettingsView,
   }))
 );
 const ShortcutsSettingsView = lazy(() =>
@@ -134,9 +139,9 @@ const ShortcutsSettingsView = lazy(() =>
     default: module.ShortcutsSettingsView,
   }))
 );
-const BackendsSettingsView = lazy(() =>
-  import("@/views/settings-backends").then((module) => ({
-    default: module.BackendsSettingsView,
+const ProvidersSettingsView = lazy(() =>
+  import("@/views/settings-providers").then((module) => ({
+    default: module.ProvidersSettingsView,
   }))
 );
 const PersonalizationSettingsView = lazy(() =>
@@ -274,7 +279,7 @@ function ProductApp() {
   };
 
   useEffect(() => onSetupEvent((event) => {
-    if (event.type === "open-backends") selectSettings("backends");
+    if (event.type === "open-agent-setup") setup.openOnboarding("agent");
   }));
 
   /* 谁把你送进设置的不重要，出去只能有一个意思——覆盖层与路由两条
@@ -377,7 +382,7 @@ function ProductApp() {
   }
 
   return (
-    <SettingsNavigationContext.Provider value={{ openUsage: (trigger, agent) => { settingsReturnFocus.current = trigger; selectSettings("usage"); setUsageAgent(agent ?? null); }, openAgents: () => selectSettings("backends"), openAccount: () => selectSettings("account") }}>
+    <SettingsNavigationContext.Provider value={{ openUsage: (trigger, agent) => { settingsReturnFocus.current = trigger; selectSettings("usage"); setUsageAgent(agent ?? null); }, openAgents: () => selectSettings("providers"), openUpdates: () => selectSettings("updates"), openAccount: () => selectSettings("account") }}>
     <AppsProvider>
       <HistoryProvider>
         <ProjectsProvider>
@@ -440,7 +445,7 @@ function ProductApp() {
                             className={cn("h-full", settingsSection && "hidden")}
                           >
                             <Routes>
-                              <Route path="/settings/about" element={<AboutSettingsView />} />
+                              <Route path="/settings/updates" element={<UpdatesSettingsView />} />
                               <Route path="/" element={<ChatRoute surfaceVisible={!settingsSection} />} />
                               <Route path="/chat/:id" element={<ChatRoute surfaceVisible={!settingsSection} />} />
                               <Route
@@ -481,9 +486,10 @@ function ProductApp() {
                           <CompatibilityUpdateDialog />
                           {settingsSection === "account" && AccountSettingsView && <AccountSettingsView />}
                           {settingsSection === "general" && <GeneralSettingsView />}
-                          {settingsSection === "about" && <AboutSettingsView />}
+                          {settingsSection === "updates" && <UpdatesSettingsView />}
+                          {settingsSection === "community" && <CommunitySettingsView />}
                           {settingsSection === "shortcuts" && <ShortcutsSettingsView />}
-                          {settingsSection === "backends" && <BackendsSettingsView />}
+                          {settingsSection === "providers" && <ProvidersSettingsView />}
                           {settingsSection === "personalization" && <PersonalizationSettingsView />}
                           {settingsSection === "browser" && <BrowserSettingsView />}
                           {settingsSection === "tools" && <ToolsSettingsView />}

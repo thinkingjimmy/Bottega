@@ -1,5 +1,5 @@
 /**
- * [INPUT]: An optional host step renderer, account-scoped setup progress, password validators, field-specific errors and existing settings controls.
+ * [INPUT]: An optional host step renderer, account-scoped setup progress, password validators (creation checked against the signed-in email), field-specific errors and existing settings controls.
  * [OUTPUT]: Password setup with retained input nodes across retries, inline final failures and consent-aware cancellation.
  * [POS]: Setup form step 2; main owns bounded retries, refreshed reviews, encryption and durable approval.
  */
@@ -70,7 +70,7 @@ export function PasswordStep({ state, Step = SetupStep }: { state: CloudAccountS
     validation.resetErrors();
     const values = new FormData(event.currentTarget), password = String(values.get("password") ?? ""), confirmation = String(values.get("confirmation") ?? "");
     if (needsPassword) {
-      try { (creating ? validateNewPassword : validatePassword)(password); }
+      try { if (creating) validateNewPassword(password, { email: state.profile?.email }); else validatePassword(password); }
       catch (error) { validation.reportFailure(passwordFailure(error)); return; }
       let matched = !creating;
       if (creating) { try { matched = passwordsMatch(password, confirmation); } catch { matched = false; } }
@@ -133,7 +133,7 @@ export function PasswordStep({ state, Step = SetupStep }: { state: CloudAccountS
       </>}>
       {alert && <SettingsAlert>{alert}</SettingsAlert>}
       {!ready && !busy && !unavailable && <p role="status" className="text-sm">{t(`cloud.status.${state.status}`)}</p>}
-      {needsPassword && <EncryptionFields creating={creating} disabled={busy} errors={{ password: validation.errors.password, confirmation: validation.errors.confirmation }}
+      {needsPassword && <EncryptionFields creating={creating} email={state.profile?.email} disabled={busy} errors={{ password: validation.errors.password, confirmation: validation.errors.confirmation }}
         onEdit={validation.editField} describedBy="sync-setup-description" />}
     </Step>
   </form>;

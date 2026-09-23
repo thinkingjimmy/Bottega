@@ -103,16 +103,17 @@ export const mutateMemorySettings = (
   mutation: MemorySettingsMutation
 ): Promise<SettingsEnvelope> => bridge().mutateMemory(mutation);
 
+/* Surfaces without a settings bridge (App windows, isolated tests) simply hear no broadcasts; reads still fail loudly. */
 export const subscribeSettings = (
   listener: (envelope: SettingsEnvelope) => void
-) => bridge().onChanged(listener);
+) => window.settings?.onChanged(listener) ?? (() => {});
 
 export const chooseChatHomesRoot = () => bridge().chooseChatHomesRoot();
 /* Retry never shows a dialog: a configured folder can only be reopened in place,
    changing folders isn't supported. */
 export const retryLibrary = () => bridge().retryLibrary?.() ?? Promise.resolve(null);
 export const subscribeChatHomeStatus = (listener: (status: import("../../shared/settings-ipc").ChatHomeStatus) => void) =>
-  bridge().onChatHomeStatus?.(listener) ?? (() => {});
+  window.settings?.onChatHomeStatus?.(listener) ?? (() => {});
 
 export const acknowledgeFullAccess = (): Promise<SettingsEnvelope> =>
   bridge().acknowledgeFullAccess();

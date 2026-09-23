@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Base snapshots, mutations, attachment DTOs and history records.
- * [OUTPUT]: Defines Base data/mutation/list/private attachment ports, including account-scoped source-device display names.
+ * [OUTPUT]: Defines Base data/mutation/list/private attachment ports, including account-scoped source-device display names and the optional image-source admission of converting hosts.
  * [POS]: Platform boundary; browser memory and desktop stores implement the same presentation contracts.
  */
 import type { BaseColumn, BaseMetaPatch, BaseSnapshot, BaseRow, BaseRowPatch, BaseAttachmentValue, PutAttachmentRequest,
@@ -31,6 +31,8 @@ export interface BaseAttachmentFacade {
   stageImage?(input: { ownerKey: string; ownerInstanceId: string; surfaceLeaseId?: string; file: File; uploadId: string }, signal: AbortSignal,
     progress?: (value: { phase: string; bytes: number; total: number }) => void): Promise<BaseAttachmentValue>;
   discardImages?(uploadIds: string[]): Promise<void>;
+  /** Set when stageImage converts picked images itself (HEIC, oversized photos, metadata); the editor then admits any image source up to the Base limit. */
+  imageSources?: { accept: string; admits(file: File): boolean };
   preview(input: { value: BaseAttachmentValue; owner?: { chatId: string; incarnationId: string }; baseOwner?: { ownerKey: string; ownerInstanceId: string }; maxEdge: number },
     signal: AbortSignal): Promise<{ url: string; release(): void } | null>;
   galleryThumbnail(input: { sourceRef: GalleryMediaSourceRef; maxEdge: number }, signal: AbortSignal): Promise<GalleryThumbnailResult & { release?: () => void }>;

@@ -4,7 +4,7 @@
  * [POS]: Single renderer authority for Settings navigation, archive deep links, and active-section state, including the Extensions-to-Packages alias
  */
 
-export const ABOUT_SETTINGS_PATH = "/settings/about";
+export const UPDATES_SETTINGS_PATH = "/settings/updates";
 const SETTINGS_ROUTE_PREFIX = "/settings/";
 
 /* 设置的两条真实路由：常量与判据同住一处，路由的事只有这一个知情人。 */
@@ -36,10 +36,11 @@ export const archiveSettingsTargetPath = (
 /** 覆盖层能承载的档位：盖在当前路由之上，关掉即回到原地。 */
 export type SettingsOverlaySection =
   | "account"
-  | "about"
+  | "updates"
+  | "community"
   | "general"
   | "shortcuts"
-  | "backends"
+  | "providers"
   | "personalization"
   | "browser"
   | "tools"
@@ -75,7 +76,7 @@ export function settingsExitTarget(
 export function settingsRouteSection(
   pathname: string
 ): SettingsDestination | null {
-  if (pathname === ABOUT_SETTINGS_PATH) return "about";
+  if (pathname === UPDATES_SETTINGS_PATH) return "updates";
   if (pathname === MEMORY_SETTINGS_PATH) return "memory";
   if (pathname === ARCHIVE_SETTINGS_PATH) return "archive";
   if (pathname === TOOLS_SETTINGS_PATH) return "tools";

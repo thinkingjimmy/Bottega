@@ -229,8 +229,8 @@
     },
     {
       "path": "../../packages/base-ui/src/ui/editors/cells/base-record-editor.tsx",
-      "bytes": 14014,
-      "sha256": "sha256:0b6573906a1d21ad0fbe5de008a9b6dfac480d30c42db28ff05756d611572194"
+      "bytes": 14362,
+      "sha256": "sha256:cbb65d484d0ced656852e880dd4be1849da70f430723350b658fae6d1236415b"
     },
     {
       "path": "../../packages/base-ui/src/ui/editors/cells/base-scalar-editor.tsx",
@@ -284,8 +284,8 @@
     },
     {
       "path": "../../packages/base-ui/src/ui/platform/contracts.ts",
-      "bytes": 3044,
-      "sha256": "sha256:d7a476c9a516455a667dbd7535056a3bd812afe4ac860fb532e29a80ab98485c"
+      "bytes": 3327,
+      "sha256": "sha256:5f842d2527dd1cdeeb0bb160b4892f5774564ab460466938f10201b4a5a1d66a"
     },
     {
       "path": "../../packages/base-ui/src/ui/platform/gallery.ts",
@@ -698,7 +698,7 @@
       "sha256": "sha256:fd93d05f1b44db53d4cb6ef8f9fa494fbbc81210b0de9a8b7b86287db686b3c4"
     }
   ],
-  "runtimeSbomDigest": "sha256:824779e73020b6db72e11bee02d31832f8ff79eb03c20c3a55b787ffe448437f",
+  "runtimeSbomDigest": "sha256:e6c28d79cf05724e6a5db589d31dc0f95fd60e2d04171c8c7ba4ca46d2d3c14e",
   "noticesDigest": "sha256:dde2c417b5eaaf39421765603f3329983f6a52d0b9e1a4ab90ece17186187e46",
   "authoringContracts": [
     "bottega-react-v1",

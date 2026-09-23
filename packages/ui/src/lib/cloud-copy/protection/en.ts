@@ -1,0 +1,46 @@
+/**
+ * [INPUT]: Offline reading, protected-session and native keep-unlocked product language.
+ * [OUTPUT]: Reference copy for the offline banner and read-only workspace, the per-device offline switch and one-time phone offer, the background mask, native secure-storage recovery and the biometric setting, with the closed five-language key type.
+ * [POS]: Shared Cloud Web / mobile shell messages for W7, W21 and W24; no platform dependencies.
+ */
+export const en = {
+  offlineBanner: "Offline · Last synced {{time}}",
+  offlineBannerUnknown: "Offline · Showing saved content",
+  offlineReadOnly: "Read only. Sending, editing and downloads return when you reconnect.",
+  reconnecting: "Reconnecting…",
+  savedChats: "Saved chats",
+  allChats: "All chats",
+  offlineEmpty: "No chats are saved on this device yet. Connect to load your workspace.",
+  offlineChatMissing: "This chat isn’t saved for offline reading.",
+  offlineEarlier: "Earlier messages are available when you’re back online.",
+  offlineDecryptFailed: "Saved content could not be decrypted. Connect to reload it.",
+  offlineUnavailableTitle: "Connect to open your workspace",
+  offlineExpired: "It has been too long since this device last connected. Connect to the internet to keep reading.",
+  offlineNoSnapshot: "Offline reading isn’t turned on for this device. Turn it on in Settings while you’re online.",
+  offlineClock: "This device’s clock moved backwards. Connect to the internet to verify access.",
+  offlineOpening: "Opening saved content…",
+  retry: "Retry",
+  maskTitle: "Bottega is locked",
+  maskDescription: "Verify it’s you to show your workspace.",
+  maskResume: "Unlock",
+  maskVerifying: "Verifying…",
+  maskCancelled: "Verification was cancelled. Try again, or use your sync password.",
+  usePassword: "Use sync password",
+  capabilityMissing: "Secure storage on this device isn’t available right now, so the saved unlock key can’t be opened. Restart or update the app, or enter your sync password to continue.",
+  biometricChanged: "Your fingerprint or face settings changed, so the saved unlock key can no longer be opened. Enter your sync password once to continue.",
+  biometricLabel: "Require fingerprint or face",
+  biometricDescription: "Verify with your fingerprint or face each time you return to Bottega. If your enrolled fingerprints or face change, you’ll need your sync password once.",
+  biometricNotEnrolled: "Set up fingerprint or face unlock in your phone’s settings to use this.",
+  biometricNeedsKeepUnlocked: "Turn on “Keep unlocked” by unlocking with your sync password first.",
+  biometricFailed: "The setting could not be saved. Try again.",
+  offlinePhoneLabel: "Keep chats available offline on this phone",
+  offlineBrowserLabel: "Trust this browser for offline reading",
+  offlineDescription: "Saves what this device needs to open your saved chats without a connection. It can open offline for up to 30 days after it last connected, then it needs to reconnect. Chats already saved on this device stay here until you turn this off, lock this device or sign out.",
+  offlineBrowserWarning: "Only turn this on in a browser you trust: anyone who can use this browser profile can open the saved chats offline.",
+  offlineChangeFailed: "Offline reading could not be changed. Try again.",
+  offlineOfferTitle: "Keep chats available offline on this phone?",
+  offlineOfferBody: "Your saved chats will open without a connection for up to 30 days after this phone last connected. You can turn this off in Settings at any time, which removes the offline copy.",
+  offlineOfferAccept: "Keep offline",
+  offlineOfferDecline: "Not now",
+};
+export type CloudProtectionCopy = Record<keyof typeof en, string>;

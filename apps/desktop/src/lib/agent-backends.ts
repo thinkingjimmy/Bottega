@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on shared Agent identity, shared BackendInfo and pure availability projections.
- * [OUTPUT]: Provides backend identity, shared admission helpers and the always-complete title-Agent option list with its confirmed-blocker notices; first checks wait while same-environment background checks preserve eligibility.
+ * [OUTPUT]: Provides backend identity, the user picker order, shared admission helpers and the always-complete title-Agent option list with its confirmed-blocker notices; first checks wait while same-environment background checks preserve eligibility.
  * [POS]: The renderer's single source of backend presentation truth; Composer, Sidebar, Header, and Settings never hard-code backend icons or readiness rules
  */
 import { projectAvailability, submissionDecision } from "../../shared/agent-availability/projection";
@@ -13,6 +13,11 @@ import {
   type BackendInfo,
   type HeadlessPurpose,
 } from "../../shared/agent-ipc";
+import type { AppSettings } from "../../shared/settings-ipc";
+
+/** The user's picker order; settings are always normalized by main, so null only means "not loaded yet". */
+export const providerOrder = (settings: Pick<AppSettings, "providerOrder"> | null | undefined): readonly AgentBackendId[] =>
+  settings?.providerOrder ?? AGENT_BACKEND_ORDER;
 
 export const isAgentBackendId = (value: string): value is AgentBackendId =>
   (AGENT_BACKEND_ORDER as readonly string[]).includes(value);

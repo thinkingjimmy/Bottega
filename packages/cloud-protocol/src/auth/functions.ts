@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on closed account/device/environment schemas, immutable spaces, continuity and business registries.
- * [OUTPUT]: Provides the implemented public function registry with typed arguments/results, the optional machine key on device registration/heartbeat, the account-level computer list and machine-wide rename, and conditional heartbeat epoch replacement.
+ * [OUTPUT]: Provides the implemented public function registry with typed arguments/results, the protocol-free shell update metadata query, the optional machine key on device registration/heartbeat, the account-level computer list and machine-wide rename, and conditional heartbeat epoch replacement.
  * [POS]: Shared contract authority; private Convex exports are verified against this registry.
  */
 import { z } from "zod";
-import { protocolHeaderSchema, publicConfigSchema } from "../config";
+import { deploymentHeaderSchema, protocolHeaderSchema, publicConfigSchema, updateInfoSchema } from "../config";
 import { accountAccessSchema, cloudIdSchema, computerSchema, deviceNameSchema, devicePlatformSchema, deviceSchema, machineIdHashSchema } from "./index";
 import { libraryIdSchema, libraryOwnerSchema } from "./libraries";
 import { baseFunctions } from "../bases/functions";
@@ -21,9 +21,11 @@ import { remoteFunctions } from "../remote/functions";
 import { continuityFunctions } from "../continuity/functions";
 import { spacesFunctions } from "../spaces/functions";
 import { skillFunctions } from "../skills/functions";
+import { pushFunctions } from "../push/functions";
 const header = protocolHeaderSchema.shape;
 export const cloudFunctions = {
   ...skillFunctions,
+  ...pushFunctions,
   ...spacesFunctions,
   ...continuityFunctions,
   ...remoteFunctions,
@@ -38,6 +40,8 @@ export const cloudFunctions = {
   ...importedFunctions,
   ...turnFunctions,
   "config:get": { kind: "query", args: protocolHeaderSchema, result: publicConfigSchema },
+  /* No business-protocol gate: an outdated Web build inside the shell must still learn the App build it needs. */
+  "config:updateInfo": { kind: "query", args: deploymentHeaderSchema, result: updateInfoSchema },
   "account:bootstrap": { kind: "mutation", args: protocolHeaderSchema, result: accountAccessSchema },
   "account:getAccessState": { kind: "query", args: protocolHeaderSchema, result: accountAccessSchema },
   "devices:register": { kind: "mutation", args: z.object({ ...header, deviceId: cloudIdSchema, name: deviceNameSchema,

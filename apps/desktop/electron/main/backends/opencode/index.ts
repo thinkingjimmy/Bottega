@@ -7,7 +7,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { OpencodeTurnOptions } from "../../../../shared/agent-ipc";
-import { githubLatestVersion } from "../../setup/latest-version";
+import { npmLatestVersion } from "../../setup/latest-version";
 import { AcpTurn, type AcpSpawnConfig } from "../acp/acp-turn";
 import {
   commonCommandPaths,
@@ -202,7 +202,8 @@ export const opencodeBackend: BackendDescriptor = {
     return new AcpTurn(options, spawnConfig);
   },
   setup: {
-    latestVersion: () => githubLatestVersion("sst/opencode"),
+    latestVersion: () => npmLatestVersion("opencode-ai"),
+    selfUpdate: ["upgrade"],
     commands: {
       install: { command: INSTALL_COMMAND, dangerous: true },
       update: { command: "opencode upgrade", dangerous: true },

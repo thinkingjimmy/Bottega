@@ -2,7 +2,8 @@
  * [INPUT]: Depends on Intl.RelativeTimeFormat and the caller's locale.
  * [OUTPUT]: Provides relativeMoment — the coarse "3 hours ago" every account presence surface reads.
  * [POS]: A leaf of components/account, split out of device-list so the sidebar's computer strip can read a
- *   moment without the account settings rows, their list primitives and their buttons entering first paint.
+ *   moment without the account settings rows, their list primitives and their buttons entering first paint; the remote
+ *   composer's offline line imports it by its own package path.
  */
 /* Coarse on purpose: a presence surface needs "3 hours ago", not a timestamp. The browser clock is the only one it has. */
 export function relativeMoment(at: number, locale: string) {

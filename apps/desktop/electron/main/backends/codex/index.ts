@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { CodexTurnOptions } from "../../../../shared/codex-ipc";
 import { systemSkillsPath } from "../../system-skills";
-import { githubLatestVersion } from "../../setup/latest-version";
+import { npmLatestVersion } from "../../setup/latest-version";
 import { codexEnvironment, findCodexRuntime } from "./environment";
 import { AcpTurn } from "../acp/acp-turn";
 import { classifyAcpFailure } from "../acp/failure";
@@ -163,16 +163,14 @@ export const codexBackend: BackendDescriptor = {
     ],
   },
   setup: {
-    latestVersion: () => githubLatestVersion("openai/codex"),
+    latestVersion: () => npmLatestVersion("@openai/codex"),
+    selfUpdate: ["update"],
     commands: {
       install: {
         command: INSTALL_COMMAND,
         dangerous: true,
       },
-      update: {
-        command: INSTALL_COMMAND,
-        dangerous: true,
-      },
+      update: { command: "codex update", dangerous: true },
       login: { command: "codex login", dangerous: false },
     },
   },

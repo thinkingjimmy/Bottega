@@ -195,15 +195,13 @@ export const kimiBackend: BackendDescriptor = {
   skills: { sources: kimiSkillSources },
   setup: {
     latestVersion: () => githubLatestVersion("MoonshotAI/kimi-code"),
+    selfUpdate: ["upgrade"],
     commands: {
       install: {
         command: INSTALL_COMMAND,
         dangerous: true,
       },
-      update: {
-        command: INSTALL_COMMAND,
-        dangerous: true,
-      },
+      update: { command: "kimi upgrade", dangerous: true },
       login: { command: "kimi login", dangerous: false },
     },
   },

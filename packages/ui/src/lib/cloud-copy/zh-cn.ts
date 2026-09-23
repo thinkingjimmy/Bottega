@@ -162,7 +162,9 @@ export const cloudCopy = {
     "macos": "macOS",
     "windows": "Windows",
     "linux": "Linux",
-    "browser": "浏览器"
+    "browser": "浏览器",
+    "ios": "iOS",
+    "android": "Android"
   },
   "apps": {
     "title": "Apps",
@@ -245,6 +247,7 @@ export const cloudCopy = {
   "cancel": "取消",
   "retry": "重试",
   "retrying": "正在重试…",
+  "installAppUpdate": "安装更新",
   "save": "保存",
   "saving": "正在保存…",
   "rename": "改名",
@@ -273,6 +276,7 @@ export const cloudCopy = {
   "lastSeen": "上次在线：{{when}}",
   "webSession": "Web 会话",
   "appVersion": "Bottega {{version}}",
+  "mobileApp": "手机 App · {{version}}",
   "noDevices": "此页没有会话。",
   "current": "当前设备",
   "online": "在线",
@@ -355,6 +359,7 @@ export const cloudCopy = {
     "deleting": "账号删除处理中",
     "environment-mismatch": "云端环境与此应用不匹配",
     "client-outdated": "请更新 Bottega 后继续",
+    "app-outdated": "请更新 Bottega App 后继续",
     "error": "需要处理"
   },
   "error": {
@@ -375,7 +380,9 @@ export const cloudCopy = {
     "server-outdated": "云服务需要更新才能连接当前版本的 Bottega，请在服务更新后重试。",
     "request-failed": "无法完成请求，请重试。",
     "environment-mismatch": "此构建无法连接当前云端环境。",
-    "client-outdated": "请安装新版 Bottega 后连接。"
+    "client-outdated": "请安装新版 Bottega 后连接。",
+    "app-outdated": "此版本的 Bottega App 过旧，无法连接云端。请安装更新后继续。",
+    "app-outdated-store": "此版本的 Bottega App 过旧，无法连接云端。请从安装来源更新后重新打开。"
   },
   "pending": {
     "preparing": "正在准备登录…",

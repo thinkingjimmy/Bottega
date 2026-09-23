@@ -88,7 +88,10 @@ export type AppSettings = {
   titleAgent: AgentBackendId;
   titleModelByBackend: Partial<Record<AgentBackendId, string | null>>;
   defaultChatOptionsByBackend: DefaultChatOptionsByBackend;
-  lastSelectedBackend: AgentBackendId;
+  /** New Chats start on this Agent; switching inside a Chat never moves it. */
+  defaultBackend: AgentBackendId;
+  /** User order of Agents in every picker; always a permutation of AGENT_BACKEND_ORDER. */
+  providerOrder: AgentBackendId[];
   /** The Agent step was skipped with Install later: onboarding stops asking, and this computer can still operate others. */
   agentSetupDeferred?: boolean;
   /** The account already held this computer's name and the server suffixed it; Sync settings says so once. */

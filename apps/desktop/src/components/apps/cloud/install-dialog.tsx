@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useAppTranslation } from "@/components/providers/i18n-provider";
 import { useSetup } from "@/components/providers/setup-provider";
 import { maintenanceCapableBackends } from "@/lib/agent-backends";
-import { ABOUT_SETTINGS_PATH } from "@/lib/settings-navigation";
+import { UPDATES_SETTINGS_PATH } from "@/lib/settings-navigation";
 import { AgentSelect, type AgentSelectValue } from "../install/agent-select";
 import { AppInstallGrants, AppInstallReadme } from "../install/app-install-disclosure";
 import { AppRequirementsForm, appRequirementsSatisfied } from "../install/app-requirements-form";
@@ -63,7 +63,7 @@ function InstallForm({ userId, appId, name, update, online, onClose, onRetry }: 
       <div className="min-h-0 space-y-4 overflow-y-auto px-1">
         {!online ? <p role="status">{t("cloud.appInstall.online")}</p> : compatibility ? <>
           <p role="status">{t(`appHost.${compatibility.code}`, { name, minimum: compatibility.minBottegaVersion ?? "—", current: compatibility.currentVersion ?? "—" })}</p>
-          <Button variant="outline" onClick={() => { onClose(); void navigate(ABOUT_SETTINGS_PATH); }}>{t("appHost.upgrade")}</Button>
+          <Button variant="outline" onClick={() => { onClose(); void navigate(UPDATES_SETTINGS_PATH); }}>{t("appHost.upgrade")}</Button>
         </> : !review && !failed ? <p role="status" aria-live="polite">{t("cloud.appInstall.preparing")}</p> : null}
         {failed && <p role="alert" className="text-destructive">{t("cloud.appInstall.failed")}</p>}
         {review && <>

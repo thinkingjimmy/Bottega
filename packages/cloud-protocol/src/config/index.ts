@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on Zod and standard URL parsing.
- * [OUTPUT]: Provides strict protocol-v7 encrypted-business handshakes, a boolean remote capability flag, limits and request headers.
+ * [OUTPUT]: Provides strict protocol-v9 encrypted-business handshakes, a boolean remote capability flag, limits, request headers and the protocol-free native-shell update metadata contract.
  * [POS]: Shared configuration boundary for desktop, Web and the private backend.
  */
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 export const MAX_BLOB_BYTES = 50_000_000;
 export const MAX_PART_BYTES = 8_388_608;
 export const MAX_PARTS = 6;
@@ -49,6 +49,16 @@ export const publicConfigSchema = z.object({
   ) as { [K in keyof typeof CLOUD_LIMITS]: z.ZodLiteral<(typeof CLOUD_LIMITS)[K]> }).strict(),
 }).strict();
 type PublicCloudConfig = z.infer<typeof publicConfigSchema>;
+/* The native shell's own axis. It is read before (and regardless of) the business handshake, so it names only the
+   environment it belongs to: a Web build older or newer than the server still learns which App build it needs. */
+export const deploymentHeaderSchema = protocolHeaderSchema.omit({ protocolVersion: true });
+export type DeploymentHeader = z.infer<typeof deploymentHeaderSchema>;
+export const updateInfoSchema = z.object({
+  environmentId: environmentIdSchema, deploymentId: deploymentIdSchema,
+  mobile: z.object({ minBridgeVersion: z.number().int().positive(), minAppBuild: z.number().int().positive(),
+    installUrl: z.string().url().refine(value => value.startsWith("https://")).nullable() }).strict(),
+}).strict();
+export type UpdateInfo = z.infer<typeof updateInfoSchema>;
 export function assertHandshake(expected: CloudBuildConfig, input: unknown): PublicCloudConfig {
   const config = publicConfigSchema.parse(input);
   if (config.environmentId !== expected.environmentId || config.deploymentId !== expected.deploymentId ||

@@ -17,7 +17,7 @@ import { sealRemoteCapabilities } from "@ai-chat/cloud-protocol/remote/encrypted
 import type { ServerClock } from "@ai-chat/cloud-protocol/continuity/clock";
 import type { CloudFunctionArgs, CloudFunctionResult } from "@ai-chat/cloud-protocol";
 import { remoteModelsSchema, type RemoteAgentCapability, type RemoteModel } from "@ai-chat/cloud-protocol/remote/model";
-import { AGENT_BACKEND_ORDER, type BackendModelInfo } from "../../../../../shared/agent-ipc";
+import type { BackendModelInfo } from "../../../../../shared/agent-ipc";
 import { acquireAgentProcessLease } from "../../../agent-process-supervisor";
 import type { AgentTurn } from "../../../backends/types";
 import type { BackendRuntimeSnapshot } from "../../../backends/availability/runtime";
@@ -317,7 +317,8 @@ export class RemoteCommandRuntime {
     }
     if (!projectFailed) this.failures.delete("projects");
     try {
-      const agents: RemoteAgentCapability[] = await Promise.all(AGENT_BACKEND_ORDER.map(async backend => {
+      // Published in the user's Settings › Providers order, so every remote picker lists Agents the way the desktop does.
+      const agents: RemoteAgentCapability[] = await Promise.all(settings.get().providerOrder.map(async backend => {
         const options = settings.getBackendDefaults(backend);
         try {
           const runtime = await backendRuntimeRegistry.resolve(backend);

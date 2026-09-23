@@ -1,9 +1,9 @@
 /**
  * [INPUT]: Admitted worker, calibrated server clock, original remote inputs and authenticated Chat/target snapshots.
- * [OUTPUT]: Frozen command bytes, verified private receipts and encrypted local execution reports.
+ * [OUTPUT]: Frozen command bytes, the exact command budget check and a conservative draft estimate (`remote-payload-budget`), verified private receipts and encrypted local execution reports.
  * [POS]: Client-only remote codec; caller-owned attempts and coordinator records own retry custody.
  */
-import { isRemoteWorkspaceQuery, assertRemoteReferenceTarget } from "../input/references";
+import { isRemoteWorkspaceQuery, assertRemoteReferenceTarget, type RemoteReference } from "../input/references";
 import { isRemoteTurnPayload } from "../model";
 import { z } from "zod";
 import { privateIntent, deliveredIntent } from "./intent";
@@ -11,7 +11,7 @@ import type { ProtocolHeader } from "../../config";
 import { canonicalJson } from "../../encryption/encoding";
 import type { FileCipherPort } from "../../blobs/encrypted";
 import type { ServerClock } from "../../continuity/clock";
-import { assertCrypto, assertExpectedScope, encodeBase64url, type CryptoContext } from "../../encryption";
+import { assertCrypto, assertExpectedScope, encodeBase64url, PLAINTEXT_LIMITS, type CryptoContext } from "../../encryption";
 import type { CloudChatHead } from "../../chats/model";
 import { hashRemoteCommand, remoteCommandInputSchema, remoteCommandSchema, remotePayloadSchema, remoteReceiptSchema, remoteReportSchema,
   type RemoteCommandInput, type RemoteCommandReport } from "../model";
@@ -20,8 +20,25 @@ import { encryptedRemoteReceiptSchema, encryptedRemoteReportSchema, frozenRemote
 import { remoteCommandContext, remoteResultContext, validateRemoteCommand, validateRemotePacket } from "./wire";
 import { remoteAttachmentBlobIds, remoteConsentMatches } from "../input/model";
 export type RemoteCipherPort = FileCipherPort;
+/** Commands seal under purpose 4; this is the whole budget for one command's canonical private JSON. */
+export const REMOTE_COMMAND_PLAINTEXT_BYTES = PLAINTEXT_LIMITS[4];
+/* A draft is checked before its files are uploaded: every staged descriptor fits in this many canonical bytes
+   (the all-escaped worst legal descriptor is about 3.4 KiB), and the fixed fields a send adds fit in the same again. */
+const ATTACHMENT_RESERVE_BYTES = 4096, COMMAND_FIELDS_RESERVE_BYTES = 4096;
+const privateCommandValue = (input: RemoteCommandInput) => input.intent ? privateIntent(input) : { schema: "bottega.remote-command/v1", payload: input.payload };
+const canonicalBytes = (value: unknown) => new TextEncoder().encode(canonicalJson(value)).byteLength;
+/** Exactly what will be sealed; a command over budget is refused before any entry, key use or transport. */
+export function assertRemoteCommandBudget(input: RemoteCommandInput) {
+  if (canonicalBytes(privateCommandValue(input)) > REMOTE_COMMAND_PLAINTEXT_BYTES) throw new Error("remote-payload-budget");
+}
+/** A composer's conservative check: text and references are exact, each file and the send's own fields take their bound. */
+export function remoteDraftBytes(draft: { text: string; references?: readonly RemoteReference[]; files: number }) {
+  return canonicalBytes({ schema: "bottega.remote-command/v1", payload: { text: draft.text, references: draft.references ?? [] } }) +
+    draft.files * ATTACHMENT_RESERVE_BYTES + COMMAND_FIELDS_RESERVE_BYTES;
+}
 export async function sealRemotePacket(crypto: RemoteCipherPort, context: CryptoContext, value: unknown, signal?: AbortSignal): Promise<RemotePacket> {
   const plaintext = new TextEncoder().encode(canonicalJson(value));
+  if (plaintext.byteLength > PLAINTEXT_LIMITS[context.purpose]) throw new Error("remote-payload-budget");
   try {
     const result = await crypto.run({ kind: "encrypt", context, plaintext }, signal); assertCrypto(result.kind === "encrypted");
     return remotePacketSchema.parse({ envelope: encodeBase64url(result.envelope), ciphertextHash: result.ciphertextHash, ciphertextBytes: result.envelope.byteLength });
@@ -64,7 +81,8 @@ export async function prepareRemoteCommand(raw: RemoteCommandInput, head: CloudC
     ...(remoteAttachmentBlobIds(payload).length ? { attachmentBlobIds: remoteAttachmentBlobIds(payload) } : {}),
     expectedChatVersion: isRemoteTurnPayload(payload) ? payload.agentSelection?.expectedFactRevision ?? head.catalogRevision : head.catalogRevision,
     expiresAt, packet: { envelope: "AA", ciphertextHash: "0".repeat(64), ciphertextBytes: 1 }, ciphertextHash: "0".repeat(64) };
-  command.packet = await sealRemotePacket(crypto, remoteCommandContext(crypto.scope, command), input.intent ? privateIntent(input) : { schema: "bottega.remote-command/v1", payload }, signal);
+  assertRemoteCommandBudget(input);
+  command.packet = await sealRemotePacket(crypto, remoteCommandContext(crypto.scope, command), privateCommandValue(input), signal);
   command.ciphertextHash = command.packet.ciphertextHash;
   return frozenRemoteCommandSchema.parse({ kind: "encrypted-remote-command", encryptedSpace: { scope: crypto.scope, keyPackageFingerprint: crypto.keyPackageFingerprint },
     plaintextHash: hashRemoteCommand({ ...input, ...header, sourceDeviceId: crypto.session.deviceId }), command });

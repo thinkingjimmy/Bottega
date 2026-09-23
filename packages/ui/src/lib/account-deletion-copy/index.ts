@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the five supported UI locales and the account erasure product contract.
- * [OUTPUT]: Provides precise Google authorization, permanent deletion and local retention copy.
+ * [OUTPUT]: Provides precise Google authorization, permanent deletion, local retention and phone-to-browser continuation copy.
  * [POS]: Shared account-deletion copy without platform or authentication dependencies.
  */
 const copies = {
@@ -24,7 +24,12 @@ const copies = {
     "browser": "Review the account and confirm with Google in your browser.",
     "retry": "Check original request",
     "startAgain": "Start a new review",
-    "loading": "Checking account…"
+    "loading": "Checking account…",
+    "browserPending": "Finish in your browser: continue with the same Google account and confirm there. This page updates when you come back.",
+    "continuation": "You started deleting this account in the Bottega app. Continue with the same Google account to confirm it here.",
+    "continuationWrongAccount": "This Google account is not the account being deleted. Continue with Google and choose the account you started from.",
+    "cancelled": "Google sign-in was cancelled. Continue with Google to try again.",
+    "returnToApp": "Account deletion confirmed. You can return to the Bottega app."
   },
   "zh-cn": {
     "title": "删除云端账号",
@@ -46,7 +51,12 @@ const copies = {
     "browser": "请在浏览器中查看账号，并通过 Google 确认。",
     "retry": "查询原请求",
     "startAgain": "重新查看账号",
-    "loading": "正在检查账号…"
+    "loading": "正在检查账号…",
+    "browserPending": "请在浏览器中完成：使用同一 Google 账号继续并在那里确认。回到此页面后会自动更新。",
+    "continuation": "你在 Bottega App 中发起了删除此账号。请使用同一 Google 账号继续，并在这里确认。",
+    "continuationWrongAccount": "此 Google 账号不是要删除的账号。请使用 Google 继续，并选择发起删除的账号。",
+    "cancelled": "Google 登录已取消。请使用 Google 继续以重试。",
+    "returnToApp": "账号删除已确认。你可以返回 Bottega App。"
   },
   "ja": {
     "title": "クラウドアカウントを削除",
@@ -68,7 +78,12 @@ const copies = {
     "browser": "ブラウザでアカウントを確認し、Google で認証してください。",
     "retry": "元のリクエストを確認",
     "startAgain": "新しく確認を開始",
-    "loading": "アカウントを確認中…"
+    "loading": "アカウントを確認中…",
+    "browserPending": "ブラウザで完了してください：同じ Google アカウントで続行し、そこで確認します。戻るとこのページは更新されます。",
+    "continuation": "Bottega アプリでこのアカウントの削除を開始しました。同じ Google アカウントで続行し、ここで確認してください。",
+    "continuationWrongAccount": "この Google アカウントは削除対象のアカウントではありません。Google で続行し、削除を開始したアカウントを選択してください。",
+    "cancelled": "Google へのログインがキャンセルされました。Google で続行して再試行してください。",
+    "returnToApp": "アカウントの削除を確認しました。Bottega アプリに戻れます。"
   },
   "fr": {
     "title": "Supprimer le compte cloud",
@@ -90,7 +105,12 @@ const copies = {
     "browser": "Vérifiez le compte et confirmez avec Google dans votre navigateur.",
     "retry": "Vérifier la demande initiale",
     "startAgain": "Recommencer la vérification",
-    "loading": "Vérification du compte…"
+    "loading": "Vérification du compte…",
+    "browserPending": "Terminez dans votre navigateur : continuez avec le même compte Google et confirmez-y. Cette page se met à jour à votre retour.",
+    "continuation": "Vous avez commencé à supprimer ce compte dans l’app Bottega. Continuez avec le même compte Google pour confirmer ici.",
+    "continuationWrongAccount": "Ce compte Google n’est pas celui que vous supprimez. Continuez avec Google et choisissez le compte de départ.",
+    "cancelled": "La connexion Google a été annulée. Continuez avec Google pour réessayer.",
+    "returnToApp": "Suppression du compte confirmée. Vous pouvez revenir à l’app Bottega."
   },
   "es": {
     "title": "Eliminar cuenta en la nube",
@@ -112,7 +132,12 @@ const copies = {
     "browser": "Revisa la cuenta y confirma con Google en tu navegador.",
     "retry": "Comprobar la solicitud original",
     "startAgain": "Empezar una nueva revisión",
-    "loading": "Comprobando cuenta…"
+    "loading": "Comprobando cuenta…",
+    "browserPending": "Termina en tu navegador: continúa con la misma cuenta de Google y confirma allí. Esta página se actualiza al volver.",
+    "continuation": "Empezaste a eliminar esta cuenta en la app de Bottega. Continúa con la misma cuenta de Google para confirmarlo aquí.",
+    "continuationWrongAccount": "Esta cuenta de Google no es la que se está eliminando. Continúa con Google y elige la cuenta desde la que empezaste.",
+    "cancelled": "Se canceló el inicio de sesión con Google. Continúa con Google para volver a intentarlo.",
+    "returnToApp": "Eliminación de cuenta confirmada. Puedes volver a la app de Bottega."
   }
 };
 export function accountDeletionCopy(locale: string) {

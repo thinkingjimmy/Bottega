@@ -5,6 +5,7 @@
  */
 export * from "./config";
 export * from "./auth";
+export * from "./entitlements";
 export * from "./blobs";
 export * from "./blobs/functions";
 export * from "./blobs/transfer";

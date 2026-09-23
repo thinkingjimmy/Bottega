@@ -1,6 +1,7 @@
 packages:
   - apps/desktop
   - packages/*
+  # Standalone Expo shell with its own lockfile (mobile PRD §5.1).
 
 allowBuilds:
   electron: true

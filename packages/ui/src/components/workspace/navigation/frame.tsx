@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Navigation destinations, metadata section models, host actions and optional native window chrome.
- * [OUTPUT]: WorkspaceNavigation owns the complete brand/header, the computer strip above the groups, primary routes, ordered groups or the sentence that replaces them, settings footer and resize rail, live or inert.
+ * [OUTPUT]: WorkspaceNavigation owns the complete brand/header, the computer strip above the groups, primary routes, ordered groups or the sentence that replaces them, settings footer and resize rail, live or inert, as the sidebar or as a phone home page.
  * [POS]: The single product sidebar view; Electron IPC, browser queries and routing stay in host adapters.
  */
 import type { ComponentProps, ReactElement, ReactNode } from "react";
@@ -68,6 +68,11 @@ export type WorkspaceNavigationProps = {
   showToggle?: boolean;
   /** A waiting host draws the same chrome with nothing behind it: header controls keep their shape but take no focus and no clicks. */
   inert?: boolean;
+  /**
+   * "page" draws the same groups as a phone's home page: in flow at full width, no drawer, toggle or resize rail, the
+   * computer strip first, and no New chat row — the host puts its own creation control in `footerActions`.
+   */
+  surface?: "sidebar" | "page";
   width: number;
   onWidthChange(width: number): void;
   onMobileCloseAutoFocus?: ComponentProps<
@@ -94,6 +99,7 @@ export function WorkspaceNavigation({
   replacement,
   showToggle = true,
   inert = false,
+  surface = "sidebar",
   width,
   onWidthChange,
   onMobileCloseAutoFocus,
@@ -101,8 +107,13 @@ export function WorkspaceNavigation({
 }: WorkspaceNavigationProps) {
   const sidebar = useSidebar();
   const still = inert ? { "aria-disabled": true, tabIndex: -1 } : null;
+  const page = surface === "page";
   return (
-    <WorkspaceSidebar onMobileCloseAutoFocus={onMobileCloseAutoFocus}>
+    <WorkspaceSidebar
+      {...(page
+        ? { collapsible: "none" as const, className: "min-h-0 w-full flex-1", "data-workspace-navigation-surface": "page" }
+        : { onMobileCloseAutoFocus })}
+    >
       {chrome}
       {replacement}
       <div
@@ -145,7 +156,7 @@ export function WorkspaceNavigation({
                 <Bell aria-hidden className="size-4" />
               </button>
             )}
-            {(showToggle || sidebar.isMobile) && (
+            {!page && (showToggle || sidebar.isMobile) && (
               <button
                 type="button"
                 aria-label={toggleLabel}
@@ -157,17 +168,20 @@ export function WorkspaceNavigation({
               </button>
             )}
           </div>
+          {page && computers}
           <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={Boolean(newChat.active)}>
-                {newChat.render(
-                  <>
-                    <SquarePen />
-                    <span>{newChat.label}</span>
-                  </>,
-                )}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            {!page && (
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={Boolean(newChat.active)}>
+                  {newChat.render(
+                    <>
+                      <SquarePen />
+                      <span>{newChat.label}</span>
+                    </>,
+                  )}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
             <SidebarMenuItem>
               <SidebarMenuButton asChild isActive={Boolean(apps.active)}>
                 {apps.render(
@@ -180,7 +194,7 @@ export function WorkspaceNavigation({
               {appsExtras}
             </SidebarMenuItem>
           </SidebarMenu>
-          {computers}
+          {!page && computers}
         </SidebarHeader>
         <SidebarContent>
           <div
@@ -231,13 +245,15 @@ export function WorkspaceNavigation({
           </SidebarMenu>
         </SidebarFooter>
       </div>
-      <SidebarRail
-        resizable
-        width={width}
-        minWidth={WORKSPACE_SIDEBAR_MIN_WIDTH}
-        maxWidth={WORKSPACE_SIDEBAR_MAX_WIDTH}
-        onWidthChange={onWidthChange}
-      />
+      {!page && (
+        <SidebarRail
+          resizable
+          width={width}
+          minWidth={WORKSPACE_SIDEBAR_MIN_WIDTH}
+          maxWidth={WORKSPACE_SIDEBAR_MAX_WIDTH}
+          onWidthChange={onWidthChange}
+        />
+      )}
       {children}
     </WorkspaceSidebar>
   );

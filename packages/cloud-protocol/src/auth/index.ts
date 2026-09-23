@@ -1,17 +1,28 @@
 /**
- * [INPUT]: Depends on Zod and the shared environment contract.
- * [OUTPUT]: Provides account/device projections with the current connection epoch, the machine key devices register under, the account-level computer projection installations fold into with its client-side presence deadline and installation lookup, immutable login return modes and metadata, and closed product return paths.
+ * [INPUT]: Depends on Zod, the shared environment contract and the entitlement projection.
+ * [OUTPUT]: Provides account/device projections (desktop, web and mobile kinds; desktop, browser and ios/android platforms) with the current connection epoch and the ready account's entitlements, the machine key devices register under, the account-level computer projection installations fold into with its client-side presence deadline and installation lookup, immutable login return modes and metadata, and closed product return paths.
  * [POS]: Public authentication contracts; session credentials never enter device or account DTOs.
  */
 import { z } from "zod";
 import { CLOUD_LIMITS, environmentIdSchema } from "../config";
 import { googleAvatarUrl } from "./avatar";
+import { entitlementSchema } from "../entitlements";
 const hasControl = (value: string) => [...value].some(char => {
   const code = char.charCodeAt(0); return code < 32 || (code >= 127 && code <= 159);
 });
 export const cloudIdSchema = z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/);
 export const loginStateSchema = z.string().min(32).max(128).regex(/^[A-Za-z0-9_-]+$/);
-export const devicePlatformSchema = z.enum(["macos", "windows", "linux", "browser"]);
+/* A computer runs a desktop platform; a Web session runs `browser`; the native mobile shell reports its OS. */
+export const desktopPlatformSchema = z.enum(["macos", "windows", "linux"]);
+export const mobilePlatformSchema = z.enum(["ios", "android"]);
+export const devicePlatformSchema = z.enum(["macos", "windows", "linux", "browser", "ios", "android"]);
+export type DevicePlatform = z.infer<typeof devicePlatformSchema>;
+export const deviceKindSchema = z.enum(["desktop", "web", "mobile"]);
+export type DeviceKind = z.infer<typeof deviceKindSchema>;
+/** The kind a platform can register as; desktop additionally needs an acknowledged desktop login. */
+export function platformDeviceKind(platform: DevicePlatform): DeviceKind {
+  return platform === "browser" ? "web" : mobilePlatformSchema.safeParse(platform).success ? "mobile" : "desktop";
+}
 export const deviceNameSchema = z.string().min(1).max(40).refine(value => !hasControl(value), "Invalid device name");
 export function normalizeDeviceName(value: string) {
   // Bounding comes last so a hostname longer than the limit still loses its mDNS `.local` suffix.
@@ -20,10 +31,10 @@ export function normalizeDeviceName(value: string) {
 }
 export const lastSeenReasonSchema = z.enum(["sleep", "quit", "network", "unknown"]);
 /* One physical computer, SHA-256 of a hardware identifier the client never discloses. Installations of the
-   same computer (a second profile, a reinstall) share it; a browser has none. */
+   same computer (a second profile, a reinstall) share it; a browser or phone has none. */
 export const machineIdHashSchema = z.string().regex(/^[a-f0-9]{64}$/);
 export const deviceSchema = z.object({
-  deviceId: cloudIdSchema, kind: z.enum(["desktop", "web"]), name: deviceNameSchema,
+  deviceId: cloudIdSchema, kind: deviceKindSchema, name: deviceNameSchema,
   platform: devicePlatformSchema, appVersion: z.string().max(100), protocolVersion: z.number().int().positive(),
   state: z.enum(["active", "revoked"]), current: z.boolean(), createdAt: z.number(),
   presenceState: z.enum(["online", "offline"]), lastHeartbeatAt: z.number().nullable(),
@@ -57,7 +68,8 @@ export const accountProfileSchema = z.object({ userId: cloudIdSchema, name: z.st
 export const accountAccessSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("needs-bootstrap") }).strict(),
   z.object({ state: z.literal("needs-device"), profile: accountProfileSchema }).strict(),
-  z.object({ state: z.literal("ready"), profile: accountProfileSchema, deviceId: cloudIdSchema, connectionEpoch: cloudIdSchema.nullable().optional() }).strict(),
+  z.object({ state: z.literal("ready"), profile: accountProfileSchema, deviceId: cloudIdSchema, connectionEpoch: cloudIdSchema.nullable().optional(),
+    entitlements: entitlementSchema }).strict(),
   z.object({ state: z.literal("revoked") }).strict(),
   z.object({ state: z.literal("signed-out") }).strict(),
   z.object({ state: z.literal("suspended") }).strict(),
@@ -69,7 +81,7 @@ export const loginReturnModeSchema = z.enum(["protocol", "polling-only"]);
 export type LoginReturnMode = z.infer<typeof loginReturnModeSchema>;
 export const loginMetadataSchema = z.object({
   returnMode: loginReturnModeSchema,
-  status: loginStatusSchema, deviceNameSnapshot: deviceNameSchema, platform: devicePlatformSchema,
+  status: loginStatusSchema, deviceNameSnapshot: deviceNameSchema, platform: desktopPlatformSchema,
   environmentId: environmentIdSchema, verificationCode: z.string().regex(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/),
   expiresAt: z.number(),
 }).strict();

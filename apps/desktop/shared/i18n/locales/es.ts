@@ -28,7 +28,7 @@ import { settingsToolsEs } from "./settings/tools/es";
 import { settingsUsageEs } from "./settings/usage/es";
 import { settingsPersonalizationEs } from "./settings/personalization/es";
 import { presenceEs } from "./presence/es";
-import { settingsAboutEs } from "./settings/about/es";
+import { settingsUpdatesEs } from "./settings/updates/es";
 import { historyEs } from "./history/es";
 import { chatRevisionEs } from "./chat-revision/es";
 import { projectSettingsEs } from "./project-settings/es";
@@ -74,7 +74,6 @@ general: "General",
 keyboardShortcuts: "Atajos de teclado",
 lab: "Laboratorio",
 stepOf: "Paso {{current}} de {{total}}",
-backends: "Backends",
 personalization: "Personalización",
 browser: "Navegador",
 agentPlugins: "Plugins de Agent",
@@ -125,16 +124,37 @@ promoteBaseToApp: "Convertir {{name}} en App"
   chatRevision: chatRevisionEs,
   projectSettings: projectSettingsEs,
   settings: {
-    about: settingsAboutEs,
+    updates: settingsUpdatesEs,
+    community: {
+      title: "Comunidad",
+      description: "Sigue el desarrollo y comparte comentarios en GitHub.",
+      github: "GitHub",
+      githubDescription: "Código fuente, incidencias y versiones del proyecto Bottega.",
+      viewOnGithub: "Ver en GitHub",
+      issues: "Informar de un problema",
+      issuesDescription: "Busca problemas conocidos o abre uno nuevo.",
+      openIssues: "Abrir incidencias",
+      releaseNotes: "Notas de la versión",
+      releaseNotesDescription: "Qué cambió en cada versión.",
+      viewReleases: "Ver versiones",
+    },
     presence: presenceEs,
     personalization: settingsPersonalizationEs,
     skills: settingsSkillsEs,
     browser: settingsBrowserEs,
     extensions: settingsExtensionsEs,
-    backends: {
-      title: "Backends de Agent",
-      description: "La autenticación y el uso los gestiona cada CLI oficial; el producto solo comprueba el estado local.",
-      recheck: "Comprobar de nuevo",
+    providers: {
+      title: "Proveedores",
+      description: "Define el Agent predeterminado y su orden en los selectores de Agent.",
+      default: "Predeterminado",
+      makeDefault: "Hacer predeterminado",
+      reorder: "Reordenar {{name}}",
+      picked: "{{name}} seleccionado.",
+      moved: "{{name}} movido a la posición {{position}} de {{total}}.",
+      cancelled: "Reordenación cancelada.",
+      setUp: "Configurar",
+      update: "Actualizar",
+      saveFailed: "No se pudo guardar la configuración de proveedores.",
     },
     lab: {
       title: "Laboratorio",

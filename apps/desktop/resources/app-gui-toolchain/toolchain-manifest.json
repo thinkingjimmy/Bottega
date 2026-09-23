@@ -29,7 +29,7 @@
     "typescript": "5.9.3",
     "zod": "4.6.4"
   },
-  "lockfileDigest": "sha256:185ee3493b253f202cf9e264e4143582da97fc33c64f9c51fb6a4f95d3f5078e",
+  "lockfileDigest": "sha256:666ee5e43103ee00b5a27231fef8aa3c9f8a64c006523bd58eeb95930d6c3cdd",
   "formalReleaseTrust": {
     "schema": "bottega.formal-release-trust/v1",
     "status": "unprovisioned",
@@ -66,14 +66,14 @@
     "gate-3"
   ],
   "sliceDigests": {
-    "gate-1": "sha256:9173969fd37d24d1d27b1f91009ae3f901074385369ff1b6a9399a3908dcf99a",
-    "gate-2": "sha256:0ce4f84eeeddf47e4561e83d4c90c1bb70c809785ab72842d894baefcc3b970d",
-    "gate-3": "sha256:89ce37acf8b3511600733296cf8a11c615bb9da6b3173cab6910e7e2b61540c6"
+    "gate-1": "sha256:24edba4c84c4c54cebca3a3bb23f9f810e34865c62f1657b7181d529418b8e78",
+    "gate-2": "sha256:c72c45e9bc74a4bd940fb064fd17840bd4ac5775988ceed83c18a89e284c01a0",
+    "gate-3": "sha256:f4e0d848c434897dbb6b2767d1b5c1911dcab54a33af98e34dadb2f26e6da1c7"
   },
   "authoringCatalogDigest": "sha256:993663131780f3569a48a58f80bbcdfd39591b07721e4f669872c77a5d40a599",
   "compatibilitySupportDigest": "sha256:5a876d99d1fef6e30040d49ea6283feabaecd97a871ee4955b98610a9cbbdba7",
   "performanceBaselineDigest": "sha256:73285c2d1c9ae2efd75ec1e2cfff400348361a2e6499a5db54479450e8818460",
-  "runtimeSbomDigest": "sha256:d6b67f75db654b2e85646504034db77df0eb30b6f6917935021cf36c54553dc4",
+  "runtimeSbomDigest": "sha256:c0aaabec6637c5f05083b3f5632f07911f6123c524328255d3e5d3a863e5bf53",
   "noticesDigest": "sha256:6df76f9d823ebe833f5a30bf73a99b41d6dd18815983e3b892796dfbc2b55923",
   "artifactPaths": {
     "slices": "slices/",

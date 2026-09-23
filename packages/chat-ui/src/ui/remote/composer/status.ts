@@ -1,14 +1,18 @@
 /**
  * [INPUT]: Depends on the account's computer list, confirmed remote targets, the chat head's preparation facts, the host's reason remote control cannot be used and remote copy.
- * [OUTPUT]: Provides ownerPresence, ownerBlock, ownerCommandBlock and handledElsewhereBlock (why the owning computer cannot take the next message or carry out a command, and the answer when another controller got there first — presence from the account subscription, Project facts from the chat's target), readOnlyGate (the read-only card for an imported chat or a revoked computer), sendAction and the draft budget label.
+ * [OUTPUT]: Provides draftBudget (text over its limit, or references too large for one command), ownerPresence (with the last-seen moment), ownerBlock (an offline owner named with why and when it went dark), ownerCommandBlock and handledElsewhereBlock (why the owning computer cannot take the next message or carry out a command, and the answer when another controller got there first — presence from the account subscription, Project facts from the chat's target), readOnlyGate (the read-only card for an imported chat or a revoked computer), sendAction and the draft budget label.
  * [POS]: Pure presentation rules shared by creation and conversation; both name the computer that owns the chat, and nothing here submits or moves one.
  */
 import { computerOf, computerOnline, type CloudComputer } from "@ai-chat/cloud-protocol";
 import type { CloudChatHead } from "@ai-chat/cloud-protocol/chats/model";
-import { handledElsewhere, type RemoteCommandReceipt, type RemoteTarget } from "@ai-chat/cloud-protocol/remote/model";
+import { handledElsewhere, REMOTE_LIMITS, type RemoteCommandReceipt, type RemoteTarget } from "@ai-chat/cloud-protocol/remote/model";
+import type { RemoteReference } from "@ai-chat/cloud-protocol/remote/input/references";
+import { remoteDraftBytes, REMOTE_COMMAND_PLAINTEXT_BYTES } from "@ai-chat/cloud-protocol/remote/encrypted/client";
+import { utf8Length } from "@ai-chat/cloud-protocol/chats/content/parts";
+import { relativeMoment } from "@ai-chat/ui/components/account/moment";
 import { backendName, type RemoteCopy } from "../../../i18n/remote";
 /** The owning computer as the account's computer list reports it: presence never comes from a per-chat read. */
-export type OwnerPresence = { name: string; online: boolean; protocolVersion: number; lastSeenReason: CloudComputer["lastSeenReason"] };
+export type OwnerPresence = { name: string; online: boolean; protocolVersion: number; lastSeenReason: CloudComputer["lastSeenReason"]; lastSeenAt: number | null };
 /**
  * Which computer owns this chat, and whether it is up. The account's list is the authority and retires a stale
  * "online" itself; a host that has not subscribed yet reads the chat's own target, which carries the same four facts.
@@ -17,12 +21,12 @@ export type OwnerPresence = { name: string; online: boolean; protocolVersion: nu
 export function ownerPresence(input: { computers: CloudComputer[] | null; target: RemoteTarget | undefined; ownerDeviceId: string | null; now: number }): OwnerPresence | null {
   const { computers, target, ownerDeviceId } = input;
   if (!computers) return target ? { name: target.name, online: target.online, protocolVersion: target.protocolVersion,
-    lastSeenReason: target.lastSeenReason ?? "unknown" } : null;
+    lastSeenReason: target.lastSeenReason ?? "unknown", lastSeenAt: target.offlineAt } : null;
   const computer = computerOf(computers, ownerDeviceId);
   if (!computer) return null;
   const installation = computer.installations.find(item => item.deviceId === ownerDeviceId)!;
   return { name: computer.name, online: computerOnline(computer, input.now),
-    protocolVersion: installation.protocolVersion, lastSeenReason: computer.lastSeenReason };
+    protocolVersion: installation.protocolVersion, lastSeenReason: computer.lastSeenReason, lastSeenAt: computer.lastSeenAt };
 }
 export type OwnerBlock = {
   /** The one sentence naming the state: what the Send button's tooltip says. */
@@ -40,6 +44,17 @@ type OwnerFacts = {
 const named = (copy: RemoteCopy, facts: OwnerFacts, owner: OwnerPresence) =>
   facts.ownerDeviceId && facts.ownerDeviceId === facts.localDeviceId ? copy.local.replace("{name}", owner.name) : owner.name;
 /**
+ * "Studio Mac is asleep · 5 minutes ago": why it went dark, when it was last seen. A lid closed and a lost network read
+ * differently because they are fixed differently; a quit or an unknown reason is plain offline. The moment reads the
+ * clock, so a caller that re-renders on its presence tick keeps it current.
+ */
+function offlineLine(copy: RemoteCopy, owner: OwnerPresence, name: string) {
+  const [bare, since] = owner.lastSeenReason === "sleep" ? [copy.computerAsleep, copy.computerAsleepSince]
+    : owner.lastSeenReason === "network" ? [copy.computerDisconnected, copy.computerDisconnectedSince] : [copy.computerOffline, copy.computerOfflineSince];
+  const line = owner.lastSeenAt === null ? bare : since.replace("{when}", relativeMoment(owner.lastSeenAt, copy.lang));
+  return line.replace("{name}", name);
+}
+/**
  * Why the owning computer cannot take the next message, or null when it can. Presence and version come from the
  * account's computer list; only the Project facts, which are about this chat, come from its target.
  */
@@ -47,7 +62,7 @@ export function ownerBlock(copy: RemoteCopy, facts: OwnerFacts): OwnerBlock | nu
   const { owner } = facts;
   if (!owner) return facts.revoked ? { reason: copy.computerRevoked, hint: null, gone: true } : null;
   const name = named(copy, facts, owner);
-  if (!owner.online) return { reason: copy.computerOffline.replace("{name}", name),
+  if (!owner.online) return { reason: offlineLine(copy, owner, name),
     hint: owner.lastSeenReason === "sleep" ? copy.wakeThere : owner.lastSeenReason === "network" ? copy.networkThere : copy.openThere, gone: false };
   if (owner.protocolVersion !== facts.protocol) return { reason: copy.computerUpdate.replace("{name}", name), hint: copy.updateThere, gone: false };
   if (facts.target?.reason === "local-facts-pending") return { reason: copy.projectPending, hint: null, gone: false };
@@ -103,6 +118,12 @@ export function sendAction(copy: RemoteCopy, facts: { head: CloudChatHead | null
   if (facts.retryCreate) return { kind: "retry-create", label: copy.retryShort };
   if (facts.head && facts.target && !facts.ready && facts.head.executionPreparation?.state === "blocked") return { kind: "retry-preparation", label: copy.retryPreparation };
   return { kind: "send", busy: facts.busy };
+}
+/** What stops a draft on size alone: text over its own limit ("34.1 / 32 KB"), or references that leave one command no room (RA-15). */
+export function draftBudget(copy: RemoteCopy, draft: { text: string; references: readonly RemoteReference[]; files: number }): string | null {
+  const bytes = utf8Length(draft.text);
+  if (bytes > REMOTE_LIMITS.textBytes) return budgetLabel(copy, bytes, REMOTE_LIMITS.textBytes);
+  return remoteDraftBytes(draft) > REMOTE_COMMAND_PLAINTEXT_BYTES ? copy.referencesTooLarge : null;
 }
 /** The draft budget, shown only once exceeded: "34.1 / 32 KB". */
 export function budgetLabel(copy: RemoteCopy, usedBytes: number, limitBytes: number) {

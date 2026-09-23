@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Confirmed mirror identity, trusted native artifact IPC and the existing browser controller.
- * [OUTPUT]: Desktop mirror artifact previews, native file actions, subtree-scoped prose-link routing and persistent browser views.
+ * [OUTPUT]: Desktop mirror artifact previews, native file actions, subtree-scoped routing of the shared link port and persistent browser views.
  * [POS]: Mirror adapter for shared cards; remote bytes enter the normal local custody/gateway pipeline.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -11,16 +11,14 @@ import { Dialog, DialogContent, DialogTitle } from "@ai-chat/ui/components/ui/di
 import type { ArtifactFence } from "../../../../shared/artifact-ipc";
 import { BrowserPanel } from "../browser/browser-panel";
 import { useBrowserTabs } from "../browser/use-browser-tabs";
-import { openInBrowser } from "./browser";
+import { desktopLinkPort, openInBrowser } from "./browser";
 export function MirrorArtifacts({ chatId, incarnationId, locale, children, openPanel }: { chatId: string; incarnationId: string; locale: string; children: ReactNode; openPanel?(fence: ArtifactFence, followUp?: ArtifactHost["followUp"]): void }) {
   const [preview, setPreview] = useState<{ fence: ArtifactFence; followUp?: ArtifactHost["followUp"] } | null>(null), [browserOpen, setBrowserOpen] = useState(false);
   const browser = useBrowserTabs(browserOpen), copy = remoteCopy(locale), scope = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const lifetime = new AbortController();
-    void import("./prose-links").then(({ registerProseLinks }) => {
-      registerProseLinks(node => scope.current?.contains(node) ?? false, url => {
-        void openInBrowser(url, () => setBrowserOpen(true)).catch(console.warn);
-      }, lifetime.signal);
+    void import("@ai-chat/chat-ui/link-router").then(({ registerProseLinks }) => {
+      registerProseLinks(node => scope.current?.contains(node) ?? false, desktopLinkPort(() => setBrowserOpen(true)), lifetime.signal);
     });
     return () => lifetime.abort();
   }, []);

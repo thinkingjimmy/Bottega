@@ -17,8 +17,8 @@ import {
   Archive,
   ChartNoAxesColumnIncreasing,
   Database,
+  Download,
   FlaskConical,
-  Info,
   RefreshCw,
   Keyboard,
   Loader2,
@@ -31,6 +31,7 @@ import {
   Globe,
   TriangleAlert,
   UserPen,
+  Users,
   Wrench,
 } from "lucide-react";
 import type { ChatSummary } from "../../../shared/chats-ipc";
@@ -423,13 +424,14 @@ function AppSidebarContent({
           : []),
         settingItem("shortcuts", t("common.keyboardShortcuts"), <Keyboard />),
         settingItem("lab", t("common.lab"), <FlaskConical />),
-        settingItem("about", t("settings.about.title"), <Info />),
+        settingItem("updates", t("settings.updates.title"), <Download />),
+        settingItem("community", t("settings.community.title"), <Users />),
       ],
     },
     {
       label: t("common.agents"),
       items: [
-        settingItem("backends", t("common.backends"), <Server />),
+        settingItem("providers", t("settings.providers.title"), <Server />),
         settingItem(
           "personalization",
           t("common.personalization"),
@@ -596,7 +598,7 @@ function AppSidebarContent({
                 </SidebarMenuButton>
               )}
               <SidebarUpdateButton
-                onOpenAbout={() => onSelectSettings("about")}
+                onOpenUpdates={() => onSelectSettings("updates")}
               />
             </>
           }

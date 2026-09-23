@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared side-panel tablist, the device list's relative moment and host-projected computer facts.
- * [OUTPUT]: Provides ComputerSwitcher — one tab per computer, an online dot or its offline moment — plus computerPresenceLabel and COMPUTER_PANEL_ID.
+ * [OUTPUT]: Provides ComputerSwitcher — one tab per computer, an online dot or its offline moment, as the sidebar strip or the phone home's pill row — plus computerPresenceLabel and COMPUTER_PANEL_ID.
  * [POS]: The account's computer strip above the sidebar groups, shared by Cloud Web and the desktop; the host owns presence, selection and storage.
  */
 import { SidePanelTabs, type SidePanelTab } from "../workspace/side-panel/tabs";
@@ -24,13 +24,17 @@ export function computerPresenceLabel(computer: SwitchableComputer, copy: Comput
  * One computer is not a choice: the strip appears only once the account has a second one, so a single-computer
  * account never pays for a control it cannot use. A long name truncates inside its tab; the title keeps it whole.
  */
-export function ComputerSwitcher({ computers, selected, onSelect, copy, locale, className }: {
+/* A phone row has width to scroll and fingers to serve: 44px pills, the selected one filled dark, one line that scrolls sideways. */
+const pills = "px-3 pb-2 [&_[role=tab]]:h-11 [&_[role=tab]]:max-w-56 [&_[role=tab]]:rounded-full [&_[role=tab]]:px-4 [&_[role=tab]]:text-sm [&_[role=tab][aria-selected=true]]:bg-foreground [&_[role=tab][aria-selected=true]]:text-background";
+export function ComputerSwitcher({ computers, selected, onSelect, copy, locale, className, variant = "strip" }: {
   computers: readonly SwitchableComputer[];
   selected: string | null;
   onSelect(machineIdHash: string): void;
   copy: ComputerSwitcherCopy;
   locale: string;
   className?: string;
+  /** The sidebar's wrapping strip, or the phone home's scrolling pill row. */
+  variant?: "strip" | "pills";
 }) {
   if (computers.length < 2) return null;
   const items: SidePanelTab[] = computers.map(computer => {
@@ -46,7 +50,7 @@ export function ComputerSwitcher({ computers, selected, onSelect, copy, locale, 
     };
   });
   /* A sidebar has rows to spare and no width to spare: the strip wraps rather than hiding a computer off its edge. */
-  return <div className={cn("px-2 pb-0.5", className)} data-computer-switcher>
-    <SidePanelTabs items={items} label={copy.label} className="flex-wrap gap-y-1 overflow-x-visible" />
+  return <div className={cn(variant === "pills" ? pills : "px-2 pb-0.5", className)} data-computer-switcher={variant}>
+    <SidePanelTabs items={items} label={copy.label} className={variant === "pills" ? "gap-2 [scrollbar-width:none]" : "flex-wrap gap-y-1 overflow-x-visible"} />
   </div>;
 }

@@ -691,6 +691,7 @@ contextBridge.exposeInMainWorld("setup", {
     ipcRenderer.invoke(SETUP_CHANNEL.refreshLatest, backend),
   terminalAction: (backend, action, scope) =>
     ipcRenderer.invoke(SETUP_CHANNEL.terminalAction, { backend, action, scope }),
+  updateCli: (backend) => ipcRenderer.invoke(SETUP_CHANNEL.updateCli, backend),
   cancelCheck: (backend) => ipcRenderer.invoke(SETUP_CHANNEL.cancelCheck, backend),
   openManagement: (...args: unknown[]) => args.length
     ? Promise.reject(new Error("Agent management accepts no route or URL"))

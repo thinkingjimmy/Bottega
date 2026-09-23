@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node fs/path, zod, shared Agent/Settings IPC, Memory registry, durable persistence, and SerialQueue
- * [OUTPUT]: Provides SettingsStore v11 with additive Agent-setup-deferred, archive-confetti and Agent-connections defaults, the single-backend title Agent that reads a retired or invalid value as the first backend, backend/presence/appearance preferences, Memory control, and fail-closed recovery; Chat options belong to SQLite
+ * [OUTPUT]: Provides SettingsStore v11 with additive Agent-setup-deferred, archive-confetti and Agent-connections defaults, the single-backend title Agent that reads a retired or invalid value as the first backend, the explicit default Agent and normalized picker order (retiring lastSelectedBackend on read), backend/presence/appearance preferences, Memory control, and fail-closed recovery; Chat options belong to SQLite
  * [POS]: The canonical multi-backend settings owner in Electron main
  */
 
@@ -34,7 +34,7 @@ import {
   MEMORY_PROVIDER_IDS,
 } from "./memory/providers/registry";
 import { SerialQueue } from "./persistence/serial-queue";
-import { backendDefaults, DEFAULT_CHAT_OPTIONS_BY_BACKEND, defaultsSchema, turnOptionsSchema } from "../../shared/chat-agent/options";
+import { backendDefaults, DEFAULT_CHAT_OPTIONS_BY_BACKEND, defaultsSchema, normalizeProviderOrder, turnOptionsSchema } from "../../shared/chat-agent/options";
 export { DEFAULT_CHAT_OPTIONS, DEFAULT_CHAT_OPTIONS_BY_BACKEND } from "../../shared/chat-agent/options";
 const optionValue = z.string().trim().min(1).max(200);
 const backendSchema = agentBackendIdSchema;
@@ -59,7 +59,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   titleAgent: DEFAULT_TITLE_AGENT,
   titleModelByBackend: { codex: null },
   defaultChatOptionsByBackend: DEFAULT_CHAT_OPTIONS_BY_BACKEND,
-  lastSelectedBackend: "codex",
+  defaultBackend: "codex",
+  providerOrder: [...AGENT_BACKEND_ORDER],
   agentSetupDeferred: false,
   computerNameHintSeen: false,
   autoRelayLimit: 25,
@@ -153,7 +154,9 @@ const settingsSchema = z
       })
       .strict(),
     defaultChatOptionsByBackend: defaultsSchema,
-    lastSelectedBackend: backendSchema,
+    /* Additive defaults keep existing strict settings files readable. */
+    defaultBackend: backendSchema.catch("codex"),
+    providerOrder: z.array(backendSchema).max(16).catch([...AGENT_BACKEND_ORDER]).transform(normalizeProviderOrder),
     /* Additive default keeps existing strict settings files readable. */
     agentSetupDeferred: z.boolean().default(false),
     /* Additive default keeps existing strict settings files readable. */
@@ -200,6 +203,11 @@ function optionsForNextConversation(options: AgentTurnOptions) {
 function parseFile(value: unknown): SettingsFile {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const { chatOptionsByScope: _retired, ...file } = value as Record<string, unknown>;
+    /* The implicit last-used Agent was replaced by the explicit defaultBackend. */
+    if (file.settings && typeof file.settings === "object" && !Array.isArray(file.settings)) {
+      const { lastSelectedBackend: _lastUsed, ...settings } = file.settings as Record<string, unknown>;
+      file.settings = settings;
+    }
     return settingsFileSchema.parse(file);
   }
   return settingsFileSchema.parse(value);
@@ -297,7 +305,7 @@ export class SettingsStore {
     return this.setTrusted({ fullAccessAcknowledgedAt: Date.now() });
   }
 
-  getBackendDefaults(backend: AgentBackendId = this.state.settings.lastSelectedBackend) {
+  getBackendDefaults(backend: AgentBackendId = this.state.settings.defaultBackend) {
     return backendDefaults(this.state.settings.defaultChatOptionsByBackend, backend);
   }
 
@@ -311,7 +319,6 @@ export class SettingsStore {
         ...this.state,
         settings: {
           ...this.state.settings,
-          lastSelectedBackend: options.backend,
           defaultChatOptionsByBackend: {
             ...this.state.settings.defaultChatOptionsByBackend,
             [options.backend]: optionsForNextConversation(options),

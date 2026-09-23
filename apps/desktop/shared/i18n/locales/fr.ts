@@ -28,7 +28,7 @@ import { settingsToolsFr } from "./settings/tools/fr";
 import { settingsUsageFr } from "./settings/usage/fr";
 import { settingsPersonalizationFr } from "./settings/personalization/fr";
 import { presenceFr } from "./presence/fr";
-import { settingsAboutFr } from "./settings/about/fr";
+import { settingsUpdatesFr } from "./settings/updates/fr";
 import { historyFr } from "./history/fr";
 import { chatRevisionFr } from "./chat-revision/fr";
 import { projectSettingsFr } from "./project-settings/fr";
@@ -74,7 +74,6 @@ general: "Général",
 keyboardShortcuts: "Raccourcis clavier",
 lab: "Labo",
 stepOf: "Étape {{current}} sur {{total}}",
-backends: "Backends",
 personalization: "Personnalisation",
 browser: "Navigateur",
 agentPlugins: "Plugins Agent",
@@ -125,16 +124,37 @@ promoteBaseToApp: "Promouvoir {{name}} en App"
   chatRevision: chatRevisionFr,
   projectSettings: projectSettingsFr,
   settings: {
-    about: settingsAboutFr,
+    updates: settingsUpdatesFr,
+    community: {
+      title: "Communauté",
+      description: "Suivez le développement et partagez vos retours sur GitHub.",
+      github: "GitHub",
+      githubDescription: "Code source, tickets et versions du projet Bottega.",
+      viewOnGithub: "Voir sur GitHub",
+      issues: "Signaler un problème",
+      issuesDescription: "Cherchez les problèmes connus ou ouvrez-en un nouveau.",
+      openIssues: "Ouvrir les tickets",
+      releaseNotes: "Notes de version",
+      releaseNotesDescription: "Ce qui a changé dans chaque version.",
+      viewReleases: "Voir les versions",
+    },
     presence: presenceFr,
     personalization: settingsPersonalizationFr,
     skills: settingsSkillsFr,
     browser: settingsBrowserFr,
     extensions: settingsExtensionsFr,
-    backends: {
-      title: "Backends Agent",
-      description: "L’authentification et l’utilisation sont gérées par chaque CLI officiel ; le produit vérifie seulement l’état local.",
-      recheck: "Vérifier à nouveau",
+    providers: {
+      title: "Fournisseurs",
+      description: "Définissez l’Agent par défaut et son ordre dans les sélecteurs d’Agent.",
+      default: "Par défaut",
+      makeDefault: "Définir par défaut",
+      reorder: "Réordonner {{name}}",
+      picked: "{{name}} sélectionné.",
+      moved: "{{name}} déplacé en position {{position}} sur {{total}}.",
+      cancelled: "Réorganisation annulée.",
+      setUp: "Configurer",
+      update: "Mettre à jour",
+      saveFailed: "Impossible d’enregistrer les réglages des fournisseurs.",
     },
     lab: {
       title: "Labo",

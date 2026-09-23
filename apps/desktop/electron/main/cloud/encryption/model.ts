@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Closed crypto, immutable-space, native persistence and authenticated account contracts.
- * [OUTPUT]: Main-only encryption owner ports and independently verified scope helpers; stopping content carries no pause authority.
+ * [OUTPUT]: Main-only encryption owner ports (including the account email for creation checks) and independently verified scope helpers; stopping content carries no pause authority.
  * [POS]: Separates account/consent ownership from worker and key-cache implementation.
  */
 import type { CryptoWorkerOwner } from "@ai-chat/cloud-crypto";
@@ -18,6 +18,8 @@ export interface EncryptionPorts {
   installationId: string;
   store: Pick<SyncKeyStore, "read" | "saveVerified" | "clear" | "invalidate" | "drain" | "blocked">;
   identity(): SyncIdentity | null;
+  /** Signed-in account email; new sync passwords must not contain its local part. */
+  accountEmail(): string | null;
   connection(): string | null;
   sampleTime(identity: SyncIdentity, sampleId: string): Promise<TimeSample>;
   consent(): EncryptedConsent | null;

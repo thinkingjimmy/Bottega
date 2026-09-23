@@ -20,7 +20,7 @@ const GLYPHS: Record<SidebarUpdateGlyph, typeof CircleAlert> = {
   download: Download,
   external: ExternalLink,
   spinner: Loader2,
-  /* 与 Settings › About 的更新失败同字形。旁边 Memory 那颗告警是
+  /* 与 Settings › Updates 的更新失败同字形。旁边 Memory 那颗告警是
      TriangleAlert：同一行里两个圆角三角会让两件无关的事互相冒充。 */
   alert: CircleAlert,
 };
@@ -56,9 +56,9 @@ const FOCUS =
   "touch-manipulation cursor-pointer hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar";
 
 export function SidebarUpdateButton({
-  onOpenAbout,
+  onOpenUpdates,
 }: {
-  onOpenAbout: () => void;
+  onOpenUpdates: () => void;
 }) {
   const { t } = useAppTranslation();
   const update = useSyncExternalStore(
@@ -76,7 +76,7 @@ export function SidebarUpdateButton({
 
   /* ============================================================
    * 下载中不是按钮，于是也不摆按钮的身材：一条又宽又矮的进度轨，
-   * 用的是 Settings › About 那条进度条的同一套词汇（foreground/10 轨 +
+   * 用的是 Settings › Updates 那条进度条的同一套词汇（foreground/10 轨 +
    * foreground 填充）。图标在这里没有信息量——形状已经说清了在下载什么
    * 阶段，而一枚挤在 6px 里的箭头只会两头都不像。
    * ============================================================ */
@@ -112,7 +112,7 @@ export function SidebarUpdateButton({
 
   /* 安装中同样不是按钮。role="img" 而非 status：live region 播报的是内容
      变化，而这里只有一个 aria-hidden 图标，挂上去是许一个不会兑现的诺言。
-     真正的实时播报住在 Settings › About 那条 aria-live 文本里。 */
+     真正的实时播报住在 Settings › Updates 那条 aria-live 文本里。 */
   if (!view.intent) {
     return (
       <div
@@ -136,7 +136,7 @@ export function SidebarUpdateButton({
         if (view.intent === "restart") return void updateStore.installNow();
         if (view.intent === "install") return void updateStore.downloadAndInstall();
         if (view.intent === "releases") return void openExternal(RELEASE_URL);
-        onOpenAbout();
+        onOpenUpdates();
       }}
     >
       {body}

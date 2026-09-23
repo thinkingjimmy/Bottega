@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Verified account/space/continuity RPCs, native key persistence and the original sync review owner.
- * [OUTPUT]: Main-owned setup, durable consent detection, coalesced space checks, password recovery, retained workers, waiting background admission and cancellation-safe reinspection.
+ * [OUTPUT]: Main-owned setup (new passwords checked against the signed-in email), durable consent detection, coalesced space checks, password recovery, retained workers, waiting background admission and cancellation-safe reinspection.
  * [POS]: Desktop encryption admission owner; no business outbox, account authority or renderer key API.
  */
 import { passwordsMatch, validatePassword, validateNewPassword, CryptoQueue, cryptoConcurrency, type CryptoCommand, type CryptoResult, type CryptoWorkerOwner } from "@ai-chat/cloud-crypto";
@@ -204,7 +204,7 @@ export class SyncEncryptionController {
       await this.inspectSpace(op); await this.authenticate(op);
       if (this.space) await this.unlockSpace(input.password, this.space, op);
       else {
-        validateNewPassword(input.password);
+        validateNewPassword(input.password, { email: this.ports.accountEmail() });
         if (input.confirmation === undefined || !passwordsMatch(input.password, input.confirmation)) throw new Error("sync-password-mismatch");
         if (input.riskAccepted !== true) throw new Error("sync-password-invalid");
         const cached = await this.ports.store.read(op.identity.userId, { guard: op.current, retry: true }); op.guard();

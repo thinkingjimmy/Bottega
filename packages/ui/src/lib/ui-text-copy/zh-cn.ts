@@ -33,4 +33,5 @@ export const uiTextZhCn = {
   fileSizeError: "所有文件都超过大小上限。",
   fileCountError: "文件过多，部分文件未添加。",
   terminal: "终端",
+  saveFailed: "文件未能保存，请重试。",
 };

@@ -537,7 +537,7 @@ function ChatComposerContent({
         />
         {showAvailabilityNotice && <div className="flex flex-wrap items-center gap-2 px-3 pt-3 text-xs text-muted-foreground">
           <span>{imagesBlocked ? t("agentAvailability.imagesPreserved") : t(`agentAvailability.state.${availability.state}`)}</span>
-          <Button type="button" variant="ghost" size="sm" onClick={() => void controller.openSetup()}>{t("agentAvailability.manage")}</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => availability.state === "unsupported" && settingsNavigation ? settingsNavigation.openUpdates() : void controller.openSetup()}>{t("agentAvailability.manage")}</Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => void setup.recheckBackend(controller.turnOptions.backend)}>{t("chat.checkAgain")}</Button>
           {availability.policy.reason === "auth-required" && <Tooltip><TooltipTrigger asChild>
             <Button type={hasDraftContent ? "submit" : "button"} name="authentication-retry" onClick={() => { if (!hasDraftContent) controller.retryAuthentication(); }} variant="outline" size="sm" disabled={editingDisabled || recoveryBlocked || submissionPending || isGenerating || queueFull || (!hasDraftContent && (!recent || recent.outcome === "success")) || imagesBlocked || gallerySendGate(controller.chatId)}>{t("agentAvailability.retrySending")}</Button>
@@ -661,7 +661,7 @@ function ChatComposerContent({
               reason={controller.switchReason ? t(`chat.agentSwitch.${controller.switchReason}`) : controller.queueItems.length || controller.queuePaused ? t("chat.agentSwitch.queue") : isGenerating ? t("chat.agentSwitch.running") : controller.pendingAgent?.submitting ? t("chat.agentSwitch.submission") : undefined}
               onChange={controller.selectBackend}
               onOpenUsage={settingsNavigation?.openUsage}
-              onManage={() => void controller.openSetup()}
+              onManage={(_backend, state) => state === "unsupported" && settingsNavigation ? settingsNavigation.openUpdates() : void controller.openSetup()}
               customProvider={Boolean(recent?.target.providerId || recent?.target.configKey)}
               now={setup.now}
               currentState={availability.state}
