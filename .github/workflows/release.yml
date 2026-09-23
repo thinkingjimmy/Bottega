@@ -77,7 +77,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: pnpm --filter @ai-chat/desktop exec electron-builder ${{ matrix.flags }} --publish never
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: installers-${{ matrix.platform }}
           path: ${{ matrix.artifacts }}
@@ -93,7 +93,7 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v7
         with:
           path: installers
 
