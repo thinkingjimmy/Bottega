@@ -4,6 +4,40 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-09-23 — v0.1.7
+
+**Before upgrading:** nothing to prepare. 0.1.7 opens a 0.1.6 chat database and settings as they are, and cloud data is kept. The synchronization protocol moved to 9, so every computer signed in to the same account should update: a 0.1.6 desktop is asked to update before it can sync again. Your existing sync password keeps working. See the [upgrade notes](../getting-started/README.md#upgrading-to-017).
+
+### What's new
+
+- **Settings: Providers, Updates, Community.** Providers sets the Agent new Chats start on and the order every Agent picker shows. Updates lists Bottega and every installed provider CLI with its version, one row each plus **Update all** — providers update first and Bottega last, because Bottega restarts. Community keeps the GitHub, issue, and release-note links. The former About and Backends pages are gone; installing and signing in to an Agent stay in Agent setup.
+- **Steering no longer fails when the Agent cannot take it now.** A message you send while an Agent is working is used in the running turn when the Agent supports it. When it does not (Kimi Code and OpenCode), the message is kept and sent as soon as the turn ends; from another device the receipt reads that it will be sent after this turn. Only input the Agent cannot accept at all is refused, and your draft stays. If the turn already ended, a refused steer offers **Send as a new message**.
+- **Remote attachments are cleaned before they leave.** When you send to another computer — from Cloud Web or from a desktop driving a remote Chat — photos are resized to at most 2048 px, and camera metadata (location, device, EXIF/XMP), GIF comment blocks, and other embedded metadata are removed. Files are checked against their real type. HEIC photos are converted when the browser can read them, and a clear message explains when it cannot. An attachment uploaded but not sent for 20 hours asks to be uploaded again instead of failing on send, and Cloud Web no longer downloads your own uploads back from the cloud to display them.
+- **A stronger sync password.** A new sync password needs at least 12 characters with a letter and a number, at least 5 different characters, no long runs of repeated or sequential characters, and nothing from your email name, `bottega`, or the most common passwords. The form ticks each rule as you type. Existing passwords keep unlocking as before.
+- **Offline computers say how long.** A computer that is not awake reads *asleep*, *offline*, or *disconnected* with the time since it was last seen, right in the composer.
+- **Protocol 9.** The synchronization protocol moved forward to carry the new steering outcome and to prepare the service for the upcoming mobile app. Local data is unchanged.
+
+### Download and install
+
+The assets below include macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage installers. These builds are **unsigned and not notarized**. macOS remains the primary platform; native App isolation and full feature parity on Windows/Linux are still in progress.
+
+**macOS (Apple silicon):** open the DMG and drag Bottega into Applications. For the unsigned download, remove its quarantine flag once in Terminal, then open Bottega:
+
+```bash
+xattr -rd com.apple.quarantine /Applications/Bottega.app
+```
+
+**Windows (x64):** run the installer. If SmartScreen blocks the unrecognized publisher, choose **More info → Run anyway**.
+
+**Linux (x64):** make the AppImage executable and launch it:
+
+```bash
+chmod +x Bottega-0.1.7-linux-x86_64.AppImage
+./Bottega-0.1.7-linux-x86_64.AppImage
+```
+
+Install and authenticate at least one supported local CLI before starting a conversation. Users on 0.1.0 or 0.1.1 must install 0.1.7 manually because those versions contain the earlier updater bug. The storage preparation above applies to every earlier version.
+
 ## 2026-09-22 — v0.1.6
 
 **Before upgrading:** 0.1.6 does not open a 0.1.5 chat database. On first launch the previous `bottega.sqlite3` and its sidecars are moved aside into `recovery/sqlite/` inside the application data folder, byte for byte, and the conversation index is rebuilt from your Bottega folder. Replies that never finished may be missing, and search indexes and synchronization state are recreated. Cloud data from 0.1.5 is not carried over either: the synchronization protocol changed and the service is reset before this release, so sign in again and let the first computer set the sync password again. Quit Bottega completely and back up both your Bottega folder and the application data folder first. See the [upgrade instructions](../getting-started/README.md#upgrading-to-016).

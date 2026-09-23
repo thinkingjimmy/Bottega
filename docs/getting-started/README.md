@@ -91,7 +91,7 @@ Signed and notarized builds are planned; until then, verify the download against
 Signing in is optional. Local use needs no account and queues no uploads, and setup never asks about one.
 
 - **Sign in through your browser.** Bottega opens your system browser for Google sign-in, you approve the request there, and the desktop app picks the session up. Google is the only sign-in method, and Bottega never asks for that password. Signing in lives in Settings › Sync.
-- **Set a sync password, once.** The first computer on the account sets a separate sync password of at least 8 characters including an English letter and a number. It is not your Google password. Every device that signs in afterwards — another computer, Cloud Web, a phone browser — enters that same password. Only a desktop can set it, so a browser that reaches a brand-new account is told to sign in on a computer first instead of being asked for a password.
+- **Set a sync password, once.** The first computer on the account sets a separate sync password: at least 12 characters with a letter and a number, at least 5 different characters, no long runs of repeated or sequential characters, and nothing from your email name, `bottega`, or the most common passwords. The form ticks each rule as you type. It is not your Google password. Every device that signs in afterwards — another computer, Cloud Web, a phone browser — enters that same password. Only a desktop can set it, so a browser that reaches a brand-new account is told to sign in on a computer first instead of being asked for a password.
 - **How it is protected.** The key that encrypts your content is derived from the password on your own device with Argon2id, content is sealed with XChaCha20-Poly1305 before it leaves the computer, and the server stores only ciphertext.
 - **There is no password recovery.** No recovery key, no approval from another device, no reset. If you lose the password and no signed-in device can still decrypt, content that exists only in the cloud cannot be recovered. Bottega states this before the encrypted workspace is created and asks you to confirm it.
 - **One account, one encrypted workspace.** A second computer chooses its own Bottega folder, signs in with the same account, and enters the same sync password to join.
@@ -111,6 +111,14 @@ A signed-in computer publishes its sidebar — its Projects and its Chats — to
 **While a computer is asleep or offline.** Its Chats stay readable, and renaming, archiving, reordering, editing a Base row, and writing an App record all still work — that computer reconciles them when it wakes. What needs it awake is execution: sending, Stop, approving, answering, steering, and deleting a Chat are greyed in place with a sentence saying why, your draft stays in the editor, and they recover on their own within about half a minute of the computer waking. A laptop is treated as offline about 90 seconds after its lid closes.
 
 Bottega keeps a service-level switch that can turn remote control off for everyone if it has to. While it is off, browser Chats are read only; reading a transcript and watching a running turn still work.
+
+<a id="upgrading-to-017"></a>
+
+## Upgrading to 0.1.7
+
+There is nothing to prepare. 0.1.7 opens a 0.1.6 chat database, settings, and Bottega folder as they are, and cloud data is kept. New Chats now start on an explicit default Agent, which begins as Codex; choose yours in Settings › Providers.
+
+The synchronization protocol moved to 9, and the service already speaks it. A 0.1.6 desktop signed in to the same account is asked to update before it can sync again; update every computer on the account. Your sync password does not change — the stronger rules apply only when a new password is set.
 
 <a id="upgrading-to-016"></a>
 

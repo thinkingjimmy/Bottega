@@ -79,7 +79,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 
 - Keep synchronization optional: Bottega works without an account, setup never asks about one, and signing in uploads nothing until you confirm the first sync.
 - Sign in through your system browser with Google, approve the request there, and let the desktop app pick the session up. Bottega never asks for that password.
-- Unlock synced content with a separate sync password of at least 8 characters including an English letter and a number. The content key is derived on your own device with Argon2id, and content is sealed with XChaCha20-Poly1305 before upload.
+- Unlock synced content with a separate sync password. A new one needs at least 12 characters with a letter and a number, at least 5 different characters, no long runs of repeated or sequential characters, and nothing from your email name, `bottega`, or the most common passwords; the form ticks each rule as you type. The content key is derived on your own device with Argon2id, and content is sealed with XChaCha20-Poly1305 before upload.
 - Accept that there is no recovery: no recovery key, no approval from another device, no password reset, and no sync reset. The risk is stated and confirmed before the encrypted workspace is created.
 - Keep one encrypted workspace per account. The first computer sets the sync password; every later computer, browser, and phone enters it. Only a desktop can set it.
 - Keep the sync area to three things: sign-in state, this computer's name, and Sign out. Signing out stops publishing and stops accepting commands without deleting anything; removing this computer's cloud copies is a separate action, and deleting the account is separate again.
