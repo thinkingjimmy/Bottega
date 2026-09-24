@@ -1,14 +1,14 @@
 /**
- * [INPUT]: Unified Skills discovery/import, local Memory settings, the memory store's providers and runtimes, the memory setup controller, dialog and consent flow.
- * [OUTPUT]: ExtrasStep offers optional Skills (inline import) and Memory (set up in the product's dialog without leaving the step; the row reports install progress, the connect step, readiness, and turns memory on through the disclosure dialog) with retryable inline failures.
- * [POS]: Local-only final onboarding step; memory never finishes onboarding or navigates away.
+ * [INPUT]: Unified Skills discovery/import, local Memory settings, the memory store's providers and runtimes, the memory setup controller, dialog and consent flow, the Settings list primitives and SetupRowTile.
+ * [OUTPUT]: ExtrasStep renders one list card with Skills (count badge, inline import) and Memory (state badge; set up in the product's dialog without leaving the step; inline install progress, Connect, Turn On through the disclosure dialog) with retryable inline failures; memoryRowState projects the Memory row.
+ * [POS]: Local-only final onboarding step body inside OnboardingFrame; memory never finishes onboarding or navigates away.
  */
-import { Brain, Check, Loader2, RotateCw, Sparkles, TriangleAlert } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { Button } from "@ai-chat/ui/components/ui/button";
+import { Brain, Check, RotateCw, Sparkles } from "lucide-react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
-import { cn } from "@ai-chat/ui/lib/utils";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { SettingsBadge, SettingsButton, SettingsList, SettingsRow } from "@/components/settings/settings-layout";
+import { SetupRowTile } from "@/components/setup/row-tile";
 import { settingsStore } from "@/lib/settings-store";
 import { importAllDiscoveredSkills, listUnifiedSkillCandidates, listUnifiedSkills } from "@/lib/unified-skills-client";
 import { MemoryDisclosureDialog } from "@/components/settings/memory/memory-disclosure-dialog";
@@ -17,12 +17,8 @@ import type { AppSettings } from "../../../../shared/settings-ipc";
 import { MemorySetupDialog } from "../../settings-memory/memory-setup-dialog";
 import { useMemoryConsent } from "../../settings-memory/use-memory-consent";
 import { useMemorySetupController } from "../../settings-memory/use-memory-setup";
-/* The same anatomy as the Agent rows one step earlier: a 16px mark on the title line, the sentence under it, the
-   action at the column's right edge. Only when the column itself gets narrow (a small window) does the action drop
-   under the text — and then it keeps that right edge, so the rows still read as one list. */
-const ROW = "grid grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-3 py-4 @max-[30rem]/extras:grid-cols-[1rem_minmax(0,1fr)]";
-const ICON = "mt-0.5 flex size-4 shrink-0 items-center justify-center";
-const ACTION = "self-center @max-[30rem]/extras:col-start-2 @max-[30rem]/extras:justify-self-end";
+
+const DONE = <Check className="size-4 text-emerald-700 dark:text-emerald-400" strokeWidth={2.2} aria-hidden="true" />;
 
 function SkillsOptionRow({ disabled }: { disabled: boolean }) {
   const { t } = useAppTranslation();
@@ -64,6 +60,7 @@ function SkillsOptionRow({ disabled }: { disabled: boolean }) {
     ? t("onboarding.skillsScanFailed")
     : failure?.message || settingsError;
   const showError = Boolean(error) && !busy;
+  const offer = !imported && count > 0;
   const retryScan = () => {
     setBusy(true);
     setScanAttempt((value) => value + 1);
@@ -88,51 +85,33 @@ function SkillsOptionRow({ disabled }: { disabled: boolean }) {
     }
   };
 
+  const description = busy
+    ? t("onboarding.skillsScanning")
+    : showError ? <span role="alert" className="text-destructive">{error}</span>
+      : imported ? t("onboarding.skillsDone")
+        : count > 0 ? t("onboarding.skillsAbout")
+          : t("onboarding.skillsNone");
+  const control = scanFailed ? (
+    <SettingsButton disabled={busy || disabled} onClick={retryScan} variant="outline">
+      {busy ? <Spinner className="size-3.5" /> : <RotateCw className="size-3.5" />}
+      {t("common.retry")}
+    </SettingsButton>
+  ) : offer ? (
+    <SettingsButton disabled={busy || disabled} onClick={() => void importAll()} variant="outline">
+      {busy && <Spinner className="size-3.5" />}
+      {t("onboarding.skillsImport")}
+    </SettingsButton>
+  ) : imported && !busy ? DONE : null;
+
   return (
-    <div className={ROW}>
-      <span className={cn(ICON, showError ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
-        {showError ? <TriangleAlert className="size-4" /> : <Sparkles className="size-4" />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-sm">
-          {t("onboarding.extras.skills")}
-        </p>
-        <p className="mt-0.5 text-muted-foreground text-xs" role={showError ? "alert" : undefined}>
-          {busy
-            ? t("onboarding.skillsScanning")
-            : error
-              ? error
-              : imported
-                ? t("onboarding.skillsDone")
-                : count > 0
-                  ? t("onboarding.skillsFound", { count })
-                  : t("onboarding.skillsNone")}
-        </p>
-      </div>
-      {scanFailed ? (
-        <Button
-          className={ACTION}
-          disabled={busy || disabled}
-          onClick={retryScan}
-          size="lg"
-          variant="outline"
-        >
-          {busy ? <Spinner className="size-3.5" /> : <RotateCw className="size-3.5" />}
-          {t("common.retry")}
-        </Button>
-      ) : !imported && count > 0 && (
-        <Button
-          className={ACTION}
-          disabled={busy || disabled}
-          onClick={() => void importAll()}
-          size="lg"
-          variant="outline"
-        >
-          {busy && <Spinner className="size-3.5" />}
-          {t("onboarding.skillsImportAll")}
-        </Button>
-      )}
-    </div>
+    <SettingsRow
+      leading={<SetupRowTile><Sparkles className="size-[18px]" strokeWidth={1.75} /></SetupRowTile>}
+      label={t("onboarding.extras.skills")}
+      badge={imported ? <SettingsBadge>{t("onboarding.skillsImported")}</SettingsBadge>
+        : offer ? <SettingsBadge tone="muted">{t("onboarding.skillsFound", { count })}</SettingsBadge> : undefined}
+      description={description}
+      control={control}
+    />
   );
 }
 
@@ -170,6 +149,35 @@ export function memoryRowState(
   return { kind: "start" };
 }
 
+const MEMORY_BADGES = {
+  start: "onboarding.memory.badge.start",
+  installing: "onboarding.memory.badge.installing",
+  failed: "onboarding.memory.badge.failed",
+  connect: "onboarding.memory.badge.connect",
+  ready: "onboarding.memory.badge.ready",
+  on: "onboarding.memory.badge.on",
+} as const satisfies Record<MemoryRowState["kind"], string>;
+const badgeTone = (kind: MemoryRowState["kind"]) =>
+  kind === "failed" ? "danger" : kind === "start" || kind === "installing" ? "muted" : "neutral";
+
+/* One bar for the whole install: finished steps plus the active step's transfer share, the same facts the Settings runtime panel segments. */
+function installShare(runtime: MemoryRuntimeSnapshot | undefined) {
+  if (!runtime || runtime.stepTotal <= 0) return null;
+  const transfer = runtime.transfer?.totalBytes ? Math.min(1, runtime.transfer.receivedBytes / runtime.transfer.totalBytes) : 0;
+  return Math.min(1, (runtime.stepIndex + transfer) / runtime.stepTotal);
+}
+
+function InstallBar({ share }: { share: number }) {
+  const percent = Math.round(share * 100);
+  return <div className="flex items-center gap-2.5 pr-4 pb-3 pl-[76px]">
+    <span role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
+      className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+      <span className="block h-full origin-left rounded-full bg-foreground motion-safe:transition-transform" style={{ transform: `scaleX(${share})` }} />
+    </span>
+    <span className="text-[11px] text-muted-foreground tabular-nums">{percent}%</span>
+  </div>;
+}
+
 function MemoryOptionRow({ disabled }: { disabled: boolean }) {
   const { t } = useAppTranslation();
   const { settings } = useSyncExternalStore(
@@ -181,41 +189,41 @@ function MemoryOptionRow({ disabled }: { disabled: boolean }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const state = memoryRowState(settings ?? null, setup.providers, setup.runtimes);
   const description =
-    state.kind === "on" ? t("onboarding.memoryEnabled")
-      : state.kind === "ready" ? t("onboarding.memoryReady", { provider: state.provider.displayName })
-        : state.kind === "connect" ? t("onboarding.memoryConnect", { provider: state.provider.displayName, version: state.version })
-          : state.kind === "installing" ? t("onboarding.memoryInstalling", { provider: state.provider.displayName })
-            : state.kind === "failed" ? t("onboarding.memoryInstallFailed", { provider: state.provider.displayName })
-              : t("onboarding.memoryDisabled");
+    state.kind === "on" ? t("onboarding.memory.on")
+      : state.kind === "ready" ? t("onboarding.memory.ready", { provider: state.provider.displayName })
+        : state.kind === "connect" ? t("onboarding.memory.connect", { provider: state.provider.displayName, version: state.version })
+          : state.kind === "installing" ? <span role="status">{t("onboarding.memory.installing", { provider: state.provider.displayName })}</span>
+            : state.kind === "failed" ? <span role="alert">{t("onboarding.memory.failed", { provider: state.provider.displayName })}</span>
+              : t("onboarding.memory.about");
   const open = () => setDialogOpen(true);
-  const action =
-    state.kind === "on" ? null
+  const unavailable = disabled || setup.providers.length === 0;
+  const control: ReactNode =
+    state.kind === "on" ? DONE
       : state.kind === "ready" ? (
-        <Button className={ACTION} disabled={disabled || consent.busy} size="lg" onClick={() => consent.openProvider(state.provider.id)}>
-          {t("onboarding.memoryTurnOn")}
-        </Button>
+        <SettingsButton disabled={disabled || consent.busy} onClick={() => consent.openProvider(state.provider.id)}>
+          {t("onboarding.memory.turnOn")}
+        </SettingsButton>
+      ) : state.kind === "connect" ? (
+        <SettingsButton disabled={unavailable} onClick={open}>{t("onboarding.memory.connectAction")}</SettingsButton>
+      ) : state.kind === "installing" ? (
+        <SettingsButton disabled={unavailable} variant="ghost" onClick={open}>{t("onboarding.memory.progress")}</SettingsButton>
       ) : (
-        <Button className={ACTION} disabled={disabled || setup.providers.length === 0} size="lg" variant="outline" onClick={open}>
-          {state.kind === "installing" ? t("onboarding.memoryProgress") : state.kind === "start" ? t("onboarding.memoryAction") : t("common.continue")}
-        </Button>
+        <SettingsButton disabled={unavailable} variant="outline" onClick={open}>
+          {t(state.kind === "failed" ? "onboarding.memory.retry" : "onboarding.memory.setUp")}
+        </SettingsButton>
       );
+  const share = state.kind === "installing" ? installShare(setup.runtimes[state.provider.id]) : null;
   const consentProvider = setup.providers.find((item) => item.id === consent.intent?.providerId);
   return (
-    <div className={ROW} data-memory-row={state.kind}>
-      <span className={cn(ICON, state.kind === "on" ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
-        {state.kind === "on" ? <Check className="size-4" aria-hidden="true" />
-          : state.kind === "installing" ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
-            : <Brain className="size-4" />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-sm">
-          {t("onboarding.extras.memory")}
-        </p>
-        <p className="mt-0.5 text-muted-foreground text-xs" role={state.kind === "failed" ? "alert" : state.kind === "installing" ? "status" : undefined}>
-          {description}
-        </p>
-      </div>
-      {action}
+    <div data-memory-row={state.kind}>
+      <SettingsRow
+        leading={<SetupRowTile><Brain className="size-[18px]" strokeWidth={1.75} /></SetupRowTile>}
+        label={t("onboarding.extras.memory")}
+        badge={<SettingsBadge tone={badgeTone(state.kind)}>{t(MEMORY_BADGES[state.kind])}</SettingsBadge>}
+        description={description}
+        control={control}
+      />
+      {share !== null && <InstallBar share={share} />}
       {setup.providers.length > 0 && (
         <MemorySetupDialog open={dialogOpen} onOpenChange={setDialogOpen} {...setup.props} />
       )}
@@ -245,15 +253,9 @@ function MemoryOptionRow({ disabled }: { disabled: boolean }) {
 
 export function ExtrasStep({ finishing }: { finishing: boolean }) {
   return (
-    <>
-      <div
-        className={cn(
-          "@container/extras divide-y divide-border overflow-hidden"
-        )}
-      >
-        {window.unifiedSkills && <SkillsOptionRow disabled={finishing} />}
-        <MemoryOptionRow disabled={finishing} />
-      </div>
-    </>
+    <SettingsList>
+      {window.unifiedSkills && <SkillsOptionRow disabled={finishing} />}
+      <MemoryOptionRow disabled={finishing} />
+    </SettingsList>
   );
 }

@@ -1,12 +1,13 @@
 /**
- * [INPUT]: Depends on closed account progress, the main-issued approval URL, the clipboard facade, Lucide Loader2 and the shared Input.
- * [OUTPUT]: Provides loginFlags, useLoginLink (copy with an expiry fence and a selectable fallback after a clipboard failure), LoginProgress (status, retrying failures, verification code, unconfirmed-cancellation notes) and LoginLinkFallback.
- * [POS]: Sign-in step body of the setup form; the step owns the footer buttons, this file owns what they need to know. Only the state-only browser URL is exposed, never proof verifiers or credentials.
+ * [INPUT]: Depends on closed account progress, the main-issued approval URL, the clipboard facade, Lucide Loader2/Copy, the shared Input and the Settings button.
+ * [OUTPUT]: Provides loginFlags, useLoginLink (copy with an expiry fence and a selectable fallback after a clipboard failure), LoginProgress (the status panel with its inline Copy Link action, retrying failures, verification code, unconfirmed-cancellation notes) and LoginLinkFallback.
+ * [POS]: Body of the browser sign-in dialog; the dialog owns the footer buttons, this file owns the status panel and what the footer needs to know. Only the state-only browser URL is exposed, never proof verifiers or credentials.
  */
 import { useEffect, useId, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Copy, Loader2 } from "lucide-react";
 import { Input } from "@ai-chat/ui/components/ui/input";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
+import { SettingsButton } from "@/components/settings/settings-layout";
 import { writeClipboardText } from "@/lib/agent-client";
 import type { CloudAccountState } from "../../../../shared/cloud-ipc";
 
@@ -16,7 +17,7 @@ export type LoginAction = "startLogin" | "cancelLogin" | "abandonLogin" | "reope
 const RETRYABLE_ERRORS = new Set(["connection-failed", "request-failed"]);
 
 /* The three facts the body and the footer both read; computed once so the two
-   halves of the card can never disagree about whether the browser is in play. */
+   halves of the dialog can never disagree about whether the browser is in play. */
 export function loginFlags(state: CloudAccountState, busy: ReadonlySet<LoginAction>) {
   const pending = state.pendingLogin;
   const cancelling = state.loginCancelling || pending?.progress === "cancelling" || busy.has("cancelLogin");
@@ -72,10 +73,10 @@ export function LoginProgress({ state, busy, link }: { state: CloudAccountState;
   /* main keeps retrying these on its own timer: showing them as terminal makes users cancel a
      sign-in that would have completed, so the phase stays primary and the reason becomes a note. */
   const retrying = Boolean(pending) && RETRYABLE_ERRORS.has(state.error ?? "");
-  return <div className="flex flex-col gap-5">
-    <div className="flex items-start gap-3">
+  return <div className="flex flex-col gap-4">
+    <div className="flex items-start gap-3 rounded-lg bg-muted/60 px-3.5 py-3">
       {(!state.error || retrying) && <Loader2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" />}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         {state.error && !retrying ? <p ref={errorRef} role="alert" tabIndex={-1} className="font-medium text-sm text-destructive">{t(`cloud.error.${state.error}`)}</p> :
           <p role="status" className="font-medium text-sm">{pending ? t(`cloud.pending.${pending.progress}`) : t(state.loginCancelling ? "cloud.pending.cancelling" : "cloud.pending.preparing")}</p>}
         {retrying && <p className="mt-1 text-[13px]/[1.45] text-muted-foreground">{t(`cloud.error.${state.error}`)}</p>}
@@ -88,6 +89,10 @@ export function LoginProgress({ state, busy, link }: { state: CloudAccountState;
           <p className="mt-1 text-[13px]/[1.45] text-muted-foreground">{t("cloud.abandonLoginNote")}</p>
         </>}
       </div>
+      {/* The link travels with the status it belongs to; the URL itself only appears after a clipboard failure. */}
+      {link.url && <SettingsButton variant="ghost" className="-my-1 h-7 shrink-0" disabled={link.copyState === "copying"} onClick={() => { void link.copy(); }}>
+        <Copy aria-hidden="true" className="size-3.5" /><span aria-live="polite">{link.copyState === "copied" ? t("cloud.loginLinkCopied") : t("cloud.copyLoginLink")}</span>
+      </SettingsButton>}
     </div>
     {/* Only the code is shown: the eight-digit comparison is the bridge's actual check,
         and the Web approval page asks for exactly that comparison. */}

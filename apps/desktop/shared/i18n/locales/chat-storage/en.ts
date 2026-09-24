@@ -9,7 +9,7 @@ export const chatStorageEn = {
   copyDetails: "Copy technical details",
   copiedDetails: "Technical details copied",
   reportIssue: "Report on GitHub",
-  warningResolution: "Restart Bottega. If this keeps appearing, report it on GitHub so we can look into it.",
+  warningResolution: "If this keeps appearing, report it on GitHub so we can look into it.",
   code: {
     "file-quarantined": {
       title: "A chat is temporarily unavailable",

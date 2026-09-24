@@ -57,7 +57,7 @@ export function LabSettingsView() {
                 ) : (
                   <Skeleton
                     data-testid="agent-connections-loading"
-                    className="h-6 w-11 rounded-full"
+                    className="h-[18px] w-8 rounded-full"
                   />
                 )
               }

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React DOM/lazy/Suspense, router, global styles, business providers, window context, surface migration, shared feedback toasts, ArchiveCelebrationHost, SketchHost, startup marks, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Composes persistent providers, window-level feedback hosts before route effects, task-panel access, App recovery, settings navigation, route-independent ProductApp sketch and archive celebration hosts, and the catalog-loaded/product-loading/gate-open startup milestones.
+ * [OUTPUT]: Composes persistent providers, window-level feedback hosts before route effects, task-panel access, App recovery, settings navigation (including background-surface section requests and the lazy Dock page), route-independent ProductApp sketch and archive celebration hosts, and the catalog-loaded/product-loading/gate-open startup milestones.
  * [POS]: Renderer bootstrap and sole top-level provider/router/window-role composition boundary
  */
 import { SettingsNavigationContext } from "@/components/providers/navigation/context";
@@ -69,6 +69,8 @@ import {
   settingsRouteSection,
   MEMORY_SETTINGS_PATH,
   SKILLS_SETTINGS_PATH,
+  OPEN_SETTINGS_EVENT,
+  type OpenSettingsRequest,
   type SettingsOverlaySection,
 } from "@/lib/settings-navigation";
 import { settingsStore } from "@/lib/settings-store";
@@ -174,6 +176,11 @@ const UsageSettingsView = lazy(() =>
     default: module.UsageSettingsView,
   }))
 );
+const DockSettingsView = lazy(() =>
+  import("@/views/settings-dock").then((module) => ({
+    default: module.DockSettingsView,
+  }))
+);
 const LabSettingsView = lazy(() =>
   import("@/views/settings-lab").then((module) => ({
     default: module.LabSettingsView,
@@ -277,6 +284,18 @@ function ProductApp() {
     setUsageAgent(null);
     settingsStore.ensureLoaded();
   };
+
+  /* Background surfaces ask for a Settings section by window event; it lands through the same
+     selectSettings as the sidebar. Re-subscribing per render keeps the latest closure without a ref. */
+  useEffect(() => {
+    const open = (event: Event) => {
+      const { section, agent } = (event as CustomEvent<OpenSettingsRequest>).detail;
+      selectSettings(section);
+      if (section === "usage") setUsageAgent(agent ?? null);
+    };
+    window.addEventListener(OPEN_SETTINGS_EVENT, open);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, open);
+  });
 
   useEffect(() => onSetupEvent((event) => {
     if (event.type === "open-agent-setup") setup.openOnboarding("agent");
@@ -495,6 +514,7 @@ function ProductApp() {
                           {settingsSection === "tools" && <ToolsSettingsView />}
                           {settingsSection === "usage" && <UsageSettingsView focusAgent={usageAgent} />}
                           {settingsSection === "lab" && <LabSettingsView />}
+                          {settingsSection === "dock" && <DockSettingsView />}
                           {settingsSection === "archive" && <ArchiveSettingsView />}
                         </Suspense>
                       </SidebarInset>

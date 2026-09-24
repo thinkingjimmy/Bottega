@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on canonical turns, retained activity receipts, Chat events, coordinator preparations, update state, product windows, and trusted IPC.
- * [OUTPUT]: Provides cross-platform background presence, shared screen observation, transactional display IPC, shared shortcut bindings, manual panel intents, task destinations, a shared native recovery menu, and main-authorized unread receipts.
+ * [OUTPUT]: Provides cross-platform background presence, shared screen observation, transactional display IPC, shared shortcut bindings, manual panel intents, task destinations, a shared native recovery menu (with the optional Dock submenu and refresh hook), the main-window destination sender, and main-authorized unread receipts.
  * [POS]: Presence composition beneath the desktop root; auxiliary renderers never receive product capabilities.
  */
 
@@ -31,7 +31,8 @@ import { UnreadConsumption } from "./lifecycle/unread";
 import type { WindowRetention } from "./lifecycle/window-retention";
 
 export function createPresenceRuntime(ports: { mainDirectory: string; settings: SettingsStore; chats: ChatsService;
-  update: UpdateService; coordinator: ConversationCoordinator; login: LoginItemPort; retention: WindowRetention; locale(): AppLocale; quit(): void; quitting(): boolean }) {
+  update: UpdateService; coordinator: ConversationCoordinator; login: LoginItemPort; retention: WindowRetention; locale(): AppLocale; quit(): void; quitting(): boolean;
+  dockMenu?(): Electron.MenuItemConstructorOptions | null }) {
   const capabilities = presenceCapabilities(process.platform);
   const resourcesPath = app.isPackaged ? process.resourcesPath : join(ports.mainDirectory, "../../resources");
   const rendererUrl = process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(join(ports.mainDirectory, "../renderer/index.html")).href;
@@ -55,7 +56,7 @@ export function createPresenceRuntime(ports: { mainDirectory: string; settings: 
   };
   const tray = new PresenceTray({ resources: resourcesPath, quitting: ports.quitting, locale: ports.locale, activities: () => projection.snapshot(),
     update: () => ports.update.snapshot(), open: () => ports.retention.open(), pending: () => { void send({ type: "presence-destination", destination: "activity" }); },
-    failed: () => { void service.refresh(); }, quit: ports.quit, install: (candidateId) => { void ports.update.installNow(candidateId); } });
+    failed: () => { void service.refresh(); }, quit: ports.quit, install: (candidateId) => { void ports.update.installNow(candidateId); }, dock: ports.dockMenu });
   const screens = new PresenceScreenMonitor(capabilities.displayModeSelection, (receive, failed) => new NativeScreenBridge(
     app.isPackaged ? join(resourcesPath, "presence/bin/screen-bridge") : join(ports.mainDirectory, "../presence/bin/screen-bridge"), receive, failed));
   const panel = new TaskPanelController({ mainDirectory: ports.mainDirectory, screens, rendererUrl: process.env.ELECTRON_RENDERER_URL,
@@ -80,5 +81,5 @@ export function createPresenceRuntime(ports: { mainDirectory: string; settings: 
     .handle(PRESENCE_CHANNEL.setDisplayMode, (value) => service.setDisplayMode(value as import("../../../shared/presence-ipc").PresenceDisplayMode))
     .handle(PRESENCE_CHANNEL.openSystemSettings, () => { if (process.platform === "darwin") return shell.openExternal("x-apple.systempreferences:com.apple.LoginItems-Settings.extension"); })
     .roles("main", "app-window").handleWithContext(PRESENCE_CHANNEL.presented, (context, value) => unread.presented(context, value));
-  return { service, initialize: () => service.initialize(), close() { stop.forEach((stop) => stop()); service.close(); projection.close(); } };
+  return { service, send, refreshMenu: () => tray.refresh(), initialize: () => service.initialize(), close() { stop.forEach((stop) => stop()); service.close(); projection.close(); } };
 }

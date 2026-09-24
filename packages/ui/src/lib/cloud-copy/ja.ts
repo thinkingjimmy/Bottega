@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, Sync settings navigation, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs list, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -121,13 +121,36 @@ export const cloudCopy = {
   "setup": {
     "signIn": "ログイン",
     "enable": "ログインを完了",
-    "signInTitle": "ログインしてこのコンピューターを同期",
-    "browserApproval": "ログインはブラウザで承認します。",
+    "browserTitle": "ブラウザでログインを完了してください",
+    "browserDescription": "既定のブラウザで Google ログインを開きました。承認したら、ここに戻ってください。",
+    "pendingLabel": "同期パスワードが必要です",
+    "pendingDescription": "同期パスワードを設定すると、このコンピューターの同期が始まります。",
+    "resume": "続ける",
     "signedInAs": "{{email}} でログイン中です。",
     "checkCode": "ブラウザに表示された確認コードと一致することを確かめてから許可してください。",
     "enterPassword": "同期パスワードを入力",
     "enterPasswordDescription": "このコンピューターは、別のデバイスで作成した暗号化ワークスペースに参加します。Bottega はパスワードを復元できません。",
     "unlockedDescription": "このコンピューターはすでにロック解除されています。完了すると同期が始まります。"
+  },
+  "serviceUnavailable": {
+    "connection-failed": "現在、同期サービスに接続できません。このコンピューターでは引き続きすべて使えます。",
+    "server-outdated": "同期サービスはこのバージョンの Bottega に向けて更新中です。このコンピューターでは引き続きすべて使えます。",
+    "client-outdated": "このバージョンの Bottega は同期サービスに対応していません。最新バージョンをインストールしてからログインしてください。このコンピューターでは引き続きすべて使えます。",
+    "environment-mismatch": "この Bottega ビルドはこの同期サービスに接続できません。このコンピューターでは引き続きすべて使えます。"
+  },
+  "whatSyncs": {
+    "title": "同期される内容",
+    "description": "あなただけが知る同期パスワードでエンドツーエンド暗号化されます。",
+    "after": "ログイン後",
+    "afterPassword": "同期パスワードの設定後",
+    "chats": "Chat と Project",
+    "chatsDescription": "会話、その中のファイル、Project",
+    "data": "Base と App",
+    "dataDescription": "Base のレコードと画像、公開済み App のソース",
+    "skills": "Skills",
+    "skillsDescription": "Skills ライブラリ",
+    "dock": "Dock のレイアウト",
+    "dockDescription": "項目とウィジェット（システムの Dock は含みません）"
   },
   "syncBadge": {
     "synced": "最新",
@@ -257,6 +280,10 @@ export const cloudCopy = {
   "revokeTitle": "このセッションを取り消しますか？",
   "revokeDescription": "このデバイスからクラウドアカウントにアクセスできなくなります。ダウンロード済みの内容はデバイスに残ります。",
   "localDescription": "ローカル機能は無料で利用できます。ログイン後、初回同期を確認するまで内容はアップロードされません。",
+  "notSignedIn": "ログインしていません",
+  "signedOutDescription": "Bottega はこのコンピューターで無料ですべて使えます。ログインすると、作業をデバイス間で同期できます。初回同期を確認するまで何もアップロードされません。",
+  "tryNow": "今すぐ再試行",
+  "tryAgain": "再試行",
   "sync": "同期",
   "syncNotConnected": "同期はまだ有効になっていません。",
 
@@ -305,7 +332,7 @@ export const cloudCopy = {
   "openBrowser": "ブラウザを再度開く",
   "loginLinkLabel": "ログインリンク",
   "loginLinkDescription": "ブラウザが開かない場合は、このリンクをコピーしてブラウザに貼り付けてください。",
-  "copyLoginLink": "ログインリンクをコピー",
+  "copyLoginLink": "リンクをコピー",
   "loginLinkCopied": "コピーしました",
   "loginLinkCopyFailed": "リンクをコピーできませんでした。リンクを選択して手動でコピーしてください。",
   "verificationCode": "確認コード",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Node path/fs and untrusted portable object identifiers.
- * [OUTPUT]: Provides contained object paths and non-symlink directory admission.
+ * [OUTPUT]: Provides contained object paths, non-symlink directory admission and the isUnder containment test.
  * [POS]: Shared folder path boundary for content owners; never accepts renderer-authored relative paths.
  */
 import { lstat, mkdir, realpath } from "node:fs/promises";
@@ -10,6 +10,9 @@ export function libraryObjectId(value: string) {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error("LIBRARY_INVALID_OBJECT_ID");
   return value;
 }
+
+/** True for `root` itself or anything below it; a sibling that only shares a prefix (`/a/B` vs `/a/B2`) is not under it. */
+export const isUnder = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
 
 export const libraryChatPath = (root: string, chatId: string) => join(root, "chats", libraryObjectId(chatId));
 export const libraryHomePath = (root: string, chatId: string) => join(libraryChatPath(root, chatId), "home");

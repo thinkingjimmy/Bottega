@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Depends on Zod and standard URL parsing.
- * [OUTPUT]: Provides strict protocol-v9 encrypted-business handshakes, a boolean remote capability flag, limits, request headers and the protocol-free native-shell update metadata contract.
+ * [OUTPUT]: Provides strict protocol-v10 encrypted-business handshakes, a boolean remote capability flag, limits, request headers and the protocol-free native-shell update metadata contract.
  * [POS]: Shared configuration boundary for desktop, Web and the private backend.
  */
 import { z } from "zod";
 
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 export const MAX_BLOB_BYTES = 50_000_000;
 export const MAX_PART_BYTES = 8_388_608;
 export const MAX_PARTS = 6;

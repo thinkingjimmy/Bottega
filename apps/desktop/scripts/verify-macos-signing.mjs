@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on release/mac-* Bottega.app and DMG, APPLE_TEAM_ID, codesign, spctl, and stapler
- * [OUTPUT]: Verifies strict deep signatures, Developer ID authority, Team ID, hardened runtime, helper entitlements, Gatekeeper, and notarization staple
+ * [OUTPUT]: Verifies strict deep signatures, Developer ID authority, Team ID, hardened runtime, helper entitlements (including the Bottega Dock helpers, the bridge's Apple Events entitlement, and the bundled recovery LaunchAgent plist), Gatekeeper, and notarization staple
  * [POS]: Terminal fail-closed oracle for signed macOS release bytes; successful packaging alone is never sufficient
  */
 
@@ -74,6 +74,25 @@ run("codesign", ["--verify", "--strict", "--verbose=4", screenHelper]);
 const screenSignature = run("codesign", ["-dv", "--verbose=4", screenHelper]);
 if (!screenSignature.includes(`TeamIdentifier=${teamId}`) || !/flags=.*runtime/.test(screenSignature)) {
   throw new Error("presence screen helper signature policy mismatch");
+}
+// Bottega Dock: the bridge sends the one Finder Apple Event, so hardened runtime must carry the entitlement;
+// the recovery agent is launched by launchd from the bundled plist and must be team-signed like the app.
+for (const name of ["system-dock-bridge", "bottega-dock-recovery"]) {
+  const helper = join(app, "Contents", "Resources", "system-dock", "bin", name);
+  if (!existsSync(helper)) throw new Error(`Bottega Dock helper is missing: ${name}`);
+  run("codesign", ["--verify", "--strict", "--verbose=4", helper]);
+  const details = run("codesign", ["-dv", "--verbose=4", helper]);
+  if (!details.includes(`TeamIdentifier=${teamId}`) || !/flags=.*runtime/.test(details)) {
+    throw new Error(`Bottega Dock helper signature policy mismatch: ${name}`);
+  }
+}
+const dockEntitlements = run("codesign", ["-d", "--entitlements", ":-", join(app, "Contents", "Resources", "system-dock", "bin", "system-dock-bridge")]);
+if (!dockEntitlements.includes("com.apple.security.automation.apple-events")) {
+  throw new Error("Bottega Dock bridge is missing the Apple Events entitlement");
+}
+const launchAgents = join(app, "Contents", "Library", "LaunchAgents");
+if (!existsSync(launchAgents) || !readdirSync(launchAgents).some((name) => name.endsWith(".dock-recovery.plist"))) {
+  throw new Error("Bottega Dock recovery LaunchAgent plist is missing");
 }
 run("spctl", ["-a", "-vv", "--type", "execute", app]);
 run("xcrun", ["stapler", "validate", app]);

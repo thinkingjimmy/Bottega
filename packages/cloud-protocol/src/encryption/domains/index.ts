@@ -5,7 +5,7 @@
  */
 import { z } from "zod";
 import { checked, id, scopeSchema } from "./scalars";
-import { skillHeadBindingSchema, skillGenerationBindingSchema, appBindingSchema, chatBindingSchema, projectBindingSchema } from "./records";
+import { skillHeadBindingSchema, skillGenerationBindingSchema, appBindingSchema, chatBindingSchema, projectBindingSchema, accountConfigBindingSchema } from "./records";
 import { baseFieldBindingSchema, baseOperationBindingSchema } from "./bases";
 import { messageBindingSchema } from "./messages";
 import { fileBindingSchema, homeBindingSchema, remoteProjectQueryBindingSchema, remoteCommandBindingSchema, remoteIntentBindingSchema, remoteCreationBindingSchema, remoteResultBindingSchema, turnBindingSchema } from "./streams";
@@ -24,7 +24,8 @@ const remoteCommand = shape("remote-command", 4, remoteCommandBindingSchema), re
 const search = shape("search", 6, searchBindingSchema), mirror = shape("mirror", 6, mirrorBindingSchema);
 const skillHead = shape("skill-head", 1, skillHeadBindingSchema), skillGeneration = shape("skill-generation", 3, skillGenerationBindingSchema)
   .refine(value => value.entityId === value.binding.generationId);
-export const domainContextSchema = z.discriminatedUnion("entityKind", [remoteProjectQuery, chat, project, app, baseOperation, baseField, message, file, home, turn, remoteCreation, remoteIntent, remoteCommand, remoteResult, search, mirror, skillHead, skillGeneration]);
+const accountConfig = shape("account-config", 8, accountConfigBindingSchema);
+export const domainContextSchema = z.discriminatedUnion("entityKind", [remoteProjectQuery, chat, project, app, baseOperation, baseField, message, file, home, turn, remoteCreation, remoteIntent, remoteCommand, remoteResult, search, mirror, skillHead, skillGeneration, accountConfig]);
 export type DomainContext = z.infer<typeof domainContextSchema>;
 type Scope = z.infer<typeof scopeSchema>;
 const constructor = <S extends z.ZodType<DomainContext>>(schema: S, entityKind: z.output<S>["entityKind"], purpose: z.output<S>["purpose"]) =>
@@ -48,6 +49,7 @@ export const createSkillHeadContext = constructor(skillHead, "skill-head", 1);
 export const createSkillGenerationContext = constructor(skillGeneration, "skill-generation", 3);
 export const createMirrorContext = constructor(mirror, "mirror", 6);
 export const createSearchContext = constructor(search, "search", 6);
+export const createAccountConfigContext = constructor(accountConfig, "account-config", 8);
 export * from "./records";
 export * from "./bases";
 export * from "./messages";

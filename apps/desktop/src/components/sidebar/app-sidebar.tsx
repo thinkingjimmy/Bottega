@@ -1,7 +1,7 @@
 "use client";
 /**
  * [INPUT]: Depends on React, i18n, Sidebar UI, product providers, shared WorkspaceNavigation/SettingsNavigation and ComputerSwitcher, active App targets, footer affordances, cloud projections and the Sidebar notice dialog.
- * [OUTPUT]: Adapts native data and actions to the shared complete sidebar, mounts the account's computer strip with this computer first, creates a new Chat on the computer being viewed and stands its controls down in place while that computer sleeps, and preserves generation-fenced targets, feedback and Settings navigation.
+ * [OUTPUT]: Adapts native data and actions to the shared complete sidebar, mounts the account's computer strip with this computer first, creates a new Chat on the computer being viewed and stands its controls down in place while that computer sleeps, and preserves generation-fenced targets, feedback and Settings navigation (including the macOS-only Dock entry).
  * [POS]: Sole persistent navigation surface; main.tsx owns its lifetime while active route and App target facts remain centralized in focused resolvers
  */
 import {
@@ -19,6 +19,7 @@ import {
   Database,
   Download,
   FlaskConical,
+  PanelBottom,
   RefreshCw,
   Keyboard,
   Loader2,
@@ -423,6 +424,10 @@ function AppSidebarContent({
           ? [settingItem("account", t("cloud.syncSettings"), <RefreshCw />)]
           : []),
         settingItem("shortcuts", t("common.keyboardShortcuts"), <Keyboard />),
+        // The preload exposes the Dock bridge only on macOS main windows; elsewhere the page does not exist.
+        ...(window.systemDockSettings
+          ? [settingItem("dock", t("systemDock.settings.title"), <PanelBottom />)]
+          : []),
         settingItem("lab", t("common.lab"), <FlaskConical />),
         settingItem("updates", t("settings.updates.title"), <Download />),
         settingItem("community", t("settings.community.title"), <Users />),

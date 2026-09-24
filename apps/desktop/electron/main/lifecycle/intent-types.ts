@@ -22,7 +22,7 @@ export const INTENT_PHASES = {
   "app-cloud-install": ["proposed", "admitted", "source-ready", "extensions-ready", "generation-ready", "activated", "workspace-ready", "installed"],
   "chat-materialize": ["proposed", "admitted", "home-committed", "chat-committed"],
   "project-chat-rescue": ["proposed", "admitted", "classification-committed"],
-  "scope-cleanup": ["proposed", "admitted", "homes", "blobs", "bases", "projects", "apps", "chats"],
+  "scope-cleanup": ["proposed", "admitted", "homes", "blobs", "bases", "projects", "apps", "chats", "account-config"],
   "save-as-app": [
     "proposed",
     "admitted",

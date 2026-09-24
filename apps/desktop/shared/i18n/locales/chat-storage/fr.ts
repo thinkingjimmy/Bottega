@@ -11,7 +11,7 @@ export const chatStorageFr: typeof chatStorageEn = {
   copyDetails: "Copier les détails techniques",
   copiedDetails: "Détails techniques copiés",
   reportIssue: "Signaler sur GitHub",
-  warningResolution: "Redémarrez Bottega. Si cela continue d’apparaître, signalez-le sur GitHub pour que nous puissions l’examiner.",
+  warningResolution: "Si cela continue d’apparaître, signalez-le sur GitHub pour que nous puissions l’examiner.",
   code: {
     "file-quarantined": {
       title: "Un Chat est temporairement indisponible",

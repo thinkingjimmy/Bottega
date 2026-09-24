@@ -1,0 +1,80 @@
+/* [INPUT]: System appearance media queries (color scheme, contrast, forced colors, reduced transparency/motion) and the root `data-reduced-motion` flag set from the bar snapshot.
+ * [OUTPUT]: Shared Dock tokens (translucent and solid surfaces, the bar's glass edge and solid fallback, text, hover, focus, caution/danger), resets, glyph sizing, and the high-contrast / solid / no-motion treatments for both Dock renderers.
+ * [POS]: system-dock/common stylesheet imported first by bar and panel entries; surface-specific layout lives in bar.css and panel.css.
+ */
+:root {
+  color-scheme: light dark;
+  font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  --surface: rgb(246 246 248 / 0.78);
+  --surface-solid: #f3f3f5;
+  --surface-raised: rgb(255 255 255 / 0.72);
+  --line: rgb(0 0 0 / 0.1);
+  --text: #1d1d1f;
+  --muted: #6b6b70;
+  --hover: rgb(0 0 0 / 0.06);
+  --pressed: rgb(0 0 0 / 0.11);
+  --selected: rgb(10 100 214 / 0.14);
+  --accent: #0a64d6;
+  --caution: #a34a00;
+  --danger: #c4262e;
+  --positive: #1f7a3a;
+  --focus: #0a64d6;
+  --shadow: 0 10px 30px rgb(0 0 0 / 0.16), 0 0 0 0.5px rgb(0 0 0 / 0.1);
+  /* The bar's glass is the window's native material; the page only adds the lit edge, like the system Dock. */
+  --strip-fill: transparent;
+  --strip-edge: inset 0 0 0 0.5px rgb(255 255 255 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.35);
+  --ring-track: rgb(0 0 0 / 0.12);
+  color: var(--text);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: rgb(36 36 40 / 0.78);
+    --surface-solid: #26262a;
+    --surface-raised: rgb(255 255 255 / 0.06);
+    --line: rgb(255 255 255 / 0.12);
+    --text: #f4f4f6;
+    --muted: #a3a3aa;
+    --hover: rgb(255 255 255 / 0.09);
+    --pressed: rgb(255 255 255 / 0.15);
+    --selected: rgb(76 157 255 / 0.22);
+    --accent: #4c9dff;
+    --caution: #ffab5c;
+    --danger: #ff7a73;
+    --positive: #6fd18b;
+    --focus: #6aaeff;
+    --shadow: 0 10px 30px rgb(0 0 0 / 0.45), 0 0 0 0.5px rgb(255 255 255 / 0.12);
+    --strip-edge: inset 0 0 0 0.5px rgb(255 255 255 / 0.22), inset 0 1px 0 rgb(255 255 255 / 0.14);
+    --ring-track: rgb(255 255 255 / 0.18);
+  }
+}
+/* Solid, not translucent: the user asked for less transparency, or main flagged a system whose
+   compositor gives this window a solid background anyway (PRD 5.6, macOS 15). */
+@media (prefers-reduced-transparency: reduce) { :root { --surface: var(--surface-solid); --strip-fill: var(--surface-solid); } }
+:root[data-solid] { --surface: var(--surface-solid); --strip-fill: var(--surface-solid); }
+@media (prefers-contrast: more) {
+  :root { --surface: var(--surface-solid); --strip-fill: var(--surface-solid); --line: color-mix(in srgb, var(--text) 55%, transparent); --muted: color-mix(in srgb, var(--text) 82%, transparent);
+    --hover: color-mix(in srgb, var(--text) 14%, transparent); }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { user-select: none; -webkit-user-select: none; cursor: default; }
+button, input, select { font: inherit; color: inherit; }
+button { border: 0; background: transparent; padding: 0; cursor: default; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+button:disabled { opacity: 0.45; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.glyph { display: grid; place-items: center; width: 100%; height: 100%; }
+.glyph svg { width: 62%; height: 62%; }
+.glyph.native { object-fit: contain; }
+/* Full-colour art (the Trash) is drawn to the same optical size as a native App icon, so it takes the whole slot. */
+.glyph.art svg { width: 100%; height: 100%; }
+.glyph.placeholder { border-radius: 22%; background: var(--hover); }
+.backend-icon svg, .face-logo svg { display: block; width: 100%; height: 100%; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+:root[data-reduced-motion] *, :root[data-reduced-motion] *::before, :root[data-reduced-motion] *::after { animation: none !important; transition: none !important; }
+@media (forced-colors: active) {
+  :root { --surface: Canvas; --surface-solid: Canvas; --strip-fill: Canvas; --strip-edge: inset 0 0 0 1px CanvasText; --ring-track: GrayText; --line: CanvasText; --text: CanvasText; --muted: CanvasText; --focus: Highlight;
+    --accent: LinkText; --caution: CanvasText; --danger: CanvasText; --hover: Canvas; --selected: Highlight; --shadow: none; }
+  button { border: 1px solid ButtonText; }
+}

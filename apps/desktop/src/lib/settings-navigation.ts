@@ -1,8 +1,10 @@
 /**
- * [INPUT]: Depends only on route, overlay, and archived-item locator string values
- * [OUTPUT]: Provides canonical settings paths, archived-item locator keys/URLs, overlay/destination types, exit routing, and the single active-section projection
+ * [INPUT]: Depends only on route, overlay, and archived-item locator string values, plus the Agent identity type
+ * [OUTPUT]: Provides canonical settings paths, archived-item locator keys/URLs, overlay/destination types, exit routing, the single active-section projection, and the window-level open-settings request used by background surfaces
  * [POS]: Single renderer authority for Settings navigation, archive deep links, and active-section state, including the Extensions-to-Packages alias
  */
+
+import type { AgentBackendId } from "../../shared/agent-ipc";
 
 export const UPDATES_SETTINGS_PATH = "/settings/updates";
 const SETTINGS_ROUTE_PREFIX = "/settings/";
@@ -46,6 +48,7 @@ export type SettingsOverlaySection =
   | "tools"
   | "usage"
   | "lab"
+  | "dock"
   | "archive";
 
 /** 设置的全部目的地：覆盖层七档 + 走真实路由的 Memory。 */
@@ -99,4 +102,17 @@ export function activeSettingsSection(
   pathname: string
 ): SettingsDestination | null {
   return overlay ?? settingsRouteSection(pathname);
+}
+
+/* ============================================================
+ * 后台表面（菜单栏、刘海、Bottega Dock）只能经 main 把主窗口带到固定的
+ * 设置档位。它们不认识路由，也不该认识：请求只说「去哪一档」，
+ * 由 ProductApp 用与侧栏相同的 selectSettings 落地，出口规则因此只有一份。
+ * ============================================================ */
+
+export const OPEN_SETTINGS_EVENT = "bottega:open-settings";
+export type OpenSettingsRequest = Readonly<{ section: SettingsOverlaySection; agent?: AgentBackendId | null }>;
+
+export function requestSettingsSection(request: OpenSettingsRequest) {
+  window.dispatchEvent(new CustomEvent<OpenSettingsRequest>(OPEN_SETTINGS_EVENT, { detail: request }));
 }

@@ -1,0 +1,63 @@
+{
+  "memory": [
+    {
+      "page": "system-dock-panel.html",
+      "pid": 9306,
+      "type": "Tab",
+      "workingSetKiB": 158560,
+      "privateKiB": null
+    },
+    {
+      "page": "system-dock-bar.html",
+      "pid": 9305,
+      "type": "Tab",
+      "workingSetKiB": 121168,
+      "privateKiB": null
+    },
+    {
+      "page": "index.html",
+      "pid": 9169,
+      "type": "Tab",
+      "workingSetKiB": 249376,
+      "privateKiB": null
+    }
+  ],
+  "metrics": [
+    {
+      "pid": 9126,
+      "type": "Browser",
+      "workingSetKiB": 402064,
+      "privateKiB": null
+    },
+    {
+      "pid": 9141,
+      "type": "GPU",
+      "workingSetKiB": 132784,
+      "privateKiB": null
+    },
+    {
+      "pid": 9142,
+      "type": "Utility",
+      "workingSetKiB": 45968,
+      "privateKiB": null
+    },
+    {
+      "pid": 9169,
+      "type": "Tab",
+      "workingSetKiB": 249376,
+      "privateKiB": null
+    },
+    {
+      "pid": 9305,
+      "type": "Tab",
+      "workingSetKiB": 121168,
+      "privateKiB": null
+    },
+    {
+      "pid": 9306,
+      "type": "Tab",
+      "workingSetKiB": 158560,
+      "privateKiB": null
+    }
+  ]
+}

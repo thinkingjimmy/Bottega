@@ -235,7 +235,7 @@ export function BuiltinToolsSection({
         </TabsList>
         {DOMAINS.map(({ domain, tools }) => (
           <TabsContent key={domain} value={domain}>
-            <div className="divide-y divide-border">
+            <div className="divide-inset">
               {tools.map(([name]) => {
                 const tool = byId.get(name);
                 const label = t(

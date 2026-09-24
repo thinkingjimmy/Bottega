@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the preload WindowSurfacesBridgeApi, shared surface/capsule DTOs, browser history/sessionStorage, and React external-store hooks
- * [OUTPUT]: Provides windowContext, installWindowSurfaceRuntime, navigation-generation-fenced show/open/reclaim intents, capsule operations, checkpoints, and nullable useSurfaceResidence
+ * [OUTPUT]: Provides windowContext, installWindowSurfaceRuntime (including background-surface Settings/Usage/activity destinations), navigation-generation-fenced show/open/reclaim intents, capsule operations, checkpoints, and nullable useSurfaceResidence
  * [POS]: Renderer client for main-owned surface residency; it caches projections only and never decides ownership
  */
 
@@ -21,6 +21,7 @@ import {
   importComposerCapsule,
   restoreComposerCapsuleExport,
 } from "./chat-composer-store";
+import { requestSettingsSection } from "./settings-navigation";
 
 declare global {
   interface Window {
@@ -71,8 +72,9 @@ async function handleCommand(command: SurfaceCommand) {
 
 async function runCommand(command: SurfaceCommand) {
     if (command.type === "presence-destination") {
-      if (command.destination === "general") navigate("/settings/general");
-      else window.dispatchEvent(new Event("bottega:open-activity"));
+      // "general" once navigated to a /settings/general route that never existed; every Settings target is an overlay section.
+      if (command.destination === "activity") window.dispatchEvent(new Event("bottega:open-activity"));
+      else requestSettingsSection({ section: command.destination, agent: command.agent ?? null });
       return;
     }
     if (command.type === "navigate") {

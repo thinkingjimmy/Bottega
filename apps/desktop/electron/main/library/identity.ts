@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on private Node filesystem publication and Zod's tolerant object parsing.
- * [OUTPUT]: Opens or creates the immutable v1 folder identity without copying installation or account state.
+ * [OUTPUT]: Opens or creates the immutable v1 folder identity without copying installation or account state, and reads an existing one without creating it.
  * [POS]: Portable format admission before any content owner is mounted.
  */
 import { randomUUID } from "node:crypto";
@@ -14,13 +14,20 @@ export const libraryIdentitySchema = z.object({
 });
 export type LibraryIdentity = z.infer<typeof libraryIdentitySchema>;
 
+async function readIdentityFile(path: string) {
+  const info = await lstat(path);
+  if (!info.isFile() || info.isSymbolicLink() || info.size > 64 * 1024) throw new Error("LIBRARY_IDENTITY_INVALID");
+  return libraryIdentitySchema.parse(JSON.parse(await readFile(path, "utf8")));
+}
+
+/** Reads a folder's identity without creating one; anything unreadable is simply not a Bottega folder. */
+export async function readLibraryIdentity(root: string): Promise<LibraryIdentity | null> {
+  return readIdentityFile(join(root, ".bottega", "library.json")).catch(() => null);
+}
+
 export async function openLibraryIdentity(control: string): Promise<LibraryIdentity> {
   const path = join(control, "library.json");
-  const read = async () => {
-    const info = await lstat(path);
-    if (!info.isFile() || info.isSymbolicLink() || info.size > 64 * 1024) throw new Error("LIBRARY_IDENTITY_INVALID");
-    return libraryIdentitySchema.parse(JSON.parse(await readFile(path, "utf8")));
-  };
+  const read = () => readIdentityFile(path);
   try { return await read(); } catch (error) { if (!isErrnoCode(error, "ENOENT")) throw error; }
   const temporary = join(control, `identity-${randomUUID()}.tmp`);
   const file = await open(temporary, "wx", 0o600);

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Depends on native quota source ports, the existing process admission owner, an optional durable snapshot port and bounded consumer demand.
  * [OUTPUT]: Owns quota snapshots, singleflight, identity fencing, the read cap and the completion window owed to a closed surface, last-known seeding across launches, refresh/reset scheduling, warm-channel demand reporting and cleanup.
- * [POS]: The sole main-process quota fact owner shared by Settings and composer menus.
+ * [POS]: The sole main-process quota fact owner shared by Settings, composer menus and the Dock; foreground and demand are scoped per surface.
  */
 import { AGENT_BACKEND_ORDER, type AgentBackendId } from "../../../shared/agent-ipc";
 import { emptyAgentLimits } from "../../../shared/usage-limits/projection";
@@ -30,7 +30,9 @@ export class AgentUsageLimitsService {
   private readonly entries = new Map<AgentBackendId, Entry>(AGENT_BACKEND_ORDER.map((backend) => [backend, {
     value: emptyAgentLimits(backend), failures: 0, resetAttempts: new Set(), manualAt: null, pending: false, menu: false, completionUntil: null,
   }]));
-  private readonly demands = new Map<string, LimitsDemand>();
+  /* Demand and foreground are per surface (main window, Dock bar, Dock panel): one surface's
+     reload, blur or teardown never clears another surface's consumers (DCK-19). */
+  private readonly demands = new Map<string, { demand: LimitsDemand; surface: string }>();
   private readonly listeners = new Set<(value: UsageLimitsSnapshot) => void>();
   private readonly source: QuotaSourcePort;
   private readonly persistence?: QuotaSnapshotPersistence;
@@ -42,7 +44,8 @@ export class AgentUsageLimitsService {
   private readonly releases: (() => void)[];
   private timer?: ReturnType<typeof setTimeout>;
   private revision = 0;
-  private foreground = false;
+  private readonly foregroundSurfaces = new Set<string>();
+  private get foreground() { return this.foregroundSurfaces.size > 0; }
   private remoteDemand = false;
   private closed = false;
 
@@ -84,7 +87,7 @@ export class AgentUsageLimitsService {
     for (const listener of this.listeners) listener(snapshot);
   }
   private wanted(backend: AgentBackendId) {
-    return !this.closed && (this.remoteDemand || this.foreground && [...this.demands.values()].some((demand) => demand.backends.includes(backend)));
+    return !this.closed && (this.remoteDemand || this.live().some((demand) => demand.backends.includes(backend)));
   }
   private completing(backend: AgentBackendId) {
     return !this.closed && this.foreground && (this.entries.get(backend)!.completionUntil ?? 0) > this.now();
@@ -93,7 +96,7 @@ export class AgentUsageLimitsService {
     return this.wanted(backend) || this.completing(backend);
   }
   private selector(backend: AgentBackendId) {
-    return this.wanted(backend) && [...this.demands.values()].some((demand) => demand.mode === "selector" && demand.backends.includes(backend));
+    return this.wanted(backend) && this.live().some((demand) => demand.mode === "selector" && demand.backends.includes(backend));
   }
   /* What a warm reader process is allowed to do: stay while someone is asking, start its idle
      clock when the last consumer lets go, and go now when the window is hidden, the account
@@ -103,27 +106,32 @@ export class AgentUsageLimitsService {
     return this.closed || !(this.foreground || this.remoteDemand) ? "closed" : "released";
   }
   private polling(backend: AgentBackendId) {
-    return this.wanted(backend) && (this.remoteDemand || [...this.demands.values()].some((demand) => demand.mode === "settings" && demand.backends.includes(backend)));
+    return this.wanted(backend) && (this.remoteDemand || this.live().some((demand) => demand.mode === "settings" && demand.backends.includes(backend)));
+  }
+  /** Demands whose owning surface is currently in the foreground. */
+  private live() {
+    return [...this.demands.values()].filter((entry) => this.foregroundSurfaces.has(entry.surface)).map((entry) => entry.demand);
   }
   setRemoteDemand(value: boolean) {
     if (this.remoteDemand === value) return;
     this.remoteDemand = value; this.reconcile(true);
   }
-  setForeground(value: boolean) {
-    if (this.foreground === value) return;
-    this.foreground = value;
+  setForeground(value: boolean, surface = "main") {
+    if (this.foregroundSurfaces.has(surface) === value) return;
+    if (value) this.foregroundSurfaces.add(surface); else this.foregroundSurfaces.delete(surface);
     this.reconcile(true);
   }
-  setDemand(demand: LimitsDemand) {
+  setDemand(demand: LimitsDemand, surface = "main") {
     if (this.closed) return;
+    const key = `${surface}\u0000${demand.id}`;
     if (demand.active) {
-      if (!this.demands.has(demand.id) && this.demands.size >= 64) throw new Error("Too many quota consumers");
-      this.demands.set(demand.id, demand);
-    } else this.demands.delete(demand.id);
+      if (!this.demands.has(key) && this.demands.size >= 64) throw new Error("Too many quota consumers");
+      this.demands.set(key, { demand, surface });
+    } else this.demands.delete(key);
     this.reconcile(true);
   }
-  clearDemands() {
-    this.demands.clear();
+  clearDemands(surface = "main") {
+    for (const [key, entry] of this.demands) if (entry.surface === surface) this.demands.delete(key);
     // An explicit teardown is not a menu closing: nobody is owed a completion window.
     for (const entry of this.entries.values()) { entry.completionUntil = null; entry.menu = false; }
     this.reconcile();

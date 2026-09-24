@@ -1,10 +1,10 @@
 /**
  * [INPUT]: Depends on settings, folder identity, the folder ownership marker, this computer's machine key, the process lock, typed LibraryError codes and explicitly registered content mounts.
- * [OUTPUT]: Owns one selected folder per profile, admits a configured root only when it is still present and published by no other computer, adopts its identity once, and reports a folderless profile as unconfigured so onboarding is reached.
+ * [OUTPUT]: Owns one selected folder per profile, admits a configured root only when it is still present and published by no other computer, adopts its identity once, forgets a folder the person deleted, and reports a folderless profile as unconfigured so onboarding is reached.
  * [POS]: Main-process folder lifetime; stores remain the sole writers of their own content.
  */
 import { mkdir, lstat, realpath, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { SettingsStore } from "../settings-store";
 import { isErrnoCode } from "../persistence/durable-json";
 import { SerialQueue } from "../persistence/serial-queue";
@@ -12,6 +12,17 @@ import { LibraryError } from "./errors";
 import { openLibraryIdentity, type LibraryIdentity } from "./identity";
 import { readPublisher } from "./publisher";
 import { acquireLibraryLock } from "./lock";
+
+/* Only an absent folder whose parent is still here was removed. A missing parent, or a
+   parent where volumes attach, may be an unmounted drive, which keeps its recovery exits. */
+const VOLUME_PARENT = /^(?:\/Volumes|\/media(?:\/[^/]+)?|\/mnt|\/run\/media\/[^/]+)$/;
+async function removedFolder(root: string) {
+  const present = await stat(root).then(() => true, error => { if (isErrnoCode(error, "ENOENT")) return false; throw error; });
+  if (present) return false;
+  const parent = dirname(root);
+  if (parent === root || VOLUME_PARENT.test(parent)) return false;
+  return (await stat(parent).catch(() => null))?.isDirectory() === true;
+}
 
 export class LibraryService {
   private readonly queue = new SerialQueue();
@@ -26,7 +37,13 @@ export class LibraryService {
   setMount(mount: () => Promise<void>) { this.mount = mount; }
   async initialize() {
     const root = this.settings.get().libraryRoot;
-    if (root) return this.acquire(root, "configured");
+    if (root && !await removedFolder(root)) return this.acquire(root, "configured");
+    /* The person deleted the folder themselves. There is nothing to locate, so the
+       folder step is the whole answer; the Chats in SQLite are copied into the next one. */
+    if (root) {
+      console.warn(`[library] configured folder was removed, returning to folder setup: ${root}`);
+      await this.settings.setTrusted({ libraryRoot: null, libraryId: null, chatHomesRoot: null });
+    }
     /* A profile written before the folder became the store records chatHomeState
        "ready" while owning no folder at all. Onboarding admission keys on that one
        value, so leaving it alone opens a workspace whose attachments, Apps, Bases

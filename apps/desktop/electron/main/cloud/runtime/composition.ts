@@ -1,6 +1,6 @@
 /**
  * [INPUT]: The PreparedCloudRuntime shape from prepare.ts, Electron account/lifecycle ports, isolated userData, original coordinator/control owners and artifact custody/publication.
- * [OUTPUT]: Wires binding-fenced offline identity, startup/token admission, synchronization, scoped artifact transfers, sleep/quit presence (resume is refreshed by the application lifecycle), continuation and remote IPC onto an already prepared runtime.
+ * [OUTPUT]: Wires binding-fenced offline identity, startup/token admission, synchronization, scoped artifact transfers, sleep/quit presence (resume is refreshed by the application lifecycle), continuation, remote IPC and the `attachAccountConfig(store)` Dock-layout sync seam onto an already prepared runtime.
  * [POS]: Heavy half of the cloud composition, dynamically loaded and never reached from prepare.ts; stable builds exclude the implementation and SDK.
  */
 import { artifactRuntime } from "../../artifacts/runtime";
@@ -60,6 +60,8 @@ import { composeSyncEncryption } from "../encryption/composition";
 import type { PreparedCloudRuntime } from "./prepare";
 import type { UnifiedSkillsService } from "../../skills-management/service";
 import { RemoteActivityObserver, type RemoteActivityPort } from "../remote/activity";
+import { AccountConfigSyncCoordinator, type AccountConfigSyncHandle } from "../sync/account-config/coordinator";
+import type { DockConfigStore } from "../../system-dock/store/config-store";
 import { ledgerActivityReason } from "../../sections/coordinator/agent-switch/activity";
 export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: () => void,
   ui: { activity?: RemoteActivityPort; skills?: UnifiedSkillsService; events: SyncEventPorts & { chats: Pick<ChatsService, "configureCloudRemoval" | "preflightChatFork" | "forkChat"> }; gallery: Pick<GalleryMediaService, "readForSynchronization">; turns: TurnRuntimePorts & { turns: TurnRegistry<AgentTurn> }; remote: { workspaceReferences?: import("../remote/commands/input/references").RemoteWorkspacePorts; coordinator: ConversationCoordinator; settings: SettingsStore; quotaDemand?(active: boolean): void; quota?(): import("../../../../shared/usage-limits/types").UsageLimitsSnapshot; workspace(): string; publishRecord?(record: ChatMetadata): void }; projectGate: ProjectsService; saveAsApp: SaveAsAppService; promotion: BasePromotionService; rescue: ProjectRescueService }) {
@@ -198,10 +200,23 @@ export async function createCloudRuntime(prepared: PreparedCloudRuntime, focus: 
   // Startup remains usable while an unavailable cloud is retried in the background.
   void service.initialize().then(() => { inbox.bind(url => onProtocolArgs([url])); onProtocolArgs(process.argv); });
   await service.localIdentityReady;
-  return { register: (window: BrowserWindow, rendererUrl: string) => {
+  let accountConfig: AccountConfigSyncHandle | null = null;
+  /* The one account-config synchronizer. The Dock runtime owns its store and attaches it once; the returned handle
+     serves Settings → Dock status and conflict choices and closes before the account connection does. */
+  const attachAccountConfig = (store: DockConfigStore): AccountConfigSyncHandle => {
+    if (accountConfig) throw new Error("ACCOUNT_CONFIG_ALREADY_ATTACHED");
+    const cleanup = prepared.accountConfig.attach(store);
+    const coordinator = new AccountConfigSyncCoordinator({ config, deviceId, binding, account: service, transport, crypto: contentCrypto, store,
+      own: activity => scope.own(activity), ready: cleanup.settled });
+    const handle: AccountConfigSyncHandle = { status: () => coordinator.status(), onChanged: listener => coordinator.onChanged(listener),
+      resolveConflict: choice => coordinator.resolveConflict(choice), wake: () => coordinator.wake(),
+      close: async () => { await coordinator.close(); cleanup.detach(); if (accountConfig === handle) accountConfig = null; } };
+    return accountConfig = handle;
+  };
+  return { attachAccountConfig, register: (window: BrowserWindow, rendererUrl: string) => {
     registerCloudAccount(service, window, rendererUrl); registerCloudChat(chatReader!, execution, window, rendererUrl); registerCloudBaseReview(baseReview!, window, rendererUrl);
     registerCloudConversion(conversionReview, rendererUrl);
     registerCloudApps(cloudApps!, window, rendererUrl);
     registerCloudRemote(remoteClient, window, rendererUrl);
-  }, onProtocolArgs, refresh: () => service.refresh(true), close: async () => { await remoteActivity?.close(); await reportClosing(); powerMonitor.removeListener("suspend", sleep); app.removeListener("before-quit", quit); clearInterval(promotionTimer); inbox.close(); unsubscribeSync(); await encryption.close(); await remote.close(); avatars.close(); await avatars.settled(); await cloudApps?.close(); await execution.close(); await chatReader?.close(); await baseImages.close(); baseReview?.close(); service.close(); await service.login.drain(); await vault.drain(); await sync.close(); await recorder.close(); await prepared.homeCapture?.close(); await scope.close(); await recoveringPromotion; await binding.close(); } };
+  }, onProtocolArgs, refresh: () => service.refresh(true), close: async () => { await accountConfig?.close(); await remoteActivity?.close(); await reportClosing(); powerMonitor.removeListener("suspend", sleep); app.removeListener("before-quit", quit); clearInterval(promotionTimer); inbox.close(); unsubscribeSync(); await encryption.close(); await remote.close(); avatars.close(); await avatars.settled(); await cloudApps?.close(); await execution.close(); await chatReader?.close(); await baseImages.close(); baseReview?.close(); service.close(); await service.login.drain(); await vault.drain(); await sync.close(); await recorder.close(); await prepared.homeCapture?.close(); await scope.close(); await recoveringPromotion; await binding.close(); } };
 }

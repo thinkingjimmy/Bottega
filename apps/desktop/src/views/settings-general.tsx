@@ -1,6 +1,6 @@
 /**
- * [INPUT]: Depends on React, Appearance/I18n/Setup providers, AgentFailureNotice, PresenceSettings, ArchiveConfettiRow, shared SettingsPreferenceSelect, settings controls/store, PageShell, and UI primitives.
- * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle/TitleAgentLabel with appearance, presence, Chat Home, and single-backend title generation settings using consistent trigger/menu typography.
+ * [INPUT]: Depends on React, Appearance/I18n/Setup providers, AgentFailureNotice, PresenceSettings, ArchiveConfettiRow, FolderRow, DangerZone, shared SettingsPreferenceSelect, settings controls/store, PageShell, and UI primitives.
+ * [OUTPUT]: Provides GeneralSettingsView/ThemeSelect/LanguageSelect/CrossChatReadToggle/TitleAgentLabel with appearance, presence, Bottega folder (location and move), single-backend title generation settings and the Danger zone, using consistent trigger/menu typography.
  * [POS]: Settings layer's default view; holds no settings snapshot of its own — subscribes to settingsStore and pulls the per-backend model catalog on demand
  */
 
@@ -8,13 +8,12 @@ import { SettingsPreferenceSelect } from "@ai-chat/ui/components/settings/prefer
 import { PresenceSettings } from "@/components/settings/presence/section";
 import { ArchiveConfettiRow } from "@/components/settings/general/archive-confetti-row";
 import { FolderProgress } from "@/components/settings/general/folder-progress";
+import { FolderRow } from "@/components/settings/general/folder-row";
+import { DangerZone } from "@/components/settings/general/danger-zone";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useAppearance } from "@/components/providers/appearance-provider";
 import { useSetup } from "@/components/providers/setup-provider";
-import {
-  useAppTranslation,
-  useSystemFileManagerRevealLabel,
-} from "@/components/providers/i18n-provider";
+import { useAppTranslation } from "@/components/providers/i18n-provider";
 import {
   SettingsCanvas,
   SettingsButton,
@@ -25,7 +24,7 @@ import {
 } from "@/components/settings/settings-layout";
 import { PageShell } from "@/components/page-shell";
 import { AgentFailureNotice } from "@/components/agent-failure-notice";
-import { FolderOpen, RefreshCw, Settings } from "lucide-react";
+import { RefreshCw, Settings } from "lucide-react";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
 import type { FontFamily } from "@/lib/appearance";
 import {
@@ -383,7 +382,6 @@ export function LanguageSelect({
 
 export function GeneralSettingsView() {
   const { t } = useAppTranslation();
-  const revealLabel = useSystemFileManagerRevealLabel();
   const [revealError, setRevealError] = useState("");
   const { appearance, updateAppearance } = useAppearance();
   const setup = useSetup();
@@ -479,37 +477,7 @@ export function GeneralSettingsView() {
           >
             <FolderProgress progress={folderProgress} />
             <SettingsList>
-              <SettingsRow
-                label={t("settings.general.folder")}
-                htmlFor="choose-chat-homes-root"
-                description={
-                  settings ? (
-                    <span className="font-mono text-xs break-all">
-                      {settings.chatHomesRoot ??
-                        t("settings.general.notSelected")}
-                    </span>
-                  ) : (
-                    <Skeleton className="h-3 w-72" />
-                  )
-                }
-                control={
-                  <SettingsButton
-                    aria-label={revealLabel}
-                    id="choose-chat-homes-root"
-                    variant="outline"
-                    disabled={!settings?.chatHomesRoot}
-                    onClick={() => {
-                      setRevealError("");
-                      void window.settings
-                        ?.revealLibrary?.()
-                        .catch((cause) => setRevealError(String(cause)));
-                    }}
-                  >
-                    <FolderOpen className="size-3.5" />
-                    {revealLabel}
-                  </SettingsButton>
-                }
-              />
+              <FolderRow folder={settings?.chatHomesRoot ?? null} loading={!settings} onError={setRevealError} />
               <SettingsRow
                 label={t("settings.general.crossChatRead")}
                 htmlFor="allow-cross-chat-read"
@@ -520,7 +488,7 @@ export function GeneralSettingsView() {
                       enabled={settings.allowCrossChatRead}
                     />
                   ) : (
-                    <Skeleton className="h-6 w-11 rounded-full" />
+                    <Skeleton className="h-[18px] w-8 rounded-full" />
                   )
                 }
               />
@@ -558,6 +526,8 @@ export function GeneralSettingsView() {
               )}
             </div>
           </SettingsSection>
+
+          <DangerZone folder={settings?.chatHomesRoot ?? null} />
         </div>
       </SettingsCanvas>
     </PageShell>

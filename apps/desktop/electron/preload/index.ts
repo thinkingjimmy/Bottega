@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron contextBridge/ipcRenderer/webUtils, the closure-free RTC frame policy, and all shared renderer IPC contracts, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Exposes renderer bridges including nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, and the launch-flagged startup trace mark channel; rejects extra navigation arguments.
+ * [OUTPUT]: Exposes renderer bridges including the main-window macOS Settings → Dock bridge, nested quota snapshot/demand access, the fire-and-forget Agent connection warm intent, fixed-purpose background display selection and panel/Agent management, explicit manual/adopt retry intents, the main-window-only frozen startup snapshot, and the launch-flagged startup trace mark channel; rejects extra navigation arguments.
  * [POS]: All-frame preload security boundary; OOPIF/srcdoc frames receive RTC denial but no Electron, Node, IPC, path, secret, or product bridge
  */
 
@@ -57,6 +57,7 @@ import {
   INITIAL_LANGUAGE_ARGUMENT,
 } from "../../shared/settings-ipc";
 import { installSettingsBridge } from "./settings/bridge";
+import { installSystemDockSettingsBridge } from "./settings/system-dock";
 import { DEFAULT_APP_LOCALE, isAppLocale } from "@ai-chat/ui/lib/locale";
 import {
   SETUP_CHANNEL,
@@ -644,6 +645,8 @@ contextBridge.exposeInMainWorld("globalSearch", {
 } satisfies SearchJobBridgeApi);
 
 installSettingsBridge(initialLanguage, subscribe);
+/* Bottega Dock is macOS-only; elsewhere the Settings page simply does not exist. */
+if (windowRole === "main" && process.platform === "darwin") installSystemDockSettingsBridge(subscribe);
 
 contextBridge.exposeInMainWorld("projectTools", {
   get: (input) => ipcRenderer.invoke(PROJECT_TOOLS_CHANNEL.get, input),

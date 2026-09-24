@@ -1,13 +1,13 @@
 /**
  * [INPUT]: Depends on Electron native dialogs, local diagnostics, typed startup failures, folder identity and the closed SQLite recovery owner.
- * [OUTPUT]: Keeps startup failures actionable without an automatic exit, an unrelated database reset or a folder the user cannot reach again, including a folder that belongs to another computer; recoverStartupFailure is the composition root's single exit.
+ * [OUTPUT]: Keeps startup failures actionable without an automatic exit, an unrelated database reset or a folder the user cannot reach again, including a folder that belongs to another computer; a located folder is adopted through the relocation journal so recorded paths follow it; recoverStartupFailure is the composition root's single exit.
  * [POS]: Pre-renderer recovery surface; rebuilding and adopting a new folder are explicit final user actions after the impact is displayed.
  */
-import { lstat, readFile, realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { realpath } from "node:fs/promises";
 import { app, clipboard, dialog, shell } from "electron";
 import { libraryErrorCode, libraryErrorHost } from "../../library/errors";
-import { libraryIdentitySchema } from "../../library/identity";
+import { readLibraryIdentity } from "../../library/identity";
+import { writeRelocation } from "../../library/relocation/journal";
 import { libraryRecoveryCopy, recoveryCopy } from "./copy";
 import { canRebuildFromFolder, preserveClosedDatabase } from "./sqlite";
 
@@ -27,9 +27,9 @@ export async function showStartupRecovery(input: { error: Error; userData: strin
     if (code === "locked") return showLockedFolder(input.library, input.locale);
     /* A folder published by another computer is not broken and not lost, so it gets the same two exits as a
        folder that moved — locate the one this installation was using, or start a new one — under its own sentence. */
-    if (code === "owned-elsewhere") return showMissingFolder(input.library, input.locale, libraryErrorHost(input.error));
+    if (code === "owned-elsewhere") return showMissingFolder(input.library, input.userData, input.locale, libraryErrorHost(input.error));
     if (code === "missing" || code === "identity-changed" || code === "control-invalid") {
-      return showMissingFolder(input.library, input.locale);
+      return showMissingFolder(input.library, input.userData, input.locale);
     }
   }
   const copy = recoveryCopy(input.locale), rebuild = await canRebuildFromFolder(input.error, input.libraryRoot);
@@ -56,7 +56,7 @@ export async function showStartupRecovery(input: { error: Error; userData: strin
 
 /* Reinstalling does not clear userData, so without these two actions a folder that was
    deleted, renamed or left on an unmounted volume has no exit at all. */
-async function showMissingFolder(library: StartupRecoveryLibrary, locale: string, ownedBy?: string) {
+async function showMissingFolder(library: StartupRecoveryLibrary, userData: string, locale: string, ownedBy?: string) {
   const copy = libraryRecoveryCopy(locale);
   const title = ownedBy === undefined ? copy.missingTitle : copy.ownedTitle;
   const message = ownedBy === undefined ? copy.missingMessage : copy.ownedMessage.replace("{host}", ownedBy);
@@ -69,9 +69,12 @@ async function showMissingFolder(library: StartupRecoveryLibrary, locale: string
       if (result.response === 0) {
         const chosen = await chooseFolder(copy.locate, false);
         if (!chosen) continue;
-        const expected = library.settings.get().libraryId, identity = await folderIdentity(chosen);
+        const { libraryRoot: previous, libraryId: expected } = library.settings.get(), identity = await readLibraryIdentity(chosen);
         if (!identity || (expected && identity.libraryId !== expected)) { detail = copy.differentFolder; continue; }
-        await library.settings.setTrusted({ libraryRoot: chosen, chatHomesRoot: chosen, libraryId: identity.libraryId });
+        /* The folder moved without Bottega; the paths this profile recorded inside it have to follow it,
+           which the next launch does before opening it. Settings alone would leave every Chat Home behind. */
+        if (previous && previous !== chosen) await writeRelocation(userData, { kind: "adopt", from: previous, to: chosen, libraryId: identity.libraryId });
+        else await library.settings.setTrusted({ libraryRoot: chosen, chatHomesRoot: chosen, libraryId: identity.libraryId });
         return library.retry();
       }
       if (result.response === 1) {
@@ -104,15 +107,6 @@ async function chooseFolder(title: string, create: boolean) {
   const result = await dialog.showOpenDialog({ title, properties: create ? ["openDirectory", "createDirectory"] : ["openDirectory"] });
   const selected = result.filePaths[0];
   return result.canceled || !selected ? null : realpath(selected);
-}
-
-async function folderIdentity(root: string) {
-  try {
-    const path = join(root, ".bottega", "library.json"), info = await lstat(path);
-    if (!info.isFile() || info.isSymbolicLink() || info.size > 64 * 1024) return null;
-    const parsed = libraryIdentitySchema.safeParse(JSON.parse(await readFile(path, "utf8")));
-    return parsed.success ? parsed.data : null;
-  } catch { return null; }
 }
 
 /* Only a relaunch can re-run a failed startup chain: later members were never built, so resuming in

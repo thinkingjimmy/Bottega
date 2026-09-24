@@ -1,17 +1,17 @@
 {
   "name": "@ai-chat/desktop",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Bottega desktop workspace for local Codex, Claude Code, Kimi Code, and OpenCode CLIs",
   "author": "Jimmy Wong",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "node scripts/presence/build-native.mjs --output-root out && node scripts/cloud/production.mjs dev",
+    "dev": "node scripts/presence/build-native.mjs --output-root out && node scripts/system-dock/build-native.mjs && node scripts/cloud/production.mjs dev",
     "pricing:update": "tsx scripts/update-model-pricing.ts",
     "pricing:check": "tsx scripts/update-model-pricing.ts --check",
     "assets:windows-icon": "node scripts/generate-windows-icon.mjs",
     "typecheck": "tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "build": "node scripts/presence/build-native.mjs --output-root out && node scripts/check-dependency-manifest.mjs && node ../../packages/cloud-crypto/scripts/check-distribution.mjs && pnpm typecheck && node scripts/cloud/production.mjs build && node scripts/presence/check-preloads.mjs --output-root out && node scripts/check-renderer-bundle.mjs --self-test --output-root out && node scripts/check-main-bundle.mjs --self-test --output-root out",
+    "build": "node scripts/presence/build-native.mjs --output-root out && node scripts/system-dock/build-native.mjs && node scripts/check-dependency-manifest.mjs && node ../../packages/cloud-crypto/scripts/check-distribution.mjs && pnpm typecheck && node scripts/cloud/production.mjs build && node scripts/presence/check-preloads.mjs --output-root out && node scripts/check-renderer-bundle.mjs --self-test --output-root out && node scripts/check-main-bundle.mjs --self-test --output-root out",
     "dist": "pnpm build && electron-builder --publish never",
     "dist:release:mac": "node scripts/release-signing-preflight.mjs && pnpm build && electron-builder --mac --arm64 --publish never -c.forceCodeSigning=true && node scripts/verify-macos-signing.mjs"
   },

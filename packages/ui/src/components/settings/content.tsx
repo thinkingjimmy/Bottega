@@ -30,7 +30,7 @@ export function SettingsList({ className, ...props }: ComponentProps<"div">) {
   return (
     <SettingsSurface
       {...props}
-      className={cn("divide-y divide-border", className)}
+      className={cn("divide-inset", className)}
     />
   );
 }
@@ -54,7 +54,7 @@ export function SettingsRow({
   tone?: "default" | "destructive";
 }) {
   const labelClassName = cn(
-    "font-medium text-sm",
+    "font-medium text-[13px] leading-5",
     tone === "destructive" && "text-destructive"
   );
   return (
@@ -75,7 +75,7 @@ export function SettingsRow({
           <p
             id={htmlFor ? `${htmlFor}-description` : undefined}
             className={cn(
-              "mt-1 wrap-anywhere text-xs leading-relaxed",
+              "mt-0.5 wrap-anywhere text-xs leading-normal",
               tone === "destructive" ? "text-destructive" : "text-muted-foreground"
             )}
           >
@@ -130,9 +130,9 @@ export function SettingsLinkRow({
       className="flex w-full cursor-pointer touch-manipulation items-center justify-between gap-6 px-4 py-3 text-left outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset motion-reduce:transition-none"
     >
       <span className="min-w-0">
-        <span className="block font-medium text-sm">{label}</span>
+        <span className="block font-medium text-[13px] leading-5">{label}</span>
         {description && (
-          <span className="mt-1 block text-muted-foreground text-xs leading-relaxed">
+          <span className="mt-0.5 block text-muted-foreground text-xs leading-normal">
             {description}
           </span>
         )}
@@ -148,8 +148,30 @@ export function SettingsLinkRow({
 export function SettingsNoteList({
   items,
 }: {
-  items: ReadonlyArray<{ term: string; detail: ReactNode }>;
+  items: ReadonlyArray<{ term: string; detail: ReactNode; icon?: ReactNode }>;
 }) {
+  if (items.some((item) => item.icon)) {
+    return (
+      <ul className="space-y-2.5">
+        {items.map((item) => (
+          <li key={item.term} className="flex gap-2.5">
+            <span
+              aria-hidden="true"
+              className="mt-px flex shrink-0 text-muted-foreground [&_svg]:size-[15px]"
+            >
+              {item.icon}
+            </span>
+            <div className="min-w-0">
+              <p className="font-medium text-xs">{item.term}</p>
+              <p className="mt-0.5 text-muted-foreground text-xs leading-normal">
+                {item.detail}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    );
+  }
   return (
     <ul className="list-disc space-y-3 pl-4 marker:text-muted-foreground/50">
       {items.map((item) => (

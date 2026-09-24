@@ -1,59 +1,79 @@
 /**
- * [INPUT]: Depends on the memory setup flow, shared Dialog/AppDialog primitives, the shared Button and i18n
- * [OUTPUT]: Provides MemorySetupDialog — the three-step memory setup inside the product's dialog: segment progress and caption at dialog scale, the flow's body, and pill actions (Back · Cancel/Hide · primary)
- * [POS]: Onboarding's way to set up memory without leaving step four; the Settings › Memory page draws the same flow as the open column instead
+ * [INPUT]: Depends on the memory setup flow, the shared Dialog root and StepDialogContent shell, SettingsButton, lucide Download/Loader2 and i18n
+ * [OUTPUT]: Provides MemorySetupDialog — the three-step memory setup as the shared step dialog: "Step n of 3" progress, a per-step title and description, the flow's body, and a footer band (Back · Cancel · primary; a running install offers only Continue in Background); it closes itself once the target passes the configuration gate
+ * [POS]: The one memory setup surface, opened from the Settings › Memory not-set-up row and from onboarding's optional step; the flow is mounted only while open, so every opening starts on the runtime's own step
  */
 
+import { useEffect } from "react";
+import { Download, Loader2 } from "lucide-react";
 import { useAppTranslation } from "@/components/providers/i18n-provider";
-import { Button } from "@ai-chat/ui/components/ui/button";
-import { AppDialogBody, AppDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
-import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@ai-chat/ui/components/ui/dialog";
-import { cn } from "@ai-chat/ui/lib/utils";
-import { MemorySetupButton, useMemorySetupFlow, type MemorySetupProps } from "./memory-setup";
+import { SettingsButton } from "@/components/settings/settings-layout";
+import { StepDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
+import { Dialog } from "@ai-chat/ui/components/ui/dialog";
+import { useMemorySetupFlow, type MemorySetupProps } from "./memory-setup";
 
 export function MemorySetupDialog({
   open,
   onOpenChange,
   ...props
 }: { open: boolean; onOpenChange(next: boolean): void } & MemorySetupProps) {
-  const { t } = useAppTranslation();
-  const flow = useMemorySetupFlow(props);
-  /* A running install has no primary action: closing then only hides the dialog, the install carries on. */
-  const running = flow.step === 1 && flow.primary === null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <AppDialogContent showCloseButton={false} data-memory-setup-dialog="">
-        <ol className="flex gap-1.5">
-          {flow.steps.map((label, index) => (
-            <li
-              key={label}
-              aria-current={index === flow.step ? "step" : undefined}
-              className={cn("h-[3px] min-w-0 flex-1 rounded-[2px]", index <= flow.step ? "bg-foreground" : "bg-border")}
-            >
-              <span className="sr-only">{label}</span>
-            </li>
-          ))}
-        </ol>
-        <p className="mt-2.5 text-muted-foreground text-xs/4">{flow.caption}</p>
-        <DialogHeader className="mt-4 gap-0 text-left">
-          <DialogTitle className="text-xl/7 font-semibold">{flow.title}</DialogTitle>
-          <DialogDescription className="mt-3 text-[15px]/[1.4] text-muted-foreground">
-            {flow.description}
-          </DialogDescription>
-        </DialogHeader>
-        <AppDialogBody className="mt-5 flex flex-col gap-3">{flow.body}</AppDialogBody>
-        <DialogFooter className="mt-5 sm:justify-end sm:gap-x-3">
-          {flow.back && (
-            <Button size="pill" variant="ghost" className="text-muted-foreground" onClick={flow.back}>
-              {t("common.back")}
-            </Button>
-          )}
-          <Button size="pill" variant="ghost" className="text-muted-foreground" onClick={() => onOpenChange(false)}>
-            {running ? t("onboarding.memoryHide") : t("common.cancel")}
-          </Button>
-          {flow.primary && <MemorySetupButton action={flow.primary} formId={flow.formId} size="pill" />}
-        </DialogFooter>
-      </AppDialogContent>
+      {open && <SetupFlow {...props} onClose={() => onOpenChange(false)} />}
     </Dialog>
+  );
+}
+
+function SetupFlow({ onClose, ...props }: MemorySetupProps & { onClose(): void }) {
+  const { t } = useAppTranslation();
+  const flow = useMemorySetupFlow(props);
+  /* Submitting the key is the last step; once the runtime confirms it, the dialog has nothing left to ask. */
+  useEffect(() => {
+    if (flow.done) onClose();
+  }, [flow.done, onClose]);
+  const primary = flow.primary;
+  return (
+    <StepDialogContent
+      data-memory-setup-dialog=""
+      progress={{
+        index: flow.step,
+        total: flow.total,
+        label: t("common.stepOf", { current: flow.step, total: flow.total }),
+      }}
+      title={flow.title}
+      description={flow.description}
+      back={
+        flow.back ? (
+          <SettingsButton variant="ghost" onClick={flow.back}>
+            {t("common.back")}
+          </SettingsButton>
+        ) : undefined
+      }
+      actions={
+        /* Cancel never stops an install, so while one runs the way out says what it really does. */
+        flow.running ? (
+          <SettingsButton onClick={onClose}>{t("memory.setup.background")}</SettingsButton>
+        ) : (
+          <>
+            <SettingsButton variant="ghost" onClick={onClose}>
+              {t("common.cancel")}
+            </SettingsButton>
+            {primary && (
+              <SettingsButton
+                type={primary.submit ? "submit" : "button"}
+                form={primary.submit ? flow.formId : undefined}
+                disabled={primary.disabled}
+                onClick={primary.onClick}
+              >
+                {primary.busy ? <Loader2 className="motion-safe:animate-spin" /> : primary.icon === "download" ? <Download /> : null}
+                {primary.label}
+              </SettingsButton>
+            )}
+          </>
+        )
+      }
+    >
+      {flow.body}
+    </StepDialogContent>
   );
 }

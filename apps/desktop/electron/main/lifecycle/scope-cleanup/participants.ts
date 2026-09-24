@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on canonical Chat/Base/Project/App stores, verified Home ownership and byte-owner proofs
+ * [INPUT]: Depends on canonical Chat/Base/Project/App stores, verified Home ownership, byte-owner proofs and the optional account-config cleanup port
  * [OUTPUT]: Builds every mandatory cleanup participant from real owner operations and frozen retained identities
  * [POS]: Leaf adapter composition beneath ScopeCleanupCoordinator; retained local data is never compensated away
  */
@@ -15,6 +15,8 @@ import type { ScopeCleanupPlan } from "./model";
 export function storageCleanupParticipants(owners: {
   chats: ChatStore; bases: BaseStore; projects: ProjectStore; apps: AppStore; homes: ChatHomeService;
   verifyBlob(blob: ScopeCleanupPlan["retainedBlobs"][number]): Promise<unknown>;
+  /** Account-scoped Dock sync state; the local working layout and system recovery records are never touched (INV-06). */
+  accountConfig?: { cleanupScope(scope: ScopeCleanupPlan["scope"]): Promise<unknown> };
 }): CleanupParticipants {
   return {
     homes: async plan => {
@@ -79,5 +81,6 @@ export function storageCleanupParticipants(owners: {
       });
       return { operationId: receipt.operationId, requestHash: receipt.requestHash };
     },
+    "account-config": async plan => owners.accountConfig ? owners.accountConfig.cleanupScope(plan.scope) : { attached: false },
   };
 }

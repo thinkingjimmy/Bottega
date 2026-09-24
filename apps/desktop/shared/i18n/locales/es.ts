@@ -28,6 +28,7 @@ import { settingsToolsEs } from "./settings/tools/es";
 import { settingsUsageEs } from "./settings/usage/es";
 import { settingsPersonalizationEs } from "./settings/personalization/es";
 import { presenceEs } from "./presence/es";
+import { systemDockEs } from "./system-dock/es";
 import { settingsUpdatesEs } from "./settings/updates/es";
 import { historyEs } from "./history/es";
 import { chatRevisionEs } from "./chat-revision/es";
@@ -113,6 +114,7 @@ promoteBaseToApp: "Convertir {{name}} en App"
     draftLostDescription: "El Studio volvió a la ventana principal. Los mensajes que ya custodia el proceso principal no se reenviarán.",
   },
   memory: memoryEs,
+  systemDock: systemDockEs,
   archive: archiveEs,
   onboarding: onboardingEs,
   setup: setupEs,
@@ -185,6 +187,22 @@ notSelected: "Sin seleccionar",
 crossChatRead: "Lectura entre chats",
 crossChatReadDescription: "Desactivado, las herramientas solo leen el Chat Home actual; activado, pueden leer otros sin modificarlos.",
 chat: "Chat",
+moveFolder: "Mover carpeta",
+moveFolderTitle: "¿Mover tu carpeta de Bottega?",
+moveFolderBody: "Las conversaciones, Projects, Bases, Apps y Skills se mueven con ella, sin cambios.",
+moveFolderFrom: "Desde",
+moveFolderTo: "Hasta",
+moveFolderRestart: "Bottega se reiniciará y moverá la carpeta antes de abrirla. Si la mueves a otro disco, primero se copia todo, lo que puede tardar; después, la copia anterior va a la Papelera.",
+moveFolderConfirm: "Mover y reiniciar",
+dangerZone: "Zona de peligro",
+eraseAll: "Borrar todos los datos de este ordenador",
+eraseAllDescription: "Elimina las conversaciones, los ajustes y el inicio de sesión de este ordenador y empieza Bottega desde el principio.",
+eraseAllButton: "Borrar datos",
+eraseAllTitle: "¿Borrar todos los datos de este ordenador?",
+eraseAllBody: "Se eliminarán tus conversaciones, ajustes, claves y el inicio de sesión de este ordenador, y Bottega se reiniciará en la configuración inicial. No se puede deshacer.",
+eraseAllTrashFolder: "Mover también la carpeta de Bottega a la Papelera",
+eraseAllCloud: "Los datos sincronizados con tu cuenta siguen en la nube. Si vuelves a iniciar sesión y activas la sincronización, volverán.",
+eraseAllConfirm: "Borrar y reiniciar",
 chatDescription: "Los títulos de los chats nuevos se generan en segundo plano.",
 titleGeneration: "Generación del título",
 titleGenerationDescription: "Los modelos de título se guardan por separado para cada backend.",
@@ -236,6 +254,10 @@ currentModelUnavailable: "{{model}} (no disponible)"
         "Al activarlas, el chat de mantenimiento de la App cargará estos skills, servidores MCP y hooks. Continúa solo si confías en este repositorio.",
       disableExtensions: "Mantener desactivadas",
       enableExtensions: "Activar extensiones",
+      libraryChatsSetAside_one:
+        "No se pudo abrir {{count}} conversación de tu carpeta Bottega, así que se movió a la carpeta .trash. Se eliminará en 30 días.",
+      libraryChatsSetAside_other:
+        "No se pudieron abrir {{count}} conversaciones de tu carpeta Bottega, así que se movieron a la carpeta .trash. Se eliminarán en 30 días.",
       libraryChatsUnreadable_one:
         "No se pudo abrir {{count}} conversación de tu carpeta Bottega. Se dejó sin cambios.",
       libraryChatsUnreadable_other:
@@ -244,6 +266,22 @@ currentModelUnavailable: "{{model}} (no disponible)"
         "Falta {{count}} archivo al que hace referencia una conversación copiada en tu carpeta Bottega.",
       libraryFilesMissing_other:
         "Faltan {{count}} archivos a los que hacen referencia conversaciones copiadas en tu carpeta Bottega.",
+      libraryMovingTitle: "Moviendo tu carpeta de Bottega",
+      libraryMovingProgress: "Copiando tus archivos… {{completed}} de {{total}}",
+      libraryMoveSourceLeft: "Tu carpeta de Bottega se movió, pero la copia anterior en {{path}} no se pudo mover a la Papelera. Puedes eliminarla tú mismo.",
+      libraryMoveDeferred: "Tu carpeta de Bottega no se movió porque había tareas sin terminar. Vuelve a intentarlo desde Ajustes › General.",
+      libraryMoveFailed: "Bottega no pudo terminar de mover tu carpeta. Ahora está en {{path}}.",
+      libraryMovePick: "Elige adónde mover tu carpeta de Bottega",
+      libraryMovePickButton: "Mover aquí",
+      libraryMoveMissing: "Todavía no hay ninguna carpeta de Bottega configurada.",
+      maintenanceBusy: "Espera a que terminen las tareas en curso y vuelve a intentarlo.",
+      libraryMove: {
+        samePlace: "Tu carpeta de Bottega ya está en esa ubicación.",
+        inside: "Elige una ubicación fuera de tu carpeta de Bottega.",
+        exists: "Esa ubicación ya tiene un elemento con el mismo nombre. Elige otra.",
+        unwritable: "Bottega no puede escribir en esa ubicación. Elige otra.",
+        projectOverlap: "Esa ubicación se solapa con una carpeta de Project. Elige una ubicación fuera de tus Projects.",
+      },
       libraryOpeningTitle: "Abriendo tu carpeta Bottega",
       libraryOpeningProgress:
         "Abriendo tus archivos… {{completed}} de {{total}}",

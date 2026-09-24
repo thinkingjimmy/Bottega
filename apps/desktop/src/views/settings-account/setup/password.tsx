@@ -1,10 +1,11 @@
 /**
- * [INPUT]: An optional host step renderer, account-scoped setup progress, password validators (creation checked against the signed-in email), field-specific errors and existing settings controls.
- * [OUTPUT]: Password setup with retained input nodes across retries, inline final failures and consent-aware cancellation.
- * [POS]: Setup form step 2; main owns bounded retries, refreshed reviews, encryption and durable approval.
+ * [INPUT]: Depends on the shared StepDialogContent, account-scoped setup progress, password validators (creation checked against the signed-in email), field-specific errors and existing settings controls.
+ * [OUTPUT]: Provides PasswordStep — step 2 of 2 as dialog content: password setup with retained input nodes across retries, inline final failures, consent-aware cancellation and a Cancel that closes the dialog when nothing is running.
+ * [POS]: Sync password dialog body mounted by FinishSetup; main owns bounded retries, refreshed reviews, encryption and durable approval.
  */
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { validatePassword, validateNewPassword, passwordsMatch } from "@ai-chat/cloud-crypto";
+import { StepDialogContent } from "@ai-chat/ui/components/ui/app-dialog";
 import { Spinner } from "@ai-chat/ui/components/ui/spinner";
 import { getCloudEncryptionCopy } from "@ai-chat/ui/lib/cloud-copy/encryption";
 import { cloudHandshakeFailed, type CloudAccountState } from "../../../../shared/cloud-ipc";
@@ -15,11 +16,9 @@ import { SettingsAlert, SettingsButton } from "@/components/settings/settings-la
 import { cloudAccountClient, cloudAccountSource } from "@/lib/cloud/client";
 import { EncryptionFields } from "../encryption/fields";
 import { passwordFailure, useEncryptionErrors } from "../encryption/field-errors";
-import { CloudCleanupButton } from "../sync-cleanup";
-import { SetupStep } from "./step";
 
-export function PasswordStep({ state, Step = SetupStep }: { state: CloudAccountState; Step?: typeof SetupStep }) {
-  const { t, i18n } = useAppTranslation(), copy = getCloudEncryptionCopy(i18n.language);
+export function PasswordStep({ state, onClose }: { state: CloudAccountState; onClose(): void }) {
+  const { t, i18n } = useAppTranslation(), copy = getCloudEncryptionCopy(i18n.language), formId = useId();
   const [review, setReview] = useState<SyncReview | null>(null), [scanFailed, setScanFailed] = useState(false), [inspection, setInspection] = useState(0);
   const [pending, setPending] = useState(false), [failed, setFailed] = useState(false);
   const [submitted, setSubmitted] = useState(false), [abandoned, setAbandoned] = useState(false);
@@ -121,20 +120,22 @@ export function PasswordStep({ state, Step = SetupStep }: { state: CloudAccountS
     needsPassword ? creating ? copy.setupDescription : t("cloud.setup.enterPasswordDescription") :
       encryption.status === "unlocked" ? t("cloud.setup.unlockedDescription") : alert ? "" : copy.checking;
   const disabled = busy || blocked || !canProceed || !canSubmit || !submitted && encryption.status === "checking";
-  return <form ref={form} onSubmit={confirm} className="contents">
-    <Step step={1} title={title} description={<><span role={busy ? "status" : undefined}>{lead}</span> {t("cloud.setup.signedInAs", { email: state.profile?.email ?? "" })}</>}
-      footer={<>
-        <CloudCleanupButton mode="signOut" variant="ghost" disabled={busy || state.status === "signing-out"} />
-        <div className="flex items-center gap-3">
-          {busy && <SettingsButton type="button" variant="ghost" onClick={abandon}>{t("cloud.cancel")}</SettingsButton>}
-          {needsRetry && discoveryRetry ? <SettingsButton type="button" className="px-5" disabled={!ready} onClick={retryInspection}>{t("cloud.retry")}</SettingsButton> :
-            <SettingsButton type="submit" className="px-5" disabled={disabled}>{busy && <Spinner className="size-3.5" />}{t(needsRetry ? "cloud.retry" : "cloud.setup.enable")}</SettingsButton>}
-        </div>
-      </>}>
+  /* The dialog's footer sits outside the form's DOM subtree, so the submit button joins it by id. While
+     work runs, Cancel stops it and keeps the draft; otherwise it closes the dialog, whose unmount releases
+     the review. Escape follows the same rule, and a stray click outside never discards typed input. */
+  return <StepDialogContent title={title} progress={{ index: 2, total: 2, label: t("common.stepOf", { current: 2, total: 2 }) }}
+    description={<span id="sync-setup-description"><span role={busy ? "status" : undefined}>{lead}</span> {t("cloud.setup.signedInAs", { email: state.profile?.email ?? "" })}</span>}
+    onPointerDownOutside={event => event.preventDefault()} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}
+    actions={<>
+      <SettingsButton type="button" variant="ghost" onClick={busy ? abandon : onClose}>{t("cloud.cancel")}</SettingsButton>
+      {needsRetry && discoveryRetry ? <SettingsButton type="button" disabled={!ready} onClick={retryInspection}>{t("cloud.retry")}</SettingsButton> :
+        <SettingsButton type="submit" form={formId} disabled={disabled}>{busy && <Spinner className="size-3.5" />}{t(needsRetry ? "cloud.retry" : "cloud.setup.enable")}</SettingsButton>}
+    </>}>
+    <form ref={form} id={formId} onSubmit={confirm} className="space-y-3">
       {alert && <SettingsAlert>{alert}</SettingsAlert>}
       {!ready && !busy && !unavailable && <p role="status" className="text-sm">{t(`cloud.status.${state.status}`)}</p>}
       {needsPassword && <EncryptionFields creating={creating} email={state.profile?.email} disabled={busy} errors={{ password: validation.errors.password, confirmation: validation.errors.confirmation }}
         onEdit={validation.editField} describedBy="sync-setup-description" />}
-    </Step>
-  </form>;
+    </form>
+  </StepDialogContent>;
 }

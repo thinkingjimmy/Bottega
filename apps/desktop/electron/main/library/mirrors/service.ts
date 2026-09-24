@@ -22,9 +22,10 @@ import { readTranscript } from "./transcript/reader";
 import { exportLibraryImport, openLibraryImport } from "./imported";
 import { sameMirrorMessage, sameMirrorEntry } from "./store";
 import { copyLibraryAssets, copyLibraryHome } from "../assets/copy";
+import { trashLibraryObject } from "../trash";
 
 /** A single aggregate report per opening pass; the per-Chat detail belongs in the log. */
-export type MirrorNotice = { kind: "chats-unreadable" | "files-missing"; count: number };
+export type MirrorNotice = { kind: "chats-unreadable" | "chats-set-aside" | "files-missing"; count: number };
 export type MirrorProgress = { phase: "opening" | "saving"; completed: number; total: number; issues: string[] };
 /** What an opening pass would have to materialize: copies no receipt and no local record explains. */
 export type MirrorPlan = { unknown: string[]; bytes: number };
@@ -53,6 +54,7 @@ export class ChatMirrorService {
   private readonly listeners = new Set<(value: MirrorProgress) => void>();
   private readonly ledger: MirrorExportLedger;
   private unreadableCount = 0;
+  private setAsideCount = 0;
   private missingCount = 0;
   private reported = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -94,8 +96,9 @@ export class ChatMirrorService {
   }
   private notice() {
     if (this.unreadableCount) this.input.notify?.({ kind: "chats-unreadable", count: this.unreadableCount });
+    if (this.setAsideCount) this.input.notify?.({ kind: "chats-set-aside", count: this.setAsideCount });
     if (this.missingCount) this.input.notify?.({ kind: "files-missing", count: this.missingCount });
-    this.unreadableCount = 0; this.missingCount = 0;
+    this.unreadableCount = 0; this.setAsideCount = 0; this.missingCount = 0;
   }
   private async remember(chatId: string, revision: number | string, head: MirrorChat, detail: { chatMessageRevision?: number } = {}) {
     const directory = libraryChatPath(this.input.library.requireRoot(), chatId);
@@ -347,6 +350,15 @@ export class ChatMirrorService {
     if (isErrnoCode(error, "ENOENT")) {
       const files = await readdir(join(root, "chats", chatId));
       if (!files.includes("chat.json") && !files.includes("transcript.jsonl")) return;
+    }
+    /* No record on this profile and no cloud body can ever explain this copy, so leaving it in place
+       only repeats the same notice at every launch. `.trash` keeps its bytes for the retention window. */
+    if (!metadata) {
+      try {
+        await trashLibraryObject(root, "chats", chatId, `unreadable-${Date.now()}`);
+        this.unreadable.delete(chatId); this.exported.delete(chatId); this.ledger.forget(chatId); this.setAsideCount++;
+        return;
+      } catch (move) { this.warn(chatId, move); }
     }
     if (!this.unreadable.has(chatId)) this.unreadableCount++;
     this.unreadable.add(chatId);

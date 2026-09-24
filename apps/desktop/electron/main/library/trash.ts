@@ -7,7 +7,7 @@ import { lstat, mkdir, realpath, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { libraryObjectId } from "./paths";
 import { isErrnoCode, syncDirectory } from "../persistence/durable-json";
-export async function trashLibraryObject(root: string, collection: "apps" | "projects" | "skills", id: string, operation: string) {
+export async function trashLibraryObject(root: string, collection: "apps" | "chats" | "projects" | "skills", id: string, operation: string) {
   const source = join(root, collection, libraryObjectId(id)), trash = join(root, ".trash");
   await mkdir(trash, { mode: 0o700, recursive: true });
   if (await realpath(trash) !== trash || (await lstat(trash)).isSymbolicLink()) throw new Error("LIBRARY_TRASH_INVALID");

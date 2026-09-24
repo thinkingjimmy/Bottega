@@ -151,20 +151,20 @@ export function SettingsSwitch({
       aria-label={label}
       aria-describedby={describedBy}
       disabled={disabled}
-      className="flex size-11 touch-manipulation cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+      className="-my-[13px] -mr-1.5 flex size-11 touch-manipulation cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
       onClick={() => onToggle(!checked)}
     >
       <span
         aria-hidden="true"
         className={cn(
-          "relative h-6 w-11 rounded-full transition-colors motion-reduce:transition-none",
+          "relative h-[18px] w-8 rounded-full transition-colors motion-reduce:transition-none",
           checked ? "bg-foreground" : "bg-muted-foreground/30"
         )}
       >
         <span
           className={cn(
-            "absolute top-0.5 left-0.5 size-5 rounded-full bg-background shadow-sm transition-transform motion-reduce:transition-none",
-            checked ? "translate-x-5" : "translate-x-0"
+            "absolute top-0.5 left-0.5 size-3.5 rounded-full bg-background shadow-sm transition-transform motion-reduce:transition-none",
+            checked ? "translate-x-3.5" : "translate-x-0"
           )}
         />
       </span>
@@ -255,7 +255,7 @@ export function SettingsChoiceRow({
         data-settings-choice-heading=""
         className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
       >
-        <span id={labelId} className="font-medium text-sm">
+        <span id={labelId} className="font-medium text-[13px] leading-5">
           {label}
         </span>
         {labelMeta}
@@ -269,7 +269,7 @@ export function SettingsChoiceRow({
       {description && (
         <span
           id={descriptionId}
-          className="mt-1 block text-muted-foreground text-xs leading-relaxed"
+          className="mt-0.5 block text-muted-foreground text-xs leading-normal"
         >
           {description}
         </span>

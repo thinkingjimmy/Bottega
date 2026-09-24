@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on the durable account binding, actual Store owners and the shared lifecycle gate/journal.
+ * [INPUT]: Depends on the durable account binding, actual Store owners, the late-bound account-config cleanup port and the shared lifecycle gate/journal.
  * [OUTPUT]: Coordinates enrollment, activity shutdown, original conversion/installation settlement and reviewed cross-Store cleanup, including unresolved deletion custody, before rebinding.
  * [POS]: Main account scope owner; business queues stay inside Chat/Base/Project/App Stores.
  */
@@ -16,6 +16,7 @@ import { captureScopeCleanup, type CleanupOwners } from "./plan";
 import { CleanupBytes } from "./bytes";
 import { AccountConversionCleanup, type ConversionCleanupServices } from "./conversions";
 import type { CloudAppInstaller } from "../../../../apps/install/cloud/installer";
+import type { AccountConfigCleanup } from "../../account-config/cleanup";
 type Activity = { close(): Promise<void> | void };
 export class AccountScopeLifecycle {
   private readonly activities = new Set<Activity>();
@@ -30,9 +31,10 @@ export class AccountScopeLifecycle {
   private readonly bytes: CleanupBytes;
   private readonly cleanup: ScopeCleanupCoordinator;
   constructor(private input: { userData: string; config: CloudBuildConfig; binding: SyncBindingStore; owners: CleanupOwners;
-    journal: LifecycleIntentStore; gate: AdmissionGate; conversions?: ConversionCleanupServices; installations?: Pick<CloudAppInstaller, "settleScopeCleanup"> }) {
+    journal: LifecycleIntentStore; gate: AdmissionGate; conversions?: ConversionCleanupServices; installations?: Pick<CloudAppInstaller, "settleScopeCleanup">;
+    accountConfig?: Pick<AccountConfigCleanup, "cleanupScope"> }) {
     this.bytes = new CleanupBytes(input.owners);
-    const participants = storageCleanupParticipants({ ...input.owners, verifyBlob: proof => this.bytes.verify(proof) });
+    const participants = storageCleanupParticipants({ ...input.owners, verifyBlob: proof => this.bytes.verify(proof), accountConfig: input.accountConfig });
     this.cleanup = new ScopeCleanupCoordinator(input.journal, input.gate, { ...participants, blobs: async plan => {
       const retained = await participants.blobs(plan);
       await removeAccountDownloadCache(input.userData, { environmentId: input.config.environmentId,
@@ -140,8 +142,11 @@ export class AccountScopeLifecycle {
     if (existing?.result.state === "settled") {
       const result = existing.result, receipt = result.receipt;
       if (result.status !== "done" || receipt?.operationId !== operationId || receipt.planHash !== existing.inputHash) throw new Error("CLEANUP_RECEIPT_INVALID");
+      const checkpoints = receipt.checkpoints as Record<string, unknown> | undefined;
       for (const participant of CLEANUP_PARTICIPANTS) {
-        const checkpoint = cleanupCheckpointSchema.parse((receipt.checkpoints as Record<string, unknown> | undefined)?.[participant]);
+        // A receipt settled by a released six-owner build has no account-config step; run that idempotent step now.
+        if (participant === "account-config" && checkpoints?.[participant] === undefined) { await this.input.accountConfig?.cleanupScope(scope); continue; }
+        const checkpoint = cleanupCheckpointSchema.parse(checkpoints?.[participant]);
         if (checkpoint.operationId !== operationId || checkpoint.planHash !== existing.inputHash || checkpoint.participant !== participant) throw new Error("CLEANUP_RECEIPT_INVALID");
       }
     } else {

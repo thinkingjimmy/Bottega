@@ -11,7 +11,7 @@ export const chatStorageJa: typeof chatStorageEn = {
   copyDetails: "技術的な詳細をコピー",
   copiedDetails: "技術的な詳細をコピーしました",
   reportIssue: "GitHub で報告",
-  warningResolution: "Bottega を再起動してください。それでも表示される場合は GitHub で報告してください。",
+  warningResolution: "繰り返し表示される場合は GitHub で報告してください。",
   code: {
     "file-quarantined": {
       title: "一部の Chat を一時的に開けません",

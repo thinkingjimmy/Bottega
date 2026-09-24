@@ -1,0 +1,49 @@
+{
+  "date": "2026-09-23",
+  "cwd": "/Users/jimmywong/Documents/Bottega-Dev/apps/desktop",
+  "command": "node --import tsx scripts/e2e/harness/hermetic-suite.mjs --only=system-dock",
+  "result": "passed",
+  "summary": "1 passed, 0 failed",
+  "elapsedMs": 7506,
+  "environment": "Isolated HOME, profile and Agent homes; unpackaged Electron; coexistence mode only.",
+  "limitations": [
+    "Replacement mode, signed launchd recovery and real system preference restoration are not covered by this E2E."
+  ],
+  "buildFreshnessReceipt": {
+    "schemaVersion": 2,
+    "input": {
+      "digest": "sha256:f9ea3d4b78a782ce56bbdbbecb9b42d2d9d0e013dcf987f51cc1019ebad981ab",
+      "inputCount": 3244
+    },
+    "output": {
+      "digest": "sha256:b7ae0c145d851cbff394fdcf6a73a67e6557c801b87542a210e1d3c9ce28b210",
+      "inputCount": 812
+    },
+    "createdAt": 1790174845616
+  },
+  "log": "review-e2e.log",
+  "screenshots": [
+    "bar-glass-screen.png",
+    "bar-handle.png",
+    "bar-revealed.png",
+    "panel-add.png",
+    "panel-downloads.png",
+    "panel-limits.png",
+    "panel-navigate.png",
+    "settings-off.png",
+    "settings-on.png",
+    "settings-setup-mode.png"
+  ],
+  "processMemory": "memory.json",
+  "isolatedReviewProbes": {
+    "recovery": "/tmp/bottega-dock-third-review-eEvQpF/README.md",
+    "widgetDraftAndMask": "/tmp/bottega-dock-review-ui-20260923/results.json",
+    "shortcutConflict": "/tmp/bottega-dock-review-ui-20260923/shortcut-results.json",
+    "restoredDockPlacement": "/tmp/bottega-restored-dock-review.json"
+  },
+  "probeLimitations": [
+    "Recovery probes do not mutate real macOS Dock preferences or register background services.",
+    "The cross-service restore race uses mocked Mach admission and applies to distinct installed stable and Cloud Dev recovery services; it is not a reproduced same-service restart race.",
+    "Widget and shortcut probes use production modules with isolated ports, not full Electron end-to-end coverage."
+  ]
+}

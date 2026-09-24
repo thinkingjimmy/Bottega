@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Closed identity, revision and ciphertext-reference scalars.
- * [OUTPUT]: Chat, Project and App bindings with named allowed-metadata commitments.
+ * [OUTPUT]: Chat, Project, App, Skill and account-configuration bindings with named allowed-metadata commitments.
  * [POS]: Record-level domain separation; no title, option value, source path or plaintext digest is metadata.
  */
 import { z } from "zod";
@@ -23,3 +23,6 @@ export const skillHeadBindingSchema = z.object({ expectedRevision: version, slug
   activeGenerationDigest: digest.nullable(), tombstone: z.boolean() }).strict();
 export const skillGenerationBindingSchema = z.object({ libraryId: id, generationId: id, blobId: id,
   manifestId: id, chunkIndex: version, chunkCount: version.positive() }).strict().refine(value => value.chunkIndex < value.chunkCount);
+/* The only account-configuration kind is the Dock layout; a generic key/value namespace is deliberately absent. */
+export const accountConfigBindingSchema = z.object({ configKind: z.literal("dock-layout"), configSchemaVersion: version.positive().max(65_535),
+  expectedRevision: version }).strict();

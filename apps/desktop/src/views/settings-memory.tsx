@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on React, shared Memory/AppSettings contracts with MEMORY_SHARING_MODES, app Intl locale, view-local consent/history-import/setup modules, settings/memory components, memoryMasterRow, and memory-store authority flows
- * [OUTPUT]: Provides MemorySettingsView: a provider-bound, backtrackable install-first setup (the centred open column, outside the settings canvas) followed by the settled product switch, engine roster, sharing scope, activity, and attention surfaces; the activity header hosts both corpus actions — history import fills those numbers, rebuild clears them
+ * [OUTPUT]: Provides MemorySettingsView: a not-set-up face in the ordinary Settings grammar (one stage-aware row that opens the provider-bound, backtrackable setup dialog, plus the before-you-start notes) followed by the settled product switch, engine roster, sharing scope, activity, and attention surfaces; the activity header hosts both corpus actions — history import fills those numbers, rebuild clears them
  * [POS]: Settings › Memory product console; this layer declares user intent and dialog orchestration while all durable facts come from main-owned snapshots
  */
 
@@ -47,7 +47,6 @@ import { settingsStore } from "@/lib/settings-store";
 import { Button } from "@ai-chat/ui/components/ui/button";
 import { ConfirmationDialog } from "@ai-chat/ui/components/ui/app-dialog";
 import { Skeleton } from "@ai-chat/ui/components/ui/skeleton";
-import { SlimScroller } from "@ai-chat/ui/components/ui/slim-scroller";
 import { cn } from "@ai-chat/ui/lib/utils";
 import type {
   MemoryConfigIssue,
@@ -58,7 +57,7 @@ import type {
 } from "../../shared/memory-ipc";
 import { MEMORY_SHARING_MODES } from "../../shared/settings-ipc";
 import { useHistoryMemoryImport } from "./settings-memory/history-import-action";
-import { MemorySetup } from "./settings-memory/memory-setup";
+import { MemoryNotSetUp } from "./settings-memory/memory-not-set-up";
 import { useMemoryConsent } from "./settings-memory/use-memory-consent";
 
 /** 相对时间要自己走动，否则「刚刚」会在页面上凝固一整天。 */
@@ -91,7 +90,7 @@ export function MemorySettingsView() {
   /* 哪一档引擎的抽屉摊开着。要不要强制摊开由 memoryServiceNeedsAttention
      说了算，两者 or 在一起——于是不存在「用户收起了一件坏掉的东西」。 */
   const [openEngineId, setOpenEngineId] = useState<string | null>(null);
-  /* 首次设置的显式目标；null 才允许 MemorySetup 按 runtime 事实恢复。 */
+  /* 首次设置的显式目标；null 才允许设置流程按 runtime 事实恢复。 */
   const [setupEngineId, setSetupEngineId] = useState<string | null>(null);
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [uninstallOpen, setUninstallOpen] = useState(false);
@@ -336,8 +335,8 @@ export function MemorySettingsView() {
       }
     >
       {!setupDone ? (
-        <SlimScroller className="flex h-full min-h-0 flex-col overflow-y-auto px-[clamp(2rem,5vw,4rem)] py-6">
-          <MemorySetup
+        <SettingsCanvas>
+          <MemoryNotSetUp
             descriptors={providers}
             runtimes={runtimes}
             panels={panels}
@@ -359,7 +358,7 @@ export function MemorySettingsView() {
             }}
             onConfigSubmit={submitRuntimeConfig}
           />
-        </SlimScroller>
+        </SettingsCanvas>
       ) : (
         <SettingsCanvas>
           {/* 纵向秩序 = 决定的顺序：要不要记 → 用哪个引擎、怎么管它

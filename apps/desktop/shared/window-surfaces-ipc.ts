@@ -1,9 +1,10 @@
 /**
  * [INPUT]: Depends on clone-safe primitives and workspace-reference identities shared by Electron main, preload, and renderer
- * [OUTPUT]: Provides window role/bootstrap, exact App Studio route helpers, navigation-intent-fenced surface DTOs, migration commands, IPC channels, and WindowSurfacesBridgeApi
+ * [OUTPUT]: Provides window role/bootstrap, exact App Studio route helpers, navigation-intent-fenced surface DTOs, migration and fixed background-destination (activity/General/Dock/Usage) commands, IPC channels, and WindowSurfacesBridgeApi
  * [POS]: Shared wire truth for one-surface-one-window routing; renderer submits intents while main owns residency and migration
  */
 import type { RemoteFileReference } from "@ai-chat/cloud-protocol/remote/input/references";
+import type { AgentBackendId } from "./agent-ipc";
 
 export const WINDOW_ROLE_ARGUMENT = "--bottega-window-role=";
 export const WINDOW_ID_ARGUMENT = "--bottega-window-id=";
@@ -92,7 +93,9 @@ export type SurfaceIntentResult = Readonly<{
 export type SurfaceMigrationCommand =
   | Readonly<{ type: "prepare-hydrate"; transactionId: string; capsule: SurfaceCapsuleV1 }>
   | Readonly<{ type: "validate-export"; transactionId: string; capsule: SurfaceCapsuleV1 }>
-  | Readonly<{ type: "presence-destination"; destination: "activity" | "general" }>
+  /* Background surfaces (menu bar, notch, Bottega Dock) reach the main window only through these
+     fixed destinations; `agent` only narrows the Usage page. */
+  | Readonly<{ type: "presence-destination"; destination: "activity" | "general" | "dock" | "usage"; agent?: AgentBackendId }>
   | Readonly<{
       type: "export";
       transactionId: string;

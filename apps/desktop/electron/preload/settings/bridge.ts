@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron IPC, typed Settings channels and the top-frame subscription adapter.
- * [OUTPUT]: Installs fixed-purpose settings controls, the dialog-free folder retry, synchronous appearance facts and folder-progress events.
+ * [OUTPUT]: Installs fixed-purpose settings controls, the dialog-free folder retry, folder move and profile erase requests, synchronous appearance facts and folder-progress events.
  * [POS]: Settings preload leaf; the composition root admits the frame before exposing this bridge.
  */
 import { contextBridge, ipcRenderer } from "electron";
@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld("settings", {
     ipcRenderer.invoke(SETTINGS_CHANNEL.chooseChatHomesRoot),
   retryLibrary: () => ipcRenderer.invoke(SETTINGS_CHANNEL.retryLibrary),
   revealLibrary: () => ipcRenderer.invoke(SETTINGS_CHANNEL.revealLibrary),
+  planLibraryMove: () => ipcRenderer.invoke(SETTINGS_CHANNEL.planLibraryMove),
+  commitLibraryMove: (to: string) => ipcRenderer.invoke(SETTINGS_CHANNEL.commitLibraryMove, to),
+  eraseAllData: (options: { trashFolder: boolean }) => ipcRenderer.invoke(SETTINGS_CHANNEL.eraseAllData, options),
   acknowledgeFullAccess: () =>
     ipcRenderer.invoke(SETTINGS_CHANNEL.acknowledgeFullAccess),
   listBackends: () => ipcRenderer.invoke(SETTINGS_CHANNEL.listBackends),

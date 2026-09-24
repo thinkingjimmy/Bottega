@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow, canonical Project/Extension authorities, durable Project Tools/Skills receipts, history/quota services, Apps, Update, MCP, and window security, and the build-gated cloud account lifecycle.
- * [OUTPUT]: Creates the main window, derives canonical turn authority, records actual session prompt hashes, admits saved-history fresh-session recovery before the original user boundary and registers Project/Extension/App IPC.
+ * [OUTPUT]: Creates the main window, derives canonical turn authority, records actual session prompt hashes, admits saved-history fresh-session recovery before the original user boundary and registers Project/Extension/App IPC plus any injected trusted-renderer registrars.
  * [POS]: Interactive main-window authority boundary; renderer identities are routing hints and main re-derives every Project lifecycle fact
  */
 import { prepareSessionRecovery } from "../library/sessions/runtime";
@@ -133,6 +133,8 @@ type MainWindowDependencies = {
   globalSearch: GlobalSearchService;
   update: UpdateService;
   cloud?: { register(window: BrowserWindow, rendererUrl: string): void };
+  /** Further trusted-renderer handlers owned outside this module, registered for every main window. */
+  registrars?: ReadonlyArray<{ register(window: BrowserWindow, rendererUrl: string): void }>;
   /** Built by the composition root at creation time; empty when the payload does not fit. */
   startupSnapshotArguments?: () => readonly string[];
 };
@@ -174,6 +176,7 @@ export function createMainWindow({
   globalSearch,
   update,
   cloud,
+  registrars,
   startupSnapshotArguments,
 }: MainWindowDependencies) {
   const preload = join(mainDirectory, "../preload/index.js");
@@ -257,6 +260,7 @@ export function createMainWindow({
   globalSearch.register(rendererUrl);
   update.register(window, rendererUrl);
   cloud?.register(window, rendererUrl);
+  for (const registrar of registrars ?? []) registrar.register(window, rendererUrl);
   galleryMedia.register(window, rendererUrl);
   registerSettings(window, rendererUrl, settings, resolveWorkspace, memorySettingsOwner,
     chatHomes, platformSupport, resetThreadServiceTierEffective, chats);

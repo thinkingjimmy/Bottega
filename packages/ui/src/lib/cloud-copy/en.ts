@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, the account computer strip and its no-computer sentence, Sync settings navigation, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy, the Web gate's verifying/revoked/restricted next steps and its slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, the account computer strip and its no-computer sentence, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs list, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy, the Web gate's verifying/revoked/restricted next steps and its slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 export const cloudCopy = {
@@ -120,13 +120,36 @@ export const cloudCopy = {
   "setup": {
     "signIn": "Sign in",
     "enable": "Finish sign-in",
-    "signInTitle": "Sign in to sync this computer",
-    "browserApproval": "You’ll approve the sign-in in your browser.",
+    "browserTitle": "Finish signing in in your browser",
+    "browserDescription": "Bottega opened Google sign-in in your default browser. Come back here once you’ve approved it.",
+    "pendingLabel": "Sync password needed",
+    "pendingDescription": "Set your sync password to start syncing this computer.",
+    "resume": "Continue",
     "signedInAs": "You are signed in as {{email}}.",
     "checkCode": "Check that it matches the code in your browser before you allow sign-in.",
     "enterPassword": "Enter your sync password",
     "enterPasswordDescription": "This computer joins the encrypted workspace you set up on another device. Bottega cannot recover the password.",
     "unlockedDescription": "This computer is already unlocked. Finish to start syncing."
+  },
+  "serviceUnavailable": {
+    "connection-failed": "Bottega can’t reach the sync service right now. Everything keeps working on this computer.",
+    "server-outdated": "The sync service is being updated for this version of Bottega. Everything keeps working on this computer.",
+    "client-outdated": "This version of Bottega is too old for the sync service. Install the latest version to sign in; everything keeps working on this computer.",
+    "environment-mismatch": "This build of Bottega can’t connect to this sync service. Everything keeps working on this computer."
+  },
+  "whatSyncs": {
+    "title": "What syncs",
+    "description": "End-to-end encrypted with a sync password only you know.",
+    "after": "After you sign in",
+    "afterPassword": "After you set your sync password",
+    "chats": "Chats and Projects",
+    "chatsDescription": "Conversations, their files and your Projects",
+    "data": "Bases and Apps",
+    "dataDescription": "Base records and images, and the source of published Apps",
+    "skills": "Skills",
+    "skillsDescription": "Your Skills Library",
+    "dock": "Dock layout",
+    "dockDescription": "Items and widgets, not the system Dock"
   },
   "syncBadge": {
     "synced": "Up to date",
@@ -256,6 +279,10 @@ export const cloudCopy = {
   "revokeTitle": "Revoke this session?",
   "revokeDescription": "This device will lose access to your cloud account. Content already downloaded stays on the device.",
   "localDescription": "Use Bottega locally for free. Signing in does not upload content until you confirm your first sync.",
+  "notSignedIn": "Not signed in",
+  "signedOutDescription": "Bottega works fully on this computer for free. Sign in to keep your work in sync across your devices. Nothing uploads until you confirm the first sync.",
+  "tryNow": "Try Now",
+  "tryAgain": "Try Again",
   "sync": "Sync",
   "syncNotConnected": "Sync has not been enabled.",
 
@@ -301,11 +328,11 @@ export const cloudCopy = {
   "cancelUnconfirmed": "Cancellation is not confirmed. Bottega will retry when connected. Keep Bottega running for now.",
   "abandonLogin": "Abandon sign-in and start over",
   "abandonLoginNote": "The pending request may stay valid on the server until it expires or you revoke it in your web account.",
-  "openBrowser": "Reopen browser",
+  "openBrowser": "Open Browser Again",
   "loginLinkLabel": "Sign-in link",
   "loginLinkDescription": "Browser didn’t open? Copy this link and paste it into your browser.",
-  "copyLoginLink": "Copy sign-in link",
-  "loginLinkCopied": "Link copied",
+  "copyLoginLink": "Copy Link",
+  "loginLinkCopied": "Link Copied",
   "loginLinkCopyFailed": "Couldn’t copy the link. Select it and copy it manually.",
   "verificationCode": "Verification code",
   "expires": "This request expires after five minutes.",

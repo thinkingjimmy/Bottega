@@ -1,0 +1,8 @@
+<!--
+ [INPUT]: Depends on the independent system-dock bar React module and browser metadata.
+ [OUTPUT]: Provides the Bottega Dock bar renderer root without the product application bootstrap.
+ [POS]: Electron bottom Dock bar document; its preload exposes only the isolated systemDock bridge with role "bar".
+-->
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Dock</title></head>
+<body><div id="root"></div><script type="module" src="/system-dock/bar/main.tsx"></script></body></html>

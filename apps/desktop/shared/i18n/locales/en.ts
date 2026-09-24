@@ -27,6 +27,7 @@ import { settingsToolsEn } from "./settings/tools/en";
 import { settingsUsageEn } from "./settings/usage/en";
 import { settingsPersonalizationEn } from "./settings/personalization/en";
 import { presenceEn } from "./presence/en";
+import { systemDockEn } from "./system-dock/en";
 import { settingsUpdatesEn } from "./settings/updates/en";
 import { historyEn } from "./history/en";
 import { chatRevisionEn } from "./chat-revision/en";
@@ -112,6 +113,7 @@ promoteBaseToApp: "Promote {{name}} to App"
     draftLostDescription: "The Studio returned to the main window. Messages already held by the main process will not be resent.",
   },
   memory: memoryEn,
+  systemDock: systemDockEn,
   archive: archiveEn,
   onboarding: onboardingEn,
   setup: setupEn,
@@ -186,6 +188,22 @@ crossChatRead: "Cross-chat read access",
 crossChatReadDescription:
         "When off, tools can only read the current Chat Home. When on, they can read other Chat Homes without writing to them.",
 chat: "Chat",
+moveFolder: "Move folder",
+moveFolderTitle: "Move your Bottega folder?",
+moveFolderBody: "Conversations, Projects, Bases, Apps and Skills move with it, unchanged.",
+moveFolderFrom: "From",
+moveFolderTo: "To",
+moveFolderRestart: "Bottega will restart and move the folder before it opens. Moving to another disk copies everything first, which can take a while; the old copy then goes to the Trash.",
+moveFolderConfirm: "Move and restart",
+dangerZone: "Danger zone",
+eraseAll: "Erase all data on this computer",
+eraseAllDescription: "Removes conversations, settings and sign-in from this computer and starts Bottega from the beginning.",
+eraseAllButton: "Erase data",
+eraseAllTitle: "Erase all data on this computer?",
+eraseAllBody: "Your conversations, settings, keys and sign-in on this computer will be deleted, and Bottega will restart at setup. This can't be undone.",
+eraseAllTrashFolder: "Also move the Bottega folder to the Trash",
+eraseAllCloud: "Data synced to your account stays in the cloud. If you sign in again and turn on sync, it comes back.",
+eraseAllConfirm: "Erase and restart",
 chatDescription: "New chat titles are generated in the background.",
 titleGeneration: "Title generation",
 titleGenerationDescription:
@@ -241,6 +259,10 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
         "When enabled, the App maintenance chat will load these skills, MCP servers, and hooks. Continue only if you trust this repository.",
       disableExtensions: "Keep disabled",
       enableExtensions: "Enable extensions",
+      libraryChatsSetAside_one:
+        "{{count}} conversation in your Bottega folder could not be opened, so it was moved to the folder’s .trash. It will be deleted after 30 days.",
+      libraryChatsSetAside_other:
+        "{{count}} conversations in your Bottega folder could not be opened, so they were moved to the folder’s .trash. They will be deleted after 30 days.",
       libraryChatsUnreadable_one:
         "{{count}} conversation in your Bottega folder could not be opened. It was left unchanged.",
       libraryChatsUnreadable_other:
@@ -249,6 +271,22 @@ currentModelUnavailable: "{{model}} (currently unavailable)"
         "{{count}} file a copied conversation refers to is missing from your Bottega folder.",
       libraryFilesMissing_other:
         "{{count}} files copied conversations refer to are missing from your Bottega folder.",
+      libraryMovingTitle: "Moving your Bottega folder",
+      libraryMovingProgress: "Copying your files… {{completed}} of {{total}}",
+      libraryMoveSourceLeft: "Your Bottega folder was moved, but the old copy at {{path}} could not be moved to the Trash. You can delete it yourself.",
+      libraryMoveDeferred: "Your Bottega folder was not moved because some work had not finished. Try again from Settings › General.",
+      libraryMoveFailed: "Bottega could not finish moving your folder. It is currently at {{path}}.",
+      libraryMovePick: "Choose where to move your Bottega folder",
+      libraryMovePickButton: "Move Here",
+      libraryMoveMissing: "No Bottega folder is set up yet.",
+      maintenanceBusy: "Wait for running tasks to finish, then try again.",
+      libraryMove: {
+        samePlace: "Your Bottega folder is already in that location.",
+        inside: "Choose a location outside your Bottega folder.",
+        exists: "That location already has an item with the same name. Choose another location.",
+        unwritable: "Bottega can't write to that location. Choose another one.",
+        projectOverlap: "That location overlaps a Project folder. Choose a location outside your Projects.",
+      },
       libraryOpeningTitle: "Opening your Bottega folder",
       libraryOpeningProgress: "Opening your files… {{completed}} of {{total}}",
     },

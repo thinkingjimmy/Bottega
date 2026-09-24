@@ -139,6 +139,19 @@
   }
 }
 
+/* Row dividers inset to the row padding (default 1rem each side), so a list reads as
+ * separated content rather than a card cut into strips. Drawn as a background image
+ * instead of a pseudo-element: rows keep their own ::before/::after and positioning,
+ * and a hover background-color still paints underneath the line. */
+@utility divide-inset {
+  & > * + * {
+    background-image: linear-gradient(var(--color-border), var(--color-border));
+    background-repeat: no-repeat;
+    background-position: center top;
+    background-size: calc(100% - 2 * var(--divide-inset, 1rem)) 1px;
+  }
+}
+
 /* Streamdown 全屏表格经 Portal 直挂 body，必须显式覆盖底层 Electron
  * 页头的 drag region；按钮同时恢复明确的点击光标。 */
 [data-streamdown="table-fullscreen"],

@@ -9,7 +9,7 @@ import type { BaseStore } from "../../../../bases/base-store";
 import type { ProjectStore } from "../../../../projects/store/project-store";
 import type { AppStore } from "../../../../apps/store/app-store";
 import type { ChatHomeService } from "../../../../chat-home/chat-home-service";
-import { CLEANUP_PARTICIPANTS, scopeCleanupPlanSchema, type ScopeCleanupPlan } from "../../../../lifecycle/scope-cleanup/model";
+import { CLEANUP_PARTICIPANTS, SCOPE_CLEANUP_PLAN_VERSION, scopeCleanupPlanSchema, type ScopeCleanupPlan } from "../../../../lifecycle/scope-cleanup/model";
 import { mirrorChatCatalog } from "../inventory";
 import type { UnifiedSkillsService } from "../../../../skills-management/service";
 export type CleanupOwners = { chats: ChatStore; bases: BaseStore; projects: ProjectStore; apps: AppStore; homes: ChatHomeService; skills?: UnifiedSkillsService };
@@ -41,7 +41,7 @@ export async function captureScopeCleanup(owners: CleanupOwners, scope: SyncScop
     return [{ ownerKey, ownerInstanceId: snapshot.meta.ownerInstanceId, retain }];
   });
   const projects = owners.projects.list().filter(project => project.sync && sameScope(project.sync.scope, scope));
-  return scopeCleanupPlanSchema.parse({ version: 1, operationId, scope, chats, bases,
+  return scopeCleanupPlanSchema.parse({ version: SCOPE_CLEANUP_PLAN_VERSION, operationId, scope, chats, bases,
     projectIds: projects.filter(project => retainedProjects.has(project.id)).map(project => project.id),
     discardedProjectIds: projects.filter(project => !retainedProjects.has(project.id)).map(project => project.id),
     appIds: appEntries.filter(entry => installed.has(entry.descriptor.appId)).map(entry => entry.descriptor.appId),

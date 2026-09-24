@@ -53,6 +53,6 @@ export function ArchiveConfettiRow() {
       checked={settings.archiveConfettiEnabled}
       disabled={saving}
       onToggle={(value) => void save(value)}
-    /> : <Skeleton data-testid="archive-confetti-loading" className="h-6 w-11 rounded-full" />}
+    /> : <Skeleton data-testid="archive-confetti-loading" className="h-[18px] w-8 rounded-full" />}
   />;
 }

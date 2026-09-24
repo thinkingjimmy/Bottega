@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared cloud account and approval copy structure.
- * [OUTPUT]: Provides localized account, Sync settings navigation, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
+ * [OUTPUT]: Provides localized account, Sync settings navigation, the signed-out Sync row with its service-unavailable reasons and What syncs list, sync, installation/removal/deletion consent, retained-file and credential recovery, browser-first sign-in, manual-link fallback, approval, footer language copy and the Web gate's slow-open loading sentence.
  * [POS]: Shared UI copy consumed by desktop and Cloud Web without platform dependencies.
  */
 import type { CloudCopy } from "./en";
@@ -121,13 +121,36 @@ export const cloudCopy = {
   "setup": {
     "signIn": "Iniciar sesión",
     "enable": "Finalizar el inicio de sesión",
-    "signInTitle": "Inicia sesión para sincronizar este ordenador",
-    "browserApproval": "Aprobarás el inicio de sesión en tu navegador.",
+    "browserTitle": "Termina de iniciar sesión en tu navegador",
+    "browserDescription": "Bottega abrió el inicio de sesión de Google en tu navegador predeterminado. Vuelve aquí cuando lo hayas aprobado.",
+    "pendingLabel": "Se necesita la contraseña de sincronización",
+    "pendingDescription": "Define tu contraseña de sincronización para empezar a sincronizar este ordenador.",
+    "resume": "Continuar",
     "signedInAs": "Has iniciado sesión como {{email}}.",
     "checkCode": "Comprueba que coincide con el código de tu navegador antes de permitir el acceso.",
     "enterPassword": "Introduce tu contraseña de sincronización",
     "enterPasswordDescription": "Este ordenador se une al espacio cifrado que configuraste en otro dispositivo. Bottega no puede recuperar la contraseña.",
     "unlockedDescription": "Este ordenador ya está desbloqueado. Finaliza para empezar a sincronizar."
+  },
+  "serviceUnavailable": {
+    "connection-failed": "Bottega no puede conectar con el servicio de sincronización ahora mismo. Todo sigue funcionando en este ordenador.",
+    "server-outdated": "El servicio de sincronización se está actualizando para esta versión de Bottega. Todo sigue funcionando en este ordenador.",
+    "client-outdated": "Esta versión de Bottega es demasiado antigua para el servicio de sincronización. Instala la última versión para iniciar sesión; todo sigue funcionando en este ordenador.",
+    "environment-mismatch": "Esta compilación de Bottega no puede conectarse a este servicio de sincronización. Todo sigue funcionando en este ordenador."
+  },
+  "whatSyncs": {
+    "title": "Qué se sincroniza",
+    "description": "Cifrado de extremo a extremo con una contraseña de sincronización que solo tú conoces.",
+    "after": "Al iniciar sesión",
+    "afterPassword": "Tras definir la contraseña de sincronización",
+    "chats": "Chats y Projects",
+    "chatsDescription": "Las conversaciones, sus archivos y tus Projects",
+    "data": "Bases y Apps",
+    "dataDescription": "Los registros e imágenes de las Bases, y el código fuente de las Apps publicadas",
+    "skills": "Skills",
+    "skillsDescription": "Tu biblioteca de Skills",
+    "dock": "Disposición del Dock",
+    "dockDescription": "Elementos y widgets, no el Dock del sistema"
   },
   "syncBadge": {
     "synced": "Al día",
@@ -257,6 +280,10 @@ export const cloudCopy = {
   "revokeTitle": "¿Revocar esta sesión?",
   "revokeDescription": "Este dispositivo perderá el acceso a tu cuenta en la nube. El contenido descargado permanecerá en el dispositivo.",
   "localDescription": "Usa Bottega gratis de forma local. Iniciar sesión no sube contenido hasta que confirmes la primera sincronización.",
+  "notSignedIn": "Sin iniciar sesión",
+  "signedOutDescription": "Bottega funciona por completo y gratis en este ordenador. Inicia sesión para mantener tu trabajo sincronizado entre tus dispositivos. No se sube nada hasta que confirmes la primera sincronización.",
+  "tryNow": "Reintentar ahora",
+  "tryAgain": "Reintentar",
   "sync": "Sincronización",
   "syncNotConnected": "La sincronización aún no está activada.",
 
@@ -305,7 +332,7 @@ export const cloudCopy = {
   "openBrowser": "Volver a abrir el navegador",
   "loginLinkLabel": "Enlace de inicio de sesión",
   "loginLinkDescription": "¿No se abrió el navegador? Copia este enlace y pégalo en tu navegador.",
-  "copyLoginLink": "Copiar enlace de inicio de sesión",
+  "copyLoginLink": "Copiar enlace",
   "loginLinkCopied": "Enlace copiado",
   "loginLinkCopyFailed": "No se pudo copiar el enlace. Selecciónalo y cópialo manualmente.",
   "verificationCode": "Código de verificación",

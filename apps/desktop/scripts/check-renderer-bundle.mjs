@@ -114,7 +114,22 @@ const MAX_RAW_BYTES = 3_520_000;
    627,673; ef26ebaa6 (steer "send as new message", upload-expiry chip, reference budget admission in the shared remote
    composer) 627,809 (+136, +319 raw); a960b218a 627,801 (−8). dddb4cf76 touched no renderer code. Raised by the
    measured residual. */
-const MAX_GZIP_BYTES = 627_801;
+/* 2026-09-23 (Bottega Dock): 627,801 → 635,264 (+7,463, of which +171 is the review-round copy for stale drafts and changed previews). Measured on one staging build of the Dock change set:
+   the eager English `systemDock` catalog is ~6,290 of it (Settings › Dock copy, the five-state setup flow, bar/panel
+   and native-menu strings — main and both Dock renderers read the same catalog); the rest is the Settings nav entry,
+   the `dock` / `usage` presence destinations and the Presence background confirmation. The Dock pages themselves
+   are behind the lazy Settings route and their own HTML entries. Deferring an English domain catalog needs a lazy
+   catalog-domain seam the i18n runtime does not have yet; until then this is first-paint copy by construction. */
+/* 2026-09-23 (Bottega folder move + Danger zone erase): 635,264 → 635,918 (+654). Measured on one staging build: the
+   new eager English copy is ~536 gzip of string bytes plus its key names (the Move… / Danger zone rows and dialogs,
+   and the move / erase / unopenable-copy sentences the main process translates from the same catalog); the Settings
+   rows themselves stay behind the lazy Settings route. Same missing lazy catalog-domain seam as the Dock entry above;
+   raised by the measured residual. */
+/* 2026-09-24 (Settings redesign: Dock / Memory / Sync / Onboarding on the shared Settings grammar + StepDialog):
+   635,918 → 637,264 (+1,346). Measured 637,238 on one staging build (636,765 on the e2e flavor): the new eager English copy for the onboarding frame,
+   the Memory not-set-up row and three-step dialog, and the Sync row states (incl. in-row unavailable reasons and
+   What syncs), net of the keys the redesign deleted. Same missing lazy catalog-domain seam as the entries above. */
+const MAX_GZIP_BYTES = 637_264;
 const outputRoot = resolveOutputRoot(process.argv.slice(2), process.env, ["--self-test"]);
 const rendererRoot = resolve(import.meta.dirname, "..", outputRoot, "renderer");
 const indexPath = resolve(rendererRoot, "index.html");

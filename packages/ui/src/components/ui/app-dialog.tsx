@@ -2,7 +2,7 @@
 
 /**
  * [INPUT]: Depends on React focus control, shared Dialog/Button/SlimScroller primitives, host UI text, and class merging
- * [OUTPUT]: Provides AppDialogContent, AppDialogBody — the sole scroller, and therefore the sole clipping box, so it carries the headroom its children's rings and shadows are painted into — DialogChoice, the two-line option row for dialogs that pose a choice rather than a confirmation (bordered when it holds a selected value, plain when it is simply pressed; an optional leading icon slot houses the busy spinner so the row never shifts), and ConfirmationDialog with explicit initial/return focus and dismiss policies plus responsive cancel, secondary, destructive, and primary actions whose busy spinner lands on the button that was actually pressed
+ * [OUTPUT]: Provides AppDialogContent, AppDialogBody, StepDialogContent — the one shell for step-by-step setup (progress label and segments, title, description, scrolling body, a footer band with Back on the left and Cancel/primary on the right, and deliberately no close button) — — the sole scroller, and therefore the sole clipping box, so it carries the headroom its children's rings and shadows are painted into — DialogChoice, the two-line option row for dialogs that pose a choice rather than a confirmation (bordered when it holds a selected value, plain when it is simply pressed; an optional leading icon slot houses the busy spinner so the row never shifts), and ConfirmationDialog with explicit initial/return focus and dismiss policies plus responsive cancel, secondary, destructive, and primary actions whose busy spinner lands on the button that was actually pressed
  * [POS]: The shared accessible dialog shell and confirmation surface for packages/ui consumers
  */
 
@@ -102,6 +102,90 @@ export function AppDialogBody({
       className={cn("-mx-1 -my-px min-h-0 flex-1 overflow-y-auto px-1 py-px", className)}
       {...props}
     />
+  );
+}
+
+/* ── 分步弹窗：设置流程的唯一外壳 ─────────────────────────────────
+ * Dock、记忆、同步的首次设置都是「一步一问、最后确认」，从前每处各画一套：
+ * 有的右上角带 ×、进度条在左、按钮浮在正文下；有的没有 ×、进度在右、页脚
+ * 成带。同一种事长成两种样子，用户每次都要重新找出口。
+ *
+ * 不给 ×：分步流程的出口本就是页脚里恒在的「取消」（Esc 同义），× 只会与它
+ * 重复，还诱导人在第二步中途误关、丢掉已选内容。这是本组件与 AppDialogContent
+ * 默认值唯一相反的地方，因此由组件焊死，调用方必须在 actions 里给出取消。
+ * 页脚成带（上细线 + 浅底），与正文的滚动区分开：步骤再长，动作也永远在同一处。
+ * ───────────────────────────────────────────────────────────────── */
+export type StepDialogProgress = {
+  /** 1-based index of the current step. */
+  index: number;
+  total: number;
+  /** "Step 2 of 3" in the caller's language; the segments beside it are decorative. */
+  label: string;
+};
+
+export function StepDialogContent({
+  progress,
+  title,
+  description,
+  back,
+  actions,
+  children,
+  className,
+  bodyClassName,
+  ...props
+}: Omit<AppDialogContentProps, "title" | "children" | "showCloseButton"> & {
+  progress?: StepDialogProgress | null;
+  title: ReactNode;
+  description?: ReactNode;
+  /** Left side of the footer, usually Back; omit on the first step. */
+  back?: ReactNode;
+  /** Right side of the footer: Cancel (required — it is the way out) then the primary action. */
+  actions: ReactNode;
+  children?: ReactNode;
+  bodyClassName?: string;
+}) {
+  return (
+    <AppDialogContent
+      showCloseButton={false}
+      // Without a description the title alone names the dialog; repeating it as a hidden
+      // description would make screen readers read it twice. Explicit undefined tells Radix so.
+      {...(description ? {} : { "aria-describedby": undefined })}
+      className={cn("gap-0 p-0 sm:max-w-[34rem]", className)}
+      {...props}
+    >
+      <DialogHeader className="shrink-0 gap-1 px-5 pt-5 text-left">
+        {progress && progress.total > 1 && (
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-muted-foreground text-xs">{progress.label}</p>
+            <span aria-hidden="true" className="flex gap-1">
+              {Array.from({ length: progress.total }, (_, index) => (
+                <span
+                  key={index}
+                  className={cn(
+                    "h-[3px] w-4 rounded-[2px]",
+                    index < progress.index ? "bg-foreground" : "bg-border"
+                  )}
+                />
+              ))}
+            </span>
+          </div>
+        )}
+        <DialogTitle className="font-semibold text-lg">{title}</DialogTitle>
+        {description ? (
+          <DialogDescription className="text-muted-foreground text-xs leading-relaxed">
+            {description}
+          </DialogDescription>
+        ) : null}
+      </DialogHeader>
+      <AppDialogBody className={cn("mx-0 mt-4 space-y-3 px-5 pb-5", bodyClassName)}>
+        {children}
+      </AppDialogBody>
+      <DialogFooter className="shrink-0 flex-row items-center gap-2 border-t bg-muted/40 px-4 py-3">
+        {back}
+        <span className="flex-1" aria-hidden="true" />
+        {actions}
+      </DialogFooter>
+    </AppDialogContent>
   );
 }
 

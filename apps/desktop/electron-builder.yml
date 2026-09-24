@@ -1,5 +1,5 @@
-# [INPUT]: Depends on electron-vite output, test-receipt exclusion, the keep-node-module-types hook, root LICENSE, original sumo ISC notice, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons, entitlements, and pinned react-grab assets
-# [OUTPUT]: Produces Bottega macOS arm64 DMG (UDBZ) / ZIP (deflate -9), Windows x64 NSIS, and Linux x64 AppImage (gzip squashfs) artifacts whose packaged app.name is Bottega (own userData, never the dev directory), with an offline fail-closed App GUI compiler, no test-only receipt, TypeScript declaration files kept and the whole node_modules tree unpacked next to the ASAR for the packaged compiler, and no vendored Codex/Claude CLI platform packages (the product only spawns the user's own CLI)
+# [INPUT]: Depends on electron-vite output, the out/system-dock native helpers and recovery LaunchAgent plist, test-receipt exclusion, the keep-node-module-types hook, root LICENSE, original sumo ISC notice, system skills, immutable Design factory payload, Base GUI SDK/toolchain/component/Starter resources, compiler native payloads, icons, entitlements, and pinned react-grab assets
+# [OUTPUT]: Produces Bottega macOS arm64 DMG (UDBZ) / ZIP (deflate -9), Windows x64 NSIS, and Linux x64 AppImage (gzip squashfs) artifacts whose packaged app.name is Bottega (own userData, never the dev directory), with an offline fail-closed App GUI compiler, no test-only receipt, TypeScript declaration files kept and the whole node_modules tree unpacked next to the ASAR for the packaged compiler, and no vendored Codex/Claude CLI platform packages (the product only spawns the user's own CLI), and on macOS the signed Bottega Dock helpers under Resources/system-dock/bin, the recovery agent plist under Contents/Library/LaunchAgents, and Apple Events/Downloads usage descriptions
 # [POS]: The only desktop packaging configuration; release signing is fail-closed in release scripts while ordinary CI packaging remains unsigned
 
 appId: com.jimmywong.bottega
@@ -68,6 +68,21 @@ extraResources:
 mac:
   binaries:
     - Contents/Resources/presence/bin/screen-bridge
+    - Contents/Resources/system-dock/bin/system-dock-bridge
+    - Contents/Resources/system-dock/bin/bottega-dock-recovery
+  # Bottega Dock (macOS 15+, arm64) ships only in mac packages; mac extraFiles are rooted at Contents/.
+  # SMAppService.agent(plistName:) only looks in Contents/Library/LaunchAgents.
+  extraFiles:
+    - from: out/system-dock/bin
+      to: Resources/system-dock/bin
+      filter: ["system-dock-bridge", "bottega-dock-recovery"]
+    - from: out/system-dock/LaunchAgents
+      to: Library/LaunchAgents
+      filter: ["*.dock-recovery.plist"]
+  # TCC prompts and attribution belong to the outer app: Finder Automation (empty Trash) and Downloads reads.
+  extendInfo:
+    NSAppleEventsUsageDescription: Bottega asks Finder to empty the Trash only when you confirm it from the Bottega Dock.
+    NSDownloadsFolderUsageDescription: Bottega shows your most recent downloads in the Bottega Dock so you can open them quickly.
   target:
     - target: dmg
       arch: [arm64]

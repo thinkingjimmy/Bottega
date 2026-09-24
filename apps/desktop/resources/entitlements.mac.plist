@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   [INPUT]: Depends on the macOS hardened runtime enforced by electron-builder and Developer ID signing
-  [OUTPUT]: Grants Electron helpers JIT execution, unsigned executable memory, and loading of signed third-party native runtime libraries
+  [OUTPUT]: Grants Electron helpers JIT execution, unsigned executable memory, loading of signed third-party native runtime libraries, and the Apple Events entitlement the Bottega Dock Finder action needs
   [POS]: Canonical macOS signing entitlement contract consumed by electron-builder for the app and inherited helper signatures
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -12,6 +12,11 @@
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
   <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <!-- Bottega Dock empties the Trash through one Finder Apple Event sent by system-dock-bridge; hardened
+       runtime blocks Apple Events without this key. electron-builder applies one inherit file to every
+       nested binary, so the key cannot be scoped to that helper alone (see resources/system-dock/README.md). -->
+  <key>com.apple.security.automation.apple-events</key>
   <true/>
 </dict>
 </plist>

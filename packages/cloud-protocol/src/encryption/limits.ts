@@ -1,5 +1,5 @@
 /**
- * [INPUT]: The encrypted sync candidate protocol and its six disjoint purposes.
+ * [INPUT]: The encrypted sync candidate protocol and its disjoint subkey purposes (seven ciphertext purposes plus the purpose-seven HMAC key).
  * [OUTPUT]: Immutable algorithm/allocation bounds and safe closed failure codes.
  * [POS]: Server-safe limits checked before base64 decoding, KDF or decryption.
  */
@@ -26,6 +26,9 @@ export const PLAINTEXT_LIMITS: Readonly<Record<CryptoPurpose, number>> = Object.
   5: 65_536,
   6: 1_048_576,
   7: 0, // Reserved for Skill identity HMAC; no ciphertext context uses this key.
+  /* Account configuration (the Dock layout). The whole record, its ciphertext and the base64url packet must stay far below
+     Convex's 1 MiB document limit: 384 KiB of plaintext becomes a ~705,000-character packet. */
+  8: 393_216,
 });
 
 export const CRYPTO_ERROR_CODES = [

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the one-shot build manifest (appPath/appOutDir/resourcesPath/installers), @electron/asar listPackage/extractFile, runtime-dependencies.json, electron-builder.yml extraResources targets, the original sumo ISC notice, and an optional release-budgets.json
- * [OUTPUT]: Verifies the packaged tree structurally (every manifest package present in the ASAR or unpacked tree with matching name and version, every excludedGlobs match absent, every extraResources target present and crypto notice bytes exact), writes release/dist-size-receipt.json with installer bytes and unpackedPayloadBytes, and asserts current-platform budgets when release-budgets.json declares them; platforms without budget keys are measure-only, cross-platform color tray resources plus macOS templates and native executable checks.
+ * [OUTPUT]: Verifies the packaged tree structurally (every manifest package present in the ASAR or unpacked tree with matching name and version, every excludedGlobs match absent, every extraResources target present and crypto notice bytes exact), writes release/dist-size-receipt.json with installer bytes and unpackedPayloadBytes, and asserts current-platform budgets when release-budgets.json declares them; platforms without budget keys are measure-only, cross-platform color tray resources plus macOS templates and native executable checks, including the Bottega Dock helpers and their single recovery LaunchAgent plist.
  * [POS]: Production build verification shared by the private dist smoke; it contains no behavior test so the same file can later run inside the public build job. The dependency manifest owns what must exist, this file proves the packaged bytes agree
  */
 
@@ -115,6 +115,14 @@ export async function verifyPackagedPayload({ desktop, buildManifest, log = (lin
   }
   if (buildManifest.platform === "darwin") {
     assert(lstatSync(join(resources, "presence/bin/screen-bridge")).mode & 0o111, "The presence helper must be executable");
+    // Bottega Dock ships through mac extraFiles, which a missing source only warns about.
+    for (const name of ["system-dock-bridge", "bottega-dock-recovery"]) {
+      const path = join(resources, "system-dock/bin", name);
+      assert(existsSync(path) && lstatSync(path).isFile() && (lstatSync(path).mode & 0o111), `Missing executable Bottega Dock helper: ${name}`);
+    }
+    const launchAgents = join(resources, "..", "Library", "LaunchAgents");
+    assert(existsSync(launchAgents) && readdirSync(launchAgents).filter(name => name.endsWith(".dock-recovery.plist")).length === 1,
+      "Exactly one Bottega Dock recovery LaunchAgent plist must ship in Contents/Library/LaunchAgents");
   }
 
   /* 4. 体积 receipt：installer 字节数 + 逻辑 unpacked payload。 */

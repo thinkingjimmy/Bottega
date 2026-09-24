@@ -64,7 +64,7 @@ export function SkillImportDialog({
                 <ArrowLeft />
                 {t("settings.skills.back")}
               </Button>
-              <div className="divide-y rounded-lg ring-1 ring-foreground/10">
+              <div className="divide-inset rounded-lg ring-1 ring-foreground/10 [--divide-inset:0.75rem]">
                 {preview.candidates.map((candidate) => {
                   const actionable = actionableCandidate(candidate);
                   return (
@@ -95,7 +95,7 @@ export function SkillImportDialog({
               </div>
             </>
           ) : (
-            <div className="divide-y rounded-lg ring-1 ring-foreground/10">
+            <div className="divide-inset rounded-lg ring-1 ring-foreground/10 [--divide-inset:0.75rem]">
               {sources.map((source) => (
                 <button
                   className="flex min-h-14 w-full items-center justify-between px-3 text-left hover:bg-muted/60 disabled:opacity-50"

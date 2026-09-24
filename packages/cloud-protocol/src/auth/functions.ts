@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Depends on closed account/device/environment schemas, immutable spaces, continuity and business registries.
+ * [INPUT]: Depends on closed account/device/environment schemas, immutable spaces, continuity and business registries (including account-config).
  * [OUTPUT]: Provides the implemented public function registry with typed arguments/results, the protocol-free shell update metadata query, the optional machine key on device registration/heartbeat, the account-level computer list and machine-wide rename, and conditional heartbeat epoch replacement.
  * [POS]: Shared contract authority; private Convex exports are verified against this registry.
  */
@@ -21,10 +21,12 @@ import { remoteFunctions } from "../remote/functions";
 import { continuityFunctions } from "../continuity/functions";
 import { spacesFunctions } from "../spaces/functions";
 import { skillFunctions } from "../skills/functions";
+import { accountConfigFunctions } from "../account-config/functions";
 import { pushFunctions } from "../push/functions";
 const header = protocolHeaderSchema.shape;
 export const cloudFunctions = {
   ...skillFunctions,
+  ...accountConfigFunctions,
   ...pushFunctions,
   ...spacesFunctions,
   ...continuityFunctions,

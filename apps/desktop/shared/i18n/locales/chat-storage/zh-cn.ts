@@ -11,7 +11,7 @@ export const chatStorageZhCN: typeof chatStorageEn = {
   copyDetails: "复制技术详情",
   copiedDetails: "已复制技术详情",
   reportIssue: "在 GitHub 反馈",
-  warningResolution: "请重启 Bottega。如果仍然出现，请在 GitHub 反馈，我们会跟进。",
+  warningResolution: "如果反复出现，请在 GitHub 反馈，我们会跟进。",
   code: {
     "file-quarantined": {
       title: "有一个聊天暂时无法打开",

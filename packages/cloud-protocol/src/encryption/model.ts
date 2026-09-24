@@ -1,11 +1,11 @@
 /**
  * [INPUT]: Type-only closed domain binding definitions.
- * [OUTPUT]: Closed source scopes, authenticated contexts, envelopes and distinct hash types.
+ * [OUTPUT]: Closed source scopes, eight subkey purposes, authenticated contexts, envelopes and distinct hash types.
  * [POS]: Server-safe encryption contract shared with the isolated client crypto package.
  */
 
 import type { DomainContext } from "./domains";
-export type CryptoPurpose = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type CryptoPurpose = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 export interface CryptoScope {
   sourceEnvironment: string;

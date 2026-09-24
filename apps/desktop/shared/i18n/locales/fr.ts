@@ -28,6 +28,7 @@ import { settingsToolsFr } from "./settings/tools/fr";
 import { settingsUsageFr } from "./settings/usage/fr";
 import { settingsPersonalizationFr } from "./settings/personalization/fr";
 import { presenceFr } from "./presence/fr";
+import { systemDockFr } from "./system-dock/fr";
 import { settingsUpdatesFr } from "./settings/updates/fr";
 import { historyFr } from "./history/fr";
 import { chatRevisionFr } from "./chat-revision/fr";
@@ -113,6 +114,7 @@ promoteBaseToApp: "Promouvoir {{name}} en App"
     draftLostDescription: "Le Studio est revenu dans la fenêtre principale. Les messages déjà pris en charge par le processus principal ne seront pas renvoyés.",
   },
   memory: memoryFr,
+  systemDock: systemDockFr,
   archive: archiveFr,
   onboarding: onboardingFr,
   setup: setupFr,
@@ -185,6 +187,22 @@ notSelected: "Non sélectionné",
 crossChatRead: "Lecture entre chats",
 crossChatReadDescription: "Désactivé, les outils ne lisent que le Chat Home courant ; activé, ils peuvent lire les autres sans les modifier.",
 chat: "Chat",
+moveFolder: "Déplacer le dossier",
+moveFolderTitle: "Déplacer votre dossier Bottega ?",
+moveFolderBody: "Les conversations, Projects, Bases, Apps et Skills sont déplacés avec lui, sans modification.",
+moveFolderFrom: "De",
+moveFolderTo: "Vers",
+moveFolderRestart: "Bottega va redémarrer et déplacer le dossier avant de l’ouvrir. Vers un autre disque, tout est d’abord copié, ce qui peut prendre un moment ; l’ancienne copie est ensuite placée dans la Corbeille.",
+moveFolderConfirm: "Déplacer et redémarrer",
+dangerZone: "Zone de danger",
+eraseAll: "Effacer toutes les données de cet ordinateur",
+eraseAllDescription: "Supprime les conversations, les réglages et la connexion de cet ordinateur, puis relance Bottega depuis le début.",
+eraseAllButton: "Effacer les données",
+eraseAllTitle: "Effacer toutes les données de cet ordinateur ?",
+eraseAllBody: "Vos conversations, réglages, clés et votre connexion sur cet ordinateur seront supprimés, et Bottega redémarrera à la configuration. Cette action est irréversible.",
+eraseAllTrashFolder: "Placer aussi le dossier Bottega dans la Corbeille",
+eraseAllCloud: "Les données synchronisées avec votre compte restent dans le cloud. Si vous vous reconnectez et activez la synchronisation, elles reviennent.",
+eraseAllConfirm: "Effacer et redémarrer",
 chatDescription: "Les titres des nouveaux chats sont générés en arrière-plan.",
 titleGeneration: "Génération du titre",
 titleGenerationDescription: "Les modèles de titre sont enregistrés séparément pour chaque backend.",
@@ -236,6 +254,10 @@ currentModelUnavailable: "{{model}} (indisponible)"
         "Une fois activées, le chat de maintenance de l’App chargera ces skills, serveurs MCP et hooks. Continuez uniquement si vous faites confiance à ce dépôt.",
       disableExtensions: "Garder désactivées",
       enableExtensions: "Activer les extensions",
+      libraryChatsSetAside_one:
+        "{{count}} conversation de votre dossier Bottega n’a pas pu être ouverte ; elle a été déplacée dans le dossier .trash et sera supprimée dans 30 jours.",
+      libraryChatsSetAside_other:
+        "{{count}} conversations de votre dossier Bottega n’ont pas pu être ouvertes ; elles ont été déplacées dans le dossier .trash et seront supprimées dans 30 jours.",
       libraryChatsUnreadable_one:
         "{{count}} conversation de votre dossier Bottega n’a pas pu être ouverte. Elle reste inchangée.",
       libraryChatsUnreadable_other:
@@ -244,6 +266,22 @@ currentModelUnavailable: "{{model}} (indisponible)"
         "{{count}} fichier référencé par une conversation copiée est absent de votre dossier Bottega.",
       libraryFilesMissing_other:
         "{{count}} fichiers référencés par des conversations copiées sont absents de votre dossier Bottega.",
+      libraryMovingTitle: "Déplacement de votre dossier Bottega",
+      libraryMovingProgress: "Copie de vos fichiers… {{completed}} sur {{total}}",
+      libraryMoveSourceLeft: "Votre dossier Bottega a été déplacé, mais l’ancienne copie située à {{path}} n’a pas pu être placée dans la Corbeille. Vous pouvez la supprimer vous-même.",
+      libraryMoveDeferred: "Votre dossier Bottega n’a pas été déplacé car certaines tâches n’étaient pas terminées. Réessayez depuis Réglages › Général.",
+      libraryMoveFailed: "Bottega n’a pas pu terminer le déplacement de votre dossier. Il se trouve actuellement à {{path}}.",
+      libraryMovePick: "Choisissez où déplacer votre dossier Bottega",
+      libraryMovePickButton: "Déplacer ici",
+      libraryMoveMissing: "Aucun dossier Bottega n’est encore configuré.",
+      maintenanceBusy: "Attendez la fin des tâches en cours, puis réessayez.",
+      libraryMove: {
+        samePlace: "Votre dossier Bottega se trouve déjà à cet emplacement.",
+        inside: "Choisissez un emplacement en dehors de votre dossier Bottega.",
+        exists: "Cet emplacement contient déjà un élément du même nom. Choisissez-en un autre.",
+        unwritable: "Bottega ne peut pas écrire à cet emplacement. Choisissez-en un autre.",
+        projectOverlap: "Cet emplacement chevauche un dossier de Project. Choisissez un emplacement en dehors de vos Projects.",
+      },
       libraryOpeningTitle: "Ouverture de votre dossier Bottega",
       libraryOpeningProgress:
         "Ouverture de vos fichiers… {{completed}} sur {{total}}",

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on Electron BrowserWindow/nativeTheme, the main-process catalogs and the mirror opening progress numbers.
- * [OUTPUT]: Provides openLibrarySplash: a frameless progress window shown while a folder too large to defer is opened.
+ * [OUTPUT]: Provides openLibrarySplash: a frameless progress window shown while a folder too large to defer is opened, or while a folder is copied to another volume.
  * [POS]: startup/ presentation leaf below library-runtime; it decides nothing about content and never fails a launch.
  */
 import { app, BrowserWindow, nativeTheme } from "electron";
@@ -12,14 +12,21 @@ export type LibrarySplash = { update(completed: number, total: number): void; cl
 
 const WIDTH = 380, HEIGHT = 140;
 
-function page(locale: AppLocale, dark: boolean, total: number) {
+/* One window, two jobs: opening a large folder, and carrying a folder to another volume. */
+const COPY = {
+  opening: { title: "settings.native.libraryOpeningTitle", progress: "settings.native.libraryOpeningProgress" },
+  moving: { title: "settings.native.libraryMovingTitle", progress: "settings.native.libraryMovingProgress" },
+} as const;
+export type LibrarySplashPurpose = keyof typeof COPY;
+
+function page(locale: AppLocale, dark: boolean, total: number, purpose: LibrarySplashPurpose) {
   /* The first paint has to be right without a stylesheet or a renderer bundle: this window exists
      precisely because neither is loaded yet. Colours mirror native-theme.ts so the two windows
      that follow each other on screen never disagree about light or dark. */
   const foreground = dark ? "#fafafa" : "#0a0a0a", muted = dark ? "#a1a1a1" : "#737373";
   const track = dark ? "#262626" : "#e5e5e5";
   return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8" />
-<title>${escapeHtml(translate(locale, "settings.native.libraryOpeningTitle"))}</title>
+<title>${escapeHtml(translate(locale, COPY[purpose].title))}</title>
 <style>
   :root { color-scheme: ${dark ? "dark" : "light"}; }
   body { margin: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
@@ -32,7 +39,7 @@ function page(locale: AppLocale, dark: boolean, total: number) {
   progress::-webkit-progress-value { background: ${foreground}; border-radius: 999px; }
 </style></head><body>
   <div class="mark">Bottega</div>
-  <div class="line" id="line">${escapeHtml(translate(locale, "settings.native.libraryOpeningProgress", { completed: 0, total }))}</div>
+  <div class="line" id="line">${escapeHtml(translate(locale, COPY[purpose].progress, { completed: 0, total }))}</div>
   <progress id="bar" max="${total}" value="0"></progress>
 </body></html>`;
 }
@@ -41,7 +48,8 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[character]!);
 }
 
-export async function openLibrarySplash(input: { locale: AppLocale; total: number }): Promise<LibrarySplash | null> {
+export async function openLibrarySplash(input: { locale: AppLocale; total: number; purpose?: LibrarySplashPurpose }): Promise<LibrarySplash | null> {
+  const purpose = input.purpose ?? "opening";
   let window: BrowserWindow | undefined;
   try {
     window = new BrowserWindow({
@@ -51,12 +59,12 @@ export async function openLibrarySplash(input: { locale: AppLocale; total: numbe
       webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, devTools: false },
     });
     const surface = window;
-    await surface.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page(input.locale, nativeTheme.shouldUseDarkColors, input.total))}`);
+    await surface.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page(input.locale, nativeTheme.shouldUseDarkColors, input.total, purpose))}`);
     surface.show();
     return {
       update(completed, total) {
         if (surface.isDestroyed()) return;
-        const line = translate(input.locale, "settings.native.libraryOpeningProgress", { completed, total });
+        const line = translate(input.locale, COPY[purpose].progress, { completed, total });
         void surface.webContents.executeJavaScript(
           `(() => { const line = document.getElementById("line"); if (line) line.textContent = ${JSON.stringify(line)};
             const bar = document.getElementById("bar"); if (bar) { bar.max = ${total}; bar.value = ${completed}; } })()`

@@ -126,6 +126,7 @@ let cloudRuntime: Awaited<ReturnType<typeof import("./cloud/runtime/composition"
 let cloudPrepared: Awaited<ReturnType<typeof import("./cloud/runtime/prepare").prepareCloudRuntime>> | null = null;
 let cloudComposition: Promise<typeof import("./cloud/runtime/composition")> | null = null;
 import { createPresenceRuntime } from "./presence/composition";
+import { createSystemDockRuntime } from "./system-dock/composition";
 import { createApplicationPresence } from "./presence/lifecycle/application";
 import { taskStartFence, uniqueStopOperations } from "./presence/lifecycle/start-fence";
 import { agentStopOperations } from "./agent-bridge";
@@ -134,6 +135,7 @@ import { startupTrace } from "./startup/startup-trace";
 import { startDeferredMaintenance } from "./startup/deferred-maintenance";
 startupTrace.mark("main:module-evaluated");
 let presenceRuntime: ReturnType<typeof createPresenceRuntime> | null = null;
+let systemDockRuntime: ReturnType<typeof createSystemDockRuntime> | null = null;
 const stopOperations = () => uniqueStopOperations([...agentStopOperations(), ...(sectionCoordinator?.pendingStopOperations() ?? [])]);
 const presenceLifecycle = createApplicationPresence({ safeQuit: () => safeQuit, locale: () => currentLocale(), snapshot: stopOperations,
   enabled: () => presenceRuntime?.service.snapshot().effectiveDisplayMode != null,
@@ -231,6 +233,14 @@ if (!hasSingleInstanceLock) {
           void cloudComposition.catch(() => {});
         })(),
       ]);
+      /* translate() 是同步的，目录缺席时不会报错——它会静静退回英文，正是
+         最难被发现的那种失败。所以主进程只背英文（runtime.ts 里静态常驻）
+         加当前语言，而且必须在任何原生菜单、对话框或托盘文案之前把它等到。
+         英文用户这一步是零成本：catalogOf("en") 当场命中。 */
+      await loadCatalog(currentLocale());
+      startupTrace.mark("i18n:registered");
+      // A pending erase or move runs before the folder opens, so a folder mid-move is never read as deleted.
+      const folderNotice = await (await import("./library/relocation/startup")).prepareFolderAtStartup({ userData, locale: currentLocale, settings: settingsStore });
       const { LibraryService } = await import("./library/service");
       localDeviceId = await new DeviceIdentityStore(userData).loadOrCreate();
       library = new LibraryService(settingsStore, localDeviceId, machineIdHash);
@@ -240,12 +250,6 @@ if (!hasSingleInstanceLock) {
          first for "no white flash on dark startup" to hold. */
       applyThemeSource(settingsStore.get().theme);
       startupTrace.mark("settings:ready");
-      /* translate() 是同步的，目录缺席时不会报错——它会静静退回英文，正是
-         最难被发现的那种失败。所以主进程只背英文（runtime.ts 里静态常驻）
-         加当前语言，而且必须在任何原生菜单、对话框或托盘文案之前把它等到。
-         英文用户这一步是零成本：catalogOf("en") 当场命中。 */
-      await loadCatalog(currentLocale());
-      startupTrace.mark("i18n:registered");
       const storageMode = cloudPrepared?.binding.mode() ?? { kind: "local-only" as const };
       let disabledToolsSignature = settingsStore
         .get()
@@ -404,6 +408,7 @@ if (!hasSingleInstanceLock) {
       /* Adopt is awaited only now: the SQLite worker's spawn and the discovery probes'
          result handling both overlap custody this way instead of queueing behind it. */
       await chatStoreAdopted;
+      if (folderNotice) chatStore.pushWarning(folderNotice(currentLocale()));
       deletionCoordinator = new ConversationDeletionCoordinator(join(userData, "deletion-journal"));
       chatHomeLedger = new ChatHomeLedger(userData);
       chatHomeService = new ChatHomeService(settingsStore, chatStore, chatHomeLedger, Date.now, library);
@@ -420,8 +425,7 @@ if (!hasSingleInstanceLock) {
       memoryRuntimes = memoryRuntime.runtimes;
       const { ChatMirrorService } = await import("./library/mirrors/service");
       chatMirrors = new ChatMirrorService({ library, chats: chatStore, homes: chatHomeService, progress: value => chatHomeService!.reportProgress(value),
-        notify: notice => chatStore!.pushWarning(translate(currentLocale(),
-          notice.kind === "chats-unreadable" ? "settings.native.libraryChatsUnreadable" : "settings.native.libraryFilesMissing", { count: notice.count })) });
+        notify: notice => chatStore!.pushWarning(translate(currentLocale(), MIRROR_NOTICE_KEYS[notice.kind], { count: notice.count })) });
       const libraryRuntime = await import("./startup/library-runtime");
       await libraryRuntime.mountLibraryContent({ library, mirrors: chatMirrors, chats: chatStore, projects: projectStore, bases: baseStore, apps: appsService.store, baseIdentities, locale: currentLocale, remountSkills: () => unifiedSkillsService?.remountFolder() });
       memoryService = memoryRuntime.service;
@@ -682,6 +686,9 @@ if (!hasSingleInstanceLock) {
         usage: usageService, usageLimits, memory: memoryService, memoryRuntimes, memorySettingsOwner,
         chatHomes: chatHomeService, archive: archiveService, galleryMedia: galleryMediaService, galleryEvents,
         browser: browserRuntime, historyImport, globalSearch, update: updateService, cloud: cloudRuntime ?? undefined,
+        registrars: [(await import("./profile-maintenance/ipc")).createProfileMaintenance({ userData, locale: currentLocale, settings: settingsStore,
+          busy: () => stopOperations().length > 0, projectDirs: () => projectStore!.list().map((project) => project.dir),
+          safeQuit: () => safeQuit, disableLoginItem: () => { if (loginItem.kind === "macos") loginItem.write(false); } })],
       });
       startupTrace.registerRenderer(ipcMain, () => windowRegistry.main()?.webContentsId ?? null);
       windowRetention.configure(async () => {
@@ -692,14 +699,26 @@ if (!hasSingleInstanceLock) {
       });
       surfaceWindowController.configurePresence({ beforeAppClose: (record) => windowRetention.beforeAppClose(record),
         ensureMain: () => windowRetention.ensureMain(), closeFailure: () => dialog.showErrorBox(translate(currentLocale(), "settings.presence.title"), translate(currentLocale(), "settings.presence.closeFailed")) });
+      systemDockRuntime = createSystemDockRuntime({ mainDirectory: __dirname, userData, locale: currentLocale, installation: localDeviceId!,
+        limits: usageLimits, history: usageService, apps: () => appsService,
+        send: async (command) => { await presenceRuntime?.send(command); },
+        refreshMenu: () => presenceRuntime?.refreshMenu(),
+        ensureBackground: async () => { if (!settingsStore!.get().keepRunningInBackground) await presenceRuntime?.service.setWindowRetention(true); } });
       presenceRuntime = createPresenceRuntime({ mainDirectory: __dirname, settings: settingsStore, chats: chatsService,
-        update: updateService, coordinator: activeCoordinator, login: loginItem, retention: windowRetention, locale: currentLocale, quitting: () => safeQuit.requested, quit: () => { void requestUserQuit(); } });
+        update: updateService, coordinator: activeCoordinator, login: loginItem, retention: windowRetention, locale: currentLocale, quitting: () => safeQuit.requested, quit: () => { void requestUserQuit(); },
+        dockMenu: () => systemDockRuntime?.menu() ?? null });
       await presenceRuntime.initialize();
       const restartHidden = await presenceLifecycle.consumeRestartPresentation();
       /* A silent start still builds the window, so both branches reach this line with
          main readiness settled — that is the only precondition deferred work has. */
       await windowRetention.initialize((restartHidden || (openedAtLogin && settingsStore.get().launchAtLogin)) && presenceRuntime.service.snapshot().effectiveDisplayMode !== null);
       startupTrace.mark("window:shown");
+      /* After the first frame: the Dock restores any takeover a crashed run left behind, then
+         starts its bar only when enabled; neither may delay the main window. */
+      void systemDockRuntime.initialize().then(() => {
+        // Layout sync attaches only after the store is loaded; the Dock itself never waits for the cloud (INV-16).
+        if (systemDockRuntime && cloudRuntime) systemDockRuntime.attachSync(cloudRuntime.attachAccountConfig(systemDockRuntime.config()));
+      }).catch((cause) => console.warn("[system-dock] initialize failed", cause));
       for (const category of profileRecovery.notices) chatStore.pushWarning(recoveryNotice(category, currentLocale()));
       profileRecovery.sealStartup();
       /* Copies this profile has never seen are opened now, not before the window: below the folder
@@ -734,6 +753,12 @@ if (!hasSingleInstanceLock) {
     });
 }
 
+const MIRROR_NOTICE_KEYS = {
+  "chats-unreadable": "settings.native.libraryChatsUnreadable",
+  "chats-set-aside": "settings.native.libraryChatsSetAside",
+  "files-missing": "settings.native.libraryFilesMissing",
+} as const;
+
 const shutdownRecovery = new ShutdownRecoveryGate();
 
 function stopChatAdmission() {
@@ -762,8 +787,11 @@ async function reopenChatDependencies() {
 }
 
 async function closeTerminalOwners() {
+  // Restore the system Dock before anything else stops; the recovery agent is the fallback, not the plan.
+  await systemDockRuntime?.restoreForQuit().catch((cause) => console.warn("[system-dock] restore failed", cause));
   presenceRuntime?.close(); presenceLifecycle.close();
   if (cloudRuntime) await cloudRuntime.close(); else { await cloudPrepared?.scope?.close(); await cloudPrepared?.binding.close(); }
+  await systemDockRuntime?.close().catch((cause) => console.warn("[system-dock] close failed", cause));
   await closeTerminalOwnerSequence({
     irreversible: () => shutdownRecovery.runIrreversible(() => {
       chatsService?.closeAdmission(); basesService?.closeAdmission();

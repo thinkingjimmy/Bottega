@@ -46,19 +46,23 @@ function productionCsp(): Plugin {
         },
     };
 }
+/* Isolated auxiliary surfaces (notch task panel, Bottega Dock bar/panel) each get one
+   self-contained preload; none of them may share a chunk with the product preload. */
+const AUXILIARY_PRELOADS = ["task-panel", "system-dock"] as const;
 function auxiliaryPreload(): Plugin {
-    const entry = resolve(__dirname, "electron/preload/task-panel.ts");
     return {
-        name: "self-contained-task-panel-preload",
+        name: "self-contained-auxiliary-preloads",
         generateBundle() {
-            // Sandboxed preloads can require Electron, but cannot load sibling chunks.
-            const result = buildSync({ entryPoints: [entry], bundle: true, write: false,
-                platform: "node", format: "cjs", target: "node22", external: ["electron"], metafile: true,
-                /* 与 main/preload 同一口味：这份也在每个面板渲染进程里常驻。 */
-                minify: true, keepNames: true, legalComments: "none" });
-            for (const file of Object.keys(result.metafile!.inputs))
-                this.addWatchFile(resolve(file));
-            this.emitFile({ type: "asset", fileName: "task-panel.js", source: result.outputFiles[0]!.text });
+            for (const name of AUXILIARY_PRELOADS) {
+                // Sandboxed preloads can require Electron, but cannot load sibling chunks.
+                const result = buildSync({ entryPoints: [resolve(__dirname, `electron/preload/${name}.ts`)], bundle: true, write: false,
+                    platform: "node", format: "cjs", target: "node22", external: ["electron"], metafile: true,
+                    /* 与 main/preload 同一口味：这份也在每个辅助渲染进程里常驻。 */
+                    minify: true, keepNames: true, legalComments: "none" });
+                for (const file of Object.keys(result.metafile!.inputs))
+                    this.addWatchFile(resolve(file));
+                this.emitFile({ type: "asset", fileName: `${name}.js`, source: result.outputFiles[0]!.text });
+            }
         },
     };
 }
@@ -170,7 +174,8 @@ export default defineConfig({
             outDir: resolve(__dirname, `${outputRoot}/renderer`),
             rollupOptions: {
                 onwarn,
-                input: { index: resolve(__dirname, "src/index.html"), "task-panel": resolve(__dirname, "src/task-panel.html") },
+                input: { index: resolve(__dirname, "src/index.html"), "task-panel": resolve(__dirname, "src/task-panel.html"),
+                    "system-dock-bar": resolve(__dirname, "src/system-dock-bar.html"), "system-dock-panel": resolve(__dirname, "src/system-dock-panel.html") },
             },
         },
     },

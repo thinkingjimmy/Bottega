@@ -1,6 +1,6 @@
 /**
  * [INPUT]: Depends on the shared/agent-ipc backend, workspace scope, model and turn-by-turn combined type
- * [OUTPUT]: Provides settings v11 with the recorded Agent Install later mark, local archive-confetti and Lab Agent-connections preferences, the single-backend title Agent, main-owned presence writes, revision envelopes, Memory/Chat Home APIs including the dialog-free folder retry, and model/session options
+ * [OUTPUT]: Provides settings v11 with the recorded Agent Install later mark, local archive-confetti and Lab Agent-connections preferences, the single-backend title Agent, main-owned presence writes, revision envelopes, Memory/Chat Home APIs including the dialog-free folder retry, folder move and whole-profile erase, and model/session options
  * [POS]: Single source of truth for shared multi-process settings; main, preload, and renderer exchange only what this contract defines
  */
 
@@ -184,6 +184,9 @@ export const SETTINGS_CHANNEL = {
   chooseChatHomesRoot: "settings:chat-home:choose-root",
   retryLibrary: "settings:library:retry",
   revealLibrary: "settings:library:reveal",
+  planLibraryMove: "settings:library:plan-move",
+  commitLibraryMove: "settings:library:commit-move",
+  eraseAllData: "settings:erase-all",
   acknowledgeFullAccess: "settings:full-access:acknowledge",
   listBackends: "settings:list-backends",
   listModels: "settings:list-models",
@@ -191,6 +194,8 @@ export const SETTINGS_CHANNEL = {
   rememberChatDefaults: "settings:remember-chat-defaults",
   patchChatOptions: "settings:patch-chat-options",
 } as const;
+
+export type LibraryMovePlan = { from: string; to: string };
 
 export type SettingsBridgeApi = {
   /** 建窗那一刻的有效主题；同步可读，故首帧不会错色。 */
@@ -210,6 +215,12 @@ export type SettingsBridgeApi = {
   /** Reopens the folder already configured; a failed first open must not ask for the path again. */
   retryLibrary?: () => Promise<ChatHomeStatus>;
   revealLibrary?: () => Promise<void>;
+  /** Asks where the folder should go; null when the picker was cancelled. Nothing is written yet. */
+  planLibraryMove?: () => Promise<LibraryMovePlan | null>;
+  /** Records the move and restarts Bottega, which moves the folder before opening it. */
+  commitLibraryMove?: (to: string) => Promise<void>;
+  /** Records the erase and restarts Bottega, which erases this computer's data before opening anything. */
+  eraseAllData?: (options: { trashFolder: boolean }) => Promise<void>;
   acknowledgeFullAccess: () => Promise<SettingsEnvelope>;
   listBackends: () => Promise<BackendInfo[]>;
   listModels: (

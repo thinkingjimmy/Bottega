@@ -175,7 +175,7 @@ function PricingRefreshRow() {
                 }
               />
             ) : (
-              <Skeleton className="h-6 w-11 rounded-full" />
+              <Skeleton className="h-[18px] w-8 rounded-full" />
             )
           }
         />
