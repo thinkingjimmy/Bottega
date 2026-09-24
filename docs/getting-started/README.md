@@ -28,7 +28,7 @@ The first time a computer synchronizes, it records itself as the folder's owner,
 
 So in 0.1.6 a backup cannot be restored onto a different computer, and the same folder cannot be carried between two computers. Reading is never affected: everything a computer published stays readable in a browser and on your other computers, whether or not it is awake. Use Cloud Sync, not a copied folder, to work from more than one computer.
 
-The folder location is fixed after setup. To use a different location, quit Bottega, copy the complete folder, then choose that copy after reinstalling on the same computer. Settings › General shows the current location and can reveal it in your file manager. Editing or deleting the transcript files inside the folder does not edit or delete the conversation in Bottega.
+To change the location, use **Move folder** in Settings › General: Bottega restarts and moves the folder before it opens, and every saved path follows it. Moving to another disk copies and verifies everything first, then puts the old copy in the Trash. The move is refused while an Agent is working. Settings › General also shows the current location and can reveal it in your file manager. If you delete the folder yourself, Bottega starts setup again and copies your conversations into the new folder you choose. Editing or deleting the transcript files inside the folder does not edit or delete the conversation in Bottega.
 
 Do not put the folder inside iCloud Drive, Dropbox, OneDrive, or another file-synchronization directory. That configuration is unsupported. Use Cloud Sync for parallel work across devices.
 
@@ -111,6 +111,16 @@ A signed-in computer publishes its sidebar — its Projects and its Chats — to
 **While a computer is asleep or offline.** Its Chats stay readable, and renaming, archiving, reordering, editing a Base row, and writing an App record all still work — that computer reconciles them when it wakes. What needs it awake is execution: sending, Stop, approving, answering, steering, and deleting a Chat are greyed in place with a sentence saying why, your draft stays in the editor, and they recover on their own within about half a minute of the computer waking. A laptop is treated as offline about 90 seconds after its lid closes.
 
 Bottega keeps a service-level switch that can turn remote control off for everyone if it has to. While it is off, browser Chats are read only; reading a transcript and watching a running turn still work.
+
+<a id="upgrading-to-018"></a>
+
+## Upgrading to 0.1.8
+
+There is nothing to prepare. 0.1.8 opens a 0.1.7 chat database, settings, and Bottega folder as they are, and cloud data is kept.
+
+The synchronization protocol moved to 10, and the service already speaks it. A 0.1.7 desktop signed in to the same account is asked to update before it can sync again; update every computer on the account. Your sync password does not change.
+
+Bottega Dock is off until you turn it on in Settings › Dock. It needs macOS 15 or later on Apple silicon. If you choose to replace the system Dock, Bottega adds a recovery item to System Settings › General › Login Items & Extensions; it stays registered while replacement is on, so the system Dock can always be restored. To go back, choose **Restore System Dock** or turn Bottega Dock off.
 
 <a id="upgrading-to-017"></a>
 

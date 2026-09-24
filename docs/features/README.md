@@ -75,6 +75,12 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Follow running tasks and pending requests in the notch panel, navigate with the keyboard, and return to the related chat.
 - Reopen or quit Bottega through the available background entry.
 
+## Bottega Dock
+
+- On macOS 15 or later with Apple silicon, keep the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent in one Dock.
+- Let it sit above the system Dock, or replace the system Dock; a recovery item restores the system Dock if Bottega stops unexpectedly, and **Restore System Dock** is always one step away.
+- Keep the same end-to-end encrypted Dock layout on every computer in your account; simultaneous changes merge, and real conflicts ask you.
+
 ## Cloud Sync
 
 - Keep synchronization optional: Bottega works without an account, setup never asks about one, and signing in uploads nothing until you confirm the first sync.
@@ -109,6 +115,7 @@ Bottega treats an Agent conversation as the control surface for a durable local 
 - Keep readable content in one Bottega folder chosen during setup: Chat transcripts, original attachments, saved artifacts, Chat Home files, Project details, Base records, App source, and Skills. Account settings, encryption keys, device permissions, and execution records stay in each computer's application data directory.
 - Back up by quitting Bottega and copying the whole folder; a copy made while it is running is a best-effort recovery source that reports its gaps. File-synchronization folders such as iCloud Drive and Dropbox are unsupported.
 - Rebuild conversations from the folder when the local Chat database cannot be opened, while the previous database is preserved.
+- Move the folder from Settings › General, including to another disk, with every saved path following it; or erase all of Bottega's data on this computer while cloud data stays in your account.
 - Keep a Bottega folder with the computer that published it: the same computer takes it back after a reinstall, a cleared data folder, or a new profile with nothing to confirm, and another computer is refused by name. A folder that has never synchronized opens anywhere.
 - Back up the complete application data folder before changing versions. 0.1.6 does not open a 0.1.5 chat database: it is preserved and the conversation index is rebuilt from the Bottega folder, and cloud content from 0.1.5 is not carried over; see the [upgrade guide](../getting-started/README.md#upgrading-to-016).
 

@@ -4,6 +4,41 @@
 
 This file records product milestones, not internal implementation iterations. Dates describe when each capability reached its first coherent product form.
 
+## 2026-09-24 — v0.1.8
+
+**Before upgrading:** nothing to prepare. 0.1.8 opens a 0.1.7 chat database, settings, and Bottega folder as they are, and cloud data is kept. The synchronization protocol moved to 10, so every computer signed in to the same account should update: a 0.1.7 desktop is asked to update before it can sync again. See the [upgrade notes](../getting-started/README.md#upgrading-to-018).
+
+### What's new
+
+- **Bottega Dock (macOS 15 or later, Apple silicon).** A Dock for the Apps you build in Bottega, your other Apps, Finder, Downloads, the Trash, and an AI-limits ring per Agent. It can sit above the system Dock, or replace it: Bottega then sets the system Dock to hide, and a small recovery item in your background items restores it if Bottega stops unexpectedly. Turn it on in Settings › Dock; **Restore System Dock** is always available there, in the Dock's right-click menu, and in Bottega's menu bar menu.
+- **Your Dock layout follows your account.** The Dock layout is end-to-end encrypted and synchronized across your computers. When two computers change it at the same time, Bottega merges what it can and asks you about the rest.
+- **Settings that read the same everywhere.** Dock, Sync, and Memory now use the same sections and rows as the rest of Settings; errors and progress appear in the row they belong to, and step-by-step setup opens in one consistent dialog. Onboarding has a new layout with the steps on the left.
+- **Move your Bottega folder.** **Move folder** in Settings › General moves the folder when Bottega restarts, and every saved path follows it. Moving to another disk copies and verifies everything first; the old copy then goes to the Trash.
+- **Erase all data.** **Erase all data on this computer** in Settings › General › Danger zone removes conversations, settings, keys, and sign-in from this computer and restarts at setup; the Bottega folder can go to the Trash too. Cloud data is kept and comes back when you sign in again.
+- **A deleted Bottega folder starts setup again** instead of stopping at a recovery dialog, and a conversation copy that can no longer be opened is moved to the folder's `.trash` and reported once.
+- **Protocol 10.** The synchronization protocol moved forward to carry the encrypted Dock layout. Local data is unchanged.
+
+### Download and install
+
+The assets below include macOS arm64 DMG/ZIP, Windows x64 NSIS, and Linux x64 AppImage installers. These builds are **unsigned and not notarized**. macOS remains the primary platform; native App isolation, Bottega Dock, and full feature parity on Windows/Linux are still in progress.
+
+**macOS (Apple silicon):** open the DMG and drag Bottega into Applications. For the unsigned download, remove its quarantine flag once in Terminal, then open Bottega:
+
+```bash
+xattr -rd com.apple.quarantine /Applications/Bottega.app
+```
+
+**Windows (x64):** run the installer. If SmartScreen blocks the unrecognized publisher, choose **More info → Run anyway**.
+
+**Linux (x64):** make the AppImage executable and launch it:
+
+```bash
+chmod +x Bottega-0.1.8-linux-x86_64.AppImage
+./Bottega-0.1.8-linux-x86_64.AppImage
+```
+
+Install and authenticate at least one supported local CLI before starting a conversation. Users on 0.1.0 or 0.1.1 must install 0.1.8 manually because those versions contain the earlier updater bug.
+
 ## 2026-09-23 — v0.1.7
 
 **Before upgrading:** nothing to prepare. 0.1.7 opens a 0.1.6 chat database and settings as they are, and cloud data is kept. The synchronization protocol moved to 9, so every computer signed in to the same account should update: a 0.1.6 desktop is asked to update before it can sync again. Your existing sync password keeps working. See the [upgrade notes](../getting-started/README.md#upgrading-to-017).
