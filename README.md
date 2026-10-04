@@ -35,10 +35,6 @@
   <img src="./images/readme.png" alt="Bottega-README">
 </p>
 
-# 0.2.0
-
-[Download 0.2.0](https://github.com/thinkingjimmy/Bottega/releases/tag/v0.2.0) for **macOS on Apple silicon**, or open [Bottega Web](https://app.getbottega.app). This is an early-access prerelease with manual updates. Apple Developer enrollment is pending; the macOS package uses ad-hoc signatures and is not notarized. Windows, Linux, and Android distribution will follow separately.
-
 # Key features
 
 - **Your Agents, one sidebar.** Run Codex, Claude Code, Kimi Code, and OpenCode through their official local CLIs. Switch Agents for the next turn in an idle chat while keeping the same transcript.
